@@ -34,7 +34,10 @@ test("negative-caches a failing loader — subsequent lookups skip the re-fetch"
 
 test("caches a successful loader result — loader runs once", async () => {
   let calls = 0;
-  const entry = { model: "m", provider: "p" } as unknown as PreparedPricingEntry;
+  const entry = {
+    model: "m",
+    provider: "p",
+  } as unknown as PreparedPricingEntry;
   const loader = async (): Promise<PreparedPricingEntry[]> => {
     calls++;
     return [entry];
@@ -48,7 +51,10 @@ test("caches a successful loader result — loader runs once", async () => {
 test("persisted: caches a successful DB read — loader runs once within TTL", async () => {
   __clearPersistedPricingCache();
   let calls = 0;
-  const row = { model: "gpt-oss-120b", provider: "cerebras" } as unknown as AiPricingEntry;
+  const row = {
+    model: "gpt-oss-120b",
+    provider: "cerebras",
+  } as unknown as AiPricingEntry;
   const loader = async (): Promise<AiPricingEntry[]> => {
     calls++;
     return [row];
@@ -80,4 +86,70 @@ test("persisted: distinct keys cache independently (no cross-key bleed)", async 
   expect(await getCachedPersistedEntries("kb", async () => [b])).toEqual([b]);
   // 'ka' stays cached as [a] even though this loader would return [b].
   expect(await getCachedPersistedEntries("ka", async () => [b])).toEqual([a]);
+});
+
+test("persisted: concurrent cold misses for the same key coalesce onto one read (#16162)", async () => {
+  __clearPersistedPricingCache();
+  const row = { model: "m" } as unknown as AiPricingEntry;
+  let calls = 0;
+  const gate = Promise.withResolvers<AiPricingEntry[]>();
+  const loader = (): Promise<AiPricingEntry[]> => {
+    calls++;
+    return gate.promise;
+  };
+
+  // Both fired before either resolves — the hot-path shape lookup.ts produces.
+  const p1 = getCachedPersistedEntries("cc", loader);
+  const p2 = getCachedPersistedEntries("cc", loader);
+  gate.resolve([row]);
+
+  expect(await p1).toEqual([row]);
+  expect(await p2).toEqual([row]);
+  expect(calls).toBe(1); // one shared read, not two duplicate DB round-trips
+});
+
+test("external: concurrent cold misses for the same key coalesce onto one read (#16162)", async () => {
+  const entry = {
+    model: "m",
+    provider: "p",
+  } as unknown as PreparedPricingEntry;
+  let calls = 0;
+  const gate = Promise.withResolvers<PreparedPricingEntry[]>();
+  const loader = (): Promise<PreparedPricingEntry[]> => {
+    calls++;
+    return gate.promise;
+  };
+
+  const p1 = getCachedExternalEntries("cc:ext", loader);
+  const p2 = getCachedExternalEntries("cc:ext", loader);
+  gate.resolve([entry]);
+
+  expect(await p1).toEqual([entry]);
+  expect(await p2).toEqual([entry]);
+  expect(calls).toBe(1);
+});
+
+test("persisted: concurrent rejection is shared and a later request retries", async () => {
+  __clearPersistedPricingCache();
+  const gate = Promise.withResolvers<AiPricingEntry[]>();
+  let calls = 0;
+  const loader = (): Promise<AiPricingEntry[]> => {
+    calls++;
+    return gate.promise;
+  };
+
+  const first = getCachedPersistedEntries("reject", loader);
+  const concurrent = getCachedPersistedEntries("reject", loader);
+  const settled = Promise.allSettled([first, concurrent]);
+  gate.reject(new Error("db transient"));
+
+  const results = await settled;
+  expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"]);
+  for (const result of results) {
+    if (result.status !== "rejected") throw new Error("expected rejection");
+    if (!(result.reason instanceof Error)) throw new Error("expected Error reason");
+    expect(result.reason.message).toBe("db transient");
+  }
+  expect(calls).toBe(1);
+  await expect(getCachedPersistedEntries("reject", async () => [])).resolves.toEqual([]);
 });
