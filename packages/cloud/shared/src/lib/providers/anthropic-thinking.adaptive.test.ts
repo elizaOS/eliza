@@ -30,6 +30,7 @@ describe("Anthropic adaptive thinking (Opus 4.7/4.8) — #16149", () => {
     "claude-opus-4-7",
     "claude-opus-4.7",
     "anthropic/claude-opus-4-7",
+    "anthropic/claude-opus-4-7-20260701",
     "anthropic/claude-opus-4.8",
     "claude-opus-4-8",
   ];
@@ -55,6 +56,12 @@ describe("Anthropic adaptive thinking (Opus 4.7/4.8) — #16149", () => {
       expect(usesAdaptiveThinking(id)).toBe(false);
       expect(supportsExtendedThinking(id)).toBe(true);
       expect(thinkingOf(id)).toEqual({ type: "enabled", budgetTokens: 5000 });
+    }
+  });
+
+  test("does not classify later or malformed model versions as Opus 4.7/4.8", () => {
+    for (const id of ["claude-opus-4-70", "claude-opus-4.80", "claude-opus-4-8preview"]) {
+      expect(usesAdaptiveThinking(id)).toBe(false);
     }
   });
 

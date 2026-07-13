@@ -49,8 +49,8 @@ export function supportsExtendedThinking(modelId: string): boolean {
  * Dot and hyphen aliases + provider prefixes are covered (no `^` anchor).
  */
 const ADAPTIVE_THINKING_MODEL_PATTERNS = [
-  /claude-opus-4[.-]7/, // Claude Opus 4.7
-  /claude-opus-4[.-]8/, // Claude Opus 4.8
+  /claude-opus-4[.-]7(?:$|-)/, // Claude Opus 4.7 and dated aliases
+  /claude-opus-4[.-]8(?:$|-)/, // Claude Opus 4.8 and dated aliases
 ];
 
 /**
