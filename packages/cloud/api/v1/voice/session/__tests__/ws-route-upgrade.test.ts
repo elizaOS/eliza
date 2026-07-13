@@ -132,6 +132,7 @@ const baseEnv = {
 
 class FakeServerSocket {
   accepted = false;
+  binaryType: "blob" | "arraybuffer" = "blob";
   accept() {
     this.accepted = true;
   }
@@ -210,6 +211,7 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(attachCalls.length).toBe(1);
     const server = attachCalls[0].server as FakeServerSocket;
     expect(server.accepted).toBe(true);
+    expect(server.binaryType).toBe("arraybuffer");
   });
 
   test("prefers the durable usage store when Redis is eval-capable", async () => {

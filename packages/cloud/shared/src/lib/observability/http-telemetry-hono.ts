@@ -6,9 +6,9 @@
  *
  * Responses returned straight from `fetch()` in workerd carry immutable
  * headers — mutating them throws a TypeError and would 500 an otherwise
- * healthy proxied response. When that happens the middleware re-wraps the
- * response (`new Response(body, response)`) without buffering the body, so
- * streaming passthrough routes stay zero-copy and still get telemetry headers.
+ * healthy proxied response. When that happens the middleware re-wraps the body
+ * with copied standard response fields, so streaming passthrough routes stay
+ * zero-copy and still get telemetry headers.
  */
 
 import type { MiddlewareHandler } from "hono";
@@ -20,7 +20,7 @@ import {
 
 type TraceEnv = { Variables: { traceId: string } };
 
-/** WebSocket upgrades carry a workerd-only socket extension that rewrapping drops. */
+/** Keep status-101 responses outside telemetry's standard-field-only fallback. */
 export function shouldDecorateHttpTelemetryStatus(status: number): boolean {
   return status !== 101;
 }
@@ -31,9 +31,9 @@ export function httpTelemetryMiddleware(): MiddlewareHandler<TraceEnv> {
     const startedAt = performance.now();
     c.set("traceId", traceId);
     await next();
-    // A status-101 Response carries workerd's non-standard `webSocket` field.
-    // Standard Response reconstruction cannot preserve it, so the upgrade must
-    // leave this middleware byte-for-byte rather than risk dropping the socket.
+    // Hono preserves Workerd's `webSocket` extension when it passes the complete
+    // response as ResponseInit. The TypeError fallback below copies only standard
+    // fields, so telemetry must not risk routing an upgrade through that fallback.
     if (!shouldDecorateHttpTelemetryStatus(c.res.status)) return;
     const metrics: ServerTimingMetric[] = [
       {
