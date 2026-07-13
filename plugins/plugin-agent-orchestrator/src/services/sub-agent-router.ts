@@ -2759,7 +2759,18 @@ function swarmTargetsForRouting(
   routingKind: string,
 ): SwarmRoomTarget[] {
   if (routingKind === QUESTION_FOR_TASK_CREATOR) {
-    return [targetForRoom(origin, origin.taskRoomId, "task")];
+    // The task creator is the USER in the origin channel, not the planner in
+    // the minted task room. Route to both: the task room keeps the question in
+    // planner context, and the origin room leg carries the reply callback that
+    // actually surfaces the blocked sub-agent's question to the user (with
+    // task rooms on by default the two differ, so a task-room-only post never
+    // reached the user's channel). Deduped when the origin room IS the task
+    // room.
+    const targets = [targetForRoom(origin, origin.taskRoomId, "task")];
+    if (origin.roomId !== origin.taskRoomId) {
+      targets.push(targetForRoom(origin, origin.roomId, "origin"));
+    }
+    return targets;
   }
   if (routingKind === AGENT_COORDINATION) {
     const roomId = origin.worktreeRoomId ?? origin.taskRoomId;

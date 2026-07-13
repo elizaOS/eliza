@@ -1482,6 +1482,83 @@ describe("SwarmCoordinatorService", () => {
     await coordinator.stop();
   });
 
+  it("posts a bind-window completion exactly once even when the router binds before the cede decision runs", async () => {
+    // Race (#bind-retry window): AcpService fans events out synchronously and
+    // never replays, so a completion emitted while the router is still in its
+    // bind-retry loop is NEVER seen by the router. The cede decision runs
+    // behind metadata awaits — a live isActive() read there can observe the
+    // router binding in the interim and cede an event the router never
+    // received (zero user-facing posts). The receipt-time snapshot must keep
+    // synthesis as the poster: exactly one post.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const router = makeRouterStub(false); // still binding at emit time
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: router,
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-bind-window", "task_complete", { response: "deployed" });
+    // The router finishes binding immediately after the fan-out, before the
+    // coordinator's chained cede decision gets to run.
+    router.isActive.mockReturnValue(true);
+    await flushChains();
+
+    expect(fired).toHaveBeenCalledTimes(1);
+
+    // The one-shot runner's teardown `stopped` after the router bound must not
+    // produce a second user-facing post for the same session.
+    acp.emit("sess-bind-window", "stopped", {});
+    await flushChains();
+    expect(fired).toHaveBeenCalledTimes(1);
+    await coordinator.stop();
+  });
+
+  it("still cedes a completion the router received even if the router reads inactive by decision time", async () => {
+    // Mirror-image race: the router WAS bound at emit (it received the event
+    // and will post). If it flips inactive during the coordinator's awaits
+    // (stop/rebind), a live read would synthesize a second copy of the same
+    // completion. The receipt-time snapshot keeps the cession.
+    const acp = makeAcpStub({
+      agentType: "codex",
+      workdir: "/tmp/wd",
+      metadata: {
+        label: "build-site",
+        originRoomId: ROUTER_ROOM_ID,
+        taskRoomId: ROUTER_TASK_ROOM_ID,
+        source: "discord",
+      },
+    });
+    const router = makeRouterStub(true); // bound at emit time
+    const runtime = makeRuntime({
+      [AcpService.serviceType]: acp,
+      [SUB_AGENT_ROUTER_SERVICE_TYPE]: router,
+    });
+    const coordinator = await SwarmCoordinatorService.start(runtime);
+
+    const fired = vi.fn(async () => {});
+    coordinator.setSwarmCompleteCallback(fired);
+
+    acp.emit("sess-unbind-race", "task_complete", { response: "deployed" });
+    router.isActive.mockReturnValue(false);
+    await flushChains();
+
+    expect(fired).not.toHaveBeenCalled();
+    await coordinator.stop();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
   });

@@ -522,6 +522,54 @@ describe("SubAgentRouter", () => {
     expect(metadata?.worktreeRoomId).toBe(WORKTREE_ROOM);
   });
 
+  it("routes QUESTION_FOR_TASK_CREATOR to BOTH the task room and the origin room when they differ", async () => {
+    // Default-on task rooms: the task creator is the USER in the origin
+    // channel. The task-room leg keeps planner context; the origin leg is what
+    // actually surfaces the blocked sub-agent's question to the user.
+    const TASK_ROOM = "55555555-5555-4555-8555-555555555555";
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: TASK_ROOM,
+        taskRoomId: TASK_ROOM,
+        originRoomId: ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "QUESTION_FOR_TASK_CREATOR", {
+      question: "Which branch should I target?",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(2);
+    const postedRooms = handleMessage.mock.calls.map(
+      (call) => (call[1] as Memory).roomId,
+    );
+    expect(postedRooms).toContain(TASK_ROOM);
+    expect(postedRooms).toContain(ROOM);
+    for (const call of handleMessage.mock.calls) {
+      const posted = call[1] as Memory;
+      const metadata = posted.content?.metadata as Record<string, unknown>;
+      expect(posted.content?.text).toContain("Which branch");
+      expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
+    }
+    const originCall = handleMessage.mock.calls.find(
+      (call) => (call[1] as Memory).roomId === ROOM,
+    );
+    const originMeta = (originCall?.[1] as Memory).content?.metadata as Record<
+      string,
+      unknown
+    >;
+    expect(originMeta?.subAgentTargetRoomRole).toBe("origin");
+  });
+
   it("strips leaked routing-kind markdown banners from sub-agent prose", async () => {
     session = makeSession({
       metadata: {

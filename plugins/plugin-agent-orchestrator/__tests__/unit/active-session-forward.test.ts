@@ -192,6 +192,89 @@ describe("active-session forward handler", () => {
     expect(acp.sendPrompt).not.toHaveBeenCalled();
   });
 
+  it("forwards an origin-channel follow-up when meta.roomId is a minted task room", async () => {
+    // Default-on task rooms: spawn stamps meta.roomId = taskRoomId while the
+    // user keeps typing in the origin connector channel (originRoomId).
+    const acp = makeAcp([
+      session({
+        metadata: {
+          roomId: "task-room-uuid",
+          originRoomId: "room-1",
+          label: "Ada",
+        },
+      }),
+    ]);
+    const handler = createActiveSessionForwardHandler(makeRuntime(acp), inbox);
+    await handler(msg("also handle the edge case"));
+    expect(acp.sendPrompt).toHaveBeenCalledWith(
+      "s1",
+      "also handle the edge case",
+    );
+  });
+
+  it("matches a session by sourceRoomId as an origin binding", async () => {
+    const acp = makeAcp([
+      session({
+        metadata: {
+          roomId: "task-room-uuid",
+          sourceRoomId: "room-1",
+          label: "Ada",
+        },
+      }),
+    ]);
+    const handler = createActiveSessionForwardHandler(makeRuntime(acp), inbox);
+    await handler(msg("use bun, not npm"));
+    expect(acp.sendPrompt).toHaveBeenCalledWith("s1", "use bun, not npm");
+  });
+
+  it("broadcasts an addressed follow-up to ALL bound live sessions, not just the first", async () => {
+    const acp = makeAcp([
+      session({ id: "s1", status: "ready" }),
+      session({
+        id: "s2",
+        name: "Bob",
+        status: "ready",
+        metadata: {
+          roomId: "task-room-2",
+          originRoomId: "room-1",
+          label: "Bob",
+        },
+      }),
+    ]);
+    const handler = createActiveSessionForwardHandler(makeRuntime(acp), inbox);
+    await handler(msg("Ada and Bob, please add tests"));
+    expect(acp.sendPrompt).toHaveBeenCalledTimes(2);
+    expect(acp.sendPrompt).toHaveBeenCalledWith(
+      "s1",
+      "Ada and Bob, please add tests",
+    );
+    expect(acp.sendPrompt).toHaveBeenCalledWith(
+      "s2",
+      "Ada and Bob, please add tests",
+    );
+  });
+
+  it("decides per session in a broadcast: idle session delivered, busy session queued", async () => {
+    const acp = makeAcp([
+      session({ id: "s1", status: "ready" }),
+      session({
+        id: "s2",
+        name: "Bob",
+        status: "tool_running",
+        metadata: { roomId: "room-1", label: "Bob" },
+      }),
+    ]);
+    const handler = createActiveSessionForwardHandler(makeRuntime(acp), inbox);
+    await handler(msg("Ada and Bob, please add tests"));
+    expect(acp.sendPrompt).toHaveBeenCalledTimes(1);
+    expect(acp.sendPrompt).toHaveBeenCalledWith(
+      "s1",
+      "Ada and Bob, please add tests",
+    );
+    expect(inbox.size("s2")).toBe(1);
+    expect(inbox.drain("s2")).toBe("Ada and Bob, please add tests");
+  });
+
   it("blocks forwarding when the ACL denies interact", async () => {
     const acp = makeAcp([session({ status: "ready" })]);
     // ADMIN-gated interact + a sender that resolves to no elevated role.

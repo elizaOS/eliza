@@ -67,6 +67,7 @@ import {
   type TaskAuditPayload,
 } from "./services/audit.js";
 import { OrchestratorTaskService } from "./services/orchestrator-task-service.js";
+import { resolveOriginRoomId } from "./services/session-room-binding.js";
 import { SubAgentInbox } from "./services/sub-agent-inbox.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { SwarmCoordinatorService } from "./services/swarm-coordinator-service.js";
@@ -276,6 +277,30 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TASK_AUDIT_EVENT,
         taskAuditHandler,
       );
+      // An inbox overflow discards a queued USER message. That must never be
+      // silent (repo error-policy: a dropped input reads as a healthy pipeline)
+      // — warn with the counts and raise through the diagnostic boundary so
+      // repeated drops reach RECENT_ERRORS / owner escalation.
+      subAgentInbox.setOverflowObserver(
+        (sessionId, droppedNow, droppedTotal) => {
+          runtime.logger?.warn?.(
+            {
+              src: "@elizaos/plugin-agent-orchestrator",
+              sessionId,
+              droppedNow,
+              droppedTotal,
+            },
+            "sub-agent inbox overflow: oldest queued user message(s) dropped",
+          );
+          runtime.reportError?.(
+            "SubAgentInbox",
+            new Error(
+              `sub-agent inbox overflow for session ${sessionId}: dropped ${droppedNow} queued message(s) (${droppedTotal} total)`,
+            ),
+            { sessionId, droppedNow, droppedTotal },
+          );
+        },
+      );
       // Forward mid-task user messages to the live sub-agent for this roomId.
       // Bind is on (source, roomId) — no Discord-thread dependency, so plain
       // SMS/WhatsApp follow-ups work too.
@@ -475,6 +500,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
       flushTimers.clear();
       flushPending.clear();
       subAgentInbox.clearAll();
+      // Detach the runtime-bound overflow observer so a late enqueue after
+      // hot-reload teardown cannot touch a torn-down runtime.
+      subAgentInbox.setOverflowObserver(undefined);
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
       const taskService = runtime.getService<OrchestratorTaskService>(
@@ -1947,10 +1975,16 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         const meta = (session?.metadata ?? {}) as Record<string, unknown>;
         const source =
           typeof meta.source === "string" ? meta.source : undefined;
-        const roomId =
-          typeof meta.roomId === "string"
-            ? (meta.roomId as `${string}-${string}-${string}-${string}-${string}`)
-            : undefined;
+        // Acks/heartbeats/narration must land on the user's live connector
+        // channel. With per-task GROUP rooms on by default, the raw
+        // `meta.roomId` is the minted task-room UUID (no connector channel
+        // maps to it — every send fails and gets demoted to debug after the
+        // first warn), so resolve through the shared origin ladder. Thread
+        // routing is unaffected: `threadRoomId` binding and the per-session
+        // thread state key off this target the same way they did.
+        const roomId = resolveOriginRoomId(meta) as
+          | `${string}-${string}-${string}-${string}-${string}`
+          | undefined;
         if (!source || !roomId) return;
         const label =
           typeof meta.label === "string" && meta.label.trim().length > 0
