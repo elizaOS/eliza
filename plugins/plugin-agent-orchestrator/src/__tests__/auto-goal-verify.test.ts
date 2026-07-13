@@ -176,7 +176,7 @@ function dirtyWorkdir(workdir: string): void {
 async function seedTaskWithSession(
   store: OrchestratorTaskStore,
   acceptanceCriteria: string[],
-  opts: { workdir?: string } = {},
+  opts: { workdir?: string; repo?: string } = {},
 ): Promise<{ taskId: string; sessionId: string; workdir: string }> {
   const detail = await store.createTask({
     title: "t",
@@ -194,6 +194,7 @@ async function seedTaskWithSession(
     framework: "opencode",
     label: "Ada",
     originalTask: "do the thing",
+    ...(opts.repo ? { repo: opts.repo } : {}),
     workdir,
     status: "ready",
     decisionCount: 0,
@@ -1150,13 +1151,13 @@ describe("deterministic completion-residuals gate", () => {
     expect(snapshot?.status).toBe("clean");
   });
 
-  it("a MISSING workspace is unverifiable and blocks (fail closed)", async () => {
+  it("a MISSING workspace on a repo-bound task is unverifiable and blocks (fail closed)", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId, sessionId } = await seedTaskWithSession(
       store,
       ["tests pass"],
-      { workdir: join(tmpdir(), "orch-missing-workspace") },
+      { workdir: join(tmpdir(), "orch-missing-workspace"), repo: "acme/site" },
     );
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
@@ -1227,6 +1228,38 @@ describe("deterministic completion-residuals gate", () => {
         (await store.getTask(taskId))?.task.status === "waiting_on_user",
     );
     expect(fake.service.sendToSession).not.toHaveBeenCalled();
+  });
+
+  it("an UNBOUND task in a non-git scratch dir skips the git legs and can promote (scenario regression)", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    // Model an acp-scratch cwd: a real directory that is NOT a git worktree,
+    // on a task with no session repo and no boundRepo — a voice/Q&A task must
+    // not be blocked by its scratch workdir.
+    const scratch = mkdtempSync(join(tmpdir(), "orch-acp-scratch-"));
+    gitRoots.push(scratch);
+    const { taskId, sessionId } = await seedTaskWithSession(
+      store,
+      ["question answered"],
+      { workdir: scratch },
+    );
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "the answer is 42" });
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
+
+    expect(useModel).toHaveBeenCalledTimes(1);
+    const doc = await store.getTask(taskId);
+    const snapshot = doc?.task.metadata.completionResiduals as
+      | { status: string }
+      | undefined;
+    expect(snapshot?.status).toBe("clean");
   });
 
   it("ELIZA_ORCHESTRATOR_RESIDUALS_GATE=0 disables the gate (explicit escape hatch)", async () => {

@@ -617,17 +617,33 @@ function latestActiveSession(
     .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
 }
 
-/** The workspace the residuals gate inspects when the caller has no session in
- * hand (`validateTask` via the HTTP route): the most recently active session's
- * workdir. Sessions without a workdir (pure Q&A) contribute nothing, so the
- * gate falls back to its envelope-only legs. */
-function latestSessionWorkdir(
+/** The session whose workspace the residuals gate inspects when the caller has
+ * no session in hand (`validateTask` via the HTTP route): the most recently
+ * active session with a workdir. Sessions without a workdir contribute
+ * nothing, so the gate falls back to its envelope-only legs. */
+function latestWorkspaceSession(
   doc: OrchestratorTaskDocument,
-): string | undefined {
-  const withWorkdir = doc.sessions
+): OrchestratorTaskSession | undefined {
+  return doc.sessions
     .filter((session) => session.workdir.trim().length > 0)
     .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
-  return withWorkdir?.workdir;
+}
+
+/** Whether the residuals gate must treat the workspace as a REQUIRED git repo
+ * (fail-closed) rather than an opportunistic scratch cwd: the session was
+ * spawned against a named repo, or the task carries a durable repo binding.
+ * `projectId` alone deliberately does NOT count — a registered project's
+ * localPath need not be a git repo — and every ACP session gets SOME workdir
+ * (acp-scratch) even for voice/Q&A tasks, so only an explicit repo claim may
+ * turn a non-git workdir into a blocking `unverifiable`. */
+function residualsRepoExpected(
+  doc: OrchestratorTaskDocument,
+  session: OrchestratorTaskSession | undefined,
+): boolean {
+  return (
+    (session?.repo ?? "").trim().length > 0 ||
+    (doc.task.boundRepo ?? "").trim().length > 0
+  );
 }
 
 /** Envelope-derived residuals legs from the VALID CompletionEnvelope stamped
@@ -2739,9 +2755,11 @@ export class OrchestratorTaskService extends Service {
           )
         : new Error("validation evidence is required");
     }
+    const workspaceSession = latestWorkspaceSession(doc);
     const residuals = residualsGateEnabled()
       ? await collectCompletionResiduals({
-          workdir: latestSessionWorkdir(doc),
+          workdir: workspaceSession?.workdir,
+          repoExpected: residualsRepoExpected(doc, workspaceSession),
           ...envelopeResidualLegs(doc.task.metadata),
         })
       : undefined;
@@ -2872,6 +2890,7 @@ export class OrchestratorTaskService extends Service {
         );
         const residuals = await collectCompletionResiduals({
           workdir: reportingSession?.workdir,
+          repoExpected: residualsRepoExpected(doc, reportingSession),
           ...(parse.present && parse.ok
             ? {
                 testResults: parse.envelope.testResults,

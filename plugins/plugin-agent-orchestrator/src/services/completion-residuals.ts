@@ -8,13 +8,15 @@
  *
  * Consumed by `OrchestratorTaskService.autoVerifyCompletion` (before any model
  * spend) and `validateTask` (before honoring a `passed: true` verdict; a human
- * override runs it too, recording what was overridden). Fail-closed by design:
- * a workdir that exists but is not a git work tree, or a git probe that errors,
- * yields `unverifiable` — never a silent pass. Tasks with no workspace at all
- * (pure Q&A sessions) skip the git legs but still surface envelope-reported
- * failing tests and residual risks. `ELIZA_ORCHESTRATOR_RESIDUALS_GATE=0`
- * disables the gate (mirrors the `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` flag
- * convention).
+ * override runs it too, recording what was overridden). Fail-closed for
+ * repo-declaring tasks: when the task/session names a repo, a workdir that is
+ * missing or not a git work tree, or a git probe that errors, yields
+ * `unverifiable` — never a silent pass. Tasks WITHOUT a declared repo (every
+ * ACP session still gets an acp-scratch workdir, even a voice/Q&A task) probe
+ * the workdir opportunistically: a real git worktree runs the git legs, a
+ * scratch/non-git dir skips them, and the envelope-reported failing tests and
+ * residual risks always apply. `ELIZA_ORCHESTRATOR_RESIDUALS_GATE=0` disables
+ * the gate (mirrors the `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` flag convention).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
@@ -81,6 +83,18 @@ export interface CompletionResidualsInput {
   /** The reporting session's workspace. Empty/undefined = no workspace: the
    * git legs are skipped and only the envelope legs apply. */
   workdir?: string;
+  /**
+   * Whether the task/session declares a git repo (session `repo` or task
+   * `boundRepo`). Every ACP session gets SOME workdir (an acp-scratch dir even
+   * for a voice/Q&A task), so the workdir alone cannot distinguish "coding
+   * task whose repo state must be provable" from "scratch cwd that happens to
+   * exist". When true, the git legs are fail-closed: a missing dir, a non-git
+   * dir, or a git probe failure is `unverifiable`. When false, the workdir is
+   * probed opportunistically: a real git worktree still runs the git legs
+   * (dirty/unpushed there are genuine residuals), but a missing/non-git dir
+   * skips them (envelope legs still apply) instead of blocking promotion.
+   */
+  repoExpected: boolean;
   testResults?: ReadonlyArray<{
     command: string;
     exitCode: number;
@@ -147,7 +161,19 @@ export async function collectCompletionResiduals(
     });
   }
 
-  if (workdir !== undefined) {
+  // The git legs run when a workdir is claimed AND either the task declares a
+  // repo (fail-closed) or the workdir opportunistically turns out to be a real
+  // git worktree. `skipGitLegs` is the repoExpected=false escape for scratch
+  // cwds — a non-coding task's acp-scratch dir must not block promotion.
+  const workdirIsWorkTree =
+    workdir !== undefined &&
+    existsSync(workdir) &&
+    statSync(workdir).isDirectory() &&
+    (() => {
+      const inside = runGit(workdir, ["rev-parse", "--is-inside-work-tree"]);
+      return inside.ok && inside.stdout.trim() === "true";
+    })();
+  if (workdir !== undefined && (input.repoExpected || workdirIsWorkTree)) {
     const unverifiable = (reason: string): CompletionResidualsResult => ({
       status: "unverifiable",
       residuals,
@@ -155,14 +181,15 @@ export async function collectCompletionResiduals(
       workdir,
       checkedAt,
     });
-    if (!existsSync(workdir)) {
-      return unverifiable(`workspace directory does not exist: ${workdir}`);
-    }
-    if (!statSync(workdir).isDirectory()) {
-      return unverifiable(`workspace path is not a directory: ${workdir}`);
-    }
-    const inside = runGit(workdir, ["rev-parse", "--is-inside-work-tree"]);
-    if (!inside.ok || inside.stdout.trim() !== "true") {
+    if (!workdirIsWorkTree) {
+      // Only reachable when repoExpected: a declared repo whose workspace
+      // cannot be inspected must never promote on faith.
+      if (!existsSync(workdir)) {
+        return unverifiable(`workspace directory does not exist: ${workdir}`);
+      }
+      if (!statSync(workdir).isDirectory()) {
+        return unverifiable(`workspace path is not a directory: ${workdir}`);
+      }
       return unverifiable(`workspace is not a git work tree: ${workdir}`);
     }
 

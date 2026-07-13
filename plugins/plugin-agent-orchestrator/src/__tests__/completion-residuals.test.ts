@@ -62,7 +62,10 @@ function makeRepo(opts: { withUpstream?: boolean } = {}): {
 describe("collectCompletionResiduals — real git legs", () => {
   it("passes a clean, fully-pushed workspace", async () => {
     const { workdir } = makeRepo();
-    const result = await collectCompletionResiduals({ workdir });
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
     expect(result.status).toBe("clean");
     expect(result.residuals).toEqual([]);
     expect(result.workdir).toBe(workdir);
@@ -73,7 +76,10 @@ describe("collectCompletionResiduals — real git legs", () => {
     const { workdir } = makeRepo();
     writeFileSync(join(workdir, "README.md"), "modified\n");
     writeFileSync(join(workdir, "untracked.ts"), "export {};\n");
-    const result = await collectCompletionResiduals({ workdir });
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
     expect(result.status).toBe("residuals");
     const residual = result.residuals.find(
       (row) => row.kind === "uncommitted_changes",
@@ -88,7 +94,10 @@ describe("collectCompletionResiduals — real git legs", () => {
     for (let i = 0; i < MAX_RESIDUAL_PATHS + 5; i += 1) {
       writeFileSync(join(workdir, `file-${i}.txt`), `${i}\n`);
     }
-    const result = await collectCompletionResiduals({ workdir });
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
     const residual = result.residuals.find(
       (row) => row.kind === "uncommitted_changes",
     );
@@ -103,7 +112,10 @@ describe("collectCompletionResiduals — real git legs", () => {
     writeFileSync(join(workdir, "feature.ts"), "export const x = 1;\n");
     git(workdir, "add", ".");
     git(workdir, "commit", "-q", "-m", "unpushed feature");
-    const result = await collectCompletionResiduals({ workdir });
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
     expect(result.status).toBe("residuals");
     const residual = result.residuals.find(
       (row) => row.kind === "unpushed_commits",
@@ -121,37 +133,106 @@ describe("collectCompletionResiduals — real git legs", () => {
     git(workdir, "add", ".");
     git(workdir, "commit", "-q", "-m", "feature");
     git(workdir, "push", "-q", "origin", "main");
-    const result = await collectCompletionResiduals({ workdir });
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
     expect(result.status).toBe("clean");
   });
 
   it("skips the upstream leg when no upstream is configured", async () => {
     const { workdir } = makeRepo({ withUpstream: false });
-    const result = await collectCompletionResiduals({ workdir });
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
     expect(result.status).toBe("clean");
   });
 
-  it("is unverifiable (never a pass) for a missing workdir", async () => {
+  it("repo-bound: a missing workdir is unverifiable (never a pass)", async () => {
     const result = await collectCompletionResiduals({
       workdir: join(tmpdir(), "orch-residuals-definitely-missing"),
+      repoExpected: true,
     });
     expect(result.status).toBe("unverifiable");
     expect(result.unverifiableReason).toContain("does not exist");
     expect(residualDetails(result)[0]).toContain("workspace unverifiable");
   });
 
-  it("is unverifiable (never a pass) for a non-git directory", async () => {
+  it("repo-bound: a non-git directory is unverifiable (never a pass)", async () => {
     const root = mkdtempSync(join(tmpdir(), "orch-residuals-nongit-"));
     roots.push(root);
-    const result = await collectCompletionResiduals({ workdir: root });
+    const result = await collectCompletionResiduals({
+      workdir: root,
+      repoExpected: true,
+    });
     expect(result.status).toBe("unverifiable");
     expect(result.unverifiableReason).toContain("not a git work tree");
+  });
+});
+
+describe("collectCompletionResiduals — unbound tasks (repoExpected=false)", () => {
+  it("skips the git legs for a non-git scratch dir instead of blocking", async () => {
+    const root = mkdtempSync(join(tmpdir(), "orch-residuals-scratch-"));
+    roots.push(root);
+    const result = await collectCompletionResiduals({
+      workdir: root,
+      repoExpected: false,
+    });
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
+  it("skips the git legs for a missing workdir instead of blocking", async () => {
+    const result = await collectCompletionResiduals({
+      workdir: join(tmpdir(), "orch-residuals-unbound-missing"),
+      repoExpected: false,
+    });
+    expect(result.status).toBe("clean");
+  });
+
+  it("still applies the envelope legs when the git legs are skipped", async () => {
+    const root = mkdtempSync(join(tmpdir(), "orch-residuals-scratch-env-"));
+    roots.push(root);
+    const result = await collectCompletionResiduals({
+      workdir: root,
+      repoExpected: false,
+      testResults: [{ command: "bun test", exitCode: 1, summary: "1 failed" }],
+    });
+    expect(result.status).toBe("residuals");
+    expect(result.residuals.map((row) => row.kind)).toEqual([
+      "failing_tests_reported",
+    ]);
+  });
+
+  it("still runs the git legs when the scratch dir IS a real dirty worktree", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "wip.ts"), "// wip\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: false,
+    });
+    expect(result.status).toBe("residuals");
+    expect(result.residuals.map((row) => row.kind)).toContain(
+      "uncommitted_changes",
+    );
+  });
+
+  it("repo-bound dirty worktree is unchanged: residuals", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "wip.ts"), "// wip\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+    });
+    expect(result.status).toBe("residuals");
   });
 });
 
 describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
   it("skips the git legs entirely when no workdir is supplied and passes on a clean envelope", async () => {
     const result = await collectCompletionResiduals({
+      repoExpected: false,
       testResults: [{ command: "bun test", exitCode: 0, summary: "green" }],
       residualRisks: [],
     });
@@ -161,6 +242,7 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
 
   it("flags self-reported failing tests even without a workspace", async () => {
     const result = await collectCompletionResiduals({
+      repoExpected: false,
       testResults: [
         { command: "bun test", exitCode: 1, summary: "2 failed" },
         { command: "bun run lint", exitCode: 0, summary: "ok" },
@@ -175,6 +257,7 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
 
   it("flags self-reported residual risks even without a workspace", async () => {
     const result = await collectCompletionResiduals({
+      repoExpected: false,
       residualRisks: ["migration not run on prod", "  "],
     });
     expect(result.status).toBe("residuals");
@@ -189,6 +272,7 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
     writeFileSync(join(workdir, "wip.ts"), "// wip\n");
     const result = await collectCompletionResiduals({
       workdir,
+      repoExpected: false,
       testResults: [{ command: "vitest", exitCode: 2, summary: "boom" }],
       residualRisks: ["flaky retry loop"],
     });
