@@ -150,7 +150,10 @@ jobs:
         env:
           LIVE_PROCESS_STATUS: ${{ steps.live.outputs.status }}
           PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
-          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          # Canonical staging rejects feature-ref deploys. A labeled PR therefore
+          # proves the exact harness at its checked-out head against the deployed
+          # base it proposes to extend; post-merge runs prove their own SHA.
+          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
         shell: bash
         run: |
           set -euo pipefail

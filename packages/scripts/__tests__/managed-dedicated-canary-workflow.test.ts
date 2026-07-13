@@ -159,7 +159,7 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
         ?.EXPECTED_SOURCE_SHA,
     ).toBe(
       "$" +
-        "{{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}",
+        "{{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}",
     );
     expect(enforce).toContain(
       'git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"',
