@@ -3138,6 +3138,66 @@ describe("view management actions", () => {
 		expect(runtime.createTask).not.toHaveBeenCalled();
 	});
 
+	it("surfaces invalid APP create continuations without fabricating a dispatch", async () => {
+		const callback = vi.fn();
+		const appClient = { listInstalledApps: vi.fn(async () => []) };
+		const emptyRuntime = createRuntime().runtime;
+
+		const empty = await runCreate({
+			runtime: emptyRuntime as never,
+			client: appClient as never,
+			message: message("") as never,
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+		expect(empty).toMatchObject({
+			success: false,
+			text: "Tell me what app you want to build.",
+		});
+		expect(appClient.listInstalledApps).not.toHaveBeenCalled();
+
+		const missingTarget = await runCreate({
+			runtime: emptyRuntime as never,
+			client: appClient as never,
+			message: message("Update the missing app") as never,
+			options: { action: "create", editTarget: "missing" },
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+		expect(missingTarget).toMatchObject({
+			success: false,
+			text: 'Cannot find an installed app named "missing".',
+		});
+
+		const pendingTasks: RuntimeTask[] = [
+			{
+				id: "pending-app-create",
+				metadata: {
+					roomId: "room-1",
+					intent: "Update proof app",
+					intentCreatedAt: "2026-07-13T00:00:00.000Z",
+					choices: [{ key: "edit-1", label: "Edit proof app" }],
+				},
+			},
+		];
+		const pendingRuntime = createRuntime({ tasks: pendingTasks }).runtime;
+		const lostTarget = await runCreate({
+			runtime: pendingRuntime as never,
+			client: appClient as never,
+			message: message("edit-1") as never,
+			callback,
+			repoRoot: "/tmp/no-app-create",
+		});
+		expect(lostTarget).toMatchObject({
+			success: false,
+			text: 'I lost track of the edit target "edit-1". Please re-state your request.',
+		});
+		expect(pendingRuntime.deleteTask).toHaveBeenCalledWith(
+			"pending-app-create",
+		);
+		expect(emptyRuntime.actions[0]?.handler).not.toHaveBeenCalled();
+	});
+
 	it("keeps an APP edit task in its chat room with bounded verification retries", async () => {
 		const repo = createRepoFixture();
 		try {

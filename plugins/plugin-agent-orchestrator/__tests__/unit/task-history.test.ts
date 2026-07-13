@@ -218,5 +218,6 @@ describe("TASKS:history", () => {
     expect(result?.text).not.toContain("session-b");
     expect(result?.text).not.toContain("session-c");
     expect(result?.data?.sessionIds).toEqual(["session-a"]);
+    expect(acpService.listSessions).toHaveBeenCalledTimes(1);
   });
 });
