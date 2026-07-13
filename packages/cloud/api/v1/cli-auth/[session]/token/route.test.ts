@@ -12,6 +12,18 @@ type Session = {
   status: "pending" | "authenticated" | "expired";
 };
 
+type ClaimResult =
+  | {
+      status: "claimed";
+      apiKey: string;
+      keyPrefix: string;
+      expiresAt: Date;
+    }
+  | {
+      status: "unavailable";
+      reason: "already-consumed";
+    };
+
 const getSession = mock(
   async (_sessionId: string): Promise<Session | null> => ({
     consumed_at: null,
@@ -20,12 +32,14 @@ const getSession = mock(
   }),
 );
 
-const getAndClearApiKey = mock(async (_sessionId: string) => ({
-  status: "claimed" as const,
-  apiKey: "eliz_legacy_single_use",
-  keyPrefix: "eliz_leg",
-  expiresAt: new Date("2026-08-01T00:00:00.000Z"),
-}));
+const getAndClearApiKey = mock(
+  async (_sessionId: string): Promise<ClaimResult> => ({
+    status: "claimed",
+    apiKey: "eliz_legacy_single_use",
+    keyPrefix: "eliz_leg",
+    expiresAt: new Date("2026-08-01T00:00:00.000Z"),
+  }),
+);
 
 const loggerError = mock(() => undefined);
 
