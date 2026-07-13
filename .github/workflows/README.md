@@ -266,7 +266,46 @@ Turbo caching is GitHub-native (`.github/actions/turbo-cache-github` via
 
 ## Package dependencies
 
-NPM packages are ordered by the monorepo graph; `release.yaml` / Lerna handle publish ordering for `@elizaos/*` packages.
+The legacy `release.yaml` path delegates its implicit package set to Lerna. The
+immutable candidate contract below instead requires an explicit cohort and
+records its dependency order before any registry mutation.
+
+### Immutable npm candidate primitives
+
+`packages/scripts/release-candidate.mjs` is the fail-closed boundary for the
+transactional release workflow. Candidate creation requires an explicit JSON
+allowlist (`{"schemaVersion":1,"packages":[...]}`), a clean source SHA, the
+same expected commit, exact semver/channel values, and one explicit build
+command. It then runs that build once and invokes `npm pack --ignore-scripts`
+once per package. An existing output directory is never overwritten or
+repacked.
+
+Each candidate directory contains `release-plan.json`, `release-state.json`,
+and the immutable `tarballs/*.tgz` cohort. The plan records package directories,
+hard-dependency ordering and ranges, entrypoint metadata, manifest integrity,
+and both hexadecimal SHA-512 and npm SRI integrity for every tarball. The state
+can advance only through this sequence:
+
+```
+planned -> built-packed -> candidate-recorded -> registry-staged
+        -> registry-verified -> channel-promoted -> git-tagged
+        -> release-published -> version-sync-pr
+```
+
+Registry publication stages missing versions under a candidate-specific tag,
+accepts a retry only when an existing version's `dist.integrity` exactly matches
+the plan, verifies the full cohort, promotes the requested channel, and removes
+the staging tags. Only HTTP 404 is absence; auth, throttling, transport, server,
+redirect, and parse failures abort. Git publication uses an atomic push of the
+explicit branch and tag refs, never `--follow-tags`, and requires the inspected
+remote branch SHA. `v2.0.3-beta.8`, `.9`, and `.10` are permanently reserved.
+
+The current `release.yaml` cannot consume this candidate atomically until its
+implicit Lerna package set is replaced by a maintainer-approved allowlist and
+its uncommitted manifest rewrites become a clean candidate commit. Keep that
+orchestration change together with the release state-machine refactor; a
+preflight-only insertion would validate different bytes than the ones Lerna
+publishes.
 
 ## Troubleshooting
 
