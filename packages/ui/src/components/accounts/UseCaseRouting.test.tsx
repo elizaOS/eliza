@@ -24,13 +24,14 @@ vi.mock("../../state", () => ({
     }),
 }));
 
+import type { AccountsListProvider } from "../../api/client-agent";
 import { UseCaseRouting } from "./UseCaseRouting";
 
-const providers = [
+const providers: AccountsListProvider[] = [
   { providerId: "openai-api", strategy: "priority", accounts: [] },
   { providerId: "anthropic-api", strategy: "priority", accounts: [] },
   { providerId: "cerebras-api", strategy: "priority", accounts: [] },
-] as const;
+];
 
 describe("UseCaseRouting", () => {
   it("reorders and removes existing tiers", () => {
