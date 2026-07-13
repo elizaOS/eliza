@@ -154,6 +154,7 @@ import {
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
 import type { AppContextValue } from "../state/internal";
+import { clearFirstRunTranscriptMessages } from "./clear-first-run-transcript";
 import { classifyDeviceRamTier } from "./device-ram-tier";
 import {
   tryHandleFirstRunAction,
@@ -324,11 +325,33 @@ afterEach(() => {
   // Drop the steward-authed marker cookie some cloud-only tests plant — a
   // leaked cookie would flip later mounts into the silent recovery branch.
   writeTestCookie("steward-authed=; expires=Thu, 01 Jan 1970 00:00:00 GMT");
+  // Auto-start test residue: the fake desktop renderer bridge and any
+  // ?onboarding-replay=1 URL a test pushed.
+  delete bridgeWindow.__ELIZA_ELECTROBUN_RPC__;
+  window.history.pushState({}, "", "/");
 });
 
 function writeTestCookie(value: string): void {
   // biome-ignore lint/suspicious/noDocumentCookie: jsdom tests drive the same browser cookie marker production reads.
   document.cookie = value;
+}
+
+type BridgeWindow = Window & {
+  __ELIZA_ELECTROBUN_RPC__?: import("../bridge/electrobun-rpc").ElectrobunRendererRpc;
+};
+const bridgeWindow = window as BridgeWindow;
+
+/** The real renderer-bridge seam the desktop auto-start enable write uses. */
+function installDesktopAutoLaunchRpc(
+  impl: (params?: unknown) => Promise<unknown> = async () => undefined,
+): ReturnType<typeof vi.fn> {
+  const spy = vi.fn(impl);
+  bridgeWindow.__ELIZA_ELECTROBUN_RPC__ = {
+    request: { desktopSetAutoLaunch: spy },
+    onMessage: () => {},
+    offMessage: () => {},
+  };
+  return spy;
 }
 
 describe("useFirstRunConductor", () => {
@@ -429,24 +452,6 @@ describe("useFirstRunConductor", () => {
   });
 
   describe("auto-start wrap-up step", () => {
-    type BridgeWindow = Window & {
-      __ELIZA_ELECTROBUN_RPC__?: import("../bridge/electrobun-rpc").ElectrobunRendererRpc;
-    };
-    const bridgeWindow = window as BridgeWindow;
-
-    /** The real renderer-bridge seam the desktop enable write goes through. */
-    function installDesktopAutoLaunchRpc(
-      impl: (params?: unknown) => Promise<unknown> = async () => undefined,
-    ): ReturnType<typeof vi.fn> {
-      const spy = vi.fn(impl);
-      bridgeWindow.__ELIZA_ELECTROBUN_RPC__ = {
-        request: { desktopSetAutoLaunch: spy },
-        onMessage: () => {},
-        offMessage: () => {},
-      };
-      return spy;
-    }
-
     /** Local runtime → on-device provider → wrap-up turns seeded. */
     async function walkToWrapUp(
       turn: (id: string) => ConversationMessage | undefined,
@@ -459,11 +464,6 @@ describe("useFirstRunConductor", () => {
       );
       await waitForTurn(turn, "first-run:tutorial");
     }
-
-    afterEach(() => {
-      delete bridgeWindow.__ELIZA_ELECTROBUN_RPC__;
-      window.history.pushState({}, "", "/");
-    });
 
     it("never seeds the step on unsupported platforms, and forged picks are consumed without touching the bridge", async () => {
       const spies = seedAppStore();
@@ -1609,6 +1609,111 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     await waitForTurn(turn, "first-run:cloud-done");
     expect(turn("first-run:tutorial")).toBeUndefined();
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("desktop auto-start on the production path: provisioning defers completion to the ask; Enable writes through the bridge, then the pick flips the real gate once", async () => {
+    localStorage.removeItem("steward_session_token");
+    mocks.autostartPlatform = "desktop";
+    const rpcSpy = installDesktopAutoLaunchRpc();
+    const spies = seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:greeting");
+
+    // Sign in; provisioning succeeds — but the gate is NOT flipped yet: the
+    // auto-start ask is the one wrap-up step in cloud-only mode.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+    const autostart = await waitForTurn(turn, "first-run:autostart");
+    expect(autostart.text).toContain("start automatically when you log in");
+    expect(autostart.text).toContain("__first_run__:autostart:enable=");
+    expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+    // No tutorial in cloud-only mode — the ask is the only completion gate.
+    expect(turn("first-run:tutorial")).toBeUndefined();
+
+    // Enable: real bridge write + the deferred real completion.
+    expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+      true,
+    );
+    await waitFor(() => expect(rpcSpy).toHaveBeenCalledTimes(1));
+    expect(rpcSpy).toHaveBeenCalledWith({ enabled: true, openAsHidden: false });
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    await waitForTurn(turn, "first-run:cloud-done");
+
+    // Double-tap after completion: latched — no second write, no second flip.
+    expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+      true,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(rpcSpy).toHaveBeenCalledTimes(1);
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    unmount();
+  });
+
+  it("silent entry + desktop support: the ask still renders (silence ends at the interactive ask) and Skip completes with no writes", async () => {
+    mocks.autostartPlatform = "desktop";
+    const rpcSpy = installDesktopAutoLaunchRpc();
+    mocks.client.getCloudCompatAgents.mockResolvedValue({
+      success: true,
+      data: [
+        {
+          agent_id: "agent-only",
+          agent_name: "Only",
+          status: "running",
+          created_at: "2026-01-02T00:00:00.000Z",
+        },
+      ],
+    });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { turn, unmount } = renderConductor();
+
+    // A pure reuse would land silently — but the auto-start ask is genuinely
+    // interactive, so it renders and holds the gate (#15133 doctrine).
+    await waitForTurn(turn, "first-run:autostart");
+    expect(spies.completeFirstRun).not.toHaveBeenCalled();
+
+    expect(tryHandleFirstRunAction("__first_run__:autostart:skip")).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(rpcSpy).not.toHaveBeenCalled();
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+    // The ask ended the silent entry, so the done wrap-up renders.
+    await waitForTurn(turn, "first-run:cloud-done");
+    unmount();
+  });
+
+  it("cloud-only enable failure: completes anyway and the notice survives the completion transcript purge", async () => {
+    mocks.autostartPlatform = "desktop";
+    installDesktopAutoLaunchRpc(async () => {
+      throw new Error("launchctl load failed");
+    });
+    const spies = seedAppStore({ elizaCloudConnected: true });
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:autostart");
+
+    expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+      true,
+    );
+    // Completion is immediate and non-blocking on the write's outcome.
+    expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(
+        transcript.current.some((m) => m.id.startsWith("autostart-notice:")),
+      ).toBe(true);
+    });
+    const notice = transcript.current.find((m) =>
+      m.id.startsWith("autostart-notice:"),
+    );
+    expect(notice?.text).toContain("launchctl load failed");
+    expect(notice?.text).toContain("Settings");
+    // Plain assistant turn: no first-run id/source, so the completion purge
+    // keeps it in the live thread while dropping the onboarding turns.
+    expect(notice?.source).toBeUndefined();
+    const purged = clearFirstRunTranscriptMessages(transcript.current);
+    expect(purged.some((m) => m.id.startsWith("autostart-notice:"))).toBe(true);
+    expect(purged.some((m) => m.id === "first-run:autostart")).toBe(false);
     unmount();
   });
 

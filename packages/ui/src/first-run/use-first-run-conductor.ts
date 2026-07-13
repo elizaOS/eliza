@@ -53,8 +53,10 @@
  * from the console's cross-subdomain cookie) enters SILENTLY (#15133): zero
  * onboarding turns for a pure agent reuse, the real provisioning narration
  * only when an agent is actually created or cold-boot woken. Provisioning
- * success flips the real gate immediately. The tutorial is never a completion
- * gate in this mode; it stays reachable from its home tile.
+ * success flips the real gate immediately on web/iOS; on desktop/Android the
+ * platform-gated auto-start ask defers the flip to its pick (completing first
+ * would kill the CHOICE — see completeCloudOnly). The tutorial is never a
+ * completion gate in this mode; it stays reachable from its home tile.
  */
 
 import { logger } from "@elizaos/logger";
@@ -187,9 +189,9 @@ const FIRST_RUN_TEXT_REPLY = {
   // A finish/provision call is in flight.
   provisioning:
     "Hang tight — I'm getting your agent ready right now. I'll answer as soon as I'm set up.",
-  // Provisioning succeeded; only the accent + tutorial wrap-up remains.
-  wrapUp:
-    "Almost there — pick a tutorial option above (or skip) and I'm all yours.",
+  // Provisioning succeeded; only the wrap-up picks remain (accent/auto-start/
+  // tutorial in chooser mode; the auto-start ask alone in cloud-only mode).
+  wrapUp: "Almost there — pick one of the options above and I'm all yours.",
   // A finish failed and the recovery choice is on screen.
   error:
     "Setup hit a snag. Use one of the options above to try again, choose another way to run, or open Settings — then I'll be right with you.",
@@ -504,6 +506,10 @@ export function useFirstRunConductor(): void {
   // fire the enable write twice.
   const autostartPlatformRef = React.useRef<AutostartPlatform | null>(null);
   const autostartHandledRef = React.useRef(false);
+  // Cloud-only deferral marker: set when the production (chooser-off) path
+  // held its real completion back for the auto-start ask; the pick that takes
+  // the latch above also flips the real gate.
+  const cloudOnlyAutostartPendingRef = React.useRef(false);
   // Silent cloud entry (#15133): set when onboarding starts with an
   // already-usable session (stored token, live connection, or a session
   // recovered from the console's cross-subdomain cookie). The user already
@@ -592,13 +598,10 @@ export function useFirstRunConductor(): void {
     );
   }, [seedTurn]);
 
-  // Cloud-only completion (#13377): signing in IS onboarding. The moment
-  // provisioning succeeds we flip the real gate — no tutorial/accent pick gates
-  // completion in this mode (the chat-native tutorial remains command-driven).
-  // Latched by completedRef so a double-fired finish can't flip the gate twice.
-  const completeCloudOnly = React.useCallback(() => {
+  // The real cloud-only gate flip. Latched by completedRef so a double-fired
+  // finish (or a double-tapped auto-start pick) can't flip the gate twice.
+  const completeCloudOnlyForReal = React.useCallback(() => {
     if (completedRef.current) return;
-    provisionedRef.current = true;
     completedRef.current = true;
     // A silent entry that STAYED silent was a pure reuse (#15133): the user is
     // already signed in and their agent already exists — land straight in chat
@@ -609,6 +612,39 @@ export function useFirstRunConductor(): void {
     }
     completeFirstRun("chat");
   }, [seedTurn, completeFirstRun]);
+
+  // Cloud-only completion (#13377): signing in IS onboarding — no tutorial or
+  // accent pick gates completion in this mode (the chat-native tutorial stays
+  // command-driven). On platforms whose shell can auto-start Eliza (desktop /
+  // Android native) ONE wrap-up ask does defer the gate: completing first
+  // would unregister the action handler and purge the CHOICE turn, so the
+  // auto-start pick flips the real gate instead — mirroring chooser mode's
+  // deferred tutorial completion. The ask ends a silent entry (#15133
+  // doctrine: silence ends the moment something genuinely interactive must
+  // render). Web and iOS complete immediately, exactly as before.
+  const completeCloudOnly = React.useCallback(() => {
+    if (completedRef.current) return;
+    provisionedRef.current = true;
+    const autostartPlatform = detectAutostartPlatform();
+    if (autostartPlatform && !autostartHandledRef.current) {
+      // Re-entrant finishes (retry paths, double-fired outcomes) must not
+      // re-seed or re-arm; the pending marker plus seedTurn's id-dedup keep
+      // the ask single.
+      if (!cloudOnlyAutostartPendingRef.current) {
+        cloudOnlyAutostartPendingRef.current = true;
+        autostartPlatformRef.current = autostartPlatform;
+        silentCloudEntryRef.current = false;
+        seedTurn(
+          makeTurn(
+            "first-run:autostart",
+            `${autostartPrompt(autostartPlatform, draftRef.current.agentName)}\n\n${AUTOSTART_CHOICE}`,
+          ),
+        );
+      }
+      return;
+    }
+    completeCloudOnlyForReal();
+  }, [seedTurn, completeCloudOnlyForReal]);
 
   const seedBackupRestoreChoice = React.useCallback(
     (backups: LocalAgentBackupMetadata[]) => {
@@ -1296,21 +1332,38 @@ export function useFirstRunConductor(): void {
         const autostartPlatform = autostartPlatformRef.current;
         if (!autostartPlatform || autostartHandledRef.current) return true;
         autostartHandledRef.current = true;
-        if (id === "skip") return true;
-        // Non-blocking: the write runs in the background so the tutorial pick
-        // can finish onboarding regardless. enableAutostart never rejects —
-        // failures (and only failures) come back typed and surface as a
-        // notice turn; replay mode resolves `replay-skipped` with no write.
-        void enableAutostart(autostartPlatform).then((result) => {
-          if (result.status === "failed") {
+        // In cloud-only mode this pick is also the deferred completion (see
+        // completeCloudOnly); in chooser mode the tutorial pick still owns it.
+        const completesCloudOnly = cloudOnlyAutostartPendingRef.current;
+        cloudOnlyAutostartPendingRef.current = false;
+        if (id === "enable") {
+          // Non-blocking: the write runs in the background so onboarding
+          // finishes regardless (tutorial pick in chooser mode, the immediate
+          // gate flip below in cloud-only). enableAutostart never rejects —
+          // failures (and only failures) come back typed and surface as a
+          // notice turn; replay mode resolves `replay-skipped` with no write.
+          void enableAutostart(autostartPlatform).then((result) => {
+            if (result.status !== "failed") return;
+            const message = `I couldn't turn on auto-start: ${result.message} You can enable it anytime in Settings.`;
+            if (completesCloudOnly) {
+              // Cloud-only completed below, and completion purges every
+              // first-run turn (clearFirstRunTranscriptMessages) — seed the
+              // notice as a PLAIN assistant turn (no first-run id/source) so
+              // it survives into the live thread instead of flashing away.
+              seedTurn({
+                id: `autostart-notice:${Date.now()}`,
+                role: "assistant",
+                text: message,
+                timestamp: Date.now(),
+              });
+              return;
+            }
             seedTurn(
-              makeTurn(
-                `first-run:autostart-error:${Date.now()}`,
-                `I couldn't turn on auto-start: ${result.message} You can enable it anytime in Settings.`,
-              ),
+              makeTurn(`first-run:autostart-error:${Date.now()}`, message),
             );
-          }
-        });
+          });
+        }
+        if (completesCloudOnly) completeCloudOnlyForReal();
         return true;
       }
 
@@ -1334,6 +1387,7 @@ export function useFirstRunConductor(): void {
       seedRuntimeChoice,
       replaceTurn,
       completeFirstRun,
+      completeCloudOnlyForReal,
       exitToSettings,
       startCloudProvisionFlow,
       startProviderFinish,

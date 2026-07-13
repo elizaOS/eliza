@@ -71,11 +71,14 @@ no-op (`App.chat-overlay-first-run.test.tsx`). The transcript's CHOICE widgets,
 plus any OAuth/secret blocks they reveal, are the only interactive surfaces
 during onboarding; the composer remains locked until sign-in completes.
 
-## Auto-start step (wrap-up, platform-gated)
+## Auto-start step (wrap-up, platform-gated — BOTH onboarding modes)
 
-After the provider flow resolves — in the same wrap-up batch as the accent
-step and BEFORE the tutorial CHOICE — the conductor seeds an auto-start turn
-(`first-run:autostart`) asking whether Eliza should launch automatically:
+The conductor seeds an auto-start turn (`first-run:autostart`) asking whether
+Eliza should launch automatically. In chooser mode it appears after the
+provider flow resolves, in the same wrap-up batch as the accent step and
+BEFORE the tutorial CHOICE; in cloud-only mode (the production default) it
+appears when provisioning finishes, as the single completion-gating wrap-up
+step (see the cloud-only bullet below):
 
 - **Gating.** Seeded only when `detectAutostartPlatform()`
   (`first-run-autostart.ts`) reports support: the Electrobun desktop shell
@@ -96,18 +99,34 @@ step and BEFORE the tutorial CHOICE — the conductor seeds an auto-start turn
 - **Skip.** No writes.
 - **Failure behavior.** Non-blocking: `enableAutostart` never rejects — a
   failed write (missing bridge, RPC rejection, Preferences throw) surfaces as
-  a `first-run:autostart-error:*` notice turn pointing at Settings, and the
-  tutorial CHOICE still finishes onboarding either way.
+  a notice turn pointing at Settings, and onboarding finishes either way (the
+  tutorial pick in chooser mode; the immediate deferred flip in cloud-only).
+  In chooser mode the notice is the in-onboarding
+  `first-run:autostart-error:*` turn (visible in the wrap-up card stack). In
+  cloud-only mode the pick itself completes onboarding and the completion
+  purge (`clearFirstRunTranscriptMessages`) would drop a `first-run:*` turn
+  instantly — so the notice is seeded as a PLAIN assistant turn
+  (`autostart-notice:*`, no first-run id/source) that survives into the live
+  thread.
 - **Replay-safe.** A dev onboarding replay (`?onboarding-replay=1`, #14382)
   resolves `replay-skipped` and performs no persistent write.
 - **Display.** `ChatOverlay.selectFirstRunDisplayMessages` renders the wrap-up
   turns (accent + auto-start + tutorial, plus a late auto-start error notice)
   as ONE contiguous card stack — they are alternatives-plus-finisher, not
   sequential steps, so the tutorial finisher is always tappable next to them.
-- **Cloud-only mode caveat.** The step lives in the chooser-mode wrap-up
-  (`seedTutorial`). Cloud-only onboarding (#13377, the production default)
-  completes immediately on sign-in with no wrap-up turns, so it does not offer
-  auto-start; Settings remains the surface there.
+  In cloud-only mode the ask is the latest first-run turn and renders alone.
+- **Cloud-only mode (the production default).** Completing first-run
+  unregisters the action handler and purges the CHOICE turn, so cloud-only
+  cannot host the ask post-completion — instead `completeCloudOnly` defers
+  the real gate flip to the auto-start pick on supported platforms
+  (`cloudOnlyAutostartPendingRef`), the exact deferred-completion pattern
+  chooser mode uses for the tutorial pick. Web and iOS complete immediately,
+  as before. The ask ends a silent entry (#15133): an interactive ask is one
+  of the documented silence-ending events, so a pure agent reuse on
+  desktop/Android sees exactly one onboarding turn — the auto-start question
+  — and the `first-run:cloud-done` wrap-up then renders after the pick.
+  Abandoning the ask (app killed) is safe: first-run stays incomplete and the
+  next launch re-provisions and re-offers it.
 
 Per-platform OS permission handling is unchanged: the permission-priming
 sequence (`components/permissions/PermissionPrimingOverlay.tsx`) still runs
