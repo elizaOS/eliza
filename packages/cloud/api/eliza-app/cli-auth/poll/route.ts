@@ -43,10 +43,15 @@ app.get("/", async (c) => {
       );
       const retrieved =
         await cliAuthSessionsService.getAndClearApiKey(sessionId);
-      await db
-        .update(cliAuthSessions)
-        .set({ status: "expired" })
-        .where(eq(cliAuthSessions.session_id, sessionId));
+      // Preserve the legacy terminal status only after this poll actually won
+      // the reveal claim. A missing key or failed decrypt must leave the
+      // authenticated session retryable instead of expiring it permanently.
+      if (retrieved) {
+        await db
+          .update(cliAuthSessions)
+          .set({ status: "expired" })
+          .where(eq(cliAuthSessions.session_id, sessionId));
+      }
       return c.json({
         success: true,
         status: "authenticated",

@@ -233,6 +233,38 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
   });
 });
 
+describe("cliAuthSessionsService single-use reveal preconditions", () => {
+  test("returns no plaintext when the primary has no eligible candidate", async () => {
+    track(
+      spyOn(cliAuthSessionsRepository, "findApiKeyRevealCandidate").mockResolvedValue(undefined),
+    );
+    const claim = track(spyOn(cliAuthSessionsRepository, "claimConsumed"));
+
+    await expect(cliAuthSessionsService.getAndClearApiKey(SESSION_ID)).resolves.toBeNull();
+    expect(claim).not.toHaveBeenCalled();
+  });
+
+  test("keeps an incomplete encrypted-key candidate unconsumed", async () => {
+    track(
+      spyOn(cliAuthSessionsRepository, "findApiKeyRevealCandidate").mockResolvedValue({
+        session: authenticatedSession(USER_ID),
+        apiKey: {
+          id: API_KEY_ID,
+          key_ciphertext: null,
+          key_nonce: "nonce",
+          key_auth_tag: "auth-tag",
+          key_kms_key_id: "kms-key",
+          key_kms_key_version: 1,
+        } as never,
+      }),
+    );
+    const claim = track(spyOn(cliAuthSessionsRepository, "claimConsumed"));
+
+    await expect(cliAuthSessionsService.getAndClearApiKey(SESSION_ID)).resolves.toBeNull();
+    expect(claim).not.toHaveBeenCalled();
+  });
+});
+
 describe("cliAuthSessionsService lifecycle", () => {
   test("creates a pending session with a ten-minute expiry", async () => {
     const create = track(

@@ -178,9 +178,10 @@ export class CliAuthSessionsService {
   /**
    * Single-use plaintext retrieval (D-6).
    *
-   * Returns the decrypted plaintext API key for an authenticated session
-   * exactly once. The session is marked `consumed_at` in the same call,
-   * after which further attempts return null.
+   * Returns the decrypted plaintext API key for an authenticated session at
+   * most once. One concurrent caller can win the `consumed_at` claim; if its
+   * response is lost after that claim, the credential is intentionally not
+   * replayable and the caller must create a new CLI auth session.
    *
    * The plaintext is decrypted in-memory from the encrypted api_keys row
    * and never persisted on the cli_auth_sessions row.
@@ -190,20 +191,15 @@ export class CliAuthSessionsService {
     keyPrefix: string;
     expiresAt: Date | null;
   } | null> {
-    const session = await this.getActiveSession(sessionId);
-
-    if (
-      !session ||
-      session.status !== "authenticated" ||
-      !session.api_key_id ||
-      session.consumed_at
-    ) {
+    const candidate = await cliAuthSessionsRepository.findApiKeyRevealCandidate(sessionId);
+    if (!candidate) {
       return null;
     }
 
-    const apiKeyRecord = await apiKeysRepository.findById(session.api_key_id);
+    const { apiKey: apiKeyRecord, session } = candidate;
     if (
-      !apiKeyRecord ||
+      !session.api_key_id ||
+      !session.user_id ||
       !apiKeyRecord.key_ciphertext ||
       !apiKeyRecord.key_nonce ||
       !apiKeyRecord.key_auth_tag ||
@@ -221,7 +217,18 @@ export class CliAuthSessionsService {
       kms_key_version: apiKeyRecord.key_kms_key_version,
     });
 
-    await cliAuthSessionsRepository.markConsumed(sessionId);
+    // Decryption deliberately happens before the primary-DB claim. A missing
+    // key or KMS failure therefore leaves the session retryable. The claim is
+    // one conditional UPDATE, so concurrent pollers have exactly one winner
+    // without holding an external KMS call open inside a DB transaction.
+    const claimed = await cliAuthSessionsRepository.claimConsumed(
+      sessionId,
+      session.api_key_id,
+      session.user_id,
+    );
+    if (!claimed) {
+      return null;
+    }
 
     return {
       apiKey: plaintext,
