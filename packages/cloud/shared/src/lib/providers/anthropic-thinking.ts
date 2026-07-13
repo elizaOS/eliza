@@ -46,11 +46,12 @@ export function supportsExtendedThinking(modelId: string): boolean {
  * Opus models that use ADAPTIVE extended thinking (`thinking: { type: "adaptive" }`,
  * the provider chooses depth) rather than a manual `enabled + budgetTokens`.
  * Sending a manual budget to these produces the provider 400 this fixes (#16149).
- * Dot and hyphen aliases + provider prefixes are covered (no `^` anchor).
+ * Dot and hyphen aliases are accepted either bare or after a provider prefix;
+ * the leading boundary prevents unrelated lookalike model IDs from opting in.
  */
 const ADAPTIVE_THINKING_MODEL_PATTERNS = [
-  /claude-opus-4[.-]7(?:$|-)/, // Claude Opus 4.7 and dated aliases
-  /claude-opus-4[.-]8(?:$|-)/, // Claude Opus 4.8 and dated aliases
+  /(?:^|\/)claude-opus-4[.-]7(?:$|-)/, // Claude Opus 4.7 and dated aliases
+  /(?:^|\/)claude-opus-4[.-]8(?:$|-)/, // Claude Opus 4.8 and dated aliases
 ];
 
 /**

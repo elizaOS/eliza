@@ -67,8 +67,14 @@ describe("Anthropic adaptive thinking (Opus 4.7/4.8) — #16149", () => {
     }
   });
 
-  test("does not classify later or malformed model versions as Opus 4.7/4.8", () => {
-    for (const id of ["claude-opus-4-70", "claude-opus-4.80", "claude-opus-4-8preview"]) {
+  test("does not classify later, malformed, or lookalike model IDs as Opus 4.7/4.8", () => {
+    for (const id of [
+      "claude-opus-4-70",
+      "claude-opus-4.80",
+      "claude-opus-4-8preview",
+      "not-claude-opus-4-7",
+      "openai/not-claude-opus-4-8",
+    ]) {
       expect(usesAdaptiveThinking(id)).toBe(false);
     }
   });

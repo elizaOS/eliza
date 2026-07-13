@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       filter:
-        description: "Optional task-label regex; use a2a-receipt, mcp-receipt, or channel-topics-receipt for an exact proof"
+        description: "Optional task-label regex; use a2a-receipt, mcp-receipt, channel-topics-receipt, or anthropic-thinking-receipt for an exact proof"
         type: string
         default: ""
   schedule:
@@ -122,7 +122,8 @@ jobs:
         if: >-
           inputs.filter != 'a2a-receipt' &&
           inputs.filter != 'mcp-receipt' &&
-          inputs.filter != 'channel-topics-receipt'
+          inputs.filter != 'channel-topics-receipt' &&
+          inputs.filter != 'anthropic-thinking-receipt'
         env:
           RUNNER_TEMP_LOG: ${{ runner.temp }}/develop-live-sweep.log
           TEST_FILTER: ${{ inputs.filter }}
@@ -139,7 +140,8 @@ jobs:
           always() &&
           inputs.filter != 'a2a-receipt' &&
           inputs.filter != 'mcp-receipt' &&
-          inputs.filter != 'channel-topics-receipt'
+          inputs.filter != 'channel-topics-receipt' &&
+          inputs.filter != 'anthropic-thinking-receipt'
         run: bun run test:cloud
 
       - name: Exact-head A2A live provider and billing receipt
@@ -169,6 +171,14 @@ jobs:
         run: >-
           bun run --cwd packages/core test --
           src/features/basic-capabilities/providers/channelTopics.live.test.ts
+
+      - name: Exact-head Anthropic adaptive thinking receipt
+        if: >-
+          always() &&
+          (inputs.filter == '' || inputs.filter == 'anthropic-thinking-receipt')
+        run: >-
+          bun test
+          packages/cloud/shared/src/lib/providers/anthropic-thinking.live.test.ts
 
       - name: Teardown Postgres
         if: always()

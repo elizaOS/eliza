@@ -130,6 +130,19 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     });
   });
 
+  test("adaptive Anthropic thinking has an invocable credentialed live proof", () => {
+    expect(
+      manifest.find(
+        (entry) =>
+          entry.file ===
+          "packages/cloud/shared/src/lib/providers/anthropic-thinking.live.test.ts",
+      ),
+    ).toMatchObject({
+      optIn: "ELIZA_LIVE_TEST",
+      requires: ["ANTHROPIC_API_KEY"],
+    });
+  });
+
   test("every declared guard env var is read by the suite or its guardVia helpers", () => {
     const problems: string[] = [];
     for (const entry of manifest) {
