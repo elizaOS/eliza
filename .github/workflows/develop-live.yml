@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       filter:
-        description: "Optional --filter regex over task labels (default: whole matrix)"
+        description: "Optional task-label regex; use a2a-receipt for only the exact A2A proof"
         type: string
         default: ""
   schedule:
@@ -47,6 +47,7 @@ jobs:
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -118,6 +119,7 @@ jobs:
           fi
 
       - name: Post-merge live matrix
+        if: inputs.filter != 'a2a-receipt'
         env:
           RUNNER_TEMP_LOG: ${{ runner.temp }}/develop-live-sweep.log
           TEST_FILTER: ${{ inputs.filter }}
@@ -130,8 +132,16 @@ jobs:
           node packages/scripts/run-all-tests.mjs --all --no-cloud "${filter_args[@]}" 2>&1 | tee "$RUNNER_TEMP_LOG"
 
       - name: Cloud unit suite
-        if: always()
+        if: always() && inputs.filter != 'a2a-receipt'
         run: bun run test:cloud
+
+      - name: Exact-head A2A live provider and billing receipt
+        if: >-
+          always() &&
+          (inputs.filter == '' || inputs.filter == 'cloud-api' || inputs.filter == 'a2a-receipt')
+        env:
+          E2E_ONLY: group-c-agents
+        run: bun run --cwd packages/cloud/api test:e2e
 
       - name: Teardown Postgres
         if: always()

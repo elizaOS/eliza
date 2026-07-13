@@ -7,8 +7,8 @@
  * try. recordCreatorEarnings can throw on a transient DB error; the pre-fix code
  * let it reach the outer catch, which ran the NON-idempotent reconcile(0) —
  * double-refunding the WHOLE reservation (free inference + a net credit grant)
- * and returning a -32000 error. The fix swallows the earnings error so reconcile
- * fires exactly once and the already-correct settlement response is returned.
+ * and returning a -32000 error. The degraded response now preserves the model
+ * result with an explicit warning and reconciles exactly once.
  *
  * `handleChat` is module-private, so we drive it through the exported Hono app's
  * POST handler (method "chat"), mounted under `/agents/:id/a2a` so the `:id`
@@ -25,9 +25,9 @@ import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 const ORG_ID = "00000000-0000-4000-8000-0000000000aa";
 const USER_ID = "00000000-0000-4000-8000-0000000000bb";
 
-const languageModel = mock((model: string) => ({ model }));
-mock.module("@ai-sdk/gateway", () => ({
-  gateway: { languageModel },
+const getLanguageModel = mock((model: string) => ({ model }));
+mock.module("@/lib/providers/language-model", () => ({
+  getLanguageModel,
 }));
 
 const streamText = mock();
@@ -37,18 +37,27 @@ mock.module("ai", () => ({
 
 const estimateRequestCost = mock();
 const calculateCost = mock();
-const getProviderFromModel = mock(() => "openai");
+const getProviderFromModel = mock((model: string) =>
+  model.startsWith("anthropic/") ? "anthropic" : "openai",
+);
 mock.module("@/lib/pricing", () => ({
   calculateCost,
   estimateRequestCost,
   getProviderFromModel,
 }));
 
+// Settable so a test can drive a non-null admitted thinking budget through the
+// mounted route (#16147). Resolver precedence and clamping have their own tests;
+// here it stands in for "whatever budget the route resolved to".
+const resolveAnthropicThinkingBudgetTokens = mock((): number | null => null);
+const mergeAnthropicCotProviderOptions = mock(
+  (): Record<string, unknown> => ({}),
+);
 mock.module("@/lib/providers/anthropic-thinking", () => ({
   getAnthropicCotEnv: () => ({}),
-  mergeAnthropicCotProviderOptions: () => ({}),
+  mergeAnthropicCotProviderOptions,
   parseThinkingBudgetFromCharacterSettings: () => null,
-  resolveAnthropicThinkingBudgetTokens: () => null,
+  resolveAnthropicThinkingBudgetTokens,
 }));
 
 const recordCreatorEarnings = mock();
@@ -142,7 +151,7 @@ function makeReservation(reconcileResult: {
   return reconcile;
 }
 
-function callChat() {
+function callChat(model = "gpt-5-mini") {
   return app.request(
     "/agents/agent-1/a2a",
     {
@@ -152,7 +161,7 @@ function callChat() {
         jsonrpc: "2.0",
         method: "chat",
         params: {
-          model: "gpt-5-mini",
+          model,
           messages: [{ role: "user", content: "hello" }],
         },
         id: "rpc-1",
@@ -164,8 +173,12 @@ function callChat() {
 }
 
 beforeEach(() => {
-  languageModel.mockClear();
+  getLanguageModel.mockClear();
   streamText.mockReset();
+  resolveAnthropicThinkingBudgetTokens.mockReset();
+  resolveAnthropicThinkingBudgetTokens.mockReturnValue(null);
+  mergeAnthropicCotProviderOptions.mockReset();
+  mergeAnthropicCotProviderOptions.mockReturnValue({});
   estimateRequestCost.mockReset();
   calculateCost.mockReset();
   getProviderFromModel.mockClear();
@@ -217,6 +230,92 @@ describe("Agent A2A billing", () => {
     expect(body.result?.content).toBe("hello from model");
   });
 
+  // #16147: the output ceiling used to price/reserve must be the exact value
+  // capped on the provider call, for every resolved thinking budget including
+  // none. Here we prove the route forwards the resolved value to both sinks.
+  test.each([
+    [null, 500],
+    [1024, 1524],
+    [8000, 8500],
+  ] as const)("prices and caps the provider at one admitted ceiling (budget=%p)", async (budget, expectedCap) => {
+    makeReservation({ adjustmentType: "none" });
+    resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
+
+    const response = await callChat("anthropic/claude-opus-4-5");
+    expect(response.status).toBe(200);
+
+    // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
+    expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
+    // ...and the provider is capped at the identical value — never omitted.
+    expect(streamText).toHaveBeenCalledTimes(1);
+    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
+    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
+      estimateRequestCost.mock.calls[0]?.[2],
+    );
+  });
+
+  test("insufficient credits stop the request before provider dispatch", async () => {
+    reserve.mockRejectedValue(new InsufficientCreditsError(0.5, 0.1));
+
+    const response = await callChat("anthropic/claude-opus-4-5");
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32003);
+    expect(body.error?.message).toContain("Insufficient credits");
+    expect(streamText).not.toHaveBeenCalled();
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["missing messages", {}],
+    ["non-array messages", { messages: "hello" }],
+    ["unsupported role", { messages: [{ role: "tool", content: "hello" }] }],
+    ["empty content", { messages: [{ role: "user", content: "" }] }],
+  ])("rejects invalid chat params before billing: %s", async (_label, params) => {
+    const response = await app.request("/agents/agent-1/a2a", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "chat",
+        params,
+        id: "invalid-rpc",
+      }),
+    });
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(response.status).toBe(400);
+    expect(body.error?.code).toBe(-32602);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(streamText).not.toHaveBeenCalled();
+  });
+
+  test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
+    const reconcile = makeReservation({ adjustmentType: "refund" });
+    streamText.mockResolvedValue({
+      textStream: textStream("unmetered output"),
+      usage: Promise.resolve({
+        inputTokens: undefined,
+        outputTokens: undefined,
+        totalTokens: undefined,
+      }),
+    });
+
+    const response = await callChat();
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32000);
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(reconcile).toHaveBeenCalledWith(0);
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
+  });
+
   // Regression for #10266 (A2A side).
   test("post-settlement earnings failure does not double-refund the reservation", async () => {
     const reconcile = makeReservation({ adjustmentType: "none" });
@@ -226,7 +325,10 @@ describe("Agent A2A billing", () => {
 
     const response = await callChat();
     const body = (await response.json()) as {
-      result?: { content: string };
+      result?: {
+        content: string;
+        warnings?: Array<{ code: string; message: string }>;
+      };
       error?: { code: number; message: string };
     };
 
@@ -242,5 +344,11 @@ describe("Agent A2A billing", () => {
     expect(recordCreatorEarnings).toHaveBeenCalledTimes(1);
     expect(body.error).toBeUndefined();
     expect(body.result?.content).toBe("hello from model");
+    expect(body.result?.warnings).toEqual([
+      {
+        code: "CREATOR_EARNINGS_UNAVAILABLE",
+        message: "Creator earnings could not be recorded",
+      },
+    ]);
   });
 });
