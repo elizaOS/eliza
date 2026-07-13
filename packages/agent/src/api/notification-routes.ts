@@ -43,8 +43,22 @@ import type {
 } from "@elizaos/core";
 import { NotificationService, ServiceType } from "@elizaos/core";
 
+export type ServiceRegistrationStatus =
+  | "pending"
+  | "registering"
+  | "registered"
+  | "failed"
+  | "unknown";
+
 export interface NotificationRouteState {
-  runtime: { getService: (type: string) => unknown } | null;
+  runtime: {
+    getService: (type: string) => unknown;
+    // Optional so headless/partial runtimes still satisfy the type; the real
+    // AgentRuntime always implements it (mirrors the runtimeLike pattern in
+    // plugin route handlers). Lets the route tell a still-starting or FAILED
+    // notification service apart from an intentionally-absent one (#16223).
+    getServiceRegistrationStatus?: (type: string) => ServiceRegistrationStatus;
+  } | null;
 }
 
 const CATEGORIES: NotificationCategory[] = [
@@ -206,12 +220,34 @@ export async function handleNotificationRoute(
 
   const service = getService(state);
   if (!service) {
-    // The runtime is up but the notification service isn't registered yet
-    // (very early boot). Serve an empty inbox rather than 500 so the UI
-    // degrades gracefully and retries.
-    if (method === "GET" && pathname === "/api/notifications") {
+    // The service instance is absent — but absence is NOT health. Consult the
+    // registration status so a service that is still starting or has FAILED to
+    // read its durable inbox is never masked as a healthy empty inbox (#16223).
+    const status =
+      state.runtime?.getServiceRegistrationStatus?.(ServiceType.NOTIFICATION) ??
+      "unknown";
+    // The one case that may report an empty inbox: a genuinely absent subsystem
+    // (native feature disabled / headless), identified positively from status —
+    // not inferred from a missing instance.
+    if (
+      status === "unknown" &&
+      method === "GET" &&
+      pathname === "/api/notifications"
+    ) {
       helpers.json(res, { notifications: [], unreadCount: 0 });
       return true;
+    }
+    if (status === "failed") {
+      // Persistence could not be read; a typed 503 (no adapter/secret detail)
+      // rather than a fabricated empty success.
+      helpers.error(res, "NOTIFICATION_SERVICE_FAILED", 503);
+      return true;
+    }
+    // pending | registering | registered-without-instance are transient — ask
+    // the client to back off and retry instead of caching an empty history.
+    // "unknown" (disabled/headless) on a mutation is not transient: no retry.
+    if (status !== "unknown") {
+      res.setHeader("Retry-After", "1");
     }
     helpers.error(res, "notification service not ready", 503);
     return true;

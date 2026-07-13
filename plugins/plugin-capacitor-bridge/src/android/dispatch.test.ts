@@ -434,3 +434,61 @@ describe("dispatchStreamingRequest", () => {
 		expect(events[0]).toMatchObject({ kind: "response", status: 404 });
 	});
 });
+
+// #16223: parity with the HTTP route — an absent notification service instance
+// is NOT health. A still-starting or FAILED service must not be masked as a
+// healthy empty inbox on the Android UDS route.
+describe("Android notification route fail-closed (#16223)", () => {
+	const notifRuntime = (status: string) =>
+		({
+			getService: () => null,
+			getServiceRegistrationStatus: () => status,
+		}) as unknown as IAgentRuntime;
+	const notifRoute = fixedRoute(null).route;
+
+	it("GET returns a typed 503 (never empty) when the service FAILED", async () => {
+		const res = await dispatchBufferedRequest(
+			notifRuntime("failed"),
+			notifRoute,
+			{
+				method: "GET",
+				path: "/api/notifications",
+			},
+		);
+		expect(res.status).toBe(503);
+		expect(JSON.parse(res.body)).toEqual({
+			error: "NOTIFICATION_SERVICE_FAILED",
+		});
+	});
+
+	it.each([
+		"pending",
+		"registering",
+	])("GET returns 503 + retry-after (never empty) while the service is %s", async (status) => {
+		const res = await dispatchBufferedRequest(
+			notifRuntime(status),
+			notifRoute,
+			{
+				method: "GET",
+				path: "/api/notifications",
+			},
+		);
+		expect(res.status).toBe(503);
+		expect(res.headers["retry-after"]).toBe("1");
+		expect(JSON.parse(res.body)).not.toHaveProperty("notifications");
+	});
+
+	it("GET serves an explicit empty inbox only when the subsystem is disabled (unknown)", async () => {
+		const res = await dispatchBufferedRequest(
+			notifRuntime("unknown"),
+			notifRoute,
+			{
+				method: "GET",
+				path: "/api/notifications",
+			},
+		);
+		expect(res.status).toBe(200);
+		expect(JSON.parse(res.body)).toEqual({ notifications: [], unreadCount: 0 });
+		expect(res.headers["retry-after"]).toBeUndefined();
+	});
+});

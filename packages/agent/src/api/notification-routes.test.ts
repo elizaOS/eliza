@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEV_SEED_NOTIFICATIONS,
   handleNotificationRoute,
+  type ServiceRegistrationStatus,
 } from "./notification-routes";
 
 async function makeRuntimeWithService(): Promise<{
@@ -297,5 +298,93 @@ describe("handleNotificationRoute", () => {
       helpers,
     );
     expect(helpers.error).toHaveBeenCalledWith(res, expect.any(String), 503);
+  });
+
+  // #16223: the service instance being absent is NOT health. A still-starting or
+  // FAILED notification service must never be reported as a healthy empty inbox.
+  const runtimeWithStatus = (status: ServiceRegistrationStatus) => ({
+    getService: () => null,
+    getServiceRegistrationStatus: () => status,
+  });
+  const resWithHeaders = () =>
+    ({ setHeader: vi.fn() }) as unknown as http.ServerResponse;
+
+  it("GET returns a typed 503 (never empty) when the service FAILED to start", async () => {
+    const helpers = makeHelpers();
+    const failedRes = resWithHeaders();
+    await handleNotificationRoute(
+      req("/api/notifications"),
+      failedRes,
+      "/api/notifications",
+      "GET",
+      { runtime: runtimeWithStatus("failed") },
+      helpers,
+    );
+    expect(helpers.json).not.toHaveBeenCalled();
+    expect(helpers.error).toHaveBeenCalledWith(
+      failedRes,
+      "NOTIFICATION_SERVICE_FAILED",
+      503,
+    );
+  });
+
+  it.each<ServiceRegistrationStatus>([
+    "pending",
+    "registering",
+  ])("GET returns 503 + Retry-After (never empty) while the service is %s", async (status) => {
+    const helpers = makeHelpers();
+    const startingRes = resWithHeaders();
+    await handleNotificationRoute(
+      req("/api/notifications"),
+      startingRes,
+      "/api/notifications",
+      "GET",
+      { runtime: runtimeWithStatus(status) },
+      helpers,
+    );
+    expect(helpers.json).not.toHaveBeenCalled();
+    expect(startingRes.setHeader).toHaveBeenCalledWith("Retry-After", "1");
+    expect(helpers.error).toHaveBeenCalledWith(
+      startingRes,
+      expect.any(String),
+      503,
+    );
+  });
+
+  it("GET serves an explicit empty inbox only when the subsystem is disabled (unknown)", async () => {
+    const helpers = makeHelpers();
+    const unknownRes = resWithHeaders();
+    await handleNotificationRoute(
+      req("/api/notifications"),
+      unknownRes,
+      "/api/notifications",
+      "GET",
+      { runtime: runtimeWithStatus("unknown") },
+      helpers,
+    );
+    expect(helpers.json).toHaveBeenCalledWith(unknownRes, {
+      notifications: [],
+      unreadCount: 0,
+    });
+    expect(unknownRes.setHeader).not.toHaveBeenCalled();
+  });
+
+  it("mutations get a typed 503 when the service FAILED (no Retry-After)", async () => {
+    const helpers = makeHelpers();
+    const failedRes = resWithHeaders();
+    await handleNotificationRoute(
+      req("/api/notifications"),
+      failedRes,
+      "/api/notifications",
+      "POST",
+      { runtime: runtimeWithStatus("failed") },
+      helpers,
+    );
+    expect(helpers.error).toHaveBeenCalledWith(
+      failedRes,
+      "NOTIFICATION_SERVICE_FAILED",
+      503,
+    );
+    expect(failedRes.setHeader).not.toHaveBeenCalled();
   });
 });

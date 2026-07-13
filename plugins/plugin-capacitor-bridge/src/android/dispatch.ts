@@ -137,16 +137,48 @@ function statusText(status: number): string {
 	return STATUS_TEXT[status] ?? "";
 }
 
-function jsonResponse(status: number, body: unknown): AndroidBufferedResponse {
+function jsonResponse(
+	status: number,
+	body: unknown,
+	extraHeaders?: Record<string, string>,
+): AndroidBufferedResponse {
 	const text = JSON.stringify(body);
 	return {
 		status,
 		statusText: statusText(status),
-		headers: { "content-type": "application/json; charset=utf-8" },
+		headers: {
+			"content-type": "application/json; charset=utf-8",
+			...extraHeaders,
+		},
 		body: text,
 		bodyBase64: Buffer.from(text, "utf8").toString("base64"),
 		bodyEncoding: "base64",
 	};
+}
+
+type ServiceRegistrationStatus =
+	| "pending"
+	| "registering"
+	| "registered"
+	| "failed"
+	| "unknown";
+
+// The concrete AgentRuntime exposes service registration status, but it is not
+// on the IAgentRuntime interface — read it defensively (the runtimeLike pattern
+// used by plugin route handlers) so a still-starting or FAILED notification
+// service can be told apart from an intentionally-absent one (#16223).
+function serviceRegistrationStatus(
+	runtime: IAgentRuntime,
+	serviceType: string,
+): ServiceRegistrationStatus {
+	const getter = (
+		runtime as {
+			getServiceRegistrationStatus?: (t: string) => ServiceRegistrationStatus;
+		}
+	).getServiceRegistrationStatus;
+	return typeof getter === "function"
+		? getter.call(runtime, serviceType)
+		: "unknown";
 }
 
 function runtimeAgentName(runtime: IAgentRuntime): string {
@@ -227,13 +259,29 @@ async function directAndroidNotificationRoute(
 
 	const service = runtime.getService(ServiceType.NOTIFICATION);
 	if (!isAndroidNotifier(service)) {
-		// The service isn't up yet (very early boot). Serve an empty inbox on
-		// GET so the widget shows its empty state instead of erroring; fail the
-		// mutations loudly.
-		if (method === "GET" && pathname === "/api/notifications") {
+		// Absence is not health. Consult the registration status so a still-
+		// starting or FAILED notification service is not masked as a healthy
+		// empty inbox (#16223) — parity with the HTTP route.
+		const status = serviceRegistrationStatus(runtime, ServiceType.NOTIFICATION);
+		// Only a genuinely absent subsystem (native feature disabled / headless)
+		// may show the empty widget state — identified positively from status.
+		if (
+			status === "unknown" &&
+			method === "GET" &&
+			pathname === "/api/notifications"
+		) {
 			return jsonResponse(200, { notifications: [], unreadCount: 0 });
 		}
-		return jsonResponse(503, { error: "notification service not ready" });
+		if (status === "failed") {
+			// Persistence could not be read; never a fabricated empty success.
+			return jsonResponse(503, { error: "NOTIFICATION_SERVICE_FAILED" });
+		}
+		// pending | registering | registered-without-instance are transient.
+		return jsonResponse(
+			503,
+			{ error: "notification service not ready" },
+			status === "unknown" ? undefined : { "retry-after": "1" },
+		);
 	}
 
 	if (method === "GET" && pathname === "/api/notifications") {
