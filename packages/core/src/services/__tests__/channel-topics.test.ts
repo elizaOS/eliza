@@ -20,10 +20,28 @@ const ROOM_B = "00000000-0000-0000-0000-0000000000bb" as UUID;
 
 const activeRuntimes: AgentRuntime[] = [];
 
-async function makeRuntime(seed: Room[] = []): Promise<AgentRuntime> {
+class FailingRoomAdapter extends InMemoryDatabaseAdapter {
+	failReads = false;
+	failWrites = false;
+
+	override async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
+		if (this.failReads) throw new Error("room read unavailable");
+		return super.getRoomsByIds(roomIds);
+	}
+
+	override async updateRooms(rooms: Room[]): Promise<void> {
+		if (this.failWrites) throw new Error("room write unavailable");
+		return super.updateRooms(rooms);
+	}
+}
+
+async function makeRuntime(
+	seed: Room[] = [],
+	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+): Promise<AgentRuntime> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({ name: "ChannelTopicsIntegrationAgent" }),
-		adapter: new InMemoryDatabaseAdapter(),
+		adapter,
 		logLevel: "fatal",
 		enableAutonomy: false,
 	});
@@ -159,6 +177,50 @@ describe("ChannelTopicsService", () => {
 		// Cache still updated even though persistence found no room to write.
 		expect(svc.getTopicsForRoom(ROOM_A)).toEqual(["billing"]);
 		expect(await noRoom.getRoom(ROOM_A)).toBeNull();
+	});
+
+	it("reports hydration failure and retries the unhydrated room", async () => {
+		const adapter = new FailingRoomAdapter();
+		const failingRuntime = await makeRuntime(
+			[makeRoom(ROOM_A, ["persisted"])],
+			adapter,
+		);
+		const svc = await ChannelTopicsService.start(failingRuntime);
+		adapter.failReads = true;
+
+		await expect(svc.ensureHydrated(ROOM_A)).rejects.toMatchObject({
+			code: "CHANNEL_TOPICS_HYDRATE_FAILED",
+			cause: expect.objectContaining({ message: "room read unavailable" }),
+		});
+		expect(failingRuntime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "ChannelTopicsService.hydrate",
+				code: "CHANNEL_TOPICS_HYDRATE_FAILED",
+				context: expect.objectContaining({ roomId: ROOM_A }),
+			}),
+		);
+
+		adapter.failReads = false;
+		expect(await svc.ensureHydrated(ROOM_A)).toEqual(["persisted"]);
+	});
+
+	it("reports and propagates a failed room update", async () => {
+		const adapter = new FailingRoomAdapter();
+		const failingRuntime = await makeRuntime([makeRoom(ROOM_A)], adapter);
+		const svc = await ChannelTopicsService.start(failingRuntime);
+		adapter.failWrites = true;
+
+		await expect(svc.recordTopics(ROOM_A, ["billing"])).rejects.toMatchObject({
+			code: "CHANNEL_TOPICS_PERSIST_FAILED",
+			cause: expect.objectContaining({ message: "room write unavailable" }),
+		});
+		expect(failingRuntime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "ChannelTopicsService.persist",
+				code: "CHANNEL_TOPICS_PERSIST_FAILED",
+				context: expect.objectContaining({ roomId: ROOM_A }),
+			}),
+		);
 	});
 
 	it("ignores non-string garbage in persisted metadata on hydrate", async () => {

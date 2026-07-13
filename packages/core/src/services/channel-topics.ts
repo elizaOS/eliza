@@ -27,6 +27,7 @@
  * the Node, browser, and edge build targets.
  */
 
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { Room, UUID } from "../types/index";
 import type { IAgentRuntime } from "../types/runtime";
@@ -77,6 +78,24 @@ export class ChannelTopicsService extends Service {
 	/** Rooms whose metadata has already been hydrated into the cache. */
 	private readonly hydrated = new Set<UUID>();
 
+	private reportDatabaseFailure(
+		operation: "hydrate" | "persist",
+		roomId: UUID,
+		cause: unknown,
+	): ElizaError {
+		const error = new ElizaError(
+			`Channel topic ${operation} failed for room ${roomId}`,
+			{
+				code: `CHANNEL_TOPICS_${operation.toUpperCase()}_FAILED`,
+				context: { roomId, operation },
+				cause,
+				severity: "ephemeral",
+			},
+		);
+		this.runtime.reportError(`ChannelTopicsService.${operation}`, error);
+		return error;
+	}
+
 	static override async start(
 		runtime: IAgentRuntime,
 	): Promise<ChannelTopicsService> {
@@ -94,14 +113,20 @@ export class ChannelTopicsService extends Service {
 	 */
 	private async hydrateRoom(roomId: UUID): Promise<void> {
 		if (this.hydrated.has(roomId)) return;
-		const room = await this.runtime.getRoom(roomId);
-		const persisted = coerceTopicList(
-			room?.metadata?.[CHANNEL_TOPICS_METADATA_KEY],
-		);
-		if (persisted.length > 0) {
-			this.topicsByRoom.set(roomId, persisted);
+		try {
+			const room = await this.runtime.getRoom(roomId);
+			const persisted = coerceTopicList(
+				room?.metadata?.[CHANNEL_TOPICS_METADATA_KEY],
+			);
+			if (persisted.length > 0) {
+				this.topicsByRoom.set(roomId, persisted);
+			}
+			this.hydrated.add(roomId);
+		} catch (cause) {
+			// error-policy:J2 attach the operation and room boundary while preserving
+			// the adapter error for runtime diagnostics and caller retry policy.
+			throw this.reportDatabaseFailure("hydrate", roomId, cause);
 		}
-		this.hydrated.add(roomId);
 	}
 
 	/**
@@ -139,7 +164,14 @@ export class ChannelTopicsService extends Service {
 	 * is an expected deletion race; database failures propagate to the boundary.
 	 */
 	private async persistRoom(roomId: UUID, topics: string[]): Promise<void> {
-		const room = await this.runtime.getRoom(roomId);
+		let room: Room | null;
+		try {
+			room = await this.runtime.getRoom(roomId);
+		} catch (cause) {
+			// error-policy:J2 distinguish persistence lookup failures from cold-cache
+			// hydration while preserving the adapter cause.
+			throw this.reportDatabaseFailure("persist", roomId, cause);
+		}
 		if (!room) {
 			logger.debug(
 				{ src: "service:channel_topics", roomId },
@@ -154,7 +186,13 @@ export class ChannelTopicsService extends Service {
 				[CHANNEL_TOPICS_METADATA_KEY]: topics,
 			},
 		};
-		await this.runtime.updateRoom(updated);
+		try {
+			await this.runtime.updateRoom(updated);
+		} catch (cause) {
+			// error-policy:J2 preserve the adapter cause and expose the failed write
+			// through the runtime error channel.
+			throw this.reportDatabaseFailure("persist", roomId, cause);
+		}
 	}
 
 	/**
