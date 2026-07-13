@@ -15,13 +15,14 @@ import { NotificationService } from "./notification.ts";
 
 async function createRuntime(
 	services: NonNullable<Plugin["services"]>,
+	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
 ): Promise<{
 	runtime: AgentRuntime;
 	cleanup: () => Promise<void>;
 }> {
 	const runtime = new AgentRuntime({
 		character: createCharacter({ name: "NotificationIntegrationAgent" }),
-		adapter: new InMemoryDatabaseAdapter(),
+		adapter,
 		logLevel: "fatal",
 		enableAutonomy: false,
 	});
@@ -121,6 +122,29 @@ describe("NotificationService", () => {
 			expect(svc.list()).toHaveLength(1);
 		} finally {
 			await headless.cleanup();
+		}
+	});
+
+	it("fails startup when persisted notification state cannot be read", async () => {
+		class UnreadableCacheAdapter extends InMemoryDatabaseAdapter {
+			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
+				throw new Error("notification cache unavailable");
+			}
+		}
+
+		const failing = await createRuntime(
+			[NotificationService],
+			new UnreadableCacheAdapter(),
+		);
+		try {
+			await expect(
+				failing.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("Service notification not found or failed to start");
+			await expect(NotificationService.start(failing.runtime)).rejects.toThrow(
+				"notification cache unavailable",
+			);
+		} finally {
+			await failing.cleanup();
 		}
 	});
 
