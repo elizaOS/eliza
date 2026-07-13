@@ -37,7 +37,9 @@ mock.module("ai", () => ({
 
 const estimateRequestCost = mock();
 const calculateCost = mock();
-const getProviderFromModel = mock(() => "openai");
+const getProviderFromModel = mock((model: string) =>
+  model.startsWith("anthropic/") ? "anthropic" : "openai",
+);
 mock.module("@/lib/pricing", () => ({
   calculateCost,
   estimateRequestCost,
@@ -45,7 +47,7 @@ mock.module("@/lib/pricing", () => ({
 }));
 
 // Settable so a test can drive a non-null admitted thinking budget through the
-// mounted route (#16147). The resolver's own clamping is unit-tested elsewhere;
+// mounted route (#16147). Resolver precedence and clamping have their own tests;
 // here it stands in for "whatever budget the route resolved to".
 const resolveAnthropicThinkingBudgetTokens = mock((): number | null => null);
 const mergeAnthropicCotProviderOptions = mock(
@@ -149,7 +151,7 @@ function makeReservation(reconcileResult: {
   return reconcile;
 }
 
-function callChat() {
+function callChat(model = "gpt-5-mini") {
   return app.request(
     "/agents/agent-1/a2a",
     {
@@ -159,7 +161,7 @@ function callChat() {
         jsonrpc: "2.0",
         method: "chat",
         params: {
-          model: "gpt-5-mini",
+          model,
           messages: [{ role: "user", content: "hello" }],
         },
         id: "rpc-1",
@@ -230,18 +232,16 @@ describe("Agent A2A billing", () => {
 
   // #16147: the output ceiling used to price/reserve must be the exact value
   // capped on the provider call, for every resolved thinking budget including
-  // none. The resolver's clamping (char override / env default /
-  // ANTHROPIC_COT_BUDGET_MAX) is unit-tested separately; here we prove the route
-  // forwards whatever it resolved to BOTH sinks identically.
+  // none. Here we prove the route forwards the resolved value to both sinks.
   test.each([
-    [null, undefined],
+    [null, 500],
     [1024, 1524],
     [8000, 8500],
   ] as const)("prices and caps the provider at one admitted ceiling (budget=%p)", async (budget, expectedCap) => {
     makeReservation({ adjustmentType: "none" });
     resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
 
-    const response = await callChat();
+    const response = await callChat("anthropic/claude-opus-4-5");
     expect(response.status).toBe(200);
 
     // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
@@ -252,6 +252,20 @@ describe("Agent A2A billing", () => {
     expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
       estimateRequestCost.mock.calls[0]?.[2],
     );
+  });
+
+  test("insufficient credits stop the request before provider dispatch", async () => {
+    reserve.mockRejectedValue(new InsufficientCreditsError(0.5, 0.1));
+
+    const response = await callChat("anthropic/claude-opus-4-5");
+    const body = (await response.json()) as {
+      error?: { code: number; message: string };
+    };
+
+    expect(body.error?.code).toBe(-32003);
+    expect(body.error?.message).toContain("Insufficient credits");
+    expect(streamText).not.toHaveBeenCalled();
+    expect(recordCreatorEarnings).not.toHaveBeenCalled();
   });
 
   // Regression for #10266 (A2A side).

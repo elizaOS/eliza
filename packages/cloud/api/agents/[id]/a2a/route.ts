@@ -43,6 +43,8 @@ import {
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
+const A2A_TEXT_OUTPUT_TOKENS = 500;
+
 const JsonRpcRequestSchema = z.object({
   jsonrpc: z.literal("2.0"),
   method: z.string(),
@@ -285,7 +287,7 @@ async function handleChat(
     agentThinkingBudget,
   );
   const maxOutputTokens =
-    effectiveThinkingBudget != null ? 500 + effectiveThinkingBudget : undefined;
+    A2A_TEXT_OUTPUT_TOKENS + (effectiveThinkingBudget ?? 0);
   const baseCost = await estimateRequestCost(
     model,
     fullMessages,
