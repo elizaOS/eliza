@@ -2341,7 +2341,7 @@ export function FineTuningDashboard({
               {t("finetuningview.Status")}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-3 xl:grid-cols-6">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))] gap-3 text-sm">
             <div className={FINE_TUNING_STATUS_CARD_CLASS}>
               <div className="text-xs-tight font-semibold uppercase tracking-[0.14em] text-muted/70">
                 {t("finetuningview.Runtime")}

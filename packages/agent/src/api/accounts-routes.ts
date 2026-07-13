@@ -766,7 +766,7 @@ function buildRoutingView(
 
 async function handlePutRouting(ctx: AccountsRouteContext): Promise<boolean> {
   const { req, res, json, error, readJsonBody } = ctx;
-  const body = await readJsonBody<unknown>(req, res);
+  const body = await readJsonBody<Record<string, unknown>>(req, res);
   if (!body) return true;
   const parsed = routingPutSchema.safeParse(body);
   if (!parsed.success) {
