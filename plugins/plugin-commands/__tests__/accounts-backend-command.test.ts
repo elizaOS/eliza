@@ -146,6 +146,18 @@ describe("parseAccountsArgs", () => {
 				key: "accounts",
 				canonical: "/accounts",
 				args: [],
+				rawArgs: "strategy claude reset-soonest",
+			}),
+		).toEqual({
+			kind: "strategy",
+			provider: "anthropic-subscription",
+			strategy: "reset-soonest",
+		});
+		expect(
+			parseAccountsArgs({
+				key: "accounts",
+				canonical: "/accounts",
+				args: [],
 				rawArgs: "refresh cerebras",
 			}),
 		).toEqual({ kind: "refresh", provider: "cerebras-api" });
@@ -398,25 +410,28 @@ describe("/accounts writes", () => {
 		);
 	});
 
-	it("strategy PATCHes the provider strategy route with the exact body", async () => {
+	it("reset-soonest PATCHes the provider strategy route with the exact body", async () => {
 		const fetchMock = vi.fn(async () =>
-			jsonResponse({ providerId: "cerebras-api", strategy: "least-used" }),
+			jsonResponse({
+				providerId: "anthropic-subscription",
+				strategy: "reset-soonest",
+			}),
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		const r = await resolveCommand(
 			runtime,
-			msg("/accounts strategy cerebras least-used"),
+			msg("/accounts strategy claude reset-soonest"),
 			OWNER,
 		);
 		const [call] = recordedCalls(fetchMock);
 		expect(call?.method).toBe("PATCH");
 		expect(new URL(call?.url ?? "").pathname).toBe(
-			"/api/providers/cerebras-api/strategy",
+			"/api/providers/anthropic-subscription/strategy",
 		);
-		expect(call?.body).toEqual({ strategy: "least-used" });
+		expect(call?.body).toEqual({ strategy: "reset-soonest" });
 		expect(r.reply).toBe(
-			"Account strategy for cerebras-api set to least-used.",
+			"Account strategy for anthropic-subscription set to reset-soonest.",
 		);
 	});
 
