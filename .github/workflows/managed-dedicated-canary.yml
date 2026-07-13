@@ -103,8 +103,41 @@ jobs:
           set -e
           echo "status=$status" >> "$GITHUB_OUTPUT"
 
-      - name: Upload privacy-safe timing and path evidence
+      - name: Validate privacy-safe evidence artifact
+        id: privacy
         if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_path="$CLOUD_DEDICATED_CANARY_EVIDENCE_PATH"
+          if [[ ! -s "$evidence_path" ]]; then
+            echo "::error::Canary produced no evidence artifact to privacy-check."
+            exit 1
+          fi
+          bun -e '
+            import { readFileSync, renameSync, writeFileSync } from "node:fs";
+            import { canonicalizeManagedDedicatedCanaryArtifact } from "./packages/scripts/cloud/admin/managed-dedicated-canary.ts";
+            const evidencePath = process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH;
+            if (!evidencePath) {
+              console.error("::error::Canary evidence path is not configured.");
+              process.exit(1);
+            }
+            const { canonical, errors } = canonicalizeManagedDedicatedCanaryArtifact(
+              readFileSync(evidencePath, "utf8"),
+            );
+            if (errors.length > 0) {
+              console.error("::error::Canary evidence failed strict privacy validation: " + errors.join(","));
+              process.exit(1);
+            }
+            if (canonical === null) process.exit(1);
+            const canonicalPath = evidencePath + ".validated-" + process.pid;
+            writeFileSync(canonicalPath, canonical, { mode: 0o600 });
+            renameSync(canonicalPath, evidencePath);
+          '
+          echo "validated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload privacy-safe timing and path evidence
+        if: ${{ always() && steps.privacy.outputs.validated == 'true' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: managed-dedicated-canary-${{ github.run_id }}-${{ github.run_attempt }}
@@ -116,12 +149,17 @@ jobs:
         if: ${{ always() }}
         env:
           LIVE_PROCESS_STATUS: ${{ steps.live.outputs.status }}
+          PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
         shell: bash
         run: |
           set -euo pipefail
           evidence_path="$CLOUD_DEDICATED_CANARY_EVIDENCE_PATH"
           if [[ ! -s "$evidence_path" ]]; then
             echo "::error::Canary produced no evidence; zero-executed/skip outcomes are failures."
+            exit 1
+          fi
+          if [[ "${PRIVACY_VALIDATED:-missing}" != "true" ]]; then
+            echo "::error::Canary evidence did not pass the separate strict privacy validator."
             exit 1
           fi
 

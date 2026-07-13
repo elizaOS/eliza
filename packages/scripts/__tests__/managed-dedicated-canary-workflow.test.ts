@@ -9,6 +9,8 @@ const workflowPath = new URL(
 const workflowSource = readFileSync(workflowPath, "utf8");
 
 interface WorkflowStep {
+  id?: string;
+  if?: string;
   name?: string;
   uses?: string;
   run?: string;
@@ -133,19 +135,47 @@ describe("managed dedicated staging canary workflow (#16194)", () => {
     expect(enforce).toContain("zero-executed/skip outcomes are failures");
     expect(enforce).toContain("git merge-base --is-ancestor");
     expect(enforce).toContain("LIVE_PROCESS_STATUS:-missing");
+    expect(enforce).toContain("PRIVACY_VALIDATED:-missing");
     expect(enforce).toContain("evidence.cleanup.status");
   });
 
-  test("retains only the privacy-safe evidence and keeps workflow shell valid", () => {
+  test("strictly validates both red and green evidence before any artifact upload", () => {
+    const steps = job?.steps ?? [];
+    const privacyIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Validate privacy-safe evidence artifact",
+    );
+    const uploadIndex = steps.findIndex(
+      (candidate) =>
+        candidate.name === "Upload privacy-safe timing and path evidence",
+    );
+    const privacy = step("Validate privacy-safe evidence artifact");
     const upload = step("Upload privacy-safe timing and path evidence");
+    const privacyRun = privacy.run;
+    if (!privacyRun) throw new Error("privacy validation step has no script");
+    expect(privacyIndex).toBeGreaterThanOrEqual(0);
+    expect(uploadIndex).toBeGreaterThan(privacyIndex);
+    expect(privacy.id).toBe("privacy");
+    expect(privacy.if).toContain("always()");
+    expect(privacyRun).toContain("canonicalizeManagedDedicatedCanaryArtifact");
+    expect(privacyRun).toContain("writeFileSync(canonicalPath, canonical");
+    expect(privacyRun).toContain("renameSync(canonicalPath, evidencePath)");
+    expect(privacyRun.indexOf("renameSync")).toBeLessThan(
+      privacyRun.indexOf('echo "validated=true"'),
+    );
+    expect(privacyRun).toContain('echo "validated=true"');
+    expect(upload.if).toContain("steps.privacy.outputs.validated == 'true'");
     expect(upload.with?.path).toBe("reports/managed-dedicated-canary.json");
     expect(upload.with?.["retention-days"]).toBe(14);
+  });
 
+  test("keeps every workflow shell contract valid", () => {
     for (const name of [
       "Require real Cloud credential",
       "Require exact staging target",
       "Validate canary and failure contracts",
       "Run bounded managed dedicated canary",
+      "Validate privacy-safe evidence artifact",
       "Enforce live proof, deployed SHA, and cleanup",
     ]) {
       const result = spawnSync("bash", ["-n"], {

@@ -1,8 +1,8 @@
 # Managed dedicated staging canary
 
 `managed-dedicated-canary.ts` is the canonical live proof for the managed
-Cloud dedicated-agent path. The workflow is manual and daily-scheduled at
-`.github/workflows/managed-dedicated-canary.yml`.
+Cloud dedicated-agent path. The workflow is manual, daily-scheduled, or run by
+an explicit maintainer label at `.github/workflows/managed-dedicated-canary.yml`.
 
 The lane deliberately does not call Hetzner. It presents the existing
 repository Cloud bearer to the staging Worker; the deployed managed
@@ -42,6 +42,10 @@ disposable identity row to leak or clean separately.
 - The artifact contains only the deployed commit, booleans/path labels, bounded
   request counts, phase timings, and sanitized failure codes. It never contains
   credentials, prompts, replies, IDs, names, URLs, or hostnames.
+  A separate exact-schema privacy validator accepts sanitized red or green
+  evidence, rejects unknown fields recursively, and must pass before the
+  artifact upload step is allowed to run. Attempted phases record their elapsed
+  time even when they fail.
 
 ## Evidence mapping
 

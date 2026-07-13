@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import type { ManagedDedicatedCanaryEvidence } from "./managed-dedicated-canary";
 import {
+  canonicalizeManagedDedicatedCanaryArtifact,
   runManagedDedicatedCanary,
+  validateManagedDedicatedCanaryArtifact,
   validateManagedDedicatedCanaryEvidence,
 } from "./managed-dedicated-canary";
 
@@ -13,6 +16,7 @@ const DEPLOYED_COMMIT = "a".repeat(40);
 const START_MS = Date.parse("2026-07-13T02:30:00.000Z");
 
 interface FixtureOptions {
+  healthCommit?: string | null;
   existingCanary?: boolean;
   createdTier?: string;
   readyTier?: string;
@@ -24,6 +28,9 @@ interface FixtureOptions {
   postCommitsThenThrows?: boolean;
   recoveryListFailures?: number;
   recoveryNeverFinds?: boolean;
+  bridgeStatusError?: unknown;
+  sseMissingDone?: boolean;
+  requestLatencyMs?: number;
 }
 
 function response(
@@ -46,12 +53,19 @@ function createFixture(options: FixtureOptions = {}) {
   const calls: Array<{ method: string; pathname: string }> = [];
 
   const fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    nowMs += options.requestLatencyMs ?? 0;
     const url = new URL(typeof input === "string" ? input : input.toString());
     const method = init?.method ?? "GET";
     calls.push({ method, pathname: url.pathname });
 
     if (url.pathname === "/api/health") {
-      return response({ status: "ok", commit: DEPLOYED_COMMIT });
+      return response({
+        status: "ok",
+        commit:
+          options.healthCommit === undefined
+            ? DEPLOYED_COMMIT
+            : options.healthCommit,
+      });
     }
 
     if (url.pathname === "/api/v1/eliza/agents" && method === "GET") {
@@ -168,6 +182,13 @@ function createFixture(options: FixtureOptions = {}) {
         params?: { text?: string };
       };
       if (rpc.method === "status.get") {
+        if (options.bridgeStatusError !== undefined) {
+          return response({
+            jsonrpc: "2.0",
+            id: `status.get-${SUFFIX}`,
+            error: options.bridgeStatusError,
+          });
+        }
         return response({ jsonrpc: "2.0", result: { ready: true } });
       }
       if (rpc.method === "heartbeat") {
@@ -202,7 +223,9 @@ function createFixture(options: FixtureOptions = {}) {
         rpc.params?.text?.match(/token ([a-z0-9-]+)/)?.[1] ?? "missing";
       const sse =
         `event: chunk\ndata: ${JSON.stringify({ text: `A real stream reply containing ${token}.` })}\n\n` +
-        `event: done\ndata: ${JSON.stringify({ ok: true })}\n\n`;
+        (options.sseMissingDone
+          ? ""
+          : `event: done\ndata: ${JSON.stringify({ ok: true })}\n\n`);
       return new Response(sse, {
         status: 200,
         headers: { "content-type": "text/event-stream" },
@@ -270,6 +293,7 @@ describe("managed dedicated canary", () => {
     });
     expect(evidence.cleanup.status).toBe("passed");
     expect(evidence.cleanup.possibleOrphan).toBe(false);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
     expect(validateManagedDedicatedCanaryEvidence(evidence)).toEqual([]);
     expect(fixture.createBody).toMatchObject({
       alwaysOn: true,
@@ -315,6 +339,33 @@ describe("managed dedicated canary", () => {
       code: "missing_cloud_credential",
     });
     expect(evidence.cleanup.status).toBe("not-required");
+    expect(evidence.timingsMs).toMatchObject({ cleanup: 0, total: 0 });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(fixture.calls).toHaveLength(0);
+  });
+
+  test("an invalid run suffix still returns strict red evidence without network access", async () => {
+    const fixture = createFixture();
+    const evidence = await runManagedDedicatedCanary({
+      apiKey: SECRET,
+      suffix: "bad key",
+      fetch: fixture.fetch,
+      now: fixture.now,
+      sleep: fixture.sleep,
+    });
+
+    expect(evidence.verdict).toBe("fail");
+    expect(evidence.failure).toEqual({
+      phase: "config",
+      code: "invalid_run_suffix",
+    });
+    expect(evidence.cleanup).toEqual({
+      status: "not-required",
+      possibleOrphan: false,
+    });
+    expect(evidence.timingsMs).toMatchObject({ cleanup: 0, total: 0 });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    expect(JSON.stringify(evidence)).not.toContain("bad key");
     expect(fixture.calls).toHaveLength(0);
   });
 
@@ -352,14 +403,32 @@ describe("managed dedicated canary", () => {
     expect(fixture.calls).toHaveLength(0);
   });
 
+  test("records health phase duration when deploy evidence fails", async () => {
+    const { evidence } = await runFixture({
+      healthCommit: null,
+      requestLatencyMs: 7,
+    });
+    expect(evidence.failure).toEqual({
+      phase: "health",
+      code: "missing_deploy_commit",
+    });
+    expect(evidence.timingsMs.health).toBe(7);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
   test("a prior canary trips the one-agent capacity guard without creating", async () => {
-    const { fixture, evidence } = await runFixture({ existingCanary: true });
+    const { fixture, evidence } = await runFixture({
+      existingCanary: true,
+      requestLatencyMs: 7,
+    });
     expect(evidence.failure).toEqual({
       phase: "capacity_guard",
       code: "existing_canary_present",
     });
     expect(evidence.capacity.createdAgents).toBe(0);
     expect(evidence.cleanup.status).toBe("not-required");
+    expect(evidence.timingsMs.capacityGuard).toBe(7);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
     expect(fixture.created).toBe(false);
   });
 
@@ -367,6 +436,7 @@ describe("managed dedicated canary", () => {
     const { evidence } = await runFixture({
       createdTier: "shared",
       readyTier: "shared",
+      requestLatencyMs: 7,
     });
     expect(evidence.verdict).toBe("fail");
     expect(evidence.failure).toEqual({
@@ -374,6 +444,20 @@ describe("managed dedicated canary", () => {
       code: "wrong_execution_tier",
     });
     expect(evidence.cleanup.status).toBe("passed");
+    expect(evidence.timingsMs.create).toBe(7);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("red evidence classifies an unknown upstream tier without retaining it", async () => {
+    const unsafeTier = "private-tier-secret-value";
+    const { evidence } = await runFixture({ createdTier: unsafeTier });
+    expect(evidence.failure).toEqual({
+      phase: "create",
+      code: "wrong_execution_tier",
+    });
+    expect(evidence.path.observedTier).toBe("other");
+    expect(JSON.stringify(evidence)).not.toContain(unsafeTier);
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
 
   test("missing mesh evidence and stale heartbeat can never pass readiness", async () => {
@@ -388,7 +472,9 @@ describe("managed dedicated canary", () => {
     });
     expect(evidence.path.heartbeatFresh).toBe(false);
     expect(evidence.path.meshAddressPresent).toBe(false);
+    expect(evidence.timingsMs.ready).toBe(30);
     expect(evidence.cleanup.status).toBe("passed");
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
 
   test("mesh parsing rejects an IPv4 prefix with a non-decimal suffix", async () => {
@@ -470,6 +556,7 @@ describe("managed dedicated canary", () => {
       status: "failed",
       possibleOrphan: true,
     });
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
 
   test("canned bridge replies exhaust only the bounded attempts and fail", async () => {
@@ -486,8 +573,191 @@ describe("managed dedicated canary", () => {
     expect(evidence.cleanup.status).toBe("passed");
   });
 
+  test("classifies the public bridge-unreachable RPC error without retaining its message", async () => {
+    const { evidence } = await runFixture({
+      bridgeStatusError: {
+        code: -32000,
+        message: "Sandbox bridge is unreachable",
+      },
+      requestLatencyMs: 7,
+    });
+    expect(evidence.failure).toEqual({
+      phase: "bridge_status",
+      code: "rpc_bridge_unreachable",
+    });
+    expect(evidence.capacity.chatRequests).toBe(0);
+    expect(evidence.cleanup.status).toBe("passed");
+    expect(evidence.timingsMs.bridge).toBe(7);
+    expect(JSON.stringify(evidence)).not.toContain(
+      "Sandbox bridge is unreachable",
+    );
+  });
+
+  test("never copies an unrecognized RPC error message into evidence", async () => {
+    const sensitiveDetail =
+      "provider secret and private runtime hostname must never be retained";
+    const { evidence } = await runFixture({
+      bridgeStatusError: {
+        code: -32123,
+        message: sensitiveDetail,
+      },
+    });
+    expect(evidence.failure).toEqual({
+      phase: "bridge_status",
+      code: "rpc_error_code_-32123",
+    });
+    expect(JSON.stringify(evidence)).not.toContain(sensitiveDetail);
+    expect(evidence.cleanup.status).toBe("passed");
+  });
+
+  test("classifies every allowlisted public RPC error without retaining raw messages", async () => {
+    const cases: Array<{ error: unknown; expected: string }> = [
+      { error: "malformed", expected: "rpc_error_invalid_shape" },
+      {
+        error: { code: -32000, message: "Sandbox is not running" },
+        expected: "rpc_sandbox_not_running",
+      },
+      {
+        error: {
+          code: -32601,
+          message: "Method not found: private-provider-detail",
+        },
+        expected: "rpc_method_not_found",
+      },
+      {
+        error: { code: -32000, message: "Bridge returned HTTP 503" },
+        expected: "rpc_upstream_http_503",
+      },
+      {
+        error: { code: "not-numeric", message: "private runtime detail" },
+        expected: "rpc_error_unclassified",
+      },
+    ];
+
+    for (const fixtureCase of cases) {
+      const { evidence } = await runFixture({
+        bridgeStatusError: fixtureCase.error,
+      });
+      expect(evidence.failure).toEqual({
+        phase: "bridge_status",
+        code: fixtureCase.expected,
+      });
+      const serialized = JSON.stringify(evidence);
+      expect(serialized).not.toContain("private-provider-detail");
+      expect(serialized).not.toContain("private runtime detail");
+      expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+    }
+  });
+
+  test("records SSE phase duration when an incomplete stream fails", async () => {
+    const { evidence } = await runFixture({
+      sseMissingDone: true,
+      requestLatencyMs: 7,
+    });
+    expect(evidence.failure).toEqual({
+      phase: "sse",
+      code: "missing_done_event",
+    });
+    expect(evidence.timingsMs.sse).toBe(14);
+    expect(evidence.cleanup.status).toBe("passed");
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("strict artifact validation accepts sanitized red evidence", async () => {
+    const { evidence } = await runFixture({
+      bridgeStatusError: {
+        code: -32000,
+        message: "Sandbox bridge is unreachable",
+      },
+    });
+    expect(evidence.verdict).toBe("fail");
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
+  });
+
+  test("strict artifact validation rejects unknown fields recursively without echoing them", async () => {
+    const { evidence } = await runFixture({
+      bridgeStatusError: {
+        code: -32000,
+        message: "Sandbox bridge is unreachable",
+      },
+    });
+    const topLevel = {
+      ...structuredClone(evidence),
+      rawReplyContainingSecret: "cloud-secret-must-not-appear",
+    };
+    const nested = structuredClone(
+      evidence,
+    ) as ManagedDedicatedCanaryEvidence & {
+      path: ManagedDedicatedCanaryEvidence["path"] & { rawReply?: string };
+    };
+    nested.path.rawReply = "private model output";
+
+    const topErrors = validateManagedDedicatedCanaryArtifact(topLevel);
+    const nestedErrors = validateManagedDedicatedCanaryArtifact(nested);
+    expect(topErrors).toContain("evidence_unexpected_field");
+    expect(nestedErrors).toContain("path_unexpected_field");
+    expect(JSON.stringify(topErrors)).not.toContain("rawReplyContainingSecret");
+    expect(JSON.stringify(nestedErrors)).not.toContain("private model output");
+  });
+
+  test("canonical artifact bytes remove secret-bearing duplicate JSON keys", async () => {
+    const { evidence } = await runFixture();
+    const secret = "secret-in-shadowed-duplicate-field";
+    const raw = JSON.stringify(evidence).replace(
+      '"failure":null',
+      `"failure":{"phase":"internal","code":"${secret}"},"failure":null`,
+    );
+
+    expect(raw).toContain(secret);
+    const result = canonicalizeManagedDedicatedCanaryArtifact(raw);
+    expect(result.errors).toEqual([]);
+    expect(result.canonical).not.toBeNull();
+    expect(result.canonical).not.toContain(secret);
+    expect(JSON.parse(result.canonical ?? "")).toEqual(evidence);
+  });
+
+  test("strict artifact validation rejects secret-like strings in allowed fields", async () => {
+    const { evidence } = await runFixture({
+      bridgeStatusError: {
+        code: -32000,
+        message: "Sandbox bridge is unreachable",
+      },
+    });
+    const unsafeFailure = structuredClone(evidence);
+    if (!unsafeFailure.failure) throw new Error("fixture must fail");
+    unsafeFailure.failure.code = "raw-provider-secret-value";
+    const unsafeTier = structuredClone(evidence) as unknown as {
+      path: Record<string, unknown>;
+    };
+    unsafeTier.path.observedTier = "raw-reply-and-secret-like-value";
+
+    expect(validateManagedDedicatedCanaryArtifact(unsafeFailure)).toContain(
+      "unsafe_failure_code",
+    );
+    expect(validateManagedDedicatedCanaryArtifact(unsafeTier)).toContain(
+      "unsafe_observed_tier",
+    );
+  });
+
+  test("strict artifact validation rejects unsafe nested types and timing values", async () => {
+    const { evidence } = await runFixture();
+    const unsafe = structuredClone(evidence) as unknown as {
+      path: Record<string, unknown>;
+      timingsMs: Record<string, unknown>;
+    };
+    unsafe.path.running = "true";
+    unsafe.timingsMs.total = Number.NaN;
+
+    const errors = validateManagedDedicatedCanaryArtifact(unsafe);
+    expect(errors).toContain("unsafe_path_running");
+    expect(errors).toContain("unsafe_timing_value");
+  });
+
   test("cleanup failure overrides a successful path and stays red", async () => {
-    const { evidence } = await runFixture({ cleanupFails: true });
+    const { evidence } = await runFixture({
+      cleanupFails: true,
+      requestLatencyMs: 7,
+    });
     expect(evidence.path.successfulPaths).toBe(2);
     expect(evidence.cleanup.status).toBe("failed");
     expect(evidence.cleanup.possibleOrphan).toBe(true);
@@ -495,7 +765,9 @@ describe("managed dedicated canary", () => {
       phase: "cleanup_delete",
       code: "unexpected_http_500",
     });
+    expect(evidence.timingsMs.cleanup).toBe(14);
     expect(evidence.verdict).toBe("fail");
+    expect(validateManagedDedicatedCanaryArtifact(evidence)).toEqual([]);
   });
 
   test("the workflow validator rejects skip-like and zero-executed evidence", () => {

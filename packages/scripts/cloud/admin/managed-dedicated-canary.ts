@@ -16,6 +16,12 @@ import { SMOKE_AGENT_PLUGINS } from "./smoke-agent-plugins";
 
 type JsonObject = Record<string, unknown>;
 type Fetch = typeof globalThis.fetch;
+type PrivacySafeObservedTier =
+  | "shared"
+  | "dedicated-lazy"
+  | "dedicated-always"
+  | "custom"
+  | "other";
 
 const STAGING_BASE_URL = "https://api-staging.elizacloud.ai";
 const CANARY_NAME_PREFIX = "managed-dedicated-canary-";
@@ -26,12 +32,24 @@ const CONTROL_REQUEST_TIMEOUT_MS = 30_000;
 const REQUEST_TIMEOUT_MS = 130_000;
 const READY_TIMEOUT_MS = 12 * 60_000;
 const CLEANUP_TIMEOUT_MS = 4 * 60_000;
+const MAX_ARTIFACT_TIMING_MS = 45 * 60_000;
 const POLL_INTERVAL_MS = 5_000;
 const CREATE_RECOVERY_TIMEOUT_MS = 30_000;
 const CREATE_RECOVERY_POLL_INTERVAL_MS = 2_000;
 const MAX_CREATE_RECOVERY_ATTEMPTS = 5;
 const MAX_CHAT_ATTEMPTS_PER_PATH = 2;
 const MAX_CREATED_AGENTS = 1;
+const TIMING_PHASES = [
+  "health",
+  "capacityGuard",
+  "create",
+  "ready",
+  "bridge",
+  "sse",
+  "cleanup",
+  "total",
+] as const;
+type TimingPhase = (typeof TIMING_PHASES)[number];
 const DEDICATED_BRIDGE_TRANSPORTS = new Set([
   "native-jsonrpc",
   "conversation-rest",
@@ -47,6 +65,62 @@ const TERMINAL_AGENT_FAILURE_STATUSES = new Set([
   "deletion_pending",
   "deletion_failed",
 ]);
+const PRIVACY_SAFE_FAILURE_PHASES = new Set([
+  "config",
+  "health",
+  "capacity_guard",
+  "create",
+  "create_recovery",
+  "provision",
+  "ready",
+  "bridge_status",
+  "bridge_heartbeat",
+  "bridge_turn",
+  "sse",
+  "cleanup",
+  "cleanup_verify",
+  "cleanup_delete",
+  "cleanup_job",
+  "cleanup_confirm",
+  "internal",
+]);
+const PRIVACY_SAFE_FAILURE_CODES = new Set([
+  "invalid_run_suffix",
+  "error_event",
+  "unexpected_error",
+  "request_failed",
+  "invalid_response_shape",
+  "invalid_agent_list",
+  "job_failed",
+  "job_timeout",
+  "agent_not_initialized",
+  "missing_agent_data",
+  "wrong_execution_tier",
+  "terminal_agent_state",
+  "readiness_timeout",
+  "rpc_error_invalid_shape",
+  "rpc_sandbox_not_running",
+  "rpc_bridge_unreachable",
+  "rpc_method_not_found",
+  "rpc_error_unclassified",
+  "missing_rpc_result",
+  "not_ready",
+  "proof_missing",
+  "non_dedicated_transport",
+  "invalid_reply",
+  "missing_body",
+  "stream_read_failed",
+  "missing_done_event",
+  "possible_orphan_after_ambiguous_create",
+  "identity_mismatch",
+  "missing_delete_job",
+  "delete_not_confirmed",
+  "missing_cloud_credential",
+  "non_staging_target_refused",
+  "missing_deploy_commit",
+  "existing_canary_present",
+  "missing_agent_id",
+]);
 
 export interface ManagedDedicatedCanaryEvidence {
   schemaVersion: 1;
@@ -54,7 +128,7 @@ export interface ManagedDedicatedCanaryEvidence {
   deployedCommit: string | null;
   path: {
     requestedTier: "dedicated-always";
-    observedTier: string | null;
+    observedTier: PrivacySafeObservedTier | null;
     running: boolean;
     databaseReady: boolean;
     heartbeatFresh: boolean;
@@ -69,7 +143,7 @@ export interface ManagedDedicatedCanaryEvidence {
     maxChatRequests: number;
     chatRequests: number;
   };
-  timingsMs: Record<string, number>;
+  timingsMs: Partial<Record<TimingPhase, number>>;
   cleanup: {
     status: "not-required" | "passed" | "failed";
     possibleOrphan: boolean;
@@ -121,6 +195,28 @@ function dataRecord(body: JsonObject): JsonObject | null {
 function stringField(record: JsonObject | null, key: string): string | null {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function privacySafeObservedTier(
+  value: string | null,
+): PrivacySafeObservedTier | null {
+  switch (value) {
+    case "shared":
+    case "dedicated-lazy":
+    case "dedicated-always":
+    case "custom":
+      return value;
+    case null:
+      return null;
+    default:
+      return "other";
+  }
+}
+
+function isPrivacySafeObservedTier(
+  value: unknown,
+): value is PrivacySafeObservedTier {
+  return typeof value === "string" && privacySafeObservedTier(value) === value;
 }
 
 function sanitizeSuffix(value: string): string {
@@ -262,6 +358,250 @@ function freshEvidence(): ManagedDedicatedCanaryEvidence {
   };
 }
 
+function exactEvidenceRecord(
+  value: unknown,
+  path: string,
+  requiredKeys: readonly string[],
+  errors: string[],
+  allowedKeys: readonly string[] = requiredKeys,
+): JsonObject | null {
+  if (!isRecord(value)) {
+    errors.push(`${path}_not_object`);
+    return null;
+  }
+  const allowed = new Set(allowedKeys);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    // Never echo an untrusted key into logs: field names can carry secrets too.
+    errors.push(`${path}_unexpected_field`);
+  }
+  for (const key of requiredKeys) {
+    if (!Object.hasOwn(value, key)) errors.push(`${path}_missing_${key}`);
+  }
+  return value;
+}
+
+function isBoundedInteger(value: unknown, min: number, max: number): boolean {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= min &&
+    value <= max
+  );
+}
+
+function isPrivacySafeFailureCode(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  return (
+    PRIVACY_SAFE_FAILURE_CODES.has(value) ||
+    /^(?:invalid_json_response_http|unexpected_http|rpc_upstream_http)_[1-5]\d{2}$/.test(
+      value,
+    ) ||
+    /^rpc_error_code_-?\d{1,6}$/.test(value)
+  );
+}
+
+/**
+ * Strict artifact-boundary validator. Unlike the pass/fail acceptance
+ * validator below, this accepts both red and green canary evidence, but only
+ * when every object has the exact privacy-safe schema and every string is an
+ * allowlisted enum/hash/sanitized failure code. It never includes untrusted
+ * keys or values in its own errors.
+ */
+export function validateManagedDedicatedCanaryArtifact(
+  value: unknown,
+): string[] {
+  const errors: string[] = [];
+  const evidence = exactEvidenceRecord(
+    value,
+    "evidence",
+    [
+      "schemaVersion",
+      "verdict",
+      "deployedCommit",
+      "path",
+      "capacity",
+      "timingsMs",
+      "cleanup",
+      "failure",
+    ],
+    errors,
+  );
+  if (!evidence) return errors;
+
+  if (evidence.schemaVersion !== 1) errors.push("unsafe_schema_version");
+  if (evidence.verdict !== "pass" && evidence.verdict !== "fail") {
+    errors.push("unsafe_verdict");
+  }
+  if (
+    evidence.deployedCommit !== null &&
+    (typeof evidence.deployedCommit !== "string" ||
+      !/^[a-f0-9]{40}$/.test(evidence.deployedCommit))
+  ) {
+    errors.push("unsafe_deployed_commit");
+  }
+
+  const path = exactEvidenceRecord(
+    evidence.path,
+    "path",
+    [
+      "requestedTier",
+      "observedTier",
+      "running",
+      "databaseReady",
+      "heartbeatFresh",
+      "meshAddressPresent",
+      "bridgeTransport",
+      "sseCompleted",
+      "successfulPaths",
+    ],
+    errors,
+  );
+  if (path) {
+    if (path.requestedTier !== EXPECTED_TIER) {
+      errors.push("unsafe_requested_tier");
+    }
+    if (
+      path.observedTier !== null &&
+      !isPrivacySafeObservedTier(path.observedTier)
+    ) {
+      errors.push("unsafe_observed_tier");
+    }
+    for (const key of [
+      "running",
+      "databaseReady",
+      "heartbeatFresh",
+      "meshAddressPresent",
+      "sseCompleted",
+    ]) {
+      if (typeof path[key] !== "boolean") errors.push(`unsafe_path_${key}`);
+    }
+    if (
+      path.bridgeTransport !== null &&
+      (typeof path.bridgeTransport !== "string" ||
+        !DEDICATED_BRIDGE_TRANSPORTS.has(path.bridgeTransport))
+    ) {
+      errors.push("unsafe_bridge_transport");
+    }
+    if (!isBoundedInteger(path.successfulPaths, 0, 2)) {
+      errors.push("unsafe_successful_paths");
+    }
+  }
+
+  const capacity = exactEvidenceRecord(
+    evidence.capacity,
+    "capacity",
+    ["maxCreatedAgents", "createdAgents", "maxChatRequests", "chatRequests"],
+    errors,
+  );
+  if (capacity) {
+    if (capacity.maxCreatedAgents !== MAX_CREATED_AGENTS) {
+      errors.push("unsafe_max_created_agents");
+    }
+    if (!isBoundedInteger(capacity.createdAgents, 0, MAX_CREATED_AGENTS)) {
+      errors.push("unsafe_created_agents");
+    }
+    if (capacity.maxChatRequests !== MAX_CHAT_ATTEMPTS_PER_PATH * 2) {
+      errors.push("unsafe_max_chat_requests");
+    }
+    if (
+      !isBoundedInteger(
+        capacity.chatRequests,
+        0,
+        MAX_CHAT_ATTEMPTS_PER_PATH * 2,
+      )
+    ) {
+      errors.push("unsafe_chat_requests");
+    }
+  }
+
+  const timings = exactEvidenceRecord(
+    evidence.timingsMs,
+    "timings",
+    [],
+    errors,
+    TIMING_PHASES,
+  );
+  if (timings) {
+    if (!Object.hasOwn(timings, "total")) errors.push("timings_missing_total");
+    for (const value of Object.values(timings)) {
+      if (
+        typeof value !== "number" ||
+        !Number.isFinite(value) ||
+        !Number.isInteger(value) ||
+        value < 0 ||
+        value > MAX_ARTIFACT_TIMING_MS
+      ) {
+        errors.push("unsafe_timing_value");
+        break;
+      }
+    }
+  }
+
+  const cleanup = exactEvidenceRecord(
+    evidence.cleanup,
+    "cleanup",
+    ["status", "possibleOrphan"],
+    errors,
+  );
+  if (cleanup) {
+    if (
+      cleanup.status !== "not-required" &&
+      cleanup.status !== "passed" &&
+      cleanup.status !== "failed"
+    ) {
+      errors.push("unsafe_cleanup_status");
+    }
+    if (typeof cleanup.possibleOrphan !== "boolean") {
+      errors.push("unsafe_cleanup_orphan_flag");
+    }
+  }
+
+  if (evidence.failure !== null) {
+    const failure = exactEvidenceRecord(
+      evidence.failure,
+      "failure",
+      ["phase", "code"],
+      errors,
+    );
+    if (failure) {
+      if (
+        typeof failure.phase !== "string" ||
+        !PRIVACY_SAFE_FAILURE_PHASES.has(failure.phase)
+      ) {
+        errors.push("unsafe_failure_phase");
+      }
+      if (!isPrivacySafeFailureCode(failure.code)) {
+        errors.push("unsafe_failure_code");
+      }
+    }
+  }
+  return errors;
+}
+
+/**
+ * Parse and canonically reserialize evidence only after strict validation.
+ * Rewriting the bytes is part of the privacy boundary: JSON.parse collapses
+ * duplicate keys, so validating an object and uploading the original text
+ * could otherwise retain a secret in an earlier duplicate field.
+ */
+export function canonicalizeManagedDedicatedCanaryArtifact(raw: string): {
+  canonical: string | null;
+  errors: string[];
+} {
+  let evidence: unknown;
+  try {
+    evidence = JSON.parse(raw);
+  } catch {
+    return { canonical: null, errors: ["evidence_invalid_json"] };
+  }
+  const errors = validateManagedDedicatedCanaryArtifact(evidence);
+  return {
+    canonical:
+      errors.length === 0 ? `${JSON.stringify(evidence, null, 2)}\n` : null,
+    errors,
+  };
+}
+
 /**
  * Independent fail-closed validator used by the workflow after the live
  * process exits. This prevents an accidental early return, skip, or zero-turn
@@ -317,16 +657,7 @@ export function validateManagedDedicatedCanaryEvidence(
   if (evidence.cleanup?.possibleOrphan !== false) {
     errors.push("possible_orphan_present");
   }
-  for (const phase of [
-    "health",
-    "capacityGuard",
-    "create",
-    "ready",
-    "bridge",
-    "sse",
-    "cleanup",
-    "total",
-  ]) {
+  for (const phase of TIMING_PHASES) {
     const timing = evidence.timingsMs?.[phase];
     if (typeof timing !== "number" || !Number.isFinite(timing) || timing < 0) {
       errors.push(`invalid_timing_${phase}`);
@@ -342,15 +673,61 @@ function asFailure(error: unknown): CanaryFailure {
     : new CanaryFailure("internal", "unexpected_error");
 }
 
+/**
+ * Reduce a JSON-RPC error to an allowlisted, privacy-safe diagnostic. Never
+ * persist the upstream message: it is outside the canary's trust boundary and
+ * could contain runtime/provider details. The bridge service's public error
+ * contract is intentionally small, so exact known messages plus a restricted
+ * HTTP-status pattern are enough to distinguish actionable failure classes.
+ */
+function classifyRpcError(value: unknown): string {
+  if (!isRecord(value)) return "rpc_error_invalid_shape";
+  const message = stringField(value, "message");
+  if (message === "Sandbox is not running") return "rpc_sandbox_not_running";
+  if (message === "Sandbox bridge is unreachable") {
+    return "rpc_bridge_unreachable";
+  }
+  if (message?.startsWith("Method not found:")) return "rpc_method_not_found";
+
+  const upstreamStatus = /^Bridge returned HTTP ([1-5]\d{2})$/.exec(
+    message ?? "",
+  )?.[1];
+  if (upstreamStatus) return `rpc_upstream_http_${upstreamStatus}`;
+
+  const rpcCode = value.code;
+  if (
+    typeof rpcCode === "number" &&
+    Number.isSafeInteger(rpcCode) &&
+    Math.abs(rpcCode) <= 999_999
+  ) {
+    return `rpc_error_code_${rpcCode}`;
+  }
+  return "rpc_error_unclassified";
+}
+
 function timedPhase(
   evidence: ManagedDedicatedCanaryEvidence,
-  label: string,
+  label: TimingPhase,
   now: () => number,
 ): () => void {
   const started = now();
   return () => {
     evidence.timingsMs[label] = Math.max(0, Math.round(now() - started));
   };
+}
+
+async function inTimedPhase<T>(
+  evidence: ManagedDedicatedCanaryEvidence,
+  label: TimingPhase,
+  now: () => number,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const finish = timedPhase(evidence, label, now);
+  try {
+    return await operation();
+  } finally {
+    finish();
+  }
 }
 
 export async function runManagedDedicatedCanary(
@@ -371,11 +748,11 @@ export async function runManagedDedicatedCanary(
   const createRecoveryPollIntervalMs =
     options.createRecoveryPollIntervalMs ?? CREATE_RECOVERY_POLL_INTERVAL_MS;
   const apiKey = options.apiKey.trim();
-  const suffix = sanitizeSuffix(
+  const rawSuffix =
     options.suffix ??
-      `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`,
-  );
-  const expectedName = `${CANARY_NAME_PREFIX}${suffix}`;
+    `${Date.now().toString(36)}${randomBytes(6).toString("hex")}`;
+  let suffix = "";
+  let expectedName = "";
   let agentId: string | null = null;
   let possibleOrphan = false;
 
@@ -523,7 +900,7 @@ export async function runManagedDedicatedCanary(
       const status = stringField(data, "status");
       const databaseStatus = stringField(data, "databaseStatus");
       const lastHeartbeatAt = stringField(data, "lastHeartbeatAt");
-      evidence.path.observedTier = observedTier;
+      evidence.path.observedTier = privacySafeObservedTier(observedTier);
       evidence.path.running = status === "running";
       evidence.path.databaseReady = databaseStatus === "ready";
       evidence.path.heartbeatFresh = heartbeatIsFresh(lastHeartbeatAt, now());
@@ -570,7 +947,9 @@ export async function runManagedDedicatedCanary(
       [200],
       timeoutMs,
     );
-    if (body.error) throw new CanaryFailure(phase, "rpc_error");
+    if (body.error) {
+      throw new CanaryFailure(phase, classifyRpcError(body.error));
+    }
     if (!isRecord(body.result)) {
       throw new CanaryFailure(phase, "missing_rpc_result");
     }
@@ -699,21 +1078,21 @@ export async function runManagedDedicatedCanary(
   }
 
   async function cleanup(): Promise<void> {
-    if (!agentId) {
-      if (possibleOrphan) {
-        evidence.cleanup.status = "failed";
-        evidence.cleanup.possibleOrphan = true;
-        throw new CanaryFailure(
-          "cleanup",
-          "possible_orphan_after_ambiguous_create",
-        );
-      }
-      evidence.cleanup.status = "not-required";
-      evidence.cleanup.possibleOrphan = false;
-      return;
-    }
     const finish = timedPhase(evidence, "cleanup", now);
     try {
+      if (!agentId) {
+        if (possibleOrphan) {
+          evidence.cleanup.status = "failed";
+          evidence.cleanup.possibleOrphan = true;
+          throw new CanaryFailure(
+            "cleanup",
+            "possible_orphan_after_ambiguous_create",
+          );
+        }
+        evidence.cleanup.status = "not-required";
+        evidence.cleanup.possibleOrphan = false;
+        return;
+      }
       const cleanupDeadline = now() + cleanupTimeoutMs;
       while (now() < cleanupDeadline) {
         const current = await getAgent("cleanup_verify", [200, 404]);
@@ -768,6 +1147,8 @@ export async function runManagedDedicatedCanary(
   }
 
   try {
+    suffix = sanitizeSuffix(rawSuffix);
+    expectedName = `${CANARY_NAME_PREFIX}${suffix}`;
     if (!apiKey) {
       throw new CanaryFailure("config", "missing_cloud_credential");
     }
@@ -775,25 +1156,27 @@ export async function runManagedDedicatedCanary(
       throw new CanaryFailure("config", "non_staging_target_refused");
     }
 
-    const healthDone = timedPhase(evidence, "health", now);
-    const health = await request("health", "/api/health", {}, [200]);
-    const deployedCommit = stringField(health.body, "commit");
-    if (!deployedCommit || !/^[a-f0-9]{40}$/.test(deployedCommit)) {
-      throw new CanaryFailure("health", "missing_deploy_commit");
-    }
-    evidence.deployedCommit = deployedCommit;
-    healthDone();
+    await inTimedPhase(evidence, "health", now, async () => {
+      const health = await request("health", "/api/health", {}, [200]);
+      const deployedCommit = stringField(health.body, "commit");
+      if (!deployedCommit || !/^[a-f0-9]{40}$/.test(deployedCommit)) {
+        throw new CanaryFailure("health", "missing_deploy_commit");
+      }
+      evidence.deployedCommit = deployedCommit;
+    });
 
-    const capacityDone = timedPhase(evidence, "capacityGuard", now);
-    const before = await listAgents("capacity_guard");
-    if (
-      before.some((agent) =>
-        (stringField(agent, "agentName") ?? "").startsWith(CANARY_NAME_PREFIX),
-      )
-    ) {
-      throw new CanaryFailure("capacity_guard", "existing_canary_present");
-    }
-    capacityDone();
+    await inTimedPhase(evidence, "capacityGuard", now, async () => {
+      const before = await listAgents("capacity_guard");
+      if (
+        before.some((agent) =>
+          (stringField(agent, "agentName") ?? "").startsWith(
+            CANARY_NAME_PREFIX,
+          ),
+        )
+      ) {
+        throw new CanaryFailure("capacity_guard", "existing_canary_present");
+      }
+    });
 
     const createDone = timedPhase(evidence, "create", now);
     let readinessDeadline = now() + readyTimeoutMs;
@@ -829,8 +1212,9 @@ export async function runManagedDedicatedCanary(
       agentId = stringField(data, "id") ?? stringField(data, "agentId");
       if (!agentId) throw new CanaryFailure("create", "missing_agent_id");
       evidence.capacity.createdAgents = 1;
-      evidence.path.observedTier = stringField(data, "executionTier");
-      if (evidence.path.observedTier !== EXPECTED_TIER) {
+      const observedTier = stringField(data, "executionTier");
+      evidence.path.observedTier = privacySafeObservedTier(observedTier);
+      if (observedTier !== EXPECTED_TIER) {
         throw new CanaryFailure("create", "wrong_execution_tier");
       }
       const jobId = stringField(data, "jobId");
@@ -851,17 +1235,11 @@ export async function runManagedDedicatedCanary(
       createDone();
     }
 
-    const readyDone = timedPhase(evidence, "ready", now);
-    await waitUntilReady(Math.max(1, readinessDeadline - now()));
-    readyDone();
-
-    const bridgeDone = timedPhase(evidence, "bridge", now);
-    await proveBridge();
-    bridgeDone();
-
-    const sseDone = timedPhase(evidence, "sse", now);
-    await proveSse();
-    sseDone();
+    await inTimedPhase(evidence, "ready", now, () =>
+      waitUntilReady(Math.max(1, readinessDeadline - now())),
+    );
+    await inTimedPhase(evidence, "bridge", now, proveBridge);
+    await inTimedPhase(evidence, "sse", now, proveSse);
   } catch (error) {
     const failure = asFailure(error);
     evidence.failure = { phase: failure.phase, code: failure.code };
