@@ -6,6 +6,8 @@
  * fades in Apple-style when the first notification arrives. Once hydration has
  * established that the inbox is empty, pulling its quiet gesture band reveals a
  * restrained "No Notifications" status instead of producing a blank shade. The
+ * terminal load-failure state is a visible unavailable card with a manual retry,
+ * so a broken persistence path never masquerades as loading or an empty inbox. The
  * inbox container has no
  * card chrome of its own; each notification is a liquid-glass card. Groups
  * carry NO headers or dividers — the physical gap between card clusters is the
@@ -44,7 +46,7 @@
  * row.
  */
 import type { AgentNotification } from "@elizaos/core";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import {
   type RefObject,
@@ -64,6 +66,7 @@ import {
   clearNotifications,
   removeNotification,
   removeNotifications,
+  retryNotificationHydration,
   useNotifications,
 } from "../../state/notifications/notification-store";
 import {
@@ -378,10 +381,10 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
 }
 
 /**
- * The notification inbox. Before hydration it renders nothing; a hydrated empty
- * inbox keeps only a visually quiet gesture band so a pull can reveal the empty
- * state. Mounted inline on the home column (HomeScreen), directly beneath the
- * time/weather header — the same layer as the widgets.
+ * The notification inbox. Loading, hydrated-empty, and terminal-error states
+ * remain visually distinct; the error state offers an explicit retry. Mounted
+ * inline on the home column (HomeScreen), directly beneath the time/weather
+ * header — the same layer as the widgets.
  */
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
@@ -393,7 +396,7 @@ export function NotificationsHomeCenter({
   emptyGestureTargetRef?: RefObject<HTMLElement | null>;
 } = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
-  const { notifications, hydrated } = useNotifications();
+  const { notifications, hydrated, hydrationStatus } = useNotifications();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
@@ -1229,6 +1232,41 @@ export function NotificationsHomeCenter({
   // Do not flash an empty result while the initial request is still in flight.
   // Once hydrated, keep the transparent pull target mounted so an empty shade
   // can communicate its state instead of ignoring the gesture.
+  if (hydrationStatus === "failed") {
+    return (
+      <section
+        aria-label="Notifications"
+        data-testid="home-notification-center"
+        className="relative flex min-h-20 flex-none items-center px-1.5 py-1 text-white"
+      >
+        <style>{NOTIF_SCROLL_CSS}</style>
+        <LiquidGlassRefractionDefs />
+        <div
+          role="alert"
+          data-testid="notifications-unavailable"
+          className="eliza-notif-glass flex w-full items-center justify-between gap-3 rounded-2xl border border-orange-500/30 px-4 py-3"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white">
+              Notifications unavailable
+            </p>
+            <p className="mt-0.5 text-xs leading-snug text-white/60">
+              Your notification history could not be loaded. New alerts may
+              still arrive.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void retryNotificationHydration()}
+            className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-orange-500 px-3 text-xs font-semibold text-black transition-colors hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+          >
+            <RefreshCw aria-hidden className="h-3.5 w-3.5" />
+            Retry
+          </button>
+        </div>
+      </section>
+    );
+  }
   if (!surfaceReady) return null;
 
   const pullPx = pullPxRef.current;

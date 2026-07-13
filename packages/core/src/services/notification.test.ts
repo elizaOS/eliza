@@ -237,6 +237,18 @@ describe("NotificationService", () => {
 				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
 			).rejects.toThrow("failed to start");
 			await Promise.resolve();
+			expect(unavailable.runtime.getRecentReportedErrors()).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						scope: "NotificationService.recovery",
+						message: "Service notification not found or failed to start",
+						context: expect.objectContaining({
+							attempt: 1,
+							retryAfterSeconds: 1,
+						}),
+					}),
+				]),
+			);
 
 			const deferred = Array.from({ length: 10 }, () =>
 				NotificationService.requestRecovery(unavailable.runtime),

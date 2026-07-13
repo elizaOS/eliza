@@ -460,15 +460,16 @@ function requestHydration(): Promise<void> {
   return tracked;
 }
 
-function retryTerminalHydration(): void {
-  if (state.hydrationStatus !== "failed") return;
+/** Retry a terminal inbox load after a user or lifecycle recovery signal. */
+export function retryNotificationHydration(): Promise<void> {
+  if (state.hydrationStatus !== "failed") return Promise.resolve();
   setState({
     hydrated: false,
     hydrationStatus: "idle",
     hydrationAttempts: 0,
     hydrationError: null,
   });
-  void requestHydration();
+  return requestHydration();
 }
 
 /** Idempotent boot: hydrate the inbox and subscribe to live notifications. */
@@ -477,18 +478,22 @@ export function initNotifications(): void {
   initialized = true;
   notificationCleanups.push(
     client.onWsEvent("agent_event", handleWsAgentEvent),
-    client.onWsEvent("ws-reconnected", retryTerminalHydration),
+    client.onWsEvent("ws-reconnected", () => {
+      void retryNotificationHydration();
+    }),
   );
   if (typeof window !== "undefined") {
-    window.addEventListener("online", retryTerminalHydration);
+    const retryOnline = () => void retryNotificationHydration();
+    window.addEventListener("online", retryOnline);
     notificationCleanups.push(() =>
-      window.removeEventListener("online", retryTerminalHydration),
+      window.removeEventListener("online", retryOnline),
     );
   }
   if (typeof document !== "undefined") {
-    document.addEventListener(APP_RESUME_EVENT, retryTerminalHydration);
+    const retryOnResume = () => void retryNotificationHydration();
+    document.addEventListener(APP_RESUME_EVENT, retryOnResume);
     notificationCleanups.push(() =>
-      document.removeEventListener(APP_RESUME_EVENT, retryTerminalHydration),
+      document.removeEventListener(APP_RESUME_EVENT, retryOnResume),
     );
   }
   void requestHydration();
@@ -678,6 +683,16 @@ export function __ingestEphemeralNotificationForTests(
 /** Test-only: drive the hydration flag to exercise the not-loaded vs empty UI. */
 export function __setHydratedForTests(value: boolean): void {
   setState({ hydrated: value });
+}
+
+/** Test-only terminal state used to verify the designed unavailable surface. */
+export function __setHydrationFailureForTests(message: string): void {
+  setState({
+    hydrated: false,
+    hydrationStatus: "failed",
+    hydrationAttempts: HYDRATION_MAX_ATTEMPTS,
+    hydrationError: message,
+  });
 }
 
 /** Test-only snapshot of the live store state (the WS-validation path asserts the

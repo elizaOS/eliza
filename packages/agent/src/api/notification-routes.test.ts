@@ -38,6 +38,7 @@ async function makeRuntimeWithService(): Promise<{
     baseRuntime,
   )) as NotificationService;
   const runtime = {
+    reportError: vi.fn(),
     getService: (t: string) =>
       t === ServiceType.NOTIFICATION
         ? service
@@ -283,6 +284,7 @@ describe("handleNotificationRoute", () => {
   it("GET serves an explicitly disabled inbox when support is unregistered", async () => {
     const helpers = makeHelpers();
     const emptyRuntime = {
+      reportError: vi.fn(),
       getService: () => null,
       hasService: () => false,
       getServiceRegistrationStatus: () => "unknown",
@@ -309,6 +311,7 @@ describe("handleNotificationRoute", () => {
   ] as const)("returns typed retryable 503 while the service is %s", async (status) => {
     const helpers = makeHelpers();
     const startingRuntime = {
+      reportError: vi.fn(),
       getService: () => null,
       hasService: () => true,
       getServiceRegistrationStatus: () => status,
@@ -341,6 +344,7 @@ describe("handleNotificationRoute", () => {
       .mockRejectedValue(new Error("private adapter failure"));
     const failedRuntime = {
       agentId: "00000000-0000-0000-0000-0000000000bb",
+      reportError: vi.fn(),
       getService: () => null,
       hasService: () => true,
       getServiceRegistrationStatus: () => "failed",
@@ -373,6 +377,7 @@ describe("handleNotificationRoute", () => {
   it("returns a typed disabled error for mutations when support is unregistered", async () => {
     const helpers = makeHelpers();
     const emptyRuntime = {
+      reportError: vi.fn(),
       getService: () => null,
       hasService: () => false,
       getServiceRegistrationStatus: () => "unknown",

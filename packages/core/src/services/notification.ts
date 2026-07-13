@@ -57,6 +57,11 @@ export interface NotificationServiceRecovery {
 /** Runtime lifecycle surface required by notification transports. */
 export interface NotificationServiceLifecycleRuntime {
 	readonly agentId?: string;
+	reportError(
+		scope: string,
+		error: unknown,
+		context?: Record<string, unknown>,
+	): void;
 	getService(serviceType: string): unknown;
 	hasService(serviceType: string): boolean;
 	getServiceRegistrationStatus(
@@ -245,6 +250,10 @@ export class NotificationService extends Service {
 				const delayMs = recoveryDelayMs(failures);
 				recovery.failures = failures;
 				recovery.nextAttemptAt = Date.now() + delayMs;
+				runtime.reportError("NotificationService.recovery", error, {
+					attempt,
+					retryAfterSeconds: retryAfterSeconds(delayMs),
+				});
 				logger.warn(
 					{
 						src: "service:notification",
