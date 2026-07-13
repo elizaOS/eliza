@@ -23,6 +23,51 @@ export interface AccountProviderOption {
 
 export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
   {
+    id: "anthropic-subscription",
+    name: "Claude subscription",
+    category: "coding",
+    description:
+      "Browser login for your Claude plan. Powers chat and coding agents.",
+    eligibility: ["chat", "code-agent", "requires browser login"],
+  },
+  {
+    id: "openai-codex",
+    name: "OpenAI Codex subscription",
+    category: "coding",
+    description: "Browser or device login for Codex coding agents.",
+    eligibility: ["code-agent", "requires browser login"],
+  },
+  {
+    id: "gemini-cli",
+    name: "Gemini CLI subscription",
+    category: "coding",
+    description: "Managed by Gemini CLI login outside this app.",
+    eligibility: ["code-agent", "third-party CLI"],
+  },
+  {
+    id: "zai-coding",
+    name: "z.ai Coding Plan",
+    category: "coding",
+    description: "Dedicated coding-plan credential, separate from API routing.",
+    eligibility: ["code-agent", "API key"],
+  },
+  {
+    id: "kimi-coding",
+    name: "Kimi Code",
+    category: "coding",
+    description:
+      "Dedicated Kimi coding-plan credential, separate from API routing.",
+    eligibility: ["code-agent", "API key"],
+  },
+  {
+    id: "deepseek-coding",
+    name: "DeepSeek coding subscription",
+    category: "coding",
+    description: "No safe first-party subscription flow is available yet.",
+    eligibility: ["code-agent", "unavailable"],
+    unavailable: true,
+  },
+  {
     id: "anthropic-api",
     name: "Anthropic API",
     category: "chat",
@@ -63,50 +108,6 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     category: "chat",
     description: "Direct Moonshot API key for Kimi models.",
     eligibility: ["chat", "API key"],
-  },
-  {
-    id: "anthropic-subscription",
-    name: "Claude subscription",
-    category: "coding",
-    description: "Browser login for Claude Code. Not used for default chat.",
-    eligibility: ["code-agent", "requires browser login", "not chat"],
-  },
-  {
-    id: "openai-codex",
-    name: "OpenAI Codex subscription",
-    category: "coding",
-    description: "Browser or device login for Codex coding agents.",
-    eligibility: ["code-agent", "requires browser login"],
-  },
-  {
-    id: "gemini-cli",
-    name: "Gemini CLI subscription",
-    category: "coding",
-    description: "Managed by Gemini CLI login outside this app.",
-    eligibility: ["code-agent", "third-party CLI"],
-  },
-  {
-    id: "zai-coding",
-    name: "z.ai Coding Plan",
-    category: "coding",
-    description: "Dedicated coding-plan credential, separate from API routing.",
-    eligibility: ["code-agent", "API key"],
-  },
-  {
-    id: "kimi-coding",
-    name: "Kimi Code",
-    category: "coding",
-    description:
-      "Dedicated Kimi coding-plan credential, separate from API routing.",
-    eligibility: ["code-agent", "API key"],
-  },
-  {
-    id: "deepseek-coding",
-    name: "DeepSeek coding subscription",
-    category: "coding",
-    description: "No safe first-party subscription flow is available yet.",
-    eligibility: ["code-agent", "unavailable"],
-    unavailable: true,
   },
 ];
 

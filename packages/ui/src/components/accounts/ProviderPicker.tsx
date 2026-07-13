@@ -33,11 +33,11 @@ interface ProviderPickerProps {
   onPick: (providerId: LinkedAccountProviderId) => void;
 }
 
-const CATEGORY_ORDER: AccountProviderCategory[] = ["chat", "coding"];
+const CATEGORY_ORDER: AccountProviderCategory[] = ["coding", "chat"];
 
 const CATEGORY_LABEL: Record<AccountProviderCategory, string> = {
-  chat: "Chat providers",
-  coding: "Coding subscriptions",
+  coding: "Subscriptions",
+  chat: "API keys",
   local: "Local",
   cloud: "Cloud",
 };
@@ -46,6 +46,8 @@ const CATEGORY_LABEL: Record<AccountProviderCategory, string> = {
 function capabilityLine(option: AccountProviderOption): string {
   if (option.unavailable) return "Not available to link here";
   if (option.category === "chat") return "Chat · bring your own API key";
+  if (option.id === "anthropic-subscription")
+    return "Chat + coding agents · browser login";
   if (option.id === "gemini-cli")
     return "Coding agents · third-party CLI login";
   const usesKey = option.id === "zai-coding" || option.id === "kimi-coding";
@@ -95,7 +97,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
     const el = listRef.current?.querySelector<HTMLElement>(
       `[data-index="${activeIndex}"]`,
     );
-    el?.scrollIntoView({ block: "nearest" });
+    el?.scrollIntoView?.({ block: "nearest" });
   }, [activeIndex]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {

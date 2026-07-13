@@ -21,12 +21,23 @@ describe("consolidated account provider picker", () => {
     expect(coding).toContain("openai-codex");
   });
 
-  it("labels Claude subscription as coding-agent only instead of default chat", () => {
+  it("labels Claude subscription as chat + coding (pooled subscription chat)", () => {
     const claudeSubscription = ACCOUNT_PROVIDER_OPTIONS.find(
       (option) => option.id === "anthropic-subscription",
     );
 
     expect(claudeSubscription?.eligibility).toContain("code-agent");
-    expect(claudeSubscription?.eligibility).toContain("not chat");
+    expect(claudeSubscription?.eligibility).toContain("chat");
+    expect(claudeSubscription?.eligibility).not.toContain("not chat");
+  });
+
+  it("lists subscriptions before API keys", () => {
+    const firstApiIndex = ACCOUNT_PROVIDER_OPTIONS.findIndex(
+      (option) => option.category === "chat",
+    );
+    const lastCodingIndex = ACCOUNT_PROVIDER_OPTIONS.map(
+      (option) => option.category,
+    ).lastIndexOf("coding");
+    expect(lastCodingIndex).toBeLessThan(firstApiIndex);
   });
 });
