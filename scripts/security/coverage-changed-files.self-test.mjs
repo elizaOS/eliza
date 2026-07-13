@@ -213,6 +213,11 @@ try {
   );
   write(
     dir,
+    "packages/demo/src/driver.real.test.ts",
+    "import { test } from 'vitest';\ntest('real driver', () => {});\n",
+  );
+  write(
+    dir,
     "packages/test/cloud-e2e/tests/live-deploy.spec.ts",
     "import { test } from '../src/helpers/test-fixtures';\ntest('live', () => {});\n",
   );
@@ -273,6 +278,18 @@ try {
       );
     },
   );
+
+  assertCase("real-driver suites stay in their dedicated lane", () => {
+    const realSuite = "packages/demo/src/driver.real.test.ts";
+    assert.ok(
+      !out.bun_tests.includes(realSuite),
+      `real suite leaked into bun lane: ${out.bun_tests.join(",")}`,
+    );
+    assert.ok(
+      !out.vitest_tests.includes(realSuite),
+      `real suite leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+    );
+  });
 
   assertCase("cloud Playwright specs stay in their dedicated lane", () => {
     const liveSpec = "packages/test/cloud-e2e/tests/live-deploy.spec.ts";
