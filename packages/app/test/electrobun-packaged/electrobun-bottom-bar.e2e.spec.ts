@@ -53,15 +53,39 @@ test("bottom-bar mode opens a chromeless, short, bottom-anchored main window", a
     // Chromeless: the bar carries no OS title bar.
     expect(state.mainWindow.titleBarStyle).toBe("hidden");
 
-    // A bar, not the dashboard: short, wider than tall, pinned low on screen.
+    // A pill, not a band (#16200): short, wider than tall, pinned low on
+    // screen, and NARROW — a small centered footprint, NOT the full work-area
+    // width. The narrowness is the click-through guarantee: there is no window
+    // over the rest of the screen, so clicks off the pill hit the app below.
     const bounds = state.mainWindow.bounds;
     expect(bounds).toBeTruthy();
     if (bounds) {
       expect(bounds.height).toBeLessThanOrEqual(200);
       expect(bounds.width).toBeGreaterThan(bounds.height);
-      // Pinned to the bottom: the bar's bottom edge sits well below its top.
+      // Pinned to the bottom: the pill's bottom edge sits well below its top.
       expect(bounds.y).toBeGreaterThan(bounds.height);
+      // The pill footprint is far narrower than a full-work-area band. On any
+      // real display (>= 1024 wide) a full-width bar would be > 900px; the pill
+      // is ~560. Guard the click-through invariant against a regression back to
+      // the band.
+      expect(bounds.width).toBeLessThanOrEqual(720);
     }
+
+    // Grow-on-engage (#16200): summoning the overlay flips the OS window to the
+    // full work area so the half/full/maximized detents have real screen space.
+    // Show + focus first to warm the renderer's eval channel.
+    await harness.showMainWindow();
+    await harness.focusMainWindow();
+    await harness.eval(`(() => {
+      window.dispatchEvent(new CustomEvent("eliza:chat:open"));
+      return { ok: true };
+    })()`);
+    await expect
+      .poll(async () => (await harness.getState()).mainWindow.bounds?.width ?? 0, {
+        timeout: 15_000,
+        message: "Expected the overlay window to grow past the pill footprint on open.",
+      })
+      .toBeGreaterThan(720);
   } finally {
     await harness.stop().catch(() => undefined);
     await api.close().catch(() => undefined);
