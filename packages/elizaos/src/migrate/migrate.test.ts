@@ -337,6 +337,7 @@ describe("firewall keeps the personal memory corpus out of a portable archive", 
       from: FIXTURE,
       agentId: "tess",
       firewall,
+      memoryDays: 10_000,
     });
     const { payload } = assemblePayload({
       agentId: plan.ids.agentId,
