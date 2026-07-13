@@ -2090,6 +2090,8 @@ export class ElizaSandboxService {
     try {
       parsed = new URL(raw.includes("://") ? raw : `https://${raw}`);
     } catch {
+      // error-policy:J3 an unparsable routing binding is an explicit invalid
+      // configuration signal; it must never fall through to a token recipient.
       throw new AgentRouterConfigurationError(variable);
     }
 
@@ -2188,9 +2190,13 @@ export class ElizaSandboxService {
     target: AgentFetchTarget,
     init: RequestInit = {},
   ): Promise<Response> {
-    const headers = new Headers(this.getAgentJsonHeaders(rec));
-    new Headers(init.headers).forEach((value, name) => headers.set(name, value));
+    const headers = new Headers(init.headers);
     headers.delete("host");
+    headers.delete("x-forwarded-host");
+    headers.delete("x-forwarded-proto");
+    new Headers(this.getAgentJsonHeaders(rec)).forEach((value, name) =>
+      headers.set(name, value),
+    );
     if (target.forwardedHost) {
       headers.set("x-forwarded-host", target.forwardedHost);
       headers.set("x-forwarded-proto", "https");

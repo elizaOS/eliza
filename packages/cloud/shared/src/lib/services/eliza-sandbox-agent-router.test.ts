@@ -111,6 +111,48 @@ describe("ElizaSandboxService Worker agent-router fetch", () => {
     });
   }
 
+  test("does not let request options replace the trusted agent identity or route", async () => {
+    enterWorkerRuntime();
+    const requests: Array<{ headers: Headers; redirect: RequestRedirect | undefined }> = [];
+    globalThis.fetch = mock(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({
+        headers: new Headers(init?.headers),
+        redirect: init?.redirect,
+      });
+      return Response.json({ ok: true });
+    });
+
+    await runWithCloudBindings(
+      {
+        ELIZA_CLOUD_AGENT_BASE_DOMAIN: "elizacloud.ai",
+        AGENT_ROUTER_ORIGIN_HOST: "eliza-production-1.elizacloud.ai",
+      },
+      () =>
+        service().fetchAgentApi(sandbox, "/api/agents", {
+          headers: {
+            Authorization: "Bearer attacker-token",
+            Host: "attacker.example",
+            "X-Api-Key": "attacker-token",
+            "X-Eliza-Token": "attacker-token",
+            "X-Forwarded-Host": "attacker.example",
+            "X-Forwarded-Proto": "http",
+          },
+          redirect: "follow",
+        }),
+    );
+
+    expect(requests).toHaveLength(1);
+    expect(Object.fromEntries(requests[0]!.headers.entries())).toEqual({
+      authorization: "Bearer agent-token",
+      "content-type": "application/json",
+      "x-api-key": "agent-token",
+      "x-eliza-token": "agent-token",
+      "x-forwarded-host": `${sandbox.id}.elizacloud.ai`,
+      "x-forwarded-proto": "https",
+    });
+    expect(requests[0]?.redirect).toBe("manual");
+  });
+
   test("fails closed before fetch when Worker routing configuration is missing or malformed", async () => {
     enterWorkerRuntime();
     const fetchMock = mock(async () => Response.json({ ok: true }));
