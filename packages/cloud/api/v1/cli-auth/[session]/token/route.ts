@@ -22,6 +22,7 @@ app.options("/", (c) => {
 
 app.get("/", async (c) => {
   const corsHeaders = getCorsHeaders(c.req.header("origin") ?? null);
+  // error-policy:J1 The HTTP boundary translates integrity and dependency failures without disclosing key material.
   try {
     const sessionId = c.req.param("session");
     if (!sessionId) {
