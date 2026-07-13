@@ -25,6 +25,7 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { Client } from "pg";
+import { z } from "zod";
 
 import {
   api,
@@ -39,6 +40,7 @@ const UNOWNED_AGENT_ID = "00000000-0000-4000-8000-000000000000";
 
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+const hasLiveGateway = Boolean(process.env.AI_GATEWAY_API_KEY?.trim());
 if (!serverReachable) {
   console.warn(
     `[group-c-agents] ${getBaseUrl()} did not respond to /api/health. ` +
@@ -50,6 +52,12 @@ if (!hasTestApiKey) {
   console.warn(
     "[group-c-agents] TEST_API_KEY is not set; the preload could not " +
       "bootstrap a test API key. Tests will SKIP.",
+  );
+}
+if (!hasLiveGateway) {
+  console.warn(
+    "[group-c-agents] AI_GATEWAY_API_KEY is not set; the exact-head A2A " +
+      "provider/billing receipt test will SKIP.",
   );
 }
 
@@ -65,6 +73,7 @@ async function seedOwnedCharacter(input: {
   name: string;
   plugins?: string[];
   settings?: Record<string, unknown>;
+  isPublic?: boolean;
 }): Promise<void> {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
@@ -116,7 +125,7 @@ async function seedOwnedCharacter(input: {
          '{}'::jsonb,
          '{}'::jsonb,
          $8::jsonb,
-         false,
+         $9,
          false,
          'cloud',
          3,
@@ -135,8 +144,9 @@ async function seedOwnedCharacter(input: {
           name: input.name,
           bio: ["E2E character for stats coverage"],
           system: "Test character",
-          isPublic: false,
+          isPublic: input.isPublic ?? false,
         }),
+        input.isPublic ?? false,
       ],
     );
   } finally {
@@ -276,6 +286,125 @@ describeE2E("/api/agents/:id/a2a", () => {
     });
     expect(res.status).toBe(404);
   });
+
+  test.skipIf(!hasLiveGateway)(
+    "live gateway stays within the admitted ceiling and settles the real credit hold",
+    async () => {
+      const userId = process.env.TEST_USER_ID;
+      const organizationId = process.env.TEST_ORGANIZATION_ID;
+      const databaseUrl =
+        process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+      if (!userId || !organizationId || !databaseUrl) {
+        throw new Error(
+          "TEST_USER_ID, TEST_ORGANIZATION_ID, and the e2e database URL are required",
+        );
+      }
+
+      const agentId = crypto.randomUUID();
+      const agentName = `A2A live ceiling ${crypto.randomUUID()}`;
+      await seedOwnedCharacter({
+        id: agentId,
+        organizationId,
+        userId,
+        name: agentName,
+        isPublic: true,
+      });
+      createdCharacterIds.push(agentId);
+
+      const response = await api.post(
+        `/api/agents/${agentId}/a2a`,
+        {
+          jsonrpc: "2.0",
+          method: "chat",
+          id: "a2a-live-ceiling",
+          params: {
+            model: "gpt-5-mini",
+            messages: [
+              {
+                role: "user",
+                content: "Confirm this live A2A request in one short sentence.",
+              },
+            ],
+          },
+        },
+        { headers: bearerHeaders() },
+      );
+      const rawBody = await response.text();
+      expect(response.status, rawBody).toBe(200);
+      const receipt = z
+        .object({
+          jsonrpc: z.literal("2.0"),
+          id: z.literal("a2a-live-ceiling"),
+          result: z.object({
+            content: z.string().min(1),
+            model: z.literal("gpt-5-mini"),
+            usage: z.object({
+              prompt_tokens: z.number().int().nonnegative(),
+              completion_tokens: z.number().int().positive().max(500),
+              total_tokens: z.number().int().positive(),
+            }),
+            cost: z.object({
+              base: z.number().nonnegative(),
+              markup: z.number().nonnegative(),
+              total: z.number().positive(),
+            }),
+          }),
+        })
+        .parse(JSON.parse(rawBody));
+
+      const client = new Client({ connectionString: databaseUrl });
+      await client.connect();
+      let settlement: {
+        amount: string;
+        description: string | null;
+        settled_at: Date | null;
+        metadata: Record<string, unknown>;
+      };
+      try {
+        const result = await client.query<{
+          amount: string;
+          description: string | null;
+          settled_at: Date | null;
+          metadata: Record<string, unknown>;
+        }>(
+          `SELECT amount, description, settled_at, metadata
+             FROM credit_transactions
+            WHERE organization_id = $1
+              AND description = $2
+            ORDER BY created_at DESC
+            LIMIT 1`,
+          [organizationId, `Agent: ${agentName} (gpt-5-mini) (reserved)`],
+        );
+        const row = result.rows[0];
+        if (!row) throw new Error("A2A reservation row was not persisted");
+        settlement = row;
+      } finally {
+        await client.end();
+      }
+
+      expect(settlement.settled_at).toBeInstanceOf(Date);
+      expect(Number(settlement.amount)).toBeLessThan(0);
+      expect(settlement.metadata.type).toBe("reservation");
+      expect(settlement.metadata.settlement_marker).toBe(
+        "credit_reservation_v1",
+      );
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            evidence: "exact-head-a2a-live-gateway-billing-receipt",
+            agent: { id: agentId, name: agentName },
+            httpStatus: response.status,
+            providerReceipt: receipt.result,
+            databaseSettlement: settlement,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    },
+    120_000,
+  );
 });
 
 // -------------------------------------------------------------------------

@@ -47,6 +47,7 @@ jobs:
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -132,6 +133,10 @@ jobs:
       - name: Cloud unit suite
         if: always()
         run: bun run test:cloud
+
+      - name: Exact-head A2A live gateway and billing receipt
+        if: always()
+        run: bun run --cwd packages/cloud/api test:e2e group-c-agents.test.ts
 
       - name: Teardown Postgres
         if: always()
