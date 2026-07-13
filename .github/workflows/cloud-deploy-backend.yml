@@ -1,16 +1,13 @@
 name: Cloud Deploy Backend
 
 # Source: cloud/.github/workflows/deploy-backend.yml in the original elizaOS/cloud repo.
+#
+# This is a manual-only legacy operations workflow. Canonical Cloudflare
+# Worker/Pages releases and their database migrations are owned by
+# cloud-cf-deploy.yml; dispatch this workflow only for an explicit standalone
+# migration or legacy VPS deployment.
 
 on:
-  push:
-    branches: [develop, main]
-    paths:
-      - '.github/workflows/cloud-deploy-backend.yml'
-      - 'packages/cloud/api/**'
-      - 'packages/cloud/shared/**'
-      - 'packages/cloud/services/**'
-      - 'packages/cloud/sdk/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -49,25 +46,16 @@ jobs:
       - name: Set environment
         id: env
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
-            echo "branch=${{ github.event.inputs.environment == 'production' && 'main' || 'develop' }}" >> $GITHUB_OUTPUT
-          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            echo "environment=production" >> $GITHUB_OUTPUT
-            echo "branch=main" >> $GITHUB_OUTPUT
-          else
-            echo "environment=staging" >> $GITHUB_OUTPUT
-            echo "branch=develop" >> $GITHUB_OUTPUT
-          fi
+          echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          echo "branch=${{ github.event.inputs.environment == 'production' && 'main' || 'develop' }}" >> $GITHUB_OUTPUT
 
   migrate-db:
     name: Run Database Migrations
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     needs: determine-env
-    # Job-level concurrency groups are repo-wide: this serializes against the
-    # migrate-db gate in cloud-cf-deploy.yml (#11208) so overlapping triggers
-    # (a develop push fires both workflows) never run the migrator
-    # concurrently against the same database.
+    # Job-level concurrency groups are repo-wide: this serializes an explicit
+    # legacy migration against the canonical migrate-db gate in
+    # cloud-cf-deploy.yml (#11208).
     concurrency:
       group: cloud-db-migrate-${{ needs.determine-env.outputs.environment }}
       cancel-in-progress: false

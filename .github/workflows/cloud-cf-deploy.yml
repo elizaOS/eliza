@@ -43,6 +43,7 @@ on:
       - "packages/cloud/sdk/**"
       - "packages/scripts/cloud/**"
       - "packages/app/**"
+      - "packages/app-core/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
@@ -54,6 +55,7 @@ on:
       - "packages/cloud/sdk/**"
       - "packages/scripts/cloud/**"
       - "packages/app/**"
+      - "packages/app-core/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   workflow_dispatch:
@@ -148,10 +150,8 @@ jobs:
     # migrate is a light `bun install` + `db:cloud:migrate`, not the heavy
     # working-tree materialization that motivated keeping deploys off-hosted.
     runs-on: ${{ fromJSON(vars.CLOUD_CF_MIGRATE_RUNNER_JSON || '["ubuntu-latest"]') }}
-    # Job-level concurrency groups are repo-wide, so this serializes against
-    # cloud-deploy-backend's migrate-db too: overlapping triggers (a develop
-    # push fires both workflows) can never run the migrator concurrently
-    # against the same database.
+    # Job-level concurrency groups are repo-wide, so this also serializes
+    # against an explicitly dispatched legacy cloud-deploy-backend migration.
     concurrency:
       group: cloud-db-migrate-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       cancel-in-progress: false
