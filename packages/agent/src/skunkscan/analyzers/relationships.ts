@@ -3,8 +3,7 @@ import {
   WalletRelationshipSummary,
 } from "../types";
 import {
-  buildConfidenceInput,
-  confidenceLevelFromScore,
+  createConfidenceResponse,
 } from "../confidence/framework";
 
 export function analyzeWalletRelationships(
@@ -21,7 +20,7 @@ export function analyzeWalletRelationships(
     });
   }
 
-  const evidenceConfidenceInput = buildConfidenceInput([
+  const confidenceAnalysis = createConfidenceResponse([
     {
       condition: funding.evidenceConfidence === "high",
       score: 35,
@@ -42,18 +41,21 @@ export function analyzeWalletRelationships(
   const confidence =
     relationships.length === 0
       ? "low"
-      : confidenceLevelFromScore(evidenceConfidenceInput.score);
+      : confidenceAnalysis.level;
 
   return {
     relationshipCount: relationships.length,
+    evidenceConfidence: confidenceAnalysis.level,
+    confidenceAnalysis,
     relationships,
-    evidenceConfidence: confidenceLevelFromScore(
-      evidenceConfidenceInput.score,
-    ),
     confidence,
     notes:
       relationships.length === 0
-        ? ["No direct wallet relationships were identified from the current analysis."]
-        : ["Relationships are currently inferred from funding intelligence."],
+        ? [
+            "No direct wallet relationships were identified from the current analysis.",
+          ]
+        : [
+            "Relationships are currently inferred from funding intelligence.",
+          ],
   };
 }
