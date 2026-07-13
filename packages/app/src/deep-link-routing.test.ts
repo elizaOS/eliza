@@ -137,6 +137,59 @@ describe("assistant launch deep-link routing", () => {
     );
   });
 
+  it("routes transcribe links into chat with the transcribe capture flag", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "transcribe",
+      new URLSearchParams("source=ios-app-intents"),
+      { generateLaunchId: () => "launch-transcribe" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("ios-app-intents");
+    expect(params(hashRoute ?? "").get("transcribe")).toBe("1");
+    expect(params(hashRoute ?? "").get("voice")).toBeNull();
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-transcribe",
+    );
+  });
+
+  it("defaults bare transcribe links to the trusted assistant source", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "chat/transcribe",
+      new URLSearchParams(),
+      { generateLaunchId: () => "launch-transcribe-bare" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("assistant-entry");
+    expect(params(hashRoute ?? "").get("transcribe")).toBe("1");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-transcribe-bare",
+    );
+  });
+
+  it("routes Android feature-open transcription inventory to transcribe", () => {
+    for (const feature of [
+      "transcribe",
+      "transcription",
+      "dictate",
+      "dictation",
+      "eliza_app_action_transcribe",
+    ]) {
+      const hashRoute = buildAssistantLaunchHashRoute(
+        "feature/open",
+        new URLSearchParams(
+          `source=android-app-actions&feature=${encodeURIComponent(feature)}`,
+        ),
+        { generateLaunchId: () => `launch-${feature}` },
+      );
+
+      expect(hashRoute?.startsWith("#chat?")).toBe(true);
+      expect(params(hashRoute ?? "").get("transcribe")).toBe("1");
+      expect(params(hashRoute ?? "").get("source")).toBe("android-app-actions");
+    }
+  });
+
   it("routes Android widget daily brief links into chat with a planner hint", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
       "lifeops/daily-brief",
@@ -202,6 +255,8 @@ describe("assistant launch deep-link routing", () => {
       "chat",
       "voice",
       "chat/voice",
+      "transcribe",
+      "chat/transcribe",
       "daily-brief",
       "lifeops/daily-brief",
       "lifeops/tasks",

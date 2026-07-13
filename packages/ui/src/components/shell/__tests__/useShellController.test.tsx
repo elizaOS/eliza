@@ -18,6 +18,7 @@ import {
   type Mock,
   vi,
 } from "vitest";
+import { dispatchVoiceControl } from "../../../events";
 import { emitViewEvent } from "../../../views/view-event-bus";
 import {
   createVoiceCapture,
@@ -792,6 +793,65 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText.mock.calls[0]?.[1]).toMatchObject({
       channelType: "VOICE_DM",
     });
+  });
+
+  it("voice-control converse-toggle flips hands-free on and off (desktop hotkey path)", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      dispatchVoiceControl({ command: "converse-toggle" });
+    });
+    expect(result.current.handsFree).toBe(true);
+    await act(async () => {
+      dispatchVoiceControl({ command: "converse-toggle" });
+    });
+    expect(result.current.handsFree).toBe(false);
+  });
+
+  it("voice-control converse-start engages hands-free idempotently", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      dispatchVoiceControl({ command: "converse-start" });
+    });
+    expect(result.current.handsFree).toBe(true);
+    // A second start must NOT toggle an in-flight session off.
+    await act(async () => {
+      dispatchVoiceControl({ command: "converse-start" });
+    });
+    expect(result.current.handsFree).toBe(true);
+  });
+
+  it("voice-control transcribe-toggle flips transcription mode on and off", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      dispatchVoiceControl({ command: "transcribe-toggle" });
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    await act(async () => {
+      dispatchVoiceControl({ command: "transcribe-toggle" });
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+  });
+
+  it("voice-control start/stop stay idempotent for transcription", async () => {
+    const { result } = renderHook(() => useShellController());
+    await act(async () => {
+      dispatchVoiceControl({ command: "start" });
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    // "start" while transcribing is a no-op.
+    await act(async () => {
+      dispatchVoiceControl({ command: "start" });
+    });
+    expect(result.current.transcriptionMode).toBe(true);
+    await act(async () => {
+      dispatchVoiceControl({ command: "stop" });
+    });
+    expect(result.current.transcriptionMode).toBe(false);
+    // "stop" while idle is a no-op.
+    await act(async () => {
+      dispatchVoiceControl({ command: "stop" });
+    });
+    expect(result.current.transcriptionMode).toBe(false);
   });
 
   it("engage does not open the mic when the mic grant is known-denied", async () => {

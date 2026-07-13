@@ -77,13 +77,49 @@ export interface FocusConnectorEventDetail {
  */
 export const VOICE_CONTROL_EVENT = "eliza:voice-control" as const;
 export interface VoiceControlEventDetail {
-  command: "start" | "stop";
+  /**
+   * `start`/`stop` drive transcription mode idempotently (the agent's
+   * START/STOP_TRANSCRIPTION actions). `converse-start` idempotently engages
+   * hands-free conversation (deep-link `voice=1` launches claimed by surfaces
+   * that don't own the shell controller). The `*-toggle` commands back OS
+   * entry points (desktop global hotkeys, tray items) where
+   * press-again-to-stop is the expected semantics: `converse-toggle` flips
+   * hands-free conversation, `transcribe-toggle` flips transcription mode.
+   */
+  command:
+    | "start"
+    | "stop"
+    | "converse-start"
+    | "converse-toggle"
+    | "transcribe-toggle";
 }
 
-/** Dispatch a transcription start/stop command to the shell. */
+/** Dispatch a voice capture command to the shell. */
 export function dispatchVoiceControl(detail: VoiceControlEventDetail): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(VOICE_CONTROL_EVENT, { detail }));
+}
+
+/**
+ * Programmatic chat send from a provably-native entry point (iOS App Intent
+ * running in-process, Android system-bound tile/assistant service, the desktop
+ * shell). This is deliberately a separate channel from the `#chat?…` hash
+ * spine: URL-carried text is forgeable by any app or website and is therefore
+ * prefill-only, while this event only ever originates from native code paths
+ * the OS itself gates. In-page code gains nothing by dispatching it — same-app
+ * JS already has direct API access to send messages.
+ */
+export const CHAT_SEND_EVENT = "eliza:chat:send" as const;
+export interface ChatSendEventDetail {
+  text: string;
+  /** Native entry point (e.g. `ios-app-intents`), stamped into send metadata. */
+  source: string;
+}
+
+/** Dispatch a native-originated auto-send into the chat shell. */
+export function dispatchChatSend(detail: ChatSendEventDetail): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(CHAT_SEND_EVENT, { detail }));
 }
 
 // ── Shared → dedicated cloud-agent handoff ───────────────────────────────
@@ -232,6 +268,7 @@ export type ElizaDocumentEventName =
 export type ElizaWindowEventName =
   | SharedWindowEventName
   | typeof VOICE_CONTROL_EVENT
+  | typeof CHAT_SEND_EVENT
   | typeof CHAT_PREFILL_EVENT
   | typeof CLOUD_HANDOFF_PHASE_EVENT
   | typeof CLOUD_HANDOFF_RETRY_EVENT

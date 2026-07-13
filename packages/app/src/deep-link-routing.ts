@@ -139,6 +139,17 @@ function resolveAndroidFeatureOpenPath(params: URLSearchParams): string {
   }
   if (
     [
+      "transcribe",
+      "transcription",
+      "dictate",
+      "dictation",
+      "eliza app action transcribe",
+    ].includes(feature)
+  ) {
+    return "transcribe";
+  }
+  if (
+    [
       "daily brief",
       "daily briefing",
       "lifeops daily brief",
@@ -240,6 +251,20 @@ export function buildAssistantLaunchHashRoute(
       );
       ensureAssistantLaunchId(params, generateLaunchId);
       params.set("voice", "1");
+      return formatHashRoute("chat", params);
+    }
+    // Transcription mode (long-form record-only capture) — the third bindable
+    // capture intent alongside ask and voice, reachable from OS shortcut
+    // surfaces (iOS App Intents / controls, Android shortcuts / QS tiles).
+    case "transcribe":
+    case "chat/transcribe": {
+      const params = withDefaultSearchParam(
+        searchParams,
+        "source",
+        ASSISTANT_ENTRY_SOURCE,
+      );
+      ensureAssistantLaunchId(params, generateLaunchId);
+      params.set("transcribe", "1");
       return formatHashRoute("chat", params);
     }
     // Personal-assistant deep links no longer target a top-level "lifeops"

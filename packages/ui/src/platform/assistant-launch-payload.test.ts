@@ -33,6 +33,8 @@ describe("assistant launch payloads", () => {
       route: "chat",
       source: "assistant-entry",
       text: "Remind me at 5",
+      voice: false,
+      transcribe: false,
     });
     expect(
       payload ? buildAssistantLaunchMetadata(payload) : null,
@@ -68,6 +70,98 @@ describe("assistant launch payloads", () => {
     expect(
       readAssistantLaunchPayloadFromHash("#chat?source=assistant-entry"),
     ).toBeNull();
+    // Capture flags do not bypass the trusted-source gate.
+    expect(
+      readAssistantLaunchPayloadFromHash(
+        "#chat?voice=1&source=unknown-shortcut",
+      ),
+    ).toBeNull();
+  });
+
+  it("accepts text-less voice launches from every OS shortcut source", () => {
+    // The exact URLs the iOS intents/controls/widgets and Android surfaces
+    // mint (via deep-link routing) — a voice launch carries no text.
+    for (const source of [
+      "ios-app-intents",
+      "ios-control",
+      "ios-widget",
+      "ios-live-activity",
+      "android-app-actions",
+      "android-qs-tile",
+      "desktop-hotkey",
+      "desktop-tray",
+    ]) {
+      const payload = readAssistantLaunchPayloadFromHash(
+        `#chat?voice=1&source=${source}&assistant.launchId=voice-${source}`,
+      );
+      expect(payload).toMatchObject({
+        launchId: `voice-${source}`,
+        route: "chat",
+        source,
+        text: "",
+        voice: true,
+        transcribe: false,
+      });
+    }
+  });
+
+  it("accepts text-less transcribe launches and separates fallback ids", () => {
+    expect(
+      readAssistantLaunchPayloadFromHash(
+        "#chat?transcribe=1&source=ios-app-intents&assistant.launchId=t-1",
+      ),
+    ).toMatchObject({ transcribe: true, voice: false, text: "" });
+    // Without an explicit launchId, a voice launch must not collide with a
+    // text launch's fallback id from the same source.
+    const voicePayload = readAssistantLaunchPayloadFromHash(
+      "#chat?voice=1&source=assistant-entry",
+    );
+    const transcribePayload = readAssistantLaunchPayloadFromHash(
+      "#chat?transcribe=1&source=assistant-entry",
+    );
+    expect(voicePayload?.launchId).not.toBe(transcribePayload?.launchId);
+  });
+
+  it("claims a voice launch once and clears the capture flag from the hash", () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?voice=1&source=ios-app-intents&assistant.launchId=voice-once",
+    );
+
+    const claimed = claimAssistantLaunchPayloadFromHash(window.location.hash, {
+      allowedRoutes: ["chat"],
+    });
+    expect(claimed).toMatchObject({ voice: true, text: "" });
+    expect(window.location.hash).toBe("#chat");
+
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?voice=1&source=ios-app-intents&assistant.launchId=voice-once",
+    );
+    expect(
+      claimAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["chat"],
+      }),
+    ).toBeNull();
+  });
+
+  it("consumes a capture-only launch without sending", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?voice=1&source=android-qs-tile&assistant.launchId=voice-consume",
+    );
+    const sendText = vi.fn().mockResolvedValue(undefined);
+
+    const consumed = await consumeAssistantLaunchPayloadFromHash(
+      window.location.hash,
+      { allowedRoutes: ["chat"], sendText },
+    );
+
+    expect(consumed).toMatchObject({ voice: true, text: "" });
+    expect(sendText).not.toHaveBeenCalled();
   });
 
   it("clears payload params while preserving surface params", () => {

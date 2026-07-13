@@ -67,7 +67,11 @@ import type {
   ImageAttachment,
 } from "../../api/client-types-chat";
 import { reportComposerActivity } from "../../chat/report-composer-activity";
-import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
+import {
+  CHAT_PREFILL_EVENT,
+  CHAT_SEND_EVENT,
+  ELIZA_BACK_INTENT_EVENT,
+} from "../../events";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
@@ -3998,6 +4002,131 @@ describe("ChatOverlay — OS assistant / deep-link launch (#9148)", () => {
       (screen.getByLabelText("message") as HTMLTextAreaElement).value,
     ).toBe("");
     expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("starts hands-free capture on a TEXT-LESS voice=1 launch (iOS intent / control URL shape)", () => {
+    // StartElizaVoiceIntent and the Action-Button ControlWidgets mint
+    // elizaos://voice with no text — the launch must still start capture.
+    const toggleHandsFree = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?voice=1&source=ios-app-intents&assistant.launchId=launch-voice-textless",
+    );
+    render(<ChatOverlay controller={makeController({ toggleHandsFree })} />);
+    expect(toggleHandsFree).toHaveBeenCalledTimes(1);
+    // No text → composer stays empty and the launch params are consumed.
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("");
+    expect(window.location.hash).toBe("#chat");
+  });
+
+  it("does not re-toggle voice when capture is already live", () => {
+    const toggleHandsFree = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?voice=1&source=ios-control&assistant.launchId=launch-voice-live",
+    );
+    render(
+      <ChatOverlay
+        controller={makeController({ toggleHandsFree, handsFree: true })}
+      />,
+    );
+    expect(toggleHandsFree).not.toHaveBeenCalled();
+  });
+
+  it("enters transcription mode on a transcribe=1 launch", () => {
+    const toggleTranscriptionMode = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?transcribe=1&source=android-qs-tile&assistant.launchId=launch-transcribe",
+    );
+    render(
+      <ChatOverlay
+        controller={makeController({ toggleTranscriptionMode })}
+      />,
+    );
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-toggle transcription when already transcribing", () => {
+    const toggleTranscriptionMode = vi.fn();
+    window.history.replaceState(
+      null,
+      "",
+      "/#chat?transcribe=1&source=android-qs-tile&assistant.launchId=launch-transcribe-live",
+    );
+    render(
+      <ChatOverlay
+        controller={makeController({
+          toggleTranscriptionMode,
+          transcriptionMode: true,
+        })}
+      />,
+    );
+    expect(toggleTranscriptionMode).not.toHaveBeenCalled();
+  });
+
+  // Native-originated auto-send (CHAT_SEND_EVENT) — the provably-native
+  // channel, separate from the forgeable URL/hash spine above.
+  it("sends native-intent text through the controller with launch metadata", () => {
+    const send = vi.fn();
+    render(<ChatOverlay controller={makeController({ send })} />);
+    window.dispatchEvent(
+      new CustomEvent(CHAT_SEND_EVENT, {
+        detail: { text: "what's on my calendar", source: "ios-app-intents" },
+      }),
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("what's on my calendar", {
+      metadata: {
+        assistantLaunch: true,
+        assistantLaunchSource: "ios-app-intents",
+        nativeSend: true,
+      },
+    });
+  });
+
+  it("does not clobber an in-progress composer draft", () => {
+    const send = vi.fn();
+    render(<ChatOverlay controller={makeController({ send })} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "half-typed thought" } });
+    window.dispatchEvent(
+      new CustomEvent(CHAT_SEND_EVENT, {
+        detail: { text: "native send", source: "android-qs-tile" },
+      }),
+    );
+    expect(send).toHaveBeenCalledWith("native send", expect.anything());
+    expect(input.value).toBe("half-typed thought");
+  });
+
+  it("drops empty text and respects the canSend gate", () => {
+    const send = vi.fn();
+    const { unmount } = render(
+      <ChatOverlay controller={makeController({ send })} />,
+    );
+    window.dispatchEvent(
+      new CustomEvent(CHAT_SEND_EVENT, {
+        detail: { text: "   ", source: "ios-app-intents" },
+      }),
+    );
+    expect(send).not.toHaveBeenCalled();
+    unmount();
+
+    const gatedSend = vi.fn();
+    render(
+      <ChatOverlay controller={makeController({ send: gatedSend, canSend: false })} />,
+    );
+    window.dispatchEvent(
+      new CustomEvent(CHAT_SEND_EVENT, {
+        detail: { text: "agent stopped", source: "ios-app-intents" },
+      }),
+    );
+    expect(gatedSend).not.toHaveBeenCalled();
   });
 
   it("shows Retry on a recoverable failed assistant turn and re-sends the preceding user turn", () => {

@@ -1554,6 +1554,12 @@ export function useShellController(): ShellController {
     voiceOutput,
     gateEngageOnMicPermission,
   ]);
+  // Forward ref so the []-dep VOICE_CONTROL_EVENT listener below can flip
+  // hands-free on a `converse-toggle` command (desktop global hotkey / tray)
+  // without re-subscribing on every render — same pattern as
+  // toggleTranscriptionModeRef.
+  const toggleHandsFreeRef = React.useRef(toggleHandsFree);
+  toggleHandsFreeRef.current = toggleHandsFree;
 
   useViewEvent(
     VOICE_SETTINGS_APPLY_EVENT,
@@ -1690,7 +1696,9 @@ export function useShellController(): ShellController {
   // A server-side agent action (START/STOP_TRANSCRIPTION) reaches the shell as a
   // window `voice-control` event (the agent-event bus → client bridge); flip
   // transcription to match. Idempotent — "start" while already transcribing (or
-  // "stop" while idle) is a no-op.
+  // "stop" while idle) is a no-op. The `*-toggle` commands back OS entry points
+  // (desktop global hotkeys, tray items) where press-again-to-stop is the
+  // expected semantics.
   React.useEffect(() => {
     const onVoiceControl = (e: Event) => {
       const detail = (e as CustomEvent<VoiceControlEventDetail>).detail;
@@ -1699,6 +1707,12 @@ export function useShellController(): ShellController {
         toggleTranscriptionModeRef.current();
       } else if (detail.command === "stop" && transcriptionModeRef.current) {
         toggleTranscriptionModeRef.current();
+      } else if (detail.command === "transcribe-toggle") {
+        toggleTranscriptionModeRef.current();
+      } else if (detail.command === "converse-toggle") {
+        toggleHandsFreeRef.current();
+      } else if (detail.command === "converse-start" && !handsFreeRef.current) {
+        toggleHandsFreeRef.current();
       }
     };
     window.addEventListener(VOICE_CONTROL_EVENT, onVoiceControl);

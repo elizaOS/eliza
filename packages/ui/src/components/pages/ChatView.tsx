@@ -41,6 +41,7 @@ import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibilit
 import { useLoadOlderOnScroll } from "../../hooks/useLoadOlderOnScroll";
 import { useThreadAutoScroll } from "../../hooks/useThreadAutoScroll";
 import { useViewEvent } from "../../hooks/useViewEvent";
+import { dispatchVoiceControl } from "../../events";
 import { claimAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
@@ -334,8 +335,18 @@ export function ChatView({
           allowedRoutes: ["chat"],
         },
       );
-      if (payload) {
+      if (!payload) return;
+      if (payload.text) {
         setChatInput(payload.text);
+      }
+      // Capture-flag launches (voice=1 / transcribe=1): this view doesn't own
+      // the shell voice controller, so re-dispatch the claimed intent as an
+      // idempotent voice-control command for whichever controller is mounted.
+      if (payload.voice) {
+        dispatchVoiceControl({ command: "converse-start" });
+      }
+      if (payload.transcribe) {
+        dispatchVoiceControl({ command: "start" });
       }
     };
 
