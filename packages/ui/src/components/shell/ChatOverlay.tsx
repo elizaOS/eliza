@@ -4324,10 +4324,15 @@ export function ChatOverlay({
   // detector preserves the old "tap outside to collapse" behavior without
   // stealing horizontal swipes or vertical scroll from the background.
   React.useEffect(() => {
-    // While pinned for onboarding the chat is undismissable, so the outside-tap
-    // swallower must not install: it capture-eats pointerup on everything
-    // outside the sheet.
-    if (typeof document === "undefined" || !sheetOpen || pinnedOpen) {
+    // The desktop floating overlay (restAtPill) arms the outside-tap collapse
+    // whenever the window is GROWN (not pilled) — not only when the full thread
+    // sheet is open. Clicking the pill grows the OS window to full-screen even at
+    // the bare input bar, so an outside click there must ALSO close it back to
+    // the pill; otherwise the full-screen window keeps blocking clicks into other
+    // apps. Web/mobile still arm on the open sheet only. While pinned for
+    // onboarding the chat is undismissable, so the swallower must not install.
+    const outsideTapArmed = restAtPill ? !pilled : sheetOpen;
+    if (typeof document === "undefined" || !outsideTapArmed || pinnedOpen) {
       outsideSheetPointerRef.current = null;
       suppressNextOutsideClickRef.current = false;
       return undefined;
@@ -4441,6 +4446,7 @@ export function ChatOverlay({
     };
   }, [
     sheetOpen,
+    pilled,
     pinnedOpen,
     collapse,
     collapseToPill,
