@@ -3,8 +3,9 @@
  *
  * Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
  * seeds synthetic assistant turns into the SAME live transcript the floating
- * `ChatOverlay` renders (greeting → runtime CHOICE → provider
- * CHOICE → tutorial CHOICE; Cloud-only sign-in stays a single CTA), and
+ * `ChatOverlay` renders (greeting → runtime CHOICE → provider CHOICE →
+ * wrap-up: accent + platform-gated auto-start + tutorial CHOICE; Cloud-only
+ * sign-in stays a single CTA), and
  * routes the user's first-run-scoped picks to the headless finish use case
  * (`first-run-finish.ts`). It owns NO presentation — the existing
  * `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
@@ -91,9 +92,16 @@ import {
 import { normalizeFirstRunName } from "./first-run";
 import {
   FIRST_RUN_ACTION_PREFIX,
+  FIRST_RUN_AUTOSTART_ENABLE_ACTION,
+  FIRST_RUN_AUTOSTART_SKIP_ACTION,
   setFirstRunActionHandler,
   setFirstRunTextHandler,
 } from "./first-run-action-channel";
+import {
+  type AutostartPlatform,
+  detectAutostartPlatform,
+  enableAutostart,
+} from "./first-run-autostart";
 import {
   clearCloudLoginPending,
   markCloudLoginPending,
@@ -298,6 +306,28 @@ const TUTORIAL_CHOICE = [
   "[/CHOICE]",
 ].join("\n");
 
+// The auto-start wrap-up step: offered only on platforms whose shell can
+// launch Eliza automatically (desktop login item / Android boot receiver —
+// see first-run-autostart.ts; hidden on web + iOS). Seeded alongside the
+// accent + tutorial turns so it never gates completion: the tutorial pick
+// finishes onboarding whether or not this was answered, and an enable failure
+// surfaces as a non-blocking notice turn.
+const AUTOSTART_CHOICE = [
+  "[CHOICE:first-run id=autostart]",
+  `${FIRST_RUN_AUTOSTART_ENABLE_ACTION}=Enable (recommended)`,
+  `${FIRST_RUN_AUTOSTART_SKIP_ACTION}=Not now`,
+  "[/CHOICE]",
+].join("\n");
+
+function autostartPrompt(
+  platform: AutostartPlatform,
+  agentName: string,
+): string {
+  return platform === "desktop"
+    ? `Should ${agentName} start automatically when you log in?`
+    : `Should ${agentName} start automatically when your phone turns on?`;
+}
+
 // Recovery choice seeded when a finish/provision flow fails (e.g. a 404 from
 // POST /api/first-run). Every option here is a real way forward — retry the
 // same runtime, pick a different one, or bail out to Settings — so a persistent
@@ -468,6 +498,12 @@ export function useFirstRunConductor(): void {
   // True while a finish error's recovery choice is on screen; steers the
   // free-text reply persona (below). Cleared when the next pick supersedes it.
   const erroredRef = React.useRef(false);
+  // Auto-start wrap-up state: the platform recorded when the CHOICE turn was
+  // actually seeded (null = never offered, so stale/forged autostart values
+  // are consumed untouched), and a first-pick latch so a double-tap can't
+  // fire the enable write twice.
+  const autostartPlatformRef = React.useRef<AutostartPlatform | null>(null);
+  const autostartHandledRef = React.useRef(false);
   // Silent cloud entry (#15133): set when onboarding starts with an
   // already-usable session (stored token, live connection, or a session
   // recovered from the console's cross-subdomain cookie). The user already
@@ -528,6 +564,20 @@ export function useFirstRunConductor(): void {
         `First, make it yours — pick an accent color (or keep the default and continue below).\n\n${ACCENT_CHOICE}`,
       ),
     );
+    // Auto-start: after the provider flow resolved, before the tutorial
+    // choice. Platform-gated at seed time (desktop shell / Android native
+    // only) — web and iOS never see the turn, and the recorded platform is
+    // what makes the pick handler live.
+    const autostartPlatform = detectAutostartPlatform();
+    if (autostartPlatform) {
+      autostartPlatformRef.current = autostartPlatform;
+      seedTurn(
+        makeTurn(
+          "first-run:autostart",
+          `${autostartPrompt(autostartPlatform, draftRef.current.agentName)}\n\n${AUTOSTART_CHOICE}`,
+        ),
+      );
+    }
     seedTurn(
       makeTurn(
         "first-run:tutorial",
@@ -944,13 +994,14 @@ export function useFirstRunConductor(): void {
       // finish call is still in flight — consume those as no-ops instead of
       // starting a concurrent flow.
       if (busyRef.current || bindInFlightRef.current) return true;
-      // Once provisioning succeeded only the wrap-up picks (accent + tutorial)
-      // are live; taps on leftover runtime/provider/cloud-agent widgets must not
-      // re-provision.
+      // Once provisioning succeeded only the wrap-up picks (accent + auto-start
+      // + tutorial) are live; taps on leftover runtime/provider/cloud-agent
+      // widgets must not re-provision.
       if (
         provisionedRef.current &&
         group !== "tutorial" &&
-        group !== "accent"
+        group !== "accent" &&
+        group !== "autostart"
       ) {
         return true;
       }
@@ -1234,6 +1285,32 @@ export function useFirstRunConductor(): void {
         // this never gates completion. Garbage ids are consumed as no-ops.
         if (!ACCENT_PRESETS.some((p) => p.id === id)) return true;
         setUiAccent(id);
+        return true;
+      }
+
+      if (group === "autostart") {
+        if (id !== "enable" && id !== "skip") return true;
+        // Live only when the step was actually offered (platform-gated at
+        // seed time) and not yet picked — a forged value on web/iOS or a
+        // double-tap is consumed untouched.
+        const autostartPlatform = autostartPlatformRef.current;
+        if (!autostartPlatform || autostartHandledRef.current) return true;
+        autostartHandledRef.current = true;
+        if (id === "skip") return true;
+        // Non-blocking: the write runs in the background so the tutorial pick
+        // can finish onboarding regardless. enableAutostart never rejects —
+        // failures (and only failures) come back typed and surface as a
+        // notice turn; replay mode resolves `replay-skipped` with no write.
+        void enableAutostart(autostartPlatform).then((result) => {
+          if (result.status === "failed") {
+            seedTurn(
+              makeTurn(
+                `first-run:autostart-error:${Date.now()}`,
+                `I couldn't turn on auto-start: ${result.message} You can enable it anytime in Settings.`,
+              ),
+            );
+          }
+        });
         return true;
       }
 

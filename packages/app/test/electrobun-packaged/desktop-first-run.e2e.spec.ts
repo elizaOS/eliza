@@ -26,6 +26,8 @@ const RUNTIME_CHOICE = (id: "cloud" | "local" | "remote") =>
   `choice-__first_run__:runtime:${id}`;
 const PROVIDER_CHOICE = (id: "on-device" | "elizacloud" | "other") =>
   `choice-__first_run__:provider:${id}`;
+const AUTOSTART_CHOICE = (id: "enable" | "skip") =>
+  `choice-__first_run__:autostart:${id}`;
 const TUTORIAL_CHOICE = (id: "start" | "skip") =>
   `choice-__first_run__:tutorial:${id}`;
 
@@ -130,6 +132,112 @@ async function waitForRestingShell(
   );
 }
 
+/**
+ * Fire a renderer-bridge RPC (window.__ELIZA_ELECTROBUN_RPC__) from the
+ * packaged renderer and await its settlement. The eval seam evaluates a
+ * synchronous Function body, so the async call is kicked off into a window
+ * global and polled — never relying on promise-return semantics of eval.
+ */
+async function bridgeRpc<T>(
+  harness: PackagedDesktopHarness,
+  rpcMethod: string,
+  params: unknown,
+  timeoutMs = 30_000,
+): Promise<T> {
+  const slot = `__eliza_e2e_rpc_${rpcMethod}_${Date.now()}`;
+  const kicked = await bridgeEval<EvalResult<{ started: boolean }>>(
+    harness,
+    `(() => {
+      try {
+        const rpc = window.__ELIZA_ELECTROBUN_RPC__;
+        const request = rpc && rpc.request && rpc.request[${cssString(rpcMethod)}];
+        if (typeof request !== "function") {
+          return { ok: false, error: ${cssString(`renderer bridge missing ${rpcMethod}`)} };
+        }
+        window[${cssString(slot)}] = { pending: true };
+        Promise.resolve(request.call(rpc.request, ${JSON.stringify(params ?? null)})).then(
+          (value) => {
+            window[${cssString(slot)}] = { pending: false, value: value === undefined ? null : value };
+          },
+          (e) => {
+            window[${cssString(slot)}] = { pending: false, error: e instanceof Error ? e.message : String(e) };
+          },
+        );
+        return { ok: true, started: true };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) };
+      }
+    })()`,
+  );
+  if (!kicked.ok) {
+    throw new Error(`bridgeRpc(${rpcMethod}) failed to start: ${kicked.error}`);
+  }
+  await waitForDom(
+    harness,
+    `(() => {
+      const probe = window[${cssString(slot)}];
+      return Boolean(probe && probe.pending === false);
+    })()`,
+    { message: `Expected ${rpcMethod} to settle`, timeoutMs },
+  );
+  const settled = await bridgeEval<{
+    pending: boolean;
+    value?: T;
+    error?: string;
+  }>(
+    harness,
+    `(() => { const probe = window[${cssString(slot)}]; delete window[${cssString(slot)}]; return probe; })()`,
+  );
+  if (settled.error !== undefined) {
+    throw new Error(`bridgeRpc(${rpcMethod}) rejected: ${settled.error}`);
+  }
+  return settled.value as T;
+}
+
+/**
+ * The packaged app runs with the REAL user HOME, so the auto-launch artifact
+ * the onboarding Enable pick writes is the developer's actual login item
+ * (macOS LaunchAgent plist / Linux autostart .desktop — same brand names as
+ * production). Snapshot any pre-existing artifact before the test and restore
+ * it afterwards so a dev machine's own auto-launch setup is never clobbered,
+ * and a test-written artifact (pointing at the throwaway packaged binary) is
+ * never left behind. Windows has no artifact reachable from this process; the
+ * in-app bridge disable in the test body is the cleanup there.
+ */
+function autoLaunchArtifactPath(): string | null {
+  if (process.platform === "darwin") {
+    return path.join(
+      os.homedir(),
+      "Library",
+      "LaunchAgents",
+      "ai.elizaos.app.plist",
+    );
+  }
+  if (process.platform === "linux") {
+    return path.join(os.homedir(), ".config", "autostart", "elizaos.desktop");
+  }
+  return null;
+}
+
+async function snapshotAutoLaunchArtifact(): Promise<string | null> {
+  const artifact = autoLaunchArtifactPath();
+  if (!artifact) return null;
+  return await fs.readFile(artifact, "utf8").catch(() => null);
+}
+
+async function restoreAutoLaunchArtifact(
+  preExisting: string | null,
+): Promise<void> {
+  const artifact = autoLaunchArtifactPath();
+  if (!artifact) return;
+  if (preExisting === null) {
+    await fs.rm(artifact, { force: true }).catch(() => undefined);
+    return;
+  }
+  await fs.mkdir(path.dirname(artifact), { recursive: true });
+  await fs.writeFile(artifact, preExisting, "utf8");
+}
+
 async function launchHarness(args: {
   tempPrefix: string;
   apiBase: string;
@@ -161,11 +269,12 @@ async function launchHarness(args: {
   return { tempRoot, harness };
 }
 
-test("packaged desktop drives chat-first onboarding and persists first-run", async () => {
+test("packaged desktop drives chat-first onboarding (with auto-start enable) and persists first-run", async () => {
   test.setTimeout(600_000);
 
   let api: TestApiServer | null = null;
   let harness: PackagedDesktopHarness | null = null;
+  const preExistingAutoLaunch = await snapshotAutoLaunchArtifact();
   try {
     api = await startLiveApiServer({ firstRunComplete: false, port: 0 });
     ({ harness } = await launchHarness({
@@ -174,9 +283,42 @@ test("packaged desktop drives chat-first onboarding and persists first-run", asy
     }));
 
     await waitForTestId(harness, RUNTIME_CHOICE("local"), 120_000);
+    // Partition storage can persist across packaged runs on a dev machine —
+    // clear the priming shown-once flag so the post-onboarding eligibility
+    // assertion below is deterministic.
+    await bridgeEval<boolean>(
+      harness,
+      `(() => {
+        try { window.localStorage.removeItem("eliza:permissions-primed"); } catch {}
+        return true;
+      })()`,
+    );
     await clickTestId(harness, RUNTIME_CHOICE("local"));
     await waitForTestId(harness, PROVIDER_CHOICE("on-device"));
     await clickTestId(harness, PROVIDER_CHOICE("on-device"));
+
+    // Wrap-up: the desktop shell offers the auto-start choice between the
+    // provider finish and the tutorial. Enable it, then prove the real OS
+    // artifact through the same bridge RPC the Settings toggle reads.
+    await waitForTestId(harness, AUTOSTART_CHOICE("enable"));
+    await clickTestId(harness, AUTOSTART_CHOICE("enable"));
+    await expect
+      .poll(
+        async () =>
+          bridgeRpc<{ enabled: boolean; openAsHidden: boolean }>(
+            // biome-ignore lint/style/noNonNullAssertion: assigned above
+            harness!,
+            "desktopGetAutoLaunchStatus",
+            null,
+          ),
+        {
+          message:
+            "desktopGetAutoLaunchStatus should report enabled after the onboarding Enable pick",
+          timeout: 30_000,
+        },
+      )
+      .toEqual({ enabled: true, openAsHidden: false });
+
     await waitForTestId(harness, TUTORIAL_CHOICE("skip"));
     await clickTestId(harness, TUTORIAL_CHOICE("skip"));
 
@@ -185,9 +327,79 @@ test("packaged desktop drives chat-first onboarding and persists first-run", asy
       api.requests.filter((request) => request === "POST /api/first-run"),
       "packaged onboarding should persist first-run exactly once",
     ).toHaveLength(1);
+
+    // After onboarding completes (firstRunComplete flipped, tutorial skipped),
+    // the post-onboarding permission-priming sequence becomes eligible: its
+    // overlay mounts, and completing it flips the durable shown-once flag.
+    // If every permission already reads satisfied the modal auto-completes,
+    // so accept either observable (modal on screen, or flag already flipped).
+    await waitForDom(
+      harness,
+      `(() => {
+        try {
+          if (window.localStorage.getItem("eliza:permissions-primed") === "1") return true;
+        } catch {}
+        return Boolean(document.querySelector('[data-testid="permission-priming-modal"]'));
+      })()`,
+      {
+        message:
+          "Expected the permission-priming sequence to become eligible after onboarding",
+        timeoutMs: 120_000,
+      },
+    );
+    // Finish the sequence via the whole-flow skip when cards are promptable
+    // (idempotent — re-clicks are no-ops once the flag flips); the flag is the
+    // durable completion observable either way.
+    await waitForDom(
+      harness,
+      `(() => {
+        try {
+          if (window.localStorage.getItem("eliza:permissions-primed") === "1") return true;
+        } catch {}
+        const skip = document.querySelector('[data-testid="priming-skip-all"]');
+        if (skip instanceof HTMLElement) skip.click();
+        try {
+          return window.localStorage.getItem("eliza:permissions-primed") === "1";
+        } catch { return false; }
+      })()`,
+      {
+        message:
+          "Expected the permission-priming sequence to complete and persist its shown-once flag",
+        timeoutMs: 60_000,
+      },
+    );
+
+    // Clean up the login item while the app is still alive: the packaged app
+    // runs against the REAL user HOME, so a LaunchAgent pointing at this
+    // throwaway test binary must not survive the test.
+    await bridgeRpc<null>(harness, "desktopSetAutoLaunch", {
+      enabled: false,
+      openAsHidden: false,
+    });
+    await expect
+      .poll(
+        async () =>
+          bridgeRpc<{ enabled: boolean; openAsHidden: boolean }>(
+            // biome-ignore lint/style/noNonNullAssertion: assigned above
+            harness!,
+            "desktopGetAutoLaunchStatus",
+            null,
+          ),
+        {
+          message: "auto-launch should be disabled again after cleanup",
+          timeout: 30_000,
+        },
+      )
+      .toEqual({ enabled: false, openAsHidden: false });
   } finally {
     await harness?.stop().catch(() => undefined);
     await api?.close().catch(() => undefined);
+    // Belt-and-suspenders: restore whatever auto-launch artifact existed
+    // before the test (or remove a leftover test-written one) even when the
+    // in-app disable above never ran because the test failed earlier.
+    await restoreAutoLaunchArtifact(preExistingAutoLaunch).catch(
+      () => undefined,
+    );
   }
 });
 

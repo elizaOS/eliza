@@ -64,6 +64,16 @@ const mocks = vi.hoisted(() => ({
   deviceRamTier: null as
     | import("./device-ram-tier").DeviceRamTierAssessment
     | null,
+  // Auto-start platform detection is a native boundary like the RAM probe:
+  // tests inject the platform here (null = jsdom's honest web "unsupported");
+  // real detection is covered in first-run-autostart.test.ts against the real
+  // bridge/Capacitor seams. The ENABLE write stays real — the desktop path
+  // drives the actual `window.__ELIZA_ELECTROBUN_RPC__` seam, the android path
+  // the @capacitor/preferences module mock below.
+  autostartPlatform: null as
+    | import("./first-run-autostart").AutostartPlatform
+    | null,
+  preferencesSet: vi.fn(async (_options: { key: string; value: string }) => {}),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -122,6 +132,19 @@ vi.mock("../state/cloud-login-launch", async (importOriginal) => {
     preOpenCloudLoginWindow: mocks.preOpenCloudLoginWindow,
   };
 });
+
+vi.mock("./first-run-autostart", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./first-run-autostart")>();
+  return {
+    ...actual,
+    detectAutostartPlatform: () => mocks.autostartPlatform,
+  };
+});
+
+// Only ever dynamically imported by the real enableAutostart's android path.
+vi.mock("@capacitor/preferences", () => ({
+  Preferences: { set: mocks.preferencesSet },
+}));
 
 import type { ConversationMessage, LocalAgentBackupMetadata } from "../api";
 import { APP_RESUME_EVENT } from "../events";
@@ -268,6 +291,8 @@ beforeEach(() => {
   ensureLocalStorage().clear();
   vi.clearAllMocks();
   mocks.deviceRamTier = null;
+  mocks.autostartPlatform = null;
+  mocks.preferencesSet.mockResolvedValue(undefined);
   mocks.client.listLocalAgentBackups.mockResolvedValue([]);
   // `clearAllMocks` resets call history but NOT implementations, so restore the
   // default resolved implementations that individual tests override (a leaked
@@ -401,6 +426,223 @@ describe("useFirstRunConductor", () => {
     expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
 
     unmount();
+  });
+
+  describe("auto-start wrap-up step", () => {
+    type BridgeWindow = Window & {
+      __ELIZA_ELECTROBUN_RPC__?: import("../bridge/electrobun-rpc").ElectrobunRendererRpc;
+    };
+    const bridgeWindow = window as BridgeWindow;
+
+    /** The real renderer-bridge seam the desktop enable write goes through. */
+    function installDesktopAutoLaunchRpc(
+      impl: (params?: unknown) => Promise<unknown> = async () => undefined,
+    ): ReturnType<typeof vi.fn> {
+      const spy = vi.fn(impl);
+      bridgeWindow.__ELIZA_ELECTROBUN_RPC__ = {
+        request: { desktopSetAutoLaunch: spy },
+        onMessage: () => {},
+        offMessage: () => {},
+      };
+      return spy;
+    }
+
+    /** Local runtime → on-device provider → wrap-up turns seeded. */
+    async function walkToWrapUp(
+      turn: (id: string) => ConversationMessage | undefined,
+    ): Promise<void> {
+      await waitForTurn(turn, "first-run:greeting");
+      expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+      await waitForTurn(turn, "first-run:provider");
+      expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
+        true,
+      );
+      await waitForTurn(turn, "first-run:tutorial");
+    }
+
+    afterEach(() => {
+      delete bridgeWindow.__ELIZA_ELECTROBUN_RPC__;
+      window.history.pushState({}, "", "/");
+    });
+
+    it("never seeds the step on unsupported platforms, and forged picks are consumed without touching the bridge", async () => {
+      const spies = seedAppStore();
+      // Even with a live desktop bridge on the page, detection saying
+      // "unsupported" (web/iOS) must keep the step out AND keep a forged
+      // value inert — the turn was never offered.
+      const rpcSpy = installDesktopAutoLaunchRpc();
+      const { turn, unmount } = renderConductor();
+      await walkToWrapUp(turn);
+
+      expect(turn("first-run:autostart")).toBeUndefined();
+      expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+        true,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(rpcSpy).not.toHaveBeenCalled();
+
+      // The forged pick did not disturb completion.
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("desktop: seeds the step between accent and tutorial; Enable fires desktopSetAutoLaunch exactly once (double-tap latched) and never gates completion", async () => {
+      mocks.autostartPlatform = "desktop";
+      const rpcSpy = installDesktopAutoLaunchRpc();
+      const spies = seedAppStore();
+      const { transcript, turn, unmount } = renderConductor();
+      await walkToWrapUp(turn);
+
+      const autostart = await waitForTurn(turn, "first-run:autostart");
+      expect(autostart.text).toContain("start automatically when you log in");
+      expect(autostart.text).toContain("__first_run__:autostart:enable=");
+      expect(autostart.text).toContain("__first_run__:autostart:skip=");
+      const ids = transcript.current.map((message) => message.id);
+      expect(ids.indexOf("first-run:autostart")).toBeGreaterThan(
+        ids.indexOf("first-run:appearance"),
+      );
+      expect(ids.indexOf("first-run:autostart")).toBeLessThan(
+        ids.indexOf("first-run:tutorial"),
+      );
+
+      expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+        true,
+      );
+      await waitFor(() => expect(rpcSpy).toHaveBeenCalledTimes(1));
+      expect(rpcSpy).toHaveBeenCalledWith({
+        enabled: true,
+        openAsHidden: false,
+      });
+
+      // Double-tap: the first pick latched, so the write fires exactly once.
+      expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+        true,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(rpcSpy).toHaveBeenCalledTimes(1);
+
+      // Leftover pre-wrap-up widgets are still no-ops next to the live step.
+      expect(tryHandleFirstRunAction("__first_run__:runtime:cloud")).toBe(true);
+      expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(1);
+
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      expect(spies.completeFirstRun).toHaveBeenCalledWith("chat");
+      unmount();
+    });
+
+    it("desktop: an enable failure seeds a non-blocking notice turn and onboarding still completes", async () => {
+      mocks.autostartPlatform = "desktop";
+      installDesktopAutoLaunchRpc(async () => {
+        throw new Error("launchctl load failed");
+      });
+      const spies = seedAppStore();
+      const { transcript, turn, unmount } = renderConductor();
+      await walkToWrapUp(turn);
+
+      expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+        true,
+      );
+      await waitFor(() => {
+        expect(
+          transcript.current.some((message) =>
+            message.id.startsWith("first-run:autostart-error:"),
+          ),
+        ).toBe(true);
+      });
+      const notice = transcript.current.find((message) =>
+        message.id.startsWith("first-run:autostart-error:"),
+      );
+      expect(notice?.text).toContain("launchctl load failed");
+      expect(notice?.text).toContain("Settings");
+
+      // Non-blocking: the failure never gates the real completion.
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("android: Enable writes the boot receiver's preference as the string 'true'", async () => {
+      mocks.autostartPlatform = "android";
+      const spies = seedAppStore();
+      const { turn, unmount } = renderConductor();
+      await walkToWrapUp(turn);
+
+      const autostart = await waitForTurn(turn, "first-run:autostart");
+      expect(autostart.text).toContain(
+        "start automatically when your phone turns on",
+      );
+
+      expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+        true,
+      );
+      await waitFor(() =>
+        expect(mocks.preferencesSet).toHaveBeenCalledTimes(1),
+      );
+      expect(mocks.preferencesSet).toHaveBeenCalledWith({
+        key: "eliza:background-enabled",
+        value: "true",
+      });
+
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("skip performs no write on either platform, and garbage ids never consume the one-pick latch", async () => {
+      mocks.autostartPlatform = "desktop";
+      const rpcSpy = installDesktopAutoLaunchRpc();
+      const spies = seedAppStore();
+      const { turn, unmount } = renderConductor();
+      await walkToWrapUp(turn);
+      await waitForTurn(turn, "first-run:autostart");
+
+      // Garbage id under the group: consumed, no write, latch untouched.
+      expect(tryHandleFirstRunAction("__first_run__:autostart:bogus")).toBe(
+        true,
+      );
+      // Skip: consumed, still no write — and it takes the latch.
+      expect(tryHandleFirstRunAction("__first_run__:autostart:skip")).toBe(
+        true,
+      );
+      // A late enable after skip is a stale widget tap — latched no-op.
+      expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+        true,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(rpcSpy).not.toHaveBeenCalled();
+      expect(mocks.preferencesSet).not.toHaveBeenCalled();
+
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      unmount();
+    });
+
+    it("onboarding replay (#14382): Enable performs no real write and seeds no error turn", async () => {
+      mocks.autostartPlatform = "desktop";
+      const rpcSpy = installDesktopAutoLaunchRpc();
+      window.history.pushState({}, "", "/?onboarding-replay=1");
+      const spies = seedAppStore();
+      const { transcript, turn, unmount } = renderConductor();
+      await walkToWrapUp(turn);
+      await waitForTurn(turn, "first-run:autostart");
+
+      expect(tryHandleFirstRunAction("__first_run__:autostart:enable")).toBe(
+        true,
+      );
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(rpcSpy).not.toHaveBeenCalled();
+      expect(
+        transcript.current.some((message) =>
+          message.id.startsWith("first-run:autostart-error:"),
+        ),
+      ).toBe(false);
+
+      expect(tryHandleFirstRunAction("__first_run__:tutorial:skip")).toBe(true);
+      expect(spies.completeFirstRun).toHaveBeenCalledTimes(1);
+      unmount();
+    });
   });
 
   it("keeps BYOK reachable after the runtime chooser was trimmed to Cloud + On this device: On this device → provider:other finishes the LOCAL runtime with configure-later (one POST, no model download, Settings handoff banner) instead of dead-ending to Settings", async () => {

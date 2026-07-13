@@ -33,7 +33,11 @@ import {
 } from "../../utils/desktop-workspace";
 import { Button } from "../ui/button";
 import { SettingsTextarea } from "../ui/settings-controls";
-import { ChatHotkeySettingsGroup } from "./ChatHotkeySettingsGroup";
+import {
+  ChatHotkeySettingsGroup,
+  TranscribeHotkeySettingsGroup,
+  VoiceHotkeySettingsGroup,
+} from "./ChatHotkeySettingsGroup";
 import { DesktopWorkspaceDisplay } from "./DesktopWorkspaceDisplay";
 import { useDesktopDiagnosticsText } from "./DesktopWorkspaceDisplay.hooks";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
@@ -517,6 +521,8 @@ export function DesktopWorkspaceSection({
         </div>
 
         <ChatHotkeySettingsGroup />
+        <VoiceHotkeySettingsGroup />
+        <TranscribeHotkeySettingsGroup />
 
         <SettingsGroup
           title={t("desktopworkspacesection.console.title", {
@@ -771,6 +777,11 @@ export function DesktopWorkspaceSection({
                 >
                   {t("desktopworkspacesection.Relaunch")}
                 </WorkspaceActionButton>
+                {/* Auto-launch may already be ON from the onboarding
+                    auto-start step (first-run-autostart.ts) — the label stays
+                    truthful because `snapshot.autoLaunch` is re-read from the
+                    OS artifact (desktopGetAutoLaunchStatus) on every mount and
+                    after every action, never cached across sessions. */}
                 <WorkspaceActionButton
                   agentId="desktop-toggle-auto-launch"
                   label={

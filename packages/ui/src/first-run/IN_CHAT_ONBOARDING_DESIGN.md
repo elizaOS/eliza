@@ -11,6 +11,8 @@ chat choices:
   two-option chooser as of #11509; "Bring your own keys" is not a location — it
   lives on the provider axis below. Remote lives in Settings → Runtime post-#9952.)
 - `choice-__first_run__:provider:{on-device|elizacloud|other}`
+- `choice-__first_run__:autostart:{enable|skip}` (wrap-up only, platform-gated
+  — see "Auto-start step" below)
 - `choice-__first_run__:tutorial:{start|skip}`
 
 Those choices route into the headless first-run finish path and produce a single
@@ -68,6 +70,50 @@ seeds the same in-chat onboarding; once first-run completes the mount is a
 no-op (`App.chat-overlay-first-run.test.tsx`). The transcript's CHOICE widgets,
 plus any OAuth/secret blocks they reveal, are the only interactive surfaces
 during onboarding; the composer remains locked until sign-in completes.
+
+## Auto-start step (wrap-up, platform-gated)
+
+After the provider flow resolves — in the same wrap-up batch as the accent
+step and BEFORE the tutorial CHOICE — the conductor seeds an auto-start turn
+(`first-run:autostart`) asking whether Eliza should launch automatically:
+
+- **Gating.** Seeded only when `detectAutostartPlatform()`
+  (`first-run-autostart.ts`) reports support: the Electrobun desktop shell
+  (`getFrontendPlatform() === "desktop"`) or the native Android Capacitor
+  shell. Hidden on web and iOS — neither has an app-controlled auto-start.
+- **Ids.** `__first_run__:autostart:enable` ("Enable (recommended)") and
+  `__first_run__:autostart:skip` ("Not now"), registered in
+  `first-run-action-channel.ts` and validated strictly in the conductor: the
+  pick is live only while the turn was actually offered (platform recorded at
+  seed time) and unpicked (first-pick latch), so forged values on web/iOS,
+  double-taps, and garbage ids are consumed as no-ops.
+- **Enable.** Desktop → `desktopSetAutoLaunch { enabled: true, openAsHidden:
+  false }` over the same RPC the Settings toggle uses (writes the macOS
+  LaunchAgent plist / Linux autostart .desktop / Windows HKCU Run key).
+  Android → Capacitor preference `eliza:background-enabled = "true"` (the
+  string form `ElizaBootReceiver` reads; Preferences stores booleans as
+  strings).
+- **Skip.** No writes.
+- **Failure behavior.** Non-blocking: `enableAutostart` never rejects — a
+  failed write (missing bridge, RPC rejection, Preferences throw) surfaces as
+  a `first-run:autostart-error:*` notice turn pointing at Settings, and the
+  tutorial CHOICE still finishes onboarding either way.
+- **Replay-safe.** A dev onboarding replay (`?onboarding-replay=1`, #14382)
+  resolves `replay-skipped` and performs no persistent write.
+- **Display.** `ChatOverlay.selectFirstRunDisplayMessages` renders the wrap-up
+  turns (accent + auto-start + tutorial, plus a late auto-start error notice)
+  as ONE contiguous card stack — they are alternatives-plus-finisher, not
+  sequential steps, so the tutorial finisher is always tappable next to them.
+- **Cloud-only mode caveat.** The step lives in the chooser-mode wrap-up
+  (`seedTutorial`). Cloud-only onboarding (#13377, the production default)
+  completes immediately on sign-in with no wrap-up turns, so it does not offer
+  auto-start; Settings remains the surface there.
+
+Per-platform OS permission handling is unchanged: the permission-priming
+sequence (`components/permissions/PermissionPrimingOverlay.tsx`) still runs
+AFTER `firstRunComplete` flips and the tutorial is inactive — auto-start is a
+shell setting, not an OS permission, so it rides inside onboarding without
+resequencing priming.
 
 ## Post-onboarding landing (#14362)
 

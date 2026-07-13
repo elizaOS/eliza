@@ -20,6 +20,16 @@ export const FIRST_RUN_ACTION_PREFIX = "__first_run__:";
 export const FIRST_RUN_CLOUD_LOGIN_ACTION = `${FIRST_RUN_ACTION_PREFIX}runtime:cloud`;
 export const FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH = "/login?returnTo=/chat";
 
+// The auto-start wrap-up choice (desktop launch-at-login / Android start-on-
+// boot). Registered here like every other first-run group so the reserved
+// prefix drops these values forever: the conductor validates the id strictly
+// (enable/skip only, and only while the step was actually offered on a
+// supporting platform), and a tap on a leftover widget after onboarding can
+// never become a chat message.
+export const FIRST_RUN_AUTOSTART_GROUP = "autostart";
+export const FIRST_RUN_AUTOSTART_ENABLE_ACTION = `${FIRST_RUN_ACTION_PREFIX}${FIRST_RUN_AUTOSTART_GROUP}:enable`;
+export const FIRST_RUN_AUTOSTART_SKIP_ACTION = `${FIRST_RUN_ACTION_PREFIX}${FIRST_RUN_AUTOSTART_GROUP}:skip`;
+
 type FirstRunActionHandler = (value: string) => boolean;
 type FirstRunTextHandler = (text: string) => boolean;
 

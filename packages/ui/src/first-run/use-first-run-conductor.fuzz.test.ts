@@ -188,11 +188,17 @@ const ACTION_POOL = [
   "__first_run__:tutorial:skip",
   "__first_run__:backup-restore:latest",
   "__first_run__:backup-restore:start-fresh",
+  // Auto-start wrap-up picks. jsdom is a web platform, so the step is never
+  // offered here — every value must be consumed as a no-op, never crash, and
+  // never leak a bridge/preferences write.
+  "__first_run__:autostart:enable",
+  "__first_run__:autostart:skip",
   // Malformed values under the reserved prefix.
   "__first_run__:",
   "__first_run__:runtime",
   "__first_run__:runtime:bogus",
   "__first_run__:provider:__proto__",
+  "__first_run__:autostart:bogus",
   "__first_run__:unknown:☃",
 ];
 

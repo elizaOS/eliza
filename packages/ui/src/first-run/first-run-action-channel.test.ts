@@ -6,6 +6,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   classifyActionMessage,
   FIRST_RUN_ACTION_PREFIX,
+  FIRST_RUN_AUTOSTART_ENABLE_ACTION,
+  FIRST_RUN_AUTOSTART_GROUP,
+  FIRST_RUN_AUTOSTART_SKIP_ACTION,
   FIRST_RUN_CLOUD_LOGIN_ACTION,
   FIRST_RUN_CLOUD_LOGIN_FALLBACK_PATH,
   getFirstRunCloudLoginFallbackPath,
@@ -93,6 +96,41 @@ describe("classifyActionMessage (the send funnel's routing contract)", () => {
   it("routes free text to the conductor while onboarding is active and sends it afterwards", () => {
     expect(classifyActionMessage("hello", false)).toBe("conductor");
     expect(classifyActionMessage("hello", true)).toBe("send");
+  });
+
+  it("reserves the auto-start values unconditionally — they never become chat sends", () => {
+    // The registered wrap-up ids carry the group under the reserved prefix.
+    expect(FIRST_RUN_AUTOSTART_ENABLE_ACTION).toBe(
+      `${FIRST_RUN_ACTION_PREFIX}${FIRST_RUN_AUTOSTART_GROUP}:enable`,
+    );
+    expect(FIRST_RUN_AUTOSTART_SKIP_ACTION).toBe(
+      `${FIRST_RUN_ACTION_PREFIX}${FIRST_RUN_AUTOSTART_GROUP}:skip`,
+    );
+    for (const value of [
+      FIRST_RUN_AUTOSTART_ENABLE_ACTION,
+      FIRST_RUN_AUTOSTART_SKIP_ACTION,
+    ]) {
+      // Active onboarding and post-completion leftover widgets alike: the
+      // value is classified first-run and dropped from the send path.
+      expect(classifyActionMessage(value, false)).toBe("first-run");
+      expect(classifyActionMessage(value, true)).toBe("first-run");
+      // Never routed to the hosted-web login fallback either.
+      expect(getFirstRunCloudLoginFallbackPath(value, false)).toBeNull();
+    }
+  });
+
+  it("dispatches auto-start values to the active conductor like any first-run pick", () => {
+    const handler = vi.fn(() => true);
+    setFirstRunActionHandler(handler);
+    expect(tryHandleFirstRunAction(FIRST_RUN_AUTOSTART_ENABLE_ACTION)).toBe(
+      true,
+    );
+    expect(handler).toHaveBeenCalledWith(FIRST_RUN_AUTOSTART_ENABLE_ACTION);
+    setFirstRunActionHandler(null);
+    // No conductor → not dispatched (the classifier above still drops it).
+    expect(tryHandleFirstRunAction(FIRST_RUN_AUTOSTART_SKIP_ACTION)).toBe(
+      false,
+    );
   });
 
   it("allows first-run free text through once a bootstrap chat bridge is available", () => {
