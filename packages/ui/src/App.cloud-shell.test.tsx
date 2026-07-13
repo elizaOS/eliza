@@ -58,6 +58,25 @@ describe("App standalone chat-overlay wiring", () => {
     expect(APP_TSX).toContain("<ChatOverlayMount />");
   });
 
+  it("structures the tray popover: Focus Chat, a VIEWS section, and Quit", () => {
+    // The menu-bar tray popover (tray-popover shell) is a separate window that
+    // the packaged e2e harness cannot eval into (it drives the main window
+    // only), so guard its wiring at the source: Focus Chat summons the pill
+    // (desktopShowWindow), the view rows sit under a VIEWS section (with the
+    // "Open Eliza" tray-show-window row filtered out), and Quit tears the app
+    // down (desktopQuit).
+    const trayShell = APP_TSX.slice(
+      APP_TSX.indexOf("function TrayPopoverShell()"),
+      APP_TSX.indexOf("function KioskShell()"),
+    );
+    expect(trayShell).toContain('data-testid="tray-focus-chat"');
+    expect(trayShell).toContain("desktopShowWindow");
+    expect(trayShell).toContain("Views");
+    expect(trayShell).toContain('entry.itemId !== "tray-show-window"');
+    expect(trayShell).toContain('data-testid="tray-quit"');
+    expect(trayShell).toContain("desktopQuit");
+  });
+
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {
     // shouldStartBottomBar defaults ON, so createMainWindow boots the MAIN
     // window with ?shellMode=chat-overlay — that branch must mount the
