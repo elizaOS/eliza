@@ -1053,6 +1053,48 @@ export class PackagedDesktopHarness {
     );
   }
 
+  /** Evaluate a script inside the tray-popover window (a SEPARATE window from
+   *  the main pill). Retries while the popover window is still coming up. */
+  async evalTrayPopover<T>(script: string): Promise<T> {
+    const startedAt = Date.now();
+    let lastError: Error | null = null;
+    const normalizedScript = normalizeEvalScript(script);
+
+    while (Date.now() - startedAt < 30_000) {
+      try {
+        const response = await fetchJson<{ result: T }>(
+          `${this.bridgeUrl}/tray/popover/eval`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.bridgeToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ script: normalizedScript }),
+          },
+        );
+        return response.result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // The popover window may not exist yet (right after toggle) or its eval
+        // channel may not be wired for a beat — retry on both 500 and 503.
+        if (
+          !message.includes("/tray/popover/eval failed (500)") &&
+          !message.includes("/tray/popover/eval failed (503)")
+        ) {
+          throw error;
+        }
+        lastError = error instanceof Error ? error : new Error(message);
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+
+    throw (
+      lastError ??
+      new Error("Timed out waiting for tray-popover/eval to become ready")
+    );
+  }
+
   async screenshot(timeoutMs = 10_000): Promise<string> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);

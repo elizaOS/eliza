@@ -85,7 +85,7 @@ import type {
   WindowOptions,
 } from "../rpc-schema";
 import { computeTrayPopoverFrame, type Rect } from "../tray-popover-position";
-import type { SendToWebview } from "../types.js";
+import type { SendToWebview, WebviewEvalRpc } from "../types.js";
 import { resolveDesktopUpdateAvailability } from "../update-availability";
 import {
   createBugReportBundle,
@@ -2289,6 +2289,27 @@ X-GNOME-Autostart-enabled=true
     if (this.trayPopoverWindow) {
       fn(this.trayPopoverWindow);
     }
+  }
+
+  /**
+   * Evaluate a script in the tray-popover window's webview (the same eval
+   * channel `evaluateInCurrentMainWindow` uses for the main window). The desktop
+   * e2e drives the popover through this — it is a SEPARATE window from the main
+   * pill, so the main-window eval seam cannot reach its Focus Chat / VIEWS /
+   * Quit surface. The window is kept alive (hidden on blur, not closed), so this
+   * works whether the popover is currently shown or dismissed.
+   */
+  async evaluateInTrayPopover(script: string): Promise<unknown> {
+    const win = this.trayPopoverWindow;
+    if (!win) {
+      throw new Error("tray popover window is not present");
+    }
+    const rpc = win.webview.rpc as WebviewEvalRpc | undefined;
+    const evaluator = rpc?.requestProxy?.evaluateJavascriptWithResponse;
+    if (!evaluator) {
+      throw new Error("tray popover webview does not support JS evaluation");
+    }
+    return await evaluator({ script });
   }
 
   /** Whether the tray popover is currently visible. */

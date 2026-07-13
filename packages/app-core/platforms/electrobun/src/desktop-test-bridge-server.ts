@@ -284,6 +284,18 @@ export async function startDesktopTestBridgeServer(): Promise<
         return;
       }
 
+      if (pathname === "/tray/popover/eval" && method === "POST") {
+        const body = await readJsonBody<EvalBody>(req);
+        if (!body?.script?.trim()) {
+          json(res, 400, { error: "script is required" });
+          return;
+        }
+        json(res, 200, {
+          result: await getDesktopManager().evaluateInTrayPopover(body.script),
+        });
+        return;
+      }
+
       if (pathname === "/shortcut/press" && method === "POST") {
         const body = await readJsonBody<ShortcutPressBody>(req);
         const id = body?.id?.trim();
