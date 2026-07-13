@@ -21,7 +21,7 @@ on:
       # APPLE_ID, APPLE_TEAM_ID, APPLE_APP_SPECIFIC_PASSWORD are
       # downgraded to `required: false` so this reusable workflow's
       # secret contract does not startup_failure the parent
-      # (release-all.yml / release-orchestrator.yml) when called via
+      # (release-orchestrator.yml) when called via
       # `secrets: inherit` and the secrets are absent. The body's
       # iOS-signing preflight checks for missing iOS secrets and
       # exits with a clear ::error::, so the job still fails loudly

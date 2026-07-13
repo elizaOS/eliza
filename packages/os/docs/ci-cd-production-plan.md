@@ -16,14 +16,19 @@ can verify with `gh attestation verify <iso> --owner elizaOS`.
 | Workflow | Purpose | Status |
 |---|---|---|
 | `build-linux-iso.yml` | Build amd64/arm64/riscv64 ISO + SHA256SUMS + SBOM + SLSA attestation | 🔴 Failing every night for 8+ days. Same root cause across all 3 archs. |
-| `elizaos-os-full-release.yml` | Tag-triggered release manifest validation + cross-artifact SHA256SUMS + SLSA over SHA256SUMS | 🔴 `startup_failure` (0–3 sec) on every release tag (v2.0.0, v2.0.1, v2.0.3) |
+| `elizaos-os-full-release.yml` | Tag-triggered release manifest validation + cross-artifact SHA256SUMS + SLSA over SHA256SUMS | 🔴 Recorded `startup_failure`; coordinator repair is tracked in [#16279](https://github.com/elizaOS/eliza/issues/16279) |
+| `update-os-release-manifest.yml` | Manual checksum recovery from an existing release into a reviewable PR | 🟡 Fail-closed recovery contract is present; no automatic trigger and no direct protected-branch push |
 | `elizaos-os-release.yml` | Earlier release pipeline | 🟡 Status not audited |
-| `update-os-release-manifest.yml` | Manifest update workflow | 🟡 Status not audited |
 | `publish-apt-repo.yml` | GPG-signed Debian APT repo (`DEBIAN_GPG_PRIVATE_KEY` secret) | 🟡 Likely works when secret is configured; not run recently |
 | `supply-chain.yaml` | SBOM (SPDX 2.3) + Grype vulnerability scan, weekly Mon 06:00 UTC | ✅ Works |
 | `release-electrobun.yml` | Electrobun signed release | 🟡 Not audited here |
-| `flatpak-publish.yml` | Flatpak publishing | 🟡 Not audited here |
 | `android-release.yml` / `publish-aosp-update-manifest.yml` | AOSP/Android release | Separate from Linux ISO scope |
+
+Cross-platform coordination and npm publication are outside this OS-specific
+plan and remain under repair in
+[#16279](https://github.com/elizaOS/eliza/issues/16279) and
+[#16277](https://github.com/elizaOS/eliza/issues/16277), respectively. This
+inventory does not claim those retained paths are healthy.
 
 ### Releases published (npm only, ZERO ISO assets)
 
@@ -101,7 +106,8 @@ green.
 
 ### Phase 2 — Fix the release tag path
 
-4. **Diagnose `elizaos-os-full-release.yml` startup_failure**. Likely
+4. **Diagnose `elizaos-os-full-release.yml` startup_failure** under
+   [#16279](https://github.com/elizaOS/eliza/issues/16279). Likely
    missing GitHub Environment configuration, missing required secrets,
    or invalid `permissions:` block. The 0–3 sec failure suggests a
    workflow-level rejection before any job runs.
@@ -110,6 +116,10 @@ green.
 6. **Verify the artifact handoff** between `build-linux-iso` (which
    uploads `elizaos-live-stable-*.iso` + `.sha256`) and
    `elizaos-os-full-release` (which expects them in `_artifacts/`).
+   Until that automatic path is repaired, use
+   `update-os-release-manifest.yml` only as a manual recovery boundary: pin the
+   current `develop` SHA and release-tag SHA, review its generated PR, and never
+   treat the recovery workflow as a release coordinator.
 
 ### Phase 3 — Verify end-user verification path
 
@@ -168,7 +178,7 @@ green.
   separate PR, re-run via workflow_dispatch, watch turn green. THIS
   IS WHERE I'D START.
 - **Session B** (2h): Phase 2 — diagnose + fix
-  `elizaos-os-full-release.yml` startup_failure.
+  `elizaos-os-full-release.yml` startup_failure under #16279.
 - **Session C** (1h): Phase 3 — verify `gh attestation verify` works.
 - **Sessions D-E** (4-6h): Phase 4 arm64 — parameterize Dockerfile +
   build.sh, test locally, push fix to multi-arch.

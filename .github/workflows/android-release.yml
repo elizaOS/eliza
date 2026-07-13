@@ -15,7 +15,7 @@ on:
     secrets:
       # ANDROID_KEYSTORE_* are downgraded to `required: false` so the
       # reusable-workflow secret contract does not block startup when
-      # called from release-all.yml / release-orchestrator.yml with
+      # called from release-orchestrator.yml with
       # `secrets: inherit`. The job body's signing step (gated on
       # ANDROID_KEYSTORE_BASE64 being non-empty) skips with a clear
       # warning when the secrets are absent, instead of aborting the

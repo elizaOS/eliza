@@ -12,7 +12,10 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
 | `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
-| `release.yaml` | Push to main, Release | NPM beta/production package releases |
+| `release.yaml` | Beta tag, release created, manual | NPM publishing; transactional repair is tracked in [#16277](https://github.com/elizaOS/eliza/issues/16277) |
+| `release-orchestrator.yml` | Release published, reusable, manual | Cross-platform distribution; sole-coordinator repair is tracked in [#16279](https://github.com/elizaOS/eliza/issues/16279) |
+| `elizaos-os-full-release.yml` | Release created, manual | Configured automatic OS artifact/manifest path; currently startup-invalid |
+| `update-os-release-manifest.yml` | Manual only | SHA-bound OS manifest recovery through a pull request |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
@@ -29,6 +32,23 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 
 ## Release Workflows
 
+The retained automated graph has three distinct responsibilities:
+`release.yaml` owns npm publishing, `release-orchestrator.yml` coordinates
+post-release distribution, and `elizaos-os-full-release.yml` is the only
+configured automatic OS artifact/manifest path. The manual
+`update-os-release-manifest.yml` recovery workflow is intentionally outside
+that graph: it can only propose a SHA-bound checksum repair through a pull
+request. Do not add another automatic aggregate or direct protected-branch
+manifest writer.
+
+These workflows remain under active hardening. The immutable planning and tag
+primitives from [#16276](https://github.com/elizaOS/eliza/issues/16276) are
+available, but `release.yaml` does not consume them atomically yet.
+Transactional npm publication is tracked in
+[#16277](https://github.com/elizaOS/eliza/issues/16277), and the sole audited
+coordinator gate in [#16279](https://github.com/elizaOS/eliza/issues/16279).
+Their presence in this catalog is not evidence that a release path is healthy.
+
 ### Alpha Tags
 
 Alpha version tags are tags only. They do not publish NPM packages, run packaging
@@ -40,10 +60,36 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 **Triggers:**
 
-- Push to `main` → Beta release (`@beta` tag)
+- Push of a `v*-beta.*` tag → Beta release (`@beta` tag)
 - GitHub Release created → Production release (`@latest` tag)
+- Manual dispatch → Beta release testing only
 
 **Packages:** All `@elizaos/*` packages in the monorepo
+
+### Cross-platform distribution (`release-orchestrator.yml`)
+
+Coordinates package, Android, Apple, desktop, Homebrew, and homepage release
+jobs after a GitHub Release is published. It also exposes reusable and manual
+entry points. The coordinator's fail-closed completion and npm-routing contract
+is tracked in #16279.
+
+### OS artifact manifest (`elizaos-os-full-release.yml`)
+
+This is intended to build and verify Linux OS artifacts, populate their release
+manifest, generate canonical checksums, validate publishability, and upload the
+result. It is the only automatic workflow configured to do so, but its recorded
+runs are startup failures, so it is not a working release authority. Its
+reusable-workflow permissions and end-to-end repair remain in #16279.
+
+### Manual OS manifest recovery (`update-os-release-manifest.yml`)
+
+This manual-only workflow preserves the separate recovery operation needed when
+release assets already exist. Operators must provide the current full
+`origin/develop` SHA and the release tag's full commit SHA. The workflow refuses
+stale or mismatched identities, downloads the exact release asset set,
+regenerates and verifies every publishable checksum, and opens a dedicated pull
+request. It has no `release`, `push`, or `workflow_call` trigger and never pushes
+to `develop` directly.
 
 ## Test Workflows
 
@@ -227,24 +273,15 @@ Automatically creates PRs with fixes when issues are found.
 
 Manual workflow for generating JSDoc documentation.
 
-## Manual Release Process
+## Release operation gate
 
-### 1. Create a GitHub Release
-
-1. Go to Releases → Create new release
-2. Create a new tag: `v2.0.0` (follows semver)
-3. Add release notes
-4. Publish release
-
-### 2. Automated Publishing
-
-The release will trigger:
-
-- `release.yaml` → NPM packages
-
-### 3. Manual publishing
-
-Use `bunx lerna publish` from the repo root when automation is not sufficient (see `release.yaml`).
+Release failures are fail-closed. A failed or incomplete retained workflow is
+not authorization to publish directly with Lerna, recreate a tag, or introduce
+a parallel coordinator. Before cutting a release, confirm the immutable
+candidate matches the #16276 contract and that the npm transaction gate in
+#16277 and coordinator completion gate in #16279 are satisfied with current run
+evidence. Manifest recovery may only use the manual PR boundary documented
+above.
 
 ## Setting Up Secrets
 
@@ -326,9 +363,11 @@ publishes.
 
 ### Release Failures
 
-1. Verify secrets are configured
-2. Check workflow logs for specific errors
-3. For NPM: ensure package versions are unique
+1. Check the exact retained workflow's logs and artifacts.
+2. Treat missing credentials, artifacts, registry responses, or completion
+   evidence as failures rather than skipped success.
+3. Route npm failures to #16277 and coordinator failures to #16279; do not
+   bypass them with a second publisher.
 
 ### Claude Workflow Issues
 
