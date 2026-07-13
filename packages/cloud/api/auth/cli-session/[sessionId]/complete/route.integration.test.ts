@@ -1,4 +1,4 @@
-/** Drives CLI-session re-completion through the real route, service, repositories, and PGlite; only the authenticated request identity and logger are controlled. */
+/** Drives CLI-session re-completion through the real route, service, DB transaction, KMS boundary, and PGlite; auth/logger are controlled, and the race test barriers the real primary read. */
 import {
   afterAll,
   beforeAll,
@@ -6,6 +6,7 @@ import {
   describe,
   expect,
   mock,
+  spyOn,
   test,
 } from "bun:test";
 import { Hono } from "hono";
@@ -19,10 +20,18 @@ const OTHER_USER_ID = "22222222-2222-4222-8222-222222222222";
 const ORG_ID = "33333333-3333-4333-8333-333333333333";
 const API_KEY_ID = "44444444-4444-4444-8444-444444444444";
 
+interface CompleteResponseBody {
+  alreadyAuthenticated: boolean;
+  apiKey: string | null;
+  keyPrefix: string | null;
+}
+
 let currentUserId = USER_ID;
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserWithOrg: async () => ({
-    id: currentUserId,
+  requireUserWithOrg: async (context: {
+    req: { header: (name: string) => string | undefined };
+  }) => ({
+    id: context.req.header("x-test-user-id") ?? currentUserId,
     organization_id: ORG_ID,
   }),
 }));
@@ -31,6 +40,7 @@ mock.module("@/lib/utils/logger", () => ({
 }));
 
 let dbWrite: typeof import("../../../../../shared/src/db/client").dbWrite;
+let cliAuthSessionCompletionService: typeof import("../../../../../shared/src/lib/services/cli-auth-session-completion").cliAuthSessionCompletionService;
 let closeDb:
   | typeof import("../../../../../shared/src/db/client").closeDatabaseConnectionsForTests
   | undefined;
@@ -39,6 +49,9 @@ let app: Hono;
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import(
     "../../../../../shared/src/db/client"
+  ));
+  ({ cliAuthSessionCompletionService } = await import(
+    "../../../../../shared/src/lib/services/cli-auth-session-completion"
   ));
   await dbWrite.execute(`CREATE TABLE api_keys (
     id uuid PRIMARY KEY, name text NOT NULL, description text, key_hash text NOT NULL UNIQUE,
@@ -84,10 +97,59 @@ async function seedSession(
       now() + interval '10 minutes', now())`);
 }
 
-async function complete(sessionId: string): Promise<Response> {
+async function seedPendingSession(sessionId: string): Promise<void> {
+  await dbWrite.execute(`INSERT INTO cli_auth_sessions
+    (session_id, status, expires_at)
+    VALUES ('${sessionId}', 'pending', now() + interval '10 minutes')`);
+}
+
+async function complete(
+  sessionId: string,
+  userId = currentUserId,
+): Promise<Response> {
   return app.request(`/api/auth/cli-session/${sessionId}/complete`, {
     method: "POST",
+    headers: { "x-test-user-id": userId },
   });
+}
+
+async function afterConcurrentPendingReads<T>(
+  run: () => Promise<T>,
+): Promise<{ result: T; reads: number }> {
+  const findActive = cliAuthSessionCompletionService.findActive.bind(
+    cliAuthSessionCompletionService,
+  );
+  let reads = 0;
+  let releaseReads: () => void = () => {};
+  const bothRead = new Promise<void>((resolve) => {
+    releaseReads = resolve;
+  });
+  let barrierTimer: ReturnType<typeof setTimeout> | undefined;
+  const barrierTimeout = new Promise<never>((_, reject) => {
+    barrierTimer = setTimeout(
+      () => reject(new Error("Timed out waiting for concurrent primary reads")),
+      5_000,
+    );
+  });
+  const readGate = Promise.race([bothRead, barrierTimeout]);
+  const readBarrier = spyOn(
+    cliAuthSessionCompletionService,
+    "findActive",
+  ).mockImplementation(async (sessionId) => {
+    const session = await findActive(sessionId);
+    reads += 1;
+    if (reads === 2) releaseReads();
+    await readGate;
+    return session;
+  });
+
+  try {
+    const result = await run();
+    return { result, reads };
+  } finally {
+    if (barrierTimer) clearTimeout(barrierTimer);
+    readBarrier.mockRestore();
+  }
 }
 
 describe("CLI session completion with real persistence", () => {
@@ -105,6 +167,91 @@ describe("CLI session completion with real persistence", () => {
       "SELECT count(*)::int AS count FROM api_keys",
     );
     expect(count.rows[0]).toMatchObject({ count: 1 });
+  });
+
+  test("concurrent completions atomically mint exactly one API key", async () => {
+    await seedPendingSession("concurrent");
+
+    // Wrap the real primary read with a barrier so both requests have observed
+    // the same pending row before either can attempt the conditional claim.
+    // This forces the race deterministically instead of relying on scheduler
+    // timing while preserving the real route/service/DB/KMS path.
+    const {
+      result: [first, second],
+      reads,
+    } = await afterConcurrentPendingReads(() =>
+      Promise.all([complete("concurrent"), complete("concurrent")]),
+    );
+    expect(reads).toBe(2);
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+
+    const bodies = (await Promise.all([
+      first.json(),
+      second.json(),
+    ])) as CompleteResponseBody[];
+    expect(bodies.map((body) => body.alreadyAuthenticated).sort()).toEqual([
+      false,
+      true,
+    ]);
+    const winner = bodies.find((body) => !body.alreadyAuthenticated);
+    const retry = bodies.find((body) => body.alreadyAuthenticated);
+    expect(winner?.apiKey).toStartWith("eliza_");
+    expect(retry?.apiKey).toBeNull();
+    expect(retry?.keyPrefix).toBe(winner?.keyPrefix);
+
+    const keys = await dbWrite.execute(
+      "SELECT id, is_active FROM api_keys ORDER BY created_at, id",
+    );
+    // beforeEach seeds one existing key; the two racing calls add exactly one.
+    expect(keys.rows).toHaveLength(2);
+    expect(keys.rows.every((row) => row.is_active === true)).toBe(true);
+
+    const session = await dbWrite.execute(
+      "SELECT status, user_id, api_key_id FROM cli_auth_sessions WHERE session_id = 'concurrent'",
+    );
+    expect(session.rows[0]).toMatchObject({
+      status: "authenticated",
+      user_id: USER_ID,
+    });
+    expect(
+      keys.rows.some((row) => row.id === session.rows[0]?.api_key_id),
+    ).toBe(true);
+  });
+
+  test("concurrent different-user completions persist only the winner's key", async () => {
+    await seedPendingSession("cross-user-race");
+
+    const { result: responses, reads } = await afterConcurrentPendingReads(() =>
+      Promise.all([
+        complete("cross-user-race", USER_ID),
+        complete("cross-user-race", OTHER_USER_ID),
+      ]),
+    );
+
+    expect(reads).toBe(2);
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 400,
+    ]);
+    const winnerIndex = responses.findIndex(
+      (response) => response.status === 200,
+    );
+    const winnerId = winnerIndex === 0 ? USER_ID : OTHER_USER_ID;
+    expect(JSON.stringify(await responses[1 - winnerIndex]?.json())).toContain(
+      "Session already authenticated or expired",
+    );
+
+    const keys = await dbWrite.execute(
+      `SELECT id, user_id FROM api_keys WHERE id <> '${API_KEY_ID}'`,
+    );
+    expect(keys.rows).toEqual([expect.objectContaining({ user_id: winnerId })]);
+    const session = await dbWrite.execute(
+      "SELECT user_id, api_key_id FROM cli_auth_sessions WHERE session_id = 'cross-user-race'",
+    );
+    expect(session.rows[0]).toMatchObject({
+      user_id: winnerId,
+      api_key_id: keys.rows[0]?.id,
+    });
   });
 
   test.each([
