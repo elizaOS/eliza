@@ -32,7 +32,7 @@ interface CompleteResponseBody {
 
 let currentUserId = USER_ID;
 mock.module("@/lib/auth/workers-hono-auth", () => ({
-  requireUserWithOrg: async (context: {
+  requireUserOrApiKeyWithOrg: async (context: {
     req: { header: (name: string) => string | undefined };
   }) => ({
     id: context.req.header("x-test-user-id") ?? currentUserId,
