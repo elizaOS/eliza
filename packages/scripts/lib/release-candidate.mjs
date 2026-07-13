@@ -559,7 +559,11 @@ export function recordReleaseTransition(
 }
 
 /** Verify Git, manifests, plan integrity, and every tarball before side effects. */
-export function verifyReleaseCandidate({ repoRoot, candidateDirectory }) {
+export function verifyReleaseCandidate({
+  repoRoot,
+  candidateDirectory,
+  expectedIdentity,
+}) {
   const root = path.resolve(repoRoot);
   const candidate = path.resolve(candidateDirectory);
   const { plan, planPath } = loadReleasePlan(candidate);
@@ -570,6 +574,22 @@ export function verifyReleaseCandidate({ repoRoot, candidateDirectory }) {
     throw new Error(
       `Release state expects ${state.planIntegrity}, but the plan is ${planIntegrity}`,
     );
+  }
+  if (expectedIdentity !== undefined) {
+    const expected = validateReleaseIdentity({
+      ...expectedIdentity,
+      expectedCommit: expectedIdentity.sourceSha,
+    });
+    if (
+      plan.sourceSha !== expected.sourceSha ||
+      plan.expectedCommit !== expected.expectedCommit ||
+      plan.version !== expected.version ||
+      plan.channel !== expected.channel
+    ) {
+      throw new Error(
+        `Candidate identity ${plan.sourceSha}/${plan.version}/${plan.channel} does not match requested ${expected.sourceSha}/${expected.version}/${expected.channel}`,
+      );
+    }
   }
   assertCleanExpectedCommit(root, plan);
   for (const packageRecord of plan.packages) {

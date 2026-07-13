@@ -427,6 +427,79 @@ async function removeCandidateTags({
   return actions;
 }
 
+/**
+ * Re-read every immutable version and public channel after promotion. This is
+ * the credential-free gate consumed by Git/GitHub finalization: a recorded
+ * state is necessary for retry continuity, but live registry evidence remains
+ * authoritative before any public ref advances.
+ */
+export async function verifyPromotedReleaseCandidate({
+  repoRoot,
+  candidateDirectory,
+  registryUrl,
+  token,
+}) {
+  const verified = verifyReleaseCandidate({ repoRoot, candidateDirectory });
+  const phaseIndex = RELEASE_PHASES.indexOf(verified.state.phase);
+  if (phaseIndex < RELEASE_PHASES.indexOf("channel-promoted")) {
+    throw new Error(
+      `Promoted registry verification requires channel-promoted state, received ${verified.state.phase}`,
+    );
+  }
+  const normalizedRegistry = normalizeRegistryUrl(registryUrl);
+  const recorded = releaseTransitionEvidence(verified.state, "registry-staged");
+  if (recorded?.registry !== normalizedRegistry) {
+    throw new Error(
+      `Candidate registry is ${recorded?.registry}, not ${normalizedRegistry}`,
+    );
+  }
+
+  const packages = await verifyAllIntegrities({
+    registryUrl: normalizedRegistry,
+    plan: verified.plan,
+    token,
+  });
+  const channels = [];
+  for (const packageRecord of verified.plan.packages) {
+    const channelVersion = await inspectRegistryChannel({
+      registryUrl: normalizedRegistry,
+      packageRecord,
+      channel: verified.plan.channel,
+      token,
+    });
+    if (channelVersion !== packageRecord.version) {
+      throw new Error(
+        `${packageRecord.name} channel ${verified.plan.channel} points to ${channelVersion}, expected ${packageRecord.version}`,
+      );
+    }
+    const candidateVersion = await inspectRegistryChannel({
+      registryUrl: normalizedRegistry,
+      packageRecord,
+      channel: verified.plan.candidateTag,
+      token,
+    });
+    if (candidateVersion !== null) {
+      throw new Error(
+        `${packageRecord.name} still exposes staging tag ${verified.plan.candidateTag}`,
+      );
+    }
+    channels.push({
+      name: packageRecord.name,
+      channel: verified.plan.channel,
+      version: channelVersion,
+      candidateTagRemoved: true,
+    });
+  }
+  return {
+    state: "channel-promoted",
+    registry: normalizedRegistry,
+    channel: verified.plan.channel,
+    packages,
+    channels,
+    fingerprint: stableStringify({ packages, channels }),
+  };
+}
+
 /** Stage, verify, and promote a candidate, resuming only matching state. */
 export async function publishReleaseCandidate({
   repoRoot,
@@ -498,6 +571,10 @@ export async function publishReleaseCandidate({
   }
 
   if (phaseIndex === RELEASE_PHASES.indexOf("registry-verified")) {
+    // A retry may arrive long after the recorded verification. Re-read the
+    // entire cohort immediately before any remaining public tag moves so state
+    // history never substitutes for current registry integrity.
+    await verifyAllIntegrities({ registryUrl, plan, token });
     const promotions = await promoteChannel({
       repoRoot,
       registryUrl,
@@ -522,25 +599,12 @@ export async function publishReleaseCandidate({
   }
 
   if (phaseIndex >= promotedIndex) {
-    const packages = await verifyAllIntegrities({ registryUrl, plan, token });
-    for (const packageRecord of plan.packages) {
-      const actual = await inspectRegistryChannel({
-        registryUrl,
-        packageRecord,
-        channel: plan.channel,
-        token,
-      });
-      if (actual !== packageRecord.version) {
-        throw new Error(
-          `${packageRecord.name} is no longer promoted on ${plan.channel}`,
-        );
-      }
-    }
-    return {
-      state: "channel-promoted",
-      packages,
-      fingerprint: stableStringify(packages),
-    };
+    return verifyPromotedReleaseCandidate({
+      repoRoot,
+      candidateDirectory,
+      registryUrl,
+      token,
+    });
   }
   throw new Error(
     `Release publication stopped unexpectedly at ${RELEASE_PHASES[phaseIndex]}`,

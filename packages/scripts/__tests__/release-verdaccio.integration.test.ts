@@ -19,6 +19,7 @@ import {
   inspectRegistryChannel,
   inspectReleaseRegistry,
   publishReleaseCandidate,
+  verifyPromotedReleaseCandidate,
 } from "../lib/release-registry.mjs";
 
 const roots: string[] = [];
@@ -357,7 +358,32 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
         token,
       }),
     ).toBe("1.0.0");
+    expect(
+      await inspectRegistryChannel({
+        registryUrl: resumedServer.registryUrl,
+        packageRecord,
+        channel: candidate.plan.candidateTag,
+        token,
+      }),
+    ).toBeNull();
   }
+  expect(
+    await verifyPromotedReleaseCandidate({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory,
+      registryUrl: resumedServer.registryUrl,
+      token,
+    }),
+  ).toMatchObject({
+    state: "channel-promoted",
+    channel: "beta",
+    channels: candidate.plan.packages.map(({ name }) => ({
+      name,
+      channel: "beta",
+      version: "1.0.0",
+      candidateTagRemoved: true,
+    })),
+  });
   expect(
     await publishReleaseCandidate({
       repoRoot: fixture.repoRoot,

@@ -18,6 +18,7 @@ import {
 import {
   assertReleaseTagAllowed,
   pushAtomicReleaseRefs,
+  pushReleaseTag,
 } from "../lib/release-git.mjs";
 
 const roots: string[] = [];
@@ -173,6 +174,71 @@ describe("atomic release refs", () => {
         expectedOldBranchSha: fixture.baseSha,
       }),
     ).toThrow("Conflicting evidence for already-recorded phase git-bound");
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
+      "refs/tags/v1.0.1",
+    );
+  }, 30_000);
+
+  test("tag-only finalization leaves the release branch untouched and retries exactly", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, ["tag", "unrelated-local-tag", fixture.releaseSha]);
+
+    expect(
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.0",
+      }),
+    ).toMatchObject({ pushed: true, expectedCommit: fixture.releaseSha });
+    const firstRefs = remoteRefs(fixture.repoRoot, fixture.remote);
+    expect(firstRefs).toContain(`${fixture.baseSha}\trefs/heads/develop`);
+    expect(firstRefs).toContain(`${fixture.releaseSha}\trefs/tags/v1.0.0^{}`);
+    expect(firstRefs).not.toContain("unrelated-local-tag");
+
+    expect(
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.0",
+      }),
+    ).toMatchObject({ pushed: false, expectedCommit: fixture.releaseSha });
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).toBe(firstRefs);
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-tagged",
+    );
+  }, 30_000);
+
+  test("tag-only rejection and a mismatched planned tag fail without ref mutation", () => {
+    const fixture = makeScenario();
+    const hookPath = path.join(fixture.remote, "hooks/update");
+    fs.writeFileSync(hookPath, ["#!/bin/sh", "exit 1", ""].join("\n"));
+    fs.chmodSync(hookPath, 0o755);
+    expect(() =>
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.0",
+      }),
+    ).toThrow("git push failed");
+    expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
+      "refs/tags/v1.0.0",
+    );
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-bound",
+    );
+
+    fs.unlinkSync(hookPath);
+    expect(() =>
+      pushReleaseTag({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        tag: "v1.0.1",
+      }),
+    ).toThrow("Release tag must be exactly v1.0.0");
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.1",
     );

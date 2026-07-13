@@ -1,8 +1,9 @@
 /**
- * Publishes the explicitly named release branch and tag as one atomic Git push.
- * Remote branch movement, conflicting tags, rejected refs, and reserved failed
- * beta tags are hard failures; a matching annotated or lightweight tag is an
- * idempotent no-op after dereferencing to the planned commit.
+ * Publishes explicitly named release refs without wildcard or follow-tag
+ * expansion. The transactional workflow uses the tag-only path so source
+ * branches are never mutated; the branch/tag primitive remains available for
+ * callers that need one atomic fast-forward. Matching tags are idempotent,
+ * while conflicts and reserved failed beta tags are hard failures.
  */
 
 import { spawnSync } from "node:child_process";
@@ -110,6 +111,15 @@ function assertCommitExists(repoRoot, expectedCommit) {
     );
 }
 
+function assertTagMatchesPlan(tag, version) {
+  const expectedTag = `v${version}`;
+  if (tag !== expectedTag) {
+    throw new Error(
+      `Release tag must be exactly ${expectedTag}, received ${tag}`,
+    );
+  }
+}
+
 function localTagCommit(repoRoot, tagRef) {
   const result = spawnSync("git", ["rev-parse", `${tagRef}^{commit}`], {
     cwd: repoRoot,
@@ -160,6 +170,109 @@ function assertFastForward(repoRoot, oldCommit, expectedCommit) {
 }
 
 /**
+ * Push only the planned `refs/tags/v<version>` ref. A failed push is re-read
+ * once because the remote may have accepted the exact tag before the client
+ * lost its response; only an exact matching commit converts that ambiguity to
+ * an idempotent success.
+ */
+export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
+  if (typeof remote !== "string" || remote.length === 0)
+    throw new Error("An explicit Git remote is required");
+  assertReleaseTagAllowed(tag);
+  const tagRef = `refs/tags/${tag}`;
+  assertRefName(repoRoot, tagRef);
+  const { plan, state } = verifyReleaseCandidate({
+    repoRoot,
+    candidateDirectory,
+  });
+  assertTagMatchesPlan(tag, plan.version);
+  const expectedCommit = validateCommitSha(
+    plan.expectedCommit,
+    "expectedCommit",
+  );
+  assertCommitExists(repoRoot, expectedCommit);
+  const phaseIndex = RELEASE_PHASES.indexOf(state.phase);
+  if (phaseIndex < RELEASE_PHASES.indexOf("channel-promoted")) {
+    throw new Error(
+      `Git tag cannot be published from release phase ${state.phase}`,
+    );
+  }
+
+  const transitionEvidence = { remote, tagRef, expectedCommit };
+  if (phaseIndex >= RELEASE_PHASES.indexOf("git-tagged")) {
+    const recorded = releaseTransitionEvidence(state, "git-tagged");
+    if (stableStringify(recorded) !== stableStringify(transitionEvidence)) {
+      throw new Error(
+        "Conflicting evidence for already-recorded phase git-tagged",
+      );
+    }
+  }
+
+  const before = remoteReleaseRefs(
+    repoRoot,
+    remote,
+    "refs/heads/__unused__",
+    tagRef,
+  );
+  if (before.tagCommit && before.tagCommit !== expectedCommit) {
+    throw new Error(
+      `Remote tag ${tagRef} resolves to ${before.tagCommit}, expected ${expectedCommit}`,
+    );
+  }
+  let pushed = false;
+  if (!before.tagCommit) {
+    ensureLocalAnnotatedTag(repoRoot, tag, tagRef, expectedCommit);
+    const push = spawnSync(
+      "git",
+      ["push", "--atomic", "--", remote, `${tagRef}:${tagRef}`],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    if (push.error) throw push.error;
+    if (push.status === 0) {
+      pushed = true;
+    } else {
+      const raced = remoteReleaseRefs(
+        repoRoot,
+        remote,
+        "refs/heads/__unused__",
+        tagRef,
+      );
+      if (raced.tagCommit !== expectedCommit) {
+        const detail = [push.stdout, push.stderr]
+          .filter(Boolean)
+          .join("\n")
+          .trim();
+        throw new Error(`git push failed${detail ? `:\n${detail}` : ""}`);
+      }
+    }
+  }
+
+  const after = remoteReleaseRefs(
+    repoRoot,
+    remote,
+    "refs/heads/__unused__",
+    tagRef,
+  );
+  if (after.tagCommit !== expectedCommit) {
+    throw new Error(
+      `Release tag verification failed: tag=${after.tagCommit}, expected=${expectedCommit}`,
+    );
+  }
+  if (state.phase === "channel-promoted") {
+    recordReleaseTransition(
+      candidateDirectory,
+      "git-tagged",
+      transitionEvidence,
+    );
+  }
+  return { tagRef, expectedCommit, pushed };
+}
+
+/**
  * Atomically push only `refs/heads/<branch>` and `refs/tags/<tag>`. A caller
  * must supply the branch SHA it inspected before the candidate was created.
  */
@@ -186,6 +299,7 @@ export function pushAtomicReleaseRefs({
     repoRoot,
     candidateDirectory,
   });
+  assertTagMatchesPlan(tag, plan.version);
   const expectedCommit = validateCommitSha(
     plan.expectedCommit,
     "expectedCommit",

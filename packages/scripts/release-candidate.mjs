@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * Command boundary for immutable npm candidates, registry resume, and atomic
- * release refs. Every side-effecting command requires explicit paths and
- * identities; public npm access additionally requires an opt-in flag.
+ * Command boundary for immutable npm candidates, registry resume, exact Git
+ * tags, and GitHub Release finalization. Every side effect requires explicit
+ * paths and identities; public services additionally require an opt-in flag.
  */
 
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -15,12 +15,15 @@ import {
   verifyReleaseCandidate,
 } from "./lib/release-candidate.mjs";
 import { loadReleaseCohort, stableStringify } from "./lib/release-contract.mjs";
-import { pushAtomicReleaseRefs } from "./lib/release-git.mjs";
+import { pushAtomicReleaseRefs, pushReleaseTag } from "./lib/release-git.mjs";
+import { publishGitHubRelease } from "./lib/release-github.mjs";
 import {
   inspectReleaseRegistry,
   normalizeRegistryUrl,
   publishReleaseCandidate,
+  verifyPromotedReleaseCandidate,
 } from "./lib/release-registry.mjs";
+import { validatePublicReleaseInputs } from "./lib/release-workflow.mjs";
 
 const DEFAULT_REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -71,6 +74,28 @@ function registryOptions(args) {
   return { registryUrl, token: process.env[tokenEnv] };
 }
 
+function githubOptions(args) {
+  const apiUrl = argumentValue(args, "--api-url") || "https://api.github.com/";
+  if (
+    new URL(apiUrl).hostname === "api.github.com" &&
+    !args.includes("--allow-public-github")
+  ) {
+    throw new Error("Public GitHub access requires --allow-public-github");
+  }
+  const tokenEnv = argumentValue(args, "--token-env") || "GITHUB_TOKEN";
+  return { apiUrl, token: process.env[tokenEnv] };
+}
+
+function writeGitHubOutputs(filePath, values) {
+  const lines = Object.entries(values).map(([name, value]) => {
+    if (typeof value === "string" || typeof value === "boolean") {
+      return `${name}=${value}`;
+    }
+    throw new Error(`GitHub output ${name} must be a string or boolean`);
+  });
+  appendFileSync(filePath, `${lines.join("\n")}\n`, "utf8");
+}
+
 function readEvidence(filePath) {
   let evidence;
   try {
@@ -89,17 +114,25 @@ function readEvidence(filePath) {
 
 function usage() {
   return `release-candidate commands:
+  inputs --source-sha <sha> --version <semver> --channel <beta|latest>
+         [--github-output <path>]
   candidate --cohort <json> --candidate <dir> --version <semver> --channel <tag>
             --source-sha <sha> --expected-commit <sha> --build-command <program>
             [--build-arg <arg> ...] [--npm-command npm] [--repo-root <dir>]
-  verify --candidate <dir> [--repo-root <dir>]
+  verify --candidate <dir> [--source-sha <sha> --version <semver> --channel <tag>]
+         [--repo-root <dir>]
   inspect --candidate <dir> --registry <url> [--token-env <name>]
   publish --candidate <dir> --registry <url> [--npm-command npm] [--token-env <name>]
+  verify-promoted --candidate <dir> --registry <url> [--token-env <name>]
   push-refs --candidate <dir> --remote <name-or-url> --branch <name> --tag <tag>
             --expected-old <sha> [--repo-root <dir>]
+  push-tag --candidate <dir> --remote <name-or-url> --tag <tag>
+           [--repo-root <dir>]
+  publish-release --candidate <dir> --repository <owner/name> --tag <tag>
+                  [--api-url <url>] [--token-env <name>] [--repo-root <dir>]
   transition --candidate <dir> --to <phase> --evidence <json-file>
 
-Public registry inspection or mutation additionally requires --allow-public-registry.`;
+Public npm or GitHub access additionally requires its matching --allow-public-* flag.`;
 }
 
 export async function main(args = process.argv.slice(2)) {
@@ -107,6 +140,26 @@ export async function main(args = process.argv.slice(2)) {
   if (!command || command === "--help" || command === "-h") {
     console.log(usage());
     return null;
+  }
+  if (command === "inputs") {
+    const result = validatePublicReleaseInputs({
+      sourceSha: argumentValue(args, "--source-sha", { required: true }),
+      version: argumentValue(args, "--version", { required: true }),
+      channel: argumentValue(args, "--channel", { required: true }),
+    });
+    const outputPath = argumentValue(args, "--github-output");
+    if (outputPath) {
+      writeGitHubOutputs(outputPath, {
+        source_sha: result.sourceSha,
+        version: result.version,
+        channel: result.channel,
+        tag: result.tag,
+        prerelease: result.prerelease,
+        artifact_name: result.artifactName,
+      });
+    }
+    console.log(stableStringify(result).trim());
+    return result;
   }
   if (command === "candidate") {
     const root = repoRoot(args);
@@ -138,9 +191,33 @@ export async function main(args = process.argv.slice(2)) {
     return result;
   }
   if (command === "verify") {
+    const expectedSourceSha = argumentValue(args, "--source-sha");
+    const expectedVersion = argumentValue(args, "--version");
+    const expectedChannel = argumentValue(args, "--channel");
+    const expectedValues = [
+      expectedSourceSha,
+      expectedVersion,
+      expectedChannel,
+    ];
+    if (
+      expectedValues.some((value) => value !== null) &&
+      expectedValues.some((value) => value === null)
+    ) {
+      throw new Error(
+        "verify identity requires --source-sha, --version, and --channel together",
+      );
+    }
     const result = verifyReleaseCandidate({
       repoRoot: repoRoot(args),
       candidateDirectory: candidateDirectory(args),
+      expectedIdentity:
+        expectedSourceSha === null
+          ? undefined
+          : {
+              sourceSha: expectedSourceSha,
+              version: expectedVersion,
+              channel: expectedChannel,
+            },
     });
     console.log(
       stableStringify({
@@ -174,6 +251,15 @@ export async function main(args = process.argv.slice(2)) {
     console.log(stableStringify(result).trim());
     return result;
   }
+  if (command === "verify-promoted") {
+    const result = await verifyPromotedReleaseCandidate({
+      repoRoot: repoRoot(args),
+      candidateDirectory: candidateDirectory(args),
+      ...registryOptions(args),
+    });
+    console.log(stableStringify(result).trim());
+    return result;
+  }
   if (command === "push-refs") {
     const result = pushAtomicReleaseRefs({
       repoRoot: repoRoot(args),
@@ -184,6 +270,27 @@ export async function main(args = process.argv.slice(2)) {
       expectedOldBranchSha: argumentValue(args, "--expected-old", {
         required: true,
       }),
+    });
+    console.log(stableStringify(result).trim());
+    return result;
+  }
+  if (command === "push-tag") {
+    const result = pushReleaseTag({
+      repoRoot: repoRoot(args),
+      candidateDirectory: candidateDirectory(args),
+      remote: argumentValue(args, "--remote", { required: true }),
+      tag: argumentValue(args, "--tag", { required: true }),
+    });
+    console.log(stableStringify(result).trim());
+    return result;
+  }
+  if (command === "publish-release") {
+    const result = await publishGitHubRelease({
+      repoRoot: repoRoot(args),
+      candidateDirectory: candidateDirectory(args),
+      repository: argumentValue(args, "--repository", { required: true }),
+      tag: argumentValue(args, "--tag", { required: true }),
+      ...githubOptions(args),
     });
     console.log(stableStringify(result).trim());
     return result;

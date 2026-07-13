@@ -134,8 +134,24 @@ describe("immutable release candidate", () => {
       verifyReleaseCandidate({
         repoRoot: fixture.repoRoot,
         candidateDirectory: path.join(fixture.base, "candidate-one"),
+        expectedIdentity: {
+          sourceSha: fixture.sourceSha,
+          version: "1.2.3",
+          channel: "beta",
+        },
       }).planIntegrity,
     ).toMatch(/^sha512-/);
+    expect(() =>
+      verifyReleaseCandidate({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: path.join(fixture.base, "candidate-one"),
+        expectedIdentity: {
+          sourceSha: fixture.sourceSha,
+          version: "1.2.3",
+          channel: "latest",
+        },
+      }),
+    ).toThrow("does not match requested");
 
     expect(() => createCandidate(fixture, "candidate-one")).toThrow(
       "output already exists",
