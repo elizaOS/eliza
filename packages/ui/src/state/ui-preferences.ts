@@ -94,15 +94,15 @@ export const DEFAULT_SHADER_BACKGROUND_CONFIG: BackgroundConfig = {
 };
 
 /**
- * The curated "Ember Night" wallpaper: a warm sunset in the clouds, served as
- * a same-origin static asset from `packages/app/public`. It renders the
- * `ember-night` gallery tile (no longer the boot default — the app boots to
- * the Canopy wallpaper). A served, code-free, same-origin image the apply
- * channel already trusts (same class as the gradient data URLs and the
- * `/api/media/<hash>` uploads) — it carries no GLSL source or preset id, so the
- * confinement invariants (#11088 / #13523) hold. The bytes live in `public/`
- * (served, cacheable), never in the JS bundle. When the image is cleared or
- * fails to load the shell falls back to the shader field
+ * The curated "Sunset" wallpaper: a fiery orange-and-red sunset in the clouds,
+ * served as a same-origin static asset from `packages/app/public`. It renders
+ * the `sunset` gallery tile (not the boot default — the app boots to the Canopy
+ * wallpaper). A served, code-free, same-origin image the apply channel already
+ * trusts (same class as the gradient data URLs and the `/api/media/<hash>`
+ * uploads) — it carries no GLSL source or preset id, so the confinement
+ * invariants (#11088 / #13523) hold. The bytes live in `public/` (served,
+ * cacheable), never in the JS bundle. When the image is cleared or fails to load
+ * the shell falls back to the shader field
  * ({@link DEFAULT_SHADER_BACKGROUND_CONFIG}).
  */
 const SUNSET_WALLPAPER_URL = "/bg-sunset.webp";
@@ -231,13 +231,13 @@ export const BACKGROUND_CATALOG: readonly BackgroundCatalogEntry[] =
         author: "curated",
       };
     }
-    // image: a served same-origin asset for the default (the sunset wallpaper)
-    // and for each curated photo wallpaper (a `/wallpapers/<id>.webp` static
-    // asset); a code-free gradient data URL from the palette for the rest. Ember
-    // Night reuses the shared boot-default URL so the default and its catalog
-    // tile match ({@link DEFAULT_BACKGROUND_CONFIG}).
+    // image: a served same-origin asset for the "sunset" tile (the served
+    // `/bg-sunset.webp`) and for each curated photo wallpaper (a
+    // `/wallpapers/<id>.webp` static asset); a code-free gradient data URL from
+    // the palette for the rest. The `sunset` id keeps its dedicated public asset
+    // path; the boot default (Canopy) is a normal `/wallpapers/<id>.webp` photo.
     const source =
-      meta.id === SHARED_DEFAULT_BACKGROUND_CATALOG_ID
+      meta.id === "sunset"
         ? SUNSET_WALLPAPER_URL
         : PHOTO_WALLPAPER_IDS.has(meta.id)
           ? photoWallpaperUrl(meta.id)

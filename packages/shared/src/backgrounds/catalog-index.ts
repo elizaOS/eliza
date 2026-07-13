@@ -80,13 +80,13 @@ export const NATURAL_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
     tags: ["nature", "mountain", "dawn", "serene"],
   },
   {
-    id: "ember-night",
-    label: "Ember Night",
-    description: "A banked-fire glow low against a deep brown-black field.",
+    id: "sunset",
+    label: "Sunset",
+    description: "A fiery orange-and-red sunset sky over dusky storm clouds.",
     kind: "image",
-    mood: "cozy",
-    palette: ["#0a0603", "#160d07", "#3a1f0d"],
-    tags: ["warm", "ember", "dark", "cozy"],
+    mood: "warm",
+    palette: ["#1c1016", "#8a3014", "#f0902e"],
+    tags: ["nature", "sky", "sunset", "warm", "orange"],
   },
 ];
 
@@ -96,8 +96,8 @@ export const NATURAL_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
  * wallpapers/`, distinct from {@link NATURAL_BACKGROUND_META}'s tiny gradient
  * data-URL entries. The renderer (`@elizaos/ui`) attaches the served,
  * same-origin `/wallpapers/<id>.webp` URL to each of these by id — a code-free
- * image the apply channel already trusts (same class as the Ember Night default
- * and the `/api/media/<hash>` uploads), so the confinement invariants
+ * image the apply channel already trusts (same class as the served `/bg-sunset`
+ * "Sunset" tile and the `/api/media/<hash>` uploads), so the confinement invariants
  * (#11088 / #13523) hold and nothing large lands in the JS bundle. Palettes are
  * sampled from the source art (dark / mid / highlight) for the tile thumbnail,
  * the FOUC seed, and theme-color harmony.
@@ -106,7 +106,7 @@ export const PHOTO_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
   {
     id: "dusk-dunes",
     label: "Dusk Dunes",
-    description: "Near-black rolling dunes catching a thin warm rim of light.",
+    description: "Near-black rolling dunes catching a thin cool rim of light.",
     kind: "image",
     mood: "still",
     palette: ["#010208", "#04070f", "#101625"],
@@ -115,7 +115,8 @@ export const PHOTO_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
   {
     id: "reef",
     label: "Reef",
-    description: "A deep teal underwater reef, fish drifting through the blue.",
+    description:
+      "A coral reef lit teal from above, fading into deep navy water.",
     kind: "image",
     mood: "cool",
     palette: ["#000b1f", "#001d32", "#015260"],
@@ -134,7 +135,7 @@ export const PHOTO_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
     id: "ember-dunes",
     label: "Ember Dunes",
     description:
-      "Ember-orange dunes under a warm amber sky, birds on the wing.",
+      "Sweeping ember-orange ridges glowing warm against deep shadow.",
     kind: "image",
     mood: "warm",
     palette: ["#2d0700", "#4a0e00", "#741c00"],
@@ -225,8 +226,9 @@ export const IMAGE_BACKGROUND_META: readonly BackgroundCatalogMeta[] = [
   ...PHOTO_BACKGROUND_META,
 ];
 
-/** The boot-default catalog id (the curated "Ember Night" gradient). */
-export const DEFAULT_BACKGROUND_CATALOG_ID = "ember-night";
+/** The boot-default catalog id — the "Canopy" photo wallpaper the app boots to
+ *  (matches {@link DEFAULT_BACKGROUND_CONFIG} in `@elizaos/ui`). */
+export const DEFAULT_BACKGROUND_CATALOG_ID = "canopy";
 
 /**
  * Match a free-text / id / label reference to a catalog id. Case- and

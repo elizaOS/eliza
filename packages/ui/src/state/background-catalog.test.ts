@@ -57,15 +57,14 @@ describe("background catalog (#13538)", () => {
   it("image sources are same-origin, code-free (data / served asset / media) URLs", () => {
     for (const e of BACKGROUND_CATALOG) {
       if (e.kind === "image") {
-        // The curated default is a served same-origin static asset (the sunset
-        // wallpaper). Every OTHER image entry stays a tiny code-free gradient
-        // data URL (#13538: no per-entry bundled binary bloat). All three
+        // The curated photo wallpapers are served same-origin static assets
+        // (`/wallpapers/<id>.webp`), plus the "sunset" tile's dedicated
+        // `/bg-sunset.webp`. Every OTHER image entry stays a tiny code-free
+        // gradient data URL (#13538: no per-entry bundled binary bloat). All
         // classes are same-origin and carry no GLSL source / preset id, so the
         // apply-channel confinement invariants (#11088 / #13523) hold.
         const isServedAsset =
-          (e.id === DEFAULT_BACKGROUND_CATALOG_ID &&
-            e.source.startsWith("/")) ||
-          e.source.startsWith("/wallpapers/");
+          e.source.startsWith("/wallpapers/") || e.source === "/bg-sunset.webp";
         expect(
           e.source.startsWith("data:image/svg+xml") ||
             e.source.startsWith("/api/media/") ||
@@ -91,12 +90,17 @@ describe("background catalog (#13538)", () => {
     expect(DEFAULT_BACKGROUND_CONFIG.mode).toBe("image");
     expect(DEFAULT_BACKGROUND_CONFIG.color).toBe("#000000");
     expect(DEFAULT_BACKGROUND_CONFIG.imageUrl).toBe("/wallpapers/canopy.webp");
-    // The Ember Night gallery tile still resolves to the served sunset asset.
+    // The default catalog tile IS Canopy and resolves to the same served photo.
     const def = BACKGROUND_CATALOG.find(
       (e) => e.id === DEFAULT_BACKGROUND_CATALOG_ID,
     );
+    expect(DEFAULT_BACKGROUND_CATALOG_ID).toBe("canopy");
     expect(def?.kind).toBe("image");
-    expect(def?.source).toBe("/bg-sunset.webp");
+    expect(def?.source).toBe("/wallpapers/canopy.webp");
+    // The "Sunset" gallery tile keeps the served sunset asset.
+    const sunset = BACKGROUND_CATALOG.find((e) => e.id === "sunset");
+    expect(sunset?.label).toBe("Sunset");
+    expect(sunset?.source).toBe("/bg-sunset.webp");
   });
 
   it("resolveCatalogEntry matches by id, label, and fuzzy name", () => {
