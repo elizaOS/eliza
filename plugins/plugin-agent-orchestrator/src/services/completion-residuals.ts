@@ -9,17 +9,21 @@
  * Consumed by `OrchestratorTaskService.autoVerifyCompletion` (before any model
  * spend) and `validateTask` (before honoring a `passed: true` verdict; a human
  * override runs it too, recording what was overridden). Fail-closed for
- * repo-declaring tasks: when the task/session names a repo, a workdir that is
- * missing or not a git work tree, or a git probe that errors, yields
+ * repo-declaring tasks: when the task/session names a repo, a missing workdir
+ * string, a missing/non-git directory, or a git/fs probe failure yields
  * `unverifiable` — never a silent pass. Tasks WITHOUT a declared repo (every
  * ACP session still gets an acp-scratch workdir, even a voice/Q&A task) probe
  * the workdir opportunistically: a real git worktree runs the git legs, a
- * scratch/non-git dir skips them, and the envelope-reported failing tests and
- * residual risks always apply. `ELIZA_ORCHESTRATOR_RESIDUALS_GATE=0` disables
- * the gate (mirrors the `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` flag convention).
+ * scratch/non-git dir skips them, and the envelope-reported failing tests
+ * always apply. Self-reported `residualRisks` are DISCLOSURE, not defects:
+ * they never block promotion (blocking them taught workers to delete the
+ * disclosure or burn the attempt cap) — they ride the snapshot as
+ * `disclosedRisks` and surface as caveats in the user-facing completion.
+ * `ELIZA_ORCHESTRATOR_RESIDUALS_GATE=0` disables the gate (mirrors the
+ * `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` flag convention).
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 
 const GIT_TIMEOUT_MS = 10_000;
 const GIT_MAX_BUFFER = 8 * 1024 * 1024;
@@ -47,8 +51,7 @@ export function residualsGateEnabled(): boolean {
 export type CompletionResidualKind =
   | "uncommitted_changes"
   | "unpushed_commits"
-  | "failing_tests_reported"
-  | "self_reported_risks";
+  | "failing_tests_reported";
 
 /** One machine-detected reason the completion is not actually finished. */
 export interface CompletionResidual {
@@ -67,11 +70,29 @@ export interface CompletionResidual {
  */
 export type CompletionResidualsStatus = "clean" | "residuals" | "unverifiable";
 
+/** Machine-classifiable reason the git legs could not run — lets callers make
+ * policy decisions (e.g. `validateTask` accepts a prior clean snapshot ONLY
+ * for `missing_dir`, a GC'd workspace) without string-matching prose. */
+export type CompletionUnverifiableKind =
+  | "no_workdir"
+  | "missing_dir"
+  | "not_directory"
+  | "not_worktree"
+  | "probe_failed"
+  | "git_failed";
+
 export interface CompletionResidualsResult {
   status: CompletionResidualsStatus;
   residuals: CompletionResidual[];
   /** Why the git legs could not run, when `status` is `unverifiable`. */
   unverifiableReason?: string;
+  /** Structured classification of `unverifiableReason`. */
+  unverifiableKind?: CompletionUnverifiableKind;
+  /** Worker-disclosed residual risks. Non-blocking by design: honest
+   * disclosure must never cost the worker a verification attempt, or the
+   * incentive inverts and the disclosure disappears. Surfaced to the user as
+   * caveats on the relayed completion instead. */
+  disclosedRisks?: string[];
   workdir?: string;
   checkedAt: number;
 }
@@ -141,7 +162,7 @@ export async function collectCompletionResiduals(
   const workdir = input.workdir?.trim() || undefined;
 
   // Envelope legs apply regardless of workspace presence: a self-reported
-  // failing test or residual risk contradicts "done" even for a Q&A task.
+  // failing test contradicts "done" even for a Q&A task.
   const failing = (input.testResults ?? []).filter((row) => row.exitCode !== 0);
   if (failing.length > 0) {
     residuals.push({
@@ -150,52 +171,123 @@ export async function collectCompletionResiduals(
       items: cap(failing.map((row) => `${row.command} (exit ${row.exitCode})`)),
     });
   }
-  const risks = (input.residualRisks ?? [])
-    .map((risk) => risk.trim())
-    .filter((risk) => risk.length > 0);
-  if (risks.length > 0) {
-    residuals.push({
-      kind: "self_reported_risks",
-      detail: `${risks.length} self-reported residual risk(s)`,
-      items: cap(risks),
-    });
+  // Residual risks are carried as non-blocking disclosure (see header): a
+  // worker who admits "migration not run on prod" must fare no worse than one
+  // who stays silent, or the admission stops appearing.
+  const disclosedRisks = cap(
+    (input.residualRisks ?? [])
+      .map((risk) => risk.trim())
+      .filter((risk) => risk.length > 0),
+  );
+
+  const base = {
+    residuals,
+    ...(disclosedRisks.length > 0 ? { disclosedRisks } : {}),
+    ...(workdir !== undefined ? { workdir } : {}),
+    checkedAt,
+  };
+  const unverifiable = (
+    kind: CompletionUnverifiableKind,
+    reason: string,
+  ): CompletionResidualsResult => ({
+    status: "unverifiable",
+    unverifiableReason: reason,
+    unverifiableKind: kind,
+    ...base,
+  });
+
+  // A repo-bound task with NO workdir string at all is just as uninspectable
+  // as one whose directory vanished — fail closed, never a silent pass.
+  if (input.repoExpected && workdir === undefined) {
+    return unverifiable(
+      "no_workdir",
+      "repo-bound task has no inspectable workspace (no session workdir)",
+    );
   }
 
-  // The git legs run when a workdir is claimed AND either the task declares a
-  // repo (fail-closed) or the workdir opportunistically turns out to be a real
-  // git worktree. `skipGitLegs` is the repoExpected=false escape for scratch
-  // cwds — a non-coding task's acp-scratch dir must not block promotion.
-  const workdirIsWorkTree =
-    workdir !== undefined &&
-    existsSync(workdir) &&
-    statSync(workdir).isDirectory() &&
-    (() => {
-      const inside = runGit(workdir, ["rev-parse", "--is-inside-work-tree"]);
-      return inside.ok && inside.stdout.trim() === "true";
-    })();
-  if (workdir !== undefined && (input.repoExpected || workdirIsWorkTree)) {
-    const unverifiable = (reason: string): CompletionResidualsResult => ({
-      status: "unverifiable",
-      residuals,
-      unverifiableReason: reason,
-      workdir,
-      checkedAt,
-    });
-    if (!workdirIsWorkTree) {
-      // Only reachable when repoExpected: a declared repo whose workspace
-      // cannot be inspected must never promote on faith.
-      if (!existsSync(workdir)) {
-        return unverifiable(`workspace directory does not exist: ${workdir}`);
+  // Classify the workdir before deciding whether the git legs apply. Any fs
+  // error other than a clean "missing" (EACCES, stat races) is a probe
+  // FAILURE — it must map to `unverifiable`, never propagate (a throw here
+  // would be swallowed by autoVerify's fire-and-forget boundary and wedge the
+  // task in `validating` with no event) and never read as "no worktree".
+  type WorkdirProbe =
+    | "worktree"
+    | "missing"
+    | "not_directory"
+    | "not_worktree"
+    | { failed: string };
+  let probe: WorkdirProbe = "missing";
+  if (workdir !== undefined) {
+    try {
+      // Single statSync instead of existsSync-then-statSync: the two-call
+      // form is a TOCTOU race (the dir can vanish between them) and existsSync
+      // swallows the very errno this classification needs. Only a clean
+      // "nothing at that path" reads as missing; every other fs error is a
+      // probe failure.
+      let stats: ReturnType<typeof statSync> | undefined;
+      try {
+        stats = statSync(workdir);
+      } catch (err) {
+        // error-policy:J3 untrusted fs state probed; ENOENT/ENOTDIR is the
+        // explicit "missing" classification, anything else rethrows into the
+        // probe-failure classification below — never a fabricated verdict.
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== "ENOENT" && code !== "ENOTDIR") throw err;
       }
-      if (!statSync(workdir).isDirectory()) {
-        return unverifiable(`workspace path is not a directory: ${workdir}`);
+      if (stats === undefined) probe = "missing";
+      else if (!stats.isDirectory()) probe = "not_directory";
+      else {
+        const inside = runGit(workdir, ["rev-parse", "--is-inside-work-tree"]);
+        probe =
+          inside.ok && inside.stdout.trim() === "true"
+            ? "worktree"
+            : "not_worktree";
       }
-      return unverifiable(`workspace is not a git work tree: ${workdir}`);
+    } catch (err) {
+      // error-policy:J3 a stat race/permission error produces the explicit
+      // `unverifiable` classification below, never a thrown escape (autoVerify
+      // is fire-and-forget; a throw would strand the task in `validating`
+      // with no event) and never a fabricated clean/dirty verdict.
+      probe = { failed: err instanceof Error ? err.message : String(err) };
     }
+  }
 
+  if (workdir !== undefined && probe !== "worktree") {
+    if (typeof probe === "object") {
+      // A probe failure is unverifiable for bound AND unbound tasks alike —
+      // "could not look" is never license to claim there was nothing to see.
+      return unverifiable(
+        "probe_failed",
+        `workspace probe failed for ${workdir}: ${probe.failed}`,
+      );
+    }
+    if (input.repoExpected) {
+      // A declared repo whose workspace cannot be inspected must never
+      // promote on faith.
+      if (probe === "missing") {
+        return unverifiable(
+          "missing_dir",
+          `workspace directory does not exist: ${workdir}`,
+        );
+      }
+      if (probe === "not_directory") {
+        return unverifiable(
+          "not_directory",
+          `workspace path is not a directory: ${workdir}`,
+        );
+      }
+      return unverifiable(
+        "not_worktree",
+        `workspace is not a git work tree: ${workdir}`,
+      );
+    }
+    // Unbound + missing/non-git scratch dir: skip the git legs; the envelope
+    // legs above still decide the verdict.
+  } else if (workdir !== undefined) {
     const status = runGit(workdir, ["status", "--porcelain"]);
     if (!status.ok) {
       return unverifiable(
+        "git_failed",
         `git status failed in ${workdir}: ${status.stderr.trim() || "unknown error"}`,
       );
     }
@@ -226,6 +318,7 @@ export async function collectCompletionResiduals(
       const unpushed = runGit(workdir, ["rev-list", "@{u}..HEAD"]);
       if (!unpushed.ok) {
         return unverifiable(
+          "git_failed",
           `git rev-list @{u}..HEAD failed in ${workdir}: ${unpushed.stderr.trim() || "unknown error"}`,
         );
       }
@@ -245,9 +338,7 @@ export async function collectCompletionResiduals(
 
   return {
     status: residuals.length > 0 ? "residuals" : "clean",
-    residuals,
-    ...(workdir !== undefined ? { workdir } : {}),
-    checkedAt,
+    ...base,
   };
 }
 
@@ -304,11 +395,6 @@ export function residualsCorrection(result: CompletionResidualsResult): string {
       case "failing_tests_reported":
         lines.push(
           `- Your own completion report lists failing test commands (${residual.detail}). Fix them and re-run until green:`,
-        );
-        break;
-      case "self_reported_risks":
-        lines.push(
-          `- Your completion report lists unresolved residual risks (${residual.detail}). Resolve them or explain concretely why each is acceptable:`,
         );
         break;
     }

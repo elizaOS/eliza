@@ -1151,7 +1151,7 @@ describe("deterministic completion-residuals gate", () => {
     expect(snapshot?.status).toBe("clean");
   });
 
-  it("a MISSING workspace on a repo-bound task is unverifiable and blocks (fail closed)", async () => {
+  it("a MISSING workspace on a repo-bound task is unverifiable: stays validating WITHOUT burning an attempt (fail closed, F5a)", async () => {
     const fake = makeFakeAcp();
     const store = new OrchestratorTaskStore({ backend: "memory" });
     const { taskId, sessionId } = await seedTaskWithSession(
@@ -1159,22 +1159,75 @@ describe("deterministic completion-residuals gate", () => {
       ["tests pass"],
       { workdir: join(tmpdir(), "orch-missing-workspace"), repo: "acme/site" },
     );
+    const reportError = vi.fn();
     const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
       JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
     );
+    (runtime as Record<string, unknown>).reportError = reportError;
     const service = new OrchestratorTaskService(runtime as never, { store });
     await service.start();
 
     fake.emit(sessionId, "task_complete", { response: "done" });
-    await until(() => fake.service.sendToSession.mock.calls.length > 0);
+    await until(
+      async () =>
+        (await store.getTask(taskId))?.events.some(
+          (e) => e.eventType === "residuals_unverifiable",
+        ) === true,
+    );
 
+    // An inspection failure is not a finding: no model spend, no corrective
+    // send, no attempt burn — the task parks in `validating` for a manual
+    // /validate or the next task_complete, and the failure is reported.
     expect(useModel).not.toHaveBeenCalled();
+    expect(fake.service.sendToSession).not.toHaveBeenCalled();
+    expect(reportError).toHaveBeenCalled();
     const doc = await store.getTask(taskId);
-    expect(doc?.task.status).toBe("active");
+    expect(doc?.task.status).toBe("validating");
+    expect(doc?.task.metadata.autoVerifyAttempts).toBeUndefined();
     const snapshot = doc?.task.metadata.completionResiduals as
-      | { status: string }
+      | { status: string; unverifiableKind?: string }
       | undefined;
     expect(snapshot?.status).toBe("unverifiable");
+    expect(snapshot?.unverifiableKind).toBe("missing_dir");
+  });
+
+  it("self-reported residual risks do NOT block promotion; they land on the snapshot and the validation evidence (F2)", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    const envelope = JSON.stringify({
+      diffSummary: "did the work",
+      filesChanged: ["src/x.ts"],
+      testResults: [{ command: "bun test", exitCode: 0, summary: "green" }],
+      screenshotPaths: [],
+      acceptanceCriteriaStatus: [
+        { criterion: "tests pass", met: true, evidence: "bun test exit 0" },
+      ],
+      residualRisks: ["migration not yet run on prod"],
+    });
+    const { runtime } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: fence(envelope) });
+    await until(
+      async () => (await store.getTask(taskId))?.task.status === "done",
+    );
+
+    const doc = await store.getTask(taskId);
+    const snapshot = doc?.task.metadata.completionResiduals as
+      | { status: string; disclosedRisks?: string[] }
+      | undefined;
+    expect(snapshot?.status).toBe("clean");
+    expect(snapshot?.disclosedRisks).toEqual(["migration not yet run on prod"]);
+    const event = doc?.events.find((e) => e.eventType === "validation_passed");
+    expect(String(event?.data.evidence)).toContain(
+      "Worker-disclosed residual risks: migration not yet run on prod",
+    );
   });
 
   it("self-reported failing tests in a valid envelope block promotion even with a clean tree", async () => {
@@ -1409,6 +1462,145 @@ describe("validateTask transition + humanOverride rules", () => {
       }),
     ).rejects.toThrow(/terminal/i);
     expect((await store.getTask(taskId))?.task.status).toBe("done");
+  });
+
+  it("accepts a prior CLEAN snapshot when the workspace was GC'd after completion (F3)", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const workdir = makeCleanWorkdir();
+    const { taskId } = await seedTaskWithSession(store, ["tests pass"], {
+      workdir,
+      repo: "acme/site",
+    });
+    // The completion-time gate ran clean, then the workspace was GC'd.
+    await store.updateTask(taskId, {
+      status: "validating",
+      metadata: {
+        completionResiduals: {
+          status: "clean",
+          residuals: [],
+          workdir,
+          checkedAt: Date.now(),
+        },
+      },
+    });
+    rmSync(workdir, { recursive: true, force: true });
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+
+    const detail = await service.validateTask(taskId, {
+      passed: true,
+      summary: "verified from recorded snapshot",
+    });
+    expect(detail?.status).toBe("done");
+    const doc = await store.getTask(taskId);
+    const event = doc?.events.find((e) => e.eventType === "validation_passed");
+    expect(event?.data.residualsProvenance).toBe(
+      "recorded-at-completion; workspace since removed",
+    );
+  });
+
+  it("a prior DIRTY snapshot does not rescue a GC'd workspace (F3)", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const workdir = makeCleanWorkdir();
+    const { taskId } = await seedTaskWithSession(store, ["tests pass"], {
+      workdir,
+      repo: "acme/site",
+    });
+    await store.updateTask(taskId, {
+      status: "validating",
+      metadata: {
+        completionResiduals: {
+          status: "residuals",
+          residuals: [
+            {
+              kind: "uncommitted_changes",
+              detail: "1 uncommitted path(s) in the workspace",
+              items: ["?? leftover.ts"],
+            },
+          ],
+          workdir,
+          checkedAt: Date.now(),
+        },
+      },
+    });
+    rmSync(workdir, { recursive: true, force: true });
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+
+    await expect(
+      service.validateTask(taskId, { passed: true, summary: "trust me" }),
+    ).rejects.toThrow(/residuals|verified/i);
+    expect((await store.getTask(taskId))?.task.status).toBe("validating");
+  });
+
+  it("serializes validateTask against a running autoVerifyCompletion and preserves its metadata stamps (F4)", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    // Deterministic interleaving: the judge parks inside autoVerify (write
+    // lock held, envelope already stamped) until the test releases it.
+    let releaseJudge!: () => void;
+    const judgeGate = new Promise<void>((resolve) => {
+      releaseJudge = resolve;
+    });
+    let judgeEntered!: () => void;
+    const judgeEnteredPromise = new Promise<void>((resolve) => {
+      judgeEntered = resolve;
+    });
+    const useModel = vi.fn(async () => {
+      judgeEntered();
+      await judgeGate;
+      return JSON.stringify({
+        passed: false,
+        summary: "not proven",
+        missing: ["tests pass"],
+      });
+    });
+    const runtime = {
+      character: { name: "Tester" },
+      databaseAdapter: undefined,
+      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      getSetting: () => undefined,
+      useModel,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? fake.service : undefined,
+    };
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: fence(VALID_ENVELOPE) });
+    await judgeEnteredPromise;
+
+    // Operator verdict lands mid-verification: it must WAIT for the lock, not
+    // interleave (a stale-doc write here is what used to drop the envelope
+    // and attempt stamps).
+    const validatePromise = service.validateTask(taskId, {
+      passed: false,
+      humanOverride: true,
+      evidence: "operator: not done, keep working",
+    });
+    const raced = await Promise.race([
+      validatePromise.then(() => "completed"),
+      new Promise((resolve) => setTimeout(() => resolve("pending"), 100)),
+    ]);
+    expect(raced).toBe("pending");
+
+    releaseJudge();
+    await validatePromise;
+    await until(async () => {
+      const doc = await store.getTask(taskId);
+      return doc?.task.metadata.autoVerifyAttempts === 1;
+    });
+
+    const doc = await store.getTask(taskId);
+    // Both writers' stamps coexist: autoVerify's envelope/attempts/reflexion
+    // AND validateTask's residuals snapshot.
+    expect(doc?.task.metadata.completionEnvelope).toBeDefined();
+    expect(doc?.task.metadata.autoVerifyAttempts).toBe(1);
+    expect(Array.isArray(doc?.task.metadata.attemptReflections)).toBe(true);
+    expect(doc?.task.metadata.completionResiduals).toBeDefined();
   });
 
   it("validation failure routes validating → active through the table", async () => {

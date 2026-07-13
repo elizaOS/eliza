@@ -536,6 +536,10 @@ const VERIFICATION_REENGAGED_NOTE =
 interface CompletionVerificationView {
   pendingVerification: boolean;
   verificationFailed: boolean;
+  /** Worker-disclosed residual risks from the completion-time gate snapshot.
+   * Disclosure is deliberately non-blocking (blocking it teaches workers to
+   * delete the admission), so the user-facing relay is where it must surface. */
+  disclosedRisks: string[];
 }
 
 interface TaskRecordLookup {
@@ -566,6 +570,8 @@ async function verificationViewFor(
       typeof attemptsRaw === "number" && Number.isFinite(attemptsRaw)
         ? attemptsRaw
         : 0;
+    const snapshot = asRecord(task.metadata?.completionResiduals);
+    const disclosedRisks = stringArrayOf(snapshot?.disclosedRisks);
     return {
       pendingVerification: task.status === "validating",
       // A `validating` task that fell back to `active` (re-engage) or parked
@@ -574,6 +580,7 @@ async function verificationViewFor(
       verificationFailed:
         (task.status === "active" || task.status === "waiting_on_user") &&
         attempts > 0,
+      disclosedRisks,
     };
   } catch {
     // error-policy:J4 the durable-task lookup is optional enrichment for
@@ -588,13 +595,13 @@ function frameReplyWithVerification(
   view: CompletionVerificationView | undefined,
 ): string {
   if (!view) return reply;
-  if (view.pendingVerification) {
-    return `${reply}\n\n${VERIFICATION_PENDING_NOTE}`;
+  const notes: string[] = [];
+  if (view.pendingVerification) notes.push(VERIFICATION_PENDING_NOTE);
+  else if (view.verificationFailed) notes.push(VERIFICATION_REENGAGED_NOTE);
+  if (view.disclosedRisks.length > 0) {
+    notes.push(`Note: the worker flagged: ${view.disclosedRisks.join("; ")}.`);
   }
-  if (view.verificationFailed) {
-    return `${reply}\n\n${VERIFICATION_REENGAGED_NOTE}`;
-  }
-  return reply;
+  return notes.length > 0 ? `${reply}\n\n${notes.join("\n")}` : reply;
 }
 
 function respondIfNeeded(messageHandler: MessageHandlerResult) {

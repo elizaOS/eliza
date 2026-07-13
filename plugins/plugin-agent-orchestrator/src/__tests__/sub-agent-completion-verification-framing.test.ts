@@ -46,6 +46,7 @@ function makeHandler(): MessageHandlerResult {
 async function makeWorld(opts: {
   status: OrchestratorTaskStatus;
   autoVerifyAttempts?: number;
+  disclosedRisks?: string[];
 }): Promise<{ runtime: Record<string, unknown>; sessionId: string }> {
   const store = new OrchestratorTaskStore({ backend: "memory" });
   const detail = await store.createTask({
@@ -83,11 +84,21 @@ async function makeWorld(opts: {
     createdAt: new Date(now).toISOString(),
     updatedAt: new Date(now).toISOString(),
   });
+  const metadata: Record<string, unknown> = {};
+  if (opts.autoVerifyAttempts !== undefined) {
+    metadata.autoVerifyAttempts = opts.autoVerifyAttempts;
+  }
+  if (opts.disclosedRisks !== undefined) {
+    metadata.completionResiduals = {
+      status: "clean",
+      residuals: [],
+      disclosedRisks: opts.disclosedRisks,
+      checkedAt: Date.now(),
+    };
+  }
   await store.updateTask(detail.task.id, {
     status: opts.status,
-    ...(opts.autoVerifyAttempts !== undefined
-      ? { metadata: { autoVerifyAttempts: opts.autoVerifyAttempts } }
-      : {}),
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   });
   const runtimeBag: Record<string, unknown> = {
     character: { name: "Tester" },
@@ -142,6 +153,28 @@ describe("sub-agent completion: verification-aware framing", () => {
     const world = await makeWorld({ status: "done" });
     const reply = await relayFor(world);
     expect(reply).toBe("The answer is 42.");
+  });
+
+  it("surfaces worker-disclosed residual risks as caveats on a done relay (F2)", async () => {
+    const world = await makeWorld({
+      status: "done",
+      disclosedRisks: ["migration not run on prod", "flaky retry loop"],
+    });
+    const reply = await relayFor(world);
+    expect(reply).toContain("The answer is 42.");
+    expect(reply).toContain(
+      "the worker flagged: migration not run on prod; flaky retry loop",
+    );
+  });
+
+  it("combines the pending-verification note with disclosed-risk caveats", async () => {
+    const world = await makeWorld({
+      status: "validating",
+      disclosedRisks: ["needs a prod smoke test"],
+    });
+    const reply = await relayFor(world);
+    expect(reply).toContain("verification of this result is still running");
+    expect(reply).toContain("the worker flagged: needs a prod smoke test");
   });
 
   it("preserves current behavior when no durable record backs the session", async () => {

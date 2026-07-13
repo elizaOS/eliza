@@ -2,10 +2,18 @@
  * Verifies the deterministic completion-residuals gate against REAL temp git
  * repositories (init / dirty tree / unpushed commits vs clean+pushed through a
  * local bare remote) — no mocked git, so the checks prove the actual porcelain
- * and rev-list behavior the gate relies on.
+ * and rev-list behavior the gate relies on. Self-reported residualRisks are
+ * pinned as NON-blocking disclosure (F2): they ride the snapshot, never the
+ * verdict.
  */
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
@@ -155,6 +163,7 @@ describe("collectCompletionResiduals — real git legs", () => {
       repoExpected: true,
     });
     expect(result.status).toBe("unverifiable");
+    expect(result.unverifiableKind).toBe("missing_dir");
     expect(result.unverifiableReason).toContain("does not exist");
     expect(residualDetails(result)[0]).toContain("workspace unverifiable");
   });
@@ -167,8 +176,52 @@ describe("collectCompletionResiduals — real git legs", () => {
       repoExpected: true,
     });
     expect(result.status).toBe("unverifiable");
+    expect(result.unverifiableKind).toBe("not_worktree");
     expect(result.unverifiableReason).toContain("not a git work tree");
   });
+});
+
+describe("collectCompletionResiduals — fail-open regressions (F1/F5b)", () => {
+  it("repo-bound with NO workdir string at all is unverifiable, never clean (F1)", async () => {
+    const result = await collectCompletionResiduals({ repoExpected: true });
+    expect(result.status).toBe("unverifiable");
+    expect(result.unverifiableKind).toBe("no_workdir");
+    expect(result.unverifiableReason).toContain("no inspectable workspace");
+    // Whitespace-only workdir is the same hole.
+    const blank = await collectCompletionResiduals({
+      repoExpected: true,
+      workdir: "   ",
+    });
+    expect(blank.status).toBe("unverifiable");
+    expect(blank.unverifiableKind).toBe("no_workdir");
+  });
+
+  it.skipIf(typeof process.getuid === "function" && process.getuid() === 0)(
+    "a stat failure (EACCES) is a probe failure → unverifiable, never a throw or a pass (F5b)",
+    async () => {
+      // Real permission wall: statSync on a path under a 000-mode directory
+      // throws EACCES (root would bypass it, hence the skip guard).
+      const root = mkdtempSync(join(tmpdir(), "orch-residuals-eacces-"));
+      roots.push(root);
+      const priv = join(root, "priv");
+      const target = join(priv, "repo");
+      mkdirSync(target, { recursive: true });
+      chmodSync(priv, 0o000);
+      try {
+        for (const repoExpected of [true, false]) {
+          const result = await collectCompletionResiduals({
+            workdir: target,
+            repoExpected,
+          });
+          expect(result.status).toBe("unverifiable");
+          expect(result.unverifiableKind).toBe("probe_failed");
+          expect(result.unverifiableReason).toContain("probe failed");
+        }
+      } finally {
+        chmodSync(priv, 0o755);
+      }
+    },
+  );
 });
 
 describe("collectCompletionResiduals — unbound tasks (repoExpected=false)", () => {
@@ -255,16 +308,17 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
     expect(residual?.items).toEqual(["bun test (exit 1)"]);
   });
 
-  it("flags self-reported residual risks even without a workspace", async () => {
+  it("carries self-reported residual risks as NON-blocking disclosure", async () => {
+    // Blocking on honest disclosure inverts the incentive: workers either
+    // delete the admission or burn the attempt cap. Risks ride the snapshot
+    // and the user-facing caveat, never the verdict.
     const result = await collectCompletionResiduals({
       repoExpected: false,
       residualRisks: ["migration not run on prod", "  "],
     });
-    expect(result.status).toBe("residuals");
-    const residual = result.residuals.find(
-      (row) => row.kind === "self_reported_risks",
-    );
-    expect(residual?.items).toEqual(["migration not run on prod"]);
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+    expect(result.disclosedRisks).toEqual(["migration not run on prod"]);
   });
 
   it("combines envelope residuals with a dirty real workspace", async () => {
@@ -279,14 +333,16 @@ describe("collectCompletionResiduals — envelope legs (no workspace)", () => {
     expect(result.status).toBe("residuals");
     expect(result.residuals.map((row) => row.kind).sort()).toEqual([
       "failing_tests_reported",
-      "self_reported_risks",
       "uncommitted_changes",
     ]);
+    // Risks are disclosure, not a blocking residual — they ride the snapshot
+    // and stay out of the corrective prompt's demands.
+    expect(result.disclosedRisks).toEqual(["flaky retry loop"]);
     const correction = residualsCorrection(result);
     expect(correction).toContain("NOT done");
     expect(correction).toContain("wip.ts");
     expect(correction).toContain("vitest (exit 2)");
-    expect(correction).toContain("flaky retry loop");
+    expect(correction).not.toContain("flaky retry loop");
   });
 });
 
