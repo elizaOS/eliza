@@ -47,7 +47,6 @@ import {
   NAVIGATE_SETTINGS_EVENT,
   type NavigateSettingsDetail,
   reportUserViewSwitch,
-  useSlashCommandController,
 } from "./chat/useSlashCommandController";
 import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer.helpers";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
@@ -66,7 +65,7 @@ import { AppsPageView } from "./components/pages/AppsPageView";
 import { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
 import { BuildBadge } from "./components/shell/BuildBadge";
-import { ChatOverlay } from "./components/shell/ChatOverlay";
+import { ChatOverlayMount } from "./components/shell/ChatOverlayMount";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
 import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
@@ -105,7 +104,6 @@ import { GlassStyles } from "./glass";
 import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useAgentSessionRecovery } from "./hooks/useAgentSessionRecovery";
 import { useAuthStatus } from "./hooks/useAuthStatus";
-import { useRole } from "./hooks/useRole";
 import { useSecretsManagerModalState } from "./hooks/useSecretsManagerModal";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import { cn } from "./lib/utils";
@@ -131,7 +129,6 @@ import {
   useAppSelectorShallow,
 } from "./state";
 import { isShellPaintable } from "./state/startup-coordinator";
-import { useIsChatHostWindow } from "./state/useDesktopChatHost";
 import {
   authProbeShouldHoldShell,
   firstRunOwnsLoginSurface,
@@ -1915,66 +1912,6 @@ function SecretsManagerModalMount(): ReactNode {
         onConsumeInitial={clearFocus}
       />
     </Suspense>
-  );
-}
-
-/**
- * Reads the shared shell controller from context and renders the always-present
- * continuous chat overlay — one ambient glass conversation (the app's single
- * active conversation via useShellController) that floats over every view,
- * including the /chat route's ambient home. Returns null until a controller
- * provider is present.
- */
-function ChatOverlayMount({
-  onWindowSizingChange,
-  restAtPill = false,
-}: {
-  /** Desktop bottom-bar window only: relocates the OS window between the pill
-   *  footprint and the full work area as the overlay opens/collapses. */
-  onWindowSizingChange?: (tier: "pill" | "open") => void;
-  /** Desktop bottom-bar window only: rest as the collapsed pill, not the input
-   *  bar, so the ambient overlay is the least-intrusive floating pill. */
-  restAtPill?: boolean;
-} = {}): ReactNode {
-  const controller = useShellControllerContext();
-  const { characterData, agentStatus, firstRunComplete } =
-    useAppSelectorShallow((s) => ({
-      characterData: s.characterData,
-      agentStatus: s.agentStatus,
-      firstRunComplete: s.firstRunComplete,
-    }));
-  // #12087 Item 20: derive the slash-command authority from the authoritative
-  // role instead of the fail-open defaults. Elevated (owner-only) commands
-  // require OWNER; authenticated commands require rank ≥ USER. A remote
-  // USER/GUEST no longer sees elevated commands.
-  const { isOwner, atLeast } = useRole();
-  const slash = useSlashCommandController({
-    isElevated: isOwner,
-    isAuthorized: atLeast("USER"),
-  });
-  // Desktop "one chat, in the active window" gate (#16200 Stage 3): this window
-  // renders the chat only when the shell says it is the active host — the
-  // focused Eliza window, or the main floating-pill window when none is focused.
-  // Always `true` off the desktop shell (web/mobile) and during onboarding (the
-  // first-run conductor lives inside this overlay and must never be hidden by a
-  // focus change).
-  const isChatHost = useIsChatHostWindow();
-  if (!controller) return null;
-  if (!isChatHost && firstRunComplete !== false) return null;
-  // The live agent's name drives the composer placeholder ("Ask {name}").
-  // Character name wins (what the user configured), then the running agent's
-  // reported name; "Eliza" is the default the overlay falls back to.
-  const agentName =
-    characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
-  return (
-    <ChatOverlay
-      controller={controller}
-      agentName={agentName}
-      slash={slash}
-      firstRunOpen={firstRunComplete === false}
-      onWindowSizingChange={onWindowSizingChange}
-      restAtPill={restAtPill}
-    />
   );
 }
 

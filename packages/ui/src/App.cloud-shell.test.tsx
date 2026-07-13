@@ -93,10 +93,26 @@ describe("App standalone chat-overlay wiring", () => {
       APP_TSX.indexOf("function TabScrollView("),
     );
     expect(kioskShell).toContain("<ChatOverlayMount />");
-    // The single overlay is gated on being the active chat host window
-    // (#16200 Stage 3), so the chat renders in exactly one window at a time.
-    expect(APP_TSX).toContain("useIsChatHostWindow");
-    expect(APP_TSX).toContain("if (!isChatHost && firstRunComplete !== false)");
+    // ChatOverlayMount is the ONE shared mount, imported (not redefined) so the
+    // detached view windows reuse it via DockedChatOverlay (#16200 Stage 3).
+    expect(APP_TSX).toContain(
+      'from "./components/shell/ChatOverlayMount"',
+    );
+    // The single overlay is gated on being the active chat host window, so the
+    // chat renders in exactly one window at a time. The gate lives in the shared
+    // ChatOverlayMount module now, not inline in App.tsx.
+    const MOUNT_TSX = readFileSync(
+      resolve(__dirname, "./components/shell/ChatOverlayMount.tsx"),
+      "utf8",
+    );
+    expect(MOUNT_TSX).toContain("useIsChatHostWindow");
+    expect(MOUNT_TSX).toContain(
+      "if (!isChatHost && firstRunComplete !== false)",
+    );
+    // DockedChatOverlay wraps the mount with its own ShellControllerProvider so
+    // detached windows (which lack it) can dock the chat.
+    expect(MOUNT_TSX).toContain("export function DockedChatOverlay");
+    expect(MOUNT_TSX).toContain("ShellControllerProvider");
     // The old three-component stack is gone: no imports, no JSX usage. (A prose
     // comment may still name them to explain the removal — assert on code, not
     // the mention.)

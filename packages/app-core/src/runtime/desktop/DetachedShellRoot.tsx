@@ -8,6 +8,7 @@
  * because App.tsx already eager-loads it, so a lazy edge here buys nothing.
  */
 import type { PageScope } from "@elizaos/ui/components/pages/page-scoped-conversations";
+import { DockedChatOverlay } from "@elizaos/ui/components/shell/ChatOverlayMount";
 import { PairingView } from "@elizaos/ui/components/shell/PairingView";
 import { StartupFailureView } from "@elizaos/ui/components/shell/StartupFailureView";
 import { AppWorkspaceChrome } from "@elizaos/ui/components/workspace/AppWorkspaceChrome";
@@ -157,7 +158,10 @@ function DetachedChatView(): JSX.Element {
         <ConversationsSidebar />
       </nav>
       <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
-        <ChatView />
+        {/* Transcript + side panels only: the docked ChatOverlay (mounted once
+            at the shell root, #16200) is the single shared composer, so this
+            view hides its own to avoid a duplicate input in the chat window. */}
+        <ChatView hideComposer />
       </div>
     </div>
   );
@@ -301,6 +305,12 @@ export function DetachedShellRoot({
       >
         <DetachedShellContent route={route} />
       </main>
+      {/* The one chat, docked into this window (#16200 Stage 3): the singular
+          ChatOverlay floats at the bottom, visible only while THIS window is
+          the focused chat host (the gate lives inside it). So the chat follows
+          focus into whichever Eliza window is active, and the floating pill
+          hides — one conversation, in the active window. */}
+      <DockedChatOverlay />
     </div>
   );
 }

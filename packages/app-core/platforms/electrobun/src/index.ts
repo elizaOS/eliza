@@ -2745,16 +2745,18 @@ async function main(): Promise<void> {
       }) as BrowserWindow & ManagedWindowLike;
       surfaceRpcs.set(window, rpc);
       // Every surface window joins the broadcast set (so it can be told the
-      // host), but only the detached chat window is chat-host-capable — a
-      // focused documents/character/etc. surface renders no chat and must never
-      // take the host from the pill (retaining the sendToWebview the old code
-      // discarded).
+      // host). Every DETACHED surface window (chat, documents, character,
+      // settings, …) now docks the singular ChatOverlay (DetachedShellRoot →
+      // DockedChatOverlay, #16200), so any of them can take the host from the
+      // pill — the chat follows focus into the active window. Only "app" windows
+      // (AppWindowRenderer, e.g. games) render no chat surface and must never
+      // become the host. Retains the sendToWebview the old code discarded.
       const surfaceWindowId = readManagedWindowId(window);
       if (surfaceWindowId !== null) {
         getActiveChatHostBroadcaster().registerWindow(
           surfaceWindowId,
           sendToWebview,
-          surface === "chat",
+          surface !== "app",
         );
       }
       return window;
