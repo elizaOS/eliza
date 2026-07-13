@@ -21,7 +21,6 @@ can verify with `gh attestation verify <iso> --owner elizaOS`.
 | `update-os-release-manifest.yml` | Manifest update workflow | 🟡 Status not audited |
 | `publish-apt-repo.yml` | GPG-signed Debian APT repo (`DEBIAN_GPG_PRIVATE_KEY` secret) | 🟡 Likely works when secret is configured; not run recently |
 | `supply-chain.yaml` | SBOM (SPDX 2.3) + Grype vulnerability scan, weekly Mon 06:00 UTC | ✅ Works |
-| `build-llama-ffi-linux.yml` | Compile llama.cpp FFI for Linux | 🟡 Not audited here |
 | `release-electrobun.yml` | Electrobun signed release | 🟡 Not audited here |
 | `flatpak-publish.yml` | Flatpak publishing | 🟡 Not audited here |
 | `android-release.yml` / `publish-aosp-update-manifest.yml` | AOSP/Android release | Separate from Linux ISO scope |
