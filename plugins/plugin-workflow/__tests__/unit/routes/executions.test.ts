@@ -106,6 +106,20 @@ describe('GET /executions', () => {
       workflowId: firstWorkflowId,
     });
   });
+
+  test('uses the designed default for an invalid limit', async () => {
+    const { response, result } = createRouteResponse();
+    await listHandler(
+      createRouteRequest({ query: { limit: 'not-a-number' } }),
+      response,
+      harness.runtime
+    );
+
+    const outcome = result();
+    expect(outcome.status).toBe(200);
+    expect(outcome.body).toMatchObject({ success: true });
+    expect((outcome.body as { data: unknown[] }).data).toHaveLength(2);
+  });
 });
 
 describe('GET /executions/:id', () => {
@@ -136,6 +150,20 @@ describe('GET /executions/:id', () => {
     expect(result()).toEqual({
       status: 400,
       body: { success: false, error: 'execution_id_required' },
+    });
+  });
+
+  test('returns a structured failure for an unknown execution', async () => {
+    const { response, result } = createRouteResponse();
+    await getHandler(
+      createRouteRequest({ params: { id: 'missing-execution' } }),
+      response,
+      harness.runtime
+    );
+
+    expect(result()).toMatchObject({
+      status: 500,
+      body: { success: false, error: 'failed_to_fetch_execution' },
     });
   });
 });
