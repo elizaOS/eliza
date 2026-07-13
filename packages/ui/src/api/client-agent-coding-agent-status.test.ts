@@ -24,6 +24,11 @@ function thread(overrides: Partial<CodingAgentTaskThread> = {}) {
     latestRepo: null,
     projectId: null,
     latestActivityAt: Date.now(),
+    latestSessionModel: null,
+    latestAccountProviderId: null,
+    latestAccountId: null,
+    latestAccountLabel: null,
+    parentTaskId: null,
     decisionCount: 0,
     usage: {
       inputTokens: 0,
