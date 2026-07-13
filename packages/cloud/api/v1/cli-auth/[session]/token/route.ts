@@ -44,8 +44,12 @@ app.get("/", async (c) => {
 
     const apiKeyData =
       await cliAuthSessionsService.getAndClearApiKey(sessionId);
-    if (!apiKeyData) {
-      return c.json({ error: "Token unavailable" }, 410, corsHeaders);
+    if (apiKeyData.status === "unavailable") {
+      return c.json(
+        { error: `Token unavailable: ${apiKeyData.reason}` },
+        apiKeyData.reason === "not-found" ? 404 : 410,
+        corsHeaders,
+      );
     }
 
     return c.json(

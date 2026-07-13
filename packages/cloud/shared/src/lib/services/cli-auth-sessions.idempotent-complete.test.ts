@@ -234,33 +234,42 @@ describe("cliAuthSessionsService.completeAuthentication idempotency", () => {
 });
 
 describe("cliAuthSessionsService single-use reveal preconditions", () => {
-  test("returns no plaintext when the primary has no eligible candidate", async () => {
-    track(
-      spyOn(cliAuthSessionsRepository, "findApiKeyRevealCandidate").mockResolvedValue(undefined),
-    );
+  test("returns an explicit not-found result when the primary has no session", async () => {
+    track(spyOn(cliAuthSessionsRepository, "findApiKeyRevealState").mockResolvedValue(undefined));
     const claim = track(spyOn(cliAuthSessionsRepository, "claimConsumed"));
 
-    await expect(cliAuthSessionsService.getAndClearApiKey(SESSION_ID)).resolves.toBeNull();
+    await expect(cliAuthSessionsService.getAndClearApiKey(SESSION_ID)).resolves.toEqual({
+      status: "unavailable",
+      reason: "not-found",
+    });
     expect(claim).not.toHaveBeenCalled();
   });
 
-  test("keeps an incomplete encrypted-key candidate unconsumed", async () => {
+  test("reports incomplete encrypted key material as an integrity failure", async () => {
     track(
-      spyOn(cliAuthSessionsRepository, "findApiKeyRevealCandidate").mockResolvedValue({
+      spyOn(cliAuthSessionsRepository, "findApiKeyRevealState").mockResolvedValue({
         session: authenticatedSession(USER_ID),
         apiKey: {
           id: API_KEY_ID,
+          user_id: USER_ID,
+          organization_id: ORG_ID,
+          key_hash: "hash",
           key_ciphertext: null,
           key_nonce: "nonce",
           key_auth_tag: "auth-tag",
           key_kms_key_id: "kms-key",
           key_kms_key_version: 1,
+          is_active: true,
+          deleted_at: null,
+          expires_at: null,
         } as never,
       }),
     );
     const claim = track(spyOn(cliAuthSessionsRepository, "claimConsumed"));
 
-    await expect(cliAuthSessionsService.getAndClearApiKey(SESSION_ID)).resolves.toBeNull();
+    await expect(cliAuthSessionsService.getAndClearApiKey(SESSION_ID)).rejects.toMatchObject({
+      code: "CLI_AUTH_SESSION_INTEGRITY",
+    });
     expect(claim).not.toHaveBeenCalled();
   });
 });

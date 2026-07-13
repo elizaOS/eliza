@@ -1,5 +1,5 @@
-// Persists cli auth sessions records for cloud services through the shared DB boundary.
-import { and, eq, gt, isNotNull, isNull, lt } from "drizzle-orm";
+/** Persists CLI auth sessions through primary-safe reveal and lifecycle operations. */
+import { and, eq, exists, gt, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys } from "../schemas/api-keys";
 import {
@@ -10,9 +10,9 @@ import {
 
 export type { CliAuthSession, NewCliAuthSession };
 
-export interface CliAuthApiKeyRevealCandidate {
+export interface CliAuthApiKeyRevealState {
   session: CliAuthSession;
-  apiKey: ApiKey;
+  apiKey: ApiKey | null;
 }
 
 /**
@@ -55,34 +55,24 @@ export class CliAuthSessionsRepository {
   // ============================================================================
 
   /**
-   * Loads an eligible reveal candidate from the primary database.
+   * Loads the durable reveal state from the primary database.
    *
    * CLI completion writes the session and API-key row on the primary, then the
    * CLI polls immediately. A replica read here can observe a false miss or an
    * older session state, so the complete candidate is read consistently in one
-   * joined query before the external KMS decrypt.
+   * left-joined query before the external KMS decrypt. The left join preserves
+   * a broken API-key reference so the service can report an integrity failure
+   * instead of misclassifying it as an already-consumed session.
    */
-  async findApiKeyRevealCandidate(
-    sessionId: string,
-  ): Promise<CliAuthApiKeyRevealCandidate | undefined> {
-    const now = new Date();
-    const [candidate] = await dbWrite
+  async findApiKeyRevealState(sessionId: string): Promise<CliAuthApiKeyRevealState | undefined> {
+    const [state] = await dbWrite
       .select({ session: cliAuthSessions, apiKey: apiKeys })
       .from(cliAuthSessions)
-      .innerJoin(apiKeys, eq(cliAuthSessions.api_key_id, apiKeys.id))
-      .where(
-        and(
-          eq(cliAuthSessions.session_id, sessionId),
-          eq(cliAuthSessions.status, "authenticated"),
-          isNotNull(cliAuthSessions.user_id),
-          eq(apiKeys.user_id, cliAuthSessions.user_id),
-          gt(cliAuthSessions.expires_at, now),
-          isNull(cliAuthSessions.consumed_at),
-        ),
-      )
+      .leftJoin(apiKeys, eq(cliAuthSessions.api_key_id, apiKeys.id))
+      .where(eq(cliAuthSessions.session_id, sessionId))
       .limit(1);
 
-    return candidate;
+    return state;
   }
 
   /**
@@ -143,11 +133,13 @@ export class CliAuthSessionsRepository {
    * only the update winner receives the plaintext. Matching the expected key
    * and owner also prevents a stale read from consuming a changed session.
    */
-  async claimConsumed(
-    sessionId: string,
-    expectedApiKeyId: string,
-    expectedUserId: string,
-  ): Promise<CliAuthSession | undefined> {
+  async claimConsumed(input: {
+    sessionId: string;
+    apiKeyId: string;
+    userId: string;
+    organizationId: string;
+    keyHash: string;
+  }): Promise<CliAuthSession | undefined> {
     const consumedAt = new Date();
     const [claimed] = await dbWrite
       .update(cliAuthSessions)
@@ -157,12 +149,28 @@ export class CliAuthSessionsRepository {
       })
       .where(
         and(
-          eq(cliAuthSessions.session_id, sessionId),
+          eq(cliAuthSessions.session_id, input.sessionId),
           eq(cliAuthSessions.status, "authenticated"),
-          eq(cliAuthSessions.api_key_id, expectedApiKeyId),
-          eq(cliAuthSessions.user_id, expectedUserId),
+          eq(cliAuthSessions.api_key_id, input.apiKeyId),
+          eq(cliAuthSessions.user_id, input.userId),
           gt(cliAuthSessions.expires_at, consumedAt),
           isNull(cliAuthSessions.consumed_at),
+          exists(
+            dbWrite
+              .select({ id: apiKeys.id })
+              .from(apiKeys)
+              .where(
+                and(
+                  eq(apiKeys.id, input.apiKeyId),
+                  eq(apiKeys.user_id, input.userId),
+                  eq(apiKeys.organization_id, input.organizationId),
+                  eq(apiKeys.key_hash, input.keyHash),
+                  eq(apiKeys.is_active, true),
+                  isNull(apiKeys.deleted_at),
+                  or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, consumedAt)),
+                ),
+              ),
+          ),
         ),
       )
       .returning();

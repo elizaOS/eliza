@@ -4,7 +4,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { decryptApiKey } from "../../db/crypto/api-keys";
-import { apiKeysRepository, cliAuthSessionsRepository } from "../../db/repositories";
+import { cliAuthSessionsRepository } from "../../db/repositories";
 import type { ApiKey } from "../../db/schemas/api-keys";
 import type { CliAuthSession } from "../../db/schemas/cli-auth-sessions";
 import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
@@ -13,6 +13,26 @@ import { cliAuthSessionCompletionService } from "./cli-auth-session-completion";
  * Session expiry time in minutes.
  */
 const SESSION_EXPIRY_MINUTES = 10; // Sessions expire after 10 minutes
+
+export type CliAuthApiKeyRevealResult =
+  | {
+      status: "revealed";
+      apiKey: string;
+      keyPrefix: string;
+      expiresAt: Date | null;
+    }
+  | {
+      status: "unavailable";
+      reason: "not-found" | "not-authenticated" | "expired" | "consumed" | "revoked" | "claim-lost";
+    };
+
+function revealIntegrityError(sessionId: string, defect: string): ElizaError {
+  return new ElizaError("CLI auth session cannot reveal its API key", {
+    code: "CLI_AUTH_SESSION_INTEGRITY",
+    context: { sessionId, defect },
+    severity: "fatal",
+  });
+}
 
 /**
  * Service for CLI authentication flow and session management.
@@ -186,27 +206,49 @@ export class CliAuthSessionsService {
    * The plaintext is decrypted in-memory from the encrypted api_keys row
    * and never persisted on the cli_auth_sessions row.
    */
-  async getAndClearApiKey(sessionId: string): Promise<{
-    apiKey: string;
-    keyPrefix: string;
-    expiresAt: Date | null;
-  } | null> {
-    const candidate = await cliAuthSessionsRepository.findApiKeyRevealCandidate(sessionId);
-    if (!candidate) {
-      return null;
+  async getAndClearApiKey(sessionId: string): Promise<CliAuthApiKeyRevealResult> {
+    const state = await cliAuthSessionsRepository.findApiKeyRevealState(sessionId);
+    if (!state) {
+      return { status: "unavailable", reason: "not-found" };
     }
 
-    const { apiKey: apiKeyRecord, session } = candidate;
+    const { apiKey: apiKeyRecord, session } = state;
+    if (session.status !== "authenticated") {
+      return { status: "unavailable", reason: "not-authenticated" };
+    }
+    if (session.expires_at <= new Date()) {
+      return { status: "unavailable", reason: "expired" };
+    }
+    if (session.consumed_at) {
+      return { status: "unavailable", reason: "consumed" };
+    }
+    if (!session.api_key_id) {
+      throw revealIntegrityError(sessionId, "missing_api_key_id");
+    }
+    if (!session.user_id) {
+      throw revealIntegrityError(sessionId, "missing_user_id");
+    }
+    if (!apiKeyRecord) {
+      throw revealIntegrityError(sessionId, "missing_api_key_row");
+    }
+    if (apiKeyRecord.user_id !== session.user_id) {
+      throw revealIntegrityError(sessionId, "api_key_owner_mismatch");
+    }
     if (
-      !session.api_key_id ||
-      !session.user_id ||
+      !apiKeyRecord.is_active ||
+      apiKeyRecord.deleted_at ||
+      (apiKeyRecord.expires_at && apiKeyRecord.expires_at <= new Date())
+    ) {
+      return { status: "unavailable", reason: "revoked" };
+    }
+    if (
       !apiKeyRecord.key_ciphertext ||
       !apiKeyRecord.key_nonce ||
       !apiKeyRecord.key_auth_tag ||
       !apiKeyRecord.key_kms_key_id ||
       apiKeyRecord.key_kms_key_version == null
     ) {
-      return null;
+      throw revealIntegrityError(sessionId, "incomplete_encrypted_key");
     }
 
     const plaintext = await decryptApiKey(apiKeyRecord.id, {
@@ -221,16 +263,19 @@ export class CliAuthSessionsService {
     // key or KMS failure therefore leaves the session retryable. The claim is
     // one conditional UPDATE, so concurrent pollers have exactly one winner
     // without holding an external KMS call open inside a DB transaction.
-    const claimed = await cliAuthSessionsRepository.claimConsumed(
+    const claimed = await cliAuthSessionsRepository.claimConsumed({
       sessionId,
-      session.api_key_id,
-      session.user_id,
-    );
+      apiKeyId: session.api_key_id,
+      userId: session.user_id,
+      organizationId: apiKeyRecord.organization_id,
+      keyHash: apiKeyRecord.key_hash,
+    });
     if (!claimed) {
-      return null;
+      return { status: "unavailable", reason: "claim-lost" };
     }
 
     return {
+      status: "revealed",
       apiKey: plaintext,
       keyPrefix: apiKeyRecord.key_prefix,
       expiresAt: apiKeyRecord.expires_at,

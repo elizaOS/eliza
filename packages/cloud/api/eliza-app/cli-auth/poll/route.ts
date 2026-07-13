@@ -46,7 +46,7 @@ app.get("/", async (c) => {
       // Preserve the legacy terminal status only after this poll actually won
       // the reveal claim. A missing key or failed decrypt must leave the
       // authenticated session retryable instead of expiring it permanently.
-      if (retrieved) {
+      if (retrieved.status === "revealed") {
         await db
           .update(cliAuthSessions)
           .set({ status: "expired" })
@@ -54,8 +54,12 @@ app.get("/", async (c) => {
       }
       return c.json({
         success: true,
-        status: "authenticated",
-        token: retrieved?.apiKey ?? null,
+        status:
+          retrieved.status === "unavailable" &&
+          (retrieved.reason === "expired" || retrieved.reason === "revoked")
+            ? "expired"
+            : "authenticated",
+        token: retrieved.status === "revealed" ? retrieved.apiKey : null,
       });
     }
 

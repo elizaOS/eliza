@@ -15,8 +15,10 @@ import {
 } from "bun:test";
 import { Hono } from "hono";
 
-process.env.DATABASE_URL = "pglite://memory";
-process.env.TEST_DATABASE_URL = "pglite://memory";
+const databaseUrl =
+  process.env.CLI_AUTH_POSTGRES_URL?.trim() || "pglite://memory";
+process.env.DATABASE_URL = databaseUrl;
+process.env.TEST_DATABASE_URL = databaseUrl;
 process.env.NODE_ENV ||= "test";
 
 const USER_ID = "11111111-1111-4111-8111-111111111111";
@@ -68,6 +70,7 @@ let closeDb:
   | typeof import("../../../../shared/src/db/client").closeDatabaseConnectionsForTests
   | undefined;
 let cliAuthSessionsRepository: typeof import("../../../../shared/src/db/repositories/cli-auth-sessions").cliAuthSessionsRepository;
+let apiKeysRepository: typeof import("../../../../shared/src/db/repositories/api-keys").apiKeysRepository;
 let cliAuthSessionsService: typeof import("../../../../shared/src/lib/services/cli-auth-sessions").cliAuthSessionsService;
 let pollApp: Hono;
 let legacyPollApp: Hono;
@@ -94,6 +97,9 @@ beforeAll(async () => {
 
   ({ cliAuthSessionsRepository } = await import(
     "../../../../shared/src/db/repositories/cli-auth-sessions"
+  ));
+  ({ apiKeysRepository } = await import(
+    "../../../../shared/src/db/repositories/api-keys"
   ));
   ({ cliAuthSessionsService } = await import(
     "../../../../shared/src/lib/services/cli-auth-sessions"
@@ -305,8 +311,10 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     const response = await pollApp.request(
       `/api/auth/cli-session/${sessionId}`,
     );
-    expect(response.status).toBe(200);
-    expect(await response.json()).not.toHaveProperty("apiKey");
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({
+      error: "Failed to get session status",
+    });
     expect(decryptCalls).toBe(0);
     expect(await readSession(sessionId)).toMatchObject({
       status: "authenticated",
@@ -314,19 +322,56 @@ describe("CLI session single-use plaintext retrieval with real persistence", () 
     });
   });
 
-  test("the legacy poll route does not expire a session when encrypted key lookup is incomplete", async () => {
+  test("incomplete encrypted key material is an observable integrity failure", async () => {
     const sessionId = "missing-key-material";
     await seedAuthenticatedSession(sessionId, { completeEncryptedKey: false });
 
     const response = await legacyPollApp.request(
       `/api/eliza-app/cli-auth/poll?session_id=${sessionId}`,
     );
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
     expect(await response.json()).toMatchObject({
-      status: "authenticated",
-      token: null,
+      success: false,
+      error: "Failed to poll session",
     });
     expect(decryptCalls).toBe(0);
+    expect(await readSession(sessionId)).toMatchObject({
+      status: "authenticated",
+      consumed_at: null,
+    });
+  });
+
+  test("a real API-key regeneration update invalidates a decrypted candidate before claim", async () => {
+    const sessionId = "regenerated-during-decrypt";
+    await seedAuthenticatedSession(sessionId);
+
+    let signalDecryptStarted: (() => void) | undefined;
+    const decryptStarted = new Promise<void>((resolve) => {
+      signalDecryptStarted = resolve;
+    });
+    let releaseDecrypt: (() => void) | undefined;
+    const decryptReleased = new Promise<void>((resolve) => {
+      releaseDecrypt = resolve;
+    });
+    decryptHook = async () => {
+      signalDecryptStarted?.();
+      await decryptReleased;
+    };
+
+    const pendingResponse = pollApp.request(
+      `/api/auth/cli-session/${sessionId}`,
+    );
+    await within(decryptStarted, "regeneration rendezvous");
+    await apiKeysRepository.update(API_KEY_ID, {
+      key_hash: "regenerated-hash",
+      key_prefix: "eliza_regenerated",
+      key_ciphertext: "regenerated-ciphertext",
+    });
+    releaseDecrypt?.();
+
+    const response = await pendingResponse;
+    expect(response.status).toBe(200);
+    expect(await response.json()).not.toHaveProperty("apiKey");
     expect(await readSession(sessionId)).toMatchObject({
       status: "authenticated",
       consumed_at: null,
