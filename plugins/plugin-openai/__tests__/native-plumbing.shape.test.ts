@@ -536,14 +536,14 @@ describe("OpenAI native text plumbing", () => {
     });
   });
 
-  it("defaults small and response handler models to gpt-5.4-mini while preserving explicit overrides", async () => {
+  it("defaults small and response handler models to gpt-5.6-luna while preserving explicit overrides", async () => {
     const { getResponseHandlerModel, getSmallModel } = await import("../utils/config");
     const runtime = {
       getSetting: vi.fn(() => undefined),
     } as IAgentRuntime;
 
-    expect(getSmallModel(runtime)).toBe("gpt-5.4-mini");
-    expect(getResponseHandlerModel(runtime)).toBe("gpt-5.4-mini");
+    expect(getSmallModel(runtime)).toBe("gpt-5.6-luna");
+    expect(getResponseHandlerModel(runtime)).toBe("gpt-5.6-luna");
 
     const overrideRuntime = {
       getSetting: vi.fn((key: string) => {

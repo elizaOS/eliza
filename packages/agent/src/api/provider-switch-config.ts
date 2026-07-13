@@ -419,15 +419,15 @@ const PROVIDER_DEFAULT_MODELS: Record<
 > = {
   anthropic: {
     smallKey: "ANTHROPIC_SMALL_MODEL",
-    smallVal: "claude-haiku-4-5-20251001",
+    smallVal: "claude-sonnet-5",
     largeKey: "ANTHROPIC_LARGE_MODEL",
     largeVal: "claude-opus-4-8",
   },
   openai: {
     smallKey: "OPENAI_SMALL_MODEL",
-    smallVal: "gpt-5.4-mini",
+    smallVal: "gpt-5.6-luna",
     largeKey: "OPENAI_LARGE_MODEL",
-    largeVal: "gpt-5.5",
+    largeVal: "gpt-5.6-sol",
   },
   google: {
     smallKey: "GOOGLE_SMALL_MODEL",
