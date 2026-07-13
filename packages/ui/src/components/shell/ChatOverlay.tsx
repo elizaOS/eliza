@@ -414,15 +414,23 @@ const PANEL_RADIUS_PX = 32;
 // dead pull before anything happens). The same fraction gates the release-time
 // maximize and the peak-void so a mid-drag commit and a release commit agree on
 // where the zone begins; the hysteresis gap below keeps the state from flapping.
-const MAXIMIZE_COMMIT_T = 0.3;
-const MAXIMIZE_RELEASE_T = 0.15;
+// Lowered 0.3 → 0.22 so maximize commits a little EARLIER in the over-pull zone:
+// the finger reaches edge-to-edge before it has to travel all the way into the
+// status-bar / notch band at the very top, where the OS owns the pull gesture
+// (notification shade / control center). Keep the hysteresis gap above RELEASE.
+const MAXIMIZE_COMMIT_T = 0.22;
+const MAXIMIZE_RELEASE_T = 0.12;
 
 // Finger travel (px) below the restore drag's upward peak at which the panel
 // drops full-bleed and starts tracking the finger down out of maximize. Sized
 // so an accidental TAP or a few px of pointer jitter is a no-op (only the drag
 // exits full-screen, per product direction) while a deliberate downward pull
 // still un-maximizes promptly.
-const RESTORE_UNMAX_SLOP = 24;
+// Lowered 24 → 16 so a pull-DOWN from maximized drops full-bleed a little
+// EARLIER — the sheet leaves the top edge (and the OS notification-shade /
+// control-center pull zone) promptly instead of after a longer downward drag.
+// Still enough slop to absorb touch jitter so a held-at-top hand doesn't flap.
+const RESTORE_UNMAX_SLOP = 16;
 
 const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
 
@@ -1544,7 +1552,7 @@ export function ChatOverlay({
   // (#13531). The visible `threadHeight` is rubber-band-clamped at `openH`, so a
   // deliberate over-pull past FULL is invisible to a `threadHeight.get()` read on
   // release. This ref records the true finger height each frame so the release
-  // path can tell an over-pull past the 80%-viewport maximize threshold from a
+  // path can tell an over-pull past the 72%-viewport maximize threshold from a
   // plain release at FULL. Reset to 0 at the start of every gesture.
   const maxPullRawRef = React.useRef(0);
   // Thread height at the START of the current gesture. Release paths that land
@@ -3210,11 +3218,11 @@ export function ChatOverlay({
   // the collapse spring to start (a touch longer when leaving MAXIMIZED, since
   // there's more to unwind); reduced motion navigates immediately.
   // Maximize via a vertical PULL, not a button (#13531). A pull-up that crosses
-  // the 80%-of-viewport threshold rises to the FULL detent and drops the inset,
+  // the 72%-of-viewport threshold rises to the FULL detent and drops the inset,
   // so the panel goes edge-to-edge in one continuous gesture. The button-only
   // `toggleMaximize` is gone; this is the single entry into full-bleed and is
   // called from the pull-gesture release path (maybeMaximizeOnRelease) once the
-  // peak raw pull clears 80% of the viewport height.
+  // peak raw pull clears 72% of the viewport height.
   const maximizeFromPull = React.useCallback(() => {
     // Snap the morph fully open BEFORE flipping to full-bleed so no in-flight
     // pill-open spring can leak a sub-1 scale into the maximized frame (top gap).
@@ -4427,7 +4435,7 @@ export function ChatOverlay({
       const overpullT = Math.max(rawOverpullT, measuredOverpullT);
       const startedFromFullDetent = expanded && freeH == null;
       const livePeakTravel = cont - Math.min(0, dragStartContRef.current);
-      const liveLongHaul = livePeakTravel >= viewportH * 0.8;
+      const liveLongHaul = livePeakTravel >= viewportH * 0.72;
       // Feed the finger's over-pull to the height cap so it lifts through the
       // inset-ceiling flex-overshoot dead zone (where `cont < insetPanelMaxH` yet
       // the panel is already pinned at the ceiling) — the panel edge keeps
@@ -4496,7 +4504,7 @@ export function ChatOverlay({
   );
 
   // Pull-to-maximize decision (#13531): a released upward pull whose PEAK raw
-  // upward travel (maxPullRawRef, pre-clamp/pre-pin) cleared 80% of the viewport
+  // upward travel (maxPullRawRef, pre-clamp/pre-pin) cleared 72% of the viewport
   // height commits to edge-to-edge full-bleed. The live shape morph in
   // onDragOffset is calibrated to the SAME threshold — it reaches full exactly
   // here — so the panel is already reading as maximized when this commits it,
@@ -4515,11 +4523,11 @@ export function ChatOverlay({
     //    finger visibly squared the corners) — the canonical exit upward from
     //    FULL. A free-rest below FULL steps to FULL first instead of surprise
     //    maximizing on a short flick.
-    //  - LONG HAUL: the drag swept ≥80% of the screen — "grabbed it and threw
+    //  - LONG HAUL: the drag swept ≥72% of the screen — "grabbed it and threw
     //    it to the top". Short free-rest flicks step to FULL because the raw
     //    travel stays below this threshold.
-    // The 80% is measured against the LAYOUT viewport (screen space), not the
-    // keyboard-shrunk visual viewport: with a soft keyboard up, 80% of the
+    // The 72% is measured against the LAYOUT viewport (screen space), not the
+    // keyboard-shrunk visual viewport: with a soft keyboard up, 72% of the
     // visual height can fall below the FULL detent, so an ordinary flick to
     // full would accidentally commit an edge-to-edge maximize whose top spills
     // above the screen.
@@ -4535,7 +4543,7 @@ export function ChatOverlay({
     // spends PILL_OPEN_DISTANCE forming the input before any height exists, so
     // shift the peak by the below-zero start to compare finger distance.
     const peakTravel = peak - Math.min(0, dragStartContRef.current);
-    const longHaul = peakTravel >= screenH * 0.8;
+    const longHaul = peakTravel >= screenH * 0.72;
     if (overPulled || longHaul) {
       focusThreadRef.current = true;
       maximizeFromPull();
@@ -4582,7 +4590,7 @@ export function ChatOverlay({
       if (pilled) {
         // PILL → open: a flick up opens; a HELD drag released with flick
         // velocity honors how far the finger actually carried the sheet — a
-        // long pull from the pill lands FULL (or commits maximize past the 80%
+        // long pull from the pill lands FULL (or commits maximize past the 72%
         // threshold), a short flick lands HALF, so pill → input → chat →
         // full-screen is one continuum from the very bottom. Releasing
         // draggingRef first lets the pilled→openProgress effect spring the
@@ -4605,7 +4613,7 @@ export function ChatOverlay({
         else goToDetent("half");
         return;
       }
-      // Over-pull past the 80%-viewport threshold maximizes from ANY open state
+      // Over-pull past the 72%-viewport threshold maximizes from ANY open state
       // (#13531) — this must win before the per-state detent settle below.
       if (maybeMaximizeOnRelease()) return;
       if (!sheetOpen) {
@@ -4709,7 +4717,7 @@ export function ChatOverlay({
         else settleDrag();
         return;
       }
-      // A slow upward over-pull past the 80%-viewport threshold maximizes
+      // A slow upward over-pull past the 72%-viewport threshold maximizes
       // (#13531), even though the visible height rubber-banded at FULL — the
       // peak raw pull (maxPullRawRef) carries the intent. Downward restore drags
       // must not re-enter full-bleed, even if a previous upward peak was visible
