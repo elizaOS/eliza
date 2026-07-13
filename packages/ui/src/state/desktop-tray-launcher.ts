@@ -43,11 +43,21 @@ export interface DesktopLauncherEntry {
 let entries: readonly DesktopLauncherEntry[] = [];
 const listeners = new Set<() => void>();
 
+// Packaged-desktop e2e diagnostics seam (desktop-tray-views.e2e.spec.ts): the
+// bridge `eval` has no ESM import path into the renderer bundle, so the current
+// rows are mirrored onto a well-known global — same pattern as
+// `shell-surface-store`. Read-only from the outside; app code uses the store.
+const LAUNCHER_ROWS_DIAGNOSTICS_KEY = Symbol.for(
+  "elizaos.ui.desktop-tray-launcher",
+);
+
 /** Replace the desktop launcher rows and notify subscribers. */
 export function setDesktopLauncherEntries(
   next: readonly DesktopLauncherEntry[],
 ): void {
   entries = next;
+  (globalThis as Record<PropertyKey, unknown>)[LAUNCHER_ROWS_DIAGNOSTICS_KEY] =
+    { entries: [...next] };
   for (const listener of listeners) {
     listener();
   }
