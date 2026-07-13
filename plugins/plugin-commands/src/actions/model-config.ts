@@ -263,13 +263,108 @@ interface ModelConfigShowResponse {
 	error?: string;
 }
 
-const SHOW_TARGET_ORDER = ["small", "large", "coding"] as const;
-
 /**
  * GET the effective model config and format it as one reply: every key the
  * config route owns, with the source that won (config.env / config.env.vars /
  * process.env / default) or `unset`.
  */
+/** Where a value came from, in operator words instead of seam names. */
+function sourceLabel(source: string): string {
+	if (source === "config.env" || source === "config.env.vars") {
+		return "app config";
+	}
+	if (source === "process.env") return "environment";
+	return source;
+}
+
+type ShowTargets = NonNullable<ModelConfigShowResponse["targets"]>;
+type Effective = { value: string; source: string } | null | undefined;
+
+function chatLine(
+	label: string,
+	keys: Record<string, Effective> | undefined,
+	modelKeys: string[],
+	effortKeys: string[],
+): string | null {
+	if (!keys) return null;
+	const model = modelKeys
+		.map((k) => keys[k])
+		.find((v): v is { value: string; source: string } => Boolean(v));
+	if (!model) return `${label}: not set`;
+	const effort = effortKeys
+		.map((k) => keys[k])
+		.find((v): v is { value: string; source: string } => Boolean(v));
+	const effortPart = effort ? ` — effort ${effort.value}` : "";
+	return `${label}: ${model.value}${effortPart} (${sourceLabel(model.source)})`;
+}
+
+/**
+ * Render the raw per-key config the route reports as an operator-readable
+ * summary. The env keys (ELIZA_CODEX_MODEL_POWERFUL, …) are persistence
+ * details — dumping them read as "wtf is model powerful"; the operator wants
+ * model + effort + where it came from, per slot.
+ */
+export function renderModelConfigShow(targets: ShowTargets): string {
+	const lines = ["Model configuration:"];
+	const small = chatLine(
+		"small",
+		targets.small,
+		["OPENAI_SMALL_MODEL", "ANTHROPIC_SMALL_MODEL"],
+		["OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT_SMALL"],
+	);
+	const large = chatLine(
+		"large",
+		targets.large,
+		["OPENAI_LARGE_MODEL", "ANTHROPIC_LARGE_MODEL"],
+		["OPENAI_REASONING_EFFORT", "ANTHROPIC_EFFORT_LARGE"],
+	);
+	if (small) lines.push(small);
+	if (large) lines.push(large);
+
+	const coding = targets.coding;
+	if (coding) {
+		const def = coding.ELIZA_DEFAULT_AGENT_TYPE;
+		lines.push(
+			def
+				? `coding — default backend: ${displayCodingBackend(def.value)} (${sourceLabel(def.source)})`
+				: "coding — default backend: not set (the orchestrator picks per task)",
+		);
+		const backends: Array<{
+			label: string;
+			modelKey: string;
+			effortKey?: string;
+		}> = [
+			{
+				label: "codex",
+				modelKey: "ELIZA_CODEX_MODEL_POWERFUL",
+				effortKey: "ELIZA_CODEX_EFFORT",
+			},
+			{
+				label: "claude",
+				modelKey: "ELIZA_CLAUDE_MODEL_POWERFUL",
+				effortKey: "ELIZA_CLAUDE_EFFORT",
+			},
+			{ label: "opencode", modelKey: "ELIZA_OPENCODE_MODEL_POWERFUL" },
+			{ label: "eliza", modelKey: "ELIZA_ELIZAOS_MODEL_POWERFUL" },
+		];
+		for (const b of backends) {
+			const model = coding[b.modelKey];
+			if (!model) {
+				if (b.label === "eliza") {
+					lines.push("  eliza: uses the runtime's own chat models");
+				}
+				continue;
+			}
+			const effort = b.effortKey ? coding[b.effortKey] : undefined;
+			const effortPart = effort ? ` @ ${effort.value}` : "";
+			lines.push(
+				`  ${b.label}: ${model.value}${effortPart} (${sourceLabel(model.source)})`,
+			);
+		}
+	}
+	return lines.join("\n");
+}
+
 export async function runModelConfigShowViaRoute(): Promise<CommandResult> {
 	const port = resolveServerOnlyPort(process.env);
 	let response: Response;
@@ -297,18 +392,5 @@ export async function runModelConfigShowViaRoute(): Promise<CommandResult> {
 		);
 	}
 
-	const lines = ["Model configuration:"];
-	for (const target of SHOW_TARGET_ORDER) {
-		const keys = parsed.targets[target];
-		if (!keys) continue;
-		lines.push(`**${target}**`);
-		for (const [key, effective] of Object.entries(keys)) {
-			lines.push(
-				effective
-					? `  ${key} = ${effective.value} (${effective.source})`
-					: `  ${key} unset`,
-			);
-		}
-	}
-	return reply(lines.join("\n"));
+	return reply(renderModelConfigShow(parsed.targets));
 }

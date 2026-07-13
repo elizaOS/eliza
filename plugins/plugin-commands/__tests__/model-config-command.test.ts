@@ -336,7 +336,7 @@ describe("/model show → GET /api/models/config", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("formats the effective config with values, sources, and unset keys", async () => {
+	it("formats the effective config as operator-readable slots, not raw env keys", async () => {
 		const fetchMock = vi.fn(async () =>
 			jsonResponse({
 				targets: {
@@ -369,13 +369,14 @@ describe("/model show → GET /api/models/config", () => {
 		const [url, init] = fetchMock.mock.calls[0];
 		expect(String(url)).toContain("/api/models/config");
 		expect((init as RequestInit).method).toBe("GET");
-		expect(r.reply).toContain("**small**");
-		expect(r.reply).toContain("OPENAI_SMALL_MODEL = gpt-oss-120b (config.env)");
-		expect(r.reply).toContain("ANTHROPIC_SMALL_MODEL unset");
-		expect(r.reply).toContain("OPENAI_LARGE_MODEL = zai-glm-4.7 (process.env)");
-		expect(r.reply).toContain(
-			"ELIZA_CODEX_MODEL_POWERFUL = gpt-5.6-terra (default)",
-		);
+		// Human slots with friendly source labels — the raw persistence keys
+		// (ELIZA_*_MODEL_POWERFUL, …) must never reach the operator.
+		expect(r.reply).toContain("small: gpt-oss-120b (app config)");
+		expect(r.reply).toContain("large: zai-glm-4.7 (environment)");
+		expect(r.reply).toContain("codex: gpt-5.6-terra (default)");
+		expect(r.reply).toContain("eliza: uses the runtime's own chat models");
+		expect(r.reply).not.toContain("MODEL_POWERFUL");
+		expect(r.reply).not.toContain("unset");
 	});
 
 	it("requires authorization and never hits the route when unauthorized", async () => {
