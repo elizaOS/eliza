@@ -34,7 +34,10 @@ test("negative-caches a failing loader — subsequent lookups skip the re-fetch"
 
 test("caches a successful loader result — loader runs once", async () => {
   let calls = 0;
-  const entry = { model: "m", provider: "p" } as unknown as PreparedPricingEntry;
+  const entry = {
+    model: "m",
+    provider: "p",
+  } as unknown as PreparedPricingEntry;
   const loader = async (): Promise<PreparedPricingEntry[]> => {
     calls++;
     return [entry];
@@ -48,7 +51,10 @@ test("caches a successful loader result — loader runs once", async () => {
 test("persisted: caches a successful DB read — loader runs once within TTL", async () => {
   __clearPersistedPricingCache();
   let calls = 0;
-  const row = { model: "gpt-oss-120b", provider: "cerebras" } as unknown as AiPricingEntry;
+  const row = {
+    model: "gpt-oss-120b",
+    provider: "cerebras",
+  } as unknown as AiPricingEntry;
   const loader = async (): Promise<AiPricingEntry[]> => {
     calls++;
     return [row];
@@ -80,4 +86,51 @@ test("persisted: distinct keys cache independently (no cross-key bleed)", async 
   expect(await getCachedPersistedEntries("kb", async () => [b])).toEqual([b]);
   // 'ka' stays cached as [a] even though this loader would return [b].
   expect(await getCachedPersistedEntries("ka", async () => [b])).toEqual([a]);
+});
+
+test("persisted: concurrent cold misses for the same key coalesce onto one read (#16162)", async () => {
+  __clearPersistedPricingCache();
+  const row = { model: "m" } as unknown as AiPricingEntry;
+  let calls = 0;
+  let release!: (v: AiPricingEntry[]) => void;
+  const gate = new Promise<AiPricingEntry[]>((resolve) => {
+    release = resolve;
+  });
+  const loader = (): Promise<AiPricingEntry[]> => {
+    calls++;
+    return gate; // stays pending until released — both callers reach in-flight
+  };
+
+  // Both fired before either resolves — the hot-path shape lookup.ts produces.
+  const p1 = getCachedPersistedEntries("cc", loader);
+  const p2 = getCachedPersistedEntries("cc", loader);
+  release([row]);
+
+  expect(await p1).toEqual([row]);
+  expect(await p2).toEqual([row]);
+  expect(calls).toBe(1); // one shared read, not two duplicate DB round-trips
+});
+
+test("external: concurrent cold misses for the same key coalesce onto one read (#16162)", async () => {
+  const entry = {
+    model: "m",
+    provider: "p",
+  } as unknown as PreparedPricingEntry;
+  let calls = 0;
+  let release!: (v: PreparedPricingEntry[]) => void;
+  const gate = new Promise<PreparedPricingEntry[]>((resolve) => {
+    release = resolve;
+  });
+  const loader = (): Promise<PreparedPricingEntry[]> => {
+    calls++;
+    return gate;
+  };
+
+  const p1 = getCachedExternalEntries("cc:ext", loader);
+  const p2 = getCachedExternalEntries("cc:ext", loader);
+  release([entry]);
+
+  expect(await p1).toEqual([entry]);
+  expect(await p2).toEqual([entry]);
+  expect(calls).toBe(1);
 });
