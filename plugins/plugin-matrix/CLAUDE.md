@@ -69,7 +69,7 @@ bun run --cwd plugins/plugin-matrix lint          # Biome check + fix
 bun run --cwd plugins/plugin-matrix lint:check    # Biome check (read-only)
 bun run --cwd plugins/plugin-matrix format        # Biome format + fix
 bun run --cwd plugins/plugin-matrix format:check  # Biome format (read-only)
-bun run --cwd plugins/plugin-matrix typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-matrix typecheck     # tsc --noEmit
 ```
 
 ## Config / env vars

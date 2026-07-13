@@ -7,7 +7,7 @@
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 import { describe, expect, it, vi } from "vitest";
 import { AgentRuntime } from "../runtime";
 import type { IAgentRuntime } from "../types/runtime";

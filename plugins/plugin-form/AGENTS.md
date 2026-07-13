@@ -62,7 +62,7 @@ bun run --cwd plugins/plugin-form build:js       # JS only (tsup)
 bun run --cwd plugins/plugin-form build:types    # .d.ts only (tsc --noCheck)
 bun run --cwd plugins/plugin-form clean          # rm -rf dist
 bun run --cwd plugins/plugin-form test           # vitest run
-bun run --cwd plugins/plugin-form typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-form typecheck      # tsc --noEmit
 ```
 
 ## Config / env vars

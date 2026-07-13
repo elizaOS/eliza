@@ -8,7 +8,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   format: ["esm"],
-  dts: true,
   external: [
     "dotenv", // Externalize dotenv to prevent bundling
     "fs", // Externalize fs to use Node.js built-in module

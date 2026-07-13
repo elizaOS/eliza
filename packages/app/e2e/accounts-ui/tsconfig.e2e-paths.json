@@ -11,16 +11,19 @@
     "not exist on the CI --ignore-scripts install, and the API server crashes at boot."
   ],
   "compilerOptions": {
-    "baseUrl": "../../../..",
     "paths": {
       "@elizaos/app-core/account-pool": [
-        "packages/app-core/src/services/account-pool.ts"
+        "../../../../packages/app-core/src/services/account-pool.ts"
       ],
-      "@elizaos/core": ["packages/core/src/index.ts"],
-      "@elizaos/cloud-routing": ["packages/cloud/routing/src/index.ts"],
-      "@elizaos/cloud-routing/*": ["packages/cloud/routing/src/*"],
-      "@elizaos/shared": ["packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["packages/shared/src/*"]
+      "@elizaos/core": ["../../../../packages/core/src/index.ts"],
+      "@elizaos/cloud-routing": [
+        "../../../../packages/cloud/routing/src/index.ts"
+      ],
+      "@elizaos/cloud-routing/*": [
+        "../../../../packages/cloud/routing/src/*"
+      ],
+      "@elizaos/shared": ["../../../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../../../packages/shared/src/*"]
     }
   }
 }

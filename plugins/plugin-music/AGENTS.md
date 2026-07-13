@@ -139,7 +139,7 @@ src/
 bun run --cwd plugins/plugin-music build          # tsup build to dist/
 bun run --cwd plugins/plugin-music dev            # tsup watch mode
 bun run --cwd plugins/plugin-music test           # vitest run
-bun run --cwd plugins/plugin-music typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-music typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-music lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-music lint:check     # biome check (no write)
 bun run --cwd plugins/plugin-music format         # biome format --write

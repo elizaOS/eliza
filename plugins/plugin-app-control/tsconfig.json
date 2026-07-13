@@ -6,7 +6,6 @@
 		"esModuleInterop": true,
 		"strict": true,
 		"skipLibCheck": true,
-		"ignoreDeprecations": "6.0",
 		"jsx": "react-jsx",
 		"declaration": true,
 		"declarationMap": true,

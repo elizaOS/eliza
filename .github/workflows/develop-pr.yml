@@ -144,9 +144,9 @@ jobs:
       # 16 GB RAM, and when the affected cone goes near-total (a base-branch
       # commit touching turbo globalDependencies like root package.json /
       # turbo.json makes every stale-base PR typecheck all ~250 packages) eight
-      # concurrent tsgo processes exhaust the runner — the OS SIGKILLs tasks or
+      # concurrent tsc processes exhaust the runner — the OS SIGKILLs tasks or
       # the runner VM itself dies (#15140). NODE_OPTIONS only bounds node-based
-      # tools, not native tsgo, so concurrency is the memory lever here.
+      # tools, not native tsc, so concurrency is the memory lever here.
       - name: Run typecheck (affected)
         run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=4 --affected
         env:

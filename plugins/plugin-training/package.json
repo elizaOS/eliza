@@ -41,7 +41,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "bun run build:js && bun run build:views && bun run build:types",
-    "typecheck": "tsgo --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -117,7 +117,7 @@
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.17",
     "vite": "^8.0.0"
   }

@@ -219,9 +219,9 @@ async function transpileWithTypeScript(
   loader: esbuild.Loader,
   format: PluginCompilerFormat,
 ): Promise<string> {
-  let ts: typeof import("typescript");
+  let ts: typeof import("@typescript/legacy-api");
   try {
-    ts = await import("typescript");
+    ts = await import("@typescript/legacy-api");
   } catch (error) {
     throw new Error(
       "PluginCompiler.compile: esbuild is unavailable and neither Bun.Transpiler nor TypeScript is available",

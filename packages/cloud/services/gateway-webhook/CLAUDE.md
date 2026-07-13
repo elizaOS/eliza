@@ -58,7 +58,7 @@ Scope everything with `--cwd packages/cloud/services/gateway-webhook`:
 bun run --cwd packages/cloud/services/gateway-webhook dev         # watch mode on PORT=3002
 bun run --cwd packages/cloud/services/gateway-webhook start       # run src/index.ts (PORT=3002)
 bun run --cwd packages/cloud/services/gateway-webhook build       # bun build src/index.ts → dist/ (node target)
-bun run --cwd packages/cloud/services/gateway-webhook typecheck   # tsgo --noEmit
+bun run --cwd packages/cloud/services/gateway-webhook typecheck   # tsc --noEmit
 bun run --cwd packages/cloud/services/gateway-webhook test        # bun test
 bun run --cwd packages/cloud/services/gateway-webhook lint        # biome check
 bun run --cwd packages/cloud/services/gateway-webhook docker:build

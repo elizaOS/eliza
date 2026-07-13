@@ -48,7 +48,7 @@ All scripts are defined in `package.json`. Run from repo root or with `--cwd`:
 ```bash
 bun run --cwd plugins/plugin-tunnel build        # tsc compile → dist/
 bun run --cwd plugins/plugin-tunnel dev          # tsc --watch
-bun run --cwd plugins/plugin-tunnel typecheck    # tsgo --noEmit (no emit, type-check only)
+bun run --cwd plugins/plugin-tunnel typecheck    # tsc --noEmit (no emit, type-check only)
 bun run --cwd plugins/plugin-tunnel test         # bun test (all tests)
 bun run --cwd plugins/plugin-tunnel test:unit    # bun test src/__tests__/ (unit only)
 bun run --cwd plugins/plugin-tunnel lint         # biome check --write --unsafe

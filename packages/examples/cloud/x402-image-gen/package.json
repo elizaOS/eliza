@@ -5,7 +5,7 @@
   "scripts": {
     "start": "bun run server.ts",
     "dev": "bun --hot run server.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "bun run test.ts",
     "build": "bun build server.ts --outdir=dist --target=bun --format=esm",
     "clean": "rm -rf dist",

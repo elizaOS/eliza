@@ -20,7 +20,7 @@ src/
 
 ```bash
 bun run --cwd packages/logger build       # tsc --noCheck -p tsconfig.build.json → dist
-bun run --cwd packages/logger typecheck   # tsgo --noEmit
+bun run --cwd packages/logger typecheck   # tsc --noEmit
 bun run --cwd packages/logger test
 ```
 

@@ -107,7 +107,7 @@ All scripts use `bun run --cwd plugins/plugin-agent-skills <script>`:
 bun run --cwd plugins/plugin-agent-skills build        # tsup + tsc declaration emit
 bun run --cwd plugins/plugin-agent-skills dev          # tsup --watch
 bun run --cwd plugins/plugin-agent-skills clean        # rm -rf dist
-bun run --cwd plugins/plugin-agent-skills typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-agent-skills typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-agent-skills test         # vitest run
 bun run --cwd plugins/plugin-agent-skills lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-agent-skills lint:check   # biome lint (read-only)

@@ -98,7 +98,7 @@ import { MockCloudSetupSessionService, DEFAULT_SETUP_POLICY, isActionAllowed }
 
 ```bash
 bun run --cwd packages/cloud/sdk build          # Compile to dist/ via build.ts
-bun run --cwd packages/cloud/sdk typecheck      # tsgo --noEmit
+bun run --cwd packages/cloud/sdk typecheck      # tsc --noEmit
 bun run --cwd packages/cloud/sdk test           # Unit tests in src/
 bun run --cwd packages/cloud/sdk test:e2e       # Live e2e (requires env flags below)
 bun run --cwd packages/cloud/sdk lint           # biome check

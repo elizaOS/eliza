@@ -63,7 +63,7 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-registry typecheck   # tsgo --noEmit type check
+bun run --cwd plugins/plugin-registry typecheck   # tsc --noEmit type check
 bun run --cwd plugins/plugin-registry build       # tsup JS + tsc --noCheck types
 bun run --cwd plugins/plugin-registry clean       # rm -rf dist
 ```

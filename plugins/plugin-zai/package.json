@@ -63,7 +63,7 @@
     "@biomejs/biome": "2.5.3",
     "@types/bun": "^1.3.10",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.1.4"
   },
   "scripts": {
@@ -73,7 +73,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",

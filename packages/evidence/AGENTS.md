@@ -97,7 +97,7 @@ flag.
 
 ```bash
 bun run --cwd packages/evidence test         # vitest suite
-bun run --cwd packages/evidence typecheck    # tsgo --noEmit
+bun run --cwd packages/evidence typecheck    # tsc --noEmit
 bun run --cwd packages/evidence lint         # biome
 bun run --cwd packages/evidence bundle:create -- --tier cpu
 bun run --cwd packages/evidence bundle:verify -- evidence/runs/<run-id>

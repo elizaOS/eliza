@@ -40,7 +40,7 @@
     "lint:check": "bunx @biomejs/biome check ./src",
     "format": "bunx @biomejs/biome format --write ./src package.json",
     "format:check": "bunx @biomejs/biome format ./src package.json",
-    "typecheck": "tsgo --noEmit -p tsconfig.build.json"
+    "typecheck": "tsc --noEmit -p tsconfig.build.json"
   },
   "files": [
     "dist",
@@ -71,7 +71,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
-    "typescript": "^6.0.3"
+    "typescript": "7.0.2"
   },
   "publishConfig": {
     "access": "public"

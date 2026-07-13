@@ -120,7 +120,7 @@ src/
 ```bash
 bun run --cwd plugins/plugin-local-inference build        # compile with build.ts
 bun run --cwd plugins/plugin-local-inference test         # vitest run (NODE_OPTIONS=--experimental-sqlite)
-bun run --cwd plugins/plugin-local-inference typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-local-inference typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-local-inference lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-local-inference lint:check   # biome check (read-only)
 bun run --cwd plugins/plugin-local-inference format       # biome format --write

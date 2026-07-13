@@ -52,7 +52,7 @@ The `./plugin` export (declared in `package.json` exports map) resolves to `dist
 Only scripts that exist in this package's `package.json`:
 
 ```bash
-bun run --cwd plugins/plugin-contacts typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-contacts typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-contacts lint         # biome check src/
 bun run --cwd plugins/plugin-contacts test         # vitest run
 bun run --cwd plugins/plugin-contacts build        # build:js + build:views + build:types

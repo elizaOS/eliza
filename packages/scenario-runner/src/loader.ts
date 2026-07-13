@@ -15,7 +15,7 @@ import {
   scenarioLane,
   scenario as validateScenarioDefinition,
 } from "@elizaos/scenario-runner/schema";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 
 async function walk(dir: string, out: string[]): Promise<void> {
   const entries = await readdir(dir);

@@ -42,7 +42,7 @@ Scope with `--cwd packages/cloud/services/agent-server`:
 ```bash
 bun run --cwd packages/cloud/services/agent-server start            # bun run src/index.ts
 bun run --cwd packages/cloud/services/agent-server dev              # bun --watch run src/index.ts
-bun run --cwd packages/cloud/services/agent-server typecheck        # tsgo --noEmit
+bun run --cwd packages/cloud/services/agent-server typecheck        # tsc --noEmit
 bun run --cwd packages/cloud/services/agent-server lint             # biome check .
 bun run --cwd packages/cloud/services/agent-server test             # bun test
 bun run --cwd packages/cloud/services/agent-server test:unit        # bun test __tests__/unit/

@@ -81,7 +81,7 @@ bun run --cwd plugins/plugin-feishu build         # bun run build.ts → dist/
 bun run --cwd plugins/plugin-feishu dev           # bun --hot build.ts
 bun run --cwd plugins/plugin-feishu test          # vitest run
 bun run --cwd plugins/plugin-feishu lint          # biome check --write --unsafe
-bun run --cwd plugins/plugin-feishu typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-feishu typecheck     # tsc --noEmit
 ```
 
 ## Troubleshooting

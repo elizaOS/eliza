@@ -1,13 +1,14 @@
 #!/usr/bin/env node
 /**
- * Audit the build / typecheck compiler model (issue #9626, TL;DR #3 + "two
- * compilers"). The repo's chosen model is: **tsgo checks, tsc only emits.**
+ * Audit the build / typecheck compiler model. TypeScript 7 is the repo's one
+ * native compiler: `tsc --noEmit` checks and `tsc --noCheck` performs emit-only
+ * builds without redundantly checking the same source twice.
  *
  * This script flags drift from that model across every workspace package:
  *   1. A `build` that runs a full `tsc` type-check (declaration emit WITHOUT
  *      `--noCheck`) while a separate `typecheck` already checks the same source
  *      — a redundant second full type-check.
- *   2. A `typecheck` that uses `tsc` instead of the standard `tsgo`.
+ *   2. A stale `tsgo` invocation from the superseded native-preview package.
  *   3. A no-op `typecheck` (`tsc --noEmit --noCheck` checks nothing).
  *
  * Exits non-zero on any un-allowlisted violation so it can gate CI / `verify`.
@@ -24,12 +25,11 @@ const repoRoot = path.resolve(
 );
 const WORKSPACE_GLOBS = ["packages", "plugins"];
 
-// Deliberate, documented exceptions to the "tsgo checks, tsc emits" model. Each
+// Deliberate, documented exceptions to the native TypeScript 7 model. Each
 // package opts in via `elizaos.scripts.buildModel` in its own package.json (e.g.
 // @elizaos/core / plugin-streaming keep a full build type-check for byte-stable
-// declaration emit; plugin-personal-assistant stays on `tsc` for typecheck
-// pending a tsgo fix, #9626). Resolved through the discovery
-// seam so no package names live in this file.
+// declaration emit). Resolved through the discovery seam so no package names
+// live in this file.
 const ALLOW = resolveBuildModelExceptions({ repoRoot });
 
 const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
@@ -200,7 +200,7 @@ for (const dir of listPackageDirs()) {
   const scripts = pkg.scripts ?? {};
   const build = scripts.build ?? "";
   const typecheck = scripts.typecheck ?? "";
-  const hasSeparateTypecheck = /\btsgo\b|\btsc\b/.test(typecheck);
+  const hasSeparateTypecheck = /\btsc\b/.test(typecheck);
 
   if (
     isFullTscEmit(build) &&
@@ -237,16 +237,9 @@ for (const dir of listPackageDirs()) {
     violations.push(
       `${name}: typecheck is a no-op (\`tsc --noEmit --noCheck\` checks nothing)`,
     );
-  } else if (
-    /\btsc\b/.test(typecheck) &&
-    /--noEmit/.test(typecheck) &&
-    !/\btsgo\b/.test(typecheck) &&
-    !ALLOW.tscTypecheck.has(name)
-  ) {
-    // `tsc -b` (project-references build) is a deliberately different mode and
-    // is intentionally not flagged here — only the `tsc --noEmit` checker form.
+  } else if (/\btsgo\b/.test(typecheck)) {
     violations.push(
-      `${name}: typecheck uses tsc --noEmit, not tsgo — ${typecheck.trim()}`,
+      `${name}: typecheck uses the removed native-preview tsgo command; use TypeScript 7's tsc — ${typecheck.trim()}`,
     );
   }
 }
@@ -292,7 +285,7 @@ if (violations.length > 0) {
   );
   for (const v of violations) console.error(`  ✗ ${v}`);
   console.error(
-    "\nModel: tsgo checks, tsc emits. Add --noCheck to emit-only tsc builds; use tsgo for typecheck.",
+    "\nModel: TypeScript 7 tsc --noEmit checks; add --noCheck to emit-only tsc builds.",
   );
   process.exit(1);
 }

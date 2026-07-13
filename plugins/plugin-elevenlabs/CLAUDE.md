@@ -45,7 +45,7 @@ bun run --cwd plugins/plugin-elevenlabs lint           # biome check --write --u
 bun run --cwd plugins/plugin-elevenlabs lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-elevenlabs format         # biome format --write
 bun run --cwd plugins/plugin-elevenlabs format:check   # biome format (read-only)
-bun run --cwd plugins/plugin-elevenlabs typecheck      # tsgo --project tsconfig.json --noEmit
+bun run --cwd plugins/plugin-elevenlabs typecheck      # tsc --project tsconfig.json --noEmit
 ```
 
 ## Config / env vars

@@ -83,7 +83,7 @@ if (files.length === 0) {
 }
 
 let written = 0;
-const { default: ts } = await import("typescript");
+const { default: ts } = await import("@typescript/legacy-api");
 for (const file of files) {
   const inputPath = path.join(generatedDir, file);
   const outputPath = inputPath.replace(/\.ts$/, ".js");

@@ -61,6 +61,6 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "hardhat-preprocessor": "^0.1.5",
-    "typescript": "^5.9.3"
+    "typescript": "7.0.2"
   }
 }

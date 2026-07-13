@@ -52,7 +52,7 @@ bun run --cwd plugins/plugin-zai build          # compile node + browser outputs
 bun run --cwd plugins/plugin-zai dev            # watch mode build
 bun run --cwd plugins/plugin-zai test           # vitest run
 bun run --cwd plugins/plugin-zai test:watch     # vitest watch
-bun run --cwd plugins/plugin-zai typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-zai typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-zai lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-zai lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-zai format         # biome format --write

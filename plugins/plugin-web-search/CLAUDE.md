@@ -41,7 +41,7 @@ bun run --cwd plugins/plugin-web-search lint        # biome check src/
 bun run --cwd plugins/plugin-web-search lint:fix    # biome check --write src/
 bun run --cwd plugins/plugin-web-search format      # biome format src/
 bun run --cwd plugins/plugin-web-search format:fix  # biome format --write src/
-bun run --cwd plugins/plugin-web-search typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-web-search typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-web-search test        # vitest run --config ./vitest.config.ts
 ```
 

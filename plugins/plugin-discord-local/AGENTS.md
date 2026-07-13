@@ -70,7 +70,7 @@ Key exports from `src/index.ts`:
 ```bash
 bun run --cwd plugins/plugin-discord-local build       # compile to dist/
 bun run --cwd plugins/plugin-discord-local dev         # watch build (bun --hot)
-bun run --cwd plugins/plugin-discord-local typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-discord-local typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-discord-local lint        # biome check --write
 bun run --cwd plugins/plugin-discord-local lint:check  # biome check (no write)
 bun run --cwd plugins/plugin-discord-local format      # biome format --write

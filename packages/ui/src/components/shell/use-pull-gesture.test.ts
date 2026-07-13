@@ -106,7 +106,7 @@ describe("usePullGesture rAF coalescing (#9141)", () => {
 
   it("collapses many pointermoves in a frame into ONE onDrag with the last value", () => {
     // Hold the captured callback on an object, not a closure-assigned `let`:
-    // the latter narrows to `never` at the call site under tsgo's flow analysis.
+    // the latter narrows to `never` at the call site under tsc's flow analysis.
     const raf: { cb: ((t: number) => void) | null } = { cb: null };
     vi.stubGlobal(
       "requestAnimationFrame",

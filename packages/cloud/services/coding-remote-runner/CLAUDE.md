@@ -40,7 +40,7 @@ POST /v1/processes/run                run a command (JSON body)
 bun run --cwd packages/cloud/services/coding-remote-runner start        # boot the runner
 bun run --cwd packages/cloud/services/coding-remote-runner dev          # boot with --watch
 bun run --cwd packages/cloud/services/coding-remote-runner test         # bun test
-bun run --cwd packages/cloud/services/coding-remote-runner typecheck    # tsgo --noEmit
+bun run --cwd packages/cloud/services/coding-remote-runner typecheck    # tsc --noEmit
 bun run --cwd packages/cloud/services/coding-remote-runner docker:build # build the local image
 ```
 
@@ -83,7 +83,7 @@ Disable the bundled coding CLIs at image-build time with
   under Bun and falls back to Node's `child_process.spawn` otherwise; tests
   override execution by passing a `commandRunner` into `createHandler`.
 - **No build step / no published artifact.** `private: true`, runs directly from
-  `src/index.ts`; `typecheck` uses `tsgo`. The handler is a plain Web
+  `src/index.ts`; `typecheck` uses `tsc`. The handler is a plain Web
   `Request`/`Response` function, so it is testable without binding a port.
 
 Repo-wide rules (logger-only, ESM, naming, architecture) are in the root [AGENTS.md](../../../../AGENTS.md).

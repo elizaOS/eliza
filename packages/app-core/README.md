@@ -34,7 +34,7 @@ The full subpath list lives in the `exports` map of `package.json`.
 
 ```bash
 bun run --cwd packages/app-core build       # tsc → flatten → copy assets → rewrite dist ESM imports
-bun run --cwd packages/app-core typecheck   # tsgo --noEmit
+bun run --cwd packages/app-core typecheck   # tsc --noEmit
 bun run --cwd packages/app-core test         # vitest
 bun run --cwd packages/app-core lint         # Biome
 ```

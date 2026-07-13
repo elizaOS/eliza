@@ -62,7 +62,7 @@ bun run --cwd packages/security/soc2-verify lint:check       # Biome check (read
 bun run --cwd packages/security/soc2-verify format:check     # Biome format (read-only)
 bun run --cwd packages/security/soc2-verify test             # vitest run (unit suite)
 bun run --cwd packages/security/soc2-verify test:watch       # vitest watch
-bun run --cwd packages/security/soc2-verify typecheck        # tsgo --noEmit
+bun run --cwd packages/security/soc2-verify typecheck        # tsc --noEmit
 ```
 
 Or run the CLI directly with flags:

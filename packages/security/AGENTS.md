@@ -128,7 +128,7 @@ bun run --cwd packages/security format       # Biome format --write
 bun run --cwd packages/security format:check # Biome format (read-only)
 bun run --cwd packages/security test         # vitest run
 bun run --cwd packages/security test:watch   # vitest watch
-bun run --cwd packages/security typecheck    # tsgo --noEmit
+bun run --cwd packages/security typecheck    # tsc --noEmit
 bun run --cwd packages/security clean        # rm -rf dist
 ```
 

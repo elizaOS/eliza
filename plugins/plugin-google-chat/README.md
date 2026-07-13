@@ -66,7 +66,7 @@ From `package.json`:
 bun run --cwd plugins/plugin-google-chat build         # bunx tsc -p tsconfig.json
 bun run --cwd plugins/plugin-google-chat test          # vitest run
 bun run --cwd plugins/plugin-google-chat lint          # biome check --write --unsafe
-bun run --cwd plugins/plugin-google-chat typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-google-chat typecheck     # tsc --noEmit
 ```
 
 Messages longer than 4,000 chars (`MAX_GOOGLE_CHAT_MESSAGE_LENGTH`) can be split with `splitMessageForGoogleChat` (`src/types.ts`), which breaks on newline or word boundaries.

@@ -58,7 +58,7 @@ bun run --cwd plugins/plugin-messages build:js       # tsup library build only
 bun run --cwd plugins/plugin-messages build:views    # vite bundle for dist/views/bundle.js
 bun run --cwd plugins/plugin-messages build:types    # tsc declarations
 bun run --cwd plugins/plugin-messages clean          # rm -rf dist
-bun run --cwd plugins/plugin-messages typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-messages typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-messages lint           # biome check src
 bun run --cwd plugins/plugin-messages test           # vitest run
 ```

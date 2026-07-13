@@ -141,7 +141,7 @@ Dockerfile), and why mobile is unsupported — is in
 ```bash
 bun run --cwd plugins/plugin-meetings build       # tsup + declarations
 bun run --cwd plugins/plugin-meetings test        # vitest run
-bun run --cwd plugins/plugin-meetings typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-meetings typecheck   # tsc --noEmit
 ```
 
 ## Conventions / gotchas

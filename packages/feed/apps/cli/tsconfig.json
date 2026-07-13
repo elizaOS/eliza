@@ -28,11 +28,9 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "ignoreDeprecations": "6.0",
     "moduleDetection": "force",
     "outDir": "./dist",
     "types": ["bun-types"],
-    "baseUrl": ".",
     "paths": {
       "@feed/shared": ["../../packages/shared/dist/index.d.ts"],
       "@feed/shared/*": ["../../packages/shared/dist/*"],

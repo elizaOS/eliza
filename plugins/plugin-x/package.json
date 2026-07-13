@@ -55,18 +55,18 @@
     "@vitest/coverage-v8": "^4.0.0",
     "dotenv": "^17.2.3",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
+    "build": "tsup && tsc --noEmit false --noCheck -p tsconfig.build.json",
+    "dev": "tsup --watch --onSuccess \"tsc --noEmit false --noCheck -p tsconfig.build.json\"",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "prepack": "bun run build",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

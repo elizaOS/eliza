@@ -16,7 +16,7 @@
     "corpus:scrub": "bun src/cli.ts scrub",
     "corpus:verify": "bun src/cli.ts verify",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src fixtures",
     "lint:fix": "bunx @biomejs/biome check --write src fixtures",
     "format": "bunx @biomejs/biome format --write src fixtures",

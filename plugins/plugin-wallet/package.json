@@ -61,7 +61,7 @@
   },
   "scripts": {
     "build": "bun run build.ts",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "check": "bun run typecheck",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -101,7 +101,7 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/node": "^24.0.0",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.18"
   },
   "agentConfig": {

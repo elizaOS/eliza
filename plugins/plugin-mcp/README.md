@@ -83,7 +83,7 @@ src/
 bun run build         # bun run build.ts → dist/ (ESM + CJS + .d.ts)
 bun run dev           # hot-rebuild with bun --hot
 bun run test          # vitest run
-bun run typecheck     # tsgo --noEmit
+bun run typecheck     # tsc --noEmit
 bun run lint          # biome check --write --unsafe
 bun run format        # biome format --write
 bun run clean         # rm -rf dist .turbo

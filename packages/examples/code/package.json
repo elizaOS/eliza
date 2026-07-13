@@ -33,7 +33,7 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "clean": "rm -rf dist",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.0.0",
@@ -58,6 +58,6 @@
     "@xterm/headless": "^6.0.0",
     "@types/node": "^25.0.3",
     "@types/react": "19.2.3",
-    "typescript": "^6.0.3"
+    "typescript": "7.0.2"
   }
 }

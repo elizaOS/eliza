@@ -109,7 +109,7 @@ export type InstallRouterHandlerParity = AssertAssignable<
 
 describe("capacitor-bridge shim parity (#15850)", () => {
   it("is enforced at compile time — this file failing to typecheck IS the signal", () => {
-    // The type aliases above are the assertions; tsgo/tsc rejects this file
+    // The type aliases above are the assertions; tsc rejects this file
     // (and the agent typecheck lane fails) the moment a real export drifts
     // from the bridge's shim contract.
     expect(true).toBe(true);

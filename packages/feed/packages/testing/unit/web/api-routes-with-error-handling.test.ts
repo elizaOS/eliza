@@ -1,7 +1,7 @@
 import { describe, it } from "bun:test";
 import fs from "node:fs/promises";
 import path from "node:path";
-import * as ts from "typescript";
+import * as ts from "@typescript/legacy-api";
 
 const API_ROOT = path.resolve(
   import.meta.dir,

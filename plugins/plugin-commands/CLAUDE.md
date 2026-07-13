@@ -67,7 +67,7 @@ auto-enable.ts  Lightweight shouldEnable() — reads config.features.commands;
 bun run --cwd plugins/plugin-commands build         # bun build + tsc declarations
 bun run --cwd plugins/plugin-commands dev           # hot-rebuild with bun --hot
 bun run --cwd plugins/plugin-commands test          # vitest run
-bun run --cwd plugins/plugin-commands typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-commands typecheck     # tsc --noEmit
 bun run --cwd plugins/plugin-commands lint          # biome check --write --unsafe
 bun run --cwd plugins/plugin-commands format        # biome format --write
 bun run --cwd plugins/plugin-commands clean         # rm dist/.turbo artifacts

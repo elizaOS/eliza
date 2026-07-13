@@ -78,7 +78,7 @@ src/
 ```bash
 bun run --cwd plugins/plugin-github build       # tsup ESM build + .d.ts
 bun run --cwd plugins/plugin-github test        # vitest run
-bun run --cwd plugins/plugin-github typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-github typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-github clean       # rm dist .turbo
 ```
 

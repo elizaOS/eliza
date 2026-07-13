@@ -33,7 +33,7 @@
 		}
 	},
 	"scripts": {
-		"typecheck": "tsgo --noEmit -p tsconfig.json",
+		"typecheck": "tsc --noEmit -p tsconfig.json",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"test": "NODE_OPTIONS='--experimental-sqlite' vitest run --config ./vitest.config.ts",
 		"build": "bun run build:js && bun run build:types",
@@ -68,7 +68,7 @@
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
 		"tsup": "^8.5.1",
-		"typescript": "^6.0.3",
+		"typescript": "7.0.2",
 		"vite": "8.0.16",
 		"vitest": "^4.0.17"
 	},

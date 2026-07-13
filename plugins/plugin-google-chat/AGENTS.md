@@ -68,7 +68,7 @@ bun run --cwd plugins/plugin-google-chat lint          # biome check --write --u
 bun run --cwd plugins/plugin-google-chat lint:check    # biome check (no write)
 bun run --cwd plugins/plugin-google-chat format        # biome format --write
 bun run --cwd plugins/plugin-google-chat format:check  # biome format (no write)
-bun run --cwd plugins/plugin-google-chat typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-google-chat typecheck     # tsc --noEmit
 ```
 
 ## Config / env vars

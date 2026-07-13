@@ -226,6 +226,7 @@ export * from "./pages/MemoryDetailPanel";
 export * from "./pages/MemoryViewerView";
 export * from "./pages/PluginsPageView";
 export * from "./pages/PluginsView";
+export * from "./pages/ProjectsPageView";
 export * from "./pages/RelationshipsView";
 export * from "./pages/ReleaseCenterView";
 export * from "./pages/RuntimeView";
@@ -234,7 +235,6 @@ export * from "./pages/SecretsView";
 // lazy-loads them, and exporting them here folds those route chunks into main.
 export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
-export * from "./pages/ProjectsPageView";
 export * from "./pages/TrajectoryDetailView";
 export * from "./pages/TriggersView";
 // VectorBrowserView lives in @elizaos/plugin-vector-browser — it is a heavy

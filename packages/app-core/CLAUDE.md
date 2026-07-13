@@ -60,7 +60,7 @@ platforms/{android,ios,electrobun}/   native shell projects + Apple Store entitl
 Run from repo root with `--cwd packages/app-core`:
 
 - `bun run --cwd packages/app-core build` — `build:dist` (tsc → flatten → copy assets → rewrite dist ESM imports)
-- `bun run --cwd packages/app-core typecheck` — `tsgo --noEmit -p tsconfig.json`
+- `bun run --cwd packages/app-core typecheck` — `tsc --noEmit -p tsconfig.json`
 - `bun run --cwd packages/app-core test` — vitest (config `vitest.config.ts`)
 - `bun run --cwd packages/app-core test:auth` — auth/auth-bootstrap/auth-store suites, no file parallelism
 - `bun run --cwd packages/app-core lint` / `lint:check` / `format` / `format:check` — Biome

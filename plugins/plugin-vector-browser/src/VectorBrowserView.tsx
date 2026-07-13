@@ -49,7 +49,7 @@ type VectorBrowserRuntime = {
 
 // Derive the boot-config type from getBootConfig's return rather than importing
 // the `AppBootConfig` type name: it is re-exported from @elizaos/ui/config only
-// through a multi-hop `export *` chain that tsgo does not resolve as a type
+// through a multi-hop `export *` chain that tsc does not resolve as a type
 // member, while the value export (getBootConfig) resolves fine. ReturnType is
 // the same type and immune to the chain quirk.
 type AppBootConfig = ReturnType<typeof getBootConfig>;

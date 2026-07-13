@@ -101,7 +101,7 @@ test/scenarios/          cloud-apps-structured-confirm.scenario.ts — real SDK 
 
 ```bash
 bun run --cwd plugins/plugin-cloud-apps test        # bun test __tests__ (SDK boundary faked)
-bun run --cwd plugins/plugin-cloud-apps typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-cloud-apps typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-cloud-apps lint        # biome check --write
 bun run --cwd plugins/plugin-cloud-apps build       # bun build.ts
 ```

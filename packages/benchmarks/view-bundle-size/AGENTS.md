@@ -44,7 +44,7 @@ node packages/benchmarks/view-bundle-size/bundle-size-kpi.mjs --no-build
 bun test packages/benchmarks/view-bundle-size/metric-schema.test.ts
 
 # Typecheck (this harness is not a workspace package; use its standalone config):
-node_modules/.bin/tsgo --noEmit -p packages/benchmarks/view-bundle-size/tsconfig.check.json
+node_modules/.bin/tsc --noEmit -p packages/benchmarks/view-bundle-size/tsconfig.check.json
 ```
 
 `metric-schema.test.ts` pins the per-bundle field set AND the **null-not-zero**

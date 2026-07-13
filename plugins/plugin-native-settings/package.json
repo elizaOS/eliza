@@ -24,7 +24,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",
@@ -65,7 +65,7 @@
   ],
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.17"
   }
 }

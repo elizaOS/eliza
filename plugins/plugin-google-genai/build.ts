@@ -5,12 +5,11 @@
  */
 import { buildPlugin } from "../plugin-build";
 
-const reexport = (from: string) =>
-  `export * from "${from}";\nexport { default } from "${from}";\n`;
+const reexport =
+  "export * from '../index';\nexport { default } from '../index';\n";
 
 await buildPlugin({
   name: "@elizaos/plugin-google-genai",
-  clean: false,
   targets: [
     {
       label: "Node",
@@ -37,9 +36,8 @@ await buildPlugin({
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
-    { path: "index.d.ts", content: reexport("./node/index") },
-    { path: "node/index.d.ts", content: reexport("./index.node") },
-    { path: "browser/index.d.ts", content: reexport("./index.browser") },
-    { path: "cjs/index.d.ts", content: reexport("./index.node") },
+    { path: "node/index.d.ts", content: reexport },
+    { path: "browser/index.d.ts", content: reexport },
+    { path: "cjs/index.d.ts", content: reexport },
   ],
 });

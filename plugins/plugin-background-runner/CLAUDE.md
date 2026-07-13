@@ -46,7 +46,7 @@ INSTALL.md                          iOS/Android native setup (plist, WorkManager
 ```bash
 bun run --cwd plugins/plugin-background-runner build         # tsc compile to dist/
 bun run --cwd plugins/plugin-background-runner dev           # tsc --watch
-bun run --cwd plugins/plugin-background-runner typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-background-runner typecheck     # tsc --noEmit
 bun run --cwd plugins/plugin-background-runner test          # bun test
 bun run --cwd plugins/plugin-background-runner test:unit     # bun test __tests__/unit/
 bun run --cwd plugins/plugin-background-runner lint          # biome check --write --unsafe

@@ -91,7 +91,7 @@ Run from repo root targeting this package:
 ```bash
 bun run --cwd packages/agent start            # bun run src/bin.ts (defaults to `serve`)
 bun run --cwd packages/agent dev              # bun --hot src/bin.ts
-bun run --cwd packages/agent typecheck        # tsgo --noEmit -p tsconfig.json
+bun run --cwd packages/agent typecheck        # tsc --noEmit -p tsconfig.json
 bun run --cwd packages/agent test             # vitest run --config vitest.config.ts
 bun run --cwd packages/agent lint             # biome check --write (curated src subdirs)
 bun run --cwd packages/agent lint:check       # biome check read-only

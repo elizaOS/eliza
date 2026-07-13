@@ -46,7 +46,7 @@
     "test": "vitest run",
     "test:scenarios": "SCENARIO_USE_LLM_PROXY=1 bun --conditions=eliza-source ../../packages/scenario-runner/bin/eliza-scenarios run test/scenarios --lane pr-deterministic",
     "test:e2e": "bun src/__e2e__/headless-capture-e2e.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -64,7 +64,7 @@
   "devDependencies": {
     "@types/node": "24.12.2",
     "tsup": "8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "4.1.10"
   },
   "publishConfig": {

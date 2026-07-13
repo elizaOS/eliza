@@ -57,7 +57,7 @@ Only scripts that exist in `package.json`:
 bun run --cwd plugins/plugin-native-filesystem build         # bun build (build.ts) → dist/
 bun run --cwd plugins/plugin-native-filesystem dev           # hot-rebuild
 bun run --cwd plugins/plugin-native-filesystem test          # vitest run
-bun run --cwd plugins/plugin-native-filesystem typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-native-filesystem typecheck     # tsc --noEmit
 bun run --cwd plugins/plugin-native-filesystem lint          # biome check --write --unsafe
 bun run --cwd plugins/plugin-native-filesystem lint:check    # biome check (no write)
 bun run --cwd plugins/plugin-native-filesystem format        # biome format --write

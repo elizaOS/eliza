@@ -33,7 +33,7 @@
     "verify:strict": "bun run src/cli.ts --strict-fail",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
@@ -46,7 +46,7 @@
   "devDependencies": {
     "@types/node": "^25.0.0",
     "fast-check": "^4.8.0",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   }
 }

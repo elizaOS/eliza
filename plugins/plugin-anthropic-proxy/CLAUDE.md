@@ -67,7 +67,7 @@ plugins/plugin-anthropic-proxy/
 ```bash
 bun run --cwd plugins/plugin-anthropic-proxy build       # Bun.build() (build.ts)
 bun run --cwd plugins/plugin-anthropic-proxy dev         # watch build
-bun run --cwd plugins/plugin-anthropic-proxy typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-anthropic-proxy typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-anthropic-proxy test        # vitest run
 bun run --cwd plugins/plugin-anthropic-proxy clean       # rm dist .turbo
 ```

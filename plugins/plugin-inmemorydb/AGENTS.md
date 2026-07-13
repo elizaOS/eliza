@@ -44,7 +44,7 @@ bun run --cwd plugins/plugin-inmemorydb build       # compile to dist/
 bun run --cwd plugins/plugin-inmemorydb dev         # build --watch
 bun run --cwd plugins/plugin-inmemorydb test        # vitest run
 bun run --cwd plugins/plugin-inmemorydb test:watch  # vitest watch
-bun run --cwd plugins/plugin-inmemorydb typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-inmemorydb typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-inmemorydb lint        # biome check --write
 bun run --cwd plugins/plugin-inmemorydb format      # biome format --write
 bun run --cwd plugins/plugin-inmemorydb clean       # rm -rf dist .turbo .turbo-tsconfig.json *.tsbuildinfo

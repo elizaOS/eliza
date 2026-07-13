@@ -1,10 +1,19 @@
 {
   "extends": "./tsconfig.build.json",
   "compilerOptions": {
-    "outDir": "../dist/node",
+    "rootDir": ".",
+    "outDir": "./dist/node",
     "declaration": true,
     "declarationMap": true
   },
   "include": ["./**/*.ts"],
-  "exclude": ["node_modules", "__tests__"]
+  "exclude": [
+    "build.ts",
+    "dist",
+    "node_modules",
+    "__tests__",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "vitest*.config.ts"
+  ]
 }

@@ -37,7 +37,7 @@ src/
 bun run --cwd plugins/plugin-remote-desktop build        # bun build → dist/ (ESM) + tsc --emitDeclarationOnly
 bun run --cwd plugins/plugin-remote-desktop dev          # hot-rebuild via build.ts
 bun run --cwd plugins/plugin-remote-desktop test         # vitest run
-bun run --cwd plugins/plugin-remote-desktop typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-remote-desktop typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-remote-desktop check        # typecheck + test
 bun run --cwd plugins/plugin-remote-desktop clean        # rm -rf dist .turbo
 ```

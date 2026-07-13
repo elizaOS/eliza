@@ -72,7 +72,7 @@ plugins/plugin-bluesky/
 bun run --cwd plugins/plugin-bluesky build        # compile (Bun.build + tsc for .d.ts)
 bun run --cwd plugins/plugin-bluesky dev          # watch build (--hot)
 bun run --cwd plugins/plugin-bluesky test         # vitest run
-bun run --cwd plugins/plugin-bluesky typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-bluesky typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-bluesky lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-bluesky clean        # rm dist .turbo
 ```

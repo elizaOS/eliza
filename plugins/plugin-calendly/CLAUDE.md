@@ -56,7 +56,7 @@ Only scripts that exist in `package.json`:
 ```bash
 bun run --cwd plugins/plugin-calendly build      # tsup ESM build + tsc declarations
 bun run --cwd plugins/plugin-calendly test       # vitest run
-bun run --cwd plugins/plugin-calendly typecheck  # tsgo --noEmit
+bun run --cwd plugins/plugin-calendly typecheck  # tsc --noEmit
 bun run --cwd plugins/plugin-calendly clean      # rm -rf dist .turbo
 ```
 

@@ -18,7 +18,8 @@
 
 import { spawn } from "node:child_process";
 import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
 
 interface CheckResult {
   directory: string;
@@ -153,14 +154,10 @@ async function checkDirectory(directory: string): Promise<CheckResult> {
     console.log(`\n📁 Checking ${directory}/...`);
 
     tempConfigPath = await createTempTsconfig(directory);
-    const workspaceRoot = process.cwd();
-    const tscPath = resolve(
-      workspaceRoot,
-      "node_modules",
-      "typescript",
-      "lib",
-      "tsc.js",
+    const packageJson = createRequire(import.meta.url).resolve(
+      "typescript/package.json",
     );
+    const tscPath = resolve(dirname(packageJson), "bin", "tsc");
 
     let tscRun = await runTsc(tscPath, tempConfigPath);
     if (

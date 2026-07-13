@@ -60,7 +60,7 @@ jobs:
       # PR lane: typecheck only the merge base's dependency cone; on push to
       # main typecheck the whole workspace (#12341). --concurrency=4 not 8:
       # a develop→main promote PR's affected cone is near-total, and eight
-      # concurrent tsgo processes exhaust a 16 GB hosted runner (#15140);
+      # concurrent tsc processes exhaust a 16 GB hosted runner (#15140);
       # mirrors develop-pr.yml so the PR lanes stay in agreement.
       - name: Run typecheck (affected — PR)
         if: github.event_name == 'pull_request'

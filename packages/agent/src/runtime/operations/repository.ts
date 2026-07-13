@@ -95,7 +95,9 @@ async function readOperationFile(
   return parsed;
 }
 
-export class FilesystemRuntimeOperationRepository implements RuntimeOperationRepository {
+export class FilesystemRuntimeOperationRepository
+  implements RuntimeOperationRepository
+{
   private readonly dir: string;
   private readonly byId: Map<string, RuntimeOperation> = new Map();
   private readonly byIdempotencyKey: Map<string, string> = new Map();

@@ -41,7 +41,7 @@ my-plugin/
     "@elizaos/core": "^2.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.0.0",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   }
 }

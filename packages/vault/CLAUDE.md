@@ -88,7 +88,7 @@ bun run --cwd packages/vault format      # Biome format --write
 bun run --cwd packages/vault format:check # Biome format (read-only)
 bun run --cwd packages/vault test        # vitest run (all test files)
 bun run --cwd packages/vault test:watch  # vitest watch mode
-bun run --cwd packages/vault typecheck   # tsgo --noEmit
+bun run --cwd packages/vault typecheck   # tsc --noEmit
 bun run --cwd packages/vault clean       # rm -rf dist
 ```
 

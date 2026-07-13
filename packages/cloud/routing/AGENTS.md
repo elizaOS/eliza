@@ -59,7 +59,7 @@ All exports are re-exported from `src/index.ts`:
 ```bash
 bun run --cwd packages/cloud/routing build       # tsc --noCheck + prepare-package-dist
 bun run --cwd packages/cloud/routing test        # vitest run src
-bun run --cwd packages/cloud/routing typecheck   # tsgo --noEmit
+bun run --cwd packages/cloud/routing typecheck   # tsc --noEmit
 bun run --cwd packages/cloud/routing lint        # biome check src
 ```
 

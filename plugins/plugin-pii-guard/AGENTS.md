@@ -81,7 +81,7 @@ src/
 
 ```bash
 bun run --cwd plugins/plugin-pii-guard build       # bun build.ts (shared driver), node ESM + d.ts
-bun run --cwd plugins/plugin-pii-guard typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-pii-guard typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-pii-guard test        # vitest (unit only — *.real.test.ts excluded)
 bun run --cwd plugins/plugin-pii-guard lint        # biome check --write
 ```

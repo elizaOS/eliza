@@ -48,7 +48,7 @@ All scripts are defined in `package.json` and scoped to this package:
 bun run --cwd plugins/plugin-benchmarks build       # compile to dist/
 bun run --cwd plugins/plugin-benchmarks dev         # hot-rebuild during development
 bun run --cwd plugins/plugin-benchmarks test        # run vitest suite
-bun run --cwd plugins/plugin-benchmarks typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-benchmarks typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-benchmarks lint        # biome check --write --unsafe
 bun run --cwd plugins/plugin-benchmarks lint:check  # biome check (read-only)
 bun run --cwd plugins/plugin-benchmarks format      # biome format --write

@@ -190,7 +190,7 @@ plugins/plugin-elizacloud/
 
 ```bash
 bun run --cwd plugins/plugin-elizacloud build       # compile node + browser bundles
-bun run --cwd plugins/plugin-elizacloud typecheck   # type check only (tsgo --noEmit)
+bun run --cwd plugins/plugin-elizacloud typecheck   # type check only (tsc --noEmit)
 bun run --cwd plugins/plugin-elizacloud test        # run all tests via vitest
 bun run --cwd plugins/plugin-elizacloud test:unit   # unit tests only
 bun run --cwd plugins/plugin-elizacloud test:integration  # integration tests only

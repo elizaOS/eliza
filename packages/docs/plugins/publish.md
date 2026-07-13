@@ -42,7 +42,7 @@ Your plugin's `package.json` must include these fields:
   },
   "devDependencies": {
     "@elizaos/core": "alpha",
-    "typescript": "^5.0.0"
+    "typescript": "7.0.2"
   }
 }
 ```

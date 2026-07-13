@@ -48,7 +48,7 @@ Read by this plugin's engine (`src/lifeops/remote-desktop.ts`) and control-plane
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-remote-desktop typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-remote-desktop typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-remote-desktop test        # vitest run
 bun run --cwd plugins/plugin-remote-desktop build       # bun bundle + tsc decl emit
 bun run --cwd plugins/plugin-remote-desktop check       # typecheck + test

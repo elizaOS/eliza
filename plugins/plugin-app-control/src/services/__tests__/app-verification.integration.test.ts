@@ -106,7 +106,7 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 					// is not installed locally, npx will download it on the fly — slow
 					// but acceptable for this single-file integration check.
 					typecheck:
-						"npx --yes -p typescript@5.6.2 tsc --noEmit -p tsconfig.json",
+						"npx --yes -p typescript@7.0.2 tsc --noEmit -p tsconfig.json",
 					lint: `node ${JSON.stringify(lintShim).slice(1, -1)}`,
 					test: `node ${JSON.stringify(testShim).slice(1, -1)}`,
 				},

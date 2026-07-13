@@ -76,7 +76,7 @@ src/
 bun run --cwd plugins/plugin-relationships build       # bun build → dist/ + tsc types
 bun run --cwd plugins/plugin-relationships dev         # hot-rebuild via build.ts
 bun run --cwd plugins/plugin-relationships test        # vitest run
-bun run --cwd plugins/plugin-relationships typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-relationships typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-relationships check       # typecheck + test
 bun run --cwd plugins/plugin-relationships clean       # rm -rf dist .turbo
 ```

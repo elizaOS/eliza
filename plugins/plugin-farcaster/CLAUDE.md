@@ -77,7 +77,7 @@ Only scripts that exist in this package.json:
 bun run --cwd plugins/plugin-farcaster build         # Bun.build via build.ts (node + browser targets)
 bun run --cwd plugins/plugin-farcaster dev           # build --watch
 bun run --cwd plugins/plugin-farcaster clean         # rm -rf dist .turbo ...
-bun run --cwd plugins/plugin-farcaster typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-farcaster typecheck     # tsc --noEmit
 bun run --cwd plugins/plugin-farcaster test          # vitest run (all)
 bun run --cwd plugins/plugin-farcaster test:unit     # vitest run __tests__/
 bun run --cwd plugins/plugin-farcaster lint          # biome check --write --unsafe

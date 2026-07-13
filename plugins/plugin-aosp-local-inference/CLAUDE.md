@@ -48,7 +48,7 @@ Only scripts defined in this package's `package.json`:
 
 ```bash
 bun run --cwd plugins/plugin-aosp-local-inference build       # tsc --noCheck --noEmit (no type-checking, no output; parse validation only)
-bun run --cwd plugins/plugin-aosp-local-inference typecheck   # tsgo full typecheck
+bun run --cwd plugins/plugin-aosp-local-inference typecheck   # tsc full typecheck
 bun run --cwd plugins/plugin-aosp-local-inference clean       # remove dist, .turbo, node_modules
 bun run --cwd plugins/plugin-aosp-local-inference test        # bun test __tests__
 ```

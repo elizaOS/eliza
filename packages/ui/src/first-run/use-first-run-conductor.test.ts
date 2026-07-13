@@ -131,6 +131,7 @@ import {
   type ConversationMessagesValue,
 } from "../state/ConversationMessagesContext.hooks";
 import type { AppContextValue } from "../state/internal";
+import { loadPersistedActiveServer } from "../state/persistence";
 import { classifyDeviceRamTier } from "./device-ram-tier";
 import { tryHandleFirstRunAction } from "./first-run-action-channel";
 import {
@@ -551,9 +552,14 @@ describe("useFirstRunConductor", () => {
       sizeBytes: 10,
     };
     mocks.client.listLocalAgentBackups.mockResolvedValue([backup]);
-    mocks.client.restoreLocalAgentBackup.mockReturnValue(
-      new Promise<never>(() => {}),
-    );
+    let restoreStarted = false;
+    mocks.client.restoreLocalAgentBackup.mockImplementation(() => {
+      if (restoreStarted) {
+        return Promise.reject(new Error("duplicate restore attempt"));
+      }
+      restoreStarted = true;
+      return new Promise<never>(() => {});
+    });
     seedAppStore();
     const { turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:backup-restore");
@@ -562,17 +568,21 @@ describe("useFirstRunConductor", () => {
       true,
     );
     const status = await waitForTurn(turn, "first-run:backup-restore-status");
+    expect(status.text).toContain("Restoring the latest local backup");
     expect(status.text).toContain("__first_run__:runtime:local=");
-    expect(mocks.client.restoreLocalAgentBackup).toHaveBeenCalledTimes(1);
 
     // A duplicate restore is inert, but the still-visible runtime choice stays
-    // live so an unresponsive local agent cannot trap onboarding.
+    // live so an unresponsive local agent cannot trap onboarding. The boundary
+    // rejects a duplicate attempt, making any accidental second restore
+    // observable as the conductor's real recovery card.
     expect(tryHandleFirstRunAction("__first_run__:backup-restore:latest")).toBe(
       true,
     );
-    expect(mocks.client.restoreLocalAgentBackup).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(turn("first-run:backup-restore-error")).toBeUndefined();
     expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
-    await waitForTurn(turn, "first-run:provider");
+    const provider = await waitForTurn(turn, "first-run:provider");
+    expect(provider.text).toContain("__first_run__:provider:on-device=");
     unmount();
   });
 
@@ -1718,45 +1728,62 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     writeTestCookie("steward-authed=1");
 
     let resolveRefresh: (value: { token: string } | null) => void = () => {};
-    mocks.refreshCloudStewardSession.mockImplementation(
-      () =>
-        new Promise<{ token: string } | null>((resolve) => {
-          resolveRefresh = resolve;
-        }),
-    );
-    let resolveProvision: (value: {
+    let signalRefreshStarted: () => void = () => {};
+    const refreshStarted = new Promise<void>((resolve) => {
+      signalRefreshStarted = resolve;
+    });
+    mocks.refreshCloudStewardSession.mockImplementation(() => {
+      signalRefreshStarted();
+      return new Promise<{ token: string } | null>((resolve) => {
+        resolveRefresh = resolve;
+      });
+    });
+    type ProvisionResult = {
       apiBase: string;
       agentId: string;
       created: boolean;
-    }) => void = () => {};
-    mocks.client.selectOrProvisionCloudAgent.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveProvision = resolve;
-        }),
-    );
+    };
+    let resolveProvision: (value: ProvisionResult) => void = () => {};
+    let signalProvisionStarted: () => void = () => {};
+    const provisionStarted = new Promise<void>((resolve) => {
+      signalProvisionStarted = resolve;
+    });
+    let provisionInFlight = false;
+    mocks.client.selectOrProvisionCloudAgent.mockImplementation(() => {
+      if (provisionInFlight) {
+        return Promise.reject(new Error("duplicate cloud provision"));
+      }
+      provisionInFlight = true;
+      signalProvisionStarted();
+      return new Promise<ProvisionResult>((resolve) => {
+        resolveProvision = resolve;
+      });
+    });
 
     seedAppStore({ elizaCloudConnected: false });
-    const { turn, unmount } = renderConductor();
-    await waitFor(() => {
-      expect(mocks.refreshCloudStewardSession).toHaveBeenCalledTimes(1);
-    });
+    const { transcript, turn, unmount } = renderConductor();
+    await refreshStarted;
+    expect(transcript.current).toEqual([]);
 
     // A token/connection arrives through another tab while cookie recovery is
     // still unresolved, starting the real provision first.
     localStorage.setItem("steward_session_token", "cloud-token");
     const connectedSpies = seedAppStore({ elizaCloudConnected: true });
-    await waitFor(() => {
-      expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
-    });
+    await provisionStarted;
+    expect(transcript.current.map((message) => message.id)).toEqual([
+      "first-run:status:Finding your agents...",
+      "first-run:status:Setting up your cloud agent",
+    ]);
 
     // The older refresh now fails. It must not reset the phase to signing-in,
-    // seed a fallback card, or launch a second provision.
+    // seed a fallback card, or launch a second provision. The provision mock
+    // rejects a duplicate, so the absence of the real error card proves the
+    // in-flight flow stayed authoritative.
     resolveRefresh(null);
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(turn("first-run:greeting")).toBeUndefined();
     expect(turn("first-run:cloud-oauth")).toBeUndefined();
-    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    expect(turn("first-run:error:card")).toBeUndefined();
 
     resolveProvision({
       apiBase: "https://agent.example.test",
@@ -1765,6 +1792,20 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     });
     await waitFor(() => {
       expect(connectedSpies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    expect(turn("first-run:error:card")).toBeUndefined();
+    expect(
+      transcript.current.every(
+        (message) =>
+          message.id !== "first-run:greeting" &&
+          message.id !== "first-run:cloud-oauth",
+      ),
+    ).toBe(true);
+    expect(loadPersistedActiveServer()).toMatchObject({
+      id: "cloud:agent-1",
+      kind: "cloud",
+      apiBase: "https://agent.example.test",
+      accessToken: "cloud-token",
     });
     unmount();
   });

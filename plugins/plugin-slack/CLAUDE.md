@@ -68,7 +68,7 @@ Only scripts defined in `package.json`. Run from the plugin dir or with `--cwd`:
 bun run --cwd plugins/plugin-slack build        # compile with build.ts (bun build + tsc declarations)
 bun run --cwd plugins/plugin-slack dev          # hot-reload build
 bun run --cwd plugins/plugin-slack test         # vitest run
-bun run --cwd plugins/plugin-slack typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-slack typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-slack lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-slack lint:check   # biome check (no write)
 bun run --cwd plugins/plugin-slack format       # biome format --write

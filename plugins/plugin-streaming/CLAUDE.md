@@ -67,7 +67,7 @@ plugins/plugin-streaming/
 bun run --cwd plugins/plugin-streaming build        # tsup + declaration emit
 bun run --cwd plugins/plugin-streaming dev          # tsup --watch
 bun run --cwd plugins/plugin-streaming test         # vitest run
-bun run --cwd plugins/plugin-streaming typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-streaming typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-streaming lint         # biome check --write --unsafe src
 bun run --cwd plugins/plugin-streaming lint:check   # biome check src
 bun run --cwd plugins/plugin-streaming format       # biome format --write .

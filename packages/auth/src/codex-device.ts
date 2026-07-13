@@ -17,15 +17,16 @@ export interface CodexDeviceFlow {
 }
 
 function expiryFromJwt(token: string): number {
+  const conservativeExpiry = Date.now() + 60 * 60 * 1000;
   try {
     const payload = JSON.parse(
       Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
     ) as { exp?: unknown };
     if (typeof payload.exp === "number") return payload.exp * 1000;
   } catch {
-    // Fall through to a conservative one-hour lifetime.
+    return conservativeExpiry;
   }
-  return Date.now() + 60 * 60 * 1000;
+  return conservativeExpiry;
 }
 
 export function startCodexDeviceLogin(): Promise<CodexDeviceFlow> {

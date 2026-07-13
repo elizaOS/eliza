@@ -68,7 +68,7 @@ plugins/plugin-whatsapp/
 bun run --cwd plugins/plugin-whatsapp build        # compile dist/
 bun run --cwd plugins/plugin-whatsapp dev          # hot-reload build (bun --hot)
 bun run --cwd plugins/plugin-whatsapp test         # vitest run
-bun run --cwd plugins/plugin-whatsapp typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-whatsapp typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-whatsapp lint         # biome check --write
 bun run --cwd plugins/plugin-whatsapp format       # biome format --write
 bun run --cwd plugins/plugin-whatsapp clean        # rm -rf dist .turbo

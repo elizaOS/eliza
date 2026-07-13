@@ -26,10 +26,9 @@
  *     belongs to, e.g. ["server"] / ["client"]. The lane resolver turns the set
  *     of member dirs into the anchored package filter the lane used to hardcode.
  *
- *   buildModel: { doubleCheck?: true, tscTypecheck?: true }
- *     Documented exceptions to the "tsgo checks, tsc only emits" model
- *     (audit-build-typecheck.mjs). `doubleCheck` = build keeps a full tsc check;
- *     `tscTypecheck` = typecheck still runs `tsc` (tsgo migration pending).
+ *   buildModel: { doubleCheck?: true }
+ *     Documented exceptions to the native TypeScript 7 compiler model
+ *     (audit-build-typecheck.mjs). `doubleCheck` = build keeps a full tsc check.
  *
  *   turboNonImportedBuildDeps: true
  *     This package's turbo `#build` override deliberately enumerates build deps a
@@ -110,7 +109,7 @@ export function resolveTestLaneDirs(lane, opts) {
 
 /**
  * The `buildModel` exception sets (audit-build-typecheck.mjs) as
- * `{ doubleCheck: Set, tscTypecheck: Set }` of package names.
+ * `{ doubleCheck: Set }` of package names.
  */
 export function resolveBuildModelExceptions(opts) {
   const pkgs = packagesWithScriptMeta(opts);
@@ -127,7 +126,6 @@ export function resolveBuildModelExceptions(opts) {
     );
   return {
     doubleCheck: collect("doubleCheck"),
-    tscTypecheck: collect("tscTypecheck"),
   };
 }
 

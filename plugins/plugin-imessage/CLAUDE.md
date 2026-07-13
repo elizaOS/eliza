@@ -78,7 +78,7 @@ bun run --cwd plugins/plugin-imessage lint            # biome check --write --un
 bun run --cwd plugins/plugin-imessage lint:check      # biome check (no write)
 bun run --cwd plugins/plugin-imessage format          # biome format --write
 bun run --cwd plugins/plugin-imessage format:check    # biome format (no write)
-bun run --cwd plugins/plugin-imessage typecheck       # tsgo --noEmit
+bun run --cwd plugins/plugin-imessage typecheck       # tsc --noEmit
 ```
 
 ## Config / env vars

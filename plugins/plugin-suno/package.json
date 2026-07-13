@@ -42,21 +42,21 @@
         }
     },
     "scripts": {
-        "build": "tsup --format esm",
-        "dev": "tsup --format esm --watch",
+        "build": "tsup --format esm && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck --outDir dist --rootDir src -p tsconfig.json",
+        "dev": "tsup --format esm --watch --onSuccess \"tsc --declaration --emitDeclarationOnly --noEmit false --noCheck --outDir dist --rootDir src -p tsconfig.json\"",
         "lint": "bunx @biomejs/biome check --write --unsafe .",
         "lint:check": "bunx @biomejs/biome check .",
         "lint:fix": "bunx @biomejs/biome check --write ./src",
         "format": "bunx @biomejs/biome format --write .",
         "format:check": "bunx @biomejs/biome format .",
         "test": "vitest run --config vitest.config.ts",
-        "typecheck": "tsgo --noEmit -p tsconfig.json"
+        "typecheck": "tsc --noEmit -p tsconfig.json"
     },
     "devDependencies": {
         "@biomejs/biome": "2.5.3",
         "@types/node": "^22.19.17",
         "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
+        "typescript": "7.0.2",
         "vitest": "^4.0.0"
     },
     "agentConfig": {

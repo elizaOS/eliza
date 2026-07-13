@@ -36,7 +36,7 @@ and `./*`. Build output goes to `dist/` (including `dist/views/bundle.js`).
 
 ```bash
 bun run --cwd plugins/plugin-vector-browser build      # build:js + build:views (vite) + build:types
-bun run --cwd plugins/plugin-vector-browser typecheck  # tsgo --noEmit
+bun run --cwd plugins/plugin-vector-browser typecheck  # tsc --noEmit
 bun run --cwd plugins/plugin-vector-browser test       # vitest run (vitest.config.ts)
 bun run --cwd plugins/plugin-vector-browser clean      # remove dist
 ```

@@ -63,7 +63,7 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.1.4"
   },
   "scripts": {
@@ -71,7 +71,7 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

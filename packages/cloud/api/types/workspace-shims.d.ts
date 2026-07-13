@@ -1,7 +1,7 @@
 /**
  * Type-only workspace shims for cloud API typechecking.
  *
- * `tsgo` treats this ambient module as the local `@elizaos/shared` surface when
+ * `tsc` treats this ambient module as the local `@elizaos/shared` surface when
  * checking the Cloudflare Worker package. Keep these declarations aligned with
  * the real shared exports used through cloud-shared aliases.
  */

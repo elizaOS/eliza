@@ -54,7 +54,7 @@ Token replacement (`scaffold.ts`): plugin templates substitute `${PLUGINNAME}`, 
 ```bash
 bun run --cwd packages/elizaos build          # build.ts: prep templates + manifest, tsc, shebang
 bun run --cwd packages/elizaos dev            # build.ts --watch
-bun run --cwd packages/elizaos typecheck      # tsgo --noEmit
+bun run --cwd packages/elizaos typecheck      # tsc --noEmit
 bun run --cwd packages/elizaos test           # vitest run --passWithNoTests
 bun run --cwd packages/elizaos test:packaged  # scripts/packaged-smoke.mjs (packs + installs + create/upgrade)
 bun run --cwd packages/elizaos lint           # biome check --write (also lints templates/plugin + project/apps/app)

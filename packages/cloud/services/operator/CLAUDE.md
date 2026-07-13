@@ -30,15 +30,16 @@ agent/server routing state in Redis, and patches CR status as pods come and go.
 - `capabilities/redis.ts` — `ioredis` client and routing helpers
   (`setServerState`, `setAgentServer`, `removeAgentServer`, `cleanupServer`).
 - `crds/server-crd.yaml` — YAML CRD manifest. `scripts/` — `build.mjs`
-  (cross-platform `pepr build` wrapper) and `npm` (a `npm root` shim for the
-  Pepr CLI).
+  (cross-platform Pepr wrapper that isolates Pepr's legacy compiler API while
+  keeping TypeScript 7 for compilation), `typescript-legacy-api-hook.cjs`, and
+  `npm` (an `npm root` shim for the Pepr CLI).
 
 ## Key scripts
 
 Scope to this package with `--cwd packages/cloud/services/operator`:
 
 ```bash
-bun run --cwd packages/cloud/services/operator typecheck   # tsgo --noEmit
+bun run --cwd packages/cloud/services/operator typecheck   # tsc --noEmit
 bun run --cwd packages/cloud/services/operator lint         # biome check .
 bun run --cwd packages/cloud/services/operator lint:fix     # biome check --write .
 bun run --cwd packages/cloud/services/operator build        # node ./scripts/build.mjs (pepr build)

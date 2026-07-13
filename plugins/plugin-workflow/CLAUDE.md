@@ -110,7 +110,7 @@ plugins/plugin-workflow/
 ```bash
 bun run --cwd plugins/plugin-workflow build        # compile to dist/
 bun run --cwd plugins/plugin-workflow dev          # tsc --watch
-bun run --cwd plugins/plugin-workflow typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-workflow typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-workflow test         # bun test (all)
 bun run --cwd plugins/plugin-workflow test:unit    # bun test __tests__/unit/
 bun run --cwd plugins/plugin-workflow test:e2e     # live plugin smoke

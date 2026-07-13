@@ -3,7 +3,7 @@
  *
  * These functions are deliberately Node-loadable `.mjs` rather than TypeScript:
  * several evidence CLIs run with plain `node` during capture, while the package's
- * primary TypeScript export is consumed by Bun/Vite/tsgo. Keeping OCR, palette,
+ * primary TypeScript export is consumed by Bun/Vite/tsc. Keeping OCR, palette,
  * brand buckets, pixel diffs, and expectation evaluation here gives those CLIs
  * one runtime-compatible source of truth without changing their scope or output
  * formats.

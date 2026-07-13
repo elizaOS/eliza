@@ -64,7 +64,7 @@ Only scripts that exist in this package's `package.json`:
 bun run --cwd plugins/plugin-x402 build        # compile via build.ts (bun build)
 bun run --cwd plugins/plugin-x402 clean        # rm -rf dist
 bun run --cwd plugins/plugin-x402 test         # vitest run
-bun run --cwd plugins/plugin-x402 typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-x402 typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-x402 lint         # currently aliases typecheck
 ```
 

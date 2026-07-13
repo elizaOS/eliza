@@ -10,7 +10,7 @@ import { findStaleJsShadows, run } from "./stale-js-shadow-guard.mjs";
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "eliza-stale-js-"));
   execFileSync("git", ["init", "--quiet"], { cwd: root });
-  writeFileSync(join(root, ".gitignore"), "*.js\n");
+  writeFileSync(join(root, ".gitignore"), "*.js\nnode_modules/\n");
   mkdirSync(join(root, "packages/ui/src"), { recursive: true });
   mkdirSync(join(root, "packages/core/src"), { recursive: true });
   return root;
@@ -27,6 +27,9 @@ test("finds only ignored JavaScript files that shadow TypeScript under src", (t)
   writeFileSync(join(root, "packages/ui/src/generated.js"), "valid\n");
   writeFileSync(join(root, "outside.ts"), "export {};\n");
   writeFileSync(join(root, "outside.js"), "ignored but outside src\n");
+  mkdirSync(join(root, "node_modules/vendor/src"), { recursive: true });
+  writeFileSync(join(root, "node_modules/vendor/src/shadow.ts"), "export {};\n");
+  writeFileSync(join(root, "node_modules/vendor/src/shadow.js"), "dependency output\n");
 
   assert.deepEqual(findStaleJsShadows(root), [
     "packages/core/src/runtime.js",

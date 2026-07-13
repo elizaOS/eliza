@@ -15,6 +15,10 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const pkgDir = path.resolve(path.dirname(__filename), "..");
+const legacyApiHook = path.join(
+  path.dirname(__filename),
+  "typescript-legacy-api-hook.cjs",
+);
 
 if (process.platform === "win32") {
   console.log(
@@ -26,14 +30,25 @@ if (process.platform === "win32") {
 const env = {
   ...process.env,
   ELIZA_OPERATOR_SKIP_CRD_REGISTER: "1",
+  // Pepr 1.2 and its formatter still consume the removed TypeScript compiler
+  // API. Keep their process on Microsoft's official TypeScript 6 API bridge;
+  // Pepr's emitted-code compiler remains the workspace TypeScript 7 `tsc`.
+  NODE_OPTIONS: [process.env.NODE_OPTIONS, `--require=${legacyApiHook}`]
+    .filter(Boolean)
+    .join(" "),
   PATH: `${path.join(pkgDir, "scripts")}${path.delimiter}${process.env.PATH ?? ""}`,
 };
 
-const result = spawnSync("bunx", ["pepr", "build"], {
-  cwd: pkgDir,
-  env,
-  stdio: "inherit",
-});
+const peprArgs = process.argv.slice(2);
+const result = spawnSync(
+  "bunx",
+  ["pepr", ...(peprArgs.length > 0 ? peprArgs : ["build"])],
+  {
+    cwd: pkgDir,
+    env,
+    stdio: "inherit",
+  },
+);
 
 if (result.error) {
   console.error(result.error);

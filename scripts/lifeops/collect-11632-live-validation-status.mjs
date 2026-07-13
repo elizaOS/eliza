@@ -282,15 +282,15 @@ function buildStatus() {
       [/Node-only build complete/i],
     ),
     parseEvidenceLog(`${LIFEOPS_REPORT_ROOT}/11632-status/core-typecheck.txt`, [
-      /tsgo --noEmit -p \.\/tsconfig\.json/i,
+      /tsc --noEmit -p \.\/tsconfig\.json/i,
     ]),
     parseEvidenceLog(
       `${LIFEOPS_REPORT_ROOT}/11632-status/agent-typecheck.txt`,
-      [/tsgo --noEmit -p tsconfig\.json/i],
+      [/tsc --noEmit -p tsconfig\.json/i],
     ),
     parseEvidenceLog(
       `${LIFEOPS_REPORT_ROOT}/11632-status/plugin-discord-typecheck.txt`,
-      [/tsgo --noEmit/i],
+      [/tsc --noEmit/i],
     ),
     parseEvidenceLog(
       `${LIFEOPS_REPORT_ROOT}/11632-status/plugin-google-live.txt`,

@@ -70,7 +70,7 @@ plugins/plugin-openai/
 bun run --cwd plugins/plugin-openai build          # Bun.build (node ESM + browser ESM) + tsc d.ts
 bun run --cwd plugins/plugin-openai dev            # hot-reload build (bun --hot build.ts)
 bun run --cwd plugins/plugin-openai test           # vitest unit suite
-bun run --cwd plugins/plugin-openai typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-openai typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-openai lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-openai lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-openai format         # biome format --write

@@ -52,7 +52,7 @@ bun run --cwd plugins/plugin-codex-cli test         # vitest run
 bun run --cwd plugins/plugin-codex-cli lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-codex-cli lint:check   # biome check (no write)
 bun run --cwd plugins/plugin-codex-cli format       # biome format --write
-bun run --cwd plugins/plugin-codex-cli typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-codex-cli typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-codex-cli clean        # rm -rf dist .turbo
 ```
 

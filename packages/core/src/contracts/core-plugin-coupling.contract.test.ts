@@ -28,7 +28,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 import { describe, expect, it } from "vitest";
 
 const CORE_SRC = path.resolve(

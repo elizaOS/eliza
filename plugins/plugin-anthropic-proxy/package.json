@@ -54,7 +54,7 @@
     "@elizaos/core": "workspace:*",
     "@types/node": "^25.0.3",
     "bun-types": "^1.3.14",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "scripts": {
@@ -64,7 +64,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

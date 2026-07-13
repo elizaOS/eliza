@@ -47,7 +47,7 @@ All scripts defined in `package.json`:
 
 ```bash
 bun run --cwd plugins/plugin-tailscale build           # tsup ESM build + .d.ts
-bun run --cwd plugins/plugin-tailscale typecheck       # tsgo --noEmit
+bun run --cwd plugins/plugin-tailscale typecheck       # tsc --noEmit
 bun run --cwd plugins/plugin-tailscale test            # vitest run
 bun run --cwd plugins/plugin-tailscale test:watch      # vitest watch
 bun run --cwd plugins/plugin-tailscale test:coverage   # vitest --coverage

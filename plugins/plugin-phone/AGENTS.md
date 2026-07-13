@@ -68,7 +68,7 @@ src/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-phone typecheck   # tsgo type-check (no emit)
+bun run --cwd plugins/plugin-phone typecheck   # tsc type-check (no emit)
 bun run --cwd plugins/plugin-phone lint        # biome check src/
 bun run --cwd plugins/plugin-phone test        # vitest run
 bun run --cwd plugins/plugin-phone build       # tsup + vite views + tsc types

@@ -74,25 +74,31 @@ beforeEach(() => {
 describe("useWalletState — capability write failure surfaces", () => {
   it("waits for authentication before hydrating capability config", async () => {
     mocks.auth.authenticated = false;
-    mocks.client.getConfig.mockResolvedValue({
-      ui: { capabilities: { wallet: true } },
+    let serverConfigReads = 0;
+    let persistedWalletEnabled = false;
+    mocks.client.getConfig.mockImplementation(async () => {
+      serverConfigReads += 1;
+      return { ui: { capabilities: { wallet: true } } };
+    });
+    mocks.persistence.saveWalletEnabled.mockImplementation((enabled) => {
+      persistedWalletEnabled = enabled;
     });
     const { result, rerender } = renderWalletState(vi.fn(), true);
 
     await act(async () => {
       await Promise.resolve();
     });
-    expect(mocks.client.getConfig).not.toHaveBeenCalled();
+    expect(serverConfigReads).toBe(0);
     expect(result.current.state.walletEnabled).toBe(false);
 
     mocks.auth.authenticated = true;
     rerender();
 
     await waitFor(() => {
-      expect(mocks.client.getConfig).toHaveBeenCalledTimes(1);
       expect(result.current.state.walletEnabled).toBe(true);
     });
-    expect(mocks.persistence.saveWalletEnabled).toHaveBeenCalledWith(true);
+    expect(serverConfigReads).toBe(1);
+    expect(persistedWalletEnabled).toBe(true);
   });
 
   it("logs and notifies the user when the server config write rejects, keeping the optimistic toggle", async () => {

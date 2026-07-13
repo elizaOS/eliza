@@ -43,7 +43,7 @@ Scope everything with `--cwd packages/cloud/services/gateway-discord`:
 bun run --cwd packages/cloud/services/gateway-discord dev        # watch (PORT=3001, uses root .env.local)
 bun run --cwd packages/cloud/services/gateway-discord dev:local  # watch, no env-file
 bun run --cwd packages/cloud/services/gateway-discord build      # bun build -> dist (node target, zlib-sync external)
-bun run --cwd packages/cloud/services/gateway-discord typecheck  # tsgo --noEmit
+bun run --cwd packages/cloud/services/gateway-discord typecheck  # tsc --noEmit
 bun run --cwd packages/cloud/services/gateway-discord test       # bun test
 bun run --cwd packages/cloud/services/gateway-discord lint       # biome check
 bun run --cwd packages/cloud/services/gateway-discord docker:build / docker:up / docker:logs

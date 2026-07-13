@@ -99,7 +99,7 @@
     "@types/react-dom": "^19.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.4"
   },
@@ -122,7 +122,7 @@
   },
   "scripts": {
     "dev": "bun run build.ts --watch",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",

@@ -28,7 +28,7 @@ credential helpers. Private (unpublished), ESM, sources consumed directly from
 Scope to this package with `--cwd packages/cloud/services/_common`:
 
 ```bash
-bun run --cwd packages/cloud/services/_common typecheck   # tsgo --noEmit
+bun run --cwd packages/cloud/services/_common typecheck   # tsc --noEmit
 bun run --cwd packages/cloud/services/_common lint         # biome check .
 bun run --cwd packages/cloud/services/_common lint:fix     # biome check --write .
 bun run --cwd packages/cloud/services/_common test         # placeholder: prints "no tests"

@@ -5,7 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, normalize, relative, resolve, sep } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 
 const SOURCE_ROOTS = ["packages", "plugins", "cloud"];
 const EXCLUDE_RE =

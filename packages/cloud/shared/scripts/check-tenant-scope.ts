@@ -25,7 +25,7 @@
 import { globSync, readFileSync } from "node:fs";
 import { relative } from "node:path";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 
 /**
  * The Product-2 apps tenant data-plane: tables holding per-tenant app rows where

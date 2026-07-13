@@ -74,7 +74,7 @@ bun run --cwd plugins/plugin-feishu lint            # biome check --write --unsa
 bun run --cwd plugins/plugin-feishu format          # biome format --write
 bun run --cwd plugins/plugin-feishu lint:check      # biome check (no write)
 bun run --cwd plugins/plugin-feishu format:check    # biome format (no write)
-bun run --cwd plugins/plugin-feishu typecheck       # tsgo --noEmit
+bun run --cwd plugins/plugin-feishu typecheck       # tsc --noEmit
 bun run --cwd plugins/plugin-feishu clean           # rm dist .turbo tsconfig.tsbuildinfo
 ```
 

@@ -26,7 +26,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { extname } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 
 const SOURCE_EXT = new Set([
   ".ts",

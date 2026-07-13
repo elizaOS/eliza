@@ -1,6 +1,6 @@
 // Drives repo automation audit capability router plugin surface with explicit CLI and CI behavior.
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 
 const pluginFile = "packages/core/src/types/plugin.ts";
 const capabilityFile = "packages/core/src/capabilities/index.ts";

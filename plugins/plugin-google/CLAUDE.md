@@ -92,7 +92,7 @@ bun run --cwd plugins/plugin-google lint           # biome check --write --unsaf
 bun run --cwd plugins/plugin-google lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-google format         # biome format --write
 bun run --cwd plugins/plugin-google format:check   # biome format (read-only)
-bun run --cwd plugins/plugin-google typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-google typecheck      # tsc --noEmit
 ```
 
 ## Config / env vars

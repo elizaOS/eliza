@@ -60,7 +60,7 @@ All scripts require a built `dist/` (run `build` first or use the repo-level tur
 ```bash
 bun run --cwd plugins/plugin-gitpathologist build         # Bun.build (ESM + CJS) + tsc declarations
 bun run --cwd plugins/plugin-gitpathologist test          # vitest run
-bun run --cwd plugins/plugin-gitpathologist typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-gitpathologist typecheck     # tsc --noEmit
 bun run --cwd plugins/plugin-gitpathologist lint          # biome check --write --unsafe
 bun run --cwd plugins/plugin-gitpathologist lint:check    # biome check (no write)
 bun run --cwd plugins/plugin-gitpathologist format        # biome format --write

@@ -61,7 +61,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.3",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "scripts": {
@@ -72,7 +72,7 @@
     "lint:check": "bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched",
     "format": "bunx @biomejs/biome format --write . --no-errors-on-unmatched",
     "format:check": "bunx @biomejs/biome format . --no-errors-on-unmatched",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "publishConfig": {

@@ -18,7 +18,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.0.0 || ^19.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "7.0.2"
   },
   "scripts": {
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -26,6 +26,6 @@
     "lint:fix": "bunx @biomejs/biome check --write --unsafe .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

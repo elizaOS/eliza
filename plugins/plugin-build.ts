@@ -119,8 +119,10 @@ const REWRITE_DIST_IMPORTS = resolve(
 );
 
 /**
- * Absolute path to the workspace `tsc` JS entry. Resolved via node module
- * resolution so it works regardless of the node_modules layout — a fresh CI
+ * Absolute path to the workspace TypeScript 7 `tsc` launcher. Resolve the
+ * exported package manifest first because TypeScript 7 intentionally keeps its
+ * compiler executable private. This works regardless of the node_modules
+ * layout — a fresh CI
  * checkout, a hoisted/symlinked install, or a git worktree that borrows a
  * parent's node_modules — instead of assuming a fixed `../node_modules/...`
  * offset (which is absent in a worktree). `buildPlugin` runs it as
@@ -130,15 +132,14 @@ const REWRITE_DIST_IMPORTS = resolve(
  */
 const TSC_BIN = (() => {
   try {
-    return createRequire(import.meta.url).resolve("typescript/bin/tsc");
-  } catch {
-    return resolve(
-      import.meta.dir,
-      "..",
-      "node_modules",
-      "typescript",
-      "bin",
-      "tsc",
+    const packageJson = createRequire(import.meta.url).resolve(
+      "typescript/package.json",
+    );
+    return resolve(dirname(packageJson), "bin", "tsc");
+  } catch (cause) {
+    throw new Error(
+      "[plugin-build] Could not resolve TypeScript 7. Run `bun install` before building plugins.",
+      { cause },
     );
   }
 })();

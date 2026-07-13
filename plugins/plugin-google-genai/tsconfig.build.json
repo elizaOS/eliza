@@ -6,9 +6,9 @@
     "declarationMap": true,
     "allowImportingTsExtensions": false,
     "types": ["bun-types", "node"],
-    "outDir": "../dist",
+    "rootDir": ".",
+    "outDir": "./dist",
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
     "moduleResolution": "bundler",
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
@@ -19,10 +19,11 @@
   "include": ["**/*.ts"],
   "exclude": [
     "build.ts",
+    "dist",
     "node_modules",
     "__tests__",
     "**/*.test.ts",
     "**/*.spec.ts",
-    "vitest.harness.config.ts"
+    "vitest*.config.ts"
   ]
 }

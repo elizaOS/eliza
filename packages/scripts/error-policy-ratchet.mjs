@@ -42,7 +42,7 @@ const FORCE_LEXICAL = args.has("--force-lexical");
 let ts = null;
 if (!FORCE_LEXICAL) {
   try {
-    ts = require("typescript");
+    ts = require("@typescript/legacy-api");
   } catch (err) {
     if (err?.code !== "MODULE_NOT_FOUND") throw err;
   }

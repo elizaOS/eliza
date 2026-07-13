@@ -60,7 +60,7 @@ bun run --cwd plugins/plugin-instagram build        # bun build → dist/
 bun run --cwd plugins/plugin-instagram dev          # watch build (bun --hot)
 bun run --cwd plugins/plugin-instagram test         # vitest run
 bun run --cwd plugins/plugin-instagram test:watch   # vitest watch
-bun run --cwd plugins/plugin-instagram typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-instagram typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-instagram lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-instagram lint:check   # biome check (read-only)
 bun run --cwd plugins/plugin-instagram format       # biome format --write

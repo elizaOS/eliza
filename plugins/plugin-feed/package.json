@@ -90,7 +90,7 @@
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "bunx --bun vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "vitest run --config vitest.config.ts",
     "lint:check": "bunx @biomejs/biome check .",
@@ -107,7 +107,7 @@
   "devDependencies": {
     "@testing-library/react": "^16.3.2",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vite": "^8.0.0"
   }
 }

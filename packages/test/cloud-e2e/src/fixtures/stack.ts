@@ -379,7 +379,7 @@ export async function startCloudStack(
   // no-wrangler "e2e-server" adapter imported cloud-api straight from TypeScript
   // source, which neither node (it can't load the extensionless `.ts` relative
   // imports) nor bun (cloud-api's `@/…` path aliases need a tsconfig `baseUrl`
-  // that tsgo forbids) can resolve — only wrangler/esbuild bundling does. The
+  // that tsc forbids) can resolve — only wrangler/esbuild bundling does. The
   // `stripBunAncestryEnv` in env.ts exists precisely so wrangler starts from a
   // bun-spawned context. wrangler pre-bundles, so requests are fast.
   procs.push(

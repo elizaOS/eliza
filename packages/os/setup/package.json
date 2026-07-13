@@ -9,7 +9,7 @@
     "dev": "vite",
     "prebuild": "node ../../shared/scripts/sync-to-public.mjs ./public",
     "build": "vite build",
-    "typecheck": "tsgo --noEmit -p tsconfig.json && tsgo --noEmit -p tsconfig.main.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.main.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe src vite.config.ts vitest.config.ts",
     "package:mac": "electrobun build --platform darwin",
@@ -38,7 +38,7 @@
     "jsdom": "^29.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   }
 }

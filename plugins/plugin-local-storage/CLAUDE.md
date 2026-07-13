@@ -48,7 +48,7 @@ plugins/plugin-local-storage/
 bun run --cwd plugins/plugin-local-storage build        # compile to dist/
 bun run --cwd plugins/plugin-local-storage dev          # watch build (--hot)
 bun run --cwd plugins/plugin-local-storage test         # vitest run
-bun run --cwd plugins/plugin-local-storage typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-local-storage typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-local-storage lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-local-storage lint:check   # biome check (read-only)
 bun run --cwd plugins/plugin-local-storage format       # biome format --write

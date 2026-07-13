@@ -28,7 +28,7 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "build": "bun run build:dist",
     "build:dist": "bun run clean && tsc --noCheck -p tsconfig.build.json && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/cloud-ui",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",

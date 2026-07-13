@@ -34,7 +34,7 @@ Scripts defined in this package's `package.json`:
 ```bash
 bun run --cwd plugins/plugin-video build      # compile via build.ts
 bun run --cwd plugins/plugin-video dev        # same as build (watch not set up)
-bun run --cwd plugins/plugin-video typecheck  # tsgo --noEmit
+bun run --cwd plugins/plugin-video typecheck  # tsc --noEmit
 bun run --cwd plugins/plugin-video test       # vitest run
 ```
 

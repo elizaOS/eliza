@@ -32,7 +32,7 @@ only package both `@elizaos/ui` and the plugins can depend on without a cycle.
 bun run --cwd plugins/plugin-calendar build       # tsup + views + types
 bun run --cwd plugins/plugin-calendar build:types  # declaration emit
 bun run --cwd plugins/plugin-calendar test         # vitest
-bun run --cwd plugins/plugin-calendar typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-calendar typecheck    # tsc --noEmit
 ```
 
 See the root `AGENTS.md` for repo-wide architecture rules.

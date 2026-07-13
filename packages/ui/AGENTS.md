@@ -129,7 +129,7 @@ This is a library — no dev server (use the host app's). Scripts from package.j
 
 ```bash
 bun run --cwd packages/ui build               # build:dist → dist/ (locked tsc + asset copy)
-bun run --cwd packages/ui typecheck           # tsgo --noEmit
+bun run --cwd packages/ui typecheck           # tsc --noEmit
 bun run --cwd packages/ui test                # vitest (vitest.config.ts)
 bun run --cwd packages/ui test:e2e            # slow suite (vitest.e2e.config.ts)
 bun run --cwd packages/ui test:agent-surface-e2e   # agent-surface __e2e__ runner

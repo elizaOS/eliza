@@ -137,9 +137,6 @@
       "testLanes": [
         "client"
       ],
-      "buildModel": {
-        "tscTypecheck": true
-      },
       "devStack": {
         "skipInDevAll": true
       }

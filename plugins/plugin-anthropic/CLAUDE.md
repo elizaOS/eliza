@@ -67,7 +67,7 @@ bun run --cwd plugins/plugin-anthropic dev            # build in watch mode
 bun run --cwd plugins/plugin-anthropic test           # run all tests (vitest, excludes *.live.test.ts)
 bun run --cwd plugins/plugin-anthropic test:unit      # vitest --dir __tests__/unit (no unit/ subdir exists; all tests are in __tests__/ root)
 bun run --cwd plugins/plugin-anthropic test:integration  # vitest --dir __tests__/integration (no integration/ subdir exists)
-bun run --cwd plugins/plugin-anthropic typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-anthropic typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-anthropic lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-anthropic format         # biome format --write
 bun run --cwd plugins/plugin-anthropic clean          # rm -rf dist .turbo + tsbuildinfo

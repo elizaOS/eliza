@@ -92,7 +92,7 @@ bun run --cwd packages/core test:watch    # vitest watch
 bun run --cwd packages/core test:coverage # vitest with v8 coverage
 bun run --cwd packages/core test:e2e      # Playwright (playwright.config.ts)
 bun run --cwd packages/core test:e2e:smoke
-bun run --cwd packages/core typecheck     # tsgo --noEmit -p ./tsconfig.json
+bun run --cwd packages/core typecheck     # tsc --noEmit -p ./tsconfig.json
 bun run --cwd packages/core lint          # biome check --write ./src
 bun run --cwd packages/core format        # biome format --write ./src
 bun run --cwd packages/core clean         # remove dist + emitted src artifacts

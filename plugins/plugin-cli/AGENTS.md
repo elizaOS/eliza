@@ -96,7 +96,7 @@ bun run --cwd plugins/plugin-cli lint           # biome check --write --unsafe
 bun run --cwd plugins/plugin-cli lint:check     # biome check (read-only)
 bun run --cwd plugins/plugin-cli format         # biome format --write
 bun run --cwd plugins/plugin-cli format:check   # biome format (read-only)
-bun run --cwd plugins/plugin-cli typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-cli typecheck      # tsc --noEmit
 ```
 
 ## Config / env vars

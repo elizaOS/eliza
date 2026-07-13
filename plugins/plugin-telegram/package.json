@@ -48,13 +48,13 @@
     "@elizaos/config": "latest",
     "@elizaos/test-harness": "workspace:*",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "scripts": {
     "build": "tsup && tsc --project tsconfig.build.json --noCheck",
     "dev": "tsup --watch",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:harness": "bunx vitest run --config vitest.harness.config.ts",
     "test:watch": "vitest",

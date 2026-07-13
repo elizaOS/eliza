@@ -52,7 +52,7 @@ Scripts that exist in `package.json`:
 ```bash
 bun run --cwd plugins/plugin-google-genai build          # Bun.build (node + browser + CJS bundles, then tsc for declarations)
 bun run --cwd plugins/plugin-google-genai dev            # build --watch
-bun run --cwd plugins/plugin-google-genai typecheck      # tsgo --noEmit
+bun run --cwd plugins/plugin-google-genai typecheck      # tsc --noEmit
 bun run --cwd plugins/plugin-google-genai test           # vitest run (all tests)
 bun run --cwd plugins/plugin-google-genai test:unit      # vitest run --dir __tests__/unit
 bun run --cwd plugins/plugin-google-genai test:integration  # vitest run --dir __tests__/integration

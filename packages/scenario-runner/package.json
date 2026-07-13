@@ -76,7 +76,7 @@
     "test:real-service:voice": "node scripts/real-service-voice-e2e.mjs",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
@@ -104,12 +104,13 @@
     "@elizaos/plugin-todos": "workspace:*",
     "@elizaos/plugin-video": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
-    "ws": "^8.19.0",
-    "@elizaos/auth": "workspace:*"
+    "@elizaos/auth": "workspace:*",
+    "@typescript/legacy-api": "npm:@typescript/typescript6@6.0.2",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@elizaos/test-harness": "workspace:*",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "elizaos": {

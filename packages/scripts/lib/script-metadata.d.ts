@@ -8,12 +8,10 @@ export interface ScriptMetadata {
   testSerial?: true;
   /** Named root test lanes this package belongs to (e.g. "server" | "client"). */
   testLanes?: string[];
-  /** Documented exceptions to the "tsgo checks, tsc emits" build model. */
+  /** Documented exceptions to the native TypeScript 7 build model. */
   buildModel?: {
     /** Build deliberately keeps a full tsc type-check. */
     doubleCheck?: true;
-    /** typecheck still runs `tsc` rather than `tsgo` (migration pending). */
-    tscTypecheck?: true;
   };
   /** turbo `#build` override enumerates build deps a source scan cannot see. */
   turboNonImportedBuildDeps?: true;
@@ -60,7 +58,7 @@ export declare function resolveTestLaneDirs(
 
 export declare function resolveBuildModelExceptions(
   opts?: WorkspaceDiscoveryOptions,
-): { doubleCheck: Set<string>; tscTypecheck: Set<string> };
+): { doubleCheck: Set<string> };
 
 export declare function resolveTurboNonImportedBuildDepOwners(
   opts?: WorkspaceDiscoveryOptions,

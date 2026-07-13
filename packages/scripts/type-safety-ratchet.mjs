@@ -17,7 +17,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const ts = require("typescript");
+const ts = require("@typescript/legacy-api");
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const BASELINE_PATH = path.join(

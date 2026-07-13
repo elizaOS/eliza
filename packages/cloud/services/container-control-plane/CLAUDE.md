@@ -41,7 +41,7 @@ Scope every command with `--cwd`:
 ```bash
 bun run --cwd packages/cloud/services/container-control-plane start      # bun run src/index.ts
 bun run --cwd packages/cloud/services/container-control-plane dev        # --watch
-bun run --cwd packages/cloud/services/container-control-plane typecheck  # tsgo --noEmit
+bun run --cwd packages/cloud/services/container-control-plane typecheck  # tsc --noEmit
 bun run --cwd packages/cloud/services/container-control-plane lint       # biome check
 bun run --cwd packages/cloud/services/container-control-plane test       # bun test (src/*.test.ts)
 ```

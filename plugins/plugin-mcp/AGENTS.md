@@ -71,7 +71,7 @@ All scripts in `plugins/plugin-mcp/package.json`:
 bun run --cwd plugins/plugin-mcp build        # bun build.ts → dist/ (ESM + CJS + .d.ts)
 bun run --cwd plugins/plugin-mcp dev          # hot-rebuild with bun --hot
 bun run --cwd plugins/plugin-mcp test         # vitest run
-bun run --cwd plugins/plugin-mcp typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-mcp typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-mcp lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-mcp lint:check   # biome check (read-only)
 bun run --cwd plugins/plugin-mcp format       # biome format --write

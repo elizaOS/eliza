@@ -44,7 +44,7 @@
   },
   "devDependencies": {
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "scripts": {
@@ -53,7 +53,7 @@
     "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe src",
     "lint:check": "bunx @biomejs/biome check src",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."

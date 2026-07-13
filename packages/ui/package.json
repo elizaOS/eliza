@@ -27,7 +27,7 @@
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "test:slow": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.e2e.config.ts",
     "test:e2e": "bun run test:slow",
@@ -491,7 +491,7 @@
     "sharp": "^0.34.5",
     "storybook": "^10.0.0",
     "three": "^0.184.0",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vite": "^8.0.8",
     "vitest": "^4.0.18"
   },

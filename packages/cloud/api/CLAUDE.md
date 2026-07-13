@@ -68,7 +68,7 @@ bun run --cwd packages/cloud/api dev            # wrangler dev (local Worker)
 bun run --cwd packages/cloud/api dev:full       # dev + local control plane
 bun run --cwd packages/cloud/api codegen        # regen src/_router.generated.ts
 bun run --cwd packages/cloud/api build          # tsc --noEmit (type-only)
-bun run --cwd packages/cloud/api typecheck      # tsgo --noEmit
+bun run --cwd packages/cloud/api typecheck      # tsc --noEmit
 bun run --cwd packages/cloud/api lint           # biome check .
 bun run --cwd packages/cloud/api lint:fix       # biome check --write .
 bun run --cwd packages/cloud/api test           # bun test __tests__

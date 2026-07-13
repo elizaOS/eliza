@@ -7,7 +7,6 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,

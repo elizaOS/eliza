@@ -16,8 +16,8 @@
     "deploy": "wrangler deploy --env production",
     "codegen": "node src/_generate-router.mjs",
     "build": "tsc --noEmit",
-    "typecheck": "tsgo --noEmit && bun run check:worker-bundle",
-    "check:worker-bundle": "wrangler deploy --env production --dry-run --outdir .wrangler-dry-run",
+    "typecheck": "tsc --noEmit && bun run check:worker-bundle",
+    "check:worker-bundle": "CI=1 wrangler deploy --env production --dry-run --outdir .wrangler-dry-run",
     "test": "node test/run-unit-isolated.mjs",
     "test:batch": "bun test __tests__",
     "test:audit": "node test/_audit-coverage.mjs",
@@ -53,6 +53,6 @@
     "@types/pg": "^8.16.0",
     "dotenv": "^17.4.2",
     "pg": "^8.20.0",
-    "typescript": "^6.0.3"
+    "typescript": "7.0.2"
   }
 }

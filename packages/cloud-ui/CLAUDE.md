@@ -41,5 +41,5 @@ and export its public surface from the barrel.
 ```bash
 bun run --cwd packages/cloud-ui build      # tsc --noCheck emit to dist/
 bun run --cwd packages/cloud-ui test       # vitest (reuses @elizaos/ui test config)
-bun run --cwd packages/cloud-ui typecheck  # tsgo --noEmit
+bun run --cwd packages/cloud-ui typecheck  # tsc --noEmit
 ```

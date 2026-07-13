@@ -20,6 +20,16 @@
     "updateTrigger": { "action": "TRIGGER" },
     "deleteTrigger": { "action": "TRIGGER" },
     "createWorkbenchTask": { "action": "TASKS" },
+    "createOrchestratorTask": {
+      "action": "TASKS",
+      "note": "Projects publish dispatches the same project-bound coding task that TASKS action=create owns"
+    },
+    "activateProject": {
+      "exempt": "shell project-context navigation; chat tasks bind projectId explicitly and must not silently change the user's global active project"
+    },
+    "createProject": {
+      "exempt": "registers a user-entered local filesystem path; this security-sensitive shell setup remains an explicit user interaction"
+    },
     "updateWorkbenchTask": { "action": "TASKS" },
     "deleteWorkbenchTask": { "action": "TASKS" },
     "openBrowserWorkspaceTab": { "action": "BROWSER" },

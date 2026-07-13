@@ -6,6 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
 import { clearPersistedActiveServer } from "./persistence";
 import {
+  type StartupEvent,
+  type StartupState,
+  startupReducer,
+} from "./startup-coordinator";
+import {
   isRecoverableRemoteBase,
   type PollingBackendDeps,
   runPollingBackend,
@@ -1430,7 +1435,14 @@ describe("runPollingBackend", () => {
     "unknown",
   ] as const)("preserves a returning dedicated agent when control-plane presence is %s", async (presence) => {
     const deps = createDeps();
-    const dispatch = vi.fn();
+    let startupState: StartupState = {
+      phase: "polling-backend",
+      target: "cloud-managed",
+      attempts: 0,
+    };
+    const dispatch = (event: StartupEvent) => {
+      startupState = startupReducer(startupState, event);
+    };
     (globalThis as { window?: unknown }).window = {
       location: { origin: "http://localhost:2138", protocol: "http:" },
     };
@@ -1447,19 +1459,22 @@ describe("runPollingBackend", () => {
       complete: false,
       cloudProvisioned: false,
     });
-    if (presence === "exists") {
-      clientMock.getCloudCompatAgent.mockResolvedValue({
-        success: true,
-        data: { agent_id: "agent-123" },
-      });
-    } else {
-      clientMock.getCloudCompatAgent.mockRejectedValue(
-        Object.assign(new Error("Service unavailable"), {
+    let presenceLookupAgentId: string | null = null;
+    clientMock.getCloudCompatAgent.mockImplementation(
+      async (agentId: string) => {
+        presenceLookupAgentId = agentId;
+        if (presence === "exists") {
+          return {
+            success: true,
+            data: { agent_id: "agent-123" },
+          };
+        }
+        throw Object.assign(new Error("Service unavailable"), {
           kind: "http",
           status: 503,
-        }),
-      );
-    }
+        });
+      },
+    );
 
     const agent = {
       id: "cloud:agent-123",
@@ -1491,19 +1506,27 @@ describe("runPollingBackend", () => {
       { current: null },
     );
 
-    expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
+    expect(presenceLookupAgentId).toBe("agent-123");
     expect(clearPersistedActiveServer).not.toHaveBeenCalled();
     expect(clientMock.getFirstRunOptions).not.toHaveBeenCalled();
     expect(deps.setFirstRunComplete).toHaveBeenLastCalledWith(true);
-    expect(dispatch).toHaveBeenCalledWith({
-      type: "BACKEND_REACHED",
-      firstRunComplete: true,
+    expect(startupState).toEqual({
+      phase: "starting-runtime",
+      attempts: 0,
+      target: "cloud-managed",
     });
   });
 
   it("ignores a dedicated-agent presence result after the polling effect is cancelled", async () => {
     const deps = createDeps();
-    const dispatch = vi.fn();
+    let startupState: StartupState = {
+      phase: "polling-backend",
+      target: "cloud-managed",
+      attempts: 0,
+    };
+    const dispatch = (event: StartupEvent) => {
+      startupState = startupReducer(startupState, event);
+    };
     (globalThis as { window?: unknown }).window = {
       location: { origin: "http://localhost:2138", protocol: "http:" },
     };
@@ -1524,12 +1547,16 @@ describe("runPollingBackend", () => {
       success: boolean;
       data: Record<string, unknown>;
     }) => void = () => {};
-    clientMock.getCloudCompatAgent.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolvePresence = resolve;
-        }),
-    );
+    let signalPresenceStarted: () => void = () => {};
+    const presenceStarted = new Promise<void>((resolve) => {
+      signalPresenceStarted = resolve;
+    });
+    clientMock.getCloudCompatAgent.mockImplementation(() => {
+      signalPresenceStarted();
+      return new Promise((resolve) => {
+        resolvePresence = resolve;
+      });
+    });
 
     const agent = {
       id: "cloud:agent-123",
@@ -1559,22 +1586,17 @@ describe("runPollingBackend", () => {
       cancelled,
       { current: null },
     );
-    await vi.waitFor(() => {
-      expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
-    });
+    await presenceStarted;
 
     cancelled.current = true;
     resolvePresence({ success: false, data: {} });
     await run;
 
     expect(clearPersistedActiveServer).not.toHaveBeenCalled();
-    expect(dispatch).not.toHaveBeenCalledWith({
-      type: "BACKEND_REACHED",
-      firstRunComplete: false,
-    });
-    expect(dispatch).not.toHaveBeenCalledWith({
-      type: "BACKEND_REACHED",
-      firstRunComplete: true,
+    expect(startupState).toEqual({
+      phase: "polling-backend",
+      target: "cloud-managed",
+      attempts: 0,
     });
   });
 });

@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "noEmit": false,
+    "rootDir": ".",
     "outDir": "./dist/node",
     "declaration": true,
     "declarationMap": true,
@@ -15,12 +16,11 @@
     "forceConsistentCasingInFileNames": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
     "module": "ESNext",
     "moduleResolution": "bundler",
     "target": "ES2022",
     "lib": [
-      "ES2022",
+      "ES2023",
       "DOM"
     ],
     "types": [
@@ -39,6 +39,7 @@
     "**/*.ts"
   ],
   "exclude": [
+    "build.ts",
     "node_modules",
     "dist",
     "__tests__",

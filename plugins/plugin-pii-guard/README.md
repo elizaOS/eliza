@@ -53,7 +53,7 @@ value-based pseudonymizer match real text. See `CLAUDE.md` for details.
 
 ```bash
 bun run build       # node ESM bundle + d.ts
-bun run typecheck   # tsgo --noEmit
+bun run typecheck   # tsc --noEmit
 bun run test        # vitest (unit tests only; the real-model test is excluded)
 bun run lint        # biome
 ```

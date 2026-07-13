@@ -159,7 +159,7 @@
     "sharp": "^0.34.5",
     "tsx": "^4.21.0",
     "turbo": "2.10.4",
-    "typescript": "^5.9.3"
+    "typescript": "7.0.2"
   },
   "lint-staged": {
     "*.{js,ts,cjs,mjs,jsx,tsx,json,jsonc}": [

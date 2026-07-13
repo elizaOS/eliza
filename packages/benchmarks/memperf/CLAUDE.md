@@ -46,7 +46,7 @@ bun test --conditions=eliza-source packages/benchmarks/memperf/metric-schema.tes
 bun test --conditions=eliza-source packages/benchmarks/memperf/co-residency.test.ts
 
 # Typecheck (memperf is not a workspace package; use its standalone config):
-node_modules/.bin/tsgo --noEmit -p packages/benchmarks/memperf/tsconfig.check.json
+node_modules/.bin/tsc --noEmit -p packages/benchmarks/memperf/tsconfig.check.json
 ```
 
 - `metric-schema.test.ts` pins the field set shared with #8800 (a rename/drop

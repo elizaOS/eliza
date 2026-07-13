@@ -59,7 +59,7 @@
 		"@biomejs/biome": "2.5.3",
 		"@types/bun": "^1.2.22",
 		"@types/node": "^24.5.2",
-		"typescript": "^6.0.3",
+		"typescript": "7.0.2",
 		"vitest": "^4.0.18"
 	},
 	"scripts": {
@@ -71,7 +71,7 @@
 		"format:check": "bunx @biomejs/biome format .",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
-		"typecheck": "tsgo --noEmit"
+		"typecheck": "tsc --noEmit"
 	},
 	"publishConfig": {
 		"access": "public"

@@ -12,7 +12,6 @@
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
 			"@elizaos/shared/*": ["../../packages/shared/src/*"]
 		},
-		"ignoreDeprecations": "6.0",
 		"target": "ES2022",
 		"module": "ESNext",
 		"moduleResolution": "bundler",

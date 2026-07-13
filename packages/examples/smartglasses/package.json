@@ -33,7 +33,7 @@
     "start": "bun run smartglasses.ts",
     "test": "bun test smartglasses.test.ts smartglasses-protocol.test.ts",
     "test:protocol": "bun test smartglasses-protocol.test.ts",
-    "typecheck": "bun run --cwd ../../../plugins/plugin-facewear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --noEmit -p tsconfig.json",
+    "typecheck": "bun run --cwd ../../../plugins/plugin-facewear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@7.0.2 tsc --noEmit -p tsconfig.json",
     "verify:software": "bun run lint && bun run test && bun run test:protocol && bun run hardware:test-bleak-parser && bun run hardware:test-doctor && bun run typecheck && bun run smoke:package && bun run smoke:runtime && bun run smoke:simulator",
     "clean": "node ../../../packages/scripts/rm-path-recursive.mjs .turbo node_modules/.vite node_modules/.vite-temp"
   },
@@ -47,7 +47,7 @@
     "@types/node": "^25.0.3",
     "bun-types": "1.3.14",
     "pngjs": "^7.0.0",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vite": "8.0.16"
   }
 }

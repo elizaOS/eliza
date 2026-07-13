@@ -44,7 +44,7 @@ assets/
 ## Commands
 
 ```bash
-bun run --cwd plugins/plugin-wifi typecheck   # tsgo type-check only (no emit)
+bun run --cwd plugins/plugin-wifi typecheck   # tsc type-check only (no emit)
 bun run --cwd plugins/plugin-wifi lint        # biome check src/
 bun run --cwd plugins/plugin-wifi test        # vitest run
 bun run --cwd plugins/plugin-wifi build       # tsup + tsc declarations → dist/

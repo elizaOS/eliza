@@ -56,7 +56,7 @@ bun run --cwd plugins/plugin-nostr lint          # biome check --write --unsafe
 bun run --cwd plugins/plugin-nostr lint:check    # biome check (read-only)
 bun run --cwd plugins/plugin-nostr format        # biome format --write
 bun run --cwd plugins/plugin-nostr format:check  # biome format (read-only)
-bun run --cwd plugins/plugin-nostr typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-nostr typecheck     # tsc --noEmit
 ```
 
 ## Config / env vars

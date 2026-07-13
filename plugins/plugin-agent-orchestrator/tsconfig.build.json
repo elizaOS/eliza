@@ -10,7 +10,6 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "allowImportingTsExtensions": false,
-    "ignoreDeprecations": "6.0",
     "paths": {
       "@elizaos/core": ["../../../packages/core/dist"]
     },

@@ -1,7 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
     "paths": {
       "@feed/a2a": ["../../packages/a2a/dist/index.d.ts"],
       "@feed/a2a/*": ["../../packages/a2a/dist/*"],

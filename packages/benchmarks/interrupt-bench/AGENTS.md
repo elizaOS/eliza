@@ -43,7 +43,7 @@ bun run bench:smoke
 bun install
 bun run test          # vitest run — all scenarios parse, run scripted, and score
 bun run test:watch    # watch mode
-bun run typecheck     # tsgo --noEmit
+bun run typecheck     # tsc --noEmit
 ```
 
 ## Layout

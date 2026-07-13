@@ -43,7 +43,7 @@ The plugin entries import `InMemoryDatabaseAdapter` and `IStorage` from `@elizao
 ```bash
 bun run --cwd plugins/plugin-localdb build       # compile to dist/
 bun run --cwd plugins/plugin-localdb dev         # build --watch
-bun run --cwd plugins/plugin-localdb typecheck   # tsgo --noEmit
+bun run --cwd plugins/plugin-localdb typecheck   # tsc --noEmit
 bun run --cwd plugins/plugin-localdb lint        # biome check --write --unsafe .
 bun run --cwd plugins/plugin-localdb lint:check  # biome check .
 bun run --cwd plugins/plugin-localdb test        # vitest run

@@ -40,7 +40,7 @@ This package has **no dependencies** — not even `@elizaos/core`. Any logic tha
 
 ```bash
 bun run --cwd packages/contracts build        # tsc --noCheck (emit d.ts + js to dist/)
-bun run --cwd packages/contracts typecheck    # tsgo --noEmit
+bun run --cwd packages/contracts typecheck    # tsc --noEmit
 bun run --cwd packages/contracts lint         # biome check --write --unsafe
 bun run --cwd packages/contracts lint:check   # biome check (read-only)
 bun run --cwd packages/contracts format       # biome format --write

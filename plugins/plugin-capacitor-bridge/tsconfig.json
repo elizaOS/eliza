@@ -8,7 +8,6 @@
 		"strict": true,
 		"strictNullChecks": true,
 		"skipLibCheck": true,
-		"ignoreDeprecations": "6.0",
 		"declaration": true,
 		"declarationMap": true,
 		"outDir": "./dist",

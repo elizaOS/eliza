@@ -9,7 +9,6 @@
     "strict": true,
     "strictNullChecks": true,
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],

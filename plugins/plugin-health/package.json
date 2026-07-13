@@ -66,7 +66,7 @@
     "dist"
   ],
   "scripts": {
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts",
     "test:scenarios": "cd ../.. && bun --conditions eliza-source --tsconfig-override tsconfig.json packages/scenario-runner/src/cli.ts run plugins/plugin-health/test/scenarios --lane live-only --report-dir reports/scenarios/live-health --run-dir reports/scenarios/live-health --export-native reports/scenarios/live-health/native.jsonl",
     "build": "bun run build:js && bun run build:views && bun run build:types",
@@ -98,7 +98,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.0.0"
   },

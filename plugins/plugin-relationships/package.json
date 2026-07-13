@@ -70,7 +70,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.0.0"
   },
@@ -81,7 +81,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "bunx vitest run --config ./vitest.config.ts",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "check": "bun run typecheck && bun run test",

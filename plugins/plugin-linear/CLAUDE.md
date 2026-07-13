@@ -100,7 +100,7 @@ bun run --cwd plugins/plugin-linear build        # Bun.build bundle + tsc .d.ts 
 bun run --cwd plugins/plugin-linear dev          # bun --hot build.ts (rebuild on change)
 bun run --cwd plugins/plugin-linear test         # vitest run
 bun run --cwd plugins/plugin-linear test:watch   # vitest watch
-bun run --cwd plugins/plugin-linear typecheck    # tsgo --noEmit
+bun run --cwd plugins/plugin-linear typecheck    # tsc --noEmit
 bun run --cwd plugins/plugin-linear lint         # biome check --write --unsafe
 bun run --cwd plugins/plugin-linear format       # biome format --write
 bun run --cwd plugins/plugin-linear clean        # rm dist .turbo artifacts

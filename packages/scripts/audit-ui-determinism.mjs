@@ -31,7 +31,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 const require = createRequire(import.meta.url);
-const ts = require("typescript");
+const ts = require("@typescript/legacy-api");
 
 const repoRoot = process.cwd();
 const args = new Set(process.argv.slice(2));

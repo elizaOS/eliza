@@ -45,7 +45,7 @@
     "prepublishOnly": "bun run build",
     "watch": "tsc --watch",
     "build:unlocked": "bun run clean && tsc && bunx rollup -c rollup.config.mjs",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
@@ -55,7 +55,7 @@
     "@capacitor/core": "^8.3.1",
     "@rollup/plugin-node-resolve": "^16.0.0",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "peerDependencies": {

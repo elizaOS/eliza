@@ -53,6 +53,7 @@ export function writeSubscriptionOAuth(
     shellLocalStorage.setItem(key(value.providerId), JSON.stringify(value));
   } catch {
     // In-memory flow remains usable when storage is unavailable.
+    return;
   }
 }
 
@@ -64,5 +65,6 @@ export function clearSubscriptionOAuth(
     shellLocalStorage.removeItem(key(providerId));
   } catch {
     // Nothing else to clear.
+    return;
   }
 }

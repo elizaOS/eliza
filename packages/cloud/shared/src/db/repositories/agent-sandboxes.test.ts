@@ -17,8 +17,8 @@ const where = mock((clause: SQL) => {
   return { returning };
 });
 // Read the captured update payload back from `set.mock.calls` rather than a
-// side-channel `let`: a `let` reassigned only inside this closure gets narrowed
-// to `undefined` by tsgo (it doesn't apply tsc's closure-reassignment widening),
+// side-channel `let`: TypeScript cannot prove a reassignment that only happens
+// inside this closure, so it narrows the variable to `undefined`,
 // turning `?.status` into a property access on `never`. `mock.calls` carries the
 // argument type verbatim, so the read below stays `Record<string, unknown>`.
 const set = mock((values: Record<string, unknown>) => {

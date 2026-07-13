@@ -14,7 +14,7 @@
     }
   },
   "scripts": {
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -35,7 +35,7 @@
     "@types/react": "^18.0.0 || ^19.0.0",
     "@types/react-dom": "^18.0.0 || ^19.0.0",
     "jsdom": "^29.0.0",
-    "typescript": "^5.0.0",
+    "typescript": "7.0.2",
     "vitest": "^4.0.18"
   }
 }

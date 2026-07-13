@@ -71,5 +71,4 @@ bun run test
 bun run lint
 ```
 
-Lint/format is [Biome 2.x](https://biomejs.dev). TypeScript 6+. ESM only.
-
+Lint/format is [Biome 2.x](https://biomejs.dev). TypeScript 7+. ESM only.

@@ -141,7 +141,7 @@ export async function compileTailwindTheme({
 ${sourceImports}
 `;
   // Tailwind's PluginCreator return type recursively expands against PostCSS's
-  // AcceptedPlugin union under tsgo; runtime receives the real PostCSS plugin.
+  // AcceptedPlugin union under tsc; runtime receives the real PostCSS plugin.
   const tailwindPlugin = tailwind() as unknown as AcceptedPlugin;
   const result = await postcss([tailwindPlugin]).process(input, {
     from: toUrl(join(stylesDir, "styles.css")),

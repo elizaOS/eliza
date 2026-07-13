@@ -51,7 +51,7 @@ bun run --cwd plugins/plugin-edge-tts test:e2e      # live smoke via run-local-p
 bun run --cwd plugins/plugin-edge-tts lint          # biome check --write --unsafe
 bun run --cwd plugins/plugin-edge-tts lint:check    # biome check (read-only)
 bun run --cwd plugins/plugin-edge-tts format        # biome format --write
-bun run --cwd plugins/plugin-edge-tts typecheck     # tsgo --noEmit
+bun run --cwd plugins/plugin-edge-tts typecheck     # tsc --noEmit
 bun run --cwd plugins/plugin-edge-tts clean         # rm dist .turbo tsconfig.tsbuildinfo
 ```
 

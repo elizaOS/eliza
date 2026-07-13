@@ -113,7 +113,7 @@ test/
 ```bash
 bun run --cwd plugins/plugin-pty build      # tsup ESM + declarations
 bun run --cwd plugins/plugin-pty test       # vitest unit suite
-bun run --cwd plugins/plugin-pty typecheck  # tsgo --noEmit
+bun run --cwd plugins/plugin-pty typecheck  # tsc --noEmit
 bun run --cwd plugins/plugin-pty lint
 ```
 

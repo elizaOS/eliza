@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
-import ts from "typescript";
+import ts from "@typescript/legacy-api";
 import { resolveElizaWorkspaceRootFromImportMeta } from "./repo-root.mjs";
 
 const ELIZA_CORE_RUNTIME_FILES = [

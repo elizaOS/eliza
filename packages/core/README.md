@@ -282,7 +282,7 @@ The package uses **vitest**. From the repo root:
 bun run --cwd packages/core test          # vitest run
 bun run --cwd packages/core test:watch    # watch mode
 bun run --cwd packages/core test:coverage # with v8 coverage
-bun run --cwd packages/core typecheck     # tsgo --noEmit
+bun run --cwd packages/core typecheck     # tsc --noEmit
 ```
 
 For agent-facing notes on layout, the public surface, and how to extend the runtime, see [CLAUDE.md](CLAUDE.md) / [AGENTS.md](AGENTS.md).

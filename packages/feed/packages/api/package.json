@@ -41,6 +41,6 @@
     "@types/node": "^24.10.0",
     "swagger-jsdoc": "^6.2.8",
     "tiktoken": "^1.0.21",
-    "typescript": "^5.9.3"
+    "typescript": "7.0.2"
   }
 }

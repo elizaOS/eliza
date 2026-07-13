@@ -151,16 +151,24 @@ export function ProjectsPageView() {
     (task) => task.projectId === null,
   ).length;
 
-  const openProject = useCallback(async (project: ProjectSummary) => {
-    setSelection(project.id);
-    setActiveProjectId(project.id);
-    try {
-      await client.activateProject(project.id);
-    } catch {
-      // The selected page remains usable even if the active pointer could not
-      // be persisted (for example, a read-only/mobile host).
-    }
-  }, []);
+  const openProject = useCallback(
+    async (project: ProjectSummary) => {
+      setSelection(project.id);
+      setActiveProjectId(project.id);
+      try {
+        await client.activateProject(project.id);
+      } catch (error) {
+        setActionNotice(
+          error instanceof Error
+            ? error.message
+            : "Couldn't activate this project.",
+          "error",
+          5000,
+        );
+      }
+    },
+    [setActionNotice],
+  );
 
   const createProject = useCallback(
     async (event: React.FormEvent) => {

@@ -14,7 +14,7 @@ async function build() {
   }
   await mkdir("dist", { recursive: true });
 
-  // Emit declarations only — tsgo (`typecheck`) is the single type-checker.
+  // Emit declarations only — tsc (`typecheck`) is the single type-checker.
   // --noEmit false overrides tsconfig's noEmit; --noCheck skips the redundant
   // re-check (#9626). Verified byte-identical .d.ts vs the full-check build.
   await Bun.$`tsc --project tsconfig.json --noEmit false --noCheck`;

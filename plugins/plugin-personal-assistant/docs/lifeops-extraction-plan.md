@@ -775,7 +775,7 @@ next-fire-at math, state-log, the barrel, and the anchor registry. The
 PA-side and import the spine from the new package; PA keeps a thin
 `lifeops/scheduled-task/index` barrel re-exporting the package + the local
 scheduler/service so existing importers are unchanged. **Verified:**
-plugin-scheduling typecheck clean + 72 spine tests; PA build:types clean, tsgo
+plugin-scheduling typecheck clean + 72 spine tests; PA build:types clean, tsc
 470 (≤ baseline), decomposition 6/6, 6 spine-consuming PA test files (72 tests)
 green; tripwire (no PA import in plugin-scheduling/src) holds.
 
@@ -825,7 +825,7 @@ plugin so the schema exists + the migration runs.
 | inbox | `app_inbox` | life_inbox_triage_entries / _examples / life_email_unsubscribes | `InboxMigrationService` | sole writer was plugin-inbox (PA's src/inbox/repository.ts is a shim); gmail projection tables stay PA-owned; 22 lifeops.* scenarios + bootstrapSchema repointed |
 
 Each: plugin typecheck clean + migration unit test (3-4 guard cases); PA
-build:types clean; PA tsgo **470 == baseline** (zero net new errors); full PA
+build:types clean; PA tsc **470 == baseline** (zero net new errors); full PA
 suite **548/548**; decomposition-integration **6/6** (no migration-serviceType
 collision across reminders/calendar/goals/inbox/finances); tripwire holds (no PA
 import in the carved plugin's `src`); no live writer/reader left on the

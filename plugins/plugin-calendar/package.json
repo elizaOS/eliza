@@ -67,7 +67,7 @@
   "scripts": {
     "verify": "bun run build:types && bun run test",
     "test": "vitest run --config vitest.config.ts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "build:js": "bun run clean && tsup --config tsup.config.ts",

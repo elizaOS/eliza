@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.3",
+    "typescript": "7.0.2",
     "vitest": "^4.0.0"
   },
   "scripts": {
@@ -62,7 +62,7 @@
     "dev": "bun --hot build.ts",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit -p tsconfig.json --rootDir ../..",
+    "typecheck": "tsc --noEmit -p tsconfig.json --rootDir ../..",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "check": "bun run typecheck && bun run test",

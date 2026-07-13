@@ -123,7 +123,7 @@ Serialise and rehydrate `Error` objects across the worker boundary. The rehydrat
 
 ```bash
 bun run --cwd packages/plugin-worker-runtime build        # tsc --noCheck
-bun run --cwd packages/plugin-worker-runtime typecheck    # tsgo --noEmit
+bun run --cwd packages/plugin-worker-runtime typecheck    # tsc --noEmit
 bun run --cwd packages/plugin-worker-runtime test         # bun test src/
 bun run --cwd packages/plugin-worker-runtime lint         # biome check
 bun run --cwd packages/plugin-worker-runtime lint:fix     # biome check --write

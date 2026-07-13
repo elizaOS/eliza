@@ -5,12 +5,12 @@
  * without circular dependency issues.
  */
 
+import { Capacitor } from "@capacitor/core";
 import {
   extractAssistantReplyText,
   SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
-import { Capacitor } from "@capacitor/core";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,

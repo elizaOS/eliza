@@ -12,7 +12,7 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "check": "bun run typecheck && bun run lint:check && bun run format:check"
   },
   "dependencies": {
