@@ -32,6 +32,12 @@
  *     not a mergeable-quality boundary.
  *   - tautologicalAssertion: same heuristic caveat — most hits are
  *     scaffolding inside otherwise-real tests.
+ *   - internalRuntimeMock: `createMockRuntime()` bypasses the real runtime
+ *     lifecycle and service/database architecture. Existing uses are migration
+ *     debt; touched test files may only reduce or preserve their count.
+ *   - internalRuntimeCast: completing a partial object with an `IAgentRuntime`
+ *     cast is the hand-written equivalent. Existing casts remain migration debt
+ *     but touched test files may not add more.
  *
  * The baseline file (test-realness-baseline.json) is a reference snapshot used
  * for delta reporting on the report-only categories; it does not gate. Use
@@ -80,6 +86,8 @@ export const CATEGORY_LABELS = Object.freeze({
   envConditionalSuite: "Env-gated conditional suite",
   tautologicalAssertion: "Tautological assertion",
   mockCallOnlyAssertion: "Mock-call-only assertion",
+  internalRuntimeMock: "Internal mock runtime",
+  internalRuntimeCast: "Partial object cast to IAgentRuntime",
 });
 
 const CHECKED_CATEGORIES = Object.keys(CATEGORY_LABELS);
@@ -95,6 +103,8 @@ export const ENFORCED_CATEGORIES = Object.freeze([
 ]);
 
 export const DIFF_SCOPED_CATEGORIES = Object.freeze([
+  "internalRuntimeCast",
+  "internalRuntimeMock",
   "mockCallOnlyAssertion",
   "tautologicalAssertion",
 ]);
@@ -402,6 +412,32 @@ export function analyzeTestSource(repoRoot, relativePath, sourceText) {
         lineNumber,
         detail:
           "Assertion proves a mock was invoked; pair it with the real outcome or artifact.",
+      });
+    }
+
+    if (/\bcreateMockRuntime\s*\(/u.test(line)) {
+      addRegexFinding({
+        findings,
+        category: "internalRuntimeMock",
+        repoRoot,
+        filePath,
+        sourceText,
+        lineNumber,
+        detail:
+          "createMockRuntime() bypasses AgentRuntime lifecycle and internal service/database integration.",
+      });
+    }
+
+    if (/\bas\s+(?:unknown\s+as\s+)?IAgentRuntime\b/u.test(line)) {
+      addRegexFinding({
+        findings,
+        category: "internalRuntimeCast",
+        repoRoot,
+        filePath,
+        sourceText,
+        lineNumber,
+        detail:
+          "IAgentRuntime cast can complete a partial object without exercising AgentRuntime architecture.",
       });
     }
   }
