@@ -12,7 +12,7 @@ import * as path from "node:path";
 // DEV-only dependency used solely to drive the migration archive through the
 // REAL importer, proving cross-package `.eliza-agent` format compatibility.
 import { importAgent } from "@elizaos/agent/services/agent-export";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { migrateAgent } from "../commands/migrate-agent.js";
 import { buildElizaAgentArchive } from "./archive-format.js";
 import { assemblePayload } from "./archive-writer.js";
@@ -486,10 +486,7 @@ function buildSqliteFixtureHome(): string | null {
 describe("oc home-format variants (cross-version)", () => {
   const fixDir = (name: string) =>
     path.join(__dirname, "__tests__", "fixtures", name);
-  let sqliteHome: string | null = null;
-  beforeAll(() => {
-    sqliteHome = buildSqliteFixtureHome();
-  });
+  const sqliteHome = buildSqliteFixtureHome();
 
   it("reads legacy lowercase memory.md as curated memory (GAP A)", () => {
     const src = readOcAgentHome(fixDir("oc-home-legacymem"), "quill");
@@ -572,54 +569,52 @@ describe("oc home-format variants (cross-version)", () => {
     ).toBe("Nyx");
   });
 
-  it("detects sqlite memory + warns + never silently empty (GAP D)", () => {
-    if (!sqliteHome) {
-      // node:sqlite unavailable in this runtime: can't build the fixture, but
-      // the production DETECT+WARN-without-read path is still covered by the
-      // reader's own guard. Soft-skip the read assertions.
-      expect(true).toBe(true);
-      return;
-    }
-    const src = readOcAgentHome(sqliteHome, "scribe");
-    // Detection ALWAYS happens regardless of node:sqlite availability.
-    expect(src.sqliteStores.length).toBeGreaterThanOrEqual(1);
-    expect(src.sqliteStores.some((s) => s.name === "scribe")).toBe(true);
-    // A warning is ALWAYS present for a sqlite home (read-ok OR not-ported).
-    expect(src.warnings.length).toBeGreaterThanOrEqual(1);
-    expect(src.warnings.join(" ")).toMatch(/sqlite/i);
+  it.skipIf(!sqliteHome)(
+    "detects sqlite memory + warns + never silently empty (GAP D)",
+    () => {
+      if (!sqliteHome) throw new Error("sqlite fixture unavailable");
+      const src = readOcAgentHome(sqliteHome, "scribe");
+      // Detection ALWAYS happens regardless of node:sqlite availability.
+      expect(src.sqliteStores.length).toBeGreaterThanOrEqual(1);
+      expect(src.sqliteStores.some((s) => s.name === "scribe")).toBe(true);
+      // A warning is ALWAYS present for a sqlite home (read-ok OR not-ported).
+      expect(src.warnings.length).toBeGreaterThanOrEqual(1);
+      expect(src.warnings.join(" ")).toMatch(/sqlite/i);
 
-    if (src.sqliteUningested) {
-      // node:sqlite unavailable (older Node): DETECT + WARN, no silent empty.
-      expect(src.warnings.join(" ")).toMatch(/NOT ported|could NOT read/i);
-    } else {
-      // node:sqlite available: prose reconstructed from chunks.text.
-      expect(src.dailyLogs.length).toBe(1); // 2 chunks merged, dup dropped
-      const day = src.dailyLogs.find((d) => d.date === "2026-06-28");
-      expect(day).toBeDefined();
-      expect(day?.text).toContain("daily log chunk one");
-      expect(day?.text).toContain("daily log chunk two");
-      // dedup: chunk-two appears once despite the duplicate row.
-      expect(
-        (day?.text.match(/continuation of the same recent day/g) ?? []).length,
-      ).toBe(1);
-      // named memory recovered (scribe-thoughts.md).
-      expect(src.namedMemory.some((m) => m.key === "scribe-thoughts")).toBe(
-        true,
-      );
-      // awareness recovered from sqlite is promoted to CURRENT, not dropped.
-      expect(src.awareness).toContain("open thread");
-      expect(src.namedMemory.some((m) => m.key === "scribe-awareness")).toBe(
-        false,
-      );
-      const { counts } = tierMemories(src, {
-        memoryDays: 14,
-        agentId: "00000000-0000-0000-0000-00000000a000",
-        entityId: "00000000-0000-0000-0000-00000000e000",
-        roomId: "00000000-0000-0000-0000-00000000r000",
-      });
-      expect(counts.CURRENT).toBeGreaterThanOrEqual(1); // awareness seeded
-    }
-  });
+      if (src.sqliteUningested) {
+        // node:sqlite unavailable (older Node): DETECT + WARN, no silent empty.
+        expect(src.warnings.join(" ")).toMatch(/NOT ported|could NOT read/i);
+      } else {
+        // node:sqlite available: prose reconstructed from chunks.text.
+        expect(src.dailyLogs.length).toBe(1); // 2 chunks merged, dup dropped
+        const day = src.dailyLogs.find((d) => d.date === "2026-06-28");
+        expect(day).toBeDefined();
+        expect(day?.text).toContain("daily log chunk one");
+        expect(day?.text).toContain("daily log chunk two");
+        // dedup: chunk-two appears once despite the duplicate row.
+        expect(
+          (day?.text.match(/continuation of the same recent day/g) ?? [])
+            .length,
+        ).toBe(1);
+        // named memory recovered (scribe-thoughts.md).
+        expect(src.namedMemory.some((m) => m.key === "scribe-thoughts")).toBe(
+          true,
+        );
+        // awareness recovered from sqlite is promoted to CURRENT, not dropped.
+        expect(src.awareness).toContain("open thread");
+        expect(src.namedMemory.some((m) => m.key === "scribe-awareness")).toBe(
+          false,
+        );
+        const { counts } = tierMemories(src, {
+          memoryDays: 14,
+          agentId: "00000000-0000-0000-0000-00000000a000",
+          entityId: "00000000-0000-0000-0000-00000000e000",
+          roomId: "00000000-0000-0000-0000-00000000r000",
+        });
+        expect(counts.CURRENT).toBeGreaterThanOrEqual(1); // awareness seeded
+      }
+    },
+  );
 
   it("warns (does NOT silently succeed) on a persona-less device/builder home", () => {
     // A home with neither SOUL/IDENTITY nor any memory -> empty-home warning.

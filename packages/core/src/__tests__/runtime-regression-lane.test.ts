@@ -4,7 +4,6 @@
  * a PR diff, so this lane keeps those changes attached to the existing behavioral
  * matrix until the runtime is fully decomposed into independently covered modules.
  */
-import { describe, expect, it } from "vitest";
 import "./compose-state-provider-hook.test";
 import "./compose-state-refresh-providers.test";
 import "./compose-state-role-gate.test";
@@ -28,9 +27,3 @@ import "../runtime/__tests__/model-stream-chunk-hooks.test";
 import "../runtime/__tests__/pii-swap-use-model.test";
 import "../runtime/__tests__/secret-swap-use-model.test";
 import "../runtime/__tests__/streaming-use-model.test";
-
-describe("AgentRuntime regression lane", () => {
-	it("loads the runtime behavioral matrix", () => {
-		expect(true).toBe(true);
-	});
-});

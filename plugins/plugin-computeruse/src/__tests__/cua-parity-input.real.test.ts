@@ -95,13 +95,7 @@ describe("cua parity input (real driver, Windows)", () => {
     "key_down/key_up press-hold round-trips (always releases)",
     async () => {
       await driverKeyDown("shift");
-      try {
-        // No throw is the contract; the held modifier has no observable side
-        // effect on its own here.
-        expect(true).toBe(true);
-      } finally {
-        await driverKeyUp("shift");
-      }
+      await driverKeyUp("shift");
     },
     20000,
   );
