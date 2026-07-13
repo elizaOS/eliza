@@ -117,7 +117,9 @@ const args = [
   "--run-dir",
   runDir,
 ];
-const exportNativePath = (process.env.EXPORT_NATIVE_PATH ?? "").trim();
+const exportNativePath = (
+  process.env.EXPORT_NATIVE_PATH ?? path.join(runDir, "native.jsonl")
+).trim();
 if (exportNativePath.length > 0) {
   mkdirSync(path.dirname(path.resolve(REPO_ROOT, exportNativePath)), {
     recursive: true,

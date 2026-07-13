@@ -2,7 +2,9 @@
  * Live-model evidence for origin-channel interruption classification, paired
  * with the deterministic forwarding scenario that exercises delivery wiring.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import type { IAgentRuntime, ModelTypeName } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-runner/schema";
 import { decideInterruptionWithModel } from "../../../../plugins/plugin-agent-orchestrator/src/services/interruption-decider.ts";
 
@@ -21,6 +23,31 @@ export default scenario({
       name: "live-origin-channel-classification",
       predicate: async (ctx) => {
         const runtime = ctx.runtime as IAgentRuntime;
+        const modelIo: Array<{
+          modelType: ModelTypeName;
+          prompt: string;
+          response: string;
+        }> = [];
+        const observedRuntime = new Proxy(runtime, {
+          get(target, property, receiver) {
+            if (property !== "useModel") {
+              return Reflect.get(target, property, receiver);
+            }
+            return async (
+              modelType: ModelTypeName,
+              params: { prompt?: unknown },
+            ) => {
+              const response = await runtime.useModel(modelType, params);
+              modelIo.push({
+                modelType,
+                prompt: typeof params.prompt === "string" ? params.prompt : "",
+                response:
+                  typeof response === "string" ? response : String(response),
+              });
+              return response;
+            };
+          },
+        }) as IAgentRuntime;
         const cases = [
           {
             text: "Remind me to call Mom at 6pm.",
@@ -40,7 +67,7 @@ export default scenario({
         ] as const;
 
         for (const example of cases) {
-          const decision = await decideInterruptionWithModel(runtime, {
+          const decision = await decideInterruptionWithModel(observedRuntime, {
             text: example.text,
             agentType: "codex",
             agentLabel: "Ada",
@@ -56,6 +83,14 @@ export default scenario({
             return `${JSON.stringify(example.text)} used the fallback instead of the live model: ${decision.reason}`;
           }
         }
+        const runDir = process.env.RUN_DIR;
+        if (!runDir) return "RUN_DIR is required for live routing evidence";
+        await mkdir(runDir, { recursive: true });
+        await writeFile(
+          path.join(runDir, "orchestrator-routing-model-io.jsonl"),
+          `${modelIo.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+          "utf8",
+        );
         return undefined;
       },
     },
