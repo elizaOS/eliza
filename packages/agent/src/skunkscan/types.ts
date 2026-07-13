@@ -391,6 +391,9 @@ export type WalletComplianceScreeningSummary = {
     | "confirmed_match";
 
   evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
   screeningConfidence: "low" | "medium" | "high";
   
   sourcesChecked: WalletComplianceScreeningSource[];
