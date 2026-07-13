@@ -619,6 +619,13 @@ async function dispatchOrchestratorRoutes(
         sendError(res, "passed (boolean) is required", 400);
         return true;
       }
+      // A human override bypasses the `validating` gate, so it must carry an
+      // explicit who/why — the service refuses an evidence-free override and
+      // the route surfaces that contract as a 400 before the call.
+      if (body.humanOverride === true && !asString(body.evidence)) {
+        sendError(res, "evidence (string) is required for humanOverride", 400);
+        return true;
+      }
       const task = await service
         .validateTask(taskId, {
           passed: body.passed,

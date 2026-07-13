@@ -80,6 +80,16 @@ import {
   renderChangeSetBody,
 } from "./completion-evidence.js";
 import {
+  COMPLETION_RESIDUALS_METADATA_KEY,
+  COMPLETION_RESIDUALS_VERIFIER_NAME,
+  type CompletionResidualsResult,
+  collectCompletionResiduals,
+  residualDetails,
+  residualsCorrection,
+  residualsGateEnabled,
+  summarizeResiduals,
+} from "./completion-residuals.js";
+import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
   MAX_AUTO_VERIFY_ATTEMPTS,
@@ -608,6 +618,82 @@ function latestActiveSession(
     .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
 }
 
+/** The session whose workspace the residuals gate inspects when the caller has
+ * no session in hand (`validateTask` via the HTTP route): the most recently
+ * active session with a workdir. Sessions without a workdir contribute
+ * nothing, so the gate falls back to its envelope-only legs. */
+function latestWorkspaceSession(
+  doc: OrchestratorTaskDocument,
+): OrchestratorTaskSession | undefined {
+  return doc.sessions
+    .filter((session) => session.workdir.trim().length > 0)
+    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+}
+
+/** Whether the residuals gate must treat the workspace as a REQUIRED git repo
+ * (fail-closed) rather than an opportunistic scratch cwd: the session was
+ * spawned against a named repo, or the task carries a durable repo binding.
+ * `projectId` alone deliberately does NOT count — a registered project's
+ * localPath need not be a git repo — and every ACP session gets SOME workdir
+ * (acp-scratch) even for voice/Q&A tasks, so only an explicit repo claim may
+ * turn a non-git workdir into a blocking `unverifiable`. */
+function residualsRepoExpected(
+  doc: OrchestratorTaskDocument,
+  session: OrchestratorTaskSession | undefined,
+): boolean {
+  return (
+    (session?.repo ?? "").trim().length > 0 ||
+    (doc.task.boundRepo ?? "").trim().length > 0
+  );
+}
+
+/** Envelope-derived residuals legs from the VALID CompletionEnvelope stamped
+ * onto task metadata by {@link OrchestratorTaskService.autoVerifyCompletion}.
+ * Absent/malformed metadata contributes nothing — the envelope gate owns
+ * malformed handling. */
+function envelopeResidualLegs(metadata: Record<string, unknown>): {
+  testResults?: Array<{ command: string; exitCode: number; summary: string }>;
+  residualRisks?: string[];
+} {
+  const envelope = isRecord(metadata.completionEnvelope)
+    ? metadata.completionEnvelope
+    : undefined;
+  if (!envelope) return {};
+  const testResults = Array.isArray(envelope.testResults)
+    ? envelope.testResults.filter(
+        (row): row is { command: string; exitCode: number; summary: string } =>
+          isRecord(row) &&
+          typeof row.command === "string" &&
+          typeof row.exitCode === "number" &&
+          typeof row.summary === "string",
+      )
+    : undefined;
+  const residualRisks = Array.isArray(envelope.residualRisks)
+    ? envelope.residualRisks.filter(
+        (risk): risk is string => typeof risk === "string",
+      )
+    : undefined;
+  return {
+    ...(testResults ? { testResults } : {}),
+    ...(residualRisks ? { residualRisks } : {}),
+  };
+}
+
+/** The prior residuals snapshot stamped on task metadata by the
+ * completion-time gate, returned only when it recorded CLEAN — the one state
+ * `validateTask` may fall back to after the workspace is GC'd. Structural
+ * parse: a malformed/foreign bag yields undefined, never a fabricated pass. */
+function priorCleanResidualsSnapshot(
+  metadata: Record<string, unknown>,
+): CompletionResidualsResult | undefined {
+  const raw = metadata[COMPLETION_RESIDUALS_METADATA_KEY];
+  if (!isRecord(raw)) return undefined;
+  if (raw.status !== "clean") return undefined;
+  if (!Array.isArray(raw.residuals)) return undefined;
+  if (typeof raw.checkedAt !== "number") return undefined;
+  return raw as unknown as CompletionResidualsResult;
+}
+
 function eventExcerpt(
   event: OrchestratorTaskDocument["events"][number],
 ): string {
@@ -805,6 +891,36 @@ export class OrchestratorTaskService extends Service {
   // from two sites for one turn; without this guard both runs read the same
   // attempt counter across the model `await` and double-send a correction.
   private readonly autoVerifyInFlight = new Set<string>();
+
+  /** Per-task async mutex serializing the two completion-metadata writers
+   * (autoVerifyCompletion and validateTask). Both replace `task.metadata`
+   * wholesale through store.updateTask, so an unserialized read-probe-write
+   * interleaving drops the other writer's stamps (completionEnvelope,
+   * autoVerifyAttempts, attemptReflections). In-process on purpose — the
+   * store instance is in-process too, and internal callers that already hold
+   * the lock call the `*Locked` bodies directly (the lock is not reentrant). */
+  private readonly taskWriteLocks = new Map<string, Promise<void>>();
+
+  private withTaskWriteLock<T>(
+    taskId: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const prev = this.taskWriteLocks.get(taskId) ?? Promise.resolve();
+    const run = prev.then(fn);
+    // error-policy:J5 `run`'s rejection is observed by the public caller this
+    // method returns it to; the tail exists only to sequence the next acquirer.
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.taskWriteLocks.set(taskId, tail);
+    void tail.then(() => {
+      if (this.taskWriteLocks.get(taskId) === tail) {
+        this.taskWriteLocks.delete(taskId);
+      }
+    });
+    return run;
+  }
   private unsubscribe: (() => void) | undefined;
   private started = false;
   // Admission queue (#13772): taskIds parked because the worker cap was full.
@@ -2272,6 +2388,18 @@ export class OrchestratorTaskService extends Service {
     this.emitChange(taskId);
   }
 
+  /** Read-only lookup of the durable task record backing a session, for
+   * consumers outside the service (the completion evaluator's
+   * verification-aware framing) that must not receive the full document. */
+  async getTaskForSession(
+    sessionId: string,
+  ): Promise<OrchestratorTaskRecord | null> {
+    const taskId = await this.resolveTaskId(sessionId);
+    if (!taskId) return null;
+    const doc = await this.store.getTask(taskId);
+    return doc?.task ?? null;
+  }
+
   private async resolveTaskId(sessionId: string): Promise<string | undefined> {
     const cached = this.sessionTaskIndex.get(sessionId);
     if (cached) return cached;
@@ -2559,12 +2687,20 @@ export class OrchestratorTaskService extends Service {
   async reopenTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    // Route the revival through the table: a task that already ran resumes
+    // `active` (`restarted`), an untouched one returns to `open` (`reopened`).
+    // A reopen of a task that is not in a reopenable state (e.g. already
+    // `active`) resolves to a self/no-op rather than a forced literal write.
+    const trigger: TaskLifecycleTrigger =
+      doc.sessions.length > 0 ? "restarted" : "reopened";
+    const status =
+      resolveTaskTransition(doc.task.status, trigger) ?? doc.task.status;
     await this.store.updateTask(taskId, {
       archived: false,
       // A paused-then-archived task must not reopen frozen: paused:true would
       // keep advanceTaskStatus inert with no archive surface left to clear it.
       paused: false,
-      status: doc.sessions.length > 0 ? "active" : "open",
+      status,
       archivedAt: null,
       closedAt: null,
     });
@@ -2618,8 +2754,34 @@ export class OrchestratorTaskService extends Service {
   }
 
   /** Promote a `validating` task to `done` (proof passed) or back to `active`
-   * (proof failed → retry). The orchestrator never reports `done` without this. */
+   * (proof failed → retry). The orchestrator never reports `done` without this.
+   *
+   * The status write goes through the legal-transition table: an automated
+   * verdict uses `validation_passed`/`validation_failed` (legal only from
+   * `validating`), a human override uses `human_override_passed`/`_failed`
+   * (legal from any non-terminal state). A `passed: true` verdict without an
+   * override must additionally clear the deterministic residuals gate — no
+   * verdict, human or model, promotes a workspace with uncommitted/unpushed
+   * work to `done`. An override may promote anyway, but requires explicit
+   * evidence (who/why) and gets the residuals snapshot recorded next to it so
+   * the audit trail shows exactly what was overridden. */
   async validateTask(
+    taskId: string,
+    result: {
+      passed: boolean;
+      summary?: string;
+      evidence?: string;
+      verifier?: string;
+      humanOverride?: boolean;
+    },
+  ): Promise<TaskThreadDetailDto | null> {
+    return this.withTaskWriteLock(taskId, () =>
+      this.validateTaskLocked(taskId, result),
+    );
+  }
+
+  /** {@link validateTask} body; callers must hold the task's write lock. */
+  private async validateTaskLocked(
     taskId: string,
     result: {
       passed: boolean;
@@ -2631,20 +2793,98 @@ export class OrchestratorTaskService extends Service {
   ): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
-    if (doc.task.status !== "validating" && !result.humanOverride) {
+    const from = doc.task.status;
+    if (!result.humanOverride && from !== "validating") {
       throw new Error("Task must be validating before validation can finish");
     }
-    const evidence =
-      result.evidence ??
-      result.summary ??
-      (result.humanOverride
-        ? result.passed
-          ? "Human approved in the orchestrator UI."
-          : "Human rejected in the orchestrator UI."
-        : undefined);
-    if (!evidence) {
-      throw new Error("validation evidence is required");
+    if (result.humanOverride && TERMINAL_TASK_STATUSES.has(from)) {
+      throw new ElizaError(
+        "Human override cannot re-validate a terminal task; reopen or restart it instead",
+        {
+          code: "TASK_VALIDATION_TERMINAL_STATE",
+          context: { taskId, status: from },
+        },
+      );
     }
+    const evidence = (result.evidence ?? result.summary)?.trim();
+    if (!evidence) {
+      // A human override is an audit-relevant bypass: it must carry an
+      // explicit who/why, never a synthesized default.
+      throw result.humanOverride
+        ? new ElizaError(
+            "Human override requires a non-empty evidence string (who approved and why)",
+            { code: "TASK_OVERRIDE_EVIDENCE_REQUIRED", context: { taskId } },
+          )
+        : new Error("validation evidence is required");
+    }
+    const workspaceSession = latestWorkspaceSession(doc);
+    let residuals = residualsGateEnabled()
+      ? await collectCompletionResiduals({
+          workdir: workspaceSession?.workdir,
+          repoExpected: residualsRepoExpected(doc, workspaceSession),
+          ...envelopeResidualLegs(doc.task.metadata),
+        })
+      : undefined;
+    // A repo-bound task whose workspace was GC'd after the completion-time
+    // gate already ran CLEAN would otherwise be permanently un-validatable
+    // (the dir can never come back). Accept the recorded clean snapshot in
+    // that one case — a prior dirty/unverifiable snapshot still blocks, and
+    // any other unverifiable kind (probe/git failure) is a live error, not a
+    // vanished workspace.
+    let residualsProvenance: string | undefined;
+    if (
+      residuals?.status === "unverifiable" &&
+      residuals.unverifiableKind === "missing_dir"
+    ) {
+      const prior = priorCleanResidualsSnapshot(doc.task.metadata);
+      if (prior) {
+        residuals = prior;
+        residualsProvenance = "recorded-at-completion; workspace since removed";
+      }
+    }
+    if (
+      residuals &&
+      residuals.status !== "clean" &&
+      result.passed &&
+      !result.humanOverride
+    ) {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "validation_blocked_residuals",
+        summary: summarizeResiduals(residuals),
+        data: {
+          verifier: COMPLETION_RESIDUALS_VERIFIER_NAME,
+          residuals: residuals as unknown as Record<string, unknown>,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      this.emitChange(taskId);
+      throw new ElizaError(
+        `Completion residuals block validation: ${summarizeResiduals(residuals)}`,
+        {
+          code: "TASK_COMPLETION_RESIDUALS",
+          context: { taskId, residuals: residualDetails(residuals) },
+        },
+      );
+    }
+    const trigger: TaskLifecycleTrigger = result.humanOverride
+      ? result.passed
+        ? "human_override_passed"
+        : "human_override_failed"
+      : result.passed
+        ? "validation_passed"
+        : "validation_failed";
+    const next = nextTaskStatus(from, trigger);
+    // Worker-disclosed risks are non-blocking by design (honest disclosure
+    // must not cost an attempt), but they belong on the durable validation
+    // evidence so the verdict record carries the caveats.
+    const disclosedRisks = residuals?.disclosedRisks ?? [];
+    const recordedEvidence =
+      disclosedRisks.length > 0
+        ? `${evidence}\nWorker-disclosed residual risks: ${disclosedRisks.join("; ")}`
+        : evidence;
     await this.store.addEvent({
       id: randomUUID(),
       taskId,
@@ -2652,24 +2892,37 @@ export class OrchestratorTaskService extends Service {
       summary: result.summary ?? evidence,
       timestamp: Date.now(),
       data: {
-        evidence,
+        evidence: recordedEvidence,
         verifier: result.verifier ?? "orchestrator",
         humanOverride: result.humanOverride === true,
+        ...(residuals
+          ? { residuals: residuals as unknown as Record<string, unknown> }
+          : {}),
+        ...(residualsProvenance ? { residualsProvenance } : {}),
       },
       createdAt: nowIso(),
     });
-    if (result.passed) {
-      await this.store.updateTask(taskId, {
-        status: "done",
-        summary: result.summary ?? doc.task.summary,
-        closedAt: nowIso(),
-      });
-    } else {
-      await this.store.updateTask(taskId, {
-        status: "active",
-        summary: result.summary ?? doc.task.summary,
-      });
-    }
+    // Re-fetch immediately before the metadata write: the gate's git probes
+    // above take real time, and other writers (the event bridge's PR/plan
+    // stamps) may have updated the bag since `doc` was read. updateTask
+    // replaces `metadata` wholesale, so a stale spread would drop them.
+    const fresh = (await this.store.getTask(taskId)) ?? doc;
+    await this.store.updateTask(taskId, {
+      status: next,
+      summary: result.summary ?? fresh.task.summary,
+      ...(next === "done" ? { closedAt: nowIso() } : {}),
+      // A failed override reactivates the task; a stale closedAt from an
+      // earlier done would misread as still-closed.
+      ...(next === "active" ? { closedAt: null } : {}),
+      ...(residuals
+        ? {
+            metadata: {
+              ...fresh.task.metadata,
+              [COMPLETION_RESIDUALS_METADATA_KEY]: residuals,
+            },
+          }
+        : {}),
+    });
     return this.getTask(taskId);
   }
 
@@ -2714,19 +2967,132 @@ export class OrchestratorTaskService extends Service {
     if (this.autoVerifyInFlight.has(taskId)) return;
     this.autoVerifyInFlight.add(taskId);
     try {
-      const doc = await this.store.getTask(taskId);
+      // Serialized against validateTask: both replace task.metadata wholesale.
+      await this.withTaskWriteLock(taskId, () =>
+        this.autoVerifyCompletionLocked(
+          taskId,
+          sessionId,
+          completionEvidence,
+          rawCompletion,
+        ),
+      );
+    } catch (err) {
+      // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
+      // failure warns and must not break the session-event write path.
+      this.log("warn", "auto goal verification failed", {
+        taskId,
+        sessionId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      this.autoVerifyInFlight.delete(taskId);
+    }
+  }
+
+  /** {@link autoVerifyCompletion} body; callers must hold the task's write
+   * lock. Uses {@link validateTaskLocked} directly for the same reason. */
+  private async autoVerifyCompletionLocked(
+    taskId: string,
+    sessionId: string,
+    completionEvidence: string,
+    rawCompletion: string,
+  ): Promise<void> {
+    {
+      let doc = await this.store.getTask(taskId);
       if (!doc) return;
       // Only act on the state the task_complete event just produced. A human or
       // the manual auto-validate route may have already moved it on.
       if (doc.task.status !== "validating") return;
+      const attempts = num(doc.task.metadata?.autoVerifyAttempts);
+      const parse = parseCompletionEnvelope(rawCompletion);
+
+      // 0. Deterministic residuals gate — BEFORE the criteria check and any
+      // model spend, so even a criteria-free task with a git workspace cannot
+      // promote with uncommitted/unpushed work, failing tests, or
+      // self-reported risks. The snapshot is persisted either way so the UI
+      // can show what blocked (or cleared) completion.
+      if (residualsGateEnabled()) {
+        const reportingSession = doc.sessions.find(
+          (session) => session.sessionId === sessionId,
+        );
+        const residuals = await collectCompletionResiduals({
+          workdir: reportingSession?.workdir,
+          repoExpected: residualsRepoExpected(doc, reportingSession),
+          ...(parse.present && parse.ok
+            ? {
+                testResults: parse.envelope.testResults,
+                residualRisks: parse.envelope.residualRisks,
+              }
+            : {}),
+        });
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...doc.task.metadata,
+            [COMPLETION_RESIDUALS_METADATA_KEY]: residuals,
+          },
+        });
+        // Re-read so downstream metadata spreads (envelope stamp, reflexions)
+        // carry the snapshot forward instead of clobbering it.
+        doc = (await this.store.getTask(taskId)) ?? doc;
+        if (residuals.status === "unverifiable") {
+          // An inspection failure is not a finding: burning the bounded
+          // attempt cap on transient git timeouts/fs races would exhaust it
+          // with zero residuals. Record + report and stay `validating` — a
+          // manual /validate or the next task_complete re-runs the gate.
+          await this.store.addEvent({
+            id: randomUUID(),
+            taskId,
+            sessionId,
+            eventType: "residuals_unverifiable",
+            summary: summarizeResiduals(residuals),
+            data: {
+              verifier: COMPLETION_RESIDUALS_VERIFIER_NAME,
+              residuals: residuals as unknown as Record<string, unknown>,
+            },
+            timestamp: Date.now(),
+            createdAt: nowIso(),
+          });
+          this.runtime.reportError?.(
+            "OrchestratorTaskService.completionResiduals",
+            new ElizaError(
+              "Completion residuals gate could not inspect the workspace",
+              {
+                code: "TASK_RESIDUALS_UNVERIFIABLE",
+                context: {
+                  taskId,
+                  sessionId,
+                  reason: residuals.unverifiableReason,
+                  kind: residuals.unverifiableKind,
+                },
+              },
+            ),
+            { taskId, sessionId },
+          );
+          this.emitChange(taskId);
+          return;
+        }
+        if (residuals.status !== "clean") {
+          await this.reEngageOrEscalate({
+            taskId,
+            sessionId,
+            correction: residualsCorrection(residuals),
+            eventType: "residuals_found",
+            verifier: COMPLETION_RESIDUALS_VERIFIER_NAME,
+            summary: summarizeResiduals(residuals),
+            missing: residualDetails(residuals),
+            attempt: attempts,
+          });
+          return;
+        }
+      }
+
       const acceptanceCriteria = doc.task.acceptanceCriteria;
       // Criteria-free tasks keep the prior behavior: stay `validating` for a
-      // human/manual caller, no surprise model spend.
+      // human/manual caller, no surprise model spend. The residuals gate above
+      // has already run, so "no criteria" no longer implies "no verification".
       if (acceptanceCriteria.length === 0) return;
-      const attempts = num(doc.task.metadata?.autoVerifyAttempts);
 
       // 1. Structural envelope gate (#8895) — BEFORE any model spend.
-      const parse = parseCompletionEnvelope(rawCompletion);
       let evidence = completionEvidence;
       if (parse.present && !parse.ok) {
         // Malformed contract: block the judge and re-prompt for a valid envelope.
@@ -2812,7 +3178,7 @@ export class OrchestratorTaskService extends Service {
           ]
             .filter(Boolean)
             .join("\n");
-          await this.validateTask(taskId, {
+          await this.validateTaskLocked(taskId, {
             passed: false,
             summary: independent.summary,
             evidence: blockEvidence,
@@ -2857,7 +3223,7 @@ export class OrchestratorTaskService extends Service {
       );
 
       if (verdict.passed) {
-        await this.validateTask(taskId, {
+        await this.validateTaskLocked(taskId, {
           passed: true,
           summary: verdict.summary,
           evidence: verdict.rawResponse || evidence,
@@ -2882,16 +3248,6 @@ export class OrchestratorTaskService extends Service {
         missing: verdict.missing,
         attempt: attempts,
       });
-    } catch (err) {
-      // error-policy:J7 auto-verify is fire-and-forget from the event bridge; a
-      // failure warns and must not break the session-event write path.
-      this.log("warn", "auto goal verification failed", {
-        taskId,
-        sessionId,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    } finally {
-      this.autoVerifyInFlight.delete(taskId);
     }
   }
 
@@ -3396,7 +3752,12 @@ export class OrchestratorTaskService extends Service {
       timestamp: Date.now(),
       createdAt: nowIso(),
     });
-    await this.store.updateTask(taskId, { paused: false, status: "active" });
+    // Clear `paused` first (advanceTaskStatus is inert on a paused task), then
+    // route the reactivation through the transition table as a `retrying`
+    // move: an illegal `(from, retrying)` — e.g. the task is still `open` —
+    // drops as a no-op instead of stomping the status with a literal write.
+    await this.store.updateTask(taskId, { paused: false });
+    await this.advanceTaskStatus(taskId, "retrying");
     return this.getTask(taskId);
   }
 
@@ -3436,7 +3797,12 @@ export class OrchestratorTaskService extends Service {
       timestamp: Date.now(),
       createdAt: nowIso(),
     });
-    await this.store.updateTask(taskId, { paused: false, status: "active" });
+    // Clear `paused` first (advanceTaskStatus is inert on a paused task), then
+    // route the reactivation through the transition table as a `retrying`
+    // move: an illegal `(from, retrying)` — e.g. the task is still `open` —
+    // drops as a no-op instead of stomping the status with a literal write.
+    await this.store.updateTask(taskId, { paused: false });
+    await this.advanceTaskStatus(taskId, "retrying");
     await this.spawnAgentForTask(taskId, {
       ...input.agent,
       task: withPlanRevisionContext(
@@ -3494,12 +3860,16 @@ export class OrchestratorTaskService extends Service {
       timestamp: Date.now(),
       createdAt: nowIso(),
     });
+    // `restarted` is legal from every state, so the table resolution is total;
+    // re-read first because stopActiveSessions/spawn above may have advanced
+    // the status since the initial doc snapshot.
+    const current = (await this.store.getTask(taskId)) ?? doc;
     await this.store.updateTask(taskId, {
       paused: false,
       archived: false,
       archivedAt: null,
       closedAt: null,
-      status: "active",
+      status: nextTaskStatus(current.task.status, "restarted"),
     });
     return this.getTask(taskId);
   }
