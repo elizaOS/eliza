@@ -63,9 +63,10 @@ export class CliAuthSessionsService {
     organizationId: string,
   ): Promise<{
     session: CliAuthSession;
-    apiKey: string;
-    keyPrefix: string;
+    apiKey: string | null;
+    keyPrefix: string | null;
     expiresAt: Date | null;
+    alreadyAuthenticated: boolean;
   }> {
     // Check if session exists and is still valid
     const session = await this.getActiveSession(sessionId);
@@ -74,7 +75,36 @@ export class CliAuthSessionsService {
       throw new Error("Invalid or expired session");
     }
 
+    // Browser retries are safe only when ownership is positively established;
+    // a legacy row without an owner cannot prove that the caller completed it.
+    if (session.status === "authenticated") {
+      if (!session.user_id || session.user_id !== userId) {
+        throw new Error("Session already authenticated or expired");
+      }
+
+      let keyPrefix: string | null = null;
+      let expiresAt: Date | null = null;
+      if (session.api_key_id) {
+        const existingKey = await apiKeysRepository.findById(session.api_key_id);
+        if (existingKey) {
+          keyPrefix = existingKey.key_prefix;
+          expiresAt = existingKey.expires_at ?? null;
+        }
+      }
+
+      return {
+        session,
+        // Plaintext is never re-derivable (D-6); the CLI reads it via the
+        // single-use poll endpoint. The browser only consumes `keyPrefix`.
+        apiKey: null,
+        keyPrefix,
+        expiresAt,
+        alreadyAuthenticated: true,
+      };
+    }
+
     if (session.status !== "pending") {
+      // Expired or any other non-pending terminal state.
       throw new Error("Session already authenticated or expired");
     }
 
@@ -105,6 +135,7 @@ export class CliAuthSessionsService {
       apiKey: plainKey,
       keyPrefix: apiKey.key_prefix,
       expiresAt: apiKey.expires_at,
+      alreadyAuthenticated: false,
     };
   }
 

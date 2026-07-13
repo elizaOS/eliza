@@ -36,6 +36,11 @@ app.post("/", async (c) => {
       apiKey: result.apiKey,
       keyPrefix: result.keyPrefix,
       expiresAt: result.expiresAt,
+      // Idempotent completion: true when this call found the session already
+      // authenticated by the same user (no new key minted). The browser treats
+      // both cases as success; the CLI still reads plaintext via the poll
+      // endpoint. See cli-auth-sessions.ts completeAuthentication.
+      alreadyAuthenticated: result.alreadyAuthenticated,
     });
   } catch (error) {
     logger.error("Error completing CLI authentication:", error);
