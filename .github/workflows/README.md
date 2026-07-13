@@ -49,9 +49,10 @@ Feed deploys through Railway rather than a GitHub branch deployment workflow.
 [`packages/feed/railway.json`](../../packages/feed/railway.json) configures the
 service to run
 [`packages/feed/scripts/railway-start.sh`](../../packages/feed/scripts/railway-start.sh),
-which invokes `drizzle-kit push --force` against the Feed schema before starting
-the web process. [`packages/feed/RAILWAY.md`](../../packages/feed/RAILWAY.md)
-documents that production boundary; `feed-test.yml` remains CI-only.
+which makes a best-effort `drizzle-kit push --force` against the Feed schema
+before starting the web process and deliberately continues if that push fails.
+[`packages/feed/RAILWAY.md`](../../packages/feed/RAILWAY.md) documents that
+production boundary; `feed-test.yml` remains CI-only.
 
 ## Test Workflows
 
