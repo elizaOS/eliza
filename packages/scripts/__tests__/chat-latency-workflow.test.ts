@@ -7,6 +7,32 @@ const workflow = readFileSync(
   "utf8",
 );
 
+function extractEmbeddedNode(stepName: string): string {
+  const nodeBody = extractRun(stepName).match(
+    /<<'NODE'\n(?<node>[\s\S]*?)\nNODE(?:\n|$)/,
+  )?.groups?.node;
+  if (!nodeBody) {
+    throw new Error(`Missing embedded Node program for ${stepName}`);
+  }
+  return nodeBody;
+}
+
+// Executes the bind step's embedded program exactly as the runner does
+// (`node --input-type=module -` with the heredoc on stdin), with a fully
+// controlled environment so match/mismatch outcomes are deterministic.
+function runBindProgram(env: Record<string, string>): {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+} {
+  const result = spawnSync(process.execPath, ["--input-type=module", "-"], {
+    input: extractEmbeddedNode("Bind checkout to the requested gateway SHA"),
+    encoding: "utf8",
+    env,
+  });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+}
+
 function extractRun(stepName: string): string {
   const escaped = stepName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const body = workflow.match(
@@ -109,8 +135,76 @@ describe("chat latency live workflow", () => {
     expect(workflow).toContain("cold/warm/post-idle");
   });
 
+  describe("checkout binding to the requested gateway SHA (#16185)", () => {
+    const shaA = "a".repeat(40);
+    const shaB = "b".repeat(40);
+
+    test("orders the bind step inside the live job before the health check and paid probe", () => {
+      const liveIndex = workflow.indexOf("\n  live:");
+      const bindIndex = workflow.indexOf(
+        "- name: Bind checkout to the requested gateway SHA",
+      );
+      const verifyIndex = workflow.indexOf(
+        "- name: Verify the exact deployed gateway SHA",
+      );
+      const probeIndex = workflow.indexOf(
+        "- name: Probe Gemma and GLM reasoning modes on one runner",
+      );
+      expect(liveIndex).toBeGreaterThan(-1);
+      expect(bindIndex).toBeGreaterThan(liveIndex);
+      expect(bindIndex).toBeLessThan(verifyIndex);
+      expect(verifyIndex).toBeLessThan(probeIndex);
+    });
+
+    test("passes when the checkout equals expected_gateway_sha", () => {
+      const result = runBindProgram({
+        EXPECTED_GATEWAY_SHA: shaA,
+        GITHUB_SHA: shaA,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain(
+        "matches the requested gateway deployment",
+      );
+    });
+
+    test("fails on a checkout/deployment mismatch before any benchmark command", () => {
+      const result = runBindProgram({
+        EXPECTED_GATEWAY_SHA: shaA,
+        GITHUB_SHA: shaB,
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("does not match expected_gateway_sha");
+    });
+
+    test("fails when the checkout SHA is missing entirely", () => {
+      const result = runBindProgram({ EXPECTED_GATEWAY_SHA: shaA });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("does not match expected_gateway_sha");
+    });
+
+    test("keeps the 40-character validation on expected_gateway_sha", () => {
+      const result = runBindProgram({
+        EXPECTED_GATEWAY_SHA: "deadbeef",
+        GITHUB_SHA: shaA,
+      });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("40-character lowercase commit");
+    });
+
+    test("documents the dispatch sequence and emits both SHAs in the summary", () => {
+      expect(workflow).toContain("Dispatch sequence for exact artifacts");
+      expect(workflow).toContain("checkout SHA == deployed SHA");
+      const summary = extractRun("Add privacy-safe timing table to summary");
+      expect(summary).toContain(
+        '"Checkout: " + (process.env.GITHUB_SHA ?? "unknown")',
+      );
+      expect(summary).toContain("process.env.ELIZA_GATEWAY_DEPLOY_SHA");
+    });
+  });
+
   test("keeps every live shell and embedded Node program syntactically valid", () => {
     const steps = [
+      "Bind checkout to the requested gateway SHA",
       "Verify the exact deployed gateway SHA",
       "Probe Gemma and GLM reasoning modes on one runner",
       "Reverify the exact deployed gateway SHA",
