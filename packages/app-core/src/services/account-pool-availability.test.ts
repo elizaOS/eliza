@@ -231,6 +231,12 @@ describe("account health mutation lifecycle", () => {
       providerId: "anthropic-subscription",
     });
     expect(accounts["anthropic-subscription:a"]?.health).toBe("needs-reauth");
+    await pool.markNeedsReauth("a", "refresh token revoked", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.healthDetail?.lastError).toBe(
+      "refresh token revoked",
+    );
 
     await pool.markInvalid("a", "revoked", {
       providerId: "anthropic-subscription",

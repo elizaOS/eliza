@@ -273,8 +273,10 @@ describe("coding-account-bridge", () => {
       path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
       "utf-8",
     );
-    // Clean single model line, no injected table/keys.
-    expect(cfg).toMatch(/^model = "[\w.:/-]+"\n$/);
+    // Clean model line + the fixed store pin, no injected table/keys.
+    expect(cfg).toMatch(
+      /^model = "[\w.:/-]+"\ncli_auth_credentials_store = "file"\n$/,
+    );
     expect(cfg).not.toContain("[evil]");
   });
 
@@ -355,7 +357,9 @@ describe("coding-account-bridge", () => {
         path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
         "utf-8",
       );
-      expect(cfg).toBe('model = "gpt-5.6-sol"\n');
+      expect(cfg).toBe(
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
     } finally {
       if (prevOsHome === undefined) delete process.env.HOME;
       else process.env.HOME = prevOsHome;
@@ -392,7 +396,9 @@ describe("coding-account-bridge", () => {
       path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
       "utf-8",
     );
-    expect(cfg).toBe('model = "gpt-5.6-terra"\n');
+    expect(cfg).toBe(
+      'model = "gpt-5.6-terra"\ncli_auth_credentials_store = "file"\n',
+    );
     expect(cfg).not.toContain("model_reasoning_effort");
     expect(cfg).not.toContain("[evil]");
   });
@@ -415,8 +421,71 @@ describe("coding-account-bridge", () => {
         path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
         "utf-8",
       );
-      expect(cfg).toBe('model = "gpt-5.6-sol"\n');
+      expect(cfg).toBe(
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
     }
+  });
+
+  it("adopts a CLI-rotated refresh token at materialize time instead of clobbering it", async () => {
+    // The session file is the only surviving copy after a one-time refresh
+    // token rotates, so materialization must adopt it before writing.
+    writeAccount("openai-codex", "cx-rot", "cx-rot-access", {
+      organizationId: "a",
+    });
+    const codexHome = path.join(home, "auth", "_codex-home", "cx-rot");
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(
+      path.join(codexHome, "auth.json"),
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        OPENAI_API_KEY: null,
+        tokens: {
+          access_token: `e30.${Buffer.from(
+            JSON.stringify({
+              exp: Math.floor((Date.now() + 86_400_000) / 1000),
+            }),
+          ).toString("base64url")}.sig`,
+          refresh_token: "cx-rot-access-refresh-ROTATED",
+          account_id: "a",
+        },
+        // Adoption is newer-only so re-linking an account cannot be undone by
+        // a stale session file.
+        last_refresh: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    expect(sel?.accountId).toBe("cx-rot");
+
+    const pool = getDefaultAccountPool();
+    const adopted = pool.list("openai-codex").find((a) => a.id === "cx-rot");
+    expect(adopted).toBeTruthy();
+    const authOnDisk = JSON.parse(
+      readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "auth.json"),
+        "utf-8",
+      ),
+    ) as { tokens?: { refresh_token?: string } };
+    expect(authOnDisk.tokens?.refresh_token).toBe(
+      "cx-rot-access-refresh-ROTATED",
+    );
+  });
+
+  it("pins cli_auth_credentials_store=file so rotated tokens land in auth.json", async () => {
+    writeAccount("openai-codex", "cx-store", "cx-store-access", {
+      organizationId: "a",
+    });
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    const cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toContain('cli_auth_credentials_store = "file"');
   });
 
   it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {

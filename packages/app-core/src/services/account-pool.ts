@@ -552,6 +552,13 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    // Repeated probes may report the same state; log only the transition while
+    // still persisting the newest diagnostic detail on every call.
+    if (account.health !== "needs-reauth") {
+      logger.warn(
+        `[account-pool] ${account.providerId} account "${account.label ?? account.id}" (${account.id}) → needs-reauth: ${detail ?? "no detail provided"}`,
+      );
+    }
     await this.deps.writeAccount({
       ...account,
       health: "needs-reauth",

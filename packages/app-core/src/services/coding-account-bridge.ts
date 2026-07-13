@@ -276,11 +276,19 @@ const PINNED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
  * ChatGPT-login `auth.json` shape Codex reads; the account_id is the OAuth
  * account id baked into the credential record (`organizationId`).
  */
-function materializeCodexHome(accountId: string, accessToken: string): string {
+async function materializeCodexHome(
+  accountId: string,
+  accessToken: string,
+): Promise<string> {
   const dir = codexHomeDir(accountId);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
+  // Codex refresh tokens are one-time credentials. A session may rotate the
+  // pair after selection but before materialization, so adoption is repeated
+  // under the account mutex immediately before writing. Any adoption failure
+  // must abort the write; continuing could destroy the only valid token pair.
+  await adoptRotatedCodexTokens(accountId);
   const record = loadAccount("openai-codex", accountId);
   const refreshToken = record?.credentials.refresh;
   if (!refreshToken) {
@@ -298,7 +306,9 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
     OPENAI_API_KEY: null as string | null,
     tokens: {
       ...(idToken ? { id_token: idToken } : {}),
-      access_token: accessToken,
+      // Access and refresh tokens are a generation pair; never combine a
+      // caller-cached access token with a newly adopted refresh token.
+      access_token: record?.credentials.access ?? accessToken,
       refresh_token: refreshToken,
       ...(chatgptAccountId ? { account_id: chatgptAccountId } : {}),
     },
@@ -366,9 +376,12 @@ function materializeCodexHome(accountId: string, accessToken: string): string {
       );
       effort = undefined;
     }
+    // The file store makes every rotated pair observable to the pool. The
+    // adapter's `auto` mode can select a process-local or unavailable keyring
+    // on headless hosts, which is incompatible with durable pool adoption.
     writeFileSync(
       targetConfig,
-      `model = "${model || "gpt-5.6-sol"}"\n${
+      `model = "${model || "gpt-5.6-sol"}"\ncli_auth_credentials_store = "file"\n${
         effort ? `model_reasoning_effort = "${effort}"\n` : ""
       }`,
       { mode: 0o600 },
@@ -390,7 +403,7 @@ async function buildEnvPatch(
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
     case "openai-codex":
-      return { CODEX_HOME: materializeCodexHome(accountId, accessToken) };
+      return { CODEX_HOME: await materializeCodexHome(accountId, accessToken) };
     default: {
       // Direct API providers (e.g. cerebras-api → CEREBRAS_API_KEY for opencode)
       // inject under their canonical env key; run-main.ts normalizes aliases
