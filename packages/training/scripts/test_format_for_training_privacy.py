@@ -261,6 +261,58 @@ def test_redactor_passes_through_non_string_scalars() -> None:
     assert out == value
 
 
+def test_redactor_removes_structured_numeric_coordinates() -> None:
+    value = {
+        "location": [40.7128, -74.0060, {"label": "office"}],
+        "geometry": {"type": "Point", "coordinates": [-118.2437, 34.0522]},
+        "route": {
+            "type": "LineString",
+            "coordinates": [[-87.6298, 41.8781], [-71.0589, 42.3601]],
+        },
+        "area": {
+            "type": "Polygon",
+            "coordinates": [
+                [[-80.1918, 25.7617], [-79.3832, 43.6532], [-80.1918, 25.7617]]
+            ],
+        },
+        "nested": {"latitude": 37.7749, "longitude": -122.4194},
+        "duplicate_aliases": {
+            "lat": 33.4484,
+            "LNG": -112.0740,
+            "lng": -104.9903,
+            "longitude": -77.0369,
+        },
+        "ordinary_numbers": [1, 2, 3],
+    }
+
+    out = redact_value(value)
+
+    rendered = json.dumps(out, sort_keys=True)
+    for coordinate in (
+        "40.7128",
+        "-74.006",
+        "-118.2437",
+        "34.0522",
+        "-87.6298",
+        "41.8781",
+        "-71.0589",
+        "42.3601",
+        "-80.1918",
+        "25.7617",
+        "-79.3832",
+        "43.6532",
+        "37.7749",
+        "-122.4194",
+        "33.4484",
+        "-112.074",
+        "-104.9903",
+        "-77.0369",
+    ):
+        assert coordinate not in rendered
+    assert rendered.count("[REDACTED_GEO]") == 20
+    assert out["ordinary_numbers"] == [1, 2, 3]
+
+
 # ---------------------------------------------------------------------------
 # Property-based tests (hypothesis)
 # ---------------------------------------------------------------------------

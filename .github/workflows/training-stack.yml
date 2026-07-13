@@ -19,6 +19,11 @@ name: Training Stack
 # Dockerfile CUDA tag in lockstep when they change.
 
 on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - "packages/training/**"
+      - ".github/workflows/training-stack.yml"
   push:
     branches: [develop]
     paths:
@@ -44,7 +49,9 @@ permissions:
 jobs:
   cpu-smoke:
     name: CPU smoke (lint + import)
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    # Pull requests can contain fork-controlled Dockerfiles and scripts, so
+    # they must never execute on the persistent self-hosted fleet.
+    runs-on: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-24.04"]' || vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -129,7 +136,15 @@ jobs:
                   scripts/training/test_model_registry.py \
                   scripts/manifest/test_eliza1_manifest.py \
                   scripts/manifest/test_eliza1_manifest_schema.py \
-                  scripts/test_prepare_eliza1_trajectory_dataset.py"
+                  scripts/test_prepare_eliza1_trajectory_dataset.py \
+                  scripts/test_build_eliza1_smoke_corpus.py \
+                  scripts/test_format_for_training_privacy.py \
+                  scripts/test_privacy_filter_trajectories.py \
+                  scripts/test_validate_corpus.py \
+                  scripts/test_train_local_low_vram_smoke.py \
+                  scripts/test_train_local_stage2_smoke.py \
+                  scripts/eval/test_eliza1_eval_suite.py \
+                  tests/rl/test_scenario_pool.py"
 
       - name: Corpus-quality chain end-to-end smoke
         # Synthesizer dry-runs → classifier → audit --strict-phases →

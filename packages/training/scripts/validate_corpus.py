@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Per-task_type schema validator for eliza training corpora.
 
-Handles two row shapes: the canonical `eliza_native_v1` boundary record
-(routed to validate_native_v1) and the legacy flat ElizaRecord intermediate
-(routed per metadata.task_type, below). See docs/dataset/CANONICAL_RECORD.md.
+Handles three row shapes: the canonical `eliza_native_v1` boundary record,
+the privacy-filtered message rows returned by `format_record`, and the legacy
+flat ElizaRecord intermediate. See docs/dataset/CANONICAL_RECORD.md.
 
 `scripts/lib/eliza_record.py:is_valid()` only enforces the FLOOR (top-level
 fields present, non-empty content). This script enforces the CEILING — what
@@ -97,6 +97,7 @@ from scripts.lib.native_record import (  # noqa: E402
     FORMAT as ELIZA_NATIVE_FORMAT,
     validate_native_record,
 )
+from scripts.format_for_training import format_record  # noqa: E402
 
 PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
 PRIVACY_ATTESTATION_VERSION = 1
@@ -212,6 +213,24 @@ def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
         except Exception as e:  # noqa: BLE001
             errs.append(("native_v1_render_error", repr(e)))
     return errs
+
+
+def validate_formatted_messages(rec: dict[str, Any]) -> list[tuple[str, str]]:
+    """Require the exact canonical, privacy-filtered message representation."""
+
+    formatted = format_record(rec)
+    if formatted is None:
+        return [(
+            "formatted_messages_invalid",
+            "message row is not accepted by format_record",
+        )]
+    if formatted != rec:
+        return [(
+            "formatted_messages_not_canonical",
+            "message row differs from format_record output; serialize the returned "
+            "object so normalization and privacy redaction cannot be bypassed",
+        )]
+    return []
 
 
 # task_types treated as `should_respond_with_context` for validation purposes.
@@ -621,6 +640,8 @@ def validate_record(rec: dict) -> list[tuple[str, str]]:
     # (roomName/currentMessage/expectedResponse/availableActions).
     if rec.get("format") == ELIZA_NATIVE_FORMAT:
         return validate_native_v1(rec)
+    if isinstance(rec.get("messages"), list):
+        return validate_formatted_messages(rec)
     md = rec.get("metadata") or {}
     task_type = md.get("task_type") or ""
     expected = rec.get("expectedResponse") or ""
