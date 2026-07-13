@@ -595,8 +595,10 @@ function ThreadDetailPane({
 
 export function CodingAgentTasksPanel({
   fullPage,
+  projectId: controlledProjectId,
 }: {
   fullPage?: boolean;
+  projectId?: string | null;
 } = {}) {
   const { t: appT, uiLanguage: appUiLanguage } = useAppSelectorShallow((s) => ({
     t: s.t,
@@ -616,7 +618,7 @@ export function CodingAgentTasksPanel({
   // across all projects (today's behavior).
   const [activeProjectId, setActiveProjectId] = useState<
     string | null | undefined
-  >(undefined);
+  >(controlledProjectId);
   const [loading, setLoading] = useState(true);
   const [mutating, setMutating] = useState(false);
   // The coding-agent endpoint is owned by the Node-only orchestrator plugin and
@@ -659,6 +661,12 @@ export function CodingAgentTasksPanel({
   }, []);
 
   useEffect(() => {
+    if (controlledProjectId !== undefined) {
+      setActiveProjectId(controlledProjectId);
+    }
+  }, [controlledProjectId]);
+
+  useEffect(() => {
     if (activeProjectId === undefined) return;
     let cancelled = false;
 
@@ -667,12 +675,16 @@ export function CodingAgentTasksPanel({
         setLoading(true);
       }
       try {
-        const nextThreads = await client.listCodingAgentTaskThreads({
+        const loadedThreads = await client.listCodingAgentTaskThreads({
           includeArchived: showArchived,
           search: deferredSearch || undefined,
           projectId: activeProjectId ?? undefined,
           limit: 30,
         });
+        const nextThreads =
+          controlledProjectId === null
+            ? loadedThreads.filter((thread) => thread.projectId === null)
+            : loadedThreads;
         if (cancelled) return;
         setLoadError(null);
         setMutationError(null);
@@ -731,7 +743,7 @@ export function CodingAgentTasksPanel({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [deferredSearch, showArchived, activeProjectId, t]);
+  }, [deferredSearch, showArchived, activeProjectId, controlledProjectId, t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -785,12 +797,16 @@ export function CodingAgentTasksPanel({
     setMutationError(null);
     try {
       await client.archiveCodingAgentTaskThread(selectedThread.id);
-      const nextThreads = await client.listCodingAgentTaskThreads({
+      const loadedThreads = await client.listCodingAgentTaskThreads({
         includeArchived: showArchived,
         search: deferredSearch || undefined,
         projectId: activeProjectId ?? undefined,
         limit: 30,
       });
+      const nextThreads =
+        controlledProjectId === null
+          ? loadedThreads.filter((thread) => thread.projectId === null)
+          : loadedThreads;
       setLoadError(null);
       setDetailError(null);
       setMutationError(null);
@@ -817,12 +833,16 @@ export function CodingAgentTasksPanel({
     setMutationError(null);
     try {
       await client.reopenCodingAgentTaskThread(selectedThread.id);
-      const nextThreads = await client.listCodingAgentTaskThreads({
+      const loadedThreads = await client.listCodingAgentTaskThreads({
         includeArchived: false,
         search: deferredSearch || undefined,
         projectId: activeProjectId ?? undefined,
         limit: 30,
       });
+      const nextThreads =
+        controlledProjectId === null
+          ? loadedThreads.filter((thread) => thread.projectId === null)
+          : loadedThreads;
       setLoadError(null);
       setDetailError(null);
       setMutationError(null);
@@ -912,7 +932,11 @@ export function CodingAgentTasksPanel({
           ) : (
             <span aria-hidden="true" />
           )}
-          <ProjectSwitcher onActiveProjectChange={handleActiveProjectChange} />
+          {controlledProjectId === undefined ? (
+            <ProjectSwitcher
+              onActiveProjectChange={handleActiveProjectChange}
+            />
+          ) : null}
         </div>
       ) : (
         <TaskListHeader
@@ -936,9 +960,11 @@ export function CodingAgentTasksPanel({
             ) : null
           }
           action={
-            <ProjectSwitcher
-              onActiveProjectChange={handleActiveProjectChange}
-            />
+            controlledProjectId === undefined ? (
+              <ProjectSwitcher
+                onActiveProjectChange={handleActiveProjectChange}
+              />
+            ) : null
           }
         />
       )}

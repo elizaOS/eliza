@@ -10,5 +10,6 @@
 export { Chat } from "./components/Chat";
 export { Pairing } from "./components/Pairing";
 export { PhoneCompanionApp } from "./components/PhoneCompanionApp";
+export { PhonePairingSettingsCard } from "./components/PhonePairingSettingsCard";
 export { RemoteSession } from "./components/RemoteSession";
 export * from "./services";

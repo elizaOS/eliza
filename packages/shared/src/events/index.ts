@@ -86,6 +86,8 @@ export const NAVIGATE_VIEW_EVENT = "eliza:navigate:view" as const;
 export type NavigateViewType = "gui" | "tui" | "xr";
 
 export interface NavigateViewDetail {
+  /** Correlates the request with the shell's applied-navigation callback. */
+  requestId?: string;
   viewId?: string;
   viewPath?: string | null;
   viewLabel?: string;
@@ -205,6 +207,8 @@ export const SHELL_NAVIGATE_VIEW_WS_EVENT = "shell:navigate:view" as const;
 export type ShellNavigateViewType = "gui" | "tui" | "xr";
 
 export interface ShellNavigateViewPayload {
+  /** Correlates an agent request with the shell's applied-navigation callback. */
+  requestId?: string;
   viewId?: string;
   viewPath?: string | null;
   viewLabel?: string;
@@ -244,6 +248,7 @@ export function normalizeShellNavigateViewPayload(
     : undefined;
 
   return {
+    requestId: readNonEmptyString(data.requestId),
     viewId: typeof data.viewId === "string" ? data.viewId : undefined,
     viewPath: typeof data.viewPath === "string" ? data.viewPath : undefined,
     viewLabel: typeof data.viewLabel === "string" ? data.viewLabel : undefined,

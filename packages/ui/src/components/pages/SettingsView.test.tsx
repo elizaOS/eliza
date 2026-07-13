@@ -35,6 +35,16 @@ const permissionPrimingMock = vi.hoisted(() => ({
 const crashControl = vi.hoisted(() => ({ shouldThrow: true }));
 const stubSections = vi.hoisted(() => [
   {
+    id: "character",
+    label: "settings.sections.character.label",
+    defaultLabel: "Character",
+    tone: "accent",
+    hue: "accent",
+    group: "agent",
+    titleKey: "settings.sections.character.label",
+    defaultTitle: "Character",
+  },
+  {
     id: "identity",
     label: "settings.sections.identity.label",
     defaultLabel: "Basics",
@@ -211,10 +221,29 @@ describe("SettingsView", () => {
     expect(header.textContent).toContain("Settings");
     // The hub lists a row per registered section; no section body is mounted
     // until a row is tapped.
+    expect(hubRow("character").textContent).toContain("Character");
     expect(hubRow("identity").textContent).toContain("Basics");
     expect(hubRow("runtime").textContent).toContain("Runtime");
     expect(screen.queryByTestId("stub-identity")).toBeNull();
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
+    const firstRow = hubList().querySelector(
+      '[data-testid^="settings-hub-row-"]',
+    );
+    expect(firstRow?.getAttribute("data-testid")).toBe(
+      "settings-hub-row-character",
+    );
+  });
+
+  it("opens Character as the first Settings subview", () => {
+    render(<SettingsView />);
+
+    fireEvent.click(hubRow("character"));
+
+    expect(screen.getByTestId("stub-character")).toBeTruthy();
+    expect(screen.getByTestId("view-header").textContent).toContain(
+      "Character",
+    );
+    expect(screen.queryByTestId("settings-hub-list")).toBeNull();
   });
 
   it("renders exactly ONE header and NO desktop w-60 rail", () => {

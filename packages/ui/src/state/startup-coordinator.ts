@@ -61,6 +61,7 @@ export type StartupState =
       attempts: number;
     }
   | { phase: "pairing-required" }
+  | { phase: "login-required" }
   | {
       phase: "first-run-required";
       /** true = server reachable, fetch options from it. false = first-run, use static options. */
@@ -107,13 +108,13 @@ export type StartupEvent =
   // Backend poll results
   | { type: "BACKEND_REACHED"; firstRunComplete: boolean }
   | { type: "BACKEND_AUTH_REQUIRED" }
+  | { type: "BACKEND_LOGIN_REQUIRED" }
   | { type: "BACKEND_UNAVAILABLE_FIRST_RUN" }
   | { type: "BACKEND_NOT_FOUND" }
   | { type: "BACKEND_TIMEOUT" }
   | { type: "BACKEND_POLL_RETRY" }
 
   // First-run
-  | { type: "FIRST_RUN_OPTIONS_LOADED" }
   | { type: "FIRST_RUN_COMPLETE" }
 
   // Agent runtime
@@ -199,6 +200,8 @@ export function startupReducer(
           };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
+        case "BACKEND_LOGIN_REQUIRED":
+          return { phase: "login-required" };
         case "BACKEND_UNAVAILABLE_FIRST_RUN":
           return {
             phase: "first-run-required",
@@ -246,10 +249,16 @@ export function startupReducer(
           return state;
       }
 
+    case "login-required":
+      switch (event.type) {
+        case "RETRY":
+          return { phase: "restoring-session" };
+        default:
+          return state;
+      }
+
     case "first-run-required":
       switch (event.type) {
-        case "FIRST_RUN_OPTIONS_LOADED":
-          return state;
         case "FIRST_RUN_COMPLETE":
           return {
             phase: "starting-runtime",
@@ -286,6 +295,8 @@ export function startupReducer(
           };
         case "BACKEND_AUTH_REQUIRED":
           return { phase: "pairing-required" };
+        case "BACKEND_LOGIN_REQUIRED":
+          return { phase: "login-required" };
         default:
           return state;
       }
@@ -501,6 +512,7 @@ export function isStartupTerminal(state: StartupState): boolean {
  */
 export function isShellPaintable(phase: StartupPhaseValue): boolean {
   return (
+    phase === "login-required" ||
     phase === "first-run-required" ||
     phase === "starting-runtime" ||
     phase === "hydrating" ||
@@ -511,7 +523,8 @@ export function isShellPaintable(phase: StartupPhaseValue): boolean {
 /**
  * Derive the legacy StartupPhase from the coordinator state.
  *
- * NOTE: pairing-required, first-run-required, error, and hydrating all map
+ * NOTE: pairing-required, login-required, first-run-required, error, and
+ * hydrating all map
  * to "ready" — this looks counterintuitive but is correct because App.tsx's
  * coordinator gate (`startupCoordinator.phase !== "ready"`) catches these
  * phases BEFORE the legacy startupPhase/startupStatus rendering logic runs.

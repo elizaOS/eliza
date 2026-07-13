@@ -39,6 +39,7 @@ import {
 } from "../api";
 import { isApiError } from "../api/client-types-core";
 import type { PromptOptions } from "../components/ui/confirm-dialog";
+import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import {
   loadBrowserEnabled,
@@ -79,6 +80,7 @@ export function useWalletState({
   characterName,
   hydrateServerConfig = true,
 }: WalletStateParams) {
+  const authenticated = useIsAuthenticated();
   // ── Feature toggles ────────────────────────────────────────────────
   // A capability toggle is a write that matters: if the server-side config
   // update fails silently, the running agent's capabilities diverge from what
@@ -137,7 +139,7 @@ export function useWalletState({
   // Server config (written by TOGGLE_CAPABILITY agent action) wins on
   // first load; localStorage remains a fallback for offline / stale.
   useEffect(() => {
-    if (!hydrateServerConfig) return;
+    if (!authenticated || !hydrateServerConfig) return;
     let cancelled = false;
     void client
       .getConfig()
@@ -170,7 +172,7 @@ export function useWalletState({
     return () => {
       cancelled = true;
     };
-  }, [hydrateServerConfig]);
+  }, [authenticated, hydrateServerConfig]);
 
   // ── Wallet / Inventory ─────────────────────────────────────────────
   const [walletAddresses, setWalletAddresses] =

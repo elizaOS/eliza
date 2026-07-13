@@ -3,7 +3,10 @@
  * everything else for the attacker-reachable CONNECT deep link. Pure, no harness.
  */
 import { describe, expect, it } from "vitest";
-import { isLoopbackGatewayHost } from "./use-startup-shell-controller";
+import {
+  isLoopbackGatewayHost,
+  shouldProbeCloudFirstRunSkip,
+} from "./use-startup-shell-controller";
 
 /**
  * The `connect` deep link is attacker-reachable; the CONNECT_EVENT handler only
@@ -31,5 +34,24 @@ describe("isLoopbackGatewayHost (connect-confirm exemption)", () => {
     // A host that merely starts with "127" but isn't the loopback block.
     expect(isLoopbackGatewayHost("http://127box.example/")).toBe(false);
     expect(isLoopbackGatewayHost("not a url")).toBe(false);
+  });
+});
+
+describe("shouldProbeCloudFirstRunSkip", () => {
+  const ready = {
+    authenticated: true,
+    cloudProvisioned: true,
+    serverReachable: true,
+    alreadyStarted: false,
+  };
+
+  it("starts only for an authenticated reachable Cloud first-run", () => {
+    expect(shouldProbeCloudFirstRunSkip(ready)).toBe(true);
+  });
+
+  it("does not call protected first-run routes before login", () => {
+    expect(
+      shouldProbeCloudFirstRunSkip({ ...ready, authenticated: false }),
+    ).toBe(false);
   });
 });

@@ -15,9 +15,23 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Pairing } from "./Pairing";
 
+const platform = vi.hoisted(() => ({ native: true, name: "ios" }));
 const elizaIntent = vi.hoisted(() => ({
   setPairingStatus: vi.fn(async () => ({ ok: true })),
 }));
+
+vi.mock("@capacitor/core", async () => {
+  const actual =
+    await vi.importActual<typeof import("@capacitor/core")>("@capacitor/core");
+  return {
+    ...actual,
+    Capacitor: {
+      ...actual.Capacitor,
+      isNativePlatform: () => platform.native,
+      getPlatform: () => platform.name,
+    },
+  };
+});
 
 vi.mock("../services", async () => {
   const actual =
@@ -42,6 +56,8 @@ describe("Pairing", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    platform.native = true;
+    platform.name = "ios";
   });
 
   it("pairs from a pasted full pairing payload", async () => {
@@ -55,10 +71,10 @@ describe("Pairing", () => {
 
     render(<Pairing onPaired={onPaired} onBack={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("Or paste payload"), {
+    fireEvent.change(screen.getByLabelText("Pairing code"), {
       target: { value: encodePayload(payload) },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Pair device" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pair" }));
 
     await waitFor(() => expect(onPaired).toHaveBeenCalledWith(payload));
     expect(elizaIntent.setPairingStatus).toHaveBeenCalledWith({
@@ -71,9 +87,9 @@ describe("Pairing", () => {
     const onPaired = vi.fn();
     render(<Pairing onPaired={onPaired} onBack={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Pair device" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pair" }));
 
-    await screen.findByText("Paste the pairing payload shown on your Mac.");
+    await screen.findByText("Paste a pairing code first.");
     expect(onPaired).not.toHaveBeenCalled();
     expect(elizaIntent.setPairingStatus).not.toHaveBeenCalled();
   });
@@ -82,17 +98,16 @@ describe("Pairing", () => {
     const onPaired = vi.fn();
     render(<Pairing onPaired={onPaired} onBack={vi.fn()} />);
 
-    fireEvent.change(screen.getByLabelText("Or paste payload"), {
+    fireEvent.change(screen.getByLabelText("Pairing code"), {
       target: { value: "%%% not base64 %%%" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Pair device" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pair" }));
 
     // The decode throw message bubbles into the error <p> (distinct from the
     // always-present hint <p>): after submit there are two paragraphs.
     await waitFor(() => {
       const paragraphs = Array.from(document.querySelectorAll("p"));
-      const hint =
-        "Scan the QR code shown in the Eliza desktop app, or paste its pairing payload manually.";
+      const hint = "Scan the code on your computer or paste it below.";
       const errorP = paragraphs.find((p) => p.textContent?.trim() !== hint);
       expect(errorP?.textContent && errorP.textContent.length > 0).toBe(true);
     });
@@ -107,13 +122,11 @@ describe("Pairing", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the native-only error when Scan QR is pressed on web", async () => {
-    // Under jsdom, Capacitor.isNativePlatform() is false (web), so the scan
-    // handler hits the web fallback branch.
+  it("does not expose pairing controls outside native iOS", async () => {
+    platform.native = false;
+    platform.name = "web";
     render(<Pairing onPaired={vi.fn()} onBack={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: "Scan QR code" }));
-    await screen.findByText(
-      "Camera scan requires the iOS native runtime. Paste the code below.",
-    );
+    await screen.findByText("Phone pairing is available in the Eliza iOS app.");
+    expect(screen.queryByRole("button", { name: "Pair" })).toBeNull();
   });
 });

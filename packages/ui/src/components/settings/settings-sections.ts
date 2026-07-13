@@ -11,6 +11,7 @@
 import {
   Archive,
   BellRing,
+  Bluetooth,
   Bot,
   Brain,
   Cloud,
@@ -27,6 +28,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   User,
+  UserRound,
   Wallet,
   Wallpaper,
   Webhook,
@@ -69,6 +71,11 @@ const IdentitySettingsSection = lazy(() =>
     default: m.IdentitySettingsSection,
   })),
 );
+const CharacterSettingsSection = lazy(() =>
+  import("../character/CharacterEditor").then((m) => ({
+    default: m.CharacterSettingsSection,
+  })),
+);
 const ProviderSwitcher = lazy(() =>
   import("./ProviderSwitcher").then((m) => ({ default: m.ProviderSwitcher })),
 );
@@ -106,6 +113,11 @@ const BackgroundSettingsSection = lazy(() =>
 const WebPushSettingsSection = lazy(() =>
   import("./WebPushSettingsSection").then((m) => ({
     default: m.WebPushSettingsSection,
+  })),
+);
+const PeripheralsSection = lazy(() =>
+  import("./PeripheralsSection").then((m) => ({
+    default: m.PeripheralsSection,
   })),
 );
 const RemotePluginHostSection = lazy(() =>
@@ -284,6 +296,18 @@ function nonCatalogMeta(id: NonCatalogSettingsSectionId) {
  */
 const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
   {
+    id: "character",
+    defaultLabel: "Character",
+    group: "agent",
+    aliases: ["persona", "personality"],
+    icon: UserRound,
+    tone: "accent",
+    hue: "accent",
+    labelKey: "settings.sections.character.label",
+    bodyClassName: "min-h-0",
+    Component: CharacterSettingsSection,
+  },
+  {
     id: "identity",
     defaultLabel: "Basics",
     group: "agent",
@@ -396,6 +420,17 @@ const BUILTIN_SECTION_DEFINITIONS: readonly BuiltinSectionDefinition[] = [
     hue: "accent",
     labelKey: "settings.sections.notifications.label",
     Component: WebPushSettingsSection,
+  },
+  {
+    id: "peripherals",
+    defaultLabel: "Peripherals",
+    group: "system",
+    aliases: ["bluetooth", "devices", "pairing", "accessories"],
+    icon: Bluetooth,
+    tone: "neutral",
+    hue: "slate",
+    labelKey: "settings.sections.peripherals.label",
+    Component: PeripheralsSection,
   },
   {
     id: "runtime",

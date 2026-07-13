@@ -12,10 +12,10 @@
  *      compat click after a long press passed the `!editing` guard and
  *      ghost-launched the tile).
  *   2. Inline notification inbox (`home-notification-center`, rendered directly
- *      on the home column) — a seeded inbox renders its rows; a row tap marks it
- *      read IN PLACE (order ignores read state, so the row never moves under the
- *      pointer); the per-row hover-X and the right-click menu each dismiss; there
- *      is no bulk clear-all.
+ *      on the home column) — priority mode is stable under row drag/wheel input,
+ *      the persistent mode toggle alone reveals the quiet digest, a row tap
+ *      acknowledges/removes the row, and obsolete clear/collapse chrome stays
+ *      absent.
  *   3. Chat sheet flick/drag detents — a fast upward flick on the grabber
  *      snaps the sheet open; a slow sub-threshold drag leaves it closed.
  *   4. Drag-through prevention — dragging the sheet grabber must not deliver
@@ -167,12 +167,11 @@ interface SeededNotification {
 }
 
 /**
- * Eight rows spanning the priority tiers. Priority + recency fix the dashboard
- * order exactly (urgent → high → normals newest-first); the two READ rows are
- * deliberately interleaved ABOVE unread ones ("Sync report" outranks "Weekly
- * digest" on recency) to prove read state never participates in the sort. No
- * row carries a deepLink, so a tap is exactly "mark read". (The pan-scroll test
- * needs an overflowing list and seeds its own taller fixture below.)
+ * Eight rows spanning the priority tiers. Each row uses a distinct producer so
+ * all mode reveals eight flat cards; producer-stack behavior has its own browser
+ * harness. Priority + recency fix the order exactly (urgent → high → normals
+ * newest-first). No row carries a deep link, so tapping it acknowledges/removes
+ * it without navigating.
  */
 function seedInboxNotifications(): SeededNotification[] {
   const base = Date.now();
@@ -188,7 +187,7 @@ function seedInboxNotifications(): SeededNotification[] {
     body: `${title} — seeded by gesture-matrix`,
     category: "system",
     priority,
-    source: "ui-smoke",
+    source: `ui-smoke-${id}`,
     createdAt: base - ageMs,
     readAt,
   });
@@ -219,12 +218,9 @@ const SEEDED_ORDER = [
 const OVERFLOW_ROWS = 24;
 
 /**
- * A deliberately tall inbox for the pan-scroll test. The inline center fills the
- * home column (flex-1, no fixed height cap), so on a tall phone viewport the
- * 8-row fixture fits without overflow and there is nothing to scroll. Seed
- * enough rows — one interrupt-tier so the rested shade arms its expand
- * affordance, the rest sub-interrupt — that the EXPANDED list always exceeds the
- * column and has real scroll travel to pan.
+ * A deliberately tall inbox for the pan-scroll test. The component owns a
+ * bounded max-height native scrollport, so distinct producers guarantee that
+ * explicit all mode exceeds the cap and has real scroll travel to pan.
  */
 function seedOverflowInboxNotifications(): SeededNotification[] {
   const base = Date.now();
@@ -235,7 +231,7 @@ function seedOverflowInboxNotifications(): SeededNotification[] {
       body: "Payment failed — seeded by gesture-matrix",
       category: "system",
       priority: "urgent",
-      source: "ui-smoke",
+      source: "ui-smoke-urgent",
       createdAt: base - 10_000,
       readAt: null,
     },
@@ -247,7 +243,7 @@ function seedOverflowInboxNotifications(): SeededNotification[] {
       body: `Notice ${i} — seeded by gesture-matrix`,
       category: "system",
       priority: "normal",
-      source: "ui-smoke",
+      source: `ui-smoke-fill-${i}`,
       createdAt: base - 20_000 - i * 1_000,
       readAt: null,
     });
@@ -261,7 +257,7 @@ function seedOverflowInboxNotifications(): SeededNotification[] {
  * matches the most recently registered route first. The mutation verbs must
  * answer success: the notification store mutates optimistically and REVERTS on
  * a failed write, so a 501 from the booted zero-key stack would roll every
- * mark-read/dismiss/clear back and the assertions below would (correctly) fail.
+ * acknowledgement/dismiss back and the assertions below would correctly fail.
  */
 async function installSeededInboxRoutes(
   page: Page,
@@ -320,111 +316,104 @@ async function rowTitleOrder(center: Locator): Promise<string[]> {
 }
 
 /**
- * Fan the rested shade open so every seeded row renders flat. The inbox is
- * priority-triaged: at rest only interrupt-tier rows (high/urgent) show,
- * Z-stacked by view group, so a mixed-priority seed collapses to a single
- * visible row. The notification-count button is the keyboard-accessible form
- * of the same pull-to-expand transition, fanning all rows out.
+ * Reveal the quiet digest through the sole whole-inbox transition control.
  */
-async function expandNotificationShade(page: Page): Promise<void> {
-  await page.getByTestId("notifications-count-button").click();
+async function showAllNotifications(page: Page): Promise<void> {
+  await page.getByTestId("notifications-mode-toggle").click();
   await expect(page.getByTestId("home-notification-list")).toHaveAttribute(
-    "data-shade-mode",
-    "expanded",
+    "data-inbox-mode",
+    "all",
+  );
+  await expect(page.getByTestId("notifications-mode-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "true",
   );
 }
 
-test("dashboard notification center: row tap marks read in place, hover-X dismiss removes, context menu dismisses, no clear-all", async ({
+test("dashboard notification center: persistent toggle alone changes mode and row tap acknowledges", async ({
   page,
 }, testInfo) => {
-  // The hover-X and right-click paths are MOUSE affordances (the X is
-  // `pointer-coarse:hidden`; touch has no right-click). The touch equivalents —
-  // sideways swipe + long-press menu — are covered by the real-touch describe
-  // below, so this pointer test only runs on the non-touch projects.
   test.skip(
     Boolean(testInfo.project.use?.hasTouch),
-    "mouse-pointer paths (hover-X, right-click); touch paths live in the real-touch describe",
+    "mouse-pointer mode ownership; touch dismissal lives in the real-touch describe",
   );
   await installSeededInboxRoutes(page, seedInboxNotifications());
   await openHome(page);
 
-  // (a) The inbox renders INLINE on the home column (no shade, no hint pill):
-  // it carries every seeded row in priority-bucket-then-recency order, and the
-  // unread badge counts the six unread rows.
+  // (a) The inbox renders inline in priority mode. Only interrupt-tier rows are
+  // present; the persistent mode button reports the six quiet rows.
   const center = page.getByTestId("home-notification-center");
   await expect(center).toBeVisible({ timeout: 15_000 });
-  // Inline on the same layer — inside the home scroller, not a portal shade.
   await expect(page.getByTestId("notifications-shade")).toHaveCount(0);
   await expect(
     page.getByTestId("home-screen").getByTestId("home-notification-center"),
   ).toBeVisible();
-  await expect(center.getByTestId("notification-row")).toHaveCount(8, {
+  await expect(center.getByTestId("notification-row")).toHaveCount(2, {
     timeout: 15_000,
   });
-  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
-    "6",
+  await expect(center.getByTestId("home-notification-list")).toHaveAttribute(
+    "data-inbox-mode",
+    "priority",
   );
-  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
+  await expect(center.getByTestId("notifications-mode-toggle")).toContainText(
+    "6 More",
+  );
+  await expect(center.getByTestId("notifications-mode-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   await evidenceShot(page, "notification-center-seeded");
 
-  // (b) Tapping a row marks it read WITHOUT moving it. The tapped row is the
-  // top (urgent, unread) one — under an unread-first inbox sort it would sink
-  // below the six remaining unread rows, so an identical order is a real
-  // no-reshuffle proof, not a tautology.
+  // (b) Ordinary mouse drag/wheel input over a flat priority row never toggles
+  // the whole inbox. These remain row/native-scroll gestures.
+  const urgentSwipe = center
+    .getByTestId("notification-row")
+    .filter({ hasText: "Payment failed" })
+    .locator("xpath=..");
+  await mousePointerDrag(page, urgentSwipe, 2, 70, { steps: 8 });
+  await urgentSwipe.hover();
+  await page.mouse.wheel(0, 80);
+  await expect(center.getByTestId("home-notification-list")).toHaveAttribute(
+    "data-inbox-mode",
+    "priority",
+  );
+
+  // (c) Only the explicit persistent control reveals all priorities. It stays
+  // mounted as the collapse control and no separate clear/collapse chrome
+  // reappears.
+  await showAllNotifications(page);
+  await expect(center.getByTestId("notification-row")).toHaveCount(8);
+  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
+  await expect(center.getByTestId("notifications-mode-toggle")).toContainText(
+    "Show Less",
+  );
+  await expect(center.getByTestId("notifications-clear-all")).toHaveCount(0);
+  await expect(center.getByTestId("notifications-collapse")).toHaveCount(0);
+
+  // (d) Platform-shade acknowledgement removes a destination-less row. The
+  // tap must not navigate or open chat.
   const urgentRow = center
     .getByTestId("notification-row")
     .filter({ hasText: "Payment failed" });
-  await expect(urgentRow).toHaveAttribute("data-unread", "true");
   await urgentRow.click();
-  await expect(urgentRow).not.toHaveAttribute("data-unread", "true", {
-    timeout: 10_000,
-  });
-  await expect(center.getByTestId("notifications-unread-badge")).toHaveText(
-    "5",
-  );
-  expect(await rowTitleOrder(center)).toEqual(SEEDED_ORDER);
-  // The tap had no deepLink: the home surface must not have navigated.
+  await expect(urgentRow).toHaveCount(0, { timeout: 10_000 });
+  await expect(center.getByTestId("notification-row")).toHaveCount(7);
   await expect(page.getByTestId("home-screen")).toBeVisible();
   await expect(page.getByTestId("continuous-chat-overlay")).not.toHaveAttribute(
     "data-open",
     "true",
   );
-  await evidenceShot(page, "notification-center-row-read-in-place");
+  await evidenceShot(page, "notification-center-row-acknowledged");
 
-  // (c) The per-row X removes exactly that row.
-  await center
-    .locator("li[data-notif-row]")
-    .filter({ hasText: "Approval needed" })
-    .getByTestId("notification-row-dismiss")
-    .click();
-  await expect(
-    center
-      .getByTestId("notification-row")
-      .filter({ hasText: "Approval needed" }),
-  ).toHaveCount(0, { timeout: 10_000 });
-  await expect(center.getByTestId("notification-row")).toHaveCount(7);
-
-  // (d) There is no bulk clear-all trash button any more — rows are dismissed
-  // one at a time. The right-click contextual menu is a second per-row path:
-  // open it on a remaining row and dismiss from it.
-  await expect(center.getByTestId("notifications-clear-all")).toHaveCount(0);
-  // Right-click the row button; the contextmenu bubbles to the row li, which
-  // opens the menu.
-  const menuTarget = center
-    .getByTestId("notification-row")
-    .filter({ hasText: "Payment failed" });
-  await menuTarget.click({ button: "right" });
-  await expect(page.getByTestId("notification-row-menu")).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.getByTestId("notification-menu-dismiss").click();
-  await expect(
-    center
-      .getByTestId("notification-row")
-      .filter({ hasText: "Payment failed" }),
-  ).toHaveCount(0, { timeout: 10_000 });
-  await expect(center.getByTestId("notification-row")).toHaveCount(6);
-  await evidenceShot(page, "notification-center-row-menu-dismiss");
+  await center.getByTestId("notifications-mode-toggle").click();
+  await expect(center.getByTestId("home-notification-list")).toHaveAttribute(
+    "data-inbox-mode",
+    "priority",
+  );
+  await expect(center.getByTestId("notifications-mode-toggle")).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
 });
 
 test("chat sheet: fast flick snaps open, slow sub-threshold drag stays closed, and the drag never leaks under the sheet", async ({
@@ -534,26 +523,27 @@ test.describe("real touch (hasTouch project)", () => {
     await installSeededInboxRoutes(page, seedOverflowInboxNotifications());
     await openHome(page);
 
-    // Fan the shade out and seed a tall inbox so the home-screen scroller
-    // genuinely overflows — the column CAN scroll, which makes the containment
-    // assertion below meaningful rather than vacuous.
+    // Use the explicit mode toggle and a tall inbox so the bounded notification
+    // list genuinely overflows. This makes native-scroll containment meaningful
+    // rather than vacuous.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
-    await expandNotificationShade(page);
+    await showAllNotifications(page);
     const list = page.getByTestId("home-notification-list");
     await expect(list.getByTestId("notification-row")).toHaveCount(
       OVERFLOW_ROWS,
       { timeout: 15_000 },
     );
-    const homeScreen = page.getByTestId("home-screen");
-    const overflows = await homeScreen.evaluate(
+    const listOverflows = await list.evaluate(
       (el) => el.scrollHeight > el.clientHeight + 8,
     );
     expect(
-      overflows,
-      "seeded home column must overflow so containment is not vacuous",
+      listOverflows,
+      "bounded notification list must overflow so containment is not vacuous",
     ).toBe(true);
+    const homeScreen = page.getByTestId("home-screen");
     const homeScrollBefore = await homeScreen.evaluate((el) => el.scrollTop);
+    const listScrollBefore = await list.evaluate((el) => el.scrollTop);
 
     // Genuine touch pan UP over the notification list (a slight horizontal
     // wobble, like a real finger). The list is `overscroll-y-contain`, so the pan
@@ -564,20 +554,23 @@ test.describe("real touch (hasTouch project)", () => {
     await cdpTouchDrag(page, list, 4, -160, 10);
     await page.waitForTimeout(400);
 
-    // Rail did not flip; the home column beneath did not scroll (the pan was
-    // contained); every seeded row is still present and none expanded its option
-    // strip (a tap would expand `notification-row-options`); the chat overlay
-    // stayed closed.
+    // Rail did not flip; the home column beneath did not scroll; the bounded
+    // list itself did scroll; every seeded row remains and the explicit toggle
+    // still owns all mode. The chat overlay stayed closed.
     await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
       "data-page",
       "home",
     );
     const homeScrollAfter = await homeScreen.evaluate((el) => el.scrollTop);
     expect(homeScrollAfter).toBe(homeScrollBefore);
+    const listScrollAfter = await list.evaluate((el) => el.scrollTop);
+    expect(listScrollAfter).toBeGreaterThan(listScrollBefore);
     await expect(list.getByTestId("notification-row")).toHaveCount(
       OVERFLOW_ROWS,
     );
-    await expect(center.getByTestId("notification-row-options")).toHaveCount(0);
+    await expect(
+      center.getByTestId("notifications-mode-toggle"),
+    ).toHaveAttribute("aria-expanded", "true");
     await expect(
       page.getByTestId("continuous-chat-overlay"),
     ).not.toHaveAttribute("data-open", "true");
@@ -597,12 +590,11 @@ test.describe("real touch (hasTouch project)", () => {
 
     await installSeededInboxRoutes(page, seedInboxNotifications());
     await openHome(page);
-    // The inbox is inline on the home column — no shade to open.
+    // The inbox is inline on the home column.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
-    // Fan the priority-triaged shade out so the sub-interrupt "Backup finished"
-    // row is present to swipe (rested it stays stacked behind the top card).
-    await expandNotificationShade(page);
+    // The explicit mode toggle reveals the quiet "Backup finished" row.
+    await showAllNotifications(page);
     await expect(center.getByTestId("notification-row")).toHaveCount(8, {
       timeout: 15_000,
     });

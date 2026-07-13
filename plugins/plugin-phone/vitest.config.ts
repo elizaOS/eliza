@@ -59,6 +59,10 @@ export default defineConfig({
         replacement: resolve(rootDir, "test/stubs/ui-tabs.tsx"),
       },
       {
+        find: /^@elizaos\/ui\/components\/settings\/settings-layout$/,
+        replacement: resolve(rootDir, "test/stubs/ui.tsx"),
+      },
+      {
         find: /^@elizaos\/ui\/components\/permissions\/PermissionRecoveryCallout$/,
         replacement: resolve(
           rootDir,

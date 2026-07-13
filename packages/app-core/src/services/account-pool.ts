@@ -35,7 +35,6 @@ import {
   DIRECT_ACCOUNT_PROVIDER_IDS,
   type DirectAccountProvider,
   isSubscriptionProvider,
-  type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import {
   type AnthropicAccountPoolBridge,
@@ -739,15 +738,6 @@ async function deleteAccountMeta(
 let cachedDefaultPool: AccountPool | null = null;
 let defaultSelectionConfig: AccountPoolSelectionConfig = {};
 
-function normalizeStrategy(value: unknown): Strategy | undefined {
-  return value === "priority" ||
-    value === "round-robin" ||
-    value === "least-used" ||
-    value === "quota-aware"
-    ? value
-    : undefined;
-}
-
 function normalizeAccountIdsFromRoute(
   route: AccountPoolSelectionRoute | undefined,
 ): string[] | undefined {
@@ -782,10 +772,10 @@ function routeTargetsProvider(
 }
 
 /**
- * Live read of the configured per-provider selection (the app's
- * `config.accountStrategies` picker plus any llmText service-routing pin).
- * Every account-selecting bridge resolves through this so the picker steers
- * all of them — including the coding-agent bridge.
+ * Live read of the provider selection. Account pools deliberately have one
+ * predictable policy: every enabled healthy account rotates round-robin.
+ * Service routing may still restrict the eligible account ids, but it cannot
+ * silently turn the pool back into a primary/backup priority list.
  */
 export function selectionForProvider(providerId: PoolProviderId): {
   strategy?: Strategy;
@@ -794,14 +784,11 @@ export function selectionForProvider(providerId: PoolProviderId): {
   const route = defaultSelectionConfig.serviceRouting?.llmText;
   const routeSelection = routeTargetsProvider(route, providerId)
     ? {
-        strategy: normalizeStrategy(route?.strategy),
         accountIds: normalizeAccountIdsFromRoute(route),
       }
     : {};
   return {
-    strategy:
-      routeSelection.strategy ??
-      normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId]),
+    strategy: "round-robin",
     accountIds: routeSelection.accountIds,
   };
 }

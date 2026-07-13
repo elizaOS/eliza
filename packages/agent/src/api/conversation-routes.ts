@@ -2706,7 +2706,6 @@ export async function handleConversationRoutes(
           onSnapshot: (text) => {
             if (!text) return;
             if (
-              !streamedText ||
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {

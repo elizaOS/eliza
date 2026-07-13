@@ -85,7 +85,6 @@ import {
 } from "../../state/ChatComposerContext.hooks";
 import { useConversationMessages } from "../../state/ConversationMessagesContext.hooks";
 import { loadOlderConversationMessages } from "../../state/load-older-conversation-messages";
-import { goHome, goLauncher } from "../../state/shell-surface-store";
 import { useViewChatBinding } from "../../state/view-chat-binding";
 import { tryHandleTutorialText } from "../../tutorial/tutorial-action-channel";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -3808,8 +3807,8 @@ export function ContinuousChatOverlay({
     return () => window.removeEventListener("click", onClick, true);
   }, []);
 
-  // The backdrop is visual-only while the sheet is open so launcher/home drags
-  // can hit the real HomeLauncherSurface underneath. This document-level tap
+  // The backdrop is visual-only while the sheet is open so the unified home can
+  // keep its own vertical scrolling. This document-level tap
   // detector preserves the old "tap outside to collapse" behavior without
   // stealing horizontal swipes or vertical scroll from the background.
   React.useEffect(() => {
@@ -4363,20 +4362,16 @@ export function ContinuousChatOverlay({
     onStart: resetPullPeak,
     onDrag: onDragOffset,
     onDragReset: settleDrag,
-    // Horizontal swipe carries two meanings by sheet state: collapsed, it is
-    // the home↔launcher rail nav; with the sheet OPEN, dragging the chat
-    // sideways (either direction) DISMISSES it — collapse to the pill, the
-    // shared "put the chat away" landing.
-    swipeEnabled: true,
+    // A horizontal swipe only dismisses an OPEN chat. The old collapsed-state
+    // home↔launcher swipe is gone because apps now live in the vertical home.
+    swipeEnabled: sheetOpen,
     onSwipeLeft: () => {
       settleDrag();
-      if (sheetOpen) collapseToPill();
-      else goLauncher();
+      collapseToPill();
     },
     onSwipeRight: () => {
       settleDrag();
-      if (sheetOpen) collapseToPill();
-      else goHome();
+      collapseToPill();
     },
     // Flicks step one detent; released drags from the collapsed input honor the
     // live height so a long pull can land full instead of snapping back to half.

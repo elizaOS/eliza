@@ -144,4 +144,34 @@ describe("CodingAgentTasksPanel project switcher integration", () => {
       limit: 30,
     });
   });
+
+  it("accepts a controlled project scope without mounting the legacy switcher", async () => {
+    render(<CodingAgentTasksPanel fullPage projectId="proj-b" />);
+
+    await waitFor(() =>
+      expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledTimes(1),
+    );
+    expect(calls.listProjects).not.toHaveBeenCalled();
+    expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledWith({
+      includeArchived: false,
+      search: undefined,
+      projectId: "proj-b",
+      limit: 30,
+    });
+  });
+
+  it("loads all threads for the controlled Unassigned scope before filtering null project ids", async () => {
+    render(<CodingAgentTasksPanel fullPage projectId={null} />);
+
+    await waitFor(() =>
+      expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledTimes(1),
+    );
+    expect(calls.listProjects).not.toHaveBeenCalled();
+    expect(calls.listCodingAgentTaskThreads).toHaveBeenCalledWith({
+      includeArchived: false,
+      search: undefined,
+      projectId: undefined,
+      limit: 30,
+    });
+  });
 });

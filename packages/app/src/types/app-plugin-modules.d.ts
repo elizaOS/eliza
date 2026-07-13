@@ -89,6 +89,7 @@ declare module "@elizaos/plugin-blocker" {
 
 declare module "@elizaos/app-phone" {
   export const PhoneCompanionApp: EmptyComponent;
+  export const PhonePairingSettingsCard: EmptyComponent;
 }
 
 declare module "@elizaos/plugin-phone" {

@@ -136,7 +136,7 @@ const NAVIGATE_COMMANDS: CommandDefinition[] = [
 		scope: "both",
 		category: "docks",
 		icon: "check-square",
-		target: { kind: "navigate", path: "/apps/tasks", tab: "tasks" },
+		target: { kind: "navigate", path: "/projects", tab: "projects" },
 	},
 	{
 		key: "skills",

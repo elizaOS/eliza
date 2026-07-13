@@ -2,9 +2,10 @@
 
 | File | What it does |
 |------|--------------|
-| `use-first-run-conductor.ts` | Headless in-chat conductor that seeds first-run chat turns, routes `__first_run__:` choices, and answers typed free text with a local echo persona. |
-| `first-run-action-channel.ts` | The seam the chat send funnel consults: `__first_run__:` picks and (during onboarding) free text route to the conductor, never the server. |
-| `first-run-finish.ts` | Single headless finish use case: runtime startup, cloud/remote binding, and exactly-once `/api/first-run` persistence. |
+| `first-run-flow.ts` | Typed onboarding phases plus the single phase/action routing table. |
+| `use-first-run-conductor.ts` | Headless in-chat conductor that seeds first-run chat turns and routes `__first_run__:` choices. |
+| `first-run-action-channel.ts` | The seam the chat send funnel consults to reserve and route `__first_run__:` choices without sending their sentinel values to the agent. |
+| `first-run-finish.ts` | Single headless finish use case: local runtime startup, Cloud binding, and guarded `/api/first-run` persistence where the target owns that route. |
 | `first-run.ts` | Deterministic first-run state helpers and submit payload builder. |
 | `reload-into-first-run-runtime.ts` | Runtime-switch URL and storage reset helper used by Settings. |
 | `deep-link-handler.ts` | Mobile deep-link adapter for selecting first-run runtime targets. |
@@ -18,18 +19,10 @@ surface: pinned FULL with an **opaque `bg-bg` backdrop** that hides the
 launcher/home behind it, every collapse path a no-op, and a one-shot
 auto-collapse — with the backdrop fading to the normal scrim — on completion.
 
-The composer is **unlocked** (#12178, a deliberate reversal of the #9952
-onboarding lock): the user can type freely with the placeholder "Ask me anything
-— or pick an option". Before a runtime is chosen, typed text is answered by the
-conductor's local echo persona (a friendly not-ready line that varies by flow
-position) and never reaches the server — the AppContext send funnel enforces
-that via `classifyActionMessage` → `"conductor"` → `tryHandleFirstRunText`. The
-one exception (#14103): once the user has picked Cloud and the dedicated agent
-is provisioning behind a ready bootstrap bridge (`cloudProvisionedContainer`),
-the funnel classifies free text as `"send"` so the first real message reaches
-the bootstrap-bridge agent instead of the canned setup copy. Attach and mic stay
-disabled (no agent to serve media yet); the seeded CHOICE/OAuth widgets remain
-the primary input. The full contract (and which seam enforces each
-guarantee) is documented in
+The composer is **locked** while onboarding is active. The user advances with
+the seeded CHOICE/OAuth widgets; free text, attachments, microphone input,
+slash commands, and other chat sends remain unavailable until setup completes.
+This keeps first-run on one input path instead of maintaining a second local
+echo conversation before an agent is ready. The full contract is documented in
 [`IN_CHAT_ONBOARDING_DESIGN.md`](./IN_CHAT_ONBOARDING_DESIGN.md) and covered by
 `../components/shell/ContinuousChatOverlay.firstrun.test.tsx`.

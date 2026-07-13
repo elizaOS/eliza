@@ -26,6 +26,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   clearWorkspaceFolderConfig,
+  setActiveProject,
+  upsertProject,
   writeWorkspaceFolderConfig,
 } from "@elizaos/core";
 import Electrobun, {
@@ -2656,9 +2658,15 @@ X-GNOME-Autostart-enabled=true
     // separate copy for its own UX (button states, re-prompt logic).
     try {
       writeWorkspaceFolderConfig({ path: selectedPath, bookmark });
+      const project = upsertProject({
+        name: path.basename(selectedPath),
+        localPath: selectedPath,
+        bookmark,
+      });
+      setActiveProject(project.id);
     } catch (err) {
       logger.warn(
-        `[desktop:pickWorkspaceFolder] writeWorkspaceFolderConfig failed: ${
+        `[desktop:pickWorkspaceFolder] project write-through failed: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );

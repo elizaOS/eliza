@@ -212,7 +212,7 @@ describe("handleNotificationRoute", () => {
     expect(service.list()).toHaveLength(0);
   });
 
-  it("POST dev/seed paints the demo spread (groupKey pair collapses)", async () => {
+  it("POST dev/seed returns the canonical deduplicated demo inbox", async () => {
     const previousNodeEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = "development";
     try {
@@ -232,13 +232,14 @@ describe("handleNotificationRoute", () => {
         number,
       ];
       expect(status).toBe(201);
-      expect(payload.count).toBe(DEV_SEED_NOTIFICATIONS.length);
+      expect(payload.count).toBe(DEV_SEED_NOTIFICATIONS.length - 1);
       // Every priority tier is represented in the seed.
       const priorities = new Set(payload.notifications.map((n) => n.priority));
       expect(priorities).toEqual(new Set(["low", "normal", "high", "urgent"]));
-      // The same-groupKey pair collapsed: the inbox holds one fewer row than
-      // the seed emitted, and only the later deploy update survives.
+      // The response and persisted inbox both expose the same deduplicated
+      // snapshot; clients never briefly render the superseded deploy row.
       const inbox = service.list();
+      expect(payload.notifications).toEqual(inbox);
       expect(inbox).toHaveLength(DEV_SEED_NOTIFICATIONS.length - 1);
       const deploys = inbox.filter((n) => n.groupKey === "dev-seed:deploy");
       expect(deploys).toHaveLength(1);

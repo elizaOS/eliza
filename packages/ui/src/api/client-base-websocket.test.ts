@@ -112,6 +112,16 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls[0]).toContain("token=agent-token");
   });
 
+  it("opens same-origin websocket on a browser hostname without an explicit port", () => {
+    const createdUrls = stubWebSocket();
+    const client = new ElizaClient();
+
+    client.connectWs();
+
+    expect(createdUrls).toHaveLength(1);
+    expect(createdUrls[0]).toContain("wss://localhost/ws?");
+  });
+
   it("does not open mixed-content ws from an https origin", () => {
     const createdUrls = stubWebSocket();
 

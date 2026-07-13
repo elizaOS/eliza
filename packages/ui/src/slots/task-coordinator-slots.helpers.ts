@@ -19,6 +19,10 @@ export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<
 
 export interface TaskCoordinatorCodingAgentTasksPanelProps {
   fullPage?: boolean;
+  /** Controlled project scope. A string filters to that project; null shows
+   * only tasks that have not been assigned to a project. Omit for the legacy
+   * all-projects panel with its own switcher. */
+  projectId?: string | null;
 }
 
 export type TaskCoordinatorCodingAgentControlChipProps = Record<string, never>;

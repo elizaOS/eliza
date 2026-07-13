@@ -168,9 +168,9 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "tasks app window",
-    path: "/apps/tasks",
-    selector: '[data-testid="tasks-view"]',
+    name: "projects app window",
+    path: "/projects",
+    selector: '[data-testid="projects-view"]',
     timeoutMs: 90_000,
   },
   {

@@ -82,7 +82,7 @@ describe("uiWidgetsProvider — marker vocabulary (common path)", () => {
       expect(line).toMatch(/^.+=.+$/);
     }
     expect(text).toContain("reply:");
-    expect(text).toContain("navigate:/apps/tasks");
+    expect(text).toContain("navigate:/projects");
     expect(text).toContain("prompt:");
   });
 

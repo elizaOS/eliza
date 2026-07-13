@@ -6,7 +6,6 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { useEffect, useRef, useState } from "react";
 import { ShaderBackground } from "../../backgrounds/ShaderBackground";
 import type { ViewEntry } from "../../hooks/view-catalog";
-import type { HomeLauncherPage } from "../../state/shell-surface-store";
 import { MockAppProvider } from "../../storybook/mock-providers";
 import {
   HOME_WIDGET_MOCK_PLUGINS,
@@ -14,12 +13,11 @@ import {
   seedHomeWidgetNotifications,
 } from "../../widgets/__fixtures__/home-widget-mock-data";
 import { Launcher } from "../pages/Launcher";
-import { HomeLauncherSurface } from "./HomeLauncherSurface";
 import { HomeScreen } from "./HomeScreen";
 
 // The consolidated /chat home (#9143): the REAL HomeScreen mounting the REAL
 // unified home-slot WidgetHost AND the pinned NotificationsHomeCenter, paired
-// with the Launcher as the two pages of HomeLauncherSurface. The per-plugin
+// with the complete Launcher grid inline below notifications. The per-plugin
 // home widgets (calendar / goals / finances / health / relationships / inbox)
 // are the genuine widget components and the notification center reads the
 // seeded notification store — no stubbing of WidgetHost or the widgets
@@ -42,7 +40,6 @@ function viewEntry(id: string, label: string, icon: string): ViewEntry {
 }
 
 const LAUNCHER_TILES: ViewEntry[] = [
-  viewEntry("character", "Character", "UserRound"),
   viewEntry("automations", "Automations", "Clock"),
   viewEntry("wallet", "Wallet", "Wallet"),
   viewEntry("contacts", "Contacts", "UsersRound"),
@@ -77,13 +74,7 @@ function HomeWidgetData({
   return <>{children}</>;
 }
 
-function HomeDashboard({
-  initialPage = "home",
-  seed = true,
-}: {
-  initialPage?: HomeLauncherPage;
-  seed?: boolean;
-}) {
+function HomeDashboard({ seed = true }: { seed?: boolean }) {
   return (
     <MockAppProvider
       value={{
@@ -94,10 +85,12 @@ function HomeDashboard({
       <HomeWidgetData seed={seed}>
         <div className="absolute inset-0 overflow-hidden bg-[#0a0d16]">
           <ShaderBackground />
-          <HomeLauncherSurface
-            initialPage={initialPage}
-            home={<HomeScreen onOpenTile={() => {}} showNativeOsTiles />}
-            launcher={<Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} />}
+          <HomeScreen
+            onOpenTile={() => {}}
+            showNativeOsTiles
+            apps={
+              <Launcher entries={LAUNCHER_TILES} onLaunch={() => {}} embedded />
+            }
           />
         </div>
       </HomeWidgetData>
@@ -127,15 +120,10 @@ type Story = StoryObj<typeof meta>;
  * relationships merge, unread inbox threads, an urgent notification).
  */
 export const HomeWithWidgets: Story = {
-  args: { initialPage: "home", seed: true },
-};
-
-/** The adjacent Launcher page of the same consolidated surface. */
-export const LauncherPage: Story = {
-  args: { initialPage: "launcher", seed: true },
+  args: { seed: true },
 };
 
 /** No attention-worthy data: every widget self-hides, leaving the clean home. */
 export const Empty: Story = {
-  args: { initialPage: "home", seed: false },
+  args: { seed: false },
 };

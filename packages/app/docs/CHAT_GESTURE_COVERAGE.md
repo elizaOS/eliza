@@ -84,13 +84,14 @@ gate's `sites`). `Coverage` = the levels with a real test today.
 | 15 | Graph pan/pinch/wheel-zoom | RelationshipsGraphPanel | `RelationshipsGraphPanel.tsx` | **gap** — L3 planned (app-side `touchPinch`/`touchPan`) |
 | 16 | Slash menu open/dismiss (incl. outside pointerdown) | composer | _composer_ | L2 `ContinuousChatOverlay.slash.test.tsx` + `composer-core.test.tsx` + `MessageContent.slash-command.test.tsx` |
 | 17 | Pinch/dblclick on chat surface (should NOT zoom/break layout) | overlay | `ContinuousChatOverlay.tsx` | **gap** — L3 negative test planned |
-| 18 | Notification row swipe-dismiss / long-press menu; shade pull-expand | home notification center | `NotificationsHomeCenter.tsx` | L2 `NotificationsHomeCenter.test.tsx`; L3 `gesture-matrix.spec.ts` (list-pan + row-swipe legs) |
+| 18 | Notification row swipe-dismiss; producer-stack drag/trackpad fan-out | home notification center | `notification-shade-content.tsx` | L2 `NotificationsHomeCenter.test.tsx`; L3 `capture-default-notifications.mjs` (desktop/mobile stack fan + row-swipe legs), `gesture-matrix.spec.ts` (whole-inbox isolation + native list scroll) |
 
 Notifications live in `NotificationsHomeCenter`, a widget pinned on the home
-dashboard. Since the inline-inbox rework (#15180) it is a real gesture site:
-rows are pointer-captured swipe-to-dismiss surfaces with a long-press menu, and
-the shade expands via a touch pan at the list top (desktop: wheel pull) — row
-18 governs it.
+dashboard. Whole-inbox priority/all mode changes only through its explicit
+button. The memoized row in `notification-shade-content.tsx` is the gesture
+site: horizontal pointer travel dismisses, while a deliberate vertical drag or
+two-finger wheel over a folded producer fans only that stack — row 18 governs
+those interactions.
 
 ## Coverage gaps
 

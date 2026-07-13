@@ -1,0 +1,25 @@
+[Unit]
+Description=elizaOS agent and web interface
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/eliza
+Environment=HOME=/home/ubuntu
+EnvironmentFile=/home/ubuntu/eliza/.env
+Environment=PATH=/home/ubuntu/.local/node-v24.15.0-linux-x64/bin:/home/ubuntu/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=ELIZA_NODE_PATH=/home/ubuntu/.local/node-v24.15.0-linux-x64/bin/node
+Environment=ELIZA_DEFAULT_AGENT_TYPE=claude
+Environment=ELIZA_CODEX_ACP_COMMAND=/home/ubuntu/.local/node-v24.15.0-linux-x64/bin/codex-acp
+Environment=ELIZA_CLAUDE_ACP_COMMAND=/home/ubuntu/.local/node-v24.15.0-linux-x64/bin/claude-agent-acp
+Environment=ELIZA_DEFAULT_AGENT_TYPE=claude
+Environment=ELIZA_CODEX_ACP_COMMAND=/home/ubuntu/.local/node-v24.15.0-linux-x64/bin/codex-acp
+Environment=ELIZA_CLAUDE_ACP_COMMAND=/home/ubuntu/.local/node-v24.15.0-linux-x64/bin/claude-agent-acp
+ExecStart=/home/ubuntu/.bun/bin/bun run start:eliza
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

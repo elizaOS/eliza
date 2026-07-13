@@ -14,7 +14,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { loadAccount } from "./account-storage";
+import { listAccounts, loadAccount } from "./account-storage";
 import {
   _resetFlowRegistry,
   type FlowState,
@@ -33,6 +33,10 @@ vi.mock("./openai-codex.ts", () => ({
 const ACCESS_TOKEN = "codex-access-token-SECRET";
 const REFRESH_TOKEN = "codex-refresh-token-SECRET";
 const ID_TOKEN = "codex-id-token-SECRET";
+
+function jwt(payload: Record<string, unknown>): string {
+  return `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.signature`;
+}
 
 const tempHomes: string[] = [];
 
@@ -201,6 +205,51 @@ describe("oauth-flow FlowState broadcast", () => {
     expect(saved?.credentials.access).toBe(ACCESS_TOKEN);
     expect(saved?.credentials.refresh).toBe(REFRESH_TOKEN);
     expect(saved?.credentials.idToken).toBe(ID_TOKEN);
+  });
+
+  it("updates an existing account when the same Codex identity is linked again", async () => {
+    useTempElizaHome();
+    const identity = "stable-codex-account-id";
+    const email = "person@example.com";
+    const access = jwt({
+      "https://api.openai.com/auth": { chatgpt_account_id: identity },
+    });
+    const idToken = jwt({ email });
+
+    const firstVendor = stubCodexLogin();
+    const first = await startCodexOAuthFlow({
+      label: "First link",
+      accountId: "reserved-id-1",
+    });
+    firstVendor.resolveCredentials({
+      access,
+      refresh: "first-refresh",
+      expires: Date.now() + 60_000,
+      idToken,
+    });
+    const firstAccount = (await first.completion).account;
+
+    const secondVendor = stubCodexLogin();
+    const second = await startCodexOAuthFlow({
+      label: "Second link",
+      accountId: "reserved-id-2",
+    });
+    secondVendor.resolveCredentials({
+      access,
+      refresh: "updated-refresh",
+      expires: Date.now() + 120_000,
+      idToken,
+    });
+    const secondAccount = (await second.completion).account;
+
+    expect(secondAccount.id).toBe(firstAccount.id);
+    expect(secondAccount.createdAt).toBe(firstAccount.createdAt);
+    expect(secondAccount.label).toBe(email);
+    expect(listAccounts("openai-codex")).toHaveLength(1);
+    expect(
+      loadAccount("openai-codex", firstAccount.id)?.credentials.refresh,
+    ).toBe("updated-refresh");
+    expect(loadAccount("openai-codex", "reserved-id-2")).toBeNull();
   });
 
   it("emits an account-free error state when the exchange fails", async () => {

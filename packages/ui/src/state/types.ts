@@ -228,6 +228,7 @@ export interface StartupCoordinatorView {
       | "resolving-target"
       | "polling-backend"
       | "pairing-required"
+      | "login-required"
       | "first-run-required"
       | "starting-runtime"
       | "hydrating"

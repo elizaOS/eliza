@@ -13,6 +13,9 @@ declare module "@elizaos/plugin-phone" {
   export const PhoneCompanionApp: import("react").ComponentType<
     Record<string, never>
   >;
+  export const PhonePairingSettingsCard: import("react").ComponentType<
+    Record<string, never>
+  >;
 }
 
 declare module "@elizaos/plugin-task-coordinator" {

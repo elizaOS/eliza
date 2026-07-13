@@ -21,6 +21,35 @@ export const Button = React.forwardRef<
   );
 });
 
+export function SettingsGroup({
+  title,
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLElement> & { title?: React.ReactNode }) {
+  return React.createElement(
+    "section",
+    props,
+    title ? React.createElement("h3", null, title) : null,
+    children,
+  );
+}
+
+export function SettingsRow({
+  label,
+  description,
+}: {
+  label: React.ReactNode;
+  description?: React.ReactNode;
+  icon?: React.ComponentType<Record<string, unknown>>;
+}) {
+  return React.createElement(
+    "div",
+    null,
+    React.createElement("span", null, label),
+    description ? React.createElement("span", null, description) : null,
+  );
+}
+
 export function isElizaOS(): boolean {
   return false;
 }

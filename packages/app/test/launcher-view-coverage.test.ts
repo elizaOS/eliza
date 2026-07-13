@@ -113,7 +113,6 @@ const LAUNCHER_VIEW_COVERAGE: Record<string, LauncherViewCoverage> = {
     smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL,
     e2e: "packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs",
   },
-  character: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   documents: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   automations: { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
   "plugins-page": { smokeSpec: BUILTIN_VIEWS_VISUAL_SPEC_REL },
@@ -245,7 +244,6 @@ describe("launcher view coverage gate", () => {
       [
         "automations",
         "background",
-        "character",
         "chat",
         "database",
         "documents",

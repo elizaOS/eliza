@@ -45,7 +45,7 @@ describe("uiWidgetsProvider — followups/form marker instructions", () => {
     expect(text).toContain("[/FORM]");
     // Documents all three followup kinds and a concrete navigate example.
     expect(text).toContain("reply:");
-    expect(text).toContain("navigate:/apps/tasks");
+    expect(text).toContain("navigate:/projects");
     expect(text).toContain("prompt:");
   });
 

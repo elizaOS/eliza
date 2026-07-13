@@ -215,10 +215,19 @@ let resetAuthPairingStateForTests: typeof import("./auth-pairing-routes")._reset
 
 function fakeRes(): FakeRes {
   let bodyText = "";
+  const headers = new Map<string, number | string | readonly string[]>();
   const req = new http.IncomingMessage(new Socket());
   const res = new http.ServerResponse(req);
   res.statusCode = 200;
-  res.setHeader = () => res;
+  res.setHeader = ((
+    name: string,
+    value: number | string | readonly string[],
+  ) => {
+    headers.set(name.toLowerCase(), value);
+    return res;
+  }) as typeof res.setHeader;
+  res.getHeader = ((name: string) =>
+    headers.get(name.toLowerCase())) as typeof res.getHeader;
   res.end = ((chunk?: string | Buffer) => {
     if (typeof chunk === "string") bodyText += chunk;
     else if (chunk) bodyText += chunk.toString("utf8");
@@ -298,6 +307,25 @@ describe("auth pairing pair-code route", () => {
     } else {
       process.env.ELIZA_CLOUD_PROVISIONED = originalCloudProvisioned;
     }
+  });
+
+  it("returns a retryable 503 instead of false auth facts before the runtime DB is ready", async () => {
+    const res = fakeRes();
+    await handleAuthPairingCompatRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/status",
+        ip: "203.0.113.10",
+      }),
+      res.res,
+      STATE,
+    );
+
+    expect(res.status()).toBe(503);
+    expect(res.res.getHeader("Retry-After")).toBe("1");
+    expect(res.body()).toEqual({ error: "Authentication service is starting" });
+    expect(res.body()).not.toHaveProperty("passwordConfigured");
+    expect(authStoreMocks.ctor).not.toHaveBeenCalled();
   });
 
   it("returns the current pair code to loopback callers", async () => {

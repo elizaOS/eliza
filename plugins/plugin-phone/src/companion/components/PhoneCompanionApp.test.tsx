@@ -17,6 +17,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NavState, PairingPayload, ViewName } from "../services";
 
+const platform = vi.hoisted(() => ({ native: true, name: "ios" }));
 // Controllable navigation + intent stubs so we can route renderView() by
 // (view, ready) without driving the real persistence/haptics hook.
 const navState = vi.hoisted(
@@ -37,6 +38,19 @@ const getPairingStatus = vi.hoisted(() =>
     }> => ({ paired: false, agentUrl: null, deviceId: null }),
   ),
 );
+
+vi.mock("@capacitor/core", async () => {
+  const actual =
+    await vi.importActual<typeof import("@capacitor/core")>("@capacitor/core");
+  return {
+    ...actual,
+    Capacitor: {
+      ...actual.Capacitor,
+      isNativePlatform: () => platform.native,
+      getPlatform: () => platform.name,
+    },
+  };
+});
 
 vi.mock("../services", async () => {
   const actual =
@@ -145,11 +159,11 @@ describe("PhoneCompanionApp routing", () => {
     const encoded = Buffer.from(JSON.stringify(validPayload), "utf8").toString(
       "base64",
     );
-    fireEvent.change(screen.getByLabelText("Or paste payload"), {
+    fireEvent.change(screen.getByLabelText("Pairing code"), {
       target: { value: encoded },
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Pair device" }));
+      fireEvent.click(screen.getByRole("button", { name: "Pair" }));
     });
 
     await waitFor(() =>

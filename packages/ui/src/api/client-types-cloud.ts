@@ -916,7 +916,16 @@ export interface ProjectSummary {
   localPath: string;
   repoUrl?: string;
   defaultBranch?: string;
+  /** Bound Eliza Cloud app, when this project has been published. */
+  cloudAppId?: string;
   lastOpenedAt: string;
+}
+
+export interface ProjectCreateInput {
+  name: string;
+  localPath: string;
+  repoUrl?: string;
+  defaultBranch?: string;
 }
 
 /** `GET /api/projects` payload: the registry list plus the active pointer. */
@@ -1279,6 +1288,9 @@ export interface CodingAgentCreateTaskInput {
   priority?: CodingAgentTaskThread["priority"];
   acceptanceCriteria?: string[];
   providerPolicy?: CodingAgentTaskProviderPolicy;
+  /** Bind the task to a registered project and its guarded working directory. */
+  projectId?: string;
+  workdir?: string;
   /** Free-form task metadata forwarded to the orchestrator. Recognized keys
    * include `autoVerify` and `capabilityProfile` (e.g. `"economics"` to let the
    * spawned sub-agent drive the monetized-app Cloud commands). */

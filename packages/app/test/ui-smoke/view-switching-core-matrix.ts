@@ -81,11 +81,11 @@ export const CORE_VIEW_SWITCH_TARGETS: readonly CoreViewSwitchTarget[] = [
     readySelector: '[data-testid="settings-shell"]',
   },
   {
-    id: "tasks",
-    label: "Tasks",
-    path: "/apps/tasks",
+    id: "projects",
+    label: "Projects",
+    path: "/projects",
     kind: "core-view",
-    readySelector: '[data-testid="tasks-view"]',
+    readySelector: '[data-testid="projects-view"]',
   },
   {
     id: "automations",

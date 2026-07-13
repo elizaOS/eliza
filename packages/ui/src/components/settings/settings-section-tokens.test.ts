@@ -74,12 +74,20 @@ describe("resolveSettingsSectionToken", () => {
   });
 
   it("resolves built-in ids and aliases derived from META", () => {
+    expect(resolveSettingsSectionToken("character")).toBe("character");
+    expect(resolveSettingsSectionToken("persona")).toBe("character");
+    expect(resolveSettingsSectionToken("personality")).toBe("character");
     expect(resolveSettingsSectionToken("identity")).toBe("identity");
     expect(resolveSettingsSectionToken("basics")).toBe("identity");
     expect(resolveSettingsSectionToken("profile")).toBe("identity");
     expect(resolveSettingsSectionToken("model")).toBe("ai-model");
     expect(resolveSettingsSectionToken("providers")).toBe("ai-model");
     expect(resolveSettingsSectionToken("vault")).toBe("secrets");
+    expect(resolveSettingsSectionToken("peripherals")).toBe("peripherals");
+    expect(resolveSettingsSectionToken("bluetooth")).toBe("peripherals");
+    expect(resolveSettingsSectionToken("devices")).toBe("peripherals");
+    expect(resolveSettingsSectionToken("pairing")).toBe("peripherals");
+    expect(resolveSettingsSectionToken("accessories")).toBe("peripherals");
   });
 
   it("normalizes case and surrounding whitespace", () => {

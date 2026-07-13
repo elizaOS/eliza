@@ -293,8 +293,18 @@ const ROUTES: DevRouteEntry[] = [
   },
   {
     tabId: "tasks",
-    path: "/apps/tasks",
-    label: "Tasks",
+    path: "/projects",
+    label: "Projects",
+    group: "Hidden",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
+    tabId: "projects",
+    path: "/projects",
+    label: "Projects",
     group: "Apps",
     visibility: "all",
     featureFlag: "VITE_ENABLE_APPS",
@@ -462,6 +472,7 @@ const ROUTES: DevRouteEntry[] = [
  * drift at test time. Labels are the English `defaultLabel`, not the i18n key.
  */
 const SETTINGS_SECTIONS: DevRouteSettingsSection[] = [
+  { id: "character", label: "Character" },
   { id: "identity", label: "Basics" },
   { id: "ai-model", label: "Models & Providers" },
   { id: "voice", label: "Voice" },
@@ -471,6 +482,7 @@ const SETTINGS_SECTIONS: DevRouteSettingsSection[] = [
   { id: "appearance", label: "Appearance" },
   { id: "background", label: "Background" },
   { id: "notifications", label: "Notifications" },
+  { id: "peripherals", label: "Peripherals" },
   { id: "runtime", label: "Runtime" },
   { id: "wallet-rpc", label: "Wallet & RPC" },
   { id: "remote-plugins", label: "Remote Plugins" },

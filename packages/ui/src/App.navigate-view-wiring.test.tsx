@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { registerAppShellPage } from "./app-shell-registry";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
@@ -407,7 +408,12 @@ vi.mock("./components/character/CharacterEditor", () => ({
 }));
 
 vi.mock("./components/pages/LauncherSurface", () => ({
-  LauncherSurface: () => <div data-testid="launcher-surface" />,
+  LauncherSurface: ({ embedded }: { embedded?: boolean }) => (
+    <div
+      data-testid="launcher-surface"
+      data-embedded={embedded ? "true" : "false"}
+    />
+  ),
 }));
 
 vi.mock("./components/settings/SecretsManagerSection", () => ({
@@ -592,6 +598,85 @@ describe("App navigate-view event wiring", () => {
     ).toBe(true);
     expect(getByTestId("app-opaque-background")).toBeTruthy();
     expect(queryByTestId("app-background-shader")).toBeNull();
+  });
+
+  it("gives a normal in-process app-shell page exactly one shared header and a flex body", async () => {
+    const id = "test-in-process-normal-header";
+    registerAppShellPage({
+      id,
+      pluginId: "@test/in-process-normal-header",
+      label: "In-process Normal",
+      path: `/${id}`,
+      Component: () => <div data-testid="in-process-normal-body" />,
+    });
+    // Exercise the direct-route registry path (the tab id can differ when a
+    // registration declares tabAffinity).
+    appState.tab = "views";
+    window.history.replaceState(null, "", `/${id}`);
+
+    render(<App />);
+
+    const body = await screen.findByTestId("in-process-normal-body");
+    const headers = screen.getAllByTestId("view-header");
+    expect(headers).toHaveLength(1);
+    expect(headers[0]?.textContent).toContain("In-process Normal");
+    expect(
+      screen.getByRole("button", { name: "Back to launcher" }),
+    ).toBeTruthy();
+    expect(body.parentElement?.className).toContain("flex-1");
+    expect(body.parentElement?.className).toContain("flex-col");
+    expect(body.parentElement?.className).toContain("overflow-hidden");
+  });
+
+  it.each([
+    "fullscreen",
+    "modal",
+    "immersive",
+  ] as const)("lets an in-process app-shell page with %s header policy opt out", async (header) => {
+    const id = `test-in-process-${header}-header`;
+    registerAppShellPage({
+      id,
+      pluginId: `@test/in-process-${header}-header`,
+      label: `In-process ${header}`,
+      path: `/${id}`,
+      surface: { header },
+      Component: () => <div data-testid={`${id}-body`} />,
+    });
+    appState.tab = id;
+    window.history.replaceState(null, "", `/${id}`);
+
+    render(<App />);
+
+    const body = await screen.findByTestId(`${id}-body`);
+    expect(screen.queryByTestId("view-header")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Back to launcher" }),
+    ).toBeNull();
+    expect(body.parentElement?.className).toContain("flex-1");
+    expect(body.parentElement?.className).toContain("flex-col");
+  });
+
+  it("does not stack a page header below an in-process section nav", async () => {
+    const id = "test-in-process-wallet-section-header";
+    registerAppShellPage({
+      id,
+      pluginId: "@test/in-process-wallet-section-header",
+      label: "Wallet Child",
+      path: `/${id}`,
+      group: "wallet",
+      Component: () => <div data-testid="in-process-wallet-child" />,
+    });
+    // Wallet children normally render under the inventory tab affinity.
+    appState.tab = "inventory";
+    window.history.replaceState(null, "", `/${id}`);
+
+    render(<App />);
+
+    await screen.findByTestId("in-process-wallet-child");
+    const headers = screen.getAllByTestId("view-header");
+    expect(headers).toHaveLength(1);
+    expect(headers[0]?.textContent).toContain("Wallet");
+    expect(headers[0]?.textContent).not.toContain("Wallet Child");
   });
 
   it("routes frame-only sandboxed views through DynamicViewLoader with frameUrl", async () => {
@@ -782,7 +867,7 @@ describe("App navigate-view event wiring", () => {
     });
   });
 
-  it("keeps /views on the built-in Launcher instead of the remote manager bundle", async () => {
+  it("keeps /views on the unified home Apps section instead of the remote manager bundle", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
 
@@ -791,6 +876,12 @@ describe("App navigate-view event wiring", () => {
     await waitFor(() => {
       expect(getByTestId("launcher-surface")).toBeTruthy();
     });
+    expect(getByTestId("launcher-surface").dataset.embedded).toBe("true");
+    expect(
+      getByTestId("home-apps-section").contains(
+        getByTestId("launcher-surface"),
+      ),
+    ).toBe(true);
     expect(queryByTestId("dynamic-view-loader")).toBeNull();
     expect(dynamicViewLoaderMock.render).not.toHaveBeenCalled();
     expect(getByTestId("app-background-shader")).toBeTruthy();

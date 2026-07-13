@@ -128,29 +128,30 @@ describe("coding-account-bridge", () => {
     expect(sel?.source).toBe("oauth");
   });
 
-  it("honors config.accountStrategies so the app's strategy picker steers coding spawns", async () => {
+  it("round-robins coding accounts regardless of legacy strategy config", async () => {
     writeAccount("anthropic-subscription", "primary", "sk-ant-oat-PRIMARY");
     writeAccount("anthropic-subscription", "spare", "sk-ant-oat-SPARE");
     getDefaultAccountPool();
-    // priority-strategy favors "primary"; least-used favors the idle "spare".
     await setPriority("anthropic-subscription", "primary", 0);
     await setPriority("anthropic-subscription", "spare", 1);
     await setUsage("anthropic-subscription", "primary", 90);
     await setUsage("anthropic-subscription", "spare", 5);
     const bridge = getCodingAgentSelectorBridge();
 
-    // Unconfigured: least-used default.
-    const unconfigured = await bridge?.select("claude");
-    expect(unconfigured?.strategy).toBe("least-used");
-    expect(unconfigured?.accountId).toBe("spare");
+    const first = await bridge?.select("claude");
+    const second = await bridge?.select("claude");
+    expect(first?.strategy).toBe("round-robin");
+    expect(second?.strategy).toBe("round-robin");
+    expect(new Set([first?.accountId, second?.accountId])).toEqual(
+      new Set(["primary", "spare"]),
+    );
 
-    // The picker writes config.accountStrategies — selection must follow it.
+    // Old persisted preferences no longer change the pool policy.
     configureDefaultAccountPoolSelection({
       accountStrategies: { "anthropic-subscription": "priority" },
     });
     const configured = await bridge?.select("claude");
-    expect(configured?.strategy).toBe("priority");
-    expect(configured?.accountId).toBe("primary");
+    expect(configured?.strategy).toBe("round-robin");
 
     // An explicit caller strategy still overrides the configured one.
     const explicit = await bridge?.select("claude", {
@@ -158,19 +159,6 @@ describe("coding-account-bridge", () => {
     });
     expect(explicit?.strategy).toBe("least-used");
     expect(explicit?.accountId).toBe("spare");
-
-    // The env var stays a fallback: used when no config, beaten by config.
-    configureDefaultAccountPoolSelection();
-    process.env.ELIZA_CODING_ACCOUNT_STRATEGY = "priority";
-    const envFallback = await bridge?.select("claude");
-    expect(envFallback?.strategy).toBe("priority");
-    expect(envFallback?.accountId).toBe("primary");
-    configureDefaultAccountPoolSelection({
-      accountStrategies: { "anthropic-subscription": "least-used" },
-    });
-    const configOverEnv = await bridge?.select("claude");
-    expect(configOverEnv?.strategy).toBe("least-used");
-    expect(configOverEnv?.accountId).toBe("spare");
   });
 
   it("materializes a per-account CODEX_HOME/auth.json for Codex (incl. id_token)", async () => {

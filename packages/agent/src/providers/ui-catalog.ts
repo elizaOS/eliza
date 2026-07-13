@@ -90,7 +90,7 @@ Use ONLY when a follow-up genuinely helps. Emit INLINE, one
 \`<kind>:<payload>=<label>\` per line:
 [FOLLOWUPS]
 reply:Summarize my unread messages=Summarize unread
-navigate:/apps/tasks=View tasks
+navigate:/projects=View projects and tasks
 prompt:Draft a reply about =Draft a reply
 [/FOLLOWUPS]
 Kinds: reply sends <payload>; navigate opens a "/" route or view id; prompt

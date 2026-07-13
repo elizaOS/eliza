@@ -285,6 +285,41 @@ describe("runStartingRuntime", () => {
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });
 
+  it("routes a tokenless configured-password 401 to LoginView instead of pairing", async () => {
+    clientMock.getStatus.mockRejectedValue({ status: 401 });
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      loginRequired: true,
+      passwordConfigured: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+    clientMock.hasToken.mockReturnValue(false);
+
+    const dispatch = vi.fn();
+    const deps = createDeps();
+
+    await runStartingRuntime(
+      deps,
+      dispatch,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(false);
+    expect(deps.setPairingEnabled).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_LOGIN_REQUIRED" });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
+    });
+    expect(deps.setStartupError).not.toHaveBeenCalled();
+  });
+
   it("advances paired bearer sessions to the auth gate after endpoint 401s", async () => {
     clientMock.getStatus.mockRejectedValue({ status: 401 });
     clientMock.getAuthStatus.mockResolvedValue({
@@ -308,7 +343,8 @@ describe("runStartingRuntime", () => {
     );
 
     expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
-    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_LOGIN_REQUIRED" });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });
 
@@ -337,7 +373,8 @@ describe("runStartingRuntime", () => {
     );
 
     expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
-    expect(dispatch).toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
+    expect(dispatch).toHaveBeenCalledWith({ type: "BACKEND_LOGIN_REQUIRED" });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "AGENT_RUNNING" });
     expect(deps.setStartupError).not.toHaveBeenCalled();
   });
 

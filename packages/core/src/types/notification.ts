@@ -138,14 +138,22 @@ export interface NotificationQuery {
 }
 
 /** The shape the notification stream carries over the agent event bus. */
-export interface NotificationEventData {
-	type: "notification" | "notification_update";
-	notification: AgentNotification;
-	/** Total unread after this notification, so clients can update a badge. */
-	unreadCount: number;
-	/** Index signature for Record<string, unknown> compatibility on the bus. */
-	[key: string]: unknown;
-}
+export type NotificationEventData =
+	| {
+			type: "notification" | "notification_update";
+			notification: AgentNotification;
+			/** Total unread after this notification, so clients can update a badge. */
+			unreadCount: number;
+			/** Index signature for Record<string, unknown> compatibility on the bus. */
+			[key: string]: unknown;
+	  }
+	| {
+			/** The persisted inbox was cleared; clients must discard every local row. */
+			type: "notification_clear";
+			unreadCount: 0;
+			/** Index signature for Record<string, unknown> compatibility on the bus. */
+			[key: string]: unknown;
+	  };
 
 /** Default category when a caller doesn't specify one. */
 export const DEFAULT_NOTIFICATION_CATEGORY: NotificationCategory = "general";

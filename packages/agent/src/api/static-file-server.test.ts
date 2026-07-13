@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   injectApiBaseIntoHtml,
   resolveInjectedDashboardToken,
+  resolveLegacyUiRedirect,
 } from "./static-file-server.ts";
 
 const TOKEN_ENV = "ELIZA_API_TOKEN";
@@ -60,6 +61,22 @@ describe("resolveInjectedDashboardToken", () => {
     process.env[TOKEN_ENV] = TOKEN;
     process.env[FORCE_ENV] = "0";
     expect(resolveInjectedDashboardToken()).toBeNull();
+  });
+});
+
+describe("resolveLegacyUiRedirect", () => {
+  it("redirects the retired Tasks URL to Projects and preserves the query", () => {
+    expect(
+      resolveLegacyUiRedirect(
+        "/apps/tasks",
+        "/apps/tasks?provider=openai-subscription",
+      ),
+    ).toBe("/projects?provider=openai-subscription");
+  });
+
+  it("accepts a trailing slash and ignores current routes", () => {
+    expect(resolveLegacyUiRedirect("/apps/tasks/")).toBe("/projects");
+    expect(resolveLegacyUiRedirect("/projects")).toBeNull();
   });
 });
 

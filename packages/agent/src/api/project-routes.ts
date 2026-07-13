@@ -7,6 +7,7 @@
  * per-user state dir). This module is a thin HTTP projection over it:
  *
  *   GET  /api/projects            → { projects, activeProjectId }
+ *   POST /api/projects            → register a local project
  *   POST /api/projects/:id/activate → mark a project active, return the record
  *
  * Registration/edit/delete of projects flows through the desktop folder picker
@@ -21,6 +22,7 @@ import {
   type RouteRequestContext,
   readProjectRegistry,
   setActiveProject,
+  upsertProject,
 } from "@elizaos/core";
 
 /** DTO for the switcher: only the fields the UI renders + switches on. Internal
@@ -31,6 +33,7 @@ export interface ProjectSummaryDTO {
   localPath: string;
   repoUrl?: string;
   defaultBranch?: string;
+  cloudAppId?: string;
   lastOpenedAt: string;
 }
 
@@ -51,6 +54,7 @@ function toSummary(project: {
   localPath: string;
   repoUrl?: string;
   defaultBranch?: string;
+  cloudAppId?: string;
   lastOpenedAt: string;
 }): ProjectSummaryDTO {
   return {
@@ -59,6 +63,7 @@ function toSummary(project: {
     localPath: project.localPath,
     repoUrl: project.repoUrl,
     defaultBranch: project.defaultBranch,
+    cloudAppId: project.cloudAppId,
     lastOpenedAt: project.lastOpenedAt,
   };
 }
@@ -75,9 +80,15 @@ export async function handleProjectRoutes(
   deps: {
     readRegistry?: () => ProjectListDTO;
     activate?: (id: string) => ProjectSummaryDTO | null;
+    create?: (input: {
+      name: string;
+      localPath: string;
+      repoUrl?: string;
+      defaultBranch?: string;
+    }) => ProjectSummaryDTO;
   } = {},
 ): Promise<boolean> {
-  const { method, pathname, res, json, error } = ctx;
+  const { method, pathname, req, res, readJsonBody, json, error } = ctx;
 
   if (!pathname.startsWith("/api/projects")) return false;
 
@@ -99,6 +110,19 @@ export async function handleProjectRoutes(
       return record ? toSummary(record) : null;
     });
 
+  const create =
+    deps.create ??
+    ((input: {
+      name: string;
+      localPath: string;
+      repoUrl?: string;
+      defaultBranch?: string;
+    }) => {
+      const record = upsertProject(input);
+      setActiveProject(record.id);
+      return toSummary(record);
+    });
+
   // GET /api/projects — list + active pointer for the switcher.
   if (method === "GET" && pathname === "/api/projects") {
     try {
@@ -106,6 +130,38 @@ export async function handleProjectRoutes(
     } catch (err) {
       logger.error({ error: err }, "[projects] Failed to read registry");
       error(res, "Failed to read project registry", 500);
+    }
+    return true;
+  }
+
+  // POST /api/projects — register a local workspace and make it active.
+  if (method === "POST" && pathname === "/api/projects") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const localPath =
+      typeof body.localPath === "string" ? body.localPath.trim() : "";
+    if (!name || !localPath) {
+      error(res, "name and localPath are required", 400);
+      return true;
+    }
+    try {
+      const created = create({
+        name,
+        localPath,
+        repoUrl:
+          typeof body.repoUrl === "string" && body.repoUrl.trim()
+            ? body.repoUrl.trim()
+            : undefined,
+        defaultBranch:
+          typeof body.defaultBranch === "string" && body.defaultBranch.trim()
+            ? body.defaultBranch.trim()
+            : undefined,
+      });
+      json(res, created, 201);
+    } catch (err) {
+      logger.error({ error: err }, "[projects] Failed to register project");
+      error(res, "Failed to register project", 500);
     }
     return true;
   }

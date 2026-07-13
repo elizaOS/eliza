@@ -24,7 +24,6 @@ function entry(id: string, label: string, icon: string): ViewEntry {
 
 const VIEWS: ViewEntry[] = [
   entry("chat", "Chat", "MessageSquare"),
-  entry("character", "Character", "UserRound"),
   entry("automations", "Automations", "Clock"),
   entry("camera", "Camera", "ImageIcon"),
   entry("wallet", "Wallet", "Wallet"),

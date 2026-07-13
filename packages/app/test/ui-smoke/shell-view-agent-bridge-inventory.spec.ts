@@ -116,11 +116,11 @@ const SHELL_VIEW_TARGETS: readonly {
     requiredIds: ["section-identity", "section-ai-model"],
   },
   {
-    label: "Tasks",
-    path: "/apps/tasks",
-    viewId: "tasks",
-    readyTestId: "tasks-view",
-    requiredIds: ["input-search-tasks", "toggle-show-archived"],
+    label: "Projects",
+    path: "/projects",
+    viewId: "projects",
+    readyTestId: "projects-view",
+    requiredIds: ["projects-view"],
   },
   {
     label: "Transcripts",

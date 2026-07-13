@@ -209,7 +209,7 @@ export class NotificationService extends Service {
 
 	private broadcast(
 		notification: AgentNotification,
-		type: NotificationEventData["type"] = "notification",
+		type: "notification" | "notification_update" = "notification",
 	): void {
 		const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
 		if (!isEventBus(bus)) {
@@ -225,6 +225,24 @@ export class NotificationService extends Service {
 			stream: NOTIFICATION_STREAM,
 			data,
 			agentId: notification.agentId,
+		});
+	}
+
+	/** Tell every open client to discard its local inbox after a durable clear. */
+	private broadcastClear(): void {
+		const bus = this.runtime.getService(ServiceType.AGENT_EVENT);
+		if (!isEventBus(bus)) {
+			return; // No live bus (headless/test) — the empty inbox API is authoritative.
+		}
+		const data: NotificationEventData = {
+			type: "notification_clear",
+			unreadCount: 0,
+		};
+		bus.emit({
+			runId: `notification-clear:${crypto.randomUUID()}`,
+			stream: NOTIFICATION_STREAM,
+			data,
+			agentId: this.runtime.agentId,
 		});
 	}
 
@@ -351,8 +369,19 @@ export class NotificationService extends Service {
 
 	/** Clear the entire inbox. */
 	async clear(): Promise<void> {
+		const previous = this.notifications;
 		this.notifications = [];
-		await this.persist();
+		try {
+			await this.persist();
+		} catch (error) {
+			// Keep the in-memory API consistent with durable state. A failed reset
+			// must neither forget rows locally nor tell clients that it succeeded.
+			this.notifications = previous;
+			throw error;
+		}
+		// Broadcast only after persistence succeeds. Open clients never observe an
+		// empty inbox that the server failed to make durable.
+		this.broadcastClear();
 	}
 }
 

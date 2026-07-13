@@ -3,20 +3,18 @@
  *
  * Onboarding is PART OF THE CHAT (see `use-first-run-conductor.ts`): the
  * conductor seeds synthetic assistant turns — the sign-in greeting, the
- * welcome-back turn, per-step status turns, the cloud-done wrap-up, typed
- * onboarding user/reply turns — DIRECTLY into the live `conversationMessages`
- * store the `ContinuousChatOverlay` renders. While onboarding is active
+ * welcome-back turn, per-step status turns, and the cloud-done wrap-up —
+ * DIRECTLY into the live `conversationMessages` store the
+ * `ContinuousChatOverlay` renders. While onboarding is active
  * (`firstRunOpen`) the overlay filters the transcript down to the current
  * first-run turn via `selectFirstRunDisplayMessages`, so only one card shows.
  *
  * On completion (`firstRunComplete` flips true / `firstRunOpen` falls to false)
  * that first-run filter is DROPPED and the overlay renders the raw transcript.
  * Nothing cleared the seeded turns, so every leftover `first-run:*` bubble —
- * greeting + welcome-back + cloud-done, plus any typed reply turns — suddenly
- * paints as ordinary chat history. The user, who sent exactly one message, sees
- * multiple stacked "greeting"-looking assistant bubbles and duplicated user
- * turns until the first real send's post-turn history reload full-replaces the
- * store with server truth (#15354).
+ * greeting + welcome-back + cloud-done — suddenly paints as ordinary chat
+ * history until the first real send's post-turn history reload full-replaces
+ * the store with server truth (#15354).
  *
  * The fix is to drop the synthetic first-run turns the instant onboarding
  * completes, so the real chat opens on a clean thread and the first message is

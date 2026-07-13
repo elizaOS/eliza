@@ -83,7 +83,7 @@ describe("OrchestratorActivityWidget (home slot)", () => {
     expect(card.getAttribute("aria-label")).toMatch(/Escalated/);
   });
 
-  it("home slot: clicking the card opens the Tasks tab", () => {
+  it("home slot: clicking the card opens Projects", () => {
     render(
       <ActivityWidget
         {...props({ slot: "home", events: [event({ summary: "Working" })] })}
@@ -92,8 +92,7 @@ describe("OrchestratorActivityWidget (home slot)", () => {
 
     fireEvent.click(screen.getByTestId("chat-widget-events"));
 
-    // openTab("tasks") reports the switch through the slash-command controller.
-    expect(reportUserViewSwitchSpy).toHaveBeenCalledWith("tasks");
+    expect(reportUserViewSwitchSpy).toHaveBeenCalledWith("projects");
   });
 
   it("chat-sidebar slot: keeps the existing activity list (a row per event, not a single card button)", () => {

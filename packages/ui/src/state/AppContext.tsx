@@ -20,10 +20,9 @@ import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";
 import { tryHandleBootRecoveryAction } from "../first-run/boot-recovery-channel";
 import {
-  classifyActionMessage,
   getFirstRunCloudLoginFallbackPath,
+  isFirstRunAction,
   tryHandleFirstRunAction,
-  tryHandleFirstRunText,
 } from "../first-run/first-run-action-channel";
 import {
   isMobileLocalAgentIpcBase,
@@ -1169,16 +1168,11 @@ function AppProviderInner({
   // MUST NOT reach the server. The prefix is reserved unconditionally: even
   // after onboarding completes (conductor unregistered), a tap on a leftover
   // onboarding widget in the transcript is dropped here instead of sending the
-  // literal sentinel to the agent as a chat message. While onboarding is
-  // ACTIVE (firstRunComplete false) free text is routed to the conductor's
-  // in-chat reply persona (`tryHandleFirstRunText`) until a Cloud-provisioned
-  // bootstrap bridge exists. That preserves the pre-choice "no server send"
-  // invariant while letting the user's first real post-provisioning message
-  // reach the dedicated agent instead of being swallowed by setup copy. Once
-  // onboarding completes, every non-first-run value falls through to the real
-  // send funnel unchanged. Widgets stay 100% display-only — both
-  // InlineWidgetText and MessageContent route picks through this single
-  // `sendActionMessage`, and so does the unlocked composer during onboarding.
+  // literal sentinel to the agent as a chat message. Every ordinary value
+  // falls through to the real send funnel unchanged. The onboarding composer
+  // is disabled, so there is no parallel local free-text conversation to
+  // coordinate here. Widgets stay display-only: InlineWidgetText and
+  // MessageContent route picks through this single `sendActionMessage`.
   const sendActionMessage = useCallback(
     (text: string): Promise<void> => {
       // The in-chat model-status card's `__model__:` controls (cancel / switch
@@ -1192,37 +1186,22 @@ function AppProviderInner({
       // Same contract for the in-chat boot-recovery card's `__boot_recovery__:`
       // controls (re-log in / try again / retry setup).
       if (tryHandleBootRecoveryAction(text)) return Promise.resolve();
-      const firstRunIsComplete = firstRunComplete === true;
-      switch (
-        classifyActionMessage(text, firstRunIsComplete, {
-          allowFirstRunTextSend:
-            !firstRunIsComplete && firstRunCloudProvisionedContainer,
-        })
-      ) {
-        case "first-run": {
-          const handled = tryHandleFirstRunAction(text);
-          const fallbackPath = handled
-            ? null
-            : getFirstRunCloudLoginFallbackPath(
-                text,
-                firstRunComplete === true,
-              );
-          if (fallbackPath && typeof window !== "undefined") {
-            window.location.assign(fallbackPath);
-          }
-          return Promise.resolve();
+      if (isFirstRunAction(text)) {
+        const handled = tryHandleFirstRunAction(text);
+        const fallbackPath = handled
+          ? null
+          : getFirstRunCloudLoginFallbackPath(text, firstRunComplete === true);
+        if (fallbackPath && typeof window !== "undefined") {
+          window.location.assign(fallbackPath);
         }
-        case "conductor":
-          tryHandleFirstRunText(text);
-          return Promise.resolve();
-        case "send":
-          // Explicit "start/stop/restart tutorial" commands drive the tour
-          // locally; every other message flows to the real send untouched.
-          if (tryHandleTutorialText(text)) return Promise.resolve();
-          return rawSendActionMessage(text);
+        return Promise.resolve();
       }
+      // Explicit "start/stop/restart tutorial" commands drive the tour
+      // locally; every other message flows to the real send untouched.
+      if (tryHandleTutorialText(text)) return Promise.resolve();
+      return rawSendActionMessage(text);
     },
-    [firstRunCloudProvisionedContainer, firstRunComplete, rawSendActionMessage],
+    [firstRunComplete, rawSendActionMessage],
   );
 
   useEffect(() => {

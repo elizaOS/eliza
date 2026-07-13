@@ -16,7 +16,6 @@ import {
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
 import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
 import { LauncherSurface } from "../../pages/LauncherSurface";
-import { HomeLauncherSurface } from "../HomeLauncherSurface";
 import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
 
 // Inject the home-widget data BEFORE the React tree renders so every widget's
@@ -38,16 +37,12 @@ function Harness(): React.JSX.Element {
       style={{ position: "fixed", inset: 0, overflow: "hidden" }}
     >
       <ShaderBackground />
-      <HomeLauncherSurface
-        home={
-          <HomeScreen
-            onOpenTile={(t: HomeTileTarget) =>
-              console.log(`[fixture] open ${JSON.stringify(t)}`)
-            }
-            showNativeOsTiles={showNativeOsTiles}
-          />
+      <HomeScreen
+        onOpenTile={(t: HomeTileTarget) =>
+          console.log(`[fixture] open ${JSON.stringify(t)}`)
         }
-        launcher={<LauncherSurface />}
+        showNativeOsTiles={showNativeOsTiles}
+        apps={<LauncherSurface embedded />}
       />
     </div>
   );

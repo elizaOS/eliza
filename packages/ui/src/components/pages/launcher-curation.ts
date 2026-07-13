@@ -41,18 +41,12 @@ export const LAUNCHER_APPS_ORDER: readonly string[] = [
   // untouched.
   "settings",
   "wallet",
-  "tasks",
+  "projects",
   "automations",
-  "my-apps",
   "browser",
   // Cloud account app — gated to cloud-signed-in sessions via
   // LAUNCHER_CLOUD_IDS below.
   "cloud",
-  // Character family — ONE tile. Personality/Relationships/Skills/Experience
-  // are sections inside it (CharacterSectionNav strip, #13560/#13591); their
-  // standalone tiles live in LAUNCHER_HIDDEN_IDS so the grid shows a single
-  // entry point while every /character/* deep link keeps working.
-  "character",
   "documents",
   "memories",
   "feed",
@@ -107,11 +101,16 @@ export const LAUNCHER_HIDDEN_IDS: ReadonlySet<string> = new Set([
   "apps",
   "background",
   "voice",
+  // Hardware setup belongs in Settings → Peripherals. The legacy routes remain
+  // addressable, but they are not standalone launcher apps.
+  "pendant-transcript",
+  "phone-companion",
   "character-select",
-  // Character-family sections — reached via the Character tile's section
-  // strip (CharacterSectionNav); standalone tiles would triple-tile one hub.
-  // The hidden-set check runs on the CANONICAL id, so this also swallows the
-  // `rolodex` alias and `@elizaos/app-relationship-viewer`'s targetTab.
+  // Character now lives first in Settings. Keep the legacy Character editor
+  // and its family deep links routable, but do not duplicate them as launcher
+  // tiles. The hidden-set check runs on the CANONICAL id, so this also swallows
+  // the `rolodex` alias and `@elizaos/app-relationship-viewer`'s targetTab.
+  "character",
   "character-skills",
   "experience",
   "relationships",
@@ -148,9 +147,11 @@ const LEGACY_ID_ALIAS_FALLBACK: ReadonlyMap<string, string> = new Map([
   ["wallet.inventory", "wallet"],
   ["triggers", "automations"],
   ["todos", "automations"],
-  // The task-coordinator plugin view + the builtin Tasks tab are the one Tasks
-  // orchestrator surface (/apps/tasks); collapse to a single tile.
-  ["task-coordinator", "tasks"],
+  // Legacy task/app/cloud-management surfaces now share one Projects hub.
+  ["tasks", "projects"],
+  ["task-coordinator", "projects"],
+  ["my-apps", "projects"],
+  ["cloud-apps", "projects"],
   ["knowledge", "documents"],
   // Transcripts fold into the one Knowledge multimedia hub (#13594): transcript
   // records surface as the hub's Transcripts media-format facet over the shared
@@ -193,7 +194,9 @@ const LEGACY_ID_ALIAS_FALLBACK: ReadonlyMap<string, string> = new Map([
  */
 export function canonicalLauncherId(id: string): string {
   const declaredTargetTab = getInternalToolAppTargetTab(id);
-  if (declaredTargetTab) return declaredTargetTab;
+  if (declaredTargetTab) {
+    return LEGACY_ID_ALIAS_FALLBACK.get(declaredTargetTab) ?? declaredTargetTab;
+  }
   return LEGACY_ID_ALIAS_FALLBACK.get(id) ?? id;
 }
 

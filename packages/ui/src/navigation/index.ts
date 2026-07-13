@@ -13,6 +13,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
+  FolderKanban,
   LayoutGrid,
   Monitor,
   Phone,
@@ -52,6 +53,7 @@ export type BuiltinTab =
   | "contacts"
   | "camera"
   | "tasks"
+  | "projects"
   | "automations"
   | "browser"
   | "stream"
@@ -90,7 +92,7 @@ export type BuiltinTab =
 export type Tab = BuiltinTab | (string & {});
 
 export const APPS_TOOL_TABS = [
-  "my-apps",
+  "projects",
   "plugins",
   "skills",
   "fine-tuning",
@@ -280,6 +282,12 @@ export function getWindowNavigationPath(
 
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
+    label: "Projects",
+    tabs: ["projects"],
+    icon: FolderKanban,
+    description: "Projects, tasks, and publishing",
+  },
+  {
     // AOSP ElizaOS-fork only — the native dialer/SMS/contact tiles are gated to
     // the fork in the launcher (see launcher-curation LAUNCHER_AOSP_ONLY_IDS).
     label: "Phone",
@@ -365,7 +373,9 @@ export const TAB_PATHS: Record<BuiltinTab, string> = {
   messages: "/messages",
   contacts: "/contacts",
   camera: "/camera",
-  tasks: "/apps/tasks",
+  // Legacy tab id; all new navigation lands on the unified Projects surface.
+  tasks: "/projects",
+  projects: "/projects",
   browser: "/browser",
   stream: "/stream",
   "pendant-transcript": "/pendant/transcript",
@@ -462,6 +472,7 @@ export function resolveInitialTabForPath(
  */
 export const LEGACY_PREFIX_TAB_ALIASES: Record<string, Tab> = {
   "/apps/inventory": "inventory",
+  "/apps/tasks": "projects",
   "/character/relationships": "relationships",
 };
 
@@ -615,6 +626,10 @@ export function titleForTab(tab: Tab): string {
       return "Camera";
     case "browser":
       return "Browser";
+    case "projects":
+    case "tasks":
+    case "my-apps":
+      return "Projects";
     case "apps":
       return "Launcher";
     case "views":
@@ -651,8 +666,6 @@ export function titleForTab(tab: Tab): string {
       return "Skills";
     case "memories":
       return "Memories";
-    case "my-apps":
-      return "My Apps";
     case "files":
       return "Files";
     case "rolodex":

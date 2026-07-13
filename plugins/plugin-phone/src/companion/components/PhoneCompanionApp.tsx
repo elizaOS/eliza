@@ -122,7 +122,6 @@ export function PhoneCompanionApp(): React.JSX.Element {
     onPushRemoteSession: () => nav.push("remote-session"),
     onBackToChat: () => nav.pop("chat"),
     onPaired: (payload: PairingPayload) => {
-      void persistPairingToNative(payload);
       setPairingPayload(payload);
       setAgentUrl(payload.ingressUrl);
       nav.push("remote-session");

@@ -11,6 +11,7 @@ import { CONNECT_EVENT } from "../events";
 import { adoptRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
+import { useIsAuthenticated } from "../hooks/useAuthStatus";
 import { applyLaunchConnection } from "../platform";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { useAppSelectorShallow } from "./app-store";
@@ -79,12 +80,27 @@ function needsBootstrapSession(): boolean {
   }
 }
 
+export function shouldProbeCloudFirstRunSkip(args: {
+  authenticated: boolean;
+  cloudProvisioned: boolean;
+  serverReachable: boolean;
+  alreadyStarted: boolean;
+}): boolean {
+  return (
+    args.authenticated &&
+    args.cloudProvisioned &&
+    args.serverReachable &&
+    !args.alreadyStarted
+  );
+}
+
 export interface StartupShellController {
   view: StartupShellView;
   retryStartup: () => void;
 }
 
 export function useStartupShellController(): StartupShellController {
+  const authenticated = useIsAuthenticated();
   // Granular shallow selector instead of useApp() so the startup controller
   // re-renders only when one of the seven fields it reads changes, not on every
   // app-store field update (#9141 gap 2 — useApp() → useAppSelector migration).
@@ -210,17 +226,20 @@ export function useStartupShellController(): StartupShellController {
   }, []);
 
   useEffect(() => {
-    if (phase !== "first-run-required") {
+    if (!authenticated || phase !== "first-run-required") {
       cloudSkipProbeStartedRef.current = false;
       return;
     }
 
     const coordState = coordinatorStateRef.current;
+    if (coordState.phase !== "first-run-required") return;
     if (
-      coordState.phase !== "first-run-required" ||
-      !firstRunCloudProvisionedContainer ||
-      !coordState.serverReachable ||
-      cloudSkipProbeStartedRef.current
+      !shouldProbeCloudFirstRunSkip({
+        authenticated,
+        cloudProvisioned: firstRunCloudProvisionedContainer,
+        serverReachable: coordState.serverReachable === true,
+        alreadyStarted: cloudSkipProbeStartedRef.current,
+      })
     ) {
       return;
     }
@@ -252,7 +271,7 @@ export function useStartupShellController(): StartupShellController {
     return () => {
       cancelled = true;
     };
-  }, [firstRunCloudProvisionedContainer, phase, setState]);
+  }, [authenticated, firstRunCloudProvisionedContainer, phase, setState]);
 
   const handleBootstrapAdvance = useCallback(() => {
     setShowBootstrap(false);
@@ -298,7 +317,11 @@ export function useStartupShellController(): StartupShellController {
     view = { kind: "pairing" };
   } else if (bootstrapRequired) {
     view = { kind: "bootstrap", onAdvance: handleBootstrapAdvance };
-  } else if (phase === "ready" || phase === "first-run-required") {
+  } else if (
+    phase === "ready" ||
+    phase === "login-required" ||
+    phase === "first-run-required"
+  ) {
     view = { kind: "none" };
   } else {
     view = {

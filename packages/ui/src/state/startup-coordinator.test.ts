@@ -123,6 +123,26 @@ describe("startup coordinator", () => {
     ).toEqual({ phase: "restoring-session" });
   });
 
+  it("pauses password authentication without entering runtime or hydration", () => {
+    const fromPolling = startupReducer(
+      { phase: "polling-backend", target: "embedded-local", attempts: 0 },
+      { type: "BACKEND_LOGIN_REQUIRED" },
+    );
+    const fromRuntime = startupReducer(
+      { phase: "starting-runtime", target: "embedded-local", attempts: 0 },
+      { type: "BACKEND_LOGIN_REQUIRED" },
+    );
+
+    expect(fromPolling).toEqual({ phase: "login-required" });
+    expect(fromRuntime).toEqual({ phase: "login-required" });
+    expect(startupReducer(fromPolling, { type: "HYDRATION_COMPLETE" })).toEqual(
+      fromPolling,
+    );
+    expect(startupReducer(fromPolling, { type: "RETRY" })).toEqual({
+      phase: "restoring-session",
+    });
+  });
+
   it("surfaces a terminal native agent error during backend polling as the error phase (#11030)", () => {
     // The iOS device hang: the native transport fails TERMINALLY while the
     // backend poll runs (missing-endpoint / cloud-mode IPC policy). The
@@ -205,6 +225,10 @@ describe("isShellPaintable", () => {
     // auto-opened chat) by the headless first-run conductor, not a full-screen
     // gate — so first-run-required is shell-paintable.
     expect(isShellPaintable("first-run-required")).toBe(true);
+  });
+
+  it("makes the paused password-login phase paintable for the auth gate", () => {
+    expect(isShellPaintable("login-required")).toBe(true);
   });
 
   it("keeps the full-screen StartupScreen for pre-shell + interactive phases", () => {

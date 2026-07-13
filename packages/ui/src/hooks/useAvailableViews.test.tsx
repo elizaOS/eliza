@@ -10,7 +10,8 @@ import {
   withBuiltinShellViews,
 } from "./useAvailableViews";
 
-const { client, fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
+const { auth, client, fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
+  auth: { authenticated: true },
   client: {
     getBaseUrl: vi.fn(() => ""),
   },
@@ -21,6 +22,9 @@ const { client, fetchWithCsrf, getFrontendPlatform } = vi.hoisted(() => ({
 vi.mock("../api", () => ({ client }));
 vi.mock("../api/csrf-client", () => ({ fetchWithCsrf }));
 vi.mock("../platform/platform-guards", () => ({ getFrontendPlatform }));
+vi.mock("./useAuthStatus", () => ({
+  useIsAuthenticated: () => auth.authenticated,
+}));
 
 function response(status: number, body: unknown) {
   return {
@@ -54,6 +58,7 @@ function view(
 describe("useAvailableViews", () => {
   beforeEach(() => {
     __resetResourceCache();
+    auth.authenticated = true;
     client.getBaseUrl.mockReturnValue("");
     fetchWithCsrf.mockReset();
     getFrontendPlatform.mockReset();
@@ -91,6 +96,22 @@ describe("useAvailableViews", () => {
     });
     await flushHookEffects();
 
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
+
+  it("does not fetch or poll views before authentication resolves", async () => {
+    vi.useFakeTimers();
+    auth.authenticated = false;
+
+    const { result } = renderHook(() => useAvailableViews());
+
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
     expect(fetchWithCsrf).not.toHaveBeenCalled();
   });
 

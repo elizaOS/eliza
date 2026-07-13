@@ -80,6 +80,9 @@ beforeEach(() => {
     view("wallet", "Wallet", "/wallet", { viewKind: "system" }),
     view("inventory", "Wallet", "/wallet", { visibleInManager: false }),
     view("browser", "Browser", "/browser"),
+    // Character remains routable but lives as the first Settings subview, so
+    // it must not duplicate itself on the launcher.
+    view("character", "Character", "/character"),
     view("settings", "Settings", "/settings", { visibleInManager: false }),
     view("shopify", "Shopify", "/shopify"),
     // Mirrors the real plugin-hyperliquid registration (`group: "wallet"`,
@@ -99,6 +102,18 @@ afterEach(() => {
 });
 
 describe("LauncherSurface", () => {
+  it("renders the complete curated grid at natural height when embedded on home", () => {
+    render(<LauncherSurface embedded />);
+
+    expect(screen.getByTestId("home-apps-grid")).toBeTruthy();
+    expect(screen.getByTestId("launcher").dataset.embedded).toBe("true");
+    expect(screen.getByTestId("launcher-page-window").className).not.toContain(
+      "overflow-y-auto",
+    );
+    expect(screen.getByTestId("launcher-tile-settings")).toBeTruthy();
+    expect(screen.getByTestId("launcher-tile-browser")).toBeTruthy();
+  });
+
   it("shows curated apps and hides removed/shell/sub-view surfaces", () => {
     render(<LauncherSurface />);
 
@@ -116,6 +131,7 @@ describe("LauncherSurface", () => {
     // chat is the home surface, never a launcher tile (#14479).
     expect(screen.queryByTestId("launcher-tile-chat")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-views")).toBeNull();
+    expect(screen.queryByTestId("launcher-tile-character")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-shopify")).toBeNull();
     expect(screen.queryByTestId("launcher-tile-hyperliquid")).toBeNull();
   });

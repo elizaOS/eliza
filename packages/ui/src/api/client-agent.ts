@@ -91,6 +91,7 @@ import type {
   OrchestratorRoomRosterOverview,
   PluginInfo,
   PluginMutationResult,
+  ProjectCreateInput,
   ProjectListResponse,
   ProjectSummary,
   ProviderModelRecord,
@@ -1035,6 +1036,7 @@ declare module "./client-base" {
     archiveCodingAgentTaskThread(threadId: string): Promise<boolean>;
     reopenCodingAgentTaskThread(threadId: string): Promise<boolean>;
     listProjects(): Promise<ProjectListResponse>;
+    createProject(input: ProjectCreateInput): Promise<ProjectSummary>;
     activateProject(projectId: string): Promise<ProjectSummary>;
     getOrchestratorStatus(): Promise<CodingAgentOrchestratorStatus | null>;
     getOrchestratorAccounts(): Promise<OrchestratorAccountOverview>;
@@ -3976,6 +3978,17 @@ ElizaClient.prototype.listProjects = async function (this: ElizaClient) {
     }
     throw error;
   }
+};
+
+ElizaClient.prototype.createProject = async function (
+  this: ElizaClient,
+  input,
+) {
+  return this.fetch<ProjectSummary>("/api/projects", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 };
 
 ElizaClient.prototype.activateProject = async function (

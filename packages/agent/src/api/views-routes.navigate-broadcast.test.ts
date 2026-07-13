@@ -22,6 +22,7 @@ import {
   getCurrentViewState,
   handleViewsRoutes,
   isViewSwitchFresh,
+  resolveViewNavigateResult,
   VIEW_SWITCH_FRESH_MS,
   type ViewsRouteContext,
 } from "./views-routes.ts";
@@ -58,7 +59,12 @@ function makeNavigateCtx(
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
-  const broadcastWs = vi.fn();
+  const broadcastWs = vi.fn((frame: object) => {
+    const record = frame as Record<string, unknown>;
+    if (typeof record.requestId === "string") {
+      resolveViewNavigateResult(record.requestId);
+    }
+  });
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
     req,
@@ -122,13 +128,15 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     // Resolved from the builtin registry (id "settings" → /settings, "Settings").
     expect(broadcastWs).toHaveBeenCalledTimes(1);
-    expect(broadcastWs).toHaveBeenCalledWith({
-      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
-      viewId: "settings",
-      viewPath: "/settings",
-      viewLabel: "Settings",
-      viewType: "gui",
-    });
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+        viewType: "gui",
+      }),
+    );
     // No action / alwaysOnTop keys when the body omits them.
     const frame = broadcastWs.mock.calls[0][0] as Record<string, unknown>;
     expect("action" in frame).toBe(false);
@@ -153,15 +161,17 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
-    expect(broadcastWs).toHaveBeenCalledWith({
-      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
-      viewId: "settings",
-      viewPath: "/settings",
-      viewLabel: "Settings",
-      viewType: "gui",
-      action: "pin-tab",
-      alwaysOnTop: true,
-    });
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+        viewType: "gui",
+        action: "pin-tab",
+        alwaysOnTop: true,
+      }),
+    );
   });
 
   it("carries opaque deep-link payloads to the shell frame and response", async () => {
@@ -174,15 +184,17 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
-    expect(broadcastWs).toHaveBeenCalledWith({
-      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
-      viewId: "settings",
-      viewPath: "/settings",
-      viewLabel: "Settings",
-      viewType: "gui",
-      subview: "permissions",
-      payload,
-    });
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+        viewType: "gui",
+        subview: "permissions",
+        payload,
+      }),
+    );
     expect(json).toHaveBeenCalledWith(
       ctx.res,
       expect.objectContaining({
@@ -201,14 +213,16 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
-    expect(broadcastWs).toHaveBeenCalledWith({
-      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
-      viewId: "settings",
-      viewPath: "/settings",
-      viewLabel: "Settings",
-      viewType: "gui",
-      action: "close",
-    });
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "settings",
+        viewPath: "/settings",
+        viewLabel: "Settings",
+        viewType: "gui",
+        action: "close",
+      }),
+    );
   });
 
   it("broadcasts split and tile layout metadata to the shell", async () => {
@@ -263,13 +277,15 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
     await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
 
-    expect(broadcastWs).toHaveBeenCalledWith({
-      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
-      viewId: "ghost-view",
-      viewPath: "/apps/ghost-view",
-      viewLabel: "ghost-view",
-      viewType: "gui",
-    });
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+        viewId: "ghost-view",
+        viewPath: "/apps/ghost-view",
+        viewLabel: "ghost-view",
+        viewType: "gui",
+      }),
+    );
   });
 
   it("routes the synthetic __view-manager__ id to the /apps tab", async () => {

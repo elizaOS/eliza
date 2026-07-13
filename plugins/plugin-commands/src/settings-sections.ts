@@ -19,12 +19,17 @@ export interface SettingsSection {
 
 const SETTINGS_SECTIONS: ReadonlyArray<SettingsSection> = [
 	{
+		id: "character",
+		label: "Character",
+		aliases: ["persona", "personality"],
+	},
+	{
 		id: "ai-model",
 		label: "AI Model & Providers",
 		aliases: ["model", "models", "providers", "provider", "llm"],
 	},
 	{ id: "general", label: "General", aliases: ["basics"] },
-	{ id: "agent", label: "Agent", aliases: ["character", "persona"] },
+	{ id: "agent", label: "Agent" },
 	{ id: "voice", label: "Voice", aliases: ["audio", "tts", "speech"] },
 	{ id: "connectors", label: "Connectors", aliases: ["integrations"] },
 	{ id: "skills", label: "Skills" },
@@ -33,6 +38,11 @@ const SETTINGS_SECTIONS: ReadonlyArray<SettingsSection> = [
 	{ id: "billing", label: "Billing", aliases: ["plan", "subscription"] },
 	{ id: "appearance", label: "Appearance", aliases: ["theme", "display"] },
 	{ id: "notifications", label: "Notifications", aliases: ["alerts"] },
+	{
+		id: "peripherals",
+		label: "Peripherals",
+		aliases: ["bluetooth", "devices", "pairing", "accessories"],
+	},
 	{ id: "advanced", label: "Advanced", aliases: ["developer", "debug"] },
 ];
 

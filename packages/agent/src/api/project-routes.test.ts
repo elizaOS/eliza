@@ -48,6 +48,7 @@ const PROJECT_A: ProjectSummaryDTO = {
   localPath: "/home/dev/alpha",
   repoUrl: "https://github.com/x/alpha",
   defaultBranch: "main",
+  cloudAppId: "app-alpha",
   lastOpenedAt: "2026-07-05T00:00:00.000Z",
 };
 const PROJECT_B: ProjectSummaryDTO = {
@@ -82,6 +83,54 @@ describe("handleProjectRoutes", () => {
     expect(handled).toBe(true);
     expect(helpers.json).toHaveBeenCalledWith(res, registry);
     expect(helpers.error).not.toHaveBeenCalled();
+  });
+
+  it("POST /api/projects registers a project and returns its cloud-capable summary", async () => {
+    const helpers = makeHelpers();
+    helpers.readJsonBody.mockResolvedValue({
+      name: "Gamma",
+      localPath: "/home/dev/gamma",
+      repoUrl: "https://github.com/x/gamma",
+    });
+    const created: ProjectSummaryDTO = {
+      id: "proj-gamma",
+      name: "Gamma",
+      localPath: "/home/dev/gamma",
+      repoUrl: "https://github.com/x/gamma",
+      lastOpenedAt: "2026-07-06T00:00:00.000Z",
+    };
+    const create = vi.fn(() => created);
+
+    const handled = await handleProjectRoutes(
+      ctx("POST", "/api/projects", helpers),
+      { create },
+    );
+
+    expect(handled).toBe(true);
+    expect(create).toHaveBeenCalledWith({
+      name: "Gamma",
+      localPath: "/home/dev/gamma",
+      repoUrl: "https://github.com/x/gamma",
+      defaultBranch: undefined,
+    });
+    expect(helpers.json).toHaveBeenCalledWith(res, created, 201);
+  });
+
+  it("POST /api/projects rejects an incomplete project", async () => {
+    const helpers = makeHelpers();
+    helpers.readJsonBody.mockResolvedValue({ name: "No folder" });
+    const create = vi.fn();
+
+    await handleProjectRoutes(ctx("POST", "/api/projects", helpers), {
+      create,
+    });
+
+    expect(create).not.toHaveBeenCalled();
+    expect(helpers.error).toHaveBeenCalledWith(
+      res,
+      "name and localPath are required",
+      400,
+    );
   });
 
   it("GET /api/projects renders empty when the registry is absent", async () => {

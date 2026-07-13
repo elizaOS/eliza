@@ -1,0 +1,75 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:2138",
+      "localStorage": [
+        {
+          "name": "elizaos:active-server",
+          "value": "{\"id\":\"local:embedded\",\"kind\":\"local\",\"label\":\"This device\",\"apiBase\":\"http://127.0.0.1:2138\"}"
+        },
+        {
+          "name": "eliza:first-run-complete",
+          "value": "1"
+        },
+        {
+          "name": "eliza:weather:location-notice:v1",
+          "value": "posted"
+        },
+        {
+          "name": "eliza:ui-background-history",
+          "value": "[]"
+        },
+        {
+          "name": "eliza:ui-background",
+          "value": "{\"mode\":\"image\",\"color\":\"#000000\",\"imageUrl\":\"/wallpapers/canopy.webp\"}"
+        },
+        {
+          "name": "eliza:ui-background-default-v2",
+          "value": "1"
+        },
+        {
+          "name": "eliza:ui-theme",
+          "value": "light"
+        },
+        {
+          "name": "eliza:home-time-widget-hidden",
+          "value": "0"
+        },
+        {
+          "name": "eliza:last-native-tab",
+          "value": "chat"
+        },
+        {
+          "name": "elizaos:ui-theme",
+          "value": "light"
+        },
+        {
+          "name": "eliza:ui-accent",
+          "value": "default"
+        },
+        {
+          "name": "eliza:ui-shell-mode",
+          "value": "native"
+        },
+        {
+          "name": "eliza:ui-theme-mode",
+          "value": "system"
+        },
+        {
+          "name": "eliza:ui-background-redo",
+          "value": "[]"
+        },
+        {
+          "name": "eliza:weather:v2",
+          "value": "{\"status\":\"ready\",\"temp\":78,\"unit\":\"°F\",\"condition\":\"Clear\",\"kind\":\"clear\",\"approximate\":true,\"fetchedAt\":1783900537602}"
+        },
+        {
+          "name": "eliza:ui-language",
+          "value": "en"
+        }
+      ],
+      "sessionStorage": []
+    }
+  ]
+}

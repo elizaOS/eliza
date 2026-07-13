@@ -260,10 +260,44 @@ describe("notification-store", () => {
     });
     initNotifications();
     initNotifications(); // idempotent
-    expect(onWsEvent).toHaveBeenCalledTimes(1);
-    expect(onWsEvent.mock.calls[0][0]).toBe("agent_event");
+    expect(onWsEvent).toHaveBeenCalledTimes(2);
+    expect(onWsEvent.mock.calls.map(([type]) => type)).toEqual([
+      "agent_event",
+      "ws-reconnected",
+    ]);
     expect(listNotifications).toHaveBeenCalledTimes(1);
     await Promise.resolve();
+  });
+
+  it("rehydrates the authoritative inbox after a WebSocket reconnect", async () => {
+    initNotifications();
+    await flushDelivery();
+    __ingestNotificationForTests(
+      makeNotification({ id: "stale-local", title: "Stale local row" }),
+      1,
+    );
+    listNotifications.mockResolvedValueOnce({
+      notifications: [
+        makeNotification({
+          id: "current-default",
+          title: "Take the tour",
+          priority: "high",
+        }),
+      ],
+      unreadCount: 1,
+    });
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([type]) => type === "ws-reconnected",
+    )?.[1] as ((d: Record<string, unknown>) => void) | undefined;
+    expect(reconnectHandler).toBeTypeOf("function");
+
+    reconnectHandler?.({ type: "ws-reconnected" });
+    await flushDelivery();
+
+    expect(__getStateForTests().notifications.map((n) => n.id)).toEqual([
+      "current-default",
+    ]);
+    expect(__getStateForTests().unreadCount).toBe(1);
   });
 
   it("WS handler ignores non-notification streams", async () => {
@@ -292,6 +326,116 @@ describe("notification-store", () => {
     await flushDelivery();
     expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
     expect(pushNotificationBanner.mock.calls[0][0].title).toBe("From WS");
+  });
+
+  it("WS notification_clear immediately discards every local row without delivering", async () => {
+    initNotifications();
+    await flushDelivery();
+    __ingestEphemeralNotificationForTests(
+      makeNotification({ id: "ephemeral", title: "Browser QA" }),
+    );
+    __ingestNotificationForTests(
+      makeNotification({ id: "persisted", title: "Persisted" }),
+      2,
+    );
+    await flushDelivery();
+    pushNotificationBanner.mockClear();
+    showNativeNotification.mockClear();
+    invokeDesktopBridgeRequest.mockClear();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+
+    handler({
+      stream: "notification",
+      payload: { type: "notification_clear", unreadCount: 0 },
+    });
+
+    expect(__getStateForTests()).toEqual({
+      notifications: [],
+      unreadCount: 0,
+      hydrated: true,
+    });
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+    expect(showNativeNotification).not.toHaveBeenCalled();
+    expect(invokeDesktopBridgeRequest).not.toHaveBeenCalled();
+  });
+
+  it("WS notification_clear wins over an older hydration response", async () => {
+    let resolveHydration!: (value: {
+      notifications: AgentNotification[];
+      unreadCount: number;
+    }) => void;
+    listNotifications.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveHydration = resolve;
+      }),
+    );
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      stream: "notification",
+      payload: { type: "notification_clear", unreadCount: 0 },
+    });
+
+    resolveHydration({
+      notifications: [makeNotification({ id: "stale" })],
+      unreadCount: 1,
+    });
+    await flushDelivery();
+
+    expect(__getStateForTests()).toEqual({
+      notifications: [],
+      unreadCount: 0,
+      hydrated: true,
+    });
+  });
+
+  it("keeps notifications reseeded after clear when an older hydration resolves", async () => {
+    let resolveHydration!: (value: {
+      notifications: AgentNotification[];
+      unreadCount: number;
+    }) => void;
+    listNotifications.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveHydration = resolve;
+      }),
+    );
+    initNotifications();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      stream: "notification",
+      payload: { type: "notification_clear", unreadCount: 0 },
+    });
+    handler({
+      stream: "notification",
+      payload: {
+        type: "notification",
+        notification: makeNotification({
+          id: "new-default",
+          title: "Choose your AI model",
+          priority: "high",
+        }),
+        unreadCount: 1,
+      },
+    });
+
+    resolveHydration({
+      notifications: [
+        makeNotification({ id: "stale", title: "Old notification" }),
+      ],
+      unreadCount: 1,
+    });
+    await flushDelivery();
+
+    expect(__getStateForTests().notifications.map((n) => n.id)).toEqual([
+      "new-default",
+    ]);
+    expect(__getStateForTests().unreadCount).toBe(1);
   });
 
   it("WS handler drops a payload missing id or title (validated, not cast)", async () => {

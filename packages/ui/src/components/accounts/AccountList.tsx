@@ -1,15 +1,14 @@
 /**
  * AccountList — provider-scoped multi-account UI.
  *
- * Renders the rotation strategy picker, "Add account" button, and a
- * priority-ordered stack of `AccountCard`s for the given providerId.
- * Up/down reordering swaps priorities with the neighbour via two
- * sequential PATCH calls (no drag-drop dependency).
+ * Renders a provider's round-robin subscription pool. Account ordering and
+ * strategy controls are intentionally absent: every enabled healthy account
+ * participates automatically.
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useAccounts } from "../../hooks/useAccounts";
 import { useAppSelector } from "../../state";
@@ -17,7 +16,6 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { AccountCard } from "./AccountCard";
 import { AddAccountDialog } from "./AddAccountDialog";
-import { RotationStrategyPicker } from "./RotationStrategyPicker";
 import { readSubscriptionOAuth } from "./subscription-oauth-state";
 
 interface AccountListProps {
@@ -59,44 +57,6 @@ export function AccountList({ providerId }: AccountListProps) {
     [providerEntry],
   );
 
-  const handleMove = useCallback(
-    async (accountId: string, direction: "up" | "down") => {
-      const index = sorted.findIndex((a) => a.id === accountId);
-      if (index < 0) return;
-      const neighbourIndex = direction === "up" ? index - 1 : index + 1;
-      if (neighbourIndex < 0 || neighbourIndex >= sorted.length) return;
-      const self = sorted[index];
-      const neighbour = sorted[neighbourIndex];
-      if (!self || !neighbour || self.priority === neighbour.priority) return;
-      const selfOriginal = self.priority;
-      const neighbourOriginal = neighbour.priority;
-      // Swap priorities via two sequential PATCHes. There's no atomic
-      // server-side swap, so on failure of the second call we roll the
-      // first one back so the user doesn't end up with two accounts at
-      // the same priority. Worst case a partial-failure leaves the
-      // original ordering with a flash; never a corrupted ordering.
-      await accounts.patch(providerId, self.id, {
-        priority: neighbourOriginal,
-      });
-      try {
-        await accounts.patch(providerId, neighbour.id, {
-          priority: selfOriginal,
-        });
-      } catch (err) {
-        try {
-          await accounts.patch(providerId, self.id, {
-            priority: selfOriginal,
-          });
-        } catch {
-          // Rollback failed — refresh will reconcile from server state.
-          void accounts.refresh();
-        }
-        throw err;
-      }
-    },
-    [accounts, providerId, sorted],
-  );
-
   if (accounts.loading && !accounts.data) {
     return (
       <div className="mt-3 flex items-center gap-2 text-xs text-muted">
@@ -118,14 +78,6 @@ export function AccountList({ providerId }: AccountListProps) {
           </h3>
         </div>
         <div className="flex items-center gap-2">
-          <RotationStrategyPicker
-            providerId={providerId}
-            value={providerEntry?.strategy}
-            onChange={(strategy) => {
-              void accounts.setStrategy(providerId, strategy);
-            }}
-            disabled={accounts.saving.has(`strategy:${providerId}`)}
-          />
           <Button
             type="button"
             variant="default"
@@ -148,24 +100,21 @@ export function AccountList({ providerId }: AccountListProps) {
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {sorted.map((account, index) => (
+          {sorted.map((account) => (
             <AccountCard
               key={account.id}
               account={account}
-              isFirst={index === 0}
-              isLast={index === sorted.length - 1}
               saving={accounts.saving.has(account.id)}
               testBusy={accounts.saving.has(`test:${account.id}`)}
               refreshBusy={accounts.saving.has(`usage:${account.id}`)}
               onPatch={(body) => accounts.patch(providerId, account.id, body)}
-              onMoveUp={() => handleMove(account.id, "up")}
-              onMoveDown={() => handleMove(account.id, "down")}
               onTest={async () => {
                 await accounts.test(providerId, account.id);
               }}
               onRefreshUsage={() =>
                 accounts.refreshUsage(providerId, account.id)
               }
+              onReauthenticate={() => setAddDialogOpen(true)}
               onDelete={() => accounts.remove(providerId, account.id)}
             />
           ))}

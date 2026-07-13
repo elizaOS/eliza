@@ -99,6 +99,8 @@ describe("curateLauncherPages", () => {
         entry("views-manager"),
         entry("apps"),
         entry("background"),
+        entry("pendant-transcript"),
+        entry("phone-companion"),
         entry("companion"),
         entry("model-tester"),
         entry("shopify"),
@@ -121,11 +123,15 @@ describe("curateLauncherPages", () => {
     expect(ids(page)).toEqual(["settings", "wallet"]);
   });
 
-  it("never tiles relationships — it is a Character section, not an app", () => {
-    const views = [entry("wallet"), entry("relationships"), entry("settings")];
-    // The character family is ONE launcher tile; Relationships is reached via
-    // the Character section strip (CharacterSectionNav), so no standalone tile
-    // in any profile — including Developer Mode.
+  it("keeps Character and its family off the launcher now that they live in Settings", () => {
+    const views = [
+      entry("wallet"),
+      entry("character"),
+      entry("relationships"),
+      entry("settings"),
+    ];
+    // Character is the first Settings subview; its legacy routes remain
+    // addressable without duplicating the family as launcher tiles.
     expect(
       ids(
         curateLauncherPages(views, {
@@ -144,6 +150,15 @@ describe("curateLauncherPages", () => {
         }),
       ),
     ).not.toContain("relationships");
+    expect(
+      ids(
+        curateLauncherPages(views, {
+          isAosp: false,
+          enabledKinds: ENABLED,
+          cloudActive: true,
+        }),
+      ),
+    ).not.toContain("character");
   });
 
   it("keeps wallet-group sub-pages out of the launcher", () => {
@@ -197,10 +212,13 @@ describe("curateLauncherPages", () => {
   });
 
   it("gates cloud-only tiles behind an active Eliza Cloud connection (#10725)", () => {
-    // cloud-apps is viewKind:"release", so without the gate it would show as an
-    // "Apps" tile regardless of cloud state.
-    const views = [entry("wallet"), entry("cloud-apps", { label: "Apps" })];
-    // Signed out of cloud: the cloud dashboard tile is hidden.
+    // Cloud app management is folded into Projects, which remains useful while
+    // signed out. The Cloud account surface itself stays connection-gated.
+    const views = [
+      entry("wallet"),
+      entry("cloud-apps", { label: "Apps" }),
+      entry("cloud"),
+    ];
     expect(
       ids(
         curateLauncherPages(views, {
@@ -209,8 +227,8 @@ describe("curateLauncherPages", () => {
           cloudActive: false,
         }),
       ),
-    ).toEqual(["wallet"]);
-    // Signed in: it surfaces on the apps page.
+    ).toEqual(["wallet", "projects"]);
+    // Signed in: the separate Cloud account surface also appears.
     expect(
       ids(
         curateLauncherPages(views, {
@@ -219,10 +237,10 @@ describe("curateLauncherPages", () => {
           cloudActive: true,
         }),
       ),
-    ).toEqual(["wallet", "cloud-apps"]);
+    ).toEqual(["wallet", "projects", "cloud"]);
   });
 
-  it("collapses duplicate wallet + automations registrations, keeping Tasks its own tile", () => {
+  it("collapses duplicate wallet, task, and app registrations into Projects", () => {
     const page = curateLauncherPages(
       [
         entry("inventory", { builtin: true }),
@@ -236,10 +254,9 @@ describe("curateLauncherPages", () => {
       ],
       { isAosp: false, enabledKinds: ENABLED, cloudActive: true },
     );
-    // `triggers`/`todos` fold into `automations`; `tasks`/`task-coordinator`
-    // collapse to the standalone Tasks orchestrator tile (no longer folded into
-    // automations). Order follows LAUNCHER_APPS_ORDER: wallet, tasks, automations.
-    expect(ids(page)).toEqual(["wallet", "tasks", "automations"]);
+    // `triggers`/`todos` fold into `automations`; task surfaces fold into the
+    // Projects hub. Order follows LAUNCHER_APPS_ORDER.
+    expect(ids(page)).toEqual(["wallet", "projects", "automations"]);
   });
 
   it("re-points an alias-winning tile at the canonical route (not the alias path)", () => {
@@ -338,6 +355,8 @@ describe("curateLauncherPages — full realistic view set", () => {
     entry("apps"),
     entry("background", { viewKind: "preview" }),
     entry("voice"),
+    entry("pendant-transcript"),
+    entry("phone-companion"),
     entry("character-select"),
     entry("desktop"),
     // Removed apps.
@@ -402,10 +421,9 @@ describe("curateLauncherPages — full realistic view set", () => {
       // chat is the home surface — no launcher tile (#14479).
       "settings",
       "wallet",
-      "tasks",
+      "projects",
       "automations",
       "browser",
-      "character",
       "documents",
       "memories",
       "feed",
@@ -430,13 +448,12 @@ describe("curateLauncherPages — full realistic view set", () => {
         }),
       ),
     ).toEqual([
-      // chat + relationships are not everyday grid tiles (#14479).
+      // chat + the Character family are not everyday grid tiles (#14479).
       "settings",
       "wallet",
-      "tasks",
+      "projects",
       "automations",
       "browser",
-      "character",
       "documents",
       "memories",
     ]);
@@ -534,12 +551,11 @@ describe("canonicalLauncherId derives package-name mapping from owner declaratio
     );
     expect(canonicalLauncherId("@elizaos/plugin-training")).toBe("fine-tuning");
 
-    // The task-coordinator PACKAGE NAME collapses onto the tasks tile via its
-    // declaration (the short `task-coordinator` alias keeps its legacy row).
+    // The task-coordinator target is itself a legacy alias of Projects.
     expect(canonicalLauncherId("@elizaos/plugin-task-coordinator")).toBe(
-      "tasks",
+      "projects",
     );
-    expect(canonicalLauncherId("task-coordinator")).toBe("tasks");
+    expect(canonicalLauncherId("task-coordinator")).toBe("projects");
   });
 
   it("collapses an internal-tool app catalog card onto its canonical tile without a curation edit", () => {

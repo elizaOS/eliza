@@ -53,7 +53,6 @@ describe("fresh-user MVP view set", () => {
    * The curated set a fresh non-developer user sees in the manager grid. Each id
    * is an intentional MVP surface:
    *   - chat        — the primary agent conversation surface (home).
-   *   - character   — agent identity/personality/knowledge editor.
    *   - documents   — the Knowledge multimedia hub.
    *   - automations — scheduled tasks & recurring workflows.
    *   - plugins-page— install/configure plugins & credentials.
@@ -64,7 +63,6 @@ describe("fresh-user MVP view set", () => {
    */
   const FRESH_USER_MANAGER_VIEWS = [
     "automations",
-    "character",
     "chat",
     "documents",
     "memories",
@@ -112,11 +110,13 @@ describe("fresh-user MVP view set", () => {
   });
 
   it("internal + native-OS surfaces never appear in any manager grid", () => {
-    // `transcripts` is a Knowledge-hub deep-link (visibleInManager:false,
-    // #13594/#11856); `camera` is an AOSP-only nativeOs surface. Neither shows
-    // in the manager grid with any toggle state, on the default build.
+    // `character` is edited from Settings and `transcripts` is a Knowledge-hub
+    // deep link (both visibleInManager:false); `camera` is an AOSP-only nativeOs
+    // surface. None shows in the manager grid with any toggle state on the
+    // default build.
     for (const enabled of [TOGGLES_OFF, TOGGLES_ON]) {
       const visible = managerVisibleIds(enabled);
+      expect(visible).not.toContain("character");
       expect(visible).not.toContain("transcripts");
       expect(visible).not.toContain("camera");
     }

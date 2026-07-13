@@ -300,6 +300,9 @@ function lazyNamedComponent<TProps>(
 const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
   async () => (await importAppPhone()).PhoneCompanionApp,
 );
+const PhonePairingSettingsCard = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppPhone()).PhonePairingSettingsCard,
+);
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await importPersonalAssistant()).AppBlockerSettingsCard,
 );
@@ -642,6 +645,7 @@ function buildAppBootConfig(): AppBootConfig {
     envAliases: APP_ENV_ALIASES,
     appBlockerSettingsCard: AppBlockerSettingsCard,
     websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
+    phonePairingSettingsCard: PhonePairingSettingsCard,
     clientMiddleware: {
       forceFreshFirstRun:
         shouldInstallMainWindowFirstRunPatches(windowShellRoute),
@@ -2996,7 +3000,7 @@ const ChatWidgetHarness = lazy(async () => {
   ) {
     throw new Error("ChatWidgetHarness is disabled in this build");
   }
-  const mod = await import("@elizaos/ui");
+  const mod = await import("@elizaos/ui/components/chat/ChatWidgetHarness");
   return { default: mod.ChatWidgetHarness };
 });
 

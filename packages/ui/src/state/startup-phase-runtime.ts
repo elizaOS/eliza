@@ -23,6 +23,7 @@ import {
   type StartupErrorState,
 } from "./internal";
 import { loadPersistedActiveServer } from "./persistence";
+import { startupAuthUsesPasswordLogin } from "./startup-auth-routing";
 import type { RuntimeTarget, StartupEvent } from "./startup-coordinator";
 
 function isCapacitorNative(): boolean {
@@ -486,6 +487,16 @@ export async function runStartingRuntime(
             pairingEnabled: false,
             expiresAt: null,
           }));
+          if (startupAuthUsesPasswordLogin(auth)) {
+            // The top-level auth gate owns password sign-in. Do not overwrite
+            // that decision with the device-pairing phase just because a
+            // protected runtime endpoint also returned 401 while logged out.
+            deps.setAuthRequired(false);
+            deps.setPairingEnabled(false);
+            deps.setFirstRunLoading(false);
+            dispatch({ type: "BACKEND_LOGIN_REQUIRED" });
+            return;
+          }
           deps.setAuthRequired(true);
           deps.setPairingEnabled(auth.pairingEnabled);
           deps.setPairingExpiresAt(auth.expiresAt);
@@ -502,8 +513,8 @@ export async function runStartingRuntime(
         //      /api/auth/status is fine (authenticated:true) but app endpoints
         //      like /api/agent/status still 401, or 429 from the auth rate
         //      limiter on those endpoints. /api/auth/me returns
-        //      reason="remote_auth_required". Advance to ready so the auth gate
-        //      can render LoginView. Hydrating tolerates 401s.
+        //      reason="remote_auth_required". Pause startup so the auth gate
+        //      can render LoginView without starting protected hydration.
         try {
           const auth = await client.getAuthStatus();
           const remotePasswordMissing =
@@ -512,7 +523,7 @@ export async function runStartingRuntime(
             auth.passwordConfigured === false;
           if (auth.authenticated || remotePasswordMissing) {
             deps.setFirstRunLoading(false);
-            dispatch({ type: "AGENT_RUNNING" });
+            dispatch({ type: "BACKEND_LOGIN_REQUIRED" });
             return;
           }
         } catch {

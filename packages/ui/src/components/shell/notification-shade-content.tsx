@@ -5,8 +5,14 @@
  */
 import type { AgentNotification, NotificationCategory } from "@elizaos/core";
 import { tierForPriority } from "@elizaos/core";
-import { X } from "lucide-react";
-import { type JSX, memo, useCallback, useRef, useState } from "react";
+import {
+  type JSX,
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { cn } from "../../lib/utils";
 import { NOTIFICATION_PRIORITY_RANK } from "../../widgets/home-priority";
 import {
@@ -14,10 +20,11 @@ import {
   hasChatSourceMeta,
   normalizeChatSourceKey,
 } from "../composites/chat/chat-source.helpers";
-import { notificationPullRevealStyle } from "./notification-shade-presentation";
 import { RelativeTime } from "./RelativeTime";
 
 const SWIPE_DISMISS_PX = 88;
+export const STACK_FAN_GESTURE_PX = 48;
+const STACK_WHEEL_IDLE_MS = 220;
 
 /** Stable shade order: priority, recency, then id as a total tiebreak. */
 export function orderDashboardNotifications(
@@ -92,35 +99,6 @@ export function groupDashboardNotifications(
   return [...groups.entries()].map(([key, group]) => ({ key, ...group }));
 }
 
-export function ClearConfirmationContent({
-  confirming,
-}: {
-  confirming: boolean;
-}): JSX.Element {
-  return (
-    <span className="relative flex h-full w-full items-center justify-center">
-      <X
-        aria-hidden
-        className={cn(
-          "eliza-notif-control-transition absolute h-3.5 w-3.5 transition-[opacity,transform] duration-200 ease-out",
-          confirming ? "scale-75 opacity-0" : "scale-100 opacity-100",
-        )}
-      />
-      <span
-        aria-hidden={!confirming}
-        className={cn(
-          "eliza-notif-control-transition absolute transition-[opacity,transform] duration-200 ease-out",
-          confirming
-            ? "translate-y-0 scale-100 opacity-100"
-            : "translate-y-0.5 scale-95 opacity-0",
-        )}
-      >
-        Clear
-      </span>
-    </span>
-  );
-}
-
 function NotificationSourceIcon({
   count,
   source,
@@ -171,8 +149,6 @@ export interface NotificationRowProps {
   notification: AgentNotification;
   stackKey?: string;
   stackCount?: number;
-  pullRevealProgress?: number;
-  shadeVisibility?: number;
   onExpandStack?: (key: string) => void;
   onOpen: (notification: AgentNotification) => void;
   onDismiss: (id: string) => void;
@@ -192,8 +168,6 @@ export function rowPropsEqual(
     a.source === b.source &&
     previous.stackKey === next.stackKey &&
     previous.stackCount === next.stackCount &&
-    previous.pullRevealProgress === next.pullRevealProgress &&
-    previous.shadeVisibility === next.shadeVisibility &&
     previous.onExpandStack === next.onExpandStack &&
     previous.onOpen === next.onOpen &&
     previous.onDismiss === next.onDismiss
@@ -213,8 +187,6 @@ export const NotificationRow = memo(function NotificationRow({
   notification,
   stackKey,
   stackCount,
-  pullRevealProgress,
-  shadeVisibility,
   onExpandStack,
   onOpen,
   onDismiss,
@@ -229,10 +201,21 @@ export const NotificationRow = memo(function NotificationRow({
     axis: "none" | "x" | "y";
   } | null>(null);
   const suppressClick = useRef(false);
+  const wheelDistance = useRef(0);
+  const wheelResetTimer = useRef<number | null>(null);
 
   const clearGesture = useCallback(() => {
     gesture.current = null;
   }, []);
+
+  useEffect(
+    () => () => {
+      if (wheelResetTimer.current !== null) {
+        window.clearTimeout(wheelResetTimer.current);
+      }
+    },
+    [],
+  );
 
   const commitDismiss = useCallback(
     (direction: "left" | "right") => {
@@ -253,18 +236,31 @@ export const NotificationRow = memo(function NotificationRow({
     };
   }, []);
 
-  const onPointerMove = useCallback((event: React.PointerEvent) => {
-    const current = gesture.current;
-    if (!current || current.id !== event.pointerId) return;
-    const dx = event.clientX - current.startX;
-    const dy = event.clientY - current.startY;
-    if (current.axis === "none" && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-      current.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-    }
-    if (current.axis !== "x") return;
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    setSwipeX(dx);
-  }, []);
+  const onPointerMove = useCallback(
+    (event: React.PointerEvent) => {
+      const current = gesture.current;
+      if (!current || current.id !== event.pointerId) return;
+      const dx = event.clientX - current.startX;
+      const dy = event.clientY - current.startY;
+      if (current.axis === "none" && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        current.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      }
+      if (current.axis === "x") {
+        event.currentTarget.setPointerCapture?.(event.pointerId);
+        setSwipeX(dx);
+        return;
+      }
+      if (current.axis !== "y" || !stackKey || !onExpandStack) return;
+      // A vertical drag on a folded producer belongs to that producer, never to
+      // the whole inbox. Mark it non-clicking as soon as the axis commits, then
+      // fan once the deliberate-drag threshold is crossed.
+      suppressClick.current = true;
+      if (Math.abs(dy) < STACK_FAN_GESTURE_PX) return;
+      clearGesture();
+      onExpandStack(stackKey);
+    },
+    [clearGesture, onExpandStack, stackKey],
+  );
 
   const onPointerEnd = useCallback(
     (event: React.PointerEvent) => {
@@ -287,40 +283,44 @@ export const NotificationRow = memo(function NotificationRow({
     [clearGesture, commitDismiss],
   );
 
+  const onWheel = useCallback(
+    (event: React.WheelEvent) => {
+      if (!stackKey || !onExpandStack) return;
+      // A Mac trackpad's two-finger gesture is a WheelEvent. Only a
+      // vertical-dominant run over a folded producer is consumed; horizontal
+      // movement remains available to the shell pager and a fanned producer
+      // immediately returns all later momentum to the native list scroller.
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const scale =
+        event.deltaMode === 1
+          ? 16
+          : event.deltaMode === 2
+            ? window.innerHeight
+            : 1;
+      wheelDistance.current += Math.abs(event.deltaY) * scale;
+      if (wheelResetTimer.current !== null) {
+        window.clearTimeout(wheelResetTimer.current);
+      }
+      wheelResetTimer.current = window.setTimeout(() => {
+        wheelDistance.current = 0;
+        wheelResetTimer.current = null;
+      }, STACK_WHEEL_IDLE_MS);
+      if (wheelDistance.current < STACK_FAN_GESTURE_PX) return;
+      wheelDistance.current = 0;
+      if (wheelResetTimer.current !== null) {
+        window.clearTimeout(wheelResetTimer.current);
+        wheelResetTimer.current = null;
+      }
+      onExpandStack(stackKey);
+    },
+    [onExpandStack, stackKey],
+  );
+
   const dragging = swipeX !== 0 && !dismissing;
   return (
-    <li
-      className={cn(
-        "eliza-notif-row relative",
-        pullRevealProgress !== undefined &&
-          "eliza-notif-pull-reveal pointer-events-none",
-        shadeVisibility !== undefined && "eliza-notif-shade-transition grid",
-      )}
-      data-notification-pull-reveal={
-        pullRevealProgress !== undefined ? "" : undefined
-      }
-      data-notification-disposable-row={
-        shadeVisibility !== undefined ? "" : undefined
-      }
-      aria-hidden={shadeVisibility === 0 ? true : undefined}
-      inert={
-        pullRevealProgress !== undefined || shadeVisibility === 0
-          ? true
-          : undefined
-      }
-      style={
-        pullRevealProgress !== undefined
-          ? notificationPullRevealStyle(pullRevealProgress)
-          : shadeVisibility !== undefined
-            ? {
-                gridTemplateRows: `${shadeVisibility}fr`,
-                opacity: shadeVisibility,
-                transform: `translate3d(0, ${(1 - shadeVisibility) * -8}px, 0)`,
-              }
-            : undefined
-      }
-      data-notif-row
-    >
+    <li className="eliza-notif-row relative" data-notif-row>
       <div
         data-testid="notification-row-swipe"
         data-swipe-dragging={dragging ? "" : undefined}
@@ -337,6 +337,7 @@ export const NotificationRow = memo(function NotificationRow({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
+        onWheel={onWheel}
         className="eliza-notif-row-inner eliza-notif-glass group relative flex min-h-0 flex-col overflow-hidden rounded-2xl"
       >
         <button

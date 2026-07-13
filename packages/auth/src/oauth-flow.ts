@@ -22,6 +22,7 @@ import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
+  listAccounts,
   saveAccount,
 } from "./account-storage.ts";
 import { startCodexDeviceLogin } from "./codex-device.ts";
@@ -134,8 +135,22 @@ function persistAccount(args: {
   email?: string;
 }): AccountCredentialRecord {
   const now = Date.now();
+  const normalizedEmail = args.email?.trim().toLowerCase();
+  const existing = listAccounts(args.providerId).find((account) => {
+    if (args.organizationId && account.organizationId === args.organizationId) {
+      return true;
+    }
+    return Boolean(
+      normalizedEmail &&
+        account.email?.trim().toLowerCase() === normalizedEmail,
+    );
+  });
   const record: AccountCredentialRecord = {
-    id: args.accountId,
+    // OAuth starts before the provider identity is known, so callers commonly
+    // reserve a fresh UUID for every attempt. Once we have a stable provider
+    // identity, update its existing credential record instead of creating a
+    // duplicate account on every relink.
+    id: existing?.id ?? args.accountId,
     providerId: args.providerId,
     label: args.label,
     source: "oauth",
@@ -145,8 +160,10 @@ function persistAccount(args: {
       expires: args.expires,
       ...(args.idToken ? { idToken: args.idToken } : {}),
     },
-    createdAt: now,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    ...(existing?.lastUsedAt ? { lastUsedAt: existing.lastUsedAt } : {}),
+    ...(existing?.userId ? { userId: existing.userId } : {}),
     ...(args.organizationId ? { organizationId: args.organizationId } : {}),
     ...(args.email ? { email: args.email } : {}),
   };

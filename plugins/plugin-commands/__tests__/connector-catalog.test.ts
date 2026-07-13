@@ -55,7 +55,7 @@ describe("connector catalog — navigation surface", () => {
 			knowledge: "/character/documents",
 			wallet: "/wallet",
 			automations: "/automations",
-			tasks: "/apps/tasks",
+			tasks: "/projects",
 			skills: "/apps/skills",
 			plugins: "/apps/plugins",
 			logs: "/apps/logs",

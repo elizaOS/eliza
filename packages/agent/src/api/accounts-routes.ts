@@ -256,12 +256,10 @@ interface AccountStrategiesShape {
 }
 
 function readAccountStrategy(
-  config: ElizaConfig,
-  providerId: LinkedAccountProviderId,
+  _config: ElizaConfig,
+  _providerId: LinkedAccountProviderId,
 ): ServiceRouteAccountStrategy {
-  const strategies = (config as ElizaConfig & AccountStrategiesShape)
-    .accountStrategies;
-  return strategies?.[providerId] ?? "priority";
+  return "round-robin";
 }
 
 function writeAccountStrategy(
@@ -499,7 +497,9 @@ async function probeCodingPlanKey(
   }
 }
 
-function healthForProbeStatus(status: number): LinkedAccountConfig["health"] {
+export function healthForProbeStatus(
+  status: number,
+): LinkedAccountConfig["health"] {
   if (status === 401 || status === 403) return "needs-reauth";
   if (status === 429) return "rate-limited";
   if (status >= 500 || status === 0) return "unknown";
@@ -1143,7 +1143,10 @@ async function handleRefreshUsage(
   const next: LinkedAccountConfig = {
     ...linked,
     ...(probe.usage ? { usage: probe.usage } : {}),
-    health: probe.ok ? "ok" : "rate-limited",
+    // Preserve the provider's actual failure class. Treating every fallback
+    // probe failure as rate-limited hides invalidated OAuth tokens (401/403)
+    // and sends the user into a useless refresh loop instead of reauth.
+    health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
     healthDetail: probe.ok
       ? { lastChecked: Date.now() }
       : {

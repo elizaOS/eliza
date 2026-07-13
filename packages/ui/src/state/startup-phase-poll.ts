@@ -7,7 +7,6 @@
  */
 
 import { logger } from "@elizaos/logger";
-import { getStylePresets } from "@elizaos/shared";
 import type { FirstRunOptions } from "../api";
 import { client } from "../api";
 import {
@@ -50,7 +49,6 @@ import { resolveAgentSessionRecovery } from "./agent-session-recovery";
 import { runAgentSessionRecovery } from "./agent-session-recovery-runner";
 import {
   asApiLikeError,
-  deriveFirstRunResumeFieldsFromConfig,
   formatStartupErrorDetail,
   type StartupErrorState,
 } from "./internal";
@@ -58,6 +56,7 @@ import {
   clearPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
+import { startupAuthUsesPasswordLogin } from "./startup-auth-routing";
 import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
 import { buildStaticFirstRunOptions } from "./startup-first-run-options";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
@@ -258,10 +257,14 @@ function sharedCloudAgentIdFromBase(base: string): string | null {
  * cannot verify (no token / lookup error other than absence) — never strand the
  * user on an unprovable assumption.
  */
-async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
+type DedicatedCloudAgentPresence = "exists" | "gone" | "unknown";
+
+async function resolveDedicatedCloudAgentPresence(
+  base: string,
+): Promise<DedicatedCloudAgentPresence> {
   const agentId = dedicatedCloudAgentIdFromBase(base);
-  if (!agentId) return false;
-  if (!getCloudAuthToken(client)) return false;
+  if (!agentId) return "unknown";
+  if (!getCloudAuthToken(client)) return "unknown";
 
   const priorBaseUrl = client.getBaseUrl();
   const priorToken = client.hasToken();
@@ -274,11 +277,11 @@ async function dedicatedCloudAgentIsGone(base: string): Promise<boolean> {
     // success:false => the control-plane has no such agent record (deleted). A
     // successful lookup always carries the agent id, so success alone proves it
     // still exists.
-    return !res.success;
+    return res.success ? "exists" : "gone";
   } catch (err) {
     // A 404 is the positive "agent is gone" signal. Any other failure
     // (network blip, 5xx) is inconclusive — do not strand the user.
-    return asApiLikeError(err)?.status === 404;
+    return asApiLikeError(err)?.status === 404 ? "gone" : "unknown";
   } finally {
     client.setBaseUrl(priorBaseUrl || null);
     if (!priorToken) client.setToken(null);
@@ -327,25 +330,6 @@ export interface PollingBackendDeps {
   setPairingExpiresAt: (v: number | null) => void;
   firstRunCompletionCommittedRef: React.MutableRefObject<boolean>;
   uiLanguage: UiLanguage;
-}
-
-/** Apply resume fields derived from a partial config to the first-run state. */
-function applyFirstRunResumeFields(
-  rf: ReturnType<typeof deriveFirstRunResumeFieldsFromConfig>,
-  deps: Pick<
-    PollingBackendDeps,
-    | "setFirstRunRuntimeTarget"
-    | "setFirstRunProvider"
-    | "setFirstRunRemoteConnected"
-    | "setFirstRunRemoteApiBase"
-    | "setFirstRunRemoteToken"
-  >,
-): void {
-  deps.setFirstRunRuntimeTarget(rf.firstRunRuntimeTarget);
-  deps.setFirstRunProvider(rf.firstRunProvider);
-  deps.setFirstRunRemoteConnected(rf.firstRunRemoteConnected);
-  deps.setFirstRunRemoteApiBase(rf.firstRunRemoteApiBase);
-  deps.setFirstRunRemoteToken(rf.firstRunRemoteToken);
 }
 
 /**
@@ -770,6 +754,18 @@ export async function runPollingBackend(
           dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
           return;
         }
+        // An initialized remote with owner-password auth belongs in LoginView,
+        // not the device-pairing gate. Pairing may be disabled intentionally;
+        // routing password-capable servers there creates a dead-end that says
+        // "Pairing Required" even though normal sign-in is available.
+        if (startupAuthUsesPasswordLogin(auth)) {
+          deps.setAuthRequired(false);
+          deps.setPairingEnabled(false);
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_LOGIN_REQUIRED" });
+          return;
+        }
         // A stale remote that requires auth but has pairing DISABLED is a hard
         // dead end: this is the "Pairing is not enabled on this server" screen,
         // which offers no token field and no in-app way forward — the user can
@@ -804,8 +800,8 @@ export async function runPollingBackend(
       // Token holder, but the server still says auth is required (e.g. the
       // remote owner password has not been set yet, so /api/auth/me will
       // return 401 with reason="remote_password_not_configured"). Don't
-      // loop polling forever — advance the coordinator to "ready" so the
-      // top-level auth gate can render LoginView with an actionable
+      // loop polling forever — pause startup so the top-level auth gate can
+      // render LoginView with an actionable
       // "Remote access blocked" message. Without this, the phone is stuck
       // in startup because every first-run/runtime endpoint returns 401.
       if (auth.required && !auth.authenticated && client.hasToken()) {
@@ -819,7 +815,7 @@ export async function runPollingBackend(
         deps.setAuthRequired(false);
         deps.setFirstRunComplete(true);
         deps.setFirstRunLoading(false);
-        dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+        dispatch({ type: "BACKEND_LOGIN_REQUIRED" });
         return;
       }
       if (
@@ -866,124 +862,51 @@ export async function runPollingBackend(
       deps.setFirstRunComplete(sessionComplete);
 
       if (!sessionComplete) {
-        // Fetch first-run options
-        const optDeadline = Date.now() + getBackendStartupTimeoutMs();
-        let optErr: unknown = null;
-        while (!cancelled.current && effectRunRef.current === effectRunId) {
-          if (Date.now() >= optDeadline) {
-            deps.setStartupError(describeBackendFailure(optErr, true));
-            deps.setFirstRunLoading(false);
-            dispatch({ type: "BACKEND_TIMEOUT" });
+        // A dedicated Cloud hostname can remain locally persisted after its
+        // agent was deleted. The old options-endpoint 404 branch happened to
+        // discover that stale target; keep the recovery tied to the actual
+        // incomplete dedicated target now that options are off the boot path.
+        if (isDedicatedCloudAgentBase(client.getBaseUrl())) {
+          const dedicatedBase = client.getBaseUrl();
+          const presence =
+            await resolveDedicatedCloudAgentPresence(dedicatedBase);
+          if (
+            cancelled.current ||
+            effectRunRef.current !== effectRunId ||
+            client.getBaseUrl() !== dedicatedBase
+          ) {
             return;
           }
-          try {
-            const [options, config] = await Promise.all([
-              boundedProbe(client.getFirstRunOptions()),
-              // error-policy:J4 config only pre-fills resume fields; the
-              // required options fetch fails loudly via the loop's deadline
-              boundedProbe(client.getConfig()).catch(() => null),
-            ]);
-            // The effect may have been torn down (unmount / re-run) while the
-            // fetch was in flight — bail before mutating state or dispatching,
-            // matching the guards after the auth/first-run awaits above.
-            if (cancelled.current) return;
-            if (deps.firstRunCompletionCommittedRef.current) {
-              deps.setFirstRunLoading(false);
-              dispatch({ type: "FIRST_RUN_COMPLETE" });
-              return;
-            }
-            const rf = deriveFirstRunResumeFieldsFromConfig(config);
-            deps.setFirstRunOptions({
-              ...options,
-              styles:
-                options.styles.length > 0
-                  ? options.styles
-                  : getStylePresets(deps.uiLanguage),
-            });
-            applyFirstRunResumeFields(rf, deps);
-            deps.setFirstRunLoading(false);
-            dispatch({
-              type: "BACKEND_REACHED",
-              firstRunComplete: false,
-            });
+          if (presence === "gone") {
+            recoverToAgentSelection(
+              "saved dedicated cloud agent is deleted / unreachable",
+            );
             return;
-          } catch (err) {
-            const ae = asApiLikeError(err);
-            if (ae?.status === 401 && client.hasToken()) {
-              if (
-                await tryRecoverStaleCloudAgentSession(
-                  "first-run setup routes rejected the saved cloud agent credential",
-                )
-              ) {
-                return;
-              }
-              // Transient 401: retry. /api/auth/status is the auth gate.
-              optErr = err;
-              await new Promise<void>((r) => {
-                tidRef.current = setTimeout(r, 500);
-              });
-              continue;
-            }
-            if (ae?.status === 404) {
-              if (isDirectCloudSharedAgentBase(client.getBaseUrl())) {
-                if (
-                  await sharedCloudAgentIsMissingFromRunningSet(
-                    client.getBaseUrl(),
-                  )
-                ) {
-                  recoverToAgentSelection(
-                    "saved shared cloud agent is missing from the running set",
-                  );
-                  return;
-                }
-                // Shared-runtime cloud bridge: no /api/first-run* shell
-                // endpoints exist (we provisioned it, so first-run IS done).
-                // Treat the 404 as complete and go to chat — the bridge serves
-                // /api/conversations via the REST chat adapter. A reload may
-                // have interrupted the shared→dedicated migration — resume it.
-                resumePendingCloudHandoff();
-                deps.setFirstRunComplete(true);
-                deps.setFirstRunLoading(false);
-                dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
-                return;
-              }
-              if (isElizaCloudControlPlaneAgentlessBase(client.getBaseUrl())) {
-                // Signed into Eliza Cloud but no agent selected yet (base is the
-                // control-plane / agents-collection URL with no /<agentId>).
-                // Route to first-run agent selection, not "Backend Unreachable".
-                deps.setFirstRunLoading(false);
-                dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
-                return;
-              }
-              if (isDedicatedCloudAgentBase(client.getBaseUrl())) {
-                // A dedicated cloud agent (<id>.elizacloud.ai) 404s on the
-                // first-run shell like the shared adapter — but it can also have
-                // been DELETED or be unreachable. Verify the record against the
-                // control-plane: if it is gone, clear the dead saved server and
-                // route to agent selection instead of "Backend Unreachable"; if
-                // it still exists, treat the 404 as first-run-complete.
-                if (await dedicatedCloudAgentIsGone(client.getBaseUrl())) {
-                  recoverToAgentSelection(
-                    "saved dedicated cloud agent is deleted / unreachable",
-                  );
-                  return;
-                }
-                deps.setFirstRunComplete(true);
-                deps.setFirstRunLoading(false);
-                dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
-                return;
-              }
-              deps.setStartupError(describeBackendFailure(err, false));
-              deps.setFirstRunLoading(false);
-              dispatch({ type: "BACKEND_NOT_FOUND" });
-              return;
-            }
-            optErr = err;
-            await new Promise<void>((r) => {
-              tidRef.current = setTimeout(r, 500);
-            });
           }
+          // Dedicated agent hosts do not own app-shell onboarding routes. A
+          // live record means setup already happened; an inconclusive
+          // control-plane lookup must preserve that returning-user assumption
+          // rather than re-onboard against a host that cannot finish setup.
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+          return;
         }
+        // The in-chat conductor owns the current first-run choices and only
+        // needs the static build catalog. Legacy /api/first-run/options and
+        // /api/config reads must never delay the first onboarding paint: both
+        // routes can be absent on a valid backend, and a hung request previously
+        // trapped startup inside this polling phase until its secondary deadline.
+        // Re-check the completion latch immediately before handing off so a
+        // concurrent successful finish still wins this narrow race.
+        if (deps.firstRunCompletionCommittedRef.current) {
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "FIRST_RUN_COMPLETE" });
+          return;
+        }
+        deps.setFirstRunOptions(buildStaticFirstRunOptions(deps.uiLanguage));
+        deps.setFirstRunLoading(false);
+        dispatch({ type: "BACKEND_REACHED", firstRunComplete: false });
         return;
       }
       dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
@@ -1041,7 +964,7 @@ export async function runPollingBackend(
       // On a local-capable native build with a stale persisted cloud mode,
       // recover to the bundled on-device agent; otherwise clear the dead
       // saved server and route to agent selection (mirrors the
-      // dedicatedCloudAgentIsGone handling) instead of burning the whole
+      // resolveDedicatedCloudAgentPresence handling) instead of burning the whole
       // failure budget into the timeout card.
       if (
         isTerminalDedicatedCloudAgentErrorState({
@@ -1071,6 +994,14 @@ export async function runPollingBackend(
         return;
       }
       if (ae?.status === 401 && !client.hasToken()) {
+        if (startupAuthUsesPasswordLogin(latestAuth)) {
+          deps.setAuthRequired(false);
+          deps.setPairingEnabled(false);
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_LOGIN_REQUIRED" });
+          return;
+        }
         // On Capacitor native the bearer token is injected asynchronously by
         // the native Agent plugin after the WebView boots. The first poll can
         // fire before that injection completes, producing a spurious 401 even
@@ -1116,12 +1047,12 @@ export async function runPollingBackend(
         // limiter starts returning 429 ("Too many authentication attempts")
         // because every poll re-checks bearer-vs-session. /api/auth/me responds
         // with reason="remote_auth_required" in this state. Don't loop forever
-        // — advance to ready so the top-level auth gate can render LoginView
+        // — pause startup so the top-level auth gate can render LoginView
         // with an actionable "Sign in" / "Remote access blocked" prompt.
         deps.setAuthRequired(false);
         deps.setFirstRunComplete(true);
         deps.setFirstRunLoading(false);
-        dispatch({ type: "BACKEND_REACHED", firstRunComplete: true });
+        dispatch({ type: "BACKEND_LOGIN_REQUIRED" });
         return;
       }
       if (
@@ -1136,11 +1067,19 @@ export async function runPollingBackend(
         // 250-1000ms for 15s won't change that, it just dead-ends on
         // BACKEND_TIMEOUT with the last 401 detail. Route straight to the
         // pairing/login gate so the user can re-pair or sign in.
-        deps.setAuthRequired(true);
-        deps.setPairingEnabled(latestAuth.pairingEnabled);
-        deps.setPairingExpiresAt(latestAuth.expiresAt);
-        deps.setFirstRunLoading(false);
-        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
+        if (startupAuthUsesPasswordLogin(latestAuth)) {
+          deps.setAuthRequired(false);
+          deps.setPairingEnabled(false);
+          deps.setFirstRunComplete(true);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_LOGIN_REQUIRED" });
+        } else {
+          deps.setAuthRequired(true);
+          deps.setPairingEnabled(latestAuth.pairingEnabled);
+          deps.setPairingExpiresAt(latestAuth.expiresAt);
+          deps.setFirstRunLoading(false);
+          dispatch({ type: "BACKEND_AUTH_REQUIRED" });
+        }
         return;
       }
       if (ae?.status === 401 && client.hasToken()) {
@@ -1186,7 +1125,10 @@ export async function runPollingBackend(
           // persisted cloud mode) or clear the dead saved server and route to
           // agent selection instead of "Backend Unreachable"; if it still
           // exists, treat the 404 as first-run-complete.
-          if (await dedicatedCloudAgentIsGone(client.getBaseUrl())) {
+          if (
+            (await resolveDedicatedCloudAgentPresence(client.getBaseUrl())) ===
+            "gone"
+          ) {
             if (canRecoverToOnDeviceLocalAgent()) {
               recoverToOnDeviceLocalAgent(
                 "saved dedicated cloud agent is deleted / unreachable",

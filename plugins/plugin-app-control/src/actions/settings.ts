@@ -1402,6 +1402,11 @@ export const SETTINGS_WRITE_REGISTRY: Readonly<
 		exemptionReason:
 			"SETTINGS can request the OS notification permission through section=permissions key=request permission=notifications, but push subscription and device-token registration must stay in the client Settings surface.",
 	},
+	peripherals: {
+		kind: "readonly",
+		summary:
+			"Bluetooth accessory status and native phone pairing. Pairing must be completed on the device from Settings.",
+	},
 	connectors: {
 		kind: "delegate",
 		action: "PLUGIN",

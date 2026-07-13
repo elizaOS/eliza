@@ -132,10 +132,7 @@ import {
 } from "../state/ConversationMessagesContext.hooks";
 import type { AppContextValue } from "../state/internal";
 import { classifyDeviceRamTier } from "./device-ram-tier";
-import {
-  tryHandleFirstRunAction,
-  tryHandleFirstRunText,
-} from "./first-run-action-channel";
+import { tryHandleFirstRunAction } from "./first-run-action-channel";
 import {
   clearCloudLoginPending,
   markCloudLoginPending,
@@ -233,8 +230,10 @@ function seedAppStore(overrides: Record<string, unknown> = {}): AppStoreSpies {
  * seeded onboarding turns are observable exactly as the overlay would render
  * them. `setConversationMessages` applies functional updaters for real.
  */
-function renderConductor() {
-  const transcript: { current: ConversationMessage[] } = { current: [] };
+function renderConductor(initialTranscript: ConversationMessage[] = []) {
+  const transcript: { current: ConversationMessage[] } = {
+    current: [...initialTranscript],
+  };
   const value: ConversationMessagesValue = {
     conversationMessages: [],
     removeConversationMessage: () => {},
@@ -540,6 +539,70 @@ describe("useFirstRunConductor", () => {
       ),
     ).toBe(false);
     second.unmount();
+  });
+
+  it("keeps the runtime chooser as an escape when backup restore hangs", async () => {
+    const backup = {
+      fileName: "backup-hung.tar",
+      path: "/backups/backup-hung.tar",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      agentId: "agent-1",
+      stateSha256: "sha-hung",
+      sizeBytes: 10,
+    };
+    mocks.client.listLocalAgentBackups.mockResolvedValue([backup]);
+    mocks.client.restoreLocalAgentBackup.mockReturnValue(
+      new Promise<never>(() => {}),
+    );
+    seedAppStore();
+    const { turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:backup-restore");
+
+    expect(tryHandleFirstRunAction("__first_run__:backup-restore:latest")).toBe(
+      true,
+    );
+    const status = await waitForTurn(turn, "first-run:backup-restore-status");
+    expect(status.text).toContain("__first_run__:runtime:local=");
+    expect(mocks.client.restoreLocalAgentBackup).toHaveBeenCalledTimes(1);
+
+    // A duplicate restore is inert, but the still-visible runtime choice stays
+    // live so an unresponsive local agent cannot trap onboarding.
+    expect(tryHandleFirstRunAction("__first_run__:backup-restore:latest")).toBe(
+      true,
+    );
+    expect(mocks.client.restoreLocalAgentBackup).toHaveBeenCalledTimes(1);
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitForTurn(turn, "first-run:provider");
+    unmount();
+  });
+
+  it("appends a fresh runtime card after choosing start fresh from backup restore", async () => {
+    mocks.client.listLocalAgentBackups.mockResolvedValue([
+      {
+        fileName: "backup-start-fresh.tar",
+        path: "/backups/backup-start-fresh.tar",
+        createdAt: "2026-07-01T00:00:00.000Z",
+        agentId: "agent-1",
+        stateSha256: "sha-start-fresh",
+        sizeBytes: 10,
+      },
+    ]);
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor();
+    await waitForTurn(turn, "first-run:backup-restore");
+
+    expect(
+      tryHandleFirstRunAction("__first_run__:backup-restore:start-fresh"),
+    ).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current.at(-1)?.id.startsWith("first-run:greeting:retry:"),
+      ).toBe(true);
+    });
+    expect(transcript.current.at(-1)?.text).toContain(
+      "__first_run__:runtime:local=",
+    );
+    unmount();
   });
 
   it("REMOTE pick seeds the inline URL+token connect form (no provider step, no immediate finish)", async () => {
@@ -1071,6 +1134,36 @@ describe("useFirstRunConductor", () => {
     expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(false);
   });
 
+  it("never reuses a retry turn id when onboarding remounts with a preserved transcript", async () => {
+    seedAppStore();
+    const { transcript, turn, unmount } = renderConductor([
+      {
+        id: "first-run:provider",
+        role: "assistant",
+        text: "old provider choice",
+        timestamp: 1,
+        source: "first_run",
+      },
+      {
+        id: "first-run:provider:retry:1",
+        role: "assistant",
+        text: "old provider retry",
+        timestamp: 2,
+        source: "first_run",
+      },
+    ]);
+    await waitForTurn(turn, "first-run:greeting");
+
+    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
+    await waitFor(() => {
+      expect(transcript.current.at(-1)?.id).toBe("first-run:provider:retry:2");
+    });
+    expect(new Set(transcript.current.map((message) => message.id)).size).toBe(
+      transcript.current.length,
+    );
+    unmount();
+  });
+
   it("is a complete no-op once firstRunComplete is true (the chat-overlay shell mounts it unconditionally)", async () => {
     // The chat-overlay branch (desktop bottom bar AND any plain web
     // ?shellMode=chat-overlay load) mounts the conductor UNGATED — this pins
@@ -1203,15 +1296,20 @@ describe("first-run completion clears the synthetic onboarding transcript", () =
 function applyRetry(existing: ConversationMessage[]): ConversationMessage[] {
   let messages = [...existing];
   surfaceCloudLoginRetryTurn({
-    seedTurn(turn) {
-      messages = messages.some((message) => message.id === turn.id)
-        ? messages
-        : [...messages, turn];
-    },
-    replaceTurn(id, next) {
-      messages = messages.map((message) =>
-        message.id === id ? next : message,
-      );
+    seedFreshChoiceTurn(baseId, text) {
+      const id = messages.some((message) => message.id === baseId)
+        ? `${baseId}:retry:test`
+        : baseId;
+      messages = [
+        ...messages,
+        {
+          id,
+          role: "assistant",
+          text,
+          timestamp: 2,
+          source: "first_run",
+        },
+      ];
     },
   });
   return messages;
@@ -1237,7 +1335,7 @@ describe("surfaceCloudLoginRetryTurn", () => {
     expect(messages[1]?.text).toContain("Sign in to Eliza Cloud to continue");
   });
 
-  it("replaces the existing cloud OAuth turn on the managed-cloud path", () => {
+  it("appends a fresh retry after existing OAuth and status turns", () => {
     const messages = applyRetry([
       {
         id: "first-run:cloud-oauth",
@@ -1260,16 +1358,23 @@ describe("surfaceCloudLoginRetryTurn", () => {
           },
         },
       },
+      {
+        id: "first-run:status:Signing in…",
+        role: "assistant",
+        text: "Signing in…",
+        timestamp: 2,
+        source: "first_run",
+      },
     ]);
 
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.id).toBe("first-run:cloud-oauth");
-    expect(messages[0]?.secretRequest).toBeUndefined();
+    expect(messages).toHaveLength(3);
+    expect(messages[2]?.id).toBe("first-run:cloud-oauth:retry:test");
+    expect(messages[2]?.secretRequest).toBeUndefined();
     // The retry turn re-offers an UNLOCKED runtime CHOICE — without it, every
     // earlier runtime widget is locked and "pick again" is a dead end.
-    expect(messages[0]?.text).toContain("pick how to run your agent again");
-    expect(messages[0]?.text).toContain("__first_run__:runtime:local=");
-    expect(messages[0]?.text).toContain("__first_run__:runtime:cloud=");
+    expect(messages[2]?.text).toContain("pick how to run your agent again");
+    expect(messages[2]?.text).toContain("__first_run__:runtime:local=");
+    expect(messages[2]?.text).toContain("__first_run__:runtime:cloud=");
   });
 
   it("cloud-only mode (chooser off) re-offers only the sign-in button — no runtime chooser", () => {
@@ -1608,7 +1713,63 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
-  it("the silent cookie hold answers free text with the provisioning persona, and an unmount mid-refresh seeds nothing", async () => {
+  it("does not let a late cookie-refresh fallback restart an active Cloud provision", async () => {
+    localStorage.removeItem("steward_session_token");
+    writeTestCookie("steward-authed=1");
+
+    let resolveRefresh: (value: { token: string } | null) => void = () => {};
+    mocks.refreshCloudStewardSession.mockImplementation(
+      () =>
+        new Promise<{ token: string } | null>((resolve) => {
+          resolveRefresh = resolve;
+        }),
+    );
+    let resolveProvision: (value: {
+      apiBase: string;
+      agentId: string;
+      created: boolean;
+    }) => void = () => {};
+    mocks.client.selectOrProvisionCloudAgent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveProvision = resolve;
+        }),
+    );
+
+    seedAppStore({ elizaCloudConnected: false });
+    const { turn, unmount } = renderConductor();
+    await waitFor(() => {
+      expect(mocks.refreshCloudStewardSession).toHaveBeenCalledTimes(1);
+    });
+
+    // A token/connection arrives through another tab while cookie recovery is
+    // still unresolved, starting the real provision first.
+    localStorage.setItem("steward_session_token", "cloud-token");
+    const connectedSpies = seedAppStore({ elizaCloudConnected: true });
+    await waitFor(() => {
+      expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+    });
+
+    // The older refresh now fails. It must not reset the phase to signing-in,
+    // seed a fallback card, or launch a second provision.
+    resolveRefresh(null);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(turn("first-run:greeting")).toBeUndefined();
+    expect(turn("first-run:cloud-oauth")).toBeUndefined();
+    expect(mocks.client.selectOrProvisionCloudAgent).toHaveBeenCalledTimes(1);
+
+    resolveProvision({
+      apiBase: "https://agent.example.test",
+      agentId: "agent-1",
+      created: false,
+    });
+    await waitFor(() => {
+      expect(connectedSpies.completeFirstRun).toHaveBeenCalledTimes(1);
+    });
+    unmount();
+  });
+
+  it("an unmount during the silent cookie refresh seeds nothing", async () => {
     localStorage.removeItem("steward_session_token");
     writeTestCookie("steward-authed=1");
     let resolveRefresh: (value: { token: string } | null) => void = () => {};
@@ -1619,15 +1780,11 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
         }),
     );
     seedAppStore({ elizaCloudConnected: false });
-    const { transcript, turn, unmount } = renderConductor();
+    const { transcript, unmount } = renderConductor();
 
     // During the bounded hold nothing is seeded — the shell shows the empty
-    // first-run chat. Typing gets the "hang tight" persona (there is no
-    // sign-in ask on screen for the signIn nudge to point at).
+    // first-run chat while the existing session is recovered.
     expect(transcript.current).toEqual([]);
-    expect(tryHandleFirstRunText("hello?")).toBe(true);
-    const reply = await waitForTurn(turn, "first-run:reply:1");
-    expect(reply.text).toContain("Hang tight");
 
     // The effect-cleanup cancelled flag: a refresh settling after unmount
     // must not seed the greeting into a dead transcript (or resume anything).
@@ -1768,20 +1925,6 @@ describe("cloud-only onboarding (runtime chooser off — the production default)
     unmount();
   });
 
-  it("answers free text with the sign-in nudge while no session exists", async () => {
-    localStorage.removeItem("steward_session_token");
-    seedAppStore({ elizaCloudConnected: false });
-    const { turn, unmount } = renderConductor();
-    await waitForTurn(turn, "first-run:greeting");
-
-    expect(tryHandleFirstRunText("hello?")).toBe(true);
-    const userTurn = await waitForTurn(turn, "first-run:user:1");
-    expect(userTurn.text).toBe("hello?");
-    const reply = await waitForTurn(turn, "first-run:reply:1");
-    expect(reply.text).toContain("sign in to Eliza Cloud");
-    unmount();
-  });
-
   it("a stale cloud session (connected in memory, no usable token) does not complete onboarding or loop provisioning (#14387)", async () => {
     // elizaCloudConnected reads true, but the durable steward token is gone, so
     // getCloudAuthToken() is empty and the bind reports needs-cloud-login. Pre-fix
@@ -1899,69 +2042,6 @@ describe("persistFirstRun (driven through runFirstRunFinish)", () => {
     const retried = await runFirstRunFinish(draft, ports);
     expect(retried.kind).toBe("done");
     expect(mocks.client.submitFirstRun).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe("useFirstRunConductor — free-text replies (#12178 composer unlock)", () => {
-  it("echoes typed text as a local user turn + a friendly not-ready reply, never touching the server", async () => {
-    seedAppStore();
-    const { transcript, turn, unmount } = renderConductor();
-    await waitForTurn(turn, "first-run:greeting");
-
-    // Before any runtime is picked, typing is answered with the "choosing"
-    // persona. The conductor renders the user's text as a real user turn.
-    expect(tryHandleFirstRunText("will this work yet?")).toBe(true);
-    await waitFor(() => {
-      expect(
-        transcript.current.some(
-          (m) => m.role === "user" && m.text === "will this work yet?",
-        ),
-      ).toBe(true);
-    });
-    const reply = transcript.current.find(
-      (m) => m.role === "assistant" && m.id.startsWith("first-run:reply:"),
-    );
-    expect(reply?.text).toContain("pick one of the options above");
-    // The hard rule: no first-run POST happened just from typing.
-    expect(mocks.client.submitFirstRun).not.toHaveBeenCalled();
-    unmount();
-  });
-
-  it("varies the reply by flow position: wrap-up copy once provisioning is done", async () => {
-    seedAppStore();
-    const { transcript, turn, unmount } = renderConductor();
-    await waitForTurn(turn, "first-run:greeting");
-
-    // Drive the LOCAL path to completion so the wrap-up (tutorial) step is live.
-    expect(tryHandleFirstRunAction("__first_run__:runtime:local")).toBe(true);
-    await waitForTurn(turn, "first-run:provider");
-    expect(tryHandleFirstRunAction("__first_run__:provider:on-device")).toBe(
-      true,
-    );
-    await waitForTurn(turn, "first-run:tutorial");
-
-    expect(tryHandleFirstRunText("what now?")).toBe(true);
-    await waitFor(() => {
-      expect(
-        transcript.current.some(
-          (m) =>
-            m.role === "assistant" &&
-            m.id.startsWith("first-run:reply:") &&
-            m.text.includes("Almost there"),
-        ),
-      ).toBe(true);
-    });
-    unmount();
-  });
-
-  it("consumes blank text as a no-op (no empty turn, no reply)", async () => {
-    seedAppStore();
-    const { transcript, turn, unmount } = renderConductor();
-    await waitForTurn(turn, "first-run:greeting");
-    const before = transcript.current.length;
-    expect(tryHandleFirstRunText("   ")).toBe(true);
-    expect(transcript.current.length).toBe(before);
-    unmount();
   });
 });
 
@@ -2113,13 +2193,26 @@ describe("device RAM-tier gating + reversible onboarding (#14390)", () => {
 
   it("offers a back affordance under the remote connect form", async () => {
     seedAppStore();
-    const { turn, unmount } = renderConductor();
+    const { transcript, turn, unmount } = renderConductor();
     await waitForTurn(turn, "first-run:greeting");
 
     expect(tryHandleFirstRunAction("__first_run__:runtime:remote")).toBe(true);
     const connect = await waitForTurn(turn, "first-run:remote-connect");
     expect(connect.secretRequest?.form?.kind).toBe("remote_connect");
     expect(connect.text).toContain("__first_run__:back:runtime=");
+
+    expect(tryHandleFirstRunAction("__first_run__:back:runtime")).toBe(true);
+    expect(tryHandleFirstRunAction("__first_run__:runtime:remote")).toBe(true);
+    await waitFor(() => {
+      expect(
+        transcript.current
+          .at(-1)
+          ?.id.startsWith("first-run:remote-connect:retry:"),
+      ).toBe(true);
+    });
+    expect(transcript.current.at(-1)?.secretRequest?.form?.kind).toBe(
+      "remote_connect",
+    );
     unmount();
   });
 

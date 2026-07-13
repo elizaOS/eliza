@@ -157,6 +157,8 @@ export interface AppBootConfig {
   appBlockerSettingsCard?: ComponentType<AppBlockerSettingsCardProps>;
   /** Website blocker settings card provided by the host app. */
   websiteBlockerSettingsCard?: ComponentType<WebsiteBlockerSettingsCardProps>;
+  /** Native phone-pairing card provided by the host app. */
+  phonePairingSettingsCard?: ComponentType<Record<string, never>>;
   /** Shortcut behavior switches. Natural-language shortcuts are off by default. */
   shortcutFlags?: {
     naturalLanguage?: boolean;

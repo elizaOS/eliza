@@ -13,6 +13,7 @@ import {
   getInternalToolAppNameForPath,
   getInternalToolApps,
   getInternalToolAppTargetTab,
+  getInternalToolAppTargetTabForSlug,
   getInternalToolAppWindowPath,
   getPinnableInternalAppNames,
 } from "./internal-tool-apps";
@@ -103,6 +104,14 @@ describe("internal tool app descriptors", () => {
       "@elizaos/app-plugin-viewer",
     );
     expect(getInternalToolAppNameForPath("/apps/nonexistent")).toBeNull();
+  });
+
+  it("resolves nested and top-level detached-window slugs", () => {
+    expect(getInternalToolAppTargetTabForSlug("plugins")).toBe("plugins");
+    expect(getInternalToolAppTargetTabForSlug("projects")).toBe("projects");
+    expect(getInternalToolAppTargetTabForSlug("/projects/")).toBe("projects");
+    expect(getInternalToolAppTargetTabForSlug("projects/nested")).toBeNull();
+    expect(getInternalToolAppTargetTabForSlug("missing")).toBeNull();
   });
 
   it("derives the pinnable list from declared pinnable flags", () => {

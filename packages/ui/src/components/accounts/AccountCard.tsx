@@ -2,13 +2,11 @@
  * AccountCard — single account row inside an AccountList.
  *
  * Renders the credential's health glyph, label (inline-editable), source
- * badge, priority controls (up/down arrows — no drag-drop dependency),
- * usage bars (Anthropic shows session + weekly, Codex shows session
- * only), enabled toggle, Test/Refresh/Delete actions, and a confirm
- * dialog for delete.
+ * badge, usage, enabled toggle, compact diagnostics, explicit reauth, and a
+ * confirm dialog for delete.
  */
 
-import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { FlaskConical, LogIn, RefreshCw, Trash2 } from "lucide-react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
 import { cn } from "../../lib/utils";
@@ -30,28 +28,16 @@ import { EditableAccountLabel } from "./EditableAccountLabel";
 
 export interface AccountCardProps {
   account: AccountWithCredentialFlag;
-  isFirst: boolean;
-  isLast: boolean;
   saving: boolean;
   onPatch: (
     body: Partial<{ label: string; enabled: boolean; priority: number }>,
   ) => Promise<void>;
-  onMoveUp: () => Promise<void>;
-  onMoveDown: () => Promise<void>;
   onTest: () => Promise<void>;
   onRefreshUsage: () => Promise<void>;
+  onReauthenticate?: () => void;
   onDelete: () => Promise<void>;
   testBusy?: boolean;
   refreshBusy?: boolean;
-}
-
-function formatRelativeTime(epochMs: number | undefined): string {
-  if (!epochMs) return "—";
-  const diff = Date.now() - epochMs;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
 function formatResetIn(epochMs: number | undefined): string | null {
@@ -165,14 +151,11 @@ function deriveHealthLabel(
 
 export function AccountCard({
   account,
-  isFirst,
-  isLast,
   saving,
   onPatch,
-  onMoveUp,
-  onMoveDown,
   onTest,
   onRefreshUsage,
+  onReauthenticate,
   onDelete,
   testBusy = false,
   refreshBusy = false,
@@ -192,7 +175,7 @@ export function AccountCard({
   const isCodingPlan =
     account.providerId === "zai-coding" || account.providerId === "kimi-coding";
   const usage = account.usage;
-  const lastUsed = formatRelativeTime(account.lastUsedAt);
+  const needsReauth = account.health === "needs-reauth";
 
   return (
     <div
@@ -224,47 +207,9 @@ export function AccountCard({
                 ? t("accounts.source.oauth", { defaultValue: "OAuth" })
                 : t("accounts.source.apiKey", { defaultValue: "API key" })}
           </Badge>
-          <span
-            className="shrink-0 text-[10px] tabular-nums text-muted"
-            title={t("accounts.priority.tooltip", {
-              defaultValue: "Lower priority value runs first",
-            })}
-          >
-            #{account.priority}
-          </span>
-          <span className="shrink-0 text-[10px] text-muted">
-            {t("accounts.lastUsed", {
-              defaultValue: `Last used ${lastUsed}`,
-              lastUsed,
-            })}
-          </span>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={isFirst || saving}
-            onClick={() => void onMoveUp()}
-            aria-label={t("accounts.moveUp", { defaultValue: "Move up" })}
-            title={t("accounts.moveUp", { defaultValue: "Move up" })}
-            className="h-7 w-7 p-0"
-          >
-            <ChevronUp className="h-3.5 w-3.5" aria-hidden />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={isLast || saving}
-            onClick={() => void onMoveDown()}
-            aria-label={t("accounts.moveDown", { defaultValue: "Move down" })}
-            title={t("accounts.moveDown", { defaultValue: "Move down" })}
-            className="h-7 w-7 p-0"
-          >
-            <ChevronDown className="h-3.5 w-3.5" aria-hidden />
-          </Button>
           <div className="ml-1 inline-flex items-center gap-1.5 text-xs text-muted">
             <Checkbox
               checked={account.enabled}
@@ -284,12 +229,14 @@ export function AccountCard({
             size="sm"
             disabled={testBusy || saving}
             onClick={() => void onTest()}
-            className="h-7 px-2 text-xs"
+            aria-label={t("accounts.test", { defaultValue: "Test account" })}
+            title={t("accounts.test", { defaultValue: "Test account" })}
+            className="h-7 w-7 p-0"
           >
             {testBusy ? (
               <Spinner className="h-3 w-3" />
             ) : (
-              t("accounts.test", { defaultValue: "Test" })
+              <FlaskConical className="h-3.5 w-3.5" aria-hidden />
             )}
           </Button>
           <Button
@@ -297,13 +244,40 @@ export function AccountCard({
             variant="outline"
             size="sm"
             disabled={refreshBusy || saving}
-            onClick={() => void onRefreshUsage()}
-            className="h-7 px-2 text-xs"
+            onClick={() => {
+              if (needsReauth && onReauthenticate) {
+                onReauthenticate();
+                return;
+              }
+              void onRefreshUsage();
+            }}
+            aria-label={
+              needsReauth
+                ? t("accounts.reauthenticate", {
+                    defaultValue: "Reauthenticate",
+                  })
+                : t("accounts.refresh", { defaultValue: "Refresh usage" })
+            }
+            title={
+              needsReauth
+                ? t("accounts.reauthenticate", {
+                    defaultValue: "Reauthenticate",
+                  })
+                : t("accounts.refresh", { defaultValue: "Refresh usage" })
+            }
+            className={needsReauth ? "h-7 gap-1.5 px-2 text-xs" : "h-7 w-7 p-0"}
           >
             {refreshBusy ? (
               <Spinner className="h-3 w-3" />
+            ) : needsReauth ? (
+              <>
+                <LogIn className="h-3.5 w-3.5" aria-hidden />
+                {t("accounts.reauthenticate", {
+                  defaultValue: "Reauthenticate",
+                })}
+              </>
             ) : (
-              t("accounts.refresh", { defaultValue: "Refresh" })
+              <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             )}
           </Button>
           <Button

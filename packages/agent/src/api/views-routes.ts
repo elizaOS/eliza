@@ -197,6 +197,16 @@ function capabilityDeniedMessage(viewId: string, capability: string): string {
 
 /** Module-level map of pending interact requests awaiting a frontend result. */
 const pendingInteractRequests = new PendingRequestMap();
+const pendingNavigateRequests = new PendingRequestMap();
+
+/** Resolve a shell acknowledgement for an applied agent navigation. */
+export function resolveViewNavigateResult(
+  requestId: string,
+  success = true,
+  error?: string,
+): void {
+  pendingNavigateRequests.resolve(requestId, { requestId, success, error });
+}
 
 /**
  * Module-level WS broadcaster, wired once by server.ts at boot. Lets code that
@@ -305,6 +315,27 @@ export async function handleViewsRoutes(
   const { req, res, method, pathname, url, json, error } = ctx;
 
   if (!pathname.startsWith(PREFIX)) return false;
+
+  // The shell posts this only after its navigation handler has applied the
+  // requested tab/path. This keeps agent actions from claiming success merely
+  // because a WebSocket broadcast was attempted.
+  if (method === "POST" && pathname === `${PREFIX}/navigate-result`) {
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const requestId =
+      typeof body.requestId === "string" ? body.requestId : null;
+    if (!requestId) {
+      error(res, "Missing requestId in navigate-result body", 400);
+      return true;
+    }
+    resolveViewNavigateResult(
+      requestId,
+      body.success === true,
+      typeof body.error === "string" ? body.error : undefined,
+    );
+    json(res, { ok: true });
+    return true;
+  }
 
   // ── GET /api/views/platform-info ─────────────────────────────────────────
   if (method === "GET" && pathname === `${PREFIX}/platform-info`) {
@@ -1039,7 +1070,9 @@ export async function handleViewsRoutes(
 
     // Skip the echo for user-reported switches (the client already navigated).
     if (reportedSource !== "user") {
+      const requestId = randomUUID();
       const navigatePayload: ShellNavigateViewPayload = {
+        requestId,
         viewId: id,
         viewPath,
         viewLabel,
@@ -1050,7 +1083,31 @@ export async function handleViewsRoutes(
         ...layoutPayload,
         ...deepLinkPayload,
       };
+      // Register before broadcasting: a local shell can acknowledge in the
+      // same event-loop turn and must not race ahead of the pending entry.
+      const applied = pendingNavigateRequests.waitFor(requestId, 3_000);
       ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
+
+      const result = await applied.catch((cause: unknown) => ({
+        requestId,
+        success: false,
+        error:
+          cause instanceof Error && cause.message.includes("timed out")
+            ? "timeout"
+            : cause instanceof Error
+              ? cause.message
+              : "navigation acknowledgement failed",
+      }));
+      if (!result.success) {
+        error(
+          res,
+          result.error === "timeout"
+            ? "No connected shell confirmed the view switch"
+            : "The shell could not apply the view switch",
+          503,
+        );
+        return true;
+      }
     }
 
     json(res, {

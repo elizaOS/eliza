@@ -1,5 +1,5 @@
 /**
- * Runtime exports for the scaffolded minimal project plugin.
+ * Runtime exports for the arklib-setup plugin.
  */
 
 export { default as plugin } from "./plugin.js";

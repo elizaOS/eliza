@@ -58,7 +58,14 @@ describe("MVP settings declutter", () => {
   });
 
   it("keeps the everyday sections visible with Developer Mode off", () => {
-    for (const id of ["identity", "ai-model", "permissions", "appearance"]) {
+    for (const id of [
+      "character",
+      "identity",
+      "ai-model",
+      "permissions",
+      "appearance",
+      "peripherals",
+    ]) {
       const section = sectionById(id);
       expect(
         section && isViewVisible(section, DEV_OFF),

@@ -153,8 +153,38 @@ describe("NotificationService", () => {
 		expect(await service.remove(a.id)).toBe(true);
 		expect(await service.remove(a.id)).toBe(false);
 		expect(service.list()).toHaveLength(1);
+		ctx.emitted.length = 0;
 		await service.clear();
 		expect(service.list()).toHaveLength(0);
+		expect(ctx.emitted).toHaveLength(1);
+		expect(ctx.emitted[0]).toMatchObject({
+			stream: "notification",
+			data: { type: "notification_clear", unreadCount: 0 },
+			agentId: "00000000-0000-0000-0000-0000000000aa",
+		});
+		expect(ctx.emitted[0].data).not.toHaveProperty("notification");
+	});
+
+	it("broadcasts clear even when the server inbox is already empty", async () => {
+		expect(service.list()).toHaveLength(0);
+		await service.clear();
+		expect(ctx.emitted).toHaveLength(1);
+		expect(ctx.emitted[0].data).toEqual({
+			type: "notification_clear",
+			unreadCount: 0,
+		});
+	});
+
+	it("restores the in-memory inbox and does not broadcast when clear persistence fails", async () => {
+		await service.notify({ title: "Keep me" });
+		ctx.emitted.length = 0;
+		vi.spyOn(ctx.runtime, "setCache").mockRejectedValueOnce(
+			new Error("cache unavailable"),
+		);
+
+		await expect(service.clear()).rejects.toThrow("cache unavailable");
+		expect(service.list().map((n) => n.title)).toEqual(["Keep me"]);
+		expect(ctx.emitted).toHaveLength(0);
 	});
 
 	it("persists to the runtime cache and rehydrates on restart", async () => {

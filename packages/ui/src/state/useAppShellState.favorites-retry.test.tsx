@@ -14,6 +14,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchServerFavoriteApps = vi.fn<() => Promise<string[] | null>>();
+const auth = vi.hoisted(() => ({ authenticated: true }));
 vi.mock("./persistence", () => ({
   fetchServerFavoriteApps: () => fetchServerFavoriteApps(),
   loadFavoriteApps: () => ["cached-app"],
@@ -28,6 +29,9 @@ vi.mock("../api", () => ({
 vi.mock("../api/app-shell-capabilities", () => ({
   supportsFullAppShellRoutes: () => true,
 }));
+vi.mock("../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => auth.authenticated,
+}));
 
 import { AGENT_READY_EVENT } from "../events";
 import { useAppShellState } from "./useAppShellState";
@@ -38,10 +42,29 @@ function dispatchAgentReady(): void {
 
 beforeEach(() => {
   fetchServerFavoriteApps.mockReset();
+  auth.authenticated = true;
   sessionStorage.clear();
 });
 
 describe("useAppShellState favorites retry-after-ready", () => {
+  it("waits for authentication before syncing server favorites", async () => {
+    auth.authenticated = false;
+    fetchServerFavoriteApps.mockResolvedValue(["server-app"]);
+
+    const { rerender } = renderHook(() => useAppShellState());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchServerFavoriteApps).not.toHaveBeenCalled();
+
+    auth.authenticated = true;
+    rerender();
+
+    await waitFor(() =>
+      expect(fetchServerFavoriteApps).toHaveBeenCalledTimes(1),
+    );
+  });
+
   it("retries exactly once after agent-ready when the boot-time fetch was gated", async () => {
     fetchServerFavoriteApps
       .mockResolvedValueOnce(null) // boot: transport mode-gated

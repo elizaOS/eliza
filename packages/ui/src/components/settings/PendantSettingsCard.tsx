@@ -1,5 +1,5 @@
 /**
- * PendantSettingsCard — Settings → Voice control for the omi DevKit1 pendant.
+ * PendantSettingsCard — Settings → Peripherals control for the omi DevKit1 pendant.
  *
  * Renders a connect/disconnect affordance for the BLE wearable mic, live
  * connection + "hearing audio" state, battery level, and the last transcript it
@@ -58,11 +58,7 @@ export function PendantSettingsCard(): React.ReactElement {
       : Bluetooth;
 
   return (
-    <SettingsGroup
-      title="Pendant"
-      description="Connect an omi wearable mic to talk to Eliza hands-free over Bluetooth."
-      data-testid="pendant-settings"
-    >
+    <SettingsGroup title="Pendant" data-testid="pendant-settings">
       <SettingsRow
         icon={StatusIcon}
         label={state.deviceName ?? "omi pendant"}
@@ -130,13 +126,6 @@ export function PendantSettingsCard(): React.ReactElement {
           )
         }
       />
-
-      {!supported ? (
-        <SettingsRow
-          label="Bluetooth pendant not available here"
-          description="Connect from the Android app, desktop Chrome, or Android Chrome. Web Bluetooth isn't available on iOS Safari — use the native app there instead."
-        />
-      ) : null}
 
       {state.error ? (
         <SettingsRow

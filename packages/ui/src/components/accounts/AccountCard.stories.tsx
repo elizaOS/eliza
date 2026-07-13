@@ -57,24 +57,19 @@ const meta = {
     ),
   ],
   argTypes: {
-    isFirst: { control: "boolean" },
-    isLast: { control: "boolean" },
     saving: { control: "boolean" },
     testBusy: { control: "boolean" },
     refreshBusy: { control: "boolean" },
   },
   args: {
     account: baseAccount,
-    isFirst: false,
-    isLast: false,
     saving: false,
     testBusy: false,
     refreshBusy: false,
     onPatch: async () => {},
-    onMoveUp: async () => {},
-    onMoveDown: async () => {},
     onTest: async () => {},
     onRefreshUsage: async () => {},
+    onReauthenticate: () => {},
     onDelete: async () => {},
   },
 } satisfies Meta<typeof AccountCard>;
@@ -144,7 +139,6 @@ export const ApiKeyDisabledOrphan: Story = {
       usage: undefined,
       hasCredential: false,
     },
-    isLast: true,
   },
 };
 

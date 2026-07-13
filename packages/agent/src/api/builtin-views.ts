@@ -128,7 +128,10 @@ export const BUILTIN_VIEWS: ViewDeclaration[] = [
         steps: [{ kind: "agent-click", target: "example-add-conversation" }],
       },
     ],
-    visibleInManager: true,
+    // Character is edited from the first Settings subview. Keep this registry
+    // entry routable/agent-discoverable, but do not duplicate it as a card on
+    // the front-page Views grid.
+    visibleInManager: false,
     desktopTabEnabled: true,
   },
   {

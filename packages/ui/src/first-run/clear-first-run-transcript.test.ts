@@ -39,9 +39,9 @@ describe("isFirstRunTranscriptMessage", () => {
     // the robust superset so a future turn that sets only one is still caught.
     expect(
       isFirstRunTranscriptMessage({
-        id: "first-run:user:3",
-        role: "user",
-        text: "typed during onboarding",
+        id: "first-run:status:3",
+        role: "assistant",
+        text: "setting up your agent",
         timestamp: 1,
       }),
     ).toBe(true);
@@ -66,12 +66,10 @@ describe("clearFirstRunTranscriptMessages", () => {
   it("drops every synthetic first-run turn and keeps real turns in order", () => {
     // The exact #15354 shape: a returning-account shared-tier onboarding seeds
     // greeting + welcome-back + cloud-done (three greeting-looking assistant
-    // bubbles) plus a typed reply pair, then the user's real first turn arrives.
+    // bubbles), then the user's real first turn arrives.
     const messages: ConversationMessage[] = [
       firstRunTurn("first-run:greeting", { text: "Sign in to Eliza Cloud" }),
       firstRunTurn("first-run:cloud-signin", { text: "Welcome back" }),
-      firstRunTurn("first-run:user:1", { role: "user", text: "who are you" }),
-      firstRunTurn("first-run:reply:1", { text: "I'm Eliza" }),
       firstRunTurn("first-run:cloud-done", { text: "All set" }),
       realUser("temp-1000", "hi"),
       realAssistant("temp-resp-1000", "hey!"),

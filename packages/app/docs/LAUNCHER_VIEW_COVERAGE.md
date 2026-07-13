@@ -29,9 +29,10 @@ would ever place it there:
 Settings toggle is on (`isViewVisible` gates them per-toggle). They still need
 coverage, so they are in the table below.
 
-`camera` (`viewKind: preview`, `platforms: ["android"]`, native-OS) is the one
-`BUILTIN_VIEWS` entry that is **not** a default-launcher view; it is intentionally
-excluded from this inventory and the gate.
+`character` remains directly routable and agent-discoverable, but is edited from
+the first Settings subview, so its `visibleInManager: false` declaration keeps a
+duplicate Character card off the front-page Views grid. Other internal/deep-link
+and native-OS entries are excluded from this inventory by the same predicates.
 
 ## Two evidence lanes
 
@@ -58,7 +59,6 @@ video evidence that only the manual/CI lane produces.
 | --- | --- | --- | --- | --- | --- |
 | `tutorial` | `/tutorial` | system | ✅ smoke | `test/ui-smoke/tutorial-chat.spec.ts` (chat-native tour) | `audit:app` + video |
 | `chat` | `/chat` | system | ✅ smoke | `packages/ui/src/components/shell/__e2e__/run-chat-sheet-e2e.mjs` | `audit:app` + video + on-device |
-| `character` | `/character` | system | ✅ smoke | smoke-only | `audit:app` |
 | `documents` | `/character/documents` | system | ✅ smoke | smoke-only | `audit:app` |
 | `automations` | `/automations` | system | ✅ smoke | smoke-only | `audit:app` |
 | `plugins-page` | `/apps/plugins` | system | ✅ smoke | smoke-only | `audit:app` |

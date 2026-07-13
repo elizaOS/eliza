@@ -9,10 +9,7 @@
 import type { LinkedAccountProviderId, ModelOption } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
-import type {
-  SUBSCRIPTION_PROVIDER_SELECTIONS,
-  SubscriptionProviderSelectionId,
-} from "../../providers";
+import type { SUBSCRIPTION_PROVIDER_SELECTIONS } from "../../providers";
 import { useAppSelector } from "../../state";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
@@ -170,45 +167,20 @@ export function CloudPanel({
 
 export interface SubscriptionPanelProps {
   selection: SubscriptionProviderSelection;
-  visibleProviderPanelId: string;
-  resolvedSelectedId: string | null;
   cloudCallsDisabled: boolean;
-  onSelectSubscription: (
-    providerId: SubscriptionProviderSelectionId,
-    activate?: boolean,
-  ) => Promise<void>;
 }
 
 export function SubscriptionPanel({
   selection,
-  visibleProviderPanelId,
-  resolvedSelectedId,
   cloudCallsDisabled,
-  onSelectSubscription,
 }: SubscriptionPanelProps) {
   const t = useAppSelector((s) => s.t);
-  const showUseButton =
-    cloudCallsDisabled || resolvedSelectedId !== visibleProviderPanelId;
   return (
     <div className="min-w-0">
       <ProviderPanelHeader
         icon={KeyRound}
         title={t(selection.labelKey, { defaultValue: selection.id })}
-      >
-        {showUseButton ? (
-          <SettingsActionButton
-            agentId={`sub-use-${selection.id}`}
-            type="button"
-            variant="outline"
-            className="h-9 rounded-md px-3 text-xs font-medium"
-            onClick={() => void onSelectSubscription(selection.id)}
-          >
-            {t("providerpanels.useSubscription", {
-              defaultValue: "Use subscription",
-            })}
-          </SettingsActionButton>
-        ) : null}
-      </ProviderPanelHeader>
+      />
       <div className="px-3 py-3 sm:px-4">
         {cloudCallsDisabled ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
@@ -218,8 +190,8 @@ export function SubscriptionPanel({
           </div>
         ) : null}
         <p className="mb-2 text-xs text-muted">
-          Add and manage subscription accounts below. Login state is preserved
-          while an external browser or device authorization is active.
+          Enabled accounts rotate automatically. Add another account to expand
+          the pool; reauthenticate any account that needs attention.
         </p>
         <AccountList providerId={selection.storedProvider} />
       </div>

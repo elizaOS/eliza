@@ -105,6 +105,20 @@ import {
 } from "../ui/dialog";
 import { Input } from "../ui/input";
 
+function CharacterEditorSurface({
+  embedded,
+  children,
+}: {
+  embedded: boolean;
+  children: ReactNode;
+}) {
+  return embedded ? (
+    children
+  ) : (
+    <ShellViewAgentSurface viewId="character">{children}</ShellViewAgentSurface>
+  );
+}
+
 /* ── Shared accent styles ────────────────────────────────────────── */
 const accentGradientStyle = {
   background:
@@ -255,11 +269,14 @@ function CharacterAgentButton({
 export function CharacterEditor({
   initialPage,
   sceneOverlay = false,
+  embedded = false,
   inModal: _inModal = false,
   onHeaderActionsChange,
 }: {
   initialPage?: CharacterEditorPage;
   sceneOverlay?: boolean;
+  /** Settings reuses the editor inside its own agent surface and header. */
+  embedded?: boolean;
   inModal?: boolean;
   onHeaderActionsChange?: (actions: ReactNode | null) => void;
 } = {}) {
@@ -1264,28 +1281,30 @@ export function CharacterEditor({
   /* ── Loading state ──────────────────────────────────────────────── */
   if (characterLoading && !characterData) {
     return (
-      <div
-        className={
-          sceneOverlay
-            ? "relative flex flex-col justify-end w-full flex-1 gap-2 overflow-hidden select-none transition-[width,margin-left] duration-[400ms] ease-in-out [-webkit-tap-highlight-color:transparent] max-[600px]:overflow-visible"
-            : "flex flex-col w-full flex-1 items-center justify-center"
-        }
-        data-no-camera-zoom={sceneOverlay ? "true" : undefined}
-        data-no-camera-drag={sceneOverlay ? "true" : undefined}
-        data-testid={sceneOverlay ? "companion-character-editor" : undefined}
-      >
-        <div className="text-muted text-sm">
-          {t("charactereditor.LoadingCharacterData", {
-            defaultValue: "Loading character data...",
-          })}
+      <CharacterEditorSurface embedded={embedded}>
+        <div
+          className={
+            sceneOverlay
+              ? "relative flex flex-col justify-end w-full flex-1 gap-2 overflow-hidden select-none transition-[width,margin-left] duration-[400ms] ease-in-out [-webkit-tap-highlight-color:transparent] max-[600px]:overflow-visible"
+              : "flex flex-col w-full flex-1 items-center justify-center"
+          }
+          data-no-camera-zoom={sceneOverlay ? "true" : undefined}
+          data-no-camera-drag={sceneOverlay ? "true" : undefined}
+          data-testid={sceneOverlay ? "companion-character-editor" : undefined}
+        >
+          <div className="text-muted text-sm">
+            {t("charactereditor.LoadingCharacterData", {
+              defaultValue: "Loading character data...",
+            })}
+          </div>
         </div>
-      </div>
+      </CharacterEditorSurface>
     );
   }
 
   /* ── Render ─────────────────────────────────────────────────────── */
   return (
-    <ShellViewAgentSurface viewId="character">
+    <CharacterEditorSurface embedded={embedded}>
       <div
         className={
           sceneOverlay
@@ -1675,8 +1694,13 @@ export function CharacterEditor({
           </DialogContent>
         </Dialog>
       </div>
-    </ShellViewAgentSurface>
+    </CharacterEditorSurface>
   );
+}
+
+/** The canonical Character editor embedded as a Settings subview. */
+export function CharacterSettingsSection() {
+  return <CharacterEditor embedded />;
 }
 
 /**

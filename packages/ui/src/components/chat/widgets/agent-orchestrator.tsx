@@ -695,8 +695,7 @@ function OrchestratorActivityWidget({
 
   // A click navigates to the activity's origin: a sessionId routes into the
   // terminal channel (mirrors ChatView.focusTerminalSession — clear the inbox
-  // selection, then focus the PTY session); everything else opens the Tasks
-  // tab (mirrors AppRunsWidget's setTab navigation).
+  // selection, then focus the PTY session); everything else opens Projects.
   const onSelectEvent = useCallback(
     (event: ActivityEvent) => {
       if (event.sessionId) {
@@ -704,7 +703,7 @@ function OrchestratorActivityWidget({
         setState?.("activeTerminalSessionId", event.sessionId);
         return;
       }
-      setTab?.("tasks");
+      setTab?.("projects");
     },
     [setState, setTab],
   );
@@ -715,7 +714,7 @@ function OrchestratorActivityWidget({
 
   // Home slot: a single compact, icon-first, whole-card-clickable tile — the
   // latest activity event's summary as the one datum, event count as the badge.
-  // Tapping opens the Tasks tab. The sidebar keeps the full activity list.
+  // Tapping opens Projects. The sidebar keeps the full activity list.
   if (slot === "home") {
     const latest = events[0];
     return (
@@ -727,8 +726,8 @@ function OrchestratorActivityWidget({
           meta={relativeDuration(latest.timestamp)}
           badge={events.length > 1 ? events.length : undefined}
           testId="chat-widget-events"
-          ariaLabel={`Activity: ${events.length} events, latest ${latest.summary}. Open tasks.`}
-          onActivate={() => nav.openTab("tasks")}
+          ariaLabel={`Activity: ${events.length} events, latest ${latest.summary}. Open projects.`}
+          onActivate={() => nav.openTab("projects")}
         />
       </div>
     );

@@ -36,6 +36,8 @@ export interface LauncherProps {
   loading?: boolean;
   onLaunch: (entry: ViewEntry) => void;
   className?: string;
+  /** Render as a natural-height section inside the vertically scrolling home. */
+  embedded?: boolean;
 }
 
 interface IconTileProps {
@@ -149,6 +151,7 @@ export function Launcher({
   loading = false,
   onLaunch,
   className,
+  embedded = false,
 }: LauncherProps) {
   const handleLaunch = useCallback(
     (entry: ViewEntry) => {
@@ -166,16 +169,28 @@ export function Launcher({
 
   return (
     <div
-      className={cn("flex min-h-0 flex-1 flex-col", className)}
+      className={cn(
+        embedded ? "flex w-full flex-col" : "flex min-h-0 flex-1 flex-col",
+        className,
+      )}
       data-testid="launcher"
+      data-embedded={embedded || undefined}
     >
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className={cn(
+          "relative flex flex-col",
+          !embedded && "min-h-0 flex-1 overflow-hidden",
+        )}
+      >
         {/* Single scrolling page — the outer home↔launcher rail owns every
             horizontal gesture, so this container takes no pointer handlers and
             only scrolls vertically when the grid overflows. */}
         <div
           data-testid="launcher-page-window"
-          className="relative flex min-h-0 flex-1 flex-col items-center overflow-y-auto touch-pan-y px-6 pt-2 pb-8"
+          className={cn(
+            "relative flex flex-col items-center touch-pan-y px-2 pt-2 pb-8 sm:px-6",
+            !embedded && "min-h-0 flex-1 overflow-y-auto",
+          )}
         >
           <div className="flex w-full max-w-2xl flex-col gap-6">
             {showSkeleton ? (

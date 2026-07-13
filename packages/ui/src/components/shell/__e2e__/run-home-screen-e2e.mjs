@@ -684,9 +684,9 @@ try {
       `no home widget hit its error boundary (${errorCards.length})`,
     );
   }
-  // Notifications render inline on the home column. Rested mode shows the
-  // seeded interrupt-tier row; the count control opens the full shade without
-  // adding a second sheet or overlay surface.
+  // Notifications render inline on the home column. This fixture seeds only
+  // one interrupt-tier row, so the inbox remains in priority mode and correctly
+  // omits the persistent mode toggle: there is no quiet remainder to reveal.
   {
     const center = mobile.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
@@ -709,39 +709,20 @@ try {
       (await center.getByText("Payment failed", { exact: false }).count()) > 0,
       "the notification row shows the seeded title",
     );
-    const countButton = center.getByTestId("notifications-count-button");
     assert(
-      (await countButton.textContent())?.includes("1 Notification"),
-      "the rested count control reflects the seeded notification",
+      (await center
+        .getByTestId("home-notification-list")
+        .getAttribute("data-inbox-mode")) === "priority",
+      "the notification inbox starts in priority mode",
+    );
+    assert(
+      (await center.getByTestId("notifications-mode-toggle").count()) === 0,
+      "a priority-only inbox has no unnecessary mode toggle",
     );
     assert(
       (await center.getByTestId("notifications-clear-all").count()) === 0 &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
-      "expanded-only controls stay hidden at rest",
-    );
-
-    await touchTap(mobile, '[data-testid="notifications-count-button"]');
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="expanded"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
-    assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 1 &&
-        (await center.getByTestId("notifications-collapse").count()) === 1,
-      "opening the shade reveals clear and collapse controls",
-    );
-
-    await touchTap(mobile, '[data-testid="notifications-collapse"]');
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="rested"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
-    assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 0 &&
-        (await center.getByTestId("notifications-collapse").count()) === 0,
-      "collapse returns the notification center to its rested controls",
+      "obsolete clear and separate collapse controls stay absent",
     );
   }
   // No general quick-access tiles anymore - Launcher is the adjacent
@@ -879,6 +860,10 @@ try {
     (await mobile.getByTestId("launcher-tile-chat").count()) === 0,
     "Chat is not duplicated as a launcher tile (home rail is the chat surface)",
   );
+  assert(
+    (await mobile.getByTestId("launcher-tile-character").count()) === 0,
+    "Character is not duplicated as a launcher tile (it lives in Settings)",
+  );
   // ── Removed / hidden surfaces never tile: removed apps, wallet sub-views,
   // and the deduped duplicate registrations.
   for (const id of ["views", "shopify", "hyperliquid", "inventory", "triggers"]) {
@@ -898,7 +883,7 @@ try {
   // generated hero <img> — the hero PNG painted a cartoon over the real glyph
   // (a virus for Settings, a ladybug for Memories: the "icons are slop" report).
   // Each curated tile exposes its `data-view-visual` plate and NO hero image.
-  for (const id of ["wallet", "automations", "browser", "character"]) {
+  for (const id of ["wallet", "automations", "browser", "settings"]) {
     const visual = mobile.locator(`[data-view-visual="${id}"]`);
     assert(
       (await visual.count()) === 1 && (await visual.isVisible()),
@@ -1126,7 +1111,7 @@ try {
     (await desktop.getByTestId("home-tile-phone").count()) === 0,
     "phone tile hidden when native disabled",
   );
-  // Desktop uses the same inline notification center and shade controls.
+  // Desktop uses the same inline priority-only notification center.
   {
     const center = desktop.getByTestId("home-notification-center");
     await center.waitFor({ state: "visible", timeout: 5000 });
@@ -1134,23 +1119,21 @@ try {
       (await center.getByTestId("notification-row").count()) === 1,
       "desktop home renders the inline notification inbox with the seeded row",
     );
-    await center.getByTestId("notifications-count-button").click();
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="expanded"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
     assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 1 &&
-        (await center.getByTestId("notifications-collapse").count()) === 1,
-      "desktop opens the same clear and collapse controls",
+      (await center
+        .getByTestId("home-notification-list")
+        .getAttribute("data-inbox-mode")) === "priority",
+      "desktop inbox starts in priority mode",
     );
-    await center.getByTestId("notifications-collapse").click();
-    await center
-      .locator(
-        '[data-testid="home-notification-list"][data-shade-mode="rested"]',
-      )
-      .waitFor({ state: "visible", timeout: 5000 });
+    assert(
+      (await center.getByTestId("notifications-mode-toggle").count()) === 0,
+      "desktop priority-only inbox omits the unnecessary mode toggle",
+    );
+    assert(
+      (await center.getByTestId("notifications-clear-all").count()) === 0 &&
+        (await center.getByTestId("notifications-collapse").count()) === 0,
+      "desktop has no obsolete clear or separate collapse controls",
+    );
   }
   await snap(desktop, "desktop-home");
   await swipeLeft(desktop.getByTestId("home-launcher-home-page"));

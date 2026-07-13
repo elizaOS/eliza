@@ -213,6 +213,26 @@ export function resolveInjectedDashboardToken(): string | null {
   return resolveApiToken(process.env);
 }
 
+const LEGACY_UI_REDIRECTS: Readonly<Record<string, string>> = {
+  "/apps/tasks": "/projects",
+};
+
+/** Resolve retired nested UI routes before relative Vite assets are requested. */
+export function resolveLegacyUiRedirect(
+  pathname: string,
+  requestUrl = pathname,
+): string | null {
+  const normalizedPath =
+    pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const target = LEGACY_UI_REDIRECTS[normalizedPath];
+  if (!target) return null;
+  try {
+    return `${target}${new URL(requestUrl, "http://localhost").search}`;
+  } catch {
+    return target;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // SPA serving
 // ---------------------------------------------------------------------------
@@ -224,6 +244,16 @@ export function serveStaticUi(
 ): boolean {
   const root = resolveUiDir();
   if (!root) return false;
+
+  const legacyRedirect = resolveLegacyUiRedirect(pathname, req.url);
+  if (legacyRedirect) {
+    res.writeHead(308, {
+      "Cache-Control": "no-store",
+      Location: legacyRedirect,
+    });
+    res.end();
+    return true;
+  }
 
   // Keep API and WebSocket namespaces exclusively owned by server handlers.
   if (isAuthProtectedRoute(pathname)) return false;

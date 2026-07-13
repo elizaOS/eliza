@@ -199,7 +199,12 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       status={entry.status}
       current={entry.current}
       selected={visibleProviderPanelId === entry.id}
-      onSelect={selection.handleProviderPanelSelect}
+      onSelect={(panelId) => {
+        selection.handleProviderPanelSelect(panelId);
+        if (isSubscriptionProviderSelectionId(panelId)) {
+          void selection.handleSelectSubscription(panelId);
+        }
+      }}
     />
   );
 
@@ -290,10 +295,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           {activeSubscriptionSelection ? (
             <SubscriptionPanel
               selection={activeSubscriptionSelection}
-              visibleProviderPanelId={visibleProviderPanelId}
-              resolvedSelectedId={resolvedSelectedId}
               cloudCallsDisabled={selection.cloudCallsDisabled}
-              onSelectSubscription={selection.handleSelectSubscription}
             />
           ) : null}
         </SettingsGroup>

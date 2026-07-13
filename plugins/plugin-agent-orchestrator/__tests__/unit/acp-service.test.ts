@@ -158,7 +158,15 @@ function runtime(
   settings: Record<string, string | undefined> = {},
   services: Record<string, unknown> = {},
 ) {
-  const values = { ELIZA_ACP_TRANSPORT: "cli", ...settings };
+  // Unit tests mock child_process.spawnSync as a failed process. Pin the
+  // elizaos adapter command so unrelated AcpService tests never accidentally
+  // exercise first-use provisioning through that mock; the real provisioning
+  // path has its own focused eliza-code-acp-install.test.ts coverage.
+  const values = {
+    ELIZA_ACP_TRANSPORT: "cli",
+    ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+    ...settings,
+  };
   return {
     logger: {
       debug: vi.fn(),

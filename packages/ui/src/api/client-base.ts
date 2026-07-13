@@ -10,6 +10,7 @@ import {
   SHELL_NAVIGATE_VIEW_WS_EVENT,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
+import { Capacitor } from "@capacitor/core";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import {
   NETWORK_STATUS_CHANGE_EVENT,
@@ -1403,16 +1404,12 @@ export class ElizaClient {
       return;
     }
 
-    // On Capacitor native (iosScheme/androidScheme = "https"), the origin host
-    // is a synthetic bundle host (e.g. "localhost" with no server behind it).
-    // Skip WS if we have no explicit baseUrl and the host doesn't look like a
-    // real backend (no port, not an IP, not a known API domain).
-    if (!this.baseUrl && typeof host === "string") {
-      const hasPort = host.includes(":");
-      const isLoopback =
-        host.startsWith("127.") || host.startsWith("localhost:");
-      if (!hasPort && !isLoopback) return;
-    }
+    // A Capacitor bundle's origin is a synthetic host with no agent behind it.
+    // In an ordinary browser, however, a hostname without an explicit port is
+    // a perfectly valid same-origin agent (including Tailscale HTTPS names).
+    // The old host-shape heuristic incorrectly disabled WS on every such web
+    // deployment, so agent-driven shell events could never arrive.
+    if (!this.baseUrl && Capacitor.isNativePlatform()) return;
 
     let url = `${wsProtocol}//${host}/ws`;
     const params = new URLSearchParams({ clientId: this.clientId });
@@ -2003,12 +2000,17 @@ export class ElizaClient {
       }
     }
 
+    const rawResponseText = streamState.doneText ?? streamState.fullText;
+    // An interrupted stream with no visible text is not an assistant reply.
+    // In particular, successful navigation actions can unmount the current
+    // chat surface before its terminal `done` frame arrives. Normalizing that
+    // empty interruption would manufacture the generic "couldn't generate"
+    // sentence after an otherwise successful action result.
     const resolvedText =
-      streamState.doneNoResponseReason === "ignored"
+      streamState.doneNoResponseReason === "ignored" ||
+      (!streamState.receivedDone && rawResponseText.trim().length === 0)
         ? ""
-        : this.normalizeAssistantText(
-            streamState.doneText ?? streamState.fullText,
-          );
+        : this.normalizeAssistantText(rawResponseText);
     return {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",

@@ -72,7 +72,7 @@ export const DEV_SEED_NOTIFICATIONS: readonly NotificationInput[] = [
     body: "The reporting workflow wants to email three recipients on your behalf.",
     category: "approval",
     priority: "urgent",
-    source: "dev-seed",
+    source: "approvals",
     deepLink: "/chat",
   },
   {
@@ -80,14 +80,14 @@ export const DEV_SEED_NOTIFICATIONS: readonly NotificationInput[] = [
     body: "Daily stand-up starts at 10:00.",
     category: "reminder",
     priority: "high",
-    source: "dev-seed",
+    source: "calendar",
   },
   {
     title: "New message from Alice",
     body: "“Did you get a chance to look at the design doc?”",
     category: "message",
     priority: "normal",
-    source: "dev-seed",
+    source: "messages",
     deepLink: "/chat",
   },
   {
@@ -95,28 +95,28 @@ export const DEV_SEED_NOTIFICATIONS: readonly NotificationInput[] = [
     body: "All 412 tests passed in 6m 32s.",
     category: "task",
     priority: "normal",
-    source: "dev-seed",
+    source: "tasks",
   },
   {
     title: "Health check-in",
     body: "You logged 6h 40m of sleep and a short walk this afternoon would close today's movement ring — this body intentionally runs long so list rows exercise their two-line clamp.",
     category: "health",
     priority: "low",
-    source: "dev-seed",
+    source: "health",
   },
   {
     title: "Backup complete",
     body: "Workspace snapshot stored locally.",
     category: "system",
     priority: "low",
-    source: "dev-seed",
+    source: "system",
   },
   {
     title: "Deploy pipeline update",
     body: "Step 2/5: building containers…",
     category: "workflow",
     priority: "normal",
-    source: "dev-seed",
+    source: "workflow",
     groupKey: "dev-seed:deploy",
   },
   {
@@ -124,7 +124,7 @@ export const DEV_SEED_NOTIFICATIONS: readonly NotificationInput[] = [
     body: "Step 5/5: released to staging.",
     category: "workflow",
     priority: "normal",
-    source: "dev-seed",
+    source: "workflow",
     groupKey: "dev-seed:deploy",
   },
 ];
@@ -262,10 +262,10 @@ export async function handleNotificationRoute(
       helpers.error(res, "notification route not found", 404);
       return true;
     }
-    const notifications = [];
     for (const input of DEV_SEED_NOTIFICATIONS) {
-      notifications.push(await service.notify(input));
+      await service.notify(input);
     }
+    const notifications = service.list();
     helpers.json(res, { count: notifications.length, notifications }, 201);
     return true;
   }

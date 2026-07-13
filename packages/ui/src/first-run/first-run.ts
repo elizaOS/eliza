@@ -3,7 +3,8 @@
  * and the headless finish path: draft normalization, runtime-target mapping,
  * submit validation, and the POST /api/first-run payload builder. Onboarding
  * is in-chat (#12178): there is no wizard step machine or persisted step/draft
- * state — onboarding state lives in the conductor's refs plus `firstRunComplete`.
+ * state — `first-run-flow.ts` owns the typed flow phase while this module owns
+ * pure draft normalization and payload construction.
  */
 
 import {
@@ -28,8 +29,8 @@ export type FirstRunRuntime = "local" | "cloud" | "remote";
  * - `configure-later` is the "bring your own keys / Other" path: the agent runs
  *   locally with NO model wired and NO local download — the user configures a
  *   provider (Anthropic sub / Codex / z.ai / Kimi) in Settings afterward. It is
- *   the one local sub-choice that leaves `needsProviderSetup` true so the finish
- *   path surfaces the "Open Settings" handoff.
+ *   the one local sub-choice that leaves `needsProviderSetup` true so chat can
+ *   point the user to Settings without pretending a provider is configured.
  */
 export type FirstRunLocalInference =
   | "all-local"
@@ -192,8 +193,8 @@ export function buildFirstRunSubmitPlan(args: {
     // Omit the runtime provider only when a provider is implicitly settled:
     // `all-local` (the on-device model IS the provider). `configure-later`
     // ("bring your own keys") deliberately does NOT omit, so no llmText route
-    // is wired and `needsProviderSetup` stays true → the finish path opens
-    // Settings. Cloud / cloud-inference wire `elizacloud` above, so this stays
+    // is wired and `needsProviderSetup` stays true → the no-provider chat state
+    // points to Settings. Cloud / cloud-inference wire `elizacloud` above, so this stays
     // behavior-preserving for them (they already have a route).
     omitRuntimeProvider: args.draft.localInference === "all-local",
     firstRunVoiceProvider: "",

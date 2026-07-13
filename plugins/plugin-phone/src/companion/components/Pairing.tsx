@@ -1,12 +1,4 @@
-/**
- * Pairing view of the Phone Companion: scans (or accepts a pasted) QR code
- * carrying the base64 pairing payload, decodes it via `decodePairingPayload`,
- * and hands the resulting {@link PairingPayload} back to the app shell.
- *
- * Camera scan requires the iOS native runtime; on web/dev it surfaces a
- * paste-the-code fallback rather than pretending the scanner is available.
- */
-
+/** Scan or paste the native iOS Phone Companion pairing payload. */
 import {
   CapacitorBarcodeScanner,
   CapacitorBarcodeScannerTypeHint,
@@ -28,192 +20,164 @@ interface PairingViewProps {
   onBack(): void;
 }
 
+interface PairingControlsProps {
+  onPaired(payload: PairingPayload): void;
+  /** Settings owns the page header and supporting copy in this form. */
+  compact?: boolean;
+}
+
 type Status =
   | { kind: "idle" }
   | { kind: "scanning" }
   | { kind: "error"; message: string };
 
-export function Pairing({
+/** The native bridge that persists Phone Companion pairing only exists on iOS. */
+export function isNativeIosPhonePairing(): boolean {
+  return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
+}
+
+/** Shared pairing controls used by the legacy companion route and Settings. */
+export function PairingControls({
   onPaired,
-  onBack,
-}: PairingViewProps): React.JSX.Element {
+  compact = false,
+}: PairingControlsProps): React.JSX.Element {
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
-  const scan = useCallback(async () => {
-    if (!Capacitor.isNativePlatform()) {
-      setStatus({
-        kind: "error",
-        message:
-          "Camera scan requires the iOS native runtime. Paste the code below.",
-      });
-      return;
-    }
-    setStatus({ kind: "scanning" });
-    try {
-      logger.info("[Pairing] scanBarcode start", {});
-      const result = await CapacitorBarcodeScanner.scanBarcode({
-        hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
-        scanInstructions: "Point the camera at the code on your Mac",
-      });
-      const payload = decodePairingPayload(result.ScanResult);
-      logger.info("[Pairing] pairing payload decoded", {
-        agentId: payload.agentId,
+  const completePairing = useCallback(
+    async (payload: PairingPayload) => {
+      await ElizaIntent.setPairingStatus({
+        deviceId: payload.agentId,
+        agentUrl: payload.ingressUrl,
       });
       onPaired(payload);
+    },
+    [onPaired],
+  );
+
+  const scan = useCallback(async () => {
+    if (!isNativeIosPhonePairing()) return;
+    setStatus({ kind: "scanning" });
+    try {
+      const result = await CapacitorBarcodeScanner.scanBarcode({
+        hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
+        scanInstructions: "Point the camera at the code on your computer",
+      });
+      const payload = decodePairingPayload(result.ScanResult);
+      await completePairing(payload);
       setStatus({ kind: "idle" });
-    } catch (err) {
+    } catch (error) {
       logger.warn("[Pairing] scan or decode failed", {
-        message: err instanceof Error ? err.message : String(err),
+        message: error instanceof Error ? error.message : String(error),
       });
       setStatus({
         kind: "error",
         message:
-          err instanceof Error && err.message.length > 0
-            ? err.message
-            : "Could not read the QR code. Try again or enter the code below.",
+          error instanceof Error && error.message.length > 0
+            ? error.message
+            : "Could not read that pairing code.",
       });
     }
-  }, [onPaired]);
+  }, [completePairing]);
 
   const submitManual = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
+      if (!isNativeIosPhonePairing()) return;
       const trimmed = code.trim();
-      if (trimmed.length === 0) {
-        setStatus({
-          kind: "error",
-          message: "Paste the pairing payload shown on your Mac.",
-        });
+      if (!trimmed) {
+        setStatus({ kind: "error", message: "Paste a pairing code first." });
         return;
       }
-      logger.info("[Pairing] manual payload submit", {
-        length: trimmed.length,
-      });
       try {
         const payload = decodePairingPayload(trimmed);
-        await ElizaIntent.setPairingStatus({
-          deviceId: payload.agentId,
-          agentUrl: payload.ingressUrl,
-        });
-        onPaired(payload);
+        await completePairing(payload);
+        setCode("");
         setStatus({ kind: "idle" });
-      } catch (err) {
-        logger.warn("[Pairing] manual payload decode failed", {
-          message: err instanceof Error ? err.message : String(err),
+      } catch (error) {
+        logger.warn("[Pairing] manual payload failed", {
+          message: error instanceof Error ? error.message : String(error),
         });
         setStatus({
           kind: "error",
           message:
-            err instanceof Error && err.message.length > 0
-              ? err.message
-              : "Could not read the pairing payload. Scan the QR code or paste the full payload.",
+            error instanceof Error && error.message.length > 0
+              ? error.message
+              : "Could not read that pairing code.",
         });
       }
     },
-    [code, onPaired],
+    [code, completePairing],
   );
 
+  if (!isNativeIosPhonePairing()) {
+    return (
+      <p className="text-sm text-muted" data-testid="phone-pairing-unavailable">
+        Phone pairing is available in the Eliza iOS app.
+      </p>
+    );
+  }
+
   return (
-    <main style={styles.root}>
-      <header style={styles.header}>
-        <Button unstyled type="button" onClick={onBack} style={styles.back}>
-          Back
-        </Button>
-        <h1 style={styles.title}>Pair with Eliza</h1>
-      </header>
-
-      <section style={styles.section}>
-        <p style={styles.hint}>
-          Scan the QR code shown in the Eliza desktop app, or paste its pairing
-          payload manually.
+    <div className="flex flex-col gap-3" data-testid="phone-pairing-controls">
+      {!compact ? (
+        <p className="text-sm text-muted">
+          Scan the code on your computer or paste it below.
         </p>
-        <Button
-          unstyled
-          type="button"
-          onClick={scan}
-          disabled={status.kind === "scanning"}
-          style={styles.primary}
-        >
-          {status.kind === "scanning" ? "Scanning..." : "Scan QR code"}
-        </Button>
-      </section>
-
-      <section style={styles.section}>
-        <form onSubmit={submitManual} style={styles.form}>
-          <label htmlFor="pairing-code" style={styles.label}>
-            Or paste payload
-          </label>
-          <Input
-            id="pairing-code"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
-            inputMode="text"
-            autoComplete="off"
-            placeholder="base64 pairing payload"
-            style={styles.input}
-          />
-          <Button unstyled type="submit" style={styles.secondary}>
-            Pair device
-          </Button>
-        </form>
-      </section>
-
-      {status.kind === "error" ? (
-        <p style={styles.error}>{status.message}</p>
       ) : null}
-    </main>
+      <Button
+        type="button"
+        variant="surface"
+        onClick={scan}
+        disabled={status.kind === "scanning"}
+      >
+        {status.kind === "scanning" ? "Scanning…" : "Scan code"}
+      </Button>
+      <form onSubmit={submitManual} className="flex flex-col gap-2 sm:flex-row">
+        <label htmlFor="phone-pairing-code" className="sr-only">
+          Pairing code
+        </label>
+        <Input
+          id="phone-pairing-code"
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          inputMode="text"
+          autoComplete="off"
+          placeholder="Paste pairing code"
+          className="min-w-0 flex-1 font-mono"
+        />
+        <Button type="submit" variant="surfaceAccent">
+          Pair
+        </Button>
+      </form>
+      {status.kind === "error" ? (
+        <p role="alert" className="text-sm text-danger">
+          {status.message}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    height: "100%",
-    padding: 20,
-    gap: 24,
-  },
-  header: { display: "flex", flexDirection: "column", gap: 12 },
-  back: {
-    alignSelf: "flex-start",
-    background: "transparent",
-    border: "none",
-    color: "#93c5fd",
-    fontSize: 16,
-    padding: 0,
-  },
-  title: { margin: 0, fontSize: 28, fontWeight: 600 },
-  section: { display: "flex", flexDirection: "column", gap: 12 },
-  hint: { margin: 0, opacity: 0.7 },
-  primary: {
-    padding: "14px 16px",
-    background: "#4f46e5",
-    color: "#fff",
-    border: "none",
-    borderRadius: 12,
-    fontSize: 16,
-    fontWeight: 600,
-  },
-  secondary: {
-    padding: "12px 16px",
-    background: "#1f2937",
-    color: "#e5e7eb",
-    border: "1px solid #374151",
-    borderRadius: 12,
-    fontSize: 16,
-  },
-  form: { display: "flex", flexDirection: "column", gap: 8 },
-  label: { fontSize: 12, opacity: 0.7, textTransform: "uppercase" },
-  input: {
-    fontSize: 24,
-    letterSpacing: "0.4em",
-    textAlign: "center",
-    padding: "12px 16px",
-    background: "#111",
-    border: "1px solid #333",
-    borderRadius: 12,
-    color: "#e5e7eb",
-  },
-  error: { color: "#fbbf24", margin: 0 },
-};
+/** Compatibility shell retained for the legacy `/phone-companion` route. */
+export function Pairing({
+  onPaired,
+  onBack,
+}: PairingViewProps): React.JSX.Element {
+  return (
+    <main className="flex h-full flex-col gap-5 p-5">
+      <header className="flex flex-col gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onBack}
+          className="self-start"
+        >
+          Back
+        </Button>
+        <h1 className="text-2xl font-semibold">Pair with Eliza</h1>
+      </header>
+      <PairingControls onPaired={onPaired} />
+    </main>
+  );
+}

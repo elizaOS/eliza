@@ -7,7 +7,7 @@
 // Deterministic client + persistence mocks; logger spied to assert surfacing.
 
 import { logger } from "@elizaos/logger";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -23,12 +23,16 @@ const mocks = vi.hoisted(() => ({
     saveBrowserEnabled: vi.fn(),
     saveComputerUseEnabled: vi.fn(),
   },
+  auth: { authenticated: true },
 }));
 
 vi.mock("../api", () => ({ client: mocks.client }));
 vi.mock("./persistence", () => mocks.persistence);
 vi.mock("../utils/desktop-dialogs", () => ({
   confirmDesktopAction: vi.fn(async () => true),
+}));
+vi.mock("../hooks/useAuthStatus", () => ({
+  useIsAuthenticated: () => mocks.auth.authenticated,
 }));
 
 import { useWalletState } from "./useWalletState";
@@ -43,25 +47,54 @@ type ActionNoticeFn = (
   busy?: boolean,
 ) => void;
 
-function renderWalletState(setActionNotice: ActionNoticeFn = vi.fn()) {
+function renderWalletState(
+  setActionNotice: ActionNoticeFn = vi.fn(),
+  hydrateServerConfig = false,
+) {
   return renderHook(() =>
     useWalletState({
       setActionNotice,
       promptModal: vi.fn(async () => null),
       agentName: undefined,
       characterName: undefined,
-      hydrateServerConfig: false,
+      hydrateServerConfig,
     }),
   );
 }
 
 beforeEach(() => {
   mocks.client.updateConfig.mockReset();
+  mocks.client.getConfig.mockReset();
+  mocks.client.getConfig.mockResolvedValue({ ui: {} });
+  mocks.auth.authenticated = true;
   errorSpy.mockReset();
   mocks.persistence.saveWalletEnabled.mockReset();
 });
 
 describe("useWalletState — capability write failure surfaces", () => {
+  it("waits for authentication before hydrating capability config", async () => {
+    mocks.auth.authenticated = false;
+    mocks.client.getConfig.mockResolvedValue({
+      ui: { capabilities: { wallet: true } },
+    });
+    const { result, rerender } = renderWalletState(vi.fn(), true);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(mocks.client.getConfig).not.toHaveBeenCalled();
+    expect(result.current.state.walletEnabled).toBe(false);
+
+    mocks.auth.authenticated = true;
+    rerender();
+
+    await waitFor(() => {
+      expect(mocks.client.getConfig).toHaveBeenCalledTimes(1);
+      expect(result.current.state.walletEnabled).toBe(true);
+    });
+    expect(mocks.persistence.saveWalletEnabled).toHaveBeenCalledWith(true);
+  });
+
   it("logs and notifies the user when the server config write rejects, keeping the optimistic toggle", async () => {
     mocks.client.updateConfig.mockRejectedValue(new Error("network down"));
     const setActionNotice = vi.fn<ActionNoticeFn>();

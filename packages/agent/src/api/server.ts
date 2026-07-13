@@ -237,7 +237,8 @@ type BrowserWorkspaceTabKind = NonNullable<
 >;
 
 let agentSkillsApiPromise:
-  Promise<typeof import("@elizaos/plugin-agent-skills")> | undefined;
+  | Promise<typeof import("@elizaos/plugin-agent-skills")>
+  | undefined;
 function getAgentSkillsApi(): Promise<
   typeof import("@elizaos/plugin-agent-skills")
 > {
@@ -248,7 +249,8 @@ function getAgentSkillsApi(): Promise<
 }
 
 let appManagerApiPromise:
-  Promise<typeof import("@elizaos/plugin-app-manager")> | undefined;
+  | Promise<typeof import("@elizaos/plugin-app-manager")>
+  | undefined;
 function getAppManagerApi(): Promise<
   typeof import("@elizaos/plugin-app-manager")
 > {
@@ -259,7 +261,8 @@ function getAppManagerApi(): Promise<
 }
 
 let walletApiPromise:
-  Promise<typeof import("@elizaos/plugin-wallet")> | undefined;
+  | Promise<typeof import("@elizaos/plugin-wallet")>
+  | undefined;
 function getWalletApi(): Promise<typeof import("@elizaos/plugin-wallet")> {
   walletApiPromise ??= importOptionalPlugin<
     typeof import("@elizaos/plugin-wallet")
@@ -2109,9 +2112,13 @@ async function handleRequest(
       }
       return Boolean(
         localInferenceServerApi.handleLocalInferenceTtsRoute &&
-        (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
-          current: state.runtime,
-        })),
+          (await localInferenceServerApi.handleLocalInferenceTtsRoute(
+            req,
+            res,
+            {
+              current: state.runtime,
+            },
+          )),
       );
     })())
   ) {
@@ -2584,8 +2591,9 @@ async function handleRequest(
       return;
     }
     try {
-      const { unloadPluginFromDirectory } =
-        await import("../runtime/load-plugin-from-directory.ts");
+      const { unloadPluginFromDirectory } = await import(
+        "../runtime/load-plugin-from-directory.ts"
+      );
       const result = await unloadPluginFromDirectory({
         runtime: state.runtime as Parameters<
           typeof unloadPluginFromDirectory
@@ -4374,8 +4382,9 @@ export async function startApiServer(opts?: {
 
         // Build destination registry — all configured destinations
         const _connectors = state.config.connectors ?? {};
-        const streaming = (state.config as Record<string, unknown>)
-          .streaming as Record<string, unknown> | undefined;
+        const streaming = (state.config as Record<string, unknown>).streaming as
+          | Record<string, unknown>
+          | undefined;
         const destinations = new Map<string, StreamRouteDestination>();
 
         try {
@@ -4587,6 +4596,11 @@ export async function startApiServer(opts?: {
 
   // ── WebSocket Server ─────────────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  // Password-authenticated dashboard sessions are cookie-backed in app-core,
+  // not API bearer tokens. Preserve a successful host authorization across
+  // the HTTP upgrade boundary so the resulting socket joins the authenticated
+  // broadcast set without exposing or minting a token in the browser.
+  const hostAuthorizedWebSockets = new WeakSet<WebSocket>();
   // A server-level 'error' with no listener crashes the process. Abrupt client
   // disconnects (RST during/after the upgrade handshake) surface here.
   wss.on("error", (err: unknown) => {
@@ -4670,7 +4684,7 @@ export async function startApiServer(opts?: {
   }
 
   // Handle upgrade requests for WebSocket
-  server.on("upgrade", (request, socket, head) => {
+  server.on("upgrade", async (request, socket, head) => {
     // The raw upgrade socket can emit 'error' (client RST mid-handshake) before
     // a WebSocket — and its error handler — exists. Unhandled, it crashes the
     // process. Attach a no-op-ish guard for the whole upgrade window.
@@ -4694,11 +4708,25 @@ export async function startApiServer(opts?: {
         return;
       }
       const rejection = resolveWebSocketUpgradeRejection(request, wsUrl);
-      if (rejection) {
+      let hostSessionAuthorized = false;
+      // A 401 from the bearer-token policy may still be a valid app-core
+      // browser session. Path and Origin failures remain absolute and are never
+      // overridable by a cookie.
+      if (
+        (!rejection || rejection.status === 401) &&
+        !isWebSocketAuthorized(request, wsUrl)
+      ) {
+        const authorize = getAgentHostBridge().isHttpRequestAuthorized;
+        if (typeof authorize === "function") {
+          hostSessionAuthorized = await authorize(request, state.runtime);
+        }
+      }
+      if (rejection && !hostSessionAuthorized) {
         rejectWebSocketUpgrade(socket, rejection.status, rejection.reason);
         return;
       }
       wss.handleUpgrade(request, socket, head, (ws: WebSocket) => {
+        if (hostSessionAuthorized) hostAuthorizedWebSockets.add(ws);
         // Attach an 'error' listener IMMEDIATELY — before emit('connection')
         // runs the (long) connection handler that only attaches its own error
         // listener near the end. A client that RSTs in that window otherwise
@@ -4737,7 +4765,8 @@ export async function startApiServer(opts?: {
       wsUrl = new URL("ws://localhost/ws");
     }
 
-    let isAuthenticated = isWebSocketAuthorized(request, wsUrl);
+    let isAuthenticated =
+      hostAuthorizedWebSockets.has(ws) || isWebSocketAuthorized(request, wsUrl);
 
     // Optional reconnect cursor: a client that tracks the highest buffered
     // event sequence it has applied can pass it back as `?lastEventId=` so the
@@ -5252,7 +5281,8 @@ export async function startApiServer(opts?: {
           ? Object.fromEntries(Object.entries(dbAgent))
           : null;
       const saved = agentRecord?.character as
-        Record<string, unknown> | undefined;
+        | Record<string, unknown>
+        | undefined;
       if (!saved || typeof saved !== "object") return;
 
       const c = rt.character;

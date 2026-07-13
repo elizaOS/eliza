@@ -33,6 +33,7 @@ import { useAppSelector } from "../state/app-store";
 import type { StartupPhaseValue } from "../state/startup-coordinator";
 import { isShellPaintable } from "../state/startup-coordinator";
 import { startPolling } from "./resource-cache";
+import { useIsAuthenticated } from "./useAuthStatus";
 import { useCachedResource } from "./useCachedResource";
 
 export interface ViewRegistryEntry {
@@ -213,6 +214,7 @@ const TAB_ICON_NAMES: Partial<Record<BuiltinTab, string>> = {
   contacts: "UsersRound",
   camera: "AppWindow",
   tasks: "ListTodo",
+  projects: "FolderKanban",
   browser: "Globe",
   stream: "Radio",
   apps: "LayoutGrid",
@@ -252,6 +254,7 @@ const BUILTIN_TAB_ORDER: Partial<Record<BuiltinTab, number>> =
       "messages",
       "contacts",
       "tasks",
+      "projects",
       "files",
       "documents",
       "browser",
@@ -382,7 +385,9 @@ export function withBuiltinShellViews(
 }
 
 function useDefaultViewsNetworkEnabled(): boolean {
+  const authenticated = useIsAuthenticated();
   const phase = useAppSelector((s) => s.startupCoordinator?.phase);
+  if (!authenticated) return false;
   if (!supportsFullAppShellRoutes(client.getBaseUrl())) return false;
   if (typeof phase !== "string") return true;
   // first-run-required is now shell-paintable (onboarding runs in the live

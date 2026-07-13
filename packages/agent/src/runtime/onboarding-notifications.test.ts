@@ -49,19 +49,21 @@ describe("seedOnboardingNotifications", () => {
     expect(notified).toHaveLength(ONBOARDING_NOTIFICATIONS.length);
     expect(notified.map((n) => n.groupKey)).toEqual([
       "onboarding:tutorial",
-      "onboarding:help",
+      "onboarding:ai-model",
       "onboarding:calendar",
+      "onboarding:help",
     ]);
-    // Deep links must be root-relative paths (isSafeDeepLink allowlist),
-    // optionally carrying a percent-encoded `?prefill=` composer seed.
+    // Deep links must be root-relative paths (isSafeDeepLink allowlist).
     for (const n of notified) {
-      expect(n.deepLink).toMatch(/^\/[a-z-]+(\?prefill=[A-Za-z0-9%]+)?$/);
+      expect(n.deepLink).toMatch(/^\/(?!\/)/);
       expect(n.deepLink?.startsWith("//")).toBe(false);
     }
-    // Every seed lands the user in the conversation, not a settings page.
-    for (const n of notified) {
-      expect(n.deepLink?.startsWith("/chat")).toBe(true);
-    }
+    expect(notified.filter((n) => n.priority === "high")).toHaveLength(2);
+    expect(notified.filter((n) => n.priority === "normal")).toHaveLength(2);
+    expect(new Set(notified.map((n) => n.source)).size).toBeGreaterThan(1);
+    expect(
+      notified.find((n) => n.groupKey === "onboarding:ai-model")?.deepLink,
+    ).toBe("/settings#ai-model");
     expect(
       cache.get(
         "onboarding-notifications:seeded:00000000-0000-0000-0000-000000000001",

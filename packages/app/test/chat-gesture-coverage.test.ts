@@ -45,7 +45,7 @@ const UI_SRC = path.join(REPO_ROOT, "packages/ui/src");
  * A plain `onClick`/`onPointerDown` button is intentionally NOT a gesture site.
  */
 const GESTURE_MARKERS: readonly RegExp[] = [
-  /\.setPointerCapture\s*\(/,
+  /\.setPointerCapture(?:\?\.)?\s*\(/,
   /onTouchStart[=\s{]/,
   /addEventListener\(\s*["']touchstart/,
   /\bon\(\s*["']touchstart/,
@@ -277,12 +277,12 @@ const CHAT_GESTURE_MATRIX: readonly GestureRow[] = [
   },
   {
     id: 18,
-    // The inline home notification center (#15180) carries real gestures:
-    // pointer-captured row swipe-to-dismiss, long-press row menu, and the
-    // shade pull-expand (touch pan at list top + desktop wheel pull).
+    // Whole-inbox priority/all mode is button-only. The row leaf owns the real
+    // gestures: horizontal swipe-dismiss plus producer-local vertical drag /
+    // trackpad wheel fan-out for a folded stack.
     interaction:
-      "Notification row swipe-dismiss / long-press menu; shade pull-expand",
-    sites: [S("components/shell/NotificationsHomeCenter.tsx")],
+      "Notification row swipe-dismiss; producer-stack drag/trackpad fan-out",
+    sites: [S("components/shell/notification-shade-content.tsx")],
     tests: [
       S("components/shell/NotificationsHomeCenter.test.tsx"),
       GESTURE_MATRIX_SPEC,
@@ -308,8 +308,8 @@ const PINNED_GESTURE_SITES: readonly string[] = [
   "packages/ui/src/components/shell/ContinuousChatOverlay.tsx",
   "packages/ui/src/components/shell/HomeLauncherSurface.tsx",
   "packages/ui/src/components/shell/KioskViewCanvas.tsx",
-  "packages/ui/src/components/shell/NotificationsHomeCenter.tsx",
   "packages/ui/src/components/shell/TopicGroup.tsx",
+  "packages/ui/src/components/shell/notification-shade-content.tsx",
   "packages/ui/src/components/shell/use-pull-gesture.ts",
   "packages/ui/src/gestures/usePressAndHold.ts",
   "packages/ui/src/hooks/useHorizontalPager.ts",

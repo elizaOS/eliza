@@ -34,6 +34,7 @@ const VIEW_CLASSIFICATION: Record<string, "system" | "developer"> = {
   contacts: "system",
   camera: "system",
   tasks: "system",
+  projects: "system",
   automations: "system",
   browser: "system",
   stream: "system",

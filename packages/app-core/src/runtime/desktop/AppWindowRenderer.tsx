@@ -18,10 +18,7 @@ import {
 } from "@elizaos/ui/api";
 import { listAppShellPages } from "@elizaos/ui/app-shell-registry";
 import { findAppBySlug, getAppSlug } from "@elizaos/ui/components/apps/helpers";
-import {
-  getInternalToolAppDescriptors,
-  getInternalToolAppTargetTab,
-} from "@elizaos/ui/components/apps/internal-tool-apps";
+import { getInternalToolAppTargetTabForSlug } from "@elizaos/ui/components/apps/internal-tool-apps";
 import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
 import {
   getAvailableOverlayApps,
@@ -46,10 +43,10 @@ import { DatabasePageView } from "@elizaos/ui/components/pages/DatabasePageView"
 import { LogsView } from "@elizaos/ui/components/pages/LogsView";
 import { MemoryViewerView } from "@elizaos/ui/components/pages/MemoryViewerView";
 import { PluginsPageView } from "@elizaos/ui/components/pages/PluginsPageView";
+import { ProjectsPageView } from "@elizaos/ui/components/pages/ProjectsPageView";
 import { RelationshipsView } from "@elizaos/ui/components/pages/RelationshipsView";
 import { RuntimeView } from "@elizaos/ui/components/pages/RuntimeView";
 import { SkillsView } from "@elizaos/ui/components/pages/SkillsView";
-import { TasksPageView } from "@elizaos/ui/components/pages/TasksPageView";
 import { TrajectoriesView } from "@elizaos/ui/components/pages/TrajectoriesView";
 import { FineTuningView } from "@elizaos/ui/components/training/injected";
 import { useApp } from "@elizaos/ui/state/useApp";
@@ -119,7 +116,7 @@ function RegisteredAppShellPageView({
 }
 
 /** Render a built-in tab component bare (no chat pane / sidebar). */
-function renderInternalToolTab(tab: Tab): JSX.Element | null {
+export function renderInternalToolTab(tab: Tab): JSX.Element | null {
   switch (tab) {
     case "plugins":
       return <PluginsPageView />;
@@ -142,8 +139,9 @@ function renderInternalToolTab(tab: Tab): JSX.Element | null {
       return <FineTuningView />;
     case "inventory":
       return <RegisteredWalletInventoryView />;
+    case "projects":
     case "tasks":
-      return <TasksPageView />;
+      return <ProjectsPageView />;
     case "chat":
       return <ChatView />;
     default:
@@ -518,18 +516,19 @@ export function AppWindowRenderer({
 }
 
 /**
- * Resolve a `/apps/<slug>` to its internal-tool target tab using the
- * internal-tool descriptor table as the source of truth.
+ * Resolve a detached internal-tool slug from its declared canonical path.
+ * `tasks` remains accepted as a legacy alias for Projects.
  */
-function resolveInternalToolTabFromSlug(slug: string): Tab | null {
-  const targetPath = `/apps/${slug}`;
-  for (const descriptor of getInternalToolAppDescriptors()) {
-    if (descriptor.windowPath === targetPath) {
-      const tab = getInternalToolAppTargetTab(descriptor.name);
-      if (tab) return tab;
-    }
+export function resolveInternalToolTabFromSlug(slug: string): Tab | null {
+  if (
+    slug
+      .trim()
+      .replace(/^\/+|\/+$/g, "")
+      .toLowerCase() === "tasks"
+  ) {
+    return "projects";
   }
-  return null;
+  return getInternalToolAppTargetTabForSlug(slug);
 }
 
 function resolveAppShellPageFromSlug(

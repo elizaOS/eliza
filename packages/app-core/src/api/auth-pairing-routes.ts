@@ -243,16 +243,22 @@ export async function handleAuthPairingCompatRoutes(
   if (method === "GET" && url.pathname === "/api/auth/status") {
     const localAccess = isTrustedLocalRequest(req);
     const db = getCompatDrizzleDb(state);
-    let passwordConfigured = false;
-    let sessionAuthenticated = false;
-    if (db) {
-      const store = new AuthStore(
-        db as ConstructorParameters<typeof AuthStore>[0],
-      );
-      const owner = (await store.listIdentitiesByKind("owner"))[0];
-      passwordConfigured = Boolean(owner?.passwordHash);
-      sessionAuthenticated = await requestHasActiveSession(req, store);
+    // The runtime HTTP server can accept requests before its database-backed
+    // auth store is attached. Do not turn that transient absence into durable
+    // auth facts: reporting `passwordConfigured: false` here sends clients to
+    // pairing even when an owner password already exists. A retryable 503 keeps
+    // startup polling in the loading state until the source of truth is ready.
+    if (!db) {
+      res.setHeader("Retry-After", "1");
+      sendJsonErrorResponse(res, 503, "Authentication service is starting");
+      return true;
     }
+    const store = new AuthStore(
+      db as ConstructorParameters<typeof AuthStore>[0],
+    );
+    const owner = (await store.listIdentitiesByKind("owner"))[0];
+    const passwordConfigured = Boolean(owner?.passwordHash);
+    const sessionAuthenticated = await requestHasActiveSession(req, store);
     const cloudProvisioned = isCloudProvisioned();
     const tokenRequired = Boolean(getCompatApiToken());
     const loginRequired = !localAccess && !tokenRequired && !cloudProvisioned;

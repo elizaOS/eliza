@@ -1,8 +1,8 @@
 /**
- * Browser regression run + screenshots for the notification shade, desktop +
- * mobile: rested Z-stacks, the pull-gesture expand/collapse (real mouse drag
- * and wheel — the paths jsdom cannot exercise against real layout),
- * per-stack fan/fold controls, and swipe-to-dismiss. No app server:
+ * Browser regression run + screenshots for the inline notification inbox,
+ * desktop + mobile: priority/all modes through the sole persistent mode
+ * toggle, a bounded native scrollport, stack-local tap/mouse-drag/trackpad fan
+ * gestures, fold controls, and swipe-to-dismiss. No app server:
  * bundles the fixture with esbuild (core/node builtins stubbed dead-in-browser)
  * and drives it in headless chromium.
  *
@@ -141,6 +141,8 @@ const url = `http://127.0.0.1:${server.address().port}/`;
 
 const ROW = '[data-testid="notification-row"]';
 const LIST = '[data-testid="home-notification-list"]';
+const CENTER = '[data-testid="home-notification-center"]';
+const APPS = '[data-testid="fixture-apps-section"]';
 
 let failures = 0;
 function check(name, ok, detail = "") {
@@ -148,18 +150,95 @@ function check(name, ok, detail = "") {
   if (!ok) failures += 1;
 }
 
-/** Mouse-drag straight down from the top of the list — the pull gesture. */
-async function pullDown(page) {
-  const box = await page.locator(LIST).boundingBox();
+async function verticalDrag(page, locator, distance = 72) {
+  const box = await locator.boundingBox();
   const x = box.x + box.width / 2;
-  await page.mouse.move(x, box.y + 12);
+  // Stay inside the row for the full gesture: the stack-local Y path does not
+  // capture the pointer (native list scrolling must remain available), and a
+  // pointer that leaves the card correctly stops delivering row-local moves.
+  const travel = Math.min(distance, Math.max(50, box.height - 12));
+  const startY = box.y + 6;
+  await page.mouse.move(x, startY);
   await page.mouse.down();
-  await page.mouse.move(x, box.y + 172, { steps: 10 });
+  await page.mouse.move(x, startY + travel, { steps: 10 });
   await page.mouse.up();
 }
 
-async function shadeMode(page) {
-  return page.locator(LIST).getAttribute("data-shade-mode");
+/** Genuine touch pan through Chromium's input pipeline (not synthetic DOM events). */
+async function cdpTouchDrag(page, locator, dx, dy, steps = 12) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("touch target has no bounding box");
+  const from = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  const client = await page.context().newCDPSession(page);
+  try {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [from],
+    });
+    for (let i = 1; i <= steps; i += 1) {
+      await client.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          { x: from.x + (dx * i) / steps, y: from.y + (dy * i) / steps },
+        ],
+      });
+    }
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+  } finally {
+    await client.detach();
+  }
+}
+
+async function inboxMode(page) {
+  return page.locator(LIST).getAttribute("data-inbox-mode");
+}
+
+async function homeGeometry(page) {
+  return page.evaluate(
+    ({ appsSelector, centerSelector, listSelector }) => {
+      const apps = document.querySelector(appsSelector);
+      const center = document.querySelector(centerSelector);
+      const list = document.querySelector(listSelector);
+      if (!(apps instanceof HTMLElement)) throw new Error("Apps not rendered");
+      if (!(center instanceof HTMLElement)) {
+        throw new Error("Notification center not rendered");
+      }
+      if (!(list instanceof HTMLElement)) {
+        throw new Error("Notification list not rendered");
+      }
+      const appsRect = apps.getBoundingClientRect();
+      const centerRect = center.getBoundingClientRect();
+      const listRect = list.getBoundingClientRect();
+      return {
+        appsTop: appsRect.top,
+        centerBottom: centerRect.bottom,
+        centerHeight: centerRect.height,
+        directSibling: apps.previousElementSibling === center,
+        gap: appsRect.top - centerRect.bottom,
+        listHeight: listRect.height,
+        listScrollHeight: list.scrollHeight,
+      };
+    },
+    { appsSelector: APPS, centerSelector: CENTER, listSelector: LIST },
+  );
+}
+
+async function foldFirstStack(page) {
+  const control = page
+    .locator('[data-testid="notification-stack-collapse"]')
+    .first();
+  if ((await control.count()) === 0) return false;
+  await control.click();
+  await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid="notification-row"]').length === 2,
+  );
+  // motion/react settles the restored stack position for 340ms. Subsequent
+  // real pointer/wheel input must target the card at its final geometry.
+  await page.waitForTimeout(400);
+  return true;
 }
 
 const HEADFUL =
@@ -174,7 +253,10 @@ for (const [name, width, height] of [
   ["mobile", 390, 844],
 ]) {
   console.log(`\n── ${name} (${width}x${height}) ──`);
-  const page = await browser.newPage({ viewport: { width, height } });
+  const page = await browser.newPage({
+    viewport: { width, height },
+    hasTouch: name === "mobile",
+  });
   // Headless: still the entrance + scroll-driven (`animation-timeline: view()`)
   // effects for deterministic pixels and to dodge the headless-shell compositor
   // crash driving view-timeline rows while the scroller transforms. Headful
@@ -201,7 +283,7 @@ for (const [name, width, height] of [
   // 1. RESTED: interrupt triage — the task group is a Z-stack (urgent on top,
   //    two glass peeks, no header eyebrow), the solo system row is flat, the
   //    rest hides behind the "N more" button.
-  check("rested mode", (await shadeMode(page)) === "rested");
+  check("priority mode", (await inboxMode(page)) === "priority");
   check(
     "two interactive cards at rest (stack top + solo)",
     (await page.locator(ROW).count()) === 2,
@@ -227,20 +309,32 @@ for (const [name, width, height] of [
         .count()) === 0,
   );
   check(
-    "the count control reflects the complete inbox",
+    "persistent mode toggle reports the hidden quiet digest",
     (
       await page
-        .locator('[data-testid="notifications-count-button"]')
+        .locator('[data-testid="notifications-mode-toggle"]')
         .textContent()
-    )?.includes("7 Notifications"),
+    )?.includes("7 More") &&
+      (await page
+        .locator('[data-testid="notifications-mode-toggle"]')
+        .getAttribute("aria-expanded")) === "false",
   );
   check(
     "hidden tier not visible at rest",
     (await page.locator("text=Take the tour").count()) === 0,
   );
+  const restedHomeGeometry = await homeGeometry(page);
+  check(
+    "Apps are the notification center's direct normal-flow sibling",
+    restedHomeGeometry.directSibling &&
+      restedHomeGeometry.gap >= 0 &&
+      restedHomeGeometry.gap <= 16,
+    `appsTop=${restedHomeGeometry.appsTop.toFixed(1)}, centerBottom=${restedHomeGeometry.centerBottom.toFixed(1)}, gap=${restedHomeGeometry.gap.toFixed(1)}`,
+  );
   const glass = await page
-    .locator('[data-testid="notification-row-swipe"]')
-    .first()
+    .locator(ROW)
+    .filter({ hasText: "Disk almost full" })
+    .locator('xpath=..')
     .evaluate((el) => {
       const s = getComputedStyle(el);
       return {
@@ -259,52 +353,185 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-rested.png`);
 
-  // 2. PULL TO EXPAND: a real mouse drag down from the list top reveals every
-  //    priority tier — but the Z-stacks PERSIST (per-stack fan-out below).
-  await pullDown(page);
+  // 2. THE INBOX DOES NOT OWN DRAG/WHEEL MODE CHANGES. A vertical gesture on
+  //    the solo priority row and a wheel run over the list leave priority mode
+  //    untouched; only the explicit control below may reveal the quiet digest.
+  const soloSwipe = page
+    .locator(ROW)
+    .filter({ hasText: "Disk almost full" })
+    .locator('xpath=..');
+  await verticalDrag(page, soloSwipe);
+  check(
+    "vertical drag on a flat row does not change inbox mode",
+    (await inboxMode(page)) === "priority",
+  );
+  const soloBox = await soloSwipe.boundingBox();
+  await page.mouse.move(
+    soloBox.x + soloBox.width / 2,
+    soloBox.y + soloBox.height / 2,
+  );
+  await page.mouse.wheel(0, 80);
+  check(
+    "wheel over a flat row does not change inbox mode",
+    (await inboxMode(page)) === "priority",
+  );
+
+  // 3. PRODUCER-LOCAL FAN GESTURES: tap, vertical mouse drag, and a trackpad
+  //    wheel run each fan the GitHub stack while the inbox remains in priority
+  //    mode. Fold between paths so every gesture starts from the same state.
+  const stack = () => page.locator('[data-testid="notification-stack"]').first();
+  await stack().locator(ROW).click();
+  check(
+    "tap fans only the producer stack",
+    (await page.locator(ROW).count()) === 4 &&
+      (await inboxMode(page)) === "priority" &&
+      (await page.locator("text=Take the tour").count()) === 0,
+  );
+  await foldFirstStack(page);
+
+  await verticalDrag(
+    page,
+    stack().locator('[data-testid="notification-row-swipe"]'),
+  );
+  check(
+    "vertical mouse drag fans only the producer stack",
+    (await page.locator(ROW).count()) === 4 &&
+      (await inboxMode(page)) === "priority",
+  );
+  await foldFirstStack(page);
+
+  const foldedSwipe = stack().locator(
+    '[data-testid="notification-row-swipe"]',
+  );
+  const foldedBox = await foldedSwipe.boundingBox();
+  await page.mouse.move(
+    foldedBox.x + foldedBox.width / 2,
+    foldedBox.y + foldedBox.height / 2,
+  );
+  await page.mouse.wheel(0, 64);
+  await page.waitForTimeout(80);
+  check(
+    "two-finger wheel fans only the producer stack",
+    (await page.locator(ROW).count()) === 4 &&
+      (await inboxMode(page)) === "priority",
+  );
+  await page.screenshot({
+    path: join(outDir, `notifications-${name}-stack-local.png`),
+    fullPage: true,
+  });
+  console.log(`  📸 notifications-${name}-stack-local.png`);
+  await foldFirstStack(page);
+
+  // 4. EXPLICIT ALL MODE: the persistent toggle is the sole transition. It
+  //    remains present as the collapse control, starts inside the newly
+  //    revealed quiet digest, and the list itself owns a real max height and
+  //    native scrolling.
+  const modeToggle = page.locator('[data-testid="notifications-mode-toggle"]');
+  await modeToggle.click();
   await page.waitForFunction(
     (sel) =>
-      document
-        .querySelector(sel)
-        ?.getAttribute("data-shade-mode") === "expanded",
+      document.querySelector(sel)?.getAttribute("data-inbox-mode") === "all",
     LIST,
   );
-  check("pull-down expands the shade", (await shadeMode(page)) === "expanded");
+  await page.waitForTimeout(80);
   check(
-    "expanded shade exposes clear and collapse controls",
-    (await page.locator('[data-testid="notifications-clear-all"]').count()) ===
-      1 &&
-      (await page.locator('[data-testid="notifications-collapse"]').count()) ===
-        1,
+    "mode toggle alone reveals all priorities and stays available",
+    (await inboxMode(page)) === "all" &&
+      (await page.locator("text=Take the tour").count()) === 1 &&
+      (await modeToggle.getAttribute("aria-expanded")) === "true" &&
+      (await modeToggle.textContent())?.includes("Show Less"),
+  );
+  const geometry = await page.locator(LIST).evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      clientHeight: element.clientHeight,
+      maxHeight: style.maxHeight,
+      overflowY: style.overflowY,
+      scrollHeight: element.scrollHeight,
+      scrollTop: element.scrollTop,
+    };
+  });
+  check(
+    "list is height-capped and overflows internally",
+    geometry.maxHeight !== "none" &&
+      geometry.overflowY === "auto" &&
+      geometry.scrollHeight > geometry.clientHeight,
+    `${geometry.clientHeight}/${geometry.scrollHeight}, max=${geometry.maxHeight}`,
   );
   check(
-    "stacks persist through the shade expand",
-    (await page.locator('[data-testid="notification-stack-peek"]').count()) >
-      0,
+    "opening starts into newly revealed quiet content",
+    geometry.scrollTop > 0,
+    `scrollTop=${geometry.scrollTop}`,
   );
-  // Fan every multi-row group via its peeked cards (headers are gone). Only
-  // the peek's bottom sliver protrudes beneath the top card, so click there —
-  // a center click would land on the card covering it.
-  while (
-    (await page.locator('[data-testid="notification-stack-peek"]').count()) > 0
-  ) {
-    const peek = page
-      .locator('[data-testid="notification-stack-peek"]')
-      .first();
-    const peekBox = await peek.boundingBox();
-    await peek.click({
-      position: { x: peekBox.width / 2, y: peekBox.height - 3 },
+  const expandedHomeGeometry = await homeGeometry(page);
+  check(
+    "explicit expansion pushes Apps down while keeping them directly below",
+    expandedHomeGeometry.directSibling &&
+      expandedHomeGeometry.appsTop > restedHomeGeometry.appsTop + 20 &&
+      expandedHomeGeometry.gap >= 0 &&
+      expandedHomeGeometry.gap <= 16,
+    `appsTop ${restedHomeGeometry.appsTop.toFixed(1)}->${expandedHomeGeometry.appsTop.toFixed(1)}, centerHeight ${restedHomeGeometry.centerHeight.toFixed(1)}->${expandedHomeGeometry.centerHeight.toFixed(1)}, gap=${expandedHomeGeometry.gap.toFixed(1)}`,
+  );
+  check(
+    "bounded notification list, not empty flex, determines the Apps offset",
+    expandedHomeGeometry.listHeight < expandedHomeGeometry.listScrollHeight &&
+      Math.abs(
+        expandedHomeGeometry.appsTop -
+          expandedHomeGeometry.centerBottom -
+          restedHomeGeometry.gap,
+      ) <= 1,
+    `list=${expandedHomeGeometry.listHeight.toFixed(1)}/${expandedHomeGeometry.listScrollHeight}, appsGap=${expandedHomeGeometry.gap.toFixed(1)}`,
+  );
+
+  await page.locator(LIST).evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const quietRow = page.locator(ROW).filter({ hasText: "Take the tour" });
+  await quietRow.scrollIntoViewIfNeeded();
+  const quietBox = await quietRow.boundingBox();
+  const beforeNativeWheel = await page.locator(LIST).evaluate((element) =>
+    element.scrollTop,
+  );
+  await page.mouse.move(
+    quietBox.x + quietBox.width / 2,
+    quietBox.y + quietBox.height / 2,
+  );
+  await page.mouse.wheel(0, 180);
+  await page.waitForTimeout(80);
+  const afterNativeWheel = await page.locator(LIST).evaluate((element) =>
+    element.scrollTop,
+  );
+  check(
+    "native wheel scrolls the bounded list without changing inbox mode",
+    afterNativeWheel > beforeNativeWheel && (await inboxMode(page)) === "all",
+    `${beforeNativeWheel}->${afterNativeWheel}`,
+  );
+  if (name === "mobile") {
+    await page.locator(LIST).evaluate((element) => {
+      element.scrollTop = 0;
     });
+    const beforeTouchPan = await page.locator(LIST).evaluate(
+      (element) => element.scrollTop,
+    );
+    await cdpTouchDrag(page, page.locator(LIST), 4, -160, 10);
+    await page.waitForTimeout(300);
+    const afterTouchPan = await page.locator(LIST).evaluate(
+      (element) => element.scrollTop,
+    );
+    check(
+      "continued touch pull scrolls the bounded list without changing inbox mode",
+      afterTouchPan > beforeTouchPan && (await inboxMode(page)) === "all",
+      `${beforeTouchPan}->${afterTouchPan}`,
+    );
   }
-  check("all seven rows visible", (await page.locator(ROW).count()) === 7);
   check(
-    "stacks fanned out per group (no peeks left)",
-    (await page.locator('[data-testid="notification-stack-peek"]').count()) ===
-      0,
-  );
-  check(
-    "onboarding row appears after expand",
-    (await page.locator("text=Take the tour").count()) === 1,
+    "obsolete clear and separate collapse controls stay absent",
+    (await page.locator('[data-testid="notifications-clear-all"]').count()) ===
+      0 &&
+      (await page.locator('[data-testid="notification-stack-clear"]').count()) ===
+        0 &&
+      (await page.locator('[data-testid="notifications-collapse"]').count()) ===
+        0,
   );
   await page.screenshot({
     path: join(outDir, `notifications-${name}-expanded.png`),
@@ -312,47 +539,36 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-expanded.png`);
 
-  // 3. STACK FOLD/RESTORE: fanned groups expose controls above their rows.
-  //    Folding restores one top card plus its peeks; tapping that stack fans
-  //    the same group back out.
+  // Fanning in all mode remains stack-local and exposes only the fold control.
+  await page.locator(LIST).evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await stack().locator(ROW).click();
   check(
-    "fanned stack exposes Show Less and clear controls",
-    (await page.locator('[data-testid="notification-stack-controls"]').count()) >
-      0 &&
-      (await page.locator('[data-testid="notification-stack-collapse"]').count()) >
-        0 &&
-      (await page.locator('[data-testid="notification-stack-clear"]').count()) >
+    "stack fan in all mode preserves inbox mode and exposes Show Less only",
+    (await page.locator(ROW).count()) === 11 &&
+      (await inboxMode(page)) === "all" &&
+      (await page.locator('[data-testid="notification-stack-collapse"]').count()) ===
+        1 &&
+      (await page.locator('[data-testid="notification-stack-clear"]').count()) ===
         0,
-  );
-  await page
-    .locator('[data-testid="notification-stack-collapse"]')
-    .first()
-    .click();
-  check(
-    "Show Less folds the producer back into a stack",
-    (await page.locator(ROW).count()) === 5 &&
-      (await page.locator('[data-testid="notification-stack-peek"]').count()) ===
-        2,
-  );
-  await page.locator(ROW).first().click();
-  await page.waitForFunction(
-    (selector) => document.querySelectorAll(selector).length === 7,
-    ROW,
-  );
-  check(
-    "tapping the folded stack restores its fanned rows",
-    (await page.locator(ROW).count()) === 7,
   );
   await page.screenshot({
     path: join(outDir, `notifications-${name}-stack-controls.png`),
     fullPage: true,
   });
   console.log(`  📸 notifications-${name}-stack-controls.png`);
+  await page
+    .locator('[data-testid="notification-stack-collapse"]')
+    .first()
+    .click();
 
-  // 4. SWIPE TO DISMISS: drag a row horizontally off the shade; it leaves the
+  // 5. SWIPE TO DISMISS: drag a row horizontally off the inbox; it leaves the
   //    list (optimistic remove; the mocked-away HTTP write is dead in-browser).
   const beforeSwipe = await page.locator(ROW).count();
-  const rowBox = await page.locator(ROW).nth(1).boundingBox();
+  const swipeTarget = page.locator(ROW).filter({ hasText: "Take the tour" });
+  await swipeTarget.scrollIntoViewIfNeeded();
+  const rowBox = await swipeTarget.boundingBox();
   await page.mouse.move(rowBox.x + 40, rowBox.y + rowBox.height / 2);
   await page.mouse.down();
   await page.mouse.move(rowBox.x + 300, rowBox.y + rowBox.height / 2, {
@@ -373,35 +589,34 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-after-swipe.png`);
 
-  // 5. DIRECTIONAL COLLAPSE: fingers-up (positive wheel deltas) at the top
-  //    compresses the shade back to triage; fingers-down (negative) while
-  //    expanded is a no-op — the gesture is directional, so trailing trackpad
-  //    momentum can never snap the shade shut right after opening it.
-  const listBox = await page.locator(LIST).boundingBox();
-  await page.mouse.move(
-    listBox.x + listBox.width / 2,
-    listBox.y + listBox.height / 3,
-  );
-  await page.mouse.wheel(0, -80);
-  await page.waitForTimeout(120);
-  check(
-    "fingers-down while expanded does NOT collapse (momentum-proof)",
-    (await shadeMode(page)) === "expanded",
-  );
-  // Collapse contributions are per-event capped, so it takes a sustained
-  // fingers-up run (several events) to commit.
-  for (let i = 0; i < 4; i++) {
-    await page.mouse.wheel(0, 30);
-    await page.waitForTimeout(30);
-  }
+  // 6. EXPLICIT COLLAPSE: the same persistent toggle returns to priority mode,
+  //    resets the native scrollport, and remains available for the quiet rows
+  //    that are still present after the swipe.
+  await modeToggle.click();
   await page.waitForFunction(
     (sel) =>
-      document.querySelector(sel)?.getAttribute("data-shade-mode") === "rested",
+      document.querySelector(sel)?.getAttribute("data-inbox-mode") === "priority",
     LIST,
   );
+  const collapsedScrollTop = await page.locator(LIST).evaluate(
+    (element) => element.scrollTop,
+  );
   check(
-    "fingers-up at the top collapses back to triage",
-    (await shadeMode(page)) === "rested",
+    "persistent toggle collapses back to priority mode",
+    (await inboxMode(page)) === "priority" &&
+      (await page.locator(ROW).count()) === 2 &&
+      (await modeToggle.getAttribute("aria-expanded")) === "false" &&
+      collapsedScrollTop === 0,
+  );
+  await page.waitForTimeout(100);
+  const collapsedHomeGeometry = await homeGeometry(page);
+  check(
+    "collapse returns Apps to their original position",
+    collapsedHomeGeometry.directSibling &&
+      Math.abs(collapsedHomeGeometry.appsTop - restedHomeGeometry.appsTop) <= 2 &&
+      collapsedHomeGeometry.gap >= 0 &&
+      collapsedHomeGeometry.gap <= 16,
+    `appsTop ${expandedHomeGeometry.appsTop.toFixed(1)}->${collapsedHomeGeometry.appsTop.toFixed(1)} (rest=${restedHomeGeometry.appsTop.toFixed(1)}), gap=${collapsedHomeGeometry.gap.toFixed(1)}`,
   );
 
   if (errors.length) {

@@ -390,7 +390,7 @@ async function navigateToView(
 		if (resp.ok)
 			return {
 				ok: true,
-				text: `Navigated to ${view.label}${sectionSuffix} (${view.viewType ?? "gui"}).`,
+				text: "",
 				subview: resolvedSubview,
 			};
 		// 501/404 = navigation route unsupported by this shell; opening succeeds.
@@ -501,7 +501,10 @@ export async function runViewsShow({
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,
 	);
-	await callback?.({ text: result.text });
+	// On success, preserve the model's naturally phrased reply. Calling the
+	// callback here replaces it with a canned action receipt. Failures still need
+	// an explicit user-facing explanation.
+	if (!result.ok) await callback?.({ text: result.text });
 	return {
 		success: result.ok,
 		text: result.text,

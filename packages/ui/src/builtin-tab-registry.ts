@@ -115,6 +115,7 @@ export const BUILTIN_TAB_METADATA: readonly BuiltinTabMetadata[] = [
   },
   // ── Aliases (canonical id + legacy id that routes onto it) ──
   { id: "automations", aliases: ["triggers"] },
+  { id: "projects", aliases: ["tasks", "my-apps"] },
   { id: "fine-tuning", aliases: ["advanced"] },
 ] as const;
 

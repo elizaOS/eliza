@@ -57,6 +57,12 @@ export const SETTINGS_GROUP_LABEL: Record<SettingsSectionGroup, string> = {
  */
 export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
   {
+    id: "character",
+    defaultLabel: "Character",
+    group: "agent",
+    aliases: ["persona", "personality"],
+  },
+  {
     id: "identity",
     defaultLabel: "Basics",
     group: "agent",
@@ -102,6 +108,12 @@ export const SETTINGS_SECTION_META: SettingsSectionMeta[] = [
     defaultLabel: "Notifications",
     group: "system",
     aliases: ["push", "notify"],
+  },
+  {
+    id: "peripherals",
+    defaultLabel: "Peripherals",
+    group: "system",
+    aliases: ["bluetooth", "devices", "pairing", "accessories"],
   },
   { id: "runtime", defaultLabel: "Runtime", group: "system" },
   {

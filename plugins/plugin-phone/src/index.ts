@@ -13,6 +13,7 @@
  */
 
 export { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp.js";
+export { PhonePairingSettingsCard } from "./companion/components/PhonePairingSettingsCard.js";
 export * from "./companion/index.js";
 export * from "./companion/services/index.js";
 export { PhoneView } from "./components/PhoneView.js";

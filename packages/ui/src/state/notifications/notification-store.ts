@@ -52,6 +52,7 @@ let state: NotificationState = {
 const listeners = new Set<() => void>();
 const ephemeralNotificationIds = new Set<string>();
 let initialized = false;
+let hydrationVersion = 0;
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -294,6 +295,14 @@ function handleWsAgentEvent(data: Record<string, unknown>): void {
           type?: unknown;
         })
       : undefined;
+  if (payload?.type === "notification_clear") {
+    // Invalidate any GET already in flight: a response captured before the
+    // server clear must never repopulate stale rows after this event.
+    hydrationVersion++;
+    ephemeralNotificationIds.clear();
+    setState({ notifications: [], unreadCount: 0, hydrated: true });
+    return;
+  }
   const notification = validateWsNotification(payload?.notification);
   if (!notification) return;
   const unreadCount =
@@ -303,14 +312,17 @@ function handleWsAgentEvent(data: Record<string, unknown>): void {
 }
 
 async function hydrate(): Promise<void> {
+  const version = hydrationVersion;
   try {
     const res = await client.listNotifications({ limit: 100 });
+    if (version !== hydrationVersion) return;
     setState({
       notifications: res.notifications,
       unreadCount: res.unreadCount,
       hydrated: true,
     });
   } catch (err) {
+    if (version !== hydrationVersion) return;
     // error-policy:J1 transport boundary: the inbox HTTP hydrate failed
     // (endpoint not ready at early boot, or a real 5xx/network fault). Surface
     // it — a silent swallow here is the banned "not loaded reads as empty".
@@ -331,6 +343,12 @@ export function initNotifications(): void {
   initialized = true;
   void hydrate();
   client.onWsEvent("agent_event", handleWsAgentEvent);
+  // A disconnected tab can miss more events than the bounded server replay
+  // retains. Reconcile from the authoritative inbox after every reconnect so
+  // an old local snapshot cannot survive a reset indefinitely.
+  client.onWsEvent("ws-reconnected", () => {
+    void hydrate();
+  });
 }
 
 let devSeedAttempted = false;
@@ -447,6 +465,7 @@ export async function removeNotifications(
 export async function clearNotifications(): Promise<void> {
   const previous = state;
   const previousEphemeralIds = [...ephemeralNotificationIds];
+  hydrationVersion++;
   setState({ notifications: [], unreadCount: 0 });
   ephemeralNotificationIds.clear();
   try {
@@ -477,6 +496,7 @@ export function __resetNotificationStoreForTests(): void {
   state = { notifications: [], unreadCount: 0, hydrated: false };
   initialized = false;
   devSeedAttempted = false;
+  hydrationVersion = 0;
   ephemeralNotificationIds.clear();
   listeners.clear();
 }

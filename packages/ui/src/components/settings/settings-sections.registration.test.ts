@@ -152,7 +152,7 @@ describe("settings information architecture (grouped display order)", () => {
     SETTINGS_SECTION_META.filter((m) => m.group === group).map((m) => m.id);
 
   it("leads each group with its most-used section", () => {
-    expect(catalogIdsInGroup("agent")[0]).toBe("identity");
+    expect(catalogIdsInGroup("agent")[0]).toBe("character");
     // System personalization first, appearance must not be buried.
     expect(catalogIdsInGroup("system")[0]).toBe("appearance");
     // Security everyday store first, Vault before permission surfaces.
@@ -164,6 +164,7 @@ describe("settings information architecture (grouped display order)", () => {
       "appearance",
       "background",
       "notifications",
+      "peripherals",
       "runtime",
       "wallet-rpc",
       "remote-plugins",

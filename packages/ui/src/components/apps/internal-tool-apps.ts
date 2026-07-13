@@ -189,13 +189,13 @@ const INTERNAL_TOOL_VIEW_DECLARATIONS: readonly InternalToolViewDeclaration[] =
     },
     {
       name: "@elizaos/plugin-task-coordinator",
-      displayName: "Automations",
+      displayName: "Projects",
       description:
-        "Create, inspect, and manage workflows, triggers, and scheduled items.",
-      capabilities: ["tasks", "workflows", "automations"],
+        "Organize local projects, their tasks, and cloud publishing.",
+      capabilities: ["projects", "tasks", "publishing"],
       heroImage: "/api/apps/hero/task-coordinator",
-      targetTab: "tasks",
-      path: "/apps/tasks",
+      targetTab: "projects",
+      path: "/projects",
       order: 12,
       hasDetailsPage: false,
       pinnable: true,
@@ -288,6 +288,22 @@ export function isInternalToolApp(name: string): boolean {
 
 export function getInternalToolAppTargetTab(name: string): Tab | null {
   return INTERNAL_TOOL_APP_BY_NAME.get(name)?.targetTab ?? null;
+}
+
+/** Resolve a detached-window slug from either `/apps/<slug>` or `/<slug>`. */
+export function getInternalToolAppTargetTabForSlug(slug: string): Tab | null {
+  const normalizedSlug = slug
+    .trim()
+    .replace(/^\/+|\/+$/g, "")
+    .toLowerCase();
+  if (!normalizedSlug || normalizedSlug.includes("/")) return null;
+  const nestedPath = `/apps/${normalizedSlug}`;
+  const topLevelPath = `/${normalizedSlug}`;
+  const declaration = INTERNAL_TOOL_VIEW_DECLARATIONS.find((app) => {
+    const normalizedPath = app.path.toLowerCase();
+    return normalizedPath === nestedPath || normalizedPath === topLevelPath;
+  });
+  return declaration?.targetTab ?? null;
 }
 
 export function getInternalToolAppCatalogOrder(name: string): number {

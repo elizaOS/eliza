@@ -70,7 +70,6 @@ import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { ContinuousChatOverlay } from "./components/shell/ContinuousChatOverlay";
 import { DynamicPluginFallback } from "./components/shell/DynamicPluginFallback";
-import { HomeLauncherSurface } from "./components/shell/HomeLauncherSurface";
 import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
@@ -137,10 +136,7 @@ import {
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
 import { isShellPaintable } from "./state/startup-coordinator";
-import {
-  authProbeShouldHoldShell,
-  firstRunOwnsLoginSurface,
-} from "./state/top-level-auth-gate";
+import { authProbeShouldHoldShell } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
 import {
   SurfaceRealmScope,
@@ -312,9 +308,9 @@ const MemoryViewerView = lazyNamedView(
   () => import("./components/pages/MemoryViewerView"),
   "MemoryViewerView",
 );
-const MyAppsView = lazyNamedView(
-  () => import("./components/pages/MyAppsView"),
-  "MyAppsView",
+const ProjectsPageView = lazyNamedView(
+  () => import("./components/pages/ProjectsPageView"),
+  "ProjectsPageView",
 );
 const PluginsPageView = lazyNamedView(
   () => import("./components/pages/PluginsPageView"),
@@ -343,10 +339,6 @@ const RuntimeView = lazyNamedView(
 const SkillsView = lazyNamedView(
   () => import("./components/pages/SkillsView"),
   "SkillsView",
-);
-const TasksPageView = lazyNamedView(
-  () => import("./components/pages/TasksPageView"),
-  "TasksPageView",
 );
 const TrajectoriesView = lazyNamedView(
   () => import("./components/pages/TrajectoriesView"),
@@ -1115,6 +1107,7 @@ const SHELL_RESERVED_PATHS = new Set([
   "/apps/database",
   "/apps/logs",
   "/apps/tasks",
+  "/projects",
 ]);
 
 const SHELL_RESERVED_TABS = new Set(Object.keys(TAB_PATHS));
@@ -1163,6 +1156,29 @@ function renderRemoteView(view: ViewRegistryEntry, nav?: ReactNode): ReactNode {
           reserveChatClearance={false}
           surface={view.surface}
         />
+      </div>
+    </TabContentView>
+  );
+}
+
+/**
+ * Render one registry-backed, in-process app-shell page with the same surface
+ * header contract as a remote view. `normal` is the default and gets exactly
+ * one shell-owned {@link ViewHeader}; fullscreen/modal/immersive pages opt out.
+ * A section nav (Wallet / Character) already owns the family header, so it also
+ * suppresses the page-level header instead of stacking two framing rows.
+ */
+function renderInProcessAppShellPage(
+  registration: AppShellPageRegistration,
+  nav?: ReactNode,
+): ReactNode {
+  const showHeader =
+    !nav && resolveSurfaceManifest(registration).header === "normal";
+  return (
+    <TabContentView nav={nav}>
+      {showHeader ? <ViewHeader title={registration.label} /> : null}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <RegisteredAppShellPage registration={registration} />
       </div>
     </TabContentView>
   );
@@ -1300,8 +1316,8 @@ function ViewLayoutSurface({
 /**
  * Fallback shown when a view/tab is unavailable. Chat is the always-present
  * ContinuousChatOverlay that floats over every view — views never embed an
- * inline ChatView — so an unavailable view falls back to the Launcher page
- * of the retained Home/Launcher surface, not a chat surface.
+ * inline ChatView — so an unavailable view falls back to the Apps section of
+ * the unified home surface, not a chat surface.
  */
 function ViewUnavailableFallback(): ReactNode {
   return <HomeScreenMount initialPage="launcher" />;
@@ -1382,7 +1398,7 @@ function buildStaticTabRenderers(): Record<
     browser: () => <BrowserWorkspaceView />,
     stream: () => <StreamView />,
     "pendant-transcript": () => <PendantTranscriptView />,
-    tasks: wrap(<TasksPageView />),
+    projects: wrap(<ProjectsPageView />),
     automations: () => <AutomationsFeed />,
     plugins: withHeader("plugins", <PluginsPageView />),
     skills: withHeader("skills", <SkillsView />),
@@ -1408,7 +1424,6 @@ function buildStaticTabRenderers(): Record<
       </TabContentView>
     ),
     memories: wrap(<MemoryViewerView />),
-    "my-apps": wrap(<MyAppsView />),
     files: () => (
       <TabContentView>
         <div className="flex h-full min-h-0 w-full flex-col">
@@ -1534,20 +1549,6 @@ function renderViewRouterContent({
   settingsNavigatePayload?: unknown;
   settingsNavigateSequence?: number;
 }): ReactNode {
-  if (visibleDynamicPage(dynamicPage, enabledKinds)) {
-    return (
-      <TabContentView>
-        <DynamicPluginPage resolved={dynamicPage} />
-      </TabContentView>
-    );
-  }
-  if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
-    return (
-      <TabContentView>
-        <DynamicPluginPage resolved={dynamicAppPage} />
-      </TabContentView>
-    );
-  }
   // Wallet-family routes share one sub-nav rendered in the workspace chrome
   // nav slot. Plugins join it by registering app-shell pages with group=wallet.
   const walletNav = isWalletSectionPath(navigationPath) ? (
@@ -1560,17 +1561,33 @@ function renderViewRouterContent({
   const characterNav = isCharacterSectionPath(navigationPath) ? (
     <CharacterSectionNav activePath={navigationPath} />
   ) : undefined;
+  const sectionNav = walletNav ?? characterNav;
+
+  if (visibleDynamicPage(dynamicPage, enabledKinds)) {
+    return dynamicPage.registration ? (
+      renderInProcessAppShellPage(dynamicPage.registration, sectionNav)
+    ) : (
+      <TabContentView>
+        <DynamicPluginPage resolved={dynamicPage} />
+      </TabContentView>
+    );
+  }
+  if (visibleDynamicPage(dynamicAppPage, enabledKinds)) {
+    return dynamicAppPage.registration ? (
+      renderInProcessAppShellPage(dynamicAppPage.registration, sectionNav)
+    ) : (
+      <TabContentView>
+        <DynamicPluginPage resolved={dynamicAppPage} />
+      </TabContentView>
+    );
+  }
 
   const appShellPageForRoute = findAppShellPageForRoute(navigationPath);
   if (
     appShellPageForRoute &&
     isViewVisible(appShellPageForRoute, enabledKinds)
   ) {
-    return (
-      <TabContentView nav={walletNav}>
-        <RegisteredAppShellPage registration={appShellPageForRoute} />
-      </TabContentView>
-    );
+    return renderInProcessAppShellPage(appShellPageForRoute, sectionNav);
   }
   const remoteView = findRemoteViewForRoute(
     availableViews,
@@ -1964,9 +1981,9 @@ function ContinuousChatOverlayMount(): ReactNode {
 }
 
 /**
- * The iOS-style home dashboard for the /chat route — recent activity, recent
- * messages, and a customizable widget area. Sits beside the retained
- * Launcher page behind the always-present chat overlay. Wires tile taps to the real nav:
+ * The vertically scrolling home dashboard for the /chat route — notifications,
+ * every curated app/view, recent activity, and widgets in one continuous page.
+ * Wires tile taps to the real nav:
  * builtin tabs via setTab, plugin/remote views via the eliza:navigate:view event.
  */
 function HomeScreenMount({
@@ -1999,15 +2016,24 @@ function HomeScreenMount({
     [setTab, views],
   );
   const Home = HomeScreenOverride ?? HomeScreen;
-  const home = useMemo(
-    () => (
-      <Home onOpenTile={onOpenTile} showNativeOsTiles={isAospShellEnabled()} />
-    ),
-    [Home, onOpenTile],
-  );
-  const launcher = useMemo(() => <LauncherSurface />, []);
+  const apps = useMemo(() => <LauncherSurface embedded />, []);
+  const home = useMemo(() => {
+    const common = {
+      onOpenTile,
+      showNativeOsTiles: isAospShellEnabled(),
+    };
+    return HomeScreenOverride ? (
+      <Home {...common} />
+    ) : (
+      <Home
+        {...common}
+        apps={apps}
+        focusAppsOnMount={initialPage === "launcher"}
+      />
+    );
+  }, [Home, HomeScreenOverride, apps, initialPage, onOpenTile]);
   // Keep the dashboard warm during first-run, but hide its clock, widgets, and
-  // launcher so the onboarding overlay reveals only the shared wallpaper.
+  // apps so the onboarding overlay reveals only the shared wallpaper.
   return (
     <div
       aria-hidden={firstRunOpen ? "true" : undefined}
@@ -2017,11 +2043,7 @@ function HomeScreenMount({
         firstRunOpen && "invisible",
       )}
     >
-      <HomeLauncherSurface
-        home={home}
-        launcher={launcher}
-        initialPage={initialPage}
-      />
+      {home}
     </div>
   );
 }
@@ -2030,7 +2052,6 @@ export function App() {
   const {
     startupError,
     startupCoordinator,
-    firstRunComplete,
     retryStartup,
     tab,
     setTab,
@@ -2048,7 +2069,6 @@ export function App() {
   } = useAppSelectorShallow((s) => ({
     startupError: s.startupError,
     startupCoordinator: s.startupCoordinator,
-    firstRunComplete: s.firstRunComplete,
     retryStartup: s.retryStartup,
     tab: s.tab,
     setTab: s.setTab,
@@ -2418,6 +2438,16 @@ export function App() {
     // path nav, which would drop the requested section.
     const handleNavigateView = (event: Event) => {
       const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+      const acknowledgeAppliedNavigation = () => {
+        if (!detail?.requestId) return;
+        const base =
+          typeof client.getBaseUrl === "function" ? client.getBaseUrl() : "";
+        void fetch(`${base}/api/views/navigate-result`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ requestId: detail.requestId, success: true }),
+        }).catch(() => undefined);
+      };
       if (
         detail?.subview &&
         (detail.viewId === "settings" || detail.viewPath === "/settings")
@@ -2429,9 +2459,11 @@ export function App() {
         setSettingsNavigatePayload(detail.payload);
         setSettingsNavigateSequence((sequence) => sequence + 1);
         setTab("settings");
+        acknowledgeAppliedNavigation();
         return;
       }
       baseHandler(event);
+      acknowledgeAppliedNavigation();
     };
     window.addEventListener(NAVIGATE_VIEW_EVENT, handleNavigateView);
     return () =>
@@ -2689,25 +2721,15 @@ export function App() {
   }
 
   // Auth gate — once the shell is paintable, keep poll-heavy shell hooks
-  // unmounted until /api/auth/me resolves for returning sessions.
+  // unmounted until /api/auth/me resolves for every session, including first
+  // run. The public auth probe is the only request allowed through this gate.
   // "unauthenticated": render LoginView. "authenticated": proceed.
   // "server_unavailable": show a retryable startup failure.
   // Restored sessions usually arrive here already decided: the restore phase
   // primes the probe (primeAuthStatusProbe) so it overlaps backend polling /
   // hydration instead of serializing an extra round-trip after first paint.
-  if (
-    isShellPaintableNow &&
-    !isPopout &&
-    (!firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete) ||
-      authState.phase === "unauthenticated")
-  ) {
-    if (
-      authProbeShouldHoldShell(
-        startupCoordinator.phase,
-        firstRunComplete,
-        authState.phase,
-      )
-    ) {
+  if (authState.phase !== "authenticated") {
+    if (authProbeShouldHoldShell(authState.phase)) {
       return (
         <BugReportProvider value={bugReport}>
           <StartupScreen />

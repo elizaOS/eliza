@@ -3,7 +3,6 @@
  * loopback-origin fallback. Deps injected, no live network.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FirstRunOptions } from "../api";
 import { ANDROID_LOCAL_AGENT_IPC_BASE } from "../first-run/mobile-runtime-mode";
 import { clearPersistedActiveServer } from "./persistence";
 import {
@@ -100,24 +99,6 @@ vi.mock("@elizaos/shared", async (importOriginal) => {
   };
 });
 
-function firstRunOptions(): FirstRunOptions {
-  return {
-    names: [],
-    styles: [],
-    providers: [],
-    cloudProviders: [],
-    models: {
-      nano: [],
-      small: [],
-      medium: [],
-      large: [],
-      mega: [],
-    },
-    inventoryProviders: [],
-    sharedStyleRules: "",
-  };
-}
-
 function createDeps(): PollingBackendDeps {
   return {
     setStartupError: vi.fn(),
@@ -151,8 +132,6 @@ beforeEach(() => {
     complete: false,
     cloudProvisioned: false,
   });
-  clientMock.getFirstRunOptions.mockResolvedValue(firstRunOptions());
-  clientMock.getConfig.mockResolvedValue({});
   clientMock.getCloudCompatAgent.mockResolvedValue({
     success: true,
     data: { agent_id: "agent-123" },
@@ -545,9 +524,58 @@ describe("runPollingBackend", () => {
     expect(dispatch).not.toHaveBeenCalledWith({
       type: "BACKEND_AUTH_REQUIRED",
     });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: false,
+    });
+  });
+
+  it("routes a configured password server to LoginView instead of disabled pairing", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    clientMock.hasToken.mockReturnValue(false);
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: true,
+      authenticated: false,
+      loginRequired: true,
+      passwordConfigured: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      null,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(deps.setAuthRequired).toHaveBeenCalledWith(false);
+    expect(deps.setPairingEnabled).toHaveBeenCalledWith(false);
+    expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_LOGIN_REQUIRED",
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_AUTH_REQUIRED",
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
     });
   });
 
@@ -1324,10 +1352,7 @@ describe("runPollingBackend", () => {
     });
   });
 
-  it("routes a DELETED dedicated cloud agent to agent selection from the options-fetch 404 (inner 404)", async () => {
-    // The inner first-run-options loop has its own 404 branch. A dedicated cloud
-    // agent that returns auth:ok + firstRun incomplete but 404s on options must
-    // verify + recover the same way as the outer catch.
+  it("recovers an incomplete deleted dedicated agent without consulting legacy setup endpoints", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
@@ -1387,12 +1412,169 @@ describe("runPollingBackend", () => {
       { current: null },
     );
 
+    expect(clientMock.getFirstRunOptions).not.toHaveBeenCalled();
+    expect(clientMock.getConfig).not.toHaveBeenCalled();
     expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
     expect(clearPersistedActiveServer).toHaveBeenCalledTimes(1);
+    expect(deps.setFirstRunOptions).not.toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: false,
+    });
+  });
+
+  it.each([
+    "exists",
+    "unknown",
+  ] as const)("preserves a returning dedicated agent when control-plane presence is %s", async (presence) => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: false,
+      authenticated: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({
+      complete: false,
+      cloudProvisioned: false,
+    });
+    if (presence === "exists") {
+      clientMock.getCloudCompatAgent.mockResolvedValue({
+        success: true,
+        data: { agent_id: "agent-123" },
+      });
+    } else {
+      clientMock.getCloudCompatAgent.mockRejectedValue(
+        Object.assign(new Error("Service unavailable"), {
+          kind: "http",
+          status: 503,
+        }),
+      );
+    }
+
+    const agent = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+    };
+    const ctx: RestoringSessionCtx = {
+      persistedActiveServer: agent,
+      restoredActiveServer: agent,
+      shouldPreserveCompletedFirstRun: false,
+      hadPriorFirstRun: true,
+    };
+
+    await runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      ctx,
+      1,
+      { current: 1 },
+      { current: false },
+      { current: null },
+    );
+
+    expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(clientMock.getFirstRunOptions).not.toHaveBeenCalled();
+    expect(deps.setFirstRunComplete).toHaveBeenLastCalledWith(true);
+    expect(dispatch).toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
+    });
+  });
+
+  it("ignores a dedicated-agent presence result after the polling effect is cancelled", async () => {
+    const deps = createDeps();
+    const dispatch = vi.fn();
+    (globalThis as { window?: unknown }).window = {
+      location: { origin: "http://localhost:2138", protocol: "http:" },
+    };
+    clientMock.getBaseUrl.mockReturnValue("https://agent-123.elizacloud.ai");
+    clientMock.hasToken.mockReturnValue(true);
+    cloudMock.getCloudAuthToken.mockReturnValue("cloud-token");
+    clientMock.getAuthStatus.mockResolvedValue({
+      required: false,
+      authenticated: true,
+      pairingEnabled: false,
+      expiresAt: null,
+    });
+    clientMock.getFirstRunStatus.mockResolvedValue({
+      complete: false,
+      cloudProvisioned: false,
+    });
+    let resolvePresence: (value: {
+      success: boolean;
+      data: Record<string, unknown>;
+    }) => void = () => {};
+    clientMock.getCloudCompatAgent.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePresence = resolve;
+        }),
+    );
+
+    const agent = {
+      id: "cloud:agent-123",
+      kind: "cloud" as const,
+      label: "Dedicated agent",
+      apiBase: "https://agent-123.elizacloud.ai",
+    };
+    const cancelled = { current: false };
+    const run = runPollingBackend(
+      deps,
+      dispatch,
+      {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 1000,
+        agentReadyTimeoutMs: 1000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+      {
+        persistedActiveServer: agent,
+        restoredActiveServer: agent,
+        shouldPreserveCompletedFirstRun: false,
+        hadPriorFirstRun: true,
+      },
+      1,
+      { current: 1 },
+      cancelled,
+      { current: null },
+    );
+    await vi.waitFor(() => {
+      expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
+    });
+
+    cancelled.current = true;
+    resolvePresence({ success: false, data: {} });
+    await run;
+
+    expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: false,
+    });
+    expect(dispatch).not.toHaveBeenCalledWith({
+      type: "BACKEND_REACHED",
+      firstRunComplete: true,
     });
   });
 });
@@ -1476,23 +1658,17 @@ describe("shouldFallBackToLocalOrigin", () => {
   });
 });
 
-describe("runPollingBackend cancellation during options fetch", () => {
-  it("bails without mutating state when cancelled mid-fetch", async () => {
-    // Regression: the post-Promise.all path (first-run options + config) had
-    // no `cancelled.current` guard, so an effect torn down while the fetch was
-    // in flight still called setFirstRunOptions and dispatched BACKEND_REACHED
-    // on a dead effect. Flip `cancelled` the instant options are fetched and
-    // assert nothing downstream fires.
+describe("runPollingBackend incomplete first-run handoff", () => {
+  it("does not wait for hung legacy options or config endpoints", async () => {
     const deps = createDeps();
     const dispatch = vi.fn();
     (globalThis as { window?: unknown }).window = {
       location: { origin: "http://localhost:2138", protocol: "http:" },
     };
-    const cancelled = { current: false };
-    clientMock.getFirstRunOptions.mockImplementation(async () => {
-      cancelled.current = true; // effect cleanup raced the in-flight fetch
-      return firstRunOptions();
-    });
+    clientMock.getFirstRunOptions.mockImplementation(
+      () => new Promise<never>(() => {}),
+    );
+    clientMock.getConfig.mockImplementation(() => new Promise<never>(() => {}));
     const ctx: RestoringSessionCtx = {
       persistedActiveServer: null,
       restoredActiveServer: {
@@ -1518,15 +1694,24 @@ describe("runPollingBackend cancellation during options fetch", () => {
       ctx,
       1,
       { current: 1 },
-      cancelled,
+      { current: false },
       { current: null },
     );
 
-    expect(deps.setFirstRunOptions).not.toHaveBeenCalled();
-    expect(dispatch).not.toHaveBeenCalledWith({
+    expect(clientMock.getFirstRunOptions).not.toHaveBeenCalled();
+    expect(clientMock.getConfig).not.toHaveBeenCalled();
+    expect(deps.setFirstRunOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providers: expect.any(Array),
+        models: expect.any(Object),
+      }),
+    );
+    expect(deps.setFirstRunLoading).toHaveBeenCalledWith(false);
+    expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",
       firstRunComplete: false,
     });
+    expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_TIMEOUT" });
   });
 });
 
