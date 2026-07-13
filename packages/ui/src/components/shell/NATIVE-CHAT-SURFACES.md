@@ -135,23 +135,26 @@ change) and a `useCallback` `onEvent` so `setProps` diffs fire rarely.
   follow-up cleanup (glass reads `cornerRadius` from the DOM per frame — the
   geometry already carries it, so the adoption is mechanical, deferred only to
   avoid churning the device-verified glass in the same pass).
-- **Stage 1 — DONE (behind the flag).** iOS `NativeComposerPlugin.swift`
+- **Stage 1 — DONE + PROVEN (behind the flag).** iOS `NativeComposerPlugin.swift`
   (UITextView above the webview) — compiles + registers. Android
-  `NativeComposerPlugin.java` (EditText) — **proven end-to-end on the emulator**:
-  maximize → native field mounts (DOM textarea hidden) → typing into the NATIVE
-  field mirrors to the JS draft via the `change` intent. Wired at the composer
-  swap point; native owns the buffer, JS owns intents; setProps echo-guarded.
-  Slash yields to DOM. Gated `localStorage["eliza:native-composer"]="1"`, **OFF by
-  default** — DOM composer is the default so no regression ships.
+  `NativeComposerPlugin.java` (EditText) — **proven end-to-end on the emulator**,
+  full flow: maximize → native field mounts (DOM textarea hidden) → tap → focus,
+  keyboard up, sheet STAYS maximized → typing mirrors to the JS draft via the
+  `change` intent, still maximized → Return → `submit` intent → message sent,
+  draft cleared, still active. Native owns the buffer, JS owns intents; setProps
+  echo-guarded. Slash yields to DOM. Gated
+  `localStorage["eliza:native-composer"]="1"`, **OFF by default** — DOM composer
+  stays the default so no regression ships.
 - **REMAINING before default-on:**
-  1. **Keyboard/first-responder lifecycle.** Focusing the native field currently
-     collapses the sheet (the native focus/keyboard is out-of-DOM, so it isn't
-     coordinated with the detent + keyboard-inset machine). The native field's
-     focus/blur intents must keep the sheet at maximized and drive the same
-     keyboard-inset lift the DOM composer does. This is the load-bearing item.
-  2. **Gate stability.** `enabled` flips during the maximize morph → a few
-     attach/detach cycles. Gate on the settled `maximized` (not mid-drag) to make
-     it a single attach, like the glass stability fix.
+  1. **iOS runtime verification.** The Swift plugin compiles + registers but the
+     iOS sim WebView can't be drag-maximized via idb (a tooling limit), so its
+     runtime (mount rect, iOS keyboard/first-responder) is unverified on-device —
+     do it on a real device (or the harness AppKit spike) before iOS default-on.
+     The TS + intent contract is shared and Android proves the whole flow.
+  2. **Mid-animation race.** Tapping the field DURING the ~300ms maximize
+     animation (before it settles) can collapse — settle-gate the mount so it
+     only attaches once maximized is committed (also removes the dev-StrictMode
+     attach/detach doubling).
   3. Placeholder styling parity; multi-line (Return currently sends).
 - **Stage 2 — polish:** native slash popover (Phase 2), attachment badge.
 - **Stage 3 — desktop macOS** via Electrobun RPC driver (NSTextView); the

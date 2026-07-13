@@ -64,6 +64,15 @@ import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
+import {
+  type NativeComposerEvent,
+  nativeComposerDriver,
+  nativeGlassPlatform,
+  useNativeGlass,
+  useNativeGlassAnchor,
+  useNativeGlassBackdropActive,
+  useNativePlatformSurface,
+} from "../../glass";
 import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
@@ -145,15 +154,6 @@ import {
   measureSafeAreaInsetTop,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
-import {
-  type NativeComposerEvent,
-  nativeComposerDriver,
-  nativeGlassPlatform,
-  useNativeGlass,
-  useNativeGlassAnchor,
-  useNativeGlassBackdropActive,
-  useNativePlatformSurface,
-} from "../../glass";
 import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
@@ -4081,6 +4081,20 @@ export function ChatOverlay({
     glassTier === "native" &&
     !firstRunOpen &&
     !isSlashDraft;
+  // Settle-gate the native mount: attach only AFTER the maximize morph completes
+  // (~320ms), never mid-animation. Attaching mid-animation raced the native
+  // keyboard against the still-settling sheet into a collapse, and flipped the
+  // gate a few times during the transition (attach/detach churn). Disable is
+  // immediate so un-maximize/collapse drops the native field at once.
+  const [nativeComposerSettled, setNativeComposerSettled] = React.useState(false);
+  React.useEffect(() => {
+    if (!nativeComposerEnabled) {
+      setNativeComposerSettled(false);
+      return;
+    }
+    const t = window.setTimeout(() => setNativeComposerSettled(true), 320);
+    return () => window.clearTimeout(t);
+  }, [nativeComposerEnabled]);
   const nativeComposerProps = React.useMemo(
     () => ({ draft, placeholder: composerPlaceholder, disabled: firstRunOpen }),
     [draft, composerPlaceholder, firstRunOpen],
@@ -4109,7 +4123,7 @@ export function ChatOverlay({
   );
   const nativeComposer = useNativePlatformSurface(nativeComposerDriver, {
     ref: inputRef,
-    enabled: nativeComposerEnabled,
+    enabled: nativeComposerSettled,
     props: nativeComposerProps,
     onEvent: onComposerNativeEvent,
   });
@@ -5027,7 +5041,14 @@ export function ChatOverlay({
       }
       onDragOffset(offset);
     },
-    [pinnedOpen, maximized, onDragOffset, reduce, fullBleedT, animateFullBleedTo],
+    [
+      pinnedOpen,
+      maximized,
+      onDragOffset,
+      reduce,
+      fullBleedT,
+      animateFullBleedTo,
+    ],
   );
   // Release from a restore drag: if it never un-maximized (an upward/stationary
   // gesture) keep it pinned full-bleed; otherwise settle at the released height —
@@ -5159,7 +5180,11 @@ export function ChatOverlay({
   // sheet — the corrupted state the desktop-held drain leg then trips over.
   const restoreZoneBinding = React.useMemo(
     () =>
-      withPressLatch(maximizeRestoreBinding, restorePressRef, setRestorePressed),
+      withPressLatch(
+        maximizeRestoreBinding,
+        restorePressRef,
+        setRestorePressed,
+      ),
     [maximizeRestoreBinding],
   );
 
