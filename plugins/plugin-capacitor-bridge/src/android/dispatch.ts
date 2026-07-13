@@ -24,7 +24,7 @@ import type {
 	IAgentRuntime,
 	RouteHandlerResult,
 } from "@elizaos/core";
-import { ServiceType } from "@elizaos/core";
+import { NotificationService, ServiceType } from "@elizaos/core";
 import type { StdioBridgeStreamSink } from "../shared/stdio-bridge.ts";
 
 /** In-process route dispatcher (from `@elizaos/agent/api`). */
@@ -137,12 +137,19 @@ function statusText(status: number): string {
 	return STATUS_TEXT[status] ?? "";
 }
 
-function jsonResponse(status: number, body: unknown): AndroidBufferedResponse {
+function jsonResponse(
+	status: number,
+	body: unknown,
+	headers: Record<string, string> = {},
+): AndroidBufferedResponse {
 	const text = JSON.stringify(body);
 	return {
 		status,
 		statusText: statusText(status),
-		headers: { "content-type": "application/json; charset=utf-8" },
+		headers: {
+			"content-type": "application/json; charset=utf-8",
+			...headers,
+		},
 		body: text,
 		bodyBase64: Buffer.from(text, "utf8").toString("base64"),
 		bodyEncoding: "base64",
@@ -227,13 +234,41 @@ async function directAndroidNotificationRoute(
 
 	const service = runtime.getService(ServiceType.NOTIFICATION);
 	if (!isAndroidNotifier(service)) {
-		// The service isn't up yet (very early boot). Serve an empty inbox on
-		// GET so the widget shows its empty state instead of erroring; fail the
-		// mutations loudly.
-		if (method === "GET" && pathname === "/api/notifications") {
-			return jsonResponse(200, { notifications: [], unreadCount: 0 });
+		const availability = NotificationService.getAvailability(runtime);
+		if (availability === "disabled") {
+			if (method === "GET" && pathname === "/api/notifications") {
+				return jsonResponse(200, {
+					notifications: [],
+					unreadCount: 0,
+					serviceStatus: "disabled",
+				});
+			}
+			return jsonResponse(503, {
+				error: "Notification service is disabled",
+				code: "NOTIFICATION_SERVICE_DISABLED",
+			});
 		}
-		return jsonResponse(503, { error: "notification service not ready" });
+		if (availability === "failed") {
+			const recovery = NotificationService.requestRecovery(runtime);
+			return jsonResponse(
+				503,
+				{
+					error: "Notification inbox is temporarily unavailable",
+					code: "NOTIFICATION_SERVICE_FAILED",
+					retryAfter: recovery.retryAfterSeconds,
+				},
+				{ "retry-after": String(recovery.retryAfterSeconds) },
+			);
+		}
+		return jsonResponse(
+			503,
+			{
+				error: "Notification service is still starting",
+				code: "NOTIFICATION_SERVICE_NOT_READY",
+				retryAfter: 1,
+			},
+			{ "retry-after": "1" },
+		);
 	}
 
 	if (method === "GET" && pathname === "/api/notifications") {
@@ -253,6 +288,7 @@ async function directAndroidNotificationRoute(
 		return jsonResponse(200, {
 			notifications,
 			unreadCount: service.getUnreadCount(),
+			serviceStatus: "ready",
 		});
 	}
 

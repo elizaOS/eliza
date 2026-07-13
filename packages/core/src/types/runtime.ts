@@ -654,6 +654,10 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 
 	hasService(serviceType: ServiceTypeName | string): boolean;
 
+	getServiceRegistrationStatus(
+		serviceType: ServiceTypeName | string,
+	): "pending" | "registering" | "registered" | "failed" | "unknown";
+
 	/**
 	 * Get the messaging adapter if the current database adapter supports it
 	 *

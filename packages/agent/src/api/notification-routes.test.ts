@@ -6,7 +6,10 @@
  * the service-absent empty-inbox and 503 fallbacks.
  */
 import type http from "node:http";
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  NotificationServiceLifecycleRuntime,
+} from "@elizaos/core";
 import { NotificationService, ServiceType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -15,7 +18,7 @@ import {
 } from "./notification-routes";
 
 async function makeRuntimeWithService(): Promise<{
-  runtime: { getService: (t: string) => unknown };
+  runtime: NotificationServiceLifecycleRuntime;
   service: NotificationService;
 }> {
   const cache = new Map<string, unknown>();
@@ -41,6 +44,9 @@ async function makeRuntimeWithService(): Promise<{
         : t === ServiceType.AGENT_EVENT
           ? bus
           : null,
+    hasService: (t: string) => t === ServiceType.NOTIFICATION,
+    getServiceRegistrationStatus: () => "registered" as const,
+    getServiceLoadPromise: async () => service,
   };
   return { runtime, service };
 }
@@ -53,13 +59,15 @@ function makeHelpers() {
 }
 
 const req = (url: string) => ({ url }) as http.IncomingMessage;
-const res = {} as http.ServerResponse;
+const setHeader = vi.fn();
+const res = { setHeader } as unknown as http.ServerResponse;
 
 describe("handleNotificationRoute", () => {
-  let runtime: { getService: (t: string) => unknown };
+  let runtime: NotificationServiceLifecycleRuntime;
   let service: NotificationService;
 
   beforeEach(async () => {
+    setHeader.mockReset();
     ({ runtime, service } = await makeRuntimeWithService());
   });
 
@@ -94,6 +102,10 @@ describe("handleNotificationRoute", () => {
     };
     expect(payload.notifications).toHaveLength(1);
     expect(payload.unreadCount).toBe(1);
+    expect(
+      (helpers.json.mock.calls[0][1] as { serviceStatus: string })
+        .serviceStatus,
+    ).toBe("ready");
   });
 
   it("GET honors unreadOnly + category + limit filters", async () => {
@@ -268,9 +280,14 @@ describe("handleNotificationRoute", () => {
     }
   });
 
-  it("GET serves an empty inbox when the service is not registered", async () => {
+  it("GET serves an explicitly disabled inbox when support is unregistered", async () => {
     const helpers = makeHelpers();
-    const emptyRuntime = { getService: () => null };
+    const emptyRuntime = {
+      getService: () => null,
+      hasService: () => false,
+      getServiceRegistrationStatus: () => "unknown",
+      getServiceLoadPromise: async () => service,
+    } satisfies NotificationServiceLifecycleRuntime;
     await handleNotificationRoute(
       req("/api/notifications"),
       res,
@@ -282,12 +299,85 @@ describe("handleNotificationRoute", () => {
     expect(helpers.json).toHaveBeenCalledWith(res, {
       notifications: [],
       unreadCount: 0,
+      serviceStatus: "disabled",
     });
   });
 
-  it("returns 503 for mutations when the service is not registered", async () => {
+  it.each([
+    "pending",
+    "registering",
+  ] as const)("returns typed retryable 503 while the service is %s", async (status) => {
     const helpers = makeHelpers();
-    const emptyRuntime = { getService: () => null };
+    const startingRuntime = {
+      getService: () => null,
+      hasService: () => true,
+      getServiceRegistrationStatus: () => status,
+      getServiceLoadPromise: async () => service,
+    } satisfies NotificationServiceLifecycleRuntime;
+    await handleNotificationRoute(
+      req("/api/notifications"),
+      res,
+      "/api/notifications",
+      "GET",
+      { runtime: startingRuntime },
+      helpers,
+    );
+    expect(setHeader).toHaveBeenCalledWith("Retry-After", "1");
+    expect(helpers.json).toHaveBeenCalledWith(
+      res,
+      {
+        error: "Notification service is still starting",
+        code: "NOTIFICATION_SERVICE_NOT_READY",
+        retryAfter: 1,
+      },
+      503,
+    );
+  });
+
+  it("returns typed 503 and starts one recovery for a failed service", async () => {
+    const helpers = makeHelpers();
+    const getServiceLoadPromise = vi
+      .fn()
+      .mockRejectedValue(new Error("private adapter failure"));
+    const failedRuntime = {
+      agentId: "00000000-0000-0000-0000-0000000000bb",
+      getService: () => null,
+      hasService: () => true,
+      getServiceRegistrationStatus: () => "failed",
+      getServiceLoadPromise,
+    } satisfies NotificationServiceLifecycleRuntime;
+    await handleNotificationRoute(
+      req("/api/notifications"),
+      res,
+      "/api/notifications",
+      "GET",
+      { runtime: failedRuntime },
+      helpers,
+    );
+    expect(setHeader).toHaveBeenCalledWith("Retry-After", "1");
+    expect(helpers.json).toHaveBeenCalledWith(
+      res,
+      {
+        error: "Notification inbox is temporarily unavailable",
+        code: "NOTIFICATION_SERVICE_FAILED",
+        retryAfter: 1,
+      },
+      503,
+    );
+    expect(JSON.stringify(helpers.json.mock.calls[0][1])).not.toContain(
+      "private adapter failure",
+    );
+    expect(getServiceLoadPromise).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a typed disabled error for mutations when support is unregistered", async () => {
+    const helpers = makeHelpers();
+    const emptyRuntime = {
+      getService: () => null,
+      hasService: () => false,
+      getServiceRegistrationStatus: () => "unknown",
+      getServiceLoadPromise: async () => service,
+    } satisfies NotificationServiceLifecycleRuntime;
     await handleNotificationRoute(
       req("/api/notifications"),
       res,
@@ -296,6 +386,13 @@ describe("handleNotificationRoute", () => {
       { runtime: emptyRuntime },
       helpers,
     );
-    expect(helpers.error).toHaveBeenCalledWith(res, expect.any(String), 503);
+    expect(helpers.json).toHaveBeenCalledWith(
+      res,
+      {
+        error: "Notification service is disabled",
+        code: "NOTIFICATION_SERVICE_DISABLED",
+      },
+      503,
+    );
   });
 });
