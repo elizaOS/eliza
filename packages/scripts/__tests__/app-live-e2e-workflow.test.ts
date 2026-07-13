@@ -100,4 +100,11 @@ describe("App Live E2E real Cloud job (#14357, #16194)", () => {
     );
     expect(spec).toContain("test.skip(\n    !HAS_CLOUD_KEY,");
   });
+
+  test("hands the job credential to the browser without retaining secret-bearing traces", () => {
+    const spec = read("packages/app/test/ui-smoke/cloud-live.spec.ts");
+
+    expect(spec).toContain("await seedCloudLiveBrowserAuth(page)");
+    expect(spec).toContain('test.use({ trace: "off" });');
+  });
 });
