@@ -682,6 +682,17 @@ export class SwarmCoordinatorService
     event: string,
     data: unknown,
   ): Promise<void> {
+    // Snapshot router liveness NOW, before any await. AcpService fans events
+    // out synchronously to whoever is subscribed at emit time, and never
+    // replays: the router received this exact event iff it was bound at this
+    // instant. The cede decision in runSwarmComplete runs later (behind
+    // metadata awaits and the per-session terminal chain), and reading
+    // isActive() there raced the router's bind-retry window both ways —
+    // ceding to a router that bound AFTER the event (which therefore never
+    // received it → completion lost) or double-posting around a router
+    // teardown. The receipt-time snapshot makes the decision agree with what
+    // the router actually saw.
+    const routerActiveAtReceipt = this.isRouterActive();
     // A non-terminal event means the session resumed: a follow-up prompt turn
     // reuses the same session (task_complete fires at the end of every turn, then
     // the session returns to a non-terminal status and accepts more input). Cancel
@@ -724,7 +735,12 @@ export class SwarmCoordinatorService
     };
     this.updateLegacyTaskContext(sessionId, event, enrichedData);
     this.dispatchSwarmEvent(swarmEvent);
-    await this.maybeFireSwarmComplete(sessionId, event, enrichedData);
+    await this.maybeFireSwarmComplete(
+      sessionId,
+      event,
+      enrichedData,
+      routerActiveAtReceipt,
+    );
 
     if (event === "blocked" || event === "login_required") {
       void this.maybeRouteAgentDecision(sessionId, event, enrichedData);
@@ -815,6 +831,7 @@ export class SwarmCoordinatorService
     sessionId: string,
     event: string,
     data: unknown,
+    routerActiveAtReceipt: boolean,
   ): Promise<void> {
     const prior =
       this.terminalCompletionChains.get(sessionId) ?? Promise.resolve();
@@ -823,7 +840,9 @@ export class SwarmCoordinatorService
       // awaited it; this catch only keeps the per-session completion chain alive
       // so one failed completion cannot wedge later ones.
       .catch(() => {})
-      .then(() => this.runSwarmComplete(sessionId, event, data));
+      .then(() =>
+        this.runSwarmComplete(sessionId, event, data, routerActiveAtReceipt),
+      );
     this.terminalCompletionChains.set(sessionId, next);
     void next.finally(() => {
       if (this.terminalCompletionChains.get(sessionId) === next) {
@@ -837,6 +856,7 @@ export class SwarmCoordinatorService
     sessionId: string,
     event: string,
     data: unknown,
+    routerActiveAtReceipt: boolean,
   ): Promise<void> {
     const cb = this.swarmCompleteCallback;
     if (!cb) return;
@@ -956,7 +976,10 @@ export class SwarmCoordinatorService
       routerOwnedEvent: ROUTER_OWNED_TERMINAL_EVENTS.has(event),
       customValidator: isCustomValidatorResult(record),
       hasRouterOrigin: sessionHasRouterOrigin(meta),
-      routerActive: this.isRouterActive(),
+      // Receipt-time snapshot, NOT a live isActive() read: the router owns
+      // this terminal only if it was bound when the event fanned out (see
+      // handleAcpEvent). A live read here races the router's bind window.
+      routerActive: routerActiveAtReceipt,
     };
     logger.debug(
       `[SwarmCoordinatorService] cede decision (sessionId=${sessionId}, event=${event}, ` +
@@ -1391,7 +1414,14 @@ export class SwarmCoordinatorService
       timestamp: Date.now(),
       data,
     });
-    await this.maybeFireSwarmComplete(sessionId, event, data);
+    // Validator results are exempt from ceding (customValidator gate), so the
+    // router-activity snapshot is inert here; pass the live read for the log.
+    await this.maybeFireSwarmComplete(
+      sessionId,
+      event,
+      data,
+      this.isRouterActive(),
+    );
   }
 
   /**
