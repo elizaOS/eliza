@@ -33,6 +33,10 @@ export async function bundleFixture({
     bundle: true,
     format: "iife",
     platform: "browser",
+    // Fixture lanes run from fresh worktrees before workspace packages have
+    // emitted dist; mirror Bun's source-mode condition while retaining browser
+    // export selection for packages with a dedicated renderer entrypoint.
+    conditions: ["eliza-source", "browser"],
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
     define: { "process.env.NODE_ENV": '"production"', ...define },
