@@ -161,7 +161,7 @@ describe("orchestrator correctness (#9960)", () => {
       availableContexts: [{ id: SIMPLE_CONTEXT_ID, description: "simple" }],
     };
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    const result = subAgentCompletionResponseEvaluator.evaluate(context);
+    const result = await subAgentCompletionResponseEvaluator.evaluate(context);
     expect(result?.reply).toBe("$1,708.31");
     expect(result?.reply).not.toContain("do NOT start another sub-agent");
   });

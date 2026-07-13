@@ -1,8 +1,24 @@
 /**
- * Verifies shouldAutoVerifyGoal.
- * Deterministic unit test with a stubbed runtime; no live model.
+ * Verifies the auto-goal-verification pipeline end to end against the REAL
+ * service + store: the deterministic residuals gate (real temp git workspaces,
+ * no mocked git), the envelope gate, the independent verifier, the text judge,
+ * reflexion persistence, and the validateTask/humanOverride transition rules.
+ * Deterministic — the only stub is the judge model response.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { AcpService } from "../services/acp-service.js";
 import {
   buildAutoVerifyCorrection,
@@ -98,10 +114,70 @@ function makeRuntime(
   };
 }
 
+// The shared test setup defaults the residuals gate OFF for legacy
+// event-bridge suites; this file seeds REAL git workspaces, so run with the
+// production default (gate ON) — a promotion to `done` here proves the gate
+// passed, not that it was skipped.
+const PREV_RESIDUALS_GATE = process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE;
+beforeAll(() => {
+  process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = "1";
+});
+afterAll(() => {
+  if (PREV_RESIDUALS_GATE === undefined)
+    delete process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE;
+  else process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = PREV_RESIDUALS_GATE;
+});
+
+// ---- real git workspaces for the deterministic residuals gate --------------
+// Every seeded session points at a REAL temp git repo (clean + pushed to a
+// local bare upstream by default) so a promotion to `done` in these tests
+// proves the residuals gate actually ran and passed — not that it was skipped.
+
+const gitRoots: string[] = [];
+afterAll(() => {
+  for (const root of gitRoots) rmSync(root, { recursive: true, force: true });
+});
+
+function git(cwd: string, ...args: string[]): void {
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "user.name=Auto Verify Test",
+      "-c",
+      "commit.gpgsign=false",
+      ...args,
+    ],
+    { cwd, stdio: "ignore" },
+  );
+}
+
+function makeCleanWorkdir(): string {
+  const root = mkdtempSync(join(tmpdir(), "orch-auto-verify-"));
+  gitRoots.push(root);
+  const workdir = join(root, "work");
+  git(root, "init", "-q", "-b", "main", workdir);
+  writeFileSync(join(workdir, "README.md"), "seed\n");
+  git(workdir, "add", ".");
+  git(workdir, "commit", "-q", "-m", "seed");
+  const bare = join(root, "origin.git");
+  git(root, "init", "-q", "--bare", bare);
+  git(workdir, "remote", "add", "origin", bare);
+  git(workdir, "push", "-q", "-u", "origin", "main");
+  return workdir;
+}
+
+function dirtyWorkdir(workdir: string): void {
+  writeFileSync(join(workdir, "leftover.ts"), "// uncommitted\n");
+}
+
 async function seedTaskWithSession(
   store: OrchestratorTaskStore,
   acceptanceCriteria: string[],
-): Promise<{ taskId: string; sessionId: string }> {
+  opts: { workdir?: string } = {},
+): Promise<{ taskId: string; sessionId: string; workdir: string }> {
   const detail = await store.createTask({
     title: "t",
     goal: "do the thing",
@@ -109,6 +185,7 @@ async function seedTaskWithSession(
   });
   const taskId = detail.task.id;
   const sessionId = "sess-1";
+  const workdir = opts.workdir ?? makeCleanWorkdir();
   const now = Date.now();
   await store.addSession({
     id: "row-1",
@@ -117,7 +194,7 @@ async function seedTaskWithSession(
     framework: "opencode",
     label: "Ada",
     originalTask: "do the thing",
-    workdir: "/tmp/x",
+    workdir,
     status: "ready",
     decisionCount: 0,
     autoResolvedCount: 0,
@@ -140,7 +217,7 @@ async function seedTaskWithSession(
   });
   // Move the task to active so advanceTaskStatus → validating is allowed.
   await store.updateTask(taskId, { status: "active" });
-  return { taskId, sessionId };
+  return { taskId, sessionId, workdir };
 }
 
 describe("auto goal verification on task_complete", () => {
@@ -939,5 +1016,378 @@ describe("attempt reflection persistence (#8899)", () => {
     });
     // The escalation branch parks for a human and leaves the buffer untouched.
     expect(await reflectionsOf(store, taskId)).toEqual(seeded);
+  });
+});
+
+/**
+ * Deterministic residuals gate (#B1/#B4): real git workspaces drive the
+ * task_complete pipeline through the REAL service + store; the gate must block
+ * promotion on uncommitted/unpushed/self-reported residuals BEFORE any model
+ * spend, including for criteria-free tasks.
+ */
+describe("deterministic completion-residuals gate", () => {
+  let savedFlag: string | undefined;
+  beforeEach(() => {
+    savedFlag = process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+    delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+  });
+  afterEach(() => {
+    if (savedFlag === undefined)
+      delete process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY;
+    else process.env.ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY = savedFlag;
+  });
+
+  it("blocks promotion and re-engages on uncommitted changes, before any model spend", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId, workdir } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    dirtyWorkdir(workdir);
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "all done, promise" });
+    await until(() => fake.service.sendToSession.mock.calls.length > 0);
+
+    // The judge was never consulted — the deterministic gate ran first.
+    expect(useModel).not.toHaveBeenCalled();
+    const correction = fake.sent.at(-1);
+    expect(correction?.text).toContain("NOT done");
+    expect(correction?.text).toContain("leftover.ts");
+
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+    expect(doc?.task.status).not.toBe("done");
+    expect(doc?.events.some((e) => e.eventType === "residuals_found")).toBe(
+      true,
+    );
+    const snapshot = doc?.task.metadata.completionResiduals as
+      | { status: string; residuals: Array<{ kind: string }> }
+      | undefined;
+    expect(snapshot?.status).toBe("residuals");
+    expect(snapshot?.residuals.map((r) => r.kind)).toContain(
+      "uncommitted_changes",
+    );
+    expect(doc?.task.metadata.autoVerifyAttempts).toBe(1);
+  });
+
+  it("blocks promotion on committed-but-unpushed work", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId, workdir } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    writeFileSync(join(workdir, "feature.ts"), "export const x = 1;\n");
+    git(workdir, "add", ".");
+    git(workdir, "commit", "-q", "-m", "unpushed");
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done and pushed" });
+    await until(() => fake.service.sendToSession.mock.calls.length > 0);
+
+    expect(useModel).not.toHaveBeenCalled();
+    expect(fake.sent.at(-1)?.text).toContain("not pushed");
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+    const snapshot = doc?.task.metadata.completionResiduals as
+      | { residuals: Array<{ kind: string }> }
+      | undefined;
+    expect(snapshot?.residuals.map((r) => r.kind)).toContain(
+      "unpushed_commits",
+    );
+  });
+
+  it("blocks a CRITERIA-FREE task with a dirty workspace (no trivial fast-pass)", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId, workdir } = await seedTaskWithSession(store, []);
+    dirtyWorkdir(workdir);
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "trivially done" });
+    await until(() => fake.service.sendToSession.mock.calls.length > 0);
+
+    expect(useModel).not.toHaveBeenCalled();
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+    expect(doc?.events.some((e) => e.eventType === "residuals_found")).toBe(
+      true,
+    );
+  });
+
+  it("a criteria-free CLEAN workspace keeps the prior behavior: parks validating, no model spend", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, []);
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done" });
+    await until(
+      async () =>
+        (await store.getTask(taskId))?.task.metadata.completionResiduals !==
+        undefined,
+    );
+
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("validating");
+    expect(useModel).not.toHaveBeenCalled();
+    expect(fake.service.sendToSession).not.toHaveBeenCalled();
+    const snapshot = doc?.task.metadata.completionResiduals as
+      | { status: string }
+      | undefined;
+    expect(snapshot?.status).toBe("clean");
+  });
+
+  it("a MISSING workspace is unverifiable and blocks (fail closed)", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(
+      store,
+      ["tests pass"],
+      { workdir: join(tmpdir(), "orch-missing-workspace") },
+    );
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "done" });
+    await until(() => fake.service.sendToSession.mock.calls.length > 0);
+
+    expect(useModel).not.toHaveBeenCalled();
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+    const snapshot = doc?.task.metadata.completionResiduals as
+      | { status: string }
+      | undefined;
+    expect(snapshot?.status).toBe("unverifiable");
+  });
+
+  it("self-reported failing tests in a valid envelope block promotion even with a clean tree", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    const envelope = JSON.stringify({
+      diffSummary: "did the work",
+      filesChanged: ["src/x.ts"],
+      testResults: [{ command: "bun test", exitCode: 1, summary: "1 failed" }],
+      screenshotPaths: [],
+      acceptanceCriteriaStatus: [
+        { criterion: "tests pass", met: true, evidence: "trust me" },
+      ],
+      residualRisks: [],
+    });
+    const { runtime, useModel } = makeSpyRuntime(fake.service, () =>
+      JSON.stringify({ passed: true, summary: "would pass", missing: [] }),
+    );
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: fence(envelope) });
+    await until(() => fake.service.sendToSession.mock.calls.length > 0);
+
+    expect(useModel).not.toHaveBeenCalled();
+    expect(fake.sent.at(-1)?.text).toContain("bun test (exit 1)");
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("active");
+  });
+
+  it("parks waiting_on_user when residuals persist at the attempt cap", async () => {
+    const fake = makeFakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, sessionId, workdir } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    dirtyWorkdir(workdir);
+    await store.updateTask(taskId, {
+      metadata: { autoVerifyAttempts: MAX_AUTO_VERIFY_ATTEMPTS },
+    });
+    const { runtime } = makeSpyRuntime(fake.service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await service.start();
+
+    fake.emit(sessionId, "task_complete", { response: "still done, promise" });
+    await until(
+      async () =>
+        (await store.getTask(taskId))?.task.status === "waiting_on_user",
+    );
+    expect(fake.service.sendToSession).not.toHaveBeenCalled();
+  });
+
+  it("ELIZA_ORCHESTRATOR_RESIDUALS_GATE=0 disables the gate (explicit escape hatch)", async () => {
+    process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = "0";
+    try {
+      const fake = makeFakeAcp();
+      const store = new OrchestratorTaskStore({ backend: "memory" });
+      const { taskId, sessionId, workdir } = await seedTaskWithSession(store, [
+        "tests pass",
+      ]);
+      dirtyWorkdir(workdir);
+      const { runtime } = makeSpyRuntime(fake.service, () =>
+        JSON.stringify({ passed: true, summary: "confirmed", missing: [] }),
+      );
+      const service = new OrchestratorTaskService(runtime as never, { store });
+      await service.start();
+
+      fake.emit(sessionId, "task_complete", { response: "done" });
+      await until(
+        async () => (await store.getTask(taskId))?.task.status === "done",
+      );
+    } finally {
+      process.env.ELIZA_ORCHESTRATOR_RESIDUALS_GATE = "1";
+    }
+  });
+});
+
+/**
+ * validateTask / humanOverride hardening (#B2): every durable status write
+ * routes through the legal-transition table, a plain pass is residuals-gated,
+ * and an override demands explicit evidence and records the snapshot it
+ * overrode.
+ */
+describe("validateTask transition + humanOverride rules", () => {
+  it("plain validate {passed:true} is blocked by residuals in a dirty workspace", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, workdir } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    dirtyWorkdir(workdir);
+    await store.updateTask(taskId, { status: "validating" });
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+
+    await expect(
+      service.validateTask(taskId, { passed: true, summary: "looks good" }),
+    ).rejects.toThrow(/residuals/i);
+
+    const doc = await store.getTask(taskId);
+    expect(doc?.task.status).toBe("validating");
+    expect(
+      doc?.events.some((e) => e.eventType === "validation_blocked_residuals"),
+    ).toBe(true);
+  });
+
+  it("plain validate {passed:true} with a clean workspace promotes to done", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
+    await store.updateTask(taskId, { status: "validating" });
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+
+    const detail = await service.validateTask(taskId, {
+      passed: true,
+      summary: "verified",
+    });
+    expect(detail?.status).toBe("done");
+  });
+
+  it("plain validate still requires `validating`", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await expect(
+      service.validateTask(taskId, { passed: true, summary: "nope" }),
+    ).rejects.toThrow(/validating/);
+  });
+
+  it("humanOverride without evidence is rejected", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    await expect(
+      service.validateTask(taskId, { passed: true, humanOverride: true }),
+    ).rejects.toThrow(/evidence/i);
+    expect((await store.getTask(taskId))?.task.status).toBe("active");
+  });
+
+  it("humanOverride with evidence promotes a dirty workspace and records the overridden residuals", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId, workdir } = await seedTaskWithSession(store, [
+      "tests pass",
+    ]);
+    dirtyWorkdir(workdir);
+    await store.updateTask(taskId, { status: "validating" });
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+
+    const detail = await service.validateTask(taskId, {
+      passed: true,
+      humanOverride: true,
+      evidence: "Shaw approved: leftover.ts is intentional scratch",
+    });
+    expect(detail?.status).toBe("done");
+
+    const doc = await store.getTask(taskId);
+    const event = doc?.events.find((e) => e.eventType === "validation_passed");
+    expect(event?.data.humanOverride).toBe(true);
+    expect(event?.data.evidence).toBe(
+      "Shaw approved: leftover.ts is intentional scratch",
+    );
+    const recorded = event?.data.residuals as
+      | { status: string; residuals: Array<{ kind: string }> }
+      | undefined;
+    expect(recorded?.status).toBe("residuals");
+    expect(recorded?.residuals.map((r) => r.kind)).toContain(
+      "uncommitted_changes",
+    );
+    const snapshot = doc?.task.metadata.completionResiduals as
+      | { status: string }
+      | undefined;
+    expect(snapshot?.status).toBe("residuals");
+  });
+
+  it("humanOverride works from a non-validating (active) state but never from a terminal one", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+
+    // active → done via override (explicit evidence).
+    const detail = await service.validateTask(taskId, {
+      passed: true,
+      humanOverride: true,
+      evidence: "operator confirmed manually in the workspace",
+    });
+    expect(detail?.status).toBe("done");
+
+    // done is terminal: a second override must be rejected, not re-written.
+    await expect(
+      service.validateTask(taskId, {
+        passed: false,
+        humanOverride: true,
+        evidence: "changed my mind",
+      }),
+    ).rejects.toThrow(/terminal/i);
+    expect((await store.getTask(taskId))?.task.status).toBe("done");
+  });
+
+  it("validation failure routes validating → active through the table", async () => {
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const { taskId } = await seedTaskWithSession(store, ["tests pass"]);
+    await store.updateTask(taskId, { status: "validating" });
+    const { runtime } = makeSpyRuntime(makeFakeAcp().service, () => "{}");
+    const service = new OrchestratorTaskService(runtime as never, { store });
+    const detail = await service.validateTask(taskId, {
+      passed: false,
+      summary: "missing proof",
+    });
+    expect(detail?.status).toBe("active");
   });
 });

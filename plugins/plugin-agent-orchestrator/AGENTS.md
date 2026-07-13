@@ -288,6 +288,7 @@ README → "GitHub credentials".
 | `ELIZA_ORCHESTRATOR_SMITHERS` | `1` (enabled) | Set to `0` to disable the smithers task execution path and fall back to direct prompt |
 | `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` | unset | Enable LLM-based goal verification on task completion |
 | `ELIZA_REQUIRE_GOAL_CONTRACT` | `1` (enabled) | Auto-generate 3-5 measurable default acceptance criteria for a criteria-free, non-trivial task so the verifier always fires. Set to `0` to keep criteria-free tasks criteria-free (prior behavior). |
+| `ELIZA_ORCHESTRATOR_RESIDUALS_GATE` | `1` (enabled) | Deterministic completion-residuals gate: before a task may promote to `done`, the reporting session's git workspace must have no uncommitted changes or unpushed commits, and a valid CompletionEnvelope must report no failing tests or residual risks. Fail-closed (a missing/non-git claimed workspace blocks). Set to `0` to disable. |
 | `SMITHERS_DB_PROVIDER` | unset | Database provider for smithers task storage |
 | `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
 | `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |
