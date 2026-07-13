@@ -3,17 +3,20 @@
  * provider-mode detection and text generation. Runs only in the post-merge lane
  * with credentials.
  */
-import { ModelType } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import { expect, it } from "vitest";
 
 import { describeLive } from "../../../packages/app-core/test/helpers/live-agent-test";
 
 interface UseModelResult {
   text?: string;
+  finishReason?: string;
   usage?: {
     promptTokens?: number;
     completionTokens?: number;
+    reasoningTokens?: number;
   };
+  providerMetadata?: unknown;
 }
 
 describeLive(
@@ -34,6 +37,44 @@ describeLive(
         expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
         expect(result.usage?.completionTokens ?? 0).toBeGreaterThan(0);
       }
+    }, 120_000);
+
+    it("suppresses hidden thinking for the exact GLM model and returns visible text", async () => {
+      const { runtime } = harness();
+      runtime.setSetting("OPENAI_LARGE_MODEL", "zai-glm-4.7");
+
+      const result = (await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: "Reply with exactly PONG and no punctuation.",
+        messages: [
+          {
+            role: "user",
+            content: "Reply with exactly PONG and no punctuation.",
+          },
+        ],
+        maxTokens: 160,
+        providerOptions: { eliza: { thinking: "off" } },
+      })) as UseModelResult;
+
+      expect(result.text?.trim().toUpperCase()).toBe("PONG");
+      expect(result.finishReason).toBe("stop");
+      expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(result.usage?.completionTokens ?? 0).toBeGreaterThan(0);
+      expect(result.usage?.reasoningTokens).toBe(0);
+
+      logger.info("[OpenAICerebrasLive] exact GLM thinking-off receipt", {
+        model: "zai-glm-4.7",
+        request: {
+          maxTokens: 160,
+          thinking: "off",
+          resolvedReasoningEffort: "none",
+        },
+        response: {
+          text: result.text,
+          finishReason: result.finishReason,
+          usage: result.usage,
+          providerMetadata: result.providerMetadata,
+        },
+      });
     }, 120_000);
   }
 );
