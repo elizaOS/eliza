@@ -76,10 +76,6 @@ const allowedCallsites = new Map<string, string>([
 		"app-manager direct API dispatch; rewrites action response text with TEXT_SMALL",
 	],
 	[
-		"plugins/plugin-coding-tools/src/services/coding-task-executor.ts",
-		"coding-task executor; rewrites action response text with TEXT_SMALL",
-	],
-	[
 		"plugins/plugin-agent-orchestrator/src/services/skill-lifeops-context-broker.ts",
 		"LifeOps broker direct dispatch; rewrites action response text with TEXT_SMALL",
 	],
