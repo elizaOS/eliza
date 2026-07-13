@@ -5,16 +5,16 @@
  * this drives the real `OrchestratorTaskService` verify loop with the real judge
  * model, so it proves the loop actually verifies when the live model — not a
  * hand-written stub — reads the pasted test evidence. Gated behind
- * `CEREBRAS_API_KEY`; skipped in keyless CI.
+ * `CEREBRAS_API_KEY`; skipped in keyless CI. The deterministic evidence-bundle
+ * assertion (capturing model, no live judge) lives ONLY in
+ * `orchestrator-scenario-logic.test.ts` — it is not duplicated here under a
+ * "live" banner.
  *
  * Run: CEREBRAS_API_KEY=csk-... bunx vitest run orchestrator-grilling-live-gemma
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  runGrillingEvidenceBundleCheck,
-  runGrillingHappyPathCheck,
-} from "../../test/scenarios/_helpers/grilling-scenario.ts";
+import { runGrillingHappyPathCheck } from "../../test/scenarios/_helpers/grilling-scenario.ts";
 
 const CEREBRAS_KEY = process.env.CEREBRAS_API_KEY?.trim() ?? "";
 const MODEL = process.env.GEMMA_MODEL?.trim() || "gemma-4-31b";
@@ -102,14 +102,13 @@ describe.skipIf(!CEREBRAS_KEY)(
         makeBaseRuntime(),
         makeGemmaVerifier("happy-path"),
       );
-      expect(result).toBeUndefined();
+      expect(result.failure).toBeUndefined();
+      // The live judge's rejection produced a real corrective re-prompt that
+      // cites the unmet criterion, and only the evidence-bearing re-report
+      // moved the task to a verified terminal state.
+      expect(result.grillPrompt).toMatch(/tests pass/i);
+      expect(result.statusAfterNoEvidence).not.toBe("done");
+      expect(result.finalStatus).toBe("done");
     }, 120_000);
-
-    it("passes verification once the diff + test stdout reach the real Gemma judge", async () => {
-      // runGrillingEvidenceBundleCheck injects its OWN capturing model; this
-      // asserts evidence assembly. Kept here as a companion to the happy path.
-      const result = await runGrillingEvidenceBundleCheck(makeBaseRuntime());
-      expect(result).toBeUndefined();
-    }, 60_000);
   },
 );

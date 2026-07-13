@@ -29,7 +29,6 @@ Adds filesystem operations, shell command execution, and git worktree management
 
 ### Other exports
 
-- `CodingTaskExecutor` — task executor that maps task specs matching coding-related keywords into agent actions. Consumed externally by orchestration plugins.
 - `coding-agent-context` (Zod schemas) — `FileOperationSchema`, `CommandResultSchema`, `CapturedErrorSchema`, etc. Used to validate structured outputs from coding loops.
 
 ## Layout
@@ -54,7 +53,6 @@ plugins/plugin-coding-tools/
       file-state-service.ts       Per-conversation file mtime tracking
       session-cwd-service.ts      Per-conversation working directory + worktree stack
       ripgrep-service.ts          @vscode/ripgrep wrapper
-      coding-task-executor.ts     CodingTaskExecutor (external task delegation)
       coding-agent-context.ts     Zod schemas for coding-agent context types
       index.ts                    Re-exports all services
     lib/

@@ -87,6 +87,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
 
   it("does not export removed actions or service constants", () => {
     expect("bashAction" in pluginModule).toBe(false);
+    expect("CodingTaskExecutor" in pluginModule).toBe(false);
     expect("BASH_AST_SERVICE" in pluginModule).toBe(false);
     expect("OS_SANDBOX_SERVICE" in pluginModule).toBe(false);
     expect("SHELL_TASK_SERVICE" in pluginModule).toBe(false);
@@ -235,20 +236,24 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     expect(result.text).toContain("other.md");
   });
 
-  it("GREP finds the NEEDLE token (skip when ripgrep absent)", async () => {
+  it("FILE action=grep finds the NEEDLE token via the plugin's own ripgrep resolution", async (ctx) => {
+    // The service under test IS the resolution path: RipgrepService.start()
+    // resolved either the bundled `@vscode/ripgrep` binary or a system `rg`.
+    // Assert that resolution produced a runnable binary; when neither exists
+    // on the host, skip VISIBLY (never a silent vacuous pass), without ever
+    // poking a substitute path into the service.
     const rg = services.get(RIPGREP_SERVICE) as RipgrepService | undefined;
+    expect(rg, "RipgrepService must be started by the harness").toBeDefined();
     if (!rg) return;
-    const fs2 = await import("node:fs");
-    const initial = rg.binary();
-    if (!fs2.existsSync(initial)) {
-      const candidates = [
-        "/opt/homebrew/bin/rg",
-        "/usr/local/bin/rg",
-        "/usr/bin/rg",
-      ];
-      const sys = candidates.find((p) => fs2.existsSync(p));
-      if (!sys) return;
-      (rg as { rgPath: string }).rgPath = sys;
+    const binary = rg.binary();
+    const { execFileSync } = await import("node:child_process");
+    try {
+      execFileSync(binary, ["--version"], { stdio: "ignore" });
+    } catch {
+      ctx.skip(
+        `ripgrep unavailable: RipgrepService resolved '${binary}' but it is not runnable on this host`,
+      );
+      return;
     }
     const action = findAction("FILE");
     const result = await action.handler?.(runtime, makeMessage(), undefined, {

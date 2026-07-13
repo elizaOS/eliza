@@ -110,6 +110,20 @@ $ npm test
 \`\`\`
 `;
 
+/** Structured outcome of the grilling happy-path drive, so callers can assert
+ * the real intermediate state (grill prompt text, statuses) instead of a bare
+ * pass/fail. `failure` stays populated with a human-readable reason for the
+ * scenario-predicate consumers that surface a single string. */
+export interface GrillingHappyPathResult {
+  failure?: string;
+  /** Corrective re-prompt the verifier sent to the sub-agent after round 1. */
+  grillPrompt: string;
+  /** Task status observed after the no-evidence completion was grilled. */
+  statusAfterNoEvidence: string;
+  /** Task status after the evidence-bearing re-report was verified. */
+  finalStatus: string;
+}
+
 /**
  * grilling-happy-path: a sub-agent claims done with NO test output → the grill
  * round fires (corrective re-prompt citing the unmet criterion) → the sub-agent
@@ -118,25 +132,40 @@ $ npm test
 export async function runGrillingHappyPathCheck(
   baseRuntime: IAgentRuntime,
   verifierModel: VerifierModel,
-): Promise<string | undefined> {
+): Promise<GrillingHappyPathResult> {
   const { store, taskId, sessionId } = await seedActiveTask(["tests pass"]);
   const acp = makeScriptedAcp();
   const runtime = makeGrillingRuntime(baseRuntime, acp.service, verifierModel);
   const service = new OrchestratorTaskService(runtime, { store });
   await service.start();
+  const result: GrillingHappyPathResult = {
+    grillPrompt: "",
+    statusAfterNoEvidence: "",
+    finalStatus: "",
+  };
+  const fail = (reason: string): GrillingHappyPathResult => {
+    result.failure = reason;
+    return result;
+  };
   try {
     // Round 1: claim done with no evidence → must be grilled, not accepted.
     acp.emit(sessionId, "task_complete", {
       response: "I implemented the widget and I believe it works.",
     });
     const grilled = await waitFor(() => acp.sent.length > 0);
-    if (!grilled) return "the verifier never grilled a no-evidence completion";
-    const grill = acp.sent.at(-1)?.text ?? "";
-    if (!/tests pass/i.test(grill)) {
-      return `the grill should cite the unmet criterion 'tests pass':\n${grill}`;
+    if (!grilled) {
+      return fail("the verifier never grilled a no-evidence completion");
     }
-    if ((await store.getTask(taskId))?.task.status === "done") {
-      return "task was marked done despite no test evidence";
+    result.grillPrompt = acp.sent.at(-1)?.text ?? "";
+    if (!/tests pass/i.test(result.grillPrompt)) {
+      return fail(
+        `the grill should cite the unmet criterion 'tests pass':\n${result.grillPrompt}`,
+      );
+    }
+    result.statusAfterNoEvidence =
+      (await store.getTask(taskId))?.task.status ?? "";
+    if (result.statusAfterNoEvidence === "done") {
+      return fail("task was marked done despite no test evidence");
     }
 
     // Round 2: re-report WITH real test-runner output + diff → verified done.
@@ -148,14 +177,33 @@ export async function runGrillingHappyPathCheck(
     const done = await waitFor(
       async () => (await store.getTask(taskId))?.task.status === "done",
     );
+    result.finalStatus = (await store.getTask(taskId))?.task.status ?? "";
     if (!done) {
       const doc = await store.getTask(taskId);
-      return `task was not verified done after pasted evidence; status=${doc?.task.status}\n${summarizeEvents(doc?.events ?? [])}`;
+      return fail(
+        `task was not verified done after pasted evidence; status=${doc?.task.status}\n${summarizeEvents(doc?.events ?? [])}`,
+      );
     }
-    return undefined;
+    return result;
   } finally {
     await service.stop().catch(() => undefined);
   }
+}
+
+/** Exact evidence strings the evidence-bundle check feeds through the
+ * completion, exported so callers can assert their presence in the captured
+ * verifier prompt without duplicating the fixtures. */
+export const EVIDENCE_BUNDLE_DIFF =
+  "diff --git a/src/widget.ts b/src/widget.ts\n+export const widget = () => 42;";
+export const EVIDENCE_BUNDLE_TEST_STDOUT = "npm test → 7 passing, 0 failing";
+
+/** Structured outcome of the evidence-bundle drive: the concatenated prompts
+ * the verifier model actually received, plus a `failure` string for
+ * scenario-predicate consumers. */
+export interface GrillingEvidenceBundleResult {
+  failure?: string;
+  /** All prompts the verifier model was called with, joined. */
+  verifierPrompt: string;
 }
 
 /**
@@ -165,7 +213,7 @@ export async function runGrillingHappyPathCheck(
  */
 export async function runGrillingEvidenceBundleCheck(
   baseRuntime: IAgentRuntime,
-): Promise<string | undefined> {
+): Promise<GrillingEvidenceBundleResult> {
   const { store, sessionId } = await seedActiveTask([
     "tests pass",
     "the implementation diff is included",
@@ -181,27 +229,28 @@ export async function runGrillingEvidenceBundleCheck(
   const service = new OrchestratorTaskService(runtime, { store });
   await service.start();
   try {
-    const DIFF =
-      "diff --git a/src/widget.ts b/src/widget.ts\n+export const widget = () => 42;";
-    const TEST_STDOUT = "npm test → 7 passing, 0 failing";
     acp.emit(sessionId, "task_complete", {
-      response: `Implemented the widget.\n\n${DIFF}\n\n${TEST_STDOUT}`,
+      response: `Implemented the widget.\n\n${EVIDENCE_BUNDLE_DIFF}\n\n${EVIDENCE_BUNDLE_TEST_STDOUT}`,
     });
     const called = await waitFor(() => prompts.length > 0);
     if (!called) {
-      return "the verifier model was never called with the completion evidence";
+      return {
+        failure:
+          "the verifier model was never called with the completion evidence",
+        verifierPrompt: "",
+      };
     }
     const prompt = prompts.join("\n");
+    const result: GrillingEvidenceBundleResult = { verifierPrompt: prompt };
     if (
       !prompt.includes("widget.ts") ||
       !prompt.includes("export const widget")
     ) {
-      return `the git diff did not reach the verifier prompt:\n${prompt.slice(0, 400)}`;
+      result.failure = `the git diff did not reach the verifier prompt:\n${prompt.slice(0, 400)}`;
+    } else if (!prompt.includes("7 passing")) {
+      result.failure = `the test stdout did not reach the verifier prompt:\n${prompt.slice(0, 400)}`;
     }
-    if (!prompt.includes("7 passing")) {
-      return `the test stdout did not reach the verifier prompt:\n${prompt.slice(0, 400)}`;
-    }
-    return undefined;
+    return result;
   } finally {
     await service.stop().catch(() => undefined);
   }
