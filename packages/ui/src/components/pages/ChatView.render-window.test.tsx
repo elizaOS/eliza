@@ -74,7 +74,7 @@ const appState = {
   agentStatus: { state: "running", canRespond: true },
   activeConversationId: "conv-1",
   activeInboxChat: null as unknown,
-  activeTerminalSessionId: null,
+  activeTerminalSessionId: null as string | null,
   characterData: { name: "Eliza" },
   chatFirstTokenReceived: false,
   companionMessageCutoffTs: null,
@@ -154,12 +154,24 @@ vi.mock("../../hooks/useChatAvatarVoiceBridge", () => ({
   useChatAvatarVoiceBridge: () => {},
 }));
 
+vi.mock("../../hooks/useRealtimeVoiceMint", () => ({
+  useRealtimeVoiceMint: () => ({
+    agentId: null,
+    getConsentNonce: vi.fn(async () => null),
+  }),
+}));
+
 // Voice + game-modal companion hooks are orthogonal to the render window — an
 // inert voice controller (unsupported, no TTS error → the voice status bar stays
 // hidden) and an empty game-modal bridge keep the default surface rendering.
 vi.mock("./chat-view-hooks", () => ({
   useChatVoiceController: () => ({
     beginVoiceCapture: vi.fn(),
+    composerVoice: {
+      isListening: false,
+      captureMode: "idle",
+      interimTranscript: "",
+    },
     endVoiceCapture: vi.fn(),
     continuous: {
       status: "idle",
@@ -171,6 +183,9 @@ vi.mock("./chat-view-hooks", () => ({
       ttsError: null,
     },
     voiceSession: {
+      realtimeActive: false,
+      realtimeAvailable: false,
+      agentSpeaking: false,
       status: "idle",
       interimTranscript: "",
       latency: null,
@@ -178,10 +193,9 @@ vi.mock("./chat-view-hooks", () => ({
       unlockAudio: vi.fn(),
       micReconnected: false,
       ttsError: null,
-      realtimeActive: false,
-      realtimeAvailable: false,
       paused: false,
       realtimeError: null,
+      bargeIn: vi.fn(),
     },
     handleEditMessage: vi.fn(),
     handleSpeakMessage: vi.fn(),
@@ -207,6 +221,14 @@ vi.mock("./chat-view-hooks", () => ({
 
 import { ChatView } from "./ChatView";
 
+// Inbox rendering exercises ChatView's layout-effect auto-scroll. jsdom omits
+// HTMLElement.scrollTo, so provide only that browser boundary while keeping the
+// real ChatView/inbox behavior under test.
+Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+  configurable: true,
+  value: vi.fn(),
+});
+
 // ChatView's default (non-glass) transcript rows carry data-testid="chat-message"
 // (the "thread-line" testid is the overlay's glass row). Attribute-equality, so
 // it counts rows only — not "chat-message-action-rail" / "chat-message-reply".
@@ -221,6 +243,8 @@ describe("ChatView transcript render window (#15281)", () => {
     appState.activeConversationId = "conv-1";
     appState.activeInboxChat = null;
     appState.activeTerminalSessionId = null;
+    inboxClient.getInboxMessages.mockClear();
+    inboxClient.sendInboxMessage.mockClear();
   });
 
   it("mounts at most MAX_RENDERED_SHELL_MESSAGES rows for a long thread, with the top sentinel present", () => {
@@ -231,6 +255,39 @@ describe("ChatView transcript render window (#15281)", () => {
     expect(
       container.querySelector('[data-testid="chat-transcript-top-sentinel"]'),
     ).not.toBeNull();
+  });
+
+  it("renders the default composer with the composed voice controller contract", () => {
+    const { container } = render(<ChatView />);
+
+    expect(container.querySelector("textarea")).not.toBeNull();
+    expect(threadRowCount(container)).toBe(MAX_RENDERED_SHELL_MESSAGES);
+  });
+
+  it("renders the terminal loading branch for a session not yet in the live list", () => {
+    appState.activeTerminalSessionId = "starting-session";
+    const { getByTestId } = render(<ChatView />);
+
+    expect(getByTestId("terminal-channel-loading")).not.toBeNull();
+  });
+
+  it("normalizes and loads a selected connector inbox", async () => {
+    appState.activeInboxChat = {
+      id: "discord-room",
+      title: "General",
+      source: "discord",
+      canSend: true,
+    };
+    const { getByText } = render(<ChatView />);
+
+    await waitFor(() =>
+      expect(inboxClient.getInboxMessages).toHaveBeenCalledWith({
+        limit: 200,
+        roomId: "discord-room",
+        roomSource: "discord",
+      }),
+    );
+    expect(getByText("General")).not.toBeNull();
   });
 
   it("reveals the full loaded set (capped at the DOM bound) on the search-jump event", () => {

@@ -47,9 +47,9 @@ export interface ContinuousVoiceSessionState {
   latency: ContinuousChatLatency;
   /** Speaker attribution passthrough. */
   speaker: VoiceSpeakerMetadata | null;
-  /** Autoplay-unlock mirror (batch). */
+  /** Autoplay-unlock state for the mic path that currently owns playback. */
   needsAudioUnlock: boolean;
-  /** Autoplay-unlock action (batch). */
+  /** Autoplay-unlock action for the active realtime or batch path. */
   unlockAudio: () => void;
   /** Browser SR silent-reconnect pulse (batch). */
   micReconnected: boolean;
@@ -121,8 +121,14 @@ export function useContinuousVoiceSession(
       realtimeError: realtime.error,
       latency: batch.latency,
       speaker: realtime.speaker ?? batch.speaker,
-      needsAudioUnlock: batch.needsAudioUnlock,
-      unlockAudio: batch.unlockAudio,
+      needsAudioUnlock: realtimeActive
+        ? realtime.needsUnlock
+        : batch.needsAudioUnlock,
+      unlockAudio: realtimeActive
+        ? () => {
+            void realtime.unlock();
+          }
+        : batch.unlockAudio,
       micReconnected: batch.micReconnected,
       ttsError: batch.ttsError,
       start,

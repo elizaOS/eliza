@@ -30,9 +30,7 @@ type ContinuousChatState = Parameters<
   typeof useContinuousVoiceSession
 >[0]["batch"];
 
-function makeBatch(
-  over?: Partial<ContinuousChatState>,
-): ContinuousChatState {
+function makeBatch(over?: Partial<ContinuousChatState>): ContinuousChatState {
   return {
     status: "listening",
     active: true,
@@ -71,6 +69,7 @@ function makeRealtime(
     transcriptPartial: "",
     transcriptFinal: "",
     agentSpeaking: false,
+    needsUnlock: false,
     paused: false,
     error: null,
     speaker: null,
@@ -133,6 +132,23 @@ describe("useContinuousVoiceSession", () => {
     expect(result.current.interimTranscript).toBe("rt partial");
     expect(result.current.finalTranscript).toBe("rt final");
     expect(result.current.agentSpeaking).toBe(true);
+  });
+
+  it("surfaces realtime autoplay unlock state and action while realtime is active", () => {
+    const batch = makeBatch({ needsAudioUnlock: false });
+    const realtime = makeRealtime({
+      available: true,
+      active: true,
+      needsUnlock: true,
+    });
+    const { result } = renderHook(() =>
+      useContinuousVoiceSession({ batch, realtime }),
+    );
+
+    expect(result.current.needsAudioUnlock).toBe(true);
+    act(() => result.current.unlockAudio());
+    expect(realtime.unlock).toHaveBeenCalledTimes(1);
+    expect(batch.unlockAudio).not.toHaveBeenCalled();
   });
 
   it("start() routes to realtime.start when available; stop() to realtime.stop when active", async () => {
