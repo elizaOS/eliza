@@ -40,6 +40,7 @@ const oauthState = vi.hoisted(() => ({
         sessionId: string;
         mode: "device";
         phase: "need-code";
+        oauthUrl?: string;
         startedAt: number;
       },
   ),
@@ -201,6 +202,7 @@ describe("AddAccountDialog", () => {
       sessionId: "restored-session",
       mode: "device",
       phase: "need-code",
+      oauthUrl: "https://login.test/restored",
       startedAt: Date.now(),
     });
 
@@ -216,6 +218,11 @@ describe("AddAccountDialog", () => {
     expect(
       await screen.findByPlaceholderText("Paste the code or redirect URL"),
     ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "https://login.test/restored" })
+        .getAttribute("href"),
+    ).toBe("https://login.test/restored");
     expect(screen.queryByRole("button", { name: /Log in/ })).toBeNull();
   });
 
@@ -240,6 +247,14 @@ describe("AddAccountDialog", () => {
     const code = await screen.findByPlaceholderText(
       "Paste the code or redirect URL",
     );
+    oauthState.readSubscriptionOAuth.mockReturnValue({
+      providerId: "anthropic-subscription",
+      sessionId: "session-code",
+      mode: "device",
+      phase: "need-code",
+      oauthUrl: "https://login.test",
+      startedAt: Date.now(),
+    });
     fireEvent.change(code, { target: { value: " callback-code " } });
     fireEvent.click(screen.getByRole("button", { name: "Submit code" }));
     await waitFor(() =>
@@ -247,6 +262,13 @@ describe("AddAccountDialog", () => {
         "anthropic-subscription",
         { sessionId: "session-code", code: "callback-code" },
       ),
+    );
+    expect(oauthState.writeSubscriptionOAuth).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sessionId: "session-code",
+        phase: "waiting",
+        oauthUrl: "https://login.test",
+      }),
     );
     await act(async () =>
       eventSource.onmessage?.({

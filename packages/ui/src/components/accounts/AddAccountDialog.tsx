@@ -386,6 +386,7 @@ export function AddAccountDialog({
     sessionIdRef.current = pending.sessionId;
     setSessionId(pending.sessionId);
     setDeviceCode(pending.deviceCode ?? null);
+    setOauthUrl(pending.oauthUrl ?? null);
     setStep(
       pending.phase === "need-code" ? "oauth-need-code" : "oauth-waiting",
     );
@@ -431,6 +432,7 @@ export function AddAccountDialog({
           mode,
           phase: flow.needsCodeSubmission ? "need-code" : "waiting",
           ...(flow.userCode ? { deviceCode: flow.userCode } : {}),
+          ...(!opensWindow && flow.authUrl ? { oauthUrl: flow.authUrl } : {}),
           startedAt: Date.now(),
         });
         if (flow.needsCodeSubmission) {
@@ -474,6 +476,10 @@ export function AddAccountDialog({
           sessionId: id,
           code,
         });
+        const pending = readSubscriptionOAuth(activeProviderId);
+        if (pending?.sessionId === id) {
+          writeSubscriptionOAuth({ ...pending, phase: "waiting" });
+        }
         setOauthCode("");
         setStep("oauth-waiting");
       } catch (err) {

@@ -45,7 +45,6 @@ const accounts = vi.hoisted(() => ({
   remove: vi.fn().mockResolvedValue(undefined),
   saving: new Set<string>(),
   setStrategy: vi.fn().mockResolvedValue(undefined),
-  setRouting: vi.fn().mockResolvedValue(undefined),
   test: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -118,15 +117,19 @@ describe("AccountManagementPanel", () => {
   });
 
   it("renders health, opens add-account, and wires account operations", async () => {
+    const onSelectChatProvider = vi.fn();
     render(
       <AccountManagementPanel
         activeSubscriptionId="openai-subscription"
+        onSelectChatProvider={onSelectChatProvider}
         onSelectSubscription={vi.fn()}
       />,
     );
     // Unified surface: a provider with a needs-reauth account collapses to a
     // single "Needs attention" signal on the row header (no pill maze).
     expect(screen.getByText("Needs attention")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Use for chat" }));
+    expect(onSelectChatProvider).toHaveBeenCalledWith("openai-api");
     fireEvent.click(screen.getByRole("button", { name: "Add account" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     // Account operations live behind progressive disclosure: expand the

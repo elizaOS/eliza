@@ -4,8 +4,9 @@
  */
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 import {
   buildFixtureHtml,
   bundleFixture,
@@ -36,6 +37,24 @@ describe("fixture bundle", () => {
     expect(observedConditions).toEqual([["eliza-source", "browser"]]);
     expect(js).toContain("__fixtureValue");
     expect(js).toContain("ready");
+  });
+
+  it("bundles shared routing contracts before workspace dist exists", async () => {
+    const root = await mkdtemp(join(tmpdir(), "eliza-fixture-contracts-"));
+    const entry = join(root, "entry.ts");
+    const sharedRouting = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../../shared/src/contracts/service-routing.ts",
+    );
+    await writeFile(
+      entry,
+      `import { SERVICE_CAPABILITIES } from ${JSON.stringify(sharedRouting)}; globalThis.__fixtureCapabilities = SERVICE_CAPABILITIES;`,
+    );
+
+    const js = await bundleFixture({ entry });
+
+    expect(js).toContain("__fixtureCapabilities");
+    expect(js).toContain("llmText");
   });
 
   it("renders each styling mode and optional browser bootstrap", () => {

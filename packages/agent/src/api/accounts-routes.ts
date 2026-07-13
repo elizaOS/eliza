@@ -63,10 +63,6 @@ import {
 import { ElizaError, logger } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
-  ACCOUNT_USE_CASES,
-  type AccountRoutingTier,
-  type AccountUseCase,
-  type AccountUseCaseRouting,
   isLinkedAccountProviderId,
   type LinkedAccountConfig,
   type LinkedAccountProviderId,
@@ -294,37 +290,6 @@ function writeAccountStrategy(
   if (!cfg.accountStrategies) cfg.accountStrategies = {};
   cfg.accountStrategies[providerId] = strategy;
 }
-
-// ─── Use-case fallback routing ──────────────────────────────────────
-// The user-defined cross-provider tier order per use case. Persisted under
-// the `accountRouting` config key. The reset-time rotation policy only
-// reorders WITHIN a tier's equals; this order defines the tiers themselves.
-
-interface AccountRoutingShape {
-  accountRouting?: AccountUseCaseRouting;
-}
-
-function readAccountRouting(config: ElizaConfig): AccountUseCaseRouting {
-  const routing = (config as ElizaConfig & AccountRoutingShape).accountRouting;
-  return routing ? routing : {};
-}
-
-function writeAccountRouting(
-  config: ElizaConfig,
-  routing: AccountUseCaseRouting,
-): void {
-  (config as ElizaConfig & AccountRoutingShape).accountRouting = routing;
-}
-
-const routingTierSchema = z.object({
-  providerId: z.string(),
-  accountId: z.string().optional(),
-});
-
-const routingPutSchema = z.object({
-  useCase: z.enum(ACCOUNT_USE_CASES),
-  tiers: z.array(routingTierSchema),
-});
 
 // ─── Account ↔ config sync ──────────────────────────────────────────
 
@@ -602,11 +567,6 @@ export async function handleAccountsRoutes(
     return handleListAllAccounts(ctx);
   }
 
-  // ── PUT /api/accounts/routing (use-case fallback chain) ──────────
-  if (pathname === `${ACCOUNTS_PREFIX}/routing` && method === "PUT") {
-    return handlePutRouting(ctx);
-  }
-
   // ── /api/accounts/:providerId... ──────────────────────────────────
   if (!pathname.startsWith(`${ACCOUNTS_PREFIX}/`)) return false;
   const remainder = pathname.slice(ACCOUNTS_PREFIX.length + 1);
@@ -656,10 +616,8 @@ export async function handleAccountsRoutes(
 // ─── Handlers ───────────────────────────────────────────────────────
 
 /**
- * Conservative runtime eligibility for a provider. Direct API/BYOK providers
- * back chat AND coding agents; subscription providers are coding-agent-only
- * until a chat-capable path lands (the subscription-chat lane, #16203). This
- * is the server-authoritative signal the UI prefers over static inference.
+ * Runtime eligibility for a provider. Direct API/BYOK providers back chat and
+ * coding agents; first-party subscription transports remain coding-agent-only.
  */
 function runtimeEligibilityFor(providerId: LinkedAccountProviderId): {
   chat: boolean;
@@ -677,146 +635,11 @@ function runtimeEligibilityFor(providerId: LinkedAccountProviderId): {
   };
 }
 
-/**
- * Live status of a routing tier RIGHT NOW: is it selectable, throttled
- * (with reset), or unavailable? Drives the routing chain's status dots so
- * the user can see where a request would actually land. Mirrors the pool's
- * eligibility gate (enabled + selectable-now) without mutating state.
- */
-type TierStatus = "available" | "throttled" | "unavailable";
-
-function resolveTierStatus(
-  tier: AccountRoutingTier,
-  accountsForProvider: LinkedAccountConfig[] | undefined,
-): { status: TierStatus; resetsAt?: number; accountId?: string } {
-  if (!accountsForProvider) return { status: "unavailable" };
-  const now = Date.now();
-  const scoped = tier.accountId
-    ? accountsForProvider.filter((a) => a.id === tier.accountId)
-    : accountsForProvider;
-  if (scoped.length === 0) return { status: "unavailable" };
-
-  // Available if ANY enabled account is selectable now.
-  const available = scoped.find(
-    (a) =>
-      a.enabled &&
-      a.health !== "invalid" &&
-      a.health !== "needs-reauth" &&
-      !(
-        a.health === "rate-limited" &&
-        typeof a.healthDetail?.until === "number" &&
-        a.healthDetail.until > now
-      ),
-  );
-  if (available) {
-    return { status: "available", accountId: available.id };
-  }
-
-  // Not available now — is it merely throttled (will recover) vs unusable?
-  const throttled = scoped
-    .filter(
-      (a) =>
-        a.enabled &&
-        a.health === "rate-limited" &&
-        typeof a.healthDetail?.until === "number" &&
-        a.healthDetail.until > now,
-    )
-    .sort((x, y) => {
-      const xUntil = x.healthDetail?.until;
-      const yUntil = y.healthDetail?.until;
-      if (typeof xUntil !== "number" || typeof yUntil !== "number") {
-        throw new ElizaError("Rate-limited account is missing its reset time", {
-          code: "ACCOUNT_RATE_LIMIT_RESET_MISSING",
-          context: { xAccountId: x.id, yAccountId: y.id },
-        });
-      }
-      return xUntil - yUntil;
-    });
-  const soonest = throttled[0];
-  if (soonest) {
-    return {
-      status: "throttled",
-      accountId: soonest.id,
-      ...(soonest.healthDetail?.until
-        ? { resetsAt: soonest.healthDetail.until }
-        : {}),
-    };
-  }
-  return { status: "unavailable" };
-}
-
-/**
- * Build the resolved routing view: for each use case, the user-defined tier
- * chain annotated with live status. Absent use cases return an empty chain
- * (UI falls back to the implicit eligibility+priority order).
- */
-function buildRoutingView(
-  routing: AccountUseCaseRouting,
-  accountsByProvider: Map<LinkedAccountProviderId, LinkedAccountConfig[]>,
-): Record<
-  AccountUseCase,
-  Array<AccountRoutingTier & { status: TierStatus; resetsAt?: number }>
-> {
-  const view = {} as Record<
-    AccountUseCase,
-    Array<AccountRoutingTier & { status: TierStatus; resetsAt?: number }>
-  >;
-  for (const useCase of ACCOUNT_USE_CASES) {
-    const tiers = routing[useCase];
-    if (!tiers) {
-      view[useCase] = [];
-      continue;
-    }
-    view[useCase] = tiers.map((tier) => {
-      const { status, resetsAt } = resolveTierStatus(
-        tier,
-        accountsByProvider.get(tier.providerId),
-      );
-      return { ...tier, status, ...(resetsAt ? { resetsAt } : {}) };
-    });
-  }
-  return view;
-}
-
-async function handlePutRouting(ctx: AccountsRouteContext): Promise<boolean> {
-  const { req, res, json, error, readJsonBody } = ctx;
-  const body = await readJsonBody<Record<string, unknown>>(req, res);
-  if (!body) return true;
-  const parsed = routingPutSchema.safeParse(body);
-  if (!parsed.success) {
-    error(res, "Invalid routing payload", 400);
-    return true;
-  }
-  // Reject unknown providers so a typo can't silently persist a dead tier.
-  for (const tier of parsed.data.tiers) {
-    if (!isLinkedAccountProviderId(tier.providerId)) {
-      error(res, `Unknown providerId in routing: ${tier.providerId}`, 400);
-      return true;
-    }
-  }
-  const routing = { ...readAccountRouting(ctx.state.config) };
-  routing[parsed.data.useCase] = parsed.data.tiers.map((tier) => ({
-    providerId: tier.providerId as LinkedAccountProviderId,
-    ...(tier.accountId ? { accountId: tier.accountId } : {}),
-  }));
-  writeAccountRouting(ctx.state.config, routing);
-  ctx.saveConfig(ctx.state.config);
-  json(res, {
-    useCase: parsed.data.useCase,
-    tiers: routing[parsed.data.useCase],
-  });
-  return true;
-}
-
 async function handleListAllAccounts(
   ctx: AccountsRouteContext,
 ): Promise<boolean> {
   const { res, json } = ctx;
   const pool = await getPool();
-  const accountsByProvider = new Map<
-    LinkedAccountProviderId,
-    LinkedAccountConfig[]
-  >();
   const providers = SUPPORTED_PROVIDER_IDS.map((providerId) => {
     const linkedConfigs = pool
       .list(providerId)
@@ -826,7 +649,6 @@ async function handleListAllAccounts(
       ? listAccounts(accountProvider).map((r) => r.id)
       : [];
     const onDiskSet = new Set(onDiskAccounts);
-    accountsByProvider.set(providerId, linkedConfigs);
     const strategy = readAccountStrategy(ctx.state.config, providerId);
     // Non-mutating dry-run: which account the pool would serve next + why,
     // so the UI can label the active row without re-deriving policy. Guarded
@@ -843,11 +665,7 @@ async function handleListAllAccounts(
       ...(selection ? { selection } : {}),
     };
   });
-  const routing = buildRoutingView(
-    readAccountRouting(ctx.state.config),
-    accountsByProvider,
-  );
-  json(res, { providers, routing });
+  json(res, { providers });
   return true;
 }
 

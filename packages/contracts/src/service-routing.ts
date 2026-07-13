@@ -114,38 +114,7 @@ export interface LinkedAccountConfig {
 
 export type LinkedAccountsConfig = Record<string, LinkedAccountConfig>;
 
-/**
- * Use cases a request can be routed for. Maps onto the runtime capability
- * signals (chat / coding agents today; extensible to voice / embeddings).
- * Kept as a string-literal union so config validation stays exhaustive while
- * new cases can be added without breaking older configs.
- */
-export const ACCOUNT_USE_CASES = ['chat', 'codingAgent'] as const;
-
-export type AccountUseCase = (typeof ACCOUNT_USE_CASES)[number];
-
-/**
- * One rung in a use-case fallback chain. References a provider, and
- * optionally a specific account within it. When `accountId` is omitted the
- * rung means "any eligible account of this provider" and the smart reset-time
- * rotation picks among that provider's accounts. When set, the rung pins a
- * single account. The ORDER of rungs is the user-defined cross-provider
- * tier order; reset-time policy only reorders WITHIN a rung's equals.
- */
-export interface AccountRoutingTier {
-	providerId: LinkedAccountProviderId;
-	/** Optional pinned account id. Omit for "any account of this provider". */
-	accountId?: string;
-}
-
-/**
- * User-defined fallback chains per use case. `routing.chat = [tierA, tierB]`
- * means: try tierA first, then tierB. Absent use cases fall back to the
- * implicit eligibility+priority order. Persisted alongside the account pool
- * config under the `accountRouting` key.
- */
-export type AccountUseCaseRouting = Partial<Record<AccountUseCase, AccountRoutingTier[]>>;
-
+/** Services whose transport and backend can be selected independently. */
 export const SERVICE_CAPABILITIES = ['llmText', 'tts', 'media', 'embeddings', 'rpc'] as const;
 
 export type ServiceCapability = (typeof SERVICE_CAPABILITIES)[number];

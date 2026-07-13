@@ -15,7 +15,6 @@ const client = vi.hoisted(() => ({
   testAccount: vi.fn(),
   refreshAccountUsage: vi.fn(),
   patchProviderStrategy: vi.fn(),
-  putUseCaseRouting: vi.fn(),
 }));
 
 vi.mock("../api", () => ({ client }));
@@ -46,7 +45,6 @@ const initial: AccountsListResponse = {
       ],
     },
   ],
-  routing: { chat: [], codingAgent: [] },
 };
 
 const primaryAccount = initial.providers[0]?.accounts[0];
@@ -74,14 +72,10 @@ beforeEach(() => {
     providerId: "openai-api",
     strategy: "reset-soonest",
   });
-  client.putUseCaseRouting.mockResolvedValue({
-    useCase: "chat",
-    tiers: [{ providerId: "openai-api" }],
-  });
 });
 
 describe("useAccounts", () => {
-  it("loads, mutates, and reconciles account and routing state", async () => {
+  it("loads, mutates, and reconciles account state", async () => {
     const notices = vi.fn();
     const { result } = renderHook(() =>
       useAccounts({ pollMs: 0, setActionNotice: notices }),
@@ -100,9 +94,6 @@ describe("useAccounts", () => {
     );
     await act(() => result.current.refreshUsage("openai-api", "primary"));
     await act(() => result.current.setStrategy("openai-api", "reset-soonest"));
-    await act(() =>
-      result.current.setRouting("chat", [{ providerId: "openai-api" }]),
-    );
     await act(async () => {
       expect(await result.current.test("openai-api", "primary")).toEqual({
         ok: true,
@@ -111,10 +102,6 @@ describe("useAccounts", () => {
     });
     await act(() => result.current.remove("openai-api", "secondary"));
 
-    expect(client.putUseCaseRouting).toHaveBeenCalledWith({
-      useCase: "chat",
-      tiers: [{ providerId: "openai-api" }],
-    });
     expect(client.listAccounts.mock.calls.length).toBeGreaterThan(1);
     expect(result.current.saving.size).toBe(0);
     expect(notices).not.toHaveBeenCalledWith(
@@ -135,5 +122,25 @@ describe("useAccounts", () => {
       "Failed to load accounts: transport down",
     );
     expect(notices).toHaveBeenCalled();
+  });
+
+  it("surfaces a rejected strategy save before rethrowing it", async () => {
+    client.patchProviderStrategy.mockRejectedValueOnce(
+      new Error("config write failed"),
+    );
+    const notices = vi.fn();
+    const { result } = renderHook(() =>
+      useAccounts({ pollMs: 0, setActionNotice: notices }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await expect(
+      act(() => result.current.setStrategy("openai-api", "reset-soonest")),
+    ).rejects.toThrow("config write failed");
+    expect(notices).toHaveBeenCalledWith(
+      "Failed to update rotation strategy: config write failed",
+      "error",
+      6000,
+    );
   });
 });

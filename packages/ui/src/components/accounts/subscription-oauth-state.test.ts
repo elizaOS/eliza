@@ -20,6 +20,7 @@ describe("subscription OAuth persistence", () => {
       mode: "device",
       phase: "waiting",
       deviceCode: "ABCD-EFGHI",
+      oauthUrl: "https://example.test/device",
       startedAt: Date.now(),
     });
 
@@ -28,6 +29,7 @@ describe("subscription OAuth persistence", () => {
       mode: "device",
       phase: "waiting",
       deviceCode: "ABCD-EFGHI",
+      oauthUrl: "https://example.test/device",
     });
   });
 

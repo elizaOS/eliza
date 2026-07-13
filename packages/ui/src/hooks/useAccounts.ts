@@ -16,10 +16,6 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../api";
 import type {
-  AccountRoutingTier,
-  AccountUseCaseId,
-} from "../api/client-accounts";
-import type {
   AccountRefreshUsageResult,
   AccountStrategy,
   AccountsListResponse,
@@ -70,11 +66,6 @@ export interface UseAccountsResult {
   setStrategy: (
     providerId: LinkedAccountProviderId,
     strategy: AccountStrategy,
-  ) => Promise<void>;
-  /** Persist the fallback chain for a use case, then reconcile. */
-  setRouting: (
-    useCase: AccountUseCaseId,
-    tiers: AccountRoutingTier[],
   ) => Promise<void>;
 }
 
@@ -319,44 +310,6 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     [markSaving, notify],
   );
 
-  const setRouting = useCallback<UseAccountsResult["setRouting"]>(
-    async (useCase, tiers) => {
-      const key = `routing:${useCase}`;
-      markSaving(key, true);
-      const previous = dataRef.current;
-      // Optimistic: reflect the reordered chain immediately (status dots
-      // reconcile on the next poll / refresh).
-      setData((prev) => {
-        if (!prev) return prev;
-        const prevRouting = prev.routing ?? {
-          chat: [],
-          codingAgent: [],
-        };
-        return {
-          ...prev,
-          routing: {
-            ...prevRouting,
-            [useCase]: tiers.map((tier) => ({
-              ...tier,
-              status: "available" as const,
-            })),
-          },
-        };
-      });
-      try {
-        await client.putUseCaseRouting({ useCase, tiers });
-        await refresh();
-      } catch (err) {
-        setData(previous);
-        notify("Failed to update routing", err);
-        throw err;
-      } finally {
-        markSaving(key, false);
-      }
-    },
-    [markSaving, notify, refresh],
-  );
-
   useEffect(() => {
     mountedRef.current = true;
     void refresh();
@@ -379,6 +332,5 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
     test,
     refreshUsage,
     setStrategy,
-    setRouting,
   };
 }

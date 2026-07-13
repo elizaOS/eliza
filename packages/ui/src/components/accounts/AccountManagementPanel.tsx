@@ -1,25 +1,12 @@
 /**
- * AccountManagementPanel — the unified Accounts surface.
- *
- * One coherent list, not three worlds. Connected providers sit first-class
- * at the top as calm expandable rows; providers you haven't connected fold
- * into a single "Available to connect" disclosure so empty cards never
- * dominate. "Add" is inline on every row — no separate modal-hopping to find
- * the right provider first. The Add dialog still owns the auth flow, but the
- * ENTRY is always one click from the account it belongs to.
- *
- * States: structural skeleton while loading, explicit error + retry when the
- * list fails (so a failed fetch never collapses into an apparently-empty
- * surface), and a teaching empty state when nothing is connected yet.
+ * Manages provider credentials and rotation policies from the account settings
+ * surface. Server-provided capability and selection metadata remain
+ * authoritative; loading, empty, and failed reads render as distinct states.
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { AlertTriangle, Plus, RotateCw, Route } from "lucide-react";
+import { AlertTriangle, Plus, RotateCw } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import type {
-  AccountRoutingTier,
-  AccountUseCaseId,
-} from "../../api/client-accounts";
 import type {
   AccountStrategy,
   AccountWithCredentialFlag,
@@ -38,13 +25,12 @@ import {
 } from "./account-provider-options";
 import { ProviderAccountRow } from "./ProviderAccountRow";
 import { readSubscriptionOAuth } from "./subscription-oauth-state";
-import { UseCaseRouting } from "./UseCaseRouting";
-
-const USE_CASES: AccountUseCaseId[] = ["chat", "codingAgent"];
 
 interface AccountManagementPanelProps {
   activeSubscriptionId?: SubscriptionProviderSelectionId | null;
+  activeChatProviderId?: LinkedAccountProviderId | null;
   cloudCallsDisabled?: boolean;
+  onSelectChatProvider?: (providerId: LinkedAccountProviderId) => void;
   onSelectSubscription?: (
     providerId: SubscriptionProviderSelectionId,
   ) => Promise<void> | void;
@@ -66,11 +52,14 @@ function RowSkeleton() {
 
 export function AccountManagementPanel({
   activeSubscriptionId = null,
+  activeChatProviderId = null,
   cloudCallsDisabled = false,
+  onSelectChatProvider,
   onSelectSubscription,
 }: AccountManagementPanelProps) {
   const t = useAppSelector((s) => s.t);
-  const accounts = useAccounts();
+  const setActionNotice = useAppSelector((s) => s.setActionNotice);
+  const accounts = useAccounts({ setActionNotice });
 
   const [pendingProviderId, setPendingProviderId] = useState<
     LinkedAccountProviderId | undefined
@@ -85,7 +74,6 @@ export function AccountManagementPanel({
   );
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [showAvailable, setShowAvailable] = useState(false);
-  const [showRouting, setShowRouting] = useState(false);
 
   const providerMap = useMemo(() => {
     return new Map(
@@ -170,35 +158,6 @@ export function AccountManagementPanel({
     [accounts],
   );
 
-  // Providers eligible per use case, derived from runtime eligibility with a
-  // conservative fallback. Drives the routing chain add-picker so a user can
-  // only chain providers that can actually serve that use case.
-  const eligibleByUseCase = useMemo(() => {
-    const chat: LinkedAccountProviderId[] = [];
-    const codingAgent: LinkedAccountProviderId[] = [];
-    for (const option of ACCOUNT_PROVIDER_OPTIONS) {
-      const provider = providerMap.get(option.id);
-      const runtime = provider?.runtimeEligibility;
-      const isChat = runtime
-        ? runtime.chat
-        : option.category === "chat" && !option.unavailable;
-      const isCoding = runtime ? runtime.codingAgent : !option.unavailable;
-      if (isChat) chat.push(option.id);
-      if (isCoding) codingAgent.push(option.id);
-    }
-    return { chat, codingAgent } as Record<
-      AccountUseCaseId,
-      LinkedAccountProviderId[]
-    >;
-  }, [providerMap]);
-
-  const setRouting = useCallback(
-    (useCase: AccountUseCaseId, tiers: AccountRoutingTier[]) => {
-      void accounts.setRouting(useCase, tiers);
-    },
-    [accounts],
-  );
-
   const rowHandlers = {
     saving: accounts.saving,
     onPatch: accounts.patch,
@@ -212,10 +171,14 @@ export function AccountManagementPanel({
       providerId: LinkedAccountProviderId,
       strategy: AccountStrategy,
     ) => {
-      void accounts.setStrategy(providerId, strategy);
+      void accounts.setStrategy(providerId, strategy).catch(() => {
+        // error-policy:J4 useAccounts already surfaces the rejected mutation in the settings notice.
+      });
     },
     activeSubscriptionId,
+    activeChatProviderId,
     cloudCallsDisabled,
+    onSelectChatProvider,
     onSelectSubscription,
     onAdd: openAdd,
   };
@@ -285,53 +248,6 @@ export function AccountManagementPanel({
           {t("accounts.add.button", { defaultValue: "Add account" })}
         </Button>
       </div>
-
-      {/* ── Use-case fallback routing (progressive disclosure) ── */}
-      {!nothingConnected ? (
-        <div className="grid gap-2">
-          <button
-            type="button"
-            onClick={() => setShowRouting((v) => !v)}
-            className="flex w-full items-center gap-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong focus:outline-none focus-visible:text-txt-strong"
-            aria-expanded={showRouting}
-          >
-            <Route className="h-3.5 w-3.5" aria-hidden />
-            <span
-              className={cn(
-                "inline-block transition-transform",
-                showRouting && "rotate-90",
-              )}
-              aria-hidden
-            >
-              ›
-            </span>
-            {t("accounts.routing.sectionTitle", {
-              defaultValue: "Use cases & fallback order",
-            })}
-          </button>
-          {showRouting ? (
-            <div className="grid gap-2">
-              <p className="text-[11px] leading-4 text-muted">
-                {t("accounts.routing.sectionHint", {
-                  defaultValue:
-                    "Set which providers serve each use case and the order to fall back through. Within a tier, accounts rotate by reset-time automatically.",
-                })}
-              </p>
-              {USE_CASES.map((useCase) => (
-                <UseCaseRouting
-                  key={useCase}
-                  useCase={useCase}
-                  tiers={accounts.data?.routing?.[useCase] ?? []}
-                  eligibleProviders={eligibleByUseCase[useCase]}
-                  providers={accounts.data?.providers ?? []}
-                  saving={accounts.saving.has(`routing:${useCase}`)}
-                  onChange={(tiers) => setRouting(useCase, tiers)}
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
 
       {nothingConnected ? (
         // ── Teaching empty state (not just "nothing here") ──

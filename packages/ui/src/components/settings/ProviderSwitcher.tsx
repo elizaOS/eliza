@@ -4,10 +4,15 @@
  * runtime state; this surface keeps the provider panels presentational.
  */
 
+import type { LinkedAccountProviderId } from "@elizaos/shared";
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
-import { isSubscriptionProviderSelectionId } from "../../providers";
+import {
+  FIRST_RUN_PROVIDER_CATALOG,
+  getDirectAccountProviderForFirstRunProvider,
+  isSubscriptionProviderSelectionId,
+} from "../../providers";
 import { useAppSelectorShallow } from "../../state";
 import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
@@ -162,6 +167,31 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [allAiProviders, selection],
   );
 
+  const activeChatProviderId =
+    getDirectAccountProviderForFirstRunProvider(resolvedSelectedId);
+  const onSelectChatProvider = useCallback(
+    (accountProviderId: LinkedAccountProviderId) => {
+      const provider = FIRST_RUN_PROVIDER_CATALOG.find(
+        (candidate) =>
+          getDirectAccountProviderForFirstRunProvider(candidate.id) ===
+          accountProviderId,
+      );
+      if (!provider) {
+        setActionNotice?.(
+          "This account provider cannot be selected for chat.",
+          "error",
+          6000,
+        );
+        return;
+      }
+      void selection.handleSwitchProvider(
+        provider.id,
+        resolveProviderIdForSwitch(provider.id, allAiProviders),
+      );
+    },
+    [allAiProviders, selection, setActionNotice],
+  );
+
   // Split the providers by purpose so the page reads as two simple "just works"
   // decisions — the agent's brain (Local/Cloud) up top, the coding/workflow
   // subscriptions (Claude/Codex/z.ai) in their own group — with custom keys and
@@ -275,12 +305,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         bare
       >
         <AccountManagementPanel
+          activeChatProviderId={activeChatProviderId}
           activeSubscriptionId={
             isSubscriptionProviderSelectionId(resolvedSelectedId)
               ? resolvedSelectedId
               : null
           }
           cloudCallsDisabled={selection.cloudCallsDisabled}
+          onSelectChatProvider={onSelectChatProvider}
           onSelectSubscription={selection.handleSelectSubscription}
         />
       </SettingsGroup>

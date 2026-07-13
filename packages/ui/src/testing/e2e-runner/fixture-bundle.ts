@@ -9,6 +9,7 @@
 
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import tailwind from "@tailwindcss/postcss";
 import { build, type Plugin } from "esbuild";
 import postcss, { type AcceptedPlugin } from "postcss";
@@ -21,6 +22,23 @@ export interface BundleFixtureOptions {
   /** Extra `define` entries merged over the default `process.env.NODE_ENV`. */
   define?: Record<string, string>;
 }
+
+const contractsSourcePath = fileURLToPath(
+  new URL("../../../../contracts/src/index.ts", import.meta.url),
+);
+
+const workspaceSourcePlugin: Plugin = {
+  name: "workspace-source",
+  setup(build) {
+    // Contracts intentionally ships no browser-specific source export, while
+    // fixture lanes run before workspace dist exists. Resolving this one
+    // boundary keeps shared UI fixtures on the same contract implementation
+    // used by normal source-mode development.
+    build.onResolve({ filter: /^@elizaos\/contracts$/ }, () => ({
+      path: contractsSourcePath,
+    }));
+  },
+};
 
 /** esbuild-bundle a fixture to a browser IIFE and return the JS text. */
 export async function bundleFixture({
@@ -40,7 +58,7 @@ export async function bundleFixture({
     jsx: "automatic",
     loader: { ".tsx": "tsx", ".ts": "ts" },
     define: { "process.env.NODE_ENV": '"production"', ...define },
-    plugins,
+    plugins: [workspaceSourcePlugin, ...plugins],
     write: false,
   });
   const output = result.outputFiles[0];

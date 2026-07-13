@@ -21,14 +21,13 @@ describe("consolidated account provider picker", () => {
     expect(coding).toContain("openai-codex");
   });
 
-  it("labels Claude subscription as chat + coding (pooled subscription chat)", () => {
+  it("labels Claude subscription for its first-party coding surface", () => {
     const claudeSubscription = ACCOUNT_PROVIDER_OPTIONS.find(
       (option) => option.id === "anthropic-subscription",
     );
 
     expect(claudeSubscription?.eligibility).toContain("code-agent");
-    expect(claudeSubscription?.eligibility).toContain("chat");
-    expect(claudeSubscription?.eligibility).not.toContain("not chat");
+    expect(claudeSubscription?.eligibility).not.toContain("chat");
   });
 
   it("lists subscriptions before API keys", () => {

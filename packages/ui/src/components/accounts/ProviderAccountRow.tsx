@@ -45,7 +45,9 @@ interface ProviderAccountRowProps {
   expanded: boolean;
   onToggle: () => void;
   activeSubscriptionId?: SubscriptionProviderSelectionId | null;
+  activeChatProviderId?: LinkedAccountProviderId | null;
   cloudCallsDisabled?: boolean;
+  onSelectChatProvider?: (providerId: LinkedAccountProviderId) => void;
   onSelectSubscription?: (
     providerId: SubscriptionProviderSelectionId,
   ) => Promise<void> | void;
@@ -148,7 +150,9 @@ export function ProviderAccountRow({
   expanded,
   onToggle,
   activeSubscriptionId,
+  activeChatProviderId,
   cloudCallsDisabled = false,
+  onSelectChatProvider,
   onSelectSubscription,
   onAdd,
   saving,
@@ -185,6 +189,8 @@ export function ProviderAccountRow({
   );
   const isActiveSubscription =
     subscriptionSelection?.id === activeSubscriptionId;
+  const isDirectChatProvider = option.category === "chat";
+  const isActiveChatProvider = option.id === activeChatProviderId;
 
   return (
     <div
@@ -295,6 +301,25 @@ export function ProviderAccountRow({
 
         {/* Right-aligned inline actions — no separate modal world. */}
         <div className="flex shrink-0 items-center gap-1.5">
+          {connected && isDirectChatProvider ? (
+            <Button
+              type="button"
+              variant={isActiveChatProvider ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 px-2 text-[11px]"
+              disabled={isActiveChatProvider || !onSelectChatProvider}
+              onClick={() => onSelectChatProvider?.(option.id)}
+              title={t("accounts.row.useForChat.tooltip", {
+                defaultValue: "Route chat through this provider account pool",
+              })}
+            >
+              {isActiveChatProvider
+                ? t("accounts.row.chatActive", { defaultValue: "Chat" })
+                : t("accounts.row.useForChat", {
+                    defaultValue: "Use for chat",
+                  })}
+            </Button>
+          ) : null}
           {subscriptionSelection ? (
             <Button
               type="button"

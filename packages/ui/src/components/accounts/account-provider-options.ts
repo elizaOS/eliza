@@ -1,11 +1,7 @@
 /**
- * account-provider-options — the static provider catalog that drives the Add
- * Account picker, the eligibility resolver, and the routing chain.
- *
- * Extracted from AddAccountDialog so presentational pieces (ProviderPicker,
- * ProviderAccountRow, UseCaseRouting) can import the catalog WITHOUT a circular
- * dependency on the dialog component. AddAccountDialog re-exports these for
- * backward compatibility.
+ * Static provider metadata shared by account enrollment, provider rows, and
+ * capability display. Keeping the catalog outside the dialog prevents
+ * presentational components from depending on the enrollment state machine.
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
@@ -27,8 +23,8 @@ export const ACCOUNT_PROVIDER_OPTIONS: AccountProviderOption[] = [
     name: "Claude subscription",
     category: "coding",
     description:
-      "Browser login for your Claude plan. Powers chat and coding agents.",
-    eligibility: ["chat", "code-agent", "requires browser login"],
+      "Browser login for your Claude plan. Powers coding agents and workflows.",
+    eligibility: ["code-agent", "requires browser login"],
   },
   {
     id: "openai-codex",

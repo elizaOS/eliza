@@ -1,5 +1,5 @@
 /**
- * Drives the accounts HTTP boundary through credential, routing, OAuth, and
+ * Drives the accounts HTTP boundary through credential, OAuth, strategy, and
  * health operations while isolating only filesystem and provider clients.
  */
 import { EventEmitter } from "node:events";
@@ -181,7 +181,7 @@ describe("accounts routes", () => {
     ]);
   });
 
-  it("persists provider strategy and use-case routing", async () => {
+  it("persists provider strategy", async () => {
     const strategy = makeContext(
       "PATCH",
       "/api/providers/openai-api/strategy",
@@ -193,43 +193,30 @@ describe("accounts routes", () => {
       providerId: "openai-api",
       strategy: "reset-soonest",
     });
-
-    const routing = makeContext("PUT", "/api/accounts/routing", {
-      useCase: "chat",
-      tiers: [{ providerId: "openai-api", accountId: "account-1" }],
-    });
-    await handleAccountsRoutes(routing.ctx);
-    expect(routing.saveConfig).toHaveBeenCalledOnce();
-    expect(routing.jsonCalls[0]?.body).toMatchObject({ useCase: "chat" });
   });
 
-  it("lists pool metadata with credential and resolved routing state", async () => {
+  it("lists pool metadata with credentials and runtime capabilities", async () => {
     fakes.poolAccounts = [linkedAccount];
     fakes.accounts = [{ id: "account-1" }];
     const request = makeContext("GET", "/api/accounts");
-    request.ctx.state.config = {
-      accountRouting: {
-        chat: [{ providerId: "openai-api", accountId: "account-1" }],
-      },
-    } as AccountsRouteContext["state"]["config"];
     await handleAccountsRoutes(request.ctx);
     const response = request.jsonCalls[0]?.body as {
       providers: Array<Record<string, unknown>>;
-      routing: { chat: Array<Record<string, unknown>> };
     };
     expect(
       response.providers.find((item) => item.providerId === "openai-api"),
     ).toMatchObject({
       strategy: "priority",
       accounts: [{ id: "account-1", hasCredential: true }],
+      runtimeEligibility: { chat: true, codingAgent: true },
     });
-    expect(response.routing.chat).toEqual([
-      {
-        providerId: "openai-api",
-        accountId: "account-1",
-        status: "available",
-      },
-    ]);
+    expect(
+      response.providers.find(
+        (item) => item.providerId === "anthropic-subscription",
+      ),
+    ).toMatchObject({
+      runtimeEligibility: { chat: false, codingAgent: true },
+    });
   });
 
   it("creates, edits, probes, refreshes, and deletes a direct account", async () => {
