@@ -179,66 +179,66 @@ test("download verification proves the exact real filename, size, and byte set",
   assert.match(markdown, new RegExp(receipt.inventorySha256));
 });
 
-test("download verification rejects extra, missing, non-file, size, and digest drift", async (t) => {
+test("download verification rejects an extra filename", async () => {
   const { inventory, payloads } = inventoryFixture();
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-extra-"));
+  await materializeArtifacts(tmp, payloads);
+  await writeFile(path.join(tmp, "unexpected.sig"), "extra");
+  await assert.rejects(
+    verifyDownloadedReleaseAssets(inventory, tmp),
+    /unexpected=unexpected\.sig/,
+  );
+});
 
-  await t.test("extra filename", async () => {
-    const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-extra-"));
-    await materializeArtifacts(tmp, payloads);
-    await writeFile(path.join(tmp, "unexpected.sig"), "extra");
-    await assert.rejects(
-      verifyDownloadedReleaseAssets(inventory, tmp),
-      /unexpected=unexpected\.sig/,
-    );
-  });
+test("download verification rejects a missing filename", async () => {
+  const { inventory, payloads } = inventoryFixture();
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-missing-"));
+  await mkdir(tmp, { recursive: true });
+  const [first] = payloads;
+  await writeFile(path.join(tmp, first[0]), first[1]);
+  await assert.rejects(
+    verifyDownloadedReleaseAssets(inventory, tmp),
+    /missing=elizaos-vm-amd64\.ova/,
+  );
+});
 
-  await t.test("missing filename", async () => {
-    const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-missing-"));
-    await mkdir(tmp, { recursive: true });
-    const [first] = payloads;
-    await writeFile(path.join(tmp, first[0]), first[1]);
-    await assert.rejects(
-      verifyDownloadedReleaseAssets(inventory, tmp),
-      /missing=elizaos-vm-amd64\.ova/,
-    );
-  });
+test("download verification rejects a non-file entry", async () => {
+  const { inventory, payloads } = inventoryFixture();
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-nonfile-"));
+  await materializeArtifacts(tmp, payloads);
+  await mkdir(path.join(tmp, "nested"));
+  await assert.rejects(
+    verifyDownloadedReleaseAssets(inventory, tmp),
+    /non-file entries: nested/,
+  );
+});
 
-  await t.test("non-file entry", async () => {
-    const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-nonfile-"));
-    await materializeArtifacts(tmp, payloads);
-    await mkdir(path.join(tmp, "nested"));
-    await assert.rejects(
-      verifyDownloadedReleaseAssets(inventory, tmp),
-      /non-file entries: nested/,
-    );
-  });
+test("download verification rejects a size mismatch", async () => {
+  const { inventory, payloads } = inventoryFixture();
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-size-"));
+  await materializeArtifacts(tmp, payloads);
+  await writeFile(path.join(tmp, "elizaos-vm-amd64.ova"), "short");
+  await assert.rejects(
+    verifyDownloadedReleaseAssets(inventory, tmp),
+    /downloaded size .* differs from captured size/,
+  );
+});
 
-  await t.test("size mismatch", async () => {
-    const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-size-"));
-    await materializeArtifacts(tmp, payloads);
-    await writeFile(path.join(tmp, "elizaos-vm-amd64.ova"), "short");
-    await assert.rejects(
-      verifyDownloadedReleaseAssets(inventory, tmp),
-      /downloaded size .* differs from captured size/,
-    );
+test("download verification rejects a same-size digest replacement", async () => {
+  const expectedPayload = "right";
+  const replacementPayload = "wrong";
+  assert.equal(expectedPayload.length, replacementPayload.length);
+  const replacementInventory = createReleaseAssetInventory({
+    repository: "elizaOS/eliza",
+    release: releaseResponse(),
+    assets: [assetResponse(9010, "same-size.img", expectedPayload)],
   });
-
-  await t.test("same-size digest replacement", async () => {
-    const expectedPayload = "right";
-    const replacementPayload = "wrong";
-    assert.equal(expectedPayload.length, replacementPayload.length);
-    const replacementInventory = createReleaseAssetInventory({
-      repository: "elizaOS/eliza",
-      release: releaseResponse(),
-      assets: [assetResponse(9010, "same-size.img", expectedPayload)],
-    });
-    const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-digest-"));
-    await writeFile(path.join(tmp, "same-size.img"), replacementPayload);
-    await assert.rejects(
-      verifyDownloadedReleaseAssets(replacementInventory, tmp),
-      /downloaded SHA-256 .* differs from GitHub/,
-    );
-  });
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "os-asset-digest-"));
+  await writeFile(path.join(tmp, "same-size.img"), replacementPayload);
+  await assert.rejects(
+    verifyDownloadedReleaseAssets(replacementInventory, tmp),
+    /downloaded SHA-256 .* differs from GitHub/,
+  );
 });
 
 test("post-download comparison rejects extras, replacements, and field drift", () => {
