@@ -1548,6 +1548,27 @@ export function ContinuousChatOverlay({
   const [pttHolding, setPttHolding] = React.useState(false);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const [composerScrollFade, setComposerScrollFade] = React.useState<
+    "none" | "top" | "bottom" | "both"
+  >("none");
+  const updateComposerScrollFade = React.useCallback(
+    (target: HTMLTextAreaElement) => {
+      const hasOverflow = target.scrollHeight - target.clientHeight > 1;
+      const hasContentAbove = hasOverflow && target.scrollTop > 1;
+      const hasContentBelow =
+        hasOverflow &&
+        target.scrollTop + target.clientHeight < target.scrollHeight - 1;
+      const next = hasContentAbove
+        ? hasContentBelow
+          ? "both"
+          : "top"
+        : hasContentBelow
+          ? "bottom"
+          : "none";
+      setComposerScrollFade((current) => (current === next ? current : next));
+    },
+    [],
+  );
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -3168,8 +3189,8 @@ export function ContinuousChatOverlay({
   // the pointer drag. Wheel events accumulate with a short decay and step once
   // per threshold with a cooldown, so a single physical swipe moves ONE detent
   // (no accidental multi-jumps). Scoped to the sheet chrome: events that
-  // originate inside the transcript scroller belong to transcript scrolling
-  // and are ignored here, so reading history never resizes the sheet.
+  // originate inside an owned scroll region belong to that region and are
+  // ignored here, so reading history or a long draft never resizes the sheet.
   const wheelStepAccRef = React.useRef(0);
   const wheelStepCooldownRef = React.useRef(0);
   const wheelStepDecayRef = React.useRef<number | null>(null);
@@ -3965,13 +3986,14 @@ export function ContinuousChatOverlay({
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
   // so it also springs back to one line after a send clears the draft.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: draft is the trigger; the body reads the textarea ref
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft is the trigger; the body reads and measures the textarea ref
   React.useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [draft]);
+    updateComposerScrollFade(el);
+  }, [draft, updateComposerScrollFade]);
 
   // Open the input back out of the collapsed pill (tap or keyboard-activate).
   // A tap routes through the gesture's `onDrag(0)` first, which sets
@@ -5771,6 +5793,10 @@ export function ContinuousChatOverlay({
                 aria-label="message"
                 data-testid="chat-composer-textarea"
                 data-chat-sheet-scroll-region
+                data-scroll-fade={composerScrollFade}
+                onScroll={(event) =>
+                  updateComposerScrollFade(event.currentTarget)
+                }
                 aria-describedby={
                   booting && !noProviderConfigured && !firstRunOpen
                     ? "cc-booting-hint"
@@ -5785,7 +5811,7 @@ export function ContinuousChatOverlay({
                 // even when the glass pill sits over dark wallpaper. During
                 // onboarding `disabled:opacity-100` prevents the browser from
                 // dimming the locked cue.
-                className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center overflow-y-auto overscroll-contain border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
+                className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center overflow-y-auto overscroll-contain border-none bg-transparent py-1 pr-3 pl-1.5 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
               />
               {booting && !noProviderConfigured && !firstRunOpen ? (
                 <span id="cc-booting-hint" className="sr-only">
