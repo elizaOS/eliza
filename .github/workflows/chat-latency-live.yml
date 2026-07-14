@@ -579,7 +579,6 @@ jobs:
                 versions: [{ percentage: 100, version_id: versionId }],
                 annotations: {
                   "workers/message": "issue-16159 isolated auth timing " + process.env.GITHUB_SHA,
-                  "workers/triggered_by": "deployment",
                 },
               }),
               signal: AbortSignal.timeout(30_000),
@@ -587,16 +586,34 @@ jobs:
           );
           const deployment = await deploymentResponse.json();
           const deployedVersions = deployment?.result?.versions;
+          if (!deploymentResponse.ok || deployment?.success !== true) {
+            const errors = Array.isArray(deployment?.errors)
+              ? deployment.errors.map((error) => ({ code: error?.code, message: error?.message }))
+              : [];
+            throw new Error(
+              "Cloudflare deployment request failed with HTTP " +
+                deploymentResponse.status +
+                ": " +
+                JSON.stringify(errors),
+            );
+          }
           if (
-            !deploymentResponse.ok ||
-            deployment?.success !== true ||
             deployment?.result?.strategy !== "percentage" ||
             !Array.isArray(deployedVersions) ||
             deployedVersions.length !== 1 ||
             deployedVersions[0]?.version_id !== versionId ||
             deployedVersions[0]?.percentage !== 100
           ) {
-            throw new Error("Cloudflare did not deploy exactly the uploaded version at 100 percent");
+            const result = {
+              strategy: deployment?.result?.strategy,
+              versions: Array.isArray(deployedVersions)
+                ? deployedVersions.map((version) => ({
+                    percentage: version?.percentage,
+                    version_id: version?.version_id,
+                  }))
+                : null,
+            };
+            throw new Error("Cloudflare returned an invalid deployment result: " + JSON.stringify(result));
           }
 
           const [accountSubdomainResponse, workerStateResponse, workerSubdomainResponse] =
