@@ -1090,14 +1090,20 @@ export function ContinuousChatOverlay({
   const modelBlocksSend = modelStatus?.blocksSend ?? false;
   // Search-jump needs the app-level conversation selectors; turn controls stay
   // local to this overlay or flow through the controller.
-  const { handleSelectConversation, loadConversationMessagesAround } =
-    useAppSelectorShallow((s) => ({
-      // Search-jump (#14279): select the hit's conversation, then (if the hit is
-      // older than the loaded recent window) load a window centered on it before
-      // scrolling. Inert no-ops in stories/tests with no AppContext.
-      handleSelectConversation: s.handleSelectConversation,
-      loadConversationMessagesAround: s.loadConversationMessagesAround,
-    }));
+  const {
+    handleChatEdit,
+    handleSelectConversation,
+    loadConversationMessagesAround,
+  } = useAppSelectorShallow((s) => ({
+    // Editing a persisted turn must truncate and replace the original branch;
+    // sending the corrected text as a fresh turn leaves the typo in history.
+    handleChatEdit: s.handleChatEdit,
+    // Search-jump (#14279): select the hit's conversation, then (if the hit is
+    // older than the loaded recent window) load a window centered on it before
+    // scrolling. Inert no-ops in stories/tests with no AppContext.
+    handleSelectConversation: s.handleSelectConversation,
+    loadConversationMessagesAround: s.loadConversationMessagesAround,
+  }));
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
@@ -1157,21 +1163,21 @@ export function ContinuousChatOverlay({
     [speaking, playingMessageId, speak, stopSpeaking],
   );
 
-  // Save an edited user message and resend it as a new turn (#10713) — the same
-  // send path a typed turn uses, so the agent sees the corrected text. Adapts
-  // the row's (id, text) → bool save contract onto the overlay's text-only
-  // send; returning true tells the row the edit committed.
-  const handleEditResend = React.useCallback(
-    (_id: string, text: string): boolean => {
-      send(text);
-      return true;
+  // Editing rewinds the persisted branch at the selected user turn, replaces
+  // its text, and resends through the canonical AppContext transaction. Stop
+  // playback first so stale audio never continues over the corrected branch.
+  const handleEditMessage = React.useCallback(
+    async (id: string, text: string): Promise<boolean> => {
+      stopSpeaking?.();
+      setPlayingMessageId(null);
+      return handleChatEdit(id, text);
     },
-    [send],
+    [handleChatEdit, stopSpeaking],
   );
 
   // Retry a failed/interrupted assistant turn by re-sending its preceding user
-  // turn — the SAME send() path the edit-resend action uses. (The ShellController
-  // exposes no handleChatRetry, so the overlay owns the walk-back locally; a
+  // turn. The ShellController exposes no handleChatRetry, so the overlay owns
+  // the walk-back locally; a
   // truncating in-place retry would require a controller method we don't have.)
   // Reads the live message list through a ref so the callback keeps a stable
   // identity and the memoized ThreadLine isn't re-rendered on every tick.
@@ -1198,8 +1204,8 @@ export function ContinuousChatOverlay({
   // Proactive suggestions (#8792) — same semantics as the composite ChatView:
   // dismiss removes the bubble from the live transcript only (the server-side
   // per-surface cooldown keeps the same offer from immediately re-appearing);
-  // accept ("Do it") sends the implied action as a real turn through the SAME
-  // send() path an edit-resend uses, then clears the bubble.
+  // accept ("Do it") sends the implied action as a real turn through the normal
+  // composer path, then clears the bubble.
   const {
     removeConversationMessage,
     conversationMessages,
@@ -2000,7 +2006,7 @@ export function ContinuousChatOverlay({
             onCopy={handleCopyMessage}
             onLongPressCopy={handleLongPressCopy}
             onSpeak={handleSpeakMessage}
-            onEdit={handleEditResend}
+            onEdit={handleEditMessage}
             onReply={handleReplyMessage}
             onRetry={handleRetry}
             playing={speaking && playingMessageId === m.id}
@@ -2019,7 +2025,7 @@ export function ContinuousChatOverlay({
       handleCopyMessage,
       handleLongPressCopy,
       handleSpeakMessage,
-      handleEditResend,
+      handleEditMessage,
       handleReplyMessage,
       handleRetry,
       speaking,

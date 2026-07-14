@@ -3945,11 +3945,23 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(copyTextToClipboard).toHaveBeenCalledWith("copy this text");
   });
 
-  it("reveals Copy + Edit on a user message and resends the edited text", () => {
+  it("edits a user message in place without creating a duplicate turn", async () => {
     const send = vi.fn();
+    const stopSpeaking = vi.fn();
+    const handleChatEdit = vi.fn().mockResolvedValue(true);
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_target, prop) {
+          if (prop === "handleChatEdit") return handleChatEdit;
+          return noop;
+        },
+      }),
+    );
     openThreadWith({
       messages: [{ id: "u", role: "user", content: "helo wrld", createdAt: 1 }],
       send,
+      stopSpeaking,
     });
     fireEvent.click(bubbleFor("helo wrld"));
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
@@ -3958,13 +3970,22 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(screen.queryByTestId("thread-line-speak")).toBeNull();
 
     fireEvent.click(screen.getByTestId("thread-line-edit"));
+    expect(
+      screen.getByTestId("thread-line-actions").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(screen.getByTestId("thread-line-edit-controls")).toBeTruthy();
+    expect(screen.queryByTestId("thread-line-action-surface")).toBeNull();
     const input = screen.getByTestId(
       "thread-line-edit-input",
     ) as HTMLTextAreaElement;
     expect(input.value).toBe("helo wrld");
     fireEvent.change(input, { target: { value: "hello world" } });
     fireEvent.click(screen.getByTestId("thread-line-edit-save"));
-    expect(send).toHaveBeenCalledWith("hello world");
+    await waitFor(() => {
+      expect(handleChatEdit).toHaveBeenCalledWith("u", "hello world");
+    });
+    expect(stopSpeaking).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("does not offer Edit on an optimistic temp- user turn", () => {
