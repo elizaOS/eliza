@@ -335,8 +335,6 @@ risk,
 transactionRisk:
   transactionRiskAssessment,
 smartMoney,
-investigationReport,
-investigationNarrative,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
