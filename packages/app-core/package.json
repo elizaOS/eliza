@@ -218,6 +218,11 @@
     "react-dom": "^19.0.0",
     "three": "^0.184.0"
   },
+  "peerDependenciesMeta": {
+    "three": {
+      "optional": true
+    }
+  },
   "optionalDependencies": {
     "@elizaos/capacitor-appblocker": "workspace:*",
     "@elizaos/capacitor-browser-surface": "workspace:*",

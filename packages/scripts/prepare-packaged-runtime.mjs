@@ -933,6 +933,9 @@ function dependencyRecord(manifest, section, packageName, manifestKind) {
 
 function validatePreparedDependencyParity(closure, versions) {
   for (const [packageName, descriptor] of closure) {
+    // A stub discards its real manifest, so prepared/source dependency parity
+    // (and closure membership of its dependencies) is intentionally moot.
+    if (descriptor.stub) continue;
     if (
       descriptor.prepared &&
       descriptor.manifest.version !== descriptor.sourceManifest.version

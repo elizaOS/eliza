@@ -86,6 +86,7 @@ jobs:
           --destination-root packages/app-core/packaging/debian/runtime
           --entry @elizaos/agent
           --stub @elizaos/plugin-vision
+          --stub @elizaos/ui
           --stub @elizaos/plugin-wallet
           --stub @elizaos/plugin-whatsapp
 

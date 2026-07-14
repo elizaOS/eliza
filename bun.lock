@@ -401,6 +401,9 @@
         "react-dom": "^19.0.0",
         "three": "^0.184.0",
       },
+      "optionalPeers": [
+        "three",
+      ],
     },
     "packages/app-core/deploy/cloud-agent-template": {
       "name": "eliza-cloud-agent",
