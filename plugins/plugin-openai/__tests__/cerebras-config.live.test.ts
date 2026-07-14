@@ -1,7 +1,14 @@
 /**
  * Live test hitting a real Cerebras endpoint through the plugin to verify
- * provider-mode detection and text generation. Runs only in the post-merge lane
- * with credentials.
+ * provider-mode detection, the Cerebras reasoning_effort wire default, and GLM
+ * thinking-off suppression. Runs only in the post-merge lane with
+ * CEREBRAS_API_KEY; skips with a named reason keyless.
+ *
+ * Uses the harness's dedicated `provider: "cerebras"` rather than the
+ * OPENAI_API_KEY alias: CI runners carry a real OpenAI key, which disables the
+ * alias and silently reroutes requests to api.openai.com — run 29295263144
+ * sent zai-glm-4.7 there and got a 404 model_not_found. The cerebras provider
+ * pins OPENAI_BASE_URL and the key unconditionally.
  */
 import { logger, ModelType } from "@elizaos/core";
 import { expect, it } from "vitest";
@@ -19,45 +26,129 @@ interface UseModelResult {
   providerMetadata?: unknown;
 }
 
+/**
+ * True only for the provider's "model does not exist or you do not have
+ * access" 404 — the one condition allowed to downgrade the GLM leg to a
+ * visible skip. Any other error (auth, network, 5xx, bad request) rethrows.
+ */
+function isModelAccessError(error: unknown, modelId: string): boolean {
+  if (!(error instanceof Error) || error.name !== "AI_APICallError") {
+    return false;
+  }
+  const apiError = error as Error & {
+    statusCode?: number;
+    data?: { error?: { code?: string } };
+  };
+  return (
+    apiError.statusCode === 404 &&
+    apiError.data?.error?.code === "model_not_found" &&
+    error.message.includes(modelId)
+  );
+}
+
+/**
+ * Asserts the model returned actual visible text. A null/undefined `text`
+ * must fail with a truthful type assertion, not a vitest arguments-shape
+ * error (`toContain` on null throws "invalid combination of arguments").
+ */
+function expectRealText(text: string | undefined): string {
+  expect(typeof text).toBe("string");
+  const value = text as string;
+  expect(value.trim().length).toBeGreaterThan(0);
+  return value;
+}
+
 describeLive(
   "plugin-openai Cerebras live",
-  { requiredEnv: ["CEREBRAS_API_KEY"] },
+  { provider: "cerebras", requiredEnv: ["CEREBRAS_API_KEY"] },
   ({ harness }) => {
     it("uses TEXT_LARGE against Cerebras and returns real text + usage", async () => {
       const { runtime } = harness();
-      expect(runtime.getSetting("OPENAI_BASE_URL")).toContain("cerebras.ai");
+      const baseURL = runtime.getSetting("OPENAI_BASE_URL");
+      expect(typeof baseURL).toBe("string");
+      expect(baseURL).toContain("cerebras.ai");
 
       const result = (await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt: "Reply with the single word: ready",
       })) as string | UseModelResult;
 
-      const text = typeof result === "string" ? result : (result.text ?? "");
-      expect(text.length).toBeGreaterThan(0);
+      const text = typeof result === "string" ? result : result.text;
+      expectRealText(text);
       if (typeof result !== "string") {
         expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
         expect(result.usage?.completionTokens ?? 0).toBeGreaterThan(0);
       }
     }, 120_000);
 
-    it("suppresses hidden thinking for the exact GLM model and returns visible text", async () => {
+    it("applies the Cerebras reasoning floor to gpt-oss-120b and returns visible text", async () => {
+      const { runtime } = harness();
+      runtime.setSetting("OPENAI_LARGE_MODEL", "gpt-oss-120b");
+
+      // No explicit OPENAI_REASONING_EFFORT: the plugin's Cerebras-mode
+      // default ("low") must bound hidden reasoning so visible content
+      // survives the capped response — the wire behavior this PR bounds,
+      // proven on a model every Cerebras key can reach.
+      const result = (await runtime.useModel(ModelType.TEXT_LARGE, {
+        prompt: "Reply with the single word: ready",
+        maxTokens: 160,
+      })) as UseModelResult;
+
+      const text = expectRealText(result.text);
+      expect(text.toLowerCase()).toContain("ready");
+      expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(result.usage?.completionTokens ?? 0).toBeGreaterThan(0);
+
+      logger.info("[OpenAICerebrasLive] gpt-oss-120b reasoning-floor receipt", {
+        model: "gpt-oss-120b",
+        request: {
+          maxTokens: 160,
+          resolvedReasoningEffort: "low (Cerebras-mode default)",
+        },
+        response: {
+          text: result.text,
+          finishReason: result.finishReason,
+          usage: result.usage,
+        },
+      });
+    }, 120_000);
+
+    it("suppresses hidden thinking for the exact GLM model and returns visible text", async (ctx) => {
       const { runtime } = harness();
       runtime.setSetting("OPENAI_LARGE_MODEL", "zai-glm-4.7");
 
-      const result = (await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: "Reply with exactly PONG and no punctuation.",
-        messages: [
-          {
-            role: "user",
-            content: "Reply with exactly PONG and no punctuation.",
-          },
-        ],
-        maxTokens: 160,
-        providerOptions: { eliza: { thinking: "off" } },
-      })) as UseModelResult;
+      let result: UseModelResult;
+      try {
+        result = (await runtime.useModel(ModelType.TEXT_LARGE, {
+          prompt: "Reply with exactly PONG and no punctuation.",
+          messages: [
+            {
+              role: "user",
+              content: "Reply with exactly PONG and no punctuation.",
+            },
+          ],
+          maxTokens: 160,
+          providerOptions: { eliza: { thinking: "off" } },
+        })) as UseModelResult;
+      } catch (error) {
+        // error-policy:J4 explicit user-facing degrade — only the exact
+        // model-access 404 downgrades to a VISIBLE skip (never a pass); the
+        // thinking-off mapping stays covered by reasoning-effort.shape.test.ts.
+        if (isModelAccessError(error, "zai-glm-4.7")) {
+          logger.warn(
+            "[OpenAICerebrasLive] CI key lacks zai-glm-4.7 access; skipping the GLM live leg.",
+            { error: String(error) }
+          );
+          ctx.skip(
+            "CI key lacks zai-glm-4.7 access (404 model_not_found); mapping covered by shape tests"
+          );
+        }
+        throw error;
+      }
 
       // A live model may wrap PONG in whitespace/punctuation despite the
       // instruction — assert containment, not exact equality.
-      expect(result.text?.trim().toUpperCase()).toContain("PONG");
+      const text = expectRealText(result.text);
+      expect(text.trim().toUpperCase()).toContain("PONG");
       expect(result.finishReason).toBe("stop");
       expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
       expect(result.usage?.completionTokens ?? 0).toBeGreaterThan(0);
