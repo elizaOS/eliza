@@ -54,7 +54,7 @@ apps:
       - ffmpeg-2204
     environment:
       PATH: $SNAP/ffmpeg-platform/usr/bin:$SNAP/node/bin:$SNAP/usr/bin:$SNAP/bin:$PATH
-      LD_LIBRARY_PATH: $SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/lib/x86_64-linux-gnu
+      LD_LIBRARY_PATH: $SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu/pulseaudio:$SNAP/lib/x86_64-linux-gnu
       NODE_PATH: $SNAP/lib/elizaos-app/node_modules
       HOME: $SNAP_USER_DATA
       ELIZA_STATE_DIR: $SNAP_USER_COMMON/state/eliza
@@ -123,7 +123,7 @@ parts:
         x86_64) LIB_ARCH="x86_64-linux-gnu" ;;
         *) echo "Unsupported runtime architecture: $(uname -m)" >&2; exit 1 ;;
       esac
-      export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/$LIB_ARCH:$SNAP/usr/lib/$LIB_ARCH:$SNAP/lib/$LIB_ARCH"
+      export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/$LIB_ARCH:$SNAP/usr/lib/$LIB_ARCH:$SNAP/usr/lib/$LIB_ARCH/pulseaudio:$SNAP/lib/$LIB_ARCH"
       cd "$SNAP/lib/elizaos-app"
       exec "$SNAP/node/bin/node" \
         "$SNAP/lib/elizaos-app/node_modules/@elizaos/agent/bin.js" "$@"

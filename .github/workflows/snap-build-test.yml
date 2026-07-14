@@ -193,7 +193,7 @@ jobs:
           NATIVE_AUDIT_LOG="$RUNNER_TEMP/elizaos-snap-native-audit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
           sudo snap run --shell elizaos-app <<'SNAP_SHELL' 2>&1 | tee "$NATIVE_AUDIT_LOG"
           set -eu
-          export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/lib/x86_64-linux-gnu"
+          export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu/pulseaudio:$SNAP/lib/x86_64-linux-gnu"
           test "$FFMPEG_BIN" = "$SNAP/ffmpeg-platform/usr/bin/ffmpeg"
           test "$FFPROBE_PATH" = "$SNAP/ffmpeg-platform/usr/bin/ffprobe"
           test "$(command -v ffmpeg)" = "$SNAP/ffmpeg-platform/usr/bin/ffmpeg"
