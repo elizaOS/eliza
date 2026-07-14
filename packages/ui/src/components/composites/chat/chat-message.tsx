@@ -990,7 +990,7 @@ export const ChatMessage = memo(function ChatMessage({
             the turn's side (#10713). */}
         <MessageRowContent
           className={cn(
-            "flex flex-col gap-1",
+            "flex flex-col",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1042,33 +1042,48 @@ export const ChatMessage = memo(function ChatMessage({
             </ChatBubble>
           )}
           {hasActions ? (
-            <MessageRowFooter
+            <motion.div
               data-testid="thread-line-actions"
               aria-hidden={!actionsVisible || isEditing}
               inert={!actionsVisible || isEditing}
-              className={cn(
-                "absolute top-full z-20 mt-1 flex items-center px-0 text-white/70",
-                ACTION_REVEAL_MOTION,
-                isUser ? "right-0 origin-top-right" : "left-0 origin-top-left",
+              initial={false}
+              animate={
                 actionsVisible && !isEditing
-                  ? ACTION_REVEAL_VISIBLE
-                  : ACTION_REVEAL_HIDDEN,
+                  ? { height: "auto", opacity: 1, y: 0, scale: 1 }
+                  : {
+                      height: 0,
+                      opacity: 0,
+                      y: reduceMotion ? 0 : 4,
+                      scale: reduceMotion ? 1 : 0.98,
+                    }
+              }
+              transition={{
+                duration: reduceMotion ? 0.1 : 0.2,
+                ease: GLASS_EASE,
+              }}
+              className={cn(
+                "min-w-0 overflow-hidden",
+                isUser
+                  ? "self-end origin-top-right"
+                  : "self-start origin-top-left",
               )}
             >
-              <ChatMessageActions
-                appearance="glass-row"
-                canEdit={canEdit}
-                canPlay={canPlay}
-                canReply={canReply}
-                copied={copied}
-                labels={labels}
-                onCopy={canRowCopy ? handleCopy : undefined}
-                onEdit={handleStartEditing}
-                onPlay={() => onSpeak?.(message.id, message.text)}
-                onReply={handleReply}
-                playing={playing}
-              />
-            </MessageRowFooter>
+              <MessageRowFooter className="flex items-center px-0 pt-1 text-white/70">
+                <ChatMessageActions
+                  appearance="glass-row"
+                  canEdit={canEdit}
+                  canPlay={canPlay}
+                  canReply={canReply}
+                  copied={copied}
+                  labels={labels}
+                  onCopy={canRowCopy ? handleCopy : undefined}
+                  onEdit={handleStartEditing}
+                  onPlay={() => onSpeak?.(message.id, message.text)}
+                  onReply={handleReply}
+                  playing={playing}
+                />
+              </MessageRowFooter>
+            </motion.div>
           ) : null}
           {/* Retry a recoverable failure by re-sending the preceding user turn.
               Always visible on the failed turn (not gated behind the reveal
@@ -1083,7 +1098,7 @@ export const ChatMessage = memo(function ChatMessage({
                 e.stopPropagation();
                 onRetry?.(message.id);
               }}
-              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+              className="mt-1 h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
               Retry
