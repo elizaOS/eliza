@@ -373,6 +373,135 @@ describe("notification-store", () => {
     });
   });
 
+  it("reconciles a ready empty inbox after the WebSocket reconnects", async () => {
+    const restored = makeNotification({
+      id: "restored-after-reconnect",
+      title: "Take the tour",
+    });
+    listNotifications
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 })
+      .mockResolvedValueOnce({ notifications: [restored], unreadCount: 1 });
+
+    initNotifications();
+    await flushDelivery();
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [],
+      hydrated: true,
+      hydrationStatus: "ready",
+    });
+
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+
+    expect(listNotifications).toHaveBeenCalledTimes(2);
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [restored],
+      unreadCount: 1,
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationError: null,
+    });
+  });
+
+  it("removes locally stale rows when the reconnect snapshot no longer contains them", async () => {
+    const stale = makeNotification({ id: "removed-on-server" });
+    listNotifications
+      .mockResolvedValueOnce({ notifications: [stale], unreadCount: 1 })
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 });
+
+    initNotifications();
+    await flushDelivery();
+    expect(__getStateForTests().notifications).toEqual([stale]);
+
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [],
+      unreadCount: 0,
+      hydrated: true,
+      hydrationStatus: "ready",
+    });
+  });
+
+  it("preserves a live arrival while a reconnect snapshot is in flight", async () => {
+    const persisted = makeNotification({
+      id: "persisted-during-reconnect",
+      createdAt: 10,
+    });
+    const live = makeNotification({
+      id: "live-during-reconnect",
+      createdAt: 20,
+    });
+    let resolveReconnect!: (value: {
+      notifications: AgentNotification[];
+      unreadCount: number;
+    }) => void;
+    const reconnectResponse = new Promise<{
+      notifications: AgentNotification[];
+      unreadCount: number;
+    }>((resolve) => {
+      resolveReconnect = resolve;
+    });
+    listNotifications
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 })
+      .mockReturnValueOnce(reconnectResponse);
+
+    initNotifications();
+    await flushDelivery();
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+
+    const notificationHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "agent_event",
+    )?.[1] as (data: Record<string, unknown>) => void;
+    notificationHandler({
+      stream: "notification",
+      payload: { notification: live, unreadCount: 1 },
+    });
+    resolveReconnect({ notifications: [persisted], unreadCount: 2 });
+    await flushDelivery();
+
+    expect(
+      __getStateForTests().notifications.map((notification) => notification.id),
+    ).toEqual([live.id, persisted.id]);
+    expect(__getStateForTests().unreadCount).toBe(1);
+  });
+
+  it("does not start a parallel hydrate while a retry timer is armed", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications
+      .mockRejectedValueOnce(new Error("temporarily unavailable"))
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 });
+
+    initNotifications();
+    await flushDelivery();
+    expect(__getStateForTests().hydrationStatus).toBe("retrying");
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+
+    await vi.runOnlyPendingTimersAsync();
+    await flushDelivery();
+    expect(listNotifications).toHaveBeenCalledTimes(2);
+    expect(__getStateForTests().hydrationStatus).toBe("ready");
+  });
+
   it("WS handler ignores non-notification streams", async () => {
     initNotifications();
     const handler = onWsEvent.mock.calls[0][1] as (
