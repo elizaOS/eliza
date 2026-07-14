@@ -226,7 +226,6 @@ const investigationReplay = analyzeInvestigationReplay(
   risk,
   whale,
   trust,
-  caseSummary,
 );
 
 const evidenceRecords =
