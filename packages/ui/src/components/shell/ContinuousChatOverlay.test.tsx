@@ -2014,6 +2014,23 @@ describe("ContinuousChatOverlay", () => {
     expect(input.className).not.toContain("basis-full");
   });
 
+  it("keeps long-draft scrolling inside the composer without stepping the sheet", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByTestId("chat-composer-textarea");
+
+    fireEvent.focus(input);
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(input.hasAttribute("data-chat-sheet-scroll-region")).toBe(true);
+    expect(input.className).toContain("chat-composer-scrollbar");
+    expect(input.className).toContain("overflow-y-auto");
+    expect(input.className).toContain("overscroll-contain");
+    expect(input.className).not.toContain("scrollbar-hide");
+
+    fireEvent.wheel(input, { deltaY: 120 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+  });
+
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
     render(
       <ContinuousChatOverlay
