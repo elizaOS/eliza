@@ -62,7 +62,11 @@ function shouldCopyAsset(src) {
   return (
     !segments.some(
       (segment) =>
-        EXCLUDED_ASSET_DIRS.has(segment) || segment.endsWith(".egg-info"),
+        EXCLUDED_ASSET_DIRS.has(segment) ||
+        segment.endsWith(".egg-info") ||
+        // Transient prepare-packaged-runtime state (staging dirs + lock) that
+        // may exist beside packaging/ while another build is running.
+        segment.startsWith(".runtime.prepare"),
     ) &&
     !leaf.startsWith(".coverage") &&
     !EXCLUDED_ASSET_EXTENSIONS.has(path.extname(leaf)) &&
