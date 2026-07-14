@@ -31,9 +31,14 @@ jobs:
           - profile: direct
             manifest: ai.elizaos.App.yml
             health_port: 43139
+            local_service: true
+          # The hardened store variant refuses to run a local agent by design
+          # (ELIZA_BUILD_VARIANT=store requires Cloud pairing), so its smoke
+          # proves the CLI contract and the designed local-runtime refusal.
           - profile: store
             manifest: ai.elizaos.App.store.yml
             health_port: 43140
+            local_service: false
     env:
       FLATPAK_PROFILE: ${{ matrix.profile }}
       FLATPAK_MANIFEST: ${{ matrix.manifest }}
@@ -263,12 +268,25 @@ jobs:
           trap - 0
           FLATPAK_MEDIA
           EXPECTED_VERSION="$(node -p "require('../../../agent/package.json').version")"
-          node ../../../scripts/verify-packaged-cli.mjs \
-            --expected "$EXPECTED_VERSION" \
-            --health-url http://127.0.0.1:${{ matrix.health_port }}/api/health \
-            --isolation-root "$FLATPAK_ISOLATION_ROOT/tmp/verifier" \
-            --service-arg serve \
-            -- flatpak --system run ai.elizaos.App
+          if [ "${{ matrix.local_service }}" = "true" ]; then
+            node ../../../scripts/verify-packaged-cli.mjs \
+              --expected "$EXPECTED_VERSION" \
+              --health-url http://127.0.0.1:${{ matrix.health_port }}/api/health \
+              --isolation-root "$FLATPAK_ISOLATION_ROOT/tmp/verifier" \
+              --service-arg serve \
+              -- flatpak --system run ai.elizaos.App
+          else
+            node ../../../scripts/verify-packaged-cli.mjs \
+              --expected "$EXPECTED_VERSION" \
+              --isolation-root "$FLATPAK_ISOLATION_ROOT/tmp/verifier" \
+              -- flatpak --system run ai.elizaos.App
+            # The hardened build must refuse a local agent, not half-start one.
+            if REFUSAL_OUTPUT="$(flatpak --system run ai.elizaos.App serve 2>&1)"; then
+              echo "::error::Store build unexpectedly started a local agent"
+              exit 1
+            fi
+            grep -Fq 'Store-variant builds cannot run a local agent' <<< "$REFUSAL_OUTPUT"
+          fi
           flatpak --system run --command=/bin/sh ai.elizaos.App -c \
             'test -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke" && rm -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke"'
 
