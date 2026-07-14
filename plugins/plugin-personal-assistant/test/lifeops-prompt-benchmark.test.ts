@@ -84,6 +84,10 @@ describe("LifeOps prompt benchmark catalog", () => {
           testCase.prompt.includes("registration by the 20th"),
       ),
     ).toBe(true);
+    expect(
+      cases.find((testCase) => testCase.optimizationTask === "schedule_plan")
+        ?.prompt,
+    ).toBe("List my open scheduling negotiations.");
   });
 });
 

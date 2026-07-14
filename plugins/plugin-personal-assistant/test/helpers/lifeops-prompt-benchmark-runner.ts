@@ -367,6 +367,27 @@ function actionResultError(value: unknown): string | undefined {
   return undefined;
 }
 
+function actionResultRequiresConfirmation(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+  if (value.requiresConfirmation === true) {
+    return true;
+  }
+  return [value.data, value.values].some((nested) =>
+    actionResultRequiresConfirmation(nested),
+  );
+}
+
+function isDesignedConfirmationError(error: string): boolean {
+  const normalized = error.trim().toUpperCase();
+  return (
+    normalized.startsWith("MISSING_") ||
+    normalized.startsWith("AMBIGUOUS_") ||
+    normalized.endsWith("_NOT_RESOLVED")
+  );
+}
+
 function collectActionFailures(
   actions: Awaited<ReturnType<ConversationHarness["send"]>>["actions"],
 ): PromptBenchmarkActionFailure[] {
@@ -388,6 +409,52 @@ function collectActionFailures(
         ...(error ? { error } : {}),
       };
     });
+}
+
+/**
+ * Native trajectories are the durable source of truth for tool results. A
+ * structured error must still fail the case when an action also requests
+ * confirmation; only missing, ambiguous, or unresolved user input is a
+ * designed terminal clarification.
+ */
+export function collectNativeTrajectoryActionFailures(
+  trajectory: Pick<RecordedTrajectory, "stages"> | null,
+): PromptBenchmarkActionFailure[] {
+  if (!trajectory) {
+    return [];
+  }
+  return trajectory.stages.flatMap((stage) => {
+    const tool = stage.kind === "tool" ? stage.tool : undefined;
+    if (!tool || tool.success) {
+      return [];
+    }
+    const error =
+      actionResultError(tool.result) ?? tool.errorText ?? tool.error;
+    if (
+      actionResultRequiresConfirmation(tool.result) &&
+      (!error || isDesignedConfirmationError(error))
+    ) {
+      return [];
+    }
+    return [
+      {
+        actionName: tool.name,
+        actionStatus: "failed",
+        ...(error ? { error } : {}),
+      },
+    ];
+  });
+}
+
+function mergeActionFailures(
+  ...failureGroups: readonly (readonly PromptBenchmarkActionFailure[])[]
+): PromptBenchmarkActionFailure[] {
+  const failures = new Map<string, PromptBenchmarkActionFailure>();
+  for (const failure of failureGroups.flat()) {
+    const key = `${failure.actionName}\u0000${failure.actionStatus}\u0000${failure.error ?? ""}`;
+    failures.set(key, failure);
+  }
+  return [...failures.values()];
 }
 
 function collectStructuredFailureKinds(
@@ -854,7 +921,10 @@ async function runSinglePromptBenchmarkCase(args: {
       scenarioId: args.testCase.caseId,
       startedAtMs: turn.startedAt,
     });
-    const actionFailures = collectActionFailures(turn.actions);
+    const actionFailures = mergeActionFailures(
+      collectActionFailures(turn.actions),
+      collectNativeTrajectoryActionFailures(nativeTrajectory),
+    );
     const runtimeErrors = reportedErrorsSince(args.runtime, caseStartedAt);
     const terminalOutcome = resolvePromptBenchmarkTerminalOutcome({
       actionFailures,

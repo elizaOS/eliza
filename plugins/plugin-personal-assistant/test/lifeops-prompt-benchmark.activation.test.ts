@@ -21,6 +21,7 @@ import {
 import {
   buildAxOptimizationRows,
   buildPromptBenchmarkReport,
+  collectNativeTrajectoryActionFailures,
   formatPromptBenchmarkReportMarkdown,
   HOST_PROMPT_BENCHMARK_CAPABILITIES,
   MOBILE_PROMPT_BENCHMARK_CAPABILITIES,
@@ -244,6 +245,87 @@ describe("LifeOps prompt-benchmark harness — activation", () => {
     expect(
       promptBenchmarkValidationErrors({ minimumAccuracy: 0, report })[0],
     ).toContain("action_failed: BLOCK_STATUS: Repeated tool failure limit");
+  });
+
+  it("fails a native tool service error even when confirmation is requested", () => {
+    const actionFailures = collectNativeTrajectoryActionFailures({
+      stages: [
+        {
+          stageId: "stage-tool-personal-assistant",
+          kind: "tool",
+          startedAt: 1,
+          endedAt: 2,
+          latencyMs: 1,
+          tool: {
+            name: "PERSONAL_ASSISTANT",
+            args: { action: "scheduling" },
+            result: {
+              success: false,
+              data: {
+                error: "SERVICE_ERROR",
+                requiresConfirmation: true,
+              },
+            },
+            success: false,
+            durationMs: 1,
+          },
+        },
+      ],
+    });
+    const terminalOutcome = resolvePromptBenchmarkTerminalOutcome({
+      actionFailures,
+      runtimeErrors: [],
+      requireNativeTrajectory: false,
+    });
+
+    expect(actionFailures).toEqual([
+      {
+        actionName: "PERSONAL_ASSISTANT",
+        actionStatus: "failed",
+        error: "SERVICE_ERROR",
+      },
+    ]);
+    expect(terminalOutcome).toMatchObject({
+      status: "failed",
+      failureKind: "action_failed",
+    });
+  });
+
+  it("keeps designed native clarification as a completed interaction", () => {
+    const actionFailures = collectNativeTrajectoryActionFailures({
+      stages: [
+        {
+          stageId: "stage-tool-owner-routines-create",
+          kind: "tool",
+          startedAt: 1,
+          endedAt: 2,
+          latencyMs: 1,
+          tool: {
+            name: "OWNER_ROUTINES_CREATE",
+            args: { title: "Brush teeth" },
+            result: {
+              success: false,
+              text: "Confirm and I'll save it.",
+              data: {
+                error: "MISSING_DEFINITION_FIELD",
+                requiresConfirmation: true,
+              },
+            },
+            success: false,
+            durationMs: 1,
+          },
+        },
+      ],
+    });
+
+    expect(actionFailures).toEqual([]);
+    expect(
+      resolvePromptBenchmarkTerminalOutcome({
+        actionFailures,
+        runtimeErrors: [],
+        requireNativeTrajectory: false,
+      }),
+    ).toEqual({ status: "completed" });
   });
 
   it("fails validation when a trajectory remains active", () => {
