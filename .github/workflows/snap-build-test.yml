@@ -182,6 +182,7 @@ jobs:
       - name: Install, explicitly connect, and test snap
         run: |
           set -euo pipefail
+          trap 'echo "::error::installed smoke failed at line $LINENO: $BASH_COMMAND"' ERR
           sudo snap install ffmpeg-2204
           sudo snap install ${{ steps.snapcraft.outputs.snap }} --dangerous
           sudo snap connect elizaos-app:ffmpeg-2204 ffmpeg-2204:ffmpeg-2204

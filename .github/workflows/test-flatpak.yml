@@ -182,6 +182,7 @@ jobs:
         working-directory: packages/app-core/packaging/flatpak
         run: |
           set -euo pipefail
+          trap 'echo "::error::installed smoke failed at line $LINENO: $BASH_COMMAND"' ERR
           mapfile -t APP_REFS < <(
             ostree --repo="$FLATPAK_REPO" refs |
               grep '^app/ai\.elizaos\.App/'

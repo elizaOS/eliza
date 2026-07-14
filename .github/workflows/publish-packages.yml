@@ -844,6 +844,7 @@ jobs:
           EXPECTED_VERSION: ${{ needs.prepare.outputs.npm_version }}
         run: |
           set -euo pipefail
+          trap 'echo "::error::installed smoke failed at line $LINENO: $BASH_COMMAND"' ERR
           mapfile -t APP_REFS < <(
             ostree --repo=repo refs |
               grep '^app/ai\.elizaos\.App/'
