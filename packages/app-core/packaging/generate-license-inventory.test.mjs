@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -445,6 +446,8 @@ test("verifies the exact runtime closure and retains local license text", () => 
     );
     rmSync(join(workspaceRoot, "LICENSE-link"));
 
+    // A canonical SPDX declaration without bundled text falls back to the
+    // repository's canonical license texts instead of failing.
     const manifestOnlyRoot = join(runtimeRoot, "node_modules/manifest-only");
     mkdirSync(manifestOnlyRoot);
     writeJson(join(manifestOnlyRoot, "package.json"), {
@@ -453,9 +456,28 @@ test("verifies the exact runtime closure and retains local license text", () => 
       license: "MIT",
     });
     writeDependencyInventory(runtimeRoot, [...packageRoots, manifestOnlyRoot]);
+    const canonicalInventory = createInventory(runtimeRoot, repositoryRoot);
+    const manifestOnlyEntry = canonicalInventory.packages.find(
+      (entry) => entry.name === "manifest-only",
+    );
+    assert.equal(manifestOnlyEntry.licenseEvidence, "spdx-canonical-text");
+    assert.deepEqual(
+      manifestOnlyEntry.sharedLicenseFiles.map((file) => file.path),
+      ["licenses/spdx/MIT.txt"],
+    );
+    assert.ok(existsSync(join(runtimeRoot, "licenses/spdx/MIT.txt")));
+
+    // Declarations outside the canonical table still require reviewed
+    // evidence, and every gap is reported in one pass.
+    writeJson(join(manifestOnlyRoot, "package.json"), {
+      name: "manifest-only",
+      version: "1.0.0",
+      license: "BlueOak-1.0.0",
+    });
+    writeDependencyInventory(runtimeRoot, [...packageRoots, manifestOnlyRoot]);
     assert.throws(
       () => createInventory(runtimeRoot, repositoryRoot),
-      /Third-party dependency has no retained license terms: manifest-only@1\.0\.0/u,
+      /Third-party dependencies have no retained license terms: manifest-only@1\.0\.0 \(declaration: BlueOak-1\.0\.0\)/u,
     );
     rmSync(manifestOnlyRoot, { recursive: true });
 

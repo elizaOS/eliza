@@ -1,0 +1,4 @@
+jsonify@0.0.1 declares "Public Domain" in package.json and its README:
+
+
+The author dedicates the work to the public domain; no license terms apply.

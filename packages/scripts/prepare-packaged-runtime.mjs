@@ -106,6 +106,9 @@ const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/iu;
 const PROHIBITED_RUNTIME_DEPENDENCY_NAMES = new Set([
   "libsignal",
   "sharp",
+  // RSALv2 (source-available, non-OSS) cannot ship in a redistributable
+  // system package; the cloud backend resolves it only in cloud deployments.
+  "wadis",
   "whatsapp-rust-bridge",
 ]);
 const PROHIBITED_RUNTIME_DEPENDENCY_PREFIXES = [

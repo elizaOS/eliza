@@ -26,6 +26,59 @@ const RUNTIME_DEPENDENCY_INVENTORY_SCHEMA_VERSION = 1;
 const LICENSE_FILE_PATTERN = /^(?:license|licence|copying|notice)(?:$|[._-])/iu;
 const PROJECT_PACKAGE_PREFIX = "@elizaos/";
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/iu;
+// Canonical SPDX texts for packages that declare a standard license but ship
+// no license file in their npm tarball. Retaining the canonical text (the
+// distro "common-licenses" practice) keeps the inventory fail-closed without
+// a per-package review for every well-known declaration; anything outside
+// this table still requires reviewed evidence.
+const CANONICAL_SPDX_LICENSE_TEXTS = new Map([
+  ["0BSD", "e3f18c71e10d673590eb9856c1d79dd3b4b0d65404efb5e8584dbede7edd608b"],
+  [
+    "Apache-2.0",
+    "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff",
+  ],
+  [
+    "BSD-2-Clause",
+    "f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df",
+  ],
+  [
+    "BSD-3-Clause",
+    "5a93d5831e1297ab10fe643e1a631e83be392896da14ee2951285a79012df69d",
+  ],
+  [
+    "CC0-1.0",
+    "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+  ],
+  ["ISC", "f2ec607f67bb0dd3053b49835b02110d5cd0f8eb6da3aac4dc0b142a6b299be9"],
+  ["MIT", "b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0"],
+  [
+    "Unlicense",
+    "0bdebfeda07d45dada625ae1317c6f833186e798b171d0db640bcf32e92a8240",
+  ],
+]);
+const CANONICAL_SPDX_ALIASES = new Map([["MIT/X11", "MIT"]]);
+
+/**
+ * Maps a declared license expression onto canonical SPDX text ids, or null
+ * when any component falls outside the reviewed canonical table (including
+ * WITH exceptions, whose additional terms canonical texts cannot represent).
+ */
+export function canonicalSpdxTextIds(expression) {
+  const tokens = expression.match(/\(|\)|\bAND\b|\bOR\b|\bWITH\b|[^\s()]+/giu);
+  if (!tokens) return null;
+  const ids = new Set();
+  for (const token of tokens) {
+    if (token === "(" || token === ")") continue;
+    const upper = token.toUpperCase();
+    if (upper === "AND" || upper === "OR") continue;
+    if (upper === "WITH") return null;
+    const id = CANONICAL_SPDX_ALIASES.get(token) ?? token;
+    if (!CANONICAL_SPDX_LICENSE_TEXTS.has(id)) return null;
+    ids.add(id);
+  }
+  return ids.size > 0 ? [...ids].sort() : null;
+}
+
 const REVIEWED_LICENSE_OVERRIDES = new Map([
   [
     "@bufbuild/protobuf@2.12.1",
@@ -39,6 +92,32 @@ const REVIEWED_LICENSE_OVERRIDES = new Map([
         "packages/app-core/packaging/licenses/bufbuild-protobuf-2.12.1-Apache-2.0-AND-BSD-3-Clause.txt",
       runtimePath:
         "licenses/bufbuild-protobuf-2.12.1-Apache-2.0-AND-BSD-3-Clause.txt",
+    },
+  ],
+  [
+    "format@0.2.2",
+    {
+      expression: "MIT",
+      evidenceSource:
+        "https://github.com/samsonjs/format/blob/v0.2.2/Readme.md (License section; the package.json carries no license field)",
+      expectedSha256:
+        "be35b934d896235f42a2cf7de9403e086e1ddb4617ae00603dbc9c5c4265e096",
+      repositoryPath:
+        "packages/app-core/packaging/licenses/format-0.2.2-MIT.txt",
+      runtimePath: "licenses/format-0.2.2-MIT.txt",
+    },
+  ],
+  [
+    "jsonify@0.0.1",
+    {
+      expression: "Public Domain",
+      evidenceSource:
+        "https://github.com/ljharb/jsonify/blob/v0.0.1/README.md (public-domain dedication)",
+      expectedSha256:
+        "7fff3b054108cb4aac31dda02bf8c1d1fc8afeb6588e6f46a11611c7fa1d5517",
+      repositoryPath:
+        "packages/app-core/packaging/licenses/jsonify-0.0.1-Public-Domain.txt",
+      runtimePath: "licenses/jsonify-0.0.1-Public-Domain.txt",
     },
   ],
   [
@@ -509,6 +588,30 @@ function retainLicenseText(licenseTexts, bytes) {
   return digest;
 }
 
+function materializeCanonicalSpdxText(runtimeRoot, repositoryRoot, id) {
+  const expectedSha256 = CANONICAL_SPDX_LICENSE_TEXTS.get(id);
+  if (!expectedSha256) {
+    throw new Error(`Unknown canonical SPDX license id: ${id}`);
+  }
+  const sourcePath = join(
+    repositoryRoot,
+    "packages/app-core/packaging/licenses/spdx",
+    `${id}.txt`,
+  );
+  assertRegularFile(sourcePath, "canonical SPDX license text");
+  const bytes = readFileSync(sourcePath);
+  const digest = sha256(bytes);
+  if (digest !== expectedSha256) {
+    throw new Error(
+      `Canonical SPDX license text digest differs for ${id}: expected ${expectedSha256}, received ${digest}`,
+    );
+  }
+  const targetPath = join(runtimeRoot, "licenses", "spdx", `${id}.txt`);
+  mkdirSync(dirname(targetPath), { recursive: true });
+  writeFileSync(targetPath, bytes);
+  return bytes;
+}
+
 function materializeReviewedLicenseEvidence(runtimeRoot, repositoryRoot) {
   for (const override of REVIEWED_LICENSE_OVERRIDES.values()) {
     const repositoryParts = override.repositoryParts ?? [
@@ -653,6 +756,7 @@ export function createInventory(runtimeRoot, repositoryRoot) {
 
   const licenseTexts = new Map();
   const packages = [];
+  const missingLicenseIdentities = [];
   const entries = dependencyInventory.packages;
   if (entries.length === 0) {
     throw new Error("Prepared runtime dependency closure is empty");
@@ -756,7 +860,9 @@ export function createInventory(runtimeRoot, repositoryRoot) {
       });
     }
     const packageJsonLicense = manifestLicense(manifest);
-    const isProjectPackage = manifest.name.startsWith(PROJECT_PACKAGE_PREFIX);
+    const isProjectPackage =
+      manifest.name.startsWith(PROJECT_PACKAGE_PREFIX) ||
+      manifest.name === "elizaos";
     const projectLicense = isProjectPackage ? "MIT" : undefined;
     const licenseDeclared =
       packageJsonLicense ??
@@ -764,14 +870,30 @@ export function createInventory(runtimeRoot, repositoryRoot) {
       override?.expression ??
       (files.length > 0 ? "NOASSERTION" : undefined);
     if (!licenseDeclared) {
-      throw new Error(
-        `Dependency has neither a license expression nor bundled evidence: ${packageIdentity}`,
+      missingLicenseIdentities.push(
+        `${packageIdentity} (no license expression and no bundled evidence)`,
       );
+      continue;
     }
+    let canonicalTextEvidence = null;
     if (!isProjectPackage && files.length === 0 && !override) {
-      throw new Error(
-        `Third-party dependency has no retained license terms: ${packageIdentity} (declaration: ${licenseDeclared})`,
-      );
+      const canonicalIds = canonicalSpdxTextIds(licenseDeclared);
+      if (!canonicalIds) {
+        // Collect every gap before failing so one build reports the complete
+        // review backlog instead of one package per run.
+        missingLicenseIdentities.push(
+          `${packageIdentity} (declaration: ${licenseDeclared})`,
+        );
+        continue;
+      }
+      canonicalTextEvidence = canonicalIds.map((id) => ({
+        path: `licenses/spdx/${id}.txt`,
+        sha256: retainLicenseText(
+          licenseTexts,
+          materializeCanonicalSpdxText(runtimeRoot, repositoryRoot, id),
+        ),
+      }));
+      sharedLicenseFiles.push(...canonicalTextEvidence);
     }
     const licensePolicy = classifyLicensePolicy(licenseDeclared);
     if (licensePolicy === "prohibited") {
@@ -783,7 +905,9 @@ export function createInventory(runtimeRoot, repositoryRoot) {
       ? "repository-project-license"
       : override
         ? `runtime-shared-license:${override.runtimePath}`
-        : "bundled-license-files";
+        : canonicalTextEvidence
+          ? "spdx-canonical-text"
+          : "bundled-license-files";
 
     packages.push({
       path: dependencyRecord.path,
@@ -802,6 +926,11 @@ export function createInventory(runtimeRoot, repositoryRoot) {
   }
 
   const projectLicenseBytes = readFileSync(projectLicensePath);
+  if (missingLicenseIdentities.length > 0) {
+    throw new Error(
+      `Third-party dependencies have no retained license terms: ${missingLicenseIdentities.sort().join(", ")}`,
+    );
+  }
   const licensePolicyCounts = Object.fromEntries(
     Object.keys(LICENSE_POLICY_RANK).map((policy) => [
       policy,
