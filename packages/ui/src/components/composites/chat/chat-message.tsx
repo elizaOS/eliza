@@ -753,7 +753,7 @@ export const ChatMessage = memo(function ChatMessage({
         glass ? "thread-line-edit-controls" : "chat-message-edit-controls"
       }
       className={cn(
-        "gap-0 px-1.5 py-1",
+        "gap-0 px-1.5 py-0.5",
         !glass && "absolute right-0 top-full z-30 mt-1",
       )}
     >
