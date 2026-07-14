@@ -1,0 +1,328 @@
+// @vitest-environment jsdom
+
+/**
+ * useVoiceChat end-to-end TTS playback across every configured provider. Drives
+ * the real hook + real processQueue + real PlaybackFramePump against a fake Web
+ * Audio graph whose buffer source auto-fires `onended`, so each provider runs
+ * its full synth → decode → play → teardown path (not just the request). Covers
+ * eliza-cloud, local-inference, ElevenLabs (server-proxy), and browser
+ * SpeechSynthesis, plus streamed assistant speech and stop/cancel. Complements
+ * the routing unit tests (`useVoiceChat.forced-cloud-tts`, `shared-runtime-voice`).
+ */
+
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const fetchWithCsrf = vi.fn();
+vi.mock("../api/csrf-client", () => ({
+  fetchWithCsrf: (...args: unknown[]) => fetchWithCsrf(...args),
+}));
+
+import { globalAudioCache } from "../voice/voice-chat-types";
+import { useVoiceChat } from "./useVoiceChat";
+
+interface FakeSource {
+  buffer: unknown;
+  connect: ReturnType<typeof vi.fn>;
+  disconnect: ReturnType<typeof vi.fn>;
+  start: ReturnType<typeof vi.fn>;
+  onended: (() => void) | null;
+}
+
+const createdSources: FakeSource[] = [];
+
+class FakeAudioWorkletNode {
+  port: { onmessage: ((event: MessageEvent) => void) | null } = {
+    onmessage: null,
+  };
+  connect = vi.fn();
+  disconnect = vi.fn();
+}
+
+class FakeAudioContext {
+  state = "running";
+  destination = {};
+  audioWorklet = { addModule: vi.fn(async () => {}) };
+  resume = vi.fn(async () => {});
+  createAnalyser = vi.fn(() => ({
+    fftSize: 2048,
+    smoothingTimeConstant: 0.8,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    getFloatTimeDomainData: vi.fn((data: Float32Array) => data.fill(0)),
+  }));
+  createGain = vi.fn(() => ({
+    gain: { value: 1 },
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+  }));
+  createBufferSource = vi.fn((): FakeSource => {
+    const source: FakeSource = {
+      buffer: null,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      // Auto-finish shortly after start so the playback promise resolves and
+      // the full teardown path (disconnect + timer clear) runs.
+      start: vi.fn(() => {
+        setTimeout(() => source.onended?.(), 0);
+      }),
+      onended: null,
+    };
+    createdSources.push(source);
+    return source;
+  });
+  decodeAudioData = vi.fn(async () => ({
+    duration: 0.04,
+    sampleRate: 16_000,
+    length: 640,
+    numberOfChannels: 1,
+    getChannelData: () => new Float32Array(640).fill(0.25),
+  }));
+  close = vi.fn(async () => {});
+}
+
+class FakeUtterance extends EventTarget {
+  text: string;
+  lang = "";
+  rate = 1;
+  pitch = 1;
+  voice: SpeechSynthesisVoice | null = null;
+  onstart: (() => void) | null = null;
+  onend: (() => void) | null = null;
+  onerror: ((event: SpeechSynthesisErrorEvent) => void) | null = null;
+  constructor(text: string) {
+    super();
+    this.text = text;
+  }
+}
+
+const speechSynthesisMock = {
+  speaking: false,
+  pending: false,
+  spoken: [] as FakeUtterance[],
+  cancel: vi.fn(),
+  getVoices: vi.fn(() => []),
+  speak: vi.fn((u: FakeUtterance) => {
+    speechSynthesisMock.spoken.push(u);
+    u.onstart?.();
+    u.onend?.();
+  }),
+};
+
+const fetchedUrls: string[] = [];
+
+function installMocks() {
+  fetchWithCsrf.mockReset();
+  fetchedUrls.length = 0;
+  createdSources.length = 0;
+  speechSynthesisMock.spoken = [];
+  speechSynthesisMock.speak.mockClear();
+  speechSynthesisMock.cancel.mockClear();
+  globalAudioCache.clear();
+  fetchWithCsrf.mockImplementation(async (input: unknown) => {
+    const url = typeof input === "string" ? input : String(input);
+    fetchedUrls.push(url);
+    if (url.includes("/api/voice/playback-frames")) {
+      return new Response(null, { status: 204 });
+    }
+    // Every TTS endpoint (cloud proxy, direct worker, local-inference,
+    // elevenlabs proxy) returns a decodable audio payload.
+    return new Response(new Uint8Array([1, 2, 3, 4]).buffer, {
+      status: 200,
+      headers: { "content-type": "audio/wav" },
+    });
+  });
+  Object.defineProperty(globalThis, "AudioContext", {
+    configurable: true,
+    value: FakeAudioContext,
+  });
+  Object.defineProperty(window, "AudioContext", {
+    configurable: true,
+    value: FakeAudioContext,
+  });
+  Object.defineProperty(globalThis, "AudioWorkletNode", {
+    configurable: true,
+    value: FakeAudioWorkletNode,
+  });
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    value: speechSynthesisMock,
+  });
+  Object.defineProperty(window, "SpeechSynthesisUtterance", {
+    configurable: true,
+    value: FakeUtterance,
+  });
+  Object.defineProperty(globalThis, "SpeechSynthesisUtterance", {
+    configurable: true,
+    value: FakeUtterance,
+  });
+  if (typeof URL.createObjectURL !== "function") {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:playback-worklet"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+  }
+  window.requestAnimationFrame = vi.fn((cb: FrameRequestCallback) =>
+    window.setTimeout(() => cb(performance.now()), 16),
+  ) as typeof window.requestAnimationFrame;
+  window.cancelAnimationFrame = vi.fn((id: number) => clearTimeout(id));
+}
+
+type VoiceConfigArg = Parameters<typeof useVoiceChat>[0]["voiceConfig"];
+
+function renderVoiceChat(voiceConfig: VoiceConfigArg) {
+  return renderHook(() =>
+    useVoiceChat({ onTranscript: vi.fn(), voiceConfig, cloudConnected: true }),
+  );
+}
+
+describe("useVoiceChat TTS playback across providers", () => {
+  beforeEach(() => {
+    installMocks();
+    localStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it("plays an Eliza Cloud reply end to end (fetch → decode → play → finish)", async () => {
+    const { result } = renderVoiceChat({ provider: "eliza-cloud" });
+
+    act(() => {
+      result.current.speak("cloud reply one");
+    });
+
+    await waitFor(() => {
+      expect(createdSources.length).toBeGreaterThan(0);
+      expect(createdSources[0]?.start).toHaveBeenCalledWith(0);
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+    expect(result.current.ttsError ?? null).toBeNull();
+    expect(
+      fetchedUrls.some(
+        (url) => url.includes("/tts/") || url.includes("/voice/tts"),
+      ),
+    ).toBe(true);
+    // Cloud Kokoro is not the browser engine — no SpeechSynthesis swap.
+    expect(speechSynthesisMock.speak).not.toHaveBeenCalled();
+  });
+
+  it("plays a local-inference reply end to end", async () => {
+    const { result } = renderVoiceChat({ provider: "local-inference" });
+
+    act(() => {
+      result.current.speak("local inference reply");
+    });
+
+    await waitFor(() => {
+      expect(
+        fetchedUrls.some((url) => url.includes("/api/tts/local-inference")),
+      ).toBe(true);
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+    expect(result.current.ttsError ?? null).toBeNull();
+    expect(createdSources[0]?.start).toHaveBeenCalledWith(0);
+  });
+
+  it("plays an ElevenLabs reply via the server proxy (no browser key)", async () => {
+    const { result } = renderVoiceChat({
+      provider: "elevenlabs",
+      elevenlabs: { voiceId: "voice-x", modelId: "model-x" },
+    });
+
+    act(() => {
+      result.current.speak("elevenlabs reply");
+    });
+
+    await waitFor(() => {
+      expect(fetchedUrls.some((url) => url.includes("/api/tts/cloud"))).toBe(
+        true,
+      );
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+    expect(result.current.ttsError ?? null).toBeNull();
+    expect(createdSources[0]?.start).toHaveBeenCalledWith(0);
+  });
+
+  it("speaks via the browser when the browser is the configured engine (edge)", async () => {
+    const { result } = renderVoiceChat({ provider: "edge" });
+
+    act(() => {
+      result.current.speak("browser reply");
+    });
+
+    await waitFor(() => {
+      expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+    expect(result.current.ttsError ?? null).toBeNull();
+    // Configured browser voice: no server TTS fetch.
+    expect(fetchedUrls.some((url) => url.includes("/api/tts/"))).toBe(false);
+  });
+
+  it("streams assistant speech: an early clip flushes, then the final promotes", async () => {
+    const { result } = renderVoiceChat({ provider: "eliza-cloud" });
+
+    // First streamed chunk over the first-flush threshold queues a clip after
+    // the debounce; the final promotes the remainder.
+    act(() => {
+      result.current.queueAssistantSpeech(
+        "msg-stream-1",
+        "This is the first streamed sentence of the reply.",
+        false,
+      );
+    });
+
+    await waitFor(() => {
+      expect(createdSources.length).toBeGreaterThan(0);
+    });
+
+    act(() => {
+      result.current.queueAssistantSpeech(
+        "msg-stream-1",
+        "This is the first streamed sentence of the reply. And here is the rest of it.",
+        true,
+      );
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+    expect(result.current.ttsError ?? null).toBeNull();
+  });
+
+  it("stopSpeaking cancels playback and clears the speaking state", async () => {
+    const { result } = renderVoiceChat({ provider: "eliza-cloud" });
+
+    act(() => {
+      result.current.speak("first utterance");
+      result.current.speak("second utterance", { append: true });
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(true);
+    });
+
+    act(() => {
+      result.current.stopSpeaking();
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+  });
+});
