@@ -161,6 +161,8 @@ describe("chat latency live workflow", () => {
       "versions: [{ percentage: 100, version_id: versionId }]",
     );
     expect(isolated).toContain('"/workers/scripts/" + worker + "/deployments"');
+    expect(isolated).toContain("activeDeployment?.id !== deploymentId");
+    expect(isolated).toContain("deployedVersions[0]?.version_id !== versionId");
     expect(isolated).toContain('"/workers/subdomain"');
     expect(isolated).toContain("REDIS_RATE_LIMITING:false");
     expect(isolated).toContain("--hit-count 30");

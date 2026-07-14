@@ -585,7 +585,6 @@ jobs:
             },
           );
           const deployment = await deploymentResponse.json();
-          const deployedVersions = deployment?.result?.versions;
           if (!deploymentResponse.ok || deployment?.success !== true) {
             const errors = Array.isArray(deployment?.errors)
               ? deployment.errors.map((error) => ({ code: error?.code, message: error?.message }))
@@ -597,27 +596,17 @@ jobs:
                 JSON.stringify(errors),
             );
           }
-          if (
-            deployment?.result?.strategy !== "percentage" ||
-            !Array.isArray(deployedVersions) ||
-            deployedVersions.length !== 1 ||
-            deployedVersions[0]?.version_id !== versionId ||
-            deployedVersions[0]?.percentage !== 100
-          ) {
-            const result = {
-              strategy: deployment?.result?.strategy,
-              versions: Array.isArray(deployedVersions)
-                ? deployedVersions.map((version) => ({
-                    percentage: version?.percentage,
-                    version_id: version?.version_id,
-                  }))
-                : null,
-            };
-            throw new Error("Cloudflare returned an invalid deployment result: " + JSON.stringify(result));
+          const deploymentId = deployment?.result?.id;
+          if (!/^[a-f0-9-]{36}$/.test(deploymentId ?? "")) {
+            throw new Error("Cloudflare deployment response omitted its deployment ID");
           }
 
-          const [accountSubdomainResponse, workerStateResponse, workerSubdomainResponse] =
+          const [deploymentsResponse, accountSubdomainResponse, workerStateResponse, workerSubdomainResponse] =
             await Promise.all([
+              fetch(api + "/workers/scripts/" + worker + "/deployments", {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
               fetch(api + "/workers/subdomain", {
                 headers,
                 signal: AbortSignal.timeout(30_000),
@@ -631,11 +620,26 @@ jobs:
                 signal: AbortSignal.timeout(30_000),
               }),
             ]);
-          const [accountSubdomain, workerState, workerSubdomain] = await Promise.all([
+          const [deployments, accountSubdomain, workerState, workerSubdomain] = await Promise.all([
+            deploymentsResponse.json(),
             accountSubdomainResponse.json(),
             workerStateResponse.json(),
             workerSubdomainResponse.json(),
           ]);
+          const activeDeployment = deployments?.result?.deployments?.[0];
+          const deployedVersions = activeDeployment?.versions;
+          if (
+            !deploymentsResponse.ok ||
+            deployments?.success !== true ||
+            activeDeployment?.id !== deploymentId ||
+            activeDeployment?.strategy !== "percentage" ||
+            !Array.isArray(deployedVersions) ||
+            deployedVersions.length !== 1 ||
+            deployedVersions[0]?.version_id !== versionId ||
+            deployedVersions[0]?.percentage !== 100
+          ) {
+            throw new Error("Active deployment does not send 100 percent to the exact uploaded version");
+          }
           const subdomain = accountSubdomain?.result?.subdomain;
           if (
             !accountSubdomainResponse.ok ||
