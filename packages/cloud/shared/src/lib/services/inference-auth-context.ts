@@ -4,7 +4,9 @@
  * `resolveInferenceAuthContext(req)` collapses the pre-forward auth + org +
  * moderation chain into a SINGLE KV read for API-key dedicated-agent inference.
  * On a cache miss it runs the existing authoritative chain exactly once, then
- * caches the result for the next request.
+ * starts caching the result for the next request. Worker callers register that
+ * positive cache write with `waitUntil` so KV latency cannot hold the current
+ * authorized response; non-Worker callers await the same operation inline.
  *
  * Scope: ONLY `X-API-Key` / `Bearer eliza_*` credentials are eligible. Wallet
  * (signature/timestamp-bound, fail-closed), Bearer-JWT, and cookie sessions are
@@ -52,7 +54,13 @@ export type InferenceAuthAuthoritativeResult =
   | "suspended"
   | "rejected"
   | "error";
-export type InferenceAuthCacheWrite = "not_run" | "written" | "invalid" | "unavailable" | "error";
+export type InferenceAuthCacheWrite =
+  | "not_run"
+  | "deferred"
+  | "written"
+  | "invalid"
+  | "unavailable"
+  | "error";
 export type InferenceAuthResult =
   | "authorized_cache"
   | "authorized_origin"
@@ -76,7 +84,7 @@ export interface InferenceAuthTimings {
 export interface InferenceAuthTelemetry {
   readonly v: 1;
   readonly traceId: string;
-  readonly credentialSource: InferenceAuthCredentialSource;
+  readonly authSource: InferenceAuthCredentialSource;
   readonly controlledProbe: "on" | "off";
   readonly cacheAvailability: "not_checked" | "available" | "unavailable";
   readonly cacheBackend: CacheBackendKind;
@@ -87,13 +95,25 @@ export interface InferenceAuthTelemetry {
   readonly timings: InferenceAuthTimings;
 }
 
+/** Completion record for a positive cache population deferred off the request path. */
+export interface InferenceAuthCacheWriteTelemetry {
+  readonly v: 1;
+  readonly kind: "cache_write";
+  readonly traceId: string;
+  readonly cacheBackend: CacheBackendKind;
+  readonly cacheWrite: Exclude<InferenceAuthCacheWrite, "not_run" | "deferred">;
+  readonly durationMs: number;
+}
+
 export interface ResolveInferenceAuthOptions {
   traceId?: string;
   onTelemetry?(telemetry: InferenceAuthTelemetry): void;
+  executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  onCacheWriteTelemetry?(telemetry: InferenceAuthCacheWriteTelemetry): void;
 }
 
 interface MutableInferenceAuthTrace {
-  credentialSource: InferenceAuthCredentialSource;
+  authSource: InferenceAuthCredentialSource;
   controlledProbe: "on" | "off";
   cacheAvailability: "not_checked" | "available" | "unavailable";
   cacheBackend: CacheBackendKind;
@@ -148,7 +168,7 @@ function freezeTrace(
   return Object.freeze({
     v: 1 as const,
     traceId: boundedTraceId(traceId),
-    credentialSource: trace.credentialSource,
+    authSource: trace.authSource,
     controlledProbe: trace.controlledProbe,
     cacheAvailability: trace.cacheAvailability,
     cacheBackend: trace.cacheBackend,
@@ -160,6 +180,21 @@ function freezeTrace(
       ...trace.timings,
       totalMs: durationSince(totalStartedAt),
     }),
+  });
+}
+
+function freezeCacheWriteTrace(
+  traceId: string | undefined,
+  write: Awaited<ReturnType<typeof writeInferenceAuthContext>>,
+  startedAt: number,
+): InferenceAuthCacheWriteTelemetry {
+  return Object.freeze({
+    v: 1 as const,
+    kind: "cache_write" as const,
+    traceId: boundedTraceId(traceId),
+    cacheBackend: write.backend,
+    cacheWrite: write.kind,
+    durationMs: durationSince(startedAt),
   });
 }
 
@@ -216,7 +251,7 @@ export async function resolveInferenceAuthContext(
 ): Promise<InferenceAuthResolution> {
   const totalStartedAt = performance.now();
   const trace: MutableInferenceAuthTrace = {
-    credentialSource: "other",
+    authSource: "other",
     controlledProbe: "off",
     cacheAvailability: "not_checked",
     cacheBackend: "none",
@@ -240,7 +275,7 @@ export async function resolveInferenceAuthContext(
     const credential = extractApiKeyCredentialWithSource(req);
     trace.timings.extractMs = durationSince(extractStartedAt);
     if (!credential) return { kind: "slow_path", reason: "non_api_key" };
-    trace.credentialSource = credential.source;
+    trace.authSource = credential.source;
     trace.result = "error";
     const probeDiscriminator = controlledProbeDiscriminator(req);
     trace.controlledProbe = probeDiscriminator ? "on" : "off";
@@ -312,13 +347,26 @@ export async function resolveInferenceAuthContext(
       apiKeyId: apiKey.id,
       keyHash,
     };
-    const cacheWriteStartedAt = performance.now();
-    const write = await writeInferenceAuthContext(ctx);
-    trace.timings.cacheWriteMs = durationSince(cacheWriteStartedAt);
-    trace.cacheWrite = write.kind;
-    trace.cacheBackend = write.backend;
     trace.authoritative = "authorized";
     trace.result = "authorized_origin";
+    const cacheWriteStartedAt = performance.now();
+    const cacheWrite = writeInferenceAuthContext(ctx);
+    if (cacheAvailable && typeof options.executionCtx?.waitUntil === "function") {
+      trace.cacheWrite = "deferred";
+      const observedWrite = cacheWrite.then((write) => {
+        const telemetry = freezeCacheWriteTrace(options.traceId, write, cacheWriteStartedAt);
+        logger.info("[InferenceAuth] trace", telemetry);
+        options.onCacheWriteTelemetry?.(telemetry);
+      });
+      // Authorization is already authoritative; waitUntil preserves cache
+      // population and its observed outcome without holding the response path.
+      options.executionCtx.waitUntil(observedWrite);
+    } else {
+      const write = await cacheWrite;
+      trace.timings.cacheWriteMs = durationSince(cacheWriteStartedAt);
+      trace.cacheWrite = write.kind;
+      trace.cacheBackend = write.backend;
+    }
     return { kind: "authorized", ctx, source: "origin" };
   } finally {
     const telemetry = freezeTrace(options.traceId, trace, totalStartedAt);

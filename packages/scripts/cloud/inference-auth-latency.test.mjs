@@ -13,6 +13,7 @@ import {
   sanitizeInferenceAuthTail,
   sanitizeInferenceAuthTelemetry,
   summarizeAuthSamples,
+  summarizeDeferredCacheWrites,
 } from "./inference-auth-latency.mjs";
 
 const SHA = "a".repeat(40);
@@ -20,14 +21,14 @@ const SHA = "a".repeat(40);
 function authHeader(phase) {
   return phase === "hit"
     ? "v=1;credential=x_api_key;probe=off;available=available;backend=cloudflare_kv;read=hit;authoritative=not_run;write=not_run;result=authorized_cache"
-    : "v=1;credential=x_api_key;probe=on;available=available;backend=cloudflare_kv;read=miss;authoritative=authorized;write=written;result=authorized_origin";
+    : "v=1;credential=x_api_key;probe=on;available=available;backend=cloudflare_kv;read=miss;authoritative=authorized;write=deferred;result=authorized_origin";
 }
 
 function timingHeader(phase, resolveMs = 10) {
   const shared = `auth_extract;dur=0.1, auth_cache_available;dur=0.2, auth_cache_read;dur=1, auth_resolve;dur=${resolveMs}`;
   return phase === "hit"
     ? shared
-    : `${shared}, auth_key_lookup;dur=3, auth_user_org;dur=2, auth_moderation;dur=1, auth_cache_write;dur=1`;
+    : `${shared}, auth_key_lookup;dur=3, auth_user_org;dur=2, auth_moderation;dur=1`;
 }
 
 test("parseArgs requires exact HTTPS deployment provenance and sample counts", () => {
@@ -89,7 +90,7 @@ test("auth parsers accept only bounded enums and finite auth durations", () => {
     backend: "cloudflare_kv",
     read: "miss",
     authoritative: "authorized",
-    write: "written",
+    write: "deferred",
     result: "authorized_origin",
   });
   assert.throws(
@@ -110,13 +111,13 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
   const telemetry = {
     v: 1,
     traceId,
-    credentialSource: "x_api_key",
+    authSource: "x_api_key",
     controlledProbe: "on",
     cacheAvailability: "available",
     cacheBackend: "cloudflare_kv",
     cacheRead: "miss",
     authoritative: "authorized",
-    cacheWrite: "written",
+    cacheWrite: "deferred",
     result: "authorized_origin",
     timings: {
       extractMs: 0.1,
@@ -125,9 +126,17 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
       keyLookupMs: 4,
       userOrgLookupMs: 3,
       moderationMs: 2,
-      cacheWriteMs: 1,
-      totalMs: 11.2,
+      cacheWriteMs: null,
+      totalMs: 10.2,
     },
+  };
+  const deferredCacheWriteTelemetry = {
+    v: 1,
+    kind: "cache_write",
+    traceId,
+    cacheBackend: "cloudflare_kv",
+    cacheWrite: "written",
+    durationMs: 12,
   };
   const raw = [
     "wrangler banner that is not JSON",
@@ -148,6 +157,10 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
             ],
           },
           { level: "info", message: ["[InferenceAuth] trace", telemetry] },
+          {
+            level: "info",
+            message: ["[InferenceAuth] trace", deferredCacheWriteTelemetry],
+          },
         ],
         event: {
           request: {
@@ -169,12 +182,22 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
       traceId,
       outcome: "ok",
       telemetry,
+      deferredCacheWrite: {
+        outcome: "ok",
+        telemetry: deferredCacheWriteTelemetry,
+      },
     },
   ]);
   const retained = JSON.stringify(records);
   assert.equal(retained.includes("eliza_private_api_key_material"), false);
   assert.equal(retained.includes("preview.example"), false);
   assert.equal(retained.includes("private=value"), false);
+  assert.deepEqual(summarizeDeferredCacheWrites(records), {
+    p50: 12,
+    p90: 12,
+    p95: 12,
+    max: 12,
+  });
 
   assert.throws(
     () =>

@@ -236,7 +236,7 @@ describe("HTTP telemetry", () => {
       {
         v: 1,
         traceId: "01890f47-6c4a-7b2d-8f31-123456789abc",
-        credentialSource: "x_api_key",
+        authSource: "x_api_key",
         controlledProbe: "on",
         cacheAvailability: "available",
         cacheBackend: "cloudflare_kv",

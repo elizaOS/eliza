@@ -1160,16 +1160,12 @@ interface ChatCompletionsHandlerOptions {
   /** Stable application trace id supplied by the outer Worker middleware. */
   traceId?: string;
   /**
-   * Cloudflare ExecutionContext. When present, the post-response billing /
-   * settlement chain (billUsage → settleReservation → reconcileCredits →
-   * recordUsageAnalytics → audit) is deferred via `waitUntil` so it never
-   * blocks the model response. The OpenAI response `usage` is built directly
-   * from the model's reported tokens (the same numbers billUsage derives), so
-   * the client sees identical output and billing amounts are unchanged — only
-   * the *timing* of the reconciliation writes moves off the hot path. This
-   * removes ~0.7–1.1s of serial DB writes from every model call; a dedicated
-   * agent makes ~10 calls/turn, so it is several seconds saved per turn.
-   * Falls back to inline `await` when absent (tests / non-Worker callers).
+   * Cloudflare ExecutionContext. When present, positive inference-auth cache
+   * population and the post-response billing/settlement chain are registered
+   * with `waitUntil`; neither optimization write blocks the model response.
+   * The writes still begin immediately and their promises remain observable to
+   * the Worker runtime. Callers without an execution context preserve inline
+   * awaiting, which keeps non-Worker and test behavior deterministic.
    */
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
@@ -1222,6 +1218,7 @@ export async function handleChatCompletionsPOST(
 
     const resolution = await resolveInferenceAuthContext(req, {
       traceId,
+      executionCtx: options.executionCtx,
       onTelemetry: (telemetry) => {
         authTelemetry = telemetry;
       },

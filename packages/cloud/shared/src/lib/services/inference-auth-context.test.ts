@@ -10,6 +10,7 @@ process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { redactLogArgs } from "@elizaos/core";
 
 // --- Controllable seams -----------------------------------------------------
 type AuthImpl = () => Promise<{
@@ -160,11 +161,62 @@ describe("resolveInferenceAuthContext", () => {
     expect(telemetry?.cacheWrite).toBe("written");
     expect(telemetry?.timings.keyLookupMs).toBe(1);
     expect(telemetry?.timings.userOrgLookupMs).toBe(2);
+    expect(redactLogArgs([telemetry])).toMatchObject([{ authSource: "x_api_key" }]);
     const serialized = JSON.stringify(telemetry);
     expect(serialized).not.toContain(KEY);
     expect(serialized).not.toContain(hashApiKey(KEY));
     expect(serialized).not.toContain("user-1");
     expect(serialized).not.toContain("org-1");
+  });
+
+  test("Worker execution context defers positive cache population and observes its outcome", async () => {
+    let finishWrite = (): void => {};
+    const writeSpy = spyOn(cache, "setWithOutcome").mockImplementation(
+      async () =>
+        await new Promise((resolve) => {
+          finishWrite = () => resolve({ kind: "written" as const, backend: "memory" as const });
+        }),
+    );
+    const waited: Promise<unknown>[] = [];
+    let resolutionTelemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+    let cacheWriteTelemetry:
+      | import("./inference-auth-context").InferenceAuthCacheWriteTelemetry
+      | undefined;
+    try {
+      const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+        traceId: "0190f2f1-8b5a-7000-8000-000000000002",
+        executionCtx: {
+          waitUntil: (promise) => {
+            waited.push(promise);
+          },
+        },
+        onTelemetry: (value) => {
+          resolutionTelemetry = value;
+        },
+        onCacheWriteTelemetry: (value) => {
+          cacheWriteTelemetry = value;
+        },
+      });
+
+      expect(result.kind).toBe("authorized");
+      expect(waited).toHaveLength(1);
+      expect(resolutionTelemetry?.cacheWrite).toBe("deferred");
+      expect(resolutionTelemetry?.timings.cacheWriteMs).toBeNull();
+      expect(cacheWriteTelemetry).toBeUndefined();
+
+      finishWrite();
+      await Promise.all(waited);
+      expect(cacheWriteTelemetry).toMatchObject({
+        kind: "cache_write",
+        traceId: "0190f2f1-8b5a-7000-8000-000000000002",
+        cacheBackend: "memory",
+        cacheWrite: "written",
+      });
+      expect(cacheWriteTelemetry?.durationMs).toBeGreaterThanOrEqual(0);
+    } finally {
+      finishWrite();
+      writeSpy.mockRestore();
+    }
   });
 
   test("warm hit -> served from cache, no authoritative chain call", async () => {

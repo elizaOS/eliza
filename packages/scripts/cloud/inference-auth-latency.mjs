@@ -45,7 +45,14 @@ const AUTH_ENUMS = Object.freeze({
     "rejected",
     "error",
   ]),
-  write: new Set(["not_run", "written", "invalid", "unavailable", "error"]),
+  write: new Set([
+    "not_run",
+    "deferred",
+    "written",
+    "invalid",
+    "unavailable",
+    "error",
+  ]),
   result: new Set([
     "authorized_cache",
     "authorized_origin",
@@ -57,7 +64,7 @@ const AUTH_ENUMS = Object.freeze({
 });
 
 const AUTH_TELEMETRY_ENUMS = Object.freeze({
-  credentialSource: AUTH_ENUMS.credential,
+  authSource: AUTH_ENUMS.credential,
   controlledProbe: AUTH_ENUMS.probe,
   cacheAvailability: AUTH_ENUMS.available,
   cacheBackend: AUTH_ENUMS.backend,
@@ -156,6 +163,49 @@ export function sanitizeInferenceAuthTelemetry(value) {
   return telemetry;
 }
 
+function sanitizeInferenceAuthCacheWriteTelemetry(value) {
+  const keys = [
+    "v",
+    "kind",
+    "traceId",
+    "cacheBackend",
+    "cacheWrite",
+    "durationMs",
+  ];
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, keys) ||
+    value.v !== 1 ||
+    value.kind !== "cache_write"
+  ) {
+    throw new Error(
+      "Worker auth cache-write log does not match the bounded telemetry schema",
+    );
+  }
+  if (!OPAQUE_TRACE_ID.test(value.traceId)) {
+    throw new Error("Worker auth cache-write log has an invalid trace id");
+  }
+  if (!AUTH_ENUMS.backend.has(value.cacheBackend)) {
+    throw new Error("Worker auth cache-write log has an invalid backend");
+  }
+  if (
+    value.cacheWrite !== "written" &&
+    value.cacheWrite !== "invalid" &&
+    value.cacheWrite !== "unavailable" &&
+    value.cacheWrite !== "error"
+  ) {
+    throw new Error("Worker auth cache-write log has an invalid outcome");
+  }
+  return {
+    v: 1,
+    kind: "cache_write",
+    traceId: value.traceId.toLowerCase(),
+    cacheBackend: value.cacheBackend,
+    cacheWrite: value.cacheWrite,
+    durationMs: boundedDuration(value.durationMs, false),
+  };
+}
+
 function parseJsonObjectStream(text) {
   const values = [];
   let start = -1;
@@ -211,6 +261,7 @@ export function sanitizeInferenceAuthTail(
     throw new Error("Worker Tail requires unique retained trace ids");
   }
   const byTrace = new Map();
+  const cacheWritesByTrace = new Map();
   for (const event of parseJsonObjectStream(rawText)) {
     if (!isRecord(event) || !Array.isArray(event.logs)) continue;
     const outcome = TAIL_OUTCOMES.has(event.outcome)
@@ -236,6 +287,20 @@ export function sanitizeInferenceAuthTail(
       // Correlate on the one opaque field before validating or retaining any
       // other part of the raw object, then fail closed on the complete schema.
       if (!expected.has(traceId)) continue;
+      if (rawTelemetry.kind === "cache_write") {
+        const telemetry =
+          sanitizeInferenceAuthCacheWriteTelemetry(rawTelemetry);
+        if (cacheWritesByTrace.has(telemetry.traceId)) {
+          throw new Error(
+            "Worker Tail returned duplicate auth cache-write traces",
+          );
+        }
+        cacheWritesByTrace.set(telemetry.traceId, {
+          outcome,
+          telemetry,
+        });
+        continue;
+      }
       const telemetry = sanitizeInferenceAuthTelemetry(rawTelemetry);
       if (byTrace.has(telemetry.traceId)) {
         throw new Error("Worker Tail returned duplicate auth traces");
@@ -255,7 +320,19 @@ export function sanitizeInferenceAuthTail(
       `Worker Tail omitted ${missing.length} retained auth traces`,
     );
   }
-  return expectedTraceIds.map((traceId) => byTrace.get(traceId));
+  return expectedTraceIds.map((traceId) => {
+    const record = byTrace.get(traceId);
+    const deferredCacheWrite = cacheWritesByTrace.get(traceId) ?? null;
+    if (record.telemetry.cacheWrite === "deferred" && !deferredCacheWrite) {
+      throw new Error("Worker Tail omitted a deferred auth cache-write trace");
+    }
+    if (record.telemetry.cacheWrite !== "deferred" && deferredCacheWrite) {
+      throw new Error(
+        "Worker Tail returned an unexpected auth cache-write trace",
+      );
+    }
+    return { ...record, deferredCacheWrite };
+  });
 }
 
 function requiredValue(args, index, name) {
@@ -402,28 +479,20 @@ function boundedColo(value) {
   return match ? match[1].toUpperCase() : "unknown";
 }
 
-function assertRequiredTimings(timings, phase) {
-  const required =
-    phase === "hit"
-      ? [
-          "auth_extract",
-          "auth_cache_available",
-          "auth_cache_read",
-          "auth_resolve",
-        ]
-      : [
-          "auth_extract",
-          "auth_cache_available",
-          "auth_cache_read",
-          "auth_key_lookup",
-          "auth_user_org",
-          "auth_moderation",
-          "auth_cache_write",
-          "auth_resolve",
-        ];
+function assertRequiredTimings(timings, auth) {
+  const required = [
+    "auth_extract",
+    "auth_cache_available",
+    "auth_cache_read",
+    "auth_resolve",
+  ];
+  if (auth.result === "authorized_origin") {
+    required.push("auth_key_lookup", "auth_user_org", "auth_moderation");
+    if (auth.write !== "deferred") required.push("auth_cache_write");
+  }
   for (const name of required) {
     if (!Object.hasOwn(timings, name))
-      throw new Error(`Missing required ${phase} timing`);
+      throw new Error(`Missing required ${auth.result} timing`);
   }
 }
 
@@ -505,7 +574,7 @@ export async function probeAuthSample({
 
   const auth = parseAuthTrace(response.headers.get(AUTH_TRACE_HEADER));
   const timings = parseAuthServerTiming(response.headers.get("server-timing"));
-  assertRequiredTimings(timings, phase);
+  assertRequiredTimings(timings, auth);
   if (auth.credential !== "x_api_key" || auth.backend !== "cloudflare_kv") {
     throw new Error(
       "Auth probe did not use the expected credential/cache path",
@@ -524,10 +593,28 @@ export async function probeAuthSample({
     (auth.probe !== "on" ||
       auth.read !== "miss" ||
       auth.authoritative !== "authorized" ||
+      auth.write !== "deferred" ||
       auth.result !== "authorized_origin")
   ) {
     throw new Error(
       "Controlled auth probe did not produce an authoritative miss",
+    );
+  }
+  if (
+    phase === "prime" &&
+    !(
+      (auth.probe === "off" &&
+        auth.read === "hit" &&
+        auth.result === "authorized_cache") ||
+      (auth.probe === "off" &&
+        auth.read === "miss" &&
+        auth.authoritative === "authorized" &&
+        auth.write === "deferred" &&
+        auth.result === "authorized_origin")
+    )
+  ) {
+    throw new Error(
+      "Canonical cache-prime request used an unexpected auth path",
     );
   }
 
@@ -671,6 +758,16 @@ function metricSummary(records, selector) {
   };
 }
 
+/** Summarize the completed KV writes paired to authoritative miss traces. */
+export function summarizeDeferredCacheWrites(workerLogs) {
+  return metricSummary(
+    workerLogs.filter(
+      (record) => record.telemetry.result === "authorized_origin",
+    ),
+    (record) => record.deferredCacheWrite?.telemetry.durationMs,
+  );
+}
+
 export function summarizeAuthSamples(records, deploySha) {
   const hits = records.filter((record) => record.phase === "hit");
   const misses = records.filter((record) => record.phase === "miss");
@@ -770,18 +867,29 @@ export async function runAuthProbes(options, dependencies = {}) {
     fetchImpl,
   });
 
-  // The controlled miss populates the canonical key, while this unretained
-  // canonical read absorbs the edge/KV first-access cost. Retained hit samples
-  // therefore measure a proven warm cache rather than probe setup.
-  await probeAuthSample({
-    baseUrl: options.baseUrl,
-    apiKey,
-    deploySha: options.deploySha,
-    phase: "hit",
-    sequence: -1,
-    timeoutMs: options.timeoutMs,
-    fetchImpl,
-  });
+  // Deferred KV population can finish after the miss response. Poll with
+  // unretained canonical requests until one proves the cache hit, which also
+  // absorbs edge/KV first-access cost before retained samples begin.
+  let cachePrimed = false;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (attempt > 0) await wait(250);
+    const prime = await probeAuthSample({
+      baseUrl: options.baseUrl,
+      apiKey,
+      deploySha: options.deploySha,
+      phase: "prime",
+      sequence: -1,
+      timeoutMs: options.timeoutMs,
+      fetchImpl,
+    });
+    if (prime.auth.result === "authorized_cache") {
+      cachePrimed = true;
+      break;
+    }
+  }
+  if (!cachePrimed) {
+    throw new Error("Canonical inference auth cache did not become readable");
+  }
 
   const records = [];
   for (let sequence = 0; sequence < options.hitCount; sequence++) {

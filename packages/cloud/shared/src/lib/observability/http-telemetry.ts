@@ -204,7 +204,7 @@ export function withInferenceAuthTelemetry(
     ELIZA_AUTH_TRACE_HEADER,
     [
       "v=1",
-      `credential=${telemetry.credentialSource}`,
+      `credential=${telemetry.authSource}`,
       `probe=${telemetry.controlledProbe}`,
       `available=${telemetry.cacheAvailability}`,
       `backend=${telemetry.cacheBackend}`,

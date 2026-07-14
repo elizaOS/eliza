@@ -772,6 +772,7 @@ jobs:
             --miss-count 10 \
             --timeout-ms 30000 \
             --interval-ms 250 \
+            --enforce \
             | tee "$REPORT_PATH"
           probe_status="${PIPESTATUS[0]}"
           sleep 3
@@ -781,7 +782,10 @@ jobs:
 
           node --input-type=module - "$raw_tail" "$REPORT_PATH" "$AUTH_LOG_PATH" <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
-          import { sanitizeInferenceAuthTail } from "./packages/scripts/cloud/inference-auth-latency.mjs";
+          import {
+            sanitizeInferenceAuthTail,
+            summarizeDeferredCacheWrites,
+          } from "./packages/scripts/cloud/inference-auth-latency.mjs";
           const report = readFileSync(process.argv[3], "utf8")
             .split(/\r?\n/)
             .filter(Boolean)
@@ -794,6 +798,13 @@ jobs:
             readFileSync(process.argv[2], "utf8"),
             traceIds,
             process.env.GITHUB_SHA,
+          );
+          const summary = report.findLast((record) => record.kind === "summary");
+          if (!summary) throw new Error("Auth report has no summary record");
+          summary.missCacheWriteMs = summarizeDeferredCacheWrites(logs);
+          writeFileSync(
+            process.argv[3],
+            report.map((record) => JSON.stringify(record)).join("\n") + "\n",
           );
           writeFileSync(process.argv[4], logs.map((record) => JSON.stringify(record)).join("\n") + "\n");
           console.log("Sanitized and correlated " + logs.length + " Worker auth traces");
