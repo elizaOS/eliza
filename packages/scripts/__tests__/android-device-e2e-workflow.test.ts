@@ -10,6 +10,14 @@ const workflow = readFileSync(
   join(root, ".github/workflows/android-device-e2e.yml"),
   "utf8",
 );
+const androidHarness = readFileSync(
+  join(root, "packages/app/test/android/android-harness.ts"),
+  "utf8",
+);
+const onboardingSpec = readFileSync(
+  join(root, "packages/app/test/android/onboarding-to-home.android.spec.ts"),
+  "utf8",
+);
 const actionSha = "a421e43855164a8197daf9d8d40fe71c6996bb0d";
 const setupNodeSha = "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e";
 const expectedCommands = [
@@ -46,7 +54,9 @@ describe("Android emulator workflow shell contract", () => {
 
     for (const block of workflow
       .split(/(?=^\s*- name:)/m)
-      .filter((candidate) => candidate.includes("Free disk for Android build"))) {
+      .filter((candidate) =>
+        candidate.includes("Free disk for Android build"),
+      )) {
       expect(block).not.toContain("/usr/local/lib/android");
     }
   });
@@ -91,5 +101,25 @@ describe("Android emulator workflow shell contract", () => {
     );
     expect(result.status).toBe(64);
     expect(result.stderr).toContain("usage:");
+  });
+
+  test("keeps shell-reserved Android state out of live view-realm mutations", () => {
+    const documentStart = androidHarness.indexOf("await page.addInitScript(");
+    const seedWrite = androidHarness.indexOf(
+      "localStorage.setItem(key, value)",
+    );
+    const livePageEvaluation = androidHarness.indexOf(
+      "await page.evaluate(",
+      documentStart,
+    );
+
+    expect(documentStart).toBeGreaterThan(-1);
+    expect(seedWrite).toBeGreaterThan(documentStart);
+    expect(seedWrite).toBeLessThan(livePageEvaluation);
+    expect(
+      androidHarness.match(/localStorage\.setItem\(key, value\)/g),
+    ).toHaveLength(1);
+    expect(onboardingSpec).not.toContain("localStorage.removeItem(");
+    expect(onboardingSpec).toMatch(/page\.goto\(`\$\{ORIGIN\}\/\?reset`/);
   });
 });

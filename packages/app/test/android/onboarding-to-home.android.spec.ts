@@ -73,15 +73,8 @@ test.describe
       });
 
       try {
-        // Force a fresh first-run: drop any seeded active-server / completion so
-        // the app boots into onboarding before the deep link arrives.
-        await page.evaluate(() => {
-          localStorage.removeItem("elizaos:active-server");
-          localStorage.removeItem("eliza:onboarding-complete");
-          localStorage.removeItem("eliza:first-run-complete");
-          localStorage.removeItem("eliza:setup:step");
-          localStorage.removeItem("eliza:mobile-runtime-mode");
-        });
+        // The product reset path owns shell-reserved storage and arms a
+        // force-fresh restore before the deep link arrives.
         await page.goto(`${ORIGIN}/?reset`, {
           waitUntil: "domcontentloaded",
           timeout: 60_000,
