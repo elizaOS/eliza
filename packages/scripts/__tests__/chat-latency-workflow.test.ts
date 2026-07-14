@@ -141,6 +141,8 @@ describe("chat latency live workflow", () => {
     );
     expect(preview).toContain("--keep-vars");
     expect(preview).toContain("--preview-alias");
+    expect(preview).toContain("preview_urls = true");
+    expect(preview).toContain("--config .wrangler-auth-preview.toml");
     expect(preview).not.toContain("wrangler deploy");
     expect(preview).toContain(
       "Create an isolated suspended-auth staging fixture",

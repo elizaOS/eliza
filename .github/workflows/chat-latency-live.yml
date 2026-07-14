@@ -480,8 +480,22 @@ jobs:
           set -euo pipefail
           alias="auth-${GITHUB_SHA:0:12}"
           output="$RUNNER_TEMP/wrangler-version-output.ndjson"
+          config="packages/cloud/api/.wrangler-auth-preview.toml"
+          node --input-type=module - "$config" <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const source = readFileSync("packages/cloud/api/wrangler.toml", "utf8");
+          const marker = '[env.staging]\nname = "eliza-cloud-api-staging"\nworkers_dev = false\n';
+          if (source.split(marker).length !== 2 || source.includes("preview_urls")) {
+            throw new Error("Could not derive the isolated preview configuration");
+          }
+          writeFileSync(process.argv[2], source.replace(marker, marker + "preview_urls = true\n"), {
+            mode: 0o600,
+          });
+          NODE
+          trap 'rm -f "$config"' EXIT
           WRANGLER_OUTPUT_FILE_PATH="$output" bunx wrangler versions upload \
             --cwd packages/cloud/api \
+            --config .wrangler-auth-preview.toml \
             --env staging \
             --name "$AUTH_PROBE_WORKER_NAME" \
             --keep-vars \
