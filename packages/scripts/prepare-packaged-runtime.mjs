@@ -1079,7 +1079,13 @@ function stubPackageManifest(descriptor, versions) {
     license: "MIT",
     type: "module",
     main: "./index.mjs",
-    exports: { ".": "./index.mjs", "./package.json": "./package.json" },
+    // Consumers import feature subpaths (e.g. ./diagnostic); every subpath
+    // resolves to the same inert module so optional integrations no-op.
+    exports: {
+      ".": "./index.mjs",
+      "./package.json": "./package.json",
+      "./*": "./index.mjs",
+    },
   };
 }
 
@@ -1088,6 +1094,39 @@ function stubPackageManifest(descriptor, versions) {
 // the shipping Linux-OS overlay that already runs the agent with these
 // packages stubbed out.
 const STUB_EXTRA_SOURCES = new Map([
+  [
+    "@elizaos/plugin-wallet",
+    [
+      "// The agent host statically imports this dependency-free descriptor",
+      "// (plugin-wallet/src/diagnostic.ts) to render the wallet diagnostic",
+      "// card; mirror it so the card reports the feature honestly instead of",
+      "// crashing module linking.",
+      "export const walletDiagnosticDescriptor = {",
+      '  id: "evm",',
+      '  name: "Plugin EVM",',
+      "  description:",
+      '    "EVM wallet runtime. Not included in this packaged runtime: its dependency tree carries licenses that cannot be redistributed.",',
+      '  tags: ["wallet", "evm", "bsc", "onchain"],',
+      '  envKey: "EVM_PRIVATE_KEY",',
+      '  category: "feature",',
+      '  source: "bundled",',
+      "  configKeys: [",
+      '    "EVM_PRIVATE_KEY",',
+      '    "BSC_RPC_URL",',
+      '    "BSC_TESTNET_RPC_URL",',
+      '    "ELIZA_WALLET_NETWORK",',
+      "  ],",
+      '  npmName: "@elizaos/plugin-wallet",',
+      '  managementMode: "core-optional",',
+      '  aliases: ["evm", "wallet"],',
+      "  prerequisites: [",
+      '    { key: "wallet", label: "wallet present" },',
+      '    { key: "rpc", label: "rpc ready" },',
+      '    { key: "plugin", label: "plugin loaded" },',
+      "  ],",
+      "};",
+    ],
+  ],
   [
     "@elizaos/plugin-whatsapp",
     [
