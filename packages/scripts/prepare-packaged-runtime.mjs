@@ -66,13 +66,8 @@ const REVIEWED_WORKSPACE_LIFECYCLE_SCRIPTS = new Map([
   ["@elizaos/plugin-computeruse", new Set(["postinstall"])],
 ]);
 const REVIEWED_TRUSTED_DEPENDENCY_SCRIPT_VERSIONS = new Set([
-  "bigint-buffer@1.1.5",
   "bufferutil@4.1.0",
   "esbuild@0.28.1",
-  "keccak@3.0.4",
-  "protobufjs@7.4.0",
-  "protobufjs@7.5.5",
-  "protobufjs@7.6.4",
   "utf-8-validate@5.0.10",
   "utf-8-validate@6.0.6",
 ]);
@@ -129,14 +124,7 @@ function reviewedBlockedDependencyScriptVersions(targetCpu) {
     "@discordjs/opus@0.10.0",
     "@parcel/watcher@2.5.6",
     `@smithers-orchestrator/jj-linux-${targetCpu}@0.26.1`,
-    "@stellar/stellar-sdk@14.2.0",
-    "@tsparticles/engine@3.9.1",
-    "blake-hash@2.0.0",
-    "cpu-features@0.0.10",
     "msgpackr-extract@3.0.4",
-    "ssh2@1.17.0",
-    "tiny-secp256k1@1.1.7",
-    "usb@2.18.0",
     "youtube-dl-exec@3.1.8",
   ]);
 }
@@ -1842,8 +1830,13 @@ if (has("ffprobe-static")) {
   assert.equal(fs.existsSync(ffprobe.path), false);
 }
 
-for (const name of ["ssh2", "usb", "@parcel/watcher", "@nut-tree-fork/nut-js", "@nut-tree-fork/libnut"]) {
+for (const name of ["@parcel/watcher", "@nut-tree-fork/nut-js", "@nut-tree-fork/libnut"]) {
   if (requireFeature(name)) require(name);
+}
+// ssh2/usb ride wallet- and ui-adjacent surfaces that packaged runtimes stub
+// for license compliance; exercise them only when actually installed.
+for (const name of ["ssh2", "usb"]) {
+  if (has(name)) require(name);
 }
 
 if (requireFeature("prism-media") && requireFeature("opusscript")) {
@@ -1862,12 +1855,12 @@ if (requireFeature("msgpackr")) {
   assert.deepEqual(unpack(pack({ runtime: "locked", count: 89 })), { runtime: "locked", count: 89 });
 }
 
-if (requireFeature("blake-hash")) {
+if (has("blake-hash")) {
   const blakeHash = require("blake-hash");
   assert.equal(blakeHash("blake256").digest("hex"), "716f6e863f744b9ac22c97ec7b76ea5f5908bc5b2f67c61510bfc4751384ea7a");
 }
 
-if (requireFeature("tiny-secp256k1")) {
+if (has("tiny-secp256k1")) {
   const secp = require("tiny-secp256k1");
   const privateKey = Buffer.alloc(32); privateKey[31] = 1;
   const hash = Buffer.alloc(32, 2);

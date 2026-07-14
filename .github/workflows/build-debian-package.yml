@@ -329,6 +329,9 @@ jobs:
           subject-path: ${{ steps.find_deb.outputs.deb_path }}
 
       - name: Upload .deb artifact
+        # Retain the built package bytes even when the installed smoke fails,
+        # so a red lane still yields reviewable artifacts (with checksums).
+        if: always() && steps.find_deb.outputs.deb_path != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: elizaos-debian-package

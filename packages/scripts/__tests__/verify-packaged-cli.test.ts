@@ -871,6 +871,15 @@ describe("package workflows", () => {
     for (const [path, job, step] of uploads) {
       expect(workflowStep(path, job, step).if).toBe("always()");
     }
+
+    // The reusable Debian builder guards its upload on the artifact existing,
+    // but must still run it when the installed smoke fails.
+    const debUpload = workflowStep(
+      ".github/workflows/build-debian-package.yml",
+      "build-deb",
+      "Upload .deb artifact",
+    );
+    expect(String(debUpload.if)).toContain("always()");
   });
 
   test("Flatpak test and release builds prepare the exact source runtime", () => {
