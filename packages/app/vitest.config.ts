@@ -42,6 +42,16 @@ export default defineConfig({
         ),
       },
       {
+        // Vite resolves this browser-safe dynamic import from source as well;
+        // matching that boundary keeps fresh entrypoint tests independent of
+        // plugin-blocker's generated dist directory.
+        find: /^@elizaos\/plugin-blocker\/native$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-blocker/src/native.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/cloud-ui$/,
         replacement: path.join(here, "../cloud-ui/src/index.ts"),
       },
