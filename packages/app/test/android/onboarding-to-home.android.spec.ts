@@ -39,6 +39,45 @@ const ARTIFACT_DIR = path.join(
   "onboarding-to-home",
 );
 
+async function ensureHostFirstRunComplete(): Promise<void> {
+  const headers = { "X-ElizaOS-Client-Id": "android-onboarding" };
+  const statusResponse = await fetch(
+    `${HOST_AGENT_BASE}/api/first-run/status`,
+    {
+      headers,
+    },
+  );
+  if (!statusResponse.ok) {
+    throw new Error(
+      `Host first-run status failed: ${statusResponse.status} ${statusResponse.statusText}`,
+    );
+  }
+  const status: unknown = await statusResponse.json();
+  if (
+    typeof status === "object" &&
+    status !== null &&
+    "complete" in status &&
+    status.complete === true
+  ) {
+    return;
+  }
+
+  // The device is what is fresh in this scenario. A remote agent must already
+  // own its deployment target before another device adopts it; asking the
+  // device flow to configure the host as a remote of itself races its restart
+  // and can never prove a stable connection.
+  const completeResponse = await fetch(`${HOST_AGENT_BASE}/api/first-run`, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ name: "Android Onboarding Host" }),
+  });
+  if (!completeResponse.ok) {
+    throw new Error(
+      `Host first-run completion failed: ${completeResponse.status} ${completeResponse.statusText}`,
+    );
+  }
+}
+
 test.describe
   .serial("android remote-connect onboarding via deep link (real WebView)", () => {
     test("fresh first-run deep link connects to a host agent and lands on home", async ({
@@ -51,6 +90,7 @@ test.describe
       const serial = device.serial();
       // The device's 127.0.0.1:31337 must reach the host's deterministic agent.
       adbReverse(adbBin, serial, 31337);
+      await ensureHostFirstRunComplete();
 
       const recording = await startAndroidScreenRecord({
         serial,

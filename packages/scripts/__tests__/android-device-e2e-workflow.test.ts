@@ -178,6 +178,11 @@ describe("Android emulator workflow shell contract", () => {
     );
     expect(nativePluginCi).toContain("assistant-verification.mp4");
     expect(nativePluginCi).toContain("assistant-final.png");
+    expect(nativePluginCi).toContain("screenrecord.log");
+    expect(nativePluginCi).toContain("KEYCODE_WAKEUP");
+    expect(nativePluginCi.indexOf("KEYCODE_WAKEUP")).toBeLessThan(
+      nativePluginCi.indexOf("adb shell screenrecord"),
+    );
     expect(nativePluginCi).toContain("pidof screenrecord");
     expect(nativePluginCi).toContain('adb shell kill -2 "$SCREENRECORD_PID"');
     expect(nativePluginCi).not.toContain("pkill -INT screenrecord");
@@ -197,6 +202,9 @@ describe("Android emulator workflow shell contract", () => {
       "packages/app-core/platforms/android/app/build/outputs/androidTest-results/**",
     );
     expect(onboardingSpec).toContain("elizaMobileDeepLinkReady");
+    expect(onboardingSpec).toContain("ensureHostFirstRunComplete");
+    expect(onboardingSpec).toContain("/api/first-run/status");
+    expect(onboardingSpec).toContain("/api/first-run");
     expect(assistantVerifier).toContain("voiceinteractionCommandSucceeded");
     expect(assistantVerifierLib).toContain(
       "cmd voiceinteraction show returned a failure",

@@ -65,9 +65,18 @@ VERIFY_STATUS=0
 CAPTURE_STATUS=0
 ASSISTANT_RECORDING_REMOTE=/sdcard/eliza-assistant-verification.mp4
 ASSISTANT_RECORDING_LOCAL="$ASSISTANT_ARTIFACT_DIR/assistant-verification.mp4"
+ASSISTANT_RECORDING_LOG="$ASSISTANT_ARTIFACT_DIR/screenrecord.log"
+
+# Instrumentation can leave the headless display asleep. Android screenrecord
+# exits after writing only an MP4 header when it starts against that display,
+# so wake and foreground the real activity before asking the encoder for proof.
+adb shell input keyevent KEYCODE_WAKEUP
+adb shell wm dismiss-keyguard
+adb shell am start -W -n ai.elizaos.app/.MainActivity
+sleep 2
 adb shell rm -f "$ASSISTANT_RECORDING_REMOTE"
 adb shell screenrecord --bit-rate 4000000 --time-limit 90 \
-  "$ASSISTANT_RECORDING_REMOTE" >/dev/null 2>&1 &
+  "$ASSISTANT_RECORDING_REMOTE" >"$ASSISTANT_RECORDING_LOG" 2>&1 &
 ASSISTANT_RECORDING_PID=$!
 sleep 1
 ASSISTANT_SCREENRECORD_PIDS="$(adb shell pidof screenrecord 2>/dev/null | tr -d '\r' || true)"
