@@ -36,13 +36,16 @@ const realtimeHarness = vi.hoisted(() => ({
   state: {
     available: false,
     active: false,
+    connecting: false,
     status: "idle" as const,
     transcriptPartial: "",
     transcriptFinal: "",
     agentSpeaking: false,
     needsUnlock: false,
     paused: false,
-    error: null,
+    error: null as
+      | import("../../hooks/useRealtimeVoiceSession").RealtimeVoiceError
+      | null,
     speaker: null,
     start: vi.fn(async () => {}),
     stop: vi.fn(async () => {}),
@@ -159,6 +162,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     useVoiceChatMock.mockImplementation(() => voiceState);
     realtimeHarness.state.available = false;
     realtimeHarness.state.active = false;
+    realtimeHarness.state.connecting = false;
     realtimeHarness.state.status = "idle";
     realtimeHarness.state.agentSpeaking = false;
     realtimeHarness.state.needsUnlock = false;
@@ -206,6 +210,57 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(voiceState.speak).toHaveBeenCalledWith("hello from Eliza", {
       telemetry: { messageId: "message-1" },
     });
+  });
+
+  it("retries realtime on the next mic tap after an ACTIONABLE error (the advertised retry works)", async () => {
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.error = {
+      kind: "transport" as const,
+      message: "Voice connection dropped. Tap the mic to try again.",
+      actionable: true,
+    };
+    const { result } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await act(async () => {
+      result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
+    });
+
+    // The tap re-enters the realtime branch (start() clears the error) rather
+    // than silently switching to batch while the CTA says "try again".
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+    expect(voiceState.startListening).not.toHaveBeenCalled();
+  });
+
+  it("hands the mic tap to batch after a NON-actionable error (copy promises standard voice)", async () => {
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.error = {
+      kind: "consent" as const,
+      message:
+        "Couldn't confirm consent for realtime voice. The mic will use standard voice instead.",
+      actionable: false,
+    };
+    const { result } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await act(async () => {
+      result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
+    });
+
+    expect(realtimeHarness.state.start).not.toHaveBeenCalled();
+    expect(voiceState.startListening).toHaveBeenCalledTimes(1);
   });
 
   it("routes the primary mic to realtime when the force-armed session is available", async () => {

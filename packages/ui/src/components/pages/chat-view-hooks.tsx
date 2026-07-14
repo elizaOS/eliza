@@ -921,14 +921,17 @@ export function useChatVoiceController(options: {
       void realtimeStartRef.current();
     } else if (
       !realtimeWanted &&
-      realtime.active &&
+      // A no-longer-wanted session must also be cancelled while it is still
+      // connecting — `active` is truthful now (live only), so gating stop on
+      // it alone would let an unwanted bring-up finish connecting first.
+      (realtime.active || realtime.connecting) &&
       !realtimeStopPendingRef.current
     ) {
       realtimeStartPendingRef.current = false;
       realtimeStopPendingRef.current = true;
       void realtimeStopRef.current();
     }
-  }, [realtimeWanted, realtime.active]);
+  }, [realtimeWanted, realtime.active, realtime.connecting]);
 
   // A failed/disabled realtime start hands ownership back to batch. Clear the
   // manual intent as well so the next gesture can take the fallback branch.
@@ -950,7 +953,16 @@ export function useChatVoiceController(options: {
   const beginVoiceCapture = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (isComposerLocked) return;
-      if (voiceSession.realtimeAvailable && !voiceSession.realtimeError) {
+      // Realtime owns the tap while available and not in a NON-actionable error
+      // state. An actionable error (permission re-granted, transport drop,
+      // connect timeout) advertises "tap the mic to try again" — so that tap
+      // must re-enter the realtime branch (start() clears the error); only
+      // non-actionable failures (consent/mint, which also latch `available`
+      // off) hand the tap to the batch path as their copy promises.
+      if (
+        voiceSession.realtimeAvailable &&
+        (!voiceSession.realtimeError || voiceSession.realtimeError.actionable)
+      ) {
         setManualRealtimeIntent(true);
         realtimeStartPendingRef.current = true;
         const latestAssistant =
@@ -978,7 +990,11 @@ export function useChatVoiceController(options: {
 
   const endVoiceCapture = useCallback(
     (captureOptions?: { submit?: boolean }) => {
-      if (voiceSession.realtimeActive || manualRealtimeRequestedRef.current) {
+      if (
+        voiceSession.realtimeActive ||
+        voiceSession.realtimeConnecting ||
+        manualRealtimeRequestedRef.current
+      ) {
         setManualRealtimeIntent(false);
         realtimeStartPendingRef.current = false;
         realtimeStopPendingRef.current = true;

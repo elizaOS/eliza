@@ -242,6 +242,88 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.status).toBe("idle");
   });
 
+  it("does not report active until socket open + server ready + mic capturing (truthful `active`)", async () => {
+    const { options, ws, micCtx } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    await act(async () => {
+      await result.current.start();
+      await flushAsync();
+    });
+    // start() resolved, but nothing is connected yet: connecting, NOT active —
+    // the socket has not opened, no server `ready`, no mic.
+    expect(result.current.active).toBe(false);
+    expect(result.current.connecting).toBe(true);
+
+    const sock = ws.last();
+    await act(async () => {
+      sock.emitOpen();
+      await flushAsync();
+    });
+    // Open alone is still not live: no server ready, no mic capture.
+    expect(result.current.active).toBe(false);
+
+    await act(async () => {
+      sock.emitControl({ t: "ready", sessionId: "sess-1", traceId: "T1" });
+      await flushAsync();
+    });
+    await waitFor(() => expect(result.current.active).toBe(true));
+    expect(result.current.connecting).toBe(false);
+    // The mic really is capturing (the fake mic graph is attached).
+    expect(micCtx.scriptNode).not.toBeNull();
+
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
+  it("fails a black-holed connect into a retryable transport error instead of hanging (ready timeout)", async () => {
+    const { options, ws, mint } = makeOptions();
+    const { result } = renderHook(() =>
+      useRealtimeVoiceSession({ ...options, readyTimeoutMs: 30 }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+      await flushAsync();
+    });
+    expect(result.current.connecting).toBe(true);
+    // The socket never opens. The connect/ready watchdog must fail the session
+    // into the error path rather than showing "connecting" forever.
+    await waitFor(() => expect(result.current.error?.kind).toBe("transport"));
+    expect(result.current.error?.actionable).toBe(true);
+    expect(result.current.error?.message).toMatch(/timed out/i);
+    expect(result.current.active).toBe(false);
+    expect(result.current.connecting).toBe(false);
+    expect(result.current.status).toBe("idle");
+    // NOT latched: the advertised mic-tap retry must actually be possible.
+    expect(result.current.available).toBe(true);
+    // The stalled socket was torn down, not leaked.
+    const first = ws.sockets[0];
+    await waitFor(() => expect(first.closed).not.toBeNull());
+
+    // Retry on the next tap: a fresh start clears the error, re-mints with a
+    // fresh consent nonce, and can reach live.
+    await act(async () => {
+      await result.current.start();
+      await flushAsync();
+    });
+    expect(result.current.error).toBeNull();
+    expect(mint.calls).toHaveLength(2);
+    const sock = ws.last();
+    await act(async () => {
+      sock.emitOpen();
+      await flushAsync();
+      sock.emitControl({ t: "ready", sessionId: "sess-2", traceId: "T2" });
+      await flushAsync();
+    });
+    await waitFor(() => expect(result.current.active).toBe(true));
+
+    await act(async () => {
+      await result.current.stop();
+    });
+  });
+
   it("fallback: a mint 404 flips `available` false with NO error surface (caller uses batch)", async () => {
     const { options } = makeOptions({ mintStatus: 404 });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
@@ -343,6 +425,11 @@ describe("useRealtimeVoiceSession", () => {
     // No mint request was made — consent is a hard precondition client-side too.
     expect(mint.calls.length).toBe(0);
     expect(result.current.active).toBe(false);
+    // The copy promises the batch path, so realtime must actually disarm: the
+    // next mic tap sees available=false and runs standard voice.
+    expect(result.current.available).toBe(false);
+    expect(result.current.error?.actionable).toBe(false);
+    expect(result.current.error?.message).toMatch(/standard voice/i);
   });
 
   it("is unavailable without agent/conversation ids even when the flag is on", () => {

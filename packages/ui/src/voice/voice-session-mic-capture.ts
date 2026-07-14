@@ -323,6 +323,7 @@ export async function startVoiceMicCapture(
         (lateStream) => {
           if (signal.aborted) stopMediaStream(lateStream);
         },
+        // error-policy:J5 the same promise's rejection is observed by awaitCaptureStep below; this branch only prevents an unhandled-rejection duplicate.
         () => {},
       );
     }
@@ -370,8 +371,8 @@ export async function startVoiceMicCapture(
         if (ignoredError instanceof VoiceMicCaptureCancelledError) {
           throw ignoredError;
         }
+        // error-policy:J5 a denied resume is observed downstream: a non-running graph delivers no frames and the suspend path reports it.
         void ignoredError;
-        // best-effort; a running graph is confirmed by frame delivery.
       }
     }
     acquiredSource = acquiredContext.createMediaStreamSource(stream);
@@ -379,6 +380,7 @@ export async function startVoiceMicCapture(
   } catch (error) {
     acquiredSource?.disconnect();
     stopMediaStream(stream);
+    // error-policy:J6 best-effort context close on the failure path; the pipeline error below is the surfaced failure.
     await acquiredContext?.close().catch(() => {});
     if (error instanceof VoiceMicCaptureCancelledError) throw error;
     if (error instanceof VoiceMicCaptureError) throw error;
@@ -390,6 +392,7 @@ export async function startVoiceMicCapture(
   }
   if (!acquiredContext || !acquiredSource) {
     stopMediaStream(stream);
+    // error-policy:J6 best-effort context close on the failure path; the initialization error below is the surfaced failure.
     await acquiredContext?.close().catch(() => {});
     throw new VoiceMicCaptureError(
       "microphone audio pipeline failed to initialize",
@@ -483,6 +486,7 @@ export async function startVoiceMicCapture(
     }
     source.disconnect();
     stopMediaStream(stream);
+    // error-policy:J6 best-effort context close on the failure path; the pipeline error below is the surfaced failure.
     await ctx.close().catch(() => {});
     if (error instanceof VoiceMicCaptureCancelledError) throw error;
     if (error instanceof VoiceMicCaptureError) throw error;
@@ -511,11 +515,13 @@ export async function startVoiceMicCapture(
     if (visibility.isHidden()) {
       if (!suspended) {
         suspended = true;
+        // error-policy:J5 a failed suspend is inert: the `suspended` gate already stops frame emission, which is the state the caller observes.
         void ctx.suspend?.().catch(() => {});
         options.onSuspend?.();
       }
     } else if (suspended) {
       suspended = false;
+      // error-policy:J5 a failed resume is observed downstream as absent frame delivery on a non-running graph.
       void ctx.resume().catch(() => {});
       options.onResume?.();
     }
@@ -539,6 +545,7 @@ export async function startVoiceMicCapture(
     }
     source.disconnect();
     stopMediaStream(stream);
+    // error-policy:J6 best-effort context close during teardown; tracks are already stopped above.
     await ctx.close().catch(() => {});
   };
 
