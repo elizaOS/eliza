@@ -53,3 +53,5 @@ curriculum_state.json
 scripts/synth/scenarios/*.jsonl
 # DFlash drafter distillation job outputs (see scripts/dflash/jobs/).
 runs/
+# Dataset allowlists must not admit macOS resource-fork sidecars.
+**/._*
