@@ -65,6 +65,12 @@ export interface ChatVoiceStatusBarProps {
    * additive: when false the bar is byte-for-byte the existing batch bar.
    */
   realtimeActive?: boolean;
+  /**
+   * True while a started realtime session is still connecting (consent, mint,
+   * socket, server ready, mic bring-up). Renders a "Connecting" pill so the
+   * pre-live window is legible instead of masquerading as Live or idle.
+   */
+  realtimeConnecting?: boolean;
   /** True when realtime is armed/selected but the socket is not connected yet. */
   realtimeAvailable?: boolean;
   /**
@@ -73,8 +79,9 @@ export interface ChatVoiceStatusBarProps {
    */
   realtimePaused?: boolean;
   /**
-   * An actionable realtime error message (mic blocked, connection dropped).
-   * Rendered as a danger pill so a failed realtime session is never silent.
+   * A realtime error message — actionable (mic blocked, connection dropped) or
+   * not (consent/mint failure). ALWAYS rendered as a danger pill so a failed
+   * realtime session is never silent (UI three-state rule).
    */
   realtimeErrorMessage?: string | null;
   /** Visible only when continuous mode is on AND we have something to show. */
@@ -134,6 +141,7 @@ export function ChatVoiceStatusBar({
   micReconnected = false,
   ttsError = null,
   realtimeActive = false,
+  realtimeConnecting = false,
   realtimeAvailable = false,
   realtimePaused = false,
   realtimeErrorMessage = null,
@@ -200,6 +208,15 @@ export function ChatVoiceStatusBar({
             <span>Live</span>
           </span>
         )
+      ) : realtimeConnecting ? (
+        <span
+          className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/5 px-2 py-0.5 font-medium text-accent"
+          data-testid="chat-voice-realtime-connecting"
+          title="Realtime voice session connecting"
+        >
+          <Radio className="h-3 w-3 animate-pulse" aria-hidden="true" />
+          <span>Connecting</span>
+        </span>
       ) : realtimeAvailable ? (
         <span
           className="inline-flex items-center gap-1 rounded-sm border border-accent/30 bg-accent/5 px-2 py-0.5 font-medium text-accent"

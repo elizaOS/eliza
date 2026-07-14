@@ -858,6 +858,10 @@ export function ChatView({
       voice.isListening ||
       voice.isSpeaking ||
       voiceSession.realtimeActive ||
+      voiceSession.realtimeConnecting ||
+      // Three-state rule: a realtime failure keeps the bar visible so the
+      // error pill renders even when continuous mode is off (manual mic tap).
+      Boolean(voiceSession.realtimeError) ||
       Boolean(voiceSpeaker) ||
       Boolean(voiceSession.interimTranscript));
   const continuousChatToggleVisible =
@@ -880,13 +884,12 @@ export function ChatView({
           micReconnected={voiceSession.micReconnected}
           ttsError={voiceSession.ttsError}
           realtimeActive={voiceSession.realtimeActive}
+          realtimeConnecting={voiceSession.realtimeConnecting}
           realtimeAvailable={voiceSession.realtimeAvailable}
           realtimePaused={voiceSession.paused}
-          realtimeErrorMessage={
-            voiceSession.realtimeError?.actionable
-              ? voiceSession.realtimeError.message
-              : null
-          }
+          // Every realtime error renders, actionable or not — a consent/mint
+          // failure must never read as healthy-idle (UI three-state rule).
+          realtimeErrorMessage={voiceSession.realtimeError?.message ?? null}
           visible={voiceStatusBarVisible}
           className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
           data-testid="chat-view-voice-status-bar"

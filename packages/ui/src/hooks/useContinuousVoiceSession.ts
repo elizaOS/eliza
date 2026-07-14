@@ -27,8 +27,10 @@ export interface UseContinuousVoiceSessionOptions {
 }
 
 export interface ContinuousVoiceSessionState {
-  /** True when the realtime WS path is currently driving the mic. */
+  /** True when the realtime WS path is genuinely live (socket + ready + mic). */
   realtimeActive: boolean;
+  /** True while a started realtime session is still working toward live. */
+  realtimeConnecting: boolean;
   /** True when the realtime path COULD drive the mic (flag on + mint ok). */
   realtimeAvailable: boolean;
   /** Unified status for `ChatVoiceStatusBar` (realtime wins when active). */
@@ -41,7 +43,7 @@ export interface ContinuousVoiceSessionState {
   agentSpeaking: boolean;
   /** Realtime session paused by a visibility-hide (paused, not broken). */
   paused: boolean;
-  /** Typed, actionable realtime error (null on the batch path). */
+  /** Typed realtime error, actionable or not (null on the batch path). */
   realtimeError: RealtimeVoiceError | null;
   /** Latency snapshot for the badge (batch — realtime latency is server-side). */
   latency: ContinuousChatLatency;
@@ -87,7 +89,9 @@ export function useContinuousVoiceSession(
   }, [batch, realtime]);
 
   const stop = useCallback(async () => {
-    if (realtime.active) {
+    // A stop during bring-up (connecting, not yet live) must cancel the pending
+    // realtime lifecycle, not pause the (already disabled) batch path.
+    if (realtime.active || realtime.connecting) {
       await realtime.stop();
       return;
     }
@@ -110,6 +114,7 @@ export function useContinuousVoiceSession(
 
     return {
       realtimeActive,
+      realtimeConnecting: realtime.available && realtime.connecting,
       realtimeAvailable: realtime.available,
       status,
       interimTranscript,

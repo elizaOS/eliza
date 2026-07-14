@@ -65,6 +65,7 @@ function makeRealtime(
   return {
     available: false,
     active: false,
+    connecting: false,
     status: "idle",
     transcriptPartial: "",
     transcriptFinal: "",
@@ -186,6 +187,28 @@ describe("useContinuousVoiceSession", () => {
     );
     act(() => withRt.result.current.bargeIn());
     expect(rt.bargeIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes realtimeConnecting while a started session is pre-live, and stop() cancels it", async () => {
+    const batch = makeBatch();
+    const realtime = makeRealtime({
+      available: true,
+      active: false,
+      connecting: true,
+    });
+    const { result } = renderHook(() =>
+      useContinuousVoiceSession({ batch, realtime }),
+    );
+    expect(result.current.realtimeConnecting).toBe(true);
+    expect(result.current.realtimeActive).toBe(false);
+
+    // A stop during bring-up must cancel the pending realtime lifecycle, not
+    // pause the (disabled) batch path.
+    await act(async () => {
+      await result.current.stop();
+    });
+    expect(realtime.stop).toHaveBeenCalledTimes(1);
+    expect(batch.pause).not.toHaveBeenCalled();
   });
 
   it("surfaces the realtime error only (batch ttsError still passes through)", () => {

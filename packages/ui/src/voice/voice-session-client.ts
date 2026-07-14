@@ -251,7 +251,7 @@ export function createVoiceSessionClient(
     try {
       options.onTraceMark?.({ name, traceId, atMs: now() });
     } catch (ignoredError) {
-      // Telemetry is best-effort and must never break audio or transport.
+      // error-policy:J7 trace-mark listeners are diagnostics; a throwing listener must never break audio or transport.
       void ignoredError;
     }
   };
@@ -264,7 +264,7 @@ export function createVoiceSessionClient(
     try {
       options.onPlaybackUnlockChange?.(required);
     } catch (ignoredError) {
-      // UI notification is best-effort; playback continues independently.
+      // error-policy:J7 unlock-state notification is UI telemetry; playback continues independently of a throwing listener.
       void ignoredError;
     }
   };
@@ -324,7 +324,7 @@ export function createVoiceSessionClient(
     try {
       options.onMinted?.(json);
     } catch (ignoredError) {
-      // Correlation telemetry must never turn a valid mint into a failed start.
+      // error-policy:J7 onMinted is correlation telemetry; a throwing listener must never turn a valid mint into a failed start.
       void ignoredError;
     }
     return json;
@@ -335,8 +335,8 @@ export function createVoiceSessionClient(
     try {
       ws.send(encodeClientControl(frame));
     } catch (ignoredError) {
+      // error-policy:J5 a send race with a closing socket is observed by the close handler, which drives reconnect/teardown.
       void ignoredError;
-      // socket closing; the close handler will drive reconnect/teardown.
     }
   }
 
@@ -347,8 +347,8 @@ export function createVoiceSessionClient(
       // the capture path is never observed mutated after send.
       ws.send(bytes.slice().buffer);
     } catch (ignoredError) {
+      // error-policy:J5 a dropped uplink frame on a dying socket is observed by the close handler's reconnect path.
       void ignoredError;
-      // dropped; reconnect logic handles a dead socket.
     }
   }
 
@@ -479,6 +479,7 @@ export function createVoiceSessionClient(
         signal: captureController.signal,
       });
       if (!isLifecycleCurrent(generation) || ws !== socket || mic) {
+        // error-policy:J6 best-effort release of a mic whose session was superseded before it attached.
         await createdMic.stop().catch(() => {});
         return;
       }
@@ -521,6 +522,7 @@ export function createVoiceSessionClient(
         try {
           socket.close(1000, "superseded");
         } catch (ignoredError) {
+          // error-policy:J6 best-effort close of a superseded socket during teardown.
           void ignoredError;
         }
         return;
@@ -539,6 +541,7 @@ export function createVoiceSessionClient(
           }),
         );
       } catch (ignoredError) {
+        // error-policy:J1 a failed hello send is translated into the structured transport-recovery path, not rethrown.
         void ignoredError;
         requestRecovery("hello_send", generation, socket);
         return;
@@ -588,6 +591,7 @@ export function createVoiceSessionClient(
     try {
       socket.close(1012, "re-mint");
     } catch (ignoredError) {
+      // error-policy:J6 best-effort close of the dead socket; recovery proceeds regardless.
       void ignoredError;
     }
     if (recoveryPromise) return;
@@ -636,6 +640,7 @@ export function createVoiceSessionClient(
     pendingCapture?.abort();
     const currentMic = mic;
     mic = null;
+    // error-policy:J6 best-effort mic release after ownership is detached.
     await currentMic?.stop().catch(() => {});
   }
 
@@ -659,24 +664,26 @@ export function createVoiceSessionClient(
       try {
         socket.send(encodeClientControl({ t: "bye" }));
       } catch (ignoredError) {
+        // error-policy:J6 the bye frame is a courtesy on a socket being torn down.
         void ignoredError;
       }
       connPhase = "closing";
       try {
         socket.close(1000, "client bye");
       } catch (ignoredError) {
+        // error-policy:J6 best-effort close of an already-closing socket during teardown.
         void ignoredError;
-        /* already closing */
       }
     } else if (socket) {
       try {
         socket.close(1000, "client bye");
       } catch (ignoredError) {
+        // error-policy:J6 best-effort close of a never-opened socket during teardown.
         void ignoredError;
-        /* noop */
       }
     }
     const micTeardown = teardownMic();
+    // error-policy:J6 playback sink release is best effort once detached; stop() must always complete.
     await Promise.all([micTeardown, stoppedPlayback?.stop().catch(() => {})]);
     if (lifecycleGeneration === stoppedGeneration) {
       connPhase = "closed";
@@ -725,6 +732,7 @@ export function createVoiceSessionClient(
           },
         });
         if (!isLifecycleCurrent(generation)) {
+          // error-policy:J6 best-effort release of a playback sink whose lifecycle was superseded mid-create.
           await createdPlayback.stop().catch(() => {});
           return;
         }

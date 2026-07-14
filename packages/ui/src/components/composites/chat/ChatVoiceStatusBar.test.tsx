@@ -197,10 +197,32 @@ describe("ChatVoiceStatusBar", () => {
     render(
       <ChatVoiceStatusBar
         status="idle"
-        realtimeErrorMessage="Voice connection dropped. Tap to try again."
+        realtimeErrorMessage="Voice connection dropped. Tap the mic to try again."
       />,
     );
     const err = screen.getByTestId("chat-voice-realtime-error");
     expect(err.textContent).toContain("Voice connection dropped");
+  });
+
+  it("surfaces a NON-actionable realtime error too (three-state rule: failure is never silent)", () => {
+    render(
+      <ChatVoiceStatusBar
+        status="idle"
+        realtimeErrorMessage="Couldn't confirm consent for realtime voice. The mic will use standard voice instead."
+      />,
+    );
+    const err = screen.getByTestId("chat-voice-realtime-error");
+    expect(err.textContent).toContain("Couldn't confirm consent");
+  });
+
+  it("shows a Connecting pill (not Live, not Armed) while a started session is pre-live", () => {
+    render(
+      <ChatVoiceStatusBar status="idle" realtimeConnecting realtimeAvailable />,
+    );
+    expect(
+      screen.getByTestId("chat-voice-realtime-connecting").textContent,
+    ).toContain("Connecting");
+    expect(screen.queryByTestId("chat-voice-realtime-live")).toBeNull();
+    expect(screen.queryByTestId("chat-voice-realtime-armed")).toBeNull();
   });
 });
