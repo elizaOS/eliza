@@ -37,7 +37,9 @@ jobs:
           evidence=packages/os/release/beta-2026-05-16/evidence/ci-evidence.json
 
           node --check packages/os/scripts/*.mjs
-          node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs
+          node --test \
+            packages/os/scripts/__tests__/os-release-scripts.test.mjs \
+            packages/os/scripts/__tests__/release-asset-inventory.test.mjs
           if [ -f "$manifest" ]; then
             node packages/os/scripts/validate-release-manifest.mjs \
               --manifest "$manifest"

@@ -23,6 +23,7 @@ interface WorkflowTriggers {
 }
 
 interface WorkflowStep {
+  name?: string;
   run?: string;
   uses?: string;
 }
@@ -103,6 +104,15 @@ function requestedWritePermissions(workflow: Workflow): Set<string> {
   return permissions;
 }
 
+function namedStep(workflow: Workflow, name: string): WorkflowStep {
+  const steps = Object.values(workflow.jobs ?? {}).flatMap(
+    (job) => job.steps ?? [],
+  );
+  const step = steps.find((candidate) => candidate.name === name);
+  expect(step).toBeDefined();
+  return step as WorkflowStep;
+}
+
 describe("release workflow authority", () => {
   test("only proven dead competing entry points stay absent", () => {
     for (const workflow of retiredWorkflows) {
@@ -149,7 +159,7 @@ describe("release workflow authority", () => {
     ]);
   });
 
-  test("manual recovery binds identities, verifies all assets, and opens a PR", () => {
+  test("manual recovery binds an immutable asset inventory and opens an evidenced draft PR", () => {
     const workflow = parseWorkflow(recoveryWorkflow);
     const source = read(workflowPath(recoveryWorkflow));
     const dispatchInputs = workflow.on?.workflow_dispatch?.inputs ?? {};
@@ -168,15 +178,64 @@ describe("release workflow authority", () => {
       contents: "write",
       "pull-requests": "write",
     });
-    expect(source).toContain("remote_base_sha");
-    expect(source).toContain('git rev-parse "FETCH_HEAD^{commit}"');
-    expect(source).toContain("gh release download");
-    expect(source).toContain("generate-release-checksums.mjs");
-    expect(source).toContain("--update-manifest");
-    expect(source).toContain("--require-publishable-checksums");
-    expect(source).toContain("verify-release-checksums.mjs");
-    expect(source).toContain(`git push origin "HEAD:refs/heads/\${BRANCH}"`);
-    expect(source).toContain("gh pr create");
+
+    const identity = namedStep(
+      workflow,
+      "Bind base, tag, release, manifest, and asset identities",
+    ).run;
+    expect(identity).toContain("remote_base_sha");
+    expect(identity).toContain('git rev-parse "FETCH_HEAD^{commit}"');
+    expect(identity).toContain(`releases/tags/\${RELEASE_TAG}`);
+    expect(identity).toContain(`releases/\${release_id}/assets?per_page=100`);
+    expect(identity).toContain("release-asset-inventory.mjs capture");
+
+    const download = namedStep(
+      workflow,
+      "Download and verify the captured release asset set",
+    ).run;
+    expect(download).toContain("release-asset-inventory.mjs plan");
+    expect(download).toContain(`releases/assets/\${asset_id}`);
+    expect(download).toContain("release-asset-inventory.mjs verify");
+    expect(download).toContain('> "$ARTIFACT_DIR/$asset_name"');
+
+    const checksum = namedStep(
+      workflow,
+      "Regenerate and verify every publishable checksum",
+    ).run;
+    expect(checksum).toContain("generate-release-checksums.mjs");
+    expect(checksum).toContain("--update-manifest");
+    expect(checksum).toContain("--require-publishable-checksums");
+    expect(checksum).toContain("verify-release-checksums.mjs");
+
+    const drift = namedStep(
+      workflow,
+      "Reject base, tag, release, and asset inventory drift",
+    ).run;
+    expect(drift).toContain("develop moved during recovery");
+    expect(drift).toContain("release tag moved during recovery");
+    expect(drift).toContain(`releases/\${post_release_id}/assets?per_page=100`);
+    expect(drift).toContain("release-asset-inventory.mjs capture");
+    expect(drift).toContain("release-asset-inventory.mjs compare");
+
+    const openPullRequest = namedStep(
+      workflow,
+      "Open the draft checksum recovery pull request",
+    ).run;
+    expect(openPullRequest).toContain("release-asset-inventory.mjs render-pr");
+    expect(openPullRequest).toContain("scripts/check-pr-evidence.mjs");
+    expect(openPullRequest).toContain(
+      `git push origin "HEAD:refs/heads/\${BRANCH}"`,
+    );
+    expect(openPullRequest).toContain("gh pr create");
+    expect(openPullRequest).toContain("--draft");
+    expect(openPullRequest).toContain('--body-file "$pr_body"');
+
+    expect(
+      existsSync(
+        join(repoRoot, "packages/os/scripts/release-asset-inventory.mjs"),
+      ),
+    ).toBe(true);
+    expect(source).not.toContain("gh release download");
     expect(source).not.toMatch(
       /git push(?:\s+origin)?\s+(?:develop|main|HEAD:(?:develop|main))/,
     );
