@@ -24,6 +24,7 @@ import {
 import { useBootConfig } from "../config/boot-config-react.hooks";
 import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
+import { useProtectedAgentProbesEnabled } from "../hooks/useProtectedAgentProbesEnabled";
 import type { Tab } from "../navigation";
 import { useAppSelectorShallow } from "../state";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
@@ -257,8 +258,21 @@ export function useSlashCommandController(
   const [loadError, setLoadError] = React.useState(false);
   const [modelCatalog, setModelCatalog] =
     React.useState<ModelCatalogProviders | null>(null);
+  // The catalog load hits the protected GET /api/commands + /api/custom-actions;
+  // hold it until probes are allowed so fresh Cloud onboarding fires no 401
+  // (#16242). Re-runs to populate the menu once the gate opens post-sign-in.
+  const probesEnabled = useProtectedAgentProbesEnabled();
 
   React.useEffect(() => {
+    if (!probesEnabled) {
+      // No session yet on the shared Cloud app — present a resolved-empty
+      // catalog (not a perpetual spinner) and skip the protected fetches.
+      setServerCommands([]);
+      setCustomCommands([]);
+      setLoadError(false);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setLoadError(false);
@@ -345,7 +359,7 @@ export function useSlashCommandController(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [probesEnabled]);
 
   const commands = React.useMemo(
     // Server catalog wins over custom/saved on alias collisions; then gate by

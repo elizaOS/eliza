@@ -11,7 +11,10 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetAuthStatusForTests,
+  __setAuthStatusForTests,
+  isAuthenticatedNow,
   primeAuthStatusProbe,
+  subscribeAuthStatus,
   useAuthStatus,
 } from "./useAuthStatus";
 
@@ -166,5 +169,41 @@ describe("primeAuthStatusProbe + activation reuse", () => {
       expect(result.current.state.phase).toBe("authenticated"),
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("isAuthenticatedNow + subscribeAuthStatus (non-hook seam, #16242)", () => {
+  beforeEach(() => {
+    __resetAuthStatusForTests();
+  });
+  afterEach(() => {
+    __resetAuthStatusForTests();
+  });
+
+  it("reads the shared snapshot without a probe and notifies subscribers on publish", () => {
+    expect(isAuthenticatedNow()).toBe(false);
+    const seen: string[] = [];
+    const unsub = subscribeAuthStatus((state) => seen.push(state.phase));
+
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u", displayName: "Owner", kind: "owner" },
+      session: { id: "s", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    expect(isAuthenticatedNow()).toBe(true);
+    expect(seen).toContain("authenticated");
+
+    unsub();
+    __setAuthStatusForTests({ phase: "unauthenticated" });
+    // After unsubscribe the listener stops receiving updates; the snapshot read
+    // still reflects the latest published state.
+    expect(isAuthenticatedNow()).toBe(false);
+    expect(seen).not.toContain("unauthenticated");
   });
 });
