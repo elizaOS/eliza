@@ -46,8 +46,11 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  _clearDefaultBranchCache,
   CodingWorkspaceService,
   DiffGateBlockedError,
+  getCodingWorkspaceService,
+  resolveDefaultBranch,
 } from "../services/workspace-service.js";
 
 const workspace = {
@@ -475,5 +478,53 @@ describe("CodingWorkspaceService workspace lifecycle seams", () => {
 
     expect(persistent).toMatchObject({ status: "kept" });
     expect(existsSync(persistentSource)).toBe(true);
+  });
+});
+
+describe("workspace-service exported helpers", () => {
+  it("resolveDefaultBranch treats an unsafe remote as unresolved and falls back to main", async () => {
+    _clearDefaultBranchCache();
+    // ext:: remotes execute arbitrary commands; the resolver must refuse them
+    // before spawning git and let the clone remain the hard gate.
+    await expect(resolveDefaultBranch("ext::sh -c 'true'")).resolves.toBe(
+      "main",
+    );
+    _clearDefaultBranchCache();
+  });
+
+  it("resolveDefaultBranch shares one in-flight lookup per repo URL", async () => {
+    _clearDefaultBranchCache();
+    // A nonexistent local-network host fails fast; both calls must observe the
+    // same fallback while the cache holds a single shared promise.
+    const repo = "https://nonexistent.invalid/elizaos/repo.git";
+    const [first, second] = await Promise.all([
+      resolveDefaultBranch(repo),
+      resolveDefaultBranch(repo),
+    ]);
+    expect(first).toBe("main");
+    expect(second).toBe("main");
+    _clearDefaultBranchCache();
+  });
+
+  it("getCodingWorkspaceService returns null unless the runtime holds the real service", () => {
+    const bare = {
+      getService: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+    expect(getCodingWorkspaceService(bare)).toBeNull();
+
+    const impostor = {
+      getService: vi.fn(() => ({ name: "not-a-workspace-service" })),
+    } as unknown as IAgentRuntime;
+    expect(getCodingWorkspaceService(impostor)).toBeNull();
+
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(),
+    } as unknown as IAgentRuntime;
+    const service = new CodingWorkspaceService(runtime, {
+      baseDir: tmpRoot("workspace-service-helper-"),
+    });
+    (runtime.getService as ReturnType<typeof vi.fn>).mockReturnValue(service);
+    expect(getCodingWorkspaceService(runtime)).toBe(service);
   });
 });

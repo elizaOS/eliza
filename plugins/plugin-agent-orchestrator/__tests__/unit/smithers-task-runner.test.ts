@@ -2,8 +2,14 @@
  * Verifies runTaskWithSmithers (durable Smithers-backed coding task).
  * Deterministic unit test of pure helpers; no runtime, no live model.
  */
+import { readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { runTaskWithSmithers } from "../../src/services/smithers-task-runner";
+import {
+  resolveSmithersPluginRoot,
+  runTaskWithSmithers,
+} from "../../src/services/smithers-task-runner";
 import type {
   TaskApprovalResult,
   TaskProvisionResult,
@@ -73,6 +79,27 @@ function spec(overrides: Partial<TaskRunSpec> = {}): TaskRunSpec {
   const id = `task-${Math.random().toString(36).slice(2, 10)}`;
   return { taskId: id, runId: id, initialPrompt: "do the thing", ...overrides };
 }
+
+describe("resolveSmithersPluginRoot (subprocess cwd)", () => {
+  it("resolves the installed plugin package, not the module or working directory", () => {
+    // The durable runner spawns its Bun subprocess with the installed package
+    // root as cwd so `smithers-orchestrator` and `effect` resolve from the
+    // plugin's own dependency graph — including in relocated packaged
+    // runtimes where no source checkout exists.
+    const root = resolveSmithersPluginRoot();
+    const manifest = JSON.parse(
+      readFileSync(join(root, "package.json"), "utf8"),
+    ) as { name?: string; dependencies?: Record<string, string> };
+    expect(manifest.name).toBe("@elizaos/plugin-agent-orchestrator");
+    expect(manifest.dependencies).toHaveProperty("smithers-orchestrator");
+    // spawn cwds must be physical paths; a symlinked node_modules entry would
+    // otherwise leak into subprocess-relative resolution.
+    expect(root).toBe(realpathSync(root));
+    expect(root).toBe(
+      realpathSync(fileURLToPath(new URL("../..", import.meta.url))),
+    );
+  });
+});
 
 describe("runTaskWithSmithers (durable Smithers-backed coding task)", () => {
   it(

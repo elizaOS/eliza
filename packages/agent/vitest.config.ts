@@ -160,5 +160,14 @@ export default defineConfig({
       "**/*.real.test.{ts,tsx}",
       "**/*-real.test.{ts,tsx}",
     ],
+    coverage: {
+      ...baseConfig.test?.coverage,
+      // The shared base drops src/cli/** as e2e-only wiring; this package has
+      // a real unit suite for the CLI dispatcher (src/cli/index.test.ts) and
+      // the changed-files coverage gate needs its execution recorded.
+      exclude: (baseConfig.test?.coverage?.exclude ?? []).filter(
+        (pattern) => pattern !== "src/cli/**",
+      ),
+    },
   },
 });

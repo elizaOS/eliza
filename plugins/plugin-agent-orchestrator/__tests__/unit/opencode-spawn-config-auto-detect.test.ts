@@ -2,9 +2,19 @@
  * Verifies buildOpencodeSpawnConfig.
  * Deterministic unit test with a stubbed runtime; no live model.
  */
+
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildOpencodeSpawnConfig } from "../../src/services/opencode-config.js";
+import {
+  buildOpencodeAcpEnv,
+  buildOpencodeSpawnConfig,
+  prependPathDir,
+  resolveVendoredOpencodeShim,
+} from "../../src/services/opencode-config.js";
 
 function runtime(settings: Record<string, string | undefined> = {}) {
   return {
@@ -217,5 +227,53 @@ describe("buildOpencodeSpawnConfig (model-gateway mode, #11536 E2)", () => {
       CEREBRAS_API_KEY: "csk-test",
     });
     expect(result?.providerId).toBe("cerebras");
+  });
+});
+
+describe("vendored opencode shim resolution (relocatable runtimes)", () => {
+  it("finds the shim from a working directory outside any checkout", () => {
+    // The resolver must not depend on the process cwd pointing at a source
+    // tree: candidate roots include the installed package's ancestors, so a
+    // packaged runtime (or an agent whose cwd is a scratch workspace) still
+    // finds plugins/plugin-agent-orchestrator/bin.
+    const foreignCwd = mkdtempSync(path.join(tmpdir(), "opencode-shim-cwd-"));
+    const previousCwd = process.cwd();
+    process.chdir(foreignCwd);
+    try {
+      const shimDir = resolveVendoredOpencodeShim();
+      expect(shimDir).toBeDefined();
+      expect(realpathSync(shimDir as string)).toBe(
+        realpathSync(fileURLToPath(new URL("../../bin", import.meta.url))),
+      );
+    } finally {
+      process.chdir(previousCwd);
+      rmSync(foreignCwd, { recursive: true, force: true });
+    }
+  });
+
+  it("prepends the shim dir to PATH exactly once in the ACP environment", () => {
+    const shimDir = resolveVendoredOpencodeShim() as string;
+    const { env, vendoredShimDir } = buildOpencodeAcpEnv(undefined, {
+      // A caller-supplied PATH that already lists the shim must not grow a
+      // duplicate entry on every spawn.
+      PATH: [shimDir, "/usr/bin"].join(path.delimiter),
+    });
+    expect(vendoredShimDir).toBe(shimDir);
+    expect(env.PATH.split(path.delimiter)[0]).toBe(shimDir);
+    expect(
+      env.PATH.split(path.delimiter).filter((part) => part === shimDir),
+    ).toHaveLength(1);
+    expect(env.OPENCODE_DISABLE_AUTOUPDATE).toBe("1");
+    expect(env.OPENCODE_DISABLE_TERMINAL_TITLE).toBe("1");
+  });
+
+  it("prependPathDir keeps unrelated entries and dedupes by resolved path", () => {
+    expect(prependPathDir(undefined, "/opt/shim")).toBe("/opt/shim");
+    expect(
+      prependPathDir(
+        ["/usr/bin", "/opt/shim/../shim"].join(path.delimiter),
+        "/opt/shim",
+      ),
+    ).toBe(["/opt/shim", "/usr/bin"].join(path.delimiter));
   });
 });

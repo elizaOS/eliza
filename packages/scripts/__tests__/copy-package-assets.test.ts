@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
+import { copyPackageAssets, shouldCopyAsset } from "../copy-package-assets.mjs";
 
 const repoRoot = join(import.meta.dirname, "..", "..", "..");
 const scriptPath = join(
@@ -117,5 +118,80 @@ describe("copy-package-assets", () => {
     ]) {
       expect(existsSync(join(packageRoot, "dist", output))).toBe(false);
     }
+  });
+});
+
+describe("copyPackageAssets (in-process library surface)", () => {
+  test("copies assets into dist, stripping src/ and dropping generated state", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "eliza-package-assets-"));
+    temporaryDirectories.push(packageRoot);
+    writeFixture(packageRoot, "src/assets/logo.svg", "<svg/>");
+    writeFixture(packageRoot, "packaging/config/service.conf", "unit\n");
+    writeFixture(packageRoot, "packaging/.venv/lib/site.py", "venv state\n");
+    writeFixture(packageRoot, "packaging/.gradle/cache.bin", "gradle state\n");
+    writeFixture(
+      packageRoot,
+      "packaging/.runtime.prepare-1234/staging/node",
+      "in-flight staging\n",
+    );
+    writeFixture(
+      packageRoot,
+      "packaging/snap/runtime/package.json",
+      "generated runtime\n",
+    );
+
+    await copyPackageAssets(packageRoot, ["src/assets", "packaging"]);
+
+    // A leading src/ is stripped so dist mirrors the published layout.
+    expect(existsSync(join(packageRoot, "dist/assets/logo.svg"))).toBe(true);
+    expect(
+      existsSync(join(packageRoot, "dist/packaging/config/service.conf")),
+    ).toBe(true);
+    expect(existsSync(join(packageRoot, "dist/packaging/.venv"))).toBe(false);
+    expect(existsSync(join(packageRoot, "dist/packaging/.gradle"))).toBe(false);
+    expect(
+      existsSync(join(packageRoot, "dist/packaging/.runtime.prepare-1234")),
+    ).toBe(false);
+    expect(existsSync(join(packageRoot, "dist/packaging/snap/runtime"))).toBe(
+      false,
+    );
+  });
+
+  test("replaces a stale dist target instead of merging into it", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "eliza-package-assets-"));
+    temporaryDirectories.push(packageRoot);
+    writeFixture(packageRoot, "assets/current.txt", "current\n");
+    writeFixture(packageRoot, "dist/assets/stale.txt", "stale\n");
+
+    await copyPackageAssets(packageRoot, ["assets"]);
+
+    expect(existsSync(join(packageRoot, "dist/assets/current.txt"))).toBe(true);
+    expect(existsSync(join(packageRoot, "dist/assets/stale.txt"))).toBe(false);
+  });
+
+  test("fails loudly on a missing source asset", async () => {
+    const packageRoot = mkdtempSync(join(tmpdir(), "eliza-package-assets-"));
+    temporaryDirectories.push(packageRoot);
+
+    await expect(
+      copyPackageAssets(packageRoot, ["does-not-exist"]),
+    ).rejects.toThrow(/missing asset path/);
+  });
+});
+
+describe("shouldCopyAsset", () => {
+  test("always keeps paths outside the package directory", () => {
+    expect(shouldCopyAsset("/pkg", "/elsewhere/file.txt")).toBe(true);
+    expect(shouldCopyAsset("/pkg", "/pkg")).toBe(true);
+  });
+
+  test("drops generated segments anywhere in the relative path", () => {
+    expect(shouldCopyAsset("/pkg", "/pkg/tools/node_modules/dep")).toBe(false);
+    expect(shouldCopyAsset("/pkg", "/pkg/py/app.egg-info/PKG-INFO")).toBe(
+      false,
+    );
+    expect(shouldCopyAsset("/pkg", "/pkg/py/.coverage.worker")).toBe(false);
+    expect(shouldCopyAsset("/pkg", "/pkg/py/module.pyc")).toBe(false);
+    expect(shouldCopyAsset("/pkg", "/pkg/py/module.py")).toBe(true);
   });
 });

@@ -3,22 +3,11 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 
-const [packageDirArg, ...assetPaths] = process.argv.slice(2);
-
-if (!packageDirArg || assetPaths.length === 0) {
-  console.error(
-    "usage: node packages/scripts/copy-package-assets.mjs <package-dir> <src-path> [<src-path> ...]",
-  );
-  process.exit(1);
-}
-
-const packageDir = path.resolve(repoRoot, packageDirArg);
-const distDir = path.join(packageDir, "dist");
 const cleanupHelperScript = path.join(
   repoRoot,
   "packages",
@@ -52,7 +41,12 @@ const GENERATED_PACKAGING_OUTPUTS = [
   "packaging/snap/runtime",
 ];
 
-function shouldCopyAsset(src) {
+/**
+ * Filter for cpSync: keeps source assets, drops generated local state
+ * (dependency dirs, caches, Python bytecode/venvs, transient
+ * prepare-packaged-runtime staging, and committed packaging output trees).
+ */
+export function shouldCopyAsset(packageDir, src) {
   const relative = path.relative(packageDir, src);
   if (!relative || relative.startsWith("..")) {
     return true;
@@ -111,7 +105,7 @@ function removePathRecursive(targetPath) {
   }
 }
 
-async function copyAssetWithRetry(sourcePath, targetPath) {
+async function copyAssetWithRetry(packageDir, sourcePath, targetPath) {
   let lastError;
   for (let attempt = 1; attempt <= COPY_RETRY_ATTEMPTS; attempt++) {
     try {
@@ -121,7 +115,7 @@ async function copyAssetWithRetry(sourcePath, targetPath) {
       mkdirSync(path.dirname(targetPath), { recursive: true });
       cpSync(sourcePath, targetPath, {
         recursive: true,
-        filter: shouldCopyAsset,
+        filter: (src) => shouldCopyAsset(packageDir, src),
       });
       return;
     } catch (error) {
@@ -135,14 +129,46 @@ async function copyAssetWithRetry(sourcePath, targetPath) {
   throw lastError;
 }
 
-for (const assetPath of assetPaths) {
-  const sourcePath = path.join(packageDir, assetPath);
-  if (!existsSync(sourcePath)) {
-    console.error(`missing asset path: ${sourcePath}`);
+/**
+ * Copies each asset path from `<packageDir>` into `<packageDir>/dist`
+ * (stripping a leading `src/`), filtered through {@link shouldCopyAsset}.
+ * Throws on a missing source asset — a build must fail loudly, not publish a
+ * package with a silently absent asset.
+ */
+export async function copyPackageAssets(packageDirArg, assetPaths) {
+  const packageDir = path.resolve(repoRoot, packageDirArg);
+  const distDir = path.join(packageDir, "dist");
+  for (const assetPath of assetPaths) {
+    const sourcePath = path.join(packageDir, assetPath);
+    if (!existsSync(sourcePath)) {
+      throw new Error(`missing asset path: ${sourcePath}`);
+    }
+
+    const relativeTarget = assetPath.replace(/^src\//, "");
+    const targetPath = path.join(distDir, relativeTarget);
+    await copyAssetWithRetry(packageDir, sourcePath, targetPath);
+  }
+}
+
+async function main() {
+  const [packageDirArg, ...assetPaths] = process.argv.slice(2);
+  if (!packageDirArg || assetPaths.length === 0) {
+    console.error(
+      "usage: node packages/scripts/copy-package-assets.mjs <package-dir> <src-path> [<src-path> ...]",
+    );
     process.exit(1);
   }
+  try {
+    await copyPackageAssets(packageDirArg, assetPaths);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 
-  const relativeTarget = assetPath.replace(/^src\//, "");
-  const targetPath = path.join(distDir, relativeTarget);
-  await copyAssetWithRetry(sourcePath, targetPath);
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  await main();
 }

@@ -2,8 +2,10 @@
  * Covers resolveRuntimePluginImportSpecifier() (rewriting core app plugins to
  * their /plugin runtime entrypoint while leaving other package roots intact) and
  * resolvePlugins() manifest discovery that auto-enables third-party scoped
- * plugin-* packages via their autoEnable module. Deterministic — a real on-disk
- * fixture package under a temp workspace, no live model.
+ * plugin-* packages via their autoEnable module, plus plugin-load failure
+ * reporting through the typed accessors and the packaged-runtime stub skip.
+ * Deterministic — real on-disk fixture packages under temp workspaces, no
+ * live model.
  */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -11,6 +13,8 @@ import path from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  getLastFailedPluginDetails,
+  getLastFailedPluginNames,
   resolvePlugins,
   resolveRuntimePluginImportSpecifier,
 } from "./plugin-resolver";
@@ -273,4 +277,154 @@ describe("resolvePlugins mobile blocking-phase loadability gate (#14039)", () =>
     // Claimed by blocking => excluded from deferred (the two phases partition).
     expect(deferred.map((p) => p.name)).not.toContain(PROVIDER);
   }, 120_000);
+});
+
+// Symbols the resolver USED to stash failures on (agent-wide globalThis).
+// The seam is now module-owned per-resolve state read via the typed accessors;
+// these globals must never be written again (Refs #12091 items 30/31).
+const LEGACY_NAMES_SYMBOL = Symbol.for(
+  "@elizaos/plugin-resolver/last-failed-plugin-names",
+);
+const LEGACY_DETAILS_SYMBOL = Symbol.for(
+  "@elizaos/plugin-resolver/last-failed-plugin-details",
+);
+
+describe("plugin-load failure reporting", () => {
+  it("exposes the last resolve pass's failures via the typed accessors without touching globalThis", async () => {
+    const previousCwd = process.cwd();
+    const previousEnv = process.env.BROKEN_PLUGIN_ENABLE;
+    const workspace = await mkdtemp(
+      path.join(tmpdir(), "eliza-plugin-failure-"),
+    );
+    const packageRoot = path.join(
+      workspace,
+      "node_modules",
+      "@thirdparty",
+      "plugin-broken",
+    );
+
+    try {
+      await mkdir(packageRoot, { recursive: true });
+      await writeFile(
+        path.join(packageRoot, "package.json"),
+        JSON.stringify({
+          name: "@thirdparty/plugin-broken",
+          version: "0.0.0-test",
+          type: "module",
+          exports: { ".": "./index.js" },
+          elizaos: {
+            plugin: { autoEnableModule: "./auto-enable.js" },
+          },
+        }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(packageRoot, "auto-enable.js"),
+        "export function shouldEnable(ctx) { return ctx.env.BROKEN_PLUGIN_ENABLE === '1'; }\n",
+        "utf8",
+      );
+      // Imports fine but exports no valid Plugin object -> recorded as a failure.
+      await writeFile(
+        path.join(packageRoot, "index.js"),
+        "export const notAPlugin = 1;\n",
+        "utf8",
+      );
+
+      process.env.BROKEN_PLUGIN_ENABLE = "1";
+      process.chdir(workspace);
+      const config = { plugins: { allow: [], entries: {} } };
+      await resolvePlugins(config, { quiet: true });
+
+      const details = getLastFailedPluginDetails();
+      const broken = details.find(
+        (d) => d.name === "@thirdparty/plugin-broken",
+      );
+      expect(broken).toBeDefined();
+      expect(broken?.error).toBe("no valid Plugin export");
+      expect(getLastFailedPluginNames()).toContain("@thirdparty/plugin-broken");
+
+      // The deleted global is gone: nothing is stashed on globalThis anymore.
+      expect(
+        (globalThis as Record<symbol, unknown>)[LEGACY_NAMES_SYMBOL],
+      ).toBeUndefined();
+      expect(
+        (globalThis as Record<symbol, unknown>)[LEGACY_DETAILS_SYMBOL],
+      ).toBeUndefined();
+
+      // Accessor returns a fresh copy each call — callers cannot mutate state.
+      const first = getLastFailedPluginDetails();
+      first.push({ name: "mutated", error: "mutated" });
+      expect(
+        getLastFailedPluginDetails().some((d) => d.name === "mutated"),
+      ).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+      if (previousEnv === undefined) delete process.env.BROKEN_PLUGIN_ENABLE;
+      else process.env.BROKEN_PLUGIN_ENABLE = previousEnv;
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("skips packaged-runtime stub modules without recording a failure", async () => {
+    const previousCwd = process.cwd();
+    const previousEnv = process.env.STUBBED_PLUGIN_ENABLE;
+    const workspace = await mkdtemp(path.join(tmpdir(), "eliza-plugin-stub-"));
+    const packageRoot = path.join(
+      workspace,
+      "node_modules",
+      "@thirdparty",
+      "plugin-stubbed",
+    );
+
+    try {
+      await mkdir(packageRoot, { recursive: true });
+      await writeFile(
+        path.join(packageRoot, "package.json"),
+        JSON.stringify({
+          name: "@thirdparty/plugin-stubbed",
+          version: "0.0.0-test",
+          type: "module",
+          exports: { ".": "./index.js" },
+          elizaos: {
+            plugin: { autoEnableModule: "./auto-enable.js" },
+          },
+        }),
+        "utf8",
+      );
+      await writeFile(
+        path.join(packageRoot, "auto-enable.js"),
+        "export function shouldEnable(ctx) { return ctx.env.STUBBED_PLUGIN_ENABLE === '1'; }\n",
+        "utf8",
+      );
+      // The marker prepare-packaged-runtime.mjs writes for license-stubbed
+      // packages: a designed absence, never a load failure.
+      await writeFile(
+        path.join(packageRoot, "index.js"),
+        "export const __elizaPackagedStub = true;\nexport default undefined;\n",
+        "utf8",
+      );
+
+      process.env.STUBBED_PLUGIN_ENABLE = "1";
+      process.chdir(workspace);
+      const config = { plugins: { allow: [], entries: {} } };
+      const resolved = await resolvePlugins(config, { quiet: true });
+
+      expect(
+        resolved.some((entry) => entry.name === "@thirdparty/plugin-stubbed"),
+      ).toBe(false);
+      expect(getLastFailedPluginNames()).not.toContain(
+        "@thirdparty/plugin-stubbed",
+      );
+      expect(
+        getLastFailedPluginDetails().some(
+          (d) => d.name === "@thirdparty/plugin-stubbed",
+        ),
+      ).toBe(false);
+    } finally {
+      process.chdir(previousCwd);
+      if (previousEnv === undefined) delete process.env.STUBBED_PLUGIN_ENABLE;
+      else process.env.STUBBED_PLUGIN_ENABLE = previousEnv;
+      await rm(workspace, { recursive: true, force: true });
+    }
+  });
 });
