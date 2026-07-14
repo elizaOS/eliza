@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * Unit coverage for App-level navigate-view event wiring: a dispatched
- * navigate-view event drives the tab switch through the rendered shell. Boot
- * config + desktop tabs mocked, no runtime.
+ * Unit coverage for App-level event wiring: navigation drives the rendered
+ * shell, while remote connection delivery commits first-run before startup
+ * polling resumes. Boot config and runtime boundaries are mocked.
  */
 
 import { createNavigateViewEvent } from "@elizaos/shared/events";
@@ -17,6 +17,7 @@ import {
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
+import { CONNECT_EVENT } from "./events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
 const appState = vi.hoisted(() => ({
@@ -34,6 +35,69 @@ const authStatusMock = vi.hoisted(() => ({
 const cloudOriginMock = vi.hoisted(() => ({
   agentless: false,
 }));
+
+const connectMock = vi.hoisted(() => {
+  const outcome = {
+    adoption: null as {
+      apiBase: string;
+      token: string | null;
+      uiLanguage: string;
+    } | null,
+    coordinatorEvents: [] as unknown[],
+    effects: [] as string[],
+    notice: null as {
+      message: string;
+      tone: string;
+      durationMs: number;
+    } | null,
+    runtimeMode: null as string | null,
+    shellState: new Map<string, unknown>(),
+  };
+
+  return {
+    outcome,
+    adoptRemote: vi.fn(
+      async (
+        _client: unknown,
+        options: {
+          apiBase: string;
+          token: string | null;
+          uiLanguage: string;
+        },
+      ) => {
+        outcome.adoption = options;
+        outcome.effects.push("adopt-remote");
+        return { alreadyComplete: false };
+      },
+    ),
+    applyConnection: vi.fn(
+      ({ apiBase, token }: { apiBase: string; token?: string | null }) => ({
+        apiBase,
+        token: token ?? null,
+      }),
+    ),
+    completeFirstRun: vi.fn(() => {
+      outcome.effects.push("complete-first-run");
+    }),
+    coordinatorDispatch: vi.fn((event: unknown) => {
+      outcome.coordinatorEvents.push(event);
+    }),
+    persistRuntime: vi.fn((mode: string) => {
+      outcome.runtimeMode = mode;
+    }),
+    retryStartup: vi.fn(() => {
+      outcome.effects.push("retry-startup");
+    }),
+    setActionNotice: vi.fn(
+      (message: string, tone: string, durationMs: number) => {
+        outcome.notice = { message, tone, durationMs };
+      },
+    ),
+    setState: vi.fn((key: string, value: unknown) => {
+      outcome.shellState.set(key, value);
+    }),
+  };
+});
 
 const desktopTabsMock = vi.hoisted(() => ({
   closeTab: vi.fn(),
@@ -226,6 +290,27 @@ vi.mock("./platform/init", () => ({
   isWebPlatform: () => true,
 }));
 
+vi.mock("./platform", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./platform")>();
+  return {
+    ...actual,
+    applyLaunchConnection: connectMock.applyConnection,
+  };
+});
+
+vi.mock("./first-run/adopt-remote-first-run", () => ({
+  adoptRemoteAgentFirstRun: connectMock.adoptRemote,
+}));
+
+vi.mock("./first-run/mobile-runtime-mode", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("./first-run/mobile-runtime-mode")>();
+  return {
+    ...actual,
+    persistMobileRuntimeModeForServerTarget: connectMock.persistRuntime,
+  };
+});
+
 vi.mock("./hooks/useDesktopTabs", () => ({
   useDesktopTabs: () => ({
     tabs: desktopTabsState.tabs,
@@ -244,6 +329,8 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 
 vi.mock("./hooks/useAuthStatus", () => ({
+  isAuthenticatedNow: () => authStatusMock.phase === "authenticated",
+  subscribeAuthStatus: () => vi.fn(),
   useAuthStatus: (options: { skip?: boolean } = {}) => {
     authStatusMock.use(options);
     return {
@@ -290,6 +377,7 @@ vi.mock("./hooks", () => ({
     saveCommandModalOpen: false,
     saveCommandText: "",
   }),
+  useIntervalWhenDocumentVisible: vi.fn(),
   useMediaQuery: () => mediaQueryState.matches,
   useRenderGuard: vi.fn(),
 }));
@@ -321,15 +409,17 @@ vi.mock("./state", async () => {
     firstRunName: "",
     ownerName: "Test Owner",
     plugins: [],
-    retryStartup: vi.fn(),
-    setActionNotice: vi.fn(),
-    setState: vi.fn(),
+    retryStartup: connectMock.retryStartup,
+    completeFirstRun: connectMock.completeFirstRun,
+    setActionNotice: connectMock.setActionNotice,
+    setState: connectMock.setState,
     setTab: appState.setTab,
     setUiLanguage: vi.fn(),
     setUiTheme: vi.fn(),
     setUiThemeMode: vi.fn(),
     startupCoordinator: {
       phase: appState.startupPhase,
+      dispatch: connectMock.coordinatorDispatch,
       retry: vi.fn(),
     },
     startupError: null,
@@ -492,6 +582,20 @@ describe("App navigate-view event wiring", () => {
     desktopBridgeMock.subscribeDesktopBridgeEvent.mockClear();
     dynamicViewLoaderMock.render.mockClear();
     settingsViewMock.render.mockClear();
+    connectMock.adoptRemote.mockClear();
+    connectMock.applyConnection.mockClear();
+    connectMock.completeFirstRun.mockClear();
+    connectMock.coordinatorDispatch.mockClear();
+    connectMock.persistRuntime.mockClear();
+    connectMock.retryStartup.mockClear();
+    connectMock.setActionNotice.mockClear();
+    connectMock.setState.mockClear();
+    connectMock.outcome.adoption = null;
+    connectMock.outcome.coordinatorEvents.length = 0;
+    connectMock.outcome.effects.length = 0;
+    connectMock.outcome.notice = null;
+    connectMock.outcome.runtimeMode = null;
+    connectMock.outcome.shellState.clear();
   });
 
   afterEach(() => {
@@ -526,6 +630,64 @@ describe("App navigate-view event wiring", () => {
     });
     expect(appState.setTab).toHaveBeenCalledTimes(2);
     expect(desktopTabsMock.openTab).not.toHaveBeenCalled();
+  });
+
+  it("commits remote first-run before rebuilding startup polling context", async () => {
+    appState.firstRunComplete = false;
+    appState.startupPhase = "first-run-required";
+    let resolveAdoption!: (value: { alreadyComplete: boolean }) => void;
+    connectMock.adoptRemote.mockImplementationOnce(
+      (_client, options) =>
+        new Promise((resolve) => {
+          connectMock.outcome.adoption = options;
+          connectMock.outcome.effects.push("adopt-remote");
+          resolveAdoption = resolve;
+        }),
+    );
+    render(<App />);
+
+    fireEvent(
+      document,
+      new CustomEvent(CONNECT_EVENT, {
+        detail: {
+          gatewayUrl: "http://127.0.0.1:31337",
+          token: "remote-token",
+          completeFirstRun: true,
+          skipConfirm: true,
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(connectMock.outcome.adoption).toEqual({
+        apiBase: "http://127.0.0.1:31337",
+        token: "remote-token",
+        uiLanguage: "en",
+      });
+    });
+    expect(connectMock.outcome.effects).toEqual(["adopt-remote"]);
+    expect(connectMock.outcome.shellState.get("firstRunRemoteConnected")).toBe(
+      true,
+    );
+
+    resolveAdoption({ alreadyComplete: false });
+
+    await waitFor(() => {
+      expect(connectMock.outcome.effects).toEqual([
+        "adopt-remote",
+        "complete-first-run",
+        "retry-startup",
+      ]);
+    });
+    expect(connectMock.outcome.runtimeMode).toBe("remote");
+    expect(connectMock.outcome.coordinatorEvents).not.toContainEqual({
+      type: "FIRST_RUN_COMPLETE",
+    });
+    expect(connectMock.outcome.notice).toEqual({
+      durationMs: 4200,
+      message: "Connected to remote backend.",
+      tone: "success",
+    });
   });
 
   it("routes a settings subview navigate to the settings tab (#9945)", async () => {

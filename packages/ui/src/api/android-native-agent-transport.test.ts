@@ -11,20 +11,27 @@ import {
   installAndroidNativeAgentFetchBridge,
 } from "./android-native-agent-transport";
 
-const { capacitorState, agentRequestMock, registerPluginMock } = vi.hoisted(
-  () => {
-    const plugins: Record<string, unknown> = {};
-    return {
-      capacitorState: {
-        isNative: true,
-        platform: "android",
-        plugins,
-      },
-      agentRequestMock: vi.fn(),
-      registerPluginMock: vi.fn((name: string) => plugins[name]),
-    };
-  },
-);
+const {
+  capacitorState,
+  agentRequestMock,
+  registerPluginMock,
+  runtimeRoutingState,
+} = vi.hoisted(() => {
+  const plugins: Record<string, unknown> = {};
+  return {
+    capacitorState: {
+      isNative: true,
+      platform: "android",
+      plugins,
+    },
+    agentRequestMock: vi.fn(),
+    registerPluginMock: vi.fn((name: string) => plugins[name]),
+    runtimeRoutingState: {
+      hasCloudSession: false,
+      mode: null as string | null,
+    },
+  };
+});
 
 function stubChromiumWebViewCustomSchemeUrlParser(): void {
   const NativeUrl = globalThis.URL;
@@ -76,6 +83,10 @@ function stubChromiumWebViewCustomSchemeUrlParser(): void {
   vi.stubGlobal("URL", ChromiumWebViewUrl);
 }
 
+function stubRuntimeMode(mode: string): void {
+  runtimeRoutingState.mode = mode;
+}
+
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     get Plugins() {
@@ -87,11 +98,25 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
+vi.mock("../first-run/android-local-agent-routing", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("../first-run/android-local-agent-routing")
+    >();
+  return {
+    ...actual,
+    hasStoredAndroidCloudSession: () => runtimeRoutingState.hasCloudSession,
+    readAndroidLocalAgentRuntimeMode: () => runtimeRoutingState.mode,
+  };
+});
+
 describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capacitorState.isNative = true;
     capacitorState.platform = "android";
+    runtimeRoutingState.hasCloudSession = false;
+    runtimeRoutingState.mode = null;
     capacitorState.plugins.Agent = {
       request: agentRequestMock,
     };
@@ -105,7 +130,6 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
 
   afterEach(() => {
     __resetAndroidNativeAgentTransportForTests();
-    globalThis.localStorage?.removeItem("eliza:mobile-runtime-mode");
     setBootConfig(DEFAULT_BOOT_CONFIG);
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
@@ -218,20 +242,68 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     expect(agentRequestMock).not.toHaveBeenCalled();
   });
 
+  it("leaves adb-reversed loopback requests on HTTP in remote-mac mode", async () => {
+    stubRuntimeMode("remote-mac");
+
+    await expect(
+      androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
+    ).resolves.toBeNull();
+    expect(registerPluginMock).not.toHaveBeenCalled();
+    expect(agentRequestMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps loopback requests on the native Agent plugin in local mode", async () => {
+    stubRuntimeMode("local");
+
+    const transport = await androidNativeAgentTransportForUrl(
+      "http://127.0.0.1:31337/api/status",
+    );
+    const response = await transport?.request(
+      "http://127.0.0.1:31337/api/status",
+      { method: "GET" },
+    );
+
+    expect(agentRequestMock).toHaveBeenCalledOnce();
+    await expect(response?.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("keeps the explicit IPC identity native in remote-mac mode", async () => {
+    stubRuntimeMode("remote-mac");
+
+    const transport = await androidNativeAgentTransportForUrl(
+      "eliza-local-agent://ipc/api/status",
+    );
+    const response = await transport?.request(
+      "eliza-local-agent://ipc/api/status",
+      { method: "GET" },
+    );
+
+    expect(agentRequestMock).toHaveBeenCalledOnce();
+    await expect(response?.json()).resolves.toEqual({ ready: true });
+  });
+
+  it("uses the original fetch for adb-reversed loopback in remote-mac mode", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ source: "adb-reverse-host" })),
+    );
+    stubRuntimeMode("remote-mac");
+    vi.stubGlobal("fetch", fetchMock);
+
+    installAndroidNativeAgentFetchBridge();
+
+    const response = await fetch("http://127.0.0.1:31337/api/status");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(agentRequestMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      source: "adb-reverse-host",
+    });
+  });
+
   it("bridges direct /api fetches through the native Agent plugin in Android local mode", async () => {
     const fetchMock = vi.fn();
-    const storage = new Map<string, string>();
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) => storage.get(key) ?? null,
-      removeItem: (key: string) => {
-        storage.delete(key);
-      },
-      setItem: (key: string, value: string) => {
-        storage.set(key, value);
-      },
-    });
-    globalThis.localStorage.setItem("eliza:mobile-runtime-mode", "local");
+    stubRuntimeMode("local");
 
     installAndroidNativeAgentFetchBridge();
 
@@ -256,26 +328,19 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     const fetchMock = vi.fn(
       async () => new Response(JSON.stringify({ cloud: true })),
     );
-    const storage = new Map<string, string>();
-    const localStorage = {
-      getItem: (key: string) => storage.get(key) ?? null,
-      removeItem: (key: string) => {
-        storage.delete(key);
-      },
-      setItem: (key: string, value: string) => {
-        storage.set(key, value);
-      },
-    };
-    vi.stubEnv("VITE_ELIZA_ANDROID_RUNTIME_MODE", "local");
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("window", {
       location: {
         href: "https://app.elizacloud.ai/",
         origin: "https://app.elizacloud.ai",
       },
-      localStorage,
     });
-    localStorage.setItem("steward_session_token", "cloud-token");
+    runtimeRoutingState.hasCloudSession = true;
+    runtimeRoutingState.mode = "cloud";
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      apiBase: "eliza-local-agent://ipc",
+    });
 
     installAndroidNativeAgentFetchBridge();
 
@@ -292,22 +357,11 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     const fetchMock = vi.fn(
       async () => new Response(JSON.stringify({ cloud: true })),
     );
-    const storage = new Map<string, string>();
-    const localStorage = {
-      getItem: (key: string) => storage.get(key) ?? null,
-      removeItem: (key: string) => {
-        storage.delete(key);
-      },
-      setItem: (key: string, value: string) => {
-        storage.set(key, value);
-      },
-    };
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("window", {
       location: { href: "http://localhost/", origin: "http://localhost" },
-      localStorage,
     });
-    localStorage.setItem("eliza:mobile-runtime-mode", "local");
+    stubRuntimeMode("local");
 
     installAndroidNativeAgentFetchBridge();
 

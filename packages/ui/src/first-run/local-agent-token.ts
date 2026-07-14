@@ -1,11 +1,13 @@
 /**
- * Manages the local-agent auth token for mobile: reads/writes it via the native
- * agent plugin and boot config, and detects local-agent URLs.
+ * Manages Android local-agent routing and authentication. Runtime mode
+ * disambiguates the bundled agent from remote hosts forwarded through the same
+ * loopback URL before the native bridge can route requests or expose its token.
  */
 import { Capacitor } from "@capacitor/core";
 import { getAgentPlugin } from "../bridge/native-plugins";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { getElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
+import { shouldRouteAndroidRequestToLocalAgent } from "./android-local-agent-routing";
 import { isMobileLocalAgentUrl } from "./mobile-runtime-mode";
 
 export function isAndroidLocalAgentUrl(value: string): boolean {
@@ -45,7 +47,7 @@ export async function hydrateAndroidLocalAgentTokenForUrl(
   requestUrl: string,
   options: { force?: boolean } = {},
 ): Promise<string | null> {
-  if (!isAndroidLocalAgentUrl(requestUrl)) return null;
+  if (!shouldRouteAndroidRequestToLocalAgent(requestUrl)) return null;
   if (!isNativeAndroid()) return null;
 
   if (!options.force) {

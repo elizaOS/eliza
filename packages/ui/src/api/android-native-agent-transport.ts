@@ -1,11 +1,16 @@
 /**
  * AgentRequestTransport for the Android local agent: routes requests through
  * the Capacitor native bridge to the in-process musl-bun agent (IPC base),
- * including native streaming. Selected when the API base is an Android local URL.
+ * including native streaming. IPC is always native; the legacy loopback URL is
+ * native only when Android's effective runtime mode is local.
  */
 import { Capacitor } from "@capacitor/core";
-import { readStoredStewardToken } from "@elizaos/shared/steward-session-client";
 import { getBootConfig } from "../config/boot-config";
+import {
+  hasStoredAndroidCloudSession,
+  readAndroidLocalAgentRuntimeMode,
+  shouldRouteAndroidRequestToLocalAgent,
+} from "../first-run/android-local-agent-routing";
 import { isAndroidLocalAgentUrl } from "../first-run/local-agent-token";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -136,50 +141,27 @@ function localAgentPathFromUrl(value: string): string | null {
 }
 
 function shouldAttemptNativeAgentTransport(url: string): boolean {
-  if (!isAndroidLocalAgentUrl(url)) return false;
+  if (
+    !shouldRouteAndroidRequestToLocalAgent(
+      url,
+      readAndroidLocalAgentRuntimeMode(),
+    )
+  ) {
+    return false;
+  }
   if (isNativeAndroid()) return true;
   return isLocalAgentIpcUrl(url) && !isNativeIos();
 }
 
-function readRuntimeMode(): string | null {
-  try {
-    const persisted = globalThis.localStorage?.getItem(
-      "eliza:mobile-runtime-mode",
-    );
-    if (persisted?.trim()) return persisted.trim();
-  } catch {
-    // localStorage can be unavailable in tests and early native startup.
-  }
-  if (hasStoredCloudSession()) return "cloud";
-  const env = (
-    import.meta as ImportMeta & {
-      env?: Record<string, string | boolean | undefined>;
-    }
-  ).env;
-  const androidRuntimeMode =
-    typeof env?.VITE_ELIZA_ANDROID_RUNTIME_MODE === "string"
-      ? env.VITE_ELIZA_ANDROID_RUNTIME_MODE.trim()
-      : "";
-  const mobileRuntimeMode =
-    typeof env?.VITE_ELIZA_MOBILE_RUNTIME_MODE === "string"
-      ? env.VITE_ELIZA_MOBILE_RUNTIME_MODE.trim()
-      : "";
-  return androidRuntimeMode || mobileRuntimeMode || null;
-}
-
-function hasStoredCloudSession(): boolean {
-  try {
-    return Boolean(readStoredStewardToken()?.trim());
-  } catch {
-    // error-policy:J4 token storage is a capability probe here; failing closed
-    // lets explicit local-mode config keep the native transport available.
-    return false;
-  }
-}
-
 function configuredApiBaseIsAndroidLocal(): boolean {
   const bootBase = getBootConfig().apiBase?.trim();
-  return !!bootBase && isAndroidLocalAgentUrl(bootBase);
+  return (
+    !!bootBase &&
+    shouldRouteAndroidRequestToLocalAgent(
+      bootBase,
+      readAndroidLocalAgentRuntimeMode(),
+    )
+  );
 }
 
 async function resolveNativeAgentPlugin(): Promise<NativeAgentPlugin | null> {
@@ -209,16 +191,17 @@ function shouldBridgeFetchUrl(url: URL, rawUrl: string): boolean {
     return true;
   }
   if (!isNativeAndroid()) return false;
+  const runtimeMode = readAndroidLocalAgentRuntimeMode();
   if (
-    isAndroidLocalAgentUrl(rawUrl) ||
-    isAndroidLocalAgentUrl(url.toString())
+    shouldRouteAndroidRequestToLocalAgent(rawUrl, runtimeMode) ||
+    shouldRouteAndroidRequestToLocalAgent(url.toString(), runtimeMode)
   ) {
     return true;
   }
   if (!url.pathname.startsWith("/api/")) return false;
   if (!isSameOriginFetchTarget(url)) return false;
-  if (hasStoredCloudSession()) return readRuntimeMode() === "local";
-  return readRuntimeMode() === "local" || configuredApiBaseIsAndroidLocal();
+  if (hasStoredAndroidCloudSession()) return runtimeMode === "local";
+  return runtimeMode === "local" || configuredApiBaseIsAndroidLocal();
 }
 
 function isSameOriginFetchTarget(url: URL): boolean {
