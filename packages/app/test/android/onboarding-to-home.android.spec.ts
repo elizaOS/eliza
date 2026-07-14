@@ -105,6 +105,11 @@ test.describe
               "pending",
           ),
         ).toBe("ready");
+        const ingressCountBefore = await page.evaluate(() =>
+          Number(
+            document.documentElement.dataset.elizaMobileDeepLinkCount ?? "0",
+          ),
+        );
         // Fire the real OS deep link. `am start` delivers it to the running
         // WebView via Capacitor `appUrlOpen` (singleTask onNewIntent), so the
         // CDP page survives and observes the connect → home transition.
@@ -120,6 +125,22 @@ test.describe
           FIRST_RUN_REMOTE_DEEPLINK,
           APP_ID,
         ]);
+
+        await expect
+          .poll(
+            () =>
+              page.evaluate(() =>
+                Number(
+                  document.documentElement.dataset.elizaMobileDeepLinkCount ??
+                    "0",
+                ),
+              ),
+            {
+              timeout: 15_000,
+              message: "native appUrlOpen delivery receipt",
+            },
+          )
+          .toBeGreaterThan(ingressCountBefore);
 
         const surface = page.getByTestId("home-launcher-surface");
         await expect(surface).toBeVisible({ timeout: 90_000 });

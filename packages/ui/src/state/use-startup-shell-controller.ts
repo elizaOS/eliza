@@ -14,6 +14,7 @@ import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-run
 import { applyLaunchConnection } from "../platform";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { useAppSelectorShallow } from "./app-store";
+import type { StartupPhaseValue } from "./startup-coordinator";
 import type { StartupErrorReason, StartupErrorState } from "./types";
 
 /**
@@ -38,6 +39,15 @@ export function isLoopbackGatewayHost(gatewayUrl: string): boolean {
     // fail closed so the connect deep link requires user confirmation.
     return false;
   }
+}
+
+/**
+ * Startup may claim a connect intent only after restore has finished consuming
+ * reset/session state. The live App consumer owns every paintable phase; this
+ * hook owns the two full-screen phases where switching targets is safe.
+ */
+export function canStartupShellClaimConnect(phase: StartupPhaseValue): boolean {
+  return phase === "pairing-required" || phase === "error";
 }
 
 function gatewayHostForDisplay(gatewayUrl: string): string {
@@ -118,6 +128,13 @@ export function useStartupShellController(): StartupShellController {
 
   useEffect(() => {
     const handleConnect = async (event: Event): Promise<void> => {
+      // A mounted listener is not necessarily ready to own the intent. In
+      // restoring-session, force-fresh may still clear the active server and
+      // client base; leaving gatewayUrl unread lets the event bus replay after
+      // the coordinator reaches a safe phase.
+      if (!canStartupShellClaimConnect(coordinatorStateRef.current.phase)) {
+        return;
+      }
       const detail = (event as CustomEvent<unknown>).detail;
       const payload =
         detail && typeof detail === "object" && !Array.isArray(detail)

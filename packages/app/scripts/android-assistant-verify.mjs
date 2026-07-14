@@ -154,6 +154,33 @@ function applyRoleAndIme(adb, serial, shell = sh) {
   shell(adb, serial, ["settings", "put", "secure", "assistant", VIS_COMPONENT]);
   shell(adb, serial, ["ime", "enable", IME_COMPONENT]);
   shell(adb, serial, ["ime", "set", IME_COMPONENT]);
+  // CI emulators expose a hardware keyboard, which suppresses the software IME
+  // even after showSoftInput reports success unless this secure setting is on.
+  shell(adb, serial, [
+    "settings",
+    "put",
+    "secure",
+    "show_ime_with_hard_keyboard",
+    "1",
+  ]);
+}
+
+async function waitForImeMic(adb, serial, shell, sleepFn, timeoutMs = 15_000) {
+  const hierarchyPath = "/sdcard/eliza-ime-verifier-window.xml";
+  const deadline = Date.now() + timeoutMs;
+  let latest = { found: false, bounds: null, center: null };
+  while (Date.now() < deadline) {
+    shell(adb, serial, ["uiautomator", "dump", hierarchyPath]);
+    const hierarchy = shell(adb, serial, ["cat", hierarchyPath]);
+    latest = parseUiAutomatorBounds(hierarchy, IME_MIC_RESOURCE_ID);
+    if (latest.found) {
+      shell(adb, serial, ["rm", "-f", hierarchyPath]);
+      return latest;
+    }
+    await sleepFn(500);
+  }
+  shell(adb, serial, ["rm", "-f", hierarchyPath]);
+  return latest;
 }
 
 export async function verifyOnDevice(adb, serial, options = {}) {
@@ -307,12 +334,7 @@ export async function verifyOnDevice(adb, serial, options = {}) {
   // can require a committed transcript.
   clearLogcatFn(adb, serial);
   shell(adb, serial, ["am", "start", "-W", "-n", IME_PROBE_COMPONENT]);
-  await sleepFn(3_500);
-  const hierarchyPath = "/sdcard/eliza-ime-verifier-window.xml";
-  shell(adb, serial, ["uiautomator", "dump", hierarchyPath]);
-  const imeHierarchy = shell(adb, serial, ["cat", hierarchyPath]);
-  shell(adb, serial, ["rm", "-f", hierarchyPath]);
-  const imeUi = parseUiAutomatorBounds(imeHierarchy, IME_MIC_RESOURCE_ID);
+  const imeUi = await waitForImeMic(adb, serial, shell, sleepFn);
   checks.imeUi = imeUi;
   log(`real IME mic affordance visible: ${imeUi.found}`);
 

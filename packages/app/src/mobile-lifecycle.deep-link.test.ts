@@ -100,7 +100,13 @@ describe("mobile lifecycle ingress and bridges", () => {
 
     const earlyLink =
       "elizaos://first-run/runtime/remote?api=http://127.0.0.1:31337";
+    const ingressCountBefore = Number(
+      document.documentElement.dataset.elizaMobileDeepLinkCount ?? "0",
+    );
     native.appListeners.get("appUrlOpen")?.({ url: earlyLink } as never);
+    expect(
+      Number(document.documentElement.dataset.elizaMobileDeepLinkCount),
+    ).toBe(ingressCountBefore + 1);
 
     const deepLinks: string[] = [];
     const lifecycle = createMobileLifecycle({
@@ -141,6 +147,9 @@ describe("mobile lifecycle ingress and bridges", () => {
     native.appListeners.get("appUrlOpen")?.({
       url: "elizaos://wallet?source=warm",
     } as never);
+    expect(
+      Number(document.documentElement.dataset.elizaMobileDeepLinkCount),
+    ).toBe(ingressCountBefore + 3);
     expect(deepLinks).toEqual([
       earlyLink,
       native.launchUrl,

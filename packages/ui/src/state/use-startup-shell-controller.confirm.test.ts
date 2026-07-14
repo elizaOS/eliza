@@ -3,7 +3,10 @@
  * everything else for the attacker-reachable CONNECT deep link. Pure, no harness.
  */
 import { describe, expect, it } from "vitest";
-import { isLoopbackGatewayHost } from "./use-startup-shell-controller";
+import {
+  canStartupShellClaimConnect,
+  isLoopbackGatewayHost,
+} from "./use-startup-shell-controller";
 
 /**
  * The `connect` deep link is attacker-reachable; the CONNECT_EVENT handler only
@@ -31,5 +34,24 @@ describe("isLoopbackGatewayHost (connect-confirm exemption)", () => {
     // A host that merely starts with "127" but isn't the loopback block.
     expect(isLoopbackGatewayHost("http://127box.example/")).toBe(false);
     expect(isLoopbackGatewayHost("not a url")).toBe(false);
+  });
+});
+
+describe("canStartupShellClaimConnect", () => {
+  it("waits out restore and polling before the startup surface claims a link", () => {
+    expect(canStartupShellClaimConnect("restoring-session")).toBe(false);
+    expect(canStartupShellClaimConnect("resolving-target")).toBe(false);
+    expect(canStartupShellClaimConnect("polling-backend")).toBe(false);
+    expect(canStartupShellClaimConnect("first-run-required")).toBe(false);
+    expect(canStartupShellClaimConnect("starting-runtime")).toBe(false);
+    expect(canStartupShellClaimConnect("hydrating")).toBe(false);
+    expect(canStartupShellClaimConnect("ready")).toBe(false);
+  });
+
+  it.each([
+    "pairing-required",
+    "error",
+  ] as const)("allows target replacement in %s", (phase) => {
+    expect(canStartupShellClaimConnect(phase)).toBe(true);
   });
 });

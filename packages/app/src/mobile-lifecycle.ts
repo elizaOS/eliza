@@ -40,6 +40,7 @@ let activeOfflineHandler: (() => void) | null = null;
 const COLD_LAUNCH_URL_REPLAY_MS = 15_000;
 const COLD_LAUNCH_URL_REPLAY_INTERVAL_MS = 1_000;
 const MOBILE_DEEP_LINK_READY_DATASET_KEY = "elizaMobileDeepLinkReady";
+const MOBILE_DEEP_LINK_COUNT_DATASET_KEY = "elizaMobileDeepLinkCount";
 const MOBILE_DEEP_LINK_INGRESS_KEY = Symbol.for(
   "eliza.mobile-deep-link-ingress",
 );
@@ -70,6 +71,18 @@ function markMobileDeepLinkIngress(state: "ready" | "unavailable"): void {
 function receiveMobileDeepLink(url: string | null | undefined): void {
   const trimmed = url?.trim();
   if (!trimmed) return;
+  if (typeof document !== "undefined") {
+    // Native-device E2E attaches through CDP after the WebView boots. A count
+    // proves that Capacitor appUrlOpen delivered the OS intent without exposing
+    // the URL or its token-bearing query string in renderer diagnostics.
+    const previous = Number.parseInt(
+      document.documentElement.dataset[MOBILE_DEEP_LINK_COUNT_DATASET_KEY] ??
+        "0",
+      10,
+    );
+    document.documentElement.dataset[MOBILE_DEEP_LINK_COUNT_DATASET_KEY] =
+      String((Number.isFinite(previous) ? previous : 0) + 1);
+  }
   if (mobileDeepLinkIngress.activeHandler) {
     mobileDeepLinkIngress.activeHandler(trimmed);
     return;

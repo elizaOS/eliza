@@ -311,6 +311,7 @@ test("verifyOnDevice drives the supported role, component, runtime, and real-IME
   const hierarchyReceipt = `<hierarchy>
     <node resource-id="ai.elizaos.app:id/eliza_ime_mic" bounds="[456,1880][624,2048]" />
   </hierarchy>`;
+  let hierarchyReads = 0;
   const shell = (_adb, _serial, args) => {
     const command = args.join(" ");
     commands.push(command);
@@ -329,7 +330,8 @@ test("verifyOnDevice drives the supported role, component, runtime, and real-IME
     if (command === "ime list -s") return ASSISTANT_IME_COMPONENT;
     if (command === "dumpsys activity activities") return activityReceipt;
     if (command.startsWith("cat /sdcard/eliza-ime-verifier-window.xml")) {
-      return hierarchyReceipt;
+      hierarchyReads += 1;
+      return hierarchyReads === 1 ? "<hierarchy />" : hierarchyReceipt;
     }
     return "";
   };
@@ -370,6 +372,10 @@ test("verifyOnDevice drives the supported role, component, runtime, and real-IME
     false,
   );
   assert.ok(commands.includes("input tap 540 1964"));
+  assert.ok(
+    commands.includes("settings put secure show_ime_with_hard_keyboard 1"),
+  );
+  assert.equal(hierarchyReads, 2);
 });
 
 test("summarizeLaneVerdict passes only when every required surface checks out", () => {

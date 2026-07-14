@@ -24,24 +24,51 @@ function isNonEmptyFile(filePath) {
   }
 }
 
+function deviceScreenRecordPids(adb, serial) {
+  const result = spawnSync(
+    adb,
+    ["-s", serial, "shell", "pidof", "screenrecord"],
+    { encoding: "utf8" },
+  );
+  if (result.error) {
+    throw new Error(`adb pidof screenrecord failed: ${result.error.message}`);
+  }
+  const stdout = result.stdout?.trim() ?? "";
+  if (!stdout && result.status === 1) return [];
+  if (result.status !== 0) {
+    throw new Error(
+      `adb pidof screenrecord failed with status ${String(result.status)}: ${result.stderr?.trim() ?? "no stderr"}`,
+    );
+  }
+  const pids = stdout.split(/\s+/).filter(Boolean);
+  if (pids.some((pid) => !/^\d+$/.test(pid))) {
+    throw new Error(`adb pidof screenrecord returned invalid PIDs: ${stdout}`);
+  }
+  return pids;
+}
+
 function signalDeviceScreenRecord(adb, serial) {
-  spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
-    stdio: "ignore",
-  });
+  const pids = deviceScreenRecordPids(adb, serial);
+  for (const pid of pids) {
+    // Toybox variants disagree on pkill's signal spelling. PID-directed kill
+    // uses Android's stable shell contract and lets screenrecord write moov
+    // before the host adb transport is allowed to close.
+    const result = spawnSync(adb, ["-s", serial, "shell", "kill", "-2", pid], {
+      encoding: "utf8",
+    });
+    if (result.error || result.status !== 0) {
+      const detail =
+        result.error?.message ?? result.stderr?.trim() ?? "unknown error";
+      throw new Error(`unable to SIGINT screenrecord PID ${pid}: ${detail}`);
+    }
+  }
+  return pids.length;
 }
 
 async function waitForDeviceScreenRecordExit(adb, serial, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const pid = spawnSync(
-      adb,
-      ["-s", serial, "shell", "pidof", "screenrecord"],
-      { encoding: "utf8" },
-    );
-    if (pid.error) {
-      throw new Error(`adb pidof screenrecord failed: ${pid.error.message}`);
-    }
-    if (!pid.stdout?.trim()) return;
+    if (deviceScreenRecordPids(adb, serial).length === 0) return;
     signalDeviceScreenRecord(adb, serial);
     await delay(500);
   }

@@ -77,11 +77,15 @@ if (args[0] === "shell" && args[1] === "screenrecord") {
   setInterval(() => {
     if (fs.existsSync(stopPath)) finish("device-SIGINT");
   }, 20);
-} else if (args[0] === "shell" && args[1] === "pkill") {
-  fs.writeFileSync(stopPath, "stop");
 } else if (args[0] === "shell" && args[1] === "pidof") {
   if (fs.existsSync(activePath)) process.stdout.write("4242\n");
   else process.exitCode = 1;
+} else if (args[0] === "shell" && args[1] === "kill") {
+  if (args[2] !== "-2" || args[3] !== "4242" || !fs.existsSync(activePath)) {
+    process.exitCode = 1;
+  } else {
+    fs.writeFileSync(stopPath, "stop");
+  }
 } else if (args[0] === "shell" && args[1] === "stat") {
   const remote = args.at(-1);
   try {
