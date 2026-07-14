@@ -279,6 +279,9 @@ jobs:
       - name: Install and boot Debian package
         run: |
           set -euo pipefail
+          # Name the exact failing command: most checks here are silent
+          # test/cmp assertions that would otherwise fail without a trace.
+          trap 'echo "::error::install-and-boot failed at line $LINENO: $BASH_COMMAND"' ERR
           mapfile -t main_debs < <(
             find deb-output -maxdepth 1 -type f -name 'elizaos-app_*.deb' \
               ! -name '*-dbgsym_*' -print
