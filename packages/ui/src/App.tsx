@@ -16,7 +16,13 @@ import {
   type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
-import { MessageSquare, Power, X } from "lucide-react";
+import {
+  ChevronRight,
+  LayoutGrid,
+  MessageSquare,
+  Power,
+  X,
+} from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
   type ComponentType,
@@ -231,7 +237,6 @@ import {
 } from "./hooks/useAvailableViews";
 import { useDesktopTabs } from "./hooks/useDesktopTabs";
 import { useEnabledViewKinds } from "./state/useViewKinds";
-import { WidgetHost } from "./widgets";
 
 const BackgroundView = lazyNamedView(
   () => import("./components/pages/BackgroundView"),
@@ -609,33 +614,56 @@ function TrayPopoverShell() {
   }, []);
   // The launcher catalog carries the view windows plus the "Open Eliza"
   // (`tray-show-window`) row; Focus Chat already owns "open the chat", so the
-  // VIEWS section shows only the actual views to avoid a duplicate.
+  // Views menu shows only the actual views to avoid a duplicate.
   const viewEntries = useDesktopLauncherEntries().filter(
     (entry) => entry.itemId !== "tray-show-window",
   );
+  // Views is a collapsed disclosure, not a flat list: the popover stays a tiny
+  // three-item menu (Focus Chat · Views · Quit); the view list only expands on
+  // demand so it never clutters the resting flyout. No WidgetHost here — the
+  // home widgets' loading/boot states read as a "weird loader" in a menu.
+  const [viewsOpen, setViewsOpen] = useState(false);
   return (
     <div
       data-testid="tray-popover-shell"
-      className="fixed inset-0 flex flex-col gap-2 overflow-y-auto bg-transparent p-3"
+      className="fixed inset-0 flex flex-col gap-0.5 overflow-y-auto bg-transparent p-2"
     >
       <Button
         type="button"
         variant="ghost"
         data-testid="tray-focus-chat"
         onClick={focusChat}
-        className="h-9 w-full justify-start gap-3 px-2 text-sm font-medium"
+        className="h-9 w-full justify-start gap-3 px-2 text-sm font-normal"
       >
         <MessageSquare aria-hidden="true" className="text-muted-strong" />
         <span className="truncate">Focus Chat</span>
       </Button>
-      <WidgetHost slot="home" layout="stack" />
       {viewEntries.length > 0 ? (
-        <div className="flex flex-col gap-0.5">
-          <div className="px-2 pb-0.5 pt-1 text-[0.68rem] font-semibold uppercase tracking-wide text-muted-strong">
-            Views
-          </div>
-          <TrayLauncher entries={viewEntries} />
-        </div>
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            data-testid="tray-views-toggle"
+            aria-expanded={viewsOpen}
+            onClick={() => setViewsOpen((open) => !open)}
+            className="h-9 w-full justify-start gap-3 px-2 text-sm font-normal"
+          >
+            <LayoutGrid aria-hidden="true" className="text-muted-strong" />
+            <span className="flex-1 truncate text-left">Views</span>
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-4 text-muted-strong transition-transform",
+                viewsOpen && "rotate-90",
+              )}
+            />
+          </Button>
+          {viewsOpen ? (
+            <div className="pl-5">
+              <TrayLauncher entries={viewEntries} />
+            </div>
+          ) : null}
+        </>
       ) : null}
       <div className="mt-auto border-t border-border/60 pt-1">
         <Button

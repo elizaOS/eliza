@@ -58,23 +58,29 @@ describe("App standalone chat-overlay wiring", () => {
     expect(APP_TSX).toContain("<ChatOverlayMount />");
   });
 
-  it("structures the tray popover: Focus Chat, a VIEWS section, and Quit", () => {
+  it("keeps the tray popover a lightweight 3-item menu: Focus Chat, Views ▸, Quit", () => {
     // The menu-bar tray popover (tray-popover shell) is a separate window that
-    // the packaged e2e harness cannot eval into (it drives the main window
-    // only), so guard its wiring at the source: Focus Chat summons the pill
-    // (desktopShowWindow), the view rows sit under a VIEWS section (with the
-    // "Open Eliza" tray-show-window row filtered out), and Quit tears the app
-    // down (desktopQuit).
+    // the packaged e2e harness only partially drives, so guard the shape at the
+    // source: Focus Chat summons the pill (desktopShowWindow); Views is a
+    // COLLAPSED disclosure (tray-views-toggle) whose rows expand on demand — not
+    // a flat list cluttering the menu — with the "Open Eliza" tray-show-window
+    // row filtered out; Quit tears the app down (desktopQuit). No WidgetHost:
+    // the home widgets' loading/boot states read as a "weird loader" in a menu.
     const trayShell = APP_TSX.slice(
       APP_TSX.indexOf("function TrayPopoverShell()"),
       APP_TSX.indexOf("function KioskShell()"),
     );
     expect(trayShell).toContain('data-testid="tray-focus-chat"');
     expect(trayShell).toContain("desktopShowWindow");
-    expect(trayShell).toContain("Views");
+    expect(trayShell).toContain('data-testid="tray-views-toggle"');
+    expect(trayShell).toContain("setViewsOpen");
     expect(trayShell).toContain('entry.itemId !== "tray-show-window"');
     expect(trayShell).toContain('data-testid="tray-quit"');
     expect(trayShell).toContain("desktopQuit");
+    // Lightweight: no home-widget host rendered in the menu (its loading/boot
+    // states were the "weird loader"). Assert on the JSX tag, not the word, so
+    // the explanatory comment can still name it.
+    expect(trayShell).not.toContain("<WidgetHost");
   });
 
   it("seeds in-chat onboarding in the chat-overlay branch (the default desktop bottom-bar surface)", () => {
@@ -114,9 +120,7 @@ describe("App standalone chat-overlay wiring", () => {
     expect(kioskShell).toContain("<ChatOverlayMount />");
     // ChatOverlayMount is the ONE shared mount, imported (not redefined) so the
     // detached view windows reuse it via DockedChatOverlay (#16200 Stage 3).
-    expect(APP_TSX).toContain(
-      'from "./components/shell/ChatOverlayMount"',
-    );
+    expect(APP_TSX).toContain('from "./components/shell/ChatOverlayMount"');
     // The single overlay is gated on being the active chat host window, so the
     // chat renders in exactly one window at a time. The gate lives in the shared
     // ChatOverlayMount module now, not inline in App.tsx.

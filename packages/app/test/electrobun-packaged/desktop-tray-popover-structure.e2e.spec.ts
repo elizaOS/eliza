@@ -25,7 +25,7 @@ interface PopoverStructure {
   shell: boolean;
   focusChat: string | null;
   quit: string | null;
-  viewsHeading: boolean;
+  viewsToggle: boolean;
   viewRows: number;
 }
 
@@ -36,11 +36,16 @@ const READ_STRUCTURE = `(() => {
     shell: Boolean(q('[data-testid="tray-popover-shell"]')),
     focusChat: text(q('[data-testid="tray-focus-chat"]')),
     quit: text(q('[data-testid="tray-quit"]')),
-    viewsHeading: Array.from(document.querySelectorAll("*")).some(
-      (el) => el.children.length === 0 && text(el) === "Views",
-    ),
+    viewsToggle: Boolean(q('[data-testid="tray-views-toggle"]')),
     viewRows: document.querySelectorAll('[data-testid^="tray-launcher-row-"]').length,
   };
+})()`;
+
+const EXPAND_VIEWS = `(() => {
+  const btn = document.querySelector('[data-testid="tray-views-toggle"]');
+  if (!btn) return { clicked: false };
+  btn.click();
+  return { clicked: true };
 })()`;
 
 let harness: PackagedDesktopHarness | null = null;
@@ -85,20 +90,22 @@ test.afterAll(async () => {
   }
 });
 
-test("the tray popover shows Focus Chat, a VIEWS section with view rows, and Quit", async () => {
+test("is a lightweight 3-item menu (Focus Chat · Views · Quit); Views expands to the rows", async () => {
   test.skip(
     !ready,
     "Tray popover not configured (packaged launcher / macOS only).",
   );
   const h = harness as PackagedDesktopHarness;
 
+  // Resting menu: just the three items — the Views list is a COLLAPSED
+  // disclosure, so no view rows clutter the flyout yet.
   await expect
     .poll(
       async () =>
         h.evalTrayPopover<PopoverStructure>(READ_STRUCTURE).catch(() => null),
       {
         timeout: 30_000,
-        message: "Expected the tray popover to render its structured surface.",
+        message: "Expected the tray popover to render its structured menu.",
       },
     )
     .toEqual(
@@ -106,14 +113,29 @@ test("the tray popover shows Focus Chat, a VIEWS section with view rows, and Qui
         shell: true,
         focusChat: expect.stringContaining("Focus Chat"),
         quit: expect.stringContaining("Quit Eliza"),
-        viewsHeading: true,
+        viewsToggle: true,
       }),
     );
+  const collapsed = await h.evalTrayPopover<PopoverStructure>(READ_STRUCTURE);
+  expect(collapsed.viewRows).toBe(0);
 
-  // The view rows sit under the VIEWS section (the "Open Eliza" tray-show-window
-  // row is filtered out because Focus Chat owns "open the chat").
-  const structure = await h.evalTrayPopover<PopoverStructure>(READ_STRUCTURE);
-  expect(structure.viewRows).toBeGreaterThan(0);
+  // Expanding Views reveals the view rows (the "Open Eliza" tray-show-window row
+  // is filtered out because Focus Chat owns "open the chat").
+  await h.evalTrayPopover(EXPAND_VIEWS);
+  await expect
+    .poll(
+      async () =>
+        (
+          await h
+            .evalTrayPopover<PopoverStructure>(READ_STRUCTURE)
+            .catch(() => null)
+        )?.viewRows ?? 0,
+      {
+        timeout: 10_000,
+        message: "Expected expanding Views to reveal the view rows.",
+      },
+    )
+    .toBeGreaterThan(0);
 });
 
 test("Focus Chat in the popover summons the main chat window", async () => {
