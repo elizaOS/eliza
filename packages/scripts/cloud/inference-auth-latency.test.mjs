@@ -135,6 +135,18 @@ test("Worker Tail sanitizer retains only correlated bounded telemetry", () => {
       {
         outcome: "ok",
         logs: [
+          {
+            level: "info",
+            message: [
+              "[InferenceAuth] trace",
+              {
+                ...telemetry,
+                traceId: "0190f2f1-8b5a-7000-8000-000000000099",
+                result: "unbounded-private-result",
+                userId: "private-user",
+              },
+            ],
+          },
           { level: "info", message: ["[InferenceAuth] trace", telemetry] },
         ],
         event: {

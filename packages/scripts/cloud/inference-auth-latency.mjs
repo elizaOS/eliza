@@ -87,6 +87,9 @@ const TAIL_OUTCOMES = new Set([
   "unknown",
 ]);
 
+const OPAQUE_TRACE_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -125,17 +128,15 @@ export function sanitizeInferenceAuthTelemetry(value) {
       "Worker auth log does not match the bounded telemetry schema",
     );
   }
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      value.traceId,
-    )
-  ) {
+  if (!OPAQUE_TRACE_ID.test(value.traceId)) {
     throw new Error("Worker auth log has an invalid trace id");
   }
   const telemetry = { v: 1, traceId: value.traceId.toLowerCase() };
   for (const [name, allowed] of Object.entries(AUTH_TELEMETRY_ENUMS)) {
     if (!allowed.has(value[name])) {
-      throw new Error("Worker auth log contains an invalid bounded outcome");
+      throw new Error(
+        `Worker auth log contains an invalid bounded ${name} outcome`,
+      );
     }
     telemetry[name] = value[name];
   }
@@ -223,8 +224,19 @@ export function sanitizeInferenceAuthTail(
       ) {
         continue;
       }
-      const telemetry = sanitizeInferenceAuthTelemetry(log.message[1]);
-      if (!expected.has(telemetry.traceId)) continue;
+      const rawTelemetry = log.message[1];
+      const rawTraceId = isRecord(rawTelemetry)
+        ? rawTelemetry.traceId
+        : undefined;
+      if (typeof rawTraceId !== "string" || !OPAQUE_TRACE_ID.test(rawTraceId)) {
+        continue;
+      }
+      const traceId = rawTraceId.toLowerCase();
+      // A Tail session can observe unrelated traffic on the isolated hostname.
+      // Correlate on the one opaque field before validating or retaining any
+      // other part of the raw object, then fail closed on the complete schema.
+      if (!expected.has(traceId)) continue;
+      const telemetry = sanitizeInferenceAuthTelemetry(rawTelemetry);
       if (byTrace.has(telemetry.traceId)) {
         throw new Error("Worker Tail returned duplicate auth traces");
       }
@@ -753,6 +765,19 @@ export async function runAuthProbes(options, dependencies = {}) {
     probeToken,
     deploySha: options.deploySha,
     phase: "miss",
+    sequence: -1,
+    timeoutMs: options.timeoutMs,
+    fetchImpl,
+  });
+
+  // The controlled miss populates the canonical key, while this unretained
+  // canonical read absorbs the edge/KV first-access cost. Retained hit samples
+  // therefore measure a proven warm cache rather than probe setup.
+  await probeAuthSample({
+    baseUrl: options.baseUrl,
+    apiKey,
+    deploySha: options.deploySha,
+    phase: "hit",
     sequence: -1,
     timeoutMs: options.timeoutMs,
     fetchImpl,
