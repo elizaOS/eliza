@@ -352,7 +352,7 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/agent": "workspace:*",
     "@elizaos/plugin-solana": "2.0.0-alpha.3",
-    "@biomejs/biome": "2.5.1",
+    "@biomejs/biome": "2.5.3",
     "@types/node": "25.6.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
