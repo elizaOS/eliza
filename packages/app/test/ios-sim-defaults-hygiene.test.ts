@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   preferenceNativeKeys,
   readIosDefaultsString,
+  readIosPreferenceString,
   selectIosSmokePreferenceKeys,
   shouldClearIosSmokePreferenceKey,
   writeIosDefaultsString,
@@ -125,5 +126,59 @@ describe("iOS simulator defaults hygiene", () => {
         () => null,
       ),
     ).toBeNull();
+  });
+
+  it("prefers the app-written prefixed plist result over a stale defaults alias", () => {
+    const complete = JSON.stringify({ ok: true, phase: "complete" });
+    const requested = JSON.stringify({ ok: false, phase: "requested" });
+    const calls: Array<{ command: string; args: string[] }> = [];
+
+    const value = readIosPreferenceString(
+      {
+        udid: "SIM-UDID",
+        bundleId: "ai.elizaos.app",
+        key: "eliza:ios-full-bun-smoke:result",
+      },
+      {
+        fileExists: () => true,
+        execute: (command, args) => {
+          calls.push({ command, args });
+          if (args.includes("get_app_container")) return "/sim/AppData";
+          if (command === "plutil") {
+            return JSON.stringify({
+              "CapacitorStorage.eliza:ios-full-bun-smoke:result": complete,
+              "eliza:ios-full-bun-smoke:result": requested,
+            });
+          }
+          return requested;
+        },
+      },
+    );
+
+    expect(value).toBe(complete);
+    expect(calls.some(({ args }) => args.includes("defaults"))).toBe(false);
+  });
+
+  it("falls back to simulator defaults when the app plist is unavailable", () => {
+    const value = readIosPreferenceString(
+      {
+        udid: "SIM-UDID",
+        bundleId: "ai.elizaos.app",
+        key: "eliza:ios-full-bun-smoke:result",
+      },
+      {
+        fileExists: () => false,
+        execute: (_command, args) => {
+          if (args.includes("get_app_container")) return "/sim/AppData";
+          return args.includes(
+            "CapacitorStorage.eliza:ios-full-bun-smoke:result",
+          )
+            ? "native-result"
+            : null;
+        },
+      },
+    );
+
+    expect(value).toBe("native-result");
   });
 });

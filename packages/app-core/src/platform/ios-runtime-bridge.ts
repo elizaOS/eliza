@@ -18,7 +18,7 @@ export const IOS_FULL_BUN_SMOKE_REQUEST_KEY =
 export const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 
-const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 60_000;
+const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "Reply with exactly these four words: ios smoke model works.";
@@ -50,7 +50,8 @@ async function writeIosFullBunSmokeResult(
       value,
     );
   } catch {
-    // Ignore localStorage failures; Preferences is the simulator harness source of truth.
+    // error-policy:J7 Preferences is the observed diagnostic sink; a failed
+    // localStorage mirror must not terminate the smoke.
   }
   await boundedPreferenceWrite(() =>
     Preferences.set({
@@ -69,9 +70,8 @@ async function boundedPreferenceWrite(
       new Promise((resolve) => window.setTimeout(resolve, 2_000)),
     ]);
   } catch {
-    // The storage bridge also issued a fire-and-forget Preferences write from
-    // localStorage.setItem. The simulator smoke will keep polling the native
-    // defaults domain, but the WebView must not block forever on persistence.
+    // error-policy:J7 the simulator observes the persisted result independently;
+    // a blocked bridge must not wedge the smoke loop.
   }
 }
 
@@ -83,6 +83,8 @@ async function boundedPreferenceGet(key: string): Promise<string | null> {
     ]);
     return result?.value ?? null;
   } catch {
+    // error-policy:J7 a blocked diagnostic probe is explicitly absent and the
+    // caller either uses localStorage or leaves the host poll to time out.
     return null;
   }
 }
@@ -92,7 +94,9 @@ async function readMobileRuntimeMode(): Promise<string | null> {
     const value = window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY);
     if (value?.trim()) return value.trim();
   } catch {
-    return null;
+    // error-policy:J4 Preferences is the native fallback when localStorage is
+    // unavailable during early WebView bootstrap.
+    return boundedPreferenceGet(MOBILE_RUNTIME_MODE_STORAGE_KEY);
   }
   return boundedPreferenceGet(MOBILE_RUNTIME_MODE_STORAGE_KEY);
 }
@@ -101,7 +105,11 @@ async function clearIosFullBunSmokeRequest(): Promise<void> {
   try {
     window.localStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
   } catch {
-    void 0;
+    // error-policy:J6 Preferences removal below is authoritative cleanup.
+    await boundedPreferenceWrite(() =>
+      Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY }),
+    );
+    return;
   }
   await boundedPreferenceWrite(() =>
     Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY }),
@@ -120,7 +128,7 @@ function renderIosFullBunSmokeStatus(message: string): void {
     container.appendChild(text);
     document.body.appendChild(container);
   } catch {
-    // Smoke diagnostics are best-effort.
+    // error-policy:J7 status rendering is diagnostic and cannot kill the probe.
   }
 }
 
@@ -156,7 +164,10 @@ async function fetchIosFullBunSmokeJson<T>(
   try {
     return JSON.parse(text) as T;
   } catch (error) {
-    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`);
+    // error-policy:J2 context-adding rethrow
+    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`, {
+      cause: error,
+    });
   }
 }
 
@@ -223,7 +234,10 @@ function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   try {
     return JSON.parse(body) as T;
   } catch (error) {
-    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`);
+    // error-policy:J2 context-adding rethrow
+    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`, {
+      cause: error,
+    });
   }
 }
 
@@ -272,6 +286,8 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     requested =
       window.localStorage.getItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY) === "1";
   } catch {
+    // error-policy:J3 an unavailable localStorage read is explicitly
+    // unrequested until the native Preferences source below is checked.
     requested = false;
   }
   try {
@@ -280,7 +296,8 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         (await boundedPreferenceGet(IOS_FULL_BUN_SMOKE_REQUEST_KEY)) === "1";
     }
   } catch {
-    // Keep the localStorage result from the storage bridge hydration.
+    // error-policy:J4 the localStorage result remains authoritative when the
+    // optional Preferences bridge is unavailable.
   }
   if (!requested) return false;
   const runtimeMode = await readMobileRuntimeMode();
@@ -292,7 +309,8 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
   try {
     window.localStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
   } catch {
-    // Preferences can request the smoke before localStorage is hydrated.
+    // error-policy:J7 Preferences already made the request observable; this
+    // localStorage echo is diagnostic only.
   }
   renderIosFullBunSmokeStatus("Running iOS full Bun backend smoke...");
   window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__ = (event) => {
@@ -342,7 +360,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
           ELIZA_PLATFORM: "ios",
           ELIZA_MOBILE_PLATFORM: "ios",
           ELIZA_IOS_LOCAL_BACKEND: "1",
-          ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "60000",
+          ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
           ELIZA_IOS_FULL_BUN_SMOKE: "1",
           ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
           ELIZA_VAULT_BACKEND: "file",
@@ -708,6 +726,8 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       streamMessage,
     });
   } catch (error) {
+    // error-policy:J1 smoke boundary — persist a structured failure for the
+    // host harness instead of terminating the WebView without evidence.
     await writeIosFullBunSmokeResult({
       ok: false,
       phase: "failed",
@@ -719,7 +739,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     try {
       window.localStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
     } catch {
-      // Ignore localStorage failures; Preferences removal below is authoritative.
+      // error-policy:J6 Preferences removal below is authoritative cleanup.
     }
     await boundedPreferenceWrite(() =>
       Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY }),

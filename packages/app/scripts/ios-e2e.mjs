@@ -4,10 +4,11 @@
 // CDP-drivable like Android, so there is no Playwright route-coverage sweep;
 // instead this proves the device-level real paths and fails LOUDLY:
 //   1. A simulator is booted (boots one if needed).
-//   2. The app is built + installed.
-//   3. Local route: on-device agent + smallest model + real chat round-trip
+//   2. The app is built when requested, then explicitly installed even when a
+//      prebuilt --app-path is supplied.
+//   3. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
+//   4. Local route: on-device agent + smallest model + real chat round-trip
 //      (mobile-local-chat-smoke ios full-bun path).
-//   4. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
 //   5. (optional) Cloud route: real provisioning probe.
 //
 // Flags: --device <name|udid>  --app-path <App.app>  --skip-build
@@ -68,10 +69,10 @@ function run(bundle, name, cmd, args, env = {}) {
   });
 }
 
-let activeIosContext = { udid: null };
+let activeIosContext = { udid: null, appId: null };
 
 function captureIosFailure(bundle, step, error) {
-  const { udid } = activeIosContext;
+  const { udid, appId } = activeIosContext;
   return captureFailureForensics(
     bundle,
     step,
@@ -97,6 +98,12 @@ function captureIosFailure(bundle, step, error) {
             "compact",
             "--last",
             "2m",
+            ...(appId
+              ? [
+                  "--predicate",
+                  `process == "App" OR (process == "launchd_sim" AND eventMessage CONTAINS "${appId}")`,
+                ]
+              : []),
           ],
           { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
         );
@@ -163,7 +170,7 @@ async function recordSimulatorVideo(bundle, udid, durationSeconds = 3) {
   return outPath;
 }
 
-function captureSimulatorLog(bundle, udid) {
+function captureSimulatorLog(bundle, udid, appId) {
   const outPath = path.join(bundle.logsDir, "ios-sim.log");
   const result = spawnSync(
     "xcrun",
@@ -177,6 +184,8 @@ function captureSimulatorLog(bundle, udid) {
       "compact",
       "--last",
       "5m",
+      "--predicate",
+      `process == "App" OR (process == "launchd_sim" AND eventMessage CONTAINS "${appId}")`,
     ],
     { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
   );
@@ -255,7 +264,10 @@ function runStep(bundle, step, { udid, appId }) {
       log("building the iOS Simulator app…");
       const build = buildIosSimBuildCommand();
       run(bundle, step.label, build.cmd, build.args);
-      const installStep = startBundleStep(bundle, "install iOS Simulator app");
+      return;
+    }
+    case "install": {
+      const installStep = startBundleStep(bundle, step.label);
       try {
         const stamp = installBuiltSimulatorApp(udid, appId);
         setBundleBuild(bundle, {
@@ -271,7 +283,10 @@ function runStep(bundle, step, { udid, appId }) {
     }
     case "auth": {
       log(`${step.label}…`);
-      const auth = buildAuthSmokeCommand(udid);
+      const auth = buildAuthSmokeCommand(
+        udid,
+        path.join(bundle.root, "test-results", "auth"),
+      );
       run(bundle, step.label, auth.cmd, auth.args);
       return;
     }
@@ -281,6 +296,11 @@ function runStep(bundle, step, { udid, appId }) {
       run(bundle, step.label, chat.cmd, chat.args, {
         ELIZA_DEVICE_E2E_ARTIFACT_DIR: path.join(bundle.root, "test-results"),
         ELIZA_IOS_ARTIFACT_DIR: path.join(bundle.root, "test-results", "ios"),
+        ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR: path.join(
+          bundle.root,
+          "test-results",
+          "ios-full-bun",
+        ),
       });
       return;
     }
@@ -317,7 +337,7 @@ async function main() {
     const bootStep = startBundleStep(bundle, "boot iOS Simulator");
     try {
       udid = ensureSimulatorBooted(flags.device);
-      activeIosContext = { udid };
+      activeIosContext = { udid, appId };
       finishBundleStep(bundle, bootStep, "passed");
     } catch (error) {
       failIosStep(bundle, bootStep, error);
@@ -363,7 +383,11 @@ async function main() {
         );
       }
       try {
-        recordBundleArtifact(bundle, captureSimulatorLog(bundle, udid), "log");
+        recordBundleArtifact(
+          bundle,
+          captureSimulatorLog(bundle, udid, appId),
+          "log",
+        );
       } catch (error) {
         // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
         bundle.warnings.push(

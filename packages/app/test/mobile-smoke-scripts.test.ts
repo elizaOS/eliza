@@ -39,6 +39,10 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     path.resolve(testDir, "../../../.github/workflows/mobile-build-smoke.yml"),
     "utf8",
   );
+  const iosE2e = readFileSync(
+    path.resolve(testDir, "../scripts/ios-e2e.mjs"),
+    "utf8",
+  );
   const STEP_MARKER = "      - name:";
 
   // Return the YAML text of the single workflow step whose `- name:` line
@@ -76,18 +80,25 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     expect(localChat).toContain("--platform ios --require-installed");
   });
 
-  it("keeps the full-Bun simulator lane blocking and captures reviewable evidence", () => {
-    const boot = stepBlock("Boot simulator and install the full-Bun app");
+  it("keeps the composed auth + full-Bun lane blocking and captures reviewable evidence", () => {
+    const boot = stepBlock("Boot simulator and configure the full-Bun runtime");
     expect(boot).toContain("SIMCTL_CHILD_DYLD_FALLBACK_LIBRARY_PATH");
     expect(boot).toContain("System/Cryptexes/OS/usr/lib/swift");
+    expect(boot).toContain("IOS_FULL_BUN_APP_PATH");
 
-    const fullBun = stepBlock("Run iOS full-Bun local-chat simulator smoke");
+    const fullBun = stepBlock("Run composed iOS auth + full-Bun simulator e2e");
     expect(fullBun).not.toMatch(/\n\s*continue-on-error\s*:/);
-    expect(fullBun).toContain("ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR");
+    expect(fullBun).toContain("ios-e2e.mjs");
+    expect(fullBun).toContain("--skip-build");
+    expect(fullBun).toContain("--app-path");
+    expect(fullBun).not.toContain("mobile-local-chat-smoke.mjs");
     expect(fullBun).toContain("recordVideo");
     expect(fullBun).toContain("ios-final.jpg");
     expect(fullBun).toContain("ios-simulator.log");
     expect(fullBun).toContain('process == "App"');
-    expect(fullBun).toContain("result.json");
+    expect(fullBun).toContain("test-results/auth/result.json");
+    expect(fullBun).toContain("test-results/ios-full-bun/result.json");
+    expect(fullBun).toContain("orchestrator/summary.json");
+    expect(iosE2e).toContain("ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR");
   });
 });

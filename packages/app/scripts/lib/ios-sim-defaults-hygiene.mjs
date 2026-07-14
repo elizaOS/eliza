@@ -1,7 +1,8 @@
 /**
- * Manages simulator-native UserDefaults state for iOS smoke harnesses.
- * Reads and writes execute inside the simulator so Capacitor Preferences and
- * host-side polling observe the same domain; host plist access is diagnostic.
+ * Manages UserDefaults state shared by iOS simulator smoke harnesses and the
+ * Capacitor renderer. Pre-launch seeding uses the simulator defaults service;
+ * post-launch polling prefers the app-written plist because cfprefsd can retain
+ * a stale compatibility alias after Capacitor updates its prefixed key.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -76,6 +77,39 @@ export function readIosDefaultsString(
   return null;
 }
 
+/**
+ * Reads the app-owned preference plist before consulting cfprefsd. Capacitor
+ * writes the prefixed key from inside the running app, so this is the freshest
+ * post-launch observation when the raw alias seeded by the host is still cached.
+ */
+export function readIosPreferenceString(
+  { udid, bundleId, key },
+  { execute = execText, fileExists = fs.existsSync } = {},
+) {
+  const domainPath = prefsDomainPath(udid, bundleId, execute);
+  const plist = domainPath ? `${domainPath}.plist` : null;
+  if (plist && fileExists(plist)) {
+    const json = execute("plutil", ["-convert", "json", "-o", "-", plist], {
+      optional: true,
+    });
+    if (json) {
+      try {
+        const values = JSON.parse(json);
+        if (values && typeof values === "object" && !Array.isArray(values)) {
+          for (const nativeKey of preferenceNativeKeys(key)) {
+            const value = values[nativeKey];
+            if (typeof value === "string") return value;
+          }
+        }
+      } catch {
+        // error-policy:J3 a concurrently replaced plist is explicitly unreadable;
+        // the simulator defaults fallback below remains an independent source.
+      }
+    }
+  }
+  return readIosDefaultsString({ udid, bundleId, key }, execute);
+}
+
 export function shouldClearIosSmokePreferenceKey(key, options = {}) {
   const normalized = stripCapacitorPrefix(String(key));
   if (EXACT_SMOKE_KEYS.has(normalized)) return true;
@@ -118,16 +152,16 @@ function execText(command, args, options = {}) {
   }
 }
 
-function appDataContainer(udid, bundleId) {
-  return execText(
+function appDataContainer(udid, bundleId, execute = execText) {
+  return execute(
     "xcrun",
     ["simctl", "get_app_container", udid, bundleId, "data"],
     { optional: true },
   );
 }
 
-function prefsDomainPath(udid, bundleId) {
-  const container = appDataContainer(udid, bundleId);
+function prefsDomainPath(udid, bundleId, execute = execText) {
+  const container = appDataContainer(udid, bundleId, execute);
   if (!container) return null;
   return path.join(container, "Library", "Preferences", bundleId);
 }

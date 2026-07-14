@@ -448,7 +448,7 @@ jobs:
         run: |
           node packages/app-core/scripts/verify-ondevice-artifact.mjs --platform ios
 
-      - name: Boot simulator and install the full-Bun app
+      - name: Boot simulator and configure the full-Bun runtime
         run: |
           set -euo pipefail
           # Pick an available iPhone simulator; boot it and wait for readiness.
@@ -489,22 +489,25 @@ jobs:
           fi
 
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
-          echo "Installing $APP_PATH"
-          xcrun simctl install "$UDID" "$APP_PATH"
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: full-Bun App.app disappeared before the composed e2e run"
+            exit 1
+          fi
+          echo "IOS_FULL_BUN_APP_PATH=$APP_PATH" >> "$GITHUB_ENV"
+          echo "Composed e2e will install $APP_PATH"
 
-      - name: Run iOS full-Bun local-chat simulator smoke (#13578)
-        # Gating check for the nightly lane: build the on-device full-Bun
-        # engine, stage the real GGUF, and assert the exact on-device reply
-        # (`ios smoke model works`). No `continue-on-error` — a regression in
-        # engine boot, the on-device model registry, or first-reply generation
-        # fails the scheduled run.
+      - name: Run composed iOS auth + full-Bun simulator e2e (#13577)
+        # The canonical one-command lane explicitly installs the freshly built
+        # app, proves callback delivery + rejected/session-unchanged auth state,
+        # then stages the real GGUF and asserts the exact on-device non-stream +
+        # stream reply (`ios smoke model works`). No `continue-on-error` — every
+        # leg and its named JSON evidence are hard gates.
         run: |
           set -euo pipefail
-          EVIDENCE_DIR="$GITHUB_WORKSPACE/packages/app/test-results/ios-full-bun-local-chat"
+          EVIDENCE_DIR="$GITHUB_WORKSPACE/packages/app/test-results/ios-auth-full-bun-e2e"
           mkdir -p "$EVIDENCE_DIR"
           # Point the smoke at the cached GGUF via an absolute path it can stat.
           export ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH="$HOME/.cache/eliza-ios-full-bun-smoke/$IOS_FULL_BUN_SMOKE_MODEL_FILE"
-          export ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR="$EVIDENCE_DIR"
           if [ ! -f "$ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH" ]; then
             echo "ERROR: staged smoke model missing at $ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH"
             exit 1
@@ -553,9 +556,20 @@ jobs:
               > "$EVIDENCE_DIR/ios-simulator.log"; then
               evidence_status=1
             fi
-            if [ "$smoke_status" -eq 0 ] && [ ! -s "$EVIDENCE_DIR/result.json" ]; then
-              echo "ERROR: validated iOS full-Bun result evidence is missing"
-              evidence_status=1
+            if [ "$smoke_status" -eq 0 ]; then
+              AUTH_RESULT="$EVIDENCE_DIR/orchestrator/test-results/auth/result.json"
+              FULL_BUN_RESULT="$EVIDENCE_DIR/orchestrator/test-results/ios-full-bun/result.json"
+              ORCHESTRATOR_SUMMARY="$EVIDENCE_DIR/orchestrator/summary.json"
+              for required in "$AUTH_RESULT" "$FULL_BUN_RESULT" "$ORCHESTRATOR_SUMMARY"; do
+                if [ ! -s "$required" ]; then
+                  echo "ERROR: composed iOS e2e evidence is missing: $required"
+                  evidence_status=1
+                fi
+              done
+              if [ -s "$ORCHESTRATOR_SUMMARY" ] && ! node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.result!=="passed")process.exit(1)' "$ORCHESTRATOR_SUMMARY"; then
+                echo "ERROR: composed iOS e2e summary did not report result=passed"
+                evidence_status=1
+              fi
             fi
             if [ "$smoke_status" -ne 0 ]; then
               exit "$smoke_status"
@@ -564,16 +578,19 @@ jobs:
           }
           trap capture_evidence EXIT
 
-          node packages/app/scripts/mobile-local-chat-smoke.mjs \
-            --platform ios --require-installed --ios-select-local --ios-full-bun-smoke \
+          node packages/app/scripts/ios-e2e.mjs \
+            --skip-build \
+            --device "$IOS_FULL_BUN_SIMULATOR_UDID" \
+            --app-path "$IOS_FULL_BUN_APP_PATH" \
+            --output "$EVIDENCE_DIR/orchestrator" \
             2>&1 | tee "$EVIDENCE_DIR/smoke.log"
 
-      - name: Upload iOS full-Bun local-chat evidence
+      - name: Upload composed iOS auth + full-Bun evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: ios-full-bun-local-chat
-          path: packages/app/test-results/ios-full-bun-local-chat/**
+          name: ios-auth-full-bun-e2e
+          path: packages/app/test-results/ios-auth-full-bun-e2e/**
           if-no-files-found: warn
           retention-days: 7
 

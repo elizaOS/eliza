@@ -29,6 +29,7 @@ import {
   flushIosPreferencesCache,
   preferenceNativeKeys,
   readIosDefaultsString,
+  readIosPreferenceString,
   writeIosDefaultsString,
 } from "./lib/ios-sim-defaults-hygiene.mjs";
 import { evaluateLocalInferenceReadiness } from "./lib/local-inference-readiness.mjs";
@@ -1286,7 +1287,7 @@ async function verifyIosFullBunSmoke(context) {
     : Date.now();
   for (let attempt = 1; attempt <= IOS_FULL_BUN_SMOKE_ATTEMPTS; attempt += 1) {
     lastRaw =
-      readIosDefaultsString({
+      readIosPreferenceString({
         udid: context.udid,
         bundleId: id,
         key: IOS_FULL_BUN_SMOKE_RESULT_KEY,

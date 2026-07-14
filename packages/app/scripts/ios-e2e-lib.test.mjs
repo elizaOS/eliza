@@ -86,14 +86,14 @@ describe("planIosE2eSteps", () => {
     noWait: false,
   };
 
-  it("runs build → auth → local-chat by default (no cloud)", () => {
+  it("runs build → install → auth → local-chat by default (no cloud)", () => {
     const ids = planIosE2eSteps(full).map((s) => s.id);
-    expect(ids).toEqual(["build", "auth", "local-chat"]);
+    expect(ids).toEqual(["build", "install", "auth", "local-chat"]);
   });
 
   it("appends cloud last only when requested", () => {
     const ids = planIosE2eSteps({ ...full, cloud: true }).map((s) => s.id);
-    expect(ids).toEqual(["build", "auth", "local-chat", "cloud"]);
+    expect(ids).toEqual(["build", "install", "auth", "local-chat", "cloud"]);
   });
 
   it("preserves the fixed run order under any flag subset", () => {
@@ -111,9 +111,16 @@ describe("planIosE2eSteps", () => {
     const ids = planIosE2eSteps({ ...full, [flag]: true }).map((s) => s.id);
     expect(ids).not.toContain(removedId);
     // Everything else that would have run still runs.
-    for (const id of ["build", "auth", "local-chat"]) {
+    for (const id of ["build", "install", "auth", "local-chat"]) {
       if (id !== removedId) expect(ids).toContain(id);
     }
+  });
+
+  it("keeps install explicit when --skip-build reuses a supplied app", () => {
+    const ids = planIosE2eSteps({ ...full, skipBuild: true }).map(
+      (step) => step.id,
+    );
+    expect(ids).toEqual(["install", "auth", "local-chat"]);
   });
 
   it("marks only auth/local-chat as simulator-app verification legs", () => {
@@ -121,6 +128,7 @@ describe("planIosE2eSteps", () => {
     const verifying = steps.filter((s) => s.verification).map((s) => s.id);
     expect(verifying).toEqual(IOS_E2E_VERIFICATION_STEP_IDS);
     expect(steps.find((s) => s.id === "build").verification).toBe(false);
+    expect(steps.find((s) => s.id === "install").verification).toBe(false);
     expect(steps.find((s) => s.id === "cloud").verification).toBe(false);
   });
 });
@@ -144,7 +152,7 @@ describe("assertNonVacuousPlan", () => {
       skipLocalChat: true,
       cloud: false,
     });
-    expect(steps.map((s) => s.id)).toEqual(["build"]);
+    expect(steps.map((s) => s.id)).toEqual(["build", "install"]);
     expect(() => assertNonVacuousPlan(steps)).toThrow(/refusing to run/i);
   });
 
@@ -159,7 +167,7 @@ describe("assertNonVacuousPlan", () => {
       skipLocalChat: true,
       cloud: true,
     });
-    expect(steps.map((s) => s.id)).toEqual(["cloud"]);
+    expect(steps.map((s) => s.id)).toEqual(["install", "cloud"]);
     expect(() => assertNonVacuousPlan(steps)).toThrow(
       /cloud alone is not enough/i,
     );
@@ -172,7 +180,7 @@ describe("assertNonVacuousPlan", () => {
       skipLocalChat: true,
       cloud: true,
     });
-    expect(steps.map((s) => s.id)).toEqual(["build", "cloud"]);
+    expect(steps.map((s) => s.id)).toEqual(["build", "install", "cloud"]);
     expect(() => assertNonVacuousPlan(steps)).toThrow(/auth \/ local-chat/i);
   });
 });
@@ -244,7 +252,7 @@ describe("leg command builders", () => {
   });
 
   it("targets the booted udid for the auth leg", () => {
-    expect(buildAuthSmokeCommand(UDID)).toEqual({
+    expect(buildAuthSmokeCommand(UDID, "/tmp/auth-evidence")).toEqual({
       cmd: "node",
       args: [
         "../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs",
@@ -252,6 +260,8 @@ describe("leg command builders", () => {
         "ios",
         "--device",
         UDID,
+        "--evidence-dir",
+        "/tmp/auth-evidence",
       ],
     });
   });

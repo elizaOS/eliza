@@ -19,10 +19,16 @@
 
 export const DEFAULT_IOS_SIMULATOR = "iPhone 16 Pro";
 
-// Ordered once, consumed everywhere. Build is setup; the rest are the real
-// device-path assertions. Order is the run order and is load-bearing: install
-// must precede any launch, auth registers the deep-link before chat drives it.
-export const IOS_E2E_STEP_IDS = ["build", "auth", "local-chat", "cloud"];
+// Ordered once, consumed everywhere. Build/install are setup; the rest are the
+// real device-path assertions. Install remains explicit under --skip-build so
+// a supplied App.app cannot be mistaken for an already-installed fresh build.
+export const IOS_E2E_STEP_IDS = [
+  "build",
+  "install",
+  "auth",
+  "local-chat",
+  "cloud",
+];
 export const IOS_E2E_VERIFICATION_STEP_IDS = ["auth", "local-chat"];
 
 /**
@@ -58,10 +64,15 @@ export function planIosE2eSteps(flags) {
   if (!flags.skipBuild) {
     steps.push({
       id: "build",
-      label: "build + install the iOS Simulator app",
+      label: "build the iOS Simulator app",
       verification: false,
     });
   }
+  steps.push({
+    id: "install",
+    label: "install the iOS Simulator app",
+    verification: false,
+  });
   if (!flags.skipAuth) {
     steps.push({
       id: "auth",
@@ -145,8 +156,9 @@ export function buildIosSimBuildCommand() {
   return { cmd: "bun", args: ["run", "build:ios:local:sim"] };
 }
 
-export function buildAuthSmokeCommand(udid) {
+export function buildAuthSmokeCommand(udid, evidenceDir) {
   if (!udid) throw new Error("buildAuthSmokeCommand requires a simulator udid");
+  const evidenceArgs = evidenceDir ? ["--evidence-dir", evidenceDir] : [];
   return {
     cmd: "node",
     args: [
@@ -155,6 +167,7 @@ export function buildAuthSmokeCommand(udid) {
       "ios",
       "--device",
       udid,
+      ...evidenceArgs,
     ],
   };
 }
