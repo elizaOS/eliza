@@ -1,0 +1,29 @@
+# elizaOS App vendors a content-pinned Node.js runtime and its production
+# npm dependency closure under /usr/lib/elizaos-app. The tags below are
+# structural consequences of that reviewed, provenance-pinned vendoring —
+# not packaging accidents — and each is intentionally accepted:
+#
+# The upstream Node.js distribution statically embeds zlib/openssl/etc. and
+# is shipped byte-for-byte to preserve its published sha256 provenance.
+elizaos-app: embedded-library
+elizaos-app: statically-linked-binary
+# Stripping or rewriting the audited binaries would break the recorded
+# executable digests (see elizaos-runtime-provenance.json).
+elizaos-app: unstripped-binary-or-object
+elizaos-app: no-code-sections
+# Interpreter scripts inside the vendored tree (npm's own bin shims, dep
+# tooling) run against the bundled Node runtime on PATH, never the host's;
+# the wrapper prepends /usr/lib/elizaos-app/node/bin.
+elizaos-app: missing-dep-for-interpreter
+# Dependency tarballs ship developer-tooling residue (declared license
+# terms are retained separately in THIRD_PARTY_NOTICES.json).
+elizaos-app: package-contains-eslint-config-file
+elizaos-app: package-contains-npm-ignore-file
+# Bundled dependency docs/templates reference external assets; nothing in
+# the runtime fetches them (they are inert files inside node_modules).
+elizaos-app: privacy-breach-facebook
+elizaos-app: privacy-breach-logo
+elizaos-app: privacy-breach-uses-embedded-file
+# Helper scripts inside vendored deps (e.g. gyp) declare python shebangs;
+# they are build-time helpers that the packaged runtime never executes.
+elizaos-app: python3-script-but-no-python3-dep

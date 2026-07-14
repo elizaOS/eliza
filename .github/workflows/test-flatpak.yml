@@ -218,7 +218,7 @@ jobs:
             echo "::error::Installed Flatpak commit $INSTALLED_COMMIT does not match bundle commit $EXPECTED_COMMIT"
             exit 1
           fi
-          sudo flatpak --system run --command=/bin/sh ai.elizaos.App -s <<'FLATPAK_MEDIA'
+          flatpak --system run --command=/bin/sh ai.elizaos.App -s <<'FLATPAK_MEDIA'
           set -eu
           NODE_LICENSE=/app/share/licenses/ai.elizaos.App/nodejs-LICENSE
           NODE_PROVENANCE=/app/share/licenses/ai.elizaos.App/nodejs-runtime-provenance.json
@@ -268,7 +268,7 @@ jobs:
             --isolation-root "$FLATPAK_ISOLATION_ROOT/verifier" \
             --service-arg serve \
             -- flatpak --system run ai.elizaos.App
-          sudo flatpak --system run --command=/bin/sh ai.elizaos.App -c \
+          flatpak --system run --command=/bin/sh ai.elizaos.App -c \
             'test -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke" && rm -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke"'
 
 
