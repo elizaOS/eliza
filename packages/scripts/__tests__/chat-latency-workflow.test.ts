@@ -187,8 +187,13 @@ describe("chat latency live workflow", () => {
     expect(isolated).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
     expect(isolated).not.toContain("--sampling-rate");
     expect(isolated).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
+    expect(isolated).toContain("waitForInferenceAuthTail");
+    expect(isolated).toContain(
+      "Worker Tail observed an authenticated readiness trace",
+    );
     expect(isolated).toContain("sanitizeInferenceAuthTail");
     expect(isolated).toContain("safe.slice(-2_000)");
+    expect(isolated).not.toContain("[process.argv[2], process.argv[3]]");
     expect(isolated).toContain("inference-auth-worker-logs-");
     expect(isolated).toContain('rm -f "$raw_tail" "$tail_log"');
   });

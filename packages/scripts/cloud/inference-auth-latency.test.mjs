@@ -14,6 +14,7 @@ import {
   sanitizeInferenceAuthTelemetry,
   summarizeAuthSamples,
   summarizeDeferredCacheWrites,
+  waitForInferenceAuthTail,
 } from "./inference-auth-latency.mjs";
 
 const SHA = "a".repeat(40);
@@ -259,6 +260,76 @@ test("live sample retains timings and correlation but no credential, probe token
   assert.equal(retained.includes(probeToken), false);
   assert.equal(retained.includes("X-Eliza-Auth-Probe"), false);
   assert.equal(retained.includes("{}"), false);
+});
+
+test("Tail readiness waits for an observed authenticated trace", async () => {
+  const traceIds = [];
+  let reads = 0;
+  const attempts = await waitForInferenceAuthTail({
+    baseUrl: "https://preview.example",
+    apiKey: "eliza_private_api_key_material",
+    probeToken: "private_probe_control_token",
+    deploySha: SHA,
+    timeoutMs: 1_000,
+    attempts: 3,
+    pollsPerAttempt: 1,
+    pollIntervalMs: 1,
+    sleep: async () => {},
+    readTail: () => {
+      reads++;
+      return traceIds.length > 1
+        ? JSON.stringify({ traceId: traceIds[1] })
+        : "";
+    },
+    fetchImpl: async (_url, init) => {
+      traceIds.push(init.headers["X-Eliza-Trace-Id"]);
+      return new Response(null, {
+        status: 400,
+        headers: {
+          "X-Eliza-Trace-Id": init.headers["X-Eliza-Trace-Id"],
+          "X-Eliza-Auth-Trace": authHeader("hit"),
+          "Server-Timing": timingHeader("hit"),
+        },
+      });
+    },
+  });
+
+  assert.equal(attempts, 2);
+  assert.equal(reads, 2);
+  assert.equal(traceIds.length, 2);
+});
+
+test("Tail readiness fails after bounded attempts without exposing credentials", async () => {
+  const apiKey = "eliza_private_api_key_material";
+  const probeToken = "private_probe_control_token";
+  const failure = await waitForInferenceAuthTail({
+    baseUrl: "https://preview.example",
+    apiKey,
+    probeToken,
+    deploySha: SHA,
+    timeoutMs: 1_000,
+    attempts: 2,
+    pollsPerAttempt: 1,
+    pollIntervalMs: 1,
+    sleep: async () => {},
+    readTail: () => "",
+    fetchImpl: async (_url, init) =>
+      new Response(null, {
+        status: 400,
+        headers: {
+          "X-Eliza-Trace-Id": init.headers["X-Eliza-Trace-Id"],
+          "X-Eliza-Auth-Trace": authHeader("hit"),
+          "Server-Timing": timingHeader("hit"),
+        },
+      }),
+  }).then(
+    () => null,
+    (error) => error,
+  );
+
+  assert.match(failure.message, /did not observe/);
+  assert.equal(failure.message.includes(apiKey), false);
+  assert.equal(failure.message.includes(probeToken), false);
 });
 
 test("guard probes retain 401 taxonomy and reject forged probe controls", async () => {

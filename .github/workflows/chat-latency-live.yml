@@ -731,6 +731,15 @@ jobs:
           raw_tail="$RUNNER_TEMP/inference-auth-tail.raw"
           tail_log="$RUNNER_TEMP/inference-auth-tail.stderr"
           tail_pid=""
+          print_tail_diagnostics() {
+            node --input-type=module - "$tail_log" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const raw = readFileSync(process.argv[2], "utf8");
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const safe = accountId ? raw.replaceAll(accountId, "[account]") : raw;
+          console.error(safe.slice(-2_000));
+          NODE
+          }
           cleanup() {
             if [ -n "$tail_pid" ] && kill -0 "$tail_pid" 2>/dev/null; then
               kill -INT "$tail_pid" 2>/dev/null || true
@@ -746,19 +755,31 @@ jobs:
             --version-id "$AUTH_PROBE_VERSION_ID" \
             > "$raw_tail" 2> "$tail_log" &
           tail_pid="$!"
-          sleep 5
+          sleep 1
           if ! kill -0 "$tail_pid" 2>/dev/null; then
-            node --input-type=module - "$tail_log" "$raw_tail" <<'NODE'
-          import { readFileSync } from "node:fs";
-          const raw = [process.argv[2], process.argv[3]]
-            .map((path) => readFileSync(path, "utf8"))
-            .filter(Boolean)
-            .join("\n");
-          const safe = raw.replaceAll(process.env.CLOUDFLARE_ACCOUNT_ID ?? "", "[account]");
-          console.error(safe.slice(-2_000));
-          NODE
+            print_tail_diagnostics
             echo "::error::Worker Tail exited before the auth capture started."
             exit 1
+          fi
+
+          node --input-type=module - "$raw_tail" <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { waitForInferenceAuthTail } from "./packages/scripts/cloud/inference-auth-latency.mjs";
+          const attempts = await waitForInferenceAuthTail({
+            baseUrl: process.env.AUTH_PROBE_BASE_URL,
+            apiKey: process.env.AUTH_PROBE_API_KEY,
+            probeToken: process.env.INFERENCE_AUTH_PROBE_TOKEN,
+            deploySha: process.env.GITHUB_SHA,
+            timeoutMs: 30_000,
+            readTail: () => readFileSync(process.argv[2], "utf8"),
+          });
+          console.log("Worker Tail observed an authenticated readiness trace after " + attempts + " probe(s)");
+          NODE
+          readiness_status="$?"
+          if [ "$readiness_status" -ne 0 ]; then
+            print_tail_diagnostics
+            echo "::error::Worker Tail was not ready before the auth capture."
+            exit "$readiness_status"
           fi
 
           set +e

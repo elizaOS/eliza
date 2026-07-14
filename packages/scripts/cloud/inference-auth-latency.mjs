@@ -633,6 +633,56 @@ export async function probeAuthSample({
   };
 }
 
+/**
+ * Prove a Wrangler Tail websocket is receiving authenticated invocations before
+ * the retained sample window starts. Process liveness is insufficient because
+ * Tail creation can remain pending while the CLI process is already running.
+ */
+export async function waitForInferenceAuthTail({
+  baseUrl,
+  apiKey,
+  probeToken,
+  deploySha,
+  timeoutMs,
+  readTail,
+  attempts = 24,
+  pollsPerAttempt = 10,
+  pollIntervalMs = 250,
+  fetchImpl = fetch,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  if (
+    typeof readTail !== "function" ||
+    !Number.isInteger(attempts) ||
+    attempts < 1 ||
+    !Number.isInteger(pollsPerAttempt) ||
+    pollsPerAttempt < 1 ||
+    !Number.isInteger(pollIntervalMs) ||
+    pollIntervalMs < 1
+  ) {
+    throw new Error("Invalid Worker Tail readiness configuration");
+  }
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const sample = await probeAuthSample({
+      baseUrl,
+      apiKey,
+      probeToken,
+      deploySha,
+      phase: "prime",
+      sequence: attempt,
+      timeoutMs,
+      fetchImpl,
+    });
+    for (let poll = 0; poll < pollsPerAttempt; poll++) {
+      await sleep(pollIntervalMs);
+      if (readTail().includes(sample.traceId)) return attempt;
+    }
+  }
+  throw new Error(
+    "Worker Tail did not observe an authenticated readiness trace",
+  );
+}
+
 /** Exercise rejection and probe-authentication boundaries without retaining inputs. */
 export async function probeAuthGuardSample({
   baseUrl,
