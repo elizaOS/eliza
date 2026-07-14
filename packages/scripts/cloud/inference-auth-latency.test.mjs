@@ -299,6 +299,95 @@ test("Tail readiness waits for an observed authenticated trace", async () => {
   assert.equal(traceIds.length, 2);
 });
 
+test("Tail readiness retries a transient workers.dev propagation response", async () => {
+  let requests = 0;
+  let observedTraceId = "";
+  const attempts = await waitForInferenceAuthTail({
+    baseUrl: "https://preview.example",
+    apiKey: "eliza_private_api_key_material",
+    probeToken: "private_probe_control_token",
+    deploySha: SHA,
+    timeoutMs: 1_000,
+    attempts: 2,
+    pollsPerAttempt: 1,
+    pollIntervalMs: 1,
+    sleep: async () => {},
+    readTail: () => observedTraceId,
+    fetchImpl: async (_url, init) => {
+      requests++;
+      if (requests === 1) return new Response(null, { status: 404 });
+      observedTraceId = init.headers["X-Eliza-Trace-Id"];
+      return new Response(null, {
+        status: 400,
+        headers: {
+          "X-Eliza-Trace-Id": observedTraceId,
+          "X-Eliza-Auth-Trace": authHeader("hit"),
+          "Server-Timing": timingHeader("hit"),
+        },
+      });
+    },
+  });
+
+  assert.equal(attempts, 2);
+  assert.equal(requests, 2);
+});
+
+test("Tail readiness fails fast on non-propagation HTTP responses", async () => {
+  let requests = 0;
+  const failure = await waitForInferenceAuthTail({
+    baseUrl: "https://preview.example",
+    apiKey: "eliza_private_api_key_material",
+    probeToken: "private_probe_control_token",
+    deploySha: SHA,
+    timeoutMs: 1_000,
+    attempts: 3,
+    pollsPerAttempt: 1,
+    pollIntervalMs: 1,
+    sleep: async () => {},
+    readTail: () => "",
+    fetchImpl: async () => {
+      requests++;
+      return new Response(null, { status: 401 });
+    },
+  }).then(
+    () => null,
+    (error) => error,
+  );
+
+  assert.match(failure.message, /HTTP 401/);
+  assert.equal(requests, 1);
+});
+
+test("Tail readiness reports bounded route-propagation exhaustion", async () => {
+  const apiKey = "eliza_private_api_key_material";
+  const probeToken = "private_probe_control_token";
+  let requests = 0;
+  const failure = await waitForInferenceAuthTail({
+    baseUrl: "https://preview.example",
+    apiKey,
+    probeToken,
+    deploySha: SHA,
+    timeoutMs: 1_000,
+    attempts: 2,
+    pollsPerAttempt: 1,
+    pollIntervalMs: 1,
+    sleep: async () => {},
+    readTail: () => "",
+    fetchImpl: async () => {
+      requests++;
+      return new Response(null, { status: 404 });
+    },
+  }).then(
+    () => null,
+    (error) => error,
+  );
+
+  assert.match(failure.message, /route did not stabilize/);
+  assert.equal(failure.message.includes(apiKey), false);
+  assert.equal(failure.message.includes(probeToken), false);
+  assert.equal(requests, 2);
+});
+
 test("Tail readiness fails after bounded attempts without exposing credentials", async () => {
   const apiKey = "eliza_private_api_key_material";
   const probeToken = "private_probe_control_token";

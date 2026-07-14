@@ -188,6 +188,11 @@ describe("chat latency live workflow", () => {
     expect(isolated).not.toContain("--sampling-rate");
     expect(isolated).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
     expect(isolated).toContain("waitForInferenceAuthTail");
+    expect(isolated).toContain("sleep 5");
+    expect(isolated).toContain(
+      'set +e\n          node --input-type=module - "$raw_tail"',
+    );
+    expect(isolated).toContain('readiness_status="$?"\n          set -e');
     expect(isolated).toContain(
       "Worker Tail observed an authenticated readiness trace",
     );

@@ -567,7 +567,7 @@ export async function probeAuthSample({
   }
   const totalMs = Math.round((now() - startedAt) * 100) / 100;
   if (response.status !== 400)
-    throw new Error(`Auth probe returned HTTP ${response.status}`);
+    throw new AuthProbeHttpStatusError(response.status);
   const returnedTraceId = response.headers.get(TRACE_HEADER);
   if (returnedTraceId !== traceId)
     throw new Error("Auth probe trace correlation failed");
@@ -633,6 +633,14 @@ export async function probeAuthSample({
   };
 }
 
+class AuthProbeHttpStatusError extends Error {
+  constructor(status) {
+    super(`Auth probe returned HTTP ${status}`);
+    this.name = "AuthProbeHttpStatusError";
+    this.status = status;
+  }
+}
+
 /**
  * Prove a Wrangler Tail websocket is receiving authenticated invocations before
  * the retained sample window starts. Process liveness is insufficient because
@@ -662,21 +670,43 @@ export async function waitForInferenceAuthTail({
   ) {
     throw new Error("Invalid Worker Tail readiness configuration");
   }
+  let routePropagationPending = false;
   for (let attempt = 1; attempt <= attempts; attempt++) {
-    const sample = await probeAuthSample({
-      baseUrl,
-      apiKey,
-      probeToken,
-      deploySha,
-      phase: "prime",
-      sequence: attempt,
-      timeoutMs,
-      fetchImpl,
-    });
+    let sample;
+    try {
+      sample = await probeAuthSample({
+        baseUrl,
+        apiKey,
+        probeToken,
+        deploySha,
+        phase: "prime",
+        sequence: attempt,
+        timeoutMs,
+        fetchImpl,
+      });
+    } catch (error) {
+      // error-policy:J1 workers.dev can briefly return its propagation 404
+      // after health is live; this readiness boundary retries only that status.
+      if (
+        !(error instanceof AuthProbeHttpStatusError) ||
+        error.status !== 404
+      ) {
+        throw error;
+      }
+      routePropagationPending = true;
+      await sleep(Math.max(pollIntervalMs, 1_000));
+      continue;
+    }
+    routePropagationPending = false;
     for (let poll = 0; poll < pollsPerAttempt; poll++) {
       await sleep(pollIntervalMs);
       if (readTail().includes(sample.traceId)) return attempt;
     }
+  }
+  if (routePropagationPending) {
+    throw new Error(
+      "Worker route did not stabilize before Tail readiness completed",
+    );
   }
   throw new Error(
     "Worker Tail did not observe an authenticated readiness trace",

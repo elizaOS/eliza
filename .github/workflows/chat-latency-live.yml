@@ -755,13 +755,16 @@ jobs:
             --version-id "$AUTH_PROBE_VERSION_ID" \
             > "$raw_tail" 2> "$tail_log" &
           tail_pid="$!"
-          sleep 1
+          # workers.dev route propagation can lag a healthy response by a few
+          # seconds, while Tail needs its own websocket startup grace.
+          sleep 5
           if ! kill -0 "$tail_pid" 2>/dev/null; then
             print_tail_diagnostics
             echo "::error::Worker Tail exited before the auth capture started."
             exit 1
           fi
 
+          set +e
           node --input-type=module - "$raw_tail" <<'NODE'
           import { readFileSync } from "node:fs";
           import { waitForInferenceAuthTail } from "./packages/scripts/cloud/inference-auth-latency.mjs";
@@ -776,6 +779,7 @@ jobs:
           console.log("Worker Tail observed an authenticated readiness trace after " + attempts + " probe(s)");
           NODE
           readiness_status="$?"
+          set -e
           if [ "$readiness_status" -ne 0 ]; then
             print_tail_diagnostics
             echo "::error::Worker Tail was not ready before the auth capture."
