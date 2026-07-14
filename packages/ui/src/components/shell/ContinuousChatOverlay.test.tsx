@@ -4061,7 +4061,29 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     fireEvent.change(input, { target: { value: "changed" } });
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
+    expect(
+      screen.getByTestId("thread-line-actions").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-edit")).toBeTruthy();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("returns to the three message actions when Cancel closes an edit", () => {
+    openThreadWith({
+      messages: [{ id: "u", role: "user", content: "keep me", createdAt: 1 }],
+      send: vi.fn(),
+    });
+    fireEvent.click(bubbleFor("keep me"));
+    fireEvent.click(screen.getByTestId("thread-line-edit"));
+    fireEvent.click(screen.getByTestId("thread-line-edit-cancel"));
+
+    expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
+    expect(
+      screen.getByTestId("thread-line-actions").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-edit")).toBeTruthy();
   });
 });
 
