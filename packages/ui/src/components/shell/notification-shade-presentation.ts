@@ -4,16 +4,20 @@
  * groups remains smooth while React remains authoritative for settled states.
  */
 import type { CSSProperties } from "react";
+import { rubberBand } from "../../gestures/recognizers";
 
-/** Dampened pull travel that commits a shade mode change on release. */
-export const PULL_COMMIT_PX = 48;
+/** Full visual travel between the shade's rested and expanded detents. */
+export const PULL_TRAVEL_PX = 88;
+
+/** A slow drag commits at the same halfway point as the home pager. */
+export const PULL_COMMIT_PX = PULL_TRAVEL_PX / 2;
 
 /** Dead zone before a vertical drag starts reading as a pull. */
 export const PULL_SLOP_PX = 8;
 
-/** Rubber-band raw overscroll into the travel rendered by the shade. */
+/** Track the finger directly between detents, resisting only past the end. */
 export function dampenPull(rawDy: number): number {
-  return Math.min(Math.max(0, rawDy - PULL_SLOP_PX) * 0.5, 88);
+  return rubberBand(Math.max(0, rawDy - PULL_SLOP_PX), PULL_TRAVEL_PX, 0.35);
 }
 
 /** Convert live pull travel into a staggered reveal for hidden groups. */
@@ -21,7 +25,7 @@ export function notificationPullRevealProgress(
   pullPx: number,
   groupIndex: number,
 ): number {
-  const progress = Math.min(1, Math.max(0, pullPx / PULL_COMMIT_PX));
+  const progress = Math.min(1, Math.max(0, pullPx / PULL_TRAVEL_PX));
   const stagger = Math.min(Math.max(groupIndex, 0), 4) * 0.06;
   return Math.min(1, Math.max(0, (progress - stagger) / (1 - stagger)));
 }
@@ -48,17 +52,30 @@ export function notificationPullPresentation(
     committedCloseProgress,
   );
   const disposableContentVisibility = 1 - shadeCloseProgress;
+  const pullRevealProgress = notificationPullRevealProgress(pullPx, 0);
   const pullContentVisibility = shadeExpanded
     ? disposableContentVisibility
-    : notificationPullRevealProgress(pullPx, 0);
+    : pullRevealProgress;
+  // The count follows the same continuous travel as the cards but stays much
+  // dimmer while their surfaces overlap. This reads as a fade beneath the
+  // stack without either a hard clipping edge or legible text through glass.
   const notificationCountVisibility = shadeExpanded
-    ? shadeCloseProgress
-    : 1 - notificationPullRevealProgress(pullPx, 0);
+    ? shadeCloseProgress ** 3
+    : (1 - pullRevealProgress) ** 3;
   const clearControlVisibility = shadeExpanded
     ? disposableContentVisibility
     : pullPx > 0
-      ? notificationPullRevealProgress(pullPx, 0)
+      ? pullRevealProgress
       : 0;
+  // The clear-control slot reserves its full row as soon as a drag starts so
+  // notification groups can mount without reflowing under the finger. The
+  // count follows that slot in document flow, so it needs the same inverse
+  // offset as the groups or its first drag frame jumps by the full 40px row.
+  const notificationCountOffset = notificationGroupContainerOffset(
+    pullPx,
+    shadeExpanded,
+    shadeClosing,
+  );
 
   return {
     shadeCloseProgress,
@@ -66,16 +83,19 @@ export function notificationPullPresentation(
     disposableContentVisibility,
     pullContentVisibility,
     notificationCountVisibility,
+    notificationCountOffset,
     notificationCountLayoutVisibility:
       shadeExpanded && pullPx < 0 && !shadeClosing
         ? 1
-        : notificationCountVisibility,
+        : shadeExpanded
+          ? shadeCloseProgress
+          : 1 - pullRevealProgress,
     emptyStateVisibility: shadeExpanded
       ? disposableContentVisibility
       : notificationPullRevealProgress(pullPx, 0),
     collapseControlVisibility: shadeExpanded
       ? disposableContentVisibility
-      : notificationPullRevealProgress(pullPx, 0),
+      : pullRevealProgress,
     clearControlVisibility,
     clearControlLayoutVisibility: shadeExpanded
       ? shadeClosing || pullPx < 0
@@ -127,7 +147,7 @@ export function notificationGroupPullVisibility(
   }
   if (shadeClosing) return 0;
   if (shadeExpanded && pullPx < 0) {
-    return notificationPullRevealProgress(PULL_COMMIT_PX + pullPx, groupIndex);
+    return notificationPullRevealProgress(PULL_TRAVEL_PX + pullPx, groupIndex);
   }
   return 1;
 }
@@ -143,19 +163,20 @@ export function applyNotificationPullPresentation(
   shadeClosing: boolean,
   visibleGroups?: readonly HTMLElement[],
 ): void {
+  const count = root?.querySelector<HTMLElement>(
+    "[data-notification-count-slot]",
+  );
   if (!root) return;
   const presentation = notificationPullPresentation(
     pullPx,
     shadeExpanded,
     shadeClosing,
   );
-  const count = root.querySelector<HTMLElement>(
-    "[data-notification-count-slot]",
-  );
   if (count) {
     count.style.height = `${presentation.notificationCountLayoutVisibility * 32}px`;
     count.style.marginBottom = `${(presentation.notificationCountLayoutVisibility - 1) * 8}px`;
     count.style.opacity = String(presentation.notificationCountVisibility);
+    count.style.transform = `translate3d(0, ${presentation.notificationCountOffset}px, 0)`;
   }
   const clearSlot = root.querySelector<HTMLElement>(
     "[data-notification-clear-slot]",
@@ -238,11 +259,6 @@ export function applyNotificationPullPresentation(
         const tailPx =
           restedTailPx + (expandedTailPx - restedTailPx) * tailProgress;
         content.style.paddingBottom = `${tailPx}px`;
-        for (const peek of content.querySelectorAll<HTMLElement>(
-          "[data-notification-stack-peek]",
-        )) {
-          peek.style.bottom = `${tailPx}px`;
-        }
       }
     }
     const controls = group.querySelector<HTMLElement>(

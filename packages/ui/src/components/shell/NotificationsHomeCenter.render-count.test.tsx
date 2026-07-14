@@ -114,6 +114,9 @@ function expandShade(): void {
   fireEvent.wheel(screen.getByTestId("home-notification-list"), {
     deltaY: -(PULL_COMMIT_PX + 10),
   });
+  act(() => {
+    vi.advanceTimersByTime(400);
+  });
 }
 
 describe("NotificationsHomeCenter render count (#14559)", () => {
@@ -218,6 +221,9 @@ describe("NotificationsHomeCenter render count (#14559)", () => {
     });
     // A peek tap fans the producer stack and enters the expanded shade.
     fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
     expect(screen.getAllByTestId("notification-row")).toHaveLength(30);
     expect(rowRenders).toBeGreaterThanOrEqual(30);
 
