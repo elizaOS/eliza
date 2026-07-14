@@ -75,12 +75,17 @@ export type PromptBenchmarkCapabilityProfile = {
   id: "host" | "mobile";
   filteredActionNames: readonly string[];
   unavailableExpectedActions: Readonly<Record<string, string>>;
+  unavailableCases: Readonly<
+    Record<string, { capability: string; reason: string }>
+  >;
 };
 
 /**
- * The hosted lane has no Capacitor app-blocker or native screen-time source.
- * Mixed app/website BLOCK virtuals are removed as a group so an app target is
- * never exposed accidentally; website lifecycle-only virtuals stay available.
+ * The hosted lane has no owner calendar, Capacitor app-blocker, or native
+ * screen-time source. Mixed app/website BLOCK virtuals are removed as a group
+ * so an app target is never exposed accidentally; website lifecycle-only
+ * virtuals stay available. Calendar-dependent cases are skipped before a turn
+ * because connector failure after execution is not capability detection.
  */
 export const HOST_PROMPT_BENCHMARK_CAPABILITIES: PromptBenchmarkCapabilityProfile =
   {
@@ -92,8 +97,17 @@ export const HOST_PROMPT_BENCHMARK_CAPABILITIES: PromptBenchmarkCapabilityProfil
       "BLOCK_STATUS",
     ],
     unavailableExpectedActions: {
+      CALENDAR:
+        "The hosted benchmark does not authenticate an owner calendar, so live calendar reads and writes are unavailable without risking external account mutation.",
       OWNER_SCREENTIME:
         "Native screen-time signals require the macOS activity tracker or a mobile device and are unavailable on the hosted Linux benchmark runtime.",
+    },
+    unavailableCases: {
+      "lifeops-capability.meeting_prep__direct": {
+        capability: "MEETING_DOSSIER",
+        reason:
+          "Meeting dossier generation requires a connected calendar with an upcoming event plus its document corpus; the hosted benchmark has neither owner data source.",
+      },
     },
   };
 
@@ -102,6 +116,7 @@ export const MOBILE_PROMPT_BENCHMARK_CAPABILITIES: PromptBenchmarkCapabilityProf
     id: "mobile",
     filteredActionNames: [],
     unavailableExpectedActions: {},
+    unavailableCases: {},
   };
 
 export function resolvePromptBenchmarkCapabilityProfile(
@@ -296,10 +311,19 @@ function applyPromptBenchmarkCapabilityProfile(
   }
 }
 
-function capabilityUnavailableForCase(args: {
+export function promptBenchmarkCapabilityUnavailableForCase(args: {
   capabilityProfile: PromptBenchmarkCapabilityProfile;
   testCase: PromptBenchmarkCase;
 }): PromptBenchmarkTerminalOutcome | null {
+  const unavailableCase =
+    args.capabilityProfile.unavailableCases[args.testCase.caseId];
+  if (unavailableCase) {
+    return {
+      status: "capability_unavailable",
+      capability: unavailableCase.capability,
+      reason: unavailableCase.reason,
+    };
+  }
   const expected = normalizeActionName(args.testCase.expectedAction);
   if (!expected) {
     return null;
@@ -770,7 +794,7 @@ async function runSinglePromptBenchmarkCase(args: {
   testCase: PromptBenchmarkCase;
   timeoutMs: number;
 }): Promise<PromptBenchmarkResult> {
-  const unavailable = capabilityUnavailableForCase({
+  const unavailable = promptBenchmarkCapabilityUnavailableForCase({
     capabilityProfile: args.capabilityProfile,
     testCase: args.testCase,
   });

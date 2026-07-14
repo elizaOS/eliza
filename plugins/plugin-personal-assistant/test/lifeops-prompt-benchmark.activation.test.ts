@@ -26,6 +26,7 @@ import {
   MOBILE_PROMPT_BENCHMARK_CAPABILITIES,
   type PromptBenchmarkResult,
   promptBenchmarkActionIsAvailable,
+  promptBenchmarkCapabilityUnavailableForCase,
   promptBenchmarkCasePasses,
   promptBenchmarkValidationErrors,
   resolvePromptBenchmarkTerminalOutcome,
@@ -312,6 +313,36 @@ describe("LifeOps prompt-benchmark harness — activation", () => {
       HOST_PROMPT_BENCHMARK_CAPABILITIES.unavailableExpectedActions
         .OWNER_SCREENTIME,
     ).toContain("hosted Linux benchmark runtime");
+    expect(
+      promptBenchmarkCapabilityUnavailableForCase({
+        capabilityProfile: HOST_PROMPT_BENCHMARK_CAPABILITIES,
+        testCase: SYNTHETIC_CASE,
+      }),
+    ).toMatchObject({
+      status: "capability_unavailable",
+      capability: "CALENDAR",
+    });
+    expect(
+      promptBenchmarkCapabilityUnavailableForCase({
+        capabilityProfile: MOBILE_PROMPT_BENCHMARK_CAPABILITIES,
+        testCase: SYNTHETIC_CASE,
+      }),
+    ).toBeNull();
+
+    const meetingPrepCase: PromptBenchmarkCase = {
+      ...SYNTHETIC_CASE,
+      caseId: "lifeops-capability.meeting_prep__direct",
+      expectedAction: "BRIEF",
+    };
+    expect(
+      promptBenchmarkCapabilityUnavailableForCase({
+        capabilityProfile: HOST_PROMPT_BENCHMARK_CAPABILITIES,
+        testCase: meetingPrepCase,
+      }),
+    ).toMatchObject({
+      status: "capability_unavailable",
+      capability: "MEETING_DOSSIER",
+    });
   });
 
   it("loads the case catalog when the scenario corpus is present", async () => {
