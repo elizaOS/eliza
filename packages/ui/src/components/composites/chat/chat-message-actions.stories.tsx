@@ -17,23 +17,19 @@ const meta = {
     ),
   ],
   argTypes: {
-    canDelete: { control: "boolean" },
     canEdit: { control: "boolean" },
     canPlay: { control: "boolean" },
     copied: { control: "boolean" },
     labels: { control: "object" },
     onCopy: { action: "copy" },
-    onDelete: { action: "delete" },
     onEdit: { action: "edit" },
     onPlay: { action: "play" },
   },
   args: {
-    canDelete: false,
     canEdit: false,
     canPlay: false,
     copied: false,
     onCopy: () => {},
-    onDelete: () => {},
     onEdit: () => {},
     onPlay: () => {},
   },
@@ -52,7 +48,6 @@ export const Copied: Story = {
 
 export const AllActions: Story = {
   args: {
-    canDelete: true,
     canEdit: true,
     canPlay: true,
   },
@@ -66,7 +61,6 @@ export const PlayableOnly: Story = {
 
 export const CustomLabels: Story = {
   args: {
-    canDelete: true,
     canEdit: true,
     canPlay: true,
     labels: {
@@ -75,7 +69,6 @@ export const CustomLabels: Story = {
       copiedAria: "Message copied to clipboard",
       play: "Play audio",
       edit: "Edit this message",
-      delete: "Remove message",
     },
   },
 };

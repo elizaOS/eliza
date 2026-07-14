@@ -24,7 +24,6 @@ export interface ChatTranscriptProps {
   labels?: ChatMessageLabels;
   messages: ChatMessageData[];
   onCopy?: (text: string) => void;
-  onDelete?: (messageId: string) => void;
   /** Dismiss a proactive suggestion bubble (#8792). */
   onDismissSuggestion?: (messageId: string) => void;
   /** Accept ("Do it") a proactive suggestion bubble (#8792). */
@@ -141,7 +140,6 @@ export const ChatTranscript = memo(function ChatTranscript({
   labels,
   messages,
   onCopy,
-  onDelete,
   onDismissSuggestion,
   onAcceptSuggestion,
   onEdit,
@@ -272,7 +270,6 @@ export const ChatTranscript = memo(function ChatTranscript({
             agentName={agentName}
             labels={labels}
             onCopy={onCopy}
-            onDelete={onDelete}
             onDismissSuggestion={onDismissSuggestion}
             onAcceptSuggestion={onAcceptSuggestion}
             onEdit={onEdit}

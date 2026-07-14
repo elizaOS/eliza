@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 // Touch tap-vs-scroll discrimination for the composite ChatMessage's
-// tap-to-reveal action rail (copy/edit/play/delete). On non-hover devices the
+// tap-to-reveal action rail (reply/copy/edit/play). On non-hover devices the
 // whole <article> toggles the rail on touchend; without move-slop tracking a
 // flick-scroll over the transcript toggled the rail on whichever message the
 // finger started on. The fix mirrors the shell ThreadLine: finger travel past
