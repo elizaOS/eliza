@@ -8,13 +8,12 @@
  * Codex-style working indicator (#13535). All three render paths share the
  * single `TypingDots` triad so there is exactly one dots implementation.
  *
- * Brand rule: orange (the accent) tints TurnStatus ONLY for `speaking`; every
- * other phase is neutral. No blue anywhere.
+ * Every TurnStatus phase uses the same neutral shimmer so transport state never
+ * changes the chat's accent color or flashes between unrelated treatments.
  */
 import { useEffect, useRef, useState } from "react";
 
 import type { ChatTurnStatus } from "../../../api/client-types-chat";
-import { cn } from "../../../lib/utils";
 import { Marker, MarkerContent, MarkerIcon } from "../../ui/marker";
 import { Spinner } from "../../ui/spinner";
 import { ChatBubble } from "./chat-bubble";
@@ -233,7 +232,6 @@ export function TurnStatus({
   showLabel?: boolean;
 }) {
   const shown = useDebouncedTurnStatus(status);
-  const speaking = shown?.kind === "speaking";
   // Clock is driven by the raw (un-debounced) status so it starts at turn open,
   // not after the label's min-dwell debounce.
   const elapsed = useElapsedSeconds(status !== null);
@@ -252,12 +250,7 @@ export function TurnStatus({
         aria-live="polite"
       >
         <MarkerContent
-          className={cn(
-            "text-[13px] font-medium",
-            speaking
-              ? "text-[rgba(255,200,150,0.95)]"
-              : "shimmer motion-reduce:shimmer-none",
-          )}
+          className="shimmer text-[13px] font-medium motion-reduce:shimmer-none"
           data-testid="turn-status-label"
         >
           {label}
@@ -278,19 +271,12 @@ export function TurnStatus({
         <Spinner
           size={14}
           data-testid="turn-status-spinner"
-          className={cn(
-            "motion-reduce:animate-none",
-            speaking ? "text-[rgba(255,200,150,0.95)]" : "text-white/70",
-          )}
+          className="text-white/70 motion-reduce:animate-none"
         />
       </MarkerIcon>
       <MarkerContent className="inline-flex items-baseline text-[13px] font-medium tabular-nums">
         <span
-          className={cn(
-            speaking
-              ? "text-[rgba(255,200,150,0.95)]"
-              : "shimmer motion-reduce:shimmer-none",
-          )}
+          className="shimmer motion-reduce:shimmer-none"
           data-testid="turn-status-label"
         >
           {label}
