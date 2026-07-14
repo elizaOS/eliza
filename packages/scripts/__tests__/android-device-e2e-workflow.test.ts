@@ -1,0 +1,70 @@
+/** Guards the Android emulator workflow's single-process shell boundary and immutable action provenance. */
+
+import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const root = join(import.meta.dir, "../../..");
+const workflow = readFileSync(
+  join(root, ".github/workflows/android-device-e2e.yml"),
+  "utf8",
+);
+const actionSha = "a421e43855164a8197daf9d8d40fe71c6996bb0d";
+const expectedCommands = [
+  "bash scripts/mobile/android-emulator-webview-ci.sh full",
+  "bash scripts/mobile/android-emulator-webview-ci.sh pr-smoke",
+  "bash scripts/mobile/android-native-plugin-ci.sh",
+];
+
+function emulatorActionBlocks(): string[] {
+  return workflow
+    .split(/(?=^\s*- name:)/m)
+    .filter((block) =>
+      block.includes("reactivecircus/android-emulator-runner@"),
+    );
+}
+
+describe("Android emulator workflow shell contract", () => {
+  test("pins every emulator action and passes exactly one shell command", () => {
+    const blocks = emulatorActionBlocks();
+    expect(blocks).toHaveLength(expectedCommands.length);
+
+    for (const [index, block] of blocks.entries()) {
+      expect(block).toContain(
+        `uses: reactivecircus/android-emulator-runner@${actionSha}`,
+      );
+      expect(block).toContain(`script: ${expectedCommands[index]}`);
+      expect(block).not.toMatch(/script:\s*[|>]/);
+
+      // android-emulator-runner v2 executes every nonblank line independently.
+      const scriptValue = block.match(/^\s*script:\s*(.+)$/m)?.[1];
+      expect(scriptValue?.split(/\r?\n/).filter(Boolean)).toEqual([
+        expectedCommands[index],
+      ]);
+    }
+  });
+
+  test("keeps both committed Bash boundaries syntactically valid", () => {
+    for (const relativePath of [
+      "scripts/mobile/android-emulator-webview-ci.sh",
+      "scripts/mobile/android-native-plugin-ci.sh",
+    ]) {
+      const result = spawnSync("bash", ["-n", join(root, relativePath)], {
+        encoding: "utf8",
+      });
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+    }
+  });
+
+  test("rejects an unknown WebView lane before touching a device", () => {
+    const result = spawnSync(
+      "bash",
+      [join(root, "scripts/mobile/android-emulator-webview-ci.sh"), "unknown"],
+      { encoding: "utf8" },
+    );
+    expect(result.status).toBe(64);
+    expect(result.stderr).toContain("usage:");
+  });
+});

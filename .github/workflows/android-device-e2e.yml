@@ -101,77 +101,14 @@ jobs:
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
       - name: Route coverage on emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.api-level || '34' }}
           arch: x86_64
           ram-size: 6144M
           # avx2/fma passthrough so the (x86) on-device agent doesn't SIGILL.
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
-          script: |
-            set -euo pipefail
-            adb root || true
-            adb shell setenforce 0 || true
-            bun run --cwd packages/app build  # ensure web dist
-
-            mkdir -p packages/app/test-results/android-onboarding-to-home
-            ELIZA_API_PORT=31337 \
-            ELIZA_PAIRING_DISABLED=1 \
-              node packages/app-core/scripts/run-node-tsx.mjs \
-                packages/app-core/scripts/serve-real-local-agent.ts \
-                > packages/app/test-results/android-onboarding-to-home/host-agent.log 2>&1 &
-            HOST_AGENT_PID=$!
-            trap 'kill "$HOST_AGENT_PID" 2>/dev/null || true' EXIT
-            for i in $(seq 1 90); do
-              if curl -fsS \
-                -H 'X-ElizaOS-Client-Id: android-onboarding-ci' \
-                http://127.0.0.1:31337/api/health >/tmp/android-host-agent-health.json; then
-                cat /tmp/android-host-agent-health.json
-                break
-              fi
-              if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-                echo "Host agent exited before becoming healthy"
-                cat packages/app/test-results/android-onboarding-to-home/host-agent.log
-                exit 1
-              fi
-              sleep 2
-            done
-            curl -fsS \
-              -H 'X-ElizaOS-Client-Id: android-onboarding-ci' \
-              http://127.0.0.1:31337/api/health >/dev/null
-
-            ELIZA_ANDROID_BACKEND=host \
-            ELIZA_ANDROID_REQUIRE_AGENT=1 \
-              bun run --cwd packages/app test:e2e:android:onboarding
-
-            if [ "${ELIZA_ANDROID_BACKEND}" = "local" ]; then
-              # LOCAL route is still signal-only on hosted x86_64: the embedded
-              # bun+llama agent is known to require a self-hosted arm64 device
-              # runner. Keep surfacing the artifact, but do not make the hosted
-              # emulator falsely red for that known platform gap.
-              ELIZA_ANDROID_REQUIRE_AGENT=1 \
-                bun run --cwd packages/app test:e2e:android:routes || true
-            else
-              # Host/cloud route coverage is the scheduled unattended health
-              # signal. Fail red here instead of hiding regressions behind a
-              # permanent signal-only `|| true` leg.
-              ELIZA_ANDROID_REQUIRE_AGENT=0 \
-                bun run --cwd packages/app test:e2e:android:routes
-            fi
-            ELIZA_ANDROID_BACKEND=host \
-            ELIZA_ANDROID_REQUIRE_AGENT=1 \
-              bun run --cwd packages/app test:e2e:android:native-plugin-view
-            # Local on-device agent smoke (surfaces failure loudly; expected to
-            # fail on stock x86 emulator — see coverage note above).
-            bun run --cwd packages/app test:sim:local-chat:android:live || true
-
-            # Seeded launcher gesture loop (#12377): ≥200 real device swipes/taps
-            # with per-action rail invariants (data-page + AX probe + inertness +
-            # focus), chunked screenrecord + logcat. Signal-only on the x86
-            # emulator until proven emulator-green; the seed prints for replay.
-            ELIZA_ANDROID_BACKEND=host \
-            ELIZA_ANDROID_REQUIRE_AGENT=1 \
-              bun run --cwd packages/app test:e2e:android:launcher-loop || true
+          script: bash scripts/mobile/android-emulator-webview-ci.sh full
 
       - name: Cloud provisioning probe
         run: |
@@ -306,76 +243,13 @@ jobs:
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
       - name: Onboarding→home + chat turn on emulator (host agent)
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: "34"
           arch: x86_64
           ram-size: 6144M
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect -qemu -cpu qemu64,+avx,+avx2,+f16c,+fma
-          script: |
-            set -euo pipefail
-            adb root || true
-            adb shell setenforce 0 || true
-            bun run --cwd packages/app build  # ensure web dist
-
-            mkdir -p packages/app/test-results/android-onboarding-to-home
-            ELIZA_API_PORT=31337 \
-            ELIZA_PAIRING_DISABLED=1 \
-              node packages/app-core/scripts/run-node-tsx.mjs \
-                packages/app-core/scripts/serve-real-local-agent.ts \
-                > packages/app/test-results/android-onboarding-to-home/host-agent.log 2>&1 &
-            HOST_AGENT_PID=$!
-            trap 'kill "$HOST_AGENT_PID" 2>/dev/null || true' EXIT
-            for i in $(seq 1 90); do
-              if curl -fsS \
-                -H 'X-ElizaOS-Client-Id: android-pr-device-smoke' \
-                http://127.0.0.1:31337/api/health >/tmp/android-host-agent-health.json; then
-                cat /tmp/android-host-agent-health.json
-                break
-              fi
-              if ! kill -0 "$HOST_AGENT_PID" 2>/dev/null; then
-                echo "Host agent exited before becoming healthy"
-                cat packages/app/test-results/android-onboarding-to-home/host-agent.log
-                exit 1
-              fi
-              sleep 2
-            done
-            curl -fsS \
-              -H 'X-ElizaOS-Client-Id: android-pr-device-smoke' \
-              http://127.0.0.1:31337/api/health >/dev/null
-
-            # Onboarding→home + first chat turn, asserted against the host agent.
-            ELIZA_ANDROID_BACKEND=host \
-            ELIZA_ANDROID_REQUIRE_AGENT=1 \
-              bun run --cwd packages/app test:e2e:android:onboarding
-
-            # Native plugin x WebView smoke: proves Capacitor JS calls cross
-            # into Android Kotlin rather than the desktop Chromium bridge shim.
-            # Signal-only (|| true) on the PR lane until it's proven green on the
-            # x86_64 API-34 emulator this job uses — the hard assertion runs in
-            # the workflow_dispatch `android-e2e` job (validated on a real arm64
-            # device). Do not make it a hard PR gate on unproven-on-emulator
-            # evidence; flip to a hard gate once an emulator-green run is attached.
-            ELIZA_ANDROID_BACKEND=host \
-            ELIZA_ANDROID_REQUIRE_AGENT=1 \
-              bun run --cwd packages/app test:e2e:android:native-plugin-view || true
-
-            # Real OS-level touch swipe on the chat-sheet grabber (#9943): proves
-            # the home→launcher pager gesture fires with real Android touch input
-            # (pointerMouseCount===0), not desktop mouse emulation. Signal-only on
-            # the PR lane for the same reason as above — flip to a hard gate once
-            # emulator-green evidence is attached.
-            ELIZA_ANDROID_BACKEND=host \
-            ELIZA_ANDROID_REQUIRE_AGENT=1 \
-            ELIZA_ANDROID_CLEAR_APP_DATA=1 \
-              bun run --cwd packages/app test:e2e:android:touch-gesture || true
-
-            # View-runtime telemetry soak (#10196): activates every registered
-            # view through the real eliza:navigate:view channel and asserts
-            # bounded render/heap/cache behavior. Signal-only on the PR lane.
-            ELIZA_ANDROID_BACKEND=host \
-            ELIZA_ANDROID_REQUIRE_AGENT=1 \
-              bun run --cwd packages/app test:e2e:android:view-runtime-soak || true
+          script: bash scripts/mobile/android-emulator-webview-ci.sh pr-smoke
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -435,107 +309,13 @@ jobs:
           sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
 
       - name: Native-plugin androidTest on emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: "34"
           arch: x86_64
           ram-size: 4096M
           emulator-options: -no-window -no-snapshot -no-boot-anim -gpu swiftshader_indirect
-          script: |
-            set -euo pipefail
-            adb wait-for-device
-            ANDROID_DIR="$GITHUB_WORKSPACE/packages/app-core/platforms/android"
-            GRADLEW="$ANDROID_DIR/gradlew"
-            chmod +x "$GRADLEW"
-
-            # Device-state orchestration (survives the test-APK install):
-            #  - messages: inject a marker SMS so the SMS read-back asserts positively
-            #    (it Assume-skips without the marker, so this is what makes it green).
-            #  - location: high-accuracy mode (the fused fetch still Assume-skips on a
-            #    headless GNSS HAL; the priority-mapping assertion runs regardless).
-            adb emu sms send 15558675309 "probe Eliza-9967-SMS-roundtrip ci" || true
-            adb shell settings put secure location_mode 3 || true
-
-            # The gate: build + install + run every native-plugin androidTest on the
-            # emulator in one invocation. gradle fails the job on any test failure.
-            # `:app:connectedDebugAndroidTest` adds the app-level assistant/IME/
-            # assist-surface instrumented tests (#13581) — the RETAIL-path
-            # ElizaAssistantSurfaceInstrumentedTest runs on the plain debug APK
-            # (not assumeSystemEliza-gated), so this app run is not vacuously
-            # green off-AOSP.
-            "$GRADLEW" -p "$ANDROID_DIR" --no-daemon \
-              :app:connectedDebugAndroidTest \
-              :elizaos-capacitor-system:connectedDebugAndroidTest \
-              :elizaos-capacitor-wifi:connectedDebugAndroidTest \
-              :elizaos-capacitor-phone:connectedDebugAndroidTest \
-              :elizaos-capacitor-camera:connectedDebugAndroidTest \
-              :elizaos-capacitor-contacts:connectedDebugAndroidTest \
-              :elizaos-capacitor-messages:connectedDebugAndroidTest \
-              :elizaos-capacitor-mobile-signals:connectedDebugAndroidTest \
-              :elizaos-capacitor-location:connectedDebugAndroidTest
-
-            # mobile-signals PACKAGE_USAGE_STATS is special-access (no runtime dialog)
-            # and the grant does NOT survive the gate's reinstall, so its usage reads
-            # Assume-skip above. For a positive on-device read: re-install the test APK
-            # the gate built (the gate uninstalls it after running), grant
-            # GET_USAGE_STATS, and re-run the usage tests via am instrument. Require a
-            # clean `OK (N tests)` completion and fail the job on any error/failure.
-            MS_APK="$GITHUB_WORKSPACE/plugins/plugin-native-mobile-signals/android/build/outputs/apk/androidTest/debug/elizaos-capacitor-mobile-signals-debug-androidTest.apk"
-            adb install -r -t "$MS_APK"
-            adb shell appops set ai.eliza.plugins.mobilesignals.test android:get_usage_stats allow
-            MS_OUT="$(adb shell am instrument -w -r \
-              -e class ai.eliza.plugins.mobilesignals.UsageStatsReaderInstrumentedTest \
-              ai.eliza.plugins.mobilesignals.test/androidx.test.runner.AndroidJUnitRunner 2>&1)"
-            printf '%s\n' "$MS_OUT"
-            if printf '%s\n' "$MS_OUT" | grep -qE 'FAILURES!!!|INSTRUMENTATION_FAILED|INSTRUMENTATION_RESULT: shortMsg'; then
-              echo "mobile-signals UsageStats assertions failed under granted PACKAGE_USAGE_STATS"
-              exit 1
-            fi
-            printf '%s\n' "$MS_OUT" | grep -qE 'OK \([0-9]+ test' || {
-              echo "mobile-signals UsageStats run did not complete cleanly"
-              exit 1
-            }
-
-            # Assistant-role / voice-IME / assist-key adb verification lane
-            # (#13581). The gradle gate above uninstalled its test APKs, so
-            # install the app APK the Capacitor build produced, then drive the
-            # RUNTIME surface: re-apply the role + IME that `adb install -r`
-            # clears, assert the secure settings, fire `cmd voiceinteraction
-            # show` / `KEYCODE_ASSIST` / the IME deep-link, and assert they land
-            # in MainActivity. `--require-device` makes a missing device fatal
-            # (it is present here, so this only guards against a silent skip).
-            # `--require-engine` is intentionally NOT passed: the emulator carries
-            # no on-device ASR engine, so the IME ASR round-trip legitimately
-            # resolves to the designed ENGINE_OFF state — the lane asserts that
-            # state rather than requiring a transcript. All other assertions
-            # (registration, role, IME selection, deep-link landing) still gate
-            # the job.
-            APP_APK="$GITHUB_WORKSPACE/packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk"
-            if [ -f "$APP_APK" ]; then
-              adb install -r -t "$APP_APK"
-            else
-              echo "app-debug.apk not found at $APP_APK — build:android should have produced it"
-              exit 1
-            fi
-            ASSISTANT_ARTIFACT_DIR="$GITHUB_WORKSPACE/packages/app/test-results/android-assistant-verify"
-            mkdir -p "$ASSISTANT_ARTIFACT_DIR"
-            VERIFY_STATUS=0
-            node "$GITHUB_WORKSPACE/packages/app/scripts/android-assistant-verify.mjs" \
-              --require-device --json \
-              | tee "$ASSISTANT_ARTIFACT_DIR/verdict.json" || VERIFY_STATUS=$?
-            adb shell settings get secure voice_interaction_service \
-              > "$ASSISTANT_ARTIFACT_DIR/voice_interaction_service.txt" || true
-            adb shell settings get secure default_input_method \
-              > "$ASSISTANT_ARTIFACT_DIR/default_input_method.txt" || true
-            adb shell ime list -s \
-              > "$ASSISTANT_ARTIFACT_DIR/enabled_imes.txt" || true
-            adb shell cmd role holders android.app.role.ASSISTANT \
-              > "$ASSISTANT_ARTIFACT_DIR/assistant_role_holders.txt" || true
-            adb shell dumpsys activity activities \
-              > "$ASSISTANT_ARTIFACT_DIR/dumpsys-activity.txt" || true
-            adb logcat -d -v brief \
-              > "$ASSISTANT_ARTIFACT_DIR/logcat.txt" || true
-            exit "$VERIFY_STATUS"
+          script: bash scripts/mobile/android-native-plugin-ci.sh
 
       - uses: actions/upload-artifact@v7
         if: always()
