@@ -2025,10 +2025,27 @@ describe("ContinuousChatOverlay", () => {
     expect(input.className).toContain("chat-composer-scrollbar");
     expect(input.className).toContain("overflow-y-auto");
     expect(input.className).toContain("overscroll-contain");
+    expect(input.className).toContain("pr-3");
     expect(input.className).not.toContain("scrollbar-hide");
 
     fireEvent.wheel(input, { deltaY: 120 });
     expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    Object.defineProperties(input, {
+      clientHeight: { configurable: true, value: 136 },
+      scrollHeight: { configurable: true, value: 500 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+    fireEvent.scroll(input);
+    expect(input.getAttribute("data-scroll-fade")).toBe("bottom");
+
+    input.scrollTop = 100;
+    fireEvent.scroll(input);
+    expect(input.getAttribute("data-scroll-fade")).toBe("both");
+
+    input.scrollTop = 364;
+    fireEvent.scroll(input);
+    expect(input.getAttribute("data-scroll-fade")).toBe("top");
   });
 
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
