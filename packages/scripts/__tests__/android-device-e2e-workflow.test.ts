@@ -11,6 +11,7 @@ const workflow = readFileSync(
   "utf8",
 );
 const actionSha = "a421e43855164a8197daf9d8d40fe71c6996bb0d";
+const setupNodeSha = "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e";
 const expectedCommands = [
   "bash scripts/mobile/android-emulator-webview-ci.sh full",
   "bash scripts/mobile/android-emulator-webview-ci.sh pr-smoke",
@@ -26,6 +27,30 @@ function emulatorActionBlocks(): string[] {
 }
 
 describe("Android emulator workflow shell contract", () => {
+  test("installs the required Node runtime without the unrelated artifact bundle", () => {
+    expect(workflow).toContain('NODE_VERSION: "24.15.0"');
+    expect(
+      workflow.match(new RegExp(`actions/setup-node@${setupNodeSha}`, "g")),
+    ).toHaveLength(3);
+    expect(workflow.match(/bun run install:light/g)).toHaveLength(3);
+    expect(workflow).not.toMatch(/^\s*run:\s*bun install\s*$/m);
+  });
+
+  test("reclaims hosted-runner disk without deleting the Android SDK", () => {
+    expect(
+      workflow.match(/if: runner\.environment == 'github-hosted'/g),
+    ).toHaveLength(3);
+    expect(workflow.match(/\/usr\/share\/dotnet/g)).toHaveLength(3);
+    expect(workflow.match(/\/opt\/ghc/g)).toHaveLength(3);
+    expect(workflow.match(/\/opt\/hostedtoolcache\/CodeQL/g)).toHaveLength(3);
+
+    for (const block of workflow
+      .split(/(?=^\s*- name:)/m)
+      .filter((candidate) => candidate.includes("Free disk for Android build"))) {
+      expect(block).not.toContain("/usr/local/lib/android");
+    }
+  });
+
   test("pins every emulator action and passes exactly one shell command", () => {
     const blocks = emulatorActionBlocks();
     expect(blocks).toHaveLength(expectedCommands.length);

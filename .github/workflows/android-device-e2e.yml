@@ -57,6 +57,9 @@ concurrency:
   group: android-device-e2e-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: "24.15.0"
+
 jobs:
   android-e2e:
     # Full lane runs on manual dispatch and on the weekly scheduled host-backed
@@ -78,6 +81,22 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Free disk for Android build
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          # The Android SDK must remain installed; these hosted-image toolchains
+          # are unrelated to this lane and otherwise crowd out Gradle's outputs.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14" # pinned: repo packageManager is bun@1.4.0, an unpublished version (GH+npm 404) that makes bare setup-bun fail here; match .github/ci-bun-version.json (#15071)
@@ -87,8 +106,10 @@ jobs:
           java-version: "21"
       - uses: android-actions/setup-android@v4
 
-      - name: Install workspace
-        run: bun install
+      - name: Install workspace without unrelated artifact bundle
+        run: |
+          bun run install:light
+          df -h /
 
       - name: Build WebView-debuggable APK
         run: bun run --cwd packages/app build:android
@@ -221,6 +242,22 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Free disk for Android build
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          # The Android SDK must remain installed; these hosted-image toolchains
+          # are unrelated to this lane and otherwise crowd out Gradle's outputs.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14" # pinned: repo packageManager is bun@1.4.0, an unpublished version (GH+npm 404) that makes bare setup-bun fail here; match .github/ci-bun-version.json (#15071)
@@ -230,8 +267,10 @@ jobs:
           java-version: "21"
       - uses: android-actions/setup-android@v4
 
-      - name: Install workspace
-        run: bun install
+      - name: Install workspace without unrelated artifact bundle
+        run: |
+          bun run install:light
+          df -h /
 
       - name: Build WebView-debuggable APK
         run: bun run --cwd packages/app build:android
@@ -285,6 +324,22 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Free disk for Android build
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h /
+          # The Android SDK must remain installed; these hosted-image toolchains
+          # are unrelated to this lane and otherwise crowd out Gradle's outputs.
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: "1.3.14" # pinned: repo packageManager is bun@1.4.0, an unpublished version (GH+npm 404) that makes bare setup-bun fail here; match .github/ci-bun-version.json (#15071)
@@ -294,8 +349,10 @@ jobs:
           java-version: "21"
       - uses: android-actions/setup-android@v4
 
-      - name: Install workspace
-        run: bun install
+      - name: Install workspace without unrelated artifact bundle
+        run: |
+          bun run install:light
+          df -h /
 
       # Sync the Capacitor Android project so capacitor.settings.gradle points at
       # this install's @capacitor/android and every plugin module is wired.
