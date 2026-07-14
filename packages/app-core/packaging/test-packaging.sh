@@ -656,7 +656,7 @@ for workflow in \
   "$REPO_ROOT/.github/workflows/snap-build-test.yml" \
   "$REPO_ROOT/.github/workflows/snap-publish.yml"; do
   check "$(basename "$workflow") audits native libraries with the runtime search path" \
-    grep -Fq 'export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/lib/x86_64-linux-gnu"' "$workflow"
+    grep -Fq 'export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu/pulseaudio:$SNAP/lib/x86_64-linux-gnu"' "$workflow"
   check "$(basename "$workflow") installs and connects the FFmpeg provider" \
     bash -c "grep -Fq 'sudo snap install ffmpeg-2204' '$workflow' && grep -Fq 'sudo snap connect elizaos-app:ffmpeg-2204 ffmpeg-2204:ffmpeg-2204' '$workflow'"
   check "$(basename "$workflow") resolves media tools from the content mount" \
