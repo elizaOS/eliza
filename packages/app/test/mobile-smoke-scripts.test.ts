@@ -1,3 +1,6 @@
+/**
+ * Locks public mobile smoke commands and their CI evidence/gating contracts.
+ */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -71,5 +74,15 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     const localChat = stepBlock("Run iOS local-chat simulator smoke");
     expect(localChat).toContain("mobile-local-chat-smoke.mjs");
     expect(localChat).toContain("--platform ios --require-installed");
+  });
+
+  it("keeps the full-Bun simulator lane blocking and captures reviewable evidence", () => {
+    const fullBun = stepBlock("Run iOS full-Bun local-chat simulator smoke");
+    expect(fullBun).not.toMatch(/\n\s*continue-on-error\s*:/);
+    expect(fullBun).toContain("ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR");
+    expect(fullBun).toContain("recordVideo");
+    expect(fullBun).toContain("ios-final.jpg");
+    expect(fullBun).toContain("ios-simulator.log");
+    expect(fullBun).toContain("result.json");
   });
 });

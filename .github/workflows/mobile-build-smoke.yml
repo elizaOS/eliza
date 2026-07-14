@@ -462,6 +462,7 @@ jobs:
           echo "Booting simulator $UDID"
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
+          echo "IOS_FULL_BUN_SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
           echo "Installing $APP_PATH"
           xcrun simctl install "$UDID" "$APP_PATH"
@@ -474,16 +475,71 @@ jobs:
         # fails the scheduled run.
         run: |
           set -euo pipefail
-          mkdir -p packages/app/test-results/ios-full-bun-local-chat
+          EVIDENCE_DIR="$GITHUB_WORKSPACE/packages/app/test-results/ios-full-bun-local-chat"
+          mkdir -p "$EVIDENCE_DIR"
           # Point the smoke at the cached GGUF via an absolute path it can stat.
           export ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH="$HOME/.cache/eliza-ios-full-bun-smoke/$IOS_FULL_BUN_SMOKE_MODEL_FILE"
+          export ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR="$EVIDENCE_DIR"
           if [ ! -f "$ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH" ]; then
             echo "ERROR: staged smoke model missing at $ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH"
             exit 1
           fi
+
+          git rev-parse HEAD > "$EVIDENCE_DIR/exact-head.txt"
+          shasum -a 256 "$ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH" > "$EVIDENCE_DIR/model.sha256"
+          VIDEO_PATH="$EVIDENCE_DIR/ios-full-bun.mp4"
+          xcrun simctl io "$IOS_FULL_BUN_SIMULATOR_UDID" recordVideo \
+            --codec h264 --force "$VIDEO_PATH" \
+            > "$EVIDENCE_DIR/video-recorder.log" 2>&1 &
+          VIDEO_PID=$!
+
+          capture_evidence() {
+            smoke_status=$?
+            evidence_status=0
+            trap - EXIT
+            set +e
+            kill -INT "$VIDEO_PID" 2>/dev/null
+            for _ in {1..20}; do
+              if ! kill -0 "$VIDEO_PID" 2>/dev/null; then
+                break
+              fi
+              sleep 0.25
+            done
+            if kill -0 "$VIDEO_PID" 2>/dev/null; then
+              kill -TERM "$VIDEO_PID" 2>/dev/null
+            fi
+            wait "$VIDEO_PID" 2>/dev/null
+            if [ ! -s "$VIDEO_PATH" ]; then
+              echo "ERROR: iOS full-Bun screen recording is missing or empty"
+              evidence_status=1
+            fi
+            if ! xcrun simctl io "$IOS_FULL_BUN_SIMULATOR_UDID" screenshot \
+              --type=png "$EVIDENCE_DIR/ios-final.png"; then
+              evidence_status=1
+            elif ! sips -s format jpeg "$EVIDENCE_DIR/ios-final.png" \
+              --out "$EVIDENCE_DIR/ios-final.jpg" >/dev/null; then
+              evidence_status=1
+            else
+              rm "$EVIDENCE_DIR/ios-final.png"
+            fi
+            if ! xcrun simctl spawn "$IOS_FULL_BUN_SIMULATOR_UDID" log show \
+              --style compact --last 15m > "$EVIDENCE_DIR/ios-simulator.log"; then
+              evidence_status=1
+            fi
+            if [ "$smoke_status" -eq 0 ] && [ ! -s "$EVIDENCE_DIR/result.json" ]; then
+              echo "ERROR: validated iOS full-Bun result evidence is missing"
+              evidence_status=1
+            fi
+            if [ "$smoke_status" -ne 0 ]; then
+              exit "$smoke_status"
+            fi
+            exit "$evidence_status"
+          }
+          trap capture_evidence EXIT
+
           node packages/app/scripts/mobile-local-chat-smoke.mjs \
             --platform ios --require-installed --ios-select-local --ios-full-bun-smoke \
-            2>&1 | tee packages/app/test-results/ios-full-bun-local-chat/smoke.log
+            2>&1 | tee "$EVIDENCE_DIR/smoke.log"
 
       - name: Upload iOS full-Bun local-chat evidence
         if: always()

@@ -1,3 +1,8 @@
+/**
+ * Manages simulator-native UserDefaults state for iOS smoke harnesses.
+ * Reads and writes execute inside the simulator so Capacitor Preferences and
+ * host-side polling observe the same domain; host plist access is diagnostic.
+ */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -31,6 +36,46 @@ export function preferenceNativeKeys(key) {
   return [`CapacitorStorage.${key}`, key];
 }
 
+/**
+ * Writes a string through the booted simulator's defaults service. Writing a
+ * host filesystem plist does not reliably update the simulator's cfprefsd
+ * domain, even when the path points inside the app data container.
+ */
+export function writeIosDefaultsString(
+  { udid, bundleId, key, value },
+  execute = execText,
+) {
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    execute("xcrun", [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "write",
+      bundleId,
+      nativeKey,
+      "-string",
+      value,
+    ]);
+  }
+}
+
+/** Returns the first Capacitor-compatible string stored in the simulator domain. */
+export function readIosDefaultsString(
+  { udid, bundleId, key },
+  execute = execText,
+) {
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    const value = execute(
+      "xcrun",
+      ["simctl", "spawn", udid, "defaults", "read", bundleId, nativeKey],
+      { optional: true },
+    );
+    if (value !== null) return value;
+  }
+  return null;
+}
+
 export function shouldClearIosSmokePreferenceKey(key, options = {}) {
   const normalized = stripCapacitorPrefix(String(key));
   if (EXACT_SMOKE_KEYS.has(normalized)) return true;
@@ -62,6 +107,7 @@ function execText(command, args, options = {}) {
   try {
     return execFileSync(command, args, {
       cwd: options.cwd,
+      env: process.env,
       encoding: "utf8",
       stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       input: options.input,
