@@ -3,6 +3,10 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  __resetAuthStatusForTests,
+  __setAuthStatusForTests,
+} from "./useAuthStatus";
+import {
   describeWeatherCode,
   prefers24HourClock,
   temperatureUnitForLocale,
@@ -360,5 +364,78 @@ describe("useWeather", () => {
       .at(-1);
     expect(preciseUrl).toContain("latitude=37.7");
     expect(preciseUrl).toMatch(/temperature_unit=(celsius|fahrenheit)/);
+  });
+});
+
+describe("useWeather — protected-probe gate (#16242)", () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, "location");
+
+  function setOrigin(url: string): void {
+    const u = new URL(url);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        href: u.href,
+        origin: u.origin,
+        protocol: u.protocol,
+        host: u.host,
+        hostname: u.hostname,
+        port: u.port,
+        pathname: u.pathname,
+        search: u.search,
+        hash: u.hash,
+        assign: () => {},
+        replace: () => {},
+        reload: () => {},
+        toString: () => u.href,
+      },
+    });
+  }
+
+  afterEach(() => {
+    __resetAuthStatusForTests();
+    if (originalLocation) {
+      Object.defineProperty(window, "location", originalLocation);
+    }
+  });
+
+  it("does not hit /api/location/approximate on the unauthenticated Cloud origin", async () => {
+    setOrigin("https://app.elizacloud.ai/");
+    __resetAuthStatusForTests();
+    const { calls } = installFetchRouter();
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+    // Let any (incorrectly ungated) revalidate settle.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(calls.some((u) => u.includes("/api/location/approximate"))).toBe(
+      false,
+    );
+    expect(result.current.status).toBe("loading");
+  });
+
+  it("resolves conditions once authenticated on the Cloud origin", async () => {
+    setOrigin("https://app.elizacloud.ai/");
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    const { calls } = installFetchRouter();
+    denyGeolocation();
+
+    const { result } = renderHook(() => useWeather());
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(calls.some((u) => u.includes("/api/location/approximate"))).toBe(
+      true,
+    );
   });
 });

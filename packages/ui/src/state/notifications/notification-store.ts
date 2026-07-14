@@ -23,6 +23,11 @@ import {
   showWebNotification,
 } from "../../bridge/native-notifications";
 import { APP_RESUME_EVENT } from "../../events";
+import {
+  isAuthenticatedNow,
+  subscribeAuthStatus,
+} from "../../hooks/useAuthStatus";
+import { protectedAgentProbesEnabled } from "../../hooks/useProtectedAgentProbesEnabled";
 import { pushNotificationBanner } from "./notification-banner-store";
 
 /**
@@ -75,6 +80,23 @@ let hydrationRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let hydrationGeneration = 0;
 let liveEventRevision = 0;
 const notificationCleanups: Array<() => void> = [];
+// One-shot re-arm: on a fresh, unauthenticated shared Cloud app there is no
+// session yet, so the protected GET /api/notifications hydrate is held to avoid
+// a 401 (#16242). This unsubscribe is set while waiting for a session and
+// cleared once hydration is re-triggered post-sign-in.
+let hydrationAuthRearmUnsub: (() => void) | null = null;
+
+/**
+ * Whether the inbox hydrate may hit the protected `GET /api/notifications` now.
+ * Same origin-aware gate the React shell hooks use, read without a hook so the
+ * store can consult it from its module-scope hydrate path.
+ */
+function notificationProbesEnabled(): boolean {
+  return protectedAgentProbesEnabled(
+    isAuthenticatedNow(),
+    typeof window !== "undefined" ? window.location.origin : null,
+  );
+}
 
 function emit(): void {
   for (const listener of listeners) listener();
@@ -448,6 +470,20 @@ async function runHydrationAttempt(generation: number): Promise<void> {
 }
 
 function requestHydration(): Promise<void> {
+  if (!notificationProbesEnabled()) {
+    // No session yet on the shared Cloud app — skip the protected fetch (it
+    // would 401 and Chromium logs the console error) and re-arm once, so the
+    // inbox hydrates the moment a session lands post-sign-in (#16242).
+    if (!hydrationAuthRearmUnsub) {
+      hydrationAuthRearmUnsub = subscribeAuthStatus(() => {
+        if (!notificationProbesEnabled()) return;
+        hydrationAuthRearmUnsub?.();
+        hydrationAuthRearmUnsub = null;
+        void requestHydration();
+      });
+    }
+    return Promise.resolve();
+  }
   if (hydrationInFlight) return hydrationInFlight;
   if (state.hydrationStatus === "failed") return Promise.resolve();
   const generation = hydrationGeneration;
@@ -648,6 +684,8 @@ export function __resetNotificationStoreForTests(): void {
   if (hydrationRetryTimer) clearTimeout(hydrationRetryTimer);
   hydrationRetryTimer = null;
   hydrationInFlight = null;
+  hydrationAuthRearmUnsub?.();
+  hydrationAuthRearmUnsub = null;
   liveEventRevision = 0;
   state = {
     notifications: [],
