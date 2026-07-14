@@ -28,6 +28,20 @@ const PROJECT_PACKAGE_PREFIX = "@elizaos/";
 const PACKAGE_NAME_PATTERN = /^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/iu;
 const REVIEWED_LICENSE_OVERRIDES = new Map([
   [
+    "@bufbuild/protobuf@2.12.1",
+    {
+      expression: "(Apache-2.0 AND BSD-3-Clause)",
+      evidenceSource:
+        "https://github.com/bufbuild/protobuf-es/blob/v2.12.1/LICENSE plus the Google Protocol Buffers BSD-3-Clause license the runtime derives from (https://github.com/protocolbuffers/protobuf/blob/v29.1/LICENSE); the npm tarball ships no license text",
+      expectedSha256:
+        "a007310d98d9309f3f8c72dafa3061f0b0d3524679a2177868401a3d9595602d",
+      repositoryPath:
+        "packages/app-core/packaging/licenses/bufbuild-protobuf-2.12.1-Apache-2.0-AND-BSD-3-Clause.txt",
+      runtimePath:
+        "licenses/bufbuild-protobuf-2.12.1-Apache-2.0-AND-BSD-3-Clause.txt",
+    },
+  ],
+  [
     "buffers@0.1.1",
     {
       expression: "MIT",
