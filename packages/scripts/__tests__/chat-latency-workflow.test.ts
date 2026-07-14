@@ -171,6 +171,12 @@ describe("chat latency live workflow", () => {
       "--suspended-api-key-env AUTH_PROBE_SUSPENDED_API_KEY",
     );
     expect(isolated).toContain("INFERENCE_AUTH_PROBE_TOKEN");
+    expect(isolated).toContain(
+      "JSON.stringify({ DATABASE_URL: databaseUrl, INFERENCE_AUTH_PROBE_TOKEN: token })",
+    );
+    expect(isolated).toContain(
+      'rm -f "$config" "$RUNNER_TEMP/auth-probe-secrets.json"',
+    );
     expect(isolated).toContain(`ELIZA_DEPLOY_COMMIT:\${GITHUB_SHA}`);
     expect(isolated).toContain(
       "Isolated deployment remained on the exact checkout",

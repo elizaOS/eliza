@@ -359,10 +359,14 @@ jobs:
 
       - name: Create an isolated authenticated probe control
         id: auth-control
+        env:
+          AUTH_PROBE_DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           node --input-type=module - <<'NODE'
           import { appendFileSync, writeFileSync } from "node:fs";
           import { randomBytes } from "node:crypto";
+          const databaseUrl = process.env.AUTH_PROBE_DATABASE_URL;
+          if (!databaseUrl) throw new Error("Staging database secret is unavailable");
           const token = randomBytes(32).toString("hex");
           const cacheEnvironment = "staging-auth-" + process.env.GITHUB_SHA.slice(0, 12);
           const workerName = "eliza-cloud-api-auth-" + process.env.GITHUB_SHA.slice(0, 12);
@@ -373,7 +377,7 @@ jobs:
           appendFileSync(process.env.GITHUB_OUTPUT, "worker-name=" + workerName + "\n");
           writeFileSync(
             process.env.RUNNER_TEMP + "/auth-probe-secrets.json",
-            JSON.stringify({ INFERENCE_AUTH_PROBE_TOKEN: token }),
+            JSON.stringify({ DATABASE_URL: databaseUrl, INFERENCE_AUTH_PROBE_TOKEN: token }),
             { mode: 0o600 },
           );
           NODE
@@ -493,7 +497,7 @@ jobs:
             "workers_dev = true\npreview_urls = false\n";
           writeFileSync(process.argv[2], source.replace(marker, isolated), { mode: 0o600 });
           NODE
-          trap 'rm -f "$config"' EXIT
+          trap 'rm -f "$config" "$RUNNER_TEMP/auth-probe-secrets.json"' EXIT
           WRANGLER_OUTPUT_FILE_PATH="$output" bunx wrangler versions upload \
             --cwd packages/cloud/api \
             --config .wrangler-auth-probe.toml \
