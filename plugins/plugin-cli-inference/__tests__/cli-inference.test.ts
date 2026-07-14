@@ -25,6 +25,7 @@ import {
   type SpawnOptions,
   type SpawnResult,
 } from "../src/claude-cli";
+import { normalizeEffort } from "../src/claude-sdk-session";
 import {
   __setSpawnForTests as __setCodexSpawn,
   CodexCli,
@@ -611,6 +612,93 @@ describe("models map gating (large-tier only)", () => {
   it("auto-enables for claude-sdk with the same trim/case normalization", () => {
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "  Claude-SDK " }))).toBe(true);
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "gemini" }))).toBe(false);
+  });
+});
+
+describe("reasoning effort (SDK effort option)", () => {
+  it("normalizeEffort accepts the SDK's levels and drops everything else", () => {
+    for (const lvl of ["low", "medium", "high", "xhigh", "max"]) {
+      expect(normalizeEffort(lvl)).toBe(lvl);
+      expect(normalizeEffort(`  ${lvl.toUpperCase()} `)).toBe(lvl);
+    }
+    for (const junk of ["ultra", "insane", "", "  ", undefined, null, "9"]) {
+      expect(normalizeEffort(junk as string)).toBeNull();
+    }
+  });
+
+  it("forwards a valid effort into the SDK query options", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: "assistant",
+              message: { content: [{ type: "text", text: "ok" }] },
+            };
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      effort: "xhigh",
+      sdkModule: fakeSdk as never,
+    });
+    await session.generate("hi");
+    expect(captured?.effort).toBe("xhigh");
+    await session.dispose();
+  });
+
+  it("omits effort entirely when unset (SDK keeps its default)", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      sdkModule: fakeSdk as never,
+    });
+    await session.generate("hi");
+    expect(captured && "effort" in captured).toBe(false);
+    await session.dispose();
+  });
+
+  it("drops a bogus effort rather than forwarding it (would fail the turn)", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      effort: "ultra",
+      sdkModule: fakeSdk as never,
+    });
+    await session.generate("hi");
+    expect(captured && "effort" in captured).toBe(false);
+    await session.dispose();
   });
 });
 

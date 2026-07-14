@@ -147,6 +147,25 @@ function claudeSessionKey(model: string, systemPrompt: string, router: boolean):
 }
 
 /**
+ * Reasoning effort for a Claude SDK session, forwarded to the SDK's `effort`
+ * option (== `claude --effort`). The planner (router) reads
+ * ELIZA_CLI_CLAUDE_PLANNER_EFFORT first so routing depth can be tuned
+ * independently of reply depth; both fall back to ELIZA_CLI_CLAUDE_EFFORT, then
+ * to the SDK default (high) when unset. Validation lives in the session
+ * (normalizeEffort) so an unknown value is dropped, never forwarded.
+ */
+function resolveSdkEffort(
+  runtime: IAgentRuntime,
+  router: boolean,
+): string | undefined {
+  const shared = getSetting(runtime, "ELIZA_CLI_CLAUDE_EFFORT");
+  if (router) {
+    return getSetting(runtime, "ELIZA_CLI_CLAUDE_PLANNER_EFFORT") ?? shared;
+  }
+  return shared;
+}
+
+/**
  * Evict + dispose a warm Claude SDK session by its cache key so the NEXT
  * `getSdkSession` for that key spins up a fresh process — which re-reads the
  * (rotated) `CLAUDE_CODE_OAUTH_TOKEN` / `~/.claude` credential. Used by account
@@ -183,6 +202,7 @@ function getSdkSession(
     turnTimeoutMs:
       parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
       parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
+    effort: resolveSdkEffort(runtime, router),
     subprocessEnv,
   });
   sdkSessions.set(key, session);
