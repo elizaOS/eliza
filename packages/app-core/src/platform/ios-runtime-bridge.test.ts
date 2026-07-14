@@ -90,7 +90,9 @@ function textResponse(value: string) {
   return { status: 200, text: async () => value } as Response;
 }
 
-function installHappyFetch() {
+const PROVEN_MODEL_REPLY = "The iOS full Bun local backend is running.";
+
+function installHappyFetch({ messageReply = PROVEN_MODEL_REPLY } = {}) {
   const fetchMock = vi.fn(
     async (input: string | URL | Request, init?: RequestInit) => {
       const route = String(input);
@@ -144,11 +146,11 @@ function installHappyFetch() {
       }
       if (route.endsWith("/messages/stream")) {
         return textResponse(
-          'data: {"type":"delta","text":"ios smoke model works"}\n\ndata: {"type":"done"}\n\n',
+          `data: {"type":"delta","text":"${PROVEN_MODEL_REPLY}"}\n\ndata: {"type":"done"}\n\n`,
         );
       }
       if (route.endsWith("/messages")) {
-        return jsonResponse({ text: "ios smoke model works" });
+        return jsonResponse({ text: messageReply });
       }
       throw new Error(`unexpected smoke fetch: ${method} ${route}`);
     },
@@ -202,7 +204,7 @@ describe("iOS full-Bun browser smoke", () => {
     expect(messageCalls).toHaveLength(2);
     for (const [, init] of messageCalls) {
       expect(JSON.parse(String(init?.body))).toMatchObject({
-        text: "Reply with exactly these four words: ios smoke model works.",
+        text: "In one short sentence, confirm the iOS full Bun local backend is running.",
         source: "ios-local",
       });
     }
@@ -211,12 +213,32 @@ describe("iOS full-Bun browser smoke", () => {
       ok: true,
       phase: "complete",
       conversationId: "conversation-1",
-      sendMessage: { text: "ios smoke model works" },
+      sendMessage: { text: PROVEN_MODEL_REPLY },
     });
     expect(result.streamMessage).toContain('"type":"done"');
     expect(harness.preferences.has(REQUEST_KEY)).toBe(false);
     expect(window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__).toBeUndefined();
     expect(document.body.textContent).toContain("iOS full Bun backend smoke");
+  });
+
+  it("fails closed when the live-model reply differs from the proven sentence", async () => {
+    installHappyFetch({ messageReply: "A nearby but unproven reply." });
+    window.localStorage.setItem(REQUEST_KEY, "1");
+    window.localStorage.setItem(RUNTIME_MODE_KEY, "local");
+    const { runIosFullBunSmokeIfRequested } = await import(
+      "./ios-runtime-bridge"
+    );
+
+    await expect(runIosFullBunSmokeIfRequested()).resolves.toBe(true);
+
+    const result = JSON.parse(harness.preferences.get(RESULT_KEY) ?? "null");
+    expect(result).toMatchObject({
+      ok: false,
+      phase: "failed",
+    });
+    expect(result.error).toContain(
+      "did not return the expected local model reply",
+    );
   });
 
   it("honors native Preferences when localStorage reads fail", async () => {

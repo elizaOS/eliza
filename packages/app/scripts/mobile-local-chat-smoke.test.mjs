@@ -77,8 +77,9 @@ function validIosFullBunResult() {
       active: { status: "ready" },
     },
     conversationId: "ios-conversation",
-    sendMessage: { text: "ios smoke model works" },
-    streamMessage: 'data: {"type":"done","text":"ios smoke model works"}\n\n',
+    sendMessage: { text: "The iOS full Bun local backend is running." },
+    streamMessage:
+      'data: {"type":"done","text":"The iOS full Bun local backend is running."}\n\n',
   };
 }
 

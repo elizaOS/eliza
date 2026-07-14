@@ -500,8 +500,9 @@ jobs:
         # The canonical one-command lane explicitly installs the freshly built
         # app, proves callback delivery + rejected/session-unchanged auth state,
         # then stages the real GGUF and asserts the exact on-device non-stream +
-        # stream reply (`ios smoke model works`). No `continue-on-error` — every
-        # leg and its named JSON evidence are hard gates.
+        # stream reply (`The iOS full Bun local backend is running.`). No
+        # `continue-on-error` — every leg and its named JSON evidence is a hard
+        # gate.
         run: |
           set -euo pipefail
           EVIDENCE_DIR="$GITHUB_WORKSPACE/packages/app/test-results/ios-auth-full-bun-e2e"
@@ -516,9 +517,22 @@ jobs:
           git rev-parse HEAD > "$EVIDENCE_DIR/exact-head.txt"
           shasum -a 256 "$ELIZA_IOS_FULL_BUN_SMOKE_MODEL_PATH" > "$EVIDENCE_DIR/model.sha256"
           VIDEO_PATH="$EVIDENCE_DIR/ios-full-bun.mp4"
-          xcrun simctl io "$IOS_FULL_BUN_SIMULATOR_UDID" recordVideo \
-            --codec h264 --force "$VIDEO_PATH" \
-            > "$EVIDENCE_DIR/video-recorder.log" 2>&1 &
+          # The first install may reboot the simulator after writing the
+          # LaunchServices scheme approval. simctl recordVideo cannot survive
+          # that shutdown, so start the walkthrough at the post-reboot auth
+          # boundary; it then covers callback delivery and both inference calls.
+          (
+            for _ in {1..2400}; do
+              if grep -Fq "[ios-e2e] auth route:" "$EVIDENCE_DIR/smoke.log" 2>/dev/null; then
+                echo "recorder-trigger=post-reboot-auth-route"
+                exec xcrun simctl io "$IOS_FULL_BUN_SIMULATOR_UDID" recordVideo \
+                  --codec h264 --force "$VIDEO_PATH"
+              fi
+              sleep 0.25
+            done
+            echo "ERROR: recorder never observed the post-reboot auth boundary"
+            exit 1
+          ) > "$EVIDENCE_DIR/video-recorder.log" 2>&1 &
           VIDEO_PID=$!
 
           capture_evidence() {

@@ -21,8 +21,9 @@ const MOBILE_RUNTIME_MODE_STORAGE_KEY = "eliza:mobile-runtime-mode";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
-  "Reply with exactly these four words: ios smoke model works.";
-const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
+  "In one short sentence, confirm the iOS full Bun local backend is running.";
+const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY =
+  "the ios full bun local backend is running";
 
 declare global {
   interface Window {

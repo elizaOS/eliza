@@ -41,8 +41,9 @@ function validResult() {
       active: { status: "ready" },
     },
     conversationId: "conversation-1",
-    sendMessage: { text: "iOS smoke model works!" },
-    streamMessage: 'data: {"type":"done","text":"ios smoke model works"}\n\n',
+    sendMessage: { text: "The iOS full Bun local backend is running." },
+    streamMessage:
+      'data: {"type":"done","text":"The iOS full Bun local backend is running."}\n\n',
   };
 }
 
@@ -224,7 +225,7 @@ describe("iOS full-Bun smoke success contract", () => {
       "stream completion",
       (result) => {
         result.streamMessage =
-          'data: {"type":"content","text":"ios smoke model works"}\n\n';
+          'data: {"type":"content","text":"The iOS full Bun local backend is running."}\n\n';
       },
       /stream did not return the expected/,
     ],

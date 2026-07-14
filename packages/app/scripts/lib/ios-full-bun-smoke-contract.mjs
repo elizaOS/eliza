@@ -5,7 +5,7 @@
  */
 import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings.mjs";
 
-const EXPECTED_REPLY = "ios smoke model works";
+const EXPECTED_REPLY = "the ios full bun local backend is running";
 
 /** Parses the untrusted native-preference payload into an explicit result or invalid signal. */
 export function parseIosFullBunSmokeResult(raw) {
