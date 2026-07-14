@@ -679,7 +679,23 @@ app.post("/", async (c) => {
   }
 
   const estimatedInputTokens = estimateInputTokens(estimateMessages);
-  const estimatedOutputTokens = request.max_tokens;
+  // Reserve against the SAME ceiling the provider is capped at below, not the
+  // raw request.max_tokens. `messagesEffectiveMaxTokens` raises a reasoning
+  // model's provider budget to fit hidden reasoning PLUS the answer (e.g. a
+  // requested 256 becomes the 4096 floor), so reserving the raw value lets the
+  // provider bill well above the reservation — the #16081 invariant, fixed for
+  // /v1/chat/completions but not here. The provider paths recompute the same
+  // deterministic value, so admission and enforcement stay identical.
+  const reservationCotBudget = resolveAnthropicThinkingBudgetTokens(
+    model,
+    process.env,
+  );
+  const estimatedOutputTokens =
+    messagesEffectiveMaxTokens(
+      request.max_tokens,
+      reservationCotBudget,
+      model,
+    ) ?? request.max_tokens;
   const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
   const billingSource: PricingBillingSource =
     resolveAiProviderSource(model) ?? "bitrouter";

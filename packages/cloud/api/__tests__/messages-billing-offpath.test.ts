@@ -410,6 +410,114 @@ function postMessages(bodyOverrides: Record<string, unknown> = {}) {
 }
 
 describe("messages route preforward telemetry", () => {
+  // #16081 invariant on /v1/messages: MODEL (gpt-oss-120b) is a reasoning model,
+  // so the provider's maxOutputTokens is floored ABOVE the requested 256. The
+  // reservation must admit that same floored ceiling — reserving the raw 256
+  // would let the provider bill far more output than was reserved.
+  test("reserves the same reasoning-floored ceiling the provider is capped at", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    let capturedConfig: Record<string, unknown> | undefined;
+    generateTextImpl = (config) => {
+      capturedConfig = config;
+      return {
+        text: TEXT,
+        usage: USAGE,
+        toolCalls: [],
+        finishReason: "stop",
+        rawFinishReason: "stop",
+      };
+    };
+    reserveCredits.mockClear();
+
+    const response = await postMessages(); // gpt-oss-120b, max_tokens: 256
+    expect(response.status).toBe(200);
+
+    const providerCap = capturedConfig?.maxOutputTokens as number;
+    // Reasoning model → the provider cap is floored above the requested 256.
+    expect(providerCap).toBeGreaterThan(256);
+    // The reservation admitted that exact ceiling (3rd arg to reserveCredits),
+    // not the raw request.max_tokens.
+    const reserveArgs = reserveCredits.mock.calls[0] as unknown as
+      | [unknown, number, number]
+      | undefined;
+    expect(reserveArgs?.[2]).toBe(providerCap);
+  });
+
+  // Streaming sibling of the reservation-parity test above: the stream handler
+  // recomputes the same floored ceiling before streamText, and the reservation
+  // taken by the route (before the stream/non-stream fork) must match it.
+  test("streaming: reserves the same reasoning-floored ceiling streamText is capped at", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    let capturedConfig: Record<string, unknown> | undefined;
+    // sdkFaithfulStream doesn't expose the streamText config, so re-inline its
+    // SDK-faithful stream shape with a config capture.
+    streamTextImpl = (config) => {
+      capturedConfig = config;
+      const onFinish = config.onFinish as (event: {
+        text: string;
+        totalUsage: typeof USAGE;
+      }) => Promise<unknown>;
+      return {
+        fullStream: (async function* () {
+          yield { type: "text-start", id: "text-1" };
+          yield { type: "text-delta", id: "text-1", text: TEXT };
+          yield { type: "text-end", id: "text-1" };
+          await onFinish({ text: TEXT, totalUsage: USAGE });
+          yield { type: "finish", finishReason: "stop", totalUsage: USAGE };
+        })(),
+      };
+    };
+    reserveCredits.mockClear();
+
+    const response = await postMessages({ stream: true }); // gpt-oss-120b, max_tokens: 256
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('"type":"message_stop"');
+
+    const providerCap = capturedConfig?.maxOutputTokens as number;
+    // Reasoning model → the streamText cap is floored above the requested 256.
+    expect(providerCap).toBeGreaterThan(256);
+    const reserveArgs = reserveCredits.mock.calls[0] as unknown as
+      | [unknown, number, number]
+      | undefined;
+    expect(reserveArgs?.[2]).toBe(providerCap);
+  });
+
+  // Pass-through regression: for a NON-reasoning model the floor must not
+  // fire — the reservation admits exactly the requested max_tokens, and the
+  // provider is capped at the same value.
+  test("non-reasoning model: reservation passes request.max_tokens through unfloored", async () => {
+    const ledger = makeLedgerReservation(100, 0.015);
+    routeReservation = ledger.reservation;
+    let capturedConfig: Record<string, unknown> | undefined;
+    generateTextImpl = (config) => {
+      capturedConfig = config;
+      return {
+        text: TEXT,
+        usage: USAGE,
+        toolCalls: [],
+        finishReason: "stop",
+        rawFinishReason: "stop",
+      };
+    };
+    reserveCredits.mockClear();
+
+    const response = await postMessages({
+      model: "openai/gpt-4o-mini",
+      max_tokens: 512,
+    });
+    expect(response.status).toBe(200);
+
+    // No floor: provider cap and reservation both equal the raw request value.
+    expect(capturedConfig?.maxOutputTokens).toBe(512);
+    const reserveArgs = reserveCredits.mock.calls[0] as unknown as
+      | [unknown, number, number]
+      | undefined;
+    expect(reserveArgs?.[2]).toBe(512);
+  });
+
   test("non-stream success preserves trace and the frozen provider boundary", async () => {
     const ledger = makeLedgerReservation(100, 0.015);
     routeReservation = ledger.reservation;
