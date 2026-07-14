@@ -88,7 +88,11 @@ interface GenerateTextParamsWithOpenAIOptions
   };
 }
 
-type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativeTextOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativeOutput =
+  | NativeTextOutput
+  | ReturnType<typeof Output.json>
+  | ReturnType<typeof Output.object>;
 type NativeGenerateTextParams = Parameters<typeof generateText<ToolSet, NativeOutput>>[0];
 type NativeStreamTextParams = Parameters<typeof streamText<ToolSet, NativeOutput>>[0];
 type NativePrompt =
@@ -1559,14 +1563,10 @@ async function generateTextByModelType(
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
         : { prompt: promptText };
-  // elizaOS callers pass `responseFormat: { type: "json_object" | "text" }`
-  // (see `GenerateTextParams` in @elizaos/core). The AI SDK's equivalent
-  // is `responseFormat: { type: "json" }` (which translates to
-  // `response_format: { type: "json_object" }` at the OpenAI wire layer).
-  // Translate the shape so the param actually reaches the API call —
-  // before this, callers asking for json_object were silently ignored
-  // and Cerebras returned plain text, dropping us into the simple-reply
-  // fallback every turn.
+  // AI SDK v6 derives the provider-level response format from its `output`
+  // contract; a similarly named top-level setting is ignored by generateText.
+  // Cerebras accepts JSON mode but not the SDK's JSON Schema wire payload, so
+  // its unstructured JSON output deliberately carries no schema.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -1577,11 +1577,11 @@ async function generateTextByModelType(
           "type" in callerResponseFormat
         ? (callerResponseFormat as { type: string }).type
         : undefined;
-  const wireResponseFormat: { type: "json" } | { type: "text" } | undefined =
-    responseFormatType === "json_object"
-      ? { type: "json" }
-      : responseFormatType === "text"
-        ? { type: "text" }
+  const requestedOutput: NativeOutput | undefined =
+    paramsWithAttachments.responseSchema && !cerebrasMode
+      ? buildStructuredOutput(paramsWithAttachments.responseSchema)
+      : responseFormatType === "json_object"
+        ? Output.json()
         : undefined;
 
   const generateParams: NativeTextParams = {
@@ -1597,15 +1597,7 @@ async function generateTextByModelType(
     experimental_telemetry: telemetryConfig,
     ...(normalizedTools ? { tools: normalizedTools } : {}),
     ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
-    // Cerebras's OpenAI-compatible endpoint does not accept the
-    // `response_format: { type: "json_schema", ... }` payload that the AI SDK
-    // emits when `output: Output.object(...)` is set. Fall back to relying on
-    // `responseFormat: { type: "json_object" }` (already passed by callers)
-    // plus the schema embedded in the prompt body.
-    ...(paramsWithAttachments.responseSchema && !isCerebrasMode(runtime)
-      ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
-      : {}),
-    ...(wireResponseFormat ? { responseFormat: wireResponseFormat } : {}),
+    ...(requestedOutput ? { output: requestedOutput } : {}),
     ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),
   };
 

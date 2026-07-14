@@ -14,7 +14,10 @@ const SENSITIVE_HEADER =
 const HOP_BY_HOP_HEADER =
   /^(?:connection|content-length|content-encoding|host|keep-alive|proxy-authenticate|proxy-authorization|te|trailer|transfer-encoding|upgrade)$/i;
 
-export type WireFault = { kind: "disconnect-after-first-response-chunk" };
+export type WireFault = {
+  kind: "disconnect-after-first-response-chunk";
+  attempts?: number;
+};
 
 export interface WireHeader {
   name: string;
@@ -42,7 +45,7 @@ export interface CapturedWireCall {
   startedAt: string;
   completedAt?: string;
   durationMs?: number;
-  fault?: WireFault & { triggered: boolean };
+  fault?: { kind: WireFault["kind"]; triggered: boolean };
   request?: {
     method: string;
     upstreamUrl: string;
@@ -217,7 +220,7 @@ export async function startCerebrasWireCapture(
   upstreamBaseUrl = UPSTREAM_BASE_URL
 ): Promise<CerebrasWireCapture> {
   const calls: CapturedWireCall[] = [];
-  let nextFault: WireFault | undefined;
+  let faultPlan: { kind: WireFault["kind"]; remainingAttempts: number } | undefined;
 
   const server = createServer((request, response) => {
     const startedAtMs = Date.now();
@@ -226,9 +229,12 @@ export async function startCerebrasWireCapture(
       startedAt: new Date(startedAtMs).toISOString(),
       transport: { outcome: "pending" },
     };
-    const fault = nextFault;
-    nextFault = undefined;
-    if (fault) call.fault = { ...fault, triggered: false };
+    const fault = faultPlan;
+    if (fault) {
+      call.fault = { kind: fault.kind, triggered: false };
+      fault.remainingAttempts--;
+      if (fault.remainingAttempts === 0) faultPlan = undefined;
+    }
     calls.push(call);
 
     const handleRequest = async () => {
@@ -343,10 +349,14 @@ export async function startCerebrasWireCapture(
     baseUrl: `http://127.0.0.1:${port}/v1`,
     calls,
     armFault(fault) {
-      if (nextFault) {
+      if (faultPlan) {
         throw new Error("[CerebrasWireCapture] A wire fault is already armed.");
       }
-      nextFault = fault;
+      const attempts = fault.attempts ?? 1;
+      if (!Number.isSafeInteger(attempts) || attempts < 1) {
+        throw new Error("[CerebrasWireCapture] Fault attempts must be a positive integer.");
+      }
+      faultPlan = { kind: fault.kind, remainingAttempts: attempts };
     },
     close: () => closeServer(server),
   };

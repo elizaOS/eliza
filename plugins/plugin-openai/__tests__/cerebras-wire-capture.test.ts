@@ -147,4 +147,42 @@ describe("Cerebras wire evidence", () => {
     expect(capture.calls[0].response?.chunks.length).toBeGreaterThanOrEqual(2);
     expect(capture.calls[0].response?.body?.utf8).toBe(body);
   });
+
+  it("applies a disconnect fault across the requested number of attempts", async () => {
+    const fixture = await startFixtureServer((_request, response) => {
+      response.setHeader("content-type", "text/event-stream");
+      response.write('data: {"choices":[{"delta":{"content":"A"}}]}\n\n');
+      response.end("data: [DONE]\n\n");
+    });
+    cleanups.push(fixture.close);
+    const capture = await startCerebrasWireCapture(fixture.baseUrl);
+    cleanups.push(capture.close);
+    capture.armFault({ kind: "disconnect-after-first-response-chunk", attempts: 2 });
+
+    const consume = async () => {
+      const response = await fetch(`${capture.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ stream: true }),
+      });
+      return response.text();
+    };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const [outcome] = await Promise.allSettled([consume()]);
+      if (outcome.status === "fulfilled") expect(outcome.value).not.toContain("[DONE]");
+      else expect(outcome.reason).toBeInstanceOf(Error);
+    }
+    await expect(consume()).resolves.toContain("[DONE]");
+
+    expect(capture.calls.slice(0, 2)).toHaveLength(2);
+    for (const call of capture.calls.slice(0, 2)) {
+      expect(call.fault).toEqual({
+        kind: "disconnect-after-first-response-chunk",
+        triggered: true,
+      });
+      expect(call.transport.outcome).toBe("injected-disconnect");
+      expect(call.response?.chunks).toHaveLength(1);
+    }
+    expect(capture.calls[2].transport.outcome).toBe("complete");
+  });
 });

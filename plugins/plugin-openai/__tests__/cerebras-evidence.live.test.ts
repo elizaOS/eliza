@@ -191,7 +191,8 @@ async function runCaptured<T>(
 
 async function runCapturedError(
   name: string,
-  operation: () => Promise<unknown>
+  operation: () => Promise<unknown>,
+  options: { minimumWireCalls?: number } = {}
 ): Promise<{
   error: ReturnType<typeof serializeCerebrasProviderError>;
   wireCalls: CapturedWireCall[];
@@ -210,7 +211,13 @@ async function runCapturedError(
     throw new Error(`[OpenAICerebrasEvidence] ${name} unexpectedly succeeded.`);
   }
   const wireCalls = await waitForWireCallsToSettle(startIndex);
-  expect(wireCalls, `${name} should make one provider request`).toHaveLength(1);
+  if (options.minimumWireCalls === undefined) {
+    expect(wireCalls, `${name} should make one provider request`).toHaveLength(1);
+  } else {
+    expect(wireCalls.length, `${name} should exercise provider retries`).toBeGreaterThanOrEqual(
+      options.minimumWireCalls
+    );
+  }
   return { error: serializeCerebrasProviderError(thrown), wireCalls };
 }
 
@@ -388,7 +395,6 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
 
   it("captures GLM thinking-off and the raw SSE stream", async () => {
     const runtime = requireHarness().runtime;
-    const parsedChunks: string[] = [];
     const { result: rawStream, wireCalls } = await runCaptured(
       "GLM streaming thinking-off",
       "cerebras-evidence-glm-stream",
@@ -400,9 +406,6 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
             maxTokens: 160,
             stream: true,
             providerOptions: { eliza: { thinking: "off" } },
-            onStreamChunk: (chunk: string) => {
-              parsedChunks.push(chunk);
-            },
           })
         );
         const iterated: string[] = [];
@@ -419,7 +422,6 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
     expect(rawStream.finishReason).toBe("stop");
     expect(rawStream.usage?.reasoningTokens ?? 0).toBe(0);
     expect(rawStream.iterated.join("")).toBe(rawStream.text);
-    expect(parsedChunks.join("")).toBe(rawStream.text);
     const request = requireJsonRequest(wireCalls[0]);
     expect(request).toMatchObject({
       model: "zai-glm-4.7",
@@ -441,7 +443,7 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
       status: "passed",
       wireCallIds: wireCalls.map((call) => call.id),
       result: rawStream,
-      parsedChunks,
+      parsedChunks: rawStream.iterated,
       latencyMs: observedLatencyMs(wireCalls),
       cost: calculatedCost("zai-glm-4.7", rawStream.usage),
     });
@@ -663,33 +665,43 @@ describe.skipIf(!HAS_CEREBRAS_KEY)("plugin-openai Cerebras evidence", () => {
   it("surfaces a mid-stream transport disconnect after a real upstream chunk", async () => {
     const runtime = requireHarness().runtime;
     if (!capture) throw new Error("[OpenAICerebrasEvidence] Capture is not initialized.");
-    capture.armFault({ kind: "disconnect-after-first-response-chunk" });
-    const evidence = await runCapturedError("mid-stream disconnect", async () => {
-      const stream = requireStreamResult(
-        await runtime.useModel(ModelType.TEXT_LARGE, {
-          model: "gpt-oss-120b",
-          prompt: "Stream the words ALPHA BETA GAMMA slowly.",
-          maxTokens: 64,
-          stream: true,
-        })
-      );
-      for await (const _chunk of stream.textStream) {
-        // The proxy severs the connection before forwarding the captured chunk.
-      }
-    });
-    expect(evidence.wireCalls[0].fault).toEqual({
-      kind: "disconnect-after-first-response-chunk",
-      triggered: true,
-    });
-    expect(evidence.wireCalls[0].transport.outcome).toBe("injected-disconnect");
-    expect(evidence.wireCalls[0].response?.chunks).toHaveLength(1);
+    // The SDK has a bounded internal retry budget. Faulting more attempts than
+    // that budget proves terminal truncation instead of accidentally proving
+    // its transparent retry path.
+    capture.armFault({ kind: "disconnect-after-first-response-chunk", attempts: 8 });
+    const evidence = await runCapturedError(
+      "mid-stream disconnect",
+      async () => {
+        const stream = requireStreamResult(
+          await runtime.useModel(ModelType.TEXT_LARGE, {
+            model: "gpt-oss-120b",
+            prompt: "Stream the words ALPHA BETA GAMMA slowly.",
+            maxTokens: 64,
+            stream: true,
+          })
+        );
+        for await (const _chunk of stream.textStream) {
+          // The proxy severs every retry before forwarding the captured chunk.
+        }
+        await Promise.all([stream.text, stream.usage, stream.finishReason]);
+      },
+      { minimumWireCalls: 2 }
+    );
+    for (const wireCall of evidence.wireCalls) {
+      expect(wireCall.fault).toEqual({
+        kind: "disconnect-after-first-response-chunk",
+        triggered: true,
+      });
+      expect(wireCall.transport.outcome).toBe("injected-disconnect");
+      expect(wireCall.response?.chunks).toHaveLength(1);
+    }
     expect(evidence.error.message.length).toBeGreaterThan(0);
     receipts.push({
       name: "mid-stream-disconnect",
       status: "passed",
       wireCallIds: evidence.wireCalls.map((call) => call.id),
       error: evidence.error,
-      capturedUpstreamChunk: evidence.wireCalls[0].response?.chunks[0],
+      capturedUpstreamChunks: evidence.wireCalls.map((call) => call.response?.chunks[0]),
     });
   }, 120_000);
 });

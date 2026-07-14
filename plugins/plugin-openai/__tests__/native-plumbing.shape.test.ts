@@ -69,6 +69,13 @@ vi.mock("ai", () => ({
       parsePartialOutput: async () => undefined,
       createElementStreamTransform: () => undefined,
     }),
+    json: () => ({
+      name: "json",
+      responseFormat: Promise.resolve({ type: "json" }),
+      parseCompleteOutput: async ({ text }: { text: string }) => JSON.parse(text),
+      parsePartialOutput: async () => undefined,
+      createElementStreamTransform: () => undefined,
+    }),
   },
 }));
 
@@ -499,7 +506,7 @@ describe("OpenAI native text plumbing", () => {
     }).rejects.toThrow("stream provider failed");
   });
 
-  it("maps string responseFormat json_object into the AI SDK responseFormat", async () => {
+  it("maps string responseFormat json_object into the AI SDK JSON output contract", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "{}",
       finishReason: "stop",
@@ -513,7 +520,37 @@ describe("OpenAI native text plumbing", () => {
     } as never);
 
     const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
-    expect(call.responseFormat).toEqual({ type: "json" });
+    expect(call).not.toHaveProperty("responseFormat");
+    await expect(
+      (call.output as { responseFormat: Promise<unknown> }).responseFormat
+    ).resolves.toEqual({ type: "json" });
+  });
+
+  it("keeps Cerebras JSON mode schema-free at the provider boundary", async () => {
+    vi.stubEnv("ELIZA_PROVIDER", "cerebras");
+    vi.stubEnv("CEREBRAS_API_KEY", "test-cerebras-key");
+    aiMocks.generateText.mockResolvedValue({
+      text: '{"answer":"ok"}',
+      finishReason: "stop",
+      usage: { inputTokens: 3, outputTokens: 3 },
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    await handleTextSmall(createRuntime(), {
+      prompt: "json",
+      responseFormat: { type: "json_object" },
+      responseSchema: {
+        type: "object",
+        properties: { answer: { type: "string" } },
+        required: ["answer"],
+      },
+    } as never);
+
+    const call = aiMocks.generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect((call.output as { name: string }).name).toBe("json");
+    await expect(
+      (call.output as { responseFormat: Promise<unknown> }).responseFormat
+    ).resolves.toEqual({ type: "json" });
   });
 
   it("marks unconsumed streaming companion promises as handled", async () => {
