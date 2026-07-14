@@ -22,15 +22,8 @@ export function analyzeWalletIntelligenceBrief(
     (factor) => factor.description,
   );
 
-  const informationGaps = Array.from(
-    new Set([
-      ...assessment.limitations,
-
-      ...evidenceRecords.flatMap(
-        (record) => record.limitations,
-      ),
-    ]),
-  ).filter((gap) => gap.trim().length > 0);
+  const informationGaps =
+    buildInformationGaps(evidenceRecords);
 
   const sourcesUsed = Array.from(
     new Set(
@@ -80,6 +73,120 @@ export function analyzeWalletIntelligenceBrief(
     notice:
       "SkunkScanAI provides evidence-based blockchain intelligence for informational purposes only. The final decision remains with the user.",
   };
+}
+
+function buildInformationGaps(
+  evidenceRecords: WalletEvidenceRecord[],
+): string[] {
+  const gaps: string[] = [];
+
+  for (const record of evidenceRecords) {
+    for (const limitation of record.limitations) {
+      const normalized =
+        limitation.toLowerCase();
+
+      if (
+        normalized.includes(
+          "funding source could not be confidently identified",
+        ) ||
+        normalized.includes(
+          "no incoming sol funding transfer was detected",
+        ) ||
+        normalized.includes(
+          "funding source type is unknown",
+        )
+      ) {
+        gaps.push(
+          "The initial funding source could not be confidently identified.",
+        );
+
+        continue;
+      }
+
+      if (
+        normalized.includes(
+          "no token usd prices were available",
+        ) ||
+        normalized.includes(
+          "usd portfolio value is unavailable",
+        ) ||
+        normalized.includes(
+          "total usd portfolio value could not be determined",
+        )
+      ) {
+        gaps.push(
+          "Complete USD portfolio valuation was unavailable.",
+        );
+
+        continue;
+      }
+
+      if (
+        normalized.includes(
+          "no direct wallet relationships were identified",
+        )
+      ) {
+        gaps.push(
+          "No directly attributable wallet relationships were identified.",
+        );
+
+        continue;
+      }
+
+      if (
+        normalized.includes(
+          "screening is limited to connected screening sources",
+        ) ||
+        normalized.includes(
+          "additional sanctions and adverse media providers",
+        )
+      ) {
+        gaps.push(
+          "Compliance screening coverage is limited to currently connected sources.",
+        );
+
+        continue;
+      }
+
+      if (
+        normalized.includes(
+          "not a full transaction-specific screening",
+        )
+      ) {
+        gaps.push(
+          "Transaction-risk analysis is wallet-context based and not transaction-specific.",
+        );
+
+        continue;
+      }
+
+      if (
+        normalized.includes(
+          "analyzed transaction sample",
+        )
+      ) {
+        gaps.push(
+          "Activity and behavior conclusions are based on the analyzed transaction sample.",
+        );
+
+        continue;
+      }
+
+      if (
+        normalized.includes(
+          "no known defi protocol interactions",
+        )
+      ) {
+        gaps.push(
+          "No recognized DeFi interactions were identified in the analyzed sample.",
+        );
+      }
+    }
+  }
+
+  return Array.from(
+    new Set(gaps),
+  ).slice(0, 6);
 }
 
 function mapOverallAssessment(
