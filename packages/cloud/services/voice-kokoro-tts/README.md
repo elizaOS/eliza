@@ -5,6 +5,10 @@ Self-hosted Kokoro TTS behind the cloud-api `/api/v1/voice/tts` route (the
 upstream [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI) image; the
 weights ship in the image, so there are no secrets.
 
+Pinned Kokoro-FastAPI exposes `/v1/audio/speech`; `eliza_kokoro_compat.py`
+adapts the existing cloud-api `/api/tts` body to that typed upstream request.
+Keep this adapter until every deployed cloud-api caller uses the new contract.
+
 ## Contract (do not break — the live test asserts it)
 
 | Method | Path | Request | Response |
