@@ -27,6 +27,7 @@ import {
   summarizeStability,
 } from "../../../testing/layout-stability.ts";
 import {
+  touchDragHold,
   touchLongPress,
   touchSwipe,
   touchTap,
@@ -720,6 +721,54 @@ try {
       "expanded-only controls stay hidden at rest",
     );
 
+    const countSlot = center.getByTestId("notifications-count");
+    const restedCountBox = await countSlot.boundingBox();
+    if (!restedCountBox) throw new Error("missing notification count bounds");
+    const partialPull = await touchDragHold(
+      mobile,
+      '[data-testid="home-notification-list"]',
+      0,
+      48,
+      { steps: 6, stepDelayMs: 16 },
+    );
+    await mobile.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(resolve)),
+    );
+    const heldCountBox = await countSlot.boundingBox();
+    if (!heldCountBox) throw new Error("missing pulled count bounds");
+    const heldCountTravel = heldCountBox.y - restedCountBox.y;
+    assert(
+      heldCountTravel > 1 && heldCountTravel < 28,
+      `a partial pull moves the count continuously instead of inserting a 40px row (${heldCountTravel.toFixed(2)}px)`,
+    );
+
+    await partialPull.release();
+    const releaseTrace = await mobile.evaluate(async (restedTop) => {
+      const samples = [];
+      const startedAt = performance.now();
+      // Keep sampling through the gesture's click-suppression window so the
+      // next tap is a distinct user action as well as a settled-state check.
+      while (performance.now() - startedAt < 560) {
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        const count = document.querySelector(
+          '[data-testid="notifications-count"]',
+        );
+        if (!(count instanceof HTMLElement)) break;
+        samples.push(count.getBoundingClientRect().top - restedTop);
+      }
+      return samples;
+    }, restedCountBox.y);
+    const releasePeak = Math.max(...releaseTrace);
+    const releaseFinal = releaseTrace.at(-1) ?? Number.POSITIVE_INFINITY;
+    assert(
+      releasePeak <= heldCountTravel + 1.5,
+      `a cancelled pull returns without bouncing farther from rest (${releasePeak.toFixed(2)}px peak)`,
+    );
+    assert(
+      Math.abs(releaseFinal) < 0.75,
+      `the notification count settles back at rest (${releaseFinal.toFixed(2)}px)`,
+    );
+
     await touchTap(mobile, '[data-testid="notifications-count-button"]');
     await center
       .locator(
@@ -731,6 +780,12 @@ try {
         (await center.getByTestId("notifications-collapse").count()) === 1,
       "opening the shade reveals clear and collapse controls",
     );
+    await mobile.waitForFunction(() => {
+      const footer = document.querySelector(
+        '[data-testid="notifications-collapse-footer"]',
+      );
+      return footer instanceof HTMLElement && !footer.hasAttribute("inert");
+    });
 
     await touchTap(mobile, '[data-testid="notifications-collapse"]');
     await center
@@ -1039,6 +1094,1163 @@ try {
     await rename(videoPath, stableVideoPath);
     console.log(`  🎥 ${stableVideoPath}`);
   }
+
+  // A dedicated three-row quiet stack exercises the transitions that cannot
+  // exist in the default urgent-row fixture: click-open insertion, producer
+  // fan-out, empty-region collapse/close-race handling, and a cancelled pull
+  // settle.
+  const notificationMotionContext = await browser.newContext({
+    viewport: { width: 402, height: 874 },
+    deviceScaleFactor: 2,
+    hasTouch: true,
+    isMobile: true,
+  });
+  const notificationMotion = await notificationMotionContext.newPage();
+  notificationMotion.on("pageerror", (e) => sink.errors.push(String(e)));
+  await installCoarsePointerMedia(notificationMotion);
+  await notificationMotion.goto(`${url}?notificationMotion`);
+  const notificationCenter = notificationMotion.getByTestId(
+    "home-notification-center",
+  );
+  await notificationCenter.waitFor({ state: "visible", timeout: 5000 });
+  await waitForHomeEnterSettled(notificationMotion);
+  assert(
+    (await notificationCenter.getByTestId("notification-row").count()) === 0,
+    "quiet notification stack starts folded behind the total",
+  );
+
+  await notificationMotion.evaluate(() => {
+    window.__ELIZA_NOTIFICATION_OPEN_TRACE__ = [];
+    const startedAt = performance.now();
+    const sample = () => {
+      const group = document.querySelector(
+        "[data-notification-group-content]",
+      );
+      const count = document.querySelector('[data-testid="notifications-count"]');
+      const groupLayer = group?.closest("[data-notification-group]");
+      const clear = document.querySelector("[data-notification-clear-slot]");
+      window.__ELIZA_NOTIFICATION_OPEN_TRACE__.push({
+        t: performance.now() - startedAt,
+        group: group
+          ? {
+              opacity: Number.parseFloat(getComputedStyle(group).opacity),
+              top: group.getBoundingClientRect().top,
+              duration: getComputedStyle(group).transitionDuration,
+              zIndex: groupLayer
+                ? getComputedStyle(groupLayer).zIndex
+                : null,
+            }
+          : null,
+        count: count
+          ? {
+              opacity: Number.parseFloat(getComputedStyle(count).opacity),
+              height: count.getBoundingClientRect().height,
+              duration: getComputedStyle(count).transitionDuration,
+              zIndex: getComputedStyle(count).zIndex,
+            }
+          : null,
+        clear: clear
+          ? {
+              opacity: Number.parseFloat(getComputedStyle(clear).opacity),
+              height: clear.getBoundingClientRect().height,
+              duration: getComputedStyle(clear).transitionDuration,
+            }
+          : null,
+      });
+      if (performance.now() - startedAt < 420) requestAnimationFrame(sample);
+    };
+    const countButton = document.querySelector(
+      '[data-testid="notifications-count-button"]',
+    );
+    if (!(countButton instanceof HTMLButtonElement)) {
+      throw new Error("missing notification count button");
+    }
+    countButton.click();
+    requestAnimationFrame(sample);
+  });
+  await notificationMotion.waitForTimeout(460);
+  const openTrace = await notificationMotion.evaluate(
+    () => window.__ELIZA_NOTIFICATION_OPEN_TRACE__,
+  );
+  const mountedOpenFrames = openTrace.filter((sample) => sample.group);
+  const openIntermediateOpacity = new Set(
+    mountedOpenFrames
+      .map((sample) => sample.group.opacity)
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  const openIntermediateCountHeights = new Set(
+    mountedOpenFrames
+      .map((sample) => sample.count.height)
+      .filter((height) => height > 0.75 && height < 31.25)
+      .map((height) => height.toFixed(1)),
+  );
+  const openIntermediateClearHeights = new Set(
+    mountedOpenFrames
+      .map((sample) => sample.clear.height)
+      .filter((height) => height > 0.75 && height < 31.25)
+      .map((height) => height.toFixed(1)),
+  );
+  assert(
+    mountedOpenFrames[0]?.group.opacity <= 0.05,
+    `click-open mounts at the transition origin (${mountedOpenFrames[0]?.group.opacity ?? "missing"})`,
+  );
+  console.log(
+    `  [notification click-open] distinct intermediate frames=${openIntermediateOpacity.size}`,
+  );
+  assert(
+    openIntermediateOpacity.size >= 2 &&
+      openIntermediateCountHeights.size >= 2 &&
+      openIntermediateClearHeights.size >= 2,
+    `click-open produces intermediate group/count/clear frames (${openIntermediateOpacity.size}/${openIntermediateCountHeights.size}/${openIntermediateClearHeights.size})`,
+  );
+  assert(
+    mountedOpenFrames[0]?.group.duration.includes("0.22s") &&
+      mountedOpenFrames[0]?.count.duration.includes("0.22s") &&
+      mountedOpenFrames[0]?.clear.duration.includes("0.22s"),
+    `click-open uses one 220ms group/count/clear settle (${JSON.stringify(mountedOpenFrames[0] ?? null)})`,
+  );
+  assert(
+    mountedOpenFrames.every(
+      (sample) => sample.group.zIndex === "1" && sample.count.zIndex === "0",
+    ),
+    "click-open keeps notification cards above the fading count label",
+  );
+  assert(
+    mountedOpenFrames.every(
+      (sample, index) =>
+        index === 0 ||
+        sample.group.opacity + 0.02 >=
+          mountedOpenFrames[index - 1].group.opacity,
+    ),
+    "click-open opacity advances monotonically",
+  );
+  assert(
+    mountedOpenFrames.at(-1)?.group.opacity >= 0.98 &&
+      mountedOpenFrames.at(-1)?.count.height < 0.75 &&
+      mountedOpenFrames.at(-1)?.clear.height > 31,
+    "click-open settles with the group visible and count/clear slots exchanged",
+  );
+
+  const notificationCenterBox = await notificationCenter.boundingBox();
+  const notificationListBox = await notificationCenter
+    .getByTestId("home-notification-list")
+    .boundingBox();
+  if (!notificationCenterBox || !notificationListBox) {
+    throw new Error("missing notification motion geometry");
+  }
+  const emptyLaneX = notificationCenterBox.x + notificationCenterBox.width / 2;
+  const emptyLaneStartY =
+    notificationCenterBox.y + notificationCenterBox.height - 60;
+  assert(
+    emptyLaneStartY > notificationListBox.y + notificationListBox.height + 8,
+    "mouse collapse starts below the notification list",
+  );
+  const emptyLaneHitsList = await notificationMotion.evaluate(
+    ({ x, y }) => {
+      const list = document.querySelector(
+        '[data-testid="home-notification-list"]',
+      );
+      const target = document.elementFromPoint(x, y);
+      return Boolean(list && target && list.contains(target));
+    },
+    { x: emptyLaneX, y: emptyLaneStartY },
+  );
+  assert(!emptyLaneHitsList, "empty-region drag hit-tests outside the list");
+
+  const emptyTouchLaneSelector =
+    '[data-testid="notification-empty-touch-lane"]';
+  await notificationMotion.evaluate(
+    ({ x, y }) => {
+      const center = document.querySelector(
+        '[data-testid="home-notification-center"]',
+      );
+      if (!(center instanceof HTMLElement)) {
+        throw new Error("missing notification touch-lane center");
+      }
+      const bounds = center.getBoundingClientRect();
+      const target = document.createElement("div");
+      target.dataset.testid = "notification-empty-touch-lane";
+      Object.assign(target.style, {
+        position: "absolute",
+        left: `${x - bounds.left - 12}px`,
+        top: `${y - bounds.top - 12}px`,
+        width: "24px",
+        height: "24px",
+        zIndex: "50",
+      });
+      center.append(target);
+    },
+    { x: emptyLaneX, y: emptyLaneStartY },
+  );
+
+  await notificationMotion.evaluate(() => {
+    window.__ELIZA_NOTIFICATION_CLOSE_TRACE__ = [];
+    const startedAt = performance.now();
+    const sample = () => {
+      const list = document.querySelector(
+        '[data-testid="home-notification-list"]',
+      );
+      const count = document.querySelector(
+        '[data-testid="notifications-count"]',
+      );
+      const clear = document.querySelector("[data-notification-clear-slot]");
+      const group = document.querySelector(
+        "[data-notification-group-content]",
+      );
+      const groupLayer = group?.closest("[data-notification-group]");
+      window.__ELIZA_NOTIFICATION_CLOSE_TRACE__.push({
+        t: performance.now() - startedAt,
+        mode: list?.getAttribute("data-shade-mode"),
+        count: count
+          ? {
+              top: count.getBoundingClientRect().top,
+              height: count.getBoundingClientRect().height,
+              opacity: Number.parseFloat(getComputedStyle(count).opacity),
+              duration: getComputedStyle(count).transitionDuration,
+              zIndex: getComputedStyle(count).zIndex,
+            }
+          : null,
+        clear: clear
+          ? {
+              height: clear.getBoundingClientRect().height,
+              opacity: Number.parseFloat(getComputedStyle(clear).opacity),
+              duration: getComputedStyle(clear).transitionDuration,
+            }
+          : null,
+        group: group
+          ? {
+              opacity: Number.parseFloat(getComputedStyle(group).opacity),
+              duration: getComputedStyle(group).transitionDuration,
+              zIndex: groupLayer
+                ? getComputedStyle(groupLayer).zIndex
+                : null,
+            }
+          : null,
+      });
+      if (performance.now() - startedAt < 420) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+
+  await notificationCenter.getByTestId("notifications-collapse").click();
+  assert(
+    (await notificationCenter
+      .getByTestId("home-notification-list")
+      .getAttribute("data-shade-settling")) !== null,
+    "notification shade exposes its committed close settle",
+  );
+  const closeRaceState = await notificationMotion.evaluate(
+    ({ x, y }) => {
+      const center = document.querySelector(
+        '[data-testid="home-notification-center"]',
+      );
+      const list = document.querySelector(
+        '[data-testid="home-notification-list"]',
+      );
+      const target = document.elementFromPoint(x, y);
+      if (!(center instanceof HTMLElement) || !(target instanceof Element)) {
+        throw new Error("missing notification close-race target");
+      }
+      const dispatchGesture = (pointerId, endY) => {
+        target.dispatchEvent(
+          new PointerEvent("pointerdown", {
+            bubbles: true,
+            cancelable: true,
+            pointerType: "mouse",
+            pointerId,
+            isPrimary: true,
+            buttons: 1,
+            clientX: x,
+            clientY: y,
+          }),
+        );
+        target.dispatchEvent(
+          new PointerEvent("pointermove", {
+            bubbles: true,
+            cancelable: true,
+            pointerType: "mouse",
+            pointerId,
+            isPrimary: true,
+            buttons: 1,
+            clientX: x,
+            clientY: endY,
+          }),
+        );
+        target.dispatchEvent(
+          new PointerEvent("pointerup", {
+            bubbles: true,
+            cancelable: true,
+            pointerType: "mouse",
+            pointerId,
+            isPrimary: true,
+            clientX: x,
+            clientY: endY,
+          }),
+        );
+      };
+      dispatchGesture(71, y - 30);
+      dispatchGesture(72, y - 160);
+      return {
+        mode: list?.getAttribute("data-shade-mode"),
+        settling: list?.hasAttribute("data-shade-settling"),
+        dragging: list?.hasAttribute("data-shade-dragging"),
+        cancelling: center.hasAttribute(
+          "data-notification-shade-cancelling",
+        ),
+      };
+    },
+    { x: emptyLaneX, y: emptyLaneStartY },
+  );
+  assert(
+    closeRaceState.mode === "expanded" &&
+      closeRaceState.settling &&
+      !closeRaceState.dragging &&
+      !closeRaceState.cancelling,
+    `empty-region swipes cannot interrupt a committed close (${JSON.stringify(closeRaceState)})`,
+  );
+  await notificationMotion.waitForTimeout(460);
+  const closeTrace = await notificationMotion.evaluate(
+    () => window.__ELIZA_NOTIFICATION_CLOSE_TRACE__,
+  );
+  const mountedCloseFrames = closeTrace.filter(
+    (sample) => sample.count && sample.clear && sample.group,
+  );
+  const closeIntermediateCountHeights = new Set(
+    closeTrace
+      .map((sample) => sample.count?.height)
+      .filter((height) => height > 0.75 && height < 31.25)
+      .map((height) => height.toFixed(1)),
+  );
+  const closeIntermediateClearHeights = new Set(
+    mountedCloseFrames
+      .map((sample) => sample.clear.height)
+      .filter((height) => height > 0.75 && height < 31.25)
+      .map((height) => height.toFixed(1)),
+  );
+  const closeIntermediateGroupOpacity = new Set(
+    mountedCloseFrames
+      .map((sample) => sample.group.opacity)
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  const visibleCloseCountFrames = closeTrace.filter(
+    (sample) => sample.count && sample.count.height > 0.75,
+  );
+  const closeCountTops = visibleCloseCountFrames.map(
+    (sample) => sample.count.top,
+  );
+  const closeMaxUpwardStep = Math.max(
+    0,
+    ...closeCountTops.slice(1).map((top, index) => closeCountTops[index] - top),
+  );
+  const closeMaxDownwardStep = Math.max(
+    0,
+    ...closeCountTops.slice(1).map((top, index) => top - closeCountTops[index]),
+  );
+  const closeFinalTop = closeCountTops.at(-1) ?? Number.POSITIVE_INFINITY;
+  const closeMinTop = Math.min(...closeCountTops);
+  console.log(
+    `  [notification click-close] intermediate=${closeIntermediateCountHeights.size}/${closeIntermediateClearHeights.size}/${closeIntermediateGroupOpacity.size} max-up=${closeMaxUpwardStep.toFixed(2)}px max-down=${closeMaxDownwardStep.toFixed(2)}px`,
+  );
+  assert(
+    closeIntermediateCountHeights.size >= 2 &&
+      closeIntermediateClearHeights.size >= 2 &&
+      closeIntermediateGroupOpacity.size >= 2,
+    `click-close produces intermediate count/clear/group frames (${closeIntermediateCountHeights.size}/${closeIntermediateClearHeights.size}/${closeIntermediateGroupOpacity.size})`,
+  );
+  assert(
+    mountedCloseFrames[0]?.count.duration.includes("0.22s") &&
+      mountedCloseFrames[0]?.clear.duration.includes("0.22s") &&
+      mountedCloseFrames[0]?.group.duration.includes("0.22s"),
+    `click-close uses one 220ms count/clear/group settle (${JSON.stringify(mountedCloseFrames[0] ?? null)})`,
+  );
+  assert(
+    mountedCloseFrames.every(
+      (sample) => sample.group.zIndex === "1" && sample.count.zIndex === "0",
+    ),
+    "click-close keeps notification cards above the fading count label",
+  );
+  assert(
+    closeMaxUpwardStep < 12 &&
+      closeMaxDownwardStep < 1.5 &&
+      closeFinalTop - closeMinTop < 1,
+    `notification count reaches its rested top monotonically without a jump or bounce (${JSON.stringify({ closeMaxUpwardStep, closeMaxDownwardStep, closeFinalTop, closeMinTop })})`,
+  );
+  assert(
+    (await notificationCenter
+      .getByTestId("home-notification-list")
+      .getAttribute("data-shade-mode")) === "rested",
+    "the original close clock completes after rejected empty-region swipes",
+  );
+  await notificationCenter.getByTestId("notifications-count-button").click();
+  await notificationMotion.waitForTimeout(300);
+
+  await notificationMotion.mouse.move(emptyLaneX, emptyLaneStartY);
+  await notificationMotion.mouse.down();
+  await notificationMotion.mouse.move(emptyLaneX, emptyLaneStartY - 160, {
+    steps: 12,
+  });
+  await notificationMotion.mouse.up();
+  await notificationMotion.waitForTimeout(280);
+  assert(
+    (await notificationCenter
+      .getByTestId("home-notification-list")
+      .getAttribute("data-shade-mode")) === "rested",
+    "mouse swipe-up from the empty notification region collapses the shade",
+  );
+  await notificationCenter.getByTestId("notifications-count-button").click();
+  await notificationMotion.waitForTimeout(300);
+  assert(
+    (await notificationCenter
+      .getByTestId("home-notification-list")
+      .getAttribute("data-shade-mode")) === "expanded",
+    "notification shade reopens before the real-touch collapse",
+  );
+
+  await touchSwipe(
+    notificationMotion,
+    emptyTouchLaneSelector,
+    0,
+    -160,
+    { steps: 12, stepDelayMs: 12 },
+  );
+  await notificationMotion.waitForTimeout(280);
+  assert(
+    (await notificationCenter
+      .getByTestId("home-notification-list")
+      .getAttribute("data-shade-mode")) === "rested",
+    "real CDP touch swipe-up from the empty notification region collapses the shade",
+  );
+  await notificationCenter.getByTestId("notifications-count-button").click();
+  await notificationMotion.waitForTimeout(300);
+  assert(
+    (await notificationCenter
+      .getByTestId("home-notification-list")
+      .getAttribute("data-shade-mode")) === "expanded",
+    "notification shade reopens before the stack fan trace",
+  );
+
+  await notificationMotion.evaluate(() => {
+    window.__ELIZA_NOTIFICATION_FAN_TRACE__ = [];
+    const startedAt = performance.now();
+    const sample = () => {
+      const controls = document.querySelector(
+        '[data-testid="notification-stack-controls"]',
+      );
+      const rows = Array.from(
+        document.querySelectorAll("[data-notification-disposable-row]"),
+      );
+      const peeks = Array.from(
+        document.querySelectorAll("[data-notification-stack-peek]"),
+      );
+      const group = document.querySelector(
+        "[data-notification-group-content]",
+      );
+      window.__ELIZA_NOTIFICATION_FAN_TRACE__.push({
+        t: performance.now() - startedAt,
+        group: group
+          ? {
+              height: group.getBoundingClientRect().height,
+              paddingBottom: Number.parseFloat(
+                getComputedStyle(group).paddingBottom,
+              ),
+            }
+          : null,
+        controls: controls
+          ? {
+              height: controls.getBoundingClientRect().height,
+              opacity: Number.parseFloat(getComputedStyle(controls).opacity),
+              duration: getComputedStyle(controls).transitionDuration,
+            }
+          : null,
+        rows: rows.map((row) => ({
+          height: row.getBoundingClientRect().height,
+          opacity: Number.parseFloat(getComputedStyle(row).opacity),
+        })),
+        peeks: peeks.map((peek) =>
+          Number.parseFloat(getComputedStyle(peek).opacity),
+        ),
+      });
+      if (performance.now() - startedAt < 420) requestAnimationFrame(sample);
+    };
+    const stackButton = document.querySelector(
+      '[data-testid="notification-row"]',
+    );
+    if (!(stackButton instanceof HTMLButtonElement)) {
+      throw new Error("missing notification stack button");
+    }
+    stackButton.click();
+    requestAnimationFrame(sample);
+  });
+  await notificationMotion.waitForTimeout(460);
+  const fanTrace = await notificationMotion.evaluate(
+    () => window.__ELIZA_NOTIFICATION_FAN_TRACE__,
+  );
+  const mountedFanFrames = fanTrace.filter((sample) => sample.controls);
+  const fanIntermediateOpacity = new Set(
+    mountedFanFrames
+      .map((sample) => sample.controls.opacity)
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  const fanIntermediateRowOpacity = new Set(
+    mountedFanFrames
+      .flatMap((sample) => sample.rows.map((row) => row.opacity))
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  const fanIntermediatePeekOpacity = new Set(
+    mountedFanFrames
+      .flatMap((sample) => sample.peeks)
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  assert(
+    mountedFanFrames[0]?.controls.height < 1 &&
+      mountedFanFrames[0]?.controls.opacity <= 0.05 &&
+      mountedFanFrames[0]?.peeks.length === 2 &&
+      mountedFanFrames[0]?.peeks.every((opacity) => opacity >= 0.98) &&
+      mountedFanFrames[0]?.group.paddingBottom >= 23,
+    "stack fan mounts controls and rows from collapsed geometry",
+  );
+  console.log(
+    `  [notification stack fan] distinct intermediate frames=${fanIntermediateOpacity.size}`,
+  );
+  assert(
+    fanIntermediateOpacity.size >= 2 &&
+      fanIntermediateRowOpacity.size >= 2 &&
+      fanIntermediatePeekOpacity.size >= 2,
+    `stack fan produces intermediate control/row/peek frames (${fanIntermediateOpacity.size}/${fanIntermediateRowOpacity.size}/${fanIntermediatePeekOpacity.size})`,
+  );
+  assert(
+    mountedFanFrames[0]?.controls.duration.includes("0.3s"),
+    `stack fan uses the balanced 300ms settle (${mountedFanFrames[0]?.controls.duration ?? "missing"})`,
+  );
+  assert(
+    mountedFanFrames.every(
+      (sample, index) =>
+        index === 0 ||
+        sample.controls.opacity + 0.02 >=
+          mountedFanFrames[index - 1].controls.opacity,
+    ) &&
+      mountedFanFrames.every(
+        (sample, index) =>
+          index === 0 ||
+          sample.group.height + 1 >= mountedFanFrames[index - 1].group.height,
+      ) &&
+      mountedFanFrames.every(
+        (sample, index) =>
+          index === 0 ||
+          sample.peeks.every(
+            (opacity, peekIndex) =>
+              opacity <=
+              (mountedFanFrames[index - 1].peeks[peekIndex] ?? opacity) + 0.02,
+          ),
+      ),
+    "stack fan geometry advances monotonically while its peeks fade",
+  );
+  assert(
+    mountedFanFrames.at(-1)?.controls.height > 35 &&
+      mountedFanFrames.at(-1)?.controls.opacity >= 0.98 &&
+      mountedFanFrames.at(-1)?.rows.length === 2 &&
+      mountedFanFrames.at(-1)?.peeks.length === 2 &&
+      mountedFanFrames.at(-1)?.peeks.every((opacity) => opacity <= 0.02) &&
+      Math.abs(mountedFanFrames.at(-1)?.group.paddingBottom - 16) < 0.75,
+    "stack fan settles with controls and both folded rows visible",
+  );
+
+  await notificationMotion.evaluate(() => {
+    window.__ELIZA_NOTIFICATION_FOLD_TRACE__ = [];
+    const startedAt = performance.now();
+    const sample = () => {
+      const controls = document.querySelector(
+        '[data-testid="notification-stack-controls"]',
+      );
+      const rows = Array.from(
+        document.querySelectorAll("[data-notification-disposable-row]"),
+      );
+      const peeks = Array.from(
+        document.querySelectorAll("[data-notification-stack-peek]"),
+      );
+      const group = document.querySelector(
+        "[data-notification-group-content]",
+      );
+      const frontRow = group?.querySelector("[data-notif-row]");
+      const restControl =
+        document.querySelector('[data-testid="notifications-count"]') ??
+        document.querySelector("[data-notification-collapse-footer]");
+      const groupRect = group?.getBoundingClientRect();
+      const frontRowRect = frontRow?.getBoundingClientRect();
+      const groupShell = group?.closest("[data-notification-group]");
+      const runningAnimations = (
+        groupShell?.getAnimations({ subtree: true }) ?? []
+      )
+        .filter((animation) => {
+          if (animation.playState !== "running") return false;
+          const duration = animation.effect?.getComputedTiming().duration;
+          return (
+            typeof duration === "number" &&
+            duration > 16 &&
+            ("transitionProperty" in animation ||
+              !("animationName" in animation))
+          );
+        })
+        .map((animation) => {
+          const target =
+            animation.effect instanceof KeyframeEffect
+              ? animation.effect.target
+              : null;
+          return {
+            type: animation.constructor.name,
+            property:
+              "transitionProperty" in animation
+                ? animation.transitionProperty
+                : null,
+            target:
+              target instanceof Element
+                ? target.getAttribute("data-testid") || target.className
+                : null,
+          };
+        });
+      window.__ELIZA_NOTIFICATION_FOLD_TRACE__.push({
+        t: performance.now() - startedAt,
+        group: groupRect
+          ? { top: groupRect.top, height: groupRect.height }
+          : null,
+        frontRow: frontRowRect
+          ? { top: frontRowRect.top, height: frontRowRect.height }
+          : null,
+        restControlTop: restControl?.getBoundingClientRect().top ?? null,
+        runningAnimations,
+        controls: controls
+          ? {
+              opacity: Number.parseFloat(getComputedStyle(controls).opacity),
+              duration: getComputedStyle(controls).transitionDuration,
+              timing: getComputedStyle(controls).transitionTimingFunction,
+            }
+          : null,
+        rows: rows.map((row) =>
+          Number.parseFloat(getComputedStyle(row).opacity),
+        ),
+        peeks: peeks.map((peek) =>
+          Number.parseFloat(getComputedStyle(peek).opacity),
+        ),
+        peekTops: peeks.map((peek) => peek.getBoundingClientRect().top),
+      });
+      if (performance.now() - startedAt < 760) requestAnimationFrame(sample);
+    };
+    const showLess = document.querySelector(
+      '[data-testid="notification-stack-collapse"]',
+    );
+    if (!(showLess instanceof HTMLButtonElement)) {
+      throw new Error("missing Show Less control");
+    }
+    showLess.click();
+    requestAnimationFrame(sample);
+  });
+  await notificationMotion.waitForTimeout(800);
+  const foldTrace = await notificationMotion.evaluate(
+    () => window.__ELIZA_NOTIFICATION_FOLD_TRACE__,
+  );
+  const mountedFoldFrames = foldTrace.filter((sample) => sample.controls);
+  const foldIntermediateControlOpacity = new Set(
+    mountedFoldFrames
+      .map((sample) => sample.controls.opacity)
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  const foldIntermediateRowOpacity = new Set(
+    mountedFoldFrames
+      .flatMap((sample) => sample.rows)
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  const foldIntermediatePeekOpacity = new Set(
+    mountedFoldFrames
+      .flatMap((sample) => sample.peeks)
+      .filter((opacity) => opacity > 0.05 && opacity < 0.95)
+      .map((opacity) => opacity.toFixed(2)),
+  );
+  assert(
+    mountedFoldFrames[0]?.controls.duration.includes("0.34s"),
+    `stack fold uses the 340ms settle (${mountedFoldFrames[0]?.controls.duration ?? "missing"})`,
+  );
+  const foldTimingFunctions = new Set(
+    (mountedFoldFrames[0]?.controls.timing ?? "")
+      .split(",")
+      .map((timing) => timing.trim())
+      .filter(Boolean),
+  );
+  assert(
+    foldTimingFunctions.size === 1 && foldTimingFunctions.has("ease"),
+    `stack fold geometry and opacity share one ease curve (${mountedFoldFrames[0]?.controls.timing ?? "missing"})`,
+  );
+  assert(
+    foldIntermediateControlOpacity.size >= 3 &&
+      foldIntermediateRowOpacity.size >= 3 &&
+      foldIntermediatePeekOpacity.size >= 3,
+    `stack fold produces intermediate control/row/peek frames (${foldIntermediateControlOpacity.size}/${foldIntermediateRowOpacity.size}/${foldIntermediatePeekOpacity.size})`,
+  );
+  assert(
+    mountedFoldFrames.every(
+      (sample, index) =>
+        index === 0 ||
+        sample.controls.opacity <=
+          mountedFoldFrames[index - 1].controls.opacity + 0.02,
+    ) &&
+      mountedFoldFrames.every(
+        (sample, index) =>
+          index === 0 ||
+          sample.group.height <= mountedFoldFrames[index - 1].group.height + 1,
+      ) &&
+      mountedFoldFrames.every(
+        (sample, index) =>
+          index === 0 ||
+          sample.peeks.every(
+            (opacity, peekIndex) =>
+              opacity + 0.02 >=
+              (mountedFoldFrames[index - 1].peeks[peekIndex] ?? opacity),
+          ),
+      ),
+    "stack fold geometry converges monotonically while its peeks return",
+  );
+  const settledFoldFrames = foldTrace.filter(
+    (sample) =>
+      sample.t >= 380 &&
+      !sample.controls &&
+      sample.group &&
+      sample.frontRow &&
+      sample.restControlTop !== null &&
+      sample.peekTops.length === 2,
+  );
+  const settledFoldAnchor = settledFoldFrames[0];
+  const foldTailDrift = settledFoldAnchor
+    ? Math.max(
+        ...settledFoldFrames.flatMap((sample) => [
+          Math.abs(sample.group.top - settledFoldAnchor.group.top),
+          Math.abs(sample.group.height - settledFoldAnchor.group.height),
+          Math.abs(sample.frontRow.top - settledFoldAnchor.frontRow.top),
+          Math.abs(sample.frontRow.height - settledFoldAnchor.frontRow.height),
+          Math.abs(
+            sample.restControlTop - settledFoldAnchor.restControlTop,
+          ),
+          ...sample.peekTops.map((top, index) =>
+            Math.abs(top - settledFoldAnchor.peekTops[index]),
+          ),
+        ]),
+      )
+    : Number.POSITIVE_INFINITY;
+  console.log(
+    `  [notification stack fold tail] frames=${settledFoldFrames.length} max-drift=${foldTailDrift.toFixed(2)}px`,
+  );
+  assert(
+    settledFoldFrames.length >= 20 &&
+      foldTailDrift <= 0.5 &&
+      settledFoldFrames.every(
+        (sample) => sample.runningAnimations.length === 0,
+      ),
+    `stack fold has no second-phase animation or layout tail after its 340ms settle (${settledFoldFrames.length} frames, ${foldTailDrift.toFixed(2)}px drift, ${JSON.stringify(settledFoldFrames.find((sample) => sample.runningAnimations.length > 0)?.runningAnimations ?? [])})`,
+  );
+  assert(
+    (await notificationCenter
+      .getByTestId("notification-stack-collapse")
+      .count()) === 0 &&
+      (await notificationCenter.getByTestId("notification-stack").count()) ===
+        1 &&
+      (await notificationCenter
+        .getByTestId("notification-stack-peek")
+        .count()) === 2,
+    "stack fold settles as one front card with two physical peeks",
+  );
+  await notificationCenter.getByTestId("notifications-collapse").click();
+  await notificationMotion.waitForTimeout(280);
+  assert(
+    (await notificationCenter
+      .getByTestId("home-notification-list")
+      .getAttribute("data-shade-mode")) === "rested",
+    "stack fold and collapse controls restore the rested shade",
+  );
+
+  const restedCountTop = (
+    await notificationCenter.getByTestId("notifications-count").boundingBox()
+  )?.y;
+  if (restedCountTop === undefined) {
+    throw new Error("missing cancelled-pull geometry");
+  }
+  const cancelledTouchPull = await touchDragHold(
+    notificationMotion,
+    '[data-testid="home-notification-list"]',
+    0,
+    48,
+    { steps: 6, stepDelayMs: 16 },
+  );
+  await notificationMotion.waitForTimeout(32);
+  const heldCountTop = (
+    await notificationCenter.getByTestId("notifications-count").boundingBox()
+  )?.y;
+  await notificationMotion.evaluate((restTop) => {
+    window.__ELIZA_NOTIFICATION_CANCEL_TRACE__ = [];
+    const startedAt = performance.now();
+    const sample = () => {
+      const count = document.querySelector('[data-testid="notifications-count"]');
+      const quietGroup = document.querySelector(
+        "[data-notification-pull-reveal]",
+      );
+      const clearSlot = document.querySelector(
+        "[data-notification-clear-slot]",
+      );
+      const clearButton = document.querySelector(
+        '[data-testid="notifications-clear-all"]',
+      );
+      const collapseFooter = document.querySelector(
+        "[data-notification-collapse-footer]",
+      );
+      if (count) {
+        window.__ELIZA_NOTIFICATION_CANCEL_TRACE__.push({
+          t: performance.now() - startedAt,
+          offset: count.getBoundingClientRect().top - restTop,
+          quietOpacity: quietGroup
+            ? Number.parseFloat(getComputedStyle(quietGroup).opacity)
+            : null,
+          clearMounted: Boolean(clearButton),
+          clearOpacity: clearSlot
+            ? Number.parseFloat(getComputedStyle(clearSlot).opacity)
+            : null,
+          collapseMounted: Boolean(collapseFooter),
+          collapseOpacity: collapseFooter
+            ? Number.parseFloat(getComputedStyle(collapseFooter).opacity)
+            : null,
+        });
+      }
+      if (performance.now() - startedAt < 430) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }, restedCountTop);
+  const heldDirectManipulation = await notificationMotion.evaluate(() => {
+    const quietGroup = document.querySelector(
+      "[data-notification-pull-reveal]",
+    );
+    const collapseFooter = document.querySelector(
+      "[data-notification-collapse-footer]",
+    );
+    return {
+      quietDuration: quietGroup
+        ? getComputedStyle(quietGroup).transitionDuration
+        : "missing",
+      collapseDuration: collapseFooter
+        ? getComputedStyle(collapseFooter).transitionDuration
+        : "missing",
+    };
+  });
+  assert(
+    heldDirectManipulation.quietDuration === "0s" &&
+      heldDirectManipulation.collapseDuration === "0s",
+    `active pull surfaces track the pointer without easing (${JSON.stringify(heldDirectManipulation)})`,
+  );
+  await cancelledTouchPull.release();
+  const cancelStyle = await notificationMotion.evaluate(() => {
+    const center = document.querySelector(
+      '[data-testid="home-notification-center"]',
+    );
+    const count = document.querySelector('[data-testid="notifications-count"]');
+    const quietGroup = document.querySelector(
+      "[data-notification-pull-reveal]",
+    );
+    const clearButton = document.querySelector(
+      '[data-testid="notifications-clear-all"]',
+    );
+    const collapseFooter = document.querySelector(
+      "[data-notification-collapse-footer]",
+    );
+    return {
+      active: center?.hasAttribute("data-notification-shade-cancelling"),
+      duration: count ? getComputedStyle(count).transitionDuration : "",
+      quietMounted: Boolean(quietGroup),
+      quietDuration: quietGroup
+        ? getComputedStyle(quietGroup).transitionDuration
+        : "",
+      clearMounted: Boolean(clearButton),
+      collapseMounted: Boolean(collapseFooter),
+      collapseDuration: collapseFooter
+        ? getComputedStyle(collapseFooter).transitionDuration
+        : "",
+    };
+  });
+  await notificationMotion.waitForTimeout(450);
+  const cancelTrace = await notificationMotion.evaluate(
+    () => window.__ELIZA_NOTIFICATION_CANCEL_TRACE__,
+  );
+  const heldOffset = (heldCountTop ?? restedCountTop) - restedCountTop;
+  const cancelAt100 = cancelTrace.find((sample) => sample.t >= 100);
+  assert(
+    cancelStyle.active &&
+      cancelStyle.duration.includes("0.34s") &&
+      cancelStyle.quietMounted &&
+      cancelStyle.quietDuration.includes("0.34s") &&
+      cancelStyle.clearMounted &&
+      cancelStyle.collapseMounted &&
+      cancelStyle.collapseDuration.includes("0.34s"),
+    `cancelled pull keeps every preview surface on the softer 340ms settle (${JSON.stringify(cancelStyle)})`,
+  );
+  assert(
+    Math.abs(cancelAt100?.offset ?? 0) > Math.abs(heldOffset) * 0.1,
+    "cancelled pull remains visibly in flight after 100ms",
+  );
+  assert(
+    (cancelAt100?.quietOpacity ?? 0) > 0.01 &&
+      cancelAt100?.clearMounted === true &&
+      (cancelAt100?.clearOpacity ?? 0) > 0.01 &&
+      cancelAt100?.collapseMounted === true &&
+      (cancelAt100?.collapseOpacity ?? 0) > 0.01,
+    "quiet group, clear control, and collapse footer remain visibly in flight after 100ms",
+  );
+  assert(
+    Math.abs(cancelTrace.at(-1)?.offset ?? Number.POSITIVE_INFINITY) < 0.75,
+    "cancelled pull settles exactly back at rest",
+  );
+  assert(
+    cancelTrace.at(-1)?.quietOpacity === null &&
+      cancelTrace.at(-1)?.clearMounted === false &&
+      cancelTrace.at(-1)?.collapseMounted === false,
+    "cancelled pull unmounts preview-only surfaces only after the settle completes",
+  );
+
+  await notificationMotion.emulateMedia({ reducedMotion: "reduce" });
+  await notificationMotion.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="home-notification-center"]')
+      ?.hasAttribute("data-notification-reduced-motion"),
+  );
+  const reducedCountButton = notificationCenter.getByTestId(
+    "notifications-count-button",
+  );
+  await reducedCountButton.focus();
+  await notificationMotion.keyboard.press("Enter");
+  const reducedOpen = await notificationMotion.evaluate(() => {
+    const center = document.querySelector(
+      '[data-testid="home-notification-center"]',
+    );
+    const list = document.querySelector(
+      '[data-testid="home-notification-list"]',
+    );
+    const group = document.querySelector(
+      "[data-notification-group-content]",
+    );
+    const count = document.querySelector('[data-testid="notifications-count"]');
+    return {
+      mode: list?.getAttribute("data-shade-mode"),
+      groupOpacity: group
+        ? Number.parseFloat(getComputedStyle(group).opacity)
+        : -1,
+      groupDuration: group ? getComputedStyle(group).transitionDuration : "",
+      countHeight: count?.getBoundingClientRect().height ?? -1,
+      countDuration: count ? getComputedStyle(count).transitionDuration : "",
+      activeTestId: document.activeElement?.getAttribute("data-testid"),
+      materialRunningAnimations:
+        center instanceof Element
+          ? center
+              .getAnimations({ subtree: true })
+              .filter((animation) => {
+                const duration = animation.effect?.getComputedTiming().duration;
+                return (
+                  animation.playState === "running" &&
+                  typeof duration === "number" &&
+                  duration > 16
+                );
+              })
+              .map((animation) => {
+                const effect = animation.effect;
+                const target =
+                  effect instanceof KeyframeEffect ? effect.target : null;
+                return {
+                  duration: effect?.getComputedTiming().duration,
+                  name:
+                    "animationName" in animation
+                      ? animation.animationName
+                      : undefined,
+                  property:
+                    "transitionProperty" in animation
+                      ? animation.transitionProperty
+                      : undefined,
+                  target:
+                    target instanceof Element
+                      ? target.getAttribute("data-testid") || target.className
+                      : null,
+                };
+              })
+          : [],
+    };
+  });
+  assert(
+    reducedOpen.mode === "expanded" &&
+      reducedOpen.groupOpacity >= 0.98 &&
+      reducedOpen.countHeight < 0.75 &&
+      reducedOpen.groupDuration === "0s" &&
+      reducedOpen.countDuration === "0s" &&
+      reducedOpen.activeTestId === "notification-row" &&
+      reducedOpen.materialRunningAnimations.length === 0,
+    `reduced-motion click-open is immediate and hands keyboard focus to the first row (${JSON.stringify(reducedOpen)})`,
+  );
+  await notificationMotion.keyboard.press("Enter");
+  const reducedFan = await notificationMotion.evaluate(() => {
+    const center = document.querySelector(
+      '[data-testid="home-notification-center"]',
+    );
+    const controls = document.querySelector(
+      '[data-testid="notification-stack-controls"]',
+    );
+    const peeks = Array.from(
+      document.querySelectorAll("[data-notification-stack-peek]"),
+    );
+    return {
+      controlsHeight: controls?.getBoundingClientRect().height ?? -1,
+      controlsOpacity: controls
+        ? Number.parseFloat(getComputedStyle(controls).opacity)
+        : -1,
+      controlsDuration: controls
+        ? getComputedStyle(controls).transitionDuration
+        : "",
+      peekOpacities: peeks.map((peek) =>
+        Number.parseFloat(getComputedStyle(peek).opacity),
+      ),
+      activeTestId: document.activeElement?.getAttribute("data-testid"),
+      materialRunningAnimations:
+        center instanceof Element
+          ? center
+              .getAnimations({ subtree: true })
+              .filter((animation) => {
+                const duration = animation.effect?.getComputedTiming().duration;
+                return (
+                  animation.playState === "running" &&
+                  typeof duration === "number" &&
+                  duration > 16
+                );
+              })
+              .map((animation) => {
+                const effect = animation.effect;
+                const target =
+                  effect instanceof KeyframeEffect ? effect.target : null;
+                return {
+                  duration: effect?.getComputedTiming().duration,
+                  name:
+                    "animationName" in animation
+                      ? animation.animationName
+                      : undefined,
+                  property:
+                    "transitionProperty" in animation
+                      ? animation.transitionProperty
+                      : undefined,
+                  target:
+                    target instanceof Element
+                      ? target.getAttribute("data-testid") || target.className
+                      : null,
+                };
+              })
+          : [],
+    };
+  });
+  assert(
+    reducedFan.controlsHeight > 35 &&
+      reducedFan.controlsOpacity >= 0.98 &&
+      reducedFan.controlsDuration === "0s" &&
+      reducedFan.peekOpacities.length === 2 &&
+      reducedFan.peekOpacities.every((opacity) => opacity <= 0.02) &&
+      reducedFan.activeTestId === "notification-stack-collapse" &&
+      reducedFan.materialRunningAnimations.length === 0,
+    `reduced-motion stack fan is immediate and hands focus to Show Less (${JSON.stringify(reducedFan)})`,
+  );
+  await notificationMotion.keyboard.press("Enter");
+  const reducedFold = await notificationMotion.evaluate(() => ({
+    mode: document
+      .querySelector('[data-testid="home-notification-list"]')
+      ?.getAttribute("data-shade-mode"),
+    stackControls: document.querySelectorAll(
+      '[data-testid="notification-stack-controls"]',
+    ).length,
+    activeTestId: document.activeElement?.getAttribute("data-testid"),
+  }));
+  assert(
+    reducedFold.mode === "expanded" &&
+      reducedFold.stackControls === 0 &&
+      reducedFold.activeTestId === "notification-row",
+    `reduced-motion stack fold immediately returns focus to its top row (${JSON.stringify(reducedFold)})`,
+  );
+  const reducedCollapse = notificationCenter.getByTestId(
+    "notifications-collapse",
+  );
+  await reducedCollapse.focus();
+  await notificationMotion.keyboard.press("Enter");
+  const reducedClose = await notificationMotion.evaluate(() => {
+    const list = document.querySelector(
+      '[data-testid="home-notification-list"]',
+    );
+    const count = document.querySelector('[data-testid="notifications-count"]');
+    const countButton = document.querySelector(
+      '[data-testid="notifications-count-button"]',
+    );
+    return {
+      mode: list?.getAttribute("data-shade-mode"),
+      countHeight: count?.getBoundingClientRect().height ?? -1,
+      expanded: countButton?.getAttribute("aria-expanded"),
+      collapseControls: document.querySelectorAll(
+        '[data-testid="notifications-collapse"]',
+      ).length,
+      activeTestId: document.activeElement?.getAttribute("data-testid"),
+    };
+  });
+  assert(
+    reducedClose.mode === "rested" &&
+      reducedClose.countHeight > 31 &&
+      reducedClose.expanded === "false" &&
+      reducedClose.collapseControls === 0 &&
+      reducedClose.activeTestId === "notifications-count-button",
+    `reduced-motion collapse commits DOM, ARIA, and reverse focus immediately (${JSON.stringify(reducedClose)})`,
+  );
+  await touchSwipe(
+    notificationMotion,
+    '[data-testid="home-notification-list"]',
+    0,
+    48,
+    {
+    steps: 6,
+      stepDelayMs: 8,
+    },
+  );
+  const reducedCancel = await notificationMotion.evaluate(() => ({
+    mode: document
+      .querySelector('[data-testid="home-notification-list"]')
+      ?.getAttribute("data-shade-mode"),
+    cancelling: document
+      .querySelector('[data-testid="home-notification-center"]')
+      ?.hasAttribute("data-notification-shade-cancelling"),
+    previewGroups: document.querySelectorAll(
+      "[data-notification-pull-reveal]",
+    ).length,
+    clearControls: document.querySelectorAll(
+      '[data-testid="notifications-clear-all"]',
+    ).length,
+    collapseControls: document.querySelectorAll(
+      '[data-testid="notifications-collapse"]',
+    ).length,
+  }));
+  assert(
+    reducedCancel.mode === "rested" &&
+      reducedCancel.cancelling === false &&
+      reducedCancel.previewGroups === 0 &&
+      reducedCancel.clearControls === 0 &&
+      reducedCancel.collapseControls === 0,
+    `reduced-motion short pull resets preview DOM immediately (${JSON.stringify(reducedCancel)})`,
+  );
+  await notificationMotion.emulateMedia({ reducedMotion: "no-preference" });
+  await notificationMotion.waitForFunction(
+    () =>
+      !document
+        .querySelector('[data-testid="home-notification-center"]')
+        ?.hasAttribute("data-notification-reduced-motion"),
+  );
+  await notificationMotion.close();
+  await notificationMotionContext.close();
 
   // Measure the rail in a dedicated non-recording context. Video encoding is
   // intentionally excluded from the frame budget: the product never performs

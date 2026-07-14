@@ -8,6 +8,7 @@
 
 import * as React from "react";
 import { createRoot } from "react-dom/client";
+import type { AgentNotification } from "@elizaos/core";
 
 import {
   installHomeWidgetFetchMock,
@@ -16,19 +17,63 @@ import {
 } from "../../../widgets/__fixtures__/home-widget-mock-data";
 import { ShaderBackground } from "../../../backgrounds/ShaderBackground";
 import { LauncherSurface } from "../../pages/LauncherSurface";
+import {
+  __ingestNotificationForTests,
+  __resetNotificationStoreForTests,
+} from "../../../state/notifications/notification-store";
 import { HomeLauncherSurface } from "../HomeLauncherSurface";
 import { HomeScreen, type HomeTileTarget } from "../HomeScreen";
-
-// Inject the home-widget data BEFORE the React tree renders so every widget's
-// mount-time fetch + the WidgetHost's plugin resolution see populated data.
-seedHomeWidgetAppStore();
-seedHomeWidgetNotifications();
-installHomeWidgetFetchMock();
 
 const params =
   typeof location !== "undefined"
     ? new URLSearchParams(location.search)
     : new URLSearchParams();
+
+// Inject the home-widget data BEFORE the React tree renders so every widget's
+// mount-time fetch + the WidgetHost's plugin resolution see populated data.
+seedHomeWidgetAppStore();
+if (params.has("notificationMotion")) {
+  __resetNotificationStoreForTests();
+  const now = Date.now();
+  const notifications: AgentNotification[] = [
+    {
+      id: "notif-motion-1",
+      title: "Motion one",
+      body: "First folded notification",
+      category: "system",
+      priority: "normal",
+      source: "system",
+      createdAt: now,
+      readAt: null,
+    },
+    {
+      id: "notif-motion-2",
+      title: "Motion two",
+      body: "Second folded notification",
+      category: "system",
+      priority: "normal",
+      source: "system",
+      createdAt: now - 1_000,
+      readAt: null,
+    },
+    {
+      id: "notif-motion-3",
+      title: "Motion three",
+      body: "Third folded notification",
+      category: "system",
+      priority: "normal",
+      source: "system",
+      createdAt: now - 2_000,
+      readAt: null,
+    },
+  ];
+  for (const notification of notifications) {
+    __ingestNotificationForTests(notification, notifications.length);
+  }
+} else {
+  seedHomeWidgetNotifications();
+}
+installHomeWidgetFetchMock();
 const showNativeOsTiles = params.has("native");
 
 function Harness(): React.JSX.Element {

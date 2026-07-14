@@ -18,6 +18,7 @@ import { notificationPullRevealStyle } from "./notification-shade-presentation";
 import { RelativeTime } from "./RelativeTime";
 
 const SWIPE_DISMISS_PX = 88;
+const STACK_PEEK_LAYERS = ["near", "far"] as const;
 
 /** Stable shade order: priority, recency, then id as a total tiebreak. */
 export function orderDashboardNotifications(
@@ -123,9 +124,11 @@ export function ClearConfirmationContent({
 
 function NotificationSourceIcon({
   count,
+  countVisibility = 1,
   source,
 }: {
   count?: number;
+  countVisibility?: number;
   source: string;
 }): JSX.Element {
   const meta = getChatSourceMeta(source);
@@ -157,8 +160,10 @@ function NotificationSourceIcon({
       {count && count > 1 ? (
         <span
           data-testid="notification-source-count"
+          data-notification-source-count=""
           aria-hidden
-          className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
+          style={{ opacity: countVisibility }}
+          className="eliza-notif-shade-transition absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white/90 px-1.5 text-center text-[11px] font-semibold leading-none tabular-nums text-black shadow-[0_0_0_2px_rgba(0,0,0,0.7),0_1px_4px_rgba(0,0,0,0.45)]"
         >
           {count > 99 ? "99+" : count}
         </span>
@@ -171,9 +176,22 @@ export interface NotificationRowProps {
   notification: AgentNotification;
   stackKey?: string;
   stackCount?: number;
+  stackCountVisibility?: number;
+  stackPeeks?: {
+    count: number;
+    disabled: boolean;
+    expansionProgress: number;
+    fanned: boolean;
+    groupLabel: string;
+    mode: "close" | "static" | "disposable";
+    openOffsetsPx?: readonly number[];
+    testIdVisible: boolean;
+    totalCount: number;
+    visibility: number;
+  };
   pullRevealProgress?: number;
   shadeVisibility?: number;
-  onExpandStack?: (key: string) => void;
+  onExpandStack?: (key: string, moveFocus: boolean) => void;
   onOpen: (notification: AgentNotification) => void;
   onDismiss: (id: string) => void;
 }
@@ -192,6 +210,21 @@ export function rowPropsEqual(
     a.source === b.source &&
     previous.stackKey === next.stackKey &&
     previous.stackCount === next.stackCount &&
+    previous.stackCountVisibility === next.stackCountVisibility &&
+    previous.stackPeeks?.count === next.stackPeeks?.count &&
+    previous.stackPeeks?.disabled === next.stackPeeks?.disabled &&
+    previous.stackPeeks?.expansionProgress ===
+      next.stackPeeks?.expansionProgress &&
+    previous.stackPeeks?.fanned === next.stackPeeks?.fanned &&
+    previous.stackPeeks?.groupLabel === next.stackPeeks?.groupLabel &&
+    previous.stackPeeks?.mode === next.stackPeeks?.mode &&
+    previous.stackPeeks?.openOffsetsPx?.[0] ===
+      next.stackPeeks?.openOffsetsPx?.[0] &&
+    previous.stackPeeks?.openOffsetsPx?.[1] ===
+      next.stackPeeks?.openOffsetsPx?.[1] &&
+    previous.stackPeeks?.testIdVisible === next.stackPeeks?.testIdVisible &&
+    previous.stackPeeks?.totalCount === next.stackPeeks?.totalCount &&
+    previous.stackPeeks?.visibility === next.stackPeeks?.visibility &&
     previous.pullRevealProgress === next.pullRevealProgress &&
     previous.shadeVisibility === next.shadeVisibility &&
     previous.onExpandStack === next.onExpandStack &&
@@ -213,6 +246,8 @@ export const NotificationRow = memo(function NotificationRow({
   notification,
   stackKey,
   stackCount,
+  stackCountVisibility,
+  stackPeeks,
   pullRevealProgress,
   shadeVisibility,
   onExpandStack,
@@ -291,7 +326,7 @@ export const NotificationRow = memo(function NotificationRow({
   return (
     <li
       className={cn(
-        "eliza-notif-row relative",
+        "eliza-notif-row relative isolate",
         pullRevealProgress !== undefined &&
           "eliza-notif-pull-reveal pointer-events-none",
         shadeVisibility !== undefined && "eliza-notif-shade-transition grid",
@@ -337,7 +372,7 @@ export const NotificationRow = memo(function NotificationRow({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerEnd}
         onPointerCancel={onPointerEnd}
-        className="eliza-notif-row-inner eliza-notif-glass group relative flex min-h-0 flex-col overflow-hidden rounded-2xl"
+        className="eliza-notif-row-inner eliza-notif-glass group relative z-[2] flex min-h-0 flex-col overflow-hidden rounded-2xl"
       >
         <button
           type="button"
@@ -355,14 +390,16 @@ export const NotificationRow = memo(function NotificationRow({
               event.preventDefault();
               return;
             }
-            if (stackKey && onExpandStack) onExpandStack(stackKey);
-            else onOpen(notification);
+            if (stackKey && onExpandStack) {
+              onExpandStack(stackKey, event.detail === 0);
+            } else onOpen(notification);
           }}
           className="flex min-h-touch min-w-0 items-center gap-3 rounded-2xl px-3 py-2 text-left active:scale-[0.99] motion-reduce:active:scale-100"
         >
           <NotificationSourceIcon
             source={notification.source}
             count={stackCount}
+            countVisibility={stackCountVisibility}
           />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex items-baseline gap-1.5">
@@ -384,6 +421,56 @@ export const NotificationRow = memo(function NotificationRow({
           </span>
         </button>
       </div>
+      {stackPeeks
+        ? STACK_PEEK_LAYERS.slice(0, stackPeeks.count).map((layer, index) => {
+            const collapsedOffsetPx = (index + 1) * 7;
+            const openOffsetPx =
+              stackPeeks.openOffsetsPx?.[index] ?? (index + 1) * 44;
+            const offsetPx =
+              collapsedOffsetPx +
+              (openOffsetPx - collapsedOffsetPx) * stackPeeks.expansionProgress;
+            return (
+              <button
+                key={`${notification.id}-stack-peek-${layer}`}
+                type="button"
+                data-testid={
+                  stackPeeks.testIdVisible
+                    ? "notification-stack-peek"
+                    : undefined
+                }
+                data-notif-control=""
+                data-notification-stack-peek=""
+                data-notification-peek-mode={stackPeeks.mode}
+                disabled={stackPeeks.disabled}
+                tabIndex={
+                  stackPeeks.disabled || stackPeeks.visibility < 1
+                    ? -1
+                    : undefined
+                }
+                aria-hidden={
+                  stackPeeks.disabled || stackPeeks.visibility === 0
+                    ? true
+                    : undefined
+                }
+                aria-label={`Show all ${stackPeeks.totalCount} ${stackPeeks.groupLabel} notifications`}
+                onClick={(event) => {
+                  if (stackKey && onExpandStack) {
+                    onExpandStack(stackKey, event.detail === 0);
+                  }
+                }}
+                className={cn(
+                  "eliza-notif-glass eliza-notif-stack-peek eliza-notif-shade-transition absolute inset-0 rounded-2xl",
+                  stackPeeks.fanned && "pointer-events-none",
+                )}
+                style={{
+                  zIndex: 1 - index,
+                  opacity: stackPeeks.visibility,
+                  transform: `translateY(${offsetPx}px) scale(${1 - (index + 1) * 0.015})`,
+                }}
+              />
+            );
+          })
+        : null}
     </li>
   );
 }, rowPropsEqual);
