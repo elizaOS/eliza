@@ -2677,6 +2677,10 @@ export function preparePackagedRuntime({
     stagingRoot = mkdtempSync(
       join(dirname(destination), `.${basename(destination)}.prepare-`),
     );
+    // mkdtemp creates 0700 directories; packaging consumers (squashfs, tar,
+    // dpkg) preserve that mode, which would make the installed runtime root
+    // unreadable to unprivileged users.
+    chmodSync(stagingRoot, 0o755);
     onProgress("Creating frozen-lock workspace skeleton");
     copyInstallSkeleton(
       canonicalSourceRoot,

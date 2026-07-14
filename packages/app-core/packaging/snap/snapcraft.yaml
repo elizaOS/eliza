@@ -129,6 +129,10 @@ parts:
         "$SNAP/lib/elizaos-app/node_modules/@elizaos/agent/bin.js" "$@"
       WRAPPER
       chmod +x "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper"
+
+      # Build hosts vary in umask and the prepared runtime's temp-dir mode;
+      # a system package must be world-readable regardless.
+      chmod -R a+rX "$CRAFT_PART_INSTALL"
     stage-packages:
       - libatomic1
       - ca-certificates
