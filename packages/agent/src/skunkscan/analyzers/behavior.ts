@@ -6,6 +6,9 @@ import {
   WalletRiskSummary,
   WalletWhaleSummary,
 } from "../types";
+import {
+  createConfidenceResponse,
+} from "../confidence/framework";
 
 export function analyzeWalletBehavior(
   activity: WalletActivitySummary,
@@ -14,9 +17,14 @@ export function analyzeWalletBehavior(
   whale: WalletWhaleSummary,
   risk: WalletRiskSummary,
 ): WalletBehaviorSummary {
-  let primaryProfile: WalletBehaviorSummary["primaryProfile"] = "unknown";
-  let confidence: WalletBehaviorSummary["confidence"] = "low";
+  let primaryProfile: WalletBehaviorSummary["primaryProfile"] =
+    "unknown";
+
+  let confidence: WalletBehaviorSummary["confidence"] =
+    "low";
+
   const traits: string[] = [];
+  const limitations: string[] = [];
 
   if (whale.isWhale) {
     primaryProfile = "whale";
@@ -44,7 +52,9 @@ export function analyzeWalletBehavior(
   } else {
     primaryProfile = "holder";
     confidence = "medium";
-    traits.push("Appears to be primarily holding assets.");
+    traits.push(
+      "Appears to be primarily holding assets.",
+    );
   }
 
   if (age.classification === "veteran") {
@@ -55,11 +65,108 @@ export function analyzeWalletBehavior(
     traits.push("Low current risk.");
   }
 
+  if (age.classification === "unknown") {
+    limitations.push(
+      "Wallet age could not be confidently determined.",
+    );
+  }
+
+  if (activity.activityLevel === "none") {
+    limitations.push(
+      "No recent activity was identified in the analyzed transaction sample.",
+    );
+  }
+
+  if (defi.protocolCount === 0) {
+    limitations.push(
+      "No recognized DeFi protocol interactions were identified in the analyzed sample.",
+    );
+  }
+
+  if (
+    whale.estimatedPortfolioUsdValue === null ||
+    whale.estimatedPortfolioUsdValue === undefined
+  ) {
+    limitations.push(
+      "Portfolio USD valuation was unavailable, which limits wallet-size interpretation.",
+    );
+  }
+
+  const confidenceAnalysis = createConfidenceResponse([
+    {
+      condition:
+        typeof activity.recentTransactionCount === "number",
+      score: 20,
+      reason:
+        "Wallet activity metrics were available.",
+    },
+    {
+      condition: age.classification !== "unknown",
+      score: 20,
+      reason:
+        "Wallet age evidence was available.",
+    },
+    {
+      condition: Boolean(defi.profile),
+      score: 15,
+      reason:
+        "A DeFi usage profile was available.",
+    },
+    {
+      condition:
+        whale.evidenceConfidence === "high",
+      score: 20,
+      reason:
+        "Whale evidence confidence is high.",
+    },
+    {
+      condition:
+        whale.evidenceConfidence === "medium",
+      score: 10,
+      reason:
+        "Whale evidence confidence is medium.",
+    },
+    {
+      condition: Boolean(risk.level),
+      score: 15,
+      reason:
+        "A wallet risk assessment was available.",
+    },
+    {
+      condition: traits.length >= 2,
+      score: 10,
+      reason:
+        "Multiple behavioral traits were identified.",
+    },
+  ]);
+
+  if (
+    confidenceAnalysis.level === "low"
+  ) {
+    confidence = "low";
+  } else if (
+    confidence === "high" &&
+    confidenceAnalysis.level !== "high"
+  ) {
+    confidence = "medium";
+  }
+
   return {
     primaryProfile,
+
+    evidenceConfidence:
+      confidenceAnalysis.level,
+
+    confidenceAnalysis,
+
     confidence,
+
     traits,
-    explanation: buildExplanation(primaryProfile),
+
+    explanation:
+      buildExplanation(primaryProfile),
+
+    limitations,
   };
 }
 
