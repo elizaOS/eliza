@@ -7,7 +7,9 @@ name: coverage-gate
 # classifier strips TypeScript-only syntax before excluding modules with no
 # runtime code; declarations and deleted files are not targets. LCOV LF:0 never
 # proves type-only status. Source covered only by e2e/live lanes still needs a
-# focused unit test in this gate. Docs-only PRs do not spend coverage time.
+# focused unit test in this gate. Docs-only PRs run only the dependency-free
+# classifier so this required context always reaches a terminal success without
+# spending workspace-install or test time.
 # Standalone Node self-tests are excluded only when listed in the manifest that
 # the Develop PR Test Integrity job executes on every PR.
 # A test-only PR (changed tests, no changed source) executes its changed tests —
@@ -25,10 +27,6 @@ name: coverage-gate
 on:
   pull_request:
     branches: [develop, main]
-    paths:
-      - "packages/**"
-      - "plugins/**"
-      - "apps/**"
 
 # cancel superseded in-flight runs for the same PR to free hosted-runner
 # capacity. only cancels pull_request runs; push runs on protected branches
