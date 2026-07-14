@@ -50,10 +50,26 @@ export type WalletPortfolioSummary = {
 
 export type WalletWhaleSummary = {
   isWhale: boolean;
+
   whaleScore: number;
-  whaleLevel: "none" | "small" | "medium" | "large";
+
+  whaleLevel:
+    | "none"
+    | "small"
+    | "medium"
+    | "large";
+
   estimatedPortfolioUsdValue?: number | null;
+
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  confidence: "low" | "medium" | "high";
+
   reasons: string[];
+
+  limitations: string[];
 };
 
 export type WalletEvidenceItem = {
