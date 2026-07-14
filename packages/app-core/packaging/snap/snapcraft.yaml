@@ -141,7 +141,7 @@ parts:
       - libxtst6
       # Runtime libraries the ffmpeg-2204 content snap's binaries link
       # against but do not ship themselves (consumer-staged by convention).
-      - libasound2t64
+      - libasound2
       - libpulse0
       - libva2
       - libva-drm2
