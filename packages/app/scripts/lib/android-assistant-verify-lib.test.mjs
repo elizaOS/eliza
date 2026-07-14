@@ -373,6 +373,11 @@ test("verifyOnDevice drives the supported role, component, runtime, and real-IME
   );
   assert.ok(commands.includes("input tap 540 1964"));
   assert.ok(
+    commands.includes(
+      "uiautomator dump --windows /sdcard/eliza-ime-verifier-window.xml",
+    ),
+  );
+  assert.ok(
     commands.includes("settings put secure show_ime_with_hard_keyboard 1"),
   );
   assert.equal(hierarchyReads, 2);

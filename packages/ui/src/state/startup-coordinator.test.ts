@@ -4,9 +4,21 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  connectionModeToTarget,
+  createAndroidPolicy,
+  createDesktopPolicy,
+  createElizaOSPolicy,
+  createIosPolicy,
+  createMobilePolicy,
+  createWebPolicy,
   INITIAL_STARTUP_STATE,
   isShellPaintable,
+  isStartupLoading,
+  isStartupTerminal,
+  type StartupEvent,
+  type StartupState,
   startupReducer,
+  toLegacyStartupPhase,
 } from "./startup-coordinator";
 import { deriveAgentReady } from "./types";
 
@@ -93,6 +105,46 @@ describe("startup coordinator", () => {
       phase: "starting-runtime",
       attempts: 0,
       target: "embedded-local",
+    });
+  });
+
+  it.each([
+    { phase: "first-run-required", serverReachable: false } as const,
+    {
+      phase: "starting-runtime",
+      attempts: 2,
+      target: "embedded-local",
+    } as const,
+    { phase: "ready" } as const,
+    {
+      phase: "error",
+      reason: "agent-error",
+      message: "old target failed",
+      timedOut: false,
+    } as const,
+  ])("replaces the active target from $phase", (state) => {
+    expect(
+      startupReducer(state, {
+        type: "SWITCH_AGENT",
+        target: "remote-backend",
+      }),
+    ).toEqual({
+      phase: "polling-backend",
+      target: "remote-backend",
+      attempts: 0,
+    });
+  });
+
+  it.each([
+    {
+      phase: "starting-runtime",
+      attempts: 2,
+      target: "embedded-local",
+    } as const,
+    { phase: "ready" } as const,
+  ])("restarts target restoration when retrying from $phase", (state) => {
+    expect(startupReducer(state, { type: "RETRY" })).toEqual({
+      phase: "restoring-session",
     });
   });
 
@@ -190,6 +242,333 @@ describe("startup coordinator", () => {
       attempts: 0,
       target: "embedded-local",
     });
+  });
+
+  const transitionCases: Array<{
+    state: StartupState;
+    event: StartupEvent;
+    expected: StartupState;
+  }> = [
+    {
+      state: { phase: "restoring-session" },
+      event: {
+        type: "EXISTING_INSTALL_DETECTED",
+        target: "embedded-local",
+      },
+      expected: { phase: "resolving-target", target: "embedded-local" },
+    },
+    {
+      state: { phase: "restoring-session" },
+      event: { type: "NO_SESSION", hadPriorFirstRun: true },
+      expected: {
+        phase: "error",
+        reason: "backend-unreachable",
+        message:
+          "Previously configured backend is unreachable. Check your connection or reset.",
+        timedOut: false,
+      },
+    },
+    {
+      state: { phase: "restoring-session" },
+      event: { type: "AGENT_ERROR", message: "restore failed" },
+      expected: {
+        phase: "error",
+        reason: "agent-error",
+        message: "restore failed",
+        timedOut: false,
+      },
+    },
+    {
+      state: {
+        phase: "polling-backend",
+        target: "remote-backend",
+        attempts: 2,
+      },
+      event: { type: "BACKEND_AUTH_REQUIRED" },
+      expected: { phase: "pairing-required" },
+    },
+    {
+      state: {
+        phase: "polling-backend",
+        target: "remote-backend",
+        attempts: 2,
+      },
+      event: { type: "BACKEND_NOT_FOUND" },
+      expected: {
+        phase: "error",
+        reason: "backend-unreachable",
+        message: "Backend returned 404 — check the API base URL.",
+        timedOut: false,
+      },
+    },
+    {
+      state: { phase: "pairing-required" },
+      event: { type: "PAIRING_SUCCESS" },
+      expected: { phase: "restoring-session" },
+    },
+    {
+      state: {
+        phase: "starting-runtime",
+        attempts: 0,
+        target: "embedded-local",
+      },
+      event: { type: "AGENT_RUNNING" },
+      expected: { phase: "hydrating" },
+    },
+    {
+      state: {
+        phase: "starting-runtime",
+        attempts: 3,
+        target: "embedded-local",
+      },
+      event: { type: "AGENT_STARTING" },
+      expected: {
+        phase: "starting-runtime",
+        attempts: 4,
+        target: "embedded-local",
+      },
+    },
+    {
+      state: {
+        phase: "starting-runtime",
+        attempts: 1,
+        target: "embedded-local",
+      },
+      event: { type: "AGENT_ERROR", message: "runtime failed" },
+      expected: {
+        phase: "error",
+        reason: "agent-error",
+        message: "runtime failed",
+        timedOut: false,
+      },
+    },
+    {
+      state: {
+        phase: "starting-runtime",
+        attempts: 8,
+        target: "embedded-local",
+      },
+      event: { type: "AGENT_TIMEOUT" },
+      expected: {
+        phase: "error",
+        reason: "agent-timeout",
+        message: "Agent did not reach running state within the timeout period.",
+        timedOut: true,
+      },
+    },
+    {
+      state: {
+        phase: "starting-runtime",
+        attempts: 1,
+        target: "remote-backend",
+      },
+      event: { type: "BACKEND_AUTH_REQUIRED" },
+      expected: { phase: "pairing-required" },
+    },
+    {
+      state: { phase: "hydrating" },
+      event: { type: "HYDRATION_COMPLETE" },
+      expected: { phase: "ready" },
+    },
+    {
+      state: {
+        phase: "error",
+        reason: "backend-timeout",
+        message: "timed out",
+        timedOut: true,
+      },
+      event: { type: "BACKEND_REACHED", firstRunComplete: true },
+      expected: {
+        phase: "starting-runtime",
+        attempts: 0,
+        target: "embedded-local",
+      },
+    },
+    {
+      state: {
+        phase: "error",
+        reason: "backend-timeout",
+        message: "timed out",
+        timedOut: true,
+      },
+      event: { type: "BACKEND_REACHED", firstRunComplete: false },
+      expected: { phase: "first-run-required", serverReachable: true },
+    },
+    {
+      state: {
+        phase: "error",
+        reason: "backend-unreachable",
+        message: "offline",
+        timedOut: false,
+      },
+      event: { type: "BACKEND_UNAVAILABLE_FIRST_RUN" },
+      expected: { phase: "first-run-required", serverReachable: false },
+    },
+    {
+      state: {
+        phase: "error",
+        reason: "agent-error",
+        message: "failed",
+        timedOut: false,
+      },
+      event: { type: "AGENT_RUNNING" },
+      expected: { phase: "hydrating" },
+    },
+  ];
+
+  it.each(transitionCases)("handles $state.phase + $event.type", ({
+    state,
+    event,
+    expected,
+  }) => {
+    expect(startupReducer(state, event)).toEqual(expected);
+  });
+
+  it.each([
+    {
+      state: { phase: "restoring-session" } as const,
+      event: { type: "HYDRATION_COMPLETE" } as const,
+    },
+    {
+      state: { phase: "pairing-required" } as const,
+      event: { type: "AGENT_RUNNING" } as const,
+    },
+    {
+      state: { phase: "first-run-required", serverReachable: true } as const,
+      event: { type: "FIRST_RUN_OPTIONS_LOADED" } as const,
+    },
+    {
+      state: { phase: "hydrating" } as const,
+      event: { type: "BACKEND_REACHED", firstRunComplete: true } as const,
+    },
+    {
+      state: { phase: "ready" } as const,
+      event: { type: "AGENT_RUNNING" } as const,
+    },
+  ])("preserves $state.phase for its non-transition event", ({
+    state,
+    event,
+  }) => {
+    expect(startupReducer(state, event)).toBe(state);
+  });
+});
+
+describe("startup policies and selectors", () => {
+  it.each([
+    {
+      name: "desktop",
+      factory: createDesktopPolicy,
+      expected: {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 180_000,
+        agentReadyTimeoutMs: 300_000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+      },
+    },
+    {
+      name: "web",
+      factory: createWebPolicy,
+      expected: {
+        supportsLocalRuntime: false,
+        backendTimeoutMs: 180_000,
+        agentReadyTimeoutMs: 180_000,
+        probeForExistingInstall: false,
+        defaultTarget: null,
+      },
+    },
+    {
+      name: "mobile",
+      factory: createMobilePolicy,
+      expected: {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 180_000,
+        agentReadyTimeoutMs: 300_000,
+        probeForExistingInstall: true,
+        defaultTarget: "cloud-managed",
+        nativeConsecutiveFailureBudgetMs: 90_000,
+      },
+    },
+    {
+      name: "iOS",
+      factory: createIosPolicy,
+      expected: {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 180_000,
+        agentReadyTimeoutMs: 300_000,
+        probeForExistingInstall: false,
+        defaultTarget: "cloud-managed",
+        nativeConsecutiveFailureBudgetMs: 90_000,
+      },
+    },
+    {
+      name: "Android",
+      factory: createAndroidPolicy,
+      expected: {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 180_000,
+        agentReadyTimeoutMs: 300_000,
+        probeForExistingInstall: false,
+        defaultTarget: "cloud-managed",
+        nativeConsecutiveFailureBudgetMs: 90_000,
+      },
+    },
+    {
+      name: "elizaOS",
+      factory: createElizaOSPolicy,
+      expected: {
+        supportsLocalRuntime: true,
+        backendTimeoutMs: 180_000,
+        agentReadyTimeoutMs: 300_000,
+        probeForExistingInstall: true,
+        defaultTarget: "embedded-local",
+        nativeConsecutiveFailureBudgetMs: 90_000,
+      },
+    },
+  ])("returns the $name platform contract", ({ factory, expected }) => {
+    expect(factory()).toEqual(expected);
+  });
+
+  it("maps persisted connection modes to runtime targets", () => {
+    expect(connectionModeToTarget("cloud")).toBe("cloud-managed");
+    expect(connectionModeToTarget("remote")).toBe("remote-backend");
+    expect(connectionModeToTarget("local")).toBe("embedded-local");
+    expect(connectionModeToTarget(undefined)).toBe("embedded-local");
+  });
+
+  it.each([
+    ["restoring-session", true, false, "starting-backend"],
+    ["resolving-target", true, false, "starting-backend"],
+    ["polling-backend", true, false, "starting-backend"],
+    ["starting-runtime", true, false, "initializing-agent"],
+    ["hydrating", true, false, "ready"],
+    ["ready", false, true, "ready"],
+    ["error", false, true, "ready"],
+    ["pairing-required", false, false, "ready"],
+  ] as const)("classifies %s for loading, terminal, and legacy consumers", (phase, loading, terminal, legacy) => {
+    const state =
+      phase === "error"
+        ? ({
+            phase,
+            reason: "agent-error",
+            message: "failed",
+            timedOut: false,
+          } as const)
+        : phase === "resolving-target"
+          ? ({ phase, target: "embedded-local" } as const)
+          : phase === "polling-backend"
+            ? ({ phase, target: "embedded-local", attempts: 0 } as const)
+            : phase === "starting-runtime"
+              ? ({
+                  phase,
+                  target: "embedded-local",
+                  attempts: 0,
+                } as const)
+              : ({ phase } as StartupState);
+
+    expect(isStartupLoading(state)).toBe(loading);
+    expect(isStartupTerminal(state)).toBe(terminal);
+    expect(toLegacyStartupPhase(state)).toBe(legacy);
   });
 });
 

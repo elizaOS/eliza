@@ -64,6 +64,7 @@ if (args[0] === "shell" && args[1] === "screenrecord") {
   fs.writeFileSync(remoteFile(remote), partialMp4());
   fs.writeFileSync(activePath, JSON.stringify({ remote }));
   let finished = false;
+  let finalizationStarted = false;
   const finish = (reason) => {
     if (finished) return;
     finished = true;
@@ -75,7 +76,10 @@ if (args[0] === "shell" && args[1] === "screenrecord") {
   process.on("SIGINT", () => finish("host-SIGINT"));
   process.on("SIGTERM", () => finish("host-SIGTERM"));
   setInterval(() => {
-    if (fs.existsSync(stopPath)) finish("device-SIGINT");
+    if (fs.existsSync(stopPath) && !finalizationStarted) {
+      finalizationStarted = true;
+      setTimeout(() => finish("device-finalized"), 300);
+    }
   }, 20);
 } else if (args[0] === "shell" && args[1] === "pidof") {
   if (fs.existsSync(activePath)) process.stdout.write("4242\n");
@@ -84,6 +88,7 @@ if (args[0] === "shell" && args[1] === "screenrecord") {
   if (args[2] !== "-2" || args[3] !== "4242" || !fs.existsSync(activePath)) {
     process.exitCode = 1;
   } else {
+    fs.appendFileSync(signalLog, "device-SIGINT\n");
     fs.writeFileSync(stopPath, "stop");
   }
 } else if (args[0] === "shell" && args[1] === "stat") {
@@ -155,14 +160,16 @@ test("single recording waits for the device finalizer and returns a playable MP4
   assert.equal(recording.localPath, result);
   assert.equal(await recording.stop(), result, "stop is idempotent");
   assert.equal(assertPlayableMp4(result).valid, true);
-  assert.match(
-    readFileSync(path.join(stateDir, "signals.log"), "utf8"),
-    /device-SIGINT/,
+  const signals = readFileSync(path.join(stateDir, "signals.log"), "utf8")
+    .trim()
+    .split("\n");
+  assert.equal(
+    signals.filter((signal) => signal === "device-SIGINT").length,
+    1,
+    "screenrecord must receive exactly one SIGINT while its MP4 finalizes",
   );
-  assert.doesNotMatch(
-    readFileSync(path.join(stateDir, "signals.log"), "utf8"),
-    /host-SIGINT/,
-  );
+  assert.ok(signals.includes("device-finalized"));
+  assert.doesNotMatch(signals.join("\n"), /host-SIGINT/);
   assert.ok(logs.some((line) => line.includes("wrote Android screenrecord")));
 });
 

@@ -1,24 +1,11 @@
-// Fresh first-run REMOTE-CONNECT onboarding on the real Android Capacitor
-// WebView, driven by the OS deep link.
-//
-// The host (a desktop/cloud agent) emits a
-// `<scheme>://first-run/runtime/remote?api=<url>` link/QR. Opening it on a fresh
-// device connects to that remote and lands on home. This spec resets the
-// installed app into first-run, fires the real deep link via `adb am start`
-// (delivered to Capacitor's `appUrlOpen`), and asserts the post-onboarding home
-// surface — no onboarding DOM is touched, so the lane survives the in-chat
-// onboarding redesign (#9952/#10302) instead of binding to deleted testids
-// (the original `choice-remote` / `first-run-remote-address` / `choice-connect`
-// flow). Replaces the lane quarantined in #10322.
-//
-// The deterministic host agent is reachable at 127.0.0.1:31337 through
-// `adb reverse`; 127.0.0.1 is loopback, so the connect needs no confirm prompt.
-//
-// Liveness contract (#14359): this lane is STUB-BACKED by default — the host
-// agent is the deterministic ui-smoke stub, so a "real model" reply cannot be
-// asserted and the lane ends by proving the stub reply renders. Point the host
-// at a live-provider backend and set `ELIZA_ONBOARDING_LIVENESS=1` to promote
-// the final turn to the shared liveness assertion (non-empty, non-stub reply).
+/**
+ * Exercises fresh Android remote-connect onboarding through the real
+ * Capacitor WebView and OS `appUrlOpen` ingress. The device reaches the host
+ * agent through `adb reverse`, proves the post-onboarding home and composer,
+ * then sends a chat turn. The default host is the deterministic UI-smoke
+ * fixture; `ELIZA_ONBOARDING_LIVENESS=1` promotes the reply contract to a live,
+ * non-stub model response.
+ */
 import path from "node:path";
 import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import {
@@ -71,6 +58,8 @@ test.describe
         filename: "onboarding-to-home.mp4",
         remotePath: "/sdcard/eliza-onboarding-to-home.mp4",
       });
+      let primaryFailure: unknown = null;
+      let recordingFailure: unknown = null;
 
       try {
         // The product reset path owns shell-reserved storage and arms a
@@ -218,14 +207,126 @@ test.describe
             contentType: "text/plain",
           });
         }
+      } catch (error) {
+        primaryFailure = error;
+        const diagnosticScreenshot = path.join(
+          ARTIFACT_DIR,
+          "onboarding-failure.png",
+        );
+        const [stateResult, screenshotResult] = await Promise.allSettled([
+          page.evaluate(() => {
+            const globalObject = globalThis as typeof globalThis & {
+              __ELIZAOS_UI_APP_STORE__?: {
+                value?: {
+                  actionNotice?: unknown;
+                  firstRunComplete?: unknown;
+                  firstRunRemoteConnected?: unknown;
+                  firstRunRemoteError?: unknown;
+                  firstRunRuntimeTarget?: unknown;
+                  startupCoordinator?: {
+                    phase?: unknown;
+                    state?: unknown;
+                  };
+                  startupError?: unknown;
+                } | null;
+              };
+            };
+            const state = globalObject.__ELIZAOS_UI_APP_STORE__?.value;
+            return {
+              actionNotice: state?.actionNotice ?? null,
+              firstRunComplete: state?.firstRunComplete ?? null,
+              firstRunRemoteConnected: state?.firstRunRemoteConnected ?? null,
+              firstRunRemoteError: state?.firstRunRemoteError ?? null,
+              firstRunRuntimeTarget: state?.firstRunRuntimeTarget ?? null,
+              startupCoordinator: state?.startupCoordinator
+                ? {
+                    phase: state.startupCoordinator.phase ?? null,
+                    state: state.startupCoordinator.state ?? null,
+                  }
+                : null,
+              startupError: state?.startupError ?? null,
+              ingress: {
+                count:
+                  document.documentElement.dataset.elizaMobileDeepLinkCount ??
+                  null,
+                ready:
+                  document.documentElement.dataset.elizaMobileDeepLinkReady ??
+                  null,
+              },
+              surfaces: {
+                composer: Boolean(
+                  document.querySelector(
+                    '[data-testid="chat-composer-textarea"]',
+                  ),
+                ),
+                firstRun: Boolean(
+                  document.querySelector(
+                    '[data-testid="first-run-chat"], [data-testid="startup-first-run-background"]',
+                  ),
+                ),
+                home: Boolean(
+                  document.querySelector(
+                    '[data-testid="home-launcher-surface"]',
+                  ),
+                ),
+              },
+            };
+          }),
+          page.screenshot({
+            path: diagnosticScreenshot,
+            fullPage: true,
+          }),
+        ]);
+        const diagnostic = {
+          capturedAt: new Date().toISOString(),
+          failure: error instanceof Error ? error.message : String(error),
+          state:
+            stateResult.status === "fulfilled"
+              ? stateResult.value
+              : { captureError: String(stateResult.reason) },
+          screenshot:
+            screenshotResult.status === "fulfilled"
+              ? "captured"
+              : { captureError: String(screenshotResult.reason) },
+        };
+        const attachments: Promise<unknown>[] = [
+          testInfo.attach("onboarding failure diagnostics", {
+            body: JSON.stringify(diagnostic, null, 2),
+            contentType: "application/json",
+          }),
+        ];
+        if (screenshotResult.status === "fulfilled") {
+          attachments.push(
+            testInfo.attach("onboarding failure screenshot", {
+              path: diagnosticScreenshot,
+              contentType: "image/png",
+            }),
+          );
+        }
+        await Promise.allSettled(attachments);
       } finally {
-        const videoPath = await recording.stop();
-        if (videoPath) {
-          await testInfo.attach("onboarding walkthrough video", {
-            path: videoPath,
-            contentType: "video/mp4",
-          });
+        const [stopResult] = await Promise.allSettled([recording.stop()]);
+        if (stopResult.status === "fulfilled") {
+          await Promise.allSettled([
+            testInfo.attach("onboarding walkthrough video", {
+              path: stopResult.value,
+              contentType: "video/mp4",
+            }),
+          ]);
+        } else {
+          await Promise.allSettled([
+            testInfo.attach("onboarding recording failure", {
+              body:
+                stopResult.reason instanceof Error
+                  ? stopResult.reason.message
+                  : String(stopResult.reason),
+              contentType: "text/plain",
+            }),
+          ]);
+          recordingFailure = stopResult.reason;
         }
       }
+      if (primaryFailure !== null) throw primaryFailure;
+      if (recordingFailure !== null) throw recordingFailure;
     });
   });

@@ -170,7 +170,10 @@ async function waitForImeMic(adb, serial, shell, sleepFn, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   let latest = { found: false, bounds: null, center: null };
   while (Date.now() < deadline) {
-    shell(adb, serial, ["uiautomator", "dump", hierarchyPath]);
+    // The IME is a separate accessibility window from the foreground probe
+    // activity. Android's default dump exposes only the active application
+    // root, while --windows includes the actually rendered keyboard window.
+    shell(adb, serial, ["uiautomator", "dump", "--windows", hierarchyPath]);
     const hierarchy = shell(adb, serial, ["cat", hierarchyPath]);
     latest = parseUiAutomatorBounds(hierarchy, IME_MIC_RESOURCE_ID);
     if (latest.found) {

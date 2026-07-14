@@ -70,7 +70,8 @@ adb shell screenrecord --bit-rate 4000000 --time-limit 90 \
   "$ASSISTANT_RECORDING_REMOTE" >/dev/null 2>&1 &
 ASSISTANT_RECORDING_PID=$!
 sleep 1
-if ! adb shell pidof screenrecord >/dev/null; then
+ASSISTANT_SCREENRECORD_PIDS="$(adb shell pidof screenrecord 2>/dev/null | tr -d '\r' || true)"
+if [[ ! "$ASSISTANT_SCREENRECORD_PIDS" =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]]; then
   echo "assistant verification screenrecord did not start" >&2
   CAPTURE_STATUS=1
 fi
@@ -89,17 +90,20 @@ if ! node -e '
   VERIFY_STATUS=1
 fi
 
-# screenrecord finalizes its MP4 index only after SIGINT and process exit. Pull
-# the file after both device- and host-side processes settle so review never
-# receives a truncated video that happened to be non-empty.
-adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
+# A second SIGINT can interrupt screenrecord while it writes the MP4 index.
+# Signal each captured encoder PID once, then only observe it until exit.
+for SCREENRECORD_PID in $ASSISTANT_SCREENRECORD_PIDS; do
+  if ! adb shell kill -2 "$SCREENRECORD_PID" >/dev/null 2>&1; then
+    echo "assistant verification screenrecord PID $SCREENRECORD_PID rejected SIGINT" >&2
+    CAPTURE_STATUS=1
+  fi
+done
 RECORDER_EXITED=0
 for _ in {1..30}; do
   if ! adb shell pidof screenrecord >/dev/null; then
     RECORDER_EXITED=1
     break
   fi
-  adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
   sleep 0.5
 done
 if [[ "$RECORDER_EXITED" -ne 1 ]]; then

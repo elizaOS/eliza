@@ -69,7 +69,6 @@ async function waitForDeviceScreenRecordExit(adb, serial, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (deviceScreenRecordPids(adb, serial).length === 0) return;
-    signalDeviceScreenRecord(adb, serial);
     await delay(500);
   }
   throw new Error(

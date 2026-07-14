@@ -179,9 +179,14 @@ describe("Android emulator workflow shell contract", () => {
     expect(nativePluginCi).toContain("assistant-verification.mp4");
     expect(nativePluginCi).toContain("assistant-final.png");
     expect(nativePluginCi).toContain("pidof screenrecord");
+    expect(nativePluginCi).toContain('adb shell kill -2 "$SCREENRECORD_PID"');
+    expect(nativePluginCi).not.toContain("pkill -INT screenrecord");
     expect(nativePluginCi).toContain("assertPlayableMp4");
     expect(androidCapture).toContain("waitForDeviceScreenRecordExit");
     expect(androidCapture).toContain('["ftyp", "mdat", "moov"]');
+    expect(assistantVerifier).toContain(
+      '["uiautomator", "dump", "--windows", hierarchyPath]',
+    );
     expect(nativePluginCi).toContain(
       'JSON.parse(fs.readFileSync(process.argv[1], "utf8"))',
     );

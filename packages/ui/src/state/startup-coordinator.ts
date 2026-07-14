@@ -1,17 +1,8 @@
 /**
- * StartupCoordinator — pure state machine for application startup.
- *
- * Replaces the implicit state encoded across `startupPhase + authRequired +
- * firstRunNeedsOptions + startupError` with an explicit state machine.
- * Side effects (API calls, storage reads) are triggered by the consumer
- * based on state transitions, not embedded in the machine itself.
- *
- * Design principles:
- * - States are explicit and exhaustive — no boolean flag combinations
- * - Transitions are pure functions: `(state, event) => state`
- * - Side effects live outside the machine (in the useEffect that drives it)
- * - Platform policy is injected, not hardcoded
- * - Same machine for desktop, web, and mobile — only policy differs
+ * Pure startup state machine shared by the web, desktop, and mobile shells.
+ * Consumers own API and storage effects and inject platform policy; this
+ * reducer preserves explicit phases and runtime targets so retry, recovery,
+ * onboarding completion, and agent replacement cannot leave stale boot state.
  */
 
 import type { StartupErrorReason } from "./types";
@@ -143,6 +134,21 @@ export function startupReducer(
   if (event.type === "RESET") {
     return INITIAL_STARTUP_STATE;
   }
+  if (event.type === "RETRY") {
+    // Retrying after a connect must restore the just-persisted active server,
+    // even when the old target was already starting or the shell was ready.
+    return { phase: "restoring-session" };
+  }
+  if (event.type === "SWITCH_AGENT") {
+    // Connect intents can replace the target while onboarding, recovery, or
+    // runtime startup owns the screen. Re-entering backend polling is the one
+    // transition that discards the stale target in every one of those phases.
+    return {
+      phase: "polling-backend",
+      target: event.target,
+      attempts: 0,
+    };
+  }
 
   switch (state.phase) {
     case "restoring-session":
@@ -240,8 +246,6 @@ export function startupReducer(
       switch (event.type) {
         case "PAIRING_SUCCESS":
           return { phase: "restoring-session" };
-        case "RETRY":
-          return { phase: "restoring-session" };
         default:
           return state;
       }
@@ -256,8 +260,6 @@ export function startupReducer(
             attempts: 0,
             target: state.target ?? "embedded-local",
           };
-        case "RETRY":
-          return { phase: "restoring-session" };
         default:
           return state;
       }
@@ -299,17 +301,7 @@ export function startupReducer(
       }
 
     case "ready":
-      switch (event.type) {
-        case "SWITCH_AGENT":
-          // Switch to a different agent profile — re-enter polling
-          return {
-            phase: "polling-backend",
-            target: event.target,
-            attempts: 0,
-          };
-        default:
-          return state;
-      }
+      return state;
 
     case "error":
       switch (event.type) {
@@ -328,8 +320,6 @@ export function startupReducer(
           return { phase: "first-run-required", serverReachable: false };
         case "AGENT_RUNNING":
           return { phase: "hydrating" };
-        case "RETRY":
-          return { phase: "restoring-session" };
         default:
           return state;
       }
