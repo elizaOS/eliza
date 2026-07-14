@@ -481,17 +481,31 @@ export type WalletRiskSummary = {
 
 export type WalletTransactionRiskSummary = {
   assessmentType: "wallet_context";
+
   rawScore: number;
+
   maxScore: 100;
+
   level: "low" | "medium" | "high";
+
   displayScore: string;
+
   maxDisplayScore: 10;
+
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  confidence: "low" | "medium" | "high";
+
   recommendation:
     | "allow"
     | "review"
     | "investigate"
     | "high_risk";
+
   reasons: string[];
+
   limitations: string[];
 };
 
