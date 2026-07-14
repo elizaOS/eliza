@@ -1076,11 +1076,13 @@ export class PackagedDesktopHarness {
         return response.result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        // The popover window may not exist yet (right after toggle) or its eval
-        // channel may not be wired for a beat — retry on both 500 and 503.
+        // The popover window may not exist yet (right after toggle), its eval
+        // channel may not be wired for a beat (500/503), or a briefly-throttled
+        // popover webview may not answer in time — retry on all three.
         if (
           !message.includes("/tray/popover/eval failed (500)") &&
-          !message.includes("/tray/popover/eval failed (503)")
+          !message.includes("/tray/popover/eval failed (503)") &&
+          !message.includes("timed out after")
         ) {
           throw error;
         }

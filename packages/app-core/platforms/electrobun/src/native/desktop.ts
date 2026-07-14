@@ -2439,6 +2439,11 @@ X-GNOME-Autostart-enabled=true
     // Dismiss on blur (click outside) — a resting tray flyout, unlike the pill.
     // Deferred so a tray-icon re-click can cancel it and toggle closed instead.
     win.on("blur", () => {
+      // Under the desktop test bridge the popover has no window server to hold
+      // focus, so it would blur-hide instantly — and a hidden webview throttles,
+      // making the popover eval channel flaky. Keep it open while the bridge
+      // drives it (the harness toggles it closed explicitly).
+      if (process.env.ELIZA_DESKTOP_TEST_BRIDGE_URL) return;
       if (!this.trayPopoverVisible) return;
       if (this.trayPopoverBlurHideTimer) return;
       this.trayPopoverBlurHideTimer = setTimeout(() => {
