@@ -17,7 +17,7 @@ can verify with `gh attestation verify <iso> --owner elizaOS`.
 |---|---|---|
 | `build-linux-iso.yml` | Build amd64/arm64/riscv64 ISO + SHA256SUMS + SBOM + SLSA attestation | 🔴 Failing every night for 8+ days. Same root cause across all 3 archs. |
 | `elizaos-os-full-release.yml` | Tag-triggered release manifest validation + cross-artifact SHA256SUMS + SLSA over SHA256SUMS | 🔴 Recorded `startup_failure`; coordinator repair is tracked in [#16279](https://github.com/elizaOS/eliza/issues/16279) |
-| `update-os-release-manifest.yml` | Manual checksum recovery from an existing release into a reviewable PR | 🟡 Fail-closed recovery contract is present; no automatic trigger and no direct protected-branch push |
+| `update-os-release-manifest.yml` | Manual checksum recovery from an exact existing release-asset inventory into an evidenced draft PR | 🟡 Fail-closed recovery contract is present; no automatic trigger and no direct protected-branch push |
 | `elizaos-os-release.yml` | Earlier release pipeline | 🟡 Status not audited |
 | `publish-apt-repo.yml` | GPG-signed Debian APT repo (`DEBIAN_GPG_PRIVATE_KEY` secret) | 🟡 Likely works when secret is configured; not run recently |
 | `supply-chain.yaml` | SBOM (SPDX 2.3) + Grype vulnerability scan, weekly Mon 06:00 UTC | ✅ Works |
@@ -118,8 +118,11 @@ green.
    `elizaos-os-full-release` (which expects them in `_artifacts/`).
    Until that automatic path is repaired, use
    `update-os-release-manifest.yml` only as a manual recovery boundary: pin the
-   current `develop` SHA and release-tag SHA, review its generated PR, and never
-   treat the recovery workflow as a release coordinator.
+   current `develop` SHA and release-tag SHA. The workflow snapshots stable
+   asset IDs, names, sizes, and available GitHub digests, downloads by asset ID,
+   rejects pre/post inventory drift or any extra/replaced byte set, and opens an
+   evidence-complete draft PR. Review that exact-head PR; never treat recovery
+   as a release coordinator.
 
 ### Phase 3 — Verify end-user verification path
 

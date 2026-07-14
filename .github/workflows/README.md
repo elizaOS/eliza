@@ -17,7 +17,7 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `release.yaml` | Beta tag, release created, manual | NPM publishing; transactional repair is tracked in [#16277](https://github.com/elizaOS/eliza/issues/16277) |
 | `release-orchestrator.yml` | Release published, reusable, manual | Cross-platform distribution; sole-coordinator repair is tracked in [#16279](https://github.com/elizaOS/eliza/issues/16279) |
 | `elizaos-os-full-release.yml` | Release created, manual | Configured automatic OS artifact/manifest path; currently startup-invalid |
-| `update-os-release-manifest.yml` | Manual only | SHA-bound OS manifest recovery through a pull request |
+| `update-os-release-manifest.yml` | Manual only | SHA- and exact-asset-bound OS manifest recovery through a draft pull request |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
@@ -88,10 +88,15 @@ reusable-workflow permissions and end-to-end repair remain in #16279.
 This manual-only workflow preserves the separate recovery operation needed when
 release assets already exist. Operators must provide the current full
 `origin/develop` SHA and the release tag's full commit SHA. The workflow refuses
-stale or mismatched identities, downloads the exact release asset set,
-regenerates and verifies every publishable checksum, and opens a dedicated pull
-request. It has no `release`, `push`, or `workflow_call` trigger and never pushes
-to `develop` directly.
+stale or mismatched identities, captures every stable asset database/node ID,
+filename, size, and available GitHub SHA-256, then downloads each asset by its
+captured database ID. It rejects missing or extra files, size/digest mismatches,
+asset replacements, and any
+pre/post API inventory drift before regenerating publishable checksums. The only
+output is a dedicated draft pull request containing all seven evidence rows and
+the exact base, tag, asset, downloaded-byte, and workflow-log receipts. It has no
+`release`, `push`, or `workflow_call` trigger and never pushes to `develop`
+directly.
 
 ## Test Workflows
 
