@@ -4,6 +4,9 @@ import {
   WalletFundingSummary,
   WalletRelationshipSummary,
 } from "../types";
+import {
+  createConfidenceResponse,
+} from "../confidence/framework";
 
 export function analyzeWalletCustodyProfile(
   activity: WalletActivitySummary,
@@ -22,14 +25,15 @@ export function analyzeWalletCustodyProfile(
   let confidence: WalletCustodyProfile["confidence"] =
     "medium";
 
-  // Hosted wallet indicators
   if (
     funding.fundingSourceType === "exchange" ||
     relationships.relationships.some(
-      (r) => r.relationship === "exchange",
+      (relationship) =>
+        relationship.relationship === "exchange",
     )
   ) {
     custodyType = "likely_hosted";
+
     reasons.push(
       "Exchange-related funding or relationship detected.",
     );
@@ -39,41 +43,113 @@ export function analyzeWalletCustodyProfile(
     );
   }
 
-  // Temperature indicators
   if (
     activity.activityLevel === "none" ||
     activity.activityLevel === "low"
   ) {
     temperatureProfile = "likely_cold";
+
     reasons.push(
       "Very limited recent activity detected.",
     );
   } else if (activity.activityLevel === "medium") {
     temperatureProfile = "likely_warm";
+
     reasons.push(
       "Moderate recent activity detected.",
     );
   } else {
     temperatureProfile = "likely_hot";
+
     reasons.push(
       "Frequent recent activity detected.",
     );
   }
 
-  if (
-    funding.fundingSourceType === "unknown"
-  ) {
+  if (funding.fundingSourceType === "unknown") {
     confidence = "low";
+
     limitations.push(
       "Funding source could not be confidently identified.",
     );
   }
 
+  if (relationships.relationshipCount === 0) {
+    limitations.push(
+      "No direct wallet relationships were identified to support the custody classification.",
+    );
+  }
+
+  const confidenceAnalysis = createConfidenceResponse([
+    {
+      condition:
+        typeof activity.recentTransactionCount === "number",
+      score: 30,
+      reason:
+        "Wallet activity metrics were available.",
+    },
+    {
+      condition:
+        funding.evidenceConfidence === "high",
+      score: 30,
+      reason:
+        "Funding evidence confidence is high.",
+    },
+    {
+      condition:
+        funding.evidenceConfidence === "medium",
+      score: 20,
+      reason:
+        "Funding evidence confidence is medium.",
+    },
+    {
+      condition:
+        relationships.evidenceConfidence === "high",
+      score: 25,
+      reason:
+        "Relationship evidence confidence is high.",
+    },
+    {
+      condition:
+        relationships.evidenceConfidence === "medium",
+      score: 15,
+      reason:
+        "Relationship evidence confidence is medium.",
+    },
+    {
+      condition:
+        relationships.relationshipCount > 0,
+      score: 15,
+      reason:
+        "At least one direct wallet relationship was identified.",
+    },
+  ]);
+
+  if (confidenceAnalysis.level === "low") {
+    confidence = "low";
+  } else if (
+    funding.fundingSourceType !== "unknown" &&
+    confidenceAnalysis.level === "high"
+  ) {
+    confidence = "high";
+  } else if (confidence !== "low") {
+    confidence = "medium";
+  }
+
   return {
     custodyType,
+
     temperatureProfile,
+
+    evidenceConfidence:
+      confidenceAnalysis.level,
+
+    confidenceAnalysis,
+
     confidence,
+
     reasons,
+
     limitations,
   };
 }
