@@ -267,3 +267,14 @@ description = "eliza-1 smoke SFT corpus (synthetic training rows, not credential
 paths = [
   '''(^|/)packages/training/data/final-eliza1-smoke/.*\.jsonl$''',
 ]
+
+# Debian packaging prepare-lock owner record (.runtime.prepare.lock/owner.json):
+# a per-build random lock-ownership nonce ({token,pid,hostname,sourceRoot}) that
+# identifies which process holds the runtime-prepare lock — never a credential.
+# One was accidentally committed mid-branch (70c197dbd, removed at head); the
+# fingerprint stays allowlisted because gitleaks scans the full PR commit range.
+[[allowlists]]
+description = "debian runtime-prepare lock owner nonce (not a credential)"
+paths = [
+  '''(^|/)packages/app-core/packaging/debian/\.runtime\.prepare\.lock/owner\.json$''',
+]

@@ -1589,3 +1589,4 @@ packages/app-core/packaging/debian/runtime/
 packages/app-core/packaging/debian/node-runtime/
 packages/app-core/packaging/snap/runtime/
 packages/app-core/packaging/*/.runtime.prepare*
+packages/app-core/packaging/debian/.runtime.prepare.lock/
