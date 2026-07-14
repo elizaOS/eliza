@@ -145,7 +145,6 @@ jobs:
           --destination-root packages/app-core/packaging/snap/runtime
           --entry @elizaos/agent
           --stub @elizaos/plugin-vision
-          --stub @elizaos/ui
           --stub @elizaos/plugin-wallet
           --stub @elizaos/plugin-whatsapp
           --target-os linux

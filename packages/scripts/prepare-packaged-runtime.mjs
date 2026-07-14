@@ -66,6 +66,7 @@ const REVIEWED_WORKSPACE_LIFECYCLE_SCRIPTS = new Map([
   ["@elizaos/plugin-computeruse", new Set(["postinstall"])],
 ]);
 const REVIEWED_TRUSTED_DEPENDENCY_SCRIPT_VERSIONS = new Set([
+  "bigint-buffer@1.1.5",
   "bufferutil@4.1.0",
   "esbuild@0.28.1",
   "utf-8-validate@5.0.10",
@@ -124,9 +125,21 @@ function reviewedBlockedDependencyScriptVersions(targetCpu) {
     "@discordjs/opus@0.10.0",
     "@parcel/watcher@2.5.6",
     `@smithers-orchestrator/jj-linux-${targetCpu}@0.26.1`,
+    "@tsparticles/engine@3.9.1",
+    "cpu-features@0.0.10",
     "msgpackr-extract@3.0.4",
+    "ssh2@1.17.0",
     "youtube-dl-exec@3.1.8",
   ]);
+}
+
+function isProhibitedRuntimeDependencyName(name) {
+  return (
+    PROHIBITED_RUNTIME_DEPENDENCY_NAMES.has(name) ||
+    PROHIBITED_RUNTIME_DEPENDENCY_PREFIXES.some((prefix) =>
+      name.startsWith(prefix),
+    )
+  );
 }
 
 function assertAllowedRuntimePackageIdentity(installName, manifestName) {
@@ -1460,10 +1473,11 @@ function validateNpmToolchain(rootManifest, npmCommand, nodeCommand) {
 }
 
 // Bun's frozen install materializes the dependency graph of every workspace
-// reachable from the filtered set — including stubbed workspaces, whose trees
-// are exactly what must not ship. After install, keep only packages reachable
-// from non-stub closure members and delete the rest (plus any resulting
-// dangling .bin launchers) before the audits certify the runtime contents.
+// reachable from the filtered set — including stubbed workspaces and
+// license-prohibited third-party packages, which must not ship. After install,
+// keep only packages reachable from non-stub closure members through
+// non-prohibited edges and delete the rest (plus any resulting dangling .bin
+// launchers) before the audits certify the runtime contents.
 function pruneStubOnlyRuntimeDependencies(root, sourceRoot, closure) {
   const canonicalRoot = realpathSync(resolve(root));
 
@@ -1506,6 +1520,9 @@ function pruneStubOnlyRuntimeDependencies(root, sourceRoot, closure) {
       }
     }
     for (const dependencyName of dependencyNames) {
+      // License-prohibited packages are removed wholesale: the edge into them
+      // is treated as absent so their exclusive subtrees sweep away with them.
+      if (isProhibitedRuntimeDependencyName(dependencyName)) continue;
       const resolved = resolveDependencyFrom(packageRoot, dependencyName);
       if (!resolved) continue;
       const canonical = realpathSync(resolved);
