@@ -41,4 +41,38 @@ describe("CacheClient (MOCK_REDIS=1)", () => {
     await cache.del("user:1");
     expect(await cache.get("user:1")).toBeNull();
   });
+
+  test("explicit outcomes distinguish hit, miss, invalid write, and unavailable backend", async () => {
+    const { CacheClient } = await import("../client");
+    const cache = new CacheClient();
+
+    expect(await cache.getWithOutcome("iac:auth:bounded:v1")).toEqual({
+      kind: "miss",
+      backend: "memory",
+    });
+    expect(await cache.setWithOutcome("iac:auth:bounded:v1", { ok: true }, 60)).toEqual({
+      kind: "written",
+      backend: "memory",
+    });
+    expect(await cache.getWithOutcome("iac:auth:bounded:v1")).toEqual({
+      kind: "hit",
+      value: { ok: true },
+      backend: "memory",
+    });
+    expect(await cache.setWithOutcome("iac:auth:invalid:v1", null, 60)).toEqual({
+      kind: "invalid",
+      backend: "memory",
+    });
+
+    process.env.CACHE_ENABLED = "false";
+    try {
+      const disabled = new CacheClient();
+      expect(await disabled.getWithOutcome("iac:auth:bounded:v1")).toEqual({
+        kind: "unavailable",
+        backend: "none",
+      });
+    } finally {
+      process.env.CACHE_ENABLED = "true";
+    }
+  });
 });

@@ -7,10 +7,12 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import type { InferenceAuthTelemetry } from "../services/inference-auth-context";
 
 export const ELIZA_TRACE_ID_HEADER = "X-Eliza-Trace-Id";
 export const ELIZA_PREFORWARD_HEADER = "X-Eliza-Preforward-Ms";
 export const ELIZA_TELEMETRY_HEADER = "X-Eliza-Telemetry";
+export const ELIZA_AUTH_TRACE_HEADER = "X-Eliza-Auth-Trace";
 
 const OPAQUE_TRACE_ID =
   /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
@@ -172,6 +174,54 @@ export function withGatewayPreforwardTelemetry(
   });
 }
 
+function inferenceAuthTimingMetrics(telemetry: InferenceAuthTelemetry): ServerTimingMetric[] {
+  const metrics: ServerTimingMetric[] = [
+    { name: "auth_extract", durationMs: telemetry.timings.extractMs },
+    { name: "auth_resolve", durationMs: telemetry.timings.totalMs },
+  ];
+  const optional = [
+    ["auth_cache_available", telemetry.timings.cacheAvailabilityMs],
+    ["auth_cache_read", telemetry.timings.cacheReadMs],
+    ["auth_key_lookup", telemetry.timings.keyLookupMs],
+    ["auth_user_org", telemetry.timings.userOrgLookupMs],
+    ["auth_moderation", telemetry.timings.moderationMs],
+    ["auth_cache_write", telemetry.timings.cacheWriteMs],
+  ] as const;
+  for (const [name, durationMs] of optional) {
+    if (durationMs !== null) metrics.push({ name, durationMs });
+  }
+  return metrics;
+}
+
+/** Add one bounded auth decision record plus its correlated sub-hop timings. */
+export function withInferenceAuthTelemetry(
+  response: Response,
+  traceId: string,
+  telemetry: InferenceAuthTelemetry,
+): Response {
+  const headers = new Headers(response.headers);
+  headers.set(
+    ELIZA_AUTH_TRACE_HEADER,
+    [
+      "v=1",
+      `credential=${telemetry.credentialSource}`,
+      `probe=${telemetry.controlledProbe}`,
+      `available=${telemetry.cacheAvailability}`,
+      `backend=${telemetry.cacheBackend}`,
+      `read=${telemetry.cacheRead}`,
+      `authoritative=${telemetry.authoritative}`,
+      `write=${telemetry.cacheWrite}`,
+      `result=${telemetry.result}`,
+    ].join(";"),
+  );
+  setHttpTelemetryHeaders(headers, traceId, inferenceAuthTimingMetrics(telemetry));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 /**
  * Copy only non-sensitive telemetry headers while one compatibility route
  * transforms a response body into another wire format.
@@ -180,6 +230,7 @@ export function copyHttpTelemetryHeaders(from: Headers, to: Headers): void {
   for (const name of [
     ELIZA_TRACE_ID_HEADER,
     ELIZA_PREFORWARD_HEADER,
+    ELIZA_AUTH_TRACE_HEADER,
     "Server-Timing",
     "Timing-Allow-Origin",
     "X-Eliza-Inference-Path",

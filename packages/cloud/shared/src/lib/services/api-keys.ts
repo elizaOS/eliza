@@ -1,7 +1,7 @@
 /**
  * API key management service for generating, validating, and managing API keys.
  *
- * Includes Redis caching for validation to reduce database load on high-traffic APIs.
+ * Includes shared-cache validation to reduce database load on high-traffic APIs.
  */
 
 import crypto from "crypto";
@@ -75,6 +75,11 @@ export interface GeneratedApiKey {
   prefix: string;
 }
 
+export interface ApiKeyValidationOptions {
+  /** Reserved for authenticated diagnostics that must measure the database path. */
+  bypassCache?: boolean;
+}
+
 /**
  * Service for managing API keys including generation, validation, and CRUD operations.
  */
@@ -93,24 +98,26 @@ export class ApiKeysService {
    * Uses a 10-minute cache for valid keys and a 60-second negative cache for
    * unknown keys to reduce database load while maintaining security.
    */
-  async validateApiKey(key: string): Promise<ApiKey | null> {
+  async validateApiKey(key: string, options: ApiKeyValidationOptions = {}): Promise<ApiKey | null> {
     const hash = crypto.createHash("sha256").update(key).digest("hex");
     const cacheKey = CacheKeys.apiKey.validation(hash.substring(0, 16));
 
-    const cached = await cache.get<unknown>(cacheKey);
-    if (cached) {
-      if (isNegativeApiKeySentinel(cached)) {
-        logger.debug("[ApiKeys] Cache hit for negative API key validation");
-        return null;
-      }
-      if (isCacheableApiKey(cached)) {
-        logger.debug("[ApiKeys] Cache hit for API key validation");
-        return cached;
-      }
-      await cache.del(cacheKey);
-      logger.warn("[ApiKeys] Dropped invalid API key validation cache entry", {
-        cacheKey,
+    if (!options.bypassCache) {
+      const outcome = await cache.getWithOutcome<unknown>(cacheKey, {
+        keyClass: "api_key_validation",
       });
+      if (outcome.kind === "hit") {
+        if (isNegativeApiKeySentinel(outcome.value)) {
+          logger.debug("[ApiKeys] Cache hit for negative API key validation");
+          return null;
+        }
+        if (isCacheableApiKey(outcome.value)) {
+          logger.debug("[ApiKeys] Cache hit for API key validation");
+          return outcome.value;
+        }
+        await cache.del(cacheKey, { keyClass: "api_key_validation" });
+        logger.warn("[ApiKeys] Dropped invalid API key validation cache entry");
+      }
     }
 
     const replicaApiKey = await apiKeysRepository.findActiveByHash(hash);
@@ -120,17 +127,30 @@ export class ApiKeysService {
     const apiKey = replicaApiKey ?? primaryApiKey;
 
     if (apiKey) {
-      await cache.set(cacheKey, apiKey, CacheTTL.apiKey.validation);
-      logger.debug("[ApiKeys] Cached valid API key", {
-        keyPrefix: apiKey.key_prefix,
-      });
+      if (!options.bypassCache) {
+        await cache.setWithOutcome(cacheKey, apiKey, CacheTTL.apiKey.validation, {
+          keyClass: "api_key_validation",
+        });
+        logger.debug("[ApiKeys] Cached valid API key");
+      } else {
+        logger.debug("[ApiKeys] Validated API key from authoritative storage");
+      }
       return apiKey;
     }
 
     // Negative cache: prevent a flood of bad keys from hammering the DB.
     // Short TTL so a freshly-created key isn't blocked by a stale negative entry
     // from a recent typo'd attempt.
-    await cache.set(cacheKey, API_KEY_NEGATIVE_SENTINEL, API_KEY_NEGATIVE_TTL_SECONDS);
+    if (!options.bypassCache) {
+      await cache.setWithOutcome(
+        cacheKey,
+        API_KEY_NEGATIVE_SENTINEL,
+        API_KEY_NEGATIVE_TTL_SECONDS,
+        {
+          keyClass: "api_key_validation",
+        },
+      );
+    }
     return null;
   }
 
@@ -181,7 +201,9 @@ export class ApiKeysService {
     // deactivate paths funnel through here: the per-key validation cache and the
     // #9899 inference hot-path auth-context entry (keyed by full hash).
     const [validationDeleted, inferenceDeleted] = await Promise.all([
-      cache.delConfirmed(CacheKeys.apiKey.validation(shortHash)),
+      cache.delConfirmed(CacheKeys.apiKey.validation(shortHash), {
+        keyClass: "api_key_validation",
+      }),
       invalidateInferenceAuthContextByKeyHash(keyHash),
     ]);
 
@@ -191,7 +213,6 @@ export class ApiKeysService {
         inferenceDeleted ? null : "inference-auth-context",
       ].filter((entry): entry is string => entry !== null);
       logger.error("[ApiKeys] API key cache invalidation not confirmed", {
-        shortHash,
         unconfirmed,
       });
       throw new Error(

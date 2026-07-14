@@ -118,6 +118,7 @@ describe("corsMiddleware — first-party origins (credentialed)", () => {
     expect(exposed).toContain("server-timing");
     expect(exposed).toContain("x-eliza-trace-id");
     expect(exposed).toContain("x-eliza-preforward-ms");
+    expect(exposed).toContain("x-eliza-auth-trace");
   });
 
   test("outer telemetry survives the Hono error and CORS unwind path", async () => {

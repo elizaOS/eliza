@@ -299,24 +299,117 @@ export async function requireRole(
  * User + organization active gates applied once an API key has resolved to a
  * user (same error types/messages, same ordering as the inline checks).
  */
-function assertApiKeyUserActive(user: UserWithOrganization | undefined): UserWithOrganization {
-  if (!user) throw new AuthenticationError("User associated with API key not found");
-  if (!user.is_active) throw new ForbiddenError("User account is inactive");
-  if (!user.organization?.is_active) throw new ForbiddenError("Organization is inactive");
+function rejectApiKeyAuth(
+  options: ApiKeyAuthOptions,
+  error: AuthenticationError | ForbiddenError,
+): never {
+  options.rejected?.();
+  throw error;
+}
+
+function assertApiKeyUserActive(
+  user: UserWithOrganization | undefined,
+  options: ApiKeyAuthOptions = {},
+): UserWithOrganization {
+  if (!user) {
+    rejectApiKeyAuth(options, new AuthenticationError("User associated with API key not found"));
+  }
+  if (!user.is_active) {
+    rejectApiKeyAuth(options, new ForbiddenError("User account is inactive"));
+  }
+  if (!user.organization?.is_active) {
+    rejectApiKeyAuth(options, new ForbiddenError("Organization is inactive"));
+  }
   return user;
+}
+
+/** Per-hop timings emitted by the inference resolver without exposing identities. */
+export interface ApiKeyAuthTimingObserver {
+  keyLookup(durationMs: number): void;
+  userOrgLookup(durationMs: number): void;
+}
+
+export interface ApiKeyAuthOptions {
+  /** Authenticated staging probes use this to exercise the authoritative DB path. */
+  bypassCache?: boolean;
+  timing?: ApiKeyAuthTimingObserver;
+  /** Marks a typed credential/account rejection without intercepting the throw. */
+  rejected?(): void;
 }
 
 /**
  * Validate an API key and return the associated user with full org checks.
  */
-async function validateAndGetApiKeyUser(apiKey: ApiKey): Promise<{ user: UserWithOrganization }> {
-  if (!apiKey.is_active) throw new ForbiddenError("API key is inactive");
+async function validateAndGetApiKeyUser(
+  apiKey: ApiKey,
+  options: ApiKeyAuthOptions = {},
+): Promise<{ user: UserWithOrganization }> {
+  if (!apiKey.is_active) {
+    rejectApiKeyAuth(options, new ForbiddenError("API key is inactive"));
+  }
   if (apiKey.expires_at && new Date(apiKey.expires_at) < new Date()) {
-    throw new AuthenticationError("API key has expired");
+    rejectApiKeyAuth(options, new AuthenticationError("API key has expired"));
   }
 
-  const user = await usersService.getWithOrganization(apiKey.user_id);
-  return { user: assertApiKeyUserActive(user) };
+  const startedAt = performance.now();
+  let user: UserWithOrganization | undefined;
+  try {
+    user = await usersService.getWithOrganization(apiKey.user_id, {
+      bypassCache: options.bypassCache,
+    });
+  } finally {
+    options.timing?.userOrgLookup(performance.now() - startedAt);
+  }
+  return { user: assertApiKeyUserActive(user, options) };
+}
+
+/**
+ * Resolve an API key into the active user and organization used by inference.
+ * Keeping the checks here gives the observable cold path the same exception
+ * classes, messages, ordering, and usage accounting as general API auth.
+ */
+export async function requireApiKeyWithOrg(
+  rawKey: string,
+  options: ApiKeyAuthOptions = {},
+): Promise<
+  AuthResult & {
+    apiKey: ApiKey;
+    user: UserWithOrganization & {
+      organization_id: string;
+      organization: Organization;
+    };
+  }
+> {
+  const startedAt = performance.now();
+  let apiKey: ApiKey | null;
+  try {
+    apiKey = await apiKeysService.validateApiKey(rawKey, {
+      bypassCache: options.bypassCache,
+    });
+  } finally {
+    options.timing?.keyLookup(performance.now() - startedAt);
+  }
+  if (!apiKey) {
+    rejectApiKeyAuth(options, new AuthenticationError("Invalid or expired API key"));
+  }
+
+  const { user } = await validateAndGetApiKeyUser(apiKey, options);
+  if (!user.organization_id || !user.organization) {
+    rejectApiKeyAuth(
+      options,
+      new ForbiddenError("This feature requires a full account. Please sign up to continue."),
+    );
+  }
+
+  void apiKeysService.incrementUsageDebounced(apiKey.id);
+  return {
+    user: user as UserWithOrganization & {
+      organization_id: string;
+      organization: Organization;
+    },
+    apiKey,
+    authMethod: "api_key",
+  };
 }
 
 /**

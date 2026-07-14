@@ -19,7 +19,12 @@
  */
 
 import { createHash } from "node:crypto";
-import { cache } from "../cache/client";
+import {
+  type CacheBackendKind,
+  type CacheReadOutcome,
+  type CacheWriteOutcome,
+  cache,
+} from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 
@@ -39,6 +44,14 @@ export interface InferenceAuthContext {
   /** Full sha256(presented key) - equals the stored api_keys.key_hash. */
   keyHash: string;
 }
+
+/** Cache lookup states retained by the auth trace instead of collapsed to null. */
+export type InferenceAuthCacheReadOutcome =
+  | { kind: "hit"; ctx: InferenceAuthContext; backend: CacheBackendKind }
+  | {
+      kind: "miss" | "invalid" | "unavailable" | "error";
+      backend: CacheBackendKind;
+    };
 
 /** Org credit-balance snapshot used ONLY as the optimistic-billing fast-path gate hint. */
 export interface OrgBalanceHint {
@@ -63,6 +76,8 @@ export function isInferenceAuthContext(value: unknown): value is InferenceAuthCo
   return (
     v.v === INFERENCE_AUTH_CONTEXT_VERSION &&
     typeof v.cachedAt === "number" &&
+    Number.isFinite(v.cachedAt) &&
+    v.cachedAt > 0 &&
     typeof v.userId === "string" &&
     v.userId.length > 0 &&
     typeof v.orgId === "string" &&
@@ -70,8 +85,14 @@ export function isInferenceAuthContext(value: unknown): value is InferenceAuthCo
     typeof v.apiKeyId === "string" &&
     v.apiKeyId.length > 0 &&
     typeof v.keyHash === "string" &&
-    v.keyHash.length > 0
+    /^[0-9a-f]{64}$/.test(v.keyHash)
   );
+}
+
+function mapCacheReadOutcome(
+  outcome: Exclude<CacheReadOutcome<unknown>, { kind: "hit" }>,
+): InferenceAuthCacheReadOutcome {
+  return { kind: outcome.kind, backend: outcome.backend };
 }
 
 export function isOrgBalanceHint(value: unknown): value is OrgBalanceHint {
@@ -95,23 +116,41 @@ export function isOrgBalanceHint(value: unknown): value is OrgBalanceHint {
 export async function readInferenceAuthContext(
   keyHash: string,
 ): Promise<InferenceAuthContext | null> {
-  const key = CacheKeys.inference.authContext(keyHash);
-  const cached = await cache.get<unknown>(key);
-  if (cached === null) return null;
-  if (!isInferenceAuthContext(cached)) {
-    logger.warn("[InferenceAuthCache] Dropping malformed IAC entry", { key });
-    await cache.del(key);
-    return null;
+  const outcome = await readInferenceAuthContextWithOutcome(keyHash);
+  return outcome.kind === "hit" ? outcome.ctx : null;
+}
+
+/** Read an IAC without hiding whether KV missed, failed, or held malformed data. */
+export async function readInferenceAuthContextWithOutcome(
+  keyHash: string,
+  probeDiscriminator?: string,
+): Promise<InferenceAuthCacheReadOutcome> {
+  const canonicalKey = CacheKeys.inference.authContext(keyHash);
+  // Authenticated latency probes read a unique, never-written variant so each
+  // controlled sample exercises a real KV miss. The authorized result is still
+  // written only to the canonical, revocation-invalidated key below.
+  const key = probeDiscriminator ? `${canonicalKey}:probe:${probeDiscriminator}` : canonicalKey;
+  const outcome = await cache.getWithOutcome<unknown>(key, {
+    keyClass: "inference_auth",
+  });
+  if (outcome.kind !== "hit") return mapCacheReadOutcome(outcome);
+  if (!isInferenceAuthContext(outcome.value) || outcome.value.keyHash !== keyHash) {
+    logger.warn("[InferenceAuthCache] Dropping malformed IAC entry");
+    await cache.del(key, { keyClass: "inference_auth" });
+    return { kind: "invalid", backend: outcome.backend };
   }
-  return cached;
+  return { kind: "hit", ctx: outcome.value, backend: outcome.backend };
 }
 
 /** Write a fully-authorized IAC entry. Callers MUST only pass authorized identities. */
-export async function writeInferenceAuthContext(ctx: InferenceAuthContext): Promise<void> {
-  await cache.set(
+export async function writeInferenceAuthContext(
+  ctx: InferenceAuthContext,
+): Promise<CacheWriteOutcome> {
+  return await cache.setWithOutcome(
     CacheKeys.inference.authContext(ctx.keyHash),
     ctx,
     CacheTTL.inference.authContext,
+    { keyClass: "inference_auth" },
   );
 }
 
@@ -130,7 +169,9 @@ export async function writeInferenceAuthContext(ctx: InferenceAuthContext): Prom
  *   (#13417).
  */
 export async function invalidateInferenceAuthContextByKeyHash(keyHash: string): Promise<boolean> {
-  return await cache.delConfirmed(CacheKeys.inference.authContext(keyHash));
+  return await cache.delConfirmed(CacheKeys.inference.authContext(keyHash), {
+    keyClass: "inference_auth",
+  });
 }
 
 /**
@@ -154,7 +195,11 @@ export async function invalidateInferenceAuthContextsByKeyHashes(
 ): Promise<void> {
   if (keyHashes.length === 0) return;
   const results = await Promise.all(
-    keyHashes.map((h) => cache.delConfirmed(CacheKeys.inference.authContext(h))),
+    keyHashes.map((h) =>
+      cache.delConfirmed(CacheKeys.inference.authContext(h), {
+        keyClass: "inference_auth",
+      }),
+    ),
   );
   const unconfirmed = keyHashes.filter((_h, i) => !results[i]);
   if (unconfirmed.length > 0) {

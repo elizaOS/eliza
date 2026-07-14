@@ -9,10 +9,10 @@
 process.env.MOCK_REDIS = "1";
 process.env.CACHE_ENABLED = "true";
 
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 // --- Controllable seams -----------------------------------------------------
-type AuthImpl = (req: Request) => Promise<{
+type AuthImpl = () => Promise<{
   user: { id: string; organization_id: string };
   apiKey?: { id: string } | null;
 }>;
@@ -20,13 +20,32 @@ type AuthImpl = (req: Request) => Promise<{
 let authImpl: AuthImpl;
 let shouldBlock: (userId: string) => Promise<boolean>;
 const incrementUsageCalls: string[] = [];
+const bypassCacheCalls: boolean[] = [];
+const moderationBypassCacheCalls: boolean[] = [];
 
 mock.module("../auth", () => ({
-  requireAuthOrApiKeyWithOrg: (req: Request) => authImpl(req),
+  requireApiKeyWithOrg: async (
+    _rawKey: string,
+    options: {
+      bypassCache?: boolean;
+      timing?: {
+        keyLookup(durationMs: number): void;
+        userOrgLookup(durationMs: number): void;
+      };
+    } = {},
+  ) => {
+    bypassCacheCalls.push(options.bypassCache === true);
+    options.timing?.keyLookup(1);
+    options.timing?.userOrgLookup(2);
+    return await authImpl();
+  },
 }));
 mock.module("./content-moderation", () => ({
   contentModerationService: {
-    shouldBlockUser: (userId: string) => shouldBlock(userId),
+    shouldBlockUser: (userId: string, options: { bypassCache?: boolean } = {}) => {
+      moderationBypassCacheCalls.push(options.bypassCache === true);
+      return shouldBlock(userId);
+    },
   },
 }));
 mock.module("./api-keys", () => ({
@@ -40,6 +59,8 @@ mock.module("./api-keys", () => ({
 const { resolveInferenceAuthContext, extractApiKeyCredential } = await import(
   "./inference-auth-context"
 );
+const { cache } = await import("../cache/client");
+const { CacheKeys } = await import("../cache/keys");
 const {
   hashApiKey,
   readInferenceAuthContext,
@@ -63,6 +84,8 @@ beforeEach(async () => {
   });
   shouldBlock = async () => false;
   incrementUsageCalls.length = 0;
+  bypassCacheCalls.length = 0;
+  moderationBypassCacheCalls.length = 0;
   // Clear any cached entry from a prior test.
   await invalidateInferenceAuthContextByKeyHash(hashApiKey(KEY));
 });
@@ -114,7 +137,13 @@ describe("resolveInferenceAuthContext", () => {
   });
 
   test("miss -> runs authoritative chain, authorizes, and caches", async () => {
-    const res = await resolveInferenceAuthContext(reqWithApiKey());
+    let telemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+    const res = await resolveInferenceAuthContext(reqWithApiKey(), {
+      traceId: "0190f2f1-8b5a-7000-8000-000000000001",
+      onTelemetry: (value) => {
+        telemetry = value;
+      },
+    });
     expect(res.kind).toBe("authorized");
     if (res.kind !== "authorized") throw new Error("unreachable");
     expect(res.source).toBe("origin");
@@ -126,6 +155,16 @@ describe("resolveInferenceAuthContext", () => {
     const cached = await readInferenceAuthContext(hashApiKey(KEY));
     expect(cached).not.toBeNull();
     expect(isInferenceAuthContext(cached)).toBe(true);
+    expect(telemetry?.cacheRead).toBe("miss");
+    expect(telemetry?.authoritative).toBe("authorized");
+    expect(telemetry?.cacheWrite).toBe("written");
+    expect(telemetry?.timings.keyLookupMs).toBe(1);
+    expect(telemetry?.timings.userOrgLookupMs).toBe(2);
+    const serialized = JSON.stringify(telemetry);
+    expect(serialized).not.toContain(KEY);
+    expect(serialized).not.toContain(hashApiKey(KEY));
+    expect(serialized).not.toContain("user-1");
+    expect(serialized).not.toContain("org-1");
   });
 
   test("warm hit -> served from cache, no authoritative chain call", async () => {
@@ -143,11 +182,136 @@ describe("resolveInferenceAuthContext", () => {
     expect(incrementUsageCalls).toContain("key-1"); // usage tracking preserved
   });
 
+  test("authenticated probe bypasses lower caches only after an actual IAC miss", async () => {
+    const warm = await resolveInferenceAuthContext(reqWithApiKey());
+    expect(warm.kind).toBe("authorized");
+    bypassCacheCalls.length = 0;
+    moderationBypassCacheCalls.length = 0;
+    process.env.INFERENCE_AUTH_PROBE_TOKEN = "unit-probe-token";
+    const request = reqWithApiKey();
+    request.headers.set("X-Eliza-Auth-Probe", "unit-probe-token:0123456789abcdef0123456789abcdef");
+
+    let telemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+    const controlled = await resolveInferenceAuthContext(request, {
+      onTelemetry: (value) => {
+        telemetry = value;
+      },
+    });
+    expect(controlled.kind).toBe("authorized");
+    if (controlled.kind === "authorized") expect(controlled.source).toBe("origin");
+    expect(bypassCacheCalls).toEqual([true]);
+    expect(moderationBypassCacheCalls).toEqual([true]);
+    expect(telemetry?.cacheRead).toBe("miss");
+    expect(telemetry?.controlledProbe).toBe("on");
+
+    delete process.env.INFERENCE_AUTH_PROBE_TOKEN;
+  });
+
+  test("oversized probe control is ignored and cannot force the authoritative path", async () => {
+    await resolveInferenceAuthContext(reqWithApiKey());
+    bypassCacheCalls.length = 0;
+    process.env.INFERENCE_AUTH_PROBE_TOKEN = "unit-probe-token";
+    const request = reqWithApiKey();
+    request.headers.set("X-Eliza-Auth-Probe", `unit-probe-token:${"a".repeat(600)}`);
+    try {
+      let telemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+      const result = await resolveInferenceAuthContext(request, {
+        onTelemetry: (value) => {
+          telemetry = value;
+        },
+      });
+      expect(result.kind).toBe("authorized");
+      if (result.kind === "authorized") expect(result.source).toBe("cache");
+      expect(bypassCacheCalls).toEqual([]);
+      expect(telemetry?.controlledProbe).toBe("off");
+    } finally {
+      delete process.env.INFERENCE_AUTH_PROBE_TOKEN;
+    }
+  });
+
+  test("cache outage stays observable and authorizes only through the database path", async () => {
+    const availabilitySpy = spyOn(cache, "isAvailable").mockReturnValue(false);
+    const writeSpy = spyOn(cache, "setWithOutcome").mockResolvedValue({
+      kind: "unavailable",
+      backend: "none",
+    });
+    try {
+      let telemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+      const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+        onTelemetry: (value) => {
+          telemetry = value;
+        },
+      });
+
+      expect(result.kind).toBe("authorized");
+      if (result.kind === "authorized") expect(result.source).toBe("origin");
+      expect(bypassCacheCalls).toEqual([true]);
+      expect(moderationBypassCacheCalls).toEqual([true]);
+      expect(telemetry?.cacheAvailability).toBe("unavailable");
+      expect(telemetry?.cacheRead).toBe("unavailable");
+      expect(telemetry?.cacheWrite).toBe("unavailable");
+      expect(telemetry?.result).toBe("authorized_origin");
+    } finally {
+      availabilitySpy.mockRestore();
+      writeSpy.mockRestore();
+    }
+  });
+
+  test("cache outage never turns an authoritative rejection into a cached identity", async () => {
+    const availabilitySpy = spyOn(cache, "isAvailable").mockReturnValue(false);
+    const writeSpy = spyOn(cache, "setWithOutcome").mockResolvedValue({
+      kind: "unavailable",
+      backend: "none",
+    });
+    authImpl = async () => {
+      throw new Error("Invalid or expired API key");
+    };
+    try {
+      await expect(resolveInferenceAuthContext(reqWithApiKey())).rejects.toThrow(
+        "Invalid or expired API key",
+      );
+      expect(bypassCacheCalls).toEqual([true]);
+      expect(writeSpy).not.toHaveBeenCalled();
+    } finally {
+      availabilitySpy.mockRestore();
+      writeSpy.mockRestore();
+    }
+  });
+
   test("suspended user -> never cached, returns suspended", async () => {
     shouldBlock = async () => true;
     const res = await resolveInferenceAuthContext(reqWithApiKey());
     expect(res.kind).toBe("suspended");
     expect(await readInferenceAuthContext(hashApiKey(KEY))).toBeNull();
+  });
+
+  test("malformed IAC is rejected and replaced only after authoritative auth", async () => {
+    const keyHash = hashApiKey(KEY);
+    await cache.set(
+      CacheKeys.inference.authContext(keyHash),
+      {
+        v: 1,
+        cachedAt: Date.now(),
+        userId: "attacker-controlled-user",
+        orgId: "attacker-controlled-org",
+        apiKeyId: "attacker-controlled-key",
+        keyHash: hashApiKey("different-key"),
+      },
+      60,
+    );
+    let telemetry: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+    const result = await resolveInferenceAuthContext(reqWithApiKey(), {
+      onTelemetry: (value) => {
+        telemetry = value;
+      },
+    });
+
+    expect(result.kind).toBe("authorized");
+    if (result.kind === "authorized") expect(result.source).toBe("origin");
+    expect(bypassCacheCalls).toEqual([true]);
+    expect(moderationBypassCacheCalls).toEqual([true]);
+    expect(telemetry?.cacheRead).toBe("invalid");
+    expect((await readInferenceAuthContext(keyHash))?.userId).toBe("user-1");
   });
 
   test("auth failure propagates (never fail-open)", async () => {
@@ -177,7 +341,7 @@ describe("isInferenceAuthContext shape guard", () => {
         userId: "u",
         orgId: "o",
         apiKeyId: "k",
-        keyHash: "h",
+        keyHash: hashApiKey(KEY),
         cachedAt: 1,
       }),
     ).toBe(false);
@@ -189,7 +353,7 @@ describe("isInferenceAuthContext shape guard", () => {
         userId: "u",
         orgId: "o",
         apiKeyId: "k",
-        keyHash: "h",
+        keyHash: hashApiKey(KEY),
       }),
     ).toBe(true);
   });

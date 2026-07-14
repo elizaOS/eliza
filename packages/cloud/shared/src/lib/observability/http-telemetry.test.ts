@@ -6,6 +6,7 @@ import {
   appendServerTiming,
   bindGatewayHandoffTelemetry,
   copyHttpTelemetryHeaders,
+  ELIZA_AUTH_TRACE_HEADER,
   ELIZA_TRACE_ID_HEADER,
   invokeAtGatewayHandoff,
   resolveElizaTraceId,
@@ -13,6 +14,7 @@ import {
   setHttpTelemetryHeaders,
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
+  withInferenceAuthTelemetry,
 } from "./http-telemetry";
 
 describe("HTTP telemetry", () => {
@@ -227,10 +229,57 @@ describe("HTTP telemetry", () => {
     expect(cancelledWith).toBe(cancelReason);
   });
 
+  test("emits only bounded auth outcomes and correlated sub-hop durations", () => {
+    const wrapped = withInferenceAuthTelemetry(
+      new Response(null, { status: 400 }),
+      "01890f47-6c4a-7b2d-8f31-123456789abc",
+      {
+        v: 1,
+        traceId: "01890f47-6c4a-7b2d-8f31-123456789abc",
+        credentialSource: "x_api_key",
+        controlledProbe: "on",
+        cacheAvailability: "available",
+        cacheBackend: "cloudflare_kv",
+        cacheRead: "miss",
+        authoritative: "authorized",
+        cacheWrite: "written",
+        result: "authorized_origin",
+        timings: {
+          extractMs: 0.1,
+          cacheAvailabilityMs: 0.2,
+          cacheReadMs: 3,
+          keyLookupMs: 40,
+          userOrgLookupMs: 30,
+          moderationMs: 20,
+          cacheWriteMs: 4,
+          totalMs: 98,
+        },
+      },
+    );
+
+    expect(wrapped.headers.get(ELIZA_AUTH_TRACE_HEADER)).toBe(
+      "v=1;credential=x_api_key;probe=on;available=available;backend=cloudflare_kv;read=miss;authoritative=authorized;write=written;result=authorized_origin",
+    );
+    const serverTiming = wrapped.headers.get("Server-Timing") ?? "";
+    for (const metric of [
+      "auth_extract",
+      "auth_cache_available",
+      "auth_cache_read",
+      "auth_key_lookup",
+      "auth_user_org",
+      "auth_moderation",
+      "auth_cache_write",
+      "auth_resolve",
+    ]) {
+      expect(serverTiming).toContain(`${metric};dur=`);
+    }
+  });
+
   test("copies every safe compatibility-route telemetry header", () => {
     const from = new Headers({
       "X-Eliza-Trace-Id": "turn_12345678",
       "X-Eliza-Preforward-Ms": "total=12",
+      "X-Eliza-Auth-Trace": "v=1;read=hit",
       "X-Eliza-Inference-Path": "passthrough",
       "Server-Timing": "gateway_preforward;dur=12",
       "Timing-Allow-Origin": "https://app.elizacloud.ai",
@@ -242,6 +291,7 @@ describe("HTTP telemetry", () => {
 
     expect(to.get("X-Eliza-Trace-Id")).toBe("turn_12345678");
     expect(to.get("X-Eliza-Preforward-Ms")).toBe("total=12");
+    expect(to.get("X-Eliza-Auth-Trace")).toBe("v=1;read=hit");
     expect(to.get("Server-Timing")).toBe("gateway_preforward;dur=12");
     expect(to.get("Timing-Allow-Origin")).toBe("https://app.elizacloud.ai");
     expect(to.get("X-Eliza-Inference-Path")).toBe("passthrough");

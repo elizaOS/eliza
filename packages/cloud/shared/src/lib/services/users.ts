@@ -175,15 +175,20 @@ export class UsersService {
     return await usersRepository.findIdentityByStewardIdForWrite(stewardUserId);
   }
 
-  async getWithOrganization(userId: string): Promise<UserWithOrganization | undefined> {
+  async getWithOrganization(
+    userId: string,
+    options: { bypassCache?: boolean } = {},
+  ): Promise<UserWithOrganization | undefined> {
     const cacheKey = CacheKeys.user.withOrg(userId);
-    const cached = await cache.get<UserWithOrganization>(cacheKey);
-    if (cached) {
-      logger.debug("[UsersService] Cache hit for user withOrg:", userId);
-      return cached;
+    if (!options.bypassCache) {
+      const cached = await cache.get<UserWithOrganization>(cacheKey);
+      if (cached) {
+        logger.debug("[UsersService] Cache hit for user withOrg:", userId);
+        return cached;
+      }
     }
     const user = await usersRepository.findWithOrganization(userId);
-    if (user) {
+    if (user && !options.bypassCache) {
       await cache.set(cacheKey, user, CacheTTL.user.withOrg);
       logger.debug("[UsersService] Cached user withOrg data:", userId);
     }

@@ -30,7 +30,11 @@ function runBindProgram(env: Record<string, string>): {
     encoding: "utf8",
     env,
   });
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 function extractRun(stepName: string): string {
@@ -54,7 +58,7 @@ describe("chat latency live workflow", () => {
   test("keeps paid live probes manual and production environment-gated", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toContain("pull_request_target:");
-    expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
+    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
     expect(workflow).toMatch(/environment: \$\{\{ inputs\.environment \}\}/);
     expect(workflow).toContain("- staging");
     expect(workflow).toContain("- production");
@@ -122,6 +126,41 @@ describe("chat latency live workflow", () => {
     );
     expect(workflow).toContain("needs: contract");
     expect(workflow).toContain("Enforce probe result");
+    expect(workflow).toContain(
+      "node --test packages/scripts/cloud/inference-auth-latency.test.mjs",
+    );
+  });
+
+  test("feature refs use a non-deployed exact-version auth preview", () => {
+    const preview = workflow.slice(workflow.indexOf("\n  auth-preview:"));
+    expect(preview).toContain("environment: staging");
+    expect(preview).toContain("wrangler versions upload");
+    expect(preview).toContain("--keep-vars");
+    expect(preview).toContain("--preview-alias");
+    expect(preview).not.toContain("wrangler deploy");
+    expect(preview).toContain(
+      "Create an isolated suspended-auth staging fixture",
+    );
+    expect(preview).toContain(
+      "Bootstrap an isolated non-routed preview Worker",
+    );
+    expect(preview).toContain("Delete isolated auth preview Worker");
+    expect(preview).toContain("Delete isolated suspended-auth staging fixture");
+    expect(preview).toContain("previews_enabled: true");
+    expect(preview).toContain("REDIS_RATE_LIMITING:false");
+    expect(preview).toContain("--hit-count 30");
+    expect(preview).toContain("--miss-count 10");
+    expect(preview).toContain(
+      "--suspended-api-key-env AUTH_PROBE_SUSPENDED_API_KEY",
+    );
+    expect(preview).toContain("INFERENCE_AUTH_PROBE_TOKEN");
+    expect(preview).toContain(`ELIZA_DEPLOY_COMMIT:\${GITHUB_SHA}`);
+    expect(preview).toContain("Preview remained on the exact checkout");
+    expect(preview).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
+    expect(preview).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
+    expect(preview).toContain("sanitizeInferenceAuthTail");
+    expect(preview).toContain("inference-auth-worker-logs-");
+    expect(preview).toContain('rm -f "$raw_tail" "$tail_log"');
   });
 
   test("collects statistical warm evidence plus cold and post-idle labels", () => {
@@ -210,6 +249,18 @@ describe("chat latency live workflow", () => {
       "Reverify the exact deployed gateway SHA",
       "Add privacy-safe timing table to summary",
       "Enforce probe result",
+      "Bind preview checkout to the requested SHA",
+      "Create an isolated authenticated probe control",
+      "Create an isolated suspended-auth staging fixture",
+      "Bootstrap an isolated non-routed preview Worker",
+      "Upload a non-deployed exact-SHA Worker version",
+      "Verify preview serves the exact checkout",
+      "Capture 30 cache hits and 10 unique controlled KV misses",
+      "Reverify exact preview after capture",
+      "Add auth timing distribution to summary",
+      "Delete isolated auth preview Worker",
+      "Delete isolated suspended-auth staging fixture",
+      "Enforce auth probe result",
     ];
     for (const step of steps) {
       const shell = extractRun(step);
@@ -219,9 +270,11 @@ describe("chat latency live workflow", () => {
       });
       expect(bash.status, `${step}: ${bash.stderr}`).toBe(0);
 
-      const nodeBody = shell.match(/<<'NODE'\n(?<node>[\s\S]*?)\nNODE(?:\n|$)/)
-        ?.groups?.node;
-      if (nodeBody) {
+      const nodeBodies = [
+        ...shell.matchAll(/<<'NODE'\n(?<node>[\s\S]*?)\nNODE(?:\n|$)/g),
+      ].map((match) => match.groups?.node);
+      for (const nodeBody of nodeBodies) {
+        if (!nodeBody) throw new Error(`${step}: empty embedded Node program`);
         const node = spawnSync(
           process.execPath,
           ["--input-type=module", "--check"],

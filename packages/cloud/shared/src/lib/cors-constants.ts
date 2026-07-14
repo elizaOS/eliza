@@ -62,6 +62,7 @@ export const CORS_EXPOSE_HEADER_NAMES = [
   "X-Request-ID",
   "X-Eliza-Trace-Id",
   "X-Eliza-Preforward-Ms",
+  "X-Eliza-Auth-Trace",
   "X-Eliza-Inference-Path",
 ] as const;
 
