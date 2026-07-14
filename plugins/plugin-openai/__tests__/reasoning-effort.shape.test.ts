@@ -4,12 +4,26 @@
  * runtime.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   __INTERNAL_normalizeNativeMessages,
   __INTERNAL_resolveProviderOptions,
 } from "../models/text";
+
+// `isCerebrasMode` resolves settings through utils/config `getSetting`, which
+// falls back to `process.env` when the mocked runtime returns null. On a
+// credentialed runner (OPENAI_API_KEY / OPENAI_BASE_URL / ELIZA_PROVIDER set,
+// e.g. pointing at Cerebras) that fallback flips provider-mode detection and
+// breaks every mode-sensitive case below. Pin the mode-detection env to empty
+// so the mocked runtime settings are the only input.
+beforeEach(() => {
+  vi.stubEnv("OPENAI_API_KEY", "");
+  vi.stubEnv("OPENAI_BASE_URL", "");
+  vi.stubEnv("ELIZA_PROVIDER", "");
+  vi.stubEnv("CEREBRAS_API_KEY", "");
+  vi.stubEnv("OPENAI_REASONING_EFFORT", "");
+});
 
 function buildRuntime(settings: Record<string, string | undefined>): IAgentRuntime {
   return {
@@ -95,7 +109,7 @@ describe("Cerebras default reasoning effort", () => {
     ).toBe("low");
   });
 
-  it("defaults to 'low' for zai-glm-4.7 (hybrid reasoning; the default TEXT_LARGE model)", () => {
+  it("defaults to 'low' for zai-glm-4.7 (hybrid reasoning; the Cerebras default is gemma-4-31b)", () => {
     const runtime = buildRuntime({ CEREBRAS_API_KEY: "csk-test" });
     const opts = __INTERNAL_resolveProviderOptions(
       { prompt: "hi" } as never,
