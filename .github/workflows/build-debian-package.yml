@@ -194,6 +194,9 @@ jobs:
           DEB_PATH: ${{ steps.find_deb.outputs.deb_path }}
         run: |
           set -euo pipefail
+          # Name the exact failing command: most checks here are silent
+          # test/cmp assertions that would otherwise fail without a trace.
+          trap 'echo "::error::install-and-boot failed at line $LINENO: $BASH_COMMAND"' ERR
           DEB_PATH="$(realpath "$DEB_PATH")"
           DEB_DEPENDS="$(dpkg-deb -f "$DEB_PATH" Depends)"
           if grep -Eq '(^|[,[:space:]])nodejs([,[:space:]()]|$)' <<< "$DEB_DEPENDS"; then
