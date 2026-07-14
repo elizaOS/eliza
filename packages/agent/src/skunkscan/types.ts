@@ -210,6 +210,39 @@ export type WalletAssessmentContext = {
   notice: string;
 };
 
+export type WalletIntelligenceBrief = {
+  generatedAt: string;
+
+  briefVersion: string;
+
+  overallAssessment:
+    | "low_risk_indicators"
+    | "mixed_risk_indicators"
+    | "elevated_risk_indicators"
+    | "high_risk_indicators";
+
+  headline: string;
+
+  confidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  evidenceStrength:
+    | "low"
+    | "medium"
+    | "high";
+
+  keyFindings: string[];
+
+  informationGaps: string[];
+
+  supportingEvidenceRecordIds: string[];
+
+  sourcesUsed: string[];
+
+  notice: string;
+};
+
 export type WalletEvidenceRecord = {
   id: string;
 
