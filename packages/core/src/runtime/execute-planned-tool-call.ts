@@ -8,7 +8,11 @@
 import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";
-import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+import {
+	emitStreamingHook,
+	getStreamingContext,
+	runWithSuppressedModelStream,
+} from "../streaming-context";
 import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
@@ -403,13 +407,15 @@ export async function executePlannedToolCall(
 					{ actionName: action.name, modelClass: action.modelClass },
 					() =>
 						withActionStep(runtime, action.name, () =>
-							action.handler(
-								runtime,
-								executorCtx.message,
-								executorCtx.state,
-								handlerOptions,
-								actionCallback,
-								executorCtx.responses,
+							runWithSuppressedModelStream(() =>
+								action.handler(
+									runtime,
+									executorCtx.message,
+									executorCtx.state,
+									handlerOptions,
+									actionCallback,
+									executorCtx.responses,
+								),
 							),
 						),
 				);

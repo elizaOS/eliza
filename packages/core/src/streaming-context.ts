@@ -168,6 +168,39 @@ export function runWithStreamingContext<T>(
 	return getOrCreateContextManager().run(context, fn);
 }
 
+/** A `StreamChunkCallback` that discards every chunk. */
+const discardStreamChunk: StreamChunkCallback = async () => undefined;
+
+/**
+ * Run `fn` with the ambient visible-token stream detached.
+ *
+ * Any `useModel` call inside still inherits the active streaming context's
+ * abort signal and structured tool/evaluation hooks, but its raw tokens no
+ * longer reach the turn's visible reply channel — `onStreamChunk` becomes a
+ * no-op. This is the seam that keeps an action handler's *internal* model
+ * calls off the user-visible reply (#16230): only the top-level response
+ * generation streams raw tokens, while an action delivers its own output
+ * through the HandlerCallback. The visible stream would otherwise surface an
+ * action's intermediate model output — e.g. the conversation compactor's
+ * rendered-ledger JSON masquerading as the `/compact` reply. An action that
+ * genuinely wants to stream can still opt in with an explicit `onStreamChunk`
+ * in its `useModel` params, which `useModel` honors independently of the
+ * ambient context. The planner and evaluator model calls apply the same
+ * override inline.
+ *
+ * A straight pass-through (no added scope) when no streaming context is active.
+ */
+export function runWithSuppressedModelStream<T>(fn: () => T): T {
+	const active = getStreamingContext();
+	if (!active) {
+		return fn();
+	}
+	return runWithStreamingContext(
+		{ ...active, onStreamChunk: discardStreamChunk },
+		fn,
+	);
+}
+
 /**
  * Get the currently active streaming context.
  * Called by useModel to check if automatic streaming should be enabled.
