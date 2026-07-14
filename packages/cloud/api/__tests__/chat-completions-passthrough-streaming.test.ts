@@ -1008,10 +1008,17 @@ describe("passthrough streaming — settlement runs OFF the response path via wa
     const body = await res.text();
     expect(body).toBe(UPSTREAM_SSE);
     expect(ledger.reconcileCalls).toBe(0);
-    expect(waitUntilPromises.length).toBe(1);
+    expect(waitUntilPromises).toHaveLength(1);
+    let deferredSettled = false;
+    void waitUntilPromises[0].finally(() => {
+      deferredSettled = true;
+    });
+    await Promise.resolve();
+    expect(deferredSettled).toBe(false);
 
     releaseBilling();
     await Promise.all(waitUntilPromises);
+    expect(deferredSettled).toBe(true);
 
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(ledger.reconcileCalls).toBe(1);

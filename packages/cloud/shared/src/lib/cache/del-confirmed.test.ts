@@ -13,6 +13,7 @@
  */
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { logger } from "../utils/logger";
 import { cache } from "./client";
 
 // getRedisClient is private; access it for spying via a typed view.
@@ -44,6 +45,30 @@ describe("delConfirmed configured-vs-unavailable contract (#13417)", () => {
     stubNoClient();
     spies.push(spyOn(internal, "isBackendConfigured").mockReturnValue(true));
     expect(await cache.delConfirmed("apikey:abc")).toBe(false);
+  });
+
+  test("backend rejection logs a bounded key class instead of the credential hash", async () => {
+    const rawKey = "iac:auth:private-credential-hash:v1";
+    const warn = spyOn(logger, "warn").mockImplementation(() => {});
+    spies.push(warn);
+    spies.push(
+      spyOn(internal, "getRedisClient").mockResolvedValue({
+        del: async () => {
+          throw new Error("delete unavailable");
+        },
+      }),
+    );
+
+    expect(
+      await cache.delConfirmed(rawKey, {
+        keyClass: "inference_auth",
+      }),
+    ).toBe(false);
+    expect(warn).toHaveBeenCalledWith("[Cache] DEL failed", {
+      keyClass: "inference_auth",
+      error: "delete unavailable",
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(rawKey);
   });
 
   test("no backend configured -> delPatternConfirmed true", async () => {

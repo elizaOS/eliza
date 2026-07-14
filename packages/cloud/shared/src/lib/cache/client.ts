@@ -56,7 +56,7 @@ export type CacheWriteOutcome = {
   backend: CacheBackendKind;
 };
 
-export type CacheKeyClass = "api_key_validation" | "inference_auth";
+export type CacheKeyClass = "inference_auth";
 
 export interface CacheOperationOptions {
   /** Replaces identifier-bearing cache keys with a bounded class in logs. */

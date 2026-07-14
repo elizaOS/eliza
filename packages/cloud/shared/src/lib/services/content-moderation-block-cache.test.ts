@@ -87,16 +87,6 @@ describe("shouldBlockUser memo (#9899 Tier-3)", () => {
     expect(dbReads).toBe(2);
   });
 
-  test("an explicit authoritative read bypasses an existing memo without replacing it", async () => {
-    const user = uid();
-    expect(await contentModerationService.shouldBlockUser(user)).toBe(false);
-    blockedUsers.add(user);
-
-    expect(await contentModerationService.shouldBlockUser(user, { bypassCache: true })).toBe(true);
-    expect(await contentModerationService.shouldBlockUser(user)).toBe(false);
-    expect(dbReads).toBe(2);
-  });
-
   test("resetViolations drops the memoized decision", async () => {
     const user = uid();
     blockedUsers.add(user);

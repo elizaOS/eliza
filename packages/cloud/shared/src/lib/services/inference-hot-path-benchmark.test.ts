@@ -20,13 +20,21 @@ let authChainCalls = 0;
 let moderationCalls = 0;
 let usageCalls = 0;
 
-mock.module("../auth", () => ({
-  requireApiKeyWithOrg: async () => {
+mock.module("./inference-api-key-auth", () => ({
+  requireInferenceApiKeyWithOrg: async () => {
     authChainCalls++;
     return {
       user: { id: "user-bench", organization_id: "org-bench" },
       apiKey: { id: "key-bench" },
     };
+  },
+}));
+mock.module("./admin", () => ({
+  adminService: {
+    shouldBlockUser: async () => {
+      moderationCalls++;
+      return false;
+    },
   },
 }));
 mock.module("./content-moderation", () => ({

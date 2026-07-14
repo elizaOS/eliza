@@ -24,8 +24,8 @@ const incrementUsageCalls: string[] = [];
 const bypassCacheCalls: boolean[] = [];
 const moderationBypassCacheCalls: boolean[] = [];
 
-mock.module("../auth", () => ({
-  requireApiKeyWithOrg: async (
+mock.module("./inference-api-key-auth", () => ({
+  requireInferenceApiKeyWithOrg: async (
     _rawKey: string,
     options: {
       bypassCache?: boolean;
@@ -39,6 +39,14 @@ mock.module("../auth", () => ({
     options.timing?.keyLookup(1);
     options.timing?.userOrgLookup(2);
     return await authImpl();
+  },
+}));
+mock.module("./admin", () => ({
+  adminService: {
+    shouldBlockUser: (userId: string) => {
+      moderationBypassCacheCalls.push(true);
+      return shouldBlock(userId);
+    },
   },
 }));
 mock.module("./content-moderation", () => ({

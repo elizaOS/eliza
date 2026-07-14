@@ -30,6 +30,7 @@ describe("CacheClient (MOCK_REDIS=1)", () => {
     const cache = new CacheClient();
 
     expect(cache.isAvailable()).toBe(true);
+    expect(cache.supportsAtomicOperations()).toBe(true);
 
     await cache.set("user:1", { name: "alice" }, 60);
     const value = await cache.get<{ name: string }>("user:1");
@@ -67,6 +68,7 @@ describe("CacheClient (MOCK_REDIS=1)", () => {
     process.env.CACHE_ENABLED = "false";
     try {
       const disabled = new CacheClient();
+      expect(disabled.supportsAtomicOperations()).toBe(false);
       expect(await disabled.getWithOutcome("iac:auth:bounded:v1")).toEqual({
         kind: "unavailable",
         backend: "none",
@@ -74,5 +76,67 @@ describe("CacheClient (MOCK_REDIS=1)", () => {
     } finally {
       process.env.CACHE_ENABLED = "true";
     }
+  });
+
+  test("explicit memory selection remains configured and observable", async () => {
+    const previousMockRedis = process.env.MOCK_REDIS;
+    const previousBackend = process.env.CACHE_BACKEND;
+    process.env.MOCK_REDIS = "0";
+    process.env.CACHE_BACKEND = "memory";
+    try {
+      const { CacheClient } = await import("../client");
+      const cache = new CacheClient();
+      expect(cache.getBackendKind()).toBe("memory");
+      expect(cache.isBackendConfigured()).toBe(true);
+      expect(cache.isAvailable()).toBe(true);
+    } finally {
+      if (previousMockRedis === undefined) delete process.env.MOCK_REDIS;
+      else process.env.MOCK_REDIS = previousMockRedis;
+      if (previousBackend === undefined) delete process.env.CACHE_BACKEND;
+      else process.env.CACHE_BACKEND = previousBackend;
+    }
+  });
+
+  test("atomic insertion preserves the first writer", async () => {
+    const { CacheClient } = await import("../client");
+    const cache = new CacheClient();
+
+    expect(await cache.setIfNotExists("iac:lock:bounded:v1", { owner: "first" }, 60_000)).toBe(
+      true,
+    );
+    expect(await cache.setIfNotExists("iac:lock:bounded:v1", { owner: "second" }, 60_000)).toBe(
+      false,
+    );
+    expect(await cache.get("iac:lock:bounded:v1")).toEqual({ owner: "first" });
+  });
+
+  test("explicit outcomes preserve backend read and write failures", async () => {
+    const { CacheClient } = await import("../client");
+    const cache = new CacheClient();
+    const failingBackend = {
+      backend: "memory",
+      get: async () => {
+        throw new Error("read unavailable");
+      },
+      setex: async () => {
+        throw new Error("write unavailable");
+      },
+    };
+    Object.assign(cache as unknown as Record<string, unknown>, {
+      enabled: true,
+      initialized: true,
+      redis: failingBackend,
+    });
+
+    expect(
+      await cache.getWithOutcome("iac:auth:error:v1", {
+        keyClass: "inference_auth",
+      }),
+    ).toEqual({ kind: "error", backend: "memory" });
+    expect(
+      await cache.setWithOutcome("iac:auth:error:v1", { ok: true }, 60, {
+        keyClass: "inference_auth",
+      }),
+    ).toEqual({ kind: "error", backend: "memory" });
   });
 });

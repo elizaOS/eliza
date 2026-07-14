@@ -4,46 +4,44 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "node:crypto";
 
 let apiKeyRecord: Record<string, unknown> | null;
 let userRecord: Record<string, unknown> | undefined;
-let validationError: Error | null;
-const validationOptions: Array<{ bypassCache?: boolean }> = [];
-const userLookupOptions: Array<{ bypassCache?: boolean }> = [];
+let repositoryError: Error | null;
+let replicaMiss: boolean;
+const validationCalls: string[] = [];
+const serviceUserLookups: string[] = [];
+const repositoryKeyLookups: string[] = [];
+const consistentKeyLookups: string[] = [];
+const repositoryUserLookups: string[] = [];
 const usageCalls: string[] = [];
 
-mock.module("./cache/client", () => ({
-  cache: {
-    get: async () => null,
-    set: async () => undefined,
-    del: async () => undefined,
+mock.module("../db/repositories/api-keys", () => ({
+  apiKeysRepository: {
+    findActiveByHash: async (keyHash: string) => {
+      repositoryKeyLookups.push(keyHash);
+      if (repositoryError) throw repositoryError;
+      return replicaMiss ? undefined : apiKeyRecord;
+    },
+    findActiveByHashConsistent: async (keyHash: string) => {
+      consistentKeyLookups.push(keyHash);
+      return apiKeyRecord;
+    },
   },
 }));
-mock.module("./auth/steward-client", () => ({
-  verifyStewardTokenCached: async () => null,
-  invalidateStewardTokenCache: async () => undefined,
-}));
-mock.module("./auth/playwright-test-session", () => ({
-  isPlaywrightTestAuthEnabled: () => false,
-  verifyPlaywrightTestSessionToken: () => null,
-  PLAYWRIGHT_TEST_SESSION_COOKIE_NAME: "pw-test-session",
-}));
-mock.module("./auth/wallet-auth", () => ({
-  verifyWalletSignature: async () => false,
-}));
-mock.module("./services/admin", () => ({ adminService: {} }));
-mock.module("./services/user-sessions", () => ({
-  userSessionsService: { getOrCreateSession: async () => undefined },
-}));
-mock.module("./steward-sync", () => ({
-  ensureDefaultCharacter: async () => undefined,
-  syncUserFromSteward: async () => undefined,
+mock.module("../db/repositories/users", () => ({
+  usersRepository: {
+    findWithOrganization: async (userId: string) => {
+      repositoryUserLookups.push(userId);
+      return userRecord;
+    },
+  },
 }));
 mock.module("./services/api-keys", () => ({
   apiKeysService: {
-    validateApiKey: async (_rawKey: string, options: { bypassCache?: boolean } = {}) => {
-      validationOptions.push(options);
-      if (validationError) throw validationError;
+    validateApiKey: async (rawKey: string) => {
+      validationCalls.push(rawKey);
       return apiKeyRecord;
     },
     incrementUsageDebounced: async (id: string) => {
@@ -53,14 +51,14 @@ mock.module("./services/api-keys", () => ({
 }));
 mock.module("./services/users", () => ({
   usersService: {
-    getWithOrganization: async (_userId: string, options: { bypassCache?: boolean } = {}) => {
-      userLookupOptions.push(options);
+    getWithOrganization: async (userId: string) => {
+      serviceUserLookups.push(userId);
       return userRecord;
     },
   },
 }));
 
-const { requireApiKeyWithOrg } = await import("./auth");
+const { requireInferenceApiKeyWithOrg } = await import("./services/inference-api-key-auth");
 
 const activeOrganization = {
   id: "org-1",
@@ -83,18 +81,22 @@ beforeEach(() => {
     is_active: true,
     organization: activeOrganization,
   };
-  validationError = null;
-  validationOptions.length = 0;
-  userLookupOptions.length = 0;
+  repositoryError = null;
+  replicaMiss = false;
+  validationCalls.length = 0;
+  serviceUserLookups.length = 0;
+  repositoryKeyLookups.length = 0;
+  consistentKeyLookups.length = 0;
+  repositoryUserLookups.length = 0;
   usageCalls.length = 0;
 });
 
-describe("requireApiKeyWithOrg inference boundary", () => {
+describe("requireInferenceApiKeyWithOrg", () => {
   test("invalid key remains the existing 401 authentication error", async () => {
     apiKeyRecord = null;
     let rejected = false;
     await expect(
-      requireApiKeyWithOrg("eliza_invalid", {
+      requireInferenceApiKeyWithOrg("eliza_invalid", {
         rejected: () => {
           rejected = true;
         },
@@ -113,7 +115,7 @@ describe("requireApiKeyWithOrg inference boundary", () => {
     userRecord = { ...userRecord, is_active: false };
     let rejected = false;
     await expect(
-      requireApiKeyWithOrg("eliza_valid", {
+      requireInferenceApiKeyWithOrg("eliza_valid", {
         rejected: () => {
           rejected = true;
         },
@@ -133,7 +135,7 @@ describe("requireApiKeyWithOrg inference boundary", () => {
       ...userRecord,
       organization: { ...activeOrganization, is_active: false },
     };
-    await expect(requireApiKeyWithOrg("eliza_valid")).rejects.toMatchObject({
+    await expect(requireInferenceApiKeyWithOrg("eliza_valid")).rejects.toMatchObject({
       name: "ForbiddenError",
       status: 403,
       code: "access_denied",
@@ -142,10 +144,10 @@ describe("requireApiKeyWithOrg inference boundary", () => {
     expect(usageCalls).toEqual([]);
   });
 
-  test("cache bypass reaches validation and user/org lookup without changing usage accounting", async () => {
+  test("cache bypass reaches repositories without changing usage accounting", async () => {
     const keyTimings: number[] = [];
     const userTimings: number[] = [];
-    const result = await requireApiKeyWithOrg("eliza_valid", {
+    const result = await requireInferenceApiKeyWithOrg("eliza_valid", {
       bypassCache: true,
       timing: {
         keyLookup: (durationMs) => keyTimings.push(durationMs),
@@ -155,18 +157,36 @@ describe("requireApiKeyWithOrg inference boundary", () => {
 
     expect(result.authMethod).toBe("api_key");
     expect(result.user.id).toBe("user-1");
-    expect(validationOptions).toEqual([{ bypassCache: true }]);
-    expect(userLookupOptions).toEqual([{ bypassCache: true }]);
+    const keyHash = createHash("sha256").update("eliza_valid").digest("hex");
+    expect(validationCalls).toEqual([]);
+    expect(serviceUserLookups).toEqual([]);
+    expect(repositoryKeyLookups).toEqual([keyHash]);
+    expect(consistentKeyLookups).toEqual([]);
+    expect(repositoryUserLookups).toEqual(["user-1"]);
     expect(keyTimings).toHaveLength(1);
     expect(userTimings).toHaveLength(1);
     expect(usageCalls).toEqual(["key-1"]);
   });
 
+  test("cache bypass confirms a replica miss against the primary", async () => {
+    replicaMiss = true;
+    const result = await requireInferenceApiKeyWithOrg("eliza_valid", {
+      bypassCache: true,
+    });
+    const keyHash = createHash("sha256").update("eliza_valid").digest("hex");
+
+    expect(result.user.id).toBe("user-1");
+    expect(repositoryKeyLookups).toEqual([keyHash]);
+    expect(consistentKeyLookups).toEqual([keyHash]);
+    expect(repositoryUserLookups).toEqual(["user-1"]);
+    expect(usageCalls).toEqual(["key-1"]);
+  });
+
   test("storage outage propagates and is not mislabeled as a credential rejection", async () => {
-    validationError = new Error("database unavailable");
+    repositoryError = new Error("database unavailable");
     let rejected = false;
     await expect(
-      requireApiKeyWithOrg("eliza_valid", {
+      requireInferenceApiKeyWithOrg("eliza_valid", {
         bypassCache: true,
         rejected: () => {
           rejected = true;

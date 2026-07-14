@@ -22,12 +22,13 @@
  */
 
 import { createHash, timingSafeEqual } from "node:crypto";
-import { requireApiKeyWithOrg } from "../auth";
 import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { adminService } from "./admin";
 import { apiKeysService } from "./api-keys";
 import { contentModerationService } from "./content-moderation";
+import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
 import {
   hashApiKey,
   INFERENCE_AUTH_CONTEXT_VERSION,
@@ -312,7 +313,7 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead === "invalid" ||
       trace.cacheRead === "unavailable" ||
       trace.cacheRead === "error";
-    const { user, apiKey } = await requireApiKeyWithOrg(credential.rawKey, {
+    const { user, apiKey } = await requireInferenceApiKeyWithOrg(credential.rawKey, {
       bypassCache: bypassAuthoritativeCaches,
       timing: {
         keyLookup: (durationMs) => {
@@ -329,9 +330,11 @@ export async function resolveInferenceAuthContext(
     });
 
     const moderationStartedAt = performance.now();
-    const suspended = await contentModerationService.shouldBlockUser(user.id, {
-      bypassCache: bypassAuthoritativeCaches,
-    });
+    // Cache failure recovery cannot authorize from another process-local memo;
+    // the normal healthy-miss path retains the bounded moderation memo.
+    const suspended = bypassAuthoritativeCaches
+      ? await adminService.shouldBlockUser(user.id)
+      : await contentModerationService.shouldBlockUser(user.id);
     trace.timings.moderationMs = durationSince(moderationStartedAt);
     if (suspended) {
       trace.authoritative = "suspended";

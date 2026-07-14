@@ -54,9 +54,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     const del = track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
     await expect(apiKeysService.invalidateCache(KEY_HASH)).resolves.toBeUndefined();
     // clears both the validation entry and the inference auth-context entry
-    expect(del).toHaveBeenCalledWith(VALIDATION_KEY, {
-      keyClass: "api_key_validation",
-    });
+    expect(del).toHaveBeenCalledWith(VALIDATION_KEY);
     expect(del.mock.calls.length).toBe(2);
   });
 

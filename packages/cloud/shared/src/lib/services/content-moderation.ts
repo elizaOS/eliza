@@ -570,11 +570,10 @@ class ContentModerationService {
    * Check if user should be blocked based on violation history. Memoized
    * in-isolate for 60s (#9899 Tier-3) — see `shouldBlockCache` above for the
    * staleness bound. A thrown DB read is NOT cached (fail closed, retry next
-   * request). Auth diagnostics and cache-failure fallback can request an
-   * authoritative read without mutating the memo.
+   * request).
    */
-  async shouldBlockUser(userId: string, options: { bypassCache?: boolean } = {}): Promise<boolean> {
-    if (options.bypassCache || !isHotPathCachesEnabled()) {
+  async shouldBlockUser(userId: string): Promise<boolean> {
+    if (!isHotPathCachesEnabled()) {
       return adminService.shouldBlockUser(userId);
     }
     const cached = shouldBlockCache.get(userId);
