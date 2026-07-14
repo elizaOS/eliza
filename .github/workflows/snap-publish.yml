@@ -216,7 +216,7 @@ jobs:
           sudo snap install ${{ steps.snapcraft.outputs.snap }} --dangerous
           sudo snap connect elizaos-app:ffmpeg-2204 ffmpeg-2204:ffmpeg-2204
           snap connections elizaos-app | grep -Eq \
-            '^content[[:space:]]+elizaos-app:ffmpeg-2204[[:space:]]+ffmpeg-2204:ffmpeg-2204[[:space:]]'
+            '^content(\[[^]]*\])?[[:space:]]+elizaos-app:ffmpeg-2204[[:space:]]+ffmpeg-2204:ffmpeg-2204([[:space:]]|$)'
           NATIVE_AUDIT="$({
             sudo snap run --shell elizaos-app <<'SNAP_SHELL'
           set -eu
