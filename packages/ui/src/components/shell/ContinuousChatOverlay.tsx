@@ -765,9 +765,9 @@ function MessageScrollerSendFollow({ request }: { request: number }) {
 }
 
 /**
- * The rich, phase-aware status row shown while the assistant works (#8813),
- * replacing the bare typing dots in the pre-placeholder gap. Wraps the
- * canonical TurnStatus in its own glass bubble + fade so it reads as a turn.
+ * The phase-aware status row shown while the assistant works (#8813). It stays
+ * chromeless so the temporary lifecycle state cannot be mistaken for a message;
+ * the same compact shimmer is used before and after the placeholder arrives.
  */
 function TurnStatusIndicator({
   status,
@@ -776,29 +776,18 @@ function TurnStatusIndicator({
   status: ChatTurnStatus | null;
   reduce?: boolean;
 }): React.JSX.Element {
-  const speaking = status?.kind === "speaking";
   return (
     <motion.div
-      className="mb-2.5 flex w-full justify-start"
-      // Fade in/out so the row dissolves with the reply rather than popping.
+      className="mb-2 flex w-full justify-start py-1"
+      data-testid="turn-status-row"
+      // A pure opacity dissolve avoids adding another moving surface while the
+      // real assistant turn mounts and begins streaming beneath it.
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
     >
-      <div
-        className={cn(
-          "rounded-2xl rounded-bl-md border px-3.5 py-2",
-          WALLPAPER_FLOAT_SHADOW,
-          // Orange (the accent) ONLY for spoken replies; every other phase is
-          // neutral white glass. No blue anywhere.
-          // #10698: no own scrim — the shared panel glass carries the contrast;
-          // keep only the tone border (orange when speaking) + WALLPAPER_FLOAT_SHADOW.
-          speaking ? "border-accent/45" : "border-border",
-        )}
-      >
-        <TurnStatus status={status} />
-      </div>
+      <TurnStatus status={status} showLabel={false} />
     </motion.div>
   );
 }
@@ -825,12 +814,14 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
 
 /**
  * The overlay's message BODY — everything rendered inside the canonical
- * ChatMessage glass row: the no-provider recovery gate, the in-flight breathing
- * dots (TurnStatus), a user turn's slash-bolded text, and a settled assistant
- * turn's inline widgets + attachments + secret request + reasoning. Kept
- * structurally identical to the ChatView (MessageContent) paths for the
- * affordances the render-parity contract pins; the row chrome (bubble,
- * tap-reveal actions, copy-hold, retry, suggestion) lives in ChatMessage.
+ * ChatMessage glass row: the no-provider recovery gate, a user turn's
+ * slash-bolded text, and a settled assistant turn's inline widgets + attachments
+ * + secret request + reasoning. Transient work state lives in one stable row
+ * after the transcript, so an empty transport placeholder never paints a second
+ * status surface. Its settled content stays structurally identical to ChatView's
+ * MessageContent paths for the affordances the render-parity contract pins; row
+ * chrome (bubble, tap-reveal actions, copy-hold, retry, suggestion) lives in
+ * ChatMessage.
  * `onOpenSettings` reaches only the no-provider gate.
  */
 function renderOverlayMessageBody(
@@ -875,15 +866,7 @@ function renderOverlayMessageBody(
   }
 
   if (!isUser && !message.text.trim() && !message.attachments?.length) {
-    // The in-flight assistant turn: dots INSIDE the bubble, anchored where the
-    // streamed text fills in — then the text replaces them. Labels stay in the
-    // standalone status row so the bubble never flashes "Running …" text.
-    return (
-      <>
-        <TurnStatus status={ctx?.turnStatus ?? null} showLabel={false} />
-        {attachmentsNode}
-      </>
-    );
+    return null;
   }
 
   if (isUser) {
@@ -1976,7 +1959,7 @@ export function ContinuousChatOverlay({
   }, []);
   // The single, stable body renderer handed to every row (see
   // renderOverlayMessageBody). Stable identity keeps ChatMessage's memo intact;
-  // per-row volatile values (turnStatus/suppressReasoning) flow via renderContext.
+  // per-row reasoning suppression flows through renderContext.
   const renderRowBody = React.useCallback(
     (m: ChatMessageData, ctx: ChatMessageRenderContext | undefined) =>
       renderOverlayMessageBody(m, ctx, openSettings),
@@ -2001,13 +1984,24 @@ export function ContinuousChatOverlay({
     (m: ShellMessage, index: number) => {
       const isLastAssistant =
         index === visibleMessages.length - 1 && m.role === "assistant";
-      const isInFlight = isLastAssistant && !m.content.trim();
-      // Only the last assistant turn reads volatile status; every settled row
-      // gets no renderContext so its memo identity is unchanged.
+      const message = shellToChatMessageData(m);
+      const isInFlight =
+        isLastAssistant &&
+        !message.text.trim() &&
+        !message.attachments?.length &&
+        !message.failureKind &&
+        !message.reasoning?.trim() &&
+        !message.secretRequest &&
+        !message.toolEvents?.length;
+      // The server's empty assistant placeholder is deliberately not a visual
+      // turn. Keeping the single status row mounted across this transport state
+      // prevents a Thinking/Replying bubble swap before the first token lands.
+      if (isInFlight) return null;
+      // Only the last assistant turn reads volatile reasoning suppression;
+      // every settled row gets no renderContext so its memo identity is stable.
       const renderContext: ChatMessageRenderContext | undefined =
         isLastAssistant
           ? {
-              turnStatus: isInFlight ? turnStatus : null,
               suppressReasoning: responding,
             }
           : undefined;
@@ -2017,7 +2011,7 @@ export function ContinuousChatOverlay({
             appearance="glass"
             enterOnMount={m.id.startsWith("temp-")}
             agentName={agentName}
-            message={shellToChatMessageData(m)}
+            message={message}
             reduceMotion={reduce}
             onCopy={handleCopyMessage}
             onLongPressCopy={handleLongPressCopy}
@@ -2049,7 +2043,6 @@ export function ContinuousChatOverlay({
       speaking,
       playingMessageId,
       responding,
-      turnStatus,
       renderRowBody,
       handleAcceptSuggestion,
       handleDismissSuggestion,
@@ -5455,10 +5448,7 @@ export function ContinuousChatOverlay({
                                   );
                                 });
                               })()
-                            : // Flat transcript (no topic tags) — unchanged behavior.
-                              // Only the LAST, content-less assistant turn (the
-                              // in-flight one) reads turnStatus — every settled bubble
-                              // gets undefined so its memo identity is unchanged.
+                            : // Flat transcript (no topic tags) renders below.
                               null}
                           {hasTopics
                             ? null
@@ -5466,18 +5456,12 @@ export function ContinuousChatOverlay({
                                 renderThreadLine(m, i),
                               )}
                           <AnimatePresence>
-                            {/* Rich status row (#8813): what the agent is doing —
-                          thinking / running an action / waking / speaking — for
-                          the brief window where we're responding but the assistant
-                          placeholder turn isn't in the thread yet. Once the
-                          in-flight assistant bubble exists it carries the same
-                          status row inline (anchored where the reply fills in),
-                          so don't double up. */}
-                            {responding &&
-                            !(
-                              visibleMessages.at(-1)?.role === "assistant" &&
-                              !visibleMessages.at(-1)?.content.trim()
-                            ) ? (
+                            {/* One persistent inline status (#8813) spans the
+                          whole active turn. The server's empty assistant
+                          placeholder never replaces it, so rapid Thinking →
+                          Replying phases update one shimmer instead of flashing
+                          between temporary message bubbles. */}
+                            {responding ? (
                               <MessageScrollerItem
                                 key="turn-status"
                                 className="w-full"

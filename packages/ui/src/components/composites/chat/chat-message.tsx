@@ -412,7 +412,6 @@ function arePropsEqual(
     prev.renderContent === next.renderContent &&
     // renderContext is rebuilt per parent render; compare its fields so only
     // the row whose volatile values changed re-renders.
-    prev.renderContext?.turnStatus === next.renderContext?.turnStatus &&
     prev.renderContext?.suppressReasoning ===
       next.renderContext?.suppressReasoning &&
     prev.userMessagesOnRight === next.userMessagesOnRight &&

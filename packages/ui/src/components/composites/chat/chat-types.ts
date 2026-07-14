@@ -7,7 +7,6 @@
 
 import type {
   ChatFailureKind,
-  ChatTurnStatus,
   ConversationSecretRequest,
   MessageAttachment,
 } from "../../../api/client-types-chat";
@@ -139,8 +138,6 @@ export interface ChatMessageData {
  * re-render EVERY row; these fields are compared per-row by the memo instead).
  */
 export interface ChatMessageRenderContext {
-  /** Live phase status for the one in-flight (empty assistant) turn. */
-  turnStatus?: ChatTurnStatus | null;
   /** Hide reasoning while this turn is still streaming. */
   suppressReasoning?: boolean;
 }
