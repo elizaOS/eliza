@@ -68,6 +68,14 @@ function markMobileDeepLinkIngress(state: "ready" | "unavailable"): void {
   document.documentElement.dataset[MOBILE_DEEP_LINK_READY_DATASET_KEY] = state;
 }
 
+function markMobileDeepLinkIngressUnavailable(error: unknown): void {
+  markMobileDeepLinkIngress("unavailable");
+  console.warn(
+    "[mobile-lifecycle] App appUrlOpen listener unavailable:",
+    error instanceof Error ? error.message : error,
+  );
+}
+
 function receiveMobileDeepLink(url: string | null | undefined): void {
   const trimmed = url?.trim();
   if (!trimmed) return;
@@ -90,31 +98,35 @@ function receiveMobileDeepLink(url: string | null | undefined): void {
   mobileDeepLinkIngress.pendingUrls.add(trimmed);
 }
 
-function installMobileDeepLinkIngress(): Promise<void> {
+function installMobileDeepLinkIngress(
+  isNative = Capacitor.isNativePlatform(),
+): Promise<void> {
   if (mobileDeepLinkIngress.listenerReady) {
     return mobileDeepLinkIngress.listenerReady;
   }
-  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) {
+  if (typeof window === "undefined" || !isNative) {
     return Promise.resolve();
   }
 
-  mobileDeepLinkIngress.listenerReady = Promise.resolve(
-    CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+  try {
+    const registration = CapacitorApp.addListener("appUrlOpen", ({ url }) => {
       receiveMobileDeepLink(url);
-    }),
-  )
-    .then(() => {
-      markMobileDeepLinkIngress("ready");
-    })
-    .catch((error) => {
-      // error-policy:J4 getLaunchUrl remains the cold-launch fallback when the
-      // native warm-link listener is unavailable.
-      markMobileDeepLinkIngress("unavailable");
-      console.warn(
-        "[mobile-lifecycle] App appUrlOpen listener unavailable:",
-        error instanceof Error ? error.message : error,
-      );
     });
+    mobileDeepLinkIngress.listenerReady = Promise.resolve(registration)
+      .then(() => {
+        markMobileDeepLinkIngress("ready");
+      })
+      .catch((error) => {
+        // error-policy:J4 getLaunchUrl remains the cold-launch fallback when
+        // native warm-link registration rejects.
+        markMobileDeepLinkIngressUnavailable(error);
+      });
+  } catch (error) {
+    // error-policy:J4 Some bridge shims throw synchronously instead of
+    // returning a rejection; getLaunchUrl remains the cold-launch fallback.
+    markMobileDeepLinkIngressUnavailable(error);
+    mobileDeepLinkIngress.listenerReady = Promise.resolve();
+  }
   return mobileDeepLinkIngress.listenerReady;
 }
 
@@ -277,6 +289,10 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       logNativePluginUnavailable("App", error);
     });
 
+    // Module evaluation owns the earliest possible registration, while this
+    // second entry covers SSR/test imports that first ran without a native
+    // window. The shared promise keeps both paths on one OS listener.
+    void installMobileDeepLinkIngress(ctx.isNative);
     attachMobileDeepLinkHandler(handleDeepLinkOnce);
 
     let replayTimer: ReturnType<typeof setInterval> | null = null;

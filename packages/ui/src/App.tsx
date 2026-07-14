@@ -2036,6 +2036,7 @@ export function App() {
     retryStartup,
     tab,
     setTab,
+    completeFirstRun,
     setState,
     setActionNotice,
     actionNotice,
@@ -2054,6 +2055,7 @@ export function App() {
     retryStartup: s.retryStartup,
     tab: s.tab,
     setTab: s.setTab,
+    completeFirstRun: s.completeFirstRun,
     setState: s.setState,
     setActionNotice: s.setActionNotice,
     actionNotice: s.actionNotice,
@@ -2105,7 +2107,7 @@ export function App() {
         return;
       }
 
-      const completeFirstRun = payload.completeFirstRun === true;
+      const shouldCompleteFirstRun = payload.completeFirstRun === true;
       const skipConfirm = payload.skipConfirm === true;
       if (!skipConfirm && !isLoopbackGatewayHost(payload.gatewayUrl)) {
         const approved = await confirmDesktopAction({
@@ -2135,17 +2137,24 @@ export function App() {
         setState("firstRunRemoteToken", connection.token ?? "");
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
-        if (completeFirstRun) {
+        if (shouldCompleteFirstRun) {
           await adoptRemoteAgentFirstRun(client, {
             apiBase: connection.apiBase,
             token: connection.token,
             uiLanguage,
           });
-          setState("firstRunComplete", true);
-          startupCoordinator.dispatch({ type: "FIRST_RUN_COMPLETE" });
+          // Use the shared finalizer so the durable flag and the coordinator's
+          // committed-completion ref advance together, then restore the saved
+          // target to rebuild polling context around that remote. Directly
+          // switching targets has no persisted-server context, so the poller
+          // must reject optimistic completion even when the ref is committed.
+          completeFirstRun();
+          retryStartup();
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
-        retryStartup();
+        if (!shouldCompleteFirstRun) {
+          retryStartup();
+        }
       } catch (err) {
         setActionNotice(
           err instanceof Error
@@ -2161,10 +2170,10 @@ export function App() {
     return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
   }, [
     isShellPaintableNow,
+    completeFirstRun,
     retryStartup,
     setActionNotice,
     setState,
-    startupCoordinator.dispatch,
     uiLanguage,
   ]);
 

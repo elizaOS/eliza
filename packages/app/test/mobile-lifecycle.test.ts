@@ -6,9 +6,9 @@
  * wiring (`createMobileLifecycle`). Exercises the two device-free seams a
  * jsdom test can drive deterministically:
  *
- *   - `initializeAppLifecycle()` — `@capacitor/app` `appStateChange` /
- *     `backButton` / `appUrlOpen` listeners + the cold-launch `getLaunchUrl()`
- *     deep-link bootstrap. Asserts the events the module dispatches
+ *   - `initializeAppLifecycle()` — instance-owned `@capacitor/app` lifecycle
+ *     listeners, the module-owned warm-link ingress, and the cold-launch
+ *     `getLaunchUrl()` bootstrap. Asserts the events the module dispatches
  *     (`APP_RESUME_EVENT` / `APP_PAUSE_EVENT`), the shipped Android hardware
  *     back contract (#9148) — `dispatchBackIntent()` gets first crack and a
  *     handled press returns early; an unhandled press falls through to
@@ -93,6 +93,9 @@ const { appListeners, networkListeners, capacitorAppMock, networkMock } =
   });
 
 vi.mock("@capacitor/app", () => ({ App: capacitorAppMock }));
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: () => true },
+}));
 vi.mock("@capacitor/network", () => ({ Network: networkMock }));
 // `mobile-lifecycle.ts` imports these statically; only the app lifecycle and
 // network paths are exercised here, so the keyboard module just needs to load.
@@ -162,7 +165,12 @@ let historyBackSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Warm-link ingress is intentionally process-global so links arriving before
+  // React mounts are retained. Preserve that one native listener while each
+  // test resets the lifecycle-instance listeners it creates itself.
+  const warmLinkHandlers = appListeners.get("appUrlOpen");
   appListeners.clear();
+  if (warmLinkHandlers) appListeners.set("appUrlOpen", warmLinkHandlers);
   networkListeners.clear();
   capacitorAppMock.__setLaunchUrl(null);
   historyBackSpy = vi
@@ -441,8 +449,9 @@ describe("createMobileLifecycle — app lifecycle", () => {
     expect(appListeners.get("appStateChange")?.length).toBe(1);
     expect(appListeners.get("backButton")?.length).toBe(1);
     expect(appListeners.get("appUrlOpen")?.length).toBe(1);
-    // addListener is called 3× total (one per event), not 6×.
-    expect(capacitorAppMock.addListener).toHaveBeenCalledTimes(3);
+    // The process-global appUrlOpen ingress already exists; this lifecycle
+    // instance owns only app-state and back-button registration.
+    expect(capacitorAppMock.addListener).toHaveBeenCalledTimes(2);
     expect(capacitorAppMock.getLaunchUrl).toHaveBeenCalledTimes(1);
   });
 });

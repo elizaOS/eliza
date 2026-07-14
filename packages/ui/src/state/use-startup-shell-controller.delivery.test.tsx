@@ -18,6 +18,7 @@ const harness = vi.hoisted(() => ({
     }),
   ),
   confirm: vi.fn(async () => true),
+  completeFirstRun: vi.fn(),
   dispatch: vi.fn(),
   ensureWorkspace: vi.fn(async () => {}),
   getFirstRunStatus: vi.fn(async () => ({
@@ -25,6 +26,7 @@ const harness = vi.hoisted(() => ({
     cloudProvisioned: false,
   })),
   persistRuntime: vi.fn(),
+  reset: vi.fn(),
   retryStartup: vi.fn(),
   setActionNotice: vi.fn(),
   setState: vi.fn(),
@@ -65,6 +67,7 @@ function setPhase(
     phase,
     state: coordinatorState,
     dispatch: harness.dispatch,
+    reset: harness.reset,
   };
 }
 
@@ -85,6 +88,7 @@ function resetHarness(phase = "restoring-session"): void {
   Object.assign(harness.state, {
     startupError: null,
     firstRunCloudProvisionedContainer: false,
+    completeFirstRun: harness.completeFirstRun,
     retryStartup: harness.retryStartup,
     setActionNotice: harness.setActionNotice,
     setState: harness.setState,
@@ -120,7 +124,7 @@ describe("useStartupShellController connect delivery", () => {
     hook.rerender();
 
     await waitFor(() => expect(harness.applyConnection).toHaveBeenCalled());
-    await waitFor(() => expect(harness.retryStartup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(harness.completeFirstRun).toHaveBeenCalled());
     expect(harness.persistRuntime).toHaveBeenCalledWith("remote");
     expect(harness.adoptRemote).toHaveBeenCalledWith(
       expect.anything(),
@@ -129,10 +133,16 @@ describe("useStartupShellController connect delivery", () => {
         uiLanguage: "en",
       }),
     );
-    expect(harness.setState).toHaveBeenCalledWith("firstRunComplete", true);
-    expect(harness.dispatch).toHaveBeenCalledWith({
-      type: "FIRST_RUN_COMPLETE",
+    expect(harness.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(harness.dispatch).not.toHaveBeenCalledWith({
+      type: "SWITCH_AGENT",
+      target: "remote-backend",
     });
+    expect(harness.reset).not.toHaveBeenCalled();
+    expect(harness.completeFirstRun.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.retryStartup.mock.invocationCallOrder[0],
+    );
+    expect(harness.retryStartup).toHaveBeenCalledTimes(1);
     expect(harness.setActionNotice).toHaveBeenCalledWith(
       "Connected to remote backend.",
       "success",
@@ -188,6 +198,56 @@ describe("useStartupShellController connect delivery", () => {
         8000,
       ),
     );
+    expect(harness.retryStartup).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it("completes a normal remote adoption through the shared use case", async () => {
+    resetHarness("pairing-required");
+    const hook = renderHook(() => useStartupShellController());
+
+    act(() => {
+      dispatchAppEvent(CONNECT_EVENT, {
+        gatewayUrl: "http://127.0.0.1:31337",
+        completeFirstRun: true,
+      });
+    });
+
+    await waitFor(() => expect(harness.completeFirstRun).toHaveBeenCalled());
+    expect(harness.adoptRemote).toHaveBeenCalledTimes(1);
+    expect(harness.completeFirstRun).toHaveBeenCalledTimes(1);
+    expect(harness.dispatch).not.toHaveBeenCalledWith({
+      type: "SWITCH_AGENT",
+      target: "remote-backend",
+    });
+    expect(harness.reset).not.toHaveBeenCalled();
+    expect(harness.completeFirstRun.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.retryStartup.mock.invocationCallOrder[0],
+    );
+    expect(harness.retryStartup).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
+
+  it("re-arms force-fresh when remote first-run adoption fails", async () => {
+    resetHarness("pairing-required");
+    harness.adoptRemote.mockRejectedValueOnce(new Error("remote write denied"));
+    const hook = renderHook(() => useStartupShellController());
+
+    act(() => {
+      dispatchAppEvent(CONNECT_EVENT, {
+        gatewayUrl: "http://127.0.0.1:31337",
+        completeFirstRun: true,
+      });
+    });
+
+    await waitFor(() =>
+      expect(harness.setActionNotice).toHaveBeenCalledWith(
+        "remote write denied",
+        "error",
+        8000,
+      ),
+    );
+    expect(harness.completeFirstRun).not.toHaveBeenCalled();
     expect(harness.retryStartup).not.toHaveBeenCalled();
     hook.unmount();
   });

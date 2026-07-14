@@ -412,4 +412,67 @@ describe("mobile restored target reconciliation", () => {
       apiBase: "eliza-local-agent://ipc",
     });
   });
+
+  it("normalizes the pre-IPC canonical Android identity when local mode owns loopback", () => {
+    expect(
+      reconcileMobileRestoredActiveServer({
+        server: {
+          id: "local:android",
+          kind: "remote",
+          label: "On-device agent",
+          apiBase: "http://127.0.0.1:31337",
+        },
+        mobileRuntimeMode: "local",
+        platform: "android",
+      }),
+    ).toMatchObject({
+      id: "local:android",
+      apiBase: "eliza-local-agent://ipc",
+    });
+  });
+
+  it("drops a canonical local identity when remote mode owns loopback", () => {
+    expect(
+      reconcileMobileRestoredActiveServer({
+        server: {
+          id: "local:android",
+          kind: "remote",
+          label: "On-device agent",
+          apiBase: "http://127.0.0.1:31337",
+        },
+        mobileRuntimeMode: "remote-mac",
+        platform: "android",
+      }),
+    ).toBeNull();
+  });
+
+  it("preserves an explicitly remote loopback host instead of mistaking it for the bundled agent", () => {
+    expect(
+      reconcileMobileRestoredActiveServer({
+        server: {
+          id: "remote:http://127.0.0.1:31337",
+          kind: "remote",
+          label: "Host agent",
+          apiBase: "http://127.0.0.1:31337",
+        },
+        mobileRuntimeMode: "remote-mac",
+        platform: "android",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("drops an ambiguous legacy loopback record without an explicit runtime mode", () => {
+    expect(
+      reconcileMobileRestoredActiveServer({
+        server: {
+          id: "remote:http://127.0.0.1:31337",
+          kind: "remote",
+          label: "Legacy loopback",
+          apiBase: "http://127.0.0.1:31337",
+        },
+        mobileRuntimeMode: null,
+        platform: "android",
+      }),
+    ).toBeNull();
+  });
 });

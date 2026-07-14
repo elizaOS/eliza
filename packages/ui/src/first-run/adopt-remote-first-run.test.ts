@@ -1,8 +1,14 @@
 /**
  * Unit coverage for adopting a remote agent's first-run state (URL
  * normalization, config probe). Client injected, no live agent.
+ *
+ * @vitest-environment jsdom
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  enableForceFreshFirstRun,
+  isForceFreshFirstRunEnabled,
+} from "../platform/first-run-reset";
 import {
   adoptRemoteAgentFirstRun,
   normalizeRemoteAgentUrl,
@@ -57,6 +63,14 @@ function makeClient(overrides: Partial<RemoteFirstRunClient> = {}): {
 }
 
 describe("adoptRemoteAgentFirstRun", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
   it("adopts a fresh remote: probes then POSTs the remote deployment target", async () => {
     const { client, submitFirstRun } = makeClient({
       getFirstRunStatus: vi.fn(async () => ({ complete: false })),
@@ -88,6 +102,61 @@ describe("adoptRemoteAgentFirstRun", () => {
 
     expect(result).toEqual({ alreadyComplete: true });
     expect(submitFirstRun).not.toHaveBeenCalled();
+  });
+
+  it("lifts force-fresh before probing and commits the cleared marker", async () => {
+    enableForceFreshFirstRun();
+    const { client, submitFirstRun } = makeClient({
+      getFirstRunStatus: vi.fn(async () => {
+        expect(isForceFreshFirstRunEnabled()).toBe(false);
+        return { complete: true };
+      }),
+    });
+
+    const result = await adoptRemoteAgentFirstRun(client, {
+      apiBase: "https://agent.example.com",
+    });
+
+    expect(result).toEqual({ alreadyComplete: true });
+    expect(isForceFreshFirstRunEnabled()).toBe(false);
+    expect(submitFirstRun).not.toHaveBeenCalled();
+  });
+
+  it("restores force-fresh when the completion write fails", async () => {
+    enableForceFreshFirstRun();
+    const { client } = makeClient({
+      getFirstRunStatus: vi.fn(async () => {
+        expect(isForceFreshFirstRunEnabled()).toBe(false);
+        return { complete: false };
+      }),
+      submitFirstRun: vi.fn(async () => {
+        throw new Error("remote write denied");
+      }),
+    });
+
+    await expect(
+      adoptRemoteAgentFirstRun(client, {
+        apiBase: "https://agent.example.com",
+      }),
+    ).rejects.toThrow(/remote write denied/);
+
+    expect(isForceFreshFirstRunEnabled()).toBe(true);
+  });
+
+  it("does not arm force-fresh after a normal adoption failure", async () => {
+    const { client } = makeClient({
+      submitFirstRun: vi.fn(async () => {
+        throw new Error("remote write denied");
+      }),
+    });
+
+    await expect(
+      adoptRemoteAgentFirstRun(client, {
+        apiBase: "https://agent.example.com",
+      }),
+    ).rejects.toThrow(/remote write denied/);
+
+    expect(isForceFreshFirstRunEnabled()).toBe(false);
   });
 
   it("treats an unreachable status probe as 'needs adoption' and still POSTs", async () => {

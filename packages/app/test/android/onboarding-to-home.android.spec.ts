@@ -2,16 +2,19 @@
  * Exercises fresh Android remote-connect onboarding through the real
  * Capacitor WebView and OS `appUrlOpen` ingress. The device reaches the host
  * agent through `adb reverse`, proves the post-onboarding home and composer,
- * then sends a chat turn. The default host is the deterministic UI-smoke
- * fixture; `ELIZA_ONBOARDING_LIVENESS=1` promotes the reply contract to a live,
- * non-stub model response.
+ * then force-stops the app to verify the remote target survives a cold restore
+ * before sending another chat turn. The default host is the deterministic
+ * UI-smoke fixture; `ELIZA_ONBOARDING_LIVENESS=1` promotes the reply contract
+ * to a live, non-stub model response.
  */
 import path from "node:path";
-import { startAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
+import type { AndroidDevice, Page } from "@playwright/test";
+import { startChunkedAndroidScreenRecord } from "../../scripts/lib/android-capture.mjs";
 import {
   APP_ID,
   adbDevice,
   adbReverse,
+  MAIN_ACTIVITY,
   resolveAdb,
 } from "../../scripts/lib/android-device.mjs";
 import {
@@ -39,33 +42,75 @@ const ARTIFACT_DIR = path.join(
   "onboarding-to-home",
 );
 
+async function waitForRelaunchedPage(
+  device: AndroidDevice,
+  previousPage: Page,
+): Promise<Page> {
+  const deadline = Date.now() + 60_000;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    const webView = device
+      .webViews()
+      .find((candidate) => candidate.pkg() === APP_ID);
+    if (webView) {
+      try {
+        const candidate = await webView.page();
+        if (candidate !== previousPage && !candidate.isClosed()) {
+          return candidate;
+        }
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    `Relaunched ${APP_ID} WebView did not become attachable: ${lastError instanceof Error ? lastError.message : String(lastError ?? "no WebView target")}`,
+  );
+}
+
 async function ensureHostFirstRunComplete(): Promise<void> {
   const headers = { "X-ElizaOS-Client-Id": "android-onboarding" };
-  const statusResponse = await fetch(
-    `${HOST_AGENT_BASE}/api/first-run/status`,
-    {
-      headers,
-    },
-  );
-  if (!statusResponse.ok) {
-    throw new Error(
-      `Host first-run status failed: ${statusResponse.status} ${statusResponse.statusText}`,
-    );
-  }
-  const status: unknown = await statusResponse.json();
-  if (
-    typeof status === "object" &&
-    status !== null &&
-    "complete" in status &&
-    status.complete === true
-  ) {
-    return;
-  }
 
-  // The device is what is fresh in this scenario. A remote agent must already
-  // own its deployment target before another device adopts it; asking the
-  // device flow to configure the host as a remote of itself races its restart
-  // and can never prove a stable connection.
+  const readCompletion = async (): Promise<boolean> => {
+    const [statusResponse, configResponse] = await Promise.all([
+      fetch(`${HOST_AGENT_BASE}/api/first-run/status`, { headers }),
+      fetch(`${HOST_AGENT_BASE}/api/config`, { headers }),
+    ]);
+    if (!statusResponse.ok) {
+      throw new Error(
+        `Host first-run status failed: ${statusResponse.status} ${statusResponse.statusText}`,
+      );
+    }
+    if (!configResponse.ok) {
+      throw new Error(
+        `Host live config failed: ${configResponse.status} ${configResponse.statusText}`,
+      );
+    }
+    const status: unknown = await statusResponse.json();
+    if (
+      typeof status !== "object" ||
+      status === null ||
+      !("complete" in status) ||
+      typeof status.complete !== "boolean"
+    ) {
+      throw new Error("Host first-run status returned an invalid payload");
+    }
+    const config: unknown = await configResponse.json();
+    if (typeof config !== "object" || config === null) {
+      throw new Error("Host live config returned an invalid payload");
+    }
+    const meta = "meta" in config ? config.meta : null;
+    const liveComplete =
+      typeof meta === "object" &&
+      meta !== null &&
+      "firstRunComplete" in meta &&
+      meta.firstRunComplete === true;
+    return status.complete && liveComplete;
+  };
+
+  if (await readCompletion()) return;
+
   const completeResponse = await fetch(`${HOST_AGENT_BASE}/api/first-run`, {
     method: "POST",
     headers: { ...headers, "content-type": "application/json" },
@@ -76,6 +121,18 @@ async function ensureHostFirstRunComplete(): Promise<void> {
       `Host first-run completion failed: ${completeResponse.status} ${completeResponse.statusText}`,
     );
   }
+
+  // The route's 200 only acknowledges request handling. Require the durable
+  // status and live config mirror to agree; a rejected internal config write
+  // must never masquerade as a completed host.
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (await readCompletion()) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(
+    "Host first-run completion was not observable after the completion write",
+  );
 }
 
 test.describe
@@ -84,7 +141,7 @@ test.describe
       page,
       device,
     }, testInfo) => {
-      test.setTimeout(180_000);
+      test.setTimeout(300_000);
 
       const adbBin = resolveAdb();
       const serial = device.serial();
@@ -92,14 +149,14 @@ test.describe
       adbReverse(adbBin, serial, 31337);
       await ensureHostFirstRunComplete();
 
-      const recording = await startAndroidScreenRecord({
+      const recording = await startChunkedAndroidScreenRecord({
         serial,
         artifactDir: ARTIFACT_DIR,
         filename: "onboarding-to-home.mp4",
-        remotePath: "/sdcard/eliza-onboarding-to-home.mp4",
       });
       let primaryFailure: unknown = null;
       let recordingFailure: unknown = null;
+      let diagnosticPage = page;
 
       try {
         // The product reset path owns shell-reserved storage and arms a
@@ -247,6 +304,103 @@ test.describe
             contentType: "text/plain",
           });
         }
+
+        // Kill the app process and attach to the newly-created WebView so the
+        // persisted remote target crosses the same cold restore boundary a
+        // real subsequent launch uses. URL shape alone cannot identify the
+        // bundled agent because adb reverse deliberately makes a host remote
+        // available at loopback:31337 too.
+        adbDevice(adbBin, serial, ["shell", "am", "force-stop", APP_ID]);
+        adbDevice(adbBin, serial, [
+          "shell",
+          "am",
+          "start",
+          "-W",
+          "-n",
+          MAIN_ACTIVITY,
+        ]);
+        const relaunchedPage = await waitForRelaunchedPage(device, page);
+        diagnosticPage = relaunchedPage;
+        await relaunchedPage.waitForLoadState("domcontentloaded");
+        await expect(
+          relaunchedPage.getByTestId("home-launcher-surface"),
+        ).toBeVisible({ timeout: 90_000 });
+        await expect(
+          relaunchedPage.getByTestId("chat-composer-textarea"),
+        ).toBeVisible({ timeout: 60_000 });
+
+        const readRestoredState = () =>
+          relaunchedPage.evaluate(() => {
+            const globalObject = globalThis as typeof globalThis & {
+              __ELIZAOS_UI_APP_STORE__?: {
+                value?: {
+                  firstRunComplete?: unknown;
+                  startupCoordinator?: { phase?: unknown };
+                } | null;
+              };
+            };
+            return {
+              activeServer: localStorage.getItem("elizaos:active-server"),
+              firstRunComplete:
+                globalObject.__ELIZAOS_UI_APP_STORE__?.value
+                  ?.firstRunComplete ?? null,
+              mode: localStorage.getItem("eliza:mobile-runtime-mode"),
+              phase:
+                globalObject.__ELIZAOS_UI_APP_STORE__?.value?.startupCoordinator
+                  ?.phase ?? null,
+            };
+          });
+        await expect
+          .poll(
+            async () => {
+              const state = await readRestoredState();
+              return (
+                state.firstRunComplete === true &&
+                state.mode === "remote-mac" &&
+                state.phase === "ready"
+              );
+            },
+            {
+              timeout: 90_000,
+              message: "cold relaunch restores the remote first-run session",
+            },
+          )
+          .toBe(true);
+        const restoredState = await readRestoredState();
+        expect(restoredState.activeServer).toContain('"kind":"remote"');
+        expect(restoredState.activeServer).toContain("127.0.0.1:31337");
+
+        const relaunchScreenshotPath = path.join(
+          ARTIFACT_DIR,
+          "home-after-cold-relaunch.png",
+        );
+        await relaunchedPage.screenshot({
+          path: relaunchScreenshotPath,
+          fullPage: true,
+        });
+        await testInfo.attach("home after cold relaunch screenshot", {
+          path: relaunchScreenshotPath,
+          contentType: "image/png",
+        });
+
+        if (LIVENESS_ENABLED) {
+          const reply = await assertOnboardingLiveness(relaunchedPage, {
+            label: "android-onboarding-cold-relaunch",
+          });
+          await testInfo.attach("cold relaunch liveness reply (real model)", {
+            body: reply,
+            contentType: "text/plain",
+          });
+        } else {
+          const reply = await sendChatAndReadReply(relaunchedPage, {
+            label: "android-onboarding-cold-relaunch",
+          });
+          expect(reply).toContain(STUB_FIXTURE_MARKER);
+          await testInfo.attach("cold relaunch liveness reply (stub-backed)", {
+            body: reply,
+            contentType: "text/plain",
+          });
+        }
       } catch (error) {
         primaryFailure = error;
         const diagnosticScreenshot = path.join(
@@ -254,7 +408,7 @@ test.describe
           "onboarding-failure.png",
         );
         const [stateResult, screenshotResult] = await Promise.allSettled([
-          page.evaluate(() => {
+          diagnosticPage.evaluate(() => {
             const globalObject = globalThis as typeof globalThis & {
               __ELIZAOS_UI_APP_STORE__?: {
                 value?: {
@@ -312,7 +466,7 @@ test.describe
               },
             };
           }),
-          page.screenshot({
+          diagnosticPage.screenshot({
             path: diagnosticScreenshot,
             fullPage: true,
           }),

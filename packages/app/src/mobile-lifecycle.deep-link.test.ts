@@ -17,6 +17,7 @@ const native = vi.hoisted(() => ({
   keyboardListeners: new Map<string, (payload: never) => void>(),
   networkListener: null as ((payload: { connected: boolean }) => void) | null,
   launchUrl: "elizaos://settings?source=cold",
+  isNativePlatform: true,
   rejectAppUrlListener: false,
   minimizeApp: vi.fn(async () => {}),
   statusCalls: [] as Array<[string, unknown]>,
@@ -39,7 +40,7 @@ vi.mock("@capacitor/app", () => ({
 }));
 
 vi.mock("@capacitor/core", () => ({
-  Capacitor: { isNativePlatform: () => true },
+  Capacitor: { isNativePlatform: () => native.isNativePlatform },
 }));
 
 vi.mock("@capacitor/keyboard", () => ({
@@ -85,6 +86,7 @@ import { createMobileLifecycle } from "./mobile-lifecycle";
 
 describe("mobile lifecycle ingress and bridges", () => {
   afterEach(() => {
+    native.isNativePlatform = true;
     native.rejectAppUrlListener = false;
     document.body.className = "";
     document.body.style.removeProperty("--keyboard-height");
@@ -214,5 +216,39 @@ describe("mobile lifecycle ingress and bridges", () => {
       expect.stringContaining("appUrlOpen listener unavailable"),
       "native listener rejected",
     );
+  });
+
+  it("installs warm-link ingress when native context appears after module load", async () => {
+    delete (globalThis as Record<symbol, unknown>)[
+      Symbol.for("eliza.mobile-deep-link-ingress")
+    ];
+    delete document.documentElement.dataset.elizaMobileDeepLinkReady;
+    native.appListeners.clear();
+    native.isNativePlatform = false;
+    vi.resetModules();
+
+    const lateModule = await import("./mobile-lifecycle");
+    expect(native.appListeners.has("appUrlOpen")).toBe(false);
+
+    const deepLinks: string[] = [];
+    const lifecycle = lateModule.createMobileLifecycle({
+      isNative: true,
+      isIOS: false,
+      isAndroid: true,
+      logPrefix: "[test]",
+      handleDeepLink: (url) => deepLinks.push(url),
+    });
+    lifecycle.initializeAppLifecycle();
+
+    await vi.waitFor(() => {
+      expect(native.appListeners.has("appUrlOpen")).toBe(true);
+      expect(document.documentElement.dataset.elizaMobileDeepLinkReady).toBe(
+        "ready",
+      );
+    });
+    native.appListeners.get("appUrlOpen")?.({
+      url: "elizaos://late-native",
+    } as never);
+    expect(deepLinks).toContain("elizaos://late-native");
   });
 });

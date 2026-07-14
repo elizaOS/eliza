@@ -151,6 +151,13 @@ describe("Android emulator workflow shell contract", () => {
     ).toHaveLength(1);
     expect(onboardingSpec).not.toContain("localStorage.removeItem(");
     expect(onboardingSpec).toMatch(/page\.goto\(`\$\{ORIGIN\}\/\?reset`/);
+    expect(onboardingSpec).toContain("await readCompletion()");
+    expect(onboardingSpec).toMatch(
+      /fetch\(`\$\{HOST_AGENT_BASE\}\/api\/config`/,
+    );
+    expect(onboardingSpec).toContain(
+      "Host first-run completion was not observable",
+    );
   });
 
   test("uses the supported role interface and explicit component receipts", () => {
@@ -186,6 +193,11 @@ describe("Android emulator workflow shell contract", () => {
     expect(nativePluginCi).toContain("pidof screenrecord");
     expect(nativePluginCi).toContain('adb shell kill -2 "$SCREENRECORD_PID"');
     expect(nativePluginCi).not.toContain("pkill -INT screenrecord");
+    expect(nativePluginCi).toContain("adb exec-out screencap -p");
+    expect(nativePluginCi).toContain("frame-%06d.png");
+    expect(nativePluginCi).toContain("resolveRequiredFfmpeg");
+    expect(nativePluginCi).toContain('"$FFMPEG_BIN" -y -loglevel warning');
+    expect(nativePluginCi).toContain("real-pixel fallback frames");
     expect(nativePluginCi).toContain("assertPlayableMp4");
     expect(androidCapture).toContain("waitForDeviceScreenRecordExit");
     expect(androidCapture).toContain('["ftyp", "mdat", "moov"]');

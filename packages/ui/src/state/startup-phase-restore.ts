@@ -30,6 +30,7 @@ import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentIpcBase,
   isMobileLocalAgentUrl,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
@@ -209,12 +210,15 @@ export interface RestoringSessionCtx {
   hadPriorFirstRun: boolean;
 }
 
-function isMobileLocalAgentApiBase(value: string | undefined): boolean {
-  return isMobileLocalAgentUrl(value);
-}
-
 function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
-  return server.kind === "local" || isMobileLocalAgentApiBase(server.apiBase);
+  const canonicalLocalId =
+    server.id === ANDROID_LOCAL_AGENT_SERVER_ID ||
+    server.id === MOBILE_LOCAL_AGENT_SERVER_ID;
+  return (
+    server.kind === "local" ||
+    isMobileLocalAgentIpcBase(server.apiBase) ||
+    (canonicalLocalId && isMobileLocalAgentUrl(server.apiBase))
+  );
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -265,8 +269,17 @@ export function reconcileMobileRestoredActiveServer(args: {
 }): PersistedActiveServer | null | undefined {
   const { server, mobileRuntimeMode, platform } = args;
   const mobileLocal = isMobileLocalActiveServer(server);
+  const legacyLoopbackLocal =
+    !mobileLocal && isMobileLocalAgentUrl(server.apiBase);
   if (mobileLocal && mobileRuntimeMode !== "local") {
     return null;
+  }
+  if (legacyLoopbackLocal && mobileRuntimeMode !== "local") {
+    // Port 31337 is also a valid explicitly-selected remote reached through
+    // adb reverse or an SSH tunnel. Only the persisted runtime mode can
+    // distinguish that target from the legacy pre-IPC local-agent record.
+    // Preserve an explicit remote selection; ambiguous/stale modes fail closed.
+    return mobileRuntimeMode === "remote-mac" ? undefined : null;
   }
 
   const expectedMobileIpcBase =
@@ -275,7 +288,8 @@ export function reconcileMobileRestoredActiveServer(args: {
       : IOS_LOCAL_AGENT_IPC_BASE;
   if (
     server.kind === "local" ||
-    (mobileLocal && server.apiBase !== expectedMobileIpcBase)
+    ((mobileLocal || legacyLoopbackLocal) &&
+      server.apiBase !== expectedMobileIpcBase)
   ) {
     return mobileLocalActiveServer(platform);
   }

@@ -9,6 +9,11 @@ import baseConfig from "../../packages/test/vitest/default.config";
 process.env.LIVE = "1";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const pluginWalletSrc = path.resolve(here, "../../plugins/plugin-wallet/src");
+const baseAliases = baseConfig.resolve?.alias;
+if (!Array.isArray(baseAliases)) {
+  throw new Error("app-core real E2E requires the shared array-form aliases");
+}
 
 /**
  * Config for the `test/app/*.{real,live}.e2e.test.ts` browser-driven real e2e
@@ -27,6 +32,16 @@ export default defineConfig({
   resolve: {
     ...baseConfig.resolve,
     preserveSymlinks: false,
+    alias: [
+      // A bare workspace alias treats package subpaths as children of
+      // `src/index.ts`. Route subpaths first so the real server can import its
+      // wallet diagnostic boundary instead of resolving `index.ts/diagnostic`.
+      {
+        find: /^@elizaos\/plugin-wallet\/(.+)$/,
+        replacement: `${pluginWalletSrc.split(path.sep).join("/")}/$1`,
+      },
+      ...baseAliases,
+    ],
   },
   test: {
     ...baseConfig.test,

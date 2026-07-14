@@ -102,6 +102,7 @@ export function useStartupShellController(): StartupShellController {
     startupCoordinator,
     startupError,
     firstRunCloudProvisionedContainer,
+    completeFirstRun,
     retryStartup,
     setActionNotice,
     setState,
@@ -111,6 +112,7 @@ export function useStartupShellController(): StartupShellController {
     startupCoordinator: s.startupCoordinator,
     startupError: s.startupError,
     firstRunCloudProvisionedContainer: s.firstRunCloudProvisionedContainer,
+    completeFirstRun: s.completeFirstRun,
     retryStartup: s.retryStartup,
     setActionNotice: s.setActionNotice,
     setState: s.setState,
@@ -152,7 +154,7 @@ export function useStartupShellController(): StartupShellController {
       // `completeFirstRun` marks the connected remote as this device's finished
       // first-run target (device/desktop remote-connect-at-URL onboarding), so
       // it lands on home instead of re-showing onboarding on the next launch.
-      const completeFirstRun = payload.completeFirstRun === true;
+      const shouldCompleteFirstRun = payload.completeFirstRun === true;
       // `skipConfirm` is set ONLY by trusted in-app callers (the Settings
       // "Connect a remote agent" entry, where the user just typed the URL).
       // OS-delivered deep links never set it, so they keep the confirmation.
@@ -192,22 +194,27 @@ export function useStartupShellController(): StartupShellController {
         setState("firstRunRemoteToken", connection.token ?? "");
         setState("firstRunRemoteConnected", true);
         setState("firstRunRemoteError", null);
-        if (completeFirstRun) {
+        if (shouldCompleteFirstRun) {
           // Adopt the remote as this device's completed first-run target. Probes
-          // first, so an already-configured host is used as-is (no clobber) and
-          // a fresh host is marked complete — either way the startup re-poll
-          // below lands on home rather than onboarding.
+          // the remote's real status with the local force-fresh overlay lifted,
+          // so an already-configured host is never clobbered. Restore that
+          // overlay transactionally when adoption fails, keeping first-run
+          // explicit while retaining the selected target for a visible retry.
           await adoptRemoteAgentFirstRun(client, {
             apiBase: connection.apiBase,
             token: connection.token,
             uiLanguage,
           });
-          setState("firstRunComplete", true);
-          coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
+          completeFirstRun();
+          retryStartup();
         }
         setActionNotice("Connected to remote backend.", "success", 4200);
-        retryStartup();
+        if (!shouldCompleteFirstRun) {
+          retryStartup();
+        }
       } catch (err) {
+        // error-policy:J4 Connection failures remain visible while the startup
+        // shell stays available for retry or a different remote target.
         setActionNotice(
           err instanceof Error
             ? err.message
@@ -220,7 +227,7 @@ export function useStartupShellController(): StartupShellController {
 
     document.addEventListener(CONNECT_EVENT, handleConnect);
     return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
-  }, [retryStartup, setActionNotice, setState, uiLanguage]);
+  }, [completeFirstRun, retryStartup, setActionNotice, setState, uiLanguage]);
 
   useEffect(() => {
     void ensureStoreBuildWorkspaceFolder();

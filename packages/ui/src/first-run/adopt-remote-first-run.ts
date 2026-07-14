@@ -1,25 +1,19 @@
 /**
- * Headless "adopt a remote agent during first-run" use case.
+ * Headless remote-agent adoption for device and desktop first-run flows. The
+ * connect consumers call this after applying the remote client base; it probes
+ * the host before writing so an already-configured deployment is preserved.
  *
- * Device + desktop remote-connect-at-URL onboarding (deep link and the Settings
- * "Connect a remote agent" entry) funnels through here AFTER the client base has
- * been pointed at the remote (`applyLaunchConnection({ kind: "remote" })`). It
- * makes the connected remote the device's completed first-run target so the
- * startup poll lands on home instead of re-showing onboarding on the next launch.
- *
- * This is the headless equivalent of the legacy `finishRemote` step that used to
- * live in the full-screen onboarding controller, with one deliberate
- * improvement: it PROBES the remote's first-run status first and only writes
- * when the host has not finished its own first-run. Connecting to an
- * already-configured host therefore adopts it as-is instead of clobbering its
- * deployment target — the destructive overwrite the unconditional legacy POST
- * could cause.
- *
- * It is intentionally dependency-injected (the client surface is the only
- * dependency) so it can be unit-tested without the React shell or a live server.
+ * A force-fresh client patch deliberately masks persisted completion during
+ * onboarding. Adoption lifts that mask transactionally so the real host state
+ * is observed, commits the cleared mask on success, and restores it on failure.
  */
 
 import type { UiLanguage } from "../i18n";
+import {
+  clearForceFreshFirstRun,
+  enableForceFreshFirstRun,
+  isForceFreshFirstRunEnabled,
+} from "../platform/first-run-reset";
 import { buildFirstRunSubmitPlan } from "./first-run";
 
 /**
@@ -82,32 +76,46 @@ export async function adoptRemoteAgentFirstRun(
   client: RemoteFirstRunClient,
   input: AdoptRemoteAgentFirstRunInput,
 ): Promise<AdoptRemoteAgentFirstRunResult> {
-  let alreadyComplete = false;
+  const restoreForceFreshOnFailure = isForceFreshFirstRunEnabled();
+  if (restoreForceFreshOnFailure) {
+    clearForceFreshFirstRun();
+  }
+
+  let adoptionSucceeded = false;
   try {
-    alreadyComplete = (await client.getFirstRunStatus()).complete === true;
-  } catch {
-    // error-policy:J4 a fresh host with no persisted first-run state, or one
-    // whose build predates the status route, is the expected "needs adoption"
-    // shape — fall through to the completion write below. A genuinely
-    // unreachable remote re-fails there, so the failure still surfaces.
-    alreadyComplete = false;
+    let alreadyComplete = false;
+    try {
+      alreadyComplete = (await client.getFirstRunStatus()).complete === true;
+    } catch {
+      // error-policy:J4 a fresh host with no persisted first-run state, or one
+      // whose build predates the status route, is the expected "needs adoption"
+      // shape — fall through to the completion write below. A genuinely
+      // unreachable remote re-fails there, so the failure still surfaces.
+      alreadyComplete = false;
+    }
+
+    if (alreadyComplete) {
+      adoptionSucceeded = true;
+      return { alreadyComplete: true };
+    }
+
+    const plan = buildFirstRunSubmitPlan({
+      draft: {
+        agentName: "",
+        runtime: "remote",
+        localInference: "all-local",
+        remoteApiBase: input.apiBase,
+        remoteToken: input.token ?? "",
+      },
+      uiLanguage: input.uiLanguage ?? "en",
+    });
+
+    await client.submitFirstRun(plan.payload);
+    adoptionSucceeded = true;
+    return { alreadyComplete: false };
+  } finally {
+    if (!adoptionSucceeded && restoreForceFreshOnFailure) {
+      enableForceFreshFirstRun();
+    }
   }
-
-  if (alreadyComplete) {
-    return { alreadyComplete: true };
-  }
-
-  const plan = buildFirstRunSubmitPlan({
-    draft: {
-      agentName: "",
-      runtime: "remote",
-      localInference: "all-local",
-      remoteApiBase: input.apiBase,
-      remoteToken: input.token ?? "",
-    },
-    uiLanguage: input.uiLanguage ?? "en",
-  });
-
-  await client.submitFirstRun(plan.payload);
-  return { alreadyComplete: false };
 }

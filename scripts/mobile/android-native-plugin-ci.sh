@@ -66,6 +66,26 @@ CAPTURE_STATUS=0
 ASSISTANT_RECORDING_REMOTE=/sdcard/eliza-assistant-verification.mp4
 ASSISTANT_RECORDING_LOCAL="$ASSISTANT_ARTIFACT_DIR/assistant-verification.mp4"
 ASSISTANT_RECORDING_LOG="$ASSISTANT_ARTIFACT_DIR/screenrecord.log"
+ASSISTANT_FRAME_DIR="$ASSISTANT_ARTIFACT_DIR/screenrecord-frames"
+ASSISTANT_FRAME_STOP="$ASSISTANT_ARTIFACT_DIR/.stop-screenrecord-frames"
+
+rm -f "$ASSISTANT_RECORDING_LOCAL" "$ASSISTANT_RECORDING_LOG" "$ASSISTANT_FRAME_STOP"
+rm -rf "$ASSISTANT_FRAME_DIR"
+mkdir -p "$ASSISTANT_FRAME_DIR"
+
+capture_assistant_frames() {
+  local frame_index=0
+  local frame_path
+  while [[ ! -e "$ASSISTANT_FRAME_STOP" ]]; do
+    frame_path="$(printf '%s/frame-%06d.png' "$ASSISTANT_FRAME_DIR" "$frame_index")"
+    if adb exec-out screencap -p >"$frame_path" && [[ -s "$frame_path" ]]; then
+      frame_index=$((frame_index + 1))
+    else
+      rm -f "$frame_path"
+    fi
+    sleep 0.5
+  done
+}
 
 # Instrumentation can leave the headless display asleep. Android screenrecord
 # exits after writing only an MP4 header when it starts against that display,
@@ -74,15 +94,21 @@ adb shell input keyevent KEYCODE_WAKEUP
 adb shell wm dismiss-keyguard
 adb shell am start -W -n ai.elizaos.app/.MainActivity
 sleep 2
+
+# `screenrecord` is the preferred native encoder, while this concurrent stream
+# of real device pixels is its evidence-preserving fallback. API-34 headless
+# images can lose their ColorBuffer after instrumentation and leave a 3 KiB
+# unfinalized MP4 even though `screencap` continues to return the rendered UI.
+capture_assistant_frames >>"$ASSISTANT_RECORDING_LOG" 2>&1 &
+ASSISTANT_FRAME_CAPTURE_PID=$!
 adb shell rm -f "$ASSISTANT_RECORDING_REMOTE"
 adb shell screenrecord --bit-rate 4000000 --time-limit 90 \
-  "$ASSISTANT_RECORDING_REMOTE" >"$ASSISTANT_RECORDING_LOG" 2>&1 &
+  "$ASSISTANT_RECORDING_REMOTE" >>"$ASSISTANT_RECORDING_LOG" 2>&1 &
 ASSISTANT_RECORDING_PID=$!
 sleep 1
 ASSISTANT_SCREENRECORD_PIDS="$(adb shell pidof screenrecord 2>/dev/null | tr -d '\r' || true)"
 if [[ ! "$ASSISTANT_SCREENRECORD_PIDS" =~ ^[0-9]+([[:space:]]+[0-9]+)*$ ]]; then
   echo "assistant verification screenrecord did not start" >&2
-  CAPTURE_STATUS=1
 fi
 # Hosted emulator images have no on-device ASR engine. The verifier must still
 # hard-gate role, IME, and deep-link behavior while asserting designed
@@ -99,12 +125,16 @@ if ! node -e '
   VERIFY_STATUS=1
 fi
 
+touch "$ASSISTANT_FRAME_STOP"
+if ! wait "$ASSISTANT_FRAME_CAPTURE_PID"; then
+  echo "assistant verification frame capture exited unsuccessfully" >&2
+fi
+
 # A second SIGINT can interrupt screenrecord while it writes the MP4 index.
 # Signal each captured encoder PID once, then only observe it until exit.
 for SCREENRECORD_PID in $ASSISTANT_SCREENRECORD_PIDS; do
   if ! adb shell kill -2 "$SCREENRECORD_PID" >/dev/null 2>&1; then
     echo "assistant verification screenrecord PID $SCREENRECORD_PID rejected SIGINT" >&2
-    CAPTURE_STATUS=1
   fi
 done
 RECORDER_EXITED=0
@@ -118,10 +148,10 @@ done
 if [[ "$RECORDER_EXITED" -ne 1 ]]; then
   echo "assistant verification screenrecord did not exit cleanly" >&2
   kill "$ASSISTANT_RECORDING_PID" >/dev/null 2>&1 || true
-  CAPTURE_STATUS=1
 fi
 wait "$ASSISTANT_RECORDING_PID" || true
 
+DEVICE_RECORDING_VALID=0
 STABLE_SIZE=-1
 RECORDING_STABLE=0
 for _ in {1..20}; do
@@ -139,19 +169,56 @@ for _ in {1..20}; do
 done
 if [[ "$RECORDING_STABLE" -ne 1 ]]; then
   echo "assistant verification screenrecord never reached a stable size" >&2
-  CAPTURE_STATUS=1
 elif ! adb pull "$ASSISTANT_RECORDING_REMOTE" "$ASSISTANT_RECORDING_LOCAL" >/dev/null \
   || [[ ! -s "$ASSISTANT_RECORDING_LOCAL" ]]; then
   echo "assistant verification screenrecord is missing or empty" >&2
-  CAPTURE_STATUS=1
 elif ! node --input-type=module -e '
   import { assertPlayableMp4 } from "./packages/app/scripts/lib/android-capture.mjs";
   assertPlayableMp4(process.argv[1]);
 ' "$ASSISTANT_RECORDING_LOCAL"; then
   echo "assistant verification screenrecord is not a complete MP4" >&2
-  CAPTURE_STATUS=1
+else
+  DEVICE_RECORDING_VALID=1
 fi
 adb shell rm -f "$ASSISTANT_RECORDING_REMOTE" || true
+
+if [[ "$DEVICE_RECORDING_VALID" -ne 1 ]]; then
+  FRAME_COUNT="$(find "$ASSISTANT_FRAME_DIR" -maxdepth 1 -type f -name 'frame-*.png' | wc -l | tr -d ' ')"
+  if [[ ! "$FRAME_COUNT" =~ ^[0-9]+$ ]] || [[ "$FRAME_COUNT" -lt 4 ]]; then
+    echo "assistant verification frame fallback captured fewer than four frames" >&2
+    CAPTURE_STATUS=1
+  elif ! FFMPEG_BIN="$(
+    node --input-type=module -e '
+      import { resolveRequiredFfmpeg } from "./packages/app/scripts/lib/ffmpeg.mjs";
+      const bin = resolveRequiredFfmpeg({ log: (message) => console.error(message) });
+      process.stdout.write("ELIZA_FFMPEG_BIN=" + bin + "\n");
+    ' | sed -n 's/^ELIZA_FFMPEG_BIN=//p'
+  )" || [[ -z "$FFMPEG_BIN" ]]; then
+    echo "assistant verification frame fallback could not resolve ffmpeg" >&2
+    CAPTURE_STATUS=1
+  elif ! "$FFMPEG_BIN" -y -loglevel warning -framerate 2 \
+    -i "$ASSISTANT_FRAME_DIR/frame-%06d.png" \
+    -vf 'pad=ceil(iw/2)*2:ceil(ih/2)*2' \
+    -c:v libx264 -pix_fmt yuv420p -movflags +faststart \
+    "$ASSISTANT_RECORDING_LOCAL" >>"$ASSISTANT_RECORDING_LOG" 2>&1; then
+    echo "assistant verification frame fallback could not encode MP4" >&2
+    CAPTURE_STATUS=1
+  elif ! node --input-type=module -e '
+    import { assertPlayableMp4 } from "./packages/app/scripts/lib/android-capture.mjs";
+    assertPlayableMp4(process.argv[1]);
+  ' "$ASSISTANT_RECORDING_LOCAL"; then
+    echo "assistant verification frame fallback is not a complete MP4" >&2
+    CAPTURE_STATUS=1
+  else
+    echo "assistant verification used $FRAME_COUNT real-pixel fallback frames" \
+      | tee -a "$ASSISTANT_RECORDING_LOG"
+    rm -rf "$ASSISTANT_FRAME_DIR"
+  fi
+else
+  rm -rf "$ASSISTANT_FRAME_DIR"
+fi
+rm -f "$ASSISTANT_FRAME_STOP"
+
 if ! adb exec-out screencap -p >"$ASSISTANT_ARTIFACT_DIR/assistant-final.png" \
   || [[ ! -s "$ASSISTANT_ARTIFACT_DIR/assistant-final.png" ]]; then
   echo "assistant verification screenshot is missing or empty" >&2

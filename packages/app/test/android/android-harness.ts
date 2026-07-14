@@ -68,7 +68,7 @@ export const SEED_STORAGE: Record<string, string> = {
   "eliza:onboarding-complete": "1",
   "eliza:first-run-complete": "1",
   "eliza:ui-shell-mode": "native",
-  "eliza:mobile-runtime-mode": BACKEND === "host" ? "remote" : "local",
+  "eliza:mobile-runtime-mode": BACKEND === "host" ? "remote-mac" : "local",
   "elizaos:active-server": activeServerSeed(),
 };
 

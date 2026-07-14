@@ -25,4 +25,12 @@ describe("Android cloud-onboarding command", () => {
     expect(command).toMatch(/ELIZA_ANDROID_REQUIRE_AGENT=0/);
     expect(command).toMatch(/cloud-onboarding\.android\.spec\.ts/);
   });
+
+  it("drives host onboarding without fixture storage reseeding new documents", () => {
+    const command = packageJson.scripts["test:e2e:android:onboarding"];
+
+    expect(command).toMatch(/ELIZA_ANDROID_BACKEND=host/);
+    expect(command).toMatch(/ELIZA_ANDROID_ALLOW_FIRST_RUN=1/);
+    expect(command).toMatch(/onboarding-to-home\.android\.spec\.ts/);
+  });
 });

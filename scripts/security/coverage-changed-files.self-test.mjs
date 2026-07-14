@@ -203,6 +203,11 @@ try {
   );
   write(
     dir,
+    "plugins/plugin-demo/vitest.app-real-e2e.config.ts",
+    "export default { test: { include: ['test/app/**/*.real.e2e.test.ts'] } };\n",
+  );
+  write(
+    dir,
     "plugins/plugin-demo/vite.config.views.ts",
     "export default { build: { outDir: 'dist/views' } };\n",
   );
@@ -348,6 +353,10 @@ try {
     assert.ok(
       !out.files.includes("plugins/plugin-demo/vitest.config.ts"),
       `vitest config leaked into changed source: ${out.files.join(",")}`,
+    );
+    assert.ok(
+      !out.files.includes("plugins/plugin-demo/vitest.app-real-e2e.config.ts"),
+      `named vitest config leaked into changed source: ${out.files.join(",")}`,
     );
     assert.ok(
       !out.files.includes("plugins/plugin-demo/vite.config.views.ts"),

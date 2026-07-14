@@ -303,4 +303,37 @@ describe("production auth path: pair-code → machine session; remote-connect to
     expect(withWrongToken.status).toBe(200);
     expect(withWrongToken.data.authenticated).toBe(false);
   }, 120_000);
+
+  it("mirrors bearer-authenticated first-run state into the live config", async () => {
+    const port = server?.port ?? 0;
+    const authHeaders = {
+      Authorization: `Bearer ${PRODUCTION_API_TOKEN}`,
+    };
+
+    const completed = await req(
+      port,
+      "POST",
+      "/api/first-run",
+      { name: "Remote Android Host" },
+      authHeaders,
+    );
+    expect(completed.status).toBe(200);
+    expect(completed.data.ok).toBe(true);
+
+    // Disk persistence happens before the internal loopback write, so only the
+    // live config proves the authenticated owner write crossed the real server
+    // policy boundary and reached the running agent.
+    const liveConfig = await req(
+      port,
+      "GET",
+      "/api/config",
+      undefined,
+      authHeaders,
+    );
+    expect(liveConfig.status).toBe(200);
+    expect(liveConfig.data).toMatchObject({
+      meta: { firstRunComplete: true },
+      agents: { list: [{ name: "Remote Android Host" }] },
+    });
+  }, 120_000);
 });
