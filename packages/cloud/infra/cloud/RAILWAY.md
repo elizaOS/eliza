@@ -19,7 +19,7 @@ config wins — fix this file.
 |---|---|---|---|---|
 | `eliza-cloud` Pages project (cloud console: lander + dashboard) | Cloudflare Pages | `packages/app/` (`build:web`) | `.github/workflows/cloud-cf-deploy.yml` `deploy-console` job | Public: `elizacloud.ai` apex (staging: `staging.elizacloud.ai`) |
 | `eliza-app` Pages project (Eliza agent app: chat + views) | Cloudflare Pages | `packages/app/` (`build:web`) | same workflow, `deploy-app` job | Public: `app.elizacloud.ai` (staging: `app-staging.elizacloud.ai`) |
-| `eliza-cloud-api` — REST API, auth, billing, **model gateway**, dedicated-agent proxy, batch voice routes, cron | Cloudflare Worker (`eliza-cloud-api-prod` / `eliza-cloud-api-staging`) | `packages/cloud/api/` | [`wrangler.toml`](../../api/wrangler.toml) via `cloud-cf-deploy.yml` `deploy-api` job (schema-gated on `migrate-db`) | Public: `api.elizacloud.ai/*`, `x402.elizacloud.ai/*`, and the `*.elizacloud.ai/*` wildcard (staging: `api-staging.…`, `*.staging.…`, `blob-staging.…`) |
+| `eliza-cloud-api` — REST API, auth, billing, **model gateway**, dedicated-agent proxy, batch voice routes, cron | Cloudflare Worker (`eliza-cloud-api-prod` / `eliza-cloud-api-staging`) | `packages/cloud/api/` | [`wrangler.toml`](../../api/wrangler.toml) via `cloud-cf-deploy.yml` `deploy-api` job (schema-gated on `migrate-db`) | Public: `api.elizacloud.ai/*`, `x402.elizacloud.ai/*`, and the `*.elizacloud.ai/*` wildcard (staging Worker: `staging.elizacloud.ai/*`, `app-staging.…`, `api-staging.…`, `*.staging.…`, `blob-staging.…`) |
 | PostgreSQL | **Railway managed Postgres** (one instance per environment) | n/a (managed service) | env-scoped `DATABASE_URL` secret in the `staging`/`production` GitHub Environments; the Worker reaches it through the `HYPERDRIVE` binding (`wrangler.toml` `[[env.*.hyperdrive]]`) | Private |
 | Redis | **Railway managed Redis** (TCP, `REDIS_URL`) | n/a (managed service) | `REDIS_URL` Worker secret; in-Worker SocketRedis speaks RESP2 over `cloudflare:sockets` (`wrangler.toml` cache/queue notes). Upstash REST (`KV_REST_API_*`) is a **legacy fallback only** | Private |
 | Database migrations | GitHub Actions → Railway Postgres | `packages/cloud/shared/src/db/migrations/` | `cloud-cf-deploy.yml` `migrate-db` job (`bun run db:cloud:migrate`); every deploy job `needs: migrate-db`. Standalone/manual path: `cloud-deploy-backend.yml` (`workflow_dispatch` only) | n/a |
@@ -78,8 +78,9 @@ Encrypt cert).
 
 - `POST /api/v1/voice/tts` (`packages/cloud/api/v1/voice/tts/route.ts`) —
   Kokoro is the free default when `KOKORO_TTS_URL` is configured; ElevenLabs
-  serves custom voice ids, with Cartesia available as a synthesis-engine
-  substitution inside that branch (`v1/voice/tts/provider-selection.ts`).
+  serves custom voice ids (provider gate:
+  `v1/voice/tts/provider-selection.ts`), and Cartesia is a synthesis-engine
+  substitution inside the ElevenLabs branch (`v1/voice/tts/route.ts`).
 - `POST /api/v1/voice/stt` (`packages/cloud/api/v1/voice/stt/route.ts`) —
   Railway Whisper via `WHISPER_STT_URL` (OpenAI-compatible
   `/v1/audio/transcriptions`).

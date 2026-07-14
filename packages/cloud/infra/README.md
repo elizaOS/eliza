@@ -104,5 +104,11 @@ bun run --cwd packages/cloud/infra test
 ## Notes
 
 - GCP Terraform (`cloud/terraform/gcp/`) is experimental and not wired to CI.
-- AWS is retired (only the KMS sunset remains); see `cloud/AWS_RETIREMENT.md` for the record.
-- Production secrets are supplied via external-secrets-operator; the `.env.example` files are for local dev only.
+- AWS is retired (open: the KMS sunset and deleting the stale gateway role-ARN
+  vars from the GitHub environments); see `cloud/AWS_RETIREMENT.md` for the record.
+- Production secrets are not in this package. Each runtime reads its own:
+  Worker secrets via `wrangler secret put` (published on deploy by
+  `cloud-cf-deploy.yml`), deploy-time secrets in the `staging`/`production`
+  GitHub Environments, per-service Railway env vars (see each `railway.toml`
+  header), and the control-plane daemon env in `/opt/eliza/cloud/.env.local`.
+  The `.env.example` files here are for local dev only.

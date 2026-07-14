@@ -18,7 +18,7 @@ packages/cloud/infra/
   cloud/
     .env.example                   # Local-dev secrets template; copy to .env
     docker-compose.yml             # Self-hosted Supabase Storage (Postgres + storage-api)
-    AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration record (completed; KMS sunset is the one open item)
+    AWS_RETIREMENT.md              # AWS → Hetzner/Railway migration record (completed; open: KMS sunset + stale gateway role-ARN GitHub env vars)
     RAILWAY.md                     # Canonical service/runtime/request-path map — where each surface runs
     bitrouter/                     # RETIRED — only CLOUDFLARE_MIGRATION_PLAN.md remains (the Worker is the model gateway now)
     charts/
@@ -183,10 +183,10 @@ Local cluster service env vars (copy from `.env.*.example`):
 ## Conventions / gotchas
 
 - **GCP Terraform is not active.** `cloud/terraform/gcp/` is experimental and not wired to any CI workflow. Do not assume it represents the live deployment.
-- **AWS is retired** (only the KMS sunset remains). See `cloud/AWS_RETIREMENT.md`. Do not add new AWS dependencies.
+- **AWS is retired** (open: the KMS sunset and deleting the stale gateway role-ARN vars from the GitHub environments). See `cloud/AWS_RETIREMENT.md`. Do not add new AWS dependencies.
 - **Data-plane cores are not in Terraform.** Dedicated robot nodes (`eliza-core-{env}-N`, OS host `eliza-{env}-robot-N`) live in the `docker_nodes` table (authoritative; `CONTAINERS_DOCKER_NODES` env only seeds when empty); autoscaled burst nodes (`eliza-core-<hex>`) are runtime-provisioned by `node-autoscaler.ts`. Only the control-plane VM is managed here.
 - **Remote state uses Cloudflare R2**, not an S3 bucket — export the R2 token as `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` before `terraform init`.
-- **Production secrets are not in docker-compose.** The compose file only serves local dev. Production K8s workloads receive secrets from external-secrets-operator (ESO).
+- **Production secrets are not in docker-compose.** The compose file only serves local dev. Real secrets live where each runtime reads them: `wrangler secret put` for the Worker (published on deploy by `cloud-cf-deploy.yml`), the `staging`/`production` GitHub Environments for deploy workflows, per-service Railway env vars (see each `railway.toml` header), and `/opt/eliza/cloud/.env.local` on the control-plane VM. Nothing production runs on Kubernetes, so there is no cluster secret store.
 - **`cloud/local/setup.sh` installs the `vector` and `uuid-ossp` Postgres extensions** via `postInitApplicationSQL` in `values-pg-local.yaml` — these are required by `packages/app-core`.
 - **`user_data` and `image` changes do not recreate the Hetzner VM** — `lifecycle { ignore_changes }` is set in `main.tf`. To rebuild with a new image, use `terraform taint`.
 - **Tests in `tests/` are pure YAML-parse smoke tests** — they do not require a running cluster or any cloud credentials.

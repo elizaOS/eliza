@@ -1,9 +1,12 @@
 # AWS retirement — historical record
 
 Audit of the AWS dependencies this repo carried, what each was migrated to
-(or kept and redirected), and the one item still outstanding. The retirement
-is **complete** except the KMS sunset (Stage 3 below); treat every table here
-as a record of finished work, not a plan. Where a replacement itself moved on
+(or kept and redirected), and what is still outstanding. The retirement is
+**complete** except the two rows in the Outstanding table below: the KMS
+sunset (Stage 3) and deleting the stale `TERRAFORM_AWS_ROLE_ARN` /
+`GATEWAY_AWS_ROLE_ARN` variables from the GitHub environments (an org-admin
+console action; no code references them). Treat every other table here as a
+record of finished work, not a plan. Where a replacement itself moved on
 (the DB went AWS → Neon → Railway), the current home is what
 [`RAILWAY.md`](./RAILWAY.md) says — that file is the canonical topology map.
 
