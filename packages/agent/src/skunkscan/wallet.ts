@@ -199,6 +199,12 @@ const transactionRisk =
     caseSummary,
   );
 
+const {
+  recommendation:
+    _legacyTransactionRiskRecommendation,
+  ...transactionRiskAssessment
+} = transactionRisk;
+
 const smartMoney =
   analyzeWalletSmartMoney(
     age,
@@ -328,7 +334,8 @@ activity,
 age,
 funding,
 risk,
-transactionRisk,
+transactionRisk:
+  transactionRiskAssessment,
 smartMoney,
 investigationReport,
 investigationNarrative,
