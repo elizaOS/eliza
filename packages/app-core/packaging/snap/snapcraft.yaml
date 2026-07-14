@@ -139,3 +139,17 @@ parts:
       - libx11-6
       - libxcb1
       - libxtst6
+      # Runtime libraries the ffmpeg-2204 content snap's binaries link
+      # against but do not ship themselves (consumer-staged by convention).
+      - libasound2t64
+      - libpulse0
+      - libva2
+      - libva-drm2
+      - libva-x11-2
+      - libvdpau1
+      - libxcb-shape0
+      - libxcb-shm0
+      - libxcb-xfixes0
+      - libxext6
+      - libxfixes3
+      - libxv1
