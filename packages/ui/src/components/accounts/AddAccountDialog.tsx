@@ -46,11 +46,7 @@ interface AddAccountDialogProps {
   open: boolean;
   /** Optional initial provider. When omitted, the dialog starts with the consolidated provider picker. */
   providerId?: LinkedAccountProviderId;
-  /**
-   * Unhealthy account that launched this flow. The current OAuth contract
-   * cannot replace an existing id, so repair creates a fresh account in the
-   * same provider pool. The dialog makes that limitation explicit.
-   */
+  /** Unhealthy account whose credential is replaced in place after verification. */
   credentialRepairAccount?: Pick<
     LinkedAccountConfig,
     "id" | "label" | "source" | "health"
@@ -77,7 +73,11 @@ interface SseFlowState {
 }
 
 type SubscriptionAddMode =
-  "oauth" | "api-key" | "external-cli" | "unavailable" | "none";
+  | "oauth"
+  | "api-key"
+  | "external-cli"
+  | "unavailable"
+  | "none";
 
 // The static provider catalog + its types now live in their own module so
 // presentational pieces can import them without a circular dependency on this
@@ -252,8 +252,11 @@ export function AddAccountDialog({
         : "provider-select",
     );
     setLabel(
-      credentialRepairAccount?.label ??
-        (activeProviderId ? defaultOAuthLabel(activeProviderId) : ""),
+      credentialRepairAccount?.id
+        ? credentialRepairAccount.label
+        : activeProviderId
+          ? defaultOAuthLabel(activeProviderId)
+          : "",
     );
     setApiKey("");
     setOauthCode("");
@@ -262,7 +265,12 @@ export function AddAccountDialog({
     setDeviceCode(null);
     setDeviceCodeCopied(false);
     setOauthUrl(null);
-  }, [closeEventSource, activeProviderId, credentialRepairAccount?.label]);
+  }, [
+    closeEventSource,
+    activeProviderId,
+    credentialRepairAccount?.id,
+    credentialRepairAccount?.label,
+  ]);
 
   const copyDeviceCode = useCallback(async (code: string) => {
     try {
@@ -430,6 +438,9 @@ export function AddAccountDialog({
         const flow = await client.startAccountOAuth(activeProviderId, {
           label: label.trim(),
           mode,
+          ...(credentialRepairAccount
+            ? { replaceAccountId: credentialRepairAccount.id }
+            : {}),
         });
         sessionIdRef.current = flow.sessionId;
         restoredSessionRef.current = flow.sessionId;
@@ -472,7 +483,14 @@ export function AddAccountDialog({
         }
       }
     },
-    [label, activeProviderId, subscribeToFlow, subscriptionAddMode, t],
+    [
+      label,
+      activeProviderId,
+      credentialRepairAccount,
+      subscribeToFlow,
+      subscriptionAddMode,
+      t,
+    ],
   );
 
   const submitOAuthCode = useCallback(
@@ -521,6 +539,9 @@ export function AddAccountDialog({
         const account = await client.createApiKeyAccount(activeProviderId, {
           label: trimmedLabel,
           apiKey: trimmedKey,
+          ...(credentialRepairAccount
+            ? { replaceAccountId: credentialRepairAccount.id }
+            : {}),
         });
         onCreated(account);
         onClose();
@@ -536,7 +557,15 @@ export function AddAccountDialog({
         setStep("error");
       }
     },
-    [apiKey, label, onClose, onCreated, activeProviderId, t],
+    [
+      apiKey,
+      label,
+      onClose,
+      onCreated,
+      activeProviderId,
+      credentialRepairAccount,
+      t,
+    ],
   );
 
   const handleClose = useCallback(() => {
@@ -574,20 +603,35 @@ export function AddAccountDialog({
       providerId ? initialStepForProvider(providerId) : "provider-select",
     );
     setLabel(
-      credentialRepairAccount?.label ??
-        (providerId ? defaultOAuthLabel(providerId) : ""),
+      credentialRepairAccount?.id
+        ? credentialRepairAccount.label
+        : providerId
+          ? defaultOAuthLabel(providerId)
+          : "",
     );
-  }, [open, providerId, credentialRepairAccount?.label]);
+    setApiKey("");
+    setOauthCode("");
+    setErrorMessage(null);
+    setSessionId(null);
+    setDeviceCode(null);
+    setDeviceCodeCopied(false);
+    setOauthUrl(null);
+  }, [
+    open,
+    providerId,
+    credentialRepairAccount?.id,
+    credentialRepairAccount?.label,
+  ]);
 
   const dialogDescription = credentialRepairAccount
     ? credentialRepairAccount.source === "oauth"
       ? t("accounts.reauthenticate.description", {
           defaultValue:
-            "Sign in again with this provider. Until the server supports replacing credentials by account id, this creates a fresh account in the same pool; remove the expired entry after sign-in succeeds.",
+            "Sign in again with the same provider. Your current credential stays active until the new sign-in succeeds, then this account is updated in place.",
         })
       : t("accounts.replaceCredential.description", {
           defaultValue:
-            "Enter a new credential for this provider. This creates a fresh account in the same pool; remove the invalid entry after the new credential is verified.",
+            "Enter a new credential for the same provider. The current credential stays unchanged until the replacement is verified and saved.",
         })
     : !activeProviderId
       ? t("accounts.add.chooseDescription", {
@@ -718,7 +762,9 @@ export function AddAccountDialog({
         {step === "choose" ? (
           <div className="grid gap-3 py-2">
             <p className="text-xs text-muted">
-              The connected account's email address will be used as its name.
+              {credentialRepairAccount
+                ? `${credentialRepairAccount.label} keeps its name, priority, and position in the account pool.`
+                : "The connected account's email address will be used as its name."}
             </p>
             <Button
               type="button"
@@ -892,7 +938,14 @@ export function AddAccountDialog({
 
         {step === "apikey" || step === "apikey-submitting" ? (
           <form onSubmit={submitApiKey} className="grid gap-3 py-2">
-            {labelInput}
+            {credentialRepairAccount ? (
+              <div className="rounded-sm border border-border/50 bg-bg-accent/50 px-3 py-2 text-xs text-muted">
+                Replacing the credential for {credentialRepairAccount.label}.
+                The account name and pool position will not change.
+              </div>
+            ) : (
+              labelInput
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="add-account-apikey">{apiKeyLabel}</Label>
               <Input

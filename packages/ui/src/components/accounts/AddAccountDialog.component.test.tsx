@@ -226,7 +226,12 @@ describe("AddAccountDialog", () => {
     expect(screen.queryByRole("button", { name: /Log in/ })).toBeNull();
   });
 
-  it("explains the server replacement gap before repairing an OAuth account", () => {
+  it("starts an explicit in-place OAuth replacement without an editable duplicate label", async () => {
+    api.startAccountOAuth.mockResolvedValue({
+      sessionId: "repair-session",
+      authUrl: "https://login.test",
+      needsCodeSubmission: true,
+    });
     render(
       <AddAccountDialog
         open
@@ -243,12 +248,86 @@ describe("AddAccountDialog", () => {
     );
 
     expect(screen.getByText("Reauthenticate Work Claude")).toBeTruthy();
-    expect(
-      screen.getByText(/creates a fresh account in the same pool/),
-    ).toBeTruthy();
-    expect(
+    expect(screen.getByText(/updated in place/)).toBeTruthy();
+    expect(screen.queryByLabelText("Account name")).toBeNull();
+    fireEvent.click(
       screen.getByRole("button", { name: "Log in and paste a code" }),
-    ).toBeTruthy();
+    );
+    await waitFor(() =>
+      expect(api.startAccountOAuth).toHaveBeenCalledWith(
+        "anthropic-subscription",
+        expect.objectContaining({
+          label: "Work Claude",
+          replaceAccountId: "expired-account",
+        }),
+      ),
+    );
+  });
+
+  it("submits an API-key repair as an in-place replacement", async () => {
+    render(
+      <AddAccountDialog
+        open
+        providerId="zai-coding"
+        credentialRepairAccount={{
+          id: "invalid-plan",
+          label: "Work plan",
+          source: "api-key",
+          health: "invalid",
+        }}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+    expect(screen.queryByLabelText("Account name")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Coding-plan key"), {
+      target: { value: "replacement-secret" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save replacement" }));
+    await waitFor(() =>
+      expect(api.createApiKeyAccount).toHaveBeenCalledWith("zai-coding", {
+        label: "Work plan",
+        apiKey: "replacement-secret",
+        replaceAccountId: "invalid-plan",
+      }),
+    );
+  });
+
+  it("resets repair form state when the account id changes despite the same label", () => {
+    const props = {
+      open: true,
+      providerId: "zai-coding" as const,
+      onClose: vi.fn(),
+      onCreated: vi.fn(),
+    };
+    const { rerender } = render(
+      <AddAccountDialog
+        {...props}
+        credentialRepairAccount={{
+          id: "first-invalid",
+          label: "Shared label",
+          source: "api-key",
+          health: "invalid",
+        }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Coding-plan key"), {
+      target: { value: "first-secret-value" },
+    });
+    rerender(
+      <AddAccountDialog
+        {...props}
+        credentialRepairAccount={{
+          id: "second-invalid",
+          label: "Shared label",
+          source: "api-key",
+          health: "invalid",
+        }}
+      />,
+    );
+    expect(
+      (screen.getByLabelText("Coding-plan key") as HTMLInputElement).value,
+    ).toBe("");
   });
 
   it("submits an OAuth callback code and reports terminal stream errors", async () => {

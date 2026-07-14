@@ -10,11 +10,18 @@ const fakes = vi.hoisted(() => ({
   poolAccounts: [] as Array<Record<string, unknown>>,
   deleteAccount: vi.fn(),
   getAccessToken: vi.fn(async () => "access-token"),
-  probeDirectApiKey: vi.fn(async () => ({
-    ok: true,
-    status: 200,
-    latencyMs: 4,
-  })),
+  probeDirectApiKey: vi.fn(
+    async (): Promise<{
+      ok: boolean;
+      status: number;
+      latencyMs: number;
+      error?: string;
+    }> => ({
+      ok: true,
+      status: 200,
+      latencyMs: 4,
+    }),
+  ),
   saveAccount: vi.fn(),
   submitFlowCode: vi.fn(() => true),
   cancelFlow: vi.fn(() => true),
@@ -208,14 +215,20 @@ describe("accounts routes", () => {
     ).toMatchObject({
       strategy: "priority",
       accounts: [{ id: "account-1", hasCredential: true }],
-      runtimeEligibility: { chat: true, codingAgent: true },
+      runtimeEligibility: {
+        chat: { available: true, credentialPath: "direct-api" },
+        codingAgent: { available: true, credentialPath: "direct-api" },
+      },
     });
     expect(
       response.providers.find(
         (item) => item.providerId === "anthropic-subscription",
       ),
     ).toMatchObject({
-      runtimeEligibility: { chat: false, codingAgent: true },
+      runtimeEligibility: {
+        chat: { available: false, credentialPath: "none" },
+        codingAgent: { available: true, credentialPath: "account-pool" },
+      },
     });
   });
 
@@ -274,6 +287,187 @@ describe("accounts routes", () => {
     await handleAccountsRoutes(deleted.ctx);
     expect(fakes.deleteAccount).toHaveBeenCalledWith("openai-api", "account-1");
     expect(deleted.jsonCalls[0]?.body).toEqual({ deleted: true });
+  });
+
+  it("verifies and replaces an API credential in place without duplicating the account", async () => {
+    const target = {
+      ...linkedAccount,
+      health: "invalid",
+      healthDetail: { lastError: "credential rejected" },
+    };
+    fakes.poolAccounts = [target];
+    fakes.accounts = [
+      {
+        id: "account-1",
+        providerId: "openai-api",
+        label: "Primary",
+        source: "api-key",
+        credentials: { access: "old-secret" },
+        createdAt: 1,
+      },
+    ];
+    const replaced = makeContext("POST", "/api/accounts/openai-api", {
+      source: "api-key",
+      label: "Primary",
+      apiKey: "new-secret-value",
+      replaceAccountId: "account-1",
+    });
+    await handleAccountsRoutes(replaced.ctx);
+
+    expect(fakes.probeDirectApiKey).toHaveBeenCalledWith(
+      "openai-api",
+      "new-secret-value",
+    );
+    expect(fakes.saveAccount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "account-1",
+        label: "Primary",
+        credentials: expect.objectContaining({ access: "new-secret-value" }),
+      }),
+    );
+    expect(replaced.jsonCalls[0]).toMatchObject({
+      status: 200,
+      body: { id: "account-1", health: "ok" },
+    });
+    expect(replaced.jsonCalls[0]?.body).not.toHaveProperty("healthDetail");
+    expect(fakes.poolAccounts).toHaveLength(1);
+  });
+
+  it("leaves an API credential unchanged when its replacement cannot be verified", async () => {
+    fakes.poolAccounts = [{ ...linkedAccount, health: "invalid" }];
+    fakes.accounts = [
+      {
+        id: "account-1",
+        providerId: "openai-api",
+        label: "Primary",
+        credentials: { access: "old-secret" },
+      },
+    ];
+    fakes.probeDirectApiKey.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      latencyMs: 4,
+      error: "credential rejected",
+    });
+    const replaced = makeContext("POST", "/api/accounts/openai-api", {
+      source: "api-key",
+      label: "Primary",
+      apiKey: "bad-secret-value",
+      replaceAccountId: "account-1",
+    });
+    await handleAccountsRoutes(replaced.ctx);
+
+    expect(replaced.errorCalls).toEqual([
+      { message: "credential rejected", status: 400 },
+    ]);
+    expect(fakes.saveAccount).not.toHaveBeenCalled();
+    expect(fakes.poolAccounts[0]).toMatchObject({ health: "invalid" });
+  });
+
+  it("binds OAuth replacement to an existing same-provider account", async () => {
+    const target = {
+      id: "codex-work",
+      providerId: "openai-codex",
+      label: "Work Codex",
+      source: "oauth",
+      enabled: true,
+      priority: 3,
+      createdAt: 10,
+      health: "needs-reauth",
+      healthDetail: { lastError: "expired" },
+    };
+    fakes.poolAccounts = [target];
+    fakes.accounts = [{ ...target, credentials: { access: "old" } }];
+    const started = makeContext(
+      "POST",
+      "/api/accounts/openai-codex/oauth/start",
+      {
+        label: "Work Codex",
+        mode: "auto",
+        replaceAccountId: "codex-work",
+      },
+    );
+    await handleAccountsRoutes(started.ctx);
+
+    expect(fakes.startFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accountId: "codex-work",
+        replaceAccountId: "codex-work",
+      }),
+    );
+    const startCalls = fakes.startFlow.mock.calls as unknown as Array<
+      [
+        {
+          onAccountSaved: (record: Record<string, unknown>) => Promise<void>;
+        },
+      ]
+    >;
+    const options = startCalls[0]?.[0];
+    expect(options).toBeDefined();
+    await options?.onAccountSaved({
+      id: "codex-work",
+      providerId: "openai-codex",
+      label: "Work Codex",
+      source: "oauth",
+      createdAt: 10,
+      updatedAt: 20,
+    });
+    expect(fakes.poolAccounts).toHaveLength(1);
+    expect(fakes.poolAccounts[0]).toMatchObject({
+      id: "codex-work",
+      priority: 3,
+      health: "ok",
+    });
+  });
+
+  it("fails closed when an OAuth replacement target is missing or belongs to another provider", async () => {
+    const missing = makeContext(
+      "POST",
+      "/api/accounts/openai-codex/oauth/start",
+      { label: "Missing", replaceAccountId: "gone" },
+    );
+    await handleAccountsRoutes(missing.ctx);
+    expect(missing.errorCalls).toEqual([
+      { message: "Replacement account not found", status: 404 },
+    ]);
+
+    fakes.poolAccounts = [
+      { ...linkedAccount, id: "wrong-provider", providerId: "openai-api" },
+    ];
+    const mismatch = makeContext(
+      "POST",
+      "/api/accounts/openai-codex/oauth/start",
+      { label: "Wrong", replaceAccountId: "wrong-provider" },
+    );
+    await handleAccountsRoutes(mismatch.ctx);
+    expect(mismatch.errorCalls).toEqual([
+      {
+        message: "Replacement account belongs to a different provider",
+        status: 400,
+      },
+    ]);
+    expect(fakes.startFlow).not.toHaveBeenCalled();
+  });
+
+  it("keeps terminal credential health terminal during usage refresh", async () => {
+    fakes.poolAccounts = [
+      {
+        ...linkedAccount,
+        health: "needs-reauth",
+        healthDetail: { lastError: "refresh token revoked", lastChecked: 1 },
+      },
+    ];
+    const refreshed = makeContext(
+      "POST",
+      "/api/accounts/openai-api/account-1/refresh-usage",
+    );
+    await handleAccountsRoutes(refreshed.ctx);
+    expect(refreshed.jsonCalls[0]?.body).toMatchObject({
+      account: {
+        health: "needs-reauth",
+        healthDetail: { lastError: "refresh token revoked", lastChecked: 1 },
+      },
+    });
   });
 
   it("starts and controls OAuth flows and validates the status stream", async () => {
