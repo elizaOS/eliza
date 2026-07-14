@@ -32,6 +32,16 @@ export default defineConfig({
     ...baseConfig.resolve,
     alias: [
       {
+        // Entrypoint tests exercise the shipped iOS bridge import in source mode;
+        // the changed-test lane intentionally builds core only, so they cannot
+        // depend on a pre-existing app-core dist directory.
+        find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
+        replacement: path.join(
+          here,
+          "../app-core/src/api/ios-local-agent-transport.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/cloud-ui$/,
         replacement: path.join(here, "../cloud-ui/src/index.ts"),
       },
