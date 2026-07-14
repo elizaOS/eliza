@@ -160,6 +160,8 @@ describe("chat latency live workflow", () => {
     expect(preview).toContain("INFERENCE_AUTH_PROBE_TOKEN");
     expect(preview).toContain(`ELIZA_DEPLOY_COMMIT:\${GITHUB_SHA}`);
     expect(preview).toContain("Preview remained on the exact checkout");
+    expect(preview).toContain("attempt <= 12");
+    expect(preview).toContain("steps.auth-probe.outcome != 'skipped'");
     expect(preview).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
     expect(preview).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
     expect(preview).toContain("sanitizeInferenceAuthTail");

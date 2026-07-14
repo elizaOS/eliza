@@ -530,11 +530,28 @@ jobs:
           EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
         run: |
           node --input-type=module - <<'NODE'
-          const response = await fetch(process.env.PREVIEW_BASE_URL + "/api/health", {
-            signal: AbortSignal.timeout(30_000),
-          });
-          if (!response.ok) throw new Error("Preview health returned HTTP " + response.status);
-          const body = await response.json();
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          let body;
+          let lastOutcome = "no response";
+          for (let attempt = 1; attempt <= 12; attempt += 1) {
+            try {
+              const response = await fetch(process.env.PREVIEW_BASE_URL + "/api/health", {
+                signal: AbortSignal.timeout(30_000),
+              });
+              if (response.ok) {
+                body = await response.json();
+                break;
+              }
+              lastOutcome = "HTTP " + response.status;
+            } catch {
+              // error-policy:J1 Preview readiness is this workflow's external transport boundary.
+              lastOutcome = "request error";
+            }
+            if (attempt < 12) await sleep(5_000);
+          }
+          if (!body) {
+            throw new Error("Preview did not become ready after 12 attempts; last outcome " + lastOutcome);
+          }
           if (body?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
             throw new Error("Preview does not serve the requested checkout");
           }
@@ -625,7 +642,7 @@ jobs:
           fi
 
       - name: Reverify exact preview after capture
-        if: always() && steps.preview.outputs.base-url != ''
+        if: always() && steps.preview.outputs.base-url != '' && steps.auth-probe.outcome != 'skipped'
         env:
           PREVIEW_BASE_URL: ${{ steps.preview.outputs.base-url }}
           EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
