@@ -513,6 +513,88 @@ async function runDragSuite(p, pointer, tag) {
   assert(near(await sheetHeight(p), 0, 6), `[${pointer}] COLLAPSED thread height ≈ 0px`);
   await snap(p, `${tag}-collapsed`);
 
+  // The home layout reserves only the RESTING composer footprint. The chat
+  // panel itself grows during a held pull before the open detent commits, so a
+  // ResizeObserver must not feed that preview height back into the root
+  // clearance and shift the home/notification content behind the finger.
+  const restingClearance = await p.evaluate(() =>
+    document.documentElement.style.getPropertyValue(
+      "--eliza-continuous-chat-clearance",
+    ),
+  );
+  assert(
+    restingClearance.endsWith("px"),
+    `[${pointer}] resting composer publishes a concrete home clearance (${restingClearance})`,
+  );
+  await gesture(p, 44, { pointer, slow: true, hold: true, steps: 8 });
+  await p.waitForTimeout(100);
+  const heldPullClearance = await p.evaluate(() =>
+    document.documentElement.style.getPropertyValue(
+      "--eliza-continuous-chat-clearance",
+    ),
+  );
+  assert(
+    heldPullClearance === restingClearance,
+    `[${pointer}] held chat pull leaves home clearance fixed (${heldPullClearance} === ${restingClearance})`,
+  );
+  // Grow the eventual resting footprint while the observer is frozen. This
+  // deterministic layout mutation stands in for a composer gaining a draft or
+  // attachment mid-gesture without focusing it (focus would open the chat for
+  // a different reason).
+  await p.evaluate(() => {
+    const panel = document.querySelector('[data-testid="chat-sheet"]');
+    if (panel instanceof HTMLElement) panel.style.paddingBottom = "24px";
+  });
+  await p.waitForTimeout(100);
+  const heldChangedClearance = await p.evaluate(() =>
+    document.documentElement.style.getPropertyValue(
+      "--eliza-continuous-chat-clearance",
+    ),
+  );
+  assert(
+    heldChangedClearance === restingClearance,
+    `[${pointer}] footprint change stays frozen while held (${heldChangedClearance} === ${restingClearance})`,
+  );
+  await release(p, pointer, 44);
+  await p.waitForFunction(
+    (previousClearance) => {
+      const panel = document.querySelector('[data-testid="chat-sheet"]');
+      if (!(panel instanceof HTMLElement)) return false;
+      const clearance = document.documentElement.style.getPropertyValue(
+        "--eliza-continuous-chat-clearance",
+      );
+      return (
+        clearance !== previousClearance &&
+        clearance === `${Math.ceil(panel.getBoundingClientRect().height)}px`
+      );
+    },
+    restingClearance,
+    { timeout: 2_000 },
+  );
+  const settledClearance = await p.evaluate(() =>
+    document.documentElement.style.getPropertyValue(
+      "--eliza-continuous-chat-clearance",
+    ),
+  );
+  assert(
+    settledClearance !== restingClearance,
+    `[${pointer}] release republishes the changed resting footprint (${restingClearance} → ${settledClearance})`,
+  );
+  assert(
+    (await detent(p)) === "collapsed",
+    `[${pointer}] clearance probe settles back to COLLAPSED`,
+  );
+  await p.evaluate((clearance) => {
+    const panel = document.querySelector('[data-testid="chat-sheet"]');
+    if (panel instanceof HTMLElement) panel.style.removeProperty("padding-bottom");
+    // Restore the fixture's baseline directly after the thaw assertion so this
+    // instrumentation cannot influence the rest of the detent matrix.
+    document.documentElement.style.setProperty(
+      "--eliza-continuous-chat-clearance",
+      clearance,
+    );
+  }, restingClearance);
+
   // FLICK up → HALF (fast deliberate pull crosses the velocity threshold → snap to a detent)
   await gesture(p, 160, { pointer, slow: false, steps: 1 });
   await p.waitForTimeout(SETTLE);
