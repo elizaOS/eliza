@@ -4,7 +4,6 @@
  * shell contract GitHub runs rejects missing permission-matrix results.
  */
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
 import {
   mkdirSync,
   mkdtempSync,
@@ -14,7 +13,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  applyDeviceReadiness,
+  buildStatus,
+  groupStatus,
+  renderMarkdown,
+} from "../../../scripts/lifeops/collect-11632-live-validation-status.mjs";
+import { validate11632EvidenceFromEnv } from "../../../scripts/lifeops/validate-11632-evidence.mjs";
 
 const repoRoot = new URL("../../../", import.meta.url);
 const workflowText = readFileSync(
@@ -44,7 +49,6 @@ interface Workflow {
 
 const workflow = Bun.YAML.parse(workflowText) as Workflow;
 const job = workflow.jobs?.collect;
-const repoRootPath = fileURLToPath(repoRoot);
 
 function namedStep(name: string): WorkflowStep {
   const step = job?.steps?.find((candidate) => candidate.name === name);
@@ -74,25 +78,33 @@ function seedStatusArtifact(root: string, matrixLog: string): void {
 
 function runEvidenceValidation(
   root: string,
-  options: { requestedConnectors?: boolean } = {},
+  options: {
+    requestedMatrix?: boolean;
+    requestedConnectors?: boolean;
+    runKeylessMatrix?: string;
+    runLiveConnectors?: string;
+  } = {},
 ) {
-  return spawnSync(
-    "bash",
-    ["-c", namedStep("Validate evidence contract").run ?? ""],
-    {
-      cwd: repoRootPath,
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        LIFEOPS_EVIDENCE_DIR: root,
-        RUN_KEYLESS_MATRIX: "true",
-        RUN_LIVE_CONNECTORS: String(options.requestedConnectors ?? false),
-        GITHUB_SHA: "0123456789abcdef",
-        GITHUB_RUN_ID: "1234",
-        GITHUB_RUN_ATTEMPT: "1",
-      },
-    },
-  );
+  try {
+    const manifest = validate11632EvidenceFromEnv({
+      LIFEOPS_EVIDENCE_DIR: root,
+      RUN_KEYLESS_MATRIX:
+        options.runKeylessMatrix ?? String(options.requestedMatrix ?? true),
+      RUN_LIVE_CONNECTORS:
+        options.runLiveConnectors ??
+        String(options.requestedConnectors ?? false),
+      GITHUB_SHA: "0123456789abcdef",
+      GITHUB_RUN_ID: "1234",
+      GITHUB_RUN_ATTEMPT: "1",
+    });
+    return { status: 0, stderr: "", manifest };
+  } catch (error) {
+    return {
+      status: 1,
+      stderr: error instanceof Error ? error.message : String(error),
+      manifest: null,
+    };
+  }
 }
 
 describe("#11632 LifeOps live-validation workflow", () => {
@@ -202,5 +214,176 @@ describe("#11632 LifeOps live-validation workflow", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("accepts requested connector logs only when both executed without skips", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "lifeops-11632-workflow-"));
+    try {
+      seedStatusArtifact(
+        root,
+        "Test Files  1 passed (1)\nTests  20 passed (20)\n",
+      );
+      for (const filename of ["plugin-google-live.txt", "plugin-x-live.txt"]) {
+        writeFileSync(
+          path.join(root, filename),
+          "Test Files  1 passed (1)\nTests  4 passed (4)\n",
+        );
+      }
+
+      const result = runEvidenceValidation(root, {
+        requestedConnectors: true,
+      });
+      expect(result.status).toBe(0);
+      expect(result.manifest?.proof.connectors).toEqual({
+        "plugin-google-live.txt": expect.objectContaining({ passed: 4 }),
+        "plugin-x-live.txt": expect.objectContaining({ passed: 4 }),
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects status snapshots that claim the wrong issue or closeable verdict", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "lifeops-11632-workflow-"));
+    try {
+      seedStatusArtifact(
+        root,
+        "Test Files  1 passed (1)\nTests  20 passed (20)\n",
+      );
+      writeFileSync(
+        path.join(root, "post/status.json"),
+        `${JSON.stringify({
+          issue: 999,
+          generatedAt: "2026-07-14T00:00:01.000Z",
+          verdict: { closeable: true },
+        })}\n`,
+      );
+
+      const result = runEvidenceValidation(root);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("wrong issue or fabricated");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects malformed workflow booleans before reading an artifact", () => {
+    const result = runEvidenceValidation("unused", {
+      runKeylessMatrix: "yes",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "RUN_KEYLESS_MATRIX must be exactly true or false",
+    );
+  });
+
+  test("collector distinguishes required-all, required-any, optional, and blank env", () => {
+    const names = ["LIFEOPS_TEST_ALL", "LIFEOPS_TEST_ANY", "LIFEOPS_TEST_OPT"];
+    const previous = Object.fromEntries(
+      names.map((name) => [name, process.env[name]]),
+    );
+    try {
+      process.env.LIFEOPS_TEST_ALL = "present";
+      process.env.LIFEOPS_TEST_ANY = "   ";
+      process.env.LIFEOPS_TEST_OPT = "optional";
+      const blocked = groupStatus({
+        id: "fixture",
+        label: "Fixture",
+        requiredAll: ["LIFEOPS_TEST_ALL"],
+        requiredAny: ["LIFEOPS_TEST_ANY"],
+        optional: ["LIFEOPS_TEST_OPT"],
+      });
+      expect(blocked.readyForOperatorRun).toBe(false);
+      expect(blocked.present).toEqual(["LIFEOPS_TEST_ALL", "LIFEOPS_TEST_OPT"]);
+      expect(blocked.missingRequiredAll).toEqual([]);
+      expect(blocked.missingRequiredAny).toEqual(["LIFEOPS_TEST_ANY"]);
+
+      process.env.LIFEOPS_TEST_ANY = "ready";
+      expect(
+        groupStatus({
+          id: "fixture",
+          label: "Fixture",
+          requiredAll: ["LIFEOPS_TEST_ALL"],
+          requiredAny: ["LIFEOPS_TEST_ANY"],
+        }).readyForOperatorRun,
+      ).toBe(true);
+    } finally {
+      for (const name of names) {
+        const value = previous[name];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
+    }
+  });
+
+  test("collector requires the configured Android serial to be online", () => {
+    const online = [
+      {
+        id: "native_android",
+        readyForOperatorRun: true,
+        missingRequiredAny: [],
+      },
+    ];
+    // biome-ignore lint/suspicious/noUndeclaredEnvVars: isolated fixture restores the operator-only device selector before returning.
+    const previous = process.env.ANDROID_SERIAL;
+    process.env.ANDROID_SERIAL = "device-123";
+    try {
+      applyDeviceReadiness(online, {
+        adb: {
+          summary: "List of devices attached\ndevice-123 device product:test",
+        },
+      });
+      expect(online[0]).toMatchObject({
+        readyForOperatorRun: true,
+        deviceReady: true,
+      });
+
+      const offline = [
+        {
+          id: "native_android",
+          readyForOperatorRun: true,
+          missingRequiredAny: [],
+        },
+      ];
+      applyDeviceReadiness(offline, {
+        adb: { summary: "device-123 offline" },
+      });
+      expect(offline[0]?.readyForOperatorRun).toBe(false);
+      expect(offline[0]?.missingRequiredAny).toContain(
+        "online adb device device-123",
+      );
+    } finally {
+      // biome-ignore lint/suspicious/noUndeclaredEnvVars: isolated fixture restores the operator-only device selector before returning.
+      if (previous === undefined) delete process.env.ANDROID_SERIAL;
+      else process.env.ANDROID_SERIAL = previous;
+    }
+  });
+
+  test("collector builds and renders the complete fail-closed status ledger", () => {
+    const status = buildStatus();
+    expect(status.issue).toBe(11632);
+    expect(status.verdict.closeable).toBe(false);
+    expect(status.envGroups).toHaveLength(13);
+    expect(status.existingEvidence).toHaveLength(14);
+    expect(status.nextCommands).toContain(
+      "bun run --cwd packages/app capture:android-emu",
+    );
+
+    const markdown = renderMarkdown({
+      ...status,
+      envGroups: [
+        {
+          ...status.envGroups[0],
+          label: "Model | live",
+        },
+      ],
+      devices: {
+        ...status.devices,
+        adb: { ...status.devices.adb, summary: "line one\nline two" },
+      },
+    });
+    expect(markdown).toContain("Model \\| live");
+    expect(markdown).toContain("line one<br>line two");
+    expect(markdown).toContain("Verdict: **not closeable**");
   });
 });

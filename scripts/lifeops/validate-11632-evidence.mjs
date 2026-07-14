@@ -176,29 +176,29 @@ export function validate11632Evidence({
   return manifest;
 }
 
+/** Validate the workflow contract directly from an Actions-style environment. */
+export function validate11632EvidenceFromEnv(env) {
+  return validate11632Evidence({
+    root: env.LIFEOPS_EVIDENCE_DIR,
+    requestedMatrix: requiredBoolean(
+      "RUN_KEYLESS_MATRIX",
+      env.RUN_KEYLESS_MATRIX,
+    ),
+    requestedConnectors: requiredBoolean(
+      "RUN_LIVE_CONNECTORS",
+      env.RUN_LIVE_CONNECTORS,
+    ),
+    commit: env.GITHUB_SHA,
+    runId: env.GITHUB_RUN_ID,
+    runAttempt: env.GITHUB_RUN_ATTEMPT,
+  });
+}
+
 const IS_MAIN =
   import.meta.main || process.argv[1] === fileURLToPath(import.meta.url);
 
 if (IS_MAIN) {
-  const {
-    LIFEOPS_EVIDENCE_DIR,
-    RUN_KEYLESS_MATRIX,
-    RUN_LIVE_CONNECTORS,
-    GITHUB_SHA,
-    GITHUB_RUN_ID,
-    GITHUB_RUN_ATTEMPT,
-  } = process.env;
-  const manifest = validate11632Evidence({
-    root: LIFEOPS_EVIDENCE_DIR,
-    requestedMatrix: requiredBoolean("RUN_KEYLESS_MATRIX", RUN_KEYLESS_MATRIX),
-    requestedConnectors: requiredBoolean(
-      "RUN_LIVE_CONNECTORS",
-      RUN_LIVE_CONNECTORS,
-    ),
-    commit: GITHUB_SHA,
-    runId: GITHUB_RUN_ID,
-    runAttempt: GITHUB_RUN_ATTEMPT,
-  });
+  const manifest = validate11632EvidenceFromEnv(process.env);
   console.log(
     `[11632-evidence] validated ${manifest.artifacts.length} artifact(s) for ${manifest.commit}`,
   );

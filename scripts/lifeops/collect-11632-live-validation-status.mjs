@@ -223,7 +223,7 @@ function adbHasOnlineSerial(adbSummary, serial) {
   });
 }
 
-function applyDeviceReadiness(envGroups, devices) {
+export function applyDeviceReadiness(envGroups, devices) {
   const androidGroup = envGroups.find((group) => group.id === "native_android");
   if (!androidGroup?.readyForOperatorRun) return;
 
@@ -265,7 +265,7 @@ export function liveConnectorRowsProven(existingEvidence) {
   });
 }
 
-function buildStatus() {
+export function buildStatus() {
   const envGroups = CONNECTOR_GROUPS.map(groupStatus);
   const existingEvidence = [
     fileStatus(`${LIFEOPS_REPORT_ROOT}/README.md`),
@@ -360,7 +360,7 @@ function buildStatus() {
   };
 }
 
-function renderMarkdown(status) {
+export function renderMarkdown(status) {
   const cell = (value) =>
     String(value || "n/a")
       .replaceAll("|", "\\|")
