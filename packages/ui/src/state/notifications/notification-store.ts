@@ -399,14 +399,21 @@ function hydrationErrorMessage(error: unknown): string {
     : "Notification inbox hydration failed";
 }
 
-async function runHydrationAttempt(generation: number): Promise<void> {
-  const attempt = state.hydrationAttempts + 1;
+async function runHydrationAttempt(
+  generation: number,
+  preserveReadyState = false,
+): Promise<void> {
+  const backgroundReconciliation =
+    preserveReadyState && state.hydrated && state.hydrationStatus === "ready";
+  const attempt = backgroundReconciliation ? 1 : state.hydrationAttempts + 1;
   const liveRevisionAtStart = liveEventRevision;
-  setState({
-    hydrated: false,
-    hydrationStatus: attempt === 1 ? "loading" : "retrying",
-    hydrationAttempts: attempt,
-  });
+  if (!backgroundReconciliation) {
+    setState({
+      hydrated: false,
+      hydrationStatus: attempt === 1 ? "loading" : "retrying",
+      hydrationAttempts: attempt,
+    });
+  }
   try {
     const res = await client.listNotifications({ limit: 100 });
     if (generation !== hydrationGeneration) return;
@@ -414,7 +421,10 @@ async function runHydrationAttempt(generation: number): Promise<void> {
       clearTimeout(hydrationRetryTimer);
       hydrationRetryTimer = null;
     }
-    const notifications = mergeHydratedNotifications(res.notifications);
+    const notifications =
+      liveEventRevision === liveRevisionAtStart
+        ? res.notifications
+        : mergeHydratedNotifications(res.notifications);
     const hydrationStatus =
       res.serviceStatus === "disabled" ? "disabled" : "ready";
     setState({
@@ -437,6 +447,13 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     // error-policy:J1 transport boundary — bounded background retries keep the
     // live subscription active while surfacing terminal failure in store state.
     if (generation !== hydrationGeneration) return;
+    if (backgroundReconciliation && isRetryableHydrationError(err)) {
+      logger.warn(
+        { err },
+        "[notification-store] inbox reconciliation failed; preserving hydrated state",
+      );
+      return;
+    }
     const message = hydrationErrorMessage(err);
     const retryable =
       isRetryableHydrationError(err) && attempt < HYDRATION_MAX_ATTEMPTS;
@@ -469,7 +486,9 @@ async function runHydrationAttempt(generation: number): Promise<void> {
   }
 }
 
-function requestHydration(): Promise<void> {
+function requestHydration(
+  options: { preserveReadyState?: boolean } = {},
+): Promise<void> {
   if (!notificationProbesEnabled()) {
     // No session yet on the shared Cloud app — skip the protected fetch (it
     // would 401 and Chromium logs the console error) and re-arm once, so the
@@ -487,7 +506,10 @@ function requestHydration(): Promise<void> {
   if (hydrationInFlight) return hydrationInFlight;
   if (state.hydrationStatus === "failed") return Promise.resolve();
   const generation = hydrationGeneration;
-  const run = runHydrationAttempt(generation);
+  const run = runHydrationAttempt(
+    generation,
+    options.preserveReadyState ?? false,
+  );
   let tracked: Promise<void>;
   tracked = run.finally(() => {
     if (hydrationInFlight === tracked) hydrationInFlight = null;
@@ -508,6 +530,20 @@ export function retryNotificationHydration(): Promise<void> {
   return requestHydration();
 }
 
+/** Reconcile lifecycle gaps without blanking a successfully-hydrated inbox. */
+function reconcileNotificationHydration(): Promise<void> {
+  if (state.hydrationStatus === "failed") {
+    return retryNotificationHydration();
+  }
+  if (
+    state.hydrationStatus === "loading" ||
+    state.hydrationStatus === "retrying"
+  ) {
+    return hydrationInFlight ?? Promise.resolve();
+  }
+  return requestHydration({ preserveReadyState: true });
+}
+
 /** Idempotent boot: hydrate the inbox and subscribe to live notifications. */
 export function initNotifications(): void {
   if (initialized) return;
@@ -515,18 +551,18 @@ export function initNotifications(): void {
   notificationCleanups.push(
     client.onWsEvent("agent_event", handleWsAgentEvent),
     client.onWsEvent("ws-reconnected", () => {
-      void retryNotificationHydration();
+      void reconcileNotificationHydration();
     }),
   );
   if (typeof window !== "undefined") {
-    const retryOnline = () => void retryNotificationHydration();
+    const retryOnline = () => void reconcileNotificationHydration();
     window.addEventListener("online", retryOnline);
     notificationCleanups.push(() =>
       window.removeEventListener("online", retryOnline),
     );
   }
   if (typeof document !== "undefined") {
-    const retryOnResume = () => void retryNotificationHydration();
+    const retryOnResume = () => void reconcileNotificationHydration();
     document.addEventListener(APP_RESUME_EVENT, retryOnResume);
     notificationCleanups.push(() =>
       document.removeEventListener(APP_RESUME_EVENT, retryOnResume),
