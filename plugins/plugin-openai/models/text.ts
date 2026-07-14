@@ -225,6 +225,10 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
     usageWithCache.inputTokenDetails?.cacheWriteTokens,
     usageWithCache.input_tokens_details?.cache_creation_input_tokens
   );
+  const reasoningTokens = firstNumber(
+    usage.outputTokenDetails?.reasoningTokens,
+    usage.reasoningTokens
+  );
 
   return {
     promptTokens,
@@ -233,6 +237,7 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
     cachedPromptTokens: cachedInput,
     cacheReadInputTokens: cachedInput,
     cacheCreationInputTokens: cacheCreationInput,
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
   };
 }
 
@@ -269,16 +274,13 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
  * left unset.
  *
- * In Cerebras mode the field defaults to `"low"` when unset, but ONLY for
- * reasoning-capable models (e.g. gpt-oss-* and deepseek-r1):
- * gpt-oss-120b emits a separate reasoning channel and, left unbounded, spends
- * the whole token budget reasoning — returning empty visible content, which
- * makes the agent fall back to "I don't have a reply for that". `"low"` keeps
- * reasoning short so a reply always materializes. Non-reasoning Cerebras models
- * (Llama, etc.) reject `reasoning_effort`, so they must never receive the
- * default. For all other models an unset/invalid value yields `undefined`, so
- * they pay no overhead and the wire stays clean. An explicit valid
- * `OPENAI_REASONING_EFFORT` always wins.
+ * In Cerebras mode the field defaults to `"low"` when unset only for the exact
+ * models whose current provider contract exposes reasoning controls:
+ * `gpt-oss-120b` and `zai-glm-4.7`. Both can spend a capped output budget on
+ * hidden reasoning and return empty visible content when left unbounded.
+ * Family-name lookalikes and models without the knob must not receive the
+ * field because compatible endpoints reject unsupported request properties.
+ * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
  *
  * Valid values follow the OpenAI spec exactly: `minimal`, `low`,
  * `medium`, `high`. Anything else is logged and ignored.
@@ -288,23 +290,35 @@ type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ["minimal", "low", "medium", "high"];
 
 /**
- * Reasoning-capable model families that emit a separate reasoning channel and
- * honor `reasoning_effort`. Used to gate the Cerebras `"low"` default so
- * non-reasoning models (Llama, etc.) are never sent the field.
+ * Strips the provider prefixes accepted by the cloud gateway while retaining
+ * an exact model id. Cerebras documents reasoning controls per model, so family
+ * substrings must not opt an unknown or newly added model into a wire field it
+ * may reject.
  */
-function isReasoningModel(modelName: string | undefined): boolean {
+function normalizeCerebrasModelId(modelName: string): string {
+  return modelName
+    .trim()
+    .toLowerCase()
+    .replace(/^cerebras[:/]/, "")
+    .replace(/^openai\//, "")
+    .replace(/:(?!free$).+$/, "");
+}
+
+function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   if (!modelName) return false;
-  const m = modelName.toLowerCase();
-  return (
-    m.includes("gpt-oss") ||
-    m.includes("o1") ||
-    m.includes("o3") ||
-    m.includes("o4") ||
-    m.includes("deepseek-r1") ||
-    m.includes("thinking") ||
-    m.includes("reasoning") ||
-    m.includes("qwq")
-  );
+  const id = normalizeCerebrasModelId(modelName);
+  return id === "gpt-oss-120b" || id === "zai-glm-4.7";
+}
+
+/** Maps thinking suppression only for the Cerebras models that document it. */
+function resolveCerebrasThinkingOffReasoningEffort(
+  modelName: string | undefined
+): "low" | "none" | undefined {
+  if (!modelName) return undefined;
+  const id = normalizeCerebrasModelId(modelName);
+  if (id === "gpt-oss-120b") return "low";
+  if (id === "zai-glm-4.7") return "none";
+  return undefined;
 }
 
 function resolveReasoningEffort(
@@ -321,12 +335,11 @@ function resolveReasoningEffort(
       `[OpenAI] OPENAI_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${VALID_REASONING_EFFORTS.join(", ")}.`
     );
   }
-  // gpt-oss-120b on Cerebras returns empty content when reasoning runs
-  // unbounded; default to "low" so a visible reply always fits — but only for
-  // reasoning-capable models. Non-reasoning Cerebras models (Llama, etc.)
-  // reject `reasoning_effort` and would break. An explicit valid value above
-  // wins over this default.
-  if (isCerebrasMode(runtime) && isReasoningModel(modelName)) {
+  // The exact provider contract gates this default: family lookalikes may
+  // reject the field, while both supported reasoning models need a bounded
+  // budget so visible content survives a capped response. An explicit valid
+  // value above wins over this default.
+  if (isCerebrasMode(runtime) && isCerebrasReasoningModel(modelName)) {
     return "low";
   }
   return undefined;
@@ -341,12 +354,23 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
+  // Thinking-off suppression outranks the env pin and the Cerebras "low"
+  // default (matching plugin-elizacloud: Stage-1/planner calls stay cheap
+  // regardless of a user-pinned effort). An explicit caller
+  // `providerOptions.openai.reasoningEffort` still wins via the spread guard
+  // below. Scoped to Cerebras mode: OpenAI-direct rejects `"none"`.
+  const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
+  const thinkingOffEffort =
+    elizaThinking === "off" && isCerebrasMode(runtime)
+      ? resolveCerebrasThinkingOffReasoningEffort(modelName)
+      : undefined;
+  const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
 
   if (
     !rawProviderOptions &&
     !promptCacheOptions.promptCacheKey &&
     !promptCacheOptions.promptCacheRetention &&
-    !reasoningEffort
+    !effectiveReasoningEffort
   ) {
     return undefined;
   }
@@ -379,10 +403,11 @@ function resolveProviderOptions(
       ? { promptCacheRetention: promptCacheOptions.promptCacheRetention }
       : {}),
     // The caller's explicit `reasoningEffort` wins over the resolved default
-    // (env var, or Cerebras "low") — same precedence pattern as promptCacheKey.
+    // (env var, thinking-off suppression, or Cerebras "low") — same precedence
+    // pattern as promptCacheKey.
     ...((sanitizedRawOpenAIOptions as { reasoningEffort?: unknown } | undefined)
-      ?.reasoningEffort === undefined && reasoningEffort
-      ? { reasoningEffort }
+      ?.reasoningEffort === undefined && effectiveReasoningEffort
+      ? { reasoningEffort: effectiveReasoningEffort }
       : {}),
   };
 

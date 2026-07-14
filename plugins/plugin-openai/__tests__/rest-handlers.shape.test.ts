@@ -4,7 +4,7 @@
  * against a mocked runtime and fetch, no network.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { handleTextToSpeech } from "../models/audio";
 import { handleTextEmbedding } from "../models/embedding";
 import { handleImageDescription, handleImageGeneration } from "../models/image";
@@ -24,6 +24,16 @@ function createRuntime(settings: Record<string, string> = {}) {
     }),
   } as unknown as IAgentRuntime;
 }
+
+// Provider-mode detection (`isCerebrasMode`) falls back to `process.env` when
+// the mocked runtime has no value; a credentialed runner with a Cerebras
+// OPENAI_BASE_URL / ELIZA_PROVIDER diverts embeddings to the local fallback
+// and the provider-error assertions never fire. Pin the mode env to empty.
+beforeEach(() => {
+  vi.stubEnv("OPENAI_BASE_URL", "");
+  vi.stubEnv("ELIZA_PROVIDER", "");
+  vi.stubEnv("CEREBRAS_API_KEY", "");
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

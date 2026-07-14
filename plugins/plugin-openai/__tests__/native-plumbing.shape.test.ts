@@ -135,7 +135,12 @@ describe("OpenAI native text plumbing", () => {
       text: "ok",
       toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
-      usage: { inputTokens: 7, outputTokens: 3, cachedInputTokens: 5 },
+      usage: {
+        inputTokens: 7,
+        outputTokens: 3,
+        cachedInputTokens: 5,
+        outputTokenDetails: { reasoningTokens: 2 },
+      },
     });
 
     const { handleTextSmall } = await import("../models/text");
@@ -192,6 +197,7 @@ describe("OpenAI native text plumbing", () => {
         totalTokens: 10,
         cachedPromptTokens: 5,
         cacheReadInputTokens: 5,
+        reasoningTokens: 2,
       },
     });
   }, 180_000);
