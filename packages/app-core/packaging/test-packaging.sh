@@ -101,7 +101,9 @@ workflow_prepares_locked_debian_node() {
   [[ "$runtime_line" =~ ^[0-9]+$ ]] || return 1
   [[ "$node_line" =~ ^[0-9]+$ ]] || return 1
   ((node_line > runtime_line)) || return 1
-  ((node_line - runtime_line <= 8)) || return 1
+  # The prepare step lists one --stub flag per license-stubbed package
+  # between the destination and the Node provisioning step.
+  ((node_line - runtime_line <= 16)) || return 1
   [[ "$(grep -c 'packages/scripts/locked-node-runtime.mjs' "$workflow")" -eq 1 ]]
 }
 
@@ -974,7 +976,7 @@ for workflow in \
   "$REPO_ROOT/.github/workflows/test-packaging.yml" \
   "$REPO_ROOT/.github/workflows/build-debian-package.yml"; do
   check "$(basename "$workflow") has no drifting package toolchain" \
-    bash -c "! grep -Eq 'node-version: [\"'\'']?24[\"'\'']?$|bun-version: [\"'\'']?(canary|1\\.3\\.14)[\"'\'']?$' '$workflow'"
+    bash -c "! grep -Eq 'node-version: [\"'\\'']?24[\"'\\'']?$|bun-version: [\"'\\'']?1\\.3\\.14[\"'\\'']?$' '$workflow'"
 done
 
 check "Publish workflow rejects bundled FFmpeg executables in both inline runtimes" \
