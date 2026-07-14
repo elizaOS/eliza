@@ -139,14 +139,39 @@ parts:
       - libx11-6
       - libxcb1
       - libxtst6
-      # Runtime libraries the ffmpeg-2204 content snap's binaries link
-      # against but do not ship themselves (consumer-staged by convention).
+      # Runtime libraries the ffmpeg-2204 content snap's ffmpeg/ffprobe
+      # binaries need transitively but neither bundle nor core22 provides
+      # (computed by walking the DT_NEEDED closure of the content snap
+      # against its own libs and the core22 base).
+      - libarchive13
       - libasound2
+      - libcaca0
+      - libcairo2
+      - libfontconfig1
+      - libgomp1
+      - libharfbuzz0b
+      - libicu70
+      - libjpeg8
+      - libmpg123-0
+      - libogg0
+      - libopenjp2-7
+      - libopus0
       - libpulse0
+      - libraw1394-11
+      - librsvg2-2
+      - libsamplerate0
+      - libspeex1
+      - libtheora0
+      - libtiff5
+      - libtwolame0
+      - libv4l-0
       - libva2
       - libva-drm2
       - libva-x11-2
       - libvdpau1
+      - libvpx7
+      - libwebp7
+      - libwebpmux3
       - libxcb-shape0
       - libxcb-shm0
       - libxcb-xfixes0
