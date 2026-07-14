@@ -333,6 +333,46 @@ describe("OpenAI native text plumbing", () => {
     expect(onStreamChunk).toHaveBeenNthCalledWith(2, "lo");
   });
 
+  it.each([
+    { stream: false, mock: aiMocks.generateText },
+    { stream: true, mock: aiMocks.streamText },
+  ])("forwards the caller abort signal to the $stream transport", async ({ stream, mock }) => {
+    const signal = new AbortController().signal;
+    if (stream) {
+      mock.mockResolvedValue({
+        textStream: (async function* textStream() {
+          yield "ok";
+        })(),
+        text: Promise.resolve("ok"),
+        toolCalls: Promise.resolve([]),
+        finishReason: Promise.resolve("stop"),
+        usage: Promise.resolve({ inputTokens: 1, outputTokens: 1 }),
+      });
+    } else {
+      mock.mockResolvedValue({
+        text: "ok",
+        toolCalls: [],
+        finishReason: "stop",
+        usage: { inputTokens: 1, outputTokens: 1 },
+      });
+    }
+
+    const { handleTextSmall } = await import("../models/text");
+    const result = await handleTextSmall(createRuntime(), {
+      prompt: "abortable request",
+      stream,
+      signal,
+    } as never);
+    if (stream) {
+      for await (const _chunk of (result as { textStream: AsyncIterable<string> }).textStream) {
+        // Consumption finalizes streaming telemetry; the assertion is on the SDK call below.
+      }
+    }
+
+    const call = mock.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.abortSignal).toBe(signal);
+  });
+
   it("emits usage and records the completed live-stream response after consumption", async () => {
     const trajectoryCalls: CapturedLlmCall[] = [];
     const toolCalls = [{ toolName: "lookup", input: { q: "x" } }];

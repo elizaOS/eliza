@@ -1589,6 +1589,7 @@ async function generateTextByModelType(
     ...promptOrMessages,
     system: systemPrompt,
     allowSystemInMessages: true,
+    ...(params.signal ? { abortSignal: params.signal } : {}),
     // Omit the cap when the caller opted out (direct-channel Stage-1) so the
     // model's own max applies — a hardcoded value 400s when it exceeds the
     // model's limit. Other callers keep the 8192 default.
