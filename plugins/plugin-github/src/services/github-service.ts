@@ -1,11 +1,7 @@
 /**
- * @module github-service
- * @description Service that owns GitHub REST clients for the plugin.
- *
- * Role-tagged account records are supported, with the legacy user/agent PAT
- * split preserved as the default account set. Actions request an Octokit
- * client by role and optionally by accountId; the service returns `null` when
- * the requested account has no token configured.
+ * Owns role-tagged GitHub REST clients for an Eliza agent.
+ * Actions resolve clients by user/agent role or account id; credential changes
+ * rebuild the pool so no client retains a replaced token.
  */
 
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
@@ -95,6 +91,11 @@ export class GitHubService extends Service implements IGitHubService {
     logger.info(
       `[GitHubService] configured ${this.clients.size} GitHub account(s)`,
     );
+  }
+
+  /** Rebuild clients after an agent-scoped credential rotation or removal. */
+  async refreshCredentials(): Promise<void> {
+    await this.initialize();
   }
 
   getOctokit(

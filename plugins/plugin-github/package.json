@@ -43,7 +43,9 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/vault": "workspace:*",
     "@octokit/rest": "^22.0.0"
   },
   "peerDependencies": {

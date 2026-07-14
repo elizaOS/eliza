@@ -248,18 +248,19 @@ All are optional unless noted. Read by `src/services/config-env.ts` and
 `src/services/acp-service.ts`.
 
 **GitHub credentials** gate every GitHub-writing capability (`TASKS_MANAGE_ISSUES`,
-`TASKS_SUBMIT_WORKSPACE` commit/push/PR). Supply a PAT via `GITHUB_TOKEN` or run the
-OAuth device flow via `GITHUB_OAUTH_CLIENT_ID`. Both are read per-agent through
-`runtime.getSetting` in `src/services/workspace-github.ts`, so store the token in the
-**vault/settings, not process env** — a process-env `GITHUB_TOKEN` leaks to every agent
-on a shared/multi-tenant host, whereas `getSetting` scopes it to one agent. Full setup:
+`TASKS_SUBMIT_WORKSPACE` commit/push/PR). Connect through the GitHub settings card
+or provision a per-agent `GITHUB_TOKEN`; the internal device fallback needs only
+`GITHUB_OAUTH_CLIENT_ID`. Both are read per-agent through `runtime.getSetting`.
+The workspace service never reads process env directly for an agent token and strips
+ambient GitHub credentials from git children before adding a command-scoped header;
+owner-projected env configuration is suitable only for single-agent deployments.
+Full setup:
 README → "GitHub credentials".
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `GITHUB_TOKEN` | unset | PAT for GitHub-writing capabilities (issues, push, PR). Read via `runtime.getSetting` — store per-agent in vault/settings, not process env (multi-tenant leak). Wins over device flow when both set. |
-| `GITHUB_OAUTH_CLIENT_ID` | unset | OAuth **device flow** client id (read via `getSetting`); used when no `GITHUB_TOKEN`. Requires a live `authPromptCallback` to surface the device-code prompt. |
-| `GITHUB_OAUTH_CLIENT_SECRET` | unset | Server-side OAuth secret for the device flow. Read directly from **process env** by design — deliberately kept out of the plugin `getSetting` allowlist. |
+| `GITHUB_OAUTH_CLIENT_ID` | unset | Public OAuth **device flow** client id (read via `getSetting`); used when no `GITHUB_TOKEN`. Device flow must be enabled on the OAuth app, needs no client secret, and requires a live `authPromptCallback`. |
 | `ELIZA_ACP_TRANSPORT` | `native` | Transport: `native` (embedded JSON-RPC) or `cli`/`acpx` (legacy shell wrapper) |
 | `ELIZA_ACP_CLI` | `acpx` | Path/command for the CLI transport |
 | `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type: `elizaos`, `pi-agent`, `opencode` |

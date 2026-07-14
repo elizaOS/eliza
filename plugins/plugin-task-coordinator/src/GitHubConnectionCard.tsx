@@ -1,66 +1,66 @@
-// Renders GitHub auth state for coding-agent framework settings.
-import { Button, client, openExternalUrl, SettingsControls } from "@elizaos/ui";
+/**
+ * Guided GitHub connection UI for coding-agent settings.
+ * The server owns OAuth secrets and flow state; this component renders the
+ * loading, connected, disconnected, unavailable, waiting, cancelled, denied,
+ * and expired states and drives the typed start/poll/cancel/reconnect routes.
+ */
+
 import {
+  Button,
+  client,
+  isApiError,
+  openExternalUrl,
+  SettingsControls,
+} from "@elizaos/ui";
+import {
+  AlertCircle,
   CheckCircle2,
   ExternalLink,
   GitPullRequest,
+  Loader2,
   LogIn,
+  RefreshCw,
   Unplug,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * GitHub connection card for the Coding Agents settings page — the guided
- * credential setup step for every GitHub-touching capability (#15796).
- *
- * Two paths to connect, matching the server routes in
- * `@elizaos/plugin-github`:
- *
- * 1. **Device sign-in** (`POST /api/github/device/start|poll`) — shown when
- *    the agent has a `GITHUB_OAUTH_CLIENT_ID` setting. The card shows the
- *    short user code, opens github.com/login/device, and polls until the
- *    user approves. The device code and the granted token never reach the
- *    browser.
- * 2. **PAT paste** (`POST /api/github/token`) — always available.
- *
- * Either way the server validates the token against GitHub `/user`, persists
- * it to `<state-dir>/credentials/github.json`, and applies it to the live
- * runtime's per-agent settings (`runtime.getSetting("GITHUB_TOKEN")`) so
- * GitHub capabilities work immediately — no restart, no process-env write.
- *
- * The token itself is write-only from the UI side: the API never returns it
- * after save. State here is just the metadata (username, scopes, savedAt)
- * plus the in-flight sign-in / draft-PAT state.
- */
-
 interface TokenStatus {
   connected: boolean;
-  deviceFlowAvailable?: boolean;
+  deviceFlowAvailable: boolean;
   username?: string;
   scopes?: string[];
   savedAt?: number;
 }
 
-const TOKEN_GENERATE_URL =
-  "https://github.com/settings/tokens/new?description=eliza-coding-agents&scopes=repo,read:user";
+type StatusState =
+  | { kind: "loading" }
+  | { kind: "ready"; value: TokenStatus }
+  | { kind: "unavailable"; message: string };
 
-type SubmitState =
-  | { kind: "idle" }
-  | { kind: "submitting" }
-  | { kind: "error"; message: string };
+type FlowMode = "connect" | "reconnect";
+
+interface WaitingFlow {
+  mode: FlowMode;
+  flowId: string;
+  userCode: string;
+  verificationUri: string;
+}
 
 type DeviceFlowState =
   | { kind: "idle" }
-  | { kind: "starting" }
-  | {
-      kind: "waiting";
-      flowId: string;
-      userCode: string;
-      verificationUri: string;
-    };
+  | { kind: "starting"; mode: FlowMode }
+  | ({ kind: "waiting" } & WaitingFlow)
+  | ({ kind: "cancelling" } & WaitingFlow);
+
+type FeedbackState =
+  | { kind: "none" }
+  | { kind: "cancelled"; message: string }
+  | { kind: "denied" | "expired"; message: string; mode: FlowMode }
+  | { kind: "error"; message: string; mode?: FlowMode };
 
 interface DeviceStartResponse {
   status: "started";
+  mode: FlowMode;
   flowId: string;
   userCode: string;
   verificationUri: string;
@@ -74,173 +74,266 @@ type DevicePollResponse =
   | { status: "denied" }
   | { status: "expired" };
 
+const TOKEN_GENERATE_URL =
+  "https://github.com/settings/tokens/new?description=eliza-coding-agents&scopes=repo,read:user";
+
+function messageFromError(error: unknown): string {
+  if (isApiError(error)) return error.message;
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function GitHubConnectionCard() {
-  const [status, setStatus] = useState<TokenStatus | null>(null);
+  const [status, setStatus] = useState<StatusState>({ kind: "loading" });
   const [draft, setDraft] = useState("");
-  const [submitState, setSubmitState] = useState<SubmitState>({ kind: "idle" });
+  const [submitting, setSubmitting] = useState(false);
   const [deviceFlow, setDeviceFlow] = useState<DeviceFlowState>({
     kind: "idle",
   });
-
-  // In-flight poll timer + a generation counter so a cancelled sign-in's
-  // late responses are ignored instead of resurrecting the waiting state.
+  const [feedback, setFeedback] = useState<FeedbackState>({ kind: "none" });
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const flowGenRef = useRef(0);
+  const flowGenerationRef = useRef(0);
 
-  const stopPolling = useCallback(() => {
-    flowGenRef.current += 1;
+  const stopLocalPolling = useCallback(() => {
+    flowGenerationRef.current += 1;
     if (pollTimerRef.current !== null) {
       clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
     }
   }, []);
 
-  useEffect(() => stopPolling, [stopPolling]);
+  useEffect(() => stopLocalPolling, [stopLocalPolling]);
 
   const refreshStatus = useCallback(async () => {
-    const next = await client.fetch<TokenStatus>("/api/github/token");
-    setStatus(next);
+    setStatus({ kind: "loading" });
+    setFeedback({ kind: "none" });
+    try {
+      const value = await client.fetch<TokenStatus>("/api/github/token");
+      setStatus({ kind: "ready", value });
+    } catch (error) {
+      // error-policy:J4 A failed status read must render unavailable, which is
+      // visually distinct from the legitimate disconnected state.
+      setStatus({ kind: "unavailable", message: messageFromError(error) });
+    }
   }, []);
 
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
 
-  const pollDeviceFlow = useCallback((flowId: string, generation: number) => {
-    void (async () => {
-      if (generation !== flowGenRef.current) return;
+  const pollDeviceFlow = useCallback(
+    (flow: WaitingFlow, generation: number) => {
+      void (async () => {
+        if (generation !== flowGenerationRef.current) return;
+        try {
+          const response = await client.fetch<DevicePollResponse>(
+            "/api/github/device/poll",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ flowId: flow.flowId }),
+            },
+          );
+          if (generation !== flowGenerationRef.current) return;
+          if (response.status === "pending") {
+            pollTimerRef.current = setTimeout(
+              () => pollDeviceFlow(flow, generation),
+              Math.max(1, response.retryAfterSeconds) * 1_000,
+            );
+            return;
+          }
+          setDeviceFlow({ kind: "idle" });
+          if (response.status === "complete") {
+            setStatus({ kind: "ready", value: response });
+            setFeedback({ kind: "none" });
+            return;
+          }
+          if (response.status === "denied") {
+            setFeedback({
+              kind: "denied",
+              mode: flow.mode,
+              message:
+                "GitHub sign-in was denied. No credential was changed. You can try again or use a personal access token.",
+            });
+            return;
+          }
+          setFeedback({
+            kind: "expired",
+            mode: flow.mode,
+            message:
+              "The GitHub sign-in code expired. No credential was changed. Start again for a new code.",
+          });
+        } catch (error) {
+          // error-policy:J4 Poll failures stop the flow and surface a retryable
+          // user-facing error; they never masquerade as a denial or expiry.
+          if (generation !== flowGenerationRef.current) return;
+          setDeviceFlow({ kind: "idle" });
+          setFeedback({
+            kind: "error",
+            mode: flow.mode,
+            message: messageFromError(error),
+          });
+        }
+      })();
+    },
+    [],
+  );
+
+  const startDeviceFlow = useCallback(
+    async (mode: FlowMode) => {
+      stopLocalPolling();
+      const generation = flowGenerationRef.current;
+      setFeedback({ kind: "none" });
+      setDeviceFlow({ kind: "starting", mode });
       try {
-        const res = await client.fetch<DevicePollResponse>(
-          "/api/github/device/poll",
+        const response = await client.fetch<DeviceStartResponse>(
+          mode === "reconnect"
+            ? "/api/github/device/reconnect"
+            : "/api/github/device/start",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ flowId }),
+            body: JSON.stringify({}),
           },
         );
-        if (generation !== flowGenRef.current) return;
-        if (res.status === "pending") {
-          const delaySeconds = Math.max(1, res.retryAfterSeconds);
-          pollTimerRef.current = setTimeout(
-            () => pollDeviceFlow(flowId, generation),
-            delaySeconds * 1000,
-          );
-          return;
-        }
-        if (res.status === "complete") {
-          setDeviceFlow({ kind: "idle" });
-          setSubmitState({ kind: "idle" });
-          setStatus(res);
-          return;
-        }
+        if (generation !== flowGenerationRef.current) return;
+        const flow: WaitingFlow = {
+          mode,
+          flowId: response.flowId,
+          userCode: response.userCode,
+          verificationUri: response.verificationUri,
+        };
+        setDeviceFlow({ kind: "waiting", ...flow });
+        openExternalUrl(response.verificationUri);
+        pollTimerRef.current = setTimeout(
+          () => pollDeviceFlow(flow, generation),
+          Math.max(1, response.intervalSeconds) * 1_000,
+        );
+      } catch (error) {
+        // error-policy:J4 Owner-setup and transport failures are actionable UI
+        // states, while the prior credential remains intact for reconnects.
+        if (generation !== flowGenerationRef.current) return;
         setDeviceFlow({ kind: "idle" });
-        setSubmitState({
+        setFeedback({
           kind: "error",
-          message:
-            res.status === "denied"
-              ? "GitHub sign-in was denied on github.com. Start again, or paste a personal access token instead."
-              : "The sign-in code expired before it was approved. Start again to get a new code.",
-        });
-      } catch (err) {
-        if (generation !== flowGenRef.current) return;
-        setDeviceFlow({ kind: "idle" });
-        setSubmitState({
-          kind: "error",
-          message: err instanceof Error ? err.message : String(err),
+          mode,
+          message: messageFromError(error),
         });
       }
-    })();
-  }, []);
+    },
+    [pollDeviceFlow, stopLocalPolling],
+  );
 
-  const handleDeviceSignIn = useCallback(async () => {
-    stopPolling();
-    const generation = flowGenRef.current;
-    setSubmitState({ kind: "idle" });
-    setDeviceFlow({ kind: "starting" });
+  const cancelDeviceFlow = useCallback(async () => {
+    if (deviceFlow.kind !== "waiting") return;
+    const flow: WaitingFlow = deviceFlow;
+    stopLocalPolling();
+    setDeviceFlow({ kind: "cancelling", ...flow });
+    setFeedback({ kind: "none" });
     try {
-      const res = await client.fetch<DeviceStartResponse>(
-        "/api/github/device/start",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        },
-      );
-      if (generation !== flowGenRef.current) return;
-      setDeviceFlow({
-        kind: "waiting",
-        flowId: res.flowId,
-        userCode: res.userCode,
-        verificationUri: res.verificationUri,
+      await client.fetch<{ status: "cancelled" }>("/api/github/device/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flowId: flow.flowId }),
       });
-      openExternalUrl(res.verificationUri);
-      pollTimerRef.current = setTimeout(
-        () => pollDeviceFlow(res.flowId, generation),
-        Math.max(1, res.intervalSeconds) * 1000,
-      );
-    } catch (err) {
-      if (generation !== flowGenRef.current) return;
       setDeviceFlow({ kind: "idle" });
-      setSubmitState({
-        kind: "error",
-        message: err instanceof Error ? err.message : String(err),
+      setFeedback({
+        kind: "cancelled",
+        message:
+          "GitHub sign-in was cancelled. No credential was changed or removed.",
       });
+    } catch (error) {
+      // error-policy:J4 A server cancellation failure keeps the flow visible
+      // so the user can retry cancellation instead of assuming it succeeded.
+      setDeviceFlow({ kind: "waiting", ...flow });
+      setFeedback({ kind: "error", message: messageFromError(error) });
     }
-  }, [pollDeviceFlow, stopPolling]);
+  }, [deviceFlow, stopLocalPolling]);
 
-  const handleCancelDeviceSignIn = useCallback(() => {
-    stopPolling();
-    setDeviceFlow({ kind: "idle" });
-    setSubmitState({ kind: "idle" });
-  }, [stopPolling]);
-
-  const handleConnect = useCallback(async () => {
+  const connectWithToken = useCallback(async () => {
     const token = draft.trim();
-    if (token.length === 0) return;
-    setSubmitState({ kind: "submitting" });
+    if (!token) return;
+    setSubmitting(true);
+    setFeedback({ kind: "none" });
     try {
-      const res = await client.fetch<TokenStatus | { error: string }>(
-        "/api/github/token",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        },
-      );
-      if ("error" in res) {
-        setSubmitState({ kind: "error", message: res.error });
-        return;
-      }
-      setStatus(res);
+      const value = await client.fetch<TokenStatus>("/api/github/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      setStatus({ kind: "ready", value });
       setDraft("");
-      setSubmitState({ kind: "idle" });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setSubmitState({ kind: "error", message });
+    } catch (error) {
+      // error-policy:J4 A rejected PAT is shown as an explicit error and the
+      // disconnected state remains available for correction and retry.
+      setFeedback({ kind: "error", message: messageFromError(error) });
+    } finally {
+      setSubmitting(false);
     }
   }, [draft]);
 
-  const handleDisconnect = useCallback(async () => {
-    stopPolling();
+  const disconnect = useCallback(async () => {
+    stopLocalPolling();
     setDeviceFlow({ kind: "idle" });
-    setSubmitState({ kind: "submitting" });
+    setSubmitting(true);
+    setFeedback({ kind: "none" });
     try {
-      const next = await client.fetch<TokenStatus>("/api/github/token", {
+      const value = await client.fetch<TokenStatus>("/api/github/token", {
         method: "DELETE",
       });
-      setStatus(next);
-      setSubmitState({ kind: "idle" });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      setSubmitState({ kind: "error", message });
+      setStatus({ kind: "ready", value });
+    } catch (error) {
+      // error-policy:J4 Failed disconnect must not render disconnected; the
+      // connected credential remains visible while the error is surfaced.
+      setFeedback({ kind: "error", message: messageFromError(error) });
+    } finally {
+      setSubmitting(false);
     }
-  }, [stopPolling]);
+  }, [stopLocalPolling]);
 
-  const submitting = submitState.kind === "submitting";
-  const errorMessage =
-    submitState.kind === "error" ? submitState.message : null;
-  const deviceFlowAvailable = status?.deviceFlowAvailable === true;
-  const deviceBusy = deviceFlow.kind !== "idle";
+  const readyStatus = status.kind === "ready" ? status.value : null;
+  const flowBusy = deviceFlow.kind !== "idle";
+
+  const flowPanel =
+    deviceFlow.kind === "waiting" || deviceFlow.kind === "cancelling" ? (
+      <div className="flex flex-col gap-2 rounded-md border border-border bg-bg-accent/40 p-2.5">
+        <div className="text-muted">
+          Enter this code on{" "}
+          <Button
+            unstyled
+            type="button"
+            className="inline-flex items-center gap-1 text-accent hover:underline"
+            onClick={() => openExternalUrl(deviceFlow.verificationUri)}
+          >
+            {deviceFlow.verificationUri.replace(/^https:\/\//, "")}
+            <ExternalLink className="h-3 w-3" aria-hidden />
+          </Button>
+        </div>
+        <div
+          className="select-all font-mono text-base font-semibold tracking-widest text-txt"
+          data-testid="github-device-user-code"
+        >
+          {deviceFlow.userCode}
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-muted">
+            <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+            {deviceFlow.kind === "cancelling"
+              ? "Cancelling…"
+              : deviceFlow.mode === "reconnect"
+                ? "Waiting to replace the connection…"
+                : "Waiting for approval…"}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void cancelDeviceFlow()}
+            disabled={deviceFlow.kind === "cancelling"}
+          >
+            Cancel
+          </Button>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div className="space-y-3 px-1 py-1">
@@ -248,25 +341,55 @@ export function GitHubConnectionCard() {
         <div className="flex min-w-0 items-center gap-2.5">
           <GitPullRequest className="h-4 w-4 text-muted" aria-hidden />
           <span className="text-sm font-medium text-txt">GitHub</span>
-          {status?.connected ? (
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500"
-              title={`Connected as @${status.username}`}
-              aria-label={`Connected as @${status.username}`}
-              role="img"
-            />
-          ) : (
-            <span
-              className="inline-block h-1.5 w-1.5 rounded-full bg-muted/40"
-              title="Not connected"
-              aria-label="Not connected"
-              role="img"
-            />
-          )}
+          <span
+            className={`inline-block h-1.5 w-1.5 rounded-full ${
+              readyStatus?.connected ? "bg-emerald-500" : "bg-muted/40"
+            }`}
+            aria-label={
+              readyStatus?.connected
+                ? `Connected as @${readyStatus.username}`
+                : status.kind === "loading"
+                  ? "Loading GitHub connection"
+                  : status.kind === "unavailable"
+                    ? "GitHub connection unavailable"
+                    : "Not connected"
+            }
+            role="img"
+          />
         </div>
       </div>
 
-      {status?.connected ? (
+      {status.kind === "loading" ? (
+        <div
+          className="flex items-center gap-2 rounded-md border border-border px-2.5 py-3 text-xs text-muted"
+          aria-live="polite"
+        >
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          Loading this agent&apos;s GitHub connection…
+        </div>
+      ) : null}
+
+      {status.kind === "unavailable" ? (
+        <div className="flex flex-col gap-2 rounded-md border border-rose-500/40 bg-rose-500/10 px-2.5 py-2 text-xs text-rose-500">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              GitHub connection status is unavailable: {status.message}
+            </span>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            className="w-fit"
+            onClick={() => void refreshStatus()}
+          >
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {readyStatus?.connected ? (
         <div className="flex flex-col gap-2 text-xs">
           <div className="flex items-center gap-2 text-muted">
             <CheckCircle2
@@ -275,50 +398,55 @@ export function GitHubConnectionCard() {
             />
             <span>
               Connected as{" "}
-              <span className="font-medium text-txt">@{status.username}</span>
+              <span className="font-medium text-txt">
+                @{readyStatus.username}
+              </span>
             </span>
           </div>
-          {status.scopes && status.scopes.length > 0 ? (
-            <div className="text-muted">
-              Scopes:{" "}
-              <span className="font-mono text-txt">
-                {status.scopes.join(", ")}
-              </span>
-            </div>
-          ) : (
-            <div className="text-muted">
-              Scopes: <span className="text-amber-500">none</span>
-            </div>
-          )}
-          <div className="flex items-center justify-between pt-1">
-            <span className="sr-only">
-              Coding sub-agents will use this token for git/gh operations.
+          <div className="text-muted">
+            Scopes:{" "}
+            <span className="font-mono text-txt">
+              {readyStatus.scopes && readyStatus.scopes.length > 0
+                ? readyStatus.scopes.join(", ")
+                : "none reported"}
             </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            {readyStatus.deviceFlowAvailable ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void startDeviceFlow("reconnect")}
+                disabled={submitting || flowBusy}
+              >
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                {deviceFlow.kind === "starting" ? "Starting…" : "Reconnect"}
+              </Button>
+            ) : null}
             <Button
               variant="secondary"
               size="sm"
-              onClick={handleDisconnect}
-              disabled={submitting}
+              onClick={() => void disconnect()}
+              disabled={submitting || flowBusy}
             >
               <Unplug className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-              Disconnect
+              {submitting ? "Disconnecting…" : "Disconnect"}
             </Button>
           </div>
+          {flowPanel}
         </div>
-      ) : (
-        <div className="flex flex-col gap-2 text-xs">
-          <p className="sr-only">
-            Connect GitHub so coding sub-agents can clone private repos, push
-            commits, and open pull requests.
-          </p>
+      ) : null}
 
-          {deviceFlowAvailable && deviceFlow.kind !== "waiting" ? (
+      {readyStatus && !readyStatus.connected ? (
+        <div className="flex flex-col gap-2 text-xs">
+          {readyStatus.deviceFlowAvailable &&
+          (deviceFlow.kind === "idle" || deviceFlow.kind === "starting") ? (
             <Button
               variant="default"
               size="sm"
               className="w-fit"
-              onClick={() => void handleDeviceSignIn()}
-              disabled={submitting || deviceFlow.kind === "starting"}
+              onClick={() => void startDeviceFlow("connect")}
+              disabled={submitting || flowBusy}
             >
               <LogIn className="mr-1.5 h-3.5 w-3.5" aria-hidden />
               {deviceFlow.kind === "starting"
@@ -326,40 +454,7 @@ export function GitHubConnectionCard() {
                 : "Sign in with GitHub"}
             </Button>
           ) : null}
-
-          {deviceFlow.kind === "waiting" ? (
-            <div className="flex flex-col gap-2 rounded-md border border-border bg-bg-accent/40 p-2.5">
-              <div className="text-muted">
-                Enter this code on{" "}
-                <Button
-                  unstyled
-                  type="button"
-                  className="inline-flex items-center gap-1 text-accent hover:underline"
-                  onClick={() => openExternalUrl(deviceFlow.verificationUri)}
-                >
-                  {deviceFlow.verificationUri.replace(/^https:\/\//, "")}
-                  <ExternalLink className="h-3 w-3" aria-hidden />
-                </Button>
-              </div>
-              <div
-                className="select-all font-mono text-base font-semibold tracking-widest text-txt"
-                data-testid="github-device-user-code"
-              >
-                {deviceFlow.userCode}
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-muted">Waiting for approval…</span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleCancelDeviceSignIn}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          ) : null}
-
+          {flowPanel}
           <Button
             unstyled
             type="button"
@@ -367,7 +462,7 @@ export function GitHubConnectionCard() {
             onClick={() => openExternalUrl(TOKEN_GENERATE_URL)}
           >
             <ExternalLink className="h-3 w-3" aria-hidden />
-            {deviceFlowAvailable
+            {readyStatus.deviceFlowAvailable
               ? "Or generate a token on github.com (scopes: repo, read:user)"
               : "Generate a token on github.com (scopes: repo, read:user)"}
           </Button>
@@ -378,27 +473,55 @@ export function GitHubConnectionCard() {
               type="password"
               placeholder="ghp_…"
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void handleConnect();
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void connectWithToken();
               }}
               autoComplete="off"
             />
             <Button
               variant="default"
               size="sm"
-              onClick={() => void handleConnect()}
-              disabled={submitting || deviceBusy || draft.trim().length === 0}
+              onClick={() => void connectWithToken()}
+              disabled={submitting || flowBusy || !draft.trim()}
             >
               {submitting ? "Connecting…" : "Connect"}
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {errorMessage ? (
-        <div className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-1.5 text-xs text-rose-500">
-          {errorMessage}
+      {feedback.kind !== "none" ? (
+        <div
+          className={`rounded-md border px-2 py-1.5 text-xs ${
+            feedback.kind === "cancelled"
+              ? "border-border bg-bg-accent/40 text-muted"
+              : "border-rose-500/40 bg-rose-500/10 text-rose-500"
+          }`}
+          aria-live="polite"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>{feedback.message}</span>
+            {(feedback.kind === "denied" ||
+              feedback.kind === "expired" ||
+              (feedback.kind === "error" && feedback.mode)) &&
+            deviceFlow.kind === "idle" ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  void startDeviceFlow(
+                    feedback.kind === "error"
+                      ? (feedback.mode ?? "connect")
+                      : feedback.mode,
+                  )
+                }
+              >
+                <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                Try again
+              </Button>
+            ) : null}
+          </div>
         </div>
       ) : null}
     </div>

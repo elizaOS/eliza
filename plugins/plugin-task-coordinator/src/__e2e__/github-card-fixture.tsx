@@ -1,11 +1,7 @@
 /**
- * Render-only fixture for the GitHub connection card (#15796). Mounts the real
- * `GitHubConnectionCard` with a scripted `/api/github/*` backend (selected via
- * the `?state=` query param) so the esbuild + playwright harness can
- * screenshot the actual component in each guided-setup state — no app server.
- * The `@elizaos/ui` module is stubbed by the runner's esbuild resolver with
- * brand-faithful Button/Input primitives and a `client.fetch` that delegates
- * to `window.__ghFetch` (defined here).
+ * Mounts the real guided GitHub card against a query-selected in-page API.
+ * The screenshot harness supplies host UI/client primitives, so every state
+ * can be reviewed without booting the complete application server.
  */
 
 import { createRoot } from "react-dom/client";
@@ -20,6 +16,7 @@ declare global {
 }
 
 function scriptedBackend(state: string): Responder {
+  let statusRequests = 0;
   const disconnected = { connected: false, deviceFlowAvailable: true };
   const connected = {
     connected: true,
@@ -39,15 +36,31 @@ function scriptedBackend(state: string): Responder {
   return (path, init) => {
     const method = init?.method ?? "GET";
     if (path === "/api/github/token" && method === "GET") {
+      statusRequests += 1;
+      if (state === "loading") return new Promise(() => undefined);
+      if (
+        state === "unavailable" ||
+        (state === "retry" && statusRequests === 1)
+      ) {
+        throw new Error("Encrypted credential vault is unavailable");
+      }
       if (state === "pat-only")
         return { connected: false, deviceFlowAvailable: false };
       if (state === "connected") return connected;
       return disconnected;
     }
     if (path === "/api/github/device/start") return started;
+    if (path === "/api/github/device/reconnect") {
+      return { ...started, mode: "reconnect" };
+    }
     if (path === "/api/github/device/poll") {
       if (state === "denied") return { status: "denied" };
+      if (state === "expired") return { status: "expired" };
+      if (state === "success") return { status: "complete", ...connected };
       return { status: "pending", retryAfterSeconds: 5 };
+    }
+    if (path === "/api/github/device/cancel") {
+      return { status: "cancelled" };
     }
     if (path === "/api/github/token" && method === "POST") return connected;
     throw new Error(`fixture: unexpected request ${method} ${path}`);
@@ -57,7 +70,7 @@ function scriptedBackend(state: string): Responder {
 const params = new URLSearchParams(window.location.search);
 const state = params.get("state") ?? "device";
 const respond = scriptedBackend(state);
-window.__ghFetch = (path, init) => Promise.resolve(respond(path, init));
+window.__ghFetch = async (path, init) => respond(path, init);
 
 const root = createRoot(document.getElementById("root") as HTMLElement);
 root.render(

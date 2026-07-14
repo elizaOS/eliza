@@ -1,10 +1,7 @@
 /**
- * GitHub integration for Coding Workspace Service
- *
- * Extracted from workspace-service.ts — provides GitHub API access
- * via PAT or OAuth device flow, plus all issue management operations.
- *
- * @module services/workspace-github
+ * Provides GitHub authentication and issue operations for coding workspaces.
+ * The workspace service supplies per-agent settings and owns client caching;
+ * device prompts must reach the user before this module begins polling.
  */
 
 import { createRequire } from "node:module";
@@ -111,13 +108,8 @@ export async function performOAuthFlow(
   ctx: GitHubContext,
   clientId: string,
 ): Promise<GitHubPatClientInstance> {
-  // Read directly from process.env — this is a server-side secret that
-  // should not be exposed through the plugin getSetting() allowlist.
-  const clientSecret = process.env.GITHUB_OAUTH_CLIENT_SECRET;
-
   const oauth = new OAuthDeviceFlow({
     clientId,
-    clientSecret,
     permissions: {
       repositories: { type: "public" },
       contents: "write",

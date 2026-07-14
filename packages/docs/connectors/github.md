@@ -36,16 +36,18 @@ provisioning) work immediately — no restart, no manual env editing:
 2. **Paste a personal access token** — always available. The card links to a
    pre-filled token-generation page (`repo`, `read:user` scopes).
 
-Both paths validate the token against GitHub, persist it to the agent's local
-credential store (`<state-dir>/credentials/github.json`, mode 600), and apply
-it to the running agent's per-agent settings so `runtime.getSetting("GITHUB_TOKEN")`
-resolves right away.
+Both paths validate the token against GitHub, persist it as a sensitive record
+in the shared encrypted vault under the current `runtime.agentId`, and refresh
+the running agent's GitHub clients immediately. The browser never receives the
+token or GitHub device code. Restart hydration reads only that agent's vault
+record; a missing record is disconnected, while storage corruption or outage
+renders an explicit unavailable state.
 
 ### PAT vs device sign-in
 
 | | Personal access token | Device sign-in (OAuth device flow) |
 |---|---|---|
-| Owner setup | none | register a GitHub OAuth app with **device flow enabled**, set `GITHUB_OAUTH_CLIENT_ID` |
+| Owner setup | none | register a GitHub OAuth app with **device flow enabled**, set its public `GITHUB_OAUTH_CLIENT_ID`; no client secret is used |
 | User steps | create token on github.com, paste it | type a short code on github.com, click approve |
 | Scoping | you choose scopes/repos when creating the token (fine-grained tokens can be repo-allowlisted) | fixed `repo read:user` scope requested by the app |
 | Expiry | you set it at creation | GitHub OAuth app token policy |
@@ -56,24 +58,28 @@ points back at this card — connect there and retry the task.
 
 ### Vault/settings vs environment variables
 
-Prefer per-agent settings (the dashboard card, the agent's vault/secrets, or
-`character.settings`) over process environment variables:
+Use the dashboard card for an agent credential. Owner-supplied environment
+configuration remains available for explicitly single-agent deployments, but
+guided credentials never mutate the process environment:
 
 - **Env leaks across agents.** On a multi-tenant host, `GITHUB_TOKEN` in the
   process environment is visible to *every* agent in that process — one
   agent's identity silently becomes everyone's.
-- **Settings are per-agent.** A token stored via the dashboard card or the
-  vault resolves through `runtime.getSetting("GITHUB_TOKEN")` for that agent
-  only, and survives restarts through the agent's own credential store.
-- Env still works for single-agent, single-operator installs and always wins
-  over the stored credential at boot (an explicit shell export overrides the
-  saved value).
+- **Vault records are per-agent.** The key uses a collision-free encoding of
+  the agent id and the encrypted envelope repeats that binding, so one agent
+  cannot read, rotate, clear, poll, or reconnect another agent's credential.
+- **Subprocesses are scoped too.** Coding workspaces remove ambient
+  `GITHUB_TOKEN`, `GH_TOKEN`, and `CR_PAT` before every git child and transport
+  the selected runtime credential through a command-scoped Git HTTP header.
+- **Reconnect is atomic.** The current credential remains usable until a new
+  device grant validates and commits; cancel, denial, expiry, and failed
+  validation leave it unchanged.
 
 > **Cloud note:** which GitHub identity a cloud-provisioned agent should get
 > (per-agent bot account vs the owner's PAT vs a GitHub App installation) is a
 > policy decision that is still open — see issue #15796. Until then, cloud
-> agents use whatever token the operator connects via the card or the agent's
-> settings.
+> agents use whatever identity the operator connects to each agent through the
+> card or explicit role-tagged account settings.
 
 ## Minimal Configuration
 

@@ -1,185 +1,169 @@
 /**
- * Local GitHub credential storage for the eliza desktop / VPS install.
- *
- * Stores a single per-user GitHub PAT at
- * `<state-dir>/credentials/github.json` (chmod 600). The token itself is
- * write-only from the UI side: `loadCredentials()` returns the full record
- * for runtime consumers (orchestrator spawn env, route handlers) but the
- * HTTP route that powers the settings card never returns it — only
- * `getMetadata()` is safe to send back to the browser.
- *
- * Storage shape mirrors the convention used elsewhere under
- * `<state-dir>/` (see `~/.claude/.credentials.json` and the auth-store
- * module): plain JSON, file mode 600, no encryption layer. Encryption at
- * rest is a deliberately separate concern and would land in a follow-up.
- *
- * Cloud users (Eliza Cloud session active) are out of scope here — they
- * use the `platformCredentials` table in `cloud/packages/db/schemas/` via
- * the dedicated OAuth flow. This module is the local-first surface only.
+ * Agent-scoped GitHub credentials stored in the shared encrypted vault.
+ * The agent identity is part of both the collision-free vault key and the
+ * encrypted envelope, so a routing bug cannot silently hand one agent another
+ * agent's credential. Missing records are the only disconnected state;
+ * storage and validation failures surface to the route boundary.
  */
 
-import fs from "node:fs/promises";
-import path from "node:path";
-import { resolveStateDir } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+import type { Vault } from "@elizaos/vault";
+
+const CREDENTIAL_VERSION = 1;
+const VAULT_CALLER = "plugin-github:guided-auth";
 
 export interface GitHubCredentials {
-  /** The PAT itself. Never sent back to the UI after save. */
+  /** The credential itself. Never sent back to the browser. */
   token: string;
   /** The GitHub `login` returned by `GET api.github.com/user` at save time. */
   username: string;
-  /**
-   * Token scopes returned by GitHub's `X-OAuth-Scopes` response header at
-   * save time. Recorded so the UI can show what the token is allowed to
-   * do without round-tripping back to GitHub on every render.
-   */
+  /** Scopes GitHub reported when the credential was validated. */
   scopes: string[];
-  /** Wall-clock ms when the credential was saved. */
+  /** Wall-clock milliseconds when the credential was saved. */
   savedAt: number;
 }
 
-/** Subset of {@link GitHubCredentials} that is safe to send to the UI. */
+/** Subset of {@link GitHubCredentials} safe to return to the browser. */
 export type GitHubCredentialMetadata = Omit<GitHubCredentials, "token">;
 
-/** Resolve the on-disk path for the credential file. */
-export function getCredentialFilePath(): string {
-  return path.join(resolveStateDir(), "credentials", "github.json");
+interface StoredGitHubCredential {
+  version: typeof CREDENTIAL_VERSION;
+  agentKey: string;
+  credentials: GitHubCredentials;
 }
 
-function isGitHubCredentials(value: unknown): value is GitHubCredentials {
-  if (!value || typeof value !== "object") return false;
-  const v = value as Record<string, unknown>;
+export interface GitHubCredentialStore {
+  load(agentKey: string): Promise<GitHubCredentials | null>;
+  loadMetadata(agentKey: string): Promise<GitHubCredentialMetadata | null>;
+  save(agentKey: string, credentials: GitHubCredentials): Promise<void>;
+  clear(agentKey: string): Promise<void>;
+}
+
+function requireAgentKey(agentKey: string): string {
+  const normalized = agentKey.trim();
+  if (!normalized) {
+    throw new ElizaError("GitHub credential access requires an agent id", {
+      code: "GITHUB_AGENT_ID_REQUIRED",
+      severity: "fatal",
+    });
+  }
+  return normalized;
+}
+
+/**
+ * The base64url segment is reversible and collision-free, unlike the lossy
+ * punctuation replacement used by generic display-oriented key helpers.
+ */
+export function githubCredentialVaultKey(agentKey: string): string {
+  const encodedAgent = Buffer.from(requireAgentKey(agentKey), "utf8").toString(
+    "base64url",
+  );
+  return `connector.${encodedAgent}.github.guided.oauth.tokens`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isCredentials(value: unknown): value is GitHubCredentials {
+  if (!isRecord(value)) return false;
   return (
-    typeof v.token === "string" &&
-    typeof v.username === "string" &&
-    Array.isArray(v.scopes) &&
-    v.scopes.every((s) => typeof s === "string") &&
-    typeof v.savedAt === "number"
+    typeof value.token === "string" &&
+    value.token.length > 0 &&
+    typeof value.username === "string" &&
+    value.username.length > 0 &&
+    Array.isArray(value.scopes) &&
+    value.scopes.every((scope) => typeof scope === "string") &&
+    typeof value.savedAt === "number" &&
+    Number.isFinite(value.savedAt)
   );
 }
 
-/**
- * Read the saved credentials, or null if no file exists / the file is
- * unreadable / the contents don't conform to the expected shape. Callers
- * that need to surface a specific cause should check the file path
- * themselves; we treat all failure modes the same here so the UI never
- * has to reason about transient FS errors during render.
- */
-export async function loadCredentials(): Promise<GitHubCredentials | null> {
-  const filePath = getCredentialFilePath();
-  let raw: string;
-  try {
-    raw = await fs.readFile(filePath, "utf-8");
-  } catch {
-    return null;
-  }
+function parseStoredCredential(
+  raw: string,
+  expectedAgentKey: string,
+): GitHubCredentials {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch {
-    return null;
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — a present vault entry that is
+    // not JSON is corruption, never the legitimate disconnected state.
+    throw new ElizaError("Stored GitHub credential is not valid JSON", {
+      code: "GITHUB_CREDENTIAL_CORRUPT",
+      cause,
+      severity: "fatal",
+    });
   }
-  return isGitHubCredentials(parsed) ? parsed : null;
+  if (
+    !isRecord(parsed) ||
+    parsed.version !== CREDENTIAL_VERSION ||
+    parsed.agentKey !== expectedAgentKey ||
+    !isCredentials(parsed.credentials)
+  ) {
+    const agentBindingMatches =
+      isRecord(parsed) && parsed.agentKey === expectedAgentKey;
+    throw new ElizaError("Stored GitHub credential has an invalid envelope", {
+      code: "GITHUB_CREDENTIAL_CORRUPT",
+      context: { agentBindingMatches },
+      severity: "fatal",
+    });
+  }
+  return parsed.credentials;
 }
 
-/** Read just the metadata: same as `loadCredentials` minus the token. */
-export async function loadMetadata(): Promise<GitHubCredentialMetadata | null> {
-  const creds = await loadCredentials();
-  if (!creds) return null;
-  const { token: _token, ...metadata } = creds;
-  return metadata;
-}
+/** Vault-backed implementation shared by all runtimes in a host process. */
+export class VaultGitHubCredentialStore implements GitHubCredentialStore {
+  constructor(private readonly vault: Vault) {}
 
-/**
- * Persist credentials to disk atomically with mode 0600. Creates the
- * parent directory if needed. Overwrites any existing record for the
- * single-user/single-token storage model.
- */
-export async function saveCredentials(creds: GitHubCredentials): Promise<void> {
-  const filePath = getCredentialFilePath();
-  const directory = path.dirname(filePath);
-  await fs.mkdir(directory, { recursive: true, mode: 0o700 });
-  await fs.chmod(directory, 0o700);
-  // Write to a temp sibling then rename so an interrupted write can never
-  // leave a half-written credential file readable by the runtime.
-  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await fs.writeFile(tmpPath, JSON.stringify(creds, null, 2), {
-    mode: 0o600,
-  });
-  await fs.rename(tmpPath, filePath);
-}
+  async load(agentKey: string): Promise<GitHubCredentials | null> {
+    const normalizedAgentKey = requireAgentKey(agentKey);
+    const key = githubCredentialVaultKey(normalizedAgentKey);
+    if (!(await this.vault.has(key))) return null;
+    const raw = await this.vault.reveal(key, VAULT_CALLER);
+    return parseStoredCredential(raw, normalizedAgentKey);
+  }
 
-/**
- * Remove the credential file. Idempotent — succeeds silently when nothing
- * is saved. Any other FS error propagates so callers can surface it.
- */
-export async function clearCredentials(): Promise<void> {
-  const filePath = getCredentialFilePath();
-  try {
-    await fs.unlink(filePath);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
-    throw err;
+  async loadMetadata(
+    agentKey: string,
+  ): Promise<GitHubCredentialMetadata | null> {
+    const credentials = await this.load(agentKey);
+    if (!credentials) return null;
+    const { token: _token, ...metadata } = credentials;
+    return metadata;
+  }
+
+  async save(agentKey: string, credentials: GitHubCredentials): Promise<void> {
+    const normalizedAgentKey = requireAgentKey(agentKey);
+    if (!isCredentials(credentials)) {
+      throw new ElizaError("Refusing to store an invalid GitHub credential", {
+        code: "GITHUB_CREDENTIAL_INVALID",
+        severity: "fatal",
+      });
+    }
+    const stored: StoredGitHubCredential = {
+      version: CREDENTIAL_VERSION,
+      agentKey: normalizedAgentKey,
+      credentials,
+    };
+    await this.vault.set(
+      githubCredentialVaultKey(normalizedAgentKey),
+      JSON.stringify(stored),
+      { sensitive: true, caller: VAULT_CALLER },
+    );
+  }
+
+  async clear(agentKey: string): Promise<void> {
+    await this.vault.remove(githubCredentialVaultKey(agentKey));
   }
 }
 
-/**
- * Build the credential record from a GitHub `/user` API response. Kept
- * tiny and pure so the route handler can call it without pulling in any
- * I/O surface. The route is responsible for the actual `fetch`.
- */
+/** Build a credential record from a validated GitHub `/user` response. */
 export function buildCredentialsFromUserResponse(
   token: string,
   user: { login: string },
   scopes: string[],
   now: number = Date.now(),
 ): GitHubCredentials {
-  return {
-    token,
-    username: user.login,
-    scopes,
-    savedAt: now,
-  };
-}
-
-/**
- * Resolve the canonical state-dir-respecting path for tests that need to
- * assert against the on-disk location without re-implementing the
- * resolver.
- */
-export function _resolveStateDirForTests(): string {
-  return resolveStateDir();
-}
-
-export interface ApplySavedTokenResult {
-  /** True when a saved token was found and copied into process.env. */
-  applied: boolean;
-  /**
-   * True when `process.env.GITHUB_TOKEN` was already set before this call.
-   * The existing value is left untouched — explicit env always wins.
-   */
-  envAlreadySet: boolean;
-  /** Username from the saved record, surfaced for boot logging. */
-  username?: string;
-}
-
-/**
- * Read the saved credential and copy the token into `process.env.GITHUB_TOKEN`
- * when no explicit env value is already set. Called once at runtime
- * bootstrap so the orchestrator's existing `runtime.getSetting("GITHUB_TOKEN")`
- * resolution and any `gh`/`git` invocation in spawned PTY sessions both see
- * the same value without each having to know about the on-disk record.
- *
- * Existing `process.env.GITHUB_TOKEN` always wins — a developer's shell
- * export should override the persisted UI value.
- */
-export async function applySavedTokenToEnv(): Promise<ApplySavedTokenResult> {
-  if (process.env.GITHUB_TOKEN?.trim()) {
-    return { applied: false, envAlreadySet: true };
-  }
-  const creds = await loadCredentials();
-  if (!creds) {
-    return { applied: false, envAlreadySet: false };
-  }
-  process.env.GITHUB_TOKEN = creds.token;
-  return { applied: true, envAlreadySet: false, username: creds.username };
+  return { token, username: user.login, scopes, savedAt: now };
 }

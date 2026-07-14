@@ -75,6 +75,29 @@ describe("GitHub account resolution", () => {
     );
   });
 
+  it("uses the guided runtime token as the default agent account", () => {
+    const accounts = readGitHubAccounts(
+      runtime({ GITHUB_TOKEN: "guided-agent-token" }),
+    );
+    expect(resolveGitHubAccount(accounts, { role: "agent" })).toMatchObject({
+      accountId: "agent",
+      role: "agent",
+      token: "guided-agent-token",
+    });
+  });
+
+  it("keeps an explicit role-specific agent PAT ahead of the guided token", () => {
+    const accounts = readGitHubAccounts(
+      runtime({
+        GITHUB_TOKEN: "guided-agent-token",
+        GITHUB_AGENT_PAT: "explicit-agent-token",
+      }),
+    );
+    expect(resolveGitHubAccount(accounts, { role: "agent" })).toMatchObject({
+      token: "explicit-agent-token",
+    });
+  });
+
   it("resolves explicit accountId before role defaults", () => {
     const accounts = readGitHubAccounts(
       runtime({
@@ -111,21 +134,39 @@ describe("GitHub account resolution", () => {
   });
 
   it("does not read token-shaped fields from account metadata", () => {
-    const accounts = readGitHubAccounts(
-      runtime({
-        GITHUB_ACCOUNTS: JSON.stringify({
-          reviewer: {
-            role: "user",
-            metadata: {
-              token: "metadata-token",
-              accessToken: "metadata-access",
+    expect(() =>
+      readGitHubAccounts(
+        runtime({
+          GITHUB_ACCOUNTS: JSON.stringify({
+            reviewer: {
+              role: "user",
+              metadata: {
+                token: "metadata-token",
+                accessToken: "metadata-access",
+              },
             },
-          },
+          }),
         }),
-      }),
-    );
+      ),
+    ).toThrow("GITHUB_ACCOUNTS contains an invalid account record");
+  });
 
-    expect(accounts).toEqual([]);
+  it("rejects malformed account JSON instead of treating it as no accounts", () => {
+    expect(() =>
+      readGitHubAccounts(runtime({ GITHUB_ACCOUNTS: "{not-json" })),
+    ).toThrow("GITHUB_ACCOUNTS is not valid JSON");
+  });
+
+  it("rejects a valid JSON scalar instead of treating it as no accounts", () => {
+    expect(() =>
+      readGitHubAccounts(runtime({ GITHUB_ACCOUNTS: '"agent-token"' })),
+    ).toThrow("GITHUB_ACCOUNTS must be an account array or object");
+  });
+
+  it("rejects an invalid array entry instead of silently dropping it", () => {
+    expect(() =>
+      readGitHubAccounts(runtime({ GITHUB_ACCOUNTS: '["agent-token"]' })),
+    ).toThrow("GITHUB_ACCOUNTS contains an invalid account record");
   });
 
   it("loads OAuth accounts from connector credential refs", async () => {

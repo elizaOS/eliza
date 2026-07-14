@@ -1,13 +1,7 @@
 /**
- * Build step for the GitHub connection card screenshot harness (#15796).
- * Bundles github-card-fixture.tsx with esbuild (stubbing `@elizaos/ui` with
- * brand-faithful primitives whose classes are copied from packages/ui
- * button.tsx) and writes the self-contained HTML page the playwright runner
- * loads. Split from run-github-card-shot.mjs because esbuild resolves from
- * bun's isolated store (run this under bun) while playwright's launcher needs
- * node on Windows.
- *
- * Run: bun run plugins/plugin-task-coordinator/src/__e2e__/build-github-card-fixture.mjs
+ * Bundles the guided GitHub card into a self-contained screenshot fixture.
+ * Bun resolves esbuild from the isolated store; the Node Playwright runner
+ * consumes the output with only host UI/client surfaces stubbed.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -42,7 +36,7 @@ const VARIANTS = {
 export function Button({ children, unstyled, variant = "default", size, className = "", ...rest }) {
   const base = unstyled
     ? className
-    : "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium transition-colors h-9 px-3 py-1.5 cursor-pointer " +
+    : "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium transition-colors h-9 px-3 py-1.5 cursor-pointer disabled:pointer-events-none disabled:opacity-50 " +
       (VARIANTS[variant] ?? VARIANTS.default) + " " + className;
   return <button type="button" className={base} {...rest}>{children}</button>;
 }
@@ -53,6 +47,7 @@ export const SettingsControls = {
 };
 export const client = { fetch: (path, init) => window.__ghFetch(path, init) };
 export function openExternalUrl(url) { window.__openedExternal = url; }
+export function isApiError(value) { return value instanceof Error && "kind" in value && "path" in value; }
 `,
     }));
   },
@@ -99,6 +94,7 @@ window.tailwind.config = {
 .bg-bg-accent{background-color:#10131b}.bg-bg-accent\\/40{background-color:rgba(16,19,27,.4)}
 .bg-surface{background-color:#161a23}
 .bg-accent{background-color:#ff5800}.hover\\:bg-accent-hover:hover{background-color:#e04d00}
+.disabled\\:pointer-events-none:disabled{pointer-events:none}.disabled\\:opacity-50:disabled{opacity:.5}
 .text-accent-fg{color:#ffffff}
 .bg-emerald-500{background-color:#10b981}.bg-muted\\/40{background-color:rgba(154,160,173,.4)}
 .bg-rose-500\\/10{background-color:rgba(244,63,94,.1)}

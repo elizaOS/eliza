@@ -184,12 +184,12 @@ Read-only actions (spawn, provision-workspace against a public repo) do not requ
 
 **Two ways to supply the credential:**
 
-1. **Personal access token (PAT)** — set `GITHUB_TOKEN`. Read at act-time via `runtime.getSetting("GITHUB_TOKEN")`, so it can be stored per-agent in the vault/settings and rotated without a restart. This is the path a live multi-tenant deployment uses: the agent acts as its own bot account with zero `GITHUB_*` in process env.
-2. **OAuth device flow** — set `GITHUB_OAUTH_CLIENT_ID` (via `getSetting`) and the server-side `GITHUB_OAUTH_CLIENT_SECRET` (read directly from process env, deliberately kept out of the plugin `getSetting` allowlist). On first GitHub access the agent surfaces a device-code prompt (verification URI + user code) through an immediate, user-visible channel and polls until the user completes login. The flow requires an `authPromptCallback` wired to a live chat path — a buffered action callback is unsafe because the flow blocks on user consent.
+1. **Guided connection or PAT** — connect in Settings → Coding Agents → GitHub. `@elizaos/plugin-github` validates and encrypts the credential under that agent's vault key, then exposes it as the runtime-local `GITHUB_TOKEN` setting and refreshes this service without a restart. An explicitly provisioned per-agent PAT in the same runtime setting follows the same consumer path.
+2. **OAuth device fallback** — set the public `GITHUB_OAUTH_CLIENT_ID` through `getSetting`. On first GitHub access the service can surface a device-code prompt through an immediate user-visible channel and poll until approval. GitHub's device flow does not require a client secret. The callback must be live; a buffered action callback is unsafe because the flow blocks on user consent.
 
 When both are present, `GITHUB_TOKEN` wins.
 
-**Multi-tenant safety — prefer vault/settings over process env.** A `GITHUB_TOKEN` placed in the host **process environment** is visible to *every* agent sharing that host, so on a shared/cloud deployment one tenant's token would act on behalf of all of them. Store the token **per-agent in the runtime settings/vault** instead, where `runtime.getSetting("GITHUB_TOKEN")` scopes it to the single agent. The service does fall back to `process.env.GITHUB_TOKEN` for the git push/PR path, but that fallback is a single-tenant/local-dev convenience — do not rely on it on a shared host.
+**Multi-tenant safety — vault/settings only for agent credentials.** A `GITHUB_TOKEN` placed in the host process environment is visible to every agent sharing that host and is suitable only for an explicitly single-agent deployment. The workspace service reads `runtime.getSetting("GITHUB_TOKEN")` and never reads config-env or `process.env` directly. Every git child starts with ambient `GITHUB_TOKEN`, `GH_TOKEN`, and `CR_PAT` removed. When a runtime token is selected, it is carried through a command-scoped Git HTTP extra header rather than mutating process-global state.
 
 ## Persistence
 

@@ -1,25 +1,15 @@
 /**
- * GitHub OAuth device-flow state for the guided GitHub connection step
- * (Settings → Coding Agents → GitHub).
- *
- * Port of the #15749 lifeops-dashboard primitive
- * (`scripts/lifeops/github-device-login.mjs`) into the plugin route surface,
- * with one addition: every flow is bound to the agent that started it
- * (`agentKey`), so on a multi-agent host one agent's runtime can never poll —
- * and therefore never receive the token of — a flow another agent started.
- *
- * Security posture (same as #15749):
- *   - The browser receives only the short `user_code` and an opaque local
- *     `flowId`; the `device_code` GitHub polls against stays in server memory
- *     until the flow completes or expires.
- *   - Network access is injectable so protocol behavior (pending, slow_down,
- *     denied, expired) is covered deterministically without contacting GitHub.
+ * Server-owned GitHub OAuth device-flow state for guided agent connection.
+ * Each flow is bound to one agent, only the newest flow for that agent remains
+ * active, and the browser sees an opaque local handle rather than GitHub's
+ * device code. Terminal outcomes consume the flow so grants cannot be replayed.
  */
 
 import { randomBytes } from "node:crypto";
 
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
 const ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token";
+const OAUTH_REQUEST_TIMEOUT_MS = 10_000;
 /** Matches the scopes the PAT card asks the user to grant a generated token. */
 const DEFAULT_SCOPE = "repo read:user";
 
@@ -29,6 +19,8 @@ export type DeviceFlowErrorCode =
   | "unknown_flow"
   /** The OAuth app registration itself is wrong or device flow is disabled — owner setup. */
   | "owner_setup"
+  /** A newer start request superseded this one before GitHub replied. */
+  | "superseded"
   /** GitHub was unreachable or returned a malformed/unexpected response. */
   | "upstream";
 
@@ -65,6 +57,10 @@ export type DeviceFlowPollResult =
   /** The device code expired before the user approved. Flow is consumed. */
   | { status: "expired" };
 
+export interface DeviceFlowCancelResult {
+  status: "cancelled";
+}
+
 interface PendingFlow {
   agentKey: string;
   clientId: string;
@@ -75,11 +71,15 @@ interface PendingFlow {
 }
 
 const pendingFlows = new Map<string, PendingFlow>();
+const activeFlowByAgent = new Map<string, string>();
+const latestStartByAgent = new Map<string, number>();
+let startSequence = 0;
 
 interface FlowDeps {
   fetchImpl?: typeof fetch;
   now?: () => number;
   randomBytesImpl?: typeof randomBytes;
+  requestTimeoutMs?: number;
 }
 
 function positiveNumber(value: unknown, fallback: number): number {
@@ -109,8 +109,11 @@ async function postForm(
   form: Record<string, string>,
   label: string,
   fetchImpl: typeof fetch,
+  requestTimeoutMs: number,
 ): Promise<Record<string, unknown>> {
   let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
     response = await fetchImpl(url, {
       method: "POST",
@@ -119,6 +122,7 @@ async function postForm(
         "Content-Type": "application/x-www-form-urlencoded",
       },
       body: new URLSearchParams(form).toString(),
+      signal: controller.signal,
     });
   } catch (err) {
     // error-policy:J2 context-adding rethrow — a network failure reaching
@@ -129,6 +133,8 @@ async function postForm(
       502,
       { cause: err },
     );
+  } finally {
+    clearTimeout(timer);
   }
   let payload: unknown;
   try {
@@ -163,8 +169,41 @@ async function postForm(
 
 function sweepExpired(nowMs: number): void {
   for (const [flowId, flow] of pendingFlows) {
-    if (nowMs >= flow.expiresAtMs) pendingFlows.delete(flowId);
+    if (nowMs >= flow.expiresAtMs) removeFlow(flowId, flow);
   }
+}
+
+function removeFlow(flowId: string, flow: PendingFlow): void {
+  pendingFlows.delete(flowId);
+  if (activeFlowByAgent.get(flow.agentKey) === flowId) {
+    activeFlowByAgent.delete(flow.agentKey);
+  }
+}
+
+function requireAgentKey(agentKey: string): string {
+  const normalized = agentKey.trim();
+  if (!normalized) {
+    throw new DeviceFlowError(
+      "GitHub device sign-in requires an agent id.",
+      "unknown_flow",
+      400,
+    );
+  }
+  return normalized;
+}
+
+function ownedFlow(flowId: string, agentKey: string): PendingFlow {
+  const flow = pendingFlows.get(flowId);
+  // Deliberately use the same response for absent and foreign flows so this
+  // endpoint cannot be used as an oracle for another agent's active sign-in.
+  if (!flow || flow.agentKey !== agentKey) {
+    throw new DeviceFlowError(
+      "GitHub sign-in flow is unknown or expired. Start a new sign-in.",
+      "unknown_flow",
+      404,
+    );
+  }
+  return flow;
 }
 
 /**
@@ -177,16 +216,21 @@ export async function startDeviceFlow(options: {
   agentKey: string;
   deps?: FlowDeps;
 }): Promise<DeviceFlowStart> {
-  const { clientId, agentKey, deps } = options;
+  const { clientId, deps } = options;
+  const agentKey = requireAgentKey(options.agentKey);
   const fetchImpl = deps?.fetchImpl ?? fetch;
   const now = deps?.now ?? Date.now;
   const randomBytesImpl = deps?.randomBytesImpl ?? randomBytes;
+  const requestTimeoutMs = deps?.requestTimeoutMs ?? OAUTH_REQUEST_TIMEOUT_MS;
+  const sequence = ++startSequence;
+  latestStartByAgent.set(agentKey, sequence);
 
   const payload = await postForm(
     DEVICE_CODE_URL,
     { client_id: clientId.trim(), scope: DEFAULT_SCOPE },
     "GitHub device-code request",
     fetchImpl,
+    requestTimeoutMs,
   );
   // GitHub returns 200 for a bad/unregistered client id with an error body.
   if (typeof payload.error === "string") {
@@ -211,9 +255,22 @@ export async function startDeviceFlow(options: {
   const intervalSeconds = positiveNumber(payload.interval, 5);
   const expiresInSeconds = positiveNumber(payload.expires_in, 900);
 
+  if (latestStartByAgent.get(agentKey) !== sequence) {
+    throw new DeviceFlowError(
+      "A newer GitHub sign-in replaced this request.",
+      "superseded",
+      409,
+    );
+  }
+
   const nowMs = now();
   sweepExpired(nowMs);
   const flowId = randomBytesImpl(24).toString("base64url");
+  const priorFlowId = activeFlowByAgent.get(agentKey);
+  if (priorFlowId) {
+    const priorFlow = pendingFlows.get(priorFlowId);
+    if (priorFlow) removeFlow(priorFlowId, priorFlow);
+  }
   pendingFlows.set(flowId, {
     agentKey,
     clientId: clientId.trim(),
@@ -222,6 +279,7 @@ export async function startDeviceFlow(options: {
     nextPollAtMs: nowMs,
     expiresAtMs: nowMs + expiresInSeconds * 1_000,
   });
+  activeFlowByAgent.set(agentKey, flowId);
   return {
     flowId,
     userCode,
@@ -243,21 +301,17 @@ export async function pollDeviceFlow(options: {
   agentKey: string;
   deps?: FlowDeps;
 }): Promise<DeviceFlowPollResult> {
-  const { flowId, agentKey, deps } = options;
+  const { flowId, deps } = options;
+  const agentKey = requireAgentKey(options.agentKey);
   const fetchImpl = deps?.fetchImpl ?? fetch;
   const now = deps?.now ?? Date.now;
+  const requestTimeoutMs = deps?.requestTimeoutMs ?? OAUTH_REQUEST_TIMEOUT_MS;
 
   const nowMs = now();
-  sweepExpired(nowMs);
-  const flow = pendingFlows.get(flowId);
-  // A flow owned by a different agent is reported exactly like a flow that
-  // never existed — no oracle for other agents' pending flows.
-  if (!flow || flow.agentKey !== agentKey) {
-    throw new DeviceFlowError(
-      "GitHub sign-in flow is unknown or expired. Start a new sign-in.",
-      "unknown_flow",
-      404,
-    );
+  const flow = ownedFlow(flowId, agentKey);
+  if (nowMs >= flow.expiresAtMs) {
+    removeFlow(flowId, flow);
+    return { status: "expired" };
   }
   if (nowMs < flow.nextPollAtMs) {
     return {
@@ -279,13 +333,25 @@ export async function pollDeviceFlow(options: {
     },
     "GitHub device-token request",
     fetchImpl,
+    requestTimeoutMs,
   );
+
+  // A cancellation or newer start can run while the token request is in
+  // flight. Re-check the exact flow object before accepting GitHub's response;
+  // otherwise a cancelled request could revive itself and persist a token.
+  if (pendingFlows.get(flowId) !== flow) {
+    throw new DeviceFlowError(
+      "GitHub sign-in flow is unknown or expired. Start a new sign-in.",
+      "unknown_flow",
+      404,
+    );
+  }
 
   if (
     typeof payload.access_token === "string" &&
     payload.access_token.length > 0
   ) {
-    pendingFlows.delete(flowId);
+    removeFlow(flowId, flow);
     return {
       status: "complete",
       token: payload.access_token,
@@ -302,7 +368,7 @@ export async function pollDeviceFlow(options: {
     return { status: "pending", retryAfterSeconds: flow.intervalSeconds };
   }
   // Every remaining GitHub error is terminal for this flow.
-  pendingFlows.delete(flowId);
+  removeFlow(flowId, flow);
   if (errorCode === "access_denied") {
     return { status: "denied" };
   }
@@ -328,7 +394,21 @@ export async function pollDeviceFlow(options: {
   );
 }
 
+/** Cancel an owned flow immediately; a later poll cannot revive it. */
+export function cancelDeviceFlow(options: {
+  flowId: string;
+  agentKey: string;
+}): DeviceFlowCancelResult {
+  const agentKey = requireAgentKey(options.agentKey);
+  const flow = ownedFlow(options.flowId, agentKey);
+  removeFlow(options.flowId, flow);
+  return { status: "cancelled" };
+}
+
 /** Test hook: drop all pending flows so suites are order-independent. */
 export function clearDeviceFlowsForTest(): void {
   pendingFlows.clear();
+  activeFlowByAgent.clear();
+  latestStartByAgent.clear();
+  startSequence = 0;
 }

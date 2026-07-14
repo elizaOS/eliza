@@ -1,11 +1,10 @@
-// @vitest-environment jsdom
-//
-// The GitHub connection card is the guided credential setup step (#15796):
-// PAT paste plus — when the agent has a GITHUB_OAUTH_CLIENT_ID — a device
-// sign-in path (start → show user code → poll → connected). These tests pin
-// the card's wiring against the plugin-github route contract: what it sends,
-// how it renders each protocol outcome (pending/complete/denied/expired), and
-// that cancelling really stops the poll loop.
+/**
+ * @vitest-environment jsdom
+ *
+ * Exercises the guided GitHub credential card against the plugin route
+ * contract: status loading, PAT and device grants, reconnect, cancellation,
+ * terminal OAuth outcomes, and unavailable-state recovery.
+ */
 
 import {
   cleanup,
@@ -25,6 +24,8 @@ vi.mock("@elizaos/ui", () => ({
     fetch: (path: string, init?: RequestInit) => fetchMock(path, init),
   },
   openExternalUrl: (url: string) => openExternalUrlMock(url),
+  isApiError: (value: unknown) =>
+    value instanceof Error && "kind" in value && "path" in value,
   Button: ({
     children,
     unstyled: _unstyled,
@@ -55,8 +56,11 @@ import { GitHubConnectionCard } from "./GitHubConnectionCard";
 interface RouteScript {
   status?: unknown;
   deviceStart?: () => unknown;
+  deviceReconnect?: () => unknown;
   devicePoll?: () => unknown;
+  deviceCancel?: () => unknown;
   tokenPost?: () => unknown;
+  tokenDelete?: () => unknown;
 }
 
 function scriptRoutes(script: RouteScript) {
@@ -71,13 +75,30 @@ function scriptRoutes(script: RouteScript) {
       if (!script.deviceStart) throw new Error("unexpected device start");
       return Promise.resolve(script.deviceStart());
     }
+    if (path === "/api/github/device/reconnect" && method === "POST") {
+      if (!script.deviceReconnect) throw new Error("unexpected reconnect");
+      return Promise.resolve(script.deviceReconnect());
+    }
     if (path === "/api/github/device/poll" && method === "POST") {
       if (!script.devicePoll) throw new Error("unexpected device poll");
       return Promise.resolve(script.devicePoll());
     }
+    if (path === "/api/github/device/cancel" && method === "POST") {
+      return Promise.resolve(
+        script.deviceCancel?.() ?? { status: "cancelled" },
+      );
+    }
     if (path === "/api/github/token" && method === "POST") {
       if (!script.tokenPost) throw new Error("unexpected token post");
       return Promise.resolve(script.tokenPost());
+    }
+    if (path === "/api/github/token" && method === "DELETE") {
+      return Promise.resolve(
+        script.tokenDelete?.() ?? {
+          connected: false,
+          deviceFlowAvailable: true,
+        },
+      );
     }
     throw new Error(`unexpected request: ${method} ${path}`);
   });
@@ -106,6 +127,41 @@ afterEach(() => {
 });
 
 describe("GitHubConnectionCard", () => {
+  it("renders loading separately from disconnected", async () => {
+    let resolveStatus: ((value: unknown) => void) | undefined;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStatus = resolve;
+        }),
+    );
+    render(<GitHubConnectionCard />);
+    expect(
+      screen.getByText(/Loading this agent's GitHub connection/),
+    ).toBeTruthy();
+    resolveStatus?.({ connected: false, deviceFlowAvailable: false });
+    await waitFor(() =>
+      expect(screen.getByText(/Generate a token on github.com/)).toBeTruthy(),
+    );
+  });
+
+  it("renders status failure as unavailable and retries the real GET", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error("vault unavailable"))
+      .mockResolvedValueOnce({ connected: false, deviceFlowAvailable: false });
+    render(<GitHubConnectionCard />);
+    expect(
+      await screen.findByText(
+        /connection status is unavailable: vault unavailable/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText("Retry"));
+    await waitFor(() =>
+      expect(screen.getByText(/Generate a token on github.com/)).toBeTruthy(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("offers only the PAT path when the agent has no device-flow client id", async () => {
     scriptRoutes({ status: { connected: false, deviceFlowAvailable: false } });
     render(<GitHubConnectionCard />);
@@ -224,7 +280,7 @@ describe("GitHubConnectionCard", () => {
     );
   });
 
-  it("cancelling the sign-in stops the poll loop", async () => {
+  it("cancelling calls the server and stops the poll loop", async () => {
     scriptRoutes({
       status: { connected: false, deviceFlowAvailable: true },
       deviceStart: () => startedFlow({ intervalSeconds: 1 }),
@@ -236,7 +292,16 @@ describe("GitHubConnectionCard", () => {
     expect(await screen.findByTestId("github-device-user-code")).toBeTruthy();
 
     fireEvent.click(screen.getByText("Cancel"));
-    expect(screen.queryByTestId("github-device-user-code")).toBeNull();
+    await waitFor(() =>
+      expect(screen.queryByTestId("github-device-user-code")).toBeNull(),
+    );
+    const cancelCall = fetchMock.mock.calls.find(
+      ([path]) => path === "/api/github/device/cancel",
+    );
+    expect(JSON.parse(String(cancelCall?.[1]?.body))).toEqual({
+      flowId: "flow-1",
+    });
+    expect(screen.getByText(/sign-in was cancelled/)).toBeTruthy();
 
     const pollsAtCancel = fetchMock.mock.calls.filter(
       ([path]) => path === "/api/github/device/poll",
@@ -275,4 +340,35 @@ describe("GitHubConnectionCard", () => {
       token: "ghp_pasted",
     });
   });
+
+  it("reconnects without hiding the current identity and uses the reconnect endpoint", async () => {
+    scriptRoutes({
+      status: {
+        connected: true,
+        deviceFlowAvailable: true,
+        username: "old-user",
+        scopes: ["repo"],
+      },
+      deviceReconnect: () => startedFlow({ mode: "reconnect" }),
+      devicePoll: () => ({
+        status: "complete",
+        connected: true,
+        deviceFlowAvailable: true,
+        username: "new-user",
+        scopes: ["repo", "read:user"],
+      }),
+    });
+    render(<GitHubConnectionCard />);
+    fireEvent.click(await screen.findByText("Reconnect"));
+    expect(await screen.findByTestId("github-device-user-code")).toBeTruthy();
+    expect(screen.getByText("@old-user")).toBeTruthy();
+    expect(
+      fetchMock.mock.calls.some(
+        ([path]) => path === "/api/github/device/reconnect",
+      ),
+    ).toBe(true);
+    await waitFor(() => expect(screen.getByText("@new-user")).toBeTruthy(), {
+      timeout: 5_000,
+    });
+  }, 15_000);
 });

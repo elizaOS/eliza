@@ -104,6 +104,12 @@ src/
     coding-agents-preflight-normalize.ts Normalizes preflight auth field to typed NormalizedPreflightAuth
 ```
 
+`GitHubConnectionCard` treats connection status as `loading`, `ready`, or
+`unavailable`; unavailable never renders as disconnected. Its device lifecycle
+uses the plugin-github start/poll/cancel/reconnect routes. Reconnect leaves the
+current identity visible until the server atomically commits a replacement,
+and cancellation is complete only after the server acknowledges it.
+
 ## Commands
 
 Only scripts that exist in this package's `package.json`:
@@ -162,6 +168,7 @@ These prefixes are used to build preference keys sent to the agent prefs API; th
 - **Minimal server runtime.** This plugin registers no providers, services, or evaluators, and its only action is the `/orchestrator-status` slash-command handler (`src/orchestrator-command.ts`). All task/session state lives in `@elizaos/plugin-agent-orchestrator`. API boundary helpers in `src/api/` are utilities for route handlers in app-core, not plugin-registered routes.
 - **PTY console buffer cap.** `PtyConsoleBase` caps displayed output at 200,000 characters (`MAX_BUFFER_CHARS`). Older output is silently trimmed from the head.
 - **Live e2e test requires real Codex CLI.** `test:e2e:manual` (`test/coding-agent-codex-artifact.live.e2e.test.ts`) is skipped unless the `codex` binary is in PATH and `~/.codex/auth.json` exists.
+- **GitHub card browser review.** `node src/__e2e__/run-github-card-shot.mjs` drives the real component through desktop and mobile loading, success, cancellation, expiry, denial, unavailable, retry, waiting, connected, and hover states. It asserts transitions and page errors before writing screenshots for manual review.
 - **Task coordinator spatial view.** `src/components/TaskCoordinatorSpatialView.tsx` is authored with the spatial vocabulary and is the presentational body of the shipped task-coordinator GUI route.
 - See the root `AGENTS.md` for repo-wide conventions (logger-only, ESM, naming, architecture rules).
 

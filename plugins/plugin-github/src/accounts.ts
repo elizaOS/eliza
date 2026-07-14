@@ -7,7 +7,7 @@
  * Octokit client.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime } from "@elizaos/core";
 import {
   listConnectorAccounts,
   loadConnectorOAuthAccessToken,
@@ -30,6 +30,10 @@ export interface GitHubAccountSelection {
 }
 
 type RawAccountRecord = Record<string, unknown>;
+
+function isRawAccountRecord(value: unknown): value is RawAccountRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
@@ -69,26 +73,55 @@ export function resolveGitHubAccountSelection(
 
 function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {
   if (!raw) return [];
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (item): item is RawAccountRecord =>
-          Boolean(item) && typeof item === "object" && !Array.isArray(item),
-      );
-    }
-    if (parsed && typeof parsed === "object") {
-      return Object.entries(parsed as Record<string, unknown>)
-        .filter(([, value]) => value && typeof value === "object")
-        .map(([id, value]) => ({
-          ...(value as RawAccountRecord),
-          accountId: (value as RawAccountRecord).accountId ?? id,
-        }));
-    }
-  } catch {
-    return [];
+    parsed = JSON.parse(raw) as unknown;
+  } catch (cause) {
+    // error-policy:J2 Invalid account configuration must not become an empty,
+    // apparently healthy account set.
+    throw new ElizaError("GITHUB_ACCOUNTS is not valid JSON", {
+      code: "GITHUB_ACCOUNTS_INVALID",
+      cause,
+      severity: "fatal",
+    });
   }
-  return [];
+  if (Array.isArray(parsed)) {
+    return parsed.map((item, index) => {
+      if (!isRawAccountRecord(item)) {
+        throw new ElizaError(
+          "GITHUB_ACCOUNTS contains an invalid account record",
+          {
+            code: "GITHUB_ACCOUNTS_INVALID",
+            context: { index },
+            severity: "fatal",
+          },
+        );
+      }
+      return item;
+    });
+  }
+  if (isRawAccountRecord(parsed)) {
+    return Object.entries(parsed).map(([id, value]) => {
+      if (!isRawAccountRecord(value)) {
+        throw new ElizaError(
+          "GITHUB_ACCOUNTS contains an invalid account record",
+          {
+            code: "GITHUB_ACCOUNTS_INVALID",
+            context: { accountId: id },
+            severity: "fatal",
+          },
+        );
+      }
+      return {
+        ...value,
+        accountId: value.accountId ?? id,
+      };
+    });
+  }
+  throw new ElizaError("GITHUB_ACCOUNTS must be an account array or object", {
+    code: "GITHUB_ACCOUNTS_INVALID",
+    severity: "fatal",
+  });
 }
 
 function readRawField(
@@ -186,7 +219,17 @@ export function readGitHubAccounts(
   for (const record of parseAccountsJson(
     readSetting(runtime, "GITHUB_ACCOUNTS"),
   )) {
-    addAccount(accounts, accountFromRecord(record));
+    const account = accountFromRecord(record);
+    if (!account) {
+      throw new ElizaError(
+        "GITHUB_ACCOUNTS contains an invalid account record",
+        {
+          code: "GITHUB_ACCOUNTS_INVALID",
+          severity: "fatal",
+        },
+      );
+    }
+    addAccount(accounts, account);
   }
 
   addAccount(
@@ -211,6 +254,21 @@ export function readGitHubAccounts(
       "ELIZA_E2E_GITHUB_AGENT_PAT",
     ),
   );
+
+  // The guided connection is the agent's default identity. Explicit
+  // role-tagged/account records retain precedence for installations that
+  // deliberately separate owner and bot identities.
+  if (!accounts.has(DEFAULT_GITHUB_AGENT_ACCOUNT_ID)) {
+    const guidedToken = readSetting(runtime, "GITHUB_TOKEN");
+    if (guidedToken) {
+      accounts.set(DEFAULT_GITHUB_AGENT_ACCOUNT_ID, {
+        accountId: DEFAULT_GITHUB_AGENT_ACCOUNT_ID,
+        role: "agent",
+        token: guidedToken,
+        label: "Guided GitHub connection",
+      });
+    }
+  }
 
   return Array.from(accounts.values());
 }

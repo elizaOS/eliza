@@ -8,7 +8,7 @@ GitHub integration for elizaOS agents. Enables agents to manage pull requests, i
 - **Review pull requests** — submit approve, request-changes, or comment reviews (requires confirmation).
 - **Issue management** — create, assign, close, reopen, comment on, or label issues (all write ops require confirmation).
 - **Notification triage** — fetch unread GitHub notifications and return them ranked by priority score (reason, subject type, repo freshness). Read-only, no confirmation needed.
-- **PAT management** — REST endpoints for storing/removing a GitHub Personal Access Token from local disk (`<state-dir>/credentials/github.json`).
+- **Guided authentication** — PAT and OAuth device sign-in, stored per agent in the shared encrypted vault and applied without a restart.
 
 ## Enabling the plugin
 
@@ -41,9 +41,14 @@ Set `GITHUB_ACCOUNTS` to a JSON array:
 
 ### OAuth (optional)
 
-To enable OAuth-app flows through the connector account manager, also set:
+The settings card's device flow needs a GitHub OAuth App client ID with
+**Enable Device Flow** checked:
 
 - `GITHUB_OAUTH_CLIENT_ID`
+
+Device flow is a public-client protocol: it does not use a client secret or
+callback. The separate connector callback-OAuth surface also requires:
+
 - `GITHUB_OAUTH_CLIENT_SECRET`
 - `GITHUB_OAUTH_REDIRECT_URI`
 
@@ -67,17 +72,24 @@ All write operations require confirmation before they execute.
 
 ## HTTP routes
 
-The plugin registers five routes on the agent's server for credential
+The plugin registers seven routes on the agent's server for credential
 management — they power the guided GitHub connection card in Settings →
 Coding Agents (PAT paste or OAuth device sign-in):
 
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/github/token` | Returns connection status incl. `deviceFlowAvailable` (token never exposed) |
-| `POST` | `/api/github/token` | Save a PAT (validated against GitHub `/user` before save; applied to the live runtime's per-agent settings) |
-| `DELETE` | `/api/github/token` | Remove the saved PAT (disk + live runtime) |
+| `POST` | `/api/github/token` | Validate a PAT against GitHub `/user`, save it in this agent's encrypted vault record, and refresh live clients |
+| `DELETE` | `/api/github/token` | Remove only this agent's vault credential and refresh live clients |
 | `POST` | `/api/github/device/start` | Start a GitHub OAuth device sign-in (needs `GITHUB_OAUTH_CLIENT_ID`); the device code never leaves the server |
 | `POST` | `/api/github/device/poll` | Poll a pending sign-in: `pending` / `denied` / `expired`, or validate + save the granted token |
+| `POST` | `/api/github/device/cancel` | Cancel an agent-owned pending flow server-side |
+| `POST` | `/api/github/device/reconnect` | Atomically replace a connected credential; unsuccessful flows preserve the old one |
+
+Every device flow and vault record is bound to `runtime.agentId`. The plugin
+never writes an agent token into `process.env`, and the orchestrator strips
+ambient GitHub token variables from child processes before supplying a selected
+runtime credential through a command-scoped Git HTTP header.
 
 ## Development
 

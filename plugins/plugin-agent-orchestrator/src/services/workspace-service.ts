@@ -1,13 +1,7 @@
 /**
- * Coding Workspace Service - Manages git workspaces for coding tasks
- *
- * Delegates to:
- * - workspace-github.ts  (issue management, OAuth, PAT auth)
- * - workspace-git-ops.ts (status, commit, push, PR creation)
- * - workspace-lifecycle.ts (GC, scratch dir cleanup)
- * - workspace-types.ts   (shared interface definitions)
- *
- * @module services/workspace-service
+ * Creates and manages isolated git workspaces for coding tasks.
+ * It coordinates GitHub access, git operations, and workspace lifecycle while
+ * keeping each runtime's credential out of ambient subprocess state.
  */
 
 import { execFile } from "node:child_process";
@@ -173,7 +167,7 @@ function lookupDefaultBranch(
       {
         timeout: 10_000,
         encoding: "utf-8",
-        env: gitHubTokenEnv(repoUrl, token),
+        env: buildGitHubProcessEnv(repoUrl, token),
       },
       (err, stdout) => {
         if (err) {
@@ -227,12 +221,22 @@ function isGitHubRepository(repo: string): boolean {
 // covers transports reached indirectly (HTTP redirects, submodules).
 const GIT_ALLOWED_PROTOCOLS = "http:https:ssh";
 
-function gitHubTokenEnv(repo: string, token?: string): NodeJS.ProcessEnv {
+export function buildGitHubProcessEnv(
+  repo: string,
+  token?: string,
+): NodeJS.ProcessEnv {
+  const scopedEnv = { ...process.env };
+  // GitHub CLIs honor these ambient variables implicitly. Strip them even
+  // when no scoped credential is available so a host owner's token can never
+  // become an agent's credential by subprocess inheritance.
+  delete scopedEnv.GITHUB_TOKEN;
+  delete scopedEnv.GH_TOKEN;
+  delete scopedEnv.CR_PAT;
   if (!token || !isGitHubRepository(repo)) {
-    return { ...process.env, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
+    return { ...scopedEnv, GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS };
   }
   return {
-    ...process.env,
+    ...scopedEnv,
     GIT_ALLOW_PROTOCOL: GIT_ALLOWED_PROTOCOLS,
     GIT_CONFIG_COUNT: "1",
     GIT_CONFIG_KEY_0: "http.https://github.com/.extraheader",
@@ -310,6 +314,7 @@ export class CodingWorkspaceService {
   private credentialService: CredentialServiceInstance | null = null;
   private githubClient: GitHubPatClientInstance | null = null;
   private githubAuthInProgress: Promise<GitHubPatClientInstance> | null = null;
+  private githubCredentialGeneration = 0;
   private serviceConfig: CodingWorkspaceConfig;
   // Shared with every AcpService so one disk cap spans scratch + git workspaces
   // (#13773). Git workspaces ARE reclaimable by the registry (this clone path
@@ -448,7 +453,7 @@ export class CodingWorkspaceService {
           ],
           {
             cwd: workspace.path,
-            env: gitHubTokenEnv(workspace.repo, token),
+            env: buildGitHubProcessEnv(workspace.repo, token),
             timeout: 120_000,
           },
           (error) => {
@@ -711,7 +716,7 @@ export class CodingWorkspaceService {
       workspace.branch,
       options,
       (msg) => this.log(msg),
-      gitHubTokenEnv(workspace.repo, ambientToken),
+      buildGitHubProcessEnv(workspace.repo, ambientToken),
     );
     this.log(`Pushed workspace ${workspaceId}`);
   }
@@ -910,19 +915,35 @@ export class CodingWorkspaceService {
   // === Delegated GitHub / Issue Management ===
 
   private getGitHubContext(): GitHubContext {
+    const credentialGeneration = this.githubCredentialGeneration;
     return {
       runtime: this.runtime,
       githubClient: this.githubClient,
       setGithubClient: (client: GitHubPatClientInstance) => {
-        this.githubClient = client;
+        if (credentialGeneration === this.githubCredentialGeneration) {
+          this.githubClient = client;
+        }
       },
       githubAuthInProgress: this.githubAuthInProgress,
       setGithubAuthInProgress: (p: Promise<GitHubPatClientInstance> | null) => {
-        this.githubAuthInProgress = p;
+        if (credentialGeneration === this.githubCredentialGeneration) {
+          this.githubAuthInProgress = p;
+        }
       },
       authPromptCallback: this.authPromptCallback,
       log: (msg: string) => this.log(msg),
     };
+  }
+
+  /** Rebind GitHub clients after the guided credential changes at runtime. */
+  refreshGitHubCredential(): void {
+    this.githubCredentialGeneration += 1;
+    this.githubAuthInProgress = null;
+    const token = this.runtime.getSetting("GITHUB_TOKEN");
+    this.githubClient =
+      typeof token === "string" && token.trim().length > 0
+        ? new GitHubPatClient({ token: token.trim() })
+        : null;
   }
 
   /** Set a callback to surface OAuth auth prompts to the user. */
@@ -1243,11 +1264,8 @@ export class CodingWorkspaceService {
       return undefined;
     }
 
-    const githubToken =
-      (this.runtime.getSetting("GITHUB_TOKEN") as string | undefined) ??
-      this.readConfigEnvKey("GITHUB_TOKEN") ??
-      process.env.GITHUB_TOKEN;
-    if (githubToken && githubToken.length > 0) {
+    const githubToken = this.runtime.getSetting("GITHUB_TOKEN");
+    if (typeof githubToken === "string" && githubToken.length > 0) {
       return { type: "pat", token: githubToken, provider: "github" };
     }
     return undefined;

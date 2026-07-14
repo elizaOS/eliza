@@ -1,14 +1,7 @@
 /**
- * Documentation contract for GitHub credential setup (#15796).
- *
- * The orchestrator's GitHub-writing capabilities fail with a bare error until an
- * operator discovers the right setting by reading source. This test pins the
- * README/CLAUDE docs to the *actual* credential settings read by
- * `src/services/workspace-github.ts`, so the docs can never silently drift from
- * the setting names the code checks: it greps the real source for every
- * `getSetting("GITHUB_*")` / `process.env.GITHUB_*` name and asserts each one is
- * documented, plus the multi-tenant vault-vs-env safety point and the two
- * capabilities that require a token. Reads real files off disk — no mocks.
+ * Keeps the orchestrator's GitHub credential documentation aligned with the
+ * settings its issue and workspace paths actually consume, including the
+ * multi-agent process-environment isolation constraint.
  */
 
 import { readFileSync } from "node:fs";
@@ -30,22 +23,15 @@ function githubSettingNames(src: string): string[] {
   for (const m of src.matchAll(/getSetting\(\s*["'](GITHUB_[A-Z_]+)["']/g)) {
     names.add(m[1]);
   }
-  for (const m of src.matchAll(/process\.env\.(GITHUB_[A-Z_]+)/g)) {
-    names.add(m[1]);
-  }
   return [...names];
 }
 
-describe("GitHub credential documentation (#15796)", () => {
+describe("agent-scoped GitHub credential documentation", () => {
   const settings = githubSettingNames(workspaceGithubSrc);
 
   it("extracts the expected credential settings from workspace-github.ts", () => {
     expect(settings).toEqual(
-      expect.arrayContaining([
-        "GITHUB_TOKEN",
-        "GITHUB_OAUTH_CLIENT_ID",
-        "GITHUB_OAUTH_CLIENT_SECRET",
-      ]),
+      expect.arrayContaining(["GITHUB_TOKEN", "GITHUB_OAUTH_CLIENT_ID"]),
     );
   });
 

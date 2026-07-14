@@ -1,11 +1,11 @@
 /**
- * Device-flow protocol unit tests (#15796). GitHub's two OAuth endpoints are
- * the only thing stubbed — the flow logic under test (state machine, interval
- * ownership, agent scoping, secret hygiene) is the real module.
+ * Exercises the real device-flow state machine with only GitHub's OAuth edge
+ * scripted, including polling, cancellation, and cross-agent isolation.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  cancelDeviceFlow,
   clearDeviceFlowsForTest,
   DeviceFlowError,
   pollDeviceFlow,
@@ -108,6 +108,22 @@ describe("startDeviceFlow", () => {
     expect(err).toBeInstanceOf(DeviceFlowError);
     expect((err as DeviceFlowError).code).toBe("upstream");
     expect((err as DeviceFlowError).status).toBe(502);
+  });
+
+  it("aborts a hung GitHub request and surfaces a typed upstream error", async () => {
+    const fetchImpl = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      })) as typeof fetch;
+    await expect(
+      startDeviceFlow({
+        clientId: "client-1",
+        agentKey: "agent-a",
+        deps: { fetchImpl, requestTimeoutMs: 1 },
+      }),
+    ).rejects.toMatchObject({ code: "upstream", status: 502 });
   });
 
   it("maps a malformed device-code response to an upstream error", async () => {
@@ -254,7 +270,7 @@ describe("pollDeviceFlow", () => {
     expect(expired).toEqual({ status: "expired" });
   });
 
-  it("sweeps a flow whose ten-minute window lapsed before any grant", async () => {
+  it("returns an explicit expired outcome when the local deadline passes", async () => {
     const { fetchImpl } = scriptedGitHub([]);
     const started = await startDeviceFlow({
       clientId: "client-1",
@@ -268,7 +284,7 @@ describe("pollDeviceFlow", () => {
         agentKey: "agent-a",
         deps: { fetchImpl, now: () => 900_001 },
       }),
-    ).rejects.toMatchObject({ code: "unknown_flow", status: 404 });
+    ).resolves.toEqual({ status: "expired" });
   });
 
   it("scopes flows per agent: another agent's key cannot poll the flow", async () => {
@@ -315,5 +331,99 @@ describe("pollDeviceFlow", () => {
         deps: { fetchImpl, now: () => 0 },
       }),
     ).rejects.toMatchObject({ code: "upstream", status: 502 });
+  });
+
+  it("cancels server-side and rejects both replay and cross-agent cancellation", async () => {
+    const { fetchImpl } = scriptedGitHub([]);
+    const started = await startDeviceFlow({
+      clientId: "client-1",
+      agentKey: "agent-a",
+      deps: { fetchImpl, now: () => 0 },
+    });
+    expect(() =>
+      cancelDeviceFlow({ flowId: started.flowId, agentKey: "agent-b" }),
+    ).toThrowError(expect.objectContaining({ code: "unknown_flow" }));
+    expect(
+      cancelDeviceFlow({ flowId: started.flowId, agentKey: "agent-a" }),
+    ).toEqual({ status: "cancelled" });
+    await expect(
+      pollDeviceFlow({
+        flowId: started.flowId,
+        agentKey: "agent-a",
+        deps: { fetchImpl, now: () => 0 },
+      }),
+    ).rejects.toMatchObject({ code: "unknown_flow" });
+  });
+
+  it("cannot revive a flow cancelled while GitHub's token response is in flight", async () => {
+    let releaseTokenResponse: ((response: Response) => void) | undefined;
+    const tokenResponse = new Promise<Response>((resolve) => {
+      releaseTokenResponse = resolve;
+    });
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      if (String(input) === DEVICE_CODE_URL) {
+        return jsonResponse({
+          device_code: "secret-device-code",
+          user_code: "ABCD-EFGH",
+          verification_uri: "https://github.com/login/device",
+          expires_in: 900,
+          interval: 5,
+        });
+      }
+      return tokenResponse;
+    }) as typeof fetch;
+    const started = await startDeviceFlow({
+      clientId: "client-1",
+      agentKey: "agent-a",
+      deps: { fetchImpl, now: () => 0 },
+    });
+
+    const polling = pollDeviceFlow({
+      flowId: started.flowId,
+      agentKey: "agent-a",
+      deps: { fetchImpl, now: () => 0 },
+    });
+    await Promise.resolve();
+    expect(
+      cancelDeviceFlow({ flowId: started.flowId, agentKey: "agent-a" }),
+    ).toEqual({ status: "cancelled" });
+    releaseTokenResponse?.(
+      jsonResponse({ access_token: "gho_must_not_be_minted", scope: "repo" }),
+    );
+
+    await expect(polling).rejects.toMatchObject({
+      code: "unknown_flow",
+      status: 404,
+    });
+  });
+
+  it("lets only the newest flow for an agent complete", async () => {
+    const { fetchImpl } = scriptedGitHub([
+      () => jsonResponse({ access_token: "gho_new", scope: "repo" }),
+    ]);
+    const oldFlow = await startDeviceFlow({
+      clientId: "client-1",
+      agentKey: "agent-a",
+      deps: { fetchImpl, now: () => 0 },
+    });
+    const newFlow = await startDeviceFlow({
+      clientId: "client-1",
+      agentKey: "agent-a",
+      deps: { fetchImpl, now: () => 0 },
+    });
+    await expect(
+      pollDeviceFlow({
+        flowId: oldFlow.flowId,
+        agentKey: "agent-a",
+        deps: { fetchImpl, now: () => 0 },
+      }),
+    ).rejects.toMatchObject({ code: "unknown_flow" });
+    await expect(
+      pollDeviceFlow({
+        flowId: newFlow.flowId,
+        agentKey: "agent-a",
+        deps: { fetchImpl, now: () => 0 },
+      }),
+    ).resolves.toMatchObject({ status: "complete", token: "gho_new" });
   });
 });

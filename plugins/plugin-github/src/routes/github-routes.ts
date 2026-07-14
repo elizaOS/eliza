@@ -1,123 +1,64 @@
 /**
- * GitHub credential routes — power the "GitHub" connection card in Settings →
- * Coding Agents (the guided credential setup step, #15796) and surface the
- * same token to the orchestrator's sub-agent spawn env.
- *
- * Exposes:
- *   GET    /api/github/token   — `{ connected: bool, deviceFlowAvailable: bool,
- *                                 username?, scopes?, savedAt? }`. Token itself
- *                                 is never returned.
- *   POST   /api/github/token   — body `{ token }`. Validates by calling
- *                                 GitHub's `/user` endpoint, then persists
- *                                 the credential record to disk and applies it
- *                                 to the live runtime's per-agent settings.
- *   DELETE /api/github/token   — clears the saved credential (disk + live
- *                                 runtime) and returns `{ connected: false }`.
- *   POST   /api/github/device/start — starts a GitHub OAuth device flow
- *                                 (requires the `GITHUB_OAUTH_CLIENT_ID`
- *                                 setting). Returns the user code + opaque
- *                                 flow id; the device code stays server-side.
- *   POST   /api/github/device/poll  — body `{ flowId }`. Polls the flow once:
- *                                 `pending` / `denied` / `expired`, or on
- *                                 approval validates + persists the token the
- *                                 same way the PAT route does and returns the
- *                                 connected status.
- *
- * `handleGitHubRoutes` is the pure dispatcher — no auth, no runtime deps
- * beyond the injectable `GitHubRouteContext` callbacks. The runtime adapter
- * (`createGitHubRouteHandler`) lives in index.ts where it can import the
- * heavier app-core auth surface without polluting this module's import graph
- * (and breaking tests that only need the pure handler).
+ * Authenticated HTTP boundary for an agent's guided GitHub connection.
+ * It validates credentials against GitHub, persists them through the encrypted
+ * agent-scoped store, and exposes the complete device-flow lifecycle without
+ * ever returning a token or device code to the browser.
  */
 
-import type http from "node:http";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import {
+  cancelDeviceFlow,
   DeviceFlowError,
   pollDeviceFlow,
   startDeviceFlow,
 } from "../device-flow.js";
 import {
   buildCredentialsFromUserResponse,
-  clearCredentials,
   type GitHubCredentialMetadata,
-  loadMetadata,
-  saveCredentials,
+  type GitHubCredentialStore,
 } from "../github-credentials.js";
 
 const GITHUB_USER_URL = "https://api.github.com/user";
 const VALIDATION_TIMEOUT_MS = 10_000;
 const MAX_BODY_BYTES = 8 * 1024;
 
-async function readJsonBody(
-  req: http.IncomingMessage,
-): Promise<Record<string, unknown> | null> {
-  // The canonical runtime-plugin dispatcher pre-reads `application/json`
-  // bodies and attaches the parsed object as `req.body` (the raw stream is
-  // already consumed by then). Prefer it when present; fall back to reading
-  // the stream for dispatch paths that leave the body untouched.
-  const preParsed = (req as http.IncomingMessage & { body?: unknown }).body;
-  if (preParsed && typeof preParsed === "object" && !Array.isArray(preParsed)) {
-    return preParsed as Record<string, unknown>;
-  }
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of req) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buf.length;
-    if (total > MAX_BODY_BYTES) return null;
-    chunks.push(buf);
-  }
-  if (chunks.length === 0) return null;
-  try {
-    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    // error-policy:J3 sanitizing boundary — an unparseable body is treated as
-    // "no valid body" (null); the caller rejects the missing field with a 400.
-    return null;
-  }
-}
 interface GitHubUserResponse {
   login: string;
 }
 
 export interface GitHubRouteContext {
-  req: http.IncomingMessage;
-  res: http.ServerResponse;
+  req: GitHubRouteRequest;
+  /** Raw-node response for direct HTTP dispatch; adapters may use `json`. */
+  res?: GitHubRouteResponse;
   method: string;
   pathname: string;
-  /** Inject for tests. Defaults to the global `fetch`. */
+  /** Identity of the agent runtime serving this request. */
+  agentKey: string;
+  /** Durable encrypted store shared by the host, internally keyed by agent. */
+  credentialStore: GitHubCredentialStore;
+  /** Inject for protocol tests; production uses global fetch. */
   fetch?: typeof fetch;
   json?: (status: number, body: unknown) => void;
-  /**
-   * Identity of the agent runtime serving this request. Device flows are
-   * bound to it so one agent can never poll (and receive the token of) a
-   * flow another agent started on the same host.
-   */
-  agentKey?: string;
-  /**
-   * Resolve the `GITHUB_OAUTH_CLIENT_ID` setting for this agent
-   * (`runtime.getSetting` in production). Absent/empty means the owner has
-   * not registered a device-flow-enabled OAuth app — the PAT path still works.
-   */
   getOauthClientId?: () => string | undefined;
-  /**
-   * Apply a freshly validated token to the live runtime's per-agent settings
-   * (`runtime.setSetting("GITHUB_TOKEN", token, true)` in production) so
-   * GitHub capabilities work immediately, without a restart and without
-   * writing process env (which would leak to every agent on the host).
-   */
-  applyRuntimeToken?: (token: string) => void;
-  /** Remove the token from the live runtime's per-agent settings. */
-  clearRuntimeToken?: () => void;
+  /** Apply a committed credential only to this runtime and refresh clients. */
+  applyRuntimeToken?: (token: string) => Promise<void> | void;
+  /** Remove this runtime's credential and refresh clients. */
+  clearRuntimeToken?: () => Promise<void> | void;
 }
 
-interface TokenStatusResponse {
+export interface GitHubRouteRequest {
+  body?: unknown;
+  [Symbol.asyncIterator]?(): AsyncIterator<unknown>;
+}
+
+export interface GitHubRouteResponse {
+  statusCode: number;
+  setHeader(name: string, value: string): void;
+  end(body?: string): void;
+}
+
+export interface TokenStatusResponse {
   connected: boolean;
-  /** True when `GITHUB_OAUTH_CLIENT_ID` is configured for this agent. */
   deviceFlowAvailable: boolean;
   username?: string;
   scopes?: string[];
@@ -127,10 +68,34 @@ interface TokenStatusResponse {
 interface GitHubValidationResponse {
   ok: boolean;
   status: number;
-  headers: {
-    get(name: string): string | null;
-  };
+  headers: { get(name: string): string | null };
   json(): Promise<unknown>;
+}
+
+class GitHubRouteError extends ElizaError {
+  constructor(
+    message: string,
+    readonly status: number,
+    options: {
+      code: string;
+      retryable?: boolean;
+      retryAfter?: number;
+      cause?: unknown;
+      context?: Record<string, unknown>;
+    },
+  ) {
+    super(message, {
+      code: options.code,
+      cause: options.cause,
+      context: options.context,
+      severity: options.retryable ? "ephemeral" : "fatal",
+    });
+    this.retryable = options.retryable === true;
+    this.retryAfter = options.retryAfter;
+  }
+
+  readonly retryable: boolean;
+  readonly retryAfter?: number;
 }
 
 function sendJson(
@@ -141,6 +106,12 @@ function sendJson(
   if (ctx.json) {
     ctx.json(status, body);
     return;
+  }
+  if (!ctx.res) {
+    throw new ElizaError("GitHub route has no response transport", {
+      code: "GITHUB_ROUTE_RESPONSE_MISSING",
+      severity: "fatal",
+    });
   }
   ctx.res.statusCode = status;
   ctx.res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -166,21 +137,60 @@ function metadataToStatus(
   };
 }
 
-/**
- * Error thrown by {@link validateToken}, carrying the HTTP status the route
- * should return. `status: 400` means the submitted token is bad (the caller's
- * fault); `status: 502` means GitHub itself was unreachable or misbehaved (an
- * upstream fault) — the route must not collapse the two into one code.
- */
-class TokenValidationError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    options?: { cause?: unknown },
-  ) {
-    super(message, options);
-    this.name = "TokenValidationError";
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isAsyncIterableRequest(
+  req: GitHubRouteRequest,
+): req is GitHubRouteRequest & AsyncIterable<unknown> {
+  return typeof req[Symbol.asyncIterator] === "function";
+}
+
+async function readJsonBody(
+  req: GitHubRouteRequest,
+): Promise<Record<string, unknown> | null> {
+  const preParsed = req.body;
+  if (isRecord(preParsed)) return preParsed;
+
+  if (!isAsyncIterableRequest(req)) return null;
+
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk)
+      ? chunk
+      : typeof chunk === "string" || chunk instanceof Uint8Array
+        ? Buffer.from(chunk)
+        : null;
+    if (!buffer) return null;
+    total += buffer.length;
+    if (total > MAX_BODY_BYTES) return null;
+    chunks.push(buffer);
   }
+  if (chunks.length === 0) return null;
+  try {
+    const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    // error-policy:J3 untrusted-input sanitizing — invalid JSON becomes the
+    // explicit invalid-body signal consumed by the 400 boundary below.
+    return null;
+  }
+}
+
+function requiredString(
+  body: Record<string, unknown> | null,
+  field: string,
+): string {
+  const value = body?.[field];
+  const normalized = typeof value === "string" ? value.trim() : "";
+  if (!normalized) {
+    throw new GitHubRouteError(`Missing \`${field}\` in request body.`, 400, {
+      code: "GITHUB_INVALID_REQUEST",
+    });
+  }
+  return normalized;
 }
 
 async function validateToken(
@@ -199,250 +209,296 @@ async function validateToken(
       },
       signal: controller.signal,
     })) as GitHubValidationResponse;
-  } catch (err) {
-    // error-policy:J2 context-adding rethrow — a network failure or the
-    // validation timeout aborting the request is an upstream-reachability
-    // problem, not a bad token, so it rethrows typed as 502 with the cause.
-    throw new TokenValidationError(
-      "Could not reach GitHub to validate the token. Try again.",
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — reachability and timeout are
+    // retryable upstream failures, distinct from a rejected credential.
+    throw new GitHubRouteError(
+      "Could not reach GitHub to validate the credential. Try again.",
       502,
-      { cause: err },
+      {
+        code: "GITHUB_UPSTREAM_UNAVAILABLE",
+        retryable: true,
+        cause,
+      },
     );
   } finally {
     clearTimeout(timer);
   }
 
-  if (response.status === 401) {
-    throw new TokenValidationError(
-      "Token rejected by GitHub: bad credentials.",
+  if (response.status === 401 || response.status === 403) {
+    throw new GitHubRouteError(
+      response.status === 401
+        ? "GitHub rejected the credential. Check it and try again."
+        : "GitHub rejected the credential's permissions. Grant repo and read:user access.",
       400,
-    );
-  }
-  if (response.status === 403) {
-    throw new TokenValidationError(
-      "Token rejected by GitHub: forbidden. Check the token has at least `read:user` scope.",
-      400,
+      { code: "GITHUB_CREDENTIAL_REJECTED" },
     );
   }
   if (!response.ok) {
-    // A non-401/403 status is GitHub failing, not the token being invalid.
-    throw new TokenValidationError(
-      `GitHub returned ${response.status} validating the token. Try again or generate a new token.`,
+    throw new GitHubRouteError(
+      `GitHub returned HTTP ${response.status} while validating the credential.`,
       502,
+      { code: "GITHUB_UPSTREAM_UNAVAILABLE", retryable: true },
     );
   }
 
-  let body: GitHubUserResponse;
+  let body: unknown;
   try {
-    body = (await response.json()) as GitHubUserResponse;
-  } catch (err) {
-    // error-policy:J2 context-adding rethrow — a 2xx with an unparseable body is
-    // GitHub misbehaving, the same upstream fault class as the missing-login
-    // check below, so it surfaces as 502, not a token/client error.
-    throw new TokenValidationError(
-      "GitHub /user response was not valid JSON.",
+    body = await response.json();
+  } catch (cause) {
+    // error-policy:J2 context-adding rethrow — a successful response with an
+    // unreadable payload is an observable upstream protocol failure.
+    throw new GitHubRouteError(
+      "GitHub returned an unreadable user response.",
       502,
-      { cause: err },
+      {
+        code: "GITHUB_UPSTREAM_INVALID_RESPONSE",
+        retryable: true,
+        cause,
+      },
     );
   }
-  if (typeof body?.login !== "string" || body.login.length === 0) {
-    throw new TokenValidationError(
-      "GitHub /user response was missing the login field.",
+  const login = isRecord(body) ? body.login : undefined;
+  if (typeof login !== "string" || !login.trim()) {
+    throw new GitHubRouteError(
+      "GitHub's user response did not identify an account.",
       502,
+      {
+        code: "GITHUB_UPSTREAM_INVALID_RESPONSE",
+        retryable: true,
+      },
     );
   }
 
-  const scopesHeader = response.headers.get("x-oauth-scopes") ?? "";
+  const scopesHeader = response.headers.get("x-oauth-scopes");
   const scopes = scopesHeader
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
-
-  return { user: body, scopes };
+    ? scopesHeader
+        .split(",")
+        .map((scope) => scope.trim())
+        .filter(Boolean)
+    : [];
+  return { user: { login: login.trim() }, scopes };
 }
 
-async function handleGetToken(ctx: GitHubRouteContext): Promise<boolean> {
-  const metadata = await loadMetadata();
-  sendJson(
-    ctx,
-    200,
-    metadataToStatus(metadata, resolveOauthClientId(ctx).length > 0),
-  );
-  return true;
-}
-
-/**
- * Shared tail of both credential intake paths (PAT paste and device-flow
- * grant): validate against GitHub `/user`, persist the record, and apply the
- * token to the live runtime's per-agent settings. Sends the error response
- * itself and returns `null` when validation fails.
- */
-async function validatePersistAndApply(
+async function persistValidatedToken(
   ctx: GitHubRouteContext,
   token: string,
   source: "pat" | "device-flow",
-): Promise<TokenStatusResponse | null> {
-  const fetchImpl = ctx.fetch ?? fetch;
-  let validated: Awaited<ReturnType<typeof validateToken>>;
-  try {
-    validated = await validateToken(token, fetchImpl);
-  } catch (err) {
-    // error-policy:J1 boundary translation — a bad token surfaces as 400
-    // (client input), an unreachable/misbehaving GitHub as 502 (upstream);
-    // TokenValidationError carries which. Unexpected error types default to
-    // 500 rather than masquerading as a client error.
-    const status = err instanceof TokenValidationError ? err.status : 500;
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      `[github-routes] token validation failed (${status}, source=${source}): ${message}`,
-    );
-    sendJson(ctx, status, { error: message });
-    return null;
-  }
-
+): Promise<TokenStatusResponse> {
+  const validated = await validateToken(token, ctx.fetch ?? fetch);
   const credentials = buildCredentialsFromUserResponse(
     token,
     validated.user,
     validated.scopes,
   );
-  await saveCredentials(credentials);
-  ctx.applyRuntimeToken?.(token);
+  await ctx.credentialStore.save(ctx.agentKey, credentials);
+  await ctx.applyRuntimeToken?.(token);
   logger.info(
-    `[github-routes] saved github token for @${validated.user.login} (source=${source}, scopes=${validated.scopes.join(",") || "(none)"})`,
+    {
+      src: "plugin:github:routes",
+      agentId: ctx.agentKey,
+      username: validated.user.login,
+      source,
+      scopeCount: validated.scopes.length,
+    },
+    "GitHub credential committed to the agent vault",
   );
   return metadataToStatus(credentials, resolveOauthClientId(ctx).length > 0);
 }
 
-async function handlePostToken(ctx: GitHubRouteContext): Promise<boolean> {
-  const body = await readJsonBody(ctx.req);
-  const token = body && typeof body.token === "string" ? body.token.trim() : "";
-  if (token.length === 0) {
-    sendJson(ctx, 400, { error: "Missing `token` in request body." });
-    return true;
-  }
-  const status = await validatePersistAndApply(ctx, token, "pat");
-  if (status) sendJson(ctx, 200, status);
-  return true;
+async function handleGetToken(ctx: GitHubRouteContext): Promise<void> {
+  const metadata = await ctx.credentialStore.loadMetadata(ctx.agentKey);
+  sendJson(
+    ctx,
+    200,
+    metadataToStatus(metadata, resolveOauthClientId(ctx).length > 0),
+  );
 }
 
-async function handleDeleteToken(ctx: GitHubRouteContext): Promise<boolean> {
-  await clearCredentials();
-  ctx.clearRuntimeToken?.();
-  logger.info("[github-routes] cleared saved github token");
+async function handlePostToken(ctx: GitHubRouteContext): Promise<void> {
+  const token = requiredString(await readJsonBody(ctx.req), "token");
+  sendJson(ctx, 200, await persistValidatedToken(ctx, token, "pat"));
+}
+
+async function handleDeleteToken(ctx: GitHubRouteContext): Promise<void> {
+  await ctx.credentialStore.clear(ctx.agentKey);
+  await ctx.clearRuntimeToken?.();
+  logger.info(
+    { src: "plugin:github:routes", agentId: ctx.agentKey },
+    "GitHub credential removed from the agent vault",
+  );
   sendJson(ctx, 200, {
     connected: false,
     deviceFlowAvailable: resolveOauthClientId(ctx).length > 0,
   });
-  return true;
 }
 
-async function handleDeviceStart(ctx: GitHubRouteContext): Promise<boolean> {
+function requireDeviceClient(ctx: GitHubRouteContext): string {
   const clientId = resolveOauthClientId(ctx);
-  if (clientId.length === 0) {
-    sendJson(ctx, 409, {
-      error:
-        "GitHub device sign-in needs owner setup: no GITHUB_OAUTH_CLIENT_ID setting " +
-        "is configured (register a GitHub OAuth app with device flow enabled). " +
-        "You can still connect by pasting a personal access token.",
-    });
-    return true;
-  }
-  try {
-    const started = await startDeviceFlow({
-      clientId,
-      agentKey: ctx.agentKey ?? "",
-      deps: ctx.fetch ? { fetchImpl: ctx.fetch } : undefined,
-    });
-    logger.info(
-      `[github-routes] started github device sign-in (interval=${started.intervalSeconds}s, expires=${started.expiresInSeconds}s)`,
+  if (!clientId) {
+    throw new GitHubRouteError(
+      "GitHub sign-in is unavailable until the owner configures a device-flow-enabled OAuth app. You can still paste a personal access token.",
+      409,
+      { code: "GITHUB_DEVICE_OWNER_SETUP_REQUIRED" },
     );
-    sendJson(ctx, 200, { status: "started", ...started });
-  } catch (err) {
-    const status = err instanceof DeviceFlowError ? err.status : 500;
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      `[github-routes] github device sign-in start failed (${status}): ${message}`,
-    );
-    sendJson(ctx, status, { error: message });
   }
-  return true;
+  return clientId;
 }
 
-async function handleDevicePoll(ctx: GitHubRouteContext): Promise<boolean> {
-  const body = await readJsonBody(ctx.req);
-  const flowId =
-    body && typeof body.flowId === "string" ? body.flowId.trim() : "";
-  if (flowId.length === 0) {
-    sendJson(ctx, 400, { error: "Missing `flowId` in request body." });
-    return true;
-  }
-  let result: Awaited<ReturnType<typeof pollDeviceFlow>>;
-  try {
-    result = await pollDeviceFlow({
-      flowId,
-      agentKey: ctx.agentKey ?? "",
-      deps: ctx.fetch ? { fetchImpl: ctx.fetch } : undefined,
-    });
-  } catch (err) {
-    const status = err instanceof DeviceFlowError ? err.status : 500;
-    const message = err instanceof Error ? err.message : String(err);
-    logger.warn(
-      `[github-routes] github device sign-in poll failed (${status}): ${message}`,
+async function startOwnedDeviceFlow(
+  ctx: GitHubRouteContext,
+  mode: "connect" | "reconnect",
+): Promise<void> {
+  const metadata = await ctx.credentialStore.loadMetadata(ctx.agentKey);
+  if (mode === "connect" && metadata) {
+    throw new GitHubRouteError(
+      "GitHub is already connected. Use reconnect to replace the credential without dropping the current connection first.",
+      409,
+      { code: "GITHUB_ALREADY_CONNECTED" },
     );
-    sendJson(ctx, status, { error: message });
-    return true;
   }
-  if (result.status !== "complete") {
-    // pending / denied / expired are protocol outcomes, not transport errors —
-    // the polling client switches on `status`.
-    if (result.status !== "pending") {
-      logger.info(
-        `[github-routes] github device sign-in ended without a grant (${result.status})`,
-      );
-    }
-    sendJson(ctx, 200, result);
-    return true;
+  if (mode === "reconnect" && !metadata) {
+    throw new GitHubRouteError(
+      "GitHub is not connected yet. Start a new connection instead.",
+      409,
+      { code: "GITHUB_NOT_CONNECTED" },
+    );
   }
-  const status = await validatePersistAndApply(
-    ctx,
-    result.token,
-    "device-flow",
+
+  const started = await startDeviceFlow({
+    clientId: requireDeviceClient(ctx),
+    agentKey: ctx.agentKey,
+    deps: ctx.fetch ? { fetchImpl: ctx.fetch } : undefined,
+  });
+  logger.info(
+    {
+      src: "plugin:github:routes",
+      agentId: ctx.agentKey,
+      mode,
+      expiresInSeconds: started.expiresInSeconds,
+    },
+    "GitHub device sign-in started",
   );
-  if (status) sendJson(ctx, 200, { status: "complete", ...status });
-  return true;
+  sendJson(ctx, 200, { status: "started", mode, ...started });
 }
 
-/**
- * Dispatch entry point. Returns `true` when this module owned the request.
- * Caller is responsible for auth (mirrors `/api/workflow/*` in server.ts).
- */
+async function handleDevicePoll(ctx: GitHubRouteContext): Promise<void> {
+  const flowId = requiredString(await readJsonBody(ctx.req), "flowId");
+  const result = await pollDeviceFlow({
+    flowId,
+    agentKey: ctx.agentKey,
+    deps: ctx.fetch ? { fetchImpl: ctx.fetch } : undefined,
+  });
+  if (result.status !== "complete") {
+    sendJson(ctx, 200, result);
+    return;
+  }
+  const status = await persistValidatedToken(ctx, result.token, "device-flow");
+  sendJson(ctx, 200, { status: "complete", ...status });
+}
+
+async function handleDeviceCancel(ctx: GitHubRouteContext): Promise<void> {
+  const flowId = requiredString(await readJsonBody(ctx.req), "flowId");
+  const result = cancelDeviceFlow({ flowId, agentKey: ctx.agentKey });
+  logger.info(
+    { src: "plugin:github:routes", agentId: ctx.agentKey },
+    "GitHub device sign-in cancelled",
+  );
+  sendJson(ctx, 200, result);
+}
+
+function routeError(error: unknown): GitHubRouteError {
+  if (error instanceof GitHubRouteError) return error;
+  if (error instanceof DeviceFlowError) {
+    const code =
+      error.code === "unknown_flow"
+        ? "GITHUB_DEVICE_FLOW_NOT_FOUND"
+        : error.code === "owner_setup"
+          ? "GITHUB_DEVICE_OWNER_SETUP_REQUIRED"
+          : error.code === "superseded"
+            ? "GITHUB_DEVICE_FLOW_SUPERSEDED"
+            : "GITHUB_UPSTREAM_UNAVAILABLE";
+    return new GitHubRouteError(error.message, error.status, {
+      code,
+      retryable: error.code === "upstream",
+      cause: error,
+    });
+  }
+  if (error instanceof ElizaError) {
+    return new GitHubRouteError(error.message, 500, {
+      code: error.code,
+      cause: error,
+      context: error.context,
+    });
+  }
+  return new GitHubRouteError("GitHub connection failed.", 500, {
+    code: "GITHUB_CONNECTION_FAILED",
+    cause: error,
+  });
+}
+
+async function dispatchOwnedRoute(ctx: GitHubRouteContext): Promise<void> {
+  if (ctx.method !== "POST" && ctx.pathname.startsWith("/api/github/device/")) {
+    throw new GitHubRouteError("Method not allowed.", 405, {
+      code: "GITHUB_METHOD_NOT_ALLOWED",
+    });
+  }
+  switch (ctx.pathname) {
+    case "/api/github/device/start":
+      return startOwnedDeviceFlow(ctx, "connect");
+    case "/api/github/device/reconnect":
+      return startOwnedDeviceFlow(ctx, "reconnect");
+    case "/api/github/device/poll":
+      return handleDevicePoll(ctx);
+    case "/api/github/device/cancel":
+      return handleDeviceCancel(ctx);
+    case "/api/github/token":
+      if (ctx.method === "GET") return handleGetToken(ctx);
+      if (ctx.method === "POST") return handlePostToken(ctx);
+      if (ctx.method === "DELETE") return handleDeleteToken(ctx);
+      throw new GitHubRouteError("Method not allowed.", 405, {
+        code: "GITHUB_METHOD_NOT_ALLOWED",
+      });
+  }
+}
+
+const OWNED_PATHS = new Set([
+  "/api/github/token",
+  "/api/github/device/start",
+  "/api/github/device/reconnect",
+  "/api/github/device/poll",
+  "/api/github/device/cancel",
+]);
+
+/** Dispatch a guided GitHub route after the host's authentication gate. */
 export async function handleGitHubRoutes(
   ctx: GitHubRouteContext,
 ): Promise<boolean> {
-  if (ctx.pathname === "/api/github/device/start") {
-    if (ctx.method !== "POST") {
-      sendJson(ctx, 405, { error: "Method not allowed" });
-      return true;
-    }
-    return handleDeviceStart(ctx);
+  if (!OWNED_PATHS.has(ctx.pathname)) return false;
+  try {
+    await dispatchOwnedRoute(ctx);
+  } catch (error) {
+    // error-policy:J1 boundary translation — every internal/protocol/storage
+    // failure becomes one typed HTTP error; no failed path renders healthy.
+    const translated = routeError(error);
+    logger.warn(
+      {
+        src: "plugin:github:routes",
+        agentId: ctx.agentKey,
+        code: translated.code,
+        status: translated.status,
+        err: translated.message,
+      },
+      "GitHub connection request failed",
+    );
+    sendJson(ctx, translated.status, {
+      error: translated.message,
+      code: translated.code,
+      retryable: translated.retryable,
+      ...(translated.retryAfter !== undefined
+        ? { retryAfter: translated.retryAfter }
+        : {}),
+    });
   }
-  if (ctx.pathname === "/api/github/device/poll") {
-    if (ctx.method !== "POST") {
-      sendJson(ctx, 405, { error: "Method not allowed" });
-      return true;
-    }
-    return handleDevicePoll(ctx);
-  }
-  if (ctx.pathname !== "/api/github/token") return false;
-  switch (ctx.method) {
-    case "GET":
-      return handleGetToken(ctx);
-    case "POST":
-      return handlePostToken(ctx);
-    case "DELETE":
-      return handleDeleteToken(ctx);
-    default:
-      sendJson(ctx, 405, { error: "Method not allowed" });
-      return true;
-  }
+  return true;
 }
