@@ -14,6 +14,7 @@
  * requires a committed transcript. Parser and verdict policy remain isolated in
  * the unit-tested library so malformed shell receipts cannot read as success.
  */
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -88,6 +89,20 @@ function sh(adb, serial, args) {
   return adbDevice(adb, serial, ["shell", ...args]).trim();
 }
 
+/** Run a shell probe without throwing so the verifier can retain its receipts. */
+function shResult(adb, serial, args) {
+  const result = spawnSync(adb, ["-s", serial, "shell", ...args], {
+    encoding: "utf8",
+  });
+  return {
+    ok: result.status === 0 && !result.error,
+    status: result.status,
+    stdout: result.stdout?.trim() ?? "",
+    stderr: result.stderr?.trim() ?? "",
+    error: result.error?.message ?? null,
+  };
+}
+
 /** Clear the logcat ring so a subsequent scrape only sees this run's lines. */
 function clearLogcat(adb, serial) {
   adbDevice(adb, serial, ["logcat", "-c"], { stdio: "ignore" });
@@ -144,6 +159,7 @@ function applyRoleAndIme(adb, serial, shell = sh) {
 export async function verifyOnDevice(adb, serial, options = {}) {
   const {
     shell = sh,
+    shellResult = shResult,
     clearLogcatFn = clearLogcat,
     dumpLogcatFn = dumpLogcat,
     sleepFn = sleep,
@@ -239,7 +255,12 @@ export async function verifyOnDevice(adb, serial, options = {}) {
 
   // (3a) Assist-gesture invocation via cmd voiceinteraction show.
   clearLogcatFn(adb, serial);
-  shell(adb, serial, ["cmd", "voiceinteraction", "show"]);
+  const voiceinteractionCommand = shellResult(adb, serial, [
+    "cmd",
+    "voiceinteraction",
+    "show",
+  ]);
+  checks.voiceinteractionCommand = voiceinteractionCommand;
   await sleepFn(2_500);
   const assistLog = dumpLogcatFn(adb, serial);
   const assistDump = shell(adb, serial, ["dumpsys", "activity", "activities"]);
@@ -340,6 +361,7 @@ export async function verifyOnDevice(adb, serial, options = {}) {
       surfacesRegistered: surfaces.allPresent,
       roleHeld: role.heldByExpected,
       imeSelected: imeSetting.isEliza && imeEnabled.elizaEnabled,
+      voiceinteractionCommandSucceeded: voiceinteractionCommand.ok,
       voiceinteractionLanded: assistLanded.landed,
       assistKeyLanded: keyLanded,
       imeLanded: imeLanded.landed || asrOutcome === "committed",

@@ -80,6 +80,31 @@ test.describe
           timeout: 60_000,
         });
 
+        // Module-evaluation wiring queues links before React mounts, but the OS
+        // intent must not outrun the native appUrlOpen registration itself. The
+        // product publishes this state only after Capacitor acknowledges the
+        // listener, making the device handoff a handshake rather than a delay.
+        await expect
+          .poll(
+            () =>
+              page.evaluate(
+                () =>
+                  document.documentElement.dataset.elizaMobileDeepLinkReady ??
+                  "pending",
+              ),
+            {
+              timeout: 30_000,
+              message: "native deep-link ingress registration",
+            },
+          )
+          .not.toBe("pending");
+        expect(
+          await page.evaluate(
+            () =>
+              document.documentElement.dataset.elizaMobileDeepLinkReady ??
+              "pending",
+          ),
+        ).toBe("ready");
         // Fire the real OS deep link. `am start` delivers it to the running
         // WebView via Capacitor `appUrlOpen` (singleTask onNewIntent), so the
         // CDP page survives and observes the connect → home transition.

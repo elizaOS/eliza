@@ -10,6 +10,7 @@
  */
 
 import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import {
   APP_PAUSE_EVENT,
@@ -38,6 +39,83 @@ let activeOfflineHandler: (() => void) | null = null;
 
 const COLD_LAUNCH_URL_REPLAY_MS = 15_000;
 const COLD_LAUNCH_URL_REPLAY_INTERVAL_MS = 1_000;
+const MOBILE_DEEP_LINK_READY_DATASET_KEY = "elizaMobileDeepLinkReady";
+const MOBILE_DEEP_LINK_INGRESS_KEY = Symbol.for(
+  "eliza.mobile-deep-link-ingress",
+);
+
+interface MobileDeepLinkIngress {
+  activeHandler: ((url: string) => void) | null;
+  listenerReady: Promise<void> | null;
+  pendingUrls: Set<string>;
+}
+
+const mobileDeepLinkIngress = (() => {
+  const host = globalThis as typeof globalThis & {
+    [MOBILE_DEEP_LINK_INGRESS_KEY]?: MobileDeepLinkIngress;
+  };
+  host[MOBILE_DEEP_LINK_INGRESS_KEY] ??= {
+    activeHandler: null,
+    listenerReady: null,
+    pendingUrls: new Set<string>(),
+  };
+  return host[MOBILE_DEEP_LINK_INGRESS_KEY];
+})();
+
+function markMobileDeepLinkIngress(state: "ready" | "unavailable"): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset[MOBILE_DEEP_LINK_READY_DATASET_KEY] = state;
+}
+
+function receiveMobileDeepLink(url: string | null | undefined): void {
+  const trimmed = url?.trim();
+  if (!trimmed) return;
+  if (mobileDeepLinkIngress.activeHandler) {
+    mobileDeepLinkIngress.activeHandler(trimmed);
+    return;
+  }
+  mobileDeepLinkIngress.pendingUrls.add(trimmed);
+}
+
+function installMobileDeepLinkIngress(): Promise<void> {
+  if (mobileDeepLinkIngress.listenerReady) {
+    return mobileDeepLinkIngress.listenerReady;
+  }
+  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) {
+    return Promise.resolve();
+  }
+
+  mobileDeepLinkIngress.listenerReady = Promise.resolve(
+    CapacitorApp.addListener("appUrlOpen", ({ url }) => {
+      receiveMobileDeepLink(url);
+    }),
+  )
+    .then(() => {
+      markMobileDeepLinkIngress("ready");
+    })
+    .catch((error) => {
+      // error-policy:J4 getLaunchUrl remains the cold-launch fallback when the
+      // native warm-link listener is unavailable.
+      markMobileDeepLinkIngress("unavailable");
+      console.warn(
+        "[mobile-lifecycle] App appUrlOpen listener unavailable:",
+        error instanceof Error ? error.message : error,
+      );
+    });
+  return mobileDeepLinkIngress.listenerReady;
+}
+
+function attachMobileDeepLinkHandler(handler: (url: string) => void): void {
+  mobileDeepLinkIngress.activeHandler = handler;
+  const pending = [...mobileDeepLinkIngress.pendingUrls];
+  mobileDeepLinkIngress.pendingUrls.clear();
+  for (const url of pending) handler(url);
+}
+
+// Register during module evaluation, before the async app boot and React mount.
+// Native warm links arriving in that window are queued until lifecycle wiring
+// supplies the product handler; cold links still replay through getLaunchUrl.
+void installMobileDeepLinkIngress();
 
 function unrefTimer(timer: ReturnType<typeof setInterval>): void {
   (timer as unknown as { unref?: () => void }).unref?.();
@@ -186,15 +264,7 @@ export function createMobileLifecycle(ctx: MobileLifecycleContext) {
       logNativePluginUnavailable("App", error);
     });
 
-    void Promise.resolve(
-      CapacitorApp.addListener("appUrlOpen", ({ url }) => {
-        handleDeepLinkOnce(url);
-      }),
-      // error-policy:J4 App plugin unavailable — deep links degrade to the
-      // cold-launch replay below / web routing
-    ).catch((error) => {
-      logNativePluginUnavailable("App", error);
-    });
+    attachMobileDeepLinkHandler(handleDeepLinkOnce);
 
     let replayTimer: ReturnType<typeof setInterval> | null = null;
     const replayStartedAt = Date.now();

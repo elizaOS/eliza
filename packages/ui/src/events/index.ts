@@ -7,13 +7,16 @@
  * server producer (focus-connector, voice-control, tutorial chat-control, and
  * the shared→dedicated cloud-agent handoff phases). The `Eliza*EventName` unions
  * here widen the shared unions with those UI-only events, so the local
- * `dispatchAppEvent` / `dispatchWindowEvent` accept them.
+ * `dispatchAppEvent` / `dispatchWindowEvent` accept them. Connect intents use a
+ * bounded acknowledged replay because native deep links can arrive between the
+ * Capacitor listener and React's startup consumer mounting.
  */
 
 import type {
   ElizaDocumentEventName as SharedDocumentEventName,
   ElizaWindowEventName as SharedWindowEventName,
 } from "@elizaos/shared/events";
+import { CONNECT_EVENT as SHARED_CONNECT_EVENT } from "@elizaos/shared/events";
 
 export {
   // Agent / bridge
@@ -241,11 +244,86 @@ export type ElizaEventName = ElizaDocumentEventName | ElizaWindowEventName;
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
+const CONNECT_DELIVERY_TIMEOUT_MS = 15_000;
+const CONNECT_DELIVERY_RETRY_MS = 50;
+
+interface PendingConnectDelivery {
+  detail: Record<string, unknown>;
+  observed: boolean;
+  startedAt: number;
+  timer: ReturnType<typeof setTimeout> | null;
+}
+
+const pendingConnectDeliveries = new Set<PendingConnectDelivery>();
+
+function stopPendingConnectDelivery(pending: PendingConnectDelivery): void {
+  if (pending.timer) clearTimeout(pending.timer);
+  pending.timer = null;
+  pendingConnectDeliveries.delete(pending);
+}
+
+function dispatchPendingConnect(pending: PendingConnectDelivery): void {
+  if (pending.observed) {
+    stopPendingConnectDelivery(pending);
+    return;
+  }
+  if (Date.now() - pending.startedAt >= CONNECT_DELIVERY_TIMEOUT_MS) {
+    stopPendingConnectDelivery(pending);
+    console.error(
+      "[events] CONNECT_EVENT had no mounted consumer within 15 seconds",
+    );
+    return;
+  }
+
+  // Every shipped consumer reads gatewayUrl synchronously before doing work.
+  // Observing that read acknowledges delivery without coupling the event helper
+  // to either React consumer or replaying after a consumer has accepted it.
+  const observedDetail = new Proxy(pending.detail, {
+    get(target, property, receiver) {
+      if (property === "gatewayUrl") pending.observed = true;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  document.dispatchEvent(
+    new CustomEvent(SHARED_CONNECT_EVENT, { detail: observedDetail }),
+  );
+  if (pending.observed) {
+    stopPendingConnectDelivery(pending);
+    return;
+  }
+  pending.timer = setTimeout(
+    () => dispatchPendingConnect(pending),
+    CONNECT_DELIVERY_RETRY_MS,
+  );
+}
+
+function dispatchConnectWithAcknowledgement(
+  detail: Record<string, unknown>,
+): void {
+  const pending: PendingConnectDelivery = {
+    detail,
+    observed: false,
+    startedAt: Date.now(),
+    timer: null,
+  };
+  pendingConnectDeliveries.add(pending);
+  dispatchPendingConnect(pending);
+}
+
 /** Dispatch a typed custom event on `document`. */
 export function dispatchAppEvent(
   name: ElizaDocumentEventName,
   detail?: unknown,
 ): void {
+  if (
+    name === SHARED_CONNECT_EVENT &&
+    detail !== null &&
+    typeof detail === "object" &&
+    !Array.isArray(detail)
+  ) {
+    dispatchConnectWithAcknowledgement(detail as Record<string, unknown>);
+    return;
+  }
   document.dispatchEvent(new CustomEvent(name, { detail }));
 }
 

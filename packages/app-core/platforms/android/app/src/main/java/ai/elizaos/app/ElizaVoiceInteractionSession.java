@@ -1,9 +1,17 @@
+/**
+ * Native digital-assistant overlay that hands Android assist invocations into
+ * the app's single deep-link spine. The native bar owns only the system-window
+ * affordance; microphone and agent behavior stay in the app so every assistant
+ * entry point shares one voice implementation and emits a distinct source tag.
+ */
 package ai.elizaos.app;
 
 import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.service.voice.VoiceInteractionSession;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -11,19 +19,7 @@ import android.view.View;
 
 import ai.elizaos.app.R;
 
-/**
- * ChatGPT-style voice bar shown over the current app when Eliza is invoked as
- * the digital assistant (long-press power / assist gesture / keyguard).
- *
- * v1 renders a native session UI shell — the voice bar (see
- * {@code res/layout/eliza_voice_interaction_bar.xml}) — so the invocation feels
- * native, then hands off into the Eliza app through the single deep-link spine
- * ({@code elizaos://voice?source=android-assistant-session}) rather than
- * re-implementing chat inside the overlay. The app owns the microphone and the
- * on-device engine, so handing off is both simpler and more robust than
- * duplicating the voice loop here. The distinct {@code source} tag proves in
- * logs which entry point fired.
- */
+/** Android voice-interaction session that renders the bar and opens the app. */
 public class ElizaVoiceInteractionSession extends VoiceInteractionSession {
 
     private static final String TAG = "ElizaVoiceInteraction";
@@ -33,6 +29,7 @@ public class ElizaVoiceInteractionSession extends VoiceInteractionSession {
             "elizaos://voice?source=android-assistant-session&action=voice&voice=1";
 
     private boolean handedOff = false;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
     public ElizaVoiceInteractionSession(Context context) {
         super(context);
@@ -86,7 +83,11 @@ public class ElizaVoiceInteractionSession extends VoiceInteractionSession {
             Log.w(TAG, "[ElizaVoiceInteractionSession] startAssistantActivity failed; using startActivity", e);
             getContext().startActivity(intent);
         }
-        hide();
+        // The framework acknowledges a successful show only after onShow
+        // returns. Hiding synchronously makes `cmd voiceinteraction show` report
+        // callback failure even though the handoff launched. Leave the native
+        // bar visible for one short beat, then dismiss it from the main looper.
+        mainHandler.postDelayed(this::hide, 350L);
     }
 
     @Override

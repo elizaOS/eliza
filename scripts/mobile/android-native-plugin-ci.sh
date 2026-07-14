@@ -93,16 +93,49 @@ fi
 # the file after both device- and host-side processes settle so review never
 # receives a truncated video that happened to be non-empty.
 adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
-wait "$ASSISTANT_RECORDING_PID" || true
-for _ in {1..20}; do
+RECORDER_EXITED=0
+for _ in {1..30}; do
   if ! adb shell pidof screenrecord >/dev/null; then
+    RECORDER_EXITED=1
     break
+  fi
+  adb shell pkill -INT screenrecord >/dev/null 2>&1 || true
+  sleep 0.5
+done
+if [[ "$RECORDER_EXITED" -ne 1 ]]; then
+  echo "assistant verification screenrecord did not exit cleanly" >&2
+  kill "$ASSISTANT_RECORDING_PID" >/dev/null 2>&1 || true
+  CAPTURE_STATUS=1
+fi
+wait "$ASSISTANT_RECORDING_PID" || true
+
+STABLE_SIZE=-1
+RECORDING_STABLE=0
+for _ in {1..20}; do
+  CURRENT_SIZE="$(adb shell stat -c %s "$ASSISTANT_RECORDING_REMOTE" 2>/dev/null | tr -d '\r' || true)"
+  if [[ "$CURRENT_SIZE" =~ ^[1-9][0-9]*$ ]]; then
+    if [[ "$CURRENT_SIZE" -eq "$STABLE_SIZE" ]]; then
+      RECORDING_STABLE=1
+      break
+    fi
+    STABLE_SIZE="$CURRENT_SIZE"
+  else
+    STABLE_SIZE=-1
   fi
   sleep 0.5
 done
-if ! adb pull "$ASSISTANT_RECORDING_REMOTE" "$ASSISTANT_RECORDING_LOCAL" >/dev/null \
+if [[ "$RECORDING_STABLE" -ne 1 ]]; then
+  echo "assistant verification screenrecord never reached a stable size" >&2
+  CAPTURE_STATUS=1
+elif ! adb pull "$ASSISTANT_RECORDING_REMOTE" "$ASSISTANT_RECORDING_LOCAL" >/dev/null \
   || [[ ! -s "$ASSISTANT_RECORDING_LOCAL" ]]; then
   echo "assistant verification screenrecord is missing or empty" >&2
+  CAPTURE_STATUS=1
+elif ! node --input-type=module -e '
+  import { assertPlayableMp4 } from "./packages/app/scripts/lib/android-capture.mjs";
+  assertPlayableMp4(process.argv[1]);
+' "$ASSISTANT_RECORDING_LOCAL"; then
+  echo "assistant verification screenrecord is not a complete MP4" >&2
   CAPTURE_STATUS=1
 fi
 adb shell rm -f "$ASSISTANT_RECORDING_REMOTE" || true

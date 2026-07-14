@@ -1,6 +1,8 @@
 /**
- * Shared script library for Android Capture capture and packaging helpers used
- * by app automation.
+ * Finalizes and packages Android screenshots, logcat receipts, and screen
+ * recordings for device automation. Recordings are pulled only after the
+ * device encoder exits and must contain complete ISO BMFF structure, so a
+ * non-empty but truncated file can never count as review evidence.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -17,8 +19,141 @@ function isNonEmptyFile(filePath) {
   try {
     return fs.statSync(filePath).size > 0;
   } catch {
+    // error-policy:J3 an absent/unreadable artifact is explicitly invalid
     return false;
   }
+}
+
+function signalDeviceScreenRecord(adb, serial) {
+  spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
+    stdio: "ignore",
+  });
+}
+
+async function waitForDeviceScreenRecordExit(adb, serial, timeoutMs = 15_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const pid = spawnSync(
+      adb,
+      ["-s", serial, "shell", "pidof", "screenrecord"],
+      { encoding: "utf8" },
+    );
+    if (pid.error) {
+      throw new Error(`adb pidof screenrecord failed: ${pid.error.message}`);
+    }
+    if (!pid.stdout?.trim()) return;
+    signalDeviceScreenRecord(adb, serial);
+    await delay(500);
+  }
+  throw new Error(
+    `Android screenrecord did not exit within ${timeoutMs}ms on ${serial}`,
+  );
+}
+
+async function waitForChildClose(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.removeListener("close", onClose);
+      resolve(false);
+    }, timeoutMs);
+    const onClose = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    child.once("close", onClose);
+  });
+}
+
+async function waitForRemoteRecording(adb, serial, remotePath) {
+  const deadline = Date.now() + 10_000;
+  let previousSize = -1;
+  while (Date.now() < deadline) {
+    const stat = spawnSync(
+      adb,
+      ["-s", serial, "shell", "stat", "-c", "%s", remotePath],
+      { encoding: "utf8" },
+    );
+    const size = Number.parseInt(stat.stdout?.trim() ?? "", 10);
+    if (Number.isFinite(size) && size > 0 && size === previousSize) return size;
+    previousSize = Number.isFinite(size) ? size : -1;
+    await delay(500);
+  }
+  throw new Error(
+    `Android screenrecord never produced a stable non-empty file: ${remotePath}`,
+  );
+}
+
+function pullRemoteRecording(adb, serial, remotePath, localPath) {
+  const pull = spawnSync(adb, ["-s", serial, "pull", remotePath, localPath], {
+    encoding: "utf8",
+  });
+  if (pull.error || pull.status !== 0) {
+    const detail =
+      pull.error?.message ?? pull.stderr?.trim() ?? "unknown error";
+    throw new Error(`adb pull failed for ${remotePath}: ${detail}`);
+  }
+  if (!isNonEmptyFile(localPath)) {
+    throw new Error(`adb pull wrote an empty recording: ${localPath}`);
+  }
+  assertPlayableMp4(localPath);
+  spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
+    stdio: "ignore",
+  });
+}
+
+/** Parse top-level ISO BMFF boxes and require the boxes a watchable MP4 needs. */
+export function inspectMp4(buffer) {
+  const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  const boxes = [];
+  let offset = 0;
+  while (offset < bytes.length) {
+    if (bytes.length - offset < 8) {
+      return { valid: false, boxes, reason: "truncated box header" };
+    }
+    let size = bytes.readUInt32BE(offset);
+    const type = bytes.toString("ascii", offset + 4, offset + 8);
+    let headerSize = 8;
+    if (size === 1) {
+      if (bytes.length - offset < 16) {
+        return { valid: false, boxes, reason: `truncated ${type} large size` };
+      }
+      const largeSize = bytes.readBigUInt64BE(offset + 8);
+      if (largeSize > BigInt(Number.MAX_SAFE_INTEGER)) {
+        return { valid: false, boxes, reason: `${type} box is too large` };
+      }
+      size = Number(largeSize);
+      headerSize = 16;
+    } else if (size === 0) {
+      size = bytes.length - offset;
+    }
+    if (size < headerSize || offset + size > bytes.length) {
+      return {
+        valid: false,
+        boxes,
+        reason: `invalid ${type} box size ${size}`,
+      };
+    }
+    boxes.push(type);
+    offset += size;
+  }
+  const missing = ["ftyp", "mdat", "moov"].filter(
+    (required) => !boxes.includes(required),
+  );
+  return missing.length === 0
+    ? { valid: true, boxes, reason: null }
+    : { valid: false, boxes, reason: `missing ${missing.join(", ")} box` };
+}
+
+/** Throw when a captured file is non-empty but not a structurally complete MP4. */
+export function assertPlayableMp4(filePath) {
+  const inspection = inspectMp4(fs.readFileSync(filePath));
+  if (!inspection.valid) {
+    throw new Error(
+      `Android screenrecord is not a playable MP4 (${inspection.reason}): ${filePath}`,
+    );
+  }
+  return inspection;
 }
 
 export async function startAndroidScreenRecord({
@@ -59,67 +194,46 @@ export async function startAndroidScreenRecord({
     { stdio: "ignore" },
   );
 
-  recorder.on("error", () => {});
+  let recorderError = null;
+  recorder.once("error", (error) => {
+    recorderError = error;
+  });
   await delay(750);
+  if (recorderError) {
+    throw new Error(
+      `Unable to start Android screenrecord: ${recorderError.message}`,
+    );
+  }
   log(`started Android screenrecord on ${serial}: ${remotePath}`);
 
+  let stopPromise = null;
   return {
     localPath,
     remotePath,
     async stop() {
-      spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
-        stdio: "ignore",
-      });
-      if (recorder.exitCode === null) recorder.kill("SIGINT");
-      await Promise.race([
-        new Promise((resolve) => recorder.once("close", resolve)),
-        delay(3_000),
-      ]);
-      // The local adb process closing does not mean the on-device screenrecord
-      // has finished: it still has to append the trailing moov atom, and
-      // pulling at that instant yields an unplayable MP4. Wait (bounded) for
-      // the device-side process to exit, re-sending SIGINT while it lives —
-      // a single pkill has been observed not landing.
-      const exitDeadline = Date.now() + 15_000;
-      while (Date.now() < exitDeadline) {
-        const pid = spawnSync(
-          adb,
-          ["-s", serial, "shell", "pidof", "screenrecord"],
-          { encoding: "utf8" },
-        );
-        if (!pid.stdout || pid.stdout.trim() === "") break;
-        spawnSync(
-          adb,
-          ["-s", serial, "shell", "pkill", "-INT", "screenrecord"],
-          { stdio: "ignore" },
-        );
-        await delay(500);
-      }
-      // Belt over the pid check: require the remote file size to hold steady
-      // across consecutive samples so a mid-flush pull can never grab a
-      // truncated file (covers a transient pidof miss or the exit-wait
-      // timing out above).
-      let settledSize = -1;
-      for (let i = 0; i < 10; i += 1) {
-        const stat = spawnSync(
-          adb,
-          ["-s", serial, "shell", "stat", "-c", "%s", remotePath],
-          { encoding: "utf8" },
-        );
-        const size = Number.parseInt(stat.stdout?.trim() ?? "", 10);
-        if (Number.isFinite(size) && size > 0 && size === settledSize) break;
-        settledSize = Number.isFinite(size) ? size : -1;
-        await delay(500);
-      }
-      spawnSync(adb, ["-s", serial, "pull", remotePath, localPath], {
-        stdio: "ignore",
-      });
-      spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
-        stdio: "ignore",
-      });
-      if (!isNonEmptyFile(localPath)) return null;
-      log(`wrote Android screenrecord: ${localPath}`);
-      return localPath;
+      stopPromise ??= (async () => {
+        signalDeviceScreenRecord(adb, serial);
+        await waitForDeviceScreenRecordExit(adb, serial);
+        if (!(await waitForChildClose(recorder, 3_000))) {
+          recorder.kill("SIGTERM");
+          if (!(await waitForChildClose(recorder, 2_000))) {
+            recorder.kill("SIGKILL");
+            throw new Error(
+              "adb screenrecord transport did not close after device exit",
+            );
+          }
+        }
+        if (recorderError) {
+          throw new Error(
+            `Android screenrecord failed: ${recorderError.message}`,
+          );
+        }
+        await waitForRemoteRecording(adb, serial, remotePath);
+        pullRemoteRecording(adb, serial, remotePath, localPath);
+        log(`wrote Android screenrecord: ${localPath}`);
+        return localPath;
+      })();
+      return stopPromise;
     },
   };
 }
@@ -178,10 +292,9 @@ export async function startChunkedAndroidScreenRecord({
       { stdio: "ignore" },
     );
     currentChild = child;
-    return new Promise((resolve) => {
-      const done = () => resolve(remotePath);
-      child.once("close", done);
-      child.once("error", done);
+    return new Promise((resolve, reject) => {
+      child.once("close", () => resolve(remotePath));
+      child.once("error", reject);
     });
   };
 
@@ -191,16 +304,10 @@ export async function startChunkedAndroidScreenRecord({
       const remotePath = await recordSegment(index);
       currentChild = null;
       const segmentLocal = path.join(artifactDir, `.${stem}-seg${index}.mp4`);
-      spawnSync(adb, ["-s", serial, "pull", remotePath, segmentLocal], {
-        stdio: "ignore",
-      });
-      spawnSync(adb, ["-s", serial, "shell", "rm", "-f", remotePath], {
-        stdio: "ignore",
-      });
-      if (isNonEmptyFile(segmentLocal)) {
-        segments.push(segmentLocal);
-        log(`pulled Android screenrecord segment ${index}: ${segmentLocal}`);
-      }
+      await waitForRemoteRecording(adb, serial, remotePath);
+      pullRemoteRecording(adb, serial, remotePath, segmentLocal);
+      segments.push(segmentLocal);
+      log(`pulled Android screenrecord segment ${index}: ${segmentLocal}`);
       index += 1;
     }
   })();
@@ -212,15 +319,22 @@ export async function startChunkedAndroidScreenRecord({
     localPath,
     async stop() {
       stopped = true;
-      spawnSync(adb, ["-s", serial, "shell", "pkill", "-INT", "screenrecord"], {
-        stdio: "ignore",
-      });
-      if (currentChild && currentChild.exitCode === null) {
-        currentChild.kill("SIGINT");
+      signalDeviceScreenRecord(adb, serial);
+      await waitForDeviceScreenRecordExit(adb, serial);
+      const loopFinished = await Promise.race([
+        loop.then(() => true),
+        delay(8_000).then(() => false),
+      ]);
+      if (!loopFinished) {
+        currentChild?.kill("SIGKILL");
+        throw new Error(
+          "chunked Android screenrecord did not finish after device exit",
+        );
       }
-      await Promise.race([loop, delay(8_000)]);
 
-      if (segments.length === 0) return null;
+      if (segments.length === 0) {
+        throw new Error("chunked Android screenrecord produced no segments");
+      }
       if (segments.length === 1) {
         fs.copyFileSync(segments[0], localPath);
       } else if (!concatSegments(segments, localPath, log)) {
@@ -232,8 +346,8 @@ export async function startChunkedAndroidScreenRecord({
         fs.copyFileSync(longest.file, localPath);
         log(`ffmpeg concat unavailable; kept longest segment ${longest.file}`);
       }
+      assertPlayableMp4(localPath);
       for (const segment of segments) fs.rmSync(segment, { force: true });
-      if (!isNonEmptyFile(localPath)) return null;
       log(`wrote chunked Android screenrecord: ${localPath}`);
       return localPath;
     },

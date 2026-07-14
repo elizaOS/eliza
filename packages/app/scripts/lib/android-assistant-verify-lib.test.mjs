@@ -342,6 +342,10 @@ test("verifyOnDevice drives the supported role, component, runtime, and real-IME
 
   const checks = await verifyOnDevice("fake-adb", "emulator-test", {
     shell,
+    shellResult: (_adb, _serial, args) => {
+      commands.push(args.join(" "));
+      return { ok: true, status: 0, stdout: "", stderr: "", error: null };
+    },
     clearLogcatFn: () => {},
     dumpLogcatFn: () => runtimeReceipts.shift() ?? "",
     sleepFn: async () => {},
@@ -373,6 +377,7 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
     surfacesRegistered: true,
     roleHeld: true,
     imeSelected: true,
+    voiceinteractionCommandSucceeded: true,
     voiceinteractionLanded: true,
     assistKeyLanded: true,
     imeLanded: true,
@@ -406,6 +411,16 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
   );
   assert.equal(voiceinteractionMissing.pass, false);
   assert.match(voiceinteractionMissing.failures.join(" "), /voiceinteraction/);
+
+  const voiceinteractionCommandFailed = summarizeLaneVerdict(
+    { ...green, voiceinteractionCommandSucceeded: false },
+    false,
+  );
+  assert.equal(voiceinteractionCommandFailed.pass, false);
+  assert.match(
+    voiceinteractionCommandFailed.failures.join(" "),
+    /returned a failure/,
+  );
 
   const assistKeyMissing = summarizeLaneVerdict(
     { ...green, assistKeyLanded: false },

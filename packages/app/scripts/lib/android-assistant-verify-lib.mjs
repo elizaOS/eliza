@@ -372,6 +372,7 @@ export function classifyImeAsrOutcome(logcatOutput) {
  * @param {boolean} results.surfacesRegistered
  * @param {boolean} results.roleHeld
  * @param {boolean} results.imeSelected
+ * @param {boolean} results.voiceinteractionCommandSucceeded
  * @param {boolean} results.voiceinteractionLanded
  * @param {boolean} results.assistKeyLanded
  * @param {boolean} results.imeLanded
@@ -384,6 +385,8 @@ export function summarizeLaneVerdict(results, requireAgent) {
     failures.push("assistant/IME surfaces not registered");
   if (!results.roleHeld) failures.push("assistant role not held by Eliza");
   if (!results.imeSelected) failures.push("Eliza IME not selected");
+  if (!results.voiceinteractionCommandSucceeded)
+    failures.push("cmd voiceinteraction show returned a failure");
   if (!results.voiceinteractionLanded)
     failures.push("cmd voiceinteraction show did not reach MainActivity");
   if (!results.assistKeyLanded)

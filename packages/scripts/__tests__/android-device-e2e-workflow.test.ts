@@ -30,6 +30,10 @@ const assistantVerifierLib = readFileSync(
   join(root, "packages/app/scripts/lib/android-assistant-verify-lib.mjs"),
   "utf8",
 );
+const androidCapture = readFileSync(
+  join(root, "packages/app/scripts/lib/android-capture.mjs"),
+  "utf8",
+);
 const imeProbeManifest = readFileSync(
   join(
     root,
@@ -174,6 +178,10 @@ describe("Android emulator workflow shell contract", () => {
     );
     expect(nativePluginCi).toContain("assistant-verification.mp4");
     expect(nativePluginCi).toContain("assistant-final.png");
+    expect(nativePluginCi).toContain("pidof screenrecord");
+    expect(nativePluginCi).toContain("assertPlayableMp4");
+    expect(androidCapture).toContain("waitForDeviceScreenRecordExit");
+    expect(androidCapture).toContain('["ftyp", "mdat", "moov"]');
     expect(nativePluginCi).toContain(
       'JSON.parse(fs.readFileSync(process.argv[1], "utf8"))',
     );
@@ -182,6 +190,11 @@ describe("Android emulator workflow shell contract", () => {
     );
     expect(workflow).toContain(
       "packages/app-core/platforms/android/app/build/outputs/androidTest-results/**",
+    );
+    expect(onboardingSpec).toContain("elizaMobileDeepLinkReady");
+    expect(assistantVerifier).toContain("voiceinteractionCommandSucceeded");
+    expect(assistantVerifierLib).toContain(
+      "cmd voiceinteraction show returned a failure",
     );
   });
 });
