@@ -377,8 +377,14 @@ export type WalletCustodyProfile = {
     | "likely_cold"
     | "likely_warm";
 
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
   confidence: "low" | "medium" | "high";
+
   reasons: string[];
+
   limitations: string[];
 };
 
