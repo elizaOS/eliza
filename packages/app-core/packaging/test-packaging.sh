@@ -1021,7 +1021,7 @@ for workflow in \
   "$REPO_ROOT/.github/workflows/test-flatpak.yml" \
   "$REPO_ROOT/.github/workflows/publish-packages.yml"; do
   check "$(basename "$workflow") scans the final Flatpak app commit" \
-    bash -c "grep -Fq 'ostree --repo=' '$workflow' && grep -Fq 'checkout \"\$EXPECTED_COMMIT\" \"\$APP_CHECKOUT\"' '$workflow' && grep -Fq 'find \"\$APP_CHECKOUT/files\"' '$workflow' && grep -Fq 'Final Flatpak app payload must not redistribute FFmpeg executables' '$workflow'"
+    bash -c "grep -Fq 'ostree --repo=' '$workflow' && grep -Fq 'checkout --user-mode \"\$EXPECTED_COMMIT\" \"\$APP_CHECKOUT\"' '$workflow' && grep -Fq 'find \"\$APP_CHECKOUT/files\"' '$workflow' && grep -Fq 'Final Flatpak app payload must not redistribute FFmpeg executables' '$workflow'"
 done
 
 for workflow in \
