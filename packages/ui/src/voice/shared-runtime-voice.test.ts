@@ -14,12 +14,18 @@ vi.mock("../utils/eliza-globals", () => ({
   getElizaApiBase: vi.fn<() => string | undefined>(),
 }));
 
+import {
+  DEFAULT_BOOT_CONFIG,
+  setBootConfig,
+} from "../config/boot-config-store";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import {
   buildSharedRuntimeSttBody,
+  configuredCloudVoiceOrigin,
   currentSharedRuntimeVoiceOrigin,
   isVoiceTargetResolvableForActiveAgent,
   parseSharedRuntimeSttResponse,
+  resolveForcedCloudTtsRoute,
   sharedRuntimeSttUrl,
   sharedRuntimeTtsUrl,
   sharedRuntimeVoiceOrigin,
@@ -29,6 +35,7 @@ const getElizaApiBaseMock = vi.mocked(getElizaApiBase);
 
 afterEach(() => {
   vi.clearAllMocks();
+  setBootConfig(DEFAULT_BOOT_CONFIG);
 });
 
 describe("sharedRuntimeVoiceOrigin (shared-base detection)", () => {
@@ -94,6 +101,119 @@ describe("v1 route URL builders", () => {
     expect(sharedRuntimeSttUrl("https://api.elizacloud.ai/")).toBe(
       "https://api.elizacloud.ai/api/v1/voice/stt",
     );
+  });
+});
+
+describe("configuredCloudVoiceOrigin (boot-config cloud worker origin, #16116)", () => {
+  it("returns the boot-config cloud origin (default production)", () => {
+    setBootConfig({ branding: {}, cloudApiBase: "https://elizacloud.ai" });
+    expect(configuredCloudVoiceOrigin()).toBe("https://elizacloud.ai");
+  });
+
+  it("honors a staging/custom origin (not hardcoded to production)", () => {
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    expect(configuredCloudVoiceOrigin()).toBe("https://staging.elizacloud.ai");
+  });
+
+  it("strips a trailing /api/v1 and trailing slashes", () => {
+    setBootConfig({
+      branding: {},
+      cloudApiBase: "https://api.example.dev/api/v1/",
+    });
+    expect(configuredCloudVoiceOrigin()).toBe("https://api.example.dev");
+  });
+
+  it("returns null for a blank or non-https cloud base", () => {
+    setBootConfig({ branding: {}, cloudApiBase: "   " });
+    expect(configuredCloudVoiceOrigin()).toBeNull();
+    setBootConfig({ branding: {}, cloudApiBase: "ftp://nope.example" });
+    expect(configuredCloudVoiceOrigin()).toBeNull();
+  });
+});
+
+describe("resolveForcedCloudTtsRoute (#16116 direct-cloud routing)", () => {
+  const PROXY = "http://127.0.0.1:31337/api/tts/cloud";
+
+  it("routes forced-cloud DIRECTLY to the cloud worker with the cloud bearer", () => {
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: "on-device-agent-token",
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: "https://elizacloud.ai",
+      cloudSessionToken: "cloud-steward-jwt",
+    });
+    expect(route.via).toBe("direct-cloud");
+    expect(route.url).toBe("https://elizacloud.ai/api/v1/voice/tts");
+    // NOT the on-device proxy — that is the whole point of the fix.
+    expect(route.url).not.toContain("/api/tts/cloud");
+    // Carries the CLOUD session bearer, not the on-device agent token.
+    expect(route.bearer).toBe("cloud-steward-jwt");
+  });
+
+  it("targets the configured staging origin (no hardcoded production)", () => {
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: null,
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: "https://staging.elizacloud.ai",
+      cloudSessionToken: "jwt",
+    });
+    expect(route.url).toBe("https://staging.elizacloud.ai/api/v1/voice/tts");
+  });
+
+  it("preserves the on-device proxy when no cloud session token is available", () => {
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: "on-device-agent-token",
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: "https://elizacloud.ai",
+      cloudSessionToken: null,
+    });
+    expect(route.via).toBe("on-device-proxy");
+    expect(route.url).toBe(PROXY);
+    expect(route.bearer).toBe("on-device-agent-token");
+  });
+
+  it("preserves the on-device proxy when no configured cloud origin is available", () => {
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: "on-device-agent-token",
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: null,
+      cloudSessionToken: "jwt",
+    });
+    expect(route.via).toBe("on-device-proxy");
+    expect(route.url).toBe(PROXY);
+  });
+
+  it("treats a blank cloud session token as unavailable (proxy preserved)", () => {
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: "on-device-agent-token",
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: "https://elizacloud.ai",
+      cloudSessionToken: "   ",
+    });
+    expect(route.via).toBe("on-device-proxy");
+    expect(route.url).toBe(PROXY);
+  });
+
+  it("leaves the shared-runtime path unchanged (targets the active base, #15395)", () => {
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: "active-base-token",
+      sharedRuntimeOrigin: "https://api.elizacloud.ai",
+      configuredCloudOrigin: "https://elizacloud.ai",
+      cloudSessionToken: "cloud-steward-jwt",
+    });
+    expect(route.via).toBe("shared-runtime");
+    expect(route.url).toBe("https://api.elizacloud.ai/api/v1/voice/tts");
+    // Shared-tier keeps its active-base token; it is not re-authed to the
+    // steward bearer here.
+    expect(route.bearer).toBe("active-base-token");
   });
 });
 

@@ -22,6 +22,7 @@ import {
   useState,
 } from "react";
 import type { VoiceConfig } from "../api/client";
+import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
@@ -64,8 +65,9 @@ import {
   warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
 import {
+  configuredCloudVoiceOrigin,
   currentSharedRuntimeVoiceOrigin,
-  sharedRuntimeTtsUrl,
+  resolveForcedCloudTtsRoute,
 } from "../voice/shared-runtime-voice";
 import {
   collapseWhitespace,
@@ -1862,22 +1864,39 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         try {
           const apiToken = getElizaApiToken()?.trim() ?? "";
           const dbg = task.debugUtteranceContext;
-          // Shared-tier fallback (#15395): a shared-runtime agent has no
-          // `/api/tts/cloud` container route (404s), so target the cloud API
-          // worker's provider-agnostic v1 TTS route instead. Same `{ text }`
-          // JSON body, same audio-bytes response — no adaptation needed beyond
-          // the URL. Dedicated-tier agents keep `/api/tts/cloud` unchanged
-          // (sharedTtsOrigin is null for them).
-          const sharedTtsOrigin = currentSharedRuntimeVoiceOrigin();
-          const ttsTarget = sharedTtsOrigin
-            ? sharedRuntimeTtsUrl(sharedTtsOrigin)
-            : resolveApiUrl("/api/tts/cloud");
-          res = await fetchWithCsrf(ttsTarget, {
+          // Forced-cloud TTS routing (#15395 shared-tier + #16116 direct-cloud).
+          // `speakElizaCloud` only runs when the configured provider is
+          // `eliza-cloud`, so this IS the forced-cloud path:
+          //  - shared-runtime agents (no container) target the worker's
+          //    provider-agnostic v1 voice route off their active base;
+          //  - a dedicated/on-device agent with a cloud session bearer +
+          //    configured cloud origin POSTs straight to that same v1 route,
+          //    skipping its own `/api/tts/cloud` proxy (the extra phone-side
+          //    download + base64 IPC re-marshal, #16116);
+          //  - otherwise the on-device `/api/tts/cloud` proxy is preserved.
+          // Same `{ text }` body, same audio-bytes response — only the URL and
+          // bearer change.
+          const route = resolveForcedCloudTtsRoute({
+            proxyUrl: resolveApiUrl("/api/tts/cloud"),
+            proxyBearer: apiToken || null,
+            sharedRuntimeOrigin: currentSharedRuntimeVoiceOrigin(),
+            configuredCloudOrigin: configuredCloudVoiceOrigin(),
+            cloudSessionToken: getCloudAuthToken(),
+          });
+          if (route.via === "direct-cloud") {
+            ttsDebug("useVoiceChat:eliza-cloud-direct-worker", {
+              ttsTarget: route.url,
+              hadBearer: Boolean(route.bearer),
+            });
+          }
+          res = await fetchWithCsrf(route.url, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
               Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-              ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+              ...(route.bearer
+                ? { Authorization: `Bearer ${route.bearer}` }
+                : {}),
               ...(isTtsDebugEnabled() && dbg
                 ? {
                     "x-elizaos-tts-message-id": encodeURIComponent(
