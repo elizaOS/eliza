@@ -3827,14 +3827,14 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    // The plate stays mounted so hide can animate; inert + opacity keep it out
-    // of interaction until the bubble is clicked.
+    // The plate stays mounted so height and opacity can settle together; inert
+    // keeps its hidden controls out of interaction until the bubble is clicked.
     const actions = screen.getByTestId("thread-line-actions");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
-    expect(actions.className).toContain("opacity-0");
+    expect(actions.hasAttribute("inert")).toBe(true);
     fireEvent.click(bubbleFor("the answer"));
     expect(actions.getAttribute("aria-hidden")).toBe("false");
-    expect(actions.className).toContain("opacity-100");
+    expect(actions.hasAttribute("inert")).toBe(false);
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.getByTestId("thread-line-speak")).toBeTruthy();
     // Assistant has no edit affordance.
@@ -3972,10 +3972,10 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     });
     fireEvent.click(bubbleFor("tap away"));
     const actions = screen.getByTestId("thread-line-actions");
-    expect(actions.className).toContain("opacity-100");
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
     fireEvent.pointerDown(document.body);
     expect(actions.getAttribute("aria-hidden")).toBe("true");
-    expect(actions.className).toContain("opacity-0");
+    expect(actions.hasAttribute("inert")).toBe(true);
   });
 
   it("Escape cancels the inline editor without resending", () => {

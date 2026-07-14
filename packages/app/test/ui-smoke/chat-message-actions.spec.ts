@@ -1,9 +1,11 @@
-// Browser-level evidence for #10713: the real app chat overlay exposes a
-// click-to-reveal per-message action row. The component-level tests prove the
-// exact callbacks; this smoke records the shipped UI at desktop + mobile sizes.
+/**
+ * Browser-level proof for the continuous chat overlay's per-message actions.
+ * The checks cover rendered geometry as well as behavior because virtualized
+ * transcript containment can clip an otherwise visible, interactive element.
+ */
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
   installDefaultAppRoutes,
   openAppPath,
@@ -156,6 +158,55 @@ async function screenshot(page: Page, name: string): Promise<void> {
   });
 }
 
+function messageRowFor(page: Page, text: string): Locator {
+  return page
+    .getByText(text, { exact: true })
+    .locator("xpath=ancestor::*[@data-testid='thread-line'][1]");
+}
+
+async function expectFullyPaintableActionSurface(row: Locator): Promise<void> {
+  const actions = row.getByTestId("thread-line-actions");
+  const surface = row.getByTestId("thread-line-action-surface");
+  await expect(actions).toHaveAttribute("aria-hidden", "false");
+  await expect(surface).toBeVisible();
+
+  await expect
+    .poll(
+      () =>
+        surface.evaluate((element) => {
+          const surfaceRect = element.getBoundingClientRect();
+          const item = element.closest('[data-slot="message-scroller-item"]');
+          if (!(item instanceof HTMLElement)) {
+            throw new Error(
+              "Message action surface is outside a scroller item",
+            );
+          }
+          const itemRect = item.getBoundingClientRect();
+          const centerElement = document.elementFromPoint(
+            surfaceRect.left + surfaceRect.width / 2,
+            surfaceRect.top + surfaceRect.height / 2,
+          );
+          return {
+            hasSize: surfaceRect.width > 0 && surfaceRect.height > 0,
+            fullyInside:
+              surfaceRect.top >= itemRect.top - 0.5 &&
+              surfaceRect.right <= itemRect.right + 0.5 &&
+              surfaceRect.bottom <= itemRect.bottom + 0.5 &&
+              surfaceRect.left >= itemRect.left - 0.5,
+            centerHitsSurface: Boolean(
+              centerElement && element.contains(centerElement),
+            ),
+          };
+        }),
+      { timeout: 2_000 },
+    )
+    .toEqual({
+      hasSize: true,
+      fullyInside: true,
+      centerHitsSurface: true,
+    });
+}
+
 for (const viewport of [
   { name: "desktop", size: { width: 1280, height: 900 } },
   { name: "mobile", size: { width: 390, height: 844 } },
@@ -179,20 +230,21 @@ for (const viewport of [
     await openThread(page);
     await screenshot(page, `${viewport.name}-chat-open`);
 
-    await page.getByText(ASSISTANT_TEXT).click();
-    await expect(page.getByTestId("thread-line-actions")).toBeVisible();
-    await expect(page.getByTestId("thread-line-copy")).toBeVisible();
-    await expect(page.getByTestId("thread-line-speak")).toBeVisible();
-    await expect(page.getByTestId("thread-line-edit")).toHaveCount(0);
+    const assistantRow = messageRowFor(page, ASSISTANT_TEXT);
+    await assistantRow.getByText(ASSISTANT_TEXT, { exact: true }).click();
+    await expectFullyPaintableActionSurface(assistantRow);
+    await expect(assistantRow.getByTestId("thread-line-copy")).toBeVisible();
+    await expect(assistantRow.getByTestId("thread-line-speak")).toBeVisible();
+    await expect(assistantRow.getByTestId("thread-line-edit")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: /copy conversation/i }),
     ).toHaveCount(0);
     await screenshot(page, `${viewport.name}-assistant-actions`);
 
-    await page.getByTestId("thread-line-copy").click();
-    await expect(page.getByTestId("thread-line-copy")).toHaveAttribute(
+    await assistantRow.getByTestId("thread-line-copy").click();
+    await expect(assistantRow.getByTestId("thread-line-copy")).toHaveAttribute(
       "aria-label",
-      "Copied",
+      "Copied!",
       {
         timeout: 5_000,
       },
@@ -206,27 +258,33 @@ for (const viewport of [
     expect(copiedClipboardText).toBe(ASSISTANT_TEXT);
     await screenshot(page, `${viewport.name}-assistant-copied`);
 
-    await page.getByTestId("thread-line-speak").click();
-    await expect(page.getByTestId("thread-line-speak")).toBeVisible();
+    await assistantRow.getByTestId("thread-line-speak").click();
+    await expect(assistantRow.getByTestId("thread-line-speak")).toBeVisible();
     await screenshot(page, `${viewport.name}-assistant-play`);
 
-    const userBubble = page.getByText(USER_TEXT);
+    const userRow = messageRowFor(page, USER_TEXT);
+    const userBubble = userRow.getByText(USER_TEXT, { exact: true });
     await userBubble.click();
-    if ((await page.getByTestId("thread-line-copy").count()) === 0) {
+    if (
+      (await userRow
+        .getByTestId("thread-line-actions")
+        .getAttribute("aria-hidden")) !== "false"
+    ) {
       await userBubble.click();
     }
-    await expect(page.getByTestId("thread-line-copy")).toBeVisible();
-    await expect(page.getByTestId("thread-line-edit")).toBeVisible();
-    await expect(page.getByTestId("thread-line-speak")).toHaveCount(0);
+    await expectFullyPaintableActionSurface(userRow);
+    await expect(userRow.getByTestId("thread-line-copy")).toBeVisible();
+    await expect(userRow.getByTestId("thread-line-edit")).toBeVisible();
+    await expect(userRow.getByTestId("thread-line-speak")).toHaveCount(0);
     await screenshot(page, `${viewport.name}-user-actions`);
 
-    await page.getByTestId("thread-line-edit").click();
-    const editor = page.getByTestId("thread-line-edit-input");
+    await userRow.getByTestId("thread-line-edit").click();
+    const editor = userRow.getByTestId("thread-line-edit-input");
     await expect(editor).toBeVisible();
     await expect(editor).toHaveValue(USER_TEXT);
     await editor.fill(EDITED_TEXT);
     await screenshot(page, `${viewport.name}-user-editing`);
-    await page.getByTestId("thread-line-edit-save").click();
+    await userRow.getByTestId("thread-line-edit-save").click();
 
     await expect.poll(() => streamCalls.length, { timeout: 15_000 }).toBe(1);
     expect(JSON.stringify(streamCalls[0])).toContain(EDITED_TEXT);
