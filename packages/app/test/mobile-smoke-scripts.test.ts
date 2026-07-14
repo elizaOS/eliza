@@ -77,12 +77,17 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
   });
 
   it("keeps the full-Bun simulator lane blocking and captures reviewable evidence", () => {
+    const boot = stepBlock("Boot simulator and install the full-Bun app");
+    expect(boot).toContain("SIMCTL_CHILD_DYLD_FALLBACK_LIBRARY_PATH");
+    expect(boot).toContain("System/Cryptexes/OS/usr/lib/swift");
+
     const fullBun = stepBlock("Run iOS full-Bun local-chat simulator smoke");
     expect(fullBun).not.toMatch(/\n\s*continue-on-error\s*:/);
     expect(fullBun).toContain("ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR");
     expect(fullBun).toContain("recordVideo");
     expect(fullBun).toContain("ios-final.jpg");
     expect(fullBun).toContain("ios-simulator.log");
+    expect(fullBun).toContain('process == "App"');
     expect(fullBun).toContain("result.json");
   });
 });

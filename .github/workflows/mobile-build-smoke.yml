@@ -463,6 +463,31 @@ jobs:
           xcrun simctl boot "$UDID" || true
           xcrun simctl bootstatus "$UDID" -b
           echo "IOS_FULL_BUN_SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+
+          RUNTIME_ID=$(xcrun simctl list devices available -j \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);const u=process.argv[1];const r=Object.entries(j.devices).find(([,devices])=>devices.some(device=>device.udid===u))?.[0]??"";process.stdout.write(r)})' "$UDID")
+          if [ -z "$RUNTIME_ID" ]; then
+            echo "ERROR: could not resolve the simulator runtime for $UDID"
+            exit 1
+          fi
+          RUNTIME_PATH=$(xcrun simctl list runtimes -j \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);const id=process.argv[1];const r=j.runtimes.find(runtime=>runtime.identifier===id);process.stdout.write(r?.bundlePath??"")})' "$RUNTIME_ID")
+          if [ -z "$RUNTIME_PATH" ]; then
+            echo "ERROR: could not resolve the bundle path for simulator runtime $RUNTIME_ID"
+            exit 1
+          fi
+          SWIFT_FALLBACK_PATH="$RUNTIME_PATH/Contents/Resources/RuntimeRoot/System/Cryptexes/OS/usr/lib/swift"
+          if [ -f "$SWIFT_FALLBACK_PATH/libswiftWebKit.dylib" ]; then
+            # Xcode 16.4's iOS 18.5 simulator moved libswiftWebKit into the
+            # runtime cryptex without adding that directory to dyld's search
+            # path. SIMCTL_CHILD_ keeps Apple's workaround simulator-only, so
+            # the production deployment target stays unchanged.
+            echo "SIMCTL_CHILD_DYLD_FALLBACK_LIBRARY_PATH=$SWIFT_FALLBACK_PATH" >> "$GITHUB_ENV"
+            echo "Using simulator Swift cryptex fallback: $SWIFT_FALLBACK_PATH"
+          else
+            echo "Simulator runtime exposes Swift libraries through its standard dyld path."
+          fi
+
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
           echo "Installing $APP_PATH"
           xcrun simctl install "$UDID" "$APP_PATH"
@@ -523,7 +548,9 @@ jobs:
               rm "$EVIDENCE_DIR/ios-final.png"
             fi
             if ! xcrun simctl spawn "$IOS_FULL_BUN_SIMULATOR_UDID" log show \
-              --style compact --last 15m > "$EVIDENCE_DIR/ios-simulator.log"; then
+              --style compact --last 15m \
+              --predicate 'process == "App" OR (process == "launchd_sim" AND eventMessage CONTAINS "ai.elizaos.app")' \
+              > "$EVIDENCE_DIR/ios-simulator.log"; then
               evidence_status=1
             fi
             if [ "$smoke_status" -eq 0 ] && [ ! -s "$EVIDENCE_DIR/result.json" ]; then
