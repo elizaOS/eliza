@@ -45,8 +45,8 @@ function extractRun(stepName: string): string {
       "m",
     ),
   )?.groups?.step;
-  const run = body?.match(/^ {8}run: \|\n(?<run>(?: {10}.*(?:\n|$))*)/m)?.groups
-    ?.run;
+  const run = body?.match(/^ {8}run: \|\n(?<run>(?:(?: {10}.*)?(?:\n|$))*)/m)
+    ?.groups?.run;
   if (!run) throw new Error(`Missing run body for ${stepName}`);
   return run
     .split("\n")
@@ -293,6 +293,9 @@ describe("chat latency live workflow", () => {
         encoding: "utf8",
       });
       expect(bash.status, `${step}: ${bash.stderr}`).toBe(0);
+      expect(bash.stderr, `${step}: ${bash.stderr}`).not.toContain(
+        "here-document at line",
+      );
 
       const nodeBodies = [
         ...shell.matchAll(/<<'NODE'\n(?<node>[\s\S]*?)\nNODE(?:\n|$)/g),
