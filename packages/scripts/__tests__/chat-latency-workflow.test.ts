@@ -150,6 +150,8 @@ describe("chat latency live workflow", () => {
     expect(preview).toContain("Create an isolated non-deployed preview Worker");
     expect(preview).toContain('"/workers/workers"');
     expect(preview).toContain("body?.result?.deployed_on != null");
+    expect(preview).toContain("state?.result?.deployed_on != null");
+    expect(preview).toContain("workers_dev = true");
     expect(preview).toContain("Delete isolated auth preview Worker");
     expect(preview).toContain("Delete isolated suspended-auth staging fixture");
     expect(preview).toContain("previews_enabled: true");

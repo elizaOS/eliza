@@ -456,7 +456,7 @@ jobs:
             },
             body: JSON.stringify({
               name: worker,
-              subdomain: { enabled: false, previews_enabled: true },
+              subdomain: { enabled: true, previews_enabled: true },
             }),
             signal: AbortSignal.timeout(30_000),
           });
@@ -466,7 +466,7 @@ jobs:
             body?.success !== true ||
             body?.result?.name !== worker ||
             body?.result?.deployed_on != null ||
-            body?.result?.subdomain?.enabled !== false ||
+            body?.result?.subdomain?.enabled !== true ||
             body?.result?.subdomain?.previews_enabled !== true
           ) {
             throw new Error("Could not create an isolated never-deployed preview Worker");
@@ -488,9 +488,10 @@ jobs:
           if (source.split(marker).length !== 2 || source.includes("preview_urls")) {
             throw new Error("Could not derive the isolated preview configuration");
           }
-          writeFileSync(process.argv[2], source.replace(marker, marker + "preview_urls = true\n"), {
-            mode: 0o600,
-          });
+          const isolated =
+            '[env.staging]\nname = "eliza-cloud-api-staging"\n' +
+            "workers_dev = true\npreview_urls = true\n";
+          writeFileSync(process.argv[2], source.replace(marker, isolated), { mode: 0o600 });
           NODE
           trap 'rm -f "$config"' EXIT
           WRANGLER_OUTPUT_FILE_PATH="$output" bunx wrangler versions upload \
@@ -521,6 +522,26 @@ jobs:
             !/^[a-f0-9-]{36}$/.test(upload.version_id ?? "")
           ) {
             throw new Error("Wrangler returned invalid exact-version provenance");
+          }
+          const stateResponse = await fetch(
+            "https://api.cloudflare.com/client/v4/accounts/" +
+              process.env.CLOUDFLARE_ACCOUNT_ID +
+              "/workers/workers/" +
+              process.env.AUTH_PROBE_WORKER_NAME,
+            {
+              headers: { Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN },
+              signal: AbortSignal.timeout(30_000),
+            },
+          );
+          const state = await stateResponse.json();
+          if (
+            !stateResponse.ok ||
+            state?.success !== true ||
+            state?.result?.deployed_on != null ||
+            state?.result?.subdomain?.enabled !== true ||
+            state?.result?.subdomain?.previews_enabled !== true
+          ) {
+            throw new Error("Exact Worker version was not retained as an isolated preview");
           }
           const url = new URL(upload.preview_alias_url ?? "");
           const expectedPrefix =
