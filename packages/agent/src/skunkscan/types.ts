@@ -124,6 +124,27 @@ export type WalletDecisionFactor = {
   evidenceRecordIds: string[];
 };
 
+export type WalletAssessmentFactor = {
+  id: string;
+
+  category:
+    | "risk"
+    | "trust"
+    | "exposure"
+    | "transaction_risk";
+
+  effect:
+    | "positive"
+    | "neutral"
+    | "negative";
+
+  weight: number;
+
+  description: string;
+
+  evidenceRecordIds: string[];
+};
+
 export type WalletDecisionSummary = {
   decision:
     | "low_risk"
@@ -146,6 +167,26 @@ export type WalletDecisionSummary = {
   supportingEvidenceRecordIds: string[];
 
   limitations: string[];
+};
+
+export type WalletAssessmentSummary = {
+  assessment:
+    | "low_risk"
+    | "review"
+    | "investigate"
+    | "high_risk";
+
+  confidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  factors: WalletAssessmentFactor[];
+
+  supportingEvidenceRecordIds: string[];
+
+  limitations: string[];
+
+  userDecisionNotice: string;
 };
 
 export type WalletEvidenceRecord = {
