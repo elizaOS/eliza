@@ -1007,17 +1007,30 @@ function buildCapacitorPluginsIfNeeded(childEnv) {
 function startVite() {
   const childEnv = createDevChildEnv(process.env);
 
-  const viteCmd = hasBun ? "bun" : "npx";
+  // Vite's WebSocket proxy depends on Node's HTTP upgrade semantics. Under
+  // Bun, `/ws` remains pending even while ordinary HTTP proxying succeeds,
+  // silently disconnecting live notifications and chat events in the UI.
+  const viteCmd = which("node");
+  if (!viteCmd) {
+    throw new Error("Node.js 24+ is required to run the Vite dev server.");
+  }
+  const viteCli = path.join(
+    cwd,
+    appDir,
+    "node_modules",
+    "vite",
+    "bin",
+    "vite.js",
+  );
+  if (!existsSync(viteCli)) {
+    throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
+  }
   const viteForce =
     process.env.ELIZA_VITE_FORCE === "1" ||
     process.env.ELIZA_VITE_FORCE === "1";
-  const viteArgs = hasBun
-    ? viteForce
-      ? ["--bun", "vite", "--force", "--port", String(UI_PORT)]
-      : ["--bun", "vite", "--port", String(UI_PORT)]
-    : viteForce
-      ? ["vite", "--force", "--port", String(UI_PORT)]
-      : ["vite", "--port", String(UI_PORT)];
+  const viteArgs = viteForce
+    ? [viteCli, "--force", "--port", String(UI_PORT)]
+    : [viteCli, "--port", String(UI_PORT)];
   if (viteForce) {
     console.log(
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
