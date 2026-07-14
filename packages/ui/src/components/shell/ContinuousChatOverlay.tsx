@@ -1084,24 +1084,16 @@ export function ContinuousChatOverlay({
   // cancel/switch controls; the placeholder tells the user they can keep typing.
   const modelStatus = controller.modelStatus;
   const modelBlocksSend = modelStatus?.blocksSend ?? false;
-  // App-level chat handlers shared with the desktop chat surface. The first-run
-  // transcript's CHOICE widgets still use the action funnel inside their own
-  // renderer; this overlay-level selection only needs message-management
-  // handlers.
-  const {
-    handleChatDelete,
-    handleSelectConversation,
-    loadConversationMessagesAround,
-  } = useAppSelectorShallow((s) => ({
-    // Persistent per-message delete (#13533): server DELETE + optimistic
-    // removal with rollback. Inert no-op in stories/tests with no AppContext.
-    handleChatDelete: s.handleChatDelete,
-    // Search-jump (#14279): select the hit's conversation, then (if the hit is
-    // older than the loaded recent window) load a window centered on it before
-    // scrolling. Inert no-ops in stories/tests with no AppContext.
-    handleSelectConversation: s.handleSelectConversation,
-    loadConversationMessagesAround: s.loadConversationMessagesAround,
-  }));
+  // Search-jump needs the app-level conversation selectors; turn controls stay
+  // local to this overlay or flow through the controller.
+  const { handleSelectConversation, loadConversationMessagesAround } =
+    useAppSelectorShallow((s) => ({
+      // Search-jump (#14279): select the hit's conversation, then (if the hit is
+      // older than the loaded recent window) load a window centered on it before
+      // scrolling. Inert no-ops in stories/tests with no AppContext.
+      handleSelectConversation: s.handleSelectConversation,
+      loadConversationMessagesAround: s.loadConversationMessagesAround,
+    }));
   // Defensive default so a minimal mock controller (stories/tests) that predates
   // the swipe-nav surface still renders without crashing.
   const conversationNav = controller.conversationNav ?? EMPTY_CONVERSATION_NAV;
@@ -1171,18 +1163,6 @@ export function ContinuousChatOverlay({
       return true;
     },
     [send],
-  );
-
-  // Persistent per-message delete from the glass row (#13533). Routes through
-  // the app-level handler so the server DELETE + optimistic removal + rollback
-  // are identical to the panel (ChatView) surface; the shell transcript mirrors
-  // conversationMessages, so the row disappears optimistically and re-appears
-  // if the DELETE fails.
-  const handleDeleteMessage = React.useCallback(
-    (id: string) => {
-      void handleChatDelete?.(id);
-    },
-    [handleChatDelete],
   );
 
   // Retry a failed/interrupted assistant turn by re-sending its preceding user
@@ -2017,7 +1997,6 @@ export function ContinuousChatOverlay({
             onLongPressCopy={handleLongPressCopy}
             onSpeak={handleSpeakMessage}
             onEdit={handleEditResend}
-            onDelete={handleDeleteMessage}
             onReply={handleReplyMessage}
             onRetry={handleRetry}
             playing={speaking && playingMessageId === m.id}
@@ -2037,7 +2016,6 @@ export function ContinuousChatOverlay({
       handleLongPressCopy,
       handleSpeakMessage,
       handleEditResend,
-      handleDeleteMessage,
       handleReplyMessage,
       handleRetry,
       speaking,

@@ -128,7 +128,7 @@ describe("chat transcript edit-and-resend (useChatSend.handleChatEdit)", () => {
     ]);
     const { result } = renderHook(() => useChatSend(deps));
 
-    const { getByLabelText, getByRole } = render(
+    const { getByLabelText, getByRole, getByTestId, getByText } = render(
       <ChatMessage
         message={original}
         agentName="Eliza"
@@ -136,13 +136,39 @@ describe("chat transcript edit-and-resend (useChatSend.handleChatEdit)", () => {
       />,
     );
 
+    const bubble = getByText("original question").closest<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
+    if (!bubble) throw new Error("message bubble not found");
+    vi.spyOn(bubble, "getBoundingClientRect").mockReturnValue({
+      bottom: 42,
+      height: 42,
+      left: 20,
+      right: 280,
+      top: 0,
+      width: 260,
+      x: 20,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
     // Open the edit UI via the action rail's "Edit message" button.
     act(() => {
       fireEvent.click(getByLabelText("Edit message"));
     });
 
     // Change the text and Save (the button is "Save and resend").
-    const editArea = getByLabelText("Edit message") as HTMLTextAreaElement;
+    const editArea = getByTestId(
+      "chat-message-edit-input",
+    ) as HTMLTextAreaElement;
+    expect(editArea.closest('[data-chat-message-bubble="true"]')).toBe(bubble);
+    expect(bubble.style.width).toBe("260px");
+    expect(editArea.className).toContain("bg-transparent");
+    expect(editArea.className).toContain("min-h-0");
+    const editControls = getByTestId("chat-message-edit-controls");
+    expect(editControls.className).toContain("absolute");
+    expect(editControls.className).toContain("top-full");
+    expect(editControls.style.backgroundImage).toContain("radial-gradient");
     act(() => {
       fireEvent.change(editArea, { target: { value: "edited question" } });
     });

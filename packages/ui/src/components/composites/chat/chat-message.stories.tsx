@@ -79,7 +79,6 @@ export const Editable: Story = {
       fromUserName: "nubscarson",
     },
     onEdit: () => true,
-    onDelete: () => {},
   },
 };
 

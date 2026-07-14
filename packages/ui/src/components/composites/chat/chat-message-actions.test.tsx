@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 //
-// The desktop hover action rail's Copy button fires `onCopy` (which the
-// ChatView wires to the clipboard helper) and reflects the copied state in its
-// label. This closes the coverage gap called out in #9148 — the overlay copy
-// was tested but the desktop ChatMessageActions copy was not.
+/**
+ * Behavior and material checks for the shared per-message action plate. The
+ * real controls render directly so callback, confirmation, neutral glass, and
+ * the absence of a destructive message action stay locked together.
+ */
 
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -37,34 +38,31 @@ describe("ChatMessageActions copy", () => {
     expect(screen.getByRole("button", { name: "Copy text" })).toBeTruthy();
   });
 
-  it("invokes onDelete when the delete button is enabled and clicked", async () => {
-    const onDelete = vi.fn();
-    render(<ChatMessageActions canDelete onDelete={onDelete} />);
-    await userEvent.click(
-      screen.getByRole("button", { name: "Delete message" }),
-    );
-    expect(onDelete).toHaveBeenCalledTimes(1);
-  });
-
-  it("renders glass-row actions as unframed icons", () => {
+  it("renders every action on one neutral liquid-glass plate", () => {
     render(
       <ChatMessageActions
         appearance="glass-row"
-        canDelete
         canEdit
+        canPlay
         canReply
         onCopy={vi.fn()}
-        onDelete={vi.fn()}
         onEdit={vi.fn()}
+        onPlay={vi.fn()}
         onReply={vi.fn()}
       />,
     );
 
+    const surface = screen.getByTestId("thread-line-action-surface");
+    expect(surface.className).toContain("bg-black/55");
+    expect(surface.className).toContain("border-white/25");
+    expect(surface.style.backgroundImage).toContain("radial-gradient");
+    expect(surface.style.backdropFilter).toContain("blur");
+
     for (const button of screen.getAllByRole("button")) {
       expect(button.className).toContain("bg-transparent");
-      expect(button.className).toContain("rounded-none");
-      expect(button.className).not.toContain("bg-white/10");
       expect(button.className).not.toContain("rounded-full");
+      expect(button.className).not.toContain("text-[rgb(255");
     }
+    expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
   });
 });
