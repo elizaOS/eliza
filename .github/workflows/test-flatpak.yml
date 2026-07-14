@@ -183,6 +183,14 @@ jobs:
           "$FLATPAK_BUNDLE"
           ai.elizaos.App
 
+      # Recorded immediately after bundle creation so a failed installed smoke
+      # still uploads reviewable package bytes together with their checksum.
+      - name: Record package checksum
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          set -euo pipefail
+          sha256sum "$FLATPAK_BUNDLE" | tee "${FLATPAK_BUNDLE}.sha256"
+
       - name: Install and test
         working-directory: packages/app-core/packaging/flatpak
         run: |
@@ -296,6 +304,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: flatpak-test-bundle-${{ matrix.profile }}
-          path: packages/app-core/packaging/flatpak/${{ env.FLATPAK_BUNDLE }}
+          path: |
+            packages/app-core/packaging/flatpak/${{ env.FLATPAK_BUNDLE }}
+            packages/app-core/packaging/flatpak/${{ env.FLATPAK_BUNDLE }}.sha256
           if-no-files-found: error
           retention-days: 7

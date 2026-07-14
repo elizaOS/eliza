@@ -198,8 +198,12 @@ fi
   });
 
   test("parses wrapper arguments and exercises the command-line boundary", () => {
+    // The fixture refuses to answer without the wrapper argument, so this
+    // test fails if the verifier ever drops parsed wrapper args (the
+    // `flatpak run <id>`-style prefix) from the real child invocation.
     const executable = fixture(`
-if [[ "\${1:-}" == "wrapped" ]]; then shift; fi
+if [[ "\${1:-}" != "wrapped" ]]; then exit 64; fi
+shift
 case "\${1:-}" in
   --version) printf '2.0.0\\n' ;;
   --help) printf 'Usage:\\n  eliza [options]\\n\\nOptions:\\n  --help  Show help\\n' ;;
@@ -646,6 +650,7 @@ interface WorkflowStep {
   name?: string;
   run?: string;
   uses?: string;
+  with?: Record<string, unknown>;
 }
 
 interface WorkflowJob {
@@ -839,37 +844,64 @@ describe("package workflows", () => {
   });
 
   test("package artifacts survive failed installed-runtime smoke", () => {
+    // [workflow, job, upload step, installed-smoke step]. The checksum must be
+    // recorded between build and smoke so a red smoke still uploads package
+    // bytes together with their sha256.
     const uploads = [
       [
         ".github/workflows/snap-build-test.yml",
         "build-snap",
         "Upload snap artifact",
+        "Install, explicitly connect, and test snap",
       ],
-      [".github/workflows/test-flatpak.yml", "build", "Upload bundle artifact"],
+      [
+        ".github/workflows/test-flatpak.yml",
+        "build",
+        "Upload bundle artifact",
+        "Install and test",
+      ],
       [
         ".github/workflows/test-packaging.yml",
         "build-deb",
         "Upload Debian artifact",
+        "Install and boot Debian package",
       ],
       [
         ".github/workflows/snap-publish.yml",
         "build-and-publish",
         "Upload snap artifact",
+        "Install, explicitly connect, and test snap",
       ],
       [
         ".github/workflows/publish-packages.yml",
         "build-deb",
         "Upload .deb artifact",
+        "Test .deb package",
       ],
       [
         ".github/workflows/publish-packages.yml",
         "build-flatpak",
         "Upload Flatpak bundle",
+        "Test Flatpak",
       ],
     ];
 
-    for (const [path, job, step] of uploads) {
+    for (const [path, job, step, smoke] of uploads) {
       expect(workflowStep(path, job, step).if).toBe("always()");
+
+      const checksum = stepRun(path, job, "Record package checksum");
+      expect(checksum).toContain("sha256sum");
+      expect(checksum).toContain(".sha256");
+      expect(stepIndex(path, job, "Record package checksum")).toBeLessThan(
+        stepIndex(path, job, smoke),
+      );
+
+      // Directory uploads carry the checksum inside the uploaded directory;
+      // file uploads must list the .sha256 companion explicitly.
+      const uploadPath = String(workflowStep(path, job, step).with?.path ?? "");
+      if (!uploadPath.endsWith("/")) {
+        expect(uploadPath).toContain(".sha256");
+      }
     }
 
     // The reusable Debian builder guards its upload on the artifact existing,

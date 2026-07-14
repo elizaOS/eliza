@@ -430,6 +430,15 @@ jobs:
             "${main_debs[0]}"
           cp "${main_debs[0]}" deb-output/
 
+      # Recorded immediately after the build so a failed installed smoke still
+      # uploads reviewable package bytes together with their checksum.
+      - name: Record package checksum
+        run: |
+          set -euo pipefail
+          for deb in deb-output/*.deb; do
+            sha256sum "$deb" | tee "${deb}.sha256"
+          done
+
       - name: Reject FFmpeg executables in final Debian payload
         run: |
           set -euo pipefail
@@ -838,6 +847,14 @@ jobs:
           flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
           flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
 
+      # Recorded immediately after bundle creation so a failed installed smoke
+      # still uploads reviewable package bytes together with their checksum.
+      - name: Record package checksum
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          set -euo pipefail
+          sha256sum elizaos-app.flatpak | tee elizaos-app.flatpak.sha256
+
       - name: Test Flatpak
         working-directory: packages/app-core/packaging/flatpak
         env:
@@ -939,7 +956,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: flatpak-bundle
-          path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
+          path: |
+            packages/app-core/packaging/flatpak/elizaos-app.flatpak
+            packages/app-core/packaging/flatpak/elizaos-app.flatpak.sha256
+          if-no-files-found: error
           retention-days: 90
 
       - name: Attach Flatpak to GitHub Release

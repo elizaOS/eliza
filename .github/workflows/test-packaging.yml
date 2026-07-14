@@ -219,6 +219,15 @@ jobs:
             "${main_debs[0]}"
           cp "${main_debs[0]}" ../*.changes deb-output/
 
+      # Recorded immediately after the build so a failed installed smoke still
+      # uploads reviewable package bytes together with their checksum.
+      - name: Record package checksum
+        run: |
+          set -euo pipefail
+          for deb in deb-output/*.deb; do
+            sha256sum "$deb" | tee "${deb}.sha256"
+          done
+
       - name: Reject FFmpeg executables in final Debian payload
         run: |
           set -euo pipefail
