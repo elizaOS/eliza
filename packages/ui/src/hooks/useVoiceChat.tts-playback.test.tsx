@@ -10,6 +10,7 @@
  * the routing unit tests (`useVoiceChat.forced-cloud-tts`, `shared-runtime-voice`).
  */
 
+import { logger } from "@elizaos/logger";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -19,7 +20,10 @@ vi.mock("../api/csrf-client", () => ({
 }));
 
 import { globalAudioCache } from "../voice/voice-chat-types";
-import { useVoiceChat } from "./useVoiceChat";
+import {
+  __resetDirectCloudTtsFallbackWarnings,
+  useVoiceChat,
+} from "./useVoiceChat";
 
 interface FakeSource {
   buffer: unknown;
@@ -181,13 +185,25 @@ function renderVoiceChat(voiceConfig: VoiceConfigArg) {
 }
 
 describe("useVoiceChat TTS playback across providers", () => {
+  const originalFetch = globalThis.fetch;
   beforeEach(() => {
     installMocks();
     localStorage.clear();
+    __resetDirectCloudTtsFallbackWarnings();
   });
   afterEach(() => {
     cleanup();
     localStorage.clear();
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: true,
+      value: originalFetch,
+    });
+    Object.defineProperty(window, "fetch", {
+      configurable: true,
+      writable: true,
+      value: originalFetch,
+    });
     vi.restoreAllMocks();
   });
 
@@ -303,6 +319,50 @@ describe("useVoiceChat TTS playback across providers", () => {
       expect(result.current.isSpeaking).toBe(false);
     });
     expect(result.current.ttsError ?? null).toBeNull();
+  });
+
+  it("degrades a failed direct-cloud fetch to the proxy and still plays audio end to end", async () => {
+    // A cloud session bearer + the default cloud origin select the direct
+    // worker path; the direct bare fetch dies (network / preflight) and the
+    // designed degrade must play the same clip through the on-device proxy.
+    localStorage.setItem("steward_session_token", "header.payload.signature");
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const directFetch = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: true,
+      value: directFetch,
+    });
+    Object.defineProperty(window, "fetch", {
+      configurable: true,
+      writable: true,
+      value: directFetch,
+    });
+
+    const { result } = renderVoiceChat({ provider: "eliza-cloud" });
+
+    act(() => {
+      result.current.speak("fallback reply");
+    });
+
+    // Both legs fired: the direct worker attempt, then the proxy rescue.
+    await waitFor(() => {
+      expect(directFetch).toHaveBeenCalled();
+      expect(fetchedUrls.some((url) => url.includes("/api/tts/cloud"))).toBe(
+        true,
+      );
+    });
+    // The proxy audio decoded and played to completion — user hears the reply.
+    await waitFor(() => {
+      expect(createdSources[0]?.start).toHaveBeenCalledWith(0);
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+    expect(result.current.ttsError ?? null).toBeNull();
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   it("stopSpeaking cancels playback and clears the speaking state", async () => {

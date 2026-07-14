@@ -134,6 +134,9 @@ export interface ForcedCloudTtsRoute {
   bearer: string | null;
   /** Which target was chosen — observability + regression assertions. */
   via: "shared-runtime" | "direct-cloud" | "on-device-proxy";
+  /** Voice/model to carry in the direct request body (parity with a caller-known pin). */
+  voiceId?: string;
+  modelId?: string;
 }
 
 /**
@@ -149,6 +152,21 @@ export interface ForcedCloudTtsRoute {
  * resolve directly to that route off their active base and are left unchanged
  * (#15395). With no cloud auth/config, the on-device proxy path is preserved.
  *
+ * Voice/model parity with the proxy: in the default (unpinned) setup the direct
+ * `{ text }` body and the proxy produce the SAME voice — the proxy injects
+ * `LEGACY_DEFAULT_ELEVENLABS_VOICE_ID`, which the worker's provider selection
+ * (`packages/cloud/api/v1/voice/tts/provider-selection.ts`) explicitly treats
+ * as "caller did not pin a voice", identical to an omitted `voiceId`. The
+ * residual gap is a server-side `ELIZAOS_CLOUD_TTS_VOICE` / `_MODEL` env pin:
+ * those env vars live only in the agent-server process and are exposed through
+ * no renderer channel (not boot config, not `VoiceConfig`, not `getConfig()`),
+ * so the client cannot detect a pin to route around it. When the caller DOES
+ * know a voice/model (any future renderer channel), pass `voiceId`/`modelId`
+ * here and the direct body carries them; until then, operators with an env pin
+ * get the worker default on the direct path — a documented limitation, and the
+ * direct→proxy failure fallback in `useVoiceChat` does not cover it (the direct
+ * request succeeds, with the unpinned voice).
+ *
  * Pure so the routing decision is unit-testable without a network or DOM.
  */
 export function resolveForcedCloudTtsRoute(input: {
@@ -162,6 +180,10 @@ export function resolveForcedCloudTtsRoute(input: {
   configuredCloudOrigin: string | null;
   /** `getCloudAuthToken()` — the canonical Steward cloud session bearer. */
   cloudSessionToken: string | null;
+  /** Caller-known voice pin to carry in the direct body (parity; see header). */
+  voiceId?: string | null;
+  /** Caller-known model pin to carry in the direct body (parity; see header). */
+  modelId?: string | null;
 }): ForcedCloudTtsRoute {
   const {
     proxyUrl,
@@ -169,6 +191,8 @@ export function resolveForcedCloudTtsRoute(input: {
     sharedRuntimeOrigin,
     configuredCloudOrigin,
     cloudSessionToken,
+    voiceId,
+    modelId,
   } = input;
 
   if (sharedRuntimeOrigin) {
@@ -181,10 +205,14 @@ export function resolveForcedCloudTtsRoute(input: {
 
   const token = cloudSessionToken?.trim();
   if (token && configuredCloudOrigin) {
+    const pinnedVoice = voiceId?.trim();
+    const pinnedModel = modelId?.trim();
     return {
       url: sharedRuntimeTtsUrl(configuredCloudOrigin),
       bearer: token,
       via: "direct-cloud",
+      ...(pinnedVoice ? { voiceId: pinnedVoice } : {}),
+      ...(pinnedModel ? { modelId: pinnedModel } : {}),
     };
   }
 

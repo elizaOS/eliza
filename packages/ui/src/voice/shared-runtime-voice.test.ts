@@ -201,6 +201,49 @@ describe("resolveForcedCloudTtsRoute (#16116 direct-cloud routing)", () => {
     expect(route.url).toBe(PROXY);
   });
 
+  it("omits voiceId/modelId from the direct route when the caller knows none (worker default = proxy default)", () => {
+    // The proxy injects LEGACY_DEFAULT_ELEVENLABS_VOICE_ID, which the worker's
+    // provider selection treats as "unpinned" — identical to omitting voiceId,
+    // so a bare direct body keeps voice parity in the default setup.
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: null,
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: "https://elizacloud.ai",
+      cloudSessionToken: "jwt",
+    });
+    expect(route.via).toBe("direct-cloud");
+    expect(route.voiceId).toBeUndefined();
+    expect(route.modelId).toBeUndefined();
+  });
+
+  it("carries a caller-known voice/model pin into the direct route (parity seam)", () => {
+    const route = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: null,
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: "https://elizacloud.ai",
+      cloudSessionToken: "jwt",
+      voiceId: "  custom-voice-id  ",
+      modelId: "eleven_flash_v2_5",
+    });
+    expect(route.via).toBe("direct-cloud");
+    expect(route.voiceId).toBe("custom-voice-id");
+    expect(route.modelId).toBe("eleven_flash_v2_5");
+    // Blank pins are treated as absent, never sent as empty strings.
+    const blank = resolveForcedCloudTtsRoute({
+      proxyUrl: PROXY,
+      proxyBearer: null,
+      sharedRuntimeOrigin: null,
+      configuredCloudOrigin: "https://elizacloud.ai",
+      cloudSessionToken: "jwt",
+      voiceId: "   ",
+      modelId: null,
+    });
+    expect(blank.voiceId).toBeUndefined();
+    expect(blank.modelId).toBeUndefined();
+  });
+
   it("leaves the shared-runtime path unchanged (targets the active base, #15395)", () => {
     const route = resolveForcedCloudTtsRoute({
       proxyUrl: PROXY,
