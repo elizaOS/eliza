@@ -6,6 +6,7 @@
  * Wired by ChatMessage.
  */
 import { Check, Copy, Pencil, Reply, Square, Volume2 } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
@@ -113,6 +114,7 @@ export function ChatMessageActions({
   onReply,
   playing = false,
 }: ChatMessageActionsProps) {
+  const reduceMotion = useReducedMotion() ?? false;
   const copyLabel = labels.copy ?? "Copy message";
   const copiedLabel = labels.copied ?? "Copied!";
   const copiedAriaLabel = labels.copiedAria ?? "Copied to clipboard";
@@ -149,14 +151,39 @@ export function ChatMessageActions({
           }
           testId={glassRow ? "thread-line-copy" : undefined}
           icon={
-            copied ? (
-              <Check className="h-3.5 w-3.5" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )
+            <span className="relative flex h-3.5 w-3.5 items-center justify-center">
+              <AnimatePresence initial={false}>
+                <motion.span
+                  key={copied ? "copied" : "copy"}
+                  data-testid="copy-status-icon"
+                  data-state={copied ? "copied" : "idle"}
+                  initial={
+                    reduceMotion
+                      ? false
+                      : { opacity: 0, rotate: copied ? -8 : 8, scale: 0.76 }
+                  }
+                  animate={{ opacity: 1, rotate: 0, scale: 1 }}
+                  exit={
+                    reduceMotion
+                      ? { opacity: 0 }
+                      : { opacity: 0, rotate: copied ? 8 : -8, scale: 0.76 }
+                  }
+                  transition={{
+                    duration: reduceMotion ? 0.08 : 0.16,
+                    ease: [0.16, 1, 0.3, 1],
+                  }}
+                  className="absolute inset-0 flex items-center justify-center"
+                >
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" />
+                  )}
+                </motion.span>
+              </AnimatePresence>
+            </span>
           }
           onClick={onCopy}
-          active={copied}
         />
       ) : null}
 

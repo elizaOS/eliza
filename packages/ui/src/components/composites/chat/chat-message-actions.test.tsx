@@ -22,10 +22,15 @@ describe("ChatMessageActions copy", () => {
   });
 
   it("reflects the copied state in the button label", () => {
-    render(<ChatMessageActions copied onCopy={vi.fn()} />);
-    expect(
-      screen.getByRole("button", { name: "Copied to clipboard" }),
-    ).toBeTruthy();
+    render(
+      <ChatMessageActions appearance="glass-row" copied onCopy={vi.fn()} />,
+    );
+    const copy = screen.getByRole("button", { name: "Copied!" });
+    expect(copy).toBeTruthy();
+    expect(copy.className.split(" ")).toContain("bg-transparent");
+    expect(copy.className.split(" ")).not.toContain("bg-white/10");
+    expect(copy.className.split(" ")).toContain("hover:bg-white/10");
+    expect(screen.getByTestId("copy-status-icon").dataset.state).toBe("copied");
   });
 
   it("uses provided copy labels when supplied", () => {
