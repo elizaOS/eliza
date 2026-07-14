@@ -433,19 +433,8 @@ jobs:
           console.log("Created one isolated suspended-auth fixture");
           NODE
 
-      - name: Bootstrap an isolated non-routed preview Worker
+      - name: Create an isolated non-deployed preview Worker
         run: |
-          node --input-type=module - <<'NODE'
-          import { writeFileSync } from "node:fs";
-          writeFileSync(
-            process.env.RUNNER_TEMP + "/auth-preview-bootstrap.mjs",
-            'export default { fetch() { return new Response("diagnostic preview bootstrap", { status: 503 }); } };\n',
-          );
-          NODE
-          bunx wrangler versions upload "$RUNNER_TEMP/auth-preview-bootstrap.mjs" \
-            --name "$AUTH_PROBE_WORKER_NAME" \
-            --compatibility-date 2026-04-01 \
-            --message "issue-16159 isolated preview bootstrap"
           node --input-type=module - <<'NODE'
           const worker = process.env.AUTH_PROBE_WORKER_NAME;
           if (!/^eliza-cloud-api-auth-[a-f0-9]{12}$/.test(worker ?? "")) {
@@ -454,23 +443,31 @@ jobs:
           const endpoint =
             "https://api.cloudflare.com/client/v4/accounts/" +
             process.env.CLOUDFLARE_ACCOUNT_ID +
-            "/workers/scripts/" +
-            worker +
-            "/subdomain";
+            "/workers/workers";
           const response = await fetch(endpoint, {
             method: "POST",
             headers: {
               Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ enabled: false, previews_enabled: true }),
+            body: JSON.stringify({
+              name: worker,
+              subdomain: { enabled: false, previews_enabled: true },
+            }),
             signal: AbortSignal.timeout(30_000),
           });
           const body = await response.json();
-          if (!response.ok || body?.success !== true || body?.result?.previews_enabled !== true) {
-            throw new Error("Could not enable previews on the isolated diagnostic Worker");
+          if (
+            !response.ok ||
+            body?.success !== true ||
+            body?.result?.name !== worker ||
+            body?.result?.deployed_on != null ||
+            body?.result?.subdomain?.enabled !== false ||
+            body?.result?.subdomain?.previews_enabled !== true
+          ) {
+            throw new Error("Could not create an isolated never-deployed preview Worker");
           }
-          console.log("Enabled previews only on isolated Worker " + worker);
+          console.log("Created isolated never-deployed preview Worker " + worker);
           NODE
 
       - name: Upload a non-deployed exact-SHA Worker version
@@ -695,9 +692,8 @@ jobs:
           const endpoint =
             "https://api.cloudflare.com/client/v4/accounts/" +
             process.env.CLOUDFLARE_ACCOUNT_ID +
-            "/workers/services/" +
-            worker +
-            "?force=true";
+            "/workers/workers/" +
+            worker;
           const response = await fetch(endpoint, {
             method: "DELETE",
             headers: { Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN },

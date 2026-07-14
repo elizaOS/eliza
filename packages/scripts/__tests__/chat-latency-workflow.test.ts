@@ -142,9 +142,9 @@ describe("chat latency live workflow", () => {
     expect(preview).toContain(
       "Create an isolated suspended-auth staging fixture",
     );
-    expect(preview).toContain(
-      "Bootstrap an isolated non-routed preview Worker",
-    );
+    expect(preview).toContain("Create an isolated non-deployed preview Worker");
+    expect(preview).toContain('"/workers/workers"');
+    expect(preview).toContain("body?.result?.deployed_on != null");
     expect(preview).toContain("Delete isolated auth preview Worker");
     expect(preview).toContain("Delete isolated suspended-auth staging fixture");
     expect(preview).toContain("previews_enabled: true");
@@ -253,7 +253,7 @@ describe("chat latency live workflow", () => {
       "Bind preview checkout to the requested SHA",
       "Create an isolated authenticated probe control",
       "Create an isolated suspended-auth staging fixture",
-      "Bootstrap an isolated non-routed preview Worker",
+      "Create an isolated non-deployed preview Worker",
       "Upload a non-deployed exact-SHA Worker version",
       "Verify preview serves the exact checkout",
       "Capture 30 cache hits and 10 unique controlled KV misses",
