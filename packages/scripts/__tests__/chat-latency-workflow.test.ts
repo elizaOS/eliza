@@ -134,6 +134,7 @@ describe("chat latency live workflow", () => {
   test("feature refs use a non-deployed exact-version auth preview", () => {
     const preview = workflow.slice(workflow.indexOf("\n  auth-preview:"));
     expect(preview).toContain("environment: staging");
+    expect(preview).toContain("bun-version: 1.3.14");
     expect(preview).toContain("wrangler versions upload");
     expect(preview).toContain("--keep-vars");
     expect(preview).toContain("--preview-alias");
