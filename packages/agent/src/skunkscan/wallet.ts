@@ -268,6 +268,8 @@ const investigationReport =
     walletAddress,
     executiveVerdict,
     caseSummary,
+    decision,
+    evidenceRecords,
   );
 
 const investigationNarrative =
