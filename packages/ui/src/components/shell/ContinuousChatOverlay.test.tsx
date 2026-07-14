@@ -2916,7 +2916,7 @@ describe("ContinuousChatOverlay", () => {
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
-    it("labels the thinking phase in the standalone status row", () => {
+    it("renders the standalone thinking phase as chromeless shimmer", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -2931,12 +2931,13 @@ describe("ContinuousChatOverlay", () => {
       expect(indicator.getAttribute("data-status-kind")).toBe("thinking");
       expect(indicator.getAttribute("role")).toBe("status");
       expect(indicator.getAttribute("aria-live")).toBe("polite");
-      // The standalone status row carries a word for every phase (including
-      // thinking) beside a spinner — the bare-dots variant is the in-bubble one.
-      expect(screen.getByTestId("turn-status-label").textContent).toContain(
-        "Thinking",
-      );
-      expect(screen.getByTestId("turn-status-spinner")).toBeTruthy();
+      const label = screen.getByTestId("turn-status-label");
+      expect(label.textContent).toContain("Thinking");
+      expect(label.className).toContain("shimmer");
+      expect(screen.queryByTestId("turn-status-spinner")).toBeNull();
+      const row = screen.getByTestId("turn-status-row");
+      expect(row.className).not.toContain("rounded");
+      expect(row.className).not.toContain("border");
     });
 
     it("humanizes the action name for a running_action phase", () => {
@@ -2955,7 +2956,7 @@ describe("ContinuousChatOverlay", () => {
       );
     });
 
-    it("shows one shimmering status marker inside the in-flight assistant row", () => {
+    it("keeps one shimmer row while the empty assistant placeholder arrives", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -2971,10 +2972,15 @@ describe("ContinuousChatOverlay", () => {
         />,
       );
       fireEvent.focus(screen.getByLabelText("message"));
-      // Exactly one indicator (no double-up between the bubble + standalone row).
+      // The transport placeholder stays non-visual; the original status row
+      // remains mounted, so there is no bubble swap before the first token.
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
       expect(indicators[0].getAttribute("data-status-kind")).toBe("waking");
+      expect(
+        screen.getByTestId("turn-status-row").contains(indicators[0]),
+      ).toBe(true);
+      expect(indicators[0].closest('[data-testid="thread-line"]')).toBeNull();
       const label = screen.getByTestId("turn-status-label");
       expect(label.textContent).toBe("Waking the agent");
       expect(label.className).toContain("shimmer");

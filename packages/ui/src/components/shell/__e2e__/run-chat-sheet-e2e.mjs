@@ -3491,36 +3491,35 @@ try {
     await p.close();
   }
 
-  // ── STREAMING: the in-flight assistant turn keeps the approved shimmering
-  // status marker inside its own bubble, where streamed text replaces it.
+  // ── STREAMING: one approved shimmer row spans the turn while the empty
+  // assistant transport placeholder stays non-visual.
   {
     const p = await ctrl();
     attachConsole(p, sink);
     await gotoFixture(p, `${url}?streaming`);
     await p.waitForSelector('[data-testid="chat-sheet"]');
     await p.waitForTimeout(500);
-    // Open the thread so the in-flight assistant bubble is on screen.
+    // Open the thread so the in-flight status is on screen.
     await gesture(p, 400, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
-    const statusInBubble = p
-      .locator(
-        '[data-testid="thread-line"][data-role="assistant"] [data-testid="turn-status-indicator"]',
-      );
+    const inlineStatus = p
+      .getByTestId("turn-status-row")
+      .getByTestId("turn-status-indicator");
     assert(
-      (await statusInBubble.count()) >= 1,
-      "STREAMING: status marker is anchored inside the in-flight assistant bubble",
+      (await inlineStatus.count()) === 1,
+      "STREAMING: exactly one standalone status shimmer spans the active turn",
     );
     assert(
-      await statusInBubble
+      await inlineStatus
         .getByTestId("turn-status-label")
         .evaluate((el) => el.className.includes("shimmer")),
-      "STREAMING: in-bubble status uses the approved shimmer treatment",
+      "STREAMING: inline status uses the approved shimmer treatment",
     );
     assert(
       (await p.getByTestId("typing-dots").count()) === 0,
       "STREAMING: legacy typing dots stay removed",
     );
-    await snap(p, "state-streaming-dots-in-bubble");
+    await snap(p, "state-streaming-inline-status");
     await p.close();
   }
 
