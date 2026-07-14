@@ -1,7 +1,6 @@
 import {
   WalletActivitySummary,
   WalletAgeSummary,
-  WalletCaseSummary,
   WalletDeFiSummary,
   WalletExposureSummary,
   WalletFundingSummary,
@@ -24,7 +23,6 @@ export function analyzeInvestigationReplay(
   risk: WalletRiskSummary,
   whale: WalletWhaleSummary,
   trust: WalletTrustSummary,
-  caseSummary: WalletCaseSummary,
 ): WalletInvestigationReplayStep[] {
   return [
     {
@@ -32,84 +30,108 @@ export function analyzeInvestigationReplay(
       stage: "validation",
       status: "completed",
       title: "Wallet validated",
-      description: "The wallet address was accepted for Solana investigation.",
+      description:
+        "The wallet address was accepted for Solana investigation.",
     },
     {
       step: 2,
       stage: "portfolio",
       status: "completed",
       title: "Portfolio analyzed",
-      description: `Detected ${portfolio.tokenCount} token holding(s).`,
+      description:
+        `Detected ${portfolio.tokenCount} token holding(s).`,
     },
     {
       step: 3,
       stage: "activity",
       status: "completed",
       title: "Activity analyzed",
-      description: `Recent activity level is ${activity.activityLevel}.`,
+      description:
+        `Recent activity level is ${activity.activityLevel}.`,
     },
     {
       step: 4,
       stage: "age",
-      status: age.classification === "unknown" ? "limited" : "completed",
+      status:
+        age.classification === "unknown"
+          ? "limited"
+          : "completed",
       title: "Wallet age analyzed",
-      description: `Wallet age classification is ${age.classification}.`,
+      description:
+        `Wallet age classification is ${age.classification}.`,
     },
     {
       step: 5,
       stage: "funding",
-      status: funding.fundingSourceType === "unknown" ? "limited" : "completed",
+      status:
+        funding.fundingSourceType === "unknown"
+          ? "limited"
+          : "completed",
       title: "Funding source analyzed",
-      description: `Funding source type is ${funding.fundingSourceType}.`,
+      description:
+        `Funding source type is ${funding.fundingSourceType}.`,
     },
     {
       step: 6,
       stage: "defi",
-      status: defi.protocolCount > 0 ? "completed" : "limited",
+      status:
+        defi.protocolCount > 0
+          ? "completed"
+          : "limited",
       title: "DeFi activity checked",
-      description: `Detected ${defi.protocolCount} recognized DeFi protocol(s).`,
+      description:
+        `Detected ${defi.protocolCount} recognized DeFi protocol(s).`,
     },
     {
       step: 7,
       stage: "exposure",
       status: "completed",
       title: "Exposure checked",
-      description: `Exposure level is ${exposure.exposureLevel}.`,
+      description:
+        `Exposure level is ${exposure.exposureLevel}.`,
     },
     {
       step: 8,
       stage: "relationships",
-      status: relationships.relationshipCount > 0 ? "completed" : "limited",
+      status:
+        relationships.relationshipCount > 0
+          ? "completed"
+          : "limited",
       title: "Relationships analyzed",
-      description: `Detected ${relationships.relationshipCount} direct relationship(s).`,
+      description:
+        `Detected ${relationships.relationshipCount} direct relationship(s).`,
     },
     {
       step: 9,
       stage: "risk",
       status: "completed",
       title: "Risk assessed",
-      description: `Risk level is ${risk.level} with score ${risk.score}.`,
+      description:
+        `Risk level is ${risk.level} with score ${risk.score}.`,
     },
     {
       step: 10,
       stage: "whale",
       status: "completed",
       title: "Whale status evaluated",
-      description: `Whale level is ${whale.whaleLevel}.`,
+      description:
+        `Whale level is ${whale.whaleLevel}.`,
     },
     {
       step: 11,
       stage: "trust",
       status: "completed",
       title: "Trust score calculated",
-      description: `Trust level is ${trust.trustLevel} with score ${trust.trustScore}.`,
+      description:
+        `Trust level is ${trust.trustLevel} with score ${trust.trustScore}.`,
     },
     {
       step: 12,
       stage: "case_summary",
       status: "completed",
-      title: "Case summary generated",
-      description: `Recommendation: ${caseSummary.recommendation}.`,
+      title: "Intelligence brief prepared",
+      description:
+        "Evidence, confidence, key findings, and information gaps were prepared for the user.",
     },
   ];
 }
