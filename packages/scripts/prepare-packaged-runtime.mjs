@@ -1232,6 +1232,9 @@ function digestFilesystemTree(root) {
 function snapshotNestedWorkspaceDependencies(root, sourceRoot, closure) {
   const snapshots = new Map();
   for (const [packageName, descriptor] of closure) {
+    // Stub materialization replaces the whole workspace payload, nested
+    // install state included, so the unchanged-tree invariant does not apply.
+    if (descriptor.stub) continue;
     const nestedNodeModules = join(
       workspaceDestination(root, sourceRoot, descriptor.workspaceRoot),
       "node_modules",
@@ -1257,6 +1260,7 @@ function assertNestedWorkspaceDependenciesUnchanged(
     if (!descriptor) {
       throw new Error(`Nested dependency snapshot lost ${packageName}`);
     }
+    if (descriptor.stub) continue;
     const nestedNodeModules = join(
       workspaceDestination(root, sourceRoot, descriptor.workspaceRoot),
       "node_modules",
