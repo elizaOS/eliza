@@ -27,6 +27,10 @@ redeploy from this directory:
 railway up --service kokoro-tts       # from packages/cloud/services/voice-kokoro-tts
 ```
 
+Railway assigns a deployment-specific `PORT`; the image launcher binds Uvicorn
+to that value so `/health` is checked on the same socket that serves traffic.
+Do not restore the upstream launch command, which hard-codes port `8880`.
+
 After deploy, point cloud-api at it by setting `KOKORO_TTS_URL` (Worker env /
 `wrangler secret`) to the service's public URL, and set the same URL as the repo
 variable `ELIZA_VOICE_KOKORO_TTS_URL` so the scheduled contract lane targets the

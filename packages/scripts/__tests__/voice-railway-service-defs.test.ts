@@ -91,6 +91,20 @@ describe("Railway voice service definitions (#14374)", () => {
         expect(typeof toml.deploy?.healthcheckTimeout).toBe("number");
       });
 
+      test("binds the server to Railway's runtime PORT", () => {
+        const dockerfile = read(`${svc.dir}/Dockerfile`);
+        const command = dockerfile.match(/^CMD\s+(.*)$/m)?.[1];
+
+        // Dockerfile ENV is only a local default: Railway replaces PORT for
+        // each deployment and probes that assigned value. Both upstream images
+        // otherwise bind fixed ports, which leaves the process running while
+        // every Railway health probe targets the wrong socket.
+        expect(dockerfile).toMatch(/^ENV PORT=\d+$/m);
+        expect(command).toBeDefined();
+        expect(command).toContain('"sh", "-c"');
+        expect(command).toContain('\\"$PORT\\"');
+      });
+
       test("documents the route contract and the owner deploy command", () => {
         expect(exists(`${svc.dir}/README.md`)).toBe(true);
         const readme = read(`${svc.dir}/README.md`);

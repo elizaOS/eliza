@@ -19,7 +19,12 @@ ARG KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.2
 
 FROM ${KOKORO_IMAGE}
 
-# Railway injects PORT; the upstream server reads it. Kept explicit so the
-# healthcheck URL in railway.toml and the EXPOSE line agree with the runtime.
+# Railway replaces this default with its deployment-specific PORT. The upstream
+# entrypoint hard-codes 8880, so the command below must expand PORT at runtime or
+# Railway probes a different socket and rejects an otherwise-running deploy.
 ENV PORT=8880
 EXPOSE 8880
+
+# Preserve the upstream model-download behavior while binding Uvicorn to the
+# same runtime port Railway uses for health checks and public routing.
+CMD ["sh", "-c", "if [ \"$DOWNLOAD_MODEL\" = \"true\" ]; then python download_model.py --output api/src/models/v1_0; fi; exec uv run --extra \"$DEVICE\" python -m uvicorn api.src.main:app --host 0.0.0.0 --port \"$PORT\" --log-level debug"]

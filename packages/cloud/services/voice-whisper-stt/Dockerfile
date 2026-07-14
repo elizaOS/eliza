@@ -31,7 +31,10 @@ FROM ${WHISPER_IMAGE}
 # packages/cloud/api/v1/voice/stt/whisper-model.ts.
 ENV WHISPER__MODEL=Systran/faster-whisper-small
 
-# Railway injects PORT; kept explicit so the railway.toml healthcheck and EXPOSE
-# agree with the runtime bind.
+# Railway replaces this default with its deployment-specific PORT. Speaches
+# normally reads UVICORN_PORT=8000 instead, so the command below must pass PORT
+# explicitly or Railway probes a different socket and rejects the deployment.
 ENV PORT=8000
 EXPOSE 8000
+
+CMD ["sh", "-c", "exec uvicorn --factory speaches.main:create_app --host 0.0.0.0 --port \"$PORT\""]

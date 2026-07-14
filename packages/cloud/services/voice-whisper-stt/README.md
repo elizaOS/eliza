@@ -28,6 +28,10 @@ The service is pinned in-repo (`Dockerfile` + `railway.toml`):
 railway up --service whisper-stt      # from packages/cloud/services/voice-whisper-stt
 ```
 
+Railway assigns a deployment-specific `PORT`; the image launcher passes that
+value to Uvicorn explicitly so `/health` and public traffic use the same socket.
+Do not rely on Speaches' fixed `UVICORN_PORT=8000` image default.
+
 After deploy, set `WHISPER_STT_URL` (cloud-api Worker env / `wrangler secret`)
 to the public URL, optionally `WHISPER_STT_MODEL` to pin a different hosted
 model, and set the repo variable `ELIZA_VOICE_WHISPER_STT_URL` to the same URL.
