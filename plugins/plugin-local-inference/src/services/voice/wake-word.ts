@@ -428,9 +428,10 @@ export function findWorkspaceWakeWordBuildRoot(
 				) {
 					return candidate;
 				}
-			} catch {
+			} catch (error) {
 				// error-policy:J3 ancestor manifests are untrusted discovery input;
-				// malformed candidates are rejected and the search continues.
+				// malformed candidates are rejected and the walk keeps ascending.
+				void error;
 			}
 		}
 

@@ -265,13 +265,16 @@ function candidateRoots(): string[] {
   // bundlers replace the module URL with an absolute build-machine path,
   // which would leak the checkout into (and break) relocated runtimes.
   const roots = [...parentDirs(process.cwd())];
+  let installedPackageRoot: string | null;
   try {
-    roots.push(...parentDirs(resolveAgentOrchestratorPackageRoot()));
+    installedPackageRoot = resolveAgentOrchestratorPackageRoot();
   } catch {
     // error-policy:J3 an unresolvable installed package is the explicit
     // "no vendored shim reachable" signal; the cwd walk already covers
     // source checkouts.
+    installedPackageRoot = null;
   }
+  if (installedPackageRoot) roots.push(...parentDirs(installedPackageRoot));
   return Array.from(new Set(roots));
 }
 
