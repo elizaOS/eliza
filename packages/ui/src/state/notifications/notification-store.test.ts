@@ -16,6 +16,7 @@ const removeNotificationApi = vi.fn();
 const clearNotificationsApi = vi.fn();
 const seedDevNotificationsApi = vi.fn();
 const onWsEvent = vi.fn();
+const connectWs = vi.fn();
 
 vi.mock("../../api/client", () => ({
   client: {
@@ -29,6 +30,7 @@ vi.mock("../../api/client", () => ({
     seedDevNotifications: (...args: unknown[]) =>
       seedDevNotificationsApi(...args),
     onWsEvent: (...args: unknown[]) => onWsEvent(...args),
+    connectWs: () => connectWs(),
   },
 }));
 
@@ -111,6 +113,7 @@ describe("notification-store", () => {
       notifications: [],
     });
     onWsEvent.mockReset().mockReturnValue(() => {});
+    connectWs.mockReset();
     // Defaults model the plain web platform: no desktop bridge (null), no
     // Capacitor channel ("none"), web Notification unavailable (false).
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
@@ -269,6 +272,7 @@ describe("notification-store", () => {
     expect(onWsEvent).toHaveBeenCalledTimes(2);
     expect(onWsEvent.mock.calls[0][0]).toBe("agent_event");
     expect(onWsEvent.mock.calls[1][0]).toBe("ws-reconnected");
+    expect(connectWs).toHaveBeenCalledTimes(1);
     expect(listNotifications).toHaveBeenCalledTimes(1);
     await Promise.resolve();
   });

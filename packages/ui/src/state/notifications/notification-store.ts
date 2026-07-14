@@ -568,6 +568,10 @@ export function initNotifications(): void {
       document.removeEventListener(APP_RESUME_EVENT, retryOnResume),
     );
   }
+  // This store owns a realtime dependency even when first-run startup never
+  // reaches the broader shell hydration phase. Subscribing before connect
+  // ensures the first notification frame cannot race past the inbox handler.
+  client.connectWs();
   void requestHydration();
 }
 
