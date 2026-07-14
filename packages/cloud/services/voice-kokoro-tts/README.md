@@ -28,7 +28,7 @@ The service is pinned in-repo (`Dockerfile` + `railway.toml`). To deploy or
 redeploy from this directory:
 
 ```bash
-railway up --service kokoro-tts       # from packages/cloud/services/voice-kokoro-tts
+railway up . --path-as-root --service kokoro-tts  # from packages/cloud/services/voice-kokoro-tts
 ```
 
 Railway assigns a deployment-specific `PORT`; the image launcher binds Uvicorn
@@ -43,6 +43,6 @@ live deploy (see `../voice-whisper-stt/README.md` for the shared lane wiring).
 Build a GPU variant on a GPU-backed plan by overriding the pinned image:
 
 ```bash
-railway up --service kokoro-tts \
+railway up . --path-as-root --service kokoro-tts \
   --build-arg KOKORO_IMAGE=ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.2
 ```
