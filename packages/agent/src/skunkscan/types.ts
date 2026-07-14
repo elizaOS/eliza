@@ -408,6 +408,14 @@ export type WalletTrustSummary = {
   positiveSignals: string[];
 
   limitations: string[];
+
+  investorExplanation: {
+    summary: string;
+
+    whyThisAssessment: string[];
+
+    whatReducedConfidence: string[];
+  };
 };
 
 export type WalletInvestigationReplayStep = {
