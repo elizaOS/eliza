@@ -5,8 +5,8 @@
  * android-bridge, and benchmark — lazy-importing each command's heavy
  * dependencies only when invoked. Also handles --version/--help.
  */
-import { createRequire } from "node:module";
 import process from "node:process";
+import { resolveElizaVersion } from "../version-resolver.ts";
 
 function printHelp(): void {
   console.log(`eliza-autonomous
@@ -33,9 +33,7 @@ Benchmark options:
 }
 
 function printVersion(): void {
-  const require = createRequire(import.meta.url);
-  const pkg = require("../../package.json") as { version: string };
-  console.log(pkg.version);
+  console.log(resolveElizaVersion(import.meta.url));
 }
 
 export async function runAutonomousCli(
