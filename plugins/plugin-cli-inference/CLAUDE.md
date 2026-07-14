@@ -153,6 +153,8 @@ plugins/plugin-cli-inference/
 | `ELIZA_CLI_CLAUDE_PLANNER_MODEL` | No | (falls back to large) | `claude-sdk` small/planner tier model (e.g. sonnet) |
 | `ELIZA_CLI_CLAUDE_BIN` | No | (SDK default / allowlist lookup) | path to the claude executable: drives the `claude-sdk` session AND pins the cold `claude` spawn (deploys outside the SOC2 launcher allowlist) |
 | `ELIZA_CLI_SDK_RESTART_AFTER_TURNS` | No | `20` | `claude-sdk`: restart a warm session after N turns (bounds context) |
+| `ELIZA_CLI_CLAUDE_EFFORT` | No | (SDK default: high) | `claude-sdk`: reasoning effort forwarded to the SDK `effort` option (`low`/`medium`/`high`/`xhigh`/`max`); an unsupported level for the model is silently downgraded by the SDK |
+| `ELIZA_CLI_CLAUDE_PLANNER_EFFORT` | No | (falls back to `ELIZA_CLI_CLAUDE_EFFORT`) | `claude-sdk`: effort for the ROUTE-mode planner tier, so routing depth tunes independently of reply depth |
 | `ELIZA_CLI_CODEX_MODEL` | No | `gpt-5.5` | codex large-tier model (`codex exec -m` / SDK large tier) |
 | `ELIZA_CLI_CODEX_PLANNER_MODEL` | No | (falls back to large) | `codex-sdk` small/planner tier model |
 | `ELIZA_CLI_CODEX_REASONING_EFFORT` | No | (sdk default) | `codex-sdk`: `modelReasoningEffort` (minimal..xhigh) |
