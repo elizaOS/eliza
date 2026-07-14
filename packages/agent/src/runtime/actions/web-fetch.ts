@@ -19,7 +19,6 @@
 import {
   type Action,
   type ActionResult,
-  type Content,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -200,12 +199,12 @@ export const webFetch: Action & Record<string, unknown> = {
       }
 
       const value = extractValue(result.text, extract);
-      const content: Content = {
-        text: value,
-        actions: ["WEB_FETCH"],
-        data: { actionName: "WEB_FETCH", url, value },
-      };
-      callback?.(content);
+      // Data-gathering action: the fetched value is returned in the ActionResult
+      // (below) and reaches the reply through the RESPONSE_HANDLER synthesis, so
+      // it does NOT deliver a user-facing callback on success. Delivering the raw
+      // value here produced a spurious extra message before the synthesized
+      // answer (the "62330" then "BTC's at $62,330" double-send). Errors DO
+      // still call back so failures stay visible.
       return {
         text: value,
         success: true,
