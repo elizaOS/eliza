@@ -728,15 +728,20 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       sendMessage,
       streamMessage,
     });
+    renderIosFullBunSmokeStatus("iOS full Bun backend smoke passed.");
   } catch (error) {
     // error-policy:J1 smoke boundary — persist a structured failure for the
     // host harness instead of terminating the WebView without evidence.
+    const errorMessage = formatError(error);
     await writeIosFullBunSmokeResult({
       ok: false,
       phase: "failed",
       finishedAt: new Date().toISOString(),
-      error: formatError(error),
+      error: errorMessage,
     });
+    renderIosFullBunSmokeStatus(
+      `iOS full Bun backend smoke failed: ${errorMessage}`,
+    );
   } finally {
     delete window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__;
     try {

@@ -223,7 +223,9 @@ describe("iOS full-Bun browser smoke", () => {
     expect(result.streamMessage).toContain('"type":"done"');
     expect(harness.preferences.has(REQUEST_KEY)).toBe(false);
     expect(window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__).toBeUndefined();
-    expect(document.body.textContent).toContain("iOS full Bun backend smoke");
+    expect(document.body.textContent).toBe(
+      "iOS full Bun backend smoke passed.",
+    );
   });
 
   it("fails closed when the live-model reply differs from the proven sentence", async () => {
@@ -242,6 +244,12 @@ describe("iOS full-Bun browser smoke", () => {
       phase: "failed",
     });
     expect(result.error).toContain(
+      "did not return the expected local model reply",
+    );
+    expect(document.body.textContent).toContain(
+      "iOS full Bun backend smoke failed:",
+    );
+    expect(document.body.textContent).toContain(
       "did not return the expected local model reply",
     );
   });
