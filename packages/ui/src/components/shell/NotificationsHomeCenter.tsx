@@ -839,18 +839,14 @@ export function NotificationsHomeCenter({
     // first scrolled the list up to its top doesn't arrive already maxed.
     anchorY: number | null;
   } | null>(null);
-  const emptyPointerPull = useRef<{
-    id: number;
-    startX: number;
-    startY: number;
-    axis: "none" | "x" | "y";
-  } | null>(null);
   // A touch drag can end in `pointercancel` before the row sees enough pointer
   // movement to suppress the browser's synthetic click. The list owns the
   // vertical shade gesture, so it also blocks that one immediate follow-up
   // click; the next intentional tap remains available.
   const suppressNotificationClick = useRef(false);
   const suppressNotificationClickTimer = useRef<number | null>(null);
+  const suppressBackgroundClick = useRef(false);
+  const suppressBackgroundClickTimer = useRef<number | null>(null);
   // Wheel accumulation toward a shade commit: one direction at a time; a
   // direction flip abandons the previous run.
   const wheelPull = useRef<{ dir: 1 | -1; px: number }>({ dir: 1, px: 0 });
@@ -1248,6 +1244,10 @@ export function NotificationsHomeCenter({
   useEffect(() => {
     if (!shadeExpanded) return;
     const collapseOnOutsideClick = (event: MouseEvent) => {
+      // A background drag may end over a tile that synthesizes a click. The
+      // drag already decided the shade state; do not reinterpret that release
+      // as a separate outside-tap collapse before the surface can consume it.
+      if (suppressBackgroundClick.current) return;
       const target = event.target;
       const center = centerRef.current;
       if (target instanceof Node && center && !center.contains(target)) {
@@ -1328,6 +1328,20 @@ export function NotificationsHomeCenter({
     setShade,
     setShadeSettleDuration,
   ]);
+
+  const abortPointerPull = useCallback(() => {
+    const px = pullPxRef.current;
+    if (px !== 0) {
+      flushPullPresentation();
+      if (!reduceMotion) {
+        beginPullCancellation(
+          px > 0 ? "expand" : "collapse",
+          PULL_CANCEL_SETTLE_MS,
+        );
+      }
+    }
+    setPullPx(0);
+  }, [beginPullCancellation, flushPullPresentation, reduceMotion, setPullPx]);
 
   // Shared wheel accumulator for both the list and, while empty, the wider
   // home background. Returns whether the shade consumed this delta so the
@@ -1422,12 +1436,7 @@ export function NotificationsHomeCenter({
     };
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
-      const target = e.target;
-      if (
-        e.touches.length !== 1 ||
-        !t ||
-        (usesEmptyBackground && isInteractiveGestureTarget(target))
-      ) {
+      if (e.touches.length !== 1 || !t) {
         abortTouchPull();
         return;
       }
@@ -1572,7 +1581,6 @@ export function NotificationsHomeCenter({
       // surface. The home listener only fills the otherwise dead background.
       if (
         !usesEmptyBackground ||
-        isInteractiveGestureTarget(target) ||
         (target instanceof Node && list.contains(target))
       ) {
         return;
@@ -1844,6 +1852,124 @@ export function NotificationsHomeCenter({
     shadeExpanded,
   ]);
 
+  useEffect(() => {
+    const surface = emptyGestureTargetRef?.current ?? centerRef.current;
+    const list = scrollRef.current;
+    if (!surface || !list || !surfaceReady) return;
+
+    let gesture: {
+      id: number;
+      startX: number;
+      startY: number;
+      axis: "none" | "x" | "y";
+    } | null = null;
+    const armClickSuppression = () => {
+      suppressBackgroundClick.current = true;
+      if (suppressBackgroundClickTimer.current !== null) {
+        window.clearTimeout(suppressBackgroundClickTimer.current);
+      }
+      suppressBackgroundClickTimer.current = window.setTimeout(() => {
+        suppressBackgroundClick.current = false;
+        suppressBackgroundClickTimer.current = null;
+      }, 500);
+    };
+    const onClick = (event: MouseEvent) => {
+      if (!suppressBackgroundClick.current) return;
+      suppressBackgroundClick.current = false;
+      if (suppressBackgroundClickTimer.current !== null) {
+        window.clearTimeout(suppressBackgroundClickTimer.current);
+        suppressBackgroundClickTimer.current = null;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        event.pointerType !== "mouse" ||
+        !event.isPrimary ||
+        (target instanceof Node && list.contains(target))
+      ) {
+        return;
+      }
+      const { canExpand, canCollapse } = shadeGestureRef.current;
+      if (!canExpand && !canCollapse) return;
+      gesture = {
+        id: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        axis: "none",
+      };
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      const current = gesture;
+      if (!current || current.id !== event.pointerId) return;
+      const dx = event.clientX - current.startX;
+      const dy = event.clientY - current.startY;
+      if (
+        current.axis === "none" &&
+        (Math.abs(dx) > PULL_SLOP_PX || Math.abs(dy) > PULL_SLOP_PX)
+      ) {
+        current.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (current.axis === "x") {
+          gesture = null;
+          return;
+        }
+        surface.setPointerCapture?.(event.pointerId);
+        armClickSuppression();
+      }
+      if (current.axis !== "y") return;
+      event.preventDefault();
+      const { canExpand, canCollapse } = shadeGestureRef.current;
+      if (dy > 0 && canExpand && surface.scrollTop <= 0) {
+        setPullPx(dy > PULL_SLOP_PX ? dampenPull(dy) : 0, dy <= PULL_SLOP_PX);
+      } else if (dy < 0 && canCollapse) {
+        setPullPx(
+          dy < -PULL_SLOP_PX ? -dampenPull(-dy) : 0,
+          dy >= -PULL_SLOP_PX,
+        );
+      } else if (pullPxRef.current !== 0) {
+        setPullPx(0, true);
+      }
+    };
+    const onPointerEnd = (event: PointerEvent) => {
+      const current = gesture;
+      if (!current || current.id !== event.pointerId) return;
+      onPointerMove(event);
+      if (!gesture) return;
+      if (current.axis === "y") {
+        armClickSuppression();
+      }
+      gesture = null;
+      commitPull();
+    };
+    const onPointerCancel = (event: PointerEvent) => {
+      if (gesture?.id !== event.pointerId) return;
+      gesture = null;
+      abortPointerPull();
+    };
+
+    surface.addEventListener("pointerdown", onPointerDown);
+    surface.addEventListener("pointermove", onPointerMove, { passive: false });
+    surface.addEventListener("pointerup", onPointerEnd);
+    surface.addEventListener("pointercancel", onPointerCancel);
+    surface.addEventListener("click", onClick, true);
+    return () => {
+      surface.removeEventListener("pointerdown", onPointerDown);
+      surface.removeEventListener("pointermove", onPointerMove);
+      surface.removeEventListener("pointerup", onPointerEnd);
+      surface.removeEventListener("pointercancel", onPointerCancel);
+      surface.removeEventListener("click", onClick, true);
+    };
+  }, [
+    abortPointerPull,
+    commitPull,
+    emptyGestureTargetRef,
+    setPullPx,
+    surfaceReady,
+  ]);
+
   // Clear timers that may outlive a single gesture.
   useEffect(
     () => () => {
@@ -1858,6 +1984,9 @@ export function NotificationsHomeCenter({
       stackFoldTimers.current.clear();
       if (suppressNotificationClickTimer.current !== null) {
         window.clearTimeout(suppressNotificationClickTimer.current);
+      }
+      if (suppressBackgroundClickTimer.current !== null) {
+        window.clearTimeout(suppressBackgroundClickTimer.current);
       }
     },
     [],
@@ -2050,19 +2179,6 @@ export function NotificationsHomeCenter({
     hasNotifications &&
     expandedStacks.size === 0 &&
     !shadeOpenedByStack;
-  const abortPointerPull = () => {
-    const px = pullPxRef.current;
-    if (px !== 0) {
-      flushPullPresentation();
-      if (!reduceMotion) {
-        beginPullCancellation(
-          px > 0 ? "expand" : "collapse",
-          PULL_CANCEL_SETTLE_MS,
-        );
-      }
-    }
-    setPullPx(0);
-  };
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
     const el = scrollRef.current;
@@ -2134,63 +2250,6 @@ export function NotificationsHomeCenter({
     pointerPull.current = null;
     abortPointerPull();
   };
-  const onEmptyPointerDown = (e: React.PointerEvent) => {
-    const list = scrollRef.current;
-    if (
-      e.pointerType !== "mouse" ||
-      !e.isPrimary ||
-      !canCollapse ||
-      !list ||
-      (e.target instanceof Node && list.contains(e.target)) ||
-      isInteractiveGestureTarget(e.target)
-    ) {
-      return;
-    }
-    emptyPointerPull.current = {
-      id: e.pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      axis: "none",
-    };
-  };
-  const onEmptyPointerMove = (e: React.PointerEvent) => {
-    const gesture = emptyPointerPull.current;
-    if (!gesture || gesture.id !== e.pointerId) return;
-    if (!shadeGestureRef.current.canCollapse) {
-      emptyPointerPull.current = null;
-      if (pullPxRef.current !== 0) setPullPx(0);
-      return;
-    }
-    const dx = e.clientX - gesture.startX;
-    const dy = e.clientY - gesture.startY;
-    if (
-      gesture.axis === "none" &&
-      (Math.abs(dx) > PULL_SLOP_PX || Math.abs(dy) > PULL_SLOP_PX)
-    ) {
-      gesture.axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-      if (gesture.axis === "y") {
-        e.currentTarget.setPointerCapture?.(e.pointerId);
-      }
-    }
-    if (gesture.axis === "x") {
-      emptyPointerPull.current = null;
-      return;
-    }
-    if (gesture.axis !== "y") return;
-    setPullPx(dy < -PULL_SLOP_PX ? -dampenPull(-dy) : 0, dy >= -PULL_SLOP_PX);
-  };
-  const onEmptyPointerEnd = (e: React.PointerEvent) => {
-    const gesture = emptyPointerPull.current;
-    if (!gesture || gesture.id !== e.pointerId) return;
-    onEmptyPointerMove(e);
-    emptyPointerPull.current = null;
-    commitPull();
-  };
-  const onEmptyPointerCancel = (e: React.PointerEvent) => {
-    if (emptyPointerPull.current?.id !== e.pointerId) return;
-    emptyPointerPull.current = null;
-    abortPointerPull();
-  };
   const onListClickCapture = (e: React.MouseEvent) => {
     if (!suppressNotificationClick.current) return;
     suppressNotificationClick.current = false;
@@ -2247,10 +2306,6 @@ export function NotificationsHomeCenter({
       data-notification-shade-cancelling={
         pullCancellingDirection ? "" : undefined
       }
-      onPointerDown={onEmptyPointerDown}
-      onPointerMove={onEmptyPointerMove}
-      onPointerUp={onEmptyPointerEnd}
-      onPointerCancel={onEmptyPointerCancel}
       // No card chrome on the CONTAINER: the inbox has no fill and no border of
       // its own — the glass lives on each notification card. It sits inline on
       // the home field directly under the time/weather header.

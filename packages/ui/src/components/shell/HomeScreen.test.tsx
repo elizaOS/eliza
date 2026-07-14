@@ -263,9 +263,32 @@ describe("HomeScreen", () => {
       touches: [{ clientX: 202, clientY: 300 }],
     });
     fireEvent.touchEnd(home, { touches: [] });
-    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(500));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+  });
+
+  it("reveals the empty state from a mouse pull on the lower home background", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} />);
+    const home = screen.getByTestId("home-screen");
+    const list = screen.getByTestId("home-notification-list");
+    const pointer = {
+      isPrimary: true,
+      pointerId: 7,
+      pointerType: "mouse",
+      clientX: 200,
+    } as const;
+
+    fireEvent.pointerDown(home, { ...pointer, clientY: 620 });
+    fireEvent.pointerMove(home, { ...pointer, clientY: 760 });
+    fireEvent.pointerUp(home, { ...pointer, clientY: 760 });
+    fireEvent.click(home);
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(screen.getByTestId("notifications-empty").textContent).toBe(
+      "No Notifications",
+    );
   });
 
   it("reveals and closes the empty state from a trackpad swipe on the home background", () => {
@@ -289,28 +312,87 @@ describe("HomeScreen", () => {
     act(() => vi.advanceTimersByTime(500));
     fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
     fireEvent.wheel(home, { deltaY: PULL_COMMIT_PX + 10 });
-    act(() => vi.advanceTimersByTime(300));
+    act(() => vi.advanceTimersByTime(500));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
   });
 
-  it("does not steal an empty-inbox gesture that begins on a home control", () => {
+  it("turns a vertical mouse drag on a lower home control into a pull without firing its click", () => {
+    __setHydratedForTests(true);
+    const onOpenTile = vi.fn();
+    render(<HomeScreen onOpenTile={onOpenTile} showNativeOsTiles />);
+    const tile = screen.getByTestId("home-tile-camera");
+    const list = screen.getByTestId("home-notification-list");
+    const pointer = {
+      isPrimary: true,
+      pointerId: 8,
+      pointerType: "mouse",
+      clientX: 200,
+    } as const;
+
+    fireEvent.pointerDown(tile, { ...pointer, clientY: 620 });
+    fireEvent.pointerMove(tile, { ...pointer, clientY: 760 });
+    fireEvent.pointerUp(tile, { ...pointer, clientY: 760 });
+    fireEvent.click(tile);
+
+    expect(onOpenTile).not.toHaveBeenCalled();
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+  });
+
+  it("yields a horizontal mouse drag on a lower home control without opening the shade", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
+    const tile = screen.getByTestId("home-tile-camera");
+    const list = screen.getByTestId("home-notification-list");
+    const pointer = {
+      isPrimary: true,
+      pointerId: 9,
+      pointerType: "mouse",
+      clientY: 620,
+    } as const;
+
+    fireEvent.pointerDown(tile, { ...pointer, clientX: 260 });
+    fireEvent.pointerMove(tile, {
+      ...pointer,
+      clientX: 120,
+      clientY: 624,
+    });
+    fireEvent.pointerUp(tile, {
+      ...pointer,
+      clientX: 120,
+      clientY: 624,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+  });
+
+  it("turns a vertical touch drag begun on a lower home control into a pull", () => {
     __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
     const tile = screen.getByTestId("home-tile-camera");
     const list = screen.getByTestId("home-notification-list");
 
     fireEvent.touchStart(tile, {
-      touches: [{ clientX: 200, clientY: 300 }],
+      touches: [{ clientX: 200, clientY: 620 }],
     });
     fireEvent.touchMove(tile, {
-      touches: [{ clientX: 202, clientY: 440 }],
+      touches: [{ clientX: 202, clientY: 760 }],
     });
     fireEvent.touchEnd(tile, { touches: [] });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+  });
+
+  it("lets an empty-inbox trackpad pull begin on a lower home control", () => {
+    __setHydratedForTests(true);
+    render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
+    const tile = screen.getByTestId("home-tile-camera");
+    const list = screen.getByTestId("home-notification-list");
+
     fireEvent.wheel(tile, { deltaY: -(PULL_COMMIT_PX + 10) });
 
-    expect(list.getAttribute("data-shade-mode")).toBe("rested");
-    expect(screen.getByTestId("notifications-empty").style.opacity).toBe("0");
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
   it("tapping an inline row follows its safe deep link directly", () => {
