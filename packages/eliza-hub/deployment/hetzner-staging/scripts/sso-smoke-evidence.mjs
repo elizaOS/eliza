@@ -17,17 +17,26 @@ const REQUIRED_SMOKE_CHECKS = Object.freeze([
   {
     key: "humanIdentitySmokePassed",
     envKey: "SSO_SMOKE_HUMAN_IDENTITY_SMOKE_PASSED",
-    aliases: ["SSO_SMOKE_HUMAN_LOGIN_SUCCEEDED", "SSO_SMOKE_HUMAN_CLAIMS_VERIFIED"],
+    aliases: [
+      "SSO_SMOKE_HUMAN_LOGIN_SUCCEEDED",
+      "SSO_SMOKE_HUMAN_CLAIMS_VERIFIED",
+    ],
   },
   {
     key: "agentIdentitySmokePassed",
     envKey: "SSO_SMOKE_AGENT_IDENTITY_SMOKE_PASSED",
-    aliases: ["SSO_SMOKE_AGENT_TOKEN_CLAIMS_VERIFIED", "SSO_SMOKE_AGENT_CLAIMS_VERIFIED"],
+    aliases: [
+      "SSO_SMOKE_AGENT_TOKEN_CLAIMS_VERIFIED",
+      "SSO_SMOKE_AGENT_CLAIMS_VERIFIED",
+    ],
   },
   {
     key: "serviceIdentitySmokePassed",
     envKey: "SSO_SMOKE_SERVICE_IDENTITY_SMOKE_PASSED",
-    aliases: ["SSO_SMOKE_SERVICE_TOKEN_CLAIMS_VERIFIED", "SSO_SMOKE_SERVICE_CLAIMS_VERIFIED"],
+    aliases: [
+      "SSO_SMOKE_SERVICE_TOKEN_CLAIMS_VERIFIED",
+      "SSO_SMOKE_SERVICE_CLAIMS_VERIFIED",
+    ],
   },
   {
     key: "publicRegistrationLocked",
@@ -37,7 +46,10 @@ const REQUIRED_SMOKE_CHECKS = Object.freeze([
   {
     key: "nonIssuerRejected",
     envKey: "SSO_SMOKE_NON_ISSUER_REJECTED",
-    aliases: ["SSO_SMOKE_ISSUER_RESTRICTED", "SSO_SMOKE_AUTO_CREATE_RESTRICTED_TO_ISSUER"],
+    aliases: [
+      "SSO_SMOKE_ISSUER_RESTRICTED",
+      "SSO_SMOKE_AUTO_CREATE_RESTRICTED_TO_ISSUER",
+    ],
   },
   {
     key: "recoveryAdminLoginSucceeded",
@@ -65,10 +77,22 @@ async function main() {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const defaultEnvFile = path.resolve(scriptDir, "..", ".env");
   const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
-  const values = readConfiguration(envFile, process.env, { allowEnvOnly: options.allowEnvOnly });
-  const output = options.output ?? values.SSO_SMOKE_OUTPUT ?? values.SSO_SMOKE_EVIDENCE_OUTPUT ?? DEFAULT_OUTPUT;
-  const allowFailed = options.allowFailed || parseBoolean(values.SSO_SMOKE_ALLOW_FAILED, false) === true;
-  const checkedAt = normalizeIso(options.checkedAt ?? values.SSO_SMOKE_CHECKED_AT ?? new Date().toISOString());
+  const values = readConfiguration(envFile, process.env, {
+    allowEnvOnly: options.allowEnvOnly,
+  });
+  const output =
+    options.output ??
+    values.SSO_SMOKE_OUTPUT ??
+    values.SSO_SMOKE_EVIDENCE_OUTPUT ??
+    DEFAULT_OUTPUT;
+  const allowFailed =
+    options.allowFailed ||
+    parseBoolean(values.SSO_SMOKE_ALLOW_FAILED, false) === true;
+  const checkedAt = normalizeIso(
+    options.checkedAt ??
+      values.SSO_SMOKE_CHECKED_AT ??
+      new Date().toISOString(),
+  );
   const issuerUrl = readIssuerUrl(values, options);
   const checks = buildChecks(values);
   const failed = checks.filter((check) => check.passed !== true);
@@ -77,7 +101,9 @@ async function main() {
     throw new Error("SSO_SMOKE_CHECKED_AT must be a valid date-time when set");
   }
   if (failed.length > 0 && !allowFailed) {
-    throw new Error(`SSO smoke evidence is incomplete; failed checks: ${failed.map((check) => check.name).join(", ")}`);
+    throw new Error(
+      `SSO smoke evidence is incomplete; failed checks: ${failed.map((check) => check.name).join(", ")}`,
+    );
   }
 
   const ssoSmoke = {
@@ -86,10 +112,16 @@ async function main() {
     oidcLoginSucceeded: checkValue(checks, "oidcLoginSucceeded"),
     humanIdentitySmokePassed: checkValue(checks, "humanIdentitySmokePassed"),
     agentIdentitySmokePassed: checkValue(checks, "agentIdentitySmokePassed"),
-    serviceIdentitySmokePassed: checkValue(checks, "serviceIdentitySmokePassed"),
+    serviceIdentitySmokePassed: checkValue(
+      checks,
+      "serviceIdentitySmokePassed",
+    ),
     publicRegistrationLocked: checkValue(checks, "publicRegistrationLocked"),
     nonIssuerRejected: checkValue(checks, "nonIssuerRejected"),
-    recoveryAdminLoginSucceeded: checkValue(checks, "recoveryAdminLoginSucceeded"),
+    recoveryAdminLoginSucceeded: checkValue(
+      checks,
+      "recoveryAdminLoginSucceeded",
+    ),
     checks,
   };
 
@@ -104,8 +136,12 @@ async function main() {
   };
 
   mkdirSync(path.dirname(output), { recursive: true });
-  writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-  process.stdout.write(`${JSON.stringify({ ssoSmokeEvidence: { source: output, checkedAt, failedChecks: failed.map((check) => check.name) } }, null, 2)}\n`);
+  writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  process.stdout.write(
+    `${JSON.stringify({ ssoSmokeEvidence: { source: output, checkedAt, failedChecks: failed.map((check) => check.name) } }, null, 2)}\n`,
+  );
 }
 
 function parseArgs(args) {
@@ -132,7 +168,10 @@ function parseArgs(args) {
       continue;
     }
     if (arg.startsWith("--env-file=")) {
-      options.envFile = requireArg(arg.slice("--env-file=".length), "--env-file");
+      options.envFile = requireArg(
+        arg.slice("--env-file=".length),
+        "--env-file",
+      );
       continue;
     }
     if (arg === "--output") {
@@ -150,7 +189,10 @@ function parseArgs(args) {
       continue;
     }
     if (arg.startsWith("--checked-at=")) {
-      options.checkedAt = requireArg(arg.slice("--checked-at=".length), "--checked-at");
+      options.checkedAt = requireArg(
+        arg.slice("--checked-at=".length),
+        "--checked-at",
+      );
       continue;
     }
     if (arg === "--issuer-url") {
@@ -159,7 +201,10 @@ function parseArgs(args) {
       continue;
     }
     if (arg.startsWith("--issuer-url=")) {
-      options.issuerUrl = requireArg(arg.slice("--issuer-url=".length), "--issuer-url");
+      options.issuerUrl = requireArg(
+        arg.slice("--issuer-url=".length),
+        "--issuer-url",
+      );
       continue;
     }
 
@@ -204,8 +249,16 @@ function checkValue(checks, name) {
 }
 
 function readIssuerUrl(values, options) {
-  const issuerUrl = cleanValue(options.issuerUrl ?? values.SSO_SMOKE_ISSUER_URL ?? values.SSO_EVIDENCE_ISSUER_URL ?? values.ELIZA_CLOUD_OIDC_ISSUER_URL);
-  if (issuerUrl === null) throw new Error("SSO_SMOKE_ISSUER_URL or ELIZA_CLOUD_OIDC_ISSUER_URL is required");
+  const issuerUrl = cleanValue(
+    options.issuerUrl ??
+      values.SSO_SMOKE_ISSUER_URL ??
+      values.SSO_EVIDENCE_ISSUER_URL ??
+      values.ELIZA_CLOUD_OIDC_ISSUER_URL,
+  );
+  if (issuerUrl === null)
+    throw new Error(
+      "SSO_SMOKE_ISSUER_URL or ELIZA_CLOUD_OIDC_ISSUER_URL is required",
+    );
 
   try {
     const url = new URL(issuerUrl);
@@ -219,8 +272,11 @@ function readIssuerUrl(values, options) {
 function readConfiguration(envFile, processEnv, { allowEnvOnly = false } = {}) {
   const values = { ...processEnv };
   if (!existsSync(envFile)) {
-    if (allowEnvOnly || parseBoolean(processEnv.ALLOW_ENV_ONLY, false) === true) return values;
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    if (allowEnvOnly || parseBoolean(processEnv.ALLOW_ENV_ONLY, false) === true)
+      return values;
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   const lines = readFileSync(envFile, "utf8").split(/\r?\n/);
@@ -228,13 +284,20 @@ function readConfiguration(envFile, processEnv, { allowEnvOnly = false } = {}) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) return;
     if (/^(?:export|source|\.)\s/.test(trimmed)) {
-      throw new Error(`unsupported shell syntax in ${envFile} line ${index + 1}`);
+      throw new Error(
+        `unsupported shell syntax in ${envFile} line ${index + 1}`,
+      );
     }
 
     const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
-    if (!match) throw new Error(`malformed env assignment in ${envFile} line ${index + 1}`);
+    if (!match)
+      throw new Error(
+        `malformed env assignment in ${envFile} line ${index + 1}`,
+      );
     if (match[2].includes("$(") || match[2].includes("`")) {
-      throw new Error(`command substitution is not allowed in ${envFile} line ${index + 1}`);
+      throw new Error(
+        `command substitution is not allowed in ${envFile} line ${index + 1}`,
+      );
     }
 
     values[match[1]] = unquote(match[2]);
@@ -244,7 +307,7 @@ function readConfiguration(envFile, processEnv, { allowEnvOnly = false } = {}) {
 }
 
 function unquote(value) {
-  if (value.startsWith("\"") && value.endsWith("\"")) return value.slice(1, -1);
+  if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
   if (value.startsWith("'") && value.endsWith("'")) return value.slice(1, -1);
   return value;
 }
@@ -305,6 +368,8 @@ production cutover evidence requires all checks to pass.
 }
 
 main().catch((error) => {
-  process.stderr.write(`[sso-smoke-evidence] error: ${error instanceof Error ? error.message : "unknown error"}\n`);
+  process.stderr.write(
+    `[sso-smoke-evidence] error: ${error instanceof Error ? error.message : "unknown error"}\n`,
+  );
   process.exit(1);
 });

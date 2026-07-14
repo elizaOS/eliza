@@ -113,6 +113,8 @@ async function probeRootUrl(root, fetchImpl) {
       error: httpOk ? null : `http_status_${statusCode ?? "unknown"}`,
     };
   } catch (error) {
+    // error-policy:J1 evidence probe boundary: fetch failure is reported as an
+    // explicit failed probe result
     return {
       fetchOk: false,
       statusCode: null,
@@ -130,6 +132,8 @@ function urlsMatch(left, right) {
   try {
     return normalizeComparableUrl(left) === normalizeComparableUrl(right);
   } catch {
+    // error-policy:J3 unparseable URL is an explicit non-match, never an error
+    // state
     return false;
   }
 }

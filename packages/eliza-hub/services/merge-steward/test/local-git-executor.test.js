@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
   LocalGitIntegrationExecutor,
@@ -34,12 +33,13 @@ describe("local git integration executor", () => {
             "origin",
             "ssh://git@example.invalid/elizaos/eliza.git",
           ],
-          ["fetch", "--depth=50", "origin", "develop"],
+          ["fetch", "--depth=50", "origin", "--", "develop"],
           [
             "checkout",
             "-B",
             "eliza-queue/develop/elizaos-eliza-pr-12",
             "FETCH_HEAD",
+            "--",
           ],
         ],
       );
@@ -74,8 +74,8 @@ describe("local git integration executor", () => {
             "origin",
             "ssh://git@example.invalid/elizaos/eliza.git",
           ],
-          ["fetch", "--depth=50", "origin", "agent/change"],
-          ["checkout", "eliza-queue/develop/elizaos-eliza-pr-12"],
+          ["fetch", "--depth=50", "origin", "--", "agent/change"],
+          ["checkout", "eliza-queue/develop/elizaos-eliza-pr-12", "--"],
           ["merge", "--no-ff", "--no-edit", "FETCH_HEAD"],
           [
             "push",
@@ -92,7 +92,7 @@ describe("local git integration executor", () => {
 
   it("ignores missing origin when preparing the repository", async () => {
     const { executor, cleanup } = await testExecutor({
-      runCommand(command, args) {
+      runCommand(_command, args) {
         if (args.join(" ") === "remote remove origin") {
           return { status: 2, stdout: "", stderr: "No such remote" };
         }
@@ -116,7 +116,7 @@ describe("local git integration executor", () => {
 
   it("throws when required git commands fail", async () => {
     const { executor, cleanup } = await testExecutor({
-      runCommand(command, args) {
+      runCommand(_command, args) {
         if (args[0] === "fetch") {
           return { status: 1, stdout: "", stderr: "fetch failed" };
         }
@@ -251,6 +251,81 @@ describe("local git integration executor", () => {
           }),
         /Forgejo merge client is not configured/,
       );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("rejects option-like or revision-operator refs before they reach git", async () => {
+    const hostile = [
+      "--upload-pack=/tmp/pwn",
+      "-b",
+      "feature..main",
+      "branch@{upstream}",
+      "branch name",
+      "branch~1",
+      "branch^",
+      "refs/heads/",
+      "/refs/heads/x",
+      "a//b",
+      "branch.lock",
+      "branch.",
+      "@",
+      "",
+      null,
+    ];
+
+    for (const ref of hostile) {
+      const { executor, calls, cleanup } = await testExecutor();
+      try {
+        await assert.rejects(
+          () =>
+            executor.ensureIntegrationBranch({
+              plan: plan(),
+              action: {
+                type: "ensure_integration_branch",
+                branch: "eliza-queue/develop/elizaos-eliza-pr-12",
+                from: ref,
+              },
+            }),
+          /unsafe git ref/,
+          `expected rejection for ${JSON.stringify(ref)}`,
+        );
+        await assert.rejects(
+          () =>
+            executor.mergePullRequestHeadIntoIntegration({
+              plan: plan(),
+              action: {
+                type: "merge_pr_head_into_integration",
+                sourceBranch: ref,
+              },
+            }),
+          /unsafe git ref/,
+          `expected rejection for ${JSON.stringify(ref)}`,
+        );
+        // Validation happens before any git subprocess is spawned.
+        assert.equal(calls.length, 0);
+      } finally {
+        await cleanup();
+      }
+    }
+  });
+
+  it("rejects an unsafe integration branch from the plan", async () => {
+    const { executor, calls, cleanup } = await testExecutor();
+    try {
+      await assert.rejects(
+        () =>
+          executor.mergePullRequestHeadIntoIntegration({
+            plan: { ...plan(), integrationBranch: "--force" },
+            action: {
+              type: "merge_pr_head_into_integration",
+              sourceBranch: "agent/change",
+            },
+          }),
+        /unsafe git ref for plan.integrationBranch/,
+      );
+      assert.equal(calls.length, 0);
     } finally {
       await cleanup();
     }

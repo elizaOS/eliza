@@ -83,6 +83,9 @@ export async function runQueueWorker({
         }
       }
     } catch (error) {
+      // error-policy:J1 worker-loop iteration boundary: the failure is counted
+      // and logged, and the loop stops with a structured stopReason after
+      // maxErrors
       summary.errors += 1;
       summary.consecutiveErrors += 1;
       summary.lastError = serializeWorkerError(error);
@@ -259,6 +262,8 @@ function startWorkerLeaseHeartbeat({ steward, config, logger, lease }) {
         );
       }
     } catch (error) {
+      // error-policy:J7 a heartbeat tick must not kill the interval; the
+      // failure is recorded in lastError and surfaced by assertActive/release
       lastError = serializeWorkerError(error);
       logger.error?.("[MergeStewardWorker] lease heartbeat failed", lastError);
     } finally {
@@ -322,6 +327,8 @@ function startWorkerLeaseHeartbeat({ steward, config, logger, lease }) {
           lastError,
         };
       } catch (error) {
+        // error-policy:J6 lease release is teardown: the failure is logged and
+        // returned as an explicit release_failed result
         lastError = serializeWorkerError(error);
         logger.error?.("[MergeStewardWorker] lease release failed", lastError);
         return {

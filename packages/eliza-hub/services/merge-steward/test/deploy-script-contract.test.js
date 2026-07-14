@@ -217,14 +217,12 @@ exit 2
 }
 
 function deploySmokeEnv() {
-  return (
-    [
-      "FORGEJO_IMAGE=codeberg.org/forgejo/forgejo:15",
-      "MERGE_STEWARD_IMAGE=registry.example.invalid/eliza/merge-steward:20260707",
-      "FORGEJO_RUNNER_IMAGE=code.forgejo.org/forgejo/runner:6",
-      "FORGEJO_RUNNER_DIND_IMAGE=docker:28-dind",
-    ].join("\n") + "\n"
-  );
+  return `${[
+    "FORGEJO_IMAGE=codeberg.org/forgejo/forgejo:15",
+    "MERGE_STEWARD_IMAGE=registry.example.invalid/eliza/merge-steward:20260707",
+    "FORGEJO_RUNNER_IMAGE=code.forgejo.org/forgejo/runner:6",
+    "FORGEJO_RUNNER_DIND_IMAGE=docker:28-dind",
+  ].join("\n")}\n`;
 }
 
 async function readJson(file) {

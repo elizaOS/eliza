@@ -44,6 +44,33 @@ describe("merge steward orchestration", () => {
     assert.match(result.feedback.error.message, /Forgejo unavailable/);
   });
 
+  it("reports the feedback pass as failed when the claim lookup breaks", async () => {
+    process.env.STEWARD_TEST_SECRET = WEBHOOK_SECRET;
+    const config = loadConfig({
+      FORGEJO_WEBHOOK_SECRET_ENV: "STEWARD_TEST_SECRET",
+      FORGEJO_FEEDBACK_ENABLED: "true",
+      FORGEJO_FEEDBACK_DRY_RUN: "true",
+    });
+    const store = new InMemoryQueueStore();
+    store.listAgentClaims = async () => {
+      throw new Error("claims table unavailable");
+    };
+    const steward = new MergeSteward({ config, store, logger: silentLogger });
+    const rawBody = JSON.stringify(pullRequestPayload());
+
+    const result = await steward.handleWebhookDelivery({
+      headers: signedHeaders(rawBody, { "x-forgejo-event": "pull_request" }),
+      rawBody,
+    });
+
+    // A broken lookup must surface as a failed feedback pass, never as
+    // feedback computed from a fabricated "no claims" result.
+    assert.equal(result.accepted, true);
+    assert.equal(result.feedback.skipped, true);
+    assert.equal(result.feedback.reason, "forgejo_feedback_failed");
+    assert.match(result.feedback.error.message, /claims table unavailable/);
+  });
+
   it("treats duplicate webhook delivery ids as idempotent no-ops", async () => {
     process.env.STEWARD_TEST_SECRET = WEBHOOK_SECRET;
     const config = loadConfig({

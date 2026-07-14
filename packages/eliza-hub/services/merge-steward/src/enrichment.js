@@ -26,6 +26,9 @@ export async function enrichQueueItem({ client, item, config = {} } = {}) {
   try {
     return await fetchQueueEnrichment({ client, item, config });
   } catch (error) {
+    // error-policy:J1 Forgejo enrichment boundary: failure becomes an explicit
+    // skipped result with the error attached; the steward records it instead of
+    // treating the item as enriched
     return {
       enabled: true,
       skipped: true,
@@ -168,6 +171,9 @@ async function paginated(fetchPage, config = {}) {
     try {
       pageItems = await fetchPage({ page, limit });
     } catch {
+      // error-policy:J4 page fetch failure yields null ("unknown"), which
+      // buildEnrichmentPatch maps to undefined signal fields — deliberately
+      // distinct from an empty list
       return null;
     }
     if (!Array.isArray(pageItems) || pageItems.length === 0) break;
@@ -183,6 +189,8 @@ async function optional(fn, fallback) {
   try {
     return await fn();
   } catch {
+    // error-policy:J4 optional enrichment source: failure yields the
+    // caller-chosen "unknown" fallback, never a fabricated value
     return fallback;
   }
 }

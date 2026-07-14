@@ -2203,8 +2203,23 @@ export function createServer({
         error: "not_found",
       });
     } catch (error) {
-      logger.error?.("[MergeStewardServer] request failed", { error });
-      return sendJson(response, error?.statusCode ?? 400, {
+      // error-policy:J1 HTTP boundary: errors typed with a 4xx statusCode at
+      // the throw site keep their status and message; everything else is an
+      // internal failure and returns an opaque 500 so internals never leak.
+      const statusCode =
+        Number.isInteger(error?.statusCode) &&
+        error.statusCode >= 400 &&
+        error.statusCode <= 499
+          ? error.statusCode
+          : 500;
+      logger.error?.("[MergeStewardServer] request failed", {
+        error,
+        statusCode,
+      });
+      if (statusCode === 500) {
+        return sendJson(response, 500, { error: "internal_error" });
+      }
+      return sendJson(response, statusCode, {
         error: "bad_request",
         message: error instanceof Error ? error.message : "Unknown error",
       });
@@ -2259,6 +2274,8 @@ export async function checkReadiness({
       scheduled: queue.scheduled.length,
     });
   } catch (error) {
+    // error-policy:J4 /ready exists to report the failing check as ok:false;
+    // this is the designed degrade
     checks.push({
       name: "queue_store",
       ok: false,
@@ -2284,6 +2301,8 @@ export async function checkReadiness({
         expiresAt: lease?.expiresAt ?? null,
       });
     } catch (error) {
+      // error-policy:J4 /ready exists to report the failing check as ok:false;
+      // this is the designed degrade
       checks.push({
         name: "worker_lease",
         ok: false,
@@ -2385,6 +2404,8 @@ async function safeAgentIdentityRegistrySummary({ config = {}, steward } = {}) {
     try {
       return await steward.getAgentIdentityRegistrySummary();
     } catch {
+      // error-policy:J4 degrade to the config-derived summary so /ready keeps
+      // serving.
       // Keep /ready focused on reporting the failing readiness check instead of
       // turning a registry count failure into an HTTP 500.
     }
@@ -2512,8 +2533,17 @@ export function listen({ config = loadConfig(), logger = console } = {}) {
 
 async function readJson(request, config) {
   const raw = await readRawBody(request, config);
-  if (raw.toString("utf8").trim() === "") return {};
-  return JSON.parse(raw.toString("utf8"));
+  const text = raw.toString("utf8");
+  if (text.trim() === "") return {};
+  try {
+    return JSON.parse(text);
+  } catch (cause) {
+    // error-policy:J3 untrusted request body: a parse failure becomes a typed
+    // 400 instead of surfacing as an opaque internal 500.
+    const error = new Error("invalid_json_body", { cause });
+    error.statusCode = 400;
+    throw error;
+  }
 }
 
 async function readRawBody(request, config = {}) {
@@ -2562,6 +2592,8 @@ export async function authorizeApiRequest(request, config, authVerifier) {
         },
       };
     } catch {
+      // error-policy:J3 untrusted bearer token: verification failure is an
+      // explicit 401
       return unauthorized();
     }
   }
@@ -2920,6 +2952,8 @@ async function readOpenApiContractText() {
   try {
     return await openApiContractTextPromise;
   } catch (error) {
+    // error-policy:J6 drop the memoized promise so a later call can retry, then
+    // rethrow
     openApiContractTextPromise = undefined;
     throw error;
   }

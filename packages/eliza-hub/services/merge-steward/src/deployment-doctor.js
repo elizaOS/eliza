@@ -1501,6 +1501,8 @@ async function fetchJson(fetchImpl, url, { token, method = "GET", body } = {}) {
   try {
     responseBody = await response.response.json();
   } catch (error) {
+    // error-policy:J3 non-JSON response body becomes an explicit failed check
+    // result
     return {
       ok: false,
       statusCode: response.response.status,
@@ -1540,6 +1542,8 @@ async function safeFetch(fetchImpl, url, { token, method = "GET", body } = {}) {
       }),
     };
   } catch (error) {
+    // error-policy:J1 doctor probe boundary: network failure becomes a
+    // structured failed check, which is exactly what the report exists to show
     return {
       ok: false,
       statusCode: null,

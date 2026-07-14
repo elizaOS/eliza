@@ -2275,6 +2275,8 @@ export class PostgresQueueStore {
       await client.query("COMMIT");
       return result;
     } catch (error) {
+      // error-policy:J6 transaction teardown: roll back, then rethrow the
+      // original error
       await client.query("ROLLBACK");
       throw error;
     } finally {
@@ -3273,6 +3275,8 @@ function parseJson(value) {
     try {
       return JSON.parse(value);
     } catch {
+      // error-policy:J3 legacy rows may hold plain text where JSON is expected;
+      // the raw value passes through explicitly
       return value;
     }
   }

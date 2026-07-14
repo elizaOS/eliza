@@ -54,6 +54,8 @@ export function buildForgejoFeedback({
   try {
     repo = parseRepoFullName(item.repo);
   } catch {
+    // error-policy:J3 malformed repo name on the item becomes an explicit
+    // invalid feedback plan
     return {
       valid: false,
       reason: "invalid_repo",
@@ -130,6 +132,8 @@ export async function applyForgejoFeedback({
       await client.removeIssueLabel(feedback.repo, feedback.issueNumber, label);
       applied.push({ type: "remove_label", label });
     } catch (error) {
+      // error-policy:J4 label already absent (404) is the desired end state and
+      // is recorded as skipped; anything else rethrows
       if (!isNotFound(error)) throw error;
       applied.push({
         type: "remove_label",

@@ -444,6 +444,8 @@ async function safeCollect(source, errors, collect) {
   try {
     return await collect();
   } catch (error) {
+    // error-policy:J7 metrics collection must not kill the endpoint; the
+    // failure is surfaced in the response's errors array
     errors.push({
       source,
       message:

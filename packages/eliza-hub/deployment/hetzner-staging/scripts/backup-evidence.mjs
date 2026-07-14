@@ -43,27 +43,51 @@ function main() {
     const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
     const values = readConfiguration(envFile, process.env);
     const errors = [];
-    const backupDir = cleanValue(options.backupDir ?? process.env.BACKUP_DIR ?? process.env.RESTORE_BACKUP_DIR ?? values.BACKUP_EVIDENCE_BACKUP_DIR);
-    const inspected = backupDir === null ? null : inspectBackupDir(backupDir, errors);
+    const backupDir = cleanValue(
+      options.backupDir ??
+        process.env.BACKUP_DIR ??
+        process.env.RESTORE_BACKUP_DIR ??
+        values.BACKUP_EVIDENCE_BACKUP_DIR,
+    );
+    const inspected =
+      backupDir === null ? null : inspectBackupDir(backupDir, errors);
     const uploadReceiptPath = cleanValue(
-      options.offsiteUploadReceipt ?? values.BACKUP_EVIDENCE_OFFSITE_UPLOAD_RECEIPT,
+      options.offsiteUploadReceipt ??
+        values.BACKUP_EVIDENCE_OFFSITE_UPLOAD_RECEIPT,
     );
     const restoreReceiptPath = cleanValue(
-      options.offsiteRestoreReceipt ?? values.BACKUP_EVIDENCE_OFFSITE_RESTORE_RECEIPT,
+      options.offsiteRestoreReceipt ??
+        values.BACKUP_EVIDENCE_OFFSITE_RESTORE_RECEIPT,
     );
-    const offsiteUpload = uploadReceiptPath === null
-      ? null
-      : inspectOffsiteUploadReceipt(uploadReceiptPath, backupDir, inspected, errors);
-    const offsiteRestore = restoreReceiptPath === null
-      ? null
-      : inspectOffsiteRestoreReceipt(restoreReceiptPath, offsiteUpload, errors);
-    const scheduled = readBooleanAttestation(values, "BACKUP_EVIDENCE_SCHEDULED", errors) ?? false;
+    const offsiteUpload =
+      uploadReceiptPath === null
+        ? null
+        : inspectOffsiteUploadReceipt(
+            uploadReceiptPath,
+            backupDir,
+            inspected,
+            errors,
+          );
+    const offsiteRestore =
+      restoreReceiptPath === null
+        ? null
+        : inspectOffsiteRestoreReceipt(
+            restoreReceiptPath,
+            offsiteUpload,
+            errors,
+          );
+    const scheduled =
+      readBooleanAttestation(values, "BACKUP_EVIDENCE_SCHEDULED", errors) ??
+      false;
     const now = readNow(values, errors);
     const backups = {
       scheduled,
       offHost: offsiteUpload?.verified === true,
-      encrypted: offsiteUpload?.verified === true && offsiteUpload.encryptionFormat === "age",
-      lastBackupAt: offsiteUpload?.backupCreatedAt ?? inspected?.createdAt ?? null,
+      encrypted:
+        offsiteUpload?.verified === true &&
+        offsiteUpload.encryptionFormat === "age",
+      lastBackupAt:
+        offsiteUpload?.backupCreatedAt ?? inspected?.createdAt ?? null,
       lastRestoreCheckAt: offsiteRestore?.checkedAt ?? null,
       includes: inspected?.includes ?? [],
     };
@@ -84,9 +108,10 @@ function main() {
       offsiteRestore,
       checkedAt: now,
     });
-    const outputPath = options.auditOutput
-      ?? values.BACKUP_EVIDENCE_AUDIT_OUTPUT
-      ?? DEFAULT_BACKUP_AUDIT_OUTPUT;
+    const outputPath =
+      options.auditOutput ??
+      values.BACKUP_EVIDENCE_AUDIT_OUTPUT ??
+      DEFAULT_BACKUP_AUDIT_OUTPUT;
     writeBackupAuditArtifact(outputPath, audit);
     backups.backupEvidence = {
       source: outputPath,
@@ -164,7 +189,9 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--offsite-upload-receipt=")) {
-      options.offsiteUploadReceipt = arg.slice("--offsite-upload-receipt=".length);
+      options.offsiteUploadReceipt = arg.slice(
+        "--offsite-upload-receipt=".length,
+      );
       if (!options.offsiteUploadReceipt) {
         throw new Error("--offsite-upload-receipt requires a path");
       }
@@ -181,7 +208,9 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--offsite-restore-receipt=")) {
-      options.offsiteRestoreReceipt = arg.slice("--offsite-restore-receipt=".length);
+      options.offsiteRestoreReceipt = arg.slice(
+        "--offsite-restore-receipt=".length,
+      );
       if (!options.offsiteRestoreReceipt) {
         throw new Error("--offsite-restore-receipt requires a path");
       }
@@ -229,7 +258,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -249,7 +280,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -268,7 +300,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -295,7 +327,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -338,15 +370,28 @@ function inspectBackupDir(backupDir, errors) {
   };
 }
 
-function inspectOffsiteUploadReceipt(receiptPath, backupDir, inspected, errors) {
+function inspectOffsiteUploadReceipt(
+  receiptPath,
+  backupDir,
+  inspected,
+  errors,
+) {
   const errorCount = errors.length;
-  const receipt = readJsonReceipt(receiptPath, "off-site upload receipt", errors);
+  const receipt = readJsonReceipt(
+    receiptPath,
+    "off-site upload receipt",
+    errors,
+  );
 
   if (receipt === null) {
     return null;
   }
 
-  const checkedAt = normalizeIsoDate(receipt.checkedAt, "off-site upload receipt checkedAt", errors);
+  const checkedAt = normalizeIsoDate(
+    receipt.checkedAt,
+    "off-site upload receipt checkedAt",
+    errors,
+  );
   const backupName = requiredReceiptString(
     receipt.backupName,
     "off-site upload receipt backupName",
@@ -393,7 +438,9 @@ function inspectOffsiteUploadReceipt(receiptPath, backupDir, inspected, errors) 
     errors,
   );
 
-  if (receipt.schema !== "https://eliza.hub/schemas/offsite-backup-receipt.v1") {
+  if (
+    receipt.schema !== "https://eliza.hub/schemas/offsite-backup-receipt.v1"
+  ) {
     errors.push("off-site upload receipt schema is unsupported");
   }
   if (receipt.status !== "verified" || receipt.uploadVerified !== true) {
@@ -403,7 +450,9 @@ function inspectOffsiteUploadReceipt(receiptPath, backupDir, inspected, errors) 
     errors.push("off-site upload receipt must use age encryption");
   }
   if (verificationMethod !== "download_sha256") {
-    errors.push("off-site upload receipt must verify a streamed download by SHA-256");
+    errors.push(
+      "off-site upload receipt must verify a streamed download by SHA-256",
+    );
   }
   if (!/^[a-zA-Z0-9._-]+:.+/u.test(remoteArchive ?? "")) {
     errors.push("off-site upload receipt remoteArchive must be an rclone path");
@@ -411,31 +460,50 @@ function inspectOffsiteUploadReceipt(receiptPath, backupDir, inspected, errors) 
   if (!/^[a-zA-Z0-9._-]+:.+/u.test(remoteReceipt ?? "")) {
     errors.push("off-site upload receipt remoteReceipt must be an rclone path");
   }
-  if (remoteArchive?.includes("\n") || remoteArchive?.includes("\r") || remoteReceipt?.includes("\n") || remoteReceipt?.includes("\r")) {
-    errors.push("off-site upload receipt remote paths must not contain newlines");
+  if (
+    remoteArchive?.includes("\n") ||
+    remoteArchive?.includes("\r") ||
+    remoteReceipt?.includes("\n") ||
+    remoteReceipt?.includes("\r")
+  ) {
+    errors.push(
+      "off-site upload receipt remote paths must not contain newlines",
+    );
   }
-  if (remoteArchive !== null && backupName !== null && path.posix.basename(remoteArchive) !== `${backupName}.tar.gz.age`) {
+  if (
+    remoteArchive !== null &&
+    backupName !== null &&
+    path.posix.basename(remoteArchive) !== `${backupName}.tar.gz.age`
+  ) {
     errors.push("off-site upload receipt remote archive must match backupName");
   }
   if (
-    remoteArchive !== null
-    && remoteReceipt !== null
-    && remoteReceipt !== `${path.posix.dirname(remoteArchive)}/receipt.json`
+    remoteArchive !== null &&
+    remoteReceipt !== null &&
+    remoteReceipt !== `${path.posix.dirname(remoteArchive)}/receipt.json`
   ) {
-    errors.push("off-site upload receipt remote archive and receipt must share a backup directory");
+    errors.push(
+      "off-site upload receipt remote archive and receipt must share a backup directory",
+    );
   }
   if (backupDir !== null && backupName !== path.basename(backupDir)) {
-    errors.push("off-site upload receipt backupName must match the inspected backup directory");
+    errors.push(
+      "off-site upload receipt backupName must match the inspected backup directory",
+    );
   }
   if (inspected?.createdAt && backupCreatedAt !== inspected.createdAt) {
-    errors.push("off-site upload receipt backupCreatedAt must match MANIFEST.txt");
+    errors.push(
+      "off-site upload receipt backupCreatedAt must match MANIFEST.txt",
+    );
   }
   if (
-    checkedAt !== null
-    && backupCreatedAt !== null
-    && Date.parse(checkedAt) < Date.parse(backupCreatedAt)
+    checkedAt !== null &&
+    backupCreatedAt !== null &&
+    Date.parse(checkedAt) < Date.parse(backupCreatedAt)
   ) {
-    errors.push("off-site upload receipt checkedAt must not predate the backup");
+    errors.push(
+      "off-site upload receipt checkedAt must not predate the backup",
+    );
   }
   if (backupDir !== null) {
     requireReceiptFileSha(
@@ -472,13 +540,21 @@ function inspectOffsiteUploadReceipt(receiptPath, backupDir, inspected, errors) 
 
 function inspectOffsiteRestoreReceipt(receiptPath, upload, errors) {
   const errorCount = errors.length;
-  const receipt = readJsonReceipt(receiptPath, "off-site restore receipt", errors);
+  const receipt = readJsonReceipt(
+    receiptPath,
+    "off-site restore receipt",
+    errors,
+  );
 
   if (receipt === null) {
     return null;
   }
 
-  const checkedAt = normalizeIsoDate(receipt.checkedAt, "off-site restore receipt checkedAt", errors);
+  const checkedAt = normalizeIsoDate(
+    receipt.checkedAt,
+    "off-site restore receipt checkedAt",
+    errors,
+  );
   const backupName = requiredReceiptString(
     receipt.backupName,
     "off-site restore receipt backupName",
@@ -510,7 +586,9 @@ function inspectOffsiteRestoreReceipt(receiptPath, upload, errors) {
     errors,
   );
 
-  if (receipt.schema !== "https://eliza.hub/schemas/offsite-restore-receipt.v1") {
+  if (
+    receipt.schema !== "https://eliza.hub/schemas/offsite-restore-receipt.v1"
+  ) {
     errors.push("off-site restore receipt schema is unsupported");
   }
   if (receipt.status !== "verified") {
@@ -530,30 +608,47 @@ function inspectOffsiteRestoreReceipt(receiptPath, upload, errors) {
     errors.push("off-site restore receipt requires an off-site upload receipt");
   } else {
     if (backupName !== upload.backupName) {
-      errors.push("off-site restore receipt backupName must match the upload receipt");
+      errors.push(
+        "off-site restore receipt backupName must match the upload receipt",
+      );
     }
     const expectedArchiveName = `${backupName}.tar.gz.age`;
-    if (path.posix.basename(upload.remoteArchive ?? "") !== expectedArchiveName) {
-      errors.push("off-site restore receipt backupName does not match the upload archive");
+    if (
+      path.posix.basename(upload.remoteArchive ?? "") !== expectedArchiveName
+    ) {
+      errors.push(
+        "off-site restore receipt backupName does not match the upload archive",
+      );
     }
-    if (remoteArchive !== upload.remoteArchive || remoteReceipt !== upload.remoteReceipt) {
-      errors.push("off-site restore receipt remote paths must match the upload receipt");
+    if (
+      remoteArchive !== upload.remoteArchive ||
+      remoteReceipt !== upload.remoteReceipt
+    ) {
+      errors.push(
+        "off-site restore receipt remote paths must match the upload receipt",
+      );
     }
     if (uploadReceiptSha256 !== upload.sha256) {
-      errors.push("off-site restore receipt uploadReceiptSha256 must match the upload receipt");
+      errors.push(
+        "off-site restore receipt uploadReceiptSha256 must match the upload receipt",
+      );
     }
     if (
-      ciphertextSha256 !== upload.ciphertextSha256
-      || ciphertextBytes !== upload.ciphertextBytes
+      ciphertextSha256 !== upload.ciphertextSha256 ||
+      ciphertextBytes !== upload.ciphertextBytes
     ) {
-      errors.push("off-site restore receipt ciphertext must match the upload receipt");
+      errors.push(
+        "off-site restore receipt ciphertext must match the upload receipt",
+      );
     }
     if (
-      checkedAt !== null
-      && upload.checkedAt !== null
-      && Date.parse(checkedAt) < Date.parse(upload.checkedAt)
+      checkedAt !== null &&
+      upload.checkedAt !== null &&
+      Date.parse(checkedAt) < Date.parse(upload.checkedAt)
     ) {
-      errors.push("off-site restore receipt checkedAt must not predate the upload receipt");
+      errors.push(
+        "off-site restore receipt checkedAt must not predate the upload receipt",
+      );
     }
   }
 
@@ -721,7 +816,9 @@ function verifyChecksums(backupDir, errors) {
       continue;
     }
 
-    const actual = createHash("sha256").update(readFileSync(target)).digest("hex");
+    const actual = createHash("sha256")
+      .update(readFileSync(target))
+      .digest("hex");
     if (actual !== expected) {
       errors.push(`checksum mismatch for ${relativePath}`);
       continue;
@@ -734,10 +831,17 @@ function verifyChecksums(backupDir, errors) {
 }
 
 function normalizeChecksumPath(value) {
-  const relativePath = value.trim().replace(/^\*\s*/u, "").replace(/^\.\//u, "");
+  const relativePath = value
+    .trim()
+    .replace(/^\*\s*/u, "")
+    .replace(/^\.\//u, "");
   const normalized = path.posix.normalize(relativePath.replace(/\\/gu, "/"));
 
-  if (normalized === "." || normalized.startsWith("../") || path.isAbsolute(relativePath)) {
+  if (
+    normalized === "." ||
+    normalized.startsWith("../") ||
+    path.isAbsolute(relativePath)
+  ) {
     return null;
   }
 
@@ -805,7 +909,14 @@ function parseBoolean(value) {
   return undefined;
 }
 
-function backupAudit({ backups, inspected, backupDir, offsiteUpload, offsiteRestore, checkedAt }) {
+function backupAudit({
+  backups,
+  inspected,
+  backupDir,
+  offsiteUpload,
+  offsiteRestore,
+  checkedAt,
+}) {
   const includesAllComponents = BACKUP_COMPONENTS.every((component) =>
     backups.includes.includes(component),
   );
@@ -825,8 +936,14 @@ function backupAudit({ backups, inspected, backupDir, offsiteUpload, offsiteRest
     }),
     check("postgres_dump_verified", inspected?.postgresDumpVerified === true),
     check("offsite_upload_receipt_verified", offsiteUpload?.verified === true),
-    check("offsite_restore_receipt_verified", offsiteRestore?.verified === true),
-    check("restore_check_passed", offsiteRestore?.structuralRestoreCheckPassed === true),
+    check(
+      "offsite_restore_receipt_verified",
+      offsiteRestore?.verified === true,
+    ),
+    check(
+      "restore_check_passed",
+      offsiteRestore?.structuralRestoreCheckPassed === true,
+    ),
     check("scheduled", backups.scheduled === true),
     check("off_host", backups.offHost === true),
     check("encrypted", backups.encrypted === true),
@@ -862,7 +979,11 @@ function check(name, passed, details = {}) {
 
 function writeBackupAuditArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ backupAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ backupAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {

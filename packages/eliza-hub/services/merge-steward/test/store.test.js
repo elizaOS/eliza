@@ -12,7 +12,6 @@ import {
   normalizeWorkCycle,
   normalizeWorkItem,
   normalizeWorkModule,
-  normalizeWorkPage,
   normalizeWorkView,
   queueItemId,
   registeredAgentId,
@@ -23,7 +22,6 @@ import {
   workerLeaseId,
   workItemId,
   workModuleId,
-  workPageId,
   workViewId,
 } from "../src/store.js";
 import { mkdtempInTestRoot } from "./helpers/tmp-root.js";

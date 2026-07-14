@@ -2017,6 +2017,8 @@ export class MergeSteward {
           await this.forgejoClient.listBranchProtections(forgejoRepo),
       };
     } catch (error) {
+      // error-policy:J1 Forgejo branch-protection probe: failure becomes an
+      // explicit unavailable result the gate reports
       return {
         available: false,
         checked: true,
@@ -2268,6 +2270,8 @@ export class MergeSteward {
           now,
         });
       } catch (error) {
+        // error-policy:J1 reservation boundary: roll back the claims reserved
+        // so far and return a structured failed reservation
         const rolledBackClaims = [];
         for (const reservedClaim of claims.toReversed()) {
           const released = await this.store.releaseAgentClaim(
@@ -2486,7 +2490,7 @@ export class MergeSteward {
     item,
     { requireWorkReservation = false, now } = {},
   ) {
-    if (!item || item.authorKind !== "agent" || !item.ownerAgentId) return null;
+    if (item?.authorKind !== "agent" || !item.ownerAgentId) return null;
 
     return this.getAgentSubmissionGate({
       ownerAgentId: item.ownerAgentId,
@@ -3482,16 +3486,17 @@ export class MergeSteward {
       };
     }
 
-    const claims = await this.feedbackClaimsForItem(item);
-    const feedback = buildForgejoFeedback({
-      event,
-      item,
-      decision,
-      comment,
-      claims,
-      config: this.config.feedback,
-    });
+    let feedback;
     try {
+      const claims = await this.feedbackClaimsForItem(item);
+      feedback = buildForgejoFeedback({
+        event,
+        item,
+        decision,
+        comment,
+        claims,
+        config: this.config.feedback,
+      });
       const result = await applyForgejoFeedback({
         client: this.feedbackClient,
         feedback,
@@ -3506,13 +3511,16 @@ export class MergeSteward {
 
       return result;
     } catch (error) {
+      // error-policy:J1 Forgejo feedback mirroring is a side-effect boundary:
+      // the failure is translated into an explicit skipped/error result that the
+      // decision pipeline records and surfaces, never a silent success.
       this.logger.error?.("[MergeSteward] feedback failed", { error });
       return {
         enabled: true,
         skipped: true,
         reason: "forgejo_feedback_failed",
         dryRun: this.config.feedback.dryRun !== false,
-        operations: feedback.operations ?? [],
+        operations: feedback?.operations ?? [],
         error: {
           name: error instanceof Error ? error.name : "Error",
           message:
@@ -3532,15 +3540,11 @@ export class MergeSteward {
       typeof this.store.listAgentClaims !== "function"
     )
       return [];
-    try {
-      const claims = await this.store.listAgentClaims({ repo: item.repo });
-      return claims.filter((claim) => claimMatchesItem(claim, item));
-    } catch (error) {
-      this.logger.warn?.("[MergeSteward] feedback claim lookup failed", {
-        error,
-      });
-      return [];
-    }
+    // A broken claim lookup must not be mistaken for "no claims": the error
+    // propagates to mirrorDecision, which reports the whole feedback pass as
+    // failed instead of mirroring a decision built on fabricated data.
+    const claims = await this.store.listAgentClaims({ repo: item.repo });
+    return claims.filter((claim) => claimMatchesItem(claim, item));
   }
 
   async appendQueueAuditEvent({ item, type, actorId, payload, now }) {

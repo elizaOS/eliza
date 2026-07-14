@@ -408,10 +408,8 @@ function nextStepsFor({
   inbox,
   routing,
   search,
-  preflight,
   validationPlan,
   submissionGate,
-  conflictPrediction,
   reviewAssignment,
   limits,
 }) {

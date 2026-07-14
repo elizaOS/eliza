@@ -1,7 +1,11 @@
 services:
   merge-steward:
     build:
-      context: ./services/merge-steward
+      # The Dockerfile copies services/merge-steward/*, .forgejo, and
+      # deployment relative to the package root, matching the CI build
+      # (.forgejo/workflows/merge-steward.yml).
+      context: .
+      dockerfile: services/merge-steward/Dockerfile
     image: "${MERGE_STEWARD_IMAGE:-eliza-merge-steward:local}"
     restart: unless-stopped
     environment:

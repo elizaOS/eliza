@@ -39,10 +39,10 @@ const NUMBER_FIELDS = Object.freeze([
 const TRUE_PATTERN = /^(?:1|true|yes|on)$/i;
 const FALSE_PATTERN = /^(?:0|false|no|off)$/i;
 const MIN_LOG_RETENTION_DAYS = 7;
-const DEFAULT_OBSERVABILITY_AUDIT_OUTPUT = artifactPath("observability-audit.json");
-const CONFIG_KEYS = Object.freeze([
-  "OBSERVABILITY_EVIDENCE_AUDIT_OUTPUT",
-]);
+const DEFAULT_OBSERVABILITY_AUDIT_OUTPUT = artifactPath(
+  "observability-audit.json",
+);
+const CONFIG_KEYS = Object.freeze(["OBSERVABILITY_EVIDENCE_AUDIT_OUTPUT"]);
 
 main();
 
@@ -81,9 +81,10 @@ function main() {
     }
 
     const audit = observabilityAudit(observability);
-    const outputPath = options.auditOutput
-      ?? values.OBSERVABILITY_EVIDENCE_AUDIT_OUTPUT
-      ?? DEFAULT_OBSERVABILITY_AUDIT_OUTPUT;
+    const outputPath =
+      options.auditOutput ??
+      values.OBSERVABILITY_EVIDENCE_AUDIT_OUTPUT ??
+      DEFAULT_OBSERVABILITY_AUDIT_OUTPUT;
     writeObservabilityAuditArtifact(outputPath, audit);
     observability.observabilityEvidence = audit.productionReady
       ? {
@@ -172,7 +173,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -196,7 +199,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -215,7 +219,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -242,7 +246,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -313,9 +317,15 @@ function observabilityAudit(observability) {
   const checks = [
     check("prometheus_scrape_ok", observability.prometheusScrapeOk === true),
     check("alert_rules_loaded", observability.alertRulesLoaded === true),
-    check("alert_routing_configured", observability.alertRoutingConfigured === true),
+    check(
+      "alert_routing_configured",
+      observability.alertRoutingConfigured === true,
+    ),
     check("logs_collected", observability.logsCollected === true),
-    check("log_retention_days_sufficient", observability.logRetentionDays >= MIN_LOG_RETENTION_DAYS),
+    check(
+      "log_retention_days_sufficient",
+      observability.logRetentionDays >= MIN_LOG_RETENTION_DAYS,
+    ),
     check("no_page_alerts_firing", observability.noPageAlertsFiring === true),
   ];
   const productionReady = checks.every((item) => item.status === "pass");
@@ -345,7 +355,11 @@ function check(name, passed) {
 
 function writeObservabilityAuditArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ observabilityAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ observabilityAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {

@@ -35,7 +35,12 @@ function main() {
     }
 
     const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-    const defaultTemplate = path.resolve(scriptDir, "..", "release", "production-evidence.example.json");
+    const defaultTemplate = path.resolve(
+      scriptDir,
+      "..",
+      "release",
+      "production-evidence.example.json",
+    );
     const templatePath = options.template ?? defaultTemplate;
     const evidence = readJsonFile(templatePath);
 
@@ -150,7 +155,9 @@ function evidenceUpdates(fragment, fragmentPath) {
         sha256: sha256File(fragmentPath),
         checkedAt: fragment.domainEvidence.checkedAt ?? null,
         status: fragment.domainEvidence.status ?? null,
-        checkCount: Array.isArray(fragment.domainEvidence.checks) ? fragment.domainEvidence.checks.length : 0,
+        checkCount: Array.isArray(fragment.domainEvidence.checks)
+          ? fragment.domainEvidence.checks.length
+          : 0,
       },
     };
   }
@@ -167,8 +174,13 @@ function evidenceUpdates(fragment, fragmentPath) {
     updates.deployment = deploymentEvidenceFromDeploy(fragment, fragmentPath);
   }
 
-  if (fragment?.schema === "https://eliza.hub/schemas/pilot-bootstrap-evidence.v1") {
-    updates.githubMigration = githubMigrationEvidenceFromPilotBootstrap(fragment, fragmentPath);
+  if (
+    fragment?.schema === "https://eliza.hub/schemas/pilot-bootstrap-evidence.v1"
+  ) {
+    updates.githubMigration = githubMigrationEvidenceFromPilotBootstrap(
+      fragment,
+      fragmentPath,
+    );
   }
 
   for (const key of EVIDENCE_KEYS) {
@@ -178,7 +190,9 @@ function evidenceUpdates(fragment, fragmentPath) {
   }
 
   if (Object.keys(updates).length === 0) {
-    throw new Error(`${fragmentPath} does not contain a supported production evidence object`);
+    throw new Error(
+      `${fragmentPath} does not contain a supported production evidence object`,
+    );
   }
 
   return updates;
@@ -200,7 +214,10 @@ function githubMigrationEvidenceFromPilotBootstrap(receipt, receiptPath) {
       requiredCheckCount: summary.requiredCheckCount,
       trustedAgentCount: summary.trustedAgentCount,
     },
-    pilotBootstrapPassed: receipt.status === "passed" && receipt.dryRun === false && summary.productionReady === true,
+    pilotBootstrapPassed:
+      receipt.status === "passed" &&
+      receipt.dryRun === false &&
+      summary.productionReady === true,
     mirrorVerified: summary.mirrorVerified,
     defaultBranchVerified: summary.defaultBranchVerified,
     webhookVerified: summary.webhookVerified,
@@ -214,51 +231,72 @@ function githubMigrationEvidenceFromPilotBootstrap(receipt, receiptPath) {
 
 function pilotBootstrapSummary(receipt) {
   const steps = Array.isArray(receipt.steps) ? receipt.steps : [];
-  const embedded = receipt.summary && typeof receipt.summary === "object" ? receipt.summary : {};
-  const stepCount = typeof embedded.stepCount === "number" ? embedded.stepCount : steps.length;
-  const requiredCheckCount = typeof embedded.requiredCheckCount === "number"
-    ? embedded.requiredCheckCount
-    : Array.isArray(receipt.requiredChecks) ? receipt.requiredChecks.length : 0;
-  const trustedAgentCount = typeof embedded.trustedAgentCount === "number"
-    ? embedded.trustedAgentCount
-    : Array.isArray(receipt.trustedAgentIds) ? receipt.trustedAgentIds.length : 0;
+  const embedded =
+    receipt.summary && typeof receipt.summary === "object"
+      ? receipt.summary
+      : {};
+  const stepCount =
+    typeof embedded.stepCount === "number" ? embedded.stepCount : steps.length;
+  const requiredCheckCount =
+    typeof embedded.requiredCheckCount === "number"
+      ? embedded.requiredCheckCount
+      : Array.isArray(receipt.requiredChecks)
+        ? receipt.requiredChecks.length
+        : 0;
+  const trustedAgentCount =
+    typeof embedded.trustedAgentCount === "number"
+      ? embedded.trustedAgentCount
+      : Array.isArray(receipt.trustedAgentIds)
+        ? receipt.trustedAgentIds.length
+        : 0;
 
-  const mirrorVerified = embedded.mirrorVerified === true || successfulPilotStep(steps, "mirror-repository", (step) =>
-    step.status === "created" || step.mirror === true);
-  const defaultBranchVerified = embedded.defaultBranchVerified === true
-    || successfulPilotStep(steps, "verify-default-branch");
-  const webhookVerified = embedded.webhookVerified === true || successfulPilotStep(steps, "steward-webhook");
-  const branchProtectionVerified = embedded.branchProtectionVerified === true
-    || successfulPilotStep(steps, "branch-protection");
-  const repoPolicyVerified = embedded.repoPolicyVerified === true
-    || (successfulPilotStep(steps, "repo-policy") && successfulPilotStep(steps, "repo-policy-verify"));
-  const agentIdentitiesSynced = embedded.agentIdentitiesSynced === true
-    || successfulPilotStep(steps, "agent-identities");
-  const pilotSurfacesVerified = embedded.pilotSurfacesVerified === true
-    || successfulPilotStep(steps, "pilot-surfaces");
-  const pullMirrorOnly = embedded.pullMirrorOnly === true
-    || (
-      receipt.upstream?.host === "github.com"
-      && receipt.migration?.direction === "pull"
-      && receipt.migration?.mirror === true
+  const mirrorVerified =
+    embedded.mirrorVerified === true ||
+    successfulPilotStep(
+      steps,
+      "mirror-repository",
+      (step) => step.status === "created" || step.mirror === true,
     );
+  const defaultBranchVerified =
+    embedded.defaultBranchVerified === true ||
+    successfulPilotStep(steps, "verify-default-branch");
+  const webhookVerified =
+    embedded.webhookVerified === true ||
+    successfulPilotStep(steps, "steward-webhook");
+  const branchProtectionVerified =
+    embedded.branchProtectionVerified === true ||
+    successfulPilotStep(steps, "branch-protection");
+  const repoPolicyVerified =
+    embedded.repoPolicyVerified === true ||
+    (successfulPilotStep(steps, "repo-policy") &&
+      successfulPilotStep(steps, "repo-policy-verify"));
+  const agentIdentitiesSynced =
+    embedded.agentIdentitiesSynced === true ||
+    successfulPilotStep(steps, "agent-identities");
+  const pilotSurfacesVerified =
+    embedded.pilotSurfacesVerified === true ||
+    successfulPilotStep(steps, "pilot-surfaces");
+  const pullMirrorOnly =
+    embedded.pullMirrorOnly === true ||
+    (receipt.upstream?.host === "github.com" &&
+      receipt.migration?.direction === "pull" &&
+      receipt.migration?.mirror === true);
 
   return {
-    productionReady: embedded.productionReady === true
-      || (
-        receipt.status === "passed"
-        && receipt.dryRun === false
-        && requiredCheckCount > 0
-        && trustedAgentCount > 0
-        && mirrorVerified
-        && defaultBranchVerified
-        && webhookVerified
-        && branchProtectionVerified
-        && repoPolicyVerified
-        && agentIdentitiesSynced
-        && pilotSurfacesVerified
-        && pullMirrorOnly
-      ),
+    productionReady:
+      embedded.productionReady === true ||
+      (receipt.status === "passed" &&
+        receipt.dryRun === false &&
+        requiredCheckCount > 0 &&
+        trustedAgentCount > 0 &&
+        mirrorVerified &&
+        defaultBranchVerified &&
+        webhookVerified &&
+        branchProtectionVerified &&
+        repoPolicyVerified &&
+        agentIdentitiesSynced &&
+        pilotSurfacesVerified &&
+        pullMirrorOnly),
     stepCount,
     requiredCheckCount,
     trustedAgentCount,
@@ -274,14 +312,26 @@ function pilotBootstrapSummary(receipt) {
 }
 
 function successfulPilotStep(steps, name, predicate = () => true) {
-  const passStatuses = new Set(["verified", "verified-existing", "created", "updated", "upserted", "synced"]);
-  return steps.some((step) => step?.name === name && passStatuses.has(step.status) && predicate(step));
+  const passStatuses = new Set([
+    "verified",
+    "verified-existing",
+    "created",
+    "updated",
+    "upserted",
+    "synced",
+  ]);
+  return steps.some(
+    (step) =>
+      step?.name === name && passStatuses.has(step.status) && predicate(step),
+  );
 }
 
 function deploymentEvidenceFromDeploy(deployEvidence, deployEvidencePath) {
   const postDeploySource = deployEvidence.files?.postDeployEvidence;
   if (!postDeploySource) {
-    throw new Error(`${deployEvidencePath} is missing files.postDeployEvidence`);
+    throw new Error(
+      `${deployEvidencePath} is missing files.postDeployEvidence`,
+    );
   }
 
   const resolvedPostDeploySource = path.isAbsolute(postDeploySource)
@@ -299,7 +349,9 @@ function deploymentEvidenceFromDeploy(deployEvidence, deployEvidencePath) {
       status: deployEvidence.status ?? null,
       mode: deployEvidence.mode ?? null,
       dryRun: deployEvidence.dryRun ?? null,
-      stepCount: Array.isArray(deployEvidence.steps) ? deployEvidence.steps.length : 0,
+      stepCount: Array.isArray(deployEvidence.steps)
+        ? deployEvidence.steps.length
+        : 0,
       postDeployEvidenceSource: resolvedPostDeploySource,
       postDeployEvidenceSha256: sha256File(resolvedPostDeploySource),
     },
@@ -308,14 +360,22 @@ function deploymentEvidenceFromDeploy(deployEvidence, deployEvidencePath) {
       sha256: sha256File(resolvedPostDeploySource),
       checkedAt: postDeployEvidence.finishedAt ?? null,
       status: postDeployEvidence.status ?? null,
-      checkCount: typeof postDeploySummary.total === "number" ? postDeploySummary.total : 0,
-      failedCount: typeof postDeploySummary.failed === "number" ? postDeploySummary.failed : 0,
+      checkCount:
+        typeof postDeploySummary.total === "number"
+          ? postDeploySummary.total
+          : 0,
+      failedCount:
+        typeof postDeploySummary.failed === "number"
+          ? postDeploySummary.failed
+          : 0,
       forgejoLocalUrl: postDeployTargets.forgejoLocalUrl ?? null,
       stewardLocalUrl: postDeployTargets.stewardLocalUrl ?? null,
     },
     mode: deployEvidence.mode ?? null,
-    applied: deployEvidence.status === "passed" && deployEvidence.dryRun === false,
-    postDeployVerified: postDeployEvidence.status === "passed" && postDeploySummary.failed === 0,
+    applied:
+      deployEvidence.status === "passed" && deployEvidence.dryRun === false,
+    postDeployVerified:
+      postDeployEvidence.status === "passed" && postDeploySummary.failed === 0,
   };
 }
 

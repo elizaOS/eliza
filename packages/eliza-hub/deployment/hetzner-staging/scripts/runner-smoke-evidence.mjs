@@ -25,18 +25,36 @@ async function main() {
   const defaultEnvFile = path.resolve(scriptDir, "..", ".env");
   const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
   const values = readConfiguration(envFile, process.env);
-  const baseUrl = requiredValue(options.forgejoUrl ?? values.RUNNER_SMOKE_FORGEJO_URL ?? values.FORGEJO_ROOT_URL, "FORGEJO_ROOT_URL");
+  const baseUrl = requiredValue(
+    options.forgejoUrl ??
+      values.RUNNER_SMOKE_FORGEJO_URL ??
+      values.FORGEJO_ROOT_URL,
+    "FORGEJO_ROOT_URL",
+  );
   const token = requiredValue(
-    values.RUNNER_SMOKE_FORGEJO_TOKEN ?? values.FORGEJO_STEWARD_TOKEN ?? values.FORGEJO_TOKEN,
+    values.RUNNER_SMOKE_FORGEJO_TOKEN ??
+      values.FORGEJO_STEWARD_TOKEN ??
+      values.FORGEJO_TOKEN,
     "RUNNER_SMOKE_FORGEJO_TOKEN or FORGEJO_STEWARD_TOKEN",
   );
-  const repoName = options.repo ?? values.RUNNER_SMOKE_REPO ?? values.MERGE_STEWARD_SMOKE_REPO ?? DEFAULT_REPO;
+  const repoName =
+    options.repo ??
+    values.RUNNER_SMOKE_REPO ??
+    values.MERGE_STEWARD_SMOKE_REPO ??
+    DEFAULT_REPO;
   const repo = parseRepo(repoName);
-  const workflow = options.workflow ?? values.RUNNER_SMOKE_WORKFLOW ?? DEFAULT_WORKFLOW;
+  const workflow =
+    options.workflow ?? values.RUNNER_SMOKE_WORKFLOW ?? DEFAULT_WORKFLOW;
   const ref = options.ref ?? values.RUNNER_SMOKE_REF ?? DEFAULT_REF;
-  const outputPath = options.output ?? values.RUNNER_SMOKE_EVIDENCE_OUTPUT ?? DEFAULT_OUTPUT;
-  const dispatch = options.dispatch || parseBoolean(values.RUNNER_SMOKE_DISPATCH) === true;
-  const timeoutMs = parsePositiveInteger(options.timeoutMs ?? values.RUNNER_SMOKE_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, "RUNNER_SMOKE_TIMEOUT_MS");
+  const outputPath =
+    options.output ?? values.RUNNER_SMOKE_EVIDENCE_OUTPUT ?? DEFAULT_OUTPUT;
+  const dispatch =
+    options.dispatch || parseBoolean(values.RUNNER_SMOKE_DISPATCH) === true;
+  const timeoutMs = parsePositiveInteger(
+    options.timeoutMs ?? values.RUNNER_SMOKE_TIMEOUT_MS,
+    DEFAULT_TIMEOUT_MS,
+    "RUNNER_SMOKE_TIMEOUT_MS",
+  );
   const intervalMs = parsePositiveInteger(
     options.intervalMs ?? values.RUNNER_SMOKE_INTERVAL_MS,
     DEFAULT_INTERVAL_MS,
@@ -53,12 +71,31 @@ async function main() {
   }
 
   const result = dispatch
-    ? await waitForPassingRun({ client, repo, workflow, ref, requestedAt, timeoutMs, intervalMs })
+    ? await waitForPassingRun({
+        client,
+        repo,
+        workflow,
+        ref,
+        requestedAt,
+        timeoutMs,
+        intervalMs,
+      })
     : await readLatestPassingRun({ client, repo, workflow, ref });
-  const evidence = buildEvidence({ baseUrl, repo, repoName, workflow, ref, dispatch, requestedAt, run: result.run });
+  const evidence = buildEvidence({
+    baseUrl,
+    repo,
+    repoName,
+    workflow,
+    ref,
+    dispatch,
+    requestedAt,
+    run: result.run,
+  });
 
   mkdirSync(path.dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, {
+    mode: 0o600,
+  });
   log(`wrote runner smoke evidence to ${outputPath}`);
 }
 
@@ -85,7 +122,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--env-file=")) {
-      options.envFile = requireArg(arg.slice("--env-file=".length), "--env-file");
+      options.envFile = requireArg(
+        arg.slice("--env-file=".length),
+        "--env-file",
+      );
       continue;
     }
 
@@ -96,7 +136,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--forgejo-url=")) {
-      options.forgejoUrl = requireArg(arg.slice("--forgejo-url=".length), "--forgejo-url");
+      options.forgejoUrl = requireArg(
+        arg.slice("--forgejo-url=".length),
+        "--forgejo-url",
+      );
       continue;
     }
 
@@ -118,7 +161,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--workflow=")) {
-      options.workflow = requireArg(arg.slice("--workflow=".length), "--workflow");
+      options.workflow = requireArg(
+        arg.slice("--workflow=".length),
+        "--workflow",
+      );
       continue;
     }
 
@@ -151,7 +197,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--timeout-ms=")) {
-      options.timeoutMs = requireArg(arg.slice("--timeout-ms=".length), "--timeout-ms");
+      options.timeoutMs = requireArg(
+        arg.slice("--timeout-ms=".length),
+        "--timeout-ms",
+      );
       continue;
     }
 
@@ -162,7 +211,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--interval-ms=")) {
-      options.intervalMs = requireArg(arg.slice("--interval-ms=".length), "--interval-ms");
+      options.intervalMs = requireArg(
+        arg.slice("--interval-ms=".length),
+        "--interval-ms",
+      );
       continue;
     }
 
@@ -230,7 +282,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -246,7 +300,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -265,7 +320,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -292,7 +347,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -380,11 +435,15 @@ class ForgejoActionsClient {
   }
 
   listWorkflowRuns({ repo, limit = 20 }) {
-    return this.request("GET", `/repos/${encodeSegment(repo.owner)}/${encodeSegment(repo.repo)}/actions/runs`, {
-      query: {
-        limit,
+    return this.request(
+      "GET",
+      `/repos/${encodeSegment(repo.owner)}/${encodeSegment(repo.repo)}/actions/runs`,
+      {
+        query: {
+          limit,
+        },
       },
-    });
+    );
   }
 
   async request(method, apiPath, { query = {}, body } = {}) {
@@ -411,10 +470,15 @@ class ForgejoActionsClient {
     const response = await this.fetchImpl(url, init);
     const text = await response.text();
     const contentType = response.headers?.get?.("content-type") ?? "";
-    const responseBody = text && contentType.includes("application/json") ? JSON.parse(text) : text || null;
+    const responseBody =
+      text && contentType.includes("application/json")
+        ? JSON.parse(text)
+        : text || null;
 
     if (!response.ok) {
-      throw new Error(`Forgejo API ${method} ${apiPath} failed with ${response.status}`);
+      throw new Error(
+        `Forgejo API ${method} ${apiPath} failed with ${response.status}`,
+      );
     }
 
     return responseBody;
@@ -424,23 +488,38 @@ class ForgejoActionsClient {
 async function readLatestPassingRun({ client, repo, workflow, ref }) {
   const body = await client.listWorkflowRuns({ repo });
   const runs = normalizeWorkflowRuns(body);
-  const run = runs.find((candidate) => runMatches(candidate, { workflow, ref }) && runPassed(candidate));
+  const run = runs.find(
+    (candidate) =>
+      runMatches(candidate, { workflow, ref }) && runPassed(candidate),
+  );
 
   if (!run) {
-    throw new Error(`no passing ${workflow} runner smoke workflow was found for ${repo.owner}/${repo.repo}@${ref}`);
+    throw new Error(
+      `no passing ${workflow} runner smoke workflow was found for ${repo.owner}/${repo.repo}@${ref}`,
+    );
   }
 
   return { run };
 }
 
-async function waitForPassingRun({ client, repo, workflow, ref, requestedAt, timeoutMs, intervalMs }) {
+async function waitForPassingRun({
+  client,
+  repo,
+  workflow,
+  ref,
+  requestedAt,
+  timeoutMs,
+  intervalMs,
+}) {
   const deadline = Date.now() + timeoutMs;
   let lastMatchedRun = null;
 
   while (Date.now() <= deadline) {
     const body = await client.listWorkflowRuns({ repo });
     const runs = normalizeWorkflowRuns(body);
-    const run = runs.find((candidate) => runMatches(candidate, { workflow, ref, requestedAt }));
+    const run = runs.find((candidate) =>
+      runMatches(candidate, { workflow, ref, requestedAt }),
+    );
 
     if (run) {
       lastMatchedRun = run;
@@ -449,14 +528,18 @@ async function waitForPassingRun({ client, repo, workflow, ref, requestedAt, tim
       }
 
       if (runTerminalFailed(run)) {
-        throw new Error(`runner smoke workflow finished with ${runConclusion(run)}`);
+        throw new Error(
+          `runner smoke workflow finished with ${runConclusion(run)}`,
+        );
       }
     }
 
     await sleep(intervalMs);
   }
 
-  const suffix = lastMatchedRun ? `; last status was ${runConclusion(lastMatchedRun)}` : "";
+  const suffix = lastMatchedRun
+    ? `; last status was ${runConclusion(lastMatchedRun)}`
+    : "";
   throw new Error(`runner smoke workflow did not pass before timeout${suffix}`);
 }
 
@@ -481,7 +564,11 @@ function normalizeWorkflowRuns(body) {
 }
 
 function runMatches(run, { workflow, ref, requestedAt }) {
-  return workflowMatches(run, workflow) && refMatches(run, ref) && createdAfter(run, requestedAt);
+  return (
+    workflowMatches(run, workflow) &&
+    refMatches(run, ref) &&
+    createdAfter(run, requestedAt)
+  );
 }
 
 function workflowMatches(run, workflow) {
@@ -498,7 +585,9 @@ function workflowMatches(run, workflow) {
     run.title,
   ].map(normalizeToken);
 
-  return candidates.some((candidate) => expected.some((item) => candidate.includes(item)));
+  return candidates.some((candidate) =>
+    expected.some((item) => candidate.includes(item)),
+  );
 }
 
 function refMatches(run, ref) {
@@ -509,9 +598,14 @@ function refMatches(run, ref) {
     run.ref_name,
     run.branch,
     run.head?.ref,
-  ].map(normalizeRef).filter(Boolean);
+  ]
+    .map(normalizeRef)
+    .filter(Boolean);
 
-  return candidates.length === 0 || candidates.some((candidate) => candidate === expected);
+  return (
+    candidates.length === 0 ||
+    candidates.some((candidate) => candidate === expected)
+  );
 }
 
 function createdAfter(run, requestedAt) {
@@ -519,7 +613,12 @@ function createdAfter(run, requestedAt) {
     return true;
   }
 
-  const createdAt = run.created_at ?? run.created ?? run.createdAt ?? run.run_started_at ?? run.updated_at;
+  const createdAt =
+    run.created_at ??
+    run.created ??
+    run.createdAt ??
+    run.run_started_at ??
+    run.updated_at;
   if (!createdAt) {
     return true;
   }
@@ -537,14 +636,33 @@ function runPassed(run) {
 }
 
 function runTerminalFailed(run) {
-  return ["failure", "failed", "cancelled", "canceled", "skipped", "timed_out", "timeout"].includes(runConclusion(run));
+  return [
+    "failure",
+    "failed",
+    "cancelled",
+    "canceled",
+    "skipped",
+    "timed_out",
+    "timeout",
+  ].includes(runConclusion(run));
 }
 
 function runConclusion(run) {
-  return String(run.conclusion ?? run.result ?? run.status ?? "unknown").toLowerCase();
+  return String(
+    run.conclusion ?? run.result ?? run.status ?? "unknown",
+  ).toLowerCase();
 }
 
-function buildEvidence({ baseUrl, repo, repoName, workflow, ref, dispatch, requestedAt, run }) {
+function buildEvidence({
+  baseUrl,
+  repo,
+  repoName,
+  workflow,
+  ref,
+  dispatch,
+  requestedAt,
+  run,
+}) {
   return {
     runnerSmoke: {
       ok: true,
@@ -575,7 +693,10 @@ function workflowRunUrl({ baseUrl, repo, run }) {
     return null;
   }
 
-  return new URL(`${repo.owner}/${repo.repo}/actions/runs/${runNumber}`, normalizeBaseUrl(baseUrl)).href;
+  return new URL(
+    `${repo.owner}/${repo.repo}/actions/runs/${runNumber}`,
+    normalizeBaseUrl(baseUrl),
+  ).href;
 }
 
 function normalizeToken(value) {
@@ -583,7 +704,9 @@ function normalizeToken(value) {
     return "";
   }
 
-  return String(value).toLowerCase().replace(/[^a-z0-9]+/gu, "");
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "");
 }
 
 function normalizeRef(value) {
@@ -591,7 +714,9 @@ function normalizeRef(value) {
     return "";
   }
 
-  return String(value).replace(/^refs\/heads\//u, "").replace(/^refs\/tags\//u, "");
+  return String(value)
+    .replace(/^refs\/heads\//u, "")
+    .replace(/^refs\/tags\//u, "");
 }
 
 function normalizeBaseUrl(value) {

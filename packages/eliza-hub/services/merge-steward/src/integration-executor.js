@@ -113,6 +113,8 @@ export async function executeIntegrationPlan({
         trainBlocked = true;
       }
     } catch (error) {
+      // error-policy:J1 per-item integration boundary: failure is recorded as a
+      // structured failed execution and blocks the rest of the train
       executions.push({
         repo: itemPlan.repo,
         pullRequestId: itemPlan.pullRequestId,
@@ -249,6 +251,8 @@ export async function executeAction({ itemPlan, action, client, repo } = {}) {
       output: output ?? null,
     };
   } catch (error) {
+    // error-policy:J1 per-action boundary: failure becomes a structured failed
+    // action result the run records
     return {
       ...action,
       status: "failed",
@@ -393,6 +397,8 @@ async function evaluateActionGuard({
     }
     return { ok: true, details: result ?? null };
   } catch (error) {
+    // error-policy:J1 guard evaluation failure blocks the action with a
+    // structured reason
     return {
       ok: false,
       reason: "integration_action_guard_failed",
@@ -456,6 +462,8 @@ async function checkpointIntegrationAction({
     }
     return { ok: true };
   } catch (error) {
+    // error-policy:J1 checkpoint failure blocks the action with a structured
+    // reason
     return {
       ok: false,
       reason: "integration_action_checkpoint_failed",

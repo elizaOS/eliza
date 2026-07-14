@@ -1108,8 +1108,7 @@ export class InMemoryQueueStore {
   ) {
     const existing = this.#agentClaims.get(String(id));
     if (
-      !existing ||
-      existing.status !== "active" ||
+      existing?.status !== "active" ||
       (ownerAgentId && existing.ownerAgentId !== ownerAgentId)
     ) {
       return null;
@@ -1131,8 +1130,7 @@ export class InMemoryQueueStore {
   ) {
     const existing = this.#agentClaims.get(String(id));
     if (
-      !existing ||
-      existing.status !== "active" ||
+      existing?.status !== "active" ||
       (ownerAgentId && existing.ownerAgentId !== ownerAgentId)
     ) {
       return null;
@@ -1166,8 +1164,7 @@ export class InMemoryQueueStore {
 
     const existing = this.#agentClaims.get(String(id));
     if (
-      !existing ||
-      existing.status !== "active" ||
+      existing?.status !== "active" ||
       (fromOwnerAgentId && existing.ownerAgentId !== fromOwnerAgentId)
     ) {
       return null;
@@ -1270,8 +1267,7 @@ export class InMemoryQueueStore {
   ) {
     const existing = this.#workerLeases.get(String(id));
     if (
-      !existing ||
-      existing.status !== "active" ||
+      existing?.status !== "active" ||
       isExpired(existing.expiresAt, now) ||
       (ownerId && existing.ownerId !== ownerId)
     ) {
@@ -1294,8 +1290,7 @@ export class InMemoryQueueStore {
   ) {
     const existing = this.#workerLeases.get(String(id));
     if (
-      !existing ||
-      existing.status !== "active" ||
+      existing?.status !== "active" ||
       (ownerId && existing.ownerId !== ownerId)
     ) {
       return null;
@@ -1897,6 +1892,8 @@ export class JsonFileQueueStore extends InMemoryQueueStore {
     try {
       raw = await readFile(this.#filePath, "utf8");
     } catch (error) {
+      // error-policy:J4 a missing store file is legitimate first-boot empty
+      // state; anything else rethrows
       if (error?.code === "ENOENT") return;
       throw error;
     }

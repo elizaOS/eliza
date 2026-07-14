@@ -891,7 +891,7 @@ function splitUnitReason({ state, blockers, warnings }) {
   return "This split can be reserved as focused agent work.";
 }
 
-function suggestedSplitBranch({ proposed, group, index, decision }) {
+function suggestedSplitBranch({ group, index, decision }) {
   const namespace = decision.branchNamespace.expectedNamespace;
   if (!namespace) return null;
   return `${namespace}${slugFor(group.lane || `split-${index + 1}`)}`;

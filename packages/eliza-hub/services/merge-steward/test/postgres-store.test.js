@@ -1288,7 +1288,10 @@ describe("Postgres queue store", () => {
     });
     assert.equal(event.seq, 1);
     assert.equal(event.type, "attempt_recovered");
-    assert.equal((await store.listRunEvents("run-one", { afterSeq: 0 })).length, 1);
+    assert.equal(
+      (await store.listRunEvents("run-one", { afterSeq: 0 })).length,
+      1,
+    );
 
     const signal = await store.appendSignal({
       runId: "run-one",
@@ -1408,7 +1411,10 @@ function createLifecyclePool() {
           return { rows: state.node ? [state.node] : [] };
         }
 
-        if (sql.includes("FROM steward_attempts") && sql.includes("status IN")) {
+        if (
+          sql.includes("FROM steward_attempts") &&
+          sql.includes("status IN")
+        ) {
           return { rows: state.attempt ? [state.attempt] : [] };
         }
         if (sql.includes("INSERT INTO steward_attempts")) {

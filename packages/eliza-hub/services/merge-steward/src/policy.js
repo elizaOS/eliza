@@ -693,12 +693,7 @@ function applyPolicyOverride(blockers, override) {
 }
 
 function activePolicyOverride(override) {
-  if (
-    !override ||
-    override.active !== true ||
-    !override.approvedBy ||
-    !override.reason
-  )
+  if (override?.active !== true || !override.approvedBy || !override.reason)
     return null;
   if (override.expiresAt) {
     const expiresAtMs = Date.parse(override.expiresAt);

@@ -83,44 +83,64 @@ function main() {
     const defaultEnvFile = path.resolve(deployDir, ".env");
     const defaultComposeFile = path.resolve(deployDir, "compose.yml");
     const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
-    const composeFile = options.composeFile ?? process.env.COMPOSE_FILE ?? defaultComposeFile;
+    const composeFile =
+      options.composeFile ?? process.env.COMPOSE_FILE ?? defaultComposeFile;
     const values = readConfiguration(envFile, process.env);
     const errors = [];
     const issuerUrl = readIssuerUrl(values, errors);
-    const smokeEvidence = readSmokeEvidence(options.smokeJson ?? values.SSO_EVIDENCE_SMOKE_JSON, issuerUrl, errors);
+    const smokeEvidence = readSmokeEvidence(
+      options.smokeJson ?? values.SSO_EVIDENCE_SMOKE_JSON,
+      issuerUrl,
+      errors,
+    );
     const bootstrapEvidence = readBootstrapEvidence(
-      options.identityBootstrapJson ?? values.SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON,
+      options.identityBootstrapJson ??
+        values.SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON,
       issuerUrl,
       errors,
     );
     const providerConfigComplete = oidcProviderConfigComplete(values);
-    const sourceConfigComplete = providerConfigComplete && forgejoOidcSourceConfigComplete(values);
-    const publicRegistrationLocked = inferPublicRegistrationLocked(values, composeFile);
+    const sourceConfigComplete =
+      providerConfigComplete && forgejoOidcSourceConfigComplete(values);
+    const publicRegistrationLocked = inferPublicRegistrationLocked(
+      values,
+      composeFile,
+    );
     const sso = { issuerUrl };
 
     for (const field of SSO_FIELDS) {
       const attested = readBooleanAttestation(values, field.envKey, errors);
-      sso[field.outputKey] = attested ?? inferredFieldValue(field.outputKey, {
-        providerConfigComplete,
-        sourceConfigComplete,
-        publicRegistrationLocked,
-        smokeEvidence,
-      });
+      sso[field.outputKey] =
+        attested ??
+        inferredFieldValue(field.outputKey, {
+          providerConfigComplete,
+          sourceConfigComplete,
+          publicRegistrationLocked,
+          smokeEvidence,
+        });
     }
-    sso.smokeEvidence = smokeEvidence ? {
-      source: smokeEvidence.source,
-      sha256: smokeEvidence.sha256,
-      checkedAt: smokeEvidence.checkedAt,
-    } : null;
-    sso.bootstrapEvidence = bootstrapEvidence ? {
-      source: bootstrapEvidence.source,
-      sha256: bootstrapEvidence.sha256,
-      checkedAt: bootstrapEvidence.checkedAt,
-      status: bootstrapEvidence.status,
-      checkCount: bootstrapEvidence.checkCount,
-    } : null;
+    sso.smokeEvidence = smokeEvidence
+      ? {
+          source: smokeEvidence.source,
+          sha256: smokeEvidence.sha256,
+          checkedAt: smokeEvidence.checkedAt,
+        }
+      : null;
+    sso.bootstrapEvidence = bootstrapEvidence
+      ? {
+          source: bootstrapEvidence.source,
+          sha256: bootstrapEvidence.sha256,
+          checkedAt: bootstrapEvidence.checkedAt,
+          status: bootstrapEvidence.status,
+          checkCount: bootstrapEvidence.checkCount,
+        }
+      : null;
 
-    validatePositiveAttestations(sso, { providerConfigComplete, sourceConfigComplete, bootstrapEvidence }, errors);
+    validatePositiveAttestations(
+      sso,
+      { providerConfigComplete, sourceConfigComplete, bootstrapEvidence },
+      errors,
+    );
 
     if (errors.length > 0) {
       for (const error of errors) {
@@ -209,7 +229,9 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--identity-bootstrap-json=")) {
-      options.identityBootstrapJson = arg.slice("--identity-bootstrap-json=".length);
+      options.identityBootstrapJson = arg.slice(
+        "--identity-bootstrap-json=".length,
+      );
       if (!options.identityBootstrapJson) {
         throw new Error("--identity-bootstrap-json requires a path");
       }
@@ -240,14 +262,20 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
 }
 
 function inputKeys() {
-  return [...CONFIG_KEYS, "SSO_EVIDENCE_SMOKE_JSON", ...SSO_FIELDS.map((field) => field.envKey)];
+  return [
+    ...CONFIG_KEYS,
+    "SSO_EVIDENCE_SMOKE_JSON",
+    ...SSO_FIELDS.map((field) => field.envKey),
+  ];
 }
 
 function parseEnv(body) {
@@ -260,7 +288,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -279,7 +308,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -306,7 +335,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -315,15 +344,21 @@ function findClosingDoubleQuote(value) {
 }
 
 function readIssuerUrl(values, errors) {
-  const issuerUrl = cleanValue(values.SSO_EVIDENCE_ISSUER_URL ?? values.ELIZA_CLOUD_OIDC_ISSUER_URL);
+  const issuerUrl = cleanValue(
+    values.SSO_EVIDENCE_ISSUER_URL ?? values.ELIZA_CLOUD_OIDC_ISSUER_URL,
+  );
 
   if (issuerUrl === null) {
-    errors.push("SSO_EVIDENCE_ISSUER_URL or ELIZA_CLOUD_OIDC_ISSUER_URL is required");
+    errors.push(
+      "SSO_EVIDENCE_ISSUER_URL or ELIZA_CLOUD_OIDC_ISSUER_URL is required",
+    );
     return "";
   }
 
   if (!isPrivateHttpsUrl(issuerUrl)) {
-    errors.push("SSO_EVIDENCE_ISSUER_URL or ELIZA_CLOUD_OIDC_ISSUER_URL must be a non-placeholder https:// URL");
+    errors.push(
+      "SSO_EVIDENCE_ISSUER_URL or ELIZA_CLOUD_OIDC_ISSUER_URL must be a non-placeholder https:// URL",
+    );
   }
 
   return issuerUrl;
@@ -373,7 +408,10 @@ function inferredFieldValue(outputKey, inferred) {
     case "serviceIdentitySmokePassed":
       return inferred.smokeEvidence?.serviceIdentitySmokePassed === true;
     case "publicRegistrationLocked":
-      return inferred.smokeEvidence?.publicRegistrationLocked === true || inferred.publicRegistrationLocked;
+      return (
+        inferred.smokeEvidence?.publicRegistrationLocked === true ||
+        inferred.publicRegistrationLocked
+      );
     case "autoCreateRestrictedToIssuer":
       return inferred.smokeEvidence?.autoCreateRestrictedToIssuer === true;
     case "recoveryAdminVerified":
@@ -410,13 +448,24 @@ function readSmokeEvidence(smokeJson, issuerUrl, errors) {
     return null;
   }
 
-  const smokeIssuer = cleanValue(smoke.issuerUrl ?? smoke.issuer ?? smoke.elizaCloudIssuerUrl);
+  const smokeIssuer = cleanValue(
+    smoke.issuerUrl ?? smoke.issuer ?? smoke.elizaCloudIssuerUrl,
+  );
   if (smokeIssuer && issuerUrl && smokeIssuer !== issuerUrl) {
-    errors.push("SSO_EVIDENCE_SMOKE_JSON issuerUrl does not match configured issuer");
+    errors.push(
+      "SSO_EVIDENCE_SMOKE_JSON issuerUrl does not match configured issuer",
+    );
   }
-  const checkedAt = normalizeIso(smoke.checkedAt ?? smoke.completedAt ?? smoke.smokeTestedAt ?? body.checkedAt);
+  const checkedAt = normalizeIso(
+    smoke.checkedAt ??
+      smoke.completedAt ??
+      smoke.smokeTestedAt ??
+      body.checkedAt,
+  );
   if (!checkedAt) {
-    errors.push("SSO_EVIDENCE_SMOKE_JSON must include a valid checkedAt timestamp");
+    errors.push(
+      "SSO_EVIDENCE_SMOKE_JSON must include a valid checkedAt timestamp",
+    );
   }
 
   const smokeTested = readSmokeBoolean(smoke, [
@@ -484,38 +533,56 @@ function readBootstrapEvidence(bootstrapJson, issuerUrl, errors) {
     rawBody = readFileSync(cleanPath, "utf8");
     body = JSON.parse(rawBody);
   } catch (error) {
-    errors.push(`SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON could not be read: ${error.message}`);
+    errors.push(
+      `SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON could not be read: ${error.message}`,
+    );
     return null;
   }
 
   if (!isRecord(body)) {
-    errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must contain a JSON object");
+    errors.push(
+      "SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must contain a JSON object",
+    );
     return null;
   }
 
   const checkedAt = normalizeIso(body.finishedAt ?? body.checkedAt);
   if (!checkedAt) {
-    errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must include a valid finishedAt timestamp");
+    errors.push(
+      "SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must include a valid finishedAt timestamp",
+    );
   }
-  if (body.schema !== "https://eliza.hub/schemas/identity-bootstrap-evidence.v1") {
-    errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must use identity-bootstrap-evidence.v1");
+  if (
+    body.schema !== "https://eliza.hub/schemas/identity-bootstrap-evidence.v1"
+  ) {
+    errors.push(
+      "SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must use identity-bootstrap-evidence.v1",
+    );
   }
   if (body.status !== "passed") {
     errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must have status=passed");
   }
   if (body.summary?.failed !== 0) {
-    errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must have zero failed checks");
+    errors.push(
+      "SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must have zero failed checks",
+    );
   }
   if (body.options?.applyBootstrap !== false) {
-    errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must be captured from read-only APPLY_BOOTSTRAP=false verification");
+    errors.push(
+      "SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must be captured from read-only APPLY_BOOTSTRAP=false verification",
+    );
   }
   if (body.oidc?.issuerUrl && issuerUrl && body.oidc.issuerUrl !== issuerUrl) {
-    errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON issuerUrl does not match configured issuer");
+    errors.push(
+      "SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON issuerUrl does not match configured issuer",
+    );
   }
 
   const checks = Array.isArray(body.checks) ? body.checks : [];
   if (checks.length === 0) {
-    errors.push("SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must include identity bootstrap checks");
+    errors.push(
+      "SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON must include identity bootstrap checks",
+    );
   }
 
   return {
@@ -561,8 +628,12 @@ function forgejoOidcSourceConfigComplete(values) {
     hasRequiredScopes(values.FORGEJO_OIDC_SCOPES) &&
     parseBoolean(values.FORGEJO_OAUTH2_ENABLE_AUTO_REGISTRATION) === true &&
     parseBoolean(values.FORGEJO_OAUTH2_REGISTER_EMAIL_CONFIRM) === false &&
-    ["userid", "nickname", "email"].includes(cleanValue(values.FORGEJO_OAUTH2_USERNAME)) &&
-    ["disabled", "login"].includes(cleanValue(values.FORGEJO_OAUTH2_ACCOUNT_LINKING)) &&
+    ["userid", "nickname", "email"].includes(
+      cleanValue(values.FORGEJO_OAUTH2_USERNAME),
+    ) &&
+    ["disabled", "login"].includes(
+      cleanValue(values.FORGEJO_OAUTH2_ACCOUNT_LINKING),
+    ) &&
     isPresent(values.FORGEJO_OIDC_REQUIRED_CLAIM_NAME) &&
     isPresent(values.FORGEJO_OIDC_REQUIRED_CLAIM_VALUE) &&
     isPresent(values.FORGEJO_OIDC_GROUP_CLAIM_NAME) &&
@@ -584,53 +655,78 @@ function inferPublicRegistrationLocked(values, composeFile) {
   const compose = readFileSync(composeFile, "utf8");
   return (
     composeEnvTrue(compose, "FORGEJO__service__DISABLE_REGISTRATION") &&
-    composeEnvTrue(compose, "FORGEJO__service__ALLOW_ONLY_EXTERNAL_REGISTRATION") &&
+    composeEnvTrue(
+      compose,
+      "FORGEJO__service__ALLOW_ONLY_EXTERNAL_REGISTRATION",
+    ) &&
     composeEnvTrue(compose, "FORGEJO__service__REQUIRE_SIGNIN_VIEW")
   );
 }
 
 function validatePositiveAttestations(sso, inferred, errors) {
   if (sso.oidcProviderStaged && !inferred.providerConfigComplete) {
-    errors.push("SSO_EVIDENCE_OIDC_PROVIDER_STAGED cannot be true until OIDC issuer, discovery, client id, and client secret are configured");
+    errors.push(
+      "SSO_EVIDENCE_OIDC_PROVIDER_STAGED cannot be true until OIDC issuer, discovery, client id, and client secret are configured",
+    );
   }
 
   if (sso.forgejoOidcSourceConfigured && !inferred.sourceConfigComplete) {
-    errors.push("SSO_EVIDENCE_FORGEJO_OIDC_SOURCE_CONFIGURED cannot be true until Forgejo OIDC auth name, scopes, and Eliza Cloud client config are complete");
+    errors.push(
+      "SSO_EVIDENCE_FORGEJO_OIDC_SOURCE_CONFIGURED cannot be true until Forgejo OIDC auth name, scopes, and Eliza Cloud client config are complete",
+    );
   }
 
   if (sso.forgejoOidcSourceConfigured && !inferred.bootstrapEvidence) {
-    errors.push("SSO_EVIDENCE_FORGEJO_OIDC_SOURCE_CONFIGURED cannot be true without SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON from bootstrap-forgejo-identity.sh");
+    errors.push(
+      "SSO_EVIDENCE_FORGEJO_OIDC_SOURCE_CONFIGURED cannot be true without SSO_EVIDENCE_IDENTITY_BOOTSTRAP_JSON from bootstrap-forgejo-identity.sh",
+    );
   }
 
   if (sso.smokeTested && !inferred.sourceConfigComplete) {
-    errors.push("SSO_EVIDENCE_SMOKE_TESTED cannot be true until the Forgejo OIDC source config is complete");
+    errors.push(
+      "SSO_EVIDENCE_SMOKE_TESTED cannot be true until the Forgejo OIDC source config is complete",
+    );
   }
 
   for (const [field, envKey] of [
     ["humanIdentitySmokePassed", "SSO_EVIDENCE_HUMAN_IDENTITY_SMOKE_PASSED"],
     ["agentIdentitySmokePassed", "SSO_EVIDENCE_AGENT_IDENTITY_SMOKE_PASSED"],
-    ["serviceIdentitySmokePassed", "SSO_EVIDENCE_SERVICE_IDENTITY_SMOKE_PASSED"],
+    [
+      "serviceIdentitySmokePassed",
+      "SSO_EVIDENCE_SERVICE_IDENTITY_SMOKE_PASSED",
+    ],
   ]) {
     if (sso[field] && !inferred.sourceConfigComplete) {
-      errors.push(`${envKey} cannot be true until the Forgejo OIDC source config is complete`);
+      errors.push(
+        `${envKey} cannot be true until the Forgejo OIDC source config is complete`,
+      );
     }
     if (sso[field] && !sso.smokeTested) {
-      errors.push(`${envKey} cannot be true until SSO_EVIDENCE_SMOKE_TESTED is true`);
+      errors.push(
+        `${envKey} cannot be true until SSO_EVIDENCE_SMOKE_TESTED is true`,
+      );
     }
   }
 
   if (sso.autoCreateRestrictedToIssuer && !inferred.sourceConfigComplete) {
-    errors.push("SSO_EVIDENCE_AUTO_CREATE_RESTRICTED_TO_ISSUER cannot be true until the Forgejo OIDC source config is complete");
+    errors.push(
+      "SSO_EVIDENCE_AUTO_CREATE_RESTRICTED_TO_ISSUER cannot be true until the Forgejo OIDC source config is complete",
+    );
   }
 
   if (sso.autoCreateRestrictedToIssuer && !sso.publicRegistrationLocked) {
-    errors.push("SSO_EVIDENCE_AUTO_CREATE_RESTRICTED_TO_ISSUER cannot be true until public Forgejo registration is locked");
+    errors.push(
+      "SSO_EVIDENCE_AUTO_CREATE_RESTRICTED_TO_ISSUER cannot be true until public Forgejo registration is locked",
+    );
   }
 }
 
 function composeEnvTrue(compose, key) {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const pattern = new RegExp(`${escapedKey}\\s*:\\s*(?:"true"|'true'|true)(?:\\s|$)`, "u");
+  const pattern = new RegExp(
+    `${escapedKey}\\s*:\\s*(?:"true"|'true'|true)(?:\\s|$)`,
+    "u",
+  );
   return pattern.test(compose);
 }
 
@@ -667,7 +763,11 @@ function isPresent(value) {
 
 function isIssuedSecret(value, minLength) {
   const normalized = cleanValue(value);
-  return normalized !== null && !hasBadPlaceholder(normalized) && normalized.length >= minLength;
+  return (
+    normalized !== null &&
+    !hasBadPlaceholder(normalized) &&
+    normalized.length >= minLength
+  );
 }
 
 function hasBadPlaceholder(value) {

@@ -3,9 +3,8 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-
-import { artifactPath, elizaArtifactRoot } from "./artifact-paths.mjs";
 import { buildProductionReadiness } from "../../../services/merge-steward/src/production-readiness.js";
+import { artifactPath, elizaArtifactRoot } from "./artifact-paths.mjs";
 
 const EVIDENCE_KEYS = Object.freeze([
   "domain",
@@ -26,24 +25,36 @@ const EVIDENCE_KEYS = Object.freeze([
   "deployment",
 ]);
 
-const EXPECTED_FRAGMENTS = Object.freeze([
-  ["domain_tls", "domain", "domain-evidence.json"],
-  ["sso_registration", "sso", "sso-evidence.json"],
-  ["backup_restore", "backups", "backup-evidence.json"],
-  ["database_migration", "database", "database-evidence.json"],
-  ["image_provenance", "imageProvenance", "image-provenance.json"],
-  ["runner_isolation", "runner", "eliza-hub-runner-production-evidence.json"],
-  ["repository_protection", "repository", "repository-evidence.json"],
-  ["github_migration_rehearsal", "githubMigration", "eliza-hub-pilot-bootstrap-evidence.json"],
-  ["secret_management", "secrets", "secret-management.json"],
-  ["mail_notifications", "mail", "mail-evidence.json"],
-  ["storage_retention", "storage", "storage-evidence.json"],
-  ["observability", "observability", "observability-evidence.json"],
-  ["steward_runtime", "steward", "steward-evidence.json"],
-  ["merge_queue_rollout", "mergeQueueRollout", "merge-queue-rollout-evidence.json"],
-  ["security_review", "securityReview", "security-review-evidence.json"],
-  ["deployment_verification", "deployment", "eliza-hub-deploy-evidence.json"],
-].map(([domainId, evidenceBlock, filename]) => Object.freeze({ domainId, evidenceBlock, filename })));
+const EXPECTED_FRAGMENTS = Object.freeze(
+  [
+    ["domain_tls", "domain", "domain-evidence.json"],
+    ["sso_registration", "sso", "sso-evidence.json"],
+    ["backup_restore", "backups", "backup-evidence.json"],
+    ["database_migration", "database", "database-evidence.json"],
+    ["image_provenance", "imageProvenance", "image-provenance.json"],
+    ["runner_isolation", "runner", "eliza-hub-runner-production-evidence.json"],
+    ["repository_protection", "repository", "repository-evidence.json"],
+    [
+      "github_migration_rehearsal",
+      "githubMigration",
+      "eliza-hub-pilot-bootstrap-evidence.json",
+    ],
+    ["secret_management", "secrets", "secret-management.json"],
+    ["mail_notifications", "mail", "mail-evidence.json"],
+    ["storage_retention", "storage", "storage-evidence.json"],
+    ["observability", "observability", "observability-evidence.json"],
+    ["steward_runtime", "steward", "steward-evidence.json"],
+    [
+      "merge_queue_rollout",
+      "mergeQueueRollout",
+      "merge-queue-rollout-evidence.json",
+    ],
+    ["security_review", "securityReview", "security-review-evidence.json"],
+    ["deployment_verification", "deployment", "eliza-hub-deploy-evidence.json"],
+  ].map(([domainId, evidenceBlock, filename]) =>
+    Object.freeze({ domainId, evidenceBlock, filename }),
+  ),
+);
 
 main();
 
@@ -60,7 +71,9 @@ function main() {
     process.stdout.write(`${JSON.stringify(inventory, null, 2)}\n`);
 
     if (options.strict && !inventory.complete) {
-      console.error(`[production-evidence-inventory] incomplete: ${inventory.summary.missing + inventory.summary.invalid + inventory.summary.wrongBlock} fragment(s) need attention`);
+      console.error(
+        `[production-evidence-inventory] incomplete: ${inventory.summary.missing + inventory.summary.invalid + inventory.summary.wrongBlock} fragment(s) need attention`,
+      );
       process.exitCode = 1;
     }
   } catch (error) {
@@ -70,21 +83,39 @@ function main() {
 }
 
 function buildInventory(options) {
-  const artifactRoot = path.resolve(options.artifactRoot ?? elizaArtifactRoot());
+  const artifactRoot = path.resolve(
+    options.artifactRoot ?? elizaArtifactRoot(),
+  );
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   const readiness = buildProductionReadiness({ generatedAt });
-  const domainsById = new Map(readiness.domains.map((domain) => [domain.id, domain]));
+  const domainsById = new Map(
+    readiness.domains.map((domain) => [domain.id, domain]),
+  );
   const fragments = EXPECTED_FRAGMENTS.map((expected) =>
     inspectExpectedFragment(expected, {
       artifactRoot,
       domainsById,
-    }));
+    }),
+  );
   const summary = summarizeFragments(fragments);
-  const complete = summary.missing === 0 && summary.invalid === 0 && summary.wrongBlock === 0;
-  const nextActionFragment = fragments.find((fragment) => fragment.status !== "present") ?? null;
+  const complete =
+    summary.missing === 0 && summary.invalid === 0 && summary.wrongBlock === 0;
+  const nextActionFragment =
+    fragments.find((fragment) => fragment.status !== "present") ?? null;
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-  const template = options.template ?? path.resolve(scriptDir, "..", "release", "production-evidence.example.json");
-  const out = options.out ?? artifactPath("eliza-hub-production-evidence.json", { ELIZA_ARTIFACT_ROOT: artifactRoot });
+  const template =
+    options.template ??
+    path.resolve(
+      scriptDir,
+      "..",
+      "release",
+      "production-evidence.example.json",
+    );
+  const out =
+    options.out ??
+    artifactPath("eliza-hub-production-evidence.json", {
+      ELIZA_ARTIFACT_ROOT: artifactRoot,
+    });
 
   return {
     schema: "https://eliza.hub/schemas/production-evidence-inventory.v1",
@@ -93,15 +124,17 @@ function buildInventory(options) {
     artifactRoot,
     complete,
     summary,
-    nextAction: nextActionFragment ? {
-      domainId: nextActionFragment.domainId,
-      evidenceBlock: nextActionFragment.evidenceBlock,
-      status: nextActionFragment.status,
-      expectedPath: nextActionFragment.expectedPath,
-      helper: nextActionFragment.helper,
-      helperSteps: nextActionFragment.helperSteps,
-      reason: nextActionFragment.error ?? nextActionFragment.status,
-    } : null,
+    nextAction: nextActionFragment
+      ? {
+          domainId: nextActionFragment.domainId,
+          evidenceBlock: nextActionFragment.evidenceBlock,
+          status: nextActionFragment.status,
+          expectedPath: nextActionFragment.expectedPath,
+          helper: nextActionFragment.helper,
+          helperSteps: nextActionFragment.helperSteps,
+          reason: nextActionFragment.error ?? nextActionFragment.status,
+        }
+      : null,
     assemble: {
       ready: complete,
       command: shellJoin([
@@ -155,7 +188,9 @@ function inspectExpectedFragment(expected, { artifactRoot, domainsById }) {
 
   const updates = evidenceUpdates(parsed.value);
   const supportedBlocks = Object.keys(updates);
-  const containsExpectedBlock = supportedBlocks.includes(expected.evidenceBlock);
+  const containsExpectedBlock = supportedBlocks.includes(
+    expected.evidenceBlock,
+  );
 
   return {
     ...base,
@@ -164,9 +199,11 @@ function inspectExpectedFragment(expected, { artifactRoot, domainsById }) {
     supportedBlocks,
     containsExpectedBlock,
     status: containsExpectedBlock ? "present" : "wrong_block",
-    ...(containsExpectedBlock ? {} : {
-      error: `expected ${expected.evidenceBlock} evidence block`,
-    }),
+    ...(containsExpectedBlock
+      ? {}
+      : {
+          error: `expected ${expected.evidenceBlock} evidence block`,
+        }),
   };
 }
 
@@ -189,7 +226,9 @@ function evidenceUpdates(fragment) {
     updates.deployment = {};
   }
 
-  if (fragment?.schema === "https://eliza.hub/schemas/pilot-bootstrap-evidence.v1") {
+  if (
+    fragment?.schema === "https://eliza.hub/schemas/pilot-bootstrap-evidence.v1"
+  ) {
     updates.githubMigration = {};
   }
 
@@ -211,14 +250,21 @@ function readJson(filePath) {
 }
 
 function summarizeFragments(fragments) {
-  const filesWithDigest = fragments.filter((fragment) => fragment.file?.sha256).length;
+  const filesWithDigest = fragments.filter(
+    (fragment) => fragment.file?.sha256,
+  ).length;
 
   return {
     total: fragments.length,
-    present: fragments.filter((fragment) => fragment.status === "present").length,
-    missing: fragments.filter((fragment) => fragment.status === "missing").length,
-    invalid: fragments.filter((fragment) => fragment.status === "invalid_json").length,
-    wrongBlock: fragments.filter((fragment) => fragment.status === "wrong_block").length,
+    present: fragments.filter((fragment) => fragment.status === "present")
+      .length,
+    missing: fragments.filter((fragment) => fragment.status === "missing")
+      .length,
+    invalid: fragments.filter((fragment) => fragment.status === "invalid_json")
+      .length,
+    wrongBlock: fragments.filter(
+      (fragment) => fragment.status === "wrong_block",
+    ).length,
     filesWithDigest,
     evidenceBlocks: fragments.map((fragment) => fragment.evidenceBlock),
   };
@@ -289,7 +335,8 @@ function parseArgs(args) {
 
     if (arg === "--generated-at") {
       index += 1;
-      if (!args[index]) throw new Error("--generated-at requires an ISO timestamp");
+      if (!args[index])
+        throw new Error("--generated-at requires an ISO timestamp");
       options.generatedAt = args[index];
       continue;
     }
@@ -312,7 +359,9 @@ function requireValue(arg, prefix) {
 }
 
 function relativeScriptPath(scriptDir, scriptName) {
-  return path.relative(process.cwd(), path.join(scriptDir, scriptName)) || scriptName;
+  return (
+    path.relative(process.cwd(), path.join(scriptDir, scriptName)) || scriptName
+  );
 }
 
 function shellJoin(args) {

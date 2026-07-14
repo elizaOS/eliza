@@ -133,6 +133,8 @@ export function parseForgejoWebhookBody(rawBody) {
 
     return payload;
   } catch (error) {
+    // error-policy:J3 untrusted webhook body: parse failure becomes a typed
+    // WebhookPayloadError the HTTP boundary maps to 400
     if (error instanceof WebhookPayloadError) {
       throw error;
     }

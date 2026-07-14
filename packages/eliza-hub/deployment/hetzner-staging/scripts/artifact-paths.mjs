@@ -16,7 +16,8 @@ export function elizaCacheRoot(env = process.env) {
 
 export function elizaArtifactRoot(env = process.env) {
   if (env.ELIZA_ARTIFACT_ROOT) return env.ELIZA_ARTIFACT_ROOT;
-  if (env.XDG_STATE_HOME) return path.join(env.XDG_STATE_HOME, APP_DIR, "artifacts");
+  if (env.XDG_STATE_HOME)
+    return path.join(env.XDG_STATE_HOME, APP_DIR, "artifacts");
 
   const home = env.HOME || homedir();
   if (home) return path.join(home, ".local", "state", APP_DIR, "artifacts");

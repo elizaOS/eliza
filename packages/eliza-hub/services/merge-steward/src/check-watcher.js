@@ -136,6 +136,9 @@ export async function readCheckResultDetails({ client, repo, ref } = {}) {
   try {
     combinedStatus = await client.getCombinedCommitStatus(repo, ref);
   } catch {
+    // error-policy:J4 combined-status endpoint may be unavailable on this
+    // Forgejo; fall through to per-commit statuses, and the poller reports a
+    // structured timeout if checks never appear
     combinedStatus = null;
   }
 
@@ -150,6 +153,9 @@ export async function readCheckResultDetails({ client, repo, ref } = {}) {
   try {
     statuses = await client.listCommitStatuses(repo, ref);
   } catch {
+    // error-policy:J4 status listing unavailable reads as "checks pending";
+    // waitForRequiredChecks surfaces a structured timeout/failed result, never
+    // a fabricated pass
     statuses = [];
   }
   return checksFromStatuses(statuses);

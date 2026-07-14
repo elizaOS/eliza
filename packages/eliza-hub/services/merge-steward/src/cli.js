@@ -202,6 +202,8 @@ try {
     throw new Error(`Unknown command: ${command}`);
   }
 } catch (error) {
+  // error-policy:J1 CLI process boundary: report the failure on stderr and exit
+  // non-zero
   process.stderr.write(
     `${error instanceof Error ? error.message : "Unknown error"}\n`,
   );

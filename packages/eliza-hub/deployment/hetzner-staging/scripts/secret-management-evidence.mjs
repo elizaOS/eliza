@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,10 +52,10 @@ const ATTESTATION_FIELDS = Object.freeze([
 
 const TRUE_PATTERN = /^(?:1|true|yes|on)$/i;
 const FALSE_PATTERN = /^(?:0|false|no|off)$/i;
-const DEFAULT_SECRET_AUDIT_OUTPUT = artifactPath("secret-management-audit.json");
-const CONFIG_KEYS = Object.freeze([
-  "SECRET_EVIDENCE_AUDIT_OUTPUT",
-]);
+const DEFAULT_SECRET_AUDIT_OUTPUT = artifactPath(
+  "secret-management-audit.json",
+);
+const CONFIG_KEYS = Object.freeze(["SECRET_EVIDENCE_AUDIT_OUTPUT"]);
 
 main();
 
@@ -88,7 +88,11 @@ function main() {
 
     for (const group of SECRET_GROUPS) {
       const attested = readBooleanAttestation(values, group.envKey, errors);
-      secrets[group.outputKey] = attested ?? group.requirements.every((requirement) => isIssuedSecret(values, requirement));
+      secrets[group.outputKey] =
+        attested ??
+        group.requirements.every((requirement) =>
+          isIssuedSecret(values, requirement),
+        );
     }
 
     if (errors.length > 0) {
@@ -100,16 +104,19 @@ function main() {
     }
 
     if (!runPrivateReferenceScan(privateReferenceScan)) {
-      console.error("[secret-evidence] error: private reference scan failed; run scripts/private-reference-scan.sh for details");
+      console.error(
+        "[secret-evidence] error: private reference scan failed; run scripts/private-reference-scan.sh for details",
+      );
       process.exitCode = 1;
       return;
     }
 
     secrets.noPlaintextSecretsCommitted = true;
     const audit = secretManagementAudit(secrets);
-    const outputPath = options.auditOutput
-      ?? values.SECRET_EVIDENCE_AUDIT_OUTPUT
-      ?? DEFAULT_SECRET_AUDIT_OUTPUT;
+    const outputPath =
+      options.auditOutput ??
+      values.SECRET_EVIDENCE_AUDIT_OUTPUT ??
+      DEFAULT_SECRET_AUDIT_OUTPUT;
     writeSecretAuditArtifact(outputPath, audit);
     secrets.secretEvidence = audit.productionReady
       ? {
@@ -167,7 +174,9 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--private-reference-scan=")) {
-      options.privateReferenceScan = arg.slice("--private-reference-scan=".length);
+      options.privateReferenceScan = arg.slice(
+        "--private-reference-scan=".length,
+      );
       if (!options.privateReferenceScan) {
         throw new Error("--private-reference-scan requires a path");
       }
@@ -215,7 +224,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -226,7 +237,9 @@ function inputKeys() {
     ...CONFIG_KEYS,
     ...ATTESTATION_FIELDS.map((field) => field.envKey),
     ...SECRET_GROUPS.map((group) => group.envKey),
-    ...SECRET_GROUPS.flatMap((group) => group.requirements.map((requirement) => requirement.key)),
+    ...SECRET_GROUPS.flatMap((group) =>
+      group.requirements.map((requirement) => requirement.key),
+    ),
   ];
 }
 
@@ -240,7 +253,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -259,7 +273,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -286,7 +300,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -326,7 +340,11 @@ function parseBoolean(value) {
 function isIssuedSecret(values, requirement) {
   const value = cleanValue(values[requirement.key]);
 
-  return value !== null && !hasBadPlaceholder(value) && value.length >= requirement.minLength;
+  return (
+    value !== null &&
+    !hasBadPlaceholder(value) &&
+    value.length >= requirement.minLength
+  );
 }
 
 function hasBadPlaceholder(value) {
@@ -367,17 +385,23 @@ function runPrivateReferenceScan(scanPath) {
 }
 
 function secretManagementAudit(secrets) {
-  const issuedGroups = SECRET_GROUPS
-    .filter((group) => secrets[group.outputKey] === true)
-    .map((group) => group.outputKey);
+  const issuedGroups = SECRET_GROUPS.filter(
+    (group) => secrets[group.outputKey] === true,
+  ).map((group) => group.outputKey);
   const checks = [
     check("external_secret_store", secrets.externalSecretStore === true),
-    check("rotation_policy_documented", secrets.rotationPolicyDocumented === true),
+    check(
+      "rotation_policy_documented",
+      secrets.rotationPolicyDocumented === true,
+    ),
     check("app_ini_secrets_issued", secrets.appIniSecretsIssued === true),
     check("runner_token_issued", secrets.runnerTokenIssued === true),
     check("oauth_secrets_issued", secrets.oauthSecretsIssued === true),
     check("webhook_secrets_issued", secrets.webhookSecretsIssued === true),
-    check("private_reference_scan_passed", secrets.noPlaintextSecretsCommitted === true),
+    check(
+      "private_reference_scan_passed",
+      secrets.noPlaintextSecretsCommitted === true,
+    ),
   ];
   const productionReady = checks.every((item) => item.status === "pass");
 
@@ -408,7 +432,11 @@ function check(name, passed) {
 
 function writeSecretAuditArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ secretManagementAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ secretManagementAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {

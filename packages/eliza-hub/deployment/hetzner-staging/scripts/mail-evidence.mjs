@@ -36,9 +36,7 @@ const SMTP_KEYS = Object.freeze([
 const TRUE_PATTERN = /^(?:1|true|yes|on)$/i;
 const FALSE_PATTERN = /^(?:0|false|no|off)$/i;
 const DEFAULT_MAIL_AUDIT_OUTPUT = artifactPath("mail-smoke-audit.json");
-const CONFIG_KEYS = Object.freeze([
-  "MAIL_EVIDENCE_AUDIT_OUTPUT",
-]);
+const CONFIG_KEYS = Object.freeze(["MAIL_EVIDENCE_AUDIT_OUTPUT"]);
 
 main();
 
@@ -58,12 +56,19 @@ function main() {
     const errors = [];
     const mail = {};
 
-    const mailEnabled = parseConfigBoolean(values.FORGEJO_MAIL_ENABLED, "FORGEJO_MAIL_ENABLED", errors);
+    const mailEnabled = parseConfigBoolean(
+      values.FORGEJO_MAIL_ENABLED,
+      "FORGEJO_MAIL_ENABLED",
+      errors,
+    );
     const smtpConfigured = inferSmtpConfigured(values, mailEnabled);
 
     for (const field of MAIL_FIELDS) {
       const attested = readBooleanAttestation(values, field.envKey, errors);
-      mail[field.outputKey] = field.outputKey === "smtpConfigured" ? attested ?? smtpConfigured : attested ?? false;
+      mail[field.outputKey] =
+        field.outputKey === "smtpConfigured"
+          ? (attested ?? smtpConfigured)
+          : (attested ?? false);
     }
 
     if (errors.length > 0) {
@@ -75,9 +80,10 @@ function main() {
     }
 
     const audit = mailAudit(mail);
-    const outputPath = options.auditOutput
-      ?? values.MAIL_EVIDENCE_AUDIT_OUTPUT
-      ?? DEFAULT_MAIL_AUDIT_OUTPUT;
+    const outputPath =
+      options.auditOutput ??
+      values.MAIL_EVIDENCE_AUDIT_OUTPUT ??
+      DEFAULT_MAIL_AUDIT_OUTPUT;
     writeMailAuditArtifact(outputPath, audit);
     mail.mailEvidence = audit.productionReady
       ? {
@@ -166,14 +172,20 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
 }
 
 function inputKeys() {
-  return [...CONFIG_KEYS, ...SMTP_KEYS, ...MAIL_FIELDS.map((field) => field.envKey)];
+  return [
+    ...CONFIG_KEYS,
+    ...SMTP_KEYS,
+    ...MAIL_FIELDS.map((field) => field.envKey),
+  ];
 }
 
 function parseEnv(body) {
@@ -186,7 +198,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -205,7 +218,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -232,7 +245,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -298,7 +311,11 @@ function isPresent(value) {
 
 function isIssuedSecret(value, minLength) {
   const normalized = cleanValue(value);
-  return normalized !== null && !hasBadPlaceholder(normalized) && normalized.length >= minLength;
+  return (
+    normalized !== null &&
+    !hasBadPlaceholder(normalized) &&
+    normalized.length >= minLength
+  );
 }
 
 function isValidPort(value) {
@@ -314,7 +331,12 @@ function isValidPort(value) {
 
 function isEmail(value) {
   const normalized = cleanValue(value);
-  return normalized !== null && !/\s/u.test(normalized) && normalized.includes("@") && normalized.includes(".");
+  return (
+    normalized !== null &&
+    !/\s/u.test(normalized) &&
+    normalized.includes("@") &&
+    normalized.includes(".")
+  );
 }
 
 function hasBadPlaceholder(value) {
@@ -343,7 +365,10 @@ function mailAudit(mail) {
   const checks = [
     check("smtp_configured", mail.smtpConfigured === true),
     check("invite_smoke_passed", mail.inviteSmokePassed === true),
-    check("password_reset_smoke_passed", mail.passwordResetSmokePassed === true),
+    check(
+      "password_reset_smoke_passed",
+      mail.passwordResetSmokePassed === true,
+    ),
     check("notification_smoke_passed", mail.notificationSmokePassed === true),
   ];
   const productionReady = checks.every((item) => item.status === "pass");
@@ -371,7 +396,11 @@ function check(name, passed) {
 
 function writeMailAuditArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ mailAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ mailAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {

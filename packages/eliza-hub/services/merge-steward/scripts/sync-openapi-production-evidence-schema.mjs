@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 
-import { isDeepStrictEqual } from "node:util";
 import { readFile, writeFile } from "node:fs/promises";
+import { isDeepStrictEqual } from "node:util";
 
 const OPENAPI_URL = new URL("../openapi.json", import.meta.url);
-const PRODUCTION_EVIDENCE_SCHEMA_URL = new URL("../production-evidence.schema.json", import.meta.url);
+const PRODUCTION_EVIDENCE_SCHEMA_URL = new URL(
+  "../production-evidence.schema.json",
+  import.meta.url,
+);
 const checkOnly = process.argv.includes("--check");
 
 const [openapiText, schemaText] = await Promise.all([
@@ -25,7 +28,9 @@ if (isDeepStrictEqual(embeddedSchema, productionEvidenceSchema)) {
 }
 
 if (checkOnly) {
-  console.error("OpenAPI production evidence schema is stale; run npm run sync:openapi-schema");
+  console.error(
+    "OpenAPI production evidence schema is stale; run npm run sync:openapi-schema",
+  );
   process.exit(1);
 }
 

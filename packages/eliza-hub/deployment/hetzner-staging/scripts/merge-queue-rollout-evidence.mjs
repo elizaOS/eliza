@@ -48,10 +48,16 @@ function main() {
     const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
     const values = readConfiguration(envFile, process.env);
     const errors = [];
-    const drillJsonPath = options.drillJson ?? values[DRILL_JSON_ENV_KEY] ?? null;
-    const liveDrillJsonPath = options.liveDrillJson ?? values[LIVE_DRILL_JSON_ENV_KEY] ?? null;
-    const drillEvidence = drillJsonPath ? readDrillEvidence(drillJsonPath, errors) : null;
-    const liveDrillEvidence = liveDrillJsonPath ? readLiveDrillEvidence(liveDrillJsonPath, errors) : null;
+    const drillJsonPath =
+      options.drillJson ?? values[DRILL_JSON_ENV_KEY] ?? null;
+    const liveDrillJsonPath =
+      options.liveDrillJson ?? values[LIVE_DRILL_JSON_ENV_KEY] ?? null;
+    const drillEvidence = drillJsonPath
+      ? readDrillEvidence(drillJsonPath, errors)
+      : null;
+    const liveDrillEvidence = liveDrillJsonPath
+      ? readLiveDrillEvidence(liveDrillJsonPath, errors)
+      : null;
     const mergeQueueRollout = {};
 
     for (const field of BOOLEAN_FIELDS) {
@@ -59,8 +65,18 @@ function main() {
       mergeQueueRollout[field.outputKey] = parsed ?? false;
     }
 
-    applyDrillEvidence({ rollout: mergeQueueRollout, drillEvidence, drillJsonPath, errors });
-    applyLiveDrillEvidence({ rollout: mergeQueueRollout, liveDrillEvidence, liveDrillJsonPath, errors });
+    applyDrillEvidence({
+      rollout: mergeQueueRollout,
+      drillEvidence,
+      drillJsonPath,
+      errors,
+    });
+    applyLiveDrillEvidence({
+      rollout: mergeQueueRollout,
+      liveDrillEvidence,
+      liveDrillJsonPath,
+      errors,
+    });
     validatePositiveEvidence(mergeQueueRollout, errors);
 
     if (errors.length > 0) {
@@ -71,7 +87,9 @@ function main() {
       return;
     }
 
-    process.stdout.write(`${JSON.stringify({ mergeQueueRollout: publicRolloutEvidence(mergeQueueRollout) }, null, 2)}\n`);
+    process.stdout.write(
+      `${JSON.stringify({ mergeQueueRollout: publicRolloutEvidence(mergeQueueRollout) }, null, 2)}\n`,
+    );
   } catch (error) {
     console.error(`[merge-queue-rollout-evidence] error: ${error.message}`);
     process.exitCode = 1;
@@ -164,7 +182,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -188,7 +208,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -207,7 +228,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -234,7 +255,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -248,31 +269,47 @@ function validatePositiveEvidence(rollout, errors) {
   }
 
   if (rollout.stagedLiveDrillPassed && !rollout.dryRunPassed) {
-    errors.push("MERGE_QUEUE_ROLLOUT_EVIDENCE_STAGED_LIVE_DRILL_PASSED requires dry-run evidence");
+    errors.push(
+      "MERGE_QUEUE_ROLLOUT_EVIDENCE_STAGED_LIVE_DRILL_PASSED requires dry-run evidence",
+    );
   }
   if (rollout.stagedLiveDrillPassed && !rollout.liveDrillEvidence) {
-    errors.push(`${BOOLEAN_FIELDS[1].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`);
+    errors.push(
+      `${BOOLEAN_FIELDS[1].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`,
+    );
   }
 
   if (rollout.workerLeaseVerified && !rollout.stagedLiveDrillPassed) {
-    errors.push("MERGE_QUEUE_ROLLOUT_EVIDENCE_WORKER_LEASE_VERIFIED requires staged live drill evidence");
+    errors.push(
+      "MERGE_QUEUE_ROLLOUT_EVIDENCE_WORKER_LEASE_VERIFIED requires staged live drill evidence",
+    );
   }
   if (rollout.workerLeaseVerified && !rollout.liveDrillEvidence) {
-    errors.push(`${BOOLEAN_FIELDS[2].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`);
+    errors.push(
+      `${BOOLEAN_FIELDS[2].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`,
+    );
   }
 
   if (rollout.rollbackDrillPassed && !rollout.stagedLiveDrillPassed) {
-    errors.push("MERGE_QUEUE_ROLLOUT_EVIDENCE_ROLLBACK_DRILL_PASSED requires staged live drill evidence");
+    errors.push(
+      "MERGE_QUEUE_ROLLOUT_EVIDENCE_ROLLBACK_DRILL_PASSED requires staged live drill evidence",
+    );
   }
   if (rollout.rollbackDrillPassed && !rollout.liveDrillEvidence) {
-    errors.push(`${BOOLEAN_FIELDS[3].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`);
+    errors.push(
+      `${BOOLEAN_FIELDS[3].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`,
+    );
   }
 
   if (rollout.humanApprovalRecorded && !rollout.stagedLiveDrillPassed) {
-    errors.push("MERGE_QUEUE_ROLLOUT_EVIDENCE_HUMAN_APPROVAL_RECORDED requires staged live drill evidence");
+    errors.push(
+      "MERGE_QUEUE_ROLLOUT_EVIDENCE_HUMAN_APPROVAL_RECORDED requires staged live drill evidence",
+    );
   }
   if (rollout.humanApprovalRecorded && !rollout.liveDrillEvidence) {
-    errors.push(`${BOOLEAN_FIELDS[4].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`);
+    errors.push(
+      `${BOOLEAN_FIELDS[4].envKey}=true requires ${LIVE_DRILL_JSON_ENV_KEY} from a staged live drill`,
+    );
   }
 }
 
@@ -284,7 +321,9 @@ function applyDrillEvidence({ rollout, drillEvidence, drillJsonPath, errors }) {
     return;
   }
 
-  const failedChecks = drillEvidence.checks.filter((check) => check.ok !== true);
+  const failedChecks = drillEvidence.checks.filter(
+    (check) => check.ok !== true,
+  );
   if (failedChecks.length > 0) {
     errors.push(`${DRILL_JSON_ENV_KEY} contains failed rollout drill checks`);
     return;
@@ -299,48 +338,74 @@ function applyDrillEvidence({ rollout, drillEvidence, drillJsonPath, errors }) {
   };
 }
 
-function applyLiveDrillEvidence({ rollout, liveDrillEvidence, liveDrillJsonPath, errors }) {
+function applyLiveDrillEvidence({
+  rollout,
+  liveDrillEvidence,
+  liveDrillJsonPath,
+  errors,
+}) {
   if (!liveDrillEvidence) return;
 
   if (liveDrillEvidence.stagedLiveDrillPassed !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} did not prove stagedLiveDrillPassed=true`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} did not prove stagedLiveDrillPassed=true`,
+    );
     return;
   }
   if (liveDrillEvidence.strictWorkReservationsEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} did not prove strictWorkReservationsEnforced=true`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} did not prove strictWorkReservationsEnforced=true`,
+    );
     return;
   }
   if (liveDrillEvidence.strictWorkItemsEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} did not prove strictWorkItemsEnforced=true`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} did not prove strictWorkItemsEnforced=true`,
+    );
     return;
   }
   if (liveDrillEvidence.strictAgentBranchNamespacesEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} did not prove strictAgentBranchNamespacesEnforced=true`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} did not prove strictAgentBranchNamespacesEnforced=true`,
+    );
     return;
   }
   if (liveDrillEvidence.verifiedAgentRunReceiptsEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} did not prove verifiedAgentRunReceiptsEnforced=true`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} did not prove verifiedAgentRunReceiptsEnforced=true`,
+    );
     return;
   }
   if (liveDrillEvidence.agentIdentityRegistryEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} did not prove agentIdentityRegistryEnforced=true`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} did not prove agentIdentityRegistryEnforced=true`,
+    );
     return;
   }
   if (liveDrillEvidence.stackDependencyOrderEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} did not prove stackDependencyOrderEnforced=true`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} did not prove stackDependencyOrderEnforced=true`,
+    );
     return;
   }
 
   rollout.stagedLiveDrillPassed = true;
   rollout.workerLeaseVerified = liveDrillEvidence.workerLeaseVerified === true;
-  rollout.strictWorkReservationsEnforced = liveDrillEvidence.strictWorkReservationsEnforced === true;
-  rollout.strictWorkItemsEnforced = liveDrillEvidence.strictWorkItemsEnforced === true;
-  rollout.strictAgentBranchNamespacesEnforced = liveDrillEvidence.strictAgentBranchNamespacesEnforced === true;
-  rollout.verifiedAgentRunReceiptsEnforced = liveDrillEvidence.verifiedAgentRunReceiptsEnforced === true;
-  rollout.agentIdentityRegistryEnforced = liveDrillEvidence.agentIdentityRegistryEnforced === true;
-  rollout.stackDependencyOrderEnforced = liveDrillEvidence.stackDependencyOrderEnforced === true;
+  rollout.strictWorkReservationsEnforced =
+    liveDrillEvidence.strictWorkReservationsEnforced === true;
+  rollout.strictWorkItemsEnforced =
+    liveDrillEvidence.strictWorkItemsEnforced === true;
+  rollout.strictAgentBranchNamespacesEnforced =
+    liveDrillEvidence.strictAgentBranchNamespacesEnforced === true;
+  rollout.verifiedAgentRunReceiptsEnforced =
+    liveDrillEvidence.verifiedAgentRunReceiptsEnforced === true;
+  rollout.agentIdentityRegistryEnforced =
+    liveDrillEvidence.agentIdentityRegistryEnforced === true;
+  rollout.stackDependencyOrderEnforced =
+    liveDrillEvidence.stackDependencyOrderEnforced === true;
   rollout.rollbackDrillPassed = liveDrillEvidence.rollbackDrillPassed === true;
-  rollout.humanApprovalRecorded = liveDrillEvidence.humanApprovalRecorded === true;
+  rollout.humanApprovalRecorded =
+    liveDrillEvidence.humanApprovalRecorded === true;
   rollout.liveDrillEvidence = {
     source: liveDrillJsonPath,
     sha256: sha256File(liveDrillJsonPath),
@@ -351,20 +416,29 @@ function applyLiveDrillEvidence({ rollout, liveDrillEvidence, liveDrillJsonPath,
 
 function requireTruthyDrillEvidence(errors, rollout) {
   if (!rollout.dryRunEvidence) {
-    errors.push(`${BOOLEAN_FIELDS[0].envKey}=true requires ${DRILL_JSON_ENV_KEY} from merge-queue-rollout-drill.sh`);
+    errors.push(
+      `${BOOLEAN_FIELDS[0].envKey}=true requires ${DRILL_JSON_ENV_KEY} from merge-queue-rollout-drill.sh`,
+    );
   }
 }
 
 function publicRolloutEvidence(rollout) {
   return {
     ...Object.fromEntries(
-      BOOLEAN_FIELDS.map((field) => [field.outputKey, rollout[field.outputKey] === true]),
+      BOOLEAN_FIELDS.map((field) => [
+        field.outputKey,
+        rollout[field.outputKey] === true,
+      ]),
     ),
-    strictWorkReservationsEnforced: rollout.strictWorkReservationsEnforced === true,
+    strictWorkReservationsEnforced:
+      rollout.strictWorkReservationsEnforced === true,
     strictWorkItemsEnforced: rollout.strictWorkItemsEnforced === true,
-    strictAgentBranchNamespacesEnforced: rollout.strictAgentBranchNamespacesEnforced === true,
-    verifiedAgentRunReceiptsEnforced: rollout.verifiedAgentRunReceiptsEnforced === true,
-    agentIdentityRegistryEnforced: rollout.agentIdentityRegistryEnforced === true,
+    strictAgentBranchNamespacesEnforced:
+      rollout.strictAgentBranchNamespacesEnforced === true,
+    verifiedAgentRunReceiptsEnforced:
+      rollout.verifiedAgentRunReceiptsEnforced === true,
+    agentIdentityRegistryEnforced:
+      rollout.agentIdentityRegistryEnforced === true,
     stackDependencyOrderEnforced: rollout.stackDependencyOrderEnforced === true,
     dryRunEvidence: rollout.dryRunEvidence ?? null,
     liveDrillEvidence: rollout.liveDrillEvidence ?? null,
@@ -382,69 +456,104 @@ function readLiveDrillEvidence(filePath, errors) {
 
   const live = body?.mergeQueueRolloutLiveDrill;
   if (!live || typeof live !== "object" || Array.isArray(live)) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must contain mergeQueueRolloutLiveDrill`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must contain mergeQueueRolloutLiveDrill`,
+    );
     return null;
   }
 
   const runOnce = objectValue(live.runOnce);
   const execution = objectValue(live.execution ?? runOnce.execution);
-  const runs = arrayValue(runOnce.runs ?? live.runs ?? (runOnce.run ? [runOnce.run] : live.run ? [live.run] : []));
-  const items = arrayValue(runOnce.items ?? live.items ?? (runOnce.item ? [runOnce.item] : live.item ? [live.item] : []));
+  const runs = arrayValue(
+    runOnce.runs ??
+      live.runs ??
+      (runOnce.run ? [runOnce.run] : live.run ? [live.run] : []),
+  );
+  const items = arrayValue(
+    runOnce.items ??
+      live.items ??
+      (runOnce.item ? [runOnce.item] : live.item ? [live.item] : []),
+  );
   const executions = arrayValue(execution.executions);
   const events = arrayValue(live.events ?? runOnce.events);
   const readiness = objectValue(live.readiness);
   const readinessConfig = objectValue(readiness.configuration);
   const checkedAt = normalizeIso(live.checkedAt);
-  const stagedLiveDrillPassed = live.stagedLiveDrillPassed === true
-    && runs.some((run) => run?.status === "succeeded")
-    && items.some((item) => item?.queueState === "merged")
-    && executions.length > 0
-    && executions.every((entry) => entry?.status === "executed")
-    && events.some((event) => event?.type === "IntegrationActionStarted")
-    && events.some((event) => event?.type === "IntegrationActionFinished");
-  const strictWorkReservationsEnforced = live.strictWorkReservationsEnforced === true
-    && readinessConfig.requireWorkReservationForAgentPrs === true;
-  const strictWorkItemsEnforced = live.strictWorkItemsEnforced === true
-    && readinessConfig.requireWorkItemForAgentPrs === true;
-  const strictAgentBranchNamespacesEnforced = live.strictAgentBranchNamespacesEnforced === true
-    && readinessConfig.requireAgentBranchNamespaceForAgentPrs === true;
-  const verifiedAgentRunReceiptsEnforced = live.verifiedAgentRunReceiptsEnforced === true
-    && readinessConfig.requireVerifiedAgentRunReceiptForAgentPrs === true;
-  const agentIdentityRegistryEnforced = live.agentIdentityRegistryEnforced === true
-    && readinessConfig.requireAgentIdentityRegistryForAgentPrs === true
-    && Number(readinessConfig.knownAgentIdCount ?? 0) > 0;
+  const stagedLiveDrillPassed =
+    live.stagedLiveDrillPassed === true &&
+    runs.some((run) => run?.status === "succeeded") &&
+    items.some((item) => item?.queueState === "merged") &&
+    executions.length > 0 &&
+    executions.every((entry) => entry?.status === "executed") &&
+    events.some((event) => event?.type === "IntegrationActionStarted") &&
+    events.some((event) => event?.type === "IntegrationActionFinished");
+  const strictWorkReservationsEnforced =
+    live.strictWorkReservationsEnforced === true &&
+    readinessConfig.requireWorkReservationForAgentPrs === true;
+  const strictWorkItemsEnforced =
+    live.strictWorkItemsEnforced === true &&
+    readinessConfig.requireWorkItemForAgentPrs === true;
+  const strictAgentBranchNamespacesEnforced =
+    live.strictAgentBranchNamespacesEnforced === true &&
+    readinessConfig.requireAgentBranchNamespaceForAgentPrs === true;
+  const verifiedAgentRunReceiptsEnforced =
+    live.verifiedAgentRunReceiptsEnforced === true &&
+    readinessConfig.requireVerifiedAgentRunReceiptForAgentPrs === true;
+  const agentIdentityRegistryEnforced =
+    live.agentIdentityRegistryEnforced === true &&
+    readinessConfig.requireAgentIdentityRegistryForAgentPrs === true &&
+    Number(readinessConfig.knownAgentIdCount ?? 0) > 0;
   const stackDependencyOrderProof = objectValue(live.stackDependencyOrderProof);
-  const stackDependencyOrderEnforced = live.stackDependencyOrderEnforced === true
-    && stackDependencyOrderProof.valid === true
-    && stackDependencyOrderProof.stackCheckStatus === "fail"
-    && Number(stackDependencyOrderProof.stackBlocked ?? 0) > 0
-    && arrayValue(stackDependencyOrderProof.blockedItemIds).length > 0
-    && arrayValue(stackDependencyOrderProof.nextMergeItemIds).length > 0
-    && arrayValue(stackDependencyOrderProof.requiredActions).includes("merge_stack_parents_first");
+  const stackDependencyOrderEnforced =
+    live.stackDependencyOrderEnforced === true &&
+    stackDependencyOrderProof.valid === true &&
+    stackDependencyOrderProof.stackCheckStatus === "fail" &&
+    Number(stackDependencyOrderProof.stackBlocked ?? 0) > 0 &&
+    arrayValue(stackDependencyOrderProof.blockedItemIds).length > 0 &&
+    arrayValue(stackDependencyOrderProof.nextMergeItemIds).length > 0 &&
+    arrayValue(stackDependencyOrderProof.requiredActions).includes(
+      "merge_stack_parents_first",
+    );
 
   if (!checkedAt) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must include a valid checkedAt timestamp`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must include a valid checkedAt timestamp`,
+    );
   }
   if (stagedLiveDrillPassed !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must include a successful staged live run, merged item, executed actions, and action checkpoint events`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must include a successful staged live run, merged item, executed actions, and action checkpoint events`,
+    );
   }
   if (strictWorkReservationsEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must prove strict work reservations were enabled in /ready`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must prove strict work reservations were enabled in /ready`,
+    );
   }
   if (strictWorkItemsEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must prove strict Work items were enabled in /ready`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must prove strict Work items were enabled in /ready`,
+    );
   }
   if (strictAgentBranchNamespacesEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must prove strict agent branch namespaces were enabled in /ready`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must prove strict agent branch namespaces were enabled in /ready`,
+    );
   }
   if (verifiedAgentRunReceiptsEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must prove verified agent run receipts were enabled in /ready`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must prove verified agent run receipts were enabled in /ready`,
+    );
   }
   if (agentIdentityRegistryEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must prove the allowed-agent identity registry was enabled in /ready`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must prove the allowed-agent identity registry was enabled in /ready`,
+    );
   }
   if (stackDependencyOrderEnforced !== true) {
-    errors.push(`${LIVE_DRILL_JSON_ENV_KEY} must prove stack dependency ordering with a release-readiness blocked-child snapshot`);
+    errors.push(
+      `${LIVE_DRILL_JSON_ENV_KEY} must prove stack dependency ordering with a release-readiness blocked-child snapshot`,
+    );
   }
 
   return {
@@ -490,10 +599,14 @@ function readDrillEvidence(filePath, errors) {
   };
 
   if (normalized.safeMode !== true) {
-    errors.push(`${DRILL_JSON_ENV_KEY} must be generated from the safe rollout drill`);
+    errors.push(
+      `${DRILL_JSON_ENV_KEY} must be generated from the safe rollout drill`,
+    );
   }
   if (!normalized.checkedAt) {
-    errors.push(`${DRILL_JSON_ENV_KEY} must include a valid checkedAt timestamp`);
+    errors.push(
+      `${DRILL_JSON_ENV_KEY} must include a valid checkedAt timestamp`,
+    );
   }
   if (normalized.checks.length === 0) {
     errors.push(`${DRILL_JSON_ENV_KEY} must include rollout drill checks`);
@@ -524,7 +637,9 @@ function normalizeIso(value) {
 }
 
 function objectValue(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
 }
 
 function arrayValue(value) {

@@ -63,8 +63,10 @@ function main() {
     const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
     const values = readConfiguration(envFile, process.env);
     const errors = [];
-    const preflightJsonPath = options.preflightJson ?? values.STEWARD_EVIDENCE_PREFLIGHT_JSON;
-    const doctorJsonPath = options.doctorJson ?? values.STEWARD_EVIDENCE_DOCTOR_JSON;
+    const preflightJsonPath =
+      options.preflightJson ?? values.STEWARD_EVIDENCE_PREFLIGHT_JSON;
+    const doctorJsonPath =
+      options.doctorJson ?? values.STEWARD_EVIDENCE_DOCTOR_JSON;
     const preflightFragment = readJsonFragment(
       preflightJsonPath,
       "STEWARD_EVIDENCE_PREFLIGHT_JSON",
@@ -76,16 +78,24 @@ function main() {
       errors,
     );
     const normalizedPreflight = normalizePreflight(
-      Object.hasOwn(preflightFragment, "preflight") ? preflightFragment.preflight : preflightFragment,
+      Object.hasOwn(preflightFragment, "preflight")
+        ? preflightFragment.preflight
+        : preflightFragment,
       errors,
     );
     const normalizedDoctor = normalizeDoctor(
-      Object.hasOwn(doctorFragment, "doctor") ? doctorFragment.doctor : doctorFragment,
+      Object.hasOwn(doctorFragment, "doctor")
+        ? doctorFragment.doctor
+        : doctorFragment,
       errors,
     );
     const preflight = normalizedPreflight.preflight;
     const doctor = normalizedDoctor.doctor;
-    const inferredReady = preflight.ok === true && preflight.mode === "production" && preflight.errors.length === 0 && doctor.ok === true;
+    const inferredReady =
+      preflight.ok === true &&
+      preflight.mode === "production" &&
+      preflight.errors.length === 0 &&
+      doctor.ok === true;
     const steward = {
       preflight,
       doctor,
@@ -107,7 +117,10 @@ function main() {
 
     for (const field of BOOLEAN_FIELDS) {
       const parsed = readBooleanAttestation(values, field.envKey, errors);
-      steward[field.outputKey] = field.outputKey === "readyProductionMode" ? parsed ?? inferredReady : parsed ?? false;
+      steward[field.outputKey] =
+        field.outputKey === "readyProductionMode"
+          ? (parsed ?? inferredReady)
+          : (parsed ?? false);
     }
 
     validatePositiveEvidence(steward, errors);
@@ -213,7 +226,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -233,7 +248,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -252,7 +268,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -279,7 +295,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -302,7 +318,7 @@ function readJsonFragment(filePath, label, errors) {
   try {
     const body = JSON.parse(readFileSync(normalized, "utf8"));
     return body && typeof body === "object" ? body : {};
-  } catch (error) {
+  } catch (_error) {
     errors.push(`${label} must contain valid JSON`);
     return {};
   }
@@ -311,7 +327,10 @@ function readJsonFragment(filePath, label, errors) {
 function normalizePreflight(value, errors) {
   const preflight = value && typeof value === "object" ? value : {};
   const ok = preflight.ok === true;
-  const mode = typeof preflight.mode === "string" && preflight.mode.trim() !== "" ? preflight.mode : "unknown";
+  const mode =
+    typeof preflight.mode === "string" && preflight.mode.trim() !== ""
+      ? preflight.mode
+      : "unknown";
   const checkedAt = normalizeIso(preflight.checkedAt);
   const rawErrors = Array.isArray(preflight.errors) ? preflight.errors : [];
   const normalizedErrors = rawErrors.map((error) => {
@@ -328,7 +347,9 @@ function normalizePreflight(value, errors) {
     errors.push("preflight.ok must be boolean");
   }
   if (!checkedAt) {
-    errors.push("preflight.checkedAt must be a valid timestamp from eliza-merge-steward preflight");
+    errors.push(
+      "preflight.checkedAt must be a valid timestamp from eliza-merge-steward preflight",
+    );
   }
 
   return {
@@ -341,13 +362,18 @@ function normalizeDoctor(value, errors) {
   const doctor = value && typeof value === "object" ? value : {};
   const checkedAt = normalizeIso(doctor.checkedAt);
   const checks = Array.isArray(doctor.checks) ? doctor.checks : [];
-  const target = typeof doctor.target === "string" && doctor.target.trim() !== "" ? doctor.target : null;
+  const target =
+    typeof doctor.target === "string" && doctor.target.trim() !== ""
+      ? doctor.target
+      : null;
 
   if (doctor.ok !== undefined && typeof doctor.ok !== "boolean") {
     errors.push("doctor.ok must be boolean");
   }
   if (!checkedAt) {
-    errors.push("doctor.checkedAt must be a valid timestamp from eliza-merge-steward doctor");
+    errors.push(
+      "doctor.checkedAt must be a valid timestamp from eliza-merge-steward doctor",
+    );
   }
   if (!target) {
     errors.push("doctor.target must identify the checked steward URL");
@@ -366,43 +392,72 @@ function normalizeDoctor(value, errors) {
 
 function validatePositiveEvidence(steward, errors) {
   if (steward.readyProductionMode && !steward.preflight.ok) {
-    errors.push("STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true until preflight.ok is true");
+    errors.push(
+      "STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true until preflight.ok is true",
+    );
   }
 
   if (steward.readyProductionMode && steward.preflight.mode !== "production") {
-    errors.push("STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true until preflight.mode is production");
+    errors.push(
+      "STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true until preflight.mode is production",
+    );
   }
 
   if (steward.readyProductionMode && steward.preflight.errors.length > 0) {
-    errors.push("STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true while preflight.errors is non-empty");
+    errors.push(
+      "STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true while preflight.errors is non-empty",
+    );
   }
 
   if (steward.readyProductionMode && !steward.doctor.ok) {
-    errors.push("STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true until doctor.ok is true");
+    errors.push(
+      "STEWARD_EVIDENCE_READY_PRODUCTION_MODE cannot be true until doctor.ok is true",
+    );
   }
 
   if (steward.readyProductionMode && !steward.strictWorkReservationsEnforced) {
-    errors.push("MERGE_STEWARD_REQUIRE_WORK_RESERVATION_FOR_AGENT_PRS must be true when steward production mode is ready");
+    errors.push(
+      "MERGE_STEWARD_REQUIRE_WORK_RESERVATION_FOR_AGENT_PRS must be true when steward production mode is ready",
+    );
   }
 
   if (steward.readyProductionMode && !steward.strictWorkItemsEnforced) {
-    errors.push("MERGE_STEWARD_REQUIRE_WORK_ITEM_FOR_AGENT_PRS must be true when steward production mode is ready");
+    errors.push(
+      "MERGE_STEWARD_REQUIRE_WORK_ITEM_FOR_AGENT_PRS must be true when steward production mode is ready",
+    );
   }
 
-  if (steward.readyProductionMode && !steward.strictAgentBranchNamespacesEnforced) {
-    errors.push("MERGE_STEWARD_REQUIRE_AGENT_BRANCH_NAMESPACE must be true when steward production mode is ready");
+  if (
+    steward.readyProductionMode &&
+    !steward.strictAgentBranchNamespacesEnforced
+  ) {
+    errors.push(
+      "MERGE_STEWARD_REQUIRE_AGENT_BRANCH_NAMESPACE must be true when steward production mode is ready",
+    );
   }
 
-  if (steward.readyProductionMode && !steward.verifiedAgentRunReceiptsEnforced) {
-    errors.push("MERGE_STEWARD_REQUIRE_VERIFIED_AGENT_RUN_RECEIPT must be true when steward production mode is ready");
+  if (
+    steward.readyProductionMode &&
+    !steward.verifiedAgentRunReceiptsEnforced
+  ) {
+    errors.push(
+      "MERGE_STEWARD_REQUIRE_VERIFIED_AGENT_RUN_RECEIPT must be true when steward production mode is ready",
+    );
   }
 
   if (steward.readyProductionMode && !steward.agentIdentityRegistryEnforced) {
-    errors.push("MERGE_STEWARD_REQUIRE_AGENT_IDENTITY_REGISTRY must be true when steward production mode is ready");
+    errors.push(
+      "MERGE_STEWARD_REQUIRE_AGENT_IDENTITY_REGISTRY must be true when steward production mode is ready",
+    );
   }
 
-  if ((steward.labelMirroringTested || steward.botTokenPermissionsReviewed) && !steward.readyProductionMode) {
-    errors.push("steward label and bot-token attestations require ready production mode");
+  if (
+    (steward.labelMirroringTested || steward.botTokenPermissionsReviewed) &&
+    !steward.readyProductionMode
+  ) {
+    errors.push(
+      "steward label and bot-token attestations require ready production mode",
+    );
   }
 }
 

@@ -65,13 +65,23 @@ function main() {
     const defaultEnvFile = path.resolve(deployDir, ".env");
     const defaultComposeFile = path.resolve(deployDir, "compose.yml");
     const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
-    const composeFile = options.composeFile ?? process.env.COMPOSE_FILE ?? defaultComposeFile;
+    const composeFile =
+      options.composeFile ?? process.env.COMPOSE_FILE ?? defaultComposeFile;
     const values = readConfiguration(envFile, process.env);
     const errors = [];
     const compose = readOptionalText(composeFile);
-    const migrationOutputPath = cleanValue(options.migrationOutput ?? values.DATABASE_EVIDENCE_MIGRATION_OUTPUT);
-    const restoreDrillOutputPath = cleanValue(options.restoreDrillOutput ?? values.DATABASE_EVIDENCE_RESTORE_DRILL_OUTPUT);
-    const migrationOutput = readOptionalText(migrationOutputPath, "DATABASE_EVIDENCE_MIGRATION_OUTPUT", errors);
+    const migrationOutputPath = cleanValue(
+      options.migrationOutput ?? values.DATABASE_EVIDENCE_MIGRATION_OUTPUT,
+    );
+    const restoreDrillOutputPath = cleanValue(
+      options.restoreDrillOutput ??
+        values.DATABASE_EVIDENCE_RESTORE_DRILL_OUTPUT,
+    );
+    const migrationOutput = readOptionalText(
+      migrationOutputPath,
+      "DATABASE_EVIDENCE_MIGRATION_OUTPUT",
+      errors,
+    );
     const restoreDrillOutput = readOptionalText(
       restoreDrillOutputPath,
       "DATABASE_EVIDENCE_RESTORE_DRILL_OUTPUT",
@@ -96,7 +106,12 @@ function main() {
       database[field.outputKey] = parsed ?? inferred[field.outputKey] ?? false;
     }
 
-    validatePositiveEvidence(database, inferred, { migrationOutputPath, restoreDrillOutputPath }, errors);
+    validatePositiveEvidence(
+      database,
+      inferred,
+      { migrationOutputPath, restoreDrillOutputPath },
+      errors,
+    );
 
     if (errors.length > 0) {
       for (const error of errors) {
@@ -113,25 +128,27 @@ function main() {
       restoreDrillOutputPath,
       checkedAt,
     });
-    const outputPath = options.auditOutput
-      ?? values.DATABASE_EVIDENCE_AUDIT_OUTPUT
-      ?? DEFAULT_DATABASE_AUDIT_OUTPUT;
+    const outputPath =
+      options.auditOutput ??
+      values.DATABASE_EVIDENCE_AUDIT_OUTPUT ??
+      DEFAULT_DATABASE_AUDIT_OUTPUT;
     writeDatabaseAuditArtifact(outputPath, audit);
-    database.databaseEvidence = audit.migrationOutput && audit.restoreDrillOutput
-      ? {
-          source: outputPath,
-          sha256: sha256File(outputPath),
-          checkedAt,
-          status: audit.status,
-          productionReady: audit.productionReady,
-          migrationOutputSource: audit.migrationOutput.source,
-          migrationOutputSha256: audit.migrationOutput.sha256,
-          restoreDrillOutputSource: audit.restoreDrillOutput.source,
-          restoreDrillOutputSha256: audit.restoreDrillOutput.sha256,
-          checkCount: audit.checks.length,
-          verifiedTableCount: audit.verifiedTables.length,
-        }
-      : null;
+    database.databaseEvidence =
+      audit.migrationOutput && audit.restoreDrillOutput
+        ? {
+            source: outputPath,
+            sha256: sha256File(outputPath),
+            checkedAt,
+            status: audit.status,
+            productionReady: audit.productionReady,
+            migrationOutputSource: audit.migrationOutput.source,
+            migrationOutputSha256: audit.migrationOutput.sha256,
+            restoreDrillOutputSource: audit.restoreDrillOutput.source,
+            restoreDrillOutputSha256: audit.restoreDrillOutput.sha256,
+            checkCount: audit.checks.length,
+            verifiedTableCount: audit.verifiedTables.length,
+          }
+        : null;
 
     process.stdout.write(`${JSON.stringify({ database }, null, 2)}\n`);
   } catch (error) {
@@ -260,7 +277,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -280,7 +299,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -299,7 +319,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -326,7 +346,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -355,11 +375,17 @@ function readOptionalText(filePath, label, errors) {
 }
 
 function forgejoPostgresConfigured(compose) {
-  return composeSetting(compose, "FORGEJO__database__DB_TYPE", "postgres") && /^  postgres:/mu.test(compose);
+  return (
+    composeSetting(compose, "FORGEJO__database__DB_TYPE", "postgres") &&
+    /^ {2}postgres:/mu.test(compose)
+  );
 }
 
 function stewardPostgresConfigured(values, compose) {
-  return isPostgresUrl(values.MERGE_STEWARD_DATABASE_URL) && /DATABASE_URL:\s*\$\{MERGE_STEWARD_DATABASE_URL/u.test(compose);
+  return (
+    isPostgresUrl(values.MERGE_STEWARD_DATABASE_URL) &&
+    /DATABASE_URL:\s*\$\{MERGE_STEWARD_DATABASE_URL/u.test(compose)
+  );
 }
 
 function migrationOutputPassed(output) {
@@ -367,7 +393,10 @@ function migrationOutputPassed(output) {
     return false;
   }
 
-  return /\[MergeStewardMigrate\] complete/u.test(output) && !/checksum mismatch|failed/i.test(output);
+  return (
+    /\[MergeStewardMigrate\] complete/u.test(output) &&
+    !/checksum mismatch|failed/i.test(output)
+  );
 }
 
 function restoreDrillPassed(output) {
@@ -376,7 +405,9 @@ function restoreDrillPassed(output) {
   }
 
   const verifiedTables = restoreDrillVerifiedTables(output);
-  return EXPECTED_RESTORE_TABLES.every((table) => verifiedTables.includes(table));
+  return EXPECTED_RESTORE_TABLES.every((table) =>
+    verifiedTables.includes(table),
+  );
 }
 
 function restoreDrillVerifiedTables(output) {
@@ -385,51 +416,81 @@ function restoreDrillVerifiedTables(output) {
     return [];
   }
 
-  return verifiedLine[1].split(",").map((table) => table.trim()).filter(Boolean);
+  return verifiedLine[1]
+    .split(",")
+    .map((table) => table.trim())
+    .filter(Boolean);
 }
 
 function validatePositiveEvidence(database, inferred, sources, errors) {
   if (database.stewardPostgres && !inferred.stewardPostgres) {
-    errors.push("DATABASE_EVIDENCE_STEWARD_POSTGRES cannot be true until MERGE_STEWARD_DATABASE_URL is a postgres URL and Compose wires DATABASE_URL");
+    errors.push(
+      "DATABASE_EVIDENCE_STEWARD_POSTGRES cannot be true until MERGE_STEWARD_DATABASE_URL is a postgres URL and Compose wires DATABASE_URL",
+    );
   }
 
   if (database.migrationsApplied && !database.stewardPostgres) {
-    errors.push("DATABASE_EVIDENCE_MIGRATIONS_APPLIED cannot be true until steward Postgres is configured");
+    errors.push(
+      "DATABASE_EVIDENCE_MIGRATIONS_APPLIED cannot be true until steward Postgres is configured",
+    );
   }
 
   if (database.checksumDriftClean && !database.migrationsApplied) {
-    errors.push("DATABASE_EVIDENCE_CHECKSUM_DRIFT_CLEAN cannot be true until migrations have been applied");
+    errors.push(
+      "DATABASE_EVIDENCE_CHECKSUM_DRIFT_CLEAN cannot be true until migrations have been applied",
+    );
   }
 
-  if (database.emptyHostRestoreDrillPassed && (!database.forgejoPostgres || !database.stewardPostgres)) {
-    errors.push("DATABASE_EVIDENCE_EMPTY_HOST_RESTORE_DRILL_PASSED cannot be true until Forgejo and steward Postgres are configured");
+  if (
+    database.emptyHostRestoreDrillPassed &&
+    (!database.forgejoPostgres || !database.stewardPostgres)
+  ) {
+    errors.push(
+      "DATABASE_EVIDENCE_EMPTY_HOST_RESTORE_DRILL_PASSED cannot be true until Forgejo and steward Postgres are configured",
+    );
   }
 
   if (database.migrationsApplied && !sources.migrationOutputPath) {
-    errors.push("DATABASE_EVIDENCE_MIGRATIONS_APPLIED requires DATABASE_EVIDENCE_MIGRATION_OUTPUT or --migration-output");
+    errors.push(
+      "DATABASE_EVIDENCE_MIGRATIONS_APPLIED requires DATABASE_EVIDENCE_MIGRATION_OUTPUT or --migration-output",
+    );
   }
 
   if (database.migrationsApplied && !inferred.migrationsApplied) {
-    errors.push("DATABASE_EVIDENCE_MIGRATIONS_APPLIED requires migration output containing [MergeStewardMigrate] complete and no checksum drift");
+    errors.push(
+      "DATABASE_EVIDENCE_MIGRATIONS_APPLIED requires migration output containing [MergeStewardMigrate] complete and no checksum drift",
+    );
   }
 
   if (database.checksumDriftClean && !inferred.checksumDriftClean) {
-    errors.push("DATABASE_EVIDENCE_CHECKSUM_DRIFT_CLEAN requires verified migration output with no checksum mismatch or failure");
+    errors.push(
+      "DATABASE_EVIDENCE_CHECKSUM_DRIFT_CLEAN requires verified migration output with no checksum mismatch or failure",
+    );
   }
 
   if (database.emptyHostRestoreDrillPassed && !sources.restoreDrillOutputPath) {
-    errors.push("DATABASE_EVIDENCE_EMPTY_HOST_RESTORE_DRILL_PASSED requires DATABASE_EVIDENCE_RESTORE_DRILL_OUTPUT or --restore-drill-output");
+    errors.push(
+      "DATABASE_EVIDENCE_EMPTY_HOST_RESTORE_DRILL_PASSED requires DATABASE_EVIDENCE_RESTORE_DRILL_OUTPUT or --restore-drill-output",
+    );
   }
 
-  if (database.emptyHostRestoreDrillPassed && !inferred.emptyHostRestoreDrillPassed) {
-    errors.push("DATABASE_EVIDENCE_EMPTY_HOST_RESTORE_DRILL_PASSED requires restore-drill output with all expected steward tables");
+  if (
+    database.emptyHostRestoreDrillPassed &&
+    !inferred.emptyHostRestoreDrillPassed
+  ) {
+    errors.push(
+      "DATABASE_EVIDENCE_EMPTY_HOST_RESTORE_DRILL_PASSED requires restore-drill output with all expected steward tables",
+    );
   }
 }
 
 function composeSetting(compose, key, expectedValue) {
   const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   const escapedValue = expectedValue.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const pattern = new RegExp(`${escapedKey}\\s*:\\s*(?:"${escapedValue}"|'${escapedValue}'|${escapedValue})(?:\\s|$)`, "u");
+  const pattern = new RegExp(
+    `${escapedKey}\\s*:\\s*(?:"${escapedValue}"|'${escapedValue}'|${escapedValue})(?:\\s|$)`,
+    "u",
+  );
   return pattern.test(compose);
 }
 
@@ -462,7 +523,13 @@ function parseBoolean(value) {
   return undefined;
 }
 
-function databaseAudit({ database, inferred, migrationOutputPath, restoreDrillOutputPath, checkedAt }) {
+function databaseAudit({
+  database,
+  inferred,
+  migrationOutputPath,
+  restoreDrillOutputPath,
+  checkedAt,
+}) {
   const migrationOutput = artifactEvidence(migrationOutputPath);
   const restoreDrillOutput = artifactEvidence(restoreDrillOutputPath);
   const verifiedTables = restoreDrillOutputPath
@@ -476,22 +543,38 @@ function databaseAudit({ database, inferred, migrationOutputPath, restoreDrillOu
     checksumDriftClean: database.checksumDriftClean,
   };
   const checks = [
-    check("forgejo_postgres_configured", database.forgejoPostgres === true && inferred.forgejoPostgres === true),
-    check("steward_postgres_configured", database.stewardPostgres === true && inferred.stewardPostgres === true),
-    check("migration_output_verified", database.migrationsApplied === true && inferred.migrationsApplied === true, {
-      source: migrationOutput?.source ?? null,
-      sha256: migrationOutput?.sha256 ?? null,
-    }),
+    check(
+      "forgejo_postgres_configured",
+      database.forgejoPostgres === true && inferred.forgejoPostgres === true,
+    ),
+    check(
+      "steward_postgres_configured",
+      database.stewardPostgres === true && inferred.stewardPostgres === true,
+    ),
+    check(
+      "migration_output_verified",
+      database.migrationsApplied === true &&
+        inferred.migrationsApplied === true,
+      {
+        source: migrationOutput?.source ?? null,
+        sha256: migrationOutput?.sha256 ?? null,
+      },
+    ),
     check(
       "restore_drill_output_verified",
-      database.emptyHostRestoreDrillPassed === true && inferred.emptyHostRestoreDrillPassed === true,
+      database.emptyHostRestoreDrillPassed === true &&
+        inferred.emptyHostRestoreDrillPassed === true,
       {
         source: restoreDrillOutput?.source ?? null,
         sha256: restoreDrillOutput?.sha256 ?? null,
         verifiedTables,
       },
     ),
-    check("checksum_drift_clean", database.checksumDriftClean === true && inferred.checksumDriftClean === true),
+    check(
+      "checksum_drift_clean",
+      database.checksumDriftClean === true &&
+        inferred.checksumDriftClean === true,
+    ),
   ];
   const productionReady = checks.every((item) => item.status === "pass");
 
@@ -529,7 +612,11 @@ function artifactEvidence(filePath) {
 
 function writeDatabaseAuditArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ databaseAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ databaseAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {
@@ -555,7 +642,10 @@ function isPostgresUrl(value) {
 
   try {
     const url = new URL(normalized);
-    return (url.protocol === "postgres:" || url.protocol === "postgresql:") && url.hostname.length > 0;
+    return (
+      (url.protocol === "postgres:" || url.protocol === "postgresql:") &&
+      url.hostname.length > 0
+    );
   } catch {
     return false;
   }

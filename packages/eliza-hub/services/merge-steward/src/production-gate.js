@@ -2088,6 +2088,7 @@ function requireHttpsUrl(errors, path, value, { trailingSlash = false } = {}) {
   try {
     url = new URL(value);
   } catch {
+    // error-policy:J3 URL parse failure becomes a typed validation error
     errors.push(error("invalid_url", `${path} must be a valid URL`));
     return;
   }
@@ -2106,6 +2107,8 @@ function hostFromHttpsUrl(value) {
     const url = new URL(value);
     return url.protocol === "https:" ? url.hostname : null;
   } catch {
+    // error-policy:J3 unparseable URL has no host; callers treat null as
+    // invalid
     return null;
   }
 }

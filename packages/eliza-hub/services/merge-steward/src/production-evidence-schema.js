@@ -118,9 +118,9 @@ function validateArray(value, schema, path, errors) {
   }
 
   if (schema.items) {
-    value.forEach((item, index) =>
-      validateSchemaValue(item, schema.items, `${path}[${index}]`, errors),
-    );
+    value.forEach((item, index) => {
+      validateSchemaValue(item, schema.items, `${path}[${index}]`, errors);
+    });
   }
 }
 
@@ -139,6 +139,7 @@ function validateString(value, schema, path, errors) {
     try {
       new URL(value);
     } catch {
+      // error-policy:J3 URI parse failure becomes a typed shape error
       errors.push(
         shapeError(
           "invalid_uri",

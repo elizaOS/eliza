@@ -232,7 +232,7 @@ function branchNamespaceGate({
   requireAgentBranchNamespace,
   prefix,
 }) {
-  if (!proposed || proposed.authorKind !== "agent") {
+  if (proposed?.authorKind !== "agent") {
     return pass(
       "agent_branch_namespace",
       "info",
@@ -296,7 +296,7 @@ function branchNamespaceGate({
 }
 
 function workItemGate({ proposed, workItemLink, requireWorkItem }) {
-  if (!proposed || proposed.authorKind !== "agent") {
+  if (proposed?.authorKind !== "agent") {
     return pass(
       "work_item",
       "info",
@@ -710,7 +710,7 @@ function blockedQueueGate({ agent, limits }) {
 }
 
 function verificationGate({ proposed }) {
-  if (!proposed || proposed.authorKind !== "agent") {
+  if (proposed?.authorKind !== "agent") {
     return pass(
       "verification_present",
       "info",
@@ -749,7 +749,7 @@ function workReservationGate({
   requireWorkReservation,
   now,
 }) {
-  if (!proposed || proposed.authorKind !== "agent") {
+  if (proposed?.authorKind !== "agent") {
     return pass(
       "work_reservation",
       "info",
@@ -877,7 +877,7 @@ function validationBudgetGate({
   validationLimits,
   now,
 }) {
-  if (!proposed || proposed.authorKind !== "agent") {
+  if (proposed?.authorKind !== "agent") {
     return pass(
       "validation_budget",
       "info",

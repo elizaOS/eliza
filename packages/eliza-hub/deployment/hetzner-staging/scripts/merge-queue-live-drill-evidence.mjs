@@ -23,42 +23,75 @@ async function main() {
   const defaultEnvFile = path.resolve(scriptDir, "..", ".env");
   const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
   const values = readConfiguration(envFile, process.env);
-  const baseUrl = requiredValue(options.stewardUrl ?? values.MERGE_STEWARD_URL ?? values.ELIZA_MERGE_STEWARD_URL, "MERGE_STEWARD_URL");
-  const token = values.MERGE_QUEUE_LIVE_DRILL_STEWARD_TOKEN ?? values.MERGE_STEWARD_API_TOKEN ?? "";
-  const outputPath = options.output ?? values.MERGE_QUEUE_LIVE_DRILL_OUTPUT ?? DEFAULT_OUTPUT;
-  const workerId = options.workerId ?? values.MERGE_QUEUE_LIVE_DRILL_WORKER_ID ?? DEFAULT_WORKER_ID;
-  const confirmExecution = options.confirmLiveExecution
-    || parseBoolean(values.MERGE_QUEUE_LIVE_DRILL_CONFIRM_EXECUTION) === true;
-  const rollbackDrillPassed = parseBoolean(values.MERGE_QUEUE_LIVE_DRILL_ROLLBACK_DRILL_PASSED) === true;
-  const humanApprovalRecorded = parseBoolean(values.MERGE_QUEUE_LIVE_DRILL_HUMAN_APPROVAL_RECORDED) === true;
-  const stackDependencyOrderAttested = parseBoolean(values.MERGE_QUEUE_LIVE_DRILL_STACK_DEPENDENCY_ORDER_ENFORCED) === true;
-  const stackProofRepo = cleanString(
-    values.MERGE_QUEUE_LIVE_DRILL_STACK_PROOF_REPO
-      ?? values.MERGE_QUEUE_ROLLOUT_SMOKE_REPO
-      ?? values.MERGE_STEWARD_SMOKE_REPO,
-  ) ?? DEFAULT_STACK_PROOF_REPO;
-  const stackProofTargetBranch = cleanString(values.MERGE_QUEUE_LIVE_DRILL_STACK_PROOF_TARGET_BRANCH);
+  const baseUrl = requiredValue(
+    options.stewardUrl ??
+      values.MERGE_STEWARD_URL ??
+      values.ELIZA_MERGE_STEWARD_URL,
+    "MERGE_STEWARD_URL",
+  );
+  const token =
+    values.MERGE_QUEUE_LIVE_DRILL_STEWARD_TOKEN ??
+    values.MERGE_STEWARD_API_TOKEN ??
+    "";
+  const outputPath =
+    options.output ?? values.MERGE_QUEUE_LIVE_DRILL_OUTPUT ?? DEFAULT_OUTPUT;
+  const workerId =
+    options.workerId ??
+    values.MERGE_QUEUE_LIVE_DRILL_WORKER_ID ??
+    DEFAULT_WORKER_ID;
+  const confirmExecution =
+    options.confirmLiveExecution ||
+    parseBoolean(values.MERGE_QUEUE_LIVE_DRILL_CONFIRM_EXECUTION) === true;
+  const rollbackDrillPassed =
+    parseBoolean(values.MERGE_QUEUE_LIVE_DRILL_ROLLBACK_DRILL_PASSED) === true;
+  const humanApprovalRecorded =
+    parseBoolean(values.MERGE_QUEUE_LIVE_DRILL_HUMAN_APPROVAL_RECORDED) ===
+    true;
+  const stackDependencyOrderAttested =
+    parseBoolean(
+      values.MERGE_QUEUE_LIVE_DRILL_STACK_DEPENDENCY_ORDER_ENFORCED,
+    ) === true;
+  const stackProofRepo =
+    cleanString(
+      values.MERGE_QUEUE_LIVE_DRILL_STACK_PROOF_REPO ??
+        values.MERGE_QUEUE_ROLLOUT_SMOKE_REPO ??
+        values.MERGE_STEWARD_SMOKE_REPO,
+    ) ?? DEFAULT_STACK_PROOF_REPO;
+  const stackProofTargetBranch = cleanString(
+    values.MERGE_QUEUE_LIVE_DRILL_STACK_PROOF_TARGET_BRANCH,
+  );
 
   if (!confirmExecution) {
-    throw new Error("MERGE_QUEUE_LIVE_DRILL_CONFIRM_EXECUTION=true or --confirm-live-execution is required");
+    throw new Error(
+      "MERGE_QUEUE_LIVE_DRILL_CONFIRM_EXECUTION=true or --confirm-live-execution is required",
+    );
   }
   if (!rollbackDrillPassed) {
-    throw new Error("MERGE_QUEUE_LIVE_DRILL_ROLLBACK_DRILL_PASSED=true is required");
+    throw new Error(
+      "MERGE_QUEUE_LIVE_DRILL_ROLLBACK_DRILL_PASSED=true is required",
+    );
   }
   if (!humanApprovalRecorded) {
-    throw new Error("MERGE_QUEUE_LIVE_DRILL_HUMAN_APPROVAL_RECORDED=true is required");
+    throw new Error(
+      "MERGE_QUEUE_LIVE_DRILL_HUMAN_APPROVAL_RECORDED=true is required",
+    );
   }
   if (!stackDependencyOrderAttested) {
-    throw new Error("MERGE_QUEUE_LIVE_DRILL_STACK_DEPENDENCY_ORDER_ENFORCED=true is required");
+    throw new Error(
+      "MERGE_QUEUE_LIVE_DRILL_STACK_DEPENDENCY_ORDER_ENFORCED=true is required",
+    );
   }
 
   const client = createMergeStewardClient({ baseUrl, token });
   const checkedAt = new Date().toISOString();
-  const stackDependencyOrderProof = await collectStackDependencyOrderProof(client, {
-    checkedAt,
-    repo: stackProofRepo,
-    targetBranch: stackProofTargetBranch,
-  });
+  const stackDependencyOrderProof = await collectStackDependencyOrderProof(
+    client,
+    {
+      checkedAt,
+      repo: stackProofRepo,
+      targetBranch: stackProofTargetBranch,
+    },
+  );
   const readiness = await client.getReady();
   const runOnce = await client.runOnce({ workerId, confirm: true });
   const events = await collectRunEvents(client, runOnce);
@@ -75,11 +108,15 @@ async function main() {
   const errors = validateLiveDrillEvidence(evidence.mergeQueueRolloutLiveDrill);
 
   if (errors.length > 0) {
-    throw new Error(`live merge queue drill evidence is incomplete:\n- ${errors.join("\n- ")}`);
+    throw new Error(
+      `live merge queue drill evidence is incomplete:\n- ${errors.join("\n- ")}`,
+    );
   }
 
   mkdirSync(path.dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, {
+    mode: 0o600,
+  });
   log(`wrote merge queue live drill evidence to ${outputPath}`);
 }
 
@@ -106,7 +143,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--env-file=")) {
-      options.envFile = requireArg(arg.slice("--env-file=".length), "--env-file");
+      options.envFile = requireArg(
+        arg.slice("--env-file=".length),
+        "--env-file",
+      );
       continue;
     }
 
@@ -117,7 +157,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--steward-url=")) {
-      options.stewardUrl = requireArg(arg.slice("--steward-url=".length), "--steward-url");
+      options.stewardUrl = requireArg(
+        arg.slice("--steward-url=".length),
+        "--steward-url",
+      );
       continue;
     }
 
@@ -128,7 +171,10 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--worker-id=")) {
-      options.workerId = requireArg(arg.slice("--worker-id=".length), "--worker-id");
+      options.workerId = requireArg(
+        arg.slice("--worker-id=".length),
+        "--worker-id",
+      );
       continue;
     }
 
@@ -150,9 +196,10 @@ function parseArgs(args) {
 }
 
 async function collectRunEvents(client, runOnce) {
-  const runs = normalizeArray(runOnce?.runs).length > 0
-    ? normalizeArray(runOnce.runs)
-    : normalizeArray(runOnce?.run ? [runOnce.run] : []);
+  const runs =
+    normalizeArray(runOnce?.runs).length > 0
+      ? normalizeArray(runOnce.runs)
+      : normalizeArray(runOnce?.run ? [runOnce.run] : []);
   const events = [];
 
   for (const run of runs) {
@@ -164,7 +211,10 @@ async function collectRunEvents(client, runOnce) {
   return events;
 }
 
-async function collectStackDependencyOrderProof(client, { checkedAt, repo, targetBranch }) {
+async function collectStackDependencyOrderProof(
+  client,
+  { checkedAt, repo, targetBranch },
+) {
   const query = {
     readiness: false,
     now: checkedAt,
@@ -175,22 +225,30 @@ async function collectStackDependencyOrderProof(client, { checkedAt, repo, targe
 
   const response = await client.getReleaseReadiness(query);
   const releaseReadiness = objectValue(response?.releaseReadiness ?? response);
-  const stackCheck = normalizeArray(releaseReadiness.checks)
-    .find((check) => check?.name === "stack_dependency_order");
+  const stackCheck = normalizeArray(releaseReadiness.checks).find(
+    (check) => check?.name === "stack_dependency_order",
+  );
   const details = objectValue(stackCheck?.details);
   const snapshots = objectValue(releaseReadiness.snapshots);
-  const blockedItemIds = stringArray(snapshots.stackBlockedItemIds ?? details.blockedItemIds);
-  const nextMergeItemIds = stringArray(snapshots.stackNextMergeItemIds ?? details.nextMergeItemIds);
+  const blockedItemIds = stringArray(
+    snapshots.stackBlockedItemIds ?? details.blockedItemIds,
+  );
+  const nextMergeItemIds = stringArray(
+    snapshots.stackNextMergeItemIds ?? details.nextMergeItemIds,
+  );
   const requiredActions = uniqueStringArray([
     ...normalizeArray(stackCheck?.requiredActions),
     ...normalizeArray(releaseReadiness.requiredActions),
   ]);
-  const stackBlocked = numberOrZero(details.stackBlocked ?? blockedItemIds.length);
+  const stackBlocked = numberOrZero(
+    details.stackBlocked ?? blockedItemIds.length,
+  );
 
   return {
     source: "/api/release-readiness",
     repo: releaseReadiness.filters?.repo ?? repo ?? null,
-    targetBranch: releaseReadiness.filters?.targetBranch ?? targetBranch ?? null,
+    targetBranch:
+      releaseReadiness.filters?.targetBranch ?? targetBranch ?? null,
     checkedAt: releaseReadiness.computedAt ?? checkedAt,
     status: releaseReadiness.status ?? null,
     stackCheckStatus: stackCheck?.status ?? null,
@@ -198,11 +256,12 @@ async function collectStackDependencyOrderProof(client, { checkedAt, repo, targe
     blockedItemIds,
     nextMergeItemIds,
     requiredActions,
-    valid: stackCheck?.status === "fail"
-      && stackBlocked > 0
-      && blockedItemIds.length > 0
-      && nextMergeItemIds.length > 0
-      && requiredActions.includes("merge_stack_parents_first"),
+    valid:
+      stackCheck?.status === "fail" &&
+      stackBlocked > 0 &&
+      blockedItemIds.length > 0 &&
+      nextMergeItemIds.length > 0 &&
+      requiredActions.includes("merge_stack_parents_first"),
   };
 }
 
@@ -216,37 +275,48 @@ function buildLiveDrillEvidence({
   stackDependencyOrderAttested,
   stackDependencyOrderProof,
 }) {
-  const runs = normalizeArray(runOnce?.runs).length > 0
-    ? normalizeArray(runOnce.runs)
-    : normalizeArray(runOnce?.run ? [runOnce.run] : []);
-  const items = normalizeArray(runOnce?.items).length > 0
-    ? normalizeArray(runOnce.items)
-    : normalizeArray(runOnce?.item ? [runOnce.item] : []);
+  const runs =
+    normalizeArray(runOnce?.runs).length > 0
+      ? normalizeArray(runOnce.runs)
+      : normalizeArray(runOnce?.run ? [runOnce.run] : []);
+  const items =
+    normalizeArray(runOnce?.items).length > 0
+      ? normalizeArray(runOnce.items)
+      : normalizeArray(runOnce?.item ? [runOnce.item] : []);
   const execution = objectValue(runOnce?.execution);
   const executions = normalizeArray(execution.executions);
   const workerLease = findWorkerLeaseCheck(readiness);
-  const workerLeaseVerified = readiness?.ok === true
-    && readiness?.configuration?.workerEnabled === true
-    && readiness?.configuration?.workerLeaseEnabled === true
-    && workerLease?.ok === true
-    && Boolean(workerLease.ownerId)
-    && validFutureIso(workerLease.expiresAt, checkedAt);
-  const strictWorkReservationsEnforced = readiness?.configuration?.requireWorkReservationForAgentPrs === true;
-  const strictWorkItemsEnforced = readiness?.configuration?.requireWorkItemForAgentPrs === true;
-  const strictAgentBranchNamespacesEnforced = readiness?.configuration?.requireAgentBranchNamespaceForAgentPrs === true;
-  const verifiedAgentRunReceiptsEnforced = readiness?.configuration?.requireVerifiedAgentRunReceiptForAgentPrs === true;
-  const agentIdentityRegistryEnforced = readiness?.configuration?.requireAgentIdentityRegistryForAgentPrs === true
-    && Number(readiness?.configuration?.knownAgentIdCount ?? 0) > 0;
-  const stackDependencyOrderEnforced = stackDependencyOrderAttested === true
-    && stackDependencyOrderProof?.valid === true;
-  const stagedLiveDrillPassed = runOnce?.claimed === true
-    && readiness?.configuration?.integrationDryRun === false
-    && runs.some((run) => run?.status === "succeeded")
-    && items.some((item) => item?.queueState === "merged")
-    && executions.length > 0
-    && executions.every((entry) => entry?.status === "executed")
-    && events.some((event) => event?.type === "IntegrationActionStarted")
-    && events.some((event) => event?.type === "IntegrationActionFinished");
+  const workerLeaseVerified =
+    readiness?.ok === true &&
+    readiness?.configuration?.workerEnabled === true &&
+    readiness?.configuration?.workerLeaseEnabled === true &&
+    workerLease?.ok === true &&
+    Boolean(workerLease.ownerId) &&
+    validFutureIso(workerLease.expiresAt, checkedAt);
+  const strictWorkReservationsEnforced =
+    readiness?.configuration?.requireWorkReservationForAgentPrs === true;
+  const strictWorkItemsEnforced =
+    readiness?.configuration?.requireWorkItemForAgentPrs === true;
+  const strictAgentBranchNamespacesEnforced =
+    readiness?.configuration?.requireAgentBranchNamespaceForAgentPrs === true;
+  const verifiedAgentRunReceiptsEnforced =
+    readiness?.configuration?.requireVerifiedAgentRunReceiptForAgentPrs ===
+    true;
+  const agentIdentityRegistryEnforced =
+    readiness?.configuration?.requireAgentIdentityRegistryForAgentPrs ===
+      true && Number(readiness?.configuration?.knownAgentIdCount ?? 0) > 0;
+  const stackDependencyOrderEnforced =
+    stackDependencyOrderAttested === true &&
+    stackDependencyOrderProof?.valid === true;
+  const stagedLiveDrillPassed =
+    runOnce?.claimed === true &&
+    readiness?.configuration?.integrationDryRun === false &&
+    runs.some((run) => run?.status === "succeeded") &&
+    items.some((item) => item?.queueState === "merged") &&
+    executions.length > 0 &&
+    executions.every((entry) => entry?.status === "executed") &&
+    events.some((event) => event?.type === "IntegrationActionStarted") &&
+    events.some((event) => event?.type === "IntegrationActionFinished");
 
   return {
     mergeQueueRolloutLiveDrill: {
@@ -269,14 +339,27 @@ function buildLiveDrillEvidence({
         checkedAt: readiness?.checkedAt ?? null,
         configuration: {
           workerEnabled: readiness?.configuration?.workerEnabled === true,
-          workerLeaseEnabled: readiness?.configuration?.workerLeaseEnabled === true,
-          integrationDryRun: readiness?.configuration?.integrationDryRun === true,
-          requireWorkReservationForAgentPrs: readiness?.configuration?.requireWorkReservationForAgentPrs === true,
-          requireWorkItemForAgentPrs: readiness?.configuration?.requireWorkItemForAgentPrs === true,
-          requireAgentBranchNamespaceForAgentPrs: readiness?.configuration?.requireAgentBranchNamespaceForAgentPrs === true,
-          requireVerifiedAgentRunReceiptForAgentPrs: readiness?.configuration?.requireVerifiedAgentRunReceiptForAgentPrs === true,
-          requireAgentIdentityRegistryForAgentPrs: readiness?.configuration?.requireAgentIdentityRegistryForAgentPrs === true,
-          knownAgentIdCount: Number(readiness?.configuration?.knownAgentIdCount ?? 0),
+          workerLeaseEnabled:
+            readiness?.configuration?.workerLeaseEnabled === true,
+          integrationDryRun:
+            readiness?.configuration?.integrationDryRun === true,
+          requireWorkReservationForAgentPrs:
+            readiness?.configuration?.requireWorkReservationForAgentPrs ===
+            true,
+          requireWorkItemForAgentPrs:
+            readiness?.configuration?.requireWorkItemForAgentPrs === true,
+          requireAgentBranchNamespaceForAgentPrs:
+            readiness?.configuration?.requireAgentBranchNamespaceForAgentPrs ===
+            true,
+          requireVerifiedAgentRunReceiptForAgentPrs:
+            readiness?.configuration
+              ?.requireVerifiedAgentRunReceiptForAgentPrs === true,
+          requireAgentIdentityRegistryForAgentPrs:
+            readiness?.configuration
+              ?.requireAgentIdentityRegistryForAgentPrs === true,
+          knownAgentIdCount: Number(
+            readiness?.configuration?.knownAgentIdCount ?? 0,
+          ),
         },
         workerLease: workerLease
           ? {
@@ -297,37 +380,59 @@ function validateLiveDrillEvidence(live) {
   const errors = [];
 
   if (live.stagedLiveDrillPassed !== true) {
-    errors.push("staged live run must disable dry-run mode, claim work, succeed, merge an item, execute integration actions, and record action checkpoint events");
+    errors.push(
+      "staged live run must disable dry-run mode, claim work, succeed, merge an item, execute integration actions, and record action checkpoint events",
+    );
   }
   if (live.workerLeaseVerified !== true) {
-    errors.push("worker lease must be enabled, owned, healthy, and unexpired in /ready");
+    errors.push(
+      "worker lease must be enabled, owned, healthy, and unexpired in /ready",
+    );
   }
   if (live.strictWorkReservationsEnforced !== true) {
-    errors.push("strict work reservations must be enabled in /ready during the live rollout drill");
+    errors.push(
+      "strict work reservations must be enabled in /ready during the live rollout drill",
+    );
   }
   if (live.strictWorkItemsEnforced !== true) {
-    errors.push("strict Work items must be enabled in /ready during the live rollout drill");
+    errors.push(
+      "strict Work items must be enabled in /ready during the live rollout drill",
+    );
   }
   if (live.strictAgentBranchNamespacesEnforced !== true) {
-    errors.push("strict agent branch namespaces must be enabled in /ready during the live rollout drill");
+    errors.push(
+      "strict agent branch namespaces must be enabled in /ready during the live rollout drill",
+    );
   }
   if (live.verifiedAgentRunReceiptsEnforced !== true) {
-    errors.push("verified agent run receipts must be enabled in /ready during the live rollout drill");
+    errors.push(
+      "verified agent run receipts must be enabled in /ready during the live rollout drill",
+    );
   }
   if (live.agentIdentityRegistryEnforced !== true) {
-    errors.push("allowed-agent identity registry must be enabled and non-empty in /ready during the live rollout drill");
+    errors.push(
+      "allowed-agent identity registry must be enabled and non-empty in /ready during the live rollout drill",
+    );
   }
   if (live.stackDependencyOrderEnforced !== true) {
-    errors.push("stack dependency ordering must be proven by release-readiness during the live rollout drill");
+    errors.push(
+      "stack dependency ordering must be proven by release-readiness during the live rollout drill",
+    );
   }
   if (live.stackDependencyOrderProof?.valid !== true) {
-    errors.push("stack dependency order proof must include a blocked stacked child, next merge parent, and merge_stack_parents_first action");
+    errors.push(
+      "stack dependency order proof must include a blocked stacked child, next merge parent, and merge_stack_parents_first action",
+    );
   }
   if (live.rollbackDrillPassed !== true) {
-    errors.push("rollback drill must be recorded before generating live rollout evidence");
+    errors.push(
+      "rollback drill must be recorded before generating live rollout evidence",
+    );
   }
   if (live.humanApprovalRecorded !== true) {
-    errors.push("human approval must be recorded before generating live rollout evidence");
+    errors.push(
+      "human approval must be recorded before generating live rollout evidence",
+    );
   }
   if (!normalizeIso(live.checkedAt)) {
     errors.push("checkedAt must be an ISO timestamp");
@@ -337,7 +442,11 @@ function validateLiveDrillEvidence(live) {
 }
 
 function findWorkerLeaseCheck(readiness) {
-  return normalizeArray(readiness?.checks).find((check) => check?.name === "worker_lease") ?? null;
+  return (
+    normalizeArray(readiness?.checks).find(
+      (check) => check?.name === "worker_lease",
+    ) ?? null
+  );
 }
 
 function validFutureIso(value, nowIso) {
@@ -383,7 +492,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -399,7 +510,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -418,7 +530,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -445,7 +557,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -480,7 +592,9 @@ function normalizeArray(value) {
 }
 
 function objectValue(value) {
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
 }
 
 function stringArray(value) {
@@ -562,6 +676,8 @@ action.
 }
 
 main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : "Unknown error"}\n`);
+  process.stderr.write(
+    `${error instanceof Error ? error.message : "Unknown error"}\n`,
+  );
   process.exit(1);
 });

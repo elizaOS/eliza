@@ -50,7 +50,9 @@ const BOOLEAN_FIELDS = Object.freeze([
 const DIGEST_REF_PATTERN = /^[^\s@]+@sha256:[a-f0-9]{64}$/i;
 const TRUE_PATTERN = /^(?:1|true|yes|on)$/i;
 const FALSE_PATTERN = /^(?:0|false|no|off)$/i;
-const DEFAULT_IMAGE_PROVENANCE_OUTPUT = artifactPath("image-provenance-audit.json");
+const DEFAULT_IMAGE_PROVENANCE_OUTPUT = artifactPath(
+  "image-provenance-audit.json",
+);
 
 main();
 
@@ -72,15 +74,22 @@ function main() {
     const checkedAt = readCheckedAt(values, errors);
 
     for (const field of IMAGE_FIELDS) {
-      const resolved = resolveImageReference(values[field.imageKey], values[field.digestKey]);
+      const resolved = resolveImageReference(
+        values[field.imageKey],
+        values[field.digestKey],
+      );
 
       if (!resolved) {
-        errors.push(`${field.imageKey} must be an @sha256 reference or be paired with ${field.digestKey}`);
+        errors.push(
+          `${field.imageKey} must be an @sha256 reference or be paired with ${field.digestKey}`,
+        );
         continue;
       }
 
       if (!DIGEST_REF_PATTERN.test(resolved)) {
-        errors.push(`${field.imageKey} must resolve to <image>@sha256:<64 hex chars>`);
+        errors.push(
+          `${field.imageKey} must resolve to <image>@sha256:<64 hex chars>`,
+        );
         continue;
       }
 
@@ -107,9 +116,10 @@ function main() {
     }
 
     const audit = imageProvenanceAudit(imageProvenance, checkedAt);
-    const outputPath = options.provenanceOutput
-      ?? values.IMAGE_PROVENANCE_PROVENANCE_OUTPUT
-      ?? DEFAULT_IMAGE_PROVENANCE_OUTPUT;
+    const outputPath =
+      options.provenanceOutput ??
+      values.IMAGE_PROVENANCE_PROVENANCE_OUTPUT ??
+      DEFAULT_IMAGE_PROVENANCE_OUTPUT;
     writeImageProvenanceArtifact(outputPath, audit);
     imageProvenance.provenanceEvidence = {
       source: outputPath,
@@ -195,7 +205,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -220,7 +232,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -239,7 +252,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -266,7 +279,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -326,7 +339,9 @@ function readCheckedAt(values, errors) {
 
   const normalized = normalizeIso(raw);
   if (!normalized) {
-    errors.push("IMAGE_PROVENANCE_CHECKED_AT must be an ISO timestamp when set");
+    errors.push(
+      "IMAGE_PROVENANCE_CHECKED_AT must be an ISO timestamp when set",
+    );
     return new Date().toISOString();
   }
 
@@ -334,11 +349,26 @@ function readCheckedAt(values, errors) {
 }
 
 function imageProvenanceAudit(imageProvenance, checkedAt) {
-  const images = Object.fromEntries(IMAGE_FIELDS.map((field) => [field.outputKey, imageProvenance[field.outputKey]]));
-  const evidence = Object.fromEntries(BOOLEAN_FIELDS.map((field) => [field.outputKey, imageProvenance[field.outputKey]]));
+  const images = Object.fromEntries(
+    IMAGE_FIELDS.map((field) => [
+      field.outputKey,
+      imageProvenance[field.outputKey],
+    ]),
+  );
+  const evidence = Object.fromEntries(
+    BOOLEAN_FIELDS.map((field) => [
+      field.outputKey,
+      imageProvenance[field.outputKey],
+    ]),
+  );
   const checks = [
-    check("images_digest_pinned", Object.values(images).every((image) => DIGEST_REF_PATTERN.test(image))),
-    ...BOOLEAN_FIELDS.map((field) => check(field.outputKey, imageProvenance[field.outputKey] === true)),
+    check(
+      "images_digest_pinned",
+      Object.values(images).every((image) => DIGEST_REF_PATTERN.test(image)),
+    ),
+    ...BOOLEAN_FIELDS.map((field) =>
+      check(field.outputKey, imageProvenance[field.outputKey] === true),
+    ),
   ];
   const productionReady = checks.every((item) => item.status === "pass");
 
@@ -361,7 +391,11 @@ function check(name, passed) {
 
 function writeImageProvenanceArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ imageProvenanceAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ imageProvenanceAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {

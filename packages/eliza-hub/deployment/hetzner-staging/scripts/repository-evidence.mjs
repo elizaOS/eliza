@@ -35,7 +35,9 @@ const BOOLEAN_FIELDS = Object.freeze([
 
 const TRUE_PATTERN = /^(?:1|true|yes|on)$/i;
 const FALSE_PATTERN = /^(?:0|false|no|off)$/i;
-const DEFAULT_REPOSITORY_PROTECTION_OUTPUT = artifactPath("repository-protection.json");
+const DEFAULT_REPOSITORY_PROTECTION_OUTPUT = artifactPath(
+  "repository-protection.json",
+);
 
 main().catch((error) => {
   console.error(`[repository-evidence] error: ${error.message}`);
@@ -70,19 +72,25 @@ async function main() {
   }
 
   for (const field of LIST_FIELDS) {
-    repository[field.outputKey] = listFromRepositoryProtection(repositoryProtection, field.outputKey)
-      ?? parseList(values[field.envKey] ?? values[field.fallbackKey]);
+    repository[field.outputKey] =
+      listFromRepositoryProtection(repositoryProtection, field.outputKey) ??
+      parseList(values[field.envKey] ?? values[field.fallbackKey]);
   }
 
   for (const field of BOOLEAN_FIELDS) {
     const parsed = readBooleanAttestation(values, field.envKey, errors);
-    const inferred = field.outputKey === "forkPolicyReviewed"
-      ? inferForkPolicyReviewed(repositoryProtection)
-      : null;
+    const inferred =
+      field.outputKey === "forkPolicyReviewed"
+        ? inferForkPolicyReviewed(repositoryProtection)
+        : null;
     repository[field.outputKey] = parsed ?? inferred ?? false;
   }
   repository.liveProtectionEvidence = repositoryProtection
-    ? liveProtectionEvidence(repositoryProtection, repositoryProtectionResult.source, repositoryProtectionResult.sha256)
+    ? liveProtectionEvidence(
+        repositoryProtection,
+        repositoryProtectionResult.source,
+        repositoryProtectionResult.sha256,
+      )
     : null;
 
   if (errors.length > 0) {
@@ -134,7 +142,9 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--repository-protection-json=")) {
-      options.repositoryProtectionJson = arg.slice("--repository-protection-json=".length);
+      options.repositoryProtectionJson = arg.slice(
+        "--repository-protection-json=".length,
+      );
       if (!options.repositoryProtectionJson) {
         throw new Error("--repository-protection-json requires a path");
       }
@@ -151,7 +161,9 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--repository-protection-output=")) {
-      options.repositoryProtectionOutput = arg.slice("--repository-protection-output=".length);
+      options.repositoryProtectionOutput = arg.slice(
+        "--repository-protection-output=".length,
+      );
       if (!options.repositoryProtectionOutput) {
         throw new Error("--repository-protection-output requires a path");
       }
@@ -238,7 +250,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -269,15 +283,24 @@ function readRequireLive(options, values, errors) {
 
   const parsed = parseBoolean(values.REPOSITORY_EVIDENCE_REQUIRE_LIVE);
   if (parsed === undefined) {
-    errors.push("REPOSITORY_EVIDENCE_REQUIRE_LIVE must be true or false when set");
+    errors.push(
+      "REPOSITORY_EVIDENCE_REQUIRE_LIVE must be true or false when set",
+    );
     return false;
   }
 
   return parsed ?? false;
 }
 
-async function readRepositoryProtectionAudit({ options, values, requireLive, errors }) {
-  const auditPath = options.repositoryProtectionJson ?? values.REPOSITORY_EVIDENCE_REPOSITORY_PROTECTION_JSON;
+async function readRepositoryProtectionAudit({
+  options,
+  values,
+  requireLive,
+  errors,
+}) {
+  const auditPath =
+    options.repositoryProtectionJson ??
+    values.REPOSITORY_EVIDENCE_REPOSITORY_PROTECTION_JSON;
   if (auditPath) {
     return {
       audit: readRepositoryProtectionJson(auditPath),
@@ -286,18 +309,29 @@ async function readRepositoryProtectionAudit({ options, values, requireLive, err
     };
   }
 
-  const stewardUrl = options.stewardUrl ?? values.REPOSITORY_EVIDENCE_STEWARD_URL ?? (requireLive ? values.MERGE_STEWARD_URL : null);
+  const stewardUrl =
+    options.stewardUrl ??
+    values.REPOSITORY_EVIDENCE_STEWARD_URL ??
+    (requireLive ? values.MERGE_STEWARD_URL : null);
   if (stewardUrl) {
-    const repo = options.repo ?? values.REPOSITORY_EVIDENCE_REPO ?? values.MERGE_STEWARD_SMOKE_REPO;
+    const repo =
+      options.repo ??
+      values.REPOSITORY_EVIDENCE_REPO ??
+      values.MERGE_STEWARD_SMOKE_REPO;
     const audit = await fetchRepositoryProtectionAudit({
       stewardUrl,
       repo,
-      targetBranch: options.targetBranch ?? values.REPOSITORY_EVIDENCE_TARGET_BRANCH,
-      token: values.REPOSITORY_EVIDENCE_STEWARD_TOKEN ?? values.MERGE_STEWARD_DOCTOR_TOKEN ?? values.MERGE_STEWARD_API_TOKEN,
+      targetBranch:
+        options.targetBranch ?? values.REPOSITORY_EVIDENCE_TARGET_BRANCH,
+      token:
+        values.REPOSITORY_EVIDENCE_STEWARD_TOKEN ??
+        values.MERGE_STEWARD_DOCTOR_TOKEN ??
+        values.MERGE_STEWARD_API_TOKEN,
     });
-    const outputPath = options.repositoryProtectionOutput
-      ?? values.REPOSITORY_EVIDENCE_REPOSITORY_PROTECTION_OUTPUT
-      ?? DEFAULT_REPOSITORY_PROTECTION_OUTPUT;
+    const outputPath =
+      options.repositoryProtectionOutput ??
+      values.REPOSITORY_EVIDENCE_REPOSITORY_PROTECTION_OUTPUT ??
+      DEFAULT_REPOSITORY_PROTECTION_OUTPUT;
     writeRepositoryProtectionArtifact(outputPath, audit);
     return {
       audit,
@@ -320,17 +354,30 @@ function readRepositoryProtectionJson(auditPath) {
     throw new Error(`repository protection JSON does not exist: ${auditPath}`);
   }
 
-  return extractRepositoryProtection(JSON.parse(readFileSync(auditPath, "utf8")));
+  return extractRepositoryProtection(
+    JSON.parse(readFileSync(auditPath, "utf8")),
+  );
 }
 
 function writeRepositoryProtectionArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ repositoryProtection: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ repositoryProtection: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
-async function fetchRepositoryProtectionAudit({ stewardUrl, repo, targetBranch, token }) {
+async function fetchRepositoryProtectionAudit({
+  stewardUrl,
+  repo,
+  targetBranch,
+  token,
+}) {
   if (!repo) {
-    throw new Error("--repo or REPOSITORY_EVIDENCE_REPO is required when --steward-url is used");
+    throw new Error(
+      "--repo or REPOSITORY_EVIDENCE_REPO is required when --steward-url is used",
+    );
   }
 
   const url = stewardApiUrl(stewardUrl, "/api/repository-protection");
@@ -347,7 +394,9 @@ async function fetchRepositoryProtectionAudit({ stewardUrl, repo, targetBranch, 
 
   const response = await fetch(url, { headers });
   if (!response.ok) {
-    throw new Error(`repository protection request failed with HTTP ${response.status}`);
+    throw new Error(
+      `repository protection request failed with HTTP ${response.status}`,
+    );
   }
 
   return extractRepositoryProtection(await response.json());
@@ -363,24 +412,36 @@ function stewardApiUrl(baseUrl, route) {
 }
 
 function extractRepositoryProtection(payload) {
-  const audit = payload?.repositoryProtection ?? payload?.repositoryProtectionAudit ?? payload?.audit ?? payload;
+  const audit =
+    payload?.repositoryProtection ??
+    payload?.repositoryProtectionAudit ??
+    payload?.audit ??
+    payload;
   if (!audit || typeof audit !== "object" || Array.isArray(audit)) {
-    throw new Error("repository protection JSON does not contain a repositoryProtection object");
+    throw new Error(
+      "repository protection JSON does not contain a repositoryProtection object",
+    );
   }
   return audit;
 }
 
 function validateRepositoryProtectionAudit(audit, errors) {
   if (audit.productionReady !== true || audit.status !== "protected") {
-    errors.push("repository protection audit must be production-ready before generating repository evidence");
+    errors.push(
+      "repository protection audit must be production-ready before generating repository evidence",
+    );
   }
 
   if (audit.live?.available !== true || audit.live?.required !== true) {
-    errors.push("repository protection audit must include required live Forgejo verification");
+    errors.push(
+      "repository protection audit must include required live Forgejo verification",
+    );
   }
 
   if (listFromRepositoryProtection(audit, "protectedBranches")?.length === 0) {
-    errors.push("repository protection audit is missing protected branch policy");
+    errors.push(
+      "repository protection audit is missing protected branch policy",
+    );
   }
 
   if (listFromRepositoryProtection(audit, "requiredChecks")?.length === 0) {
@@ -393,7 +454,8 @@ function listFromRepositoryProtection(audit, outputKey) {
     return null;
   }
 
-  const key = outputKey === "protectedBranches" ? "protectedBranches" : "requiredChecks";
+  const key =
+    outputKey === "protectedBranches" ? "protectedBranches" : "requiredChecks";
   return parseList(audit.policy?.[key]);
 }
 
@@ -412,7 +474,9 @@ function liveProtectionEvidence(audit, source, sha256) {
   return {
     source,
     sha256,
-    checkedAt: normalizeIso(audit.computedAt ?? audit.checkedAt) ?? new Date().toISOString(),
+    checkedAt:
+      normalizeIso(audit.computedAt ?? audit.checkedAt) ??
+      new Date().toISOString(),
     status: audit.status ?? null,
     productionReady: audit.productionReady === true,
     liveAvailable: audit.live?.available === true,
@@ -440,7 +504,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -459,7 +524,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -486,7 +551,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -501,7 +566,14 @@ function parseList(value) {
     return [];
   }
 
-  return [...new Set(normalized.split(",").map((item) => item.trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      normalized
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function readBooleanAttestation(values, key, errors) {

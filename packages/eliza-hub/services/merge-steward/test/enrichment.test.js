@@ -215,7 +215,7 @@ signature: ${signature}`,
         async getPullRequest() {
           return pullRequest();
         },
-        async listPullRequestFiles(repo, number, query) {
+        async listPullRequestFiles(_repo, _number, query) {
           calls.push(["files", query.page, query.limit]);
           if (query.page === 1)
             return [
@@ -226,13 +226,13 @@ signature: ${signature}`,
             return [{ filename: "c.ts", additions: 3, deletions: 0 }];
           return [];
         },
-        async listPullRequestReviews(repo, number, query) {
+        async listPullRequestReviews(_repo, _number, query) {
           calls.push(["reviews", query.page, query.limit]);
           return query.page === 1
             ? [{ state: "APPROVED", user: { login: "maintainer" } }]
             : [];
         },
-        async listCommitStatuses(repo, sha, query) {
+        async listCommitStatuses(_repo, _sha, query) {
           calls.push(["statuses", query.page, query.limit]);
           return query.page === 1
             ? [{ context: "smoke", state: "success" }]

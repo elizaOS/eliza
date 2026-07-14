@@ -11,7 +11,13 @@ const DEFAULT_UPSTREAM = "https://github.com/elizaos/eliza.git";
 const DEFAULT_BRANCH = "main";
 const DEFAULT_REQUIRED_CHECKS = ["runner-smoke / smoke"];
 const DEFAULT_AGENT_IDS = ["agent-codex", "agent-docs"];
-const WEBHOOK_EVENTS = ["push", "pull_request", "pull_request_review", "issue_comment", "status"];
+const WEBHOOK_EVENTS = [
+  "push",
+  "pull_request",
+  "pull_request_review",
+  "issue_comment",
+  "status",
+];
 const REQUIRED_APPLY_STEPS = Object.freeze([
   "forgejo-api-schema",
   "mirror-repository",
@@ -42,7 +48,9 @@ async function main() {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const defaultEnvFile = path.resolve(scriptDir, "..", ".env");
   const envFile = options.envFile ?? process.env.ENV_FILE ?? defaultEnvFile;
-  const values = readConfiguration(envFile, process.env, { allowEnvOnly: options.allowEnvOnly });
+  const values = readConfiguration(envFile, process.env, {
+    allowEnvOnly: options.allowEnvOnly,
+  });
   const config = buildConfig(values, options);
   const steps = [];
   const startedAt = new Date().toISOString();
@@ -63,7 +71,9 @@ async function main() {
   log(`wrote pilot bootstrap evidence: ${config.output}`);
 
   if (config.dryRun) {
-    log("dry-run complete; rerun with --apply or PILOT_BOOTSTRAP_DRY_RUN=false to execute");
+    log(
+      "dry-run complete; rerun with --apply or PILOT_BOOTSTRAP_DRY_RUN=false to execute",
+    );
   }
 }
 
@@ -95,7 +105,10 @@ function parseArgs(args) {
       continue;
     }
     if (arg.startsWith("--env-file=")) {
-      options.envFile = requireArg(arg.slice("--env-file=".length), "--env-file");
+      options.envFile = requireArg(
+        arg.slice("--env-file=".length),
+        "--env-file",
+      );
       continue;
     }
     if (arg === "--output") {
@@ -122,7 +135,10 @@ function parseArgs(args) {
       continue;
     }
     if (arg.startsWith("--upstream=")) {
-      options.upstream = requireArg(arg.slice("--upstream=".length), "--upstream");
+      options.upstream = requireArg(
+        arg.slice("--upstream=".length),
+        "--upstream",
+      );
       continue;
     }
     if (arg === "--target-branch") {
@@ -131,7 +147,10 @@ function parseArgs(args) {
       continue;
     }
     if (arg.startsWith("--target-branch=")) {
-      options.targetBranch = requireArg(arg.slice("--target-branch=".length), "--target-branch");
+      options.targetBranch = requireArg(
+        arg.slice("--target-branch=".length),
+        "--target-branch",
+      );
       continue;
     }
 
@@ -143,38 +162,62 @@ function parseArgs(args) {
 
 function buildConfig(values, options) {
   const repo = parseRepo(options.repo ?? values.ELIZA_HUB_REPO, values);
-  const requiredChecks = parseJsonArray(values.ELIZA_REQUIRED_CHECKS, DEFAULT_REQUIRED_CHECKS, "ELIZA_REQUIRED_CHECKS");
-  const trustedAgentIds = parseJsonArray(values.ELIZA_TRUSTED_AGENT_IDS, DEFAULT_AGENT_IDS, "ELIZA_TRUSTED_AGENT_IDS");
-  const dryRun = options.dryRun ?? parseBoolean(values.PILOT_BOOTSTRAP_DRY_RUN, true);
-  const forgejoRootUrl = requiredUrl(values.FORGEJO_ROOT_URL, "FORGEJO_ROOT_URL");
+  const requiredChecks = parseJsonArray(
+    values.ELIZA_REQUIRED_CHECKS,
+    DEFAULT_REQUIRED_CHECKS,
+    "ELIZA_REQUIRED_CHECKS",
+  );
+  const trustedAgentIds = parseJsonArray(
+    values.ELIZA_TRUSTED_AGENT_IDS,
+    DEFAULT_AGENT_IDS,
+    "ELIZA_TRUSTED_AGENT_IDS",
+  );
+  const dryRun =
+    options.dryRun ?? parseBoolean(values.PILOT_BOOTSTRAP_DRY_RUN, true);
+  const forgejoRootUrl = requiredUrl(
+    values.FORGEJO_ROOT_URL,
+    "FORGEJO_ROOT_URL",
+  );
   const stewardUrl = requiredUrl(values.MERGE_STEWARD_URL, "MERGE_STEWARD_URL");
 
   const config = {
     dryRun,
-    output: options.output ?? values.PILOT_BOOTSTRAP_EVIDENCE_OUT ?? DEFAULT_OUTPUT,
+    output:
+      options.output ?? values.PILOT_BOOTSTRAP_EVIDENCE_OUT ?? DEFAULT_OUTPUT,
     forgejoRootUrl,
     stewardUrl,
-    forgejoToken: values.FORGEJO_BOOTSTRAP_TOKEN ?? values.FORGEJO_STEWARD_TOKEN ?? "",
+    forgejoToken:
+      values.FORGEJO_BOOTSTRAP_TOKEN ?? values.FORGEJO_STEWARD_TOKEN ?? "",
     stewardToken:
-      values.MERGE_STEWARD_CONTROL_TOKEN
-      ?? values.MERGE_STEWARD_API_TOKEN
-      ?? values.MERGE_STEWARD_DOCTOR_TOKEN
-      ?? "",
+      values.MERGE_STEWARD_CONTROL_TOKEN ??
+      values.MERGE_STEWARD_API_TOKEN ??
+      values.MERGE_STEWARD_DOCTOR_TOKEN ??
+      "",
     webhookSecret: values.FORGEJO_WEBHOOK_SECRET ?? "",
     upstreamAuthToken: values.ELIZA_UPSTREAM_AUTH_TOKEN ?? "",
     repo,
-    upstreamGitUrl: options.upstream ?? values.ELIZA_UPSTREAM_GIT_URL ?? DEFAULT_UPSTREAM,
-    targetBranch: options.targetBranch ?? values.ELIZA_TARGET_BRANCH ?? DEFAULT_BRANCH,
+    upstreamGitUrl:
+      options.upstream ?? values.ELIZA_UPSTREAM_GIT_URL ?? DEFAULT_UPSTREAM,
+    targetBranch:
+      options.targetBranch ?? values.ELIZA_TARGET_BRANCH ?? DEFAULT_BRANCH,
     requiredChecks,
     trustedAgentIds,
-    registeredBy: values.PILOT_BOOTSTRAP_REGISTERED_BY ?? "eliza-cloud-operator",
+    registeredBy:
+      values.PILOT_BOOTSTRAP_REGISTERED_BY ?? "eliza-cloud-operator",
     mirrorInterval: values.ELIZA_MIRROR_INTERVAL ?? "10m",
   };
 
   if (!config.dryRun) {
-    if (!config.forgejoToken) throw new Error("FORGEJO_BOOTSTRAP_TOKEN or FORGEJO_STEWARD_TOKEN is required with --apply");
-    if (!config.stewardToken) throw new Error("MERGE_STEWARD_CONTROL_TOKEN or MERGE_STEWARD_API_TOKEN is required with --apply");
-    if (!config.webhookSecret) throw new Error("FORGEJO_WEBHOOK_SECRET is required with --apply");
+    if (!config.forgejoToken)
+      throw new Error(
+        "FORGEJO_BOOTSTRAP_TOKEN or FORGEJO_STEWARD_TOKEN is required with --apply",
+      );
+    if (!config.stewardToken)
+      throw new Error(
+        "MERGE_STEWARD_CONTROL_TOKEN or MERGE_STEWARD_API_TOKEN is required with --apply",
+      );
+    if (!config.webhookSecret)
+      throw new Error("FORGEJO_WEBHOOK_SECRET is required with --apply");
   }
 
   return config;
@@ -241,14 +284,18 @@ async function verifyForgejoSchema(forgejo, steps) {
   for (const candidate of ["swagger.v1.json", "api/swagger"]) {
     try {
       await forgejo.get(candidate, { api: false });
-      addStep(steps, "forgejo-api-schema", "verified", { path: `/${candidate}` });
+      addStep(steps, "forgejo-api-schema", "verified", {
+        path: `/${candidate}`,
+      });
       return;
     } catch (error) {
       if (!isNotFound(error)) throw error;
     }
   }
 
-  throw new Error("Forgejo API schema was not available at /swagger.v1.json or /api/swagger");
+  throw new Error(
+    "Forgejo API schema was not available at /swagger.v1.json or /api/swagger",
+  );
 }
 
 async function ensureMirrorRepository(forgejo, config, steps) {
@@ -259,7 +306,10 @@ async function ensureMirrorRepository(forgejo, config, steps) {
     repo = await forgejo.get(repoPath);
     addStep(steps, "mirror-repository", "verified-existing", {
       repo: config.repo.fullName,
-      mirror: repo?.mirror === true || repo?.mirror === undefined ? repo?.mirror : false,
+      mirror:
+        repo?.mirror === true || repo?.mirror === undefined
+          ? repo?.mirror
+          : false,
     });
   } catch (error) {
     if (!isNotFound(error)) throw error;
@@ -289,7 +339,9 @@ async function ensureMirrorRepository(forgejo, config, steps) {
     repo = await forgejo.get(repoPath);
   }
 
-  const branch = await forgejo.get(`${repoPath}/branches/${encodeSegment(config.targetBranch)}`);
+  const branch = await forgejo.get(
+    `${repoPath}/branches/${encodeSegment(config.targetBranch)}`,
+  );
   addStep(steps, "verify-default-branch", "verified", {
     repo: config.repo.fullName,
     branch: branch?.name ?? config.targetBranch,
@@ -302,10 +354,11 @@ async function ensureWebhook(forgejo, config, steps) {
   const hooksPath = `repos/${encodeSegment(config.repo.owner)}/${encodeSegment(config.repo.name)}/hooks`;
   const webhookUrl = joinUrl(config.stewardUrl, "/api/webhooks/forgejo");
   const hooks = arrayValue(await forgejo.get(hooksPath));
-  const existing = hooks.find((hook) =>
-    hook?.type === "forgejo"
-    && hook?.active !== false
-    && hook?.config?.url === webhookUrl
+  const existing = hooks.find(
+    (hook) =>
+      hook?.type === "forgejo" &&
+      hook?.active !== false &&
+      hook?.config?.url === webhookUrl,
   );
 
   if (existing) {
@@ -339,22 +392,42 @@ async function ensureWebhook(forgejo, config, steps) {
 async function ensureBranchProtection(forgejo, config, steps) {
   const protectionPath = `repos/${encodeSegment(config.repo.owner)}/${encodeSegment(config.repo.name)}/branch_protections`;
   const protections = arrayValue(await forgejo.get(protectionPath));
-  const existing = protections.find((rule) => rule?.rule_name === config.targetBranch);
+  const existing = protections.find(
+    (rule) => rule?.rule_name === config.targetBranch,
+  );
   const body = branchProtectionBody(config);
 
   if (!existing) {
     const created = await forgejo.post(protectionPath, body);
-    addStep(steps, "branch-protection", "created", branchProtectionSummary(created ?? body, config));
+    addStep(
+      steps,
+      "branch-protection",
+      "created",
+      branchProtectionSummary(created ?? body, config),
+    );
     return created;
   }
 
   if (branchProtectionMatches(existing, config)) {
-    addStep(steps, "branch-protection", "verified-existing", branchProtectionSummary(existing, config));
+    addStep(
+      steps,
+      "branch-protection",
+      "verified-existing",
+      branchProtectionSummary(existing, config),
+    );
     return existing;
   }
 
-  const updated = await forgejo.patch(`${protectionPath}/${encodeSegment(config.targetBranch)}`, body);
-  addStep(steps, "branch-protection", "updated", branchProtectionSummary(updated ?? body, config));
+  const updated = await forgejo.patch(
+    `${protectionPath}/${encodeSegment(config.targetBranch)}`,
+    body,
+  );
+  addStep(
+    steps,
+    "branch-protection",
+    "updated",
+    branchProtectionSummary(updated ?? body, config),
+  );
   return updated;
 }
 
@@ -367,30 +440,41 @@ async function upsertRepoPolicy(steward, config, steps) {
     requiredChecks: result?.policy?.requiredChecks ?? config.requiredChecks,
   });
 
-  await steward.get(`api/repo-policies/item?repo=${encodeURIComponent(config.repo.fullName)}`, { api: false });
-  addStep(steps, "repo-policy-verify", "verified", { repo: config.repo.fullName });
+  await steward.get(
+    `api/repo-policies/item?repo=${encodeURIComponent(config.repo.fullName)}`,
+    { api: false },
+  );
+  addStep(steps, "repo-policy-verify", "verified", {
+    repo: config.repo.fullName,
+  });
 }
 
 async function syncAgentIdentities(steward, config, steps) {
   const synced = [];
   for (const id of config.trustedAgentIds) {
-    const result = await steward.post("api/agent-identities", {
-      agent: {
-        id,
-        displayName: id,
-        source: "eliza-cloud",
-        status: "active",
-        metadata: {
-          pilot: true,
-          repo: config.repo.fullName,
+    const result = await steward.post(
+      "api/agent-identities",
+      {
+        agent: {
+          id,
+          displayName: id,
+          source: "eliza-cloud",
+          status: "active",
+          metadata: {
+            pilot: true,
+            repo: config.repo.fullName,
+          },
         },
+        registeredBy: config.registeredBy,
       },
-      registeredBy: config.registeredBy,
-    }, { api: false });
+      { api: false },
+    );
     synced.push(result?.agent?.id ?? id);
   }
 
-  const active = await steward.get("api/agent-identities?status=active", { api: false });
+  const active = await steward.get("api/agent-identities?status=active", {
+    api: false,
+  });
   addStep(steps, "agent-identities", "synced", {
     synced,
     activeCount: Array.isArray(active?.agents) ? active.agents.length : null,
@@ -399,13 +483,23 @@ async function syncAgentIdentities(steward, config, steps) {
 
 async function verifyPilotSurfaces(steward, config, steps) {
   const repo = encodeURIComponent(config.repo.fullName);
-  await steward.get(`api/repository-protection?repo=${repo}&targetBranch=${encodeURIComponent(config.targetBranch)}&requireLive=true`, { api: false });
-  await steward.get(`api/project-board?repo=${repo}&emptyColumns=true`, { api: false });
+  await steward.get(
+    `api/repository-protection?repo=${repo}&targetBranch=${encodeURIComponent(config.targetBranch)}&requireLive=true`,
+    { api: false },
+  );
+  await steward.get(`api/project-board?repo=${repo}&emptyColumns=true`, {
+    api: false,
+  });
   await steward.get(`api/work-dashboard?repo=${repo}`, { api: false });
   await steward.get(`api/merge-queue?repo=${repo}`, { api: false });
   addStep(steps, "pilot-surfaces", "verified", {
     repo: config.repo.fullName,
-    surfaces: ["repository-protection", "project-board", "work-dashboard", "merge-queue"],
+    surfaces: [
+      "repository-protection",
+      "project-board",
+      "work-dashboard",
+      "merge-queue",
+    ],
   });
 }
 
@@ -447,19 +541,22 @@ function branchProtectionBody(config) {
 
 function branchProtectionMatches(rule, config) {
   const contexts = new Set(arrayValue(rule?.status_check_contexts));
-  return rule?.enable_status_check === true
-    && config.requiredChecks.every((check) => contexts.has(check))
-    && Number(rule?.required_approvals ?? 0) >= 1
-    && rule?.apply_to_admins === true;
+  return (
+    rule?.enable_status_check === true &&
+    config.requiredChecks.every((check) => contexts.has(check)) &&
+    Number(rule?.required_approvals ?? 0) >= 1 &&
+    rule?.apply_to_admins === true
+  );
 }
 
 function branchProtectionSummary(rule, config) {
   return {
     ruleName: rule?.rule_name ?? config.targetBranch,
     enableStatusCheck: rule?.enable_status_check === true,
-    requiredChecks: arrayValue(rule?.status_check_contexts).length > 0
-      ? arrayValue(rule.status_check_contexts)
-      : config.requiredChecks,
+    requiredChecks:
+      arrayValue(rule?.status_check_contexts).length > 0
+        ? arrayValue(rule.status_check_contexts)
+        : config.requiredChecks,
     requiredApprovals: Number(rule?.required_approvals ?? 1),
     applyToAdmins: rule?.apply_to_admins === true,
   };
@@ -504,38 +601,45 @@ function summarizeBootstrapSteps({ config, steps, upstream }) {
     stepCount: steps.length,
     requiredCheckCount: config.requiredChecks.length,
     trustedAgentCount: config.trustedAgentIds.length,
-    mirrorVerified: successfulStep(steps, "mirror-repository", (step) => step.status === "created" || step.mirror === true),
+    mirrorVerified: successfulStep(
+      steps,
+      "mirror-repository",
+      (step) => step.status === "created" || step.mirror === true,
+    ),
     defaultBranchVerified: successfulStep(steps, "verify-default-branch"),
     webhookVerified: successfulStep(steps, "steward-webhook"),
     branchProtectionVerified: successfulStep(steps, "branch-protection"),
-    repoPolicyVerified: successfulStep(steps, "repo-policy")
-      && (config.dryRun || successfulStep(steps, "repo-policy-verify")),
+    repoPolicyVerified:
+      successfulStep(steps, "repo-policy") &&
+      (config.dryRun || successfulStep(steps, "repo-policy-verify")),
     agentIdentitiesSynced: successfulStep(steps, "agent-identities"),
     pilotSurfacesVerified: successfulStep(steps, "pilot-surfaces"),
     pullMirrorOnly: upstream.service === "github",
   };
 
-  summary.productionReady = config.dryRun === false
-    && summary.pullMirrorOnly === true
-    && summary.requiredCheckCount > 0
-    && summary.trustedAgentCount > 0
-    && REQUIRED_APPLY_STEPS.every((stepName) => successfulStep(steps, stepName))
-    && summary.mirrorVerified === true
-    && summary.defaultBranchVerified === true
-    && summary.webhookVerified === true
-    && summary.branchProtectionVerified === true
-    && summary.repoPolicyVerified === true
-    && summary.agentIdentitiesSynced === true
-    && summary.pilotSurfacesVerified === true;
+  summary.productionReady =
+    config.dryRun === false &&
+    summary.pullMirrorOnly === true &&
+    summary.requiredCheckCount > 0 &&
+    summary.trustedAgentCount > 0 &&
+    REQUIRED_APPLY_STEPS.every((stepName) => successfulStep(steps, stepName)) &&
+    summary.mirrorVerified === true &&
+    summary.defaultBranchVerified === true &&
+    summary.webhookVerified === true &&
+    summary.branchProtectionVerified === true &&
+    summary.repoPolicyVerified === true &&
+    summary.agentIdentitiesSynced === true &&
+    summary.pilotSurfacesVerified === true;
 
   return summary;
 }
 
 function successfulStep(steps, name, predicate = () => true) {
-  return steps.some((step) =>
-    step?.name === name
-    && PASSING_STEP_STATUSES.includes(step.status)
-    && predicate(step)
+  return steps.some(
+    (step) =>
+      step?.name === name &&
+      PASSING_STEP_STATUSES.includes(step.status) &&
+      predicate(step),
   );
 }
 
@@ -582,14 +686,18 @@ function summarizeUpstream(upstreamGitUrl) {
 
 function writeEvidence(outputPath, evidence) {
   mkdirSync(path.dirname(outputPath), { recursive: true });
-  writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(outputPath, `${JSON.stringify(evidence, null, 2)}\n`, {
+    mode: 0o600,
+  });
 }
 
 function readConfiguration(envFile, env, { allowEnvOnly = false } = {}) {
   const values = { ...env };
   if (!existsSync(envFile)) {
     if (allowEnvOnly || parseBoolean(env.ALLOW_ENV_ONLY, false)) return values;
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   const lines = readFileSync(envFile, "utf8").split(/\r?\n/);
@@ -597,15 +705,21 @@ function readConfiguration(envFile, env, { allowEnvOnly = false } = {}) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#")) return;
     if (/^(?:export|source|\.)\s/.test(trimmed)) {
-      throw new Error(`unsupported shell syntax in ${envFile} line ${index + 1}`);
+      throw new Error(
+        `unsupported shell syntax in ${envFile} line ${index + 1}`,
+      );
     }
 
     const match = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
     if (!match) {
-      throw new Error(`malformed env assignment in ${envFile} line ${index + 1}`);
+      throw new Error(
+        `malformed env assignment in ${envFile} line ${index + 1}`,
+      );
     }
     if (match[2].includes("$(") || match[2].includes("`")) {
-      throw new Error(`command substitution is not allowed in ${envFile} line ${index + 1}`);
+      throw new Error(
+        `command substitution is not allowed in ${envFile} line ${index + 1}`,
+      );
     }
 
     values[match[1]] = unquote(match[2]);
@@ -615,12 +729,14 @@ function readConfiguration(envFile, env, { allowEnvOnly = false } = {}) {
 }
 
 function parseRepo(value, env) {
-  const fullName = value
-    ?? (env.ELIZA_HUB_REPO_OWNER && env.ELIZA_HUB_REPO_NAME
+  const fullName =
+    value ??
+    (env.ELIZA_HUB_REPO_OWNER && env.ELIZA_HUB_REPO_NAME
       ? `${env.ELIZA_HUB_REPO_OWNER}/${env.ELIZA_HUB_REPO_NAME}`
       : `${DEFAULT_REPO_OWNER}/${DEFAULT_REPO_NAME}`);
   const [owner, name, extra] = String(fullName).split("/");
-  if (!owner || !name || extra) throw new Error("ELIZA_HUB_REPO must be owner/name");
+  if (!owner || !name || extra)
+    throw new Error("ELIZA_HUB_REPO must be owner/name");
   return { owner, name, fullName: `${owner}/${name}` };
 }
 
@@ -632,7 +748,10 @@ function parseJsonArray(raw, fallback, label) {
   } catch (error) {
     throw new Error(`${label} must be a JSON array: ${error.message}`);
   }
-  if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string" || item.length === 0)) {
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((item) => typeof item !== "string" || item.length === 0)
+  ) {
     throw new Error(`${label} must be a JSON array of non-empty strings`);
   }
   return parsed;
@@ -650,7 +769,7 @@ function joinUrl(base, pathname) {
 }
 
 function unquote(value) {
-  if (value.startsWith("\"") && value.endsWith("\"")) return value.slice(1, -1);
+  if (value.startsWith('"') && value.endsWith('"')) return value.slice(1, -1);
   if (value.startsWith("'") && value.endsWith("'")) return value.slice(1, -1);
   return value;
 }
@@ -720,9 +839,14 @@ class HttpClient {
     const response = await fetch(url, init);
     const text = await response.text();
     const contentType = response.headers.get("content-type") ?? "";
-    const parsed = text && contentType.includes("application/json") ? JSON.parse(text) : text || null;
+    const parsed =
+      text && contentType.includes("application/json")
+        ? JSON.parse(text)
+        : text || null;
     if (!response.ok) {
-      const error = new Error(`${method} ${url.pathname} failed with ${response.status}`);
+      const error = new Error(
+        `${method} ${url.pathname} failed with ${response.status}`,
+      );
       error.status = response.status;
       error.body = parsed;
       throw error;
@@ -757,6 +881,8 @@ Important inputs:
 }
 
 main().catch((error) => {
-  process.stderr.write(`[pilot-bootstrap] error: ${error instanceof Error ? error.message : "unknown error"}\n`);
+  process.stderr.write(
+    `[pilot-bootstrap] error: ${error instanceof Error ? error.message : "unknown error"}\n`,
+  );
   process.exit(1);
 });

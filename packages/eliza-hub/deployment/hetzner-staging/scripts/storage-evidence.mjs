@@ -28,13 +28,16 @@ const STORAGE_FIELDS = Object.freeze([
   },
 ]);
 
-const RETENTION_KEYS = Object.freeze(["FORGEJO_ACTION_ARTIFACT_RETENTION_DAYS", "FORGEJO_ACTION_LOG_RETENTION_DAYS"]);
+const RETENTION_KEYS = Object.freeze([
+  "FORGEJO_ACTION_ARTIFACT_RETENTION_DAYS",
+  "FORGEJO_ACTION_LOG_RETENTION_DAYS",
+]);
 const TRUE_PATTERN = /^(?:1|true|yes|on)$/i;
 const FALSE_PATTERN = /^(?:0|false|no|off)$/i;
-const DEFAULT_STORAGE_AUDIT_OUTPUT = artifactPath("storage-retention-audit.json");
-const CONFIG_KEYS = Object.freeze([
-  "STORAGE_EVIDENCE_AUDIT_OUTPUT",
-]);
+const DEFAULT_STORAGE_AUDIT_OUTPUT = artifactPath(
+  "storage-retention-audit.json",
+);
+const CONFIG_KEYS = Object.freeze(["STORAGE_EVIDENCE_AUDIT_OUTPUT"]);
 
 main();
 
@@ -55,8 +58,12 @@ function main() {
     const storage = {};
 
     const inferred = {
-      artifactRetentionConfigured: retentionConfigured(values.FORGEJO_ACTION_ARTIFACT_RETENTION_DAYS),
-      logRetentionConfigured: retentionConfigured(values.FORGEJO_ACTION_LOG_RETENTION_DAYS),
+      artifactRetentionConfigured: retentionConfigured(
+        values.FORGEJO_ACTION_ARTIFACT_RETENTION_DAYS,
+      ),
+      logRetentionConfigured: retentionConfigured(
+        values.FORGEJO_ACTION_LOG_RETENTION_DAYS,
+      ),
     };
 
     for (const field of STORAGE_FIELDS) {
@@ -73,9 +80,10 @@ function main() {
     }
 
     const audit = storageAudit(storage, values);
-    const outputPath = options.auditOutput
-      ?? values.STORAGE_EVIDENCE_AUDIT_OUTPUT
-      ?? DEFAULT_STORAGE_AUDIT_OUTPUT;
+    const outputPath =
+      options.auditOutput ??
+      values.STORAGE_EVIDENCE_AUDIT_OUTPUT ??
+      DEFAULT_STORAGE_AUDIT_OUTPUT;
     writeStorageAuditArtifact(outputPath, audit);
     storage.storageEvidence = audit.productionReady
       ? {
@@ -164,14 +172,20 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
 }
 
 function inputKeys() {
-  return [...CONFIG_KEYS, ...RETENTION_KEYS, ...STORAGE_FIELDS.map((field) => field.envKey)];
+  return [
+    ...CONFIG_KEYS,
+    ...RETENTION_KEYS,
+    ...STORAGE_FIELDS.map((field) => field.envKey),
+  ];
 }
 
 function parseEnv(body) {
@@ -184,7 +198,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -203,7 +218,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -230,7 +245,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -288,12 +303,22 @@ function cleanValue(value) {
 }
 
 function storageAudit(storage, values) {
-  const artifactRetentionDays = parseRetentionDays(values.FORGEJO_ACTION_ARTIFACT_RETENTION_DAYS);
-  const logRetentionDays = parseRetentionDays(values.FORGEJO_ACTION_LOG_RETENTION_DAYS);
+  const artifactRetentionDays = parseRetentionDays(
+    values.FORGEJO_ACTION_ARTIFACT_RETENTION_DAYS,
+  );
+  const logRetentionDays = parseRetentionDays(
+    values.FORGEJO_ACTION_LOG_RETENTION_DAYS,
+  );
   const checks = [
     check("sizing_reviewed", storage.sizingReviewed === true),
-    check("artifact_retention_configured", storage.artifactRetentionConfigured === true),
-    check("package_retention_configured", storage.packageRetentionConfigured === true),
+    check(
+      "artifact_retention_configured",
+      storage.artifactRetentionConfigured === true,
+    ),
+    check(
+      "package_retention_configured",
+      storage.packageRetentionConfigured === true,
+    ),
     check("lfs_capacity_reviewed", storage.lfsCapacityReviewed === true),
     check("log_retention_configured", storage.logRetentionConfigured === true),
   ];
@@ -335,7 +360,11 @@ function check(name, passed) {
 
 function writeStorageAuditArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ storageAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ storageAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {

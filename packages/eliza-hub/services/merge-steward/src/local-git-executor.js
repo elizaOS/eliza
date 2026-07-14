@@ -38,42 +38,47 @@ export class LocalGitIntegrationExecutor {
   }
 
   async ensureIntegrationBranch({ plan, action }) {
+    const from = assertSafeGitRef(action.from, "action.from");
+    const branch = assertSafeGitRef(action.branch, "action.branch");
     const cwd = await this.prepareRepository(plan);
-    await this.git(["fetch", "--depth=50", "origin", action.from], { cwd });
-    await this.git(["checkout", "-B", action.branch, "FETCH_HEAD"], { cwd });
+    await this.git(["fetch", "--depth=50", "origin", "--", from], { cwd });
+    await this.git(["checkout", "-B", branch, "FETCH_HEAD", "--"], { cwd });
 
     return {
       cwd,
-      branch: action.branch,
-      from: action.from,
+      branch,
+      from,
       mode: action.mode,
     };
   }
 
   async mergePullRequestHeadIntoIntegration({ plan, action }) {
+    const sourceBranch = assertSafeGitRef(
+      action.sourceBranch,
+      "action.sourceBranch",
+    );
+    const integrationBranch = assertSafeGitRef(
+      plan.integrationBranch,
+      "plan.integrationBranch",
+    );
     const cwd = await this.prepareRepository(plan);
-    await this.git(["fetch", "--depth=50", "origin", action.sourceBranch], {
+    await this.git(["fetch", "--depth=50", "origin", "--", sourceBranch], {
       cwd,
     });
-    await this.git(["checkout", plan.integrationBranch], { cwd });
+    await this.git(["checkout", integrationBranch, "--"], { cwd });
     await this.git(["merge", "--no-ff", "--no-edit", "FETCH_HEAD"], { cwd });
 
     if (this.pushBranch) {
       await this.git(
-        [
-          "push",
-          "--force-with-lease",
-          "origin",
-          `HEAD:${plan.integrationBranch}`,
-        ],
+        ["push", "--force-with-lease", "origin", `HEAD:${integrationBranch}`],
         { cwd },
       );
     }
 
     return {
       cwd,
-      branch: plan.integrationBranch,
-      sourceBranch: action.sourceBranch,
+      branch: integrationBranch,
+      sourceBranch,
       pushed: this.pushBranch,
     };
   }
@@ -146,6 +151,37 @@ export class LocalGitIntegrationExecutor {
 
 export function repoWorkDirName(plan = {}) {
   return slug(`${plan.repo ?? "repo"}-${plan.pullRequestId ?? "pr"}`);
+}
+
+// Mirrors the git check-ref-format rules that matter for argv safety: refs are
+// PR-derived (attacker-influenced), so anything that could read as an option
+// (leading "-"), a revision operator ("..", "@{", "~", "^", ":"), a glob, or a
+// path escape is rejected before it is ever placed on a git command line.
+const SAFE_REF_CHARS = /^[\x21-\x7e]+$/;
+const FORBIDDEN_REF_CHARS = /[~^:?*[\\\s]/;
+
+export function assertSafeGitRef(value, label = "ref") {
+  const ref = typeof value === "string" ? value : "";
+  const valid =
+    ref.length > 0 &&
+    ref.length <= 255 &&
+    !ref.startsWith("-") &&
+    !ref.startsWith("/") &&
+    !ref.endsWith("/") &&
+    !ref.endsWith(".") &&
+    !ref.endsWith(".lock") &&
+    !ref.includes("..") &&
+    !ref.includes("//") &&
+    !ref.includes("@{") &&
+    ref !== "@" &&
+    SAFE_REF_CHARS.test(ref) &&
+    !FORBIDDEN_REF_CHARS.test(ref);
+  if (!valid) {
+    throw new TypeError(
+      `LocalGitIntegrationExecutor: unsafe git ref for ${label}: ${JSON.stringify(value)}`,
+    );
+  }
+  return ref;
 }
 
 export function runCommandProcess(command, args = [], { cwd } = {}) {

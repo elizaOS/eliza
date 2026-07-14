@@ -20,7 +20,8 @@ export function createOidcVerifier(config = {}) {
   let jwksPromise;
   return {
     async verify(token) {
-      const JWKS = await (jwksPromise ??= createRemoteJwks(config));
+      jwksPromise ??= createRemoteJwks(config);
+      const JWKS = await jwksPromise;
       const { payload, protectedHeader } = await jwtVerify(token, JWKS, {
         issuer: config.issuerUrl,
         audience: config.audience,

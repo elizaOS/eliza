@@ -4028,6 +4028,8 @@ function readJsonArtifact(source, evidencePath, errors) {
       sha256: createHash("sha256").update(raw).digest("hex"),
     };
   } catch {
+    // error-policy:J3 unreadable or invalid artifact becomes a typed validation
+    // error in the report
     errors.push(
       error(
         "artifact_source_invalid_json",
@@ -4076,6 +4078,8 @@ function readTextArtifact(source, evidencePath, errors) {
       sha256: createHash("sha256").update(raw).digest("hex"),
     };
   } catch {
+    // error-policy:J3 unreadable artifact becomes a typed validation error in
+    // the report
     errors.push(
       error("artifact_source_unreadable", `${evidencePath} must be readable`),
     );

@@ -5635,6 +5635,57 @@ describe("merge steward server", () => {
     assert.equal(body.error, "bad_request");
     assert.match(body.message, /signature/i);
   });
+
+  it("rejects malformed JSON bodies with a typed 400", async () => {
+    const response = await fetch(`${baseUrl}/api/comments/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{ not json",
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 400);
+    assert.equal(body.error, "bad_request");
+    assert.equal(body.message, "invalid_json_body");
+  });
+
+  it("maps internal failures to an opaque 500 without leaking details", async () => {
+    const config = loadConfig({
+      FORGEJO_WEBHOOK_SECRET_ENV: "MERGE_STEWARD_TEST_SECRET",
+    });
+    const brokenStore = new InMemoryQueueStore();
+    brokenStore.listQueueItems = async () => {
+      throw new Error("secret internal detail");
+    };
+    const brokenServer = createServer({
+      config,
+      logger: silentLogger,
+      steward: new MergeSteward({
+        config,
+        store: brokenStore,
+        logger: silentLogger,
+      }),
+    });
+    await new Promise((resolve) =>
+      brokenServer.listen(0, "127.0.0.1", resolve),
+    );
+    const address = brokenServer.address();
+
+    try {
+      const response = await fetch(
+        `http://${address.address}:${address.port}/api/queue`,
+      );
+      const text = await response.text();
+
+      assert.equal(response.status, 500);
+      assert.deepEqual(JSON.parse(text), { error: "internal_error" });
+      assert.ok(!text.includes("secret internal detail"));
+    } finally {
+      await new Promise((resolve, reject) => {
+        brokenServer.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  });
 });
 
 const silentLogger = Object.freeze({

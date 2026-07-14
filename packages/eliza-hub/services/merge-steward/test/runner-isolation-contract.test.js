@@ -137,7 +137,7 @@ describe("staging runner isolation contract", () => {
   });
 });
 
-async function readAllRunnerFiles() {
+async function _readAllRunnerFiles() {
   const [compose, config, registerScript, checkScript] = await Promise.all([
     readFile(RUNNER_COMPOSE_PATH, "utf8"),
     readFile(RUNNER_CONFIG_PATH, "utf8"),

@@ -40,10 +40,10 @@ const DATE_FIELDS = Object.freeze([
 
 const TRUE_PATTERN = /^(?:1|true|yes|on)$/i;
 const FALSE_PATTERN = /^(?:0|false|no|off)$/i;
-const DEFAULT_SECURITY_REVIEW_AUDIT_OUTPUT = artifactPath("security-review-audit.json");
-const CONFIG_KEYS = Object.freeze([
-  "SECURITY_REVIEW_EVIDENCE_AUDIT_OUTPUT",
-]);
+const DEFAULT_SECURITY_REVIEW_AUDIT_OUTPUT = artifactPath(
+  "security-review-audit.json",
+);
+const CONFIG_KEYS = Object.freeze(["SECURITY_REVIEW_EVIDENCE_AUDIT_OUTPUT"]);
 
 main();
 
@@ -69,11 +69,18 @@ function main() {
     }
 
     for (const field of STRING_FIELDS) {
-      securityReview[field.outputKey] = readStringAttestation(values, field.envKey);
+      securityReview[field.outputKey] = readStringAttestation(
+        values,
+        field.envKey,
+      );
     }
 
     for (const field of DATE_FIELDS) {
-      securityReview[field.outputKey] = readDateAttestation(values, field.envKey, errors);
+      securityReview[field.outputKey] = readDateAttestation(
+        values,
+        field.envKey,
+        errors,
+      );
     }
 
     validatePositiveEvidence(securityReview, errors);
@@ -87,9 +94,10 @@ function main() {
     }
 
     const audit = securityReviewAudit(securityReview);
-    const outputPath = options.auditOutput
-      ?? values.SECURITY_REVIEW_EVIDENCE_AUDIT_OUTPUT
-      ?? DEFAULT_SECURITY_REVIEW_AUDIT_OUTPUT;
+    const outputPath =
+      options.auditOutput ??
+      values.SECURITY_REVIEW_EVIDENCE_AUDIT_OUTPUT ??
+      DEFAULT_SECURITY_REVIEW_AUDIT_OUTPUT;
     writeSecurityReviewAuditArtifact(outputPath, audit);
     securityReview.securityEvidence = audit.productionReady
       ? {
@@ -181,7 +189,9 @@ function readEnvFile(envFile, allowEnvOnly) {
     if (parseBoolean(allowEnvOnly) === true) {
       return {};
     }
-    throw new Error(`missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`);
+    throw new Error(
+      `missing ENV_FILE=${envFile}; set ENV_FILE or ALLOW_ENV_ONLY=true`,
+    );
   }
 
   return parseEnv(readFileSync(envFile, "utf8"));
@@ -206,7 +216,8 @@ function parseEnv(body) {
       continue;
     }
 
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
+    const match =
+      /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/u.exec(line);
     if (!match) {
       continue;
     }
@@ -225,7 +236,7 @@ function parseEnvValue(rawValue) {
     return end === -1 ? value.slice(1) : value.slice(1, end);
   }
 
-  if (value.startsWith("\"")) {
+  if (value.startsWith('"')) {
     const end = findClosingDoubleQuote(value);
     const quoted = end === -1 ? value.slice(1) : value.slice(1, end);
     return quoted.replace(/\\([\\nrt"])/gu, (_, escaped) => {
@@ -252,7 +263,7 @@ function findClosingDoubleQuote(value) {
       continue;
     }
 
-    if (value[index] === "\"") {
+    if (value[index] === '"') {
       return index;
     }
   }
@@ -261,22 +272,36 @@ function findClosingDoubleQuote(value) {
 }
 
 function validatePositiveEvidence(securityReview, errors) {
-  const allReviewed = securityReview.authReviewed
-    && securityReview.tokensReviewed
-    && securityReview.runnerExecutionReviewed
-    && securityReview.repoPermissionsReviewed;
-  const hasApproval = securityReview.approvedBy !== null || securityReview.approvedAt !== null;
+  const allReviewed =
+    securityReview.authReviewed &&
+    securityReview.tokensReviewed &&
+    securityReview.runnerExecutionReviewed &&
+    securityReview.repoPermissionsReviewed;
+  const hasApproval =
+    securityReview.approvedBy !== null || securityReview.approvedAt !== null;
 
   if (hasApproval && !allReviewed) {
-    errors.push("security review approval requires all security review attestations");
+    errors.push(
+      "security review approval requires all security review attestations",
+    );
   }
 
-  if (securityReview.approvedBy !== null && securityReview.approvedAt === null) {
-    errors.push("SECURITY_REVIEW_EVIDENCE_APPROVED_AT is required when SECURITY_REVIEW_EVIDENCE_APPROVED_BY is set");
+  if (
+    securityReview.approvedBy !== null &&
+    securityReview.approvedAt === null
+  ) {
+    errors.push(
+      "SECURITY_REVIEW_EVIDENCE_APPROVED_AT is required when SECURITY_REVIEW_EVIDENCE_APPROVED_BY is set",
+    );
   }
 
-  if (securityReview.approvedAt !== null && securityReview.approvedBy === null) {
-    errors.push("SECURITY_REVIEW_EVIDENCE_APPROVED_BY is required when SECURITY_REVIEW_EVIDENCE_APPROVED_AT is set");
+  if (
+    securityReview.approvedAt !== null &&
+    securityReview.approvedBy === null
+  ) {
+    errors.push(
+      "SECURITY_REVIEW_EVIDENCE_APPROVED_BY is required when SECURITY_REVIEW_EVIDENCE_APPROVED_AT is set",
+    );
   }
 }
 
@@ -330,14 +355,20 @@ function parseBoolean(value) {
 }
 
 function securityReviewAudit(securityReview) {
-  const reviewedSurfaces = BOOLEAN_FIELDS
-    .filter((field) => securityReview[field.outputKey] === true)
-    .map((field) => field.outputKey);
+  const reviewedSurfaces = BOOLEAN_FIELDS.filter(
+    (field) => securityReview[field.outputKey] === true,
+  ).map((field) => field.outputKey);
   const checks = [
     check("auth_reviewed", securityReview.authReviewed === true),
     check("tokens_reviewed", securityReview.tokensReviewed === true),
-    check("runner_execution_reviewed", securityReview.runnerExecutionReviewed === true),
-    check("repo_permissions_reviewed", securityReview.repoPermissionsReviewed === true),
+    check(
+      "runner_execution_reviewed",
+      securityReview.runnerExecutionReviewed === true,
+    ),
+    check(
+      "repo_permissions_reviewed",
+      securityReview.repoPermissionsReviewed === true,
+    ),
     check("approved_by_recorded", securityReview.approvedBy !== null),
     check("approved_at_recorded", securityReview.approvedAt !== null),
   ];
@@ -369,7 +400,11 @@ function check(name, passed) {
 
 function writeSecurityReviewAuditArtifact(outputPath, audit) {
   prepareParent(outputPath);
-  writeFileSync(outputPath, `${JSON.stringify({ securityReviewAudit: audit }, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(
+    outputPath,
+    `${JSON.stringify({ securityReviewAudit: audit }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
 }
 
 function sha256File(filePath) {

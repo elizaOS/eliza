@@ -86,6 +86,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.info("[MergeStewardMigrate] complete", result);
     })
     .catch((error) => {
+      // error-policy:J1 CLI process boundary: log and exit non-zero
       console.error("[MergeStewardMigrate] failed", error);
       process.exitCode = 1;
     });
