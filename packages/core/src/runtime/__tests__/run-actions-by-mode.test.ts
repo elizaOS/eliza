@@ -8,6 +8,10 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter";
 import { AgentRuntime } from "../../runtime";
 import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../../streaming-context";
+import {
 	type Action,
 	ActionMode,
 	type Character,
@@ -203,6 +207,63 @@ describe("runActionsByMode", () => {
 			{ text: "raw hook output" },
 			"HOOK_STATUS",
 		);
+	});
+
+	// #16230: runActionsByMode wraps each hook handler in
+	// runWithSuppressedModelStream, so a hook action's INTERNAL model call cannot
+	// stream into the turn's visible reply channel. The visible stream is scoped
+	// to the top-level response generation; hooks speak through their callback.
+	it("keeps a hook action's internal useModel output off the visible stream (#16230)", async () => {
+		const LEDGER = '```json\n{"state":{"facts":["internal"]}}\n```';
+		const visibleSink = vi.fn();
+		runtime.actions.length = 0;
+		runtime.actions.push({
+			name: "INTERNAL_MODELER",
+			description: "hook that calls the model internally",
+			mode: ActionMode.ALWAYS_AFTER,
+			examples: [],
+			validate: async () => true,
+			handler: async (rt) => {
+				await rt.useModel("TEXT_LARGE" as never, { prompt: "extract ledger" });
+				return { success: true };
+			},
+		} as Action);
+		// A streaming model: it pushes intermediate output into whatever streaming
+		// context is active during the call. The wrap makes that context's
+		// onStreamChunk a no-op for the duration of the handler.
+		const originalUseModel = runtime.useModel;
+		runtime.useModel = (async () => {
+			const active = getStreamingContext();
+			await active?.onStreamChunk?.(LEDGER, undefined, LEDGER);
+			return LEDGER;
+		}) as typeof runtime.useModel;
+		try {
+			await runWithStreamingContext(
+				{
+					messageId: "m",
+					onStreamChunk: async (chunk: string) => {
+						visibleSink(chunk);
+					},
+				} as never,
+				() => runtime.runActionsByMode("ALWAYS_AFTER", makeMessage()),
+			);
+			expect(visibleSink).not.toHaveBeenCalled();
+
+			// Positive control: the same emission at the top level (outside the hook
+			// seam) DOES reach the sink — the negative assertion is not vacuous.
+			await runWithStreamingContext(
+				{
+					messageId: "m",
+					onStreamChunk: async (chunk: string) => {
+						visibleSink(chunk);
+					},
+				} as never,
+				() => runtime.useModel("TEXT_LARGE" as never, { prompt: "reply" }),
+			);
+			expect(visibleSink).toHaveBeenCalledWith(LEDGER);
+		} finally {
+			runtime.useModel = originalUseModel;
+		}
 	});
 
 	it("HOOK_MODES export covers all 9 hook positions", () => {
