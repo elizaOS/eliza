@@ -270,11 +270,17 @@ export type WalletBehaviorSummary = {
     | "whale"
     | "high_risk_wallet";
 
+  evidenceConfidence: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
   confidence: "low" | "medium" | "high";
 
   traits: string[];
 
   explanation: string;
+
+  limitations: string[];
 };
 
 export type WalletCaseSummary = {
