@@ -577,6 +577,109 @@ describe("ContinuousChatOverlay", () => {
     }
   });
 
+  it("keeps the resting home clearance fixed while the chat sheet is dragged open", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    let panelHeight = 76;
+    const resizeCallbacks: ResizeObserverCallback[] = [];
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    class TestResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallbacks.push(callback);
+      }
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+
+    try {
+      vi.stubGlobal("ResizeObserver", TestResizeObserver);
+      rectSpy.mockImplementation(function (this: HTMLElement) {
+        const height =
+          this.getAttribute("data-testid") === "chat-sheet" ? panelHeight : 0;
+        return {
+          width: 360,
+          height,
+          x: 0,
+          y: 0,
+          top: 0,
+          right: 360,
+          bottom: height,
+          left: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+      document.documentElement.style.removeProperty(
+        "--eliza-continuous-chat-clearance",
+      );
+
+      render(<ContinuousChatOverlay controller={makeController()} />);
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-continuous-chat-clearance",
+        ),
+      ).toBe("76px");
+
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.pointerDown(grabber, {
+        clientY: 420,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerMove(grabber, {
+        clientY: 380,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      // Live drag samples are coalesced to the display clock. Let that frame
+      // apply while the pointer remains held, then emulate the panel observer
+      // seeing the expanded preview height.
+      await act(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          }),
+      );
+      panelHeight = 180;
+      const notifyResize = resizeCallbacks[0];
+      if (!notifyResize) throw new Error("chat panel was not observed");
+      act(() => notifyResize([], {} as ResizeObserver));
+
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-continuous-chat-clearance",
+        ),
+      ).toBe("76px");
+
+      // Change the eventual resting footprint while the preview is frozen,
+      // then cancel the pointer so the sheet settles back to INPUT without a
+      // tap/open decision. The settle completion must perform a fresh
+      // measurement even though the observer's last live-drag delivery was
+      // intentionally ignored.
+      panelHeight = 92;
+      fireEvent.pointerCancel(grabber, {
+        clientY: 380,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      await waitFor(
+        () => {
+          expect(
+            document.documentElement.style.getPropertyValue(
+              "--eliza-continuous-chat-clearance",
+            ),
+          ).toBe("92px");
+        },
+        { timeout: 2_000 },
+      );
+    } finally {
+      rectSpy.mockRestore();
+      vi.stubGlobal("ResizeObserver", originalResizeObserver);
+      document.documentElement.style.removeProperty(
+        "--eliza-continuous-chat-clearance",
+      );
+    }
+  });
+
   it("recomputes the resting composer after portrait-landscape rotation", async () => {
     const originalInnerWidth = Object.getOwnPropertyDescriptor(
       window,

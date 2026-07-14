@@ -1634,8 +1634,10 @@ export function ContinuousChatOverlay({
   // space the collapsed composer occupies. Without this the var was never set —
   // every surface rode the 5.25rem fallback, which a multi-line draft or pending
   // attachments overgrow, letting the composer cover content. Only measured
-  // while collapsed: an expanded/full sheet covers the screen, so its height
-  // must NOT become the reserved clearance.
+  // while collapsed and settled: an expanded/full sheet covers the screen, and
+  // a direct pull grows this same panel before the open mode commits. Neither
+  // transient height may become reserved clearance or the home content behind
+  // the sheet will reflow under the user's finger.
   React.useEffect(() => {
     if (
       typeof window === "undefined" ||
@@ -1645,9 +1647,17 @@ export function ContinuousChatOverlay({
     }
     const panel = getPanelElement();
     const root = document.documentElement;
-    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
+    // Re-entering this effect when the release spring clears `isDragging`
+    // guarantees one final measurement even when ResizeObserver delivered its
+    // last size notification while the transient-height guard was still armed.
+    if (sheetOpen || isDragging) return;
     if (!panel) return;
     const publish = () => {
+      // `draggingRef` owns direct manipulation; `isDraggingRef` stays armed
+      // through the release spring. Freeze the last resting footprint for both
+      // phases so opening chat never feeds its live panel height back into the
+      // home layout that sits behind it.
+      if (draggingRef.current || isDraggingRef.current) return;
       const h = panel.getBoundingClientRect().height;
       // Cap it: a mid-collapse frame can report the open panel height, and
       // reserving that in the home/launcher layout clips the top apps off-screen.
@@ -1661,7 +1671,7 @@ export function ContinuousChatOverlay({
     const ro = new ResizeObserver(publish);
     ro.observe(panel);
     return () => ro.disconnect();
-  }, [sheetOpen, getPanelElement]);
+  }, [sheetOpen, isDragging, getPanelElement]);
   // The composer content (textarea + thread). Held so we can imperatively clear
   // its `inert` (set while pilled) the instant the pill is tapped open, before
   // React re-renders — iOS only raises the keyboard for a focus() that lands on
