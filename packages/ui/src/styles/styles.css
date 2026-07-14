@@ -431,6 +431,32 @@ body.pwa-standalone textarea {
   background: transparent;
 }
 
+.chat-composer-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-mid) transparent;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  background: var(--scrollbar-thumb-mid);
+  background-clip: padding-box;
+  border-radius: 9999px;
+  box-shadow: none;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover-mid);
+  background-clip: padding-box;
+}
+
 /* Keyboard shortcuts styling */
 kbd {
   font-family: var(--mono);

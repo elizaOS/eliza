@@ -3182,7 +3182,7 @@ export function ContinuousChatOverlay({
       if (firstRunOpen || draggingRef.current) return;
       if (
         e.target instanceof Element &&
-        e.target.closest("#continuous-thread")
+        e.target.closest("#continuous-thread, [data-chat-sheet-scroll-region]")
       ) {
         return;
       }
@@ -5778,6 +5778,7 @@ export function ContinuousChatOverlay({
                 }
                 aria-label="message"
                 data-testid="chat-composer-textarea"
+                data-chat-sheet-scroll-region
                 aria-describedby={
                   booting && !noProviderConfigured && !firstRunOpen
                     ? "cc-booting-hint"
@@ -5792,7 +5793,7 @@ export function ContinuousChatOverlay({
                 // even when the glass pill sits over dark wallpaper. During
                 // onboarding `disabled:opacity-100` prevents the browser from
                 // dimming the locked cue.
-                className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
+                className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center overflow-y-auto overscroll-contain border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
               />
               {booting && !noProviderConfigured && !firstRunOpen ? (
                 <span id="cc-booting-hint" className="sr-only">
