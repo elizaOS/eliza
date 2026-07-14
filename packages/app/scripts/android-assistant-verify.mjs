@@ -14,6 +14,8 @@
  * requires a committed transcript. Parser and verdict policy remain isolated in
  * the unit-tested library so malformed shell receipts cannot read as success.
  */
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   APP_PACKAGE,
   ASSIST_ACTIVITY_COMPONENT,
@@ -115,10 +117,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * device without root the grant may be refused — the subsequent secure-settings
  * assertion is what turns that into a visible failure rather than a false pass.
  */
-function applyRoleAndIme(adb, serial) {
+function applyRoleAndIme(adb, serial, shell = sh) {
   log("re-applying assistant role + IME (cleared by adb install -r)…");
   // The role grant needs the role framework; --user 0 targets the primary user.
-  sh(adb, serial, [
+  shell(adb, serial, [
     "cmd",
     "role",
     "add-role-holder",
@@ -127,26 +129,33 @@ function applyRoleAndIme(adb, serial) {
     ROLE_ASSISTANT,
     APP_PACKAGE,
   ]);
-  sh(adb, serial, [
+  shell(adb, serial, [
     "settings",
     "put",
     "secure",
     "voice_interaction_service",
     VIS_COMPONENT,
   ]);
-  sh(adb, serial, ["settings", "put", "secure", "assistant", VIS_COMPONENT]);
-  sh(adb, serial, ["ime", "enable", IME_COMPONENT]);
-  sh(adb, serial, ["ime", "set", IME_COMPONENT]);
+  shell(adb, serial, ["settings", "put", "secure", "assistant", VIS_COMPONENT]);
+  shell(adb, serial, ["ime", "enable", IME_COMPONENT]);
+  shell(adb, serial, ["ime", "set", IME_COMPONENT]);
 }
 
-async function verifyOnDevice(adb, serial) {
+export async function verifyOnDevice(adb, serial, options = {}) {
+  const {
+    shell = sh,
+    clearLogcatFn = clearLogcat,
+    dumpLogcatFn = dumpLogcat,
+    sleepFn = sleep,
+    apply = APPLY,
+  } = options;
   const checks = {};
 
   // Resolver tables omit components with no intent filter, including the
   // paired session service. Explicit package-manager intents prove that each
   // installed component resolves, while the package dump remains a second,
   // independently useful receipt for filtered surfaces and metadata.
-  const pkgDump = sh(adb, serial, ["dumpsys", "package", APP_PACKAGE]);
+  const pkgDump = shell(adb, serial, ["dumpsys", "package", APP_PACKAGE]);
   const serviceComponents = [
     ASSISTANT_VIS_COMPONENT,
     ASSISTANT_SESSION_COMPONENT,
@@ -156,7 +165,7 @@ async function verifyOnDevice(adb, serial) {
   const serviceReceipts = Object.fromEntries(
     serviceComponents.map((component) => [
       component,
-      sh(adb, serial, [
+      shell(adb, serial, [
         "cmd",
         "package",
         "query-services",
@@ -169,7 +178,7 @@ async function verifyOnDevice(adb, serial) {
       ]),
     ]),
   );
-  const assistActivityReceipt = sh(adb, serial, [
+  const assistActivityReceipt = shell(adb, serial, [
     "cmd",
     "package",
     "resolve-activity",
@@ -192,10 +201,10 @@ async function verifyOnDevice(adb, serial) {
       : `surfaces MISSING: ${surfaces.missing.join(", ")}`,
   );
 
-  if (APPLY) applyRoleAndIme(adb, serial);
+  if (apply) applyRoleAndIme(adb, serial, shell);
 
   // (2) Secure settings + role holders reflect Eliza.
-  const roleOut = sh(adb, serial, [
+  const roleOut = shell(adb, serial, [
     "cmd",
     "role",
     "get-role-holders",
@@ -205,12 +214,19 @@ async function verifyOnDevice(adb, serial) {
   ]);
   const role = parseRoleHolders(roleOut);
   const visSetting = parseVoiceInteractionService(
-    sh(adb, serial, ["settings", "get", "secure", "voice_interaction_service"]),
+    shell(adb, serial, [
+      "settings",
+      "get",
+      "secure",
+      "voice_interaction_service",
+    ]),
   );
   const imeSetting = parseDefaultInputMethod(
-    sh(adb, serial, ["settings", "get", "secure", "default_input_method"]),
+    shell(adb, serial, ["settings", "get", "secure", "default_input_method"]),
   );
-  const imeEnabled = parseEnabledImes(sh(adb, serial, ["ime", "list", "-s"]));
+  const imeEnabled = parseEnabledImes(
+    shell(adb, serial, ["ime", "list", "-s"]),
+  );
   checks.role = role;
   checks.visSetting = visSetting;
   checks.imeSetting = imeSetting;
@@ -222,11 +238,11 @@ async function verifyOnDevice(adb, serial) {
   );
 
   // (3a) Assist-gesture invocation via cmd voiceinteraction show.
-  clearLogcat(adb, serial);
-  sh(adb, serial, ["cmd", "voiceinteraction", "show"]);
-  await sleep(2_500);
-  const assistLog = dumpLogcat(adb, serial);
-  const assistDump = sh(adb, serial, ["dumpsys", "activity", "activities"]);
+  clearLogcatFn(adb, serial);
+  shell(adb, serial, ["cmd", "voiceinteraction", "show"]);
+  await sleepFn(2_500);
+  const assistLog = dumpLogcatFn(adb, serial);
+  const assistDump = shell(adb, serial, ["dumpsys", "activity", "activities"]);
   const visInvoked = detectSurfaceInvocation(assistLog, {
     tag: LOG_TAGS.vis,
     bracket: "ElizaVoiceInteractionSession",
@@ -242,11 +258,11 @@ async function verifyOnDevice(adb, serial) {
 
   // (3b) Hardware assist key: input keyevent KEYCODE_ASSIST → should reach the
   // VIS session (role held) or the ACTION_ASSIST fallback activity.
-  clearLogcat(adb, serial);
-  sh(adb, serial, ["input", "keyevent", "KEYCODE_ASSIST"]);
-  await sleep(2_500);
-  const keyLog = dumpLogcat(adb, serial);
-  const keyDump = sh(adb, serial, ["dumpsys", "activity", "activities"]);
+  clearLogcatFn(adb, serial);
+  shell(adb, serial, ["input", "keyevent", "KEYCODE_ASSIST"]);
+  await sleepFn(2_500);
+  const keyLog = dumpLogcatFn(adb, serial);
+  const keyDump = shell(adb, serial, ["dumpsys", "activity", "activities"]);
   const keySessionLanded = assertDeepLinkLanded(
     keyDump,
     keyLog,
@@ -268,42 +284,42 @@ async function verifyOnDevice(adb, serial) {
   // route through the IME's own open-app deep link. On a full-engine device the
   // same tap starts the mic round-trip; a second tap stops capture so the lane
   // can require a committed transcript.
-  clearLogcat(adb, serial);
-  sh(adb, serial, ["am", "start", "-W", "-n", IME_PROBE_COMPONENT]);
-  await sleep(3_500);
+  clearLogcatFn(adb, serial);
+  shell(adb, serial, ["am", "start", "-W", "-n", IME_PROBE_COMPONENT]);
+  await sleepFn(3_500);
   const hierarchyPath = "/sdcard/eliza-ime-verifier-window.xml";
-  sh(adb, serial, ["uiautomator", "dump", hierarchyPath]);
-  const imeHierarchy = sh(adb, serial, ["cat", hierarchyPath]);
-  sh(adb, serial, ["rm", "-f", hierarchyPath]);
+  shell(adb, serial, ["uiautomator", "dump", hierarchyPath]);
+  const imeHierarchy = shell(adb, serial, ["cat", hierarchyPath]);
+  shell(adb, serial, ["rm", "-f", hierarchyPath]);
   const imeUi = parseUiAutomatorBounds(imeHierarchy, IME_MIC_RESOURCE_ID);
   checks.imeUi = imeUi;
   log(`real IME mic affordance visible: ${imeUi.found}`);
 
-  const imeStatusLog = dumpLogcat(adb, serial);
+  const imeStatusLog = dumpLogcatFn(adb, serial);
   let asrOutcome = classifyImeAsrOutcome(imeStatusLog);
   if (imeUi.center) {
-    sh(adb, serial, [
+    shell(adb, serial, [
       "input",
       "tap",
       String(imeUi.center.x),
       String(imeUi.center.y),
     ]);
-    await sleep(2_500);
+    await sleepFn(2_500);
     if (asrOutcome === "unknown") {
       // A ready engine leaves the IME in IDLE; stop the real recording after a
       // non-trivial capture so its production transcription path executes.
-      sh(adb, serial, [
+      shell(adb, serial, [
         "input",
         "tap",
         String(imeUi.center.x),
         String(imeUi.center.y),
       ]);
-      await sleep(32_500);
+      await sleepFn(32_500);
     }
   }
-  const imeLog = dumpLogcat(adb, serial);
+  const imeLog = dumpLogcatFn(adb, serial);
   asrOutcome = classifyImeAsrOutcome(`${imeStatusLog}\n${imeLog}`);
-  const imeDump = sh(adb, serial, ["dumpsys", "activity", "activities"]);
+  const imeDump = shell(adb, serial, ["dumpsys", "activity", "activities"]);
   const imeLanded = assertDeepLinkLanded(
     imeDump,
     imeLog,
@@ -408,10 +424,15 @@ function finish(result) {
   process.exit(0);
 }
 
-main().catch((error) => {
-  // error-policy:J1 process boundary preserves adb stderr and exits observably.
-  finish({
-    status: "fail",
-    reason: `unhandled verifier error: ${error?.stack ?? error}`,
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
+  main().catch((error) => {
+    // error-policy:J1 process boundary preserves adb stderr and exits observably.
+    finish({
+      status: "fail",
+      reason: `unhandled verifier error: ${error?.stack ?? error}`,
+    });
   });
-});
+}

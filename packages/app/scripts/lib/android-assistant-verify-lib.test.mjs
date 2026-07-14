@@ -1,26 +1,18 @@
 /**
- * Deterministic vitest coverage for the assistant-role/IME/assist-key
+ * Deterministic Bun-native coverage for the assistant-role/IME/assist-key
  * verification parsers (#13581). Fixtures are real-shaped `adb`/`dumpsys`/`cmd`/
  * `logcat` output slices, not mocks of the parser — the parsers are pure
  * string→decision functions, so this suite proves the string handling that
  * regresses silently off-device (a garbled scrape reading as "absent"), covering
  * the present, absent, short-vs-full component form, and empty/garbage cases.
  *
- * Runs in the normal `packages/app` vitest lane (which collects
- * `scripts/**\/*.test.mjs`) so a parser regression fails CI — the earlier
- * `node:test` form was loaded by vitest but collected as ZERO tests, an
- * unenforced green-by-skip.
- *
- * Run: `bun run --cwd packages/app test -- scripts/lib/android-assistant-verify-lib.test.mjs`
+ * Run: `bun test packages/app/scripts/lib/android-assistant-verify-lib.test.mjs`
  */
-import assert from "node:assert/strict";
-// #13581 enforcement fix: run under vitest (the lane that collects
-// scripts/**/*.test.mjs) instead of node:test, which vitest loads but collects
-// as ZERO tests — a green-by-skip that left this regression guard unenforced.
-// node:assert still throws on failure, so every assertion below fails the
-// vitest test the same way; only the test-registration source changes.
-import { test } from "vitest";
 
+import { test } from "bun:test";
+import assert from "node:assert/strict";
+
+import { verifyOnDevice } from "../android-assistant-verify.mjs";
 import {
   APP_PACKAGE,
   ASSISTANT_IME_COMPONENT,
@@ -303,6 +295,77 @@ test("classifyImeAsrOutcome distinguishes committed / engineOff / modelNotReady 
     "error",
   );
   assert.equal(classifyImeAsrOutcome("nothing"), "unknown");
+});
+
+test("verifyOnDevice drives the supported role, component, runtime, and real-IME sequence", async () => {
+  const commands = [];
+  const packageReceipt = `
+    ai.elizaos.app/.ElizaVoiceInteractionService
+    ai.elizaos.app/.ElizaVoiceInteractionSessionService
+    ai.elizaos.app/.ElizaRecognitionService
+    ai.elizaos.app/.ElizaVoiceInputMethodService
+    ai.elizaos.app/.ElizaAssistActivity
+  `;
+  const activityReceipt =
+    "ResumedActivity: ActivityRecord{a1b2 u0 ai.elizaos.app/.MainActivity t42}";
+  const hierarchyReceipt = `<hierarchy>
+    <node resource-id="ai.elizaos.app:id/eliza_ime_mic" bounds="[456,1880][624,2048]" />
+  </hierarchy>`;
+  const shell = (_adb, _serial, args) => {
+    const command = args.join(" ");
+    commands.push(command);
+    if (command === `dumpsys package ${APP_PACKAGE}`) return packageReceipt;
+    if (command.startsWith("cmd package query-services")) return args.at(-1);
+    if (command.startsWith("cmd package resolve-activity")) {
+      return "ai.elizaos.app/.ElizaAssistActivity";
+    }
+    if (command.startsWith("cmd role get-role-holders")) return APP_PACKAGE;
+    if (command === "settings get secure voice_interaction_service") {
+      return ASSISTANT_VIS_COMPONENT;
+    }
+    if (command === "settings get secure default_input_method") {
+      return ASSISTANT_IME_COMPONENT;
+    }
+    if (command === "ime list -s") return ASSISTANT_IME_COMPONENT;
+    if (command === "dumpsys activity activities") return activityReceipt;
+    if (command.startsWith("cat /sdcard/eliza-ime-verifier-window.xml")) {
+      return hierarchyReceipt;
+    }
+    return "";
+  };
+  const runtimeReceipts = [
+    "ActivityTaskManager: START dat=elizaos://voice?source=android-assistant-session",
+    "ActivityTaskManager: START dat=elizaos://voice?source=android-assistant-session",
+    "ElizaVoiceIme: [ElizaVoiceInputMethodService] engine status unreachable: Connection refused",
+    "ElizaVoiceIme: [ElizaVoiceInputMethodService] opening Eliza: elizaos://voice?source=android-ime",
+  ];
+
+  const checks = await verifyOnDevice("fake-adb", "emulator-test", {
+    shell,
+    clearLogcatFn: () => {},
+    dumpLogcatFn: () => runtimeReceipts.shift() ?? "",
+    sleepFn: async () => {},
+    apply: true,
+  });
+
+  assert.equal(checks.verdict.pass, true);
+  assert.equal(checks.surfaces.allPresent, true);
+  assert.equal(checks.role.heldByExpected, true);
+  assert.equal(checks.imeUi.found, true);
+  assert.equal(checks.asrOutcome, "engineOff");
+  assert.ok(
+    commands.includes(`cmd role get-role-holders --user 0 ${ROLE_ASSISTANT}`),
+  );
+  assert.ok(
+    commands.includes(
+      `cmd role add-role-holder --user 0 ${ROLE_ASSISTANT} ${APP_PACKAGE}`,
+    ),
+  );
+  assert.equal(
+    commands.some((command) => command.includes("role holders")),
+    false,
+  );
+  assert.ok(commands.includes("input tap 540 1964"));
 });
 
 test("summarizeLaneVerdict passes only when every required surface checks out", () => {
