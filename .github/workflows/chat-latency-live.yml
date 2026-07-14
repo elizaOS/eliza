@@ -352,6 +352,10 @@ jobs:
       - name: Install Worker bundle dependencies
         run: bun install --frozen-lockfile --ignore-scripts
 
+      - name: Generate source-mode keyword data
+        run: |
+          node packages/shared/scripts/generate-keywords.mjs
+
       - name: Create an isolated authenticated probe control
         id: auth-control
         run: |

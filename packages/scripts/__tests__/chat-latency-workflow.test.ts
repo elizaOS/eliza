@@ -136,6 +136,9 @@ describe("chat latency live workflow", () => {
     expect(preview).toContain("environment: staging");
     expect(preview).toContain("bun-version: 1.3.14");
     expect(preview).toContain("wrangler versions upload");
+    expect(preview).toContain(
+      "node packages/shared/scripts/generate-keywords.mjs",
+    );
     expect(preview).toContain("--keep-vars");
     expect(preview).toContain("--preview-alias");
     expect(preview).not.toContain("wrangler deploy");
@@ -251,6 +254,7 @@ describe("chat latency live workflow", () => {
       "Add privacy-safe timing table to summary",
       "Enforce probe result",
       "Bind preview checkout to the requested SHA",
+      "Generate source-mode keyword data",
       "Create an isolated authenticated probe control",
       "Create an isolated suspended-auth staging fixture",
       "Create an isolated non-deployed preview Worker",
