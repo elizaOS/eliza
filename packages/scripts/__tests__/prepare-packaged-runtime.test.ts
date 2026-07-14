@@ -2,7 +2,7 @@
  * Builds and launches a real local npm runtime from prepared workspace
  * packages, while exercising incomplete and escaping package failures.
  */
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -14,6 +14,7 @@ import {
   renameSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -35,6 +36,38 @@ import {
   runPackagerCommand,
   validatePackagePayload,
 } from "../prepare-packaged-runtime.mjs";
+
+// The coverage lane runs vitest under Node, where the Bun global does not
+// exist; resolve the toolchain identity from the real binary / root manifest
+// instead so the suite is runtime-agnostic.
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const bunVersion =
+  process.versions.bun ??
+  execFileSync("bun", ["--version"], { encoding: "utf8" }).trim();
+
+function bunSpawnSync(options: {
+  cmd: string[];
+  cwd?: string;
+  env?: Record<string, string | undefined>;
+  // Accepted for call-site compatibility with the former Bun.spawnSync shape;
+  // node's spawnSync pipes by default under encoding "utf8".
+  stdout?: "pipe";
+  stderr?: "pipe";
+}): { exitCode: number; stdout: string; stderr: string } {
+  const [command, ...args] = options.cmd;
+  const result = spawnSync(command, args, {
+    cwd: options.cwd,
+    env: options.env as NodeJS.ProcessEnv | undefined,
+    encoding: "utf8",
+  });
+  return {
+    exitCode: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+  };
+}
 
 const temporaryDirectories: string[] = [];
 const assemblerScript = join(
@@ -143,7 +176,7 @@ function fixture() {
       name: "packaged-runtime-fixture",
       version: "1.0.0",
       private: true,
-      packageManager: `bun@${Bun.version}`,
+      packageManager: `bun@${bunVersion}`,
       engines: { node: fixtureNodeVersion },
       workspaces: ["packages/*"],
     }),
@@ -173,7 +206,7 @@ function fixture() {
   );
   linkPackage(sourceRoot, "@elizaos/agent", agentRoot);
   linkPackage(sourceRoot, "@elizaos/shared", sharedRoot);
-  const lockResult = Bun.spawnSync({
+  const lockResult = bunSpawnSync({
     cmd: [
       "bun",
       "install",
@@ -295,7 +328,7 @@ describe("preparePackagedRuntime", () => {
     );
     linkPackage(sourceRoot, "@elizaos/plugin-contaminated", contaminatedRoot);
     linkPackage(sourceRoot, "@elizaos/contaminated-dep", contaminatedDepRoot);
-    const relockResult = Bun.spawnSync({
+    const relockResult = bunSpawnSync({
       cmd: [
         "bun",
         "install",
@@ -487,7 +520,7 @@ describe("preparePackagedRuntime", () => {
     });
     expect(runtimeManifest.elizaosRuntime.toolchain).toEqual({
       node: fixtureNodeVersion,
-      bun: Bun.version,
+      bun: bunVersion,
       npm: expect.stringMatching(/^\d+\.\d+\.\d+/),
     });
     expect(runtimeManifest.elizaosRuntime.installerLocks).toMatchObject({
@@ -525,7 +558,7 @@ describe("preparePackagedRuntime", () => {
         throwIfNoEntry: false,
       }),
     ).toBeUndefined();
-    const launched = Bun.spawnSync({
+    const launched = bunSpawnSync({
       cmd: [
         "node",
         join(destinationRoot, "node_modules", "@elizaos", "agent", "bin.js"),
@@ -676,16 +709,22 @@ writeFileSync(${JSON.stringify(ready)}, "ready\\n");
 while (!existsSync(${JSON.stringify(release)})) await sleep(10);
 preparationTesting.releasePreparationLock(lock);
 `;
-    const owner = Bun.spawn(
-      [process.execPath, "--input-type=module", "--eval", ownerCode],
-      { stdout: "pipe", stderr: "pipe" },
+    const owner = spawn(
+      process.execPath,
+      ["--input-type=module", "--eval", ownerCode],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    const ownerStderrChunks: Buffer[] = [];
+    owner.stderr.on("data", (chunk: Buffer) => ownerStderrChunks.push(chunk));
+    const ownerExited = new Promise<number>((resolve) =>
+      owner.on("close", (code) => resolve(code ?? 1)),
     );
     let ownerExitCode = -1;
     let ownerStderr = "";
     try {
       const deadline = Date.now() + 20_000;
       while (!existsSync(ready) && Date.now() < deadline) {
-        await Bun.sleep(10);
+        await sleep(10);
       }
       expect(existsSync(ready)).toBe(true);
 
@@ -703,7 +742,7 @@ try {
   process.exit(23);
 }
 `;
-      const loser = Bun.spawnSync({
+      const loser = bunSpawnSync({
         cmd: [process.execPath, "--input-type=module", "--eval", loserCode],
         stdout: "pipe",
         stderr: "pipe",
@@ -721,8 +760,8 @@ try {
       ).toEqual([]);
     } finally {
       writeFileSync(release, "release\n");
-      ownerExitCode = await owner.exited;
-      ownerStderr = await new Response(owner.stderr).text();
+      ownerExitCode = await ownerExited;
+      ownerStderr = Buffer.concat(ownerStderrChunks).toString("utf8");
     }
     expect(ownerExitCode, ownerStderr).toBe(0);
     expect(
@@ -956,7 +995,7 @@ try {
       resolveRuntimeWorkspaceClosure(sourceRoot, ["@elizaos/agent"]),
     ).toThrow(/symbolic link|outside the source root|not linked/);
 
-    rmSync(sharedRoot);
+    unlinkSync(sharedRoot);
     mkdirSync(sharedRoot, { recursive: true });
     writeFileSync(
       join(sharedRoot, "package.json"),
