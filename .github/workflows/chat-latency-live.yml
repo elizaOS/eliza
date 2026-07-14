@@ -736,6 +736,12 @@ jobs:
           tail_pid="$!"
           sleep 5
           if ! kill -0 "$tail_pid" 2>/dev/null; then
+            node --input-type=module - "$tail_log" <<'NODE'
+            import { readFileSync } from "node:fs";
+            const raw = readFileSync(process.argv[2], "utf8");
+            const safe = raw.replaceAll(process.env.CLOUDFLARE_ACCOUNT_ID ?? "", "[account]");
+            console.error(safe.slice(-2_000));
+            NODE
             echo "::error::Worker Tail exited before the auth capture started."
             exit 1
           fi
