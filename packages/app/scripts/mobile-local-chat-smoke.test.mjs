@@ -77,6 +77,11 @@ function validIosFullBunResult() {
       active: { status: "ready" },
     },
     conversationId: "ios-conversation",
+    modelInput: {
+      text: "In one short sentence, confirm the iOS full Bun local backend is running.",
+      channelType: "DM",
+      source: "ios-local",
+    },
     sendMessage: { text: "The iOS full Bun local backend is running." },
     streamMessage:
       'data: {"type":"done","text":"The iOS full Bun local backend is running."}\n\n',

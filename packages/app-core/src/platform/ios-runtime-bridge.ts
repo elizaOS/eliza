@@ -24,6 +24,11 @@ const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
   "In one short sentence, confirm the iOS full Bun local backend is running.";
 const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY =
   "the ios full bun local backend is running";
+const IOS_FULL_BUN_SMOKE_MODEL_INPUT = {
+  text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
+  channelType: "DM",
+  source: "ios-local",
+};
 
 declare global {
   interface Window {
@@ -664,9 +669,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
-          channelType: "DM",
-          source: "ios-local",
+          ...IOS_FULL_BUN_SMOKE_MODEL_INPUT,
           metadata: { smoke: "ios-full-bun" },
         }),
       },
@@ -686,9 +689,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
-          channelType: "DM",
-          source: "ios-local",
+          ...IOS_FULL_BUN_SMOKE_MODEL_INPUT,
           metadata: { smoke: "ios-full-bun-stream" },
         }),
       },
@@ -723,6 +724,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         routing: localInferenceRouting,
       },
       conversationId,
+      modelInput: IOS_FULL_BUN_SMOKE_MODEL_INPUT,
       sendMessage,
       streamMessage,
     });

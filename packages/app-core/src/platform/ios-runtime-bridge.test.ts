@@ -213,6 +213,11 @@ describe("iOS full-Bun browser smoke", () => {
       ok: true,
       phase: "complete",
       conversationId: "conversation-1",
+      modelInput: {
+        text: "In one short sentence, confirm the iOS full Bun local backend is running.",
+        channelType: "DM",
+        source: "ios-local",
+      },
       sendMessage: { text: PROVEN_MODEL_REPLY },
     });
     expect(result.streamMessage).toContain('"type":"done"');

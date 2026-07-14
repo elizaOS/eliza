@@ -41,6 +41,11 @@ function validResult() {
       active: { status: "ready" },
     },
     conversationId: "conversation-1",
+    modelInput: {
+      text: "In one short sentence, confirm the iOS full Bun local backend is running.",
+      channelType: "DM",
+      source: "ios-local",
+    },
     sendMessage: { text: "The iOS full Bun local backend is running." },
     streamMessage:
       'data: {"type":"done","text":"The iOS full Bun local backend is running."}\n\n',
@@ -178,6 +183,13 @@ describe("iOS full-Bun smoke success contract", () => {
         result.conversationId = "";
       },
       /did not return a conversationId/,
+    ],
+    [
+      "model input",
+      (result) => {
+        result.modelInput.text = "A different prompt";
+      },
+      /modelInput did not match the exercised request/,
     ],
     [
       "installed models shape",

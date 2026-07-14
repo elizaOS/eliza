@@ -6,6 +6,8 @@
 import { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./chat-failure-strings.mjs";
 
 const EXPECTED_REPLY = "the ios full bun local backend is running";
+const EXPECTED_MODEL_INPUT =
+  "In one short sentence, confirm the iOS full Bun local backend is running.";
 
 /** Parses the untrusted native-preference payload into an explicit result or invalid signal. */
 export function parseIosFullBunSmokeResult(raw) {
@@ -152,6 +154,16 @@ export function assertIosFullBunSmokeSuccess(result) {
 
   if (typeof result.conversationId !== "string" || !result.conversationId) {
     throw new Error("iOS full Bun smoke did not return a conversationId.");
+  }
+  const modelInput = assertObject(result.modelInput, "iOS full Bun modelInput");
+  if (
+    modelInput.text !== EXPECTED_MODEL_INPUT ||
+    modelInput.channelType !== "DM" ||
+    modelInput.source !== "ios-local"
+  ) {
+    throw new Error(
+      `iOS full Bun modelInput did not match the exercised request: ${JSON.stringify(modelInput)}`,
+    );
   }
   const installed = assertArray(
     assertObject(
