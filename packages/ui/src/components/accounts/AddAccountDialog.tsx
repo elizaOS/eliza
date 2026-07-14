@@ -46,6 +46,15 @@ interface AddAccountDialogProps {
   open: boolean;
   /** Optional initial provider. When omitted, the dialog starts with the consolidated provider picker. */
   providerId?: LinkedAccountProviderId;
+  /**
+   * Unhealthy account that launched this flow. The current OAuth contract
+   * cannot replace an existing id, so repair creates a fresh account in the
+   * same provider pool. The dialog makes that limitation explicit.
+   */
+  credentialRepairAccount?: Pick<
+    LinkedAccountConfig,
+    "id" | "label" | "source" | "health"
+  > | null;
   onClose: () => void;
   onCreated: (account: LinkedAccountConfig) => void;
 }
@@ -68,11 +77,7 @@ interface SseFlowState {
 }
 
 type SubscriptionAddMode =
-  | "oauth"
-  | "api-key"
-  | "external-cli"
-  | "unavailable"
-  | "none";
+  "oauth" | "api-key" | "external-cli" | "unavailable" | "none";
 
 // The static provider catalog + its types now live in their own module so
 // presentational pieces can import them without a circular dependency on this
@@ -180,6 +185,7 @@ function providerDisplayName(
 export function AddAccountDialog({
   open,
   providerId,
+  credentialRepairAccount = null,
   onClose,
   onCreated,
 }: AddAccountDialogProps) {
@@ -196,8 +202,10 @@ export function AddAccountDialog({
       ? initialStepForProvider(activeProviderId)
       : "provider-select",
   );
-  const [label, setLabel] = useState(() =>
-    activeProviderId ? defaultOAuthLabel(activeProviderId) : "",
+  const [label, setLabel] = useState(
+    () =>
+      credentialRepairAccount?.label ??
+      (activeProviderId ? defaultOAuthLabel(activeProviderId) : ""),
   );
   const [apiKey, setApiKey] = useState("");
   const [oauthCode, setOauthCode] = useState("");
@@ -243,7 +251,10 @@ export function AddAccountDialog({
         ? initialStepForProvider(activeProviderId)
         : "provider-select",
     );
-    setLabel(activeProviderId ? defaultOAuthLabel(activeProviderId) : "");
+    setLabel(
+      credentialRepairAccount?.label ??
+        (activeProviderId ? defaultOAuthLabel(activeProviderId) : ""),
+    );
     setApiKey("");
     setOauthCode("");
     setErrorMessage(null);
@@ -251,7 +262,7 @@ export function AddAccountDialog({
     setDeviceCode(null);
     setDeviceCodeCopied(false);
     setOauthUrl(null);
-  }, [closeEventSource, activeProviderId]);
+  }, [closeEventSource, activeProviderId, credentialRepairAccount?.label]);
 
   const copyDeviceCode = useCallback(async (code: string) => {
     try {
@@ -562,38 +573,51 @@ export function AddAccountDialog({
     setStep(
       providerId ? initialStepForProvider(providerId) : "provider-select",
     );
-    setLabel(providerId ? defaultOAuthLabel(providerId) : "");
-  }, [open, providerId]);
+    setLabel(
+      credentialRepairAccount?.label ??
+        (providerId ? defaultOAuthLabel(providerId) : ""),
+    );
+  }, [open, providerId, credentialRepairAccount?.label]);
 
-  const dialogDescription = !activeProviderId
-    ? t("accounts.add.chooseDescription", {
-        defaultValue:
-          "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
-      })
-    : subscriptionAddMode === "oauth"
-      ? t("accounts.add.subscriptionDescription", {
+  const dialogDescription = credentialRepairAccount
+    ? credentialRepairAccount.source === "oauth"
+      ? t("accounts.reauthenticate.description", {
           defaultValue:
-            "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
+            "Sign in again with this provider. Until the server supports replacing credentials by account id, this creates a fresh account in the same pool; remove the expired entry after sign-in succeeds.",
         })
-      : subscriptionAddMode === "api-key"
-        ? t("accounts.add.codingPlanDescription", {
+      : t("accounts.replaceCredential.description", {
+          defaultValue:
+            "Enter a new credential for this provider. This creates a fresh account in the same pool; remove the invalid entry after the new credential is verified.",
+        })
+    : !activeProviderId
+      ? t("accounts.add.chooseDescription", {
+          defaultValue:
+            "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
+        })
+      : subscriptionAddMode === "oauth"
+        ? t("accounts.add.subscriptionDescription", {
             defaultValue:
-              "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
+              "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
           })
-        : subscriptionAddMode === "external-cli"
-          ? t("accounts.add.externalCliDescription", {
+        : subscriptionAddMode === "api-key"
+          ? t("accounts.add.codingPlanDescription", {
               defaultValue:
-                "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
+                "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
             })
-          : subscriptionAddMode === "unavailable"
-            ? t("accounts.add.unavailableDescription", {
+          : subscriptionAddMode === "external-cli"
+            ? t("accounts.add.externalCliDescription", {
                 defaultValue:
-                  "This provider does not expose a safe first-party coding subscription surface for linking here.",
+                  "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
               })
-            : t("accounts.add.apiDescription", {
-                defaultValue:
-                  "Paste your API key. The key is stored locally with mode 0600.",
-              });
+            : subscriptionAddMode === "unavailable"
+              ? t("accounts.add.unavailableDescription", {
+                  defaultValue:
+                    "This provider does not expose a safe first-party coding subscription surface for linking here.",
+                })
+              : t("accounts.add.apiDescription", {
+                  defaultValue:
+                    "Paste your API key. The key is stored locally with mode 0600.",
+                });
 
   const apiKeyLabel =
     subscriptionAddMode === "api-key"
@@ -666,10 +690,20 @@ export function AddAccountDialog({
         <DialogHeader>
           <DialogTitle>
             {activeProviderId
-              ? t("accounts.add.title", {
-                  defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
-                  provider: providerDisplayName(activeProviderId, t),
-                })
+              ? credentialRepairAccount
+                ? credentialRepairAccount.source === "oauth"
+                  ? t("accounts.reauthenticate.title", {
+                      defaultValue: `Reauthenticate ${credentialRepairAccount.label}`,
+                      account: credentialRepairAccount.label,
+                    })
+                  : t("accounts.replaceCredential.title", {
+                      defaultValue: `Replace credential for ${credentialRepairAccount.label}`,
+                      account: credentialRepairAccount.label,
+                    })
+                : t("accounts.add.title", {
+                    defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
+                    provider: providerDisplayName(activeProviderId, t),
+                  })
               : t("accounts.add.chooseTitle", {
                   defaultValue: "Add a provider account",
                 })}
@@ -881,6 +915,10 @@ export function AddAccountDialog({
             >
               {step === "apikey-submitting" ? (
                 <Spinner className="h-3 w-3" />
+              ) : credentialRepairAccount ? (
+                t("accounts.replaceCredential.save", {
+                  defaultValue: "Save replacement",
+                })
               ) : (
                 t("accounts.add.save", { defaultValue: "Add account" })
               )}

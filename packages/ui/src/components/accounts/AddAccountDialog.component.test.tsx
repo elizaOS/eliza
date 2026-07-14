@@ -226,6 +226,31 @@ describe("AddAccountDialog", () => {
     expect(screen.queryByRole("button", { name: /Log in/ })).toBeNull();
   });
 
+  it("explains the server replacement gap before repairing an OAuth account", () => {
+    render(
+      <AddAccountDialog
+        open
+        providerId="anthropic-subscription"
+        credentialRepairAccount={{
+          id: "expired-account",
+          label: "Work Claude",
+          source: "oauth",
+          health: "needs-reauth",
+        }}
+        onClose={vi.fn()}
+        onCreated={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Reauthenticate Work Claude")).toBeTruthy();
+    expect(
+      screen.getByText(/creates a fresh account in the same pool/),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Log in and paste a code" }),
+    ).toBeTruthy();
+  });
+
   it("submits an OAuth callback code and reports terminal stream errors", async () => {
     api.startAccountOAuth.mockResolvedValue({
       sessionId: "session-code",
