@@ -457,6 +457,55 @@ body.pwa-standalone textarea {
   background-clip: padding-box;
 }
 
+.chat-composer-scrollbar[data-scroll-fade="top"] {
+  -webkit-mask-image:
+    linear-gradient(to bottom, transparent 0, black 16px, black 100%),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+  mask-image:
+    linear-gradient(to bottom, transparent 0, black 16px, black 100%),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+}
+
+.chat-composer-scrollbar[data-scroll-fade="bottom"] {
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      black 0,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+  mask-image:
+    linear-gradient(
+      to bottom,
+      black 0,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+}
+
+.chat-composer-scrollbar[data-scroll-fade="both"] {
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0,
+      black 16px,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0,
+      black 16px,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+}
+
 /* Keyboard shortcuts styling */
 kbd {
   font-family: var(--mono);
