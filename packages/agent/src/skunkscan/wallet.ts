@@ -28,6 +28,7 @@ import { analyzeWalletCompliance } from "./analyzers/compliance";
 import { analyzeWalletTransactionRisk } from "./analyzers/transactionRisk";
 import { analyzeWalletDecision } from "./analyzers/decision";
 import { analyzeWalletAssessment } from "./analyzers/assessment";
+import { analyzeWalletIntelligenceBrief } from "./analyzers/intelligenceBrief";
 import { analyzeWalletSmartMoney } from "./analyzers/smartMoney";
 import { analyzeInvestigationReport } from "./analyzers/investigationReport";
 import { analyzeInvestigationNarrative } from "./analyzers/investigationNarrative";
@@ -256,6 +257,12 @@ const assessment = analyzeWalletAssessment(
   evidenceRecords,
 );
 
+const intelligenceBrief =
+  analyzeWalletIntelligenceBrief(
+    assessment,
+    evidenceRecords,
+  );
+
 const evidence = analyzeWalletEvidence(
   evidenceRecords,
 );
@@ -306,6 +313,7 @@ caseSummary,
 display,
 decision,
 assessment,
+intelligenceBrief,
 executiveVerdict,
 custodyProfile,
 complianceScreening,
