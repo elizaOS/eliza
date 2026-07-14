@@ -608,8 +608,8 @@ export const ChatMessage = memo(function ChatMessage({
     setDraftText(message.text);
     setEditBubbleWidth(null);
     setIsEditing(false);
-    setShowActions(false);
-  }, [message.text, savingEdit]);
+    setShowActions(glass);
+  }, [glass, message.text, savingEdit]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!onEdit) return;
