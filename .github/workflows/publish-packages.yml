@@ -736,7 +736,7 @@ jobs:
             "$ISOLATION_ROOT/state" \
             "$ISOLATION_ROOT/runtime" \
             "$ISOLATION_ROOT/tmp" \
-            "$ISOLATION_ROOT/verifier"
+            "$ISOLATION_ROOT/tmp/verifier"
           {
             echo "FLATPAK_ISOLATION_ROOT=$ISOLATION_ROOT"
             echo "HOME=$ISOLATION_ROOT/home"
@@ -927,7 +927,7 @@ jobs:
           node ../../../scripts/verify-packaged-cli.mjs \
             --expected "$EXPECTED_VERSION" \
             --health-url http://127.0.0.1:43139/api/health \
-            --isolation-root "$FLATPAK_ISOLATION_ROOT/verifier" \
+            --isolation-root "$FLATPAK_ISOLATION_ROOT/tmp/verifier" \
             --service-arg serve \
             -- flatpak --system run ai.elizaos.App
           flatpak --system run --command=/bin/sh ai.elizaos.App -c \
