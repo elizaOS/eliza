@@ -17,12 +17,16 @@
   },
   {
     "file": "packages/scripts/build-private-workspace-packages.mjs",
-    "tokens": ["@elizaos/plugin-remote-manifest"],
+    "tokens": [
+      "@elizaos/plugin-remote-manifest"
+    ],
     "reason": "prose header names @elizaos/plugin-remote-manifest as the concrete #8143 repro; membership is resolved from elizaos.scripts.buildOnInstall metadata, not this text"
   },
   {
     "file": "packages/scripts/check-lifeops-persona-catalog-coverage.mjs",
-    "tokens": ["plugins/plugin-personal-assistant"],
+    "tokens": [
+      "plugins/plugin-personal-assistant"
+    ],
     "reason": "validates LifeOps persona scenario-pack ledgers against the personal-assistant plugin's scenario suite"
   },
   {
@@ -47,12 +51,18 @@
   },
   {
     "file": "packages/scripts/cloud/admin/smoke-agent-plugins.ts",
-    "tokens": ["@elizaos/plugin-elizacloud", "@elizaos/plugin-sql"],
+    "tokens": [
+      "@elizaos/plugin-elizacloud",
+      "@elizaos/plugin-sql"
+    ],
     "reason": "the single shared source of the cloud smoke-agent baseline plugin set (SMOKE_AGENT_PLUGINS), deduped from the two smoke scripts"
   },
   {
     "file": "packages/scripts/e2e-coverage/inventory.ts",
-    "tokens": ["@elizaos/plugin-discord", "plugins/plugin-commands"],
+    "tokens": [
+      "@elizaos/plugin-discord",
+      "plugins/plugin-commands"
+    ],
     "reason": "discovers HTTP routes / connector registration from these route-wiring plugins for the e2e surface inventory"
   },
   {
@@ -89,12 +99,16 @@
   },
   {
     "file": "packages/scripts/ensure-native-plugins-linked.mjs",
-    "tokens": ["plugins/plugin-native-"],
+    "tokens": [
+      "plugins/plugin-native-"
+    ],
     "reason": "prefix-matches all plugins/plugin-native-* dirs to mirror them to the legacy packages/native layout; not a per-plugin list"
   },
   {
     "file": "packages/scripts/ensure-workspace-symlinks.mjs",
-    "tokens": ["@elizaos/plugin-pdf"],
+    "tokens": [
+      "@elizaos/plugin-pdf"
+    ],
     "reason": "hoists @elizaos/plugin-pdf, a re-exported transitive dep bun's isolated install leaves nested, to top-level node_modules"
   },
   {
@@ -115,7 +129,10 @@
   },
   {
     "file": "packages/scripts/launch-qa/run.mjs",
-    "tokens": ["plugins/plugin-personal-assistant", "plugins/plugin-training"],
+    "tokens": [
+      "plugins/plugin-personal-assistant",
+      "plugins/plugin-training"
+    ],
     "reason": "release-readiness QA runs focused vitest suites in the personal-assistant and training plugins"
   },
   {
@@ -148,18 +165,33 @@
     "reason": "manifest of credential/opt-in-guarded real/live suites; each entry names the plugin whose tests self-skip without creds"
   },
   {
+    "file": "packages/scripts/prepare-packaged-runtime.mjs",
+    "tokens": [
+      "@elizaos/plugin-computeruse",
+      "@elizaos/plugin-wallet",
+      "@elizaos/plugin-whatsapp"
+    ],
+    "reason": "packaged-runtime licensing policy: plugin-computeruse is the one reviewed workspace postinstall, and the wallet/whatsapp stub docs name the license-restricted plugins the Linux packages replace; these are legal-review outcomes, not build metadata"
+  },
+  {
     "file": "packages/scripts/run-cerebras.ts",
-    "tokens": ["plugins/plugin-openai"],
+    "tokens": [
+      "plugins/plugin-openai"
+    ],
     "reason": "invokes plugin-openai pointed at Cerebras to test native tool-calling trajectories"
   },
   {
     "file": "packages/scripts/run-eliza-cerebras.ts",
-    "tokens": ["plugins/plugin-openai"],
+    "tokens": [
+      "plugins/plugin-openai"
+    ],
     "reason": "boots a real runtime with plugin-openai wired to Cerebras to validate the runtime message stage"
   },
   {
     "file": "packages/scripts/stage-b-stt-bench.mjs",
-    "tokens": ["plugins/plugin-local-inference"],
+    "tokens": [
+      "plugins/plugin-local-inference"
+    ],
     "reason": "Stage-B STT benchmark measures plugin-local-inference ASR latency/WER"
   },
   {
@@ -173,7 +205,9 @@
   },
   {
     "file": "scripts/check-even-research-audit.mjs",
-    "tokens": ["plugins/plugin-facewear"],
+    "tokens": [
+      "plugins/plugin-facewear"
+    ],
     "reason": "gates that the facewear plugin's research checkouts, docs, and implemented surface files are present"
   },
   {
@@ -238,17 +272,24 @@
   },
   {
     "file": "scripts/lifeops/connector-paths.mjs",
-    "tokens": ["plugins/plugin-github", "plugins/plugin-personal-assistant"],
+    "tokens": [
+      "plugins/plugin-github",
+      "plugins/plugin-personal-assistant"
+    ],
     "reason": "central LifeOps credential-path map for GitHub and personal-assistant connector live-validation lanes"
   },
   {
     "file": "scripts/lifeops/credential-probes.mjs",
-    "tokens": ["plugins/plugin-github"],
+    "tokens": [
+      "plugins/plugin-github"
+    ],
     "reason": "GitHub credential probe invokes the concrete plugin-github connector path for live validation"
   },
   {
     "file": "scripts/lifeops/hitl-credential-dashboard.mjs",
-    "tokens": ["plugins/plugin-github"],
+    "tokens": [
+      "plugins/plugin-github"
+    ],
     "reason": "HITL credential dashboard reports the concrete plugin-github credential lane used by operators"
   },
   {
@@ -274,12 +315,16 @@
   },
   {
     "file": "scripts/training-harvest/stage3-gepa-sweep.mjs",
-    "tokens": ["plugins/plugin-training"],
+    "tokens": [
+      "plugins/plugin-training"
+    ],
     "reason": "GEPA sweep maps task types via plugin-training's trajectory-task-datasets and runs its train command"
   },
   {
     "file": "scripts/verify-smartglasses-software.mjs",
-    "tokens": ["plugins/plugin-facewear"],
+    "tokens": [
+      "plugins/plugin-facewear"
+    ],
     "reason": "orchestrates the facewear plugin's software-readiness steps (lint/typecheck/test/app-registration)"
   }
 ]
