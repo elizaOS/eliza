@@ -498,6 +498,7 @@ export const ChatMessage = memo(function ChatMessage({
   const articleRef = useRef<HTMLElement | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
+  const accessoryModeRef = useRef<"actions" | "edit">("actions");
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const isRightAligned = isUser ? userMessagesOnRight : !userMessagesOnRight;
@@ -746,6 +747,42 @@ export const ChatMessage = memo(function ChatMessage({
 
   const editSaveDisabled =
     savingEdit || !draftText.trim() || draftText.trim() === message.text.trim();
+  const inlineEditControls = (
+    <ChatMessageActionSurface
+      data-testid={
+        glass ? "thread-line-edit-controls" : "chat-message-edit-controls"
+      }
+      className={cn(
+        "gap-0 px-1.5 py-1",
+        !glass && "absolute right-0 top-full z-30 mt-1",
+      )}
+    >
+      <Button
+        unstyled
+        data-testid={glass ? "thread-line-edit-cancel" : undefined}
+        onClick={handleCancelEditing}
+        disabled={savingEdit}
+        className="min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+      >
+        {labels.cancel ?? "Cancel"}
+      </Button>
+      <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
+      <Button
+        unstyled
+        data-testid={glass ? "thread-line-edit-save" : undefined}
+        onClick={() => void handleSaveEdit()}
+        disabled={editSaveDisabled}
+        className="min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+      >
+        {savingEdit
+          ? (labels.saving ?? "Saving...")
+          : glass
+            ? (labels.send ?? "Send")
+            : (labels.saveAndResend ?? "Save and resend")}
+      </Button>
+    </ChatMessageActionSurface>
+  );
+
   const inlineEditor = (
     <div
       data-testid={
@@ -772,36 +809,7 @@ export const ChatMessage = memo(function ChatMessage({
         style={{ fontFamily: "var(--font-chat)" }}
         disabled={savingEdit}
       />
-      <ChatMessageActionSurface
-        data-testid={
-          glass ? "thread-line-edit-controls" : "chat-message-edit-controls"
-        }
-        className="absolute right-0 top-full z-30 mt-1 gap-0 px-1.5 py-1"
-      >
-        <Button
-          unstyled
-          data-testid={glass ? "thread-line-edit-cancel" : undefined}
-          onClick={handleCancelEditing}
-          disabled={savingEdit}
-          className="min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
-        >
-          {labels.cancel ?? "Cancel"}
-        </Button>
-        <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
-        <Button
-          unstyled
-          data-testid={glass ? "thread-line-edit-save" : undefined}
-          onClick={() => void handleSaveEdit()}
-          disabled={editSaveDisabled}
-          className="min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
-        >
-          {savingEdit
-            ? (labels.saving ?? "Saving...")
-            : glass
-              ? (labels.send ?? "Send")
-              : (labels.saveAndResend ?? "Save and resend")}
-        </Button>
-      </ChatMessageActionSurface>
+      {glass ? null : inlineEditControls}
     </div>
   );
 
@@ -842,6 +850,12 @@ export const ChatMessage = memo(function ChatMessage({
     // capability above already excludes it, so hasActions is false and the
     // bubble stays a plain, non-interactive container.
     const hasActions = canRowCopy || canPlay || canEdit || canReply;
+    const accessoryVisible = actionsVisible || isEditing;
+    if (isEditing) accessoryModeRef.current = "edit";
+    else if (actionsVisible) accessoryModeRef.current = "actions";
+    // Retain the last visible contents while the shared slot collapses so its
+    // exit never flashes the other control set on the final frame.
+    const accessoryMode = accessoryModeRef.current;
     // An assistant turn carrying an inline choice/form/followups widget must
     // stay a plain container — see messageHasInteractiveWidget.
     const hasInteractiveWidget =
@@ -1044,11 +1058,11 @@ export const ChatMessage = memo(function ChatMessage({
           {hasActions ? (
             <motion.div
               data-testid="thread-line-actions"
-              aria-hidden={!actionsVisible || isEditing}
-              inert={!actionsVisible || isEditing}
+              aria-hidden={!accessoryVisible}
+              inert={!accessoryVisible}
               initial={false}
               animate={
-                actionsVisible && !isEditing
+                accessoryVisible
                   ? { height: "auto", opacity: 1, y: 0, scale: 1 }
                   : {
                       height: 0,
@@ -1069,19 +1083,33 @@ export const ChatMessage = memo(function ChatMessage({
               )}
             >
               <MessageRowFooter className="flex items-center px-0 pt-1 text-white/70">
-                <ChatMessageActions
-                  appearance="glass-row"
-                  canEdit={canEdit}
-                  canPlay={canPlay}
-                  canReply={canReply}
-                  copied={copied}
-                  labels={labels}
-                  onCopy={canRowCopy ? handleCopy : undefined}
-                  onEdit={handleStartEditing}
-                  onPlay={() => onSpeak?.(message.id, message.text)}
-                  onReply={handleReply}
-                  playing={playing}
-                />
+                <motion.div
+                  key={accessoryMode}
+                  initial={reduceMotion ? false : { opacity: 0, y: 2 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: reduceMotion ? 0.08 : 0.14,
+                    ease: GLASS_EASE,
+                  }}
+                >
+                  {accessoryMode === "edit" ? (
+                    inlineEditControls
+                  ) : (
+                    <ChatMessageActions
+                      appearance="glass-row"
+                      canEdit={canEdit}
+                      canPlay={canPlay}
+                      canReply={canReply}
+                      copied={copied}
+                      labels={labels}
+                      onCopy={canRowCopy ? handleCopy : undefined}
+                      onEdit={handleStartEditing}
+                      onPlay={() => onSpeak?.(message.id, message.text)}
+                      onReply={handleReply}
+                      playing={playing}
+                    />
+                  )}
+                </motion.div>
               </MessageRowFooter>
             </motion.div>
           ) : null}
