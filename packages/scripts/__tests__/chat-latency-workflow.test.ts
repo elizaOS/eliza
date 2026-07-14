@@ -131,46 +131,55 @@ describe("chat latency live workflow", () => {
     );
   });
 
-  test("feature refs use a non-deployed exact-version auth preview", () => {
-    const preview = workflow.slice(workflow.indexOf("\n  auth-preview:"));
-    expect(preview).toContain("environment: staging");
-    expect(preview).toContain("bun-version: 1.3.14");
-    expect(preview).toContain("wrangler versions upload");
-    expect(preview).toContain(
+  test("feature refs deploy one exact version to an isolated auth Worker", () => {
+    const isolated = workflow.slice(workflow.indexOf("\n  auth-isolated:"));
+    expect(isolated).toContain("environment: staging");
+    expect(isolated).toContain("bun-version: 1.3.14");
+    expect(isolated).toContain("wrangler versions upload");
+    expect(isolated).toContain(
       "node packages/shared/scripts/generate-keywords.mjs",
     );
-    expect(preview).toContain("--keep-vars");
-    expect(preview).toContain("--preview-alias");
-    expect(preview).toContain("preview_urls = true");
-    expect(preview).toContain("--config .wrangler-auth-preview.toml");
-    expect(preview).not.toContain("wrangler deploy");
-    expect(preview).toContain(
+    expect(isolated).toContain("--keep-vars");
+    expect(isolated).not.toContain("--preview-alias");
+    expect(isolated).toContain("preview_urls = false");
+    expect(isolated).toContain("--config .wrangler-auth-probe.toml");
+    expect(isolated).not.toContain("wrangler deploy");
+    expect(isolated).toContain(
       "Create an isolated suspended-auth staging fixture",
     );
-    expect(preview).toContain("Create an isolated non-deployed preview Worker");
-    expect(preview).toContain('"/workers/workers"');
-    expect(preview).toContain("body?.result?.deployed_on != null");
-    expect(preview).toContain("state?.result?.deployed_on != null");
-    expect(preview).toContain("workers_dev = true");
-    expect(preview).toContain("Delete isolated auth preview Worker");
-    expect(preview).toContain("Delete isolated suspended-auth staging fixture");
-    expect(preview).toContain("previews_enabled: true");
-    expect(preview).toContain("REDIS_RATE_LIMITING:false");
-    expect(preview).toContain("--hit-count 30");
-    expect(preview).toContain("--miss-count 10");
-    expect(preview).toContain(
+    expect(isolated).toContain("Create an isolated diagnostic Worker");
+    expect(isolated).toContain('"/workers/workers"');
+    expect(isolated).toContain("body?.result?.deployed_on != null");
+    expect(isolated).toContain("workerState?.result?.deployed_on");
+    expect(isolated).toContain("workers_dev = true");
+    expect(isolated).toContain("Delete isolated auth Worker");
+    expect(isolated).toContain(
+      "Delete isolated suspended-auth staging fixture",
+    );
+    expect(isolated).toContain("previews_enabled: false");
+    expect(isolated).toContain(
+      "versions: [{ percentage: 100, version_id: versionId }]",
+    );
+    expect(isolated).toContain('"/workers/scripts/" + worker + "/deployments"');
+    expect(isolated).toContain('"/workers/subdomain"');
+    expect(isolated).toContain("REDIS_RATE_LIMITING:false");
+    expect(isolated).toContain("--hit-count 30");
+    expect(isolated).toContain("--miss-count 10");
+    expect(isolated).toContain(
       "--suspended-api-key-env AUTH_PROBE_SUSPENDED_API_KEY",
     );
-    expect(preview).toContain("INFERENCE_AUTH_PROBE_TOKEN");
-    expect(preview).toContain(`ELIZA_DEPLOY_COMMIT:\${GITHUB_SHA}`);
-    expect(preview).toContain("Preview remained on the exact checkout");
-    expect(preview).toContain("attempt <= 12");
-    expect(preview).toContain("steps.auth-probe.outcome != 'skipped'");
-    expect(preview).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
-    expect(preview).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
-    expect(preview).toContain("sanitizeInferenceAuthTail");
-    expect(preview).toContain("inference-auth-worker-logs-");
-    expect(preview).toContain('rm -f "$raw_tail" "$tail_log"');
+    expect(isolated).toContain("INFERENCE_AUTH_PROBE_TOKEN");
+    expect(isolated).toContain(`ELIZA_DEPLOY_COMMIT:\${GITHUB_SHA}`);
+    expect(isolated).toContain(
+      "Isolated deployment remained on the exact checkout",
+    );
+    expect(isolated).toContain("attempt <= 12");
+    expect(isolated).toContain("steps.auth-probe.outcome != 'skipped'");
+    expect(isolated).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
+    expect(isolated).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
+    expect(isolated).toContain("sanitizeInferenceAuthTail");
+    expect(isolated).toContain("inference-auth-worker-logs-");
+    expect(isolated).toContain('rm -f "$raw_tail" "$tail_log"');
   });
 
   test("collects statistical warm evidence plus cold and post-idle labels", () => {
@@ -259,17 +268,18 @@ describe("chat latency live workflow", () => {
       "Reverify the exact deployed gateway SHA",
       "Add privacy-safe timing table to summary",
       "Enforce probe result",
-      "Bind preview checkout to the requested SHA",
+      "Bind isolated deployment checkout to the requested SHA",
       "Generate source-mode keyword data",
       "Create an isolated authenticated probe control",
       "Create an isolated suspended-auth staging fixture",
-      "Create an isolated non-deployed preview Worker",
+      "Create an isolated diagnostic Worker",
       "Upload a non-deployed exact-SHA Worker version",
-      "Verify preview serves the exact checkout",
+      "Deploy exact version to the isolated Worker subdomain",
+      "Verify isolated deployment serves the exact checkout",
       "Capture 30 cache hits and 10 unique controlled KV misses",
-      "Reverify exact preview after capture",
+      "Reverify exact isolated deployment after capture",
       "Add auth timing distribution to summary",
-      "Delete isolated auth preview Worker",
+      "Delete isolated auth Worker",
       "Delete isolated suspended-auth staging fixture",
       "Enforce auth probe result",
     ];

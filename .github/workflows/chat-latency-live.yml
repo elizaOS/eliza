@@ -14,8 +14,9 @@ name: Chat Latency Live
 #      unless the checkout equals expected_gateway_sha; the served SHA is then
 #      re-verified before and after the benchmark. If develop advanced past
 #      the deployment, redeploy (or wait for CF Deploy) instead of bypassing.
-# Feature refs use the separate auth-preview job below. It uploads an isolated
-# Worker version and preview alias but never moves canonical staging traffic.
+# Feature refs use the separate auth-isolated job below. It deploys the exact
+# version only to a uniquely named workers.dev Worker and never moves canonical
+# staging traffic or attaches a custom route.
 on:
   pull_request:
     branches: [develop, main]
@@ -303,7 +304,7 @@ jobs:
           fi
           exit "$status"
 
-  auth-preview:
+  auth-isolated:
     name: exact-version inference auth (${{ inputs.expected_gateway_sha }})
     if: >-
       github.event_name == 'workflow_dispatch' &&
@@ -336,7 +337,7 @@ jobs:
           # artifact; repository CI pins the newest lockfile-compatible stable.
           bun-version: 1.3.14
 
-      - name: Bind preview checkout to the requested SHA
+      - name: Bind isolated deployment checkout to the requested SHA
         env:
           EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
         run: |
@@ -344,9 +345,9 @@ jobs:
           const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
           const checkout = process.env.GITHUB_SHA ?? "";
           if (!/^[a-f0-9]{40}$/.test(expected) || checkout !== expected) {
-            throw new Error("Preview checkout must equal the requested 40-character SHA");
+            throw new Error("Isolated deployment checkout must equal the requested 40-character SHA");
           }
-          console.log("Preview checkout is exactly " + checkout);
+          console.log("Isolated deployment checkout is exactly " + checkout);
           NODE
 
       - name: Install Worker bundle dependencies
@@ -437,12 +438,12 @@ jobs:
           console.log("Created one isolated suspended-auth fixture");
           NODE
 
-      - name: Create an isolated non-deployed preview Worker
+      - name: Create an isolated diagnostic Worker
         run: |
           node --input-type=module - <<'NODE'
           const worker = process.env.AUTH_PROBE_WORKER_NAME;
           if (!/^eliza-cloud-api-auth-[a-f0-9]{12}$/.test(worker ?? "")) {
-            throw new Error("Invalid isolated preview Worker name");
+            throw new Error("Invalid isolated diagnostic Worker name");
           }
           const endpoint =
             "https://api.cloudflare.com/client/v4/accounts/" +
@@ -456,7 +457,7 @@ jobs:
             },
             body: JSON.stringify({
               name: worker,
-              subdomain: { enabled: true, previews_enabled: true },
+              subdomain: { enabled: true, previews_enabled: false },
             }),
             signal: AbortSignal.timeout(30_000),
           });
@@ -467,40 +468,38 @@ jobs:
             body?.result?.name !== worker ||
             body?.result?.deployed_on != null ||
             body?.result?.subdomain?.enabled !== true ||
-            body?.result?.subdomain?.previews_enabled !== true
+            body?.result?.subdomain?.previews_enabled !== false
           ) {
-            throw new Error("Could not create an isolated never-deployed preview Worker");
+            throw new Error("Could not create an isolated never-deployed diagnostic Worker");
           }
-          console.log("Created isolated never-deployed preview Worker " + worker);
+          console.log("Created isolated never-deployed diagnostic Worker " + worker);
           NODE
 
       - name: Upload a non-deployed exact-SHA Worker version
-        id: preview
+        id: upload
         run: |
           set -euo pipefail
-          alias="auth-${GITHUB_SHA:0:12}"
           output="$RUNNER_TEMP/wrangler-version-output.ndjson"
-          config="packages/cloud/api/.wrangler-auth-preview.toml"
+          config="packages/cloud/api/.wrangler-auth-probe.toml"
           node --input-type=module - "$config" <<'NODE'
           import { readFileSync, writeFileSync } from "node:fs";
           const source = readFileSync("packages/cloud/api/wrangler.toml", "utf8");
           const marker = '[env.staging]\nname = "eliza-cloud-api-staging"\nworkers_dev = false\n';
           if (source.split(marker).length !== 2 || source.includes("preview_urls")) {
-            throw new Error("Could not derive the isolated preview configuration");
+            throw new Error("Could not derive the isolated diagnostic configuration");
           }
           const isolated =
             '[env.staging]\nname = "eliza-cloud-api-staging"\n' +
-            "workers_dev = true\npreview_urls = true\n";
+            "workers_dev = true\npreview_urls = false\n";
           writeFileSync(process.argv[2], source.replace(marker, isolated), { mode: 0o600 });
           NODE
           trap 'rm -f "$config"' EXIT
           WRANGLER_OUTPUT_FILE_PATH="$output" bunx wrangler versions upload \
             --cwd packages/cloud/api \
-            --config .wrangler-auth-preview.toml \
+            --config .wrangler-auth-probe.toml \
             --env staging \
             --name "$AUTH_PROBE_WORKER_NAME" \
             --keep-vars \
-            --preview-alias "$alias" \
             --message "issue-16159 auth timing ${GITHUB_SHA}" \
             --var "ELIZA_DEPLOY_COMMIT:${GITHUB_SHA}" \
             --var "ENVIRONMENT:${AUTH_PROBE_CACHE_ENV}" \
@@ -539,29 +538,119 @@ jobs:
             state?.success !== true ||
             state?.result?.deployed_on != null ||
             state?.result?.subdomain?.enabled !== true ||
-            state?.result?.subdomain?.previews_enabled !== true
+            state?.result?.subdomain?.previews_enabled !== false
           ) {
-            throw new Error("Exact Worker version was not retained as an isolated preview");
+            throw new Error("Exact Worker version was not retained before deployment");
           }
-          const url = new URL(upload.preview_alias_url ?? "");
-          const expectedPrefix =
-            "auth-" + process.env.GITHUB_SHA.slice(0, 12) + "-" + process.env.AUTH_PROBE_WORKER_NAME + ".";
-          if (
-            url.protocol !== "https:" ||
-            !url.hostname.startsWith(expectedPrefix) ||
-            !url.hostname.endsWith(".workers.dev") ||
-            url.pathname !== "/"
-          ) {
-            throw new Error("Wrangler returned an invalid exact-version preview alias");
-          }
-          appendFileSync(process.env.GITHUB_OUTPUT, "base-url=" + url.origin + "\n");
           appendFileSync(process.env.GITHUB_OUTPUT, "version-id=" + upload.version_id + "\n");
-          console.log("Exact-version preview URL and Worker version resolved");
+          console.log("Exact Worker version uploaded without a deployment");
           NODE
 
-      - name: Verify preview serves the exact checkout
+      - name: Deploy exact version to the isolated Worker subdomain
+        id: deployment
         env:
-          PREVIEW_BASE_URL: ${{ steps.preview.outputs.base-url }}
+          AUTH_PROBE_VERSION_ID: ${{ steps.upload.outputs.version-id }}
+        run: |
+          node --input-type=module - <<'NODE'
+          import { appendFileSync } from "node:fs";
+
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const worker = process.env.AUTH_PROBE_WORKER_NAME;
+          const versionId = process.env.AUTH_PROBE_VERSION_ID;
+          if (!/^eliza-cloud-api-auth-[a-f0-9]{12}$/.test(worker ?? "")) {
+            throw new Error("Invalid isolated diagnostic Worker name");
+          }
+          if (!/^[a-f0-9-]{36}$/.test(versionId ?? "")) {
+            throw new Error("Invalid exact Worker version ID");
+          }
+          const headers = {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          };
+          const api = "https://api.cloudflare.com/client/v4/accounts/" + account;
+          const deploymentResponse = await fetch(
+            api + "/workers/scripts/" + worker + "/deployments",
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                strategy: "percentage",
+                versions: [{ percentage: 100, version_id: versionId }],
+                annotations: {
+                  "workers/message": "issue-16159 isolated auth timing " + process.env.GITHUB_SHA,
+                  "workers/triggered_by": "deployment",
+                },
+              }),
+              signal: AbortSignal.timeout(30_000),
+            },
+          );
+          const deployment = await deploymentResponse.json();
+          const deployedVersions = deployment?.result?.versions;
+          if (
+            !deploymentResponse.ok ||
+            deployment?.success !== true ||
+            deployment?.result?.strategy !== "percentage" ||
+            !Array.isArray(deployedVersions) ||
+            deployedVersions.length !== 1 ||
+            deployedVersions[0]?.version_id !== versionId ||
+            deployedVersions[0]?.percentage !== 100
+          ) {
+            throw new Error("Cloudflare did not deploy exactly the uploaded version at 100 percent");
+          }
+
+          const [accountSubdomainResponse, workerStateResponse, workerSubdomainResponse] =
+            await Promise.all([
+              fetch(api + "/workers/subdomain", {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
+              fetch(api + "/workers/workers/" + worker, {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
+              fetch(api + "/workers/scripts/" + worker + "/subdomain", {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
+            ]);
+          const [accountSubdomain, workerState, workerSubdomain] = await Promise.all([
+            accountSubdomainResponse.json(),
+            workerStateResponse.json(),
+            workerSubdomainResponse.json(),
+          ]);
+          const subdomain = accountSubdomain?.result?.subdomain;
+          if (
+            !accountSubdomainResponse.ok ||
+            accountSubdomain?.success !== true ||
+            !/^[a-z0-9-]{1,63}$/.test(subdomain ?? "")
+          ) {
+            throw new Error("Cloudflare returned an invalid account workers.dev subdomain");
+          }
+          if (
+            !workerStateResponse.ok ||
+            workerState?.success !== true ||
+            workerState?.result?.name !== worker ||
+            typeof workerState?.result?.deployed_on !== "string"
+          ) {
+            throw new Error("Isolated Worker state does not record the exact deployment");
+          }
+          if (
+            !workerSubdomainResponse.ok ||
+            workerSubdomain?.success !== true ||
+            workerSubdomain?.result?.enabled !== true ||
+            workerSubdomain?.result?.previews_enabled !== false
+          ) {
+            throw new Error("Isolated Worker is not restricted to its non-preview workers.dev subdomain");
+          }
+          const url = new URL("https://" + worker + "." + subdomain + ".workers.dev");
+          appendFileSync(process.env.GITHUB_OUTPUT, "base-url=" + url.origin + "\n");
+          console.log("Deployed exact version only to isolated Worker " + worker);
+          NODE
+
+      - name: Verify isolated deployment serves the exact checkout
+        env:
+          AUTH_PROBE_BASE_URL: ${{ steps.deployment.outputs.base-url }}
           EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
         run: |
           node --input-type=module - <<'NODE'
@@ -570,7 +659,7 @@ jobs:
           let lastOutcome = "no response";
           for (let attempt = 1; attempt <= 12; attempt += 1) {
             try {
-              const response = await fetch(process.env.PREVIEW_BASE_URL + "/api/health", {
+              const response = await fetch(process.env.AUTH_PROBE_BASE_URL + "/api/health", {
                 signal: AbortSignal.timeout(30_000),
               });
               if (response.ok) {
@@ -585,22 +674,22 @@ jobs:
             if (attempt < 12) await sleep(5_000);
           }
           if (!body) {
-            throw new Error("Preview did not become ready after 12 attempts; last outcome " + lastOutcome);
+            throw new Error("Isolated deployment did not become ready after 12 attempts; last outcome " + lastOutcome);
           }
           if (body?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
-            throw new Error("Preview does not serve the requested checkout");
+            throw new Error("Isolated deployment does not serve the requested checkout");
           }
           if (body?.environment !== process.env.AUTH_PROBE_CACHE_ENV) {
-            throw new Error("Preview cache environment is not isolated");
+            throw new Error("Diagnostic Worker cache environment is not isolated");
           }
-          console.log("Verified exact preview commit and isolated cache environment");
+          console.log("Verified exact isolated deployment and cache environment");
           NODE
 
       - name: Capture 30 cache hits and 10 unique controlled KV misses
         id: auth-probe
         env:
-          AUTH_PROBE_BASE_URL: ${{ steps.preview.outputs.base-url }}
-          AUTH_PROBE_VERSION_ID: ${{ steps.preview.outputs.version-id }}
+          AUTH_PROBE_BASE_URL: ${{ steps.deployment.outputs.base-url }}
+          AUTH_PROBE_VERSION_ID: ${{ steps.upload.outputs.version-id }}
           AUTH_PROBE_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
         run: |
           set -uo pipefail
@@ -676,22 +765,22 @@ jobs:
             echo "status=$sanitize_status" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Reverify exact preview after capture
-        if: always() && steps.preview.outputs.base-url != '' && steps.auth-probe.outcome != 'skipped'
+      - name: Reverify exact isolated deployment after capture
+        if: always() && steps.deployment.outputs.base-url != '' && steps.auth-probe.outcome != 'skipped'
         env:
-          PREVIEW_BASE_URL: ${{ steps.preview.outputs.base-url }}
+          AUTH_PROBE_BASE_URL: ${{ steps.deployment.outputs.base-url }}
           EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
         run: |
           node --input-type=module - <<'NODE'
-          const response = await fetch(process.env.PREVIEW_BASE_URL + "/api/health", {
+          const response = await fetch(process.env.AUTH_PROBE_BASE_URL + "/api/health", {
             signal: AbortSignal.timeout(30_000),
           });
-          if (!response.ok) throw new Error("Preview health returned HTTP " + response.status);
+          if (!response.ok) throw new Error("Isolated Worker health returned HTTP " + response.status);
           const body = await response.json();
           if (body?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
-            throw new Error("Preview changed during auth capture");
+            throw new Error("Isolated deployment changed during auth capture");
           }
-          console.log("Preview remained on the exact checkout through capture");
+          console.log("Isolated deployment remained on the exact checkout through capture");
           NODE
 
       - name: Add auth timing distribution to summary
@@ -735,7 +824,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Delete isolated auth preview Worker
+      - name: Delete isolated auth Worker
         if: always() && steps.auth-control.outputs.worker-name != ''
         env:
           AUTH_PROBE_WORKER_NAME: ${{ steps.auth-control.outputs.worker-name }}
