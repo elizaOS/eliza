@@ -1,0 +1,4 @@
+# Source exports are published for workspace consumers, but test harnesses are not.
+**/*.test.*
+**/*.spec.*
+**/__tests__/

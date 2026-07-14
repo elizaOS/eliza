@@ -9,10 +9,12 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { $ } from "bun";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+import { assertRelocatableRuntimeOutput } from "./build-relocation-audit.ts";
 
 const RM_RECURSIVE_SCRIPT = fileURLToPath(
 	new URL("../../packages/scripts/rm-path-recursive.mjs", import.meta.url),
 );
+const SOURCE_CHECKOUT_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 function rmRecursive(target: string) {
 	const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, target], {
@@ -88,6 +90,8 @@ await $`tsc --emitDeclarationOnly --declaration --declarationDir dist --rootDir 
 await import(new URL("./dist/local-inference-routes.js", import.meta.url).href);
 await import(new URL("./dist/voice-wake.js", import.meta.url).href);
 await import(new URL("./dist/voice-workbench.js", import.meta.url).href);
+
+assertRelocatableRuntimeOutput("dist", SOURCE_CHECKOUT_ROOT);
 
 console.log(
 	`✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,

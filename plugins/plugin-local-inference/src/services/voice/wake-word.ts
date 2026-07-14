@@ -33,8 +33,9 @@
  *     ring; the JS side feeds frames and reads back probabilities.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { localInferenceRoot } from "../paths";
 import type {
 	ElizaInferenceContextHandle,
@@ -48,10 +49,7 @@ import {
 	type VoiceBudget,
 	WAKE_WORD_RESERVE_BYTES,
 } from "./voice-budget";
-import {
-	OpenWakeWordGgmlModel,
-	WakeWordGgmlUnavailableError,
-} from "./wake-word-ggml";
+import { OpenWakeWordGgmlModel } from "./wake-word-ggml";
 
 /** Directory holding the bundled openWakeWord GGUF inside a bundle. */
 export const OPENWAKEWORD_DIR_REL_PATH = "wake";
@@ -172,8 +170,12 @@ const DEFAULTS: Required<WakeWordConfig> = {
  */
 export class WakeWordUnavailableError extends Error {
 	readonly code: "ffi-missing" | "runtime-not-ready" | "model-load-failed";
-	constructor(code: WakeWordUnavailableError["code"], message: string) {
-		super(message);
+	constructor(
+		code: WakeWordUnavailableError["code"],
+		message: string,
+		cause?: unknown,
+	) {
+		super(message, cause === undefined ? undefined : { cause });
 		this.name = "WakeWordUnavailableError";
 		this.code = code;
 	}
@@ -264,12 +266,15 @@ export class GgmlWakeWordModel implements WakeWordModel {
 				headName: opts.headName,
 			});
 		} catch (err) {
+			// error-policy:J2 native model rejection gains the selected head while
+			// retaining the binding error for diagnostics.
 			reservation.release();
 			throw new WakeWordUnavailableError(
 				"model-load-failed",
 				`[wake-word] failed to open native wake-word session for head '${opts.headName}': ${
 					err instanceof Error ? err.message : String(err)
 				}`,
+				err,
 			);
 		}
 		return new GgmlWakeWordModel(opts.ffi, handle, reservation);
@@ -378,6 +383,63 @@ function firstExisting(paths: readonly string[]): string | null {
 	return null;
 }
 
+/**
+ * Finds the standalone native build only when this module is running inside a
+ * source workspace. Walking from the runtime module URL works for source files
+ * and every bundled entry depth without embedding the build checkout path.
+ */
+export function findWorkspaceWakeWordBuildRoot(
+	moduleUrl = import.meta.url,
+): string | null {
+	let directory = path.dirname(fileURLToPath(moduleUrl));
+	while (true) {
+		const rootManifest = path.join(directory, "package.json");
+		const pluginManifest = path.join(
+			directory,
+			"plugins/plugin-local-inference/package.json",
+		);
+		const candidate = path.join(
+			directory,
+			"packages/native/plugins/wakeword-cpp/build",
+		);
+		if (
+			existsSync(candidate) &&
+			existsSync(rootManifest) &&
+			existsSync(pluginManifest) &&
+			existsSync(
+				path.join(
+					directory,
+					"packages/native/plugins/wakeword-cpp/CMakeLists.txt",
+				),
+			)
+		) {
+			try {
+				const root = JSON.parse(readFileSync(rootManifest, "utf8")) as {
+					name?: unknown;
+					private?: unknown;
+				};
+				const plugin = JSON.parse(readFileSync(pluginManifest, "utf8")) as {
+					name?: unknown;
+				};
+				if (
+					root.name === "eliza" &&
+					root.private === true &&
+					plugin.name === "@elizaos/plugin-local-inference"
+				) {
+					return candidate;
+				}
+			} catch {
+				// error-policy:J3 ancestor manifests are untrusted discovery input;
+				// malformed candidates are rejected and the search continues.
+			}
+		}
+
+		const parent = path.dirname(directory);
+		if (parent === directory) return null;
+		directory = parent;
+	}
+}
+
 /** Resolved triple of standalone wakeword-cpp paths (library + 3 GGUFs). */
 export interface WakeWordStandalonePaths {
 	libraryPath: string;
@@ -393,6 +455,7 @@ export function resolveWakeWordStandalonePaths(opts: {
 }): WakeWordStandalonePaths | null {
 	const head = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
 	const root = localInferenceRoot();
+	const workspaceBuildRoot = findWorkspaceWakeWordBuildRoot();
 
 	const libCandidates: string[] = [];
 	const envLib = process.env.ELIZA_WAKEWORD_LIB;
@@ -403,18 +466,9 @@ export function resolveWakeWordStandalonePaths(opts: {
 				path.join(opts.bundleRoot, "wake", `libwakeword${ext}`),
 			);
 		libCandidates.push(path.join(root, "wake", `libwakeword${ext}`));
-		libCandidates.push(
-			path.join(
-				__dirname,
-				"..",
-				"..",
-				"..",
-				"..",
-				"..",
-				"packages/native/plugins/wakeword-cpp/build",
-				`libwakeword${ext}`,
-			),
-		);
+		if (workspaceBuildRoot) {
+			libCandidates.push(path.join(workspaceBuildRoot, `libwakeword${ext}`));
+		}
 	}
 	const libraryPath = firstExisting(libCandidates);
 	if (!libraryPath) return null;
@@ -426,18 +480,9 @@ export function resolveWakeWordStandalonePaths(opts: {
 		const cs: string[] = [];
 		if (opts.bundleRoot) cs.push(path.join(opts.bundleRoot, "wake", fname));
 		cs.push(path.join(root, "wake", fname));
-		cs.push(
-			path.join(
-				__dirname,
-				"..",
-				"..",
-				"..",
-				"..",
-				"..",
-				"packages/native/plugins/wakeword-cpp/build/wakeword",
-				fname,
-			),
-		);
+		if (workspaceBuildRoot) {
+			cs.push(path.join(workspaceBuildRoot, "wakeword", fname));
+		}
 		return cs;
 	};
 	const melspec = firstExisting(ggufCandidates("melspec"));
@@ -492,27 +537,15 @@ export async function loadBundledWakeWordModel(opts: {
 		...(opts.bundleRoot !== undefined ? { bundleRoot: opts.bundleRoot } : {}),
 		...(opts.head !== undefined ? { head: opts.head } : {}),
 	});
-	if (standalone) {
-		try {
-			return await OpenWakeWordGgmlModel.load({
-				libraryPath: standalone.libraryPath,
-				paths: {
-					melspec: standalone.melspec,
-					embedding: standalone.embedding,
-					classifier: standalone.classifier,
-				},
-			});
-		} catch (err) {
-			if (
-				err instanceof WakeWordGgmlUnavailableError &&
-				err.code === "not-bun"
-			) {
-				/* The standalone path needs Bun for `bun:ffi`; under Node
-				 * we fall through to the fused path below. */
-			} else {
-				throw err;
-			}
-		}
+	if (standalone && typeof Reflect.get(process.versions, "bun") === "string") {
+		return OpenWakeWordGgmlModel.load({
+			libraryPath: standalone.libraryPath,
+			paths: {
+				melspec: standalone.melspec,
+				embedding: standalone.embedding,
+				classifier: standalone.classifier,
+			},
+		});
 	}
 
 	// Last resort: the fused GGUF is present but the build did not advertise

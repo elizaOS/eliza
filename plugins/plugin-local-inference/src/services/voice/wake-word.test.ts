@@ -22,6 +22,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import type {
 	ElizaInferenceContextHandle,
@@ -29,6 +30,7 @@ import type {
 	NativeWakeWordHandle,
 } from "./ffi-bindings";
 import {
+	findWorkspaceWakeWordBuildRoot,
 	GgmlWakeWordModel,
 	loadBundledWakeWordModel,
 	OpenWakeWordDetector,
@@ -166,6 +168,81 @@ describe("resolveWakeWordModel", () => {
 	});
 });
 
+describe("findWorkspaceWakeWordBuildRoot", () => {
+	it("discovers a native build from a relocated bundled entrypoint", () => {
+		const workspaceRoot = mkdtempSync(
+			path.join(os.tmpdir(), "wake-workspace-"),
+		);
+		try {
+			mkdirSync(path.join(workspaceRoot, "plugins/plugin-local-inference"), {
+				recursive: true,
+			});
+			writeFileSync(
+				path.join(workspaceRoot, "package.json"),
+				JSON.stringify({ name: "eliza", private: true }),
+			);
+			writeFileSync(
+				path.join(workspaceRoot, "plugins/plugin-local-inference/package.json"),
+				JSON.stringify({ name: "@elizaos/plugin-local-inference" }),
+			);
+			const nativeRoot = path.join(
+				workspaceRoot,
+				"packages/native/plugins/wakeword-cpp",
+			);
+			mkdirSync(nativeRoot, { recursive: true });
+			writeFileSync(path.join(nativeRoot, "CMakeLists.txt"), "# fixture\n");
+			const buildRoot = path.join(nativeRoot, "build");
+			mkdirSync(buildRoot, { recursive: true });
+			const moduleUrl = pathToFileURL(
+				path.join(
+					workspaceRoot,
+					"plugins/plugin-local-inference/dist/services/index.js",
+				),
+			).href;
+
+			expect(findWorkspaceWakeWordBuildRoot(moduleUrl)).toBe(buildRoot);
+		} finally {
+			rmSync(workspaceRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a misleading ancestor that only mirrors the native build path", () => {
+		const ancestor = mkdtempSync(path.join(os.tmpdir(), "wake-lookalike-"));
+		try {
+			mkdirSync(
+				path.join(ancestor, "packages/native/plugins/wakeword-cpp/build"),
+				{ recursive: true },
+			);
+			const moduleUrl = pathToFileURL(
+				path.join(
+					ancestor,
+					"nested/plugins/plugin-local-inference/dist/index.js",
+				),
+			).href;
+
+			expect(findWorkspaceWakeWordBuildRoot(moduleUrl)).toBeNull();
+		} finally {
+			rmSync(ancestor, { recursive: true, force: true });
+		}
+	});
+
+	it("returns null for an installed bundle without a source workspace", () => {
+		const installRoot = mkdtempSync(path.join(os.tmpdir(), "wake-install-"));
+		try {
+			const moduleUrl = pathToFileURL(
+				path.join(
+					installRoot,
+					"node_modules/@elizaos/plugin-local-inference/dist/voice-wake.js",
+				),
+			).href;
+
+			expect(findWorkspaceWakeWordBuildRoot(moduleUrl)).toBeNull();
+		} finally {
+			rmSync(installRoot, { recursive: true, force: true });
+		}
+	});
+});
+
 // --- Native FFI routing ---------------------------------------------------
 
 /**
@@ -271,10 +348,11 @@ describe("GgmlWakeWordModel", () => {
 
 	it("wraps a head-bind failure as WakeWordUnavailableError(model-load-failed)", async () => {
 		const ffi = makeMockFfi(true);
+		const bindingFailure = new Error("[ffi-bindings] unknown head 'banana'");
 		(
 			ffi.wakewordOpen as unknown as ReturnType<typeof vi.fn>
 		).mockImplementation(() => {
-			throw new Error("[ffi-bindings] unknown head 'banana'");
+			throw bindingFailure;
 		});
 		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
 		await expect(
@@ -282,6 +360,7 @@ describe("GgmlWakeWordModel", () => {
 		).rejects.toMatchObject({
 			name: "WakeWordUnavailableError",
 			code: "model-load-failed",
+			cause: bindingFailure,
 		});
 	});
 });

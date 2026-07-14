@@ -10,9 +10,9 @@
  * and threaded into the subprocess payload.
  */
 import { spawn } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolveAgentOrchestratorPackageRoot } from "./runtime-package-root.js";
 import type {
   TaskRunResult,
   TaskRunSpec,
@@ -50,10 +50,8 @@ function sanitizeId(value: string): string {
 }
 
 /**
- * Resolve the Bun executable. Smithers imports `bun:sqlite`, so the durable run
- * must execute under Bun. When the host is already Bun, reuse it; otherwise fall
- * back to `BUN_BIN` or `bun` on PATH (the host agent is Bun in production; this
- * keeps node+tsx dev hosts working too).
+ * Resolve the Bun executable. Smithers imports `bun:sqlite`, so deployments that
+ * opt into the durable runner must provide Bun even when the host uses Node.
  */
 function resolveBunBinary(): string {
   if (typeof (globalThis as { Bun?: unknown }).Bun !== "undefined")
@@ -94,26 +92,9 @@ export function resolveSmithersDbConfig(): {
   };
 }
 
-async function resolvePluginRoot(): Promise<string> {
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let depth = 0; depth < 8; depth += 1) {
-    try {
-      const manifest = JSON.parse(
-        await readFile(join(dir, "package.json"), "utf8"),
-      ) as {
-        name?: string;
-      };
-      if (manifest.name === "@elizaos/plugin-agent-orchestrator") return dir;
-    } catch {
-      // error-policy:J3 a missing/unreadable package.json at this level is the
-      // expected "not the root here" probe result → keep walking up.
-      // keep walking up to the plugin root
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return process.cwd();
+/** Returns the installed package root used as the Smithers subprocess cwd. */
+export function resolveSmithersPluginRoot(): string {
+  return resolveAgentOrchestratorPackageRoot();
 }
 
 /**
@@ -218,10 +199,8 @@ function createTaskScript(): string {
       }
 
       const built = wf.from(wf.sequence(...nodes));
-      // Select the storage backend based on the provider field threaded through
-      // the payload. Feature-detect non-sqlite APIs: smithers-orchestrator@0.22.0
-      // does not yet expose Smithers.postgres / Smithers.pglite; if the method is
-      // absent we degrade to sqlite so old and new builds both work correctly.
+      // Smithers releases differ in optional database adapters, so the payload
+      // selects an adapter only when the installed release implements it.
       const dbConfig = payload.dbConfig ?? {};
       const provider = dbConfig.provider ?? 'sqlite';
       let smithersLayer;
@@ -284,7 +263,7 @@ export async function runTaskWithSmithers(
     rootDir: process.cwd(),
   });
 
-  const pluginRoot = await resolvePluginRoot();
+  const pluginRoot = resolveSmithersPluginRoot();
   const proc = spawn(resolveBunBinary(), ["-e", createTaskScript()], {
     cwd: pluginRoot,
     env: { ...process.env, ELIZA_TASK_RUN_PAYLOAD: payload },

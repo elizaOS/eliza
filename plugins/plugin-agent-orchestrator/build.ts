@@ -10,6 +10,9 @@
  * browser condition at the same node bundle for resolution purposes but the
  * runtime is Node/bun.
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { buildPlugin } from "../plugin-build";
 
 const reexport = (from: string) =>
@@ -42,3 +45,23 @@ await buildPlugin({
     { path: "cjs/index.d.ts", content: reexport("./index.node") },
   ],
 });
+
+// The packaged Linux runtime installs this plugin far from any checkout, so
+// no emitted bundle may embed the build machine's absolute source path
+// (bundlers bake import.meta.url/__dirname as literals).
+const distRoot = fileURLToPath(new URL("./dist", import.meta.url));
+const forbiddenRoot = fileURLToPath(new URL("../../", import.meta.url));
+const files = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? files(join(dir, entry.name))
+      : [join(dir, entry.name)],
+  );
+const leaked = files(distRoot).filter((file) =>
+  readFileSync(file).includes(Buffer.from(forbiddenRoot)),
+);
+if (leaked.length > 0) {
+  throw new Error(
+    `[plugin-agent-orchestrator] built runtime contains the source checkout path: ${leaked.join(", ")}`,
+  );
+}

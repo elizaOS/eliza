@@ -1,17 +1,13 @@
 /**
- * HTTP-boundary tests for the GitHub issue functions in workspace-github.ts.
- * A REAL local node:http server implements the GitHub REST endpoints and a
- * REAL `GitHubPatClient` (Octokit under the hood) is pointed at it via its
- * `baseUrl` option, then injected through the production `GitHubContext`
- * client slot — so the entire request path (auth header, method, route,
- * payload serialization, response mapping) is genuinely exercised; only the
- * host on the other end of the socket is local. Error legs assert non-2xx
- * responses surface as thrown errors, never as fabricated results.
+ * Exercises the GitHub issue boundary through a real local HTTP server and an
+ * Octokit-backed client, including request mapping and non-2xx failures.
  */
 import { createServer, type Server } from "node:http";
-import { createRequire } from "node:module";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { GitHubPatClient as GitHubPatClientInstance } from "git-workspace-service";
+import {
+  GitHubPatClient,
+  type GitHubPatClient as GitHubPatClientInstance,
+} from "git-workspace-service";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   addComment,
@@ -24,10 +20,6 @@ import {
   parseOwnerRepo,
   updateIssue,
 } from "../services/workspace-github.ts";
-
-const { GitHubPatClient } = createRequire(import.meta.url)(
-  "git-workspace-service",
-) as typeof import("git-workspace-service");
 
 interface RecordedRequest {
   method: string;

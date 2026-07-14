@@ -1,43 +1,32 @@
 /**
- * Coding Workspace Service - Manages git workspaces for coding tasks
- *
- * Delegates to:
- * - workspace-github.ts  (issue management, OAuth, PAT auth)
- * - workspace-git-ops.ts (status, commit, push, PR creation)
- * - workspace-lifecycle.ts (GC, scratch dir cleanup)
- * - workspace-types.ts   (shared interface definitions)
- *
- * @module services/workspace-service
+ * Coordinates git workspaces for coding tasks across provisioning, review,
+ * submission, and cleanup. Focused modules own remote GitHub operations, git
+ * commands, lifecycle policy, and DTOs while this service preserves shared
+ * credentials and workspace state for the runtime.
  */
 
 import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
-import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import type {
-  CreateIssueOptions,
-  CredentialService as CredentialServiceInstance,
-  GitHubPatClient as GitHubPatClientInstance,
-  IssueComment,
-  IssueInfo,
-  IssueState,
-  PullRequestInfo,
-  WorkspaceConfig,
-  WorkspaceEvent,
-  WorkspaceService as WorkspaceServiceInstance,
-} from "git-workspace-service";
-
-const {
+import {
+  type CreateIssueOptions,
   CredentialService,
+  type CredentialService as CredentialServiceInstance,
   GitHubPatClient,
+  type GitHubPatClient as GitHubPatClientInstance,
+  type IssueComment,
+  type IssueInfo,
+  type IssueState,
   MemoryTokenStore,
+  type PullRequestInfo,
+  type WorkspaceConfig,
+  type WorkspaceEvent,
   WorkspaceService,
-} = createRequire(import.meta.url)(
-  "git-workspace-service",
-) as typeof import("git-workspace-service");
+  type WorkspaceService as WorkspaceServiceInstance,
+} from "git-workspace-service";
 
 type CloneOverrideWorkspace = {
   path: string;

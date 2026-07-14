@@ -7,11 +7,11 @@
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
 import { resolveModelGatewayConfig } from "./model-gateway.js";
+import { resolveAgentOrchestratorPackageRoot } from "./runtime-package-root.js";
 
 const ELIZA_CLOUD_OPENAI_BASE = "https://elizacloud.ai/api/v1";
 const OPENCODE_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1";
@@ -261,10 +261,18 @@ function parentDirs(start: string): string[] {
 }
 
 function candidateRoots(): string[] {
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  return Array.from(
-    new Set([...parentDirs(process.cwd()), ...parentDirs(moduleDir)]),
-  );
+  // Resolve through the installed package graph instead of import.meta.url:
+  // bundlers replace the module URL with an absolute build-machine path,
+  // which would leak the checkout into (and break) relocated runtimes.
+  const roots = [...parentDirs(process.cwd())];
+  try {
+    roots.push(...parentDirs(resolveAgentOrchestratorPackageRoot()));
+  } catch {
+    // error-policy:J3 an unresolvable installed package is the explicit
+    // "no vendored shim reachable" signal; the cwd walk already covers
+    // source checkouts.
+  }
+  return Array.from(new Set(roots));
 }
 
 export function resolveVendoredOpencodeShim(): string | undefined {

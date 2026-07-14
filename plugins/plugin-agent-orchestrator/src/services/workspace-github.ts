@@ -1,25 +1,19 @@
 /**
- * GitHub integration for Coding Workspace Service
- *
- * Extracted from workspace-service.ts — provides GitHub API access
- * via PAT or OAuth device flow, plus all issue management operations.
- *
- * @module services/workspace-github
+ * GitHub authentication and issue operations for coding workspaces. The
+ * workspace service supplies per-agent credentials and retains client state;
+ * this module keeps the remote API boundary stateless and independently usable.
  */
 
-import { createRequire } from "node:module";
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  CreateIssueOptions,
-  GitHubPatClient as GitHubPatClientInstance,
-  IssueComment,
-  IssueInfo,
-  IssueState,
+import {
+  type CreateIssueOptions,
+  GitHubPatClient,
+  type GitHubPatClient as GitHubPatClientInstance,
+  type IssueComment,
+  type IssueInfo,
+  type IssueState,
+  OAuthDeviceFlow,
 } from "git-workspace-service";
-
-const { GitHubPatClient, OAuthDeviceFlow } = createRequire(import.meta.url)(
-  "git-workspace-service",
-) as typeof import("git-workspace-service");
 
 /**
  * Callback for surfacing auth prompts to the user.
