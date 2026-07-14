@@ -516,25 +516,28 @@ jobs:
             "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
           test -s /usr/lib/elizaos-app/node/LICENSE
           test -s /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json
-          test -s /usr/share/doc/elizaos-app/nodejs-LICENSE
-          test -s /usr/share/doc/elizaos-app/nodejs-runtime-provenance.json
           test -L /usr/lib/elizaos-app/node/bin/npm
           test -f /usr/lib/elizaos-app/node/include/node/node.h
           test -f /usr/lib/elizaos-app/node/lib/node_modules/npm/package.json
-          cmp /usr/lib/elizaos-app/node/LICENSE \
-            /usr/share/doc/elizaos-app/nodejs-LICENSE
-          cmp /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json \
-            /usr/share/doc/elizaos-app/nodejs-runtime-provenance.json
           test -s /usr/lib/elizaos-app/LICENSE
           test -s /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json
-          test -s /usr/share/doc/elizaos-app/elizaos-LICENSE
-          test -s /usr/share/doc/elizaos-app/third-party-notices.json
-          test "$(sha256sum /usr/share/doc/elizaos-app/elizaos-LICENSE | cut -d ' ' -f 1)" = \
+          # Hosts may legitimately strip /usr/share/doc at install time (dpkg
+          # path-exclude on GitHub runners and minimal containers), so the
+          # Debian-policy doc copies are asserted against the package payload,
+          # never the installed filesystem.
+          for doc_copy in \
+            "nodejs-LICENSE:/usr/lib/elizaos-app/node/LICENSE" \
+            "nodejs-runtime-provenance.json:/usr/lib/elizaos-app/node/elizaos-runtime-provenance.json" \
+            "elizaos-LICENSE:/usr/lib/elizaos-app/LICENSE" \
+            "third-party-notices.json:/usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json"; do
+            doc_name="${doc_copy%%:*}"
+            runtime_copy="${doc_copy#*:}"
+            dpkg-deb --fsys-tarfile "$DEB_PATH" |
+              tar -xO "./usr/share/doc/elizaos-app/$doc_name" |
+              cmp - "$runtime_copy"
+          done
+          test "$(sha256sum /usr/lib/elizaos-app/LICENSE | cut -d ' ' -f 1)" = \
             "d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d"
-          cmp /usr/lib/elizaos-app/LICENSE \
-            /usr/share/doc/elizaos-app/elizaos-LICENSE
-          cmp /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json \
-            /usr/share/doc/elizaos-app/third-party-notices.json
           "$BUNDLED_NODE" -e '
           const inventory = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
           if (
@@ -546,7 +549,7 @@ jobs:
             inventory.licenseTextCount < 1 ||
             inventory.packages.some((entry) => !entry.licenseDeclared)
           ) process.exit(1);
-          ' /usr/share/doc/elizaos-app/third-party-notices.json
+          ' /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json
 
           grep -Fq 'export PATH=/usr/lib/elizaos-app/node/bin:$PATH' \
             /usr/bin/elizaos-app

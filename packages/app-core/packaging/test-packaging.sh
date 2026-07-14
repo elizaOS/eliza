@@ -126,11 +126,12 @@ workflow_proves_bundled_debian_node() {
   grep -Fq 'd1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c' "$workflow" || return 1
   grep -Fq '/usr/lib/elizaos-app/node/LICENSE' "$workflow" || return 1
   grep -Fq '/usr/lib/elizaos-app/node/elizaos-runtime-provenance.json' "$workflow" || return 1
-  grep -Fq 'cmp /usr/lib/elizaos-app/node/LICENSE' "$workflow" || return 1
-  grep -Fq 'cmp /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json' "$workflow" || return 1
-  grep -Fq '/usr/share/doc/elizaos-app/elizaos-LICENSE' "$workflow" || return 1
-  grep -Fq '/usr/share/doc/elizaos-app/third-party-notices.json' "$workflow" || return 1
-  grep -Fq 'cmp /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json' "$workflow" || return 1
+  # Doc copies are proven against the .deb payload (hosts may dpkg-exclude
+  # /usr/share/doc), so require the payload-extraction comparison loop.
+  grep -Fq 'usr/share/doc/elizaos-app/$doc_name' "$workflow" || return 1
+  grep -Fq 'cmp - "$runtime_copy"' "$workflow" || return 1
+  grep -Fq 'nodejs-runtime-provenance.json:/usr/lib/elizaos-app/node/elizaos-runtime-provenance.json' "$workflow" || return 1
+  grep -Fq 'third-party-notices.json:/usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json' "$workflow" || return 1
   grep -Fq 'inventory.packageCount !== inventory.packages.length' "$workflow" || return 1
   grep -Fq '/usr/lib/elizaos-app/node/include/node/node.h' "$workflow" || return 1
   grep -Fq '/usr/lib/elizaos-app/node/lib/node_modules/npm/package.json' "$workflow" || return 1
