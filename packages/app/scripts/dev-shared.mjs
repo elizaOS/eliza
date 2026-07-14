@@ -28,7 +28,8 @@ console.log(
     `[dev:shared] registry=${registryPath}`,
 );
 
-const child = spawn("bun", ["--bun", "vite"], {
+const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
+const child = spawn(process.execPath, [viteCli], {
   cwd: appDir,
   env,
   stdio: "inherit",
