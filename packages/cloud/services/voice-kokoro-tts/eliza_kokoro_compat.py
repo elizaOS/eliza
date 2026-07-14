@@ -32,7 +32,7 @@ async def cloud_tts(payload: CloudTTSRequest, request: Request):
             voice=payload.voice,
             response_format="wav",
             speed=payload.speed,
-            stream=False,
+            stream=True,
         ),
         request,
     )

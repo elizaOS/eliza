@@ -117,7 +117,7 @@ describe("Railway voice service definitions (#14374)", () => {
           expect(adapter).toContain('@app.post("/api/tts")');
           expect(adapter).toContain("OpenAISpeechRequest(");
           expect(adapter).toContain('response_format="wav"');
-          expect(adapter).toContain("stream=False");
+          expect(adapter).toContain("stream=True");
         });
       }
 

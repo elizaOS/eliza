@@ -21,6 +21,8 @@ FROM ${KOKORO_IMAGE}
 
 # Kokoro-FastAPI v0.2.2 exposes only /v1/audio/speech. Cloud-api's stable free
 # voice contract remains /api/tts, so the derived image owns that typed adapter.
+# Its complete-audio path omits the required voice during text chunking; the
+# streaming WAV path is the upstream-supported path that preserves the voice.
 COPY --chown=appuser:appuser eliza_kokoro_compat.py /app/eliza_kokoro_compat.py
 
 # Railway replaces this default with its deployment-specific PORT. The upstream
