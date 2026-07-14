@@ -189,6 +189,27 @@ export type WalletAssessmentSummary = {
   userDecisionNotice: string;
 };
 
+export type WalletAssessmentContext = {
+  overallAssessment: string;
+
+  confidence: "low" | "medium" | "high";
+
+  evidenceStrength:
+    | "low"
+    | "medium"
+    | "high";
+
+  keyFindings: string[];
+
+  informationGaps: string[];
+
+  supportingEvidenceRecordIds: string[];
+
+  generatedAt: string;
+
+  notice: string;
+};
+
 export type WalletEvidenceRecord = {
   id: string;
 
