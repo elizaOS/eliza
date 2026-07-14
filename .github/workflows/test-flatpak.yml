@@ -197,7 +197,7 @@ jobs:
             rm -rf -- "$APP_CHECKOUT"
           }
           trap cleanup_app_checkout EXIT
-          ostree --repo="$FLATPAK_REPO" checkout "$EXPECTED_COMMIT" "$APP_CHECKOUT"
+          ostree --repo="$FLATPAK_REPO" checkout --user-mode "$EXPECTED_COMMIT" "$APP_CHECKOUT"
           test -d "$APP_CHECKOUT/files"
           mapfile -t bundled_media_bins < <(
             find "$APP_CHECKOUT/files" \
