@@ -190,8 +190,8 @@ jobs:
             '^content(\[[^]]*\])?[[:space:]]+elizaos-app:ffmpeg-2204[[:space:]]+ffmpeg-2204:ffmpeg-2204([[:space:]]|$)'
           echo "=== Installed snap ==="
           snap list elizaos-app
-          NATIVE_AUDIT="$({
-            sudo snap run --shell elizaos-app <<'SNAP_SHELL'
+          NATIVE_AUDIT_LOG="$RUNNER_TEMP/elizaos-snap-native-audit-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+          sudo snap run --shell elizaos-app <<'SNAP_SHELL' 2>&1 | tee "$NATIVE_AUDIT_LOG"
           set -eu
           export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/lib/x86_64-linux-gnu"
           test "$FFMPEG_BIN" = "$SNAP/ffmpeg-platform/usr/bin/ffmpeg"
@@ -234,9 +234,7 @@ jobs:
           trap - 0
           find "$SNAP/lib/elizaos-app" -type f -name '*.node' -exec ldd '{}' ';'
           SNAP_SHELL
-          } 2>&1)"
-          printf '%s\n' "$NATIVE_AUDIT"
-          if grep -q 'not found' <<< "$NATIVE_AUDIT"; then
+          if grep -q 'not found' "$NATIVE_AUDIT_LOG"; then
             echo "::error::Installed Snap has unresolved native-library dependencies"
             exit 1
           fi
