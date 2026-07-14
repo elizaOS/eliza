@@ -69,6 +69,12 @@ the lightweight PR surface and remains independent of the exhaustive fleet:
   roll-ups inside the post-merge `test.yml` orchestrator. They report branch
   health after a develop push; they are not the pre-merge required context.
 
+The aggregate contract runs directly under Node in
+`packages/scripts/develop-pr-aggregate.self-test.mjs`; the changed-file gate
+loads the same assertions through
+`packages/scripts/develop-pr-aggregate.test.mjs` so the implementation also
+produces enforced per-file coverage.
+
 Two SPOF guards, enforced by `packages/scripts/ci-merge-gate-contract.mjs` (run
 in the `changes` job, #13617):
 
