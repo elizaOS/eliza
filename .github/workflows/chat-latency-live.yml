@@ -677,31 +677,40 @@ jobs:
           node --input-type=module - <<'NODE'
           const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
           let body;
+          let consecutiveExactResponses = 0;
           let lastOutcome = "no response";
-          for (let attempt = 1; attempt <= 12; attempt += 1) {
+          for (let attempt = 1; attempt <= 24; attempt += 1) {
             try {
               const response = await fetch(process.env.AUTH_PROBE_BASE_URL + "/api/health", {
                 signal: AbortSignal.timeout(30_000),
               });
               if (response.ok) {
-                body = await response.json();
-                break;
+                const candidate = await response.json();
+                if (candidate?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
+                  throw new Error("Isolated deployment does not serve the requested checkout");
+                }
+                if (candidate?.environment !== process.env.AUTH_PROBE_CACHE_ENV) {
+                  throw new Error("Diagnostic Worker cache environment is not isolated");
+                }
+                consecutiveExactResponses += 1;
+                lastOutcome = consecutiveExactResponses + " consecutive exact responses";
+                if (consecutiveExactResponses === 3) {
+                  body = candidate;
+                  break;
+                }
+              } else {
+                consecutiveExactResponses = 0;
+                lastOutcome = "HTTP " + response.status;
               }
-              lastOutcome = "HTTP " + response.status;
             } catch {
-              // error-policy:J1 Preview readiness is this workflow's external transport boundary.
+              // error-policy:J1 Worker readiness is this workflow's external transport boundary.
+              consecutiveExactResponses = 0;
               lastOutcome = "request error";
             }
-            if (attempt < 12) await sleep(5_000);
+            if (attempt < 24) await sleep(5_000);
           }
           if (!body) {
-            throw new Error("Isolated deployment did not become ready after 12 attempts; last outcome " + lastOutcome);
-          }
-          if (body?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
-            throw new Error("Isolated deployment does not serve the requested checkout");
-          }
-          if (body?.environment !== process.env.AUTH_PROBE_CACHE_ENV) {
-            throw new Error("Diagnostic Worker cache environment is not isolated");
+            throw new Error("Isolated deployment did not stabilize after 24 attempts; last outcome " + lastOutcome);
           }
           console.log("Verified exact isolated deployment and cache environment");
           NODE
@@ -727,7 +736,7 @@ jobs:
           }
           trap cleanup EXIT
 
-          WRANGLER_LOG=none bunx wrangler tail "$AUTH_PROBE_WORKER_NAME" \
+          bunx wrangler tail "$AUTH_PROBE_WORKER_NAME" \
             --format json \
             --sampling-rate 1 \
             --search "[InferenceAuth] trace" \
@@ -736,9 +745,12 @@ jobs:
           tail_pid="$!"
           sleep 5
           if ! kill -0 "$tail_pid" 2>/dev/null; then
-            node --input-type=module - "$tail_log" <<'NODE'
+            node --input-type=module - "$tail_log" "$raw_tail" <<'NODE'
           import { readFileSync } from "node:fs";
-          const raw = readFileSync(process.argv[2], "utf8");
+          const raw = [process.argv[2], process.argv[3]]
+            .map((path) => readFileSync(path, "utf8"))
+            .filter(Boolean)
+            .join("\n");
           const safe = raw.replaceAll(process.env.CLOUDFLARE_ACCOUNT_ID ?? "", "[account]");
           console.error(safe.slice(-2_000));
           NODE
@@ -799,11 +811,26 @@ jobs:
           EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
         run: |
           node --input-type=module - <<'NODE'
-          const response = await fetch(process.env.AUTH_PROBE_BASE_URL + "/api/health", {
-            signal: AbortSignal.timeout(30_000),
-          });
-          if (!response.ok) throw new Error("Isolated Worker health returned HTTP " + response.status);
-          const body = await response.json();
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          let body;
+          let lastOutcome = "no response";
+          for (let attempt = 1; attempt <= 6; attempt += 1) {
+            try {
+              const response = await fetch(process.env.AUTH_PROBE_BASE_URL + "/api/health", {
+                signal: AbortSignal.timeout(30_000),
+              });
+              if (response.ok) {
+                body = await response.json();
+                break;
+              }
+              lastOutcome = "HTTP " + response.status;
+            } catch {
+              // error-policy:J1 Post-capture health is this workflow's external transport boundary.
+              lastOutcome = "request error";
+            }
+            if (attempt < 6) await sleep(5_000);
+          }
+          if (!body) throw new Error("Isolated Worker health failed after capture: " + lastOutcome);
           if (body?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
             throw new Error("Isolated deployment changed during auth capture");
           }

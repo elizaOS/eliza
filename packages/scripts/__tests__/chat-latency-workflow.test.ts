@@ -175,7 +175,8 @@ describe("chat latency live workflow", () => {
     expect(isolated).toContain(
       "Isolated deployment remained on the exact checkout",
     );
-    expect(isolated).toContain("attempt <= 12");
+    expect(isolated).toContain("attempt <= 24");
+    expect(isolated).toContain("consecutiveExactResponses === 3");
     expect(isolated).toContain("steps.auth-probe.outcome != 'skipped'");
     expect(isolated).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
     expect(isolated).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
