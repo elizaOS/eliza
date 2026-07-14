@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -10,8 +9,8 @@ import sys
 from collections.abc import Sequence
 from importlib import metadata
 
-MIN_NODE_VERSION = (22, 0, 0)
-DEFAULT_NPM_PACKAGE = "elizaos"
+MIN_NODE_VERSION = (24, 0, 0)
+NPM_PACKAGE = "elizaos"
 
 
 class ElizaOSAppError(RuntimeError):
@@ -46,7 +45,14 @@ def _get_node_version(node: str) -> tuple[int, int, int] | None:
             text=True,
             timeout=10,
         )
+    except subprocess.TimeoutExpired as error:
+        # error-policy:J2 a hung executable is a typed launcher failure with
+        # the process-probe cause retained for diagnostics.
+        raise RuntimeInstallError(
+            "timed out while determining Node.js version"
+        ) from error
     except OSError:
+        # error-policy:J3 an unstartable executable is an explicit invalid probe.
         return None
     if result.returncode != 0:
         return None
@@ -56,7 +62,7 @@ def _get_node_version(node: str) -> tuple[int, int, int] | None:
 def _check_node(min_version: tuple[int, int, int] = MIN_NODE_VERSION) -> str:
     node = _find_node()
     if not node:
-        raise NodeNotFoundError("Node.js 22 or newer is required on PATH")
+        raise NodeNotFoundError("Node.js 24 or newer is required on PATH")
 
     version = _get_node_version(node)
     if version is None:
@@ -71,16 +77,23 @@ def _check_node(min_version: tuple[int, int, int] = MIN_NODE_VERSION) -> str:
 
 
 def _pep440_to_npm_version(version: str) -> str:
-    match = re.fullmatch(r"(\d+\.\d+\.\d+)b(\d+)", version)
-    if match:
-        return f"{match.group(1)}-beta.{match.group(2)}"
-    return version
+    stable = re.fullmatch(r"\d+\.\d+\.\d+", version)
+    if stable:
+        return version
+
+    prerelease = re.fullmatch(r"(\d+\.\d+\.\d+)(b|rc)(\d+)", version)
+    if prerelease:
+        label = "beta" if prerelease.group(2) == "b" else "rc"
+        return f"{prerelease.group(1)}-{label}.{prerelease.group(3)}"
+
+    raise ValueError(f"Unsupported elizaos-app version: {version}")
 
 
 def get_version() -> str:
     try:
         return metadata.version("elizaos-app")
     except metadata.PackageNotFoundError:
+        # error-policy:J4 source-tree execution has no installed distribution metadata.
         from . import __version__
 
         return __version__
@@ -96,14 +109,8 @@ def _npm_exec_command(argv: Sequence[str]) -> list[str]:
     if not npm:
         raise RuntimeInstallError("npm is required to launch elizaOS App")
 
-    package_name = os.environ.get("ELIZAOS_APP_NPM_PACKAGE", DEFAULT_NPM_PACKAGE)
-    package_version = os.environ.get(
-        "ELIZAOS_APP_NPM_VERSION",
-        _pep440_to_npm_version(get_version()),
-    )
-    package_spec = (
-        f"{package_name}@{package_version}" if package_version else package_name
-    )
+    package_version = _pep440_to_npm_version(get_version())
+    package_spec = f"{NPM_PACKAGE}@{package_version}"
     return [
         npm,
         "exec",
@@ -124,4 +131,5 @@ def run(argv: Sequence[str] | None = None) -> int:
     try:
         return subprocess.call(command)
     except OSError as error:
+        # error-policy:J2 preserve the process cause behind the launcher error type.
         raise RuntimeInstallError(str(error)) from error

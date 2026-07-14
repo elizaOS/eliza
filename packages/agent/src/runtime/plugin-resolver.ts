@@ -2387,6 +2387,19 @@ export async function resolvePlugins(
           : await importPluginFromWorkspaceNodeModules();
       }
 
+      // Packaged Linux runtimes (prepare-packaged-runtime.mjs --stub) replace
+      // license-restricted plugins with inert marker modules. That is a
+      // designed absence, not a load failure: skip without recording an error
+      // so installed-package health reports the runtime as fully loaded.
+      if (
+        (mod as { __elizaPackagedStub?: unknown }).__elizaPackagedStub === true
+      ) {
+        logger.info(
+          `[eliza] Plugin ${pluginName} is stubbed in this packaged runtime (license-restricted dependencies are not redistributed); feature disabled`,
+        );
+        return null;
+      }
+
       const pluginInstance = findRuntimePluginExport(mod);
 
       if (pluginInstance) {

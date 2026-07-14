@@ -1,0 +1,18 @@
+# Runs the packaged agent as a per-user service after that user enables it.
+# dh_installsystemduser owns installation and maintainer-script integration.
+
+[Unit]
+Description=elizaOS App — Personal AI Assistant
+Documentation=https://github.com/elizaOS/eliza
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/elizaos-app serve
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target

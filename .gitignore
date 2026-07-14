@@ -1582,3 +1582,11 @@ packages/ui/src/components/shell/__e2e__/output-fused-wake-integration/
 packages/ui/src/testing/__e2e__/output-widget-cert/
 # Home locale e2e output (screenshots — regenerate via test:home-locale-e2e)
 packages/ui/src/components/shell/__e2e__/output-home-locale/
+# Generated hermetic package runtimes (prepare-packaged-runtime.mjs /
+# locked-node-runtime.mjs); Linux package workflows assemble these per build.
+packages/app-core/packaging/flatpak/runtime/
+packages/app-core/packaging/debian/runtime/
+packages/app-core/packaging/debian/node-runtime/
+packages/app-core/packaging/snap/runtime/
+packages/app-core/packaging/*/.runtime.prepare-*/
+packages/app-core/packaging/*/.runtime.prepare-*

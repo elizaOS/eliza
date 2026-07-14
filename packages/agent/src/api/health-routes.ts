@@ -607,6 +607,11 @@ export async function handleHealthRoutes(
       // plugins) register AFTER `ready` flips. Poll `deferredBoot.settled`
       // before hitting feature routes right after boot instead of sleeping.
       deferredBoot: getDeferredBootStatus(),
+      // The package verifier injects an unguessable per-process challenge so
+      // a healthy service already occupying the port cannot satisfy its probe.
+      ...(process.env.ELIZA_PACKAGE_SMOKE_NONCE
+        ? { verificationNonce: process.env.ELIZA_PACKAGE_SMOKE_NONCE }
+        : {}),
     });
     return true;
   }

@@ -3,8 +3,6 @@ name: Build elizaOS Debian Package
 on:
   workflow_call:
   workflow_dispatch:
-  release:
-    types: [created]
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -12,44 +10,112 @@ permissions:
 
 jobs:
   build-deb:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
 
     permissions:
-      # contents: write covers the existing softprops/action-gh-release
-      # release upload + checkout.
       # id-token + attestations are required by
       # actions/attest-build-provenance@v4 to mint a Sigstore-signed
       # SLSA build provenance for the .deb via GitHub OIDC.
-      contents: write
+      contents: read
       id-token: write
       attestations: write
 
     steps:
+      - name: Free disk space on runner
+        run: |
+          set -euo pipefail
+          echo "=== before ==="
+          df -h /
+          # error-policy:J6 optional hosted-runner toolchains are reclaimed on
+          # a best-effort basis; package verification remains fail-closed.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          echo "=== after ==="
+          df -h /
+          AVAILABLE_KB="$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+          MIN_FREE_KB=$((30 * 1024 * 1024))
+          if (( AVAILABLE_KB < MIN_FREE_KB )); then
+            echo "::error::Debian build requires at least 30 GiB free; found ${AVAILABLE_KB} KiB"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - name: Install Debian build tools
         run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
             dpkg-dev \
             devscripts \
             debhelper \
             dh-make \
             fakeroot \
-            lintian
+            lintian \
+            xz-utils
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+          check-latest: false
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          bun-version: "1.4.0"
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
+        run: bun run install:light
 
-      - name: Build
-        run: bun run build
+      - name: Build agent runtime closure
+        run: >-
+          node packages/scripts/run-turbo.mjs run build
+          --filter=@elizaos/agent...
+          --concurrency=8
+
+      - name: Prepare packaged runtime
+        run: >-
+          node packages/scripts/prepare-packaged-runtime.mjs
+          --source-root .
+          --destination-root packages/app-core/packaging/debian/runtime
+          --entry @elizaos/agent
+          --stub @elizaos/plugin-vision
+          --stub @elizaos/plugin-wallet
+          --stub @elizaos/plugin-whatsapp
+
+      - name: Provision locked Node.js runtime
+        run: >-
+          node packages/scripts/locked-node-runtime.mjs
+          packages/app-core/packaging/debian/node-runtime
+
+      - name: Generate runtime license inventory
+        run: >-
+          node packages/app-core/packaging/generate-license-inventory.mjs
+          packages/app-core/packaging/debian/runtime
+
+      - name: Reject bundled FFmpeg executables
+        env:
+          PACKAGED_RUNTIME: packages/app-core/packaging/debian/runtime
+        run: |
+          set -euo pipefail
+          test -d "$PACKAGED_RUNTIME"
+          mapfile -t bundled_media_bins < <(
+            find "$PACKAGED_RUNTIME" \
+              \( -type f -o -type l \) \
+              \( -name ffmpeg -o -name ffmpeg.exe -o -name ffprobe -o -name ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Packaged runtime must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
 
       - name: Build .deb package
         id: deb
@@ -59,27 +125,35 @@ jobs:
             echo "ERROR: packages/app-core/packaging/debian is missing — debian packaging dir is required for the .deb build. Repo state is bad."
             exit 1
           fi
-          # dpkg-buildpackage expects the source root to have a debian/ subdir
-          # alongside the source it needs to build. The repo keeps the
-          # packaging definitions under packages/app-core/packaging/debian to
-          # avoid clutter; link them into the app-core source root for the
-          # build, then unlink so a follow-up run is idempotent.
-          cd packages/app-core
-          if [ ! -L debian ]; then
-            ln -sfn packaging/debian debian
-          fi
-          dpkg-buildpackage -us -uc -b -d
-          rm -f debian
+          test ! -e debian
+          install -d debian
+          git archive --format=tar HEAD packages/app-core/packaging/debian | \
+            tar --extract --directory=debian --strip-components=4
+          test ! -e debian/runtime
+          test ! -e debian/node-runtime
+          VERSION="$(node -p "require('./packages/agent/package.json').version")"
+          DEB_VERSION="$(printf '%s' "$VERSION" | sed -E 's/-beta\./~beta/; s/-rc\./~rc/')-1"
+          sed -i "1s/([^)]*)/($DEB_VERSION)/" debian/changelog
+          dpkg-checkbuilddeps debian/control
+          dpkg-buildpackage -us -uc -b
 
       - name: Find and checksum .deb
         id: find_deb
         run: |
           set -euo pipefail
-          DEB=$(find . -maxdepth 3 -name "*.deb" | head -1)
-          if [ -z "$DEB" ]; then
-            echo "ERROR: no .deb file produced after dpkg-buildpackage"
+          mapfile -t main_debs < <(
+            find .. -maxdepth 1 -type f -name 'elizaos-app_*.deb' \
+              ! -name '*-dbgsym_*' -print
+          )
+          if [[ "${#main_debs[@]}" -ne 1 ]]; then
+            echo "ERROR: expected exactly one main elizaos-app .deb"
             exit 1
           fi
+          bash packages/app-core/packaging/debian/verify-maintainer-scripts.sh \
+            "${main_debs[0]}"
+          mkdir -p deb-output
+          cp "${main_debs[0]}" deb-output/
+          DEB="deb-output/$(basename "${main_debs[0]}")"
           sha256sum "$DEB" > "${DEB}.sha256"
           DEB_SHA256=$(cut -d' ' -f1 "${DEB}.sha256")
           DEB_SIZE=$(stat --format="%s" "$DEB")
@@ -88,14 +162,137 @@ jobs:
           echo "deb_size=$DEB_SIZE" >> "$GITHUB_OUTPUT"
           echo "Found .deb: $DEB ($DEB_SIZE bytes)"
 
+      - name: Reject FFmpeg executables in final Debian payload
+        env:
+          DEB_PATH: ${{ steps.find_deb.outputs.deb_path }}
+        run: |
+          set -euo pipefail
+          PAYLOAD_ROOT="$RUNNER_TEMP/elizaos-deb-payload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          test ! -e "$PAYLOAD_ROOT"
+          cleanup_payload_root() {
+            rm -rf -- "$PAYLOAD_ROOT"
+          }
+          trap cleanup_payload_root EXIT
+          dpkg-deb --extract "$DEB_PATH" "$PAYLOAD_ROOT"
+          mapfile -t bundled_media_bins < <(
+            find "$PAYLOAD_ROOT" \
+              \( -type f -o -type l \) \
+              \( -iname ffmpeg -o -iname ffmpeg.exe -o -iname ffprobe -o -iname ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Final Debian payload must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
+          rm -rf -- "$PAYLOAD_ROOT"
+          trap - EXIT
+
+      - name: Install and boot .deb
+        env:
+          DEB_PATH: ${{ steps.find_deb.outputs.deb_path }}
+        run: |
+          set -euo pipefail
+          DEB_PATH="$(realpath "$DEB_PATH")"
+          DEB_DEPENDS="$(dpkg-deb -f "$DEB_PATH" Depends)"
+          if grep -Eq '(^|[,[:space:]])nodejs([,[:space:]()]|$)' <<< "$DEB_DEPENDS"; then
+            echo "::error::Debian package unexpectedly depends on host nodejs: $DEB_DEPENDS"
+            exit 1
+          fi
+          if [[ "$DEB_DEPENDS" == *'${'* ]] ||
+             ! grep -Eq '(^|,[[:space:]]*)libc6([[:space:],(]|$)' <<< "$DEB_DEPENDS" ||
+             ! grep -Eq '(^|,[[:space:]]*)libstdc\+\+6([[:space:],(]|$)' <<< "$DEB_DEPENDS"; then
+            echo "::error::Debian shared-library dependencies were not derived: $DEB_DEPENDS"
+            exit 1
+          fi
+          sudo apt-get install -y "$DEB_PATH"
+          BUNDLED_NODE=/usr/lib/elizaos-app/node/bin/node
+          test "$("$BUNDLED_NODE" --version)" = "v24.15.0"
+          test "$(sha256sum "$BUNDLED_NODE" | cut -d' ' -f1)" = \
+            "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+          test -s /usr/lib/elizaos-app/node/LICENSE
+          test -s /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json
+          test -s /usr/share/doc/elizaos-app/nodejs-LICENSE
+          test -s /usr/share/doc/elizaos-app/nodejs-runtime-provenance.json
+          test -L /usr/lib/elizaos-app/node/bin/npm
+          test -f /usr/lib/elizaos-app/node/include/node/node.h
+          test -f /usr/lib/elizaos-app/node/lib/node_modules/npm/package.json
+          cmp /usr/lib/elizaos-app/node/LICENSE \
+            /usr/share/doc/elizaos-app/nodejs-LICENSE
+          cmp /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json \
+            /usr/share/doc/elizaos-app/nodejs-runtime-provenance.json
+          test -s /usr/lib/elizaos-app/LICENSE
+          test -s /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json
+          test -s /usr/share/doc/elizaos-app/elizaos-LICENSE
+          test -s /usr/share/doc/elizaos-app/third-party-notices.json
+          test "$(sha256sum /usr/share/doc/elizaos-app/elizaos-LICENSE | cut -d ' ' -f 1)" = \
+            "d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d"
+          cmp /usr/lib/elizaos-app/LICENSE \
+            /usr/share/doc/elizaos-app/elizaos-LICENSE
+          cmp /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json \
+            /usr/share/doc/elizaos-app/third-party-notices.json
+          "$BUNDLED_NODE" -e '
+          const inventory = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+          if (
+            inventory.schemaVersion !== 1 ||
+            inventory.project.sha256 !== "d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d" ||
+            inventory.packageCount !== inventory.packages.length ||
+            inventory.packageCount < 1 ||
+            inventory.licenseTextCount !== inventory.licenseTexts.length ||
+            inventory.licenseTextCount < 1 ||
+            inventory.packages.some((entry) => !entry.licenseDeclared)
+          ) process.exit(1);
+          ' /usr/share/doc/elizaos-app/third-party-notices.json
+
+          grep -Fq 'export PATH=/usr/lib/elizaos-app/node/bin:$PATH' \
+            /usr/bin/elizaos-app
+          grep -Fq \
+            'exec /usr/lib/elizaos-app/node/bin/node /usr/lib/elizaos-app/node_modules/@elizaos/agent/bin.js' \
+            /usr/bin/elizaos-app
+          "$BUNDLED_NODE" --input-type=module <<'NODE_PROVENANCE'
+          import { readFileSync } from "node:fs";
+          const provenance = JSON.parse(readFileSync(
+            "/usr/lib/elizaos-app/node/elizaos-runtime-provenance.json",
+            "utf8",
+          ));
+          if (
+            provenance.version !== "24.15.0" ||
+            provenance.platform !== "linux-x64" ||
+            provenance.archiveSha256 !== "472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6" ||
+            provenance.executableSha256 !== "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c" ||
+            provenance.source?.sha256 !== "a4f653d79ed140aaad921e8c22a3b585ca85cfdab80d4030f6309e4663a8a1c8"
+          ) {
+            throw new Error(`Unexpected installed Node.js provenance: ${JSON.stringify(provenance)}`);
+          }
+          NODE_PROVENANCE
+          MEDIA_SMOKE="$(mktemp --suffix=.mp4)"
+          trap 'rm -f "$MEDIA_SMOKE"' EXIT
+          /usr/bin/ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i color=c=black:s=16x16:d=0.04 \
+            -c:v libx264 -pix_fmt yuv420p -y "$MEDIA_SMOKE"
+          CODEC_NAME="$(
+            /usr/bin/ffprobe -v error -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of default=noprint_wrappers=1:nokey=1 "$MEDIA_SMOKE"
+          )"
+          test "$CODEC_NAME" = h264
+          rm -f "$MEDIA_SMOKE"
+          trap - EXIT
+          EXPECTED_VERSION="$(node -p "require('./packages/agent/package.json').version")"
+          test "$(PATH=/nonexistent /usr/bin/elizaos-app --version)" = \
+            "$EXPECTED_VERSION"
+          PATH=/usr/bin:/bin "$BUNDLED_NODE" packages/scripts/verify-packaged-cli.mjs \
+            --expected "$EXPECTED_VERSION" \
+            --health-url http://127.0.0.1:43138/api/health \
+            --service-arg serve \
+            -- /usr/bin/elizaos-app
+
       - name: Lint .deb with lintian
-        # lintian is installed in the "Install Debian build tools" step above.
-        # Findings are surfaced as GitHub annotations but do NOT fail the build —
-        # this is a visibility step. Flip to --fail-on-error once noise is acceptable.
         if: steps.find_deb.outputs.deb_path != ''
         run: |
           set +e
-          lintian -i --pedantic --no-tag-display-limit "${{ steps.find_deb.outputs.deb_path }}" > lintian.log 2>&1
+          lintian --fail-on error -i --pedantic --no-tag-display-limit \
+            "${{ steps.find_deb.outputs.deb_path }}" > lintian.log 2>&1
           LINTIAN_EXIT=$?
           set -e
           while IFS= read -r line; do
@@ -106,7 +303,10 @@ jobs:
               P:*) echo "::notice::lintian: $line" ;;
             esac
           done < lintian.log
-          echo "lintian exit code: $LINTIAN_EXIT (annotations only; not failing build)"
+          if [[ "$LINTIAN_EXIT" -ne 0 ]] || grep -Eq '^E:' lintian.log; then
+            echo "::error::lintian reported a policy error (exit $LINTIAN_EXIT)"
+            exit 1
+          fi
 
       - name: Upload lintian log
         if: always() && steps.find_deb.outputs.deb_path != ''
@@ -114,7 +314,7 @@ jobs:
         with:
           name: elizaos-debian-lintian-log
           path: lintian.log
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 30
 
       - name: Attest SLSA build provenance for .deb
@@ -132,21 +332,10 @@ jobs:
         with:
           name: elizaos-debian-package
           path: |
-            **/*.deb
-            **/*.deb.sha256
+            ${{ steps.find_deb.outputs.deb_path }}
+            ${{ steps.find_deb.outputs.deb_path }}.sha256
           if-no-files-found: error
           retention-days: 30
-
-      - name: Upload to GitHub Release
-        if: (github.event_name == 'release') && steps.find_deb.outputs.deb_path != ''
-        uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b
-        with:
-          files: |
-            **/*.deb
-            **/*.deb.sha256
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Write .deb metadata to summary
         run: |
@@ -154,11 +343,7 @@ jobs:
             echo "## elizaOS Debian Package"
             echo "| Field | Value |"
             echo "| ----- | ----- |"
-            if [ -n "${{ steps.find_deb.outputs.deb_path }}" ]; then
-              echo "| File | \`${{ steps.find_deb.outputs.deb_path }}\` |"
-              echo "| SHA-256 | \`${{ steps.find_deb.outputs.deb_sha256 }}\` |"
-              echo "| Size | ${{ steps.find_deb.outputs.deb_size }} bytes |"
-            else
-              echo "| Status | not produced (packaging/debian may not be present yet) |"
-            fi
+            echo "| File | \`${{ steps.find_deb.outputs.deb_path }}\` |"
+            echo "| SHA-256 | \`${{ steps.find_deb.outputs.deb_sha256 }}\` |"
+            echo "| Size | ${{ steps.find_deb.outputs.deb_size }} bytes |"
           } >> "$GITHUB_STEP_SUMMARY"

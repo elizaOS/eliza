@@ -14,14 +14,8 @@ on:
         required: true
         type: string
     secrets:
-      # Marked `required: false` so this reusable workflow's secret
-      # contract does not abort the parent at startup when called via
-      # `secrets: inherit` from release-orchestrator.yml. The job body
-      # now has a Check credentials step that emits a warning + skips
-      # the dispatch when HOMEBREW_TAP_TOKEN is empty. Mirrors the
-      # pattern used in publish-apt-repo.yml (PR #7976).
       HOMEBREW_TAP_TOKEN:
-        required: false
+        required: true
   workflow_dispatch:
     inputs:
       version:
@@ -30,8 +24,8 @@ on:
         type: string
 
 concurrency:
-  group: update-homebrew-${{ github.ref }}
-  cancel-in-progress: true
+  group: update-homebrew
+  cancel-in-progress: false
 
 # Default to least privilege. Override per-job where needed.
 permissions:
@@ -42,29 +36,28 @@ jobs:
     name: Trigger Homebrew tap update
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
-      - name: Check credentials
-        id: creds
+      - name: Require credentials
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
         run: |
           if [[ -z "$HOMEBREW_TAP_TOKEN" ]]; then
-            echo "::warning::HOMEBREW_TAP_TOKEN not configured. Homebrew tap update skipped."
-            echo "can_dispatch=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "can_dispatch=true" >> "$GITHUB_OUTPUT"
+            echo "::error::HOMEBREW_TAP_TOKEN is required for an enabled Homebrew update"
+            exit 1
           fi
 
       - name: Determine version
-        if: steps.creds.outputs.can_dispatch == 'true'
         id: meta
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          VERSION="${{ inputs.version }}"
-          VERSION="${VERSION#v}"
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Homebrew updates require an exact stable semver version"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Triggering Homebrew update for version: $VERSION"
 
       - name: Dispatch to homebrew-tap
-        if: steps.creds.outputs.can_dispatch == 'true'
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697
         with:
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}

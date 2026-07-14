@@ -1,44 +1,79 @@
 #!/usr/bin/make -f
+# Installs the exact production closure and content-pinned Node distribution
+# prepared by the release job. Debian's build boundary performs no registry
+# resolution, never copies the monorepo, and delegates the user unit entirely
+# to dh_installsystemduser's package-state-aware maintainer scripts.
+
+RUNTIME_DIR := packages/app-core/packaging/debian/runtime
+NODE_RUNTIME_DIR := packages/app-core/packaging/debian/node-runtime
 
 %:
 	dh $@
 
 override_dh_auto_build:
-	# Use bun if available (installed by CI), fallback to npm
-	if command -v bun >/dev/null 2>&1; then \
-		node scripts/init-submodules.mjs || true; \
-		node scripts/disable-local-eliza-workspace.mjs || true; \
-		ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1 bun install --ignore-scripts; \
-		bun run build; \
-	else \
-		npm install --ignore-scripts; \
-		npm run build; \
-	fi
+	test -f $(RUNTIME_DIR)/package.json
+	test -f $(RUNTIME_DIR)/node_modules/@elizaos/agent/bin.js
+	test -s $(RUNTIME_DIR)/LICENSE
+	test -s $(RUNTIME_DIR)/THIRD_PARTY_NOTICES.json
+	test ! -e $(RUNTIME_DIR)/node
+	test -x $(NODE_RUNTIME_DIR)/bin/node
+	test -s $(NODE_RUNTIME_DIR)/LICENSE
+	test -s $(NODE_RUNTIME_DIR)/elizaos-runtime-provenance.json
+	test "$$($(NODE_RUNTIME_DIR)/bin/node --version)" = "v24.15.0"
 
 override_dh_auto_install:
-	# Install the built distribution
 	install -d debian/elizaos-app/usr/lib/elizaos-app
-	cp -r dist/ debian/elizaos-app/usr/lib/elizaos-app/
-	cp elizaos-app.mjs debian/elizaos-app/usr/lib/elizaos-app/
-	cp package.json debian/elizaos-app/usr/lib/elizaos-app/
-	cp -r node_modules/ debian/elizaos-app/usr/lib/elizaos-app/ 2>/dev/null || true
+	cp -a $(RUNTIME_DIR)/. debian/elizaos-app/usr/lib/elizaos-app/
+	install -d debian/elizaos-app/usr/lib/elizaos-app/node
+	cp -a $(NODE_RUNTIME_DIR)/. debian/elizaos-app/usr/lib/elizaos-app/node/
 
-	# Install the plugins manifest
-	install -m 644 plugins.json debian/elizaos-app/usr/lib/elizaos-app/
+	install -d debian/elizaos-app/usr/share/doc/elizaos-app
+	install -m644 $(NODE_RUNTIME_DIR)/LICENSE \
+		debian/elizaos-app/usr/share/doc/elizaos-app/nodejs-LICENSE
+	install -m644 $(NODE_RUNTIME_DIR)/elizaos-runtime-provenance.json \
+		debian/elizaos-app/usr/share/doc/elizaos-app/nodejs-runtime-provenance.json
+	install -m644 $(RUNTIME_DIR)/LICENSE \
+		debian/elizaos-app/usr/share/doc/elizaos-app/elizaos-LICENSE
+	install -m644 $(RUNTIME_DIR)/THIRD_PARTY_NOTICES.json \
+		debian/elizaos-app/usr/share/doc/elizaos-app/third-party-notices.json
 
-	# Create the CLI wrapper
 	install -d debian/elizaos-app/usr/bin
-	printf '#!/bin/sh\nexec /usr/bin/node /usr/lib/elizaos-app/elizaos-app.mjs "$$@"\n' \
+	printf '%s\n' \
+		'#!/bin/sh' \
+		'export PATH=/usr/lib/elizaos-app/node/bin:$$PATH' \
+		'export FFMPEG_BIN=/usr/bin/ffmpeg' \
+		'export FFMPEG_PATH=/usr/bin/ffmpeg' \
+		'export ELIZA_FFMPEG_PATH=/usr/bin/ffmpeg' \
+		'export FFPROBE_PATH=/usr/bin/ffprobe' \
+		'export FFMPEG_LOCATION=/usr/bin' \
+		'exec /usr/lib/elizaos-app/node/bin/node /usr/lib/elizaos-app/node_modules/@elizaos/agent/bin.js "$$@"' \
 		> debian/elizaos-app/usr/bin/elizaos-app
 	chmod 755 debian/elizaos-app/usr/bin/elizaos-app
 
-	# Install systemd user service
-	install -m 644 packaging/debian/elizaos-app.service debian/elizaos-app/usr/lib/elizaos-app/elizaos-app.service
-
 override_dh_auto_test:
-	# Skip tests during package build
+	# The release job exercises the installed .deb from an empty directory;
+	# source validation runs before dpkg-buildpackage at the repository boundary.
 	true
 
+override_dh_dwz:
+	# The prepared closure and Node distribution are content-audited before the
+	# Debian boundary, so build-time ELF rewriting would invalidate provenance.
+	true
+
+override_dh_strip:
+	# Preserve every audited prebuilt native artifact byte-for-byte.
+	true
+
+override_dh_strip_nondeterminism:
+	# Archive normalization would make the installed tree differ from the
+	# provisioned upstream distribution even when the payload is functional.
+	true
+
+override_dh_compress:
+	dh_compress --exclude=nodejs-LICENSE \
+		--exclude=nodejs-runtime-provenance.json \
+		--exclude=elizaos-LICENSE \
+		--exclude=third-party-notices.json
+
 override_dh_auto_clean:
-	node ../scripts/rm-path-recursive.mjs dist node_modules
-	dh_auto_clean
+	dh_clean

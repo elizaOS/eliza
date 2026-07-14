@@ -2,9 +2,13 @@ name: Test Flatpak Build
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
-      - 'packages/app-core/packaging/flatpak/**'
+      - 'packages/**'
+      - 'plugins/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'patches/**'
       - '.github/workflows/test-flatpak.yml'
   workflow_dispatch:
 
@@ -18,19 +22,136 @@ permissions:
 
 jobs:
   build:
-    name: Build & Validate Flatpak
+    name: Build & Validate Flatpak (${{ matrix.profile }})
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: direct
+            manifest: ai.elizaos.App.yml
+            health_port: 43139
+          - profile: store
+            manifest: ai.elizaos.App.store.yml
+            health_port: 43140
+    env:
+      FLATPAK_PROFILE: ${{ matrix.profile }}
+      FLATPAK_MANIFEST: ${{ matrix.manifest }}
+      FLATPAK_BUILD_DIR: build-dir-${{ matrix.profile }}
+      FLATPAK_REPO: repo-${{ matrix.profile }}
+      FLATPAK_BUNDLE: elizaos-app-${{ matrix.profile }}.flatpak
     steps:
+      - name: Free disk space on hosted runner
+        if: vars.HETZNER_FLEET_ONLINE == 'false'
+        run: |
+          set -euo pipefail
+          echo "=== before ==="
+          df -h /
+          # error-policy:J6 optional hosted-runner toolchains are reclaimed on
+          # a best-effort basis; package verification remains fail-closed.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          echo "=== after ==="
+          df -h /
+          AVAILABLE_KB="$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+          MIN_FREE_KB=$((30 * 1024 * 1024))
+          if (( AVAILABLE_KB < MIN_FREE_KB )); then
+            echo "::error::Flatpak build requires at least 30 GiB free; found ${AVAILABLE_KB} KiB"
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Initialize isolated Flatpak environment
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          ISOLATION_ROOT="$RUNNER_TEMP/elizaos-flatpak-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-${FLATPAK_PROFILE}"
+          test ! -e "$ISOLATION_ROOT"
+          install -d -m 700 \
+            "$ISOLATION_ROOT/home" \
+            "$ISOLATION_ROOT/config" \
+            "$ISOLATION_ROOT/cache" \
+            "$ISOLATION_ROOT/data" \
+            "$ISOLATION_ROOT/state" \
+            "$ISOLATION_ROOT/runtime" \
+            "$ISOLATION_ROOT/tmp" \
+            "$ISOLATION_ROOT/verifier"
+          {
+            echo "FLATPAK_ISOLATION_ROOT=$ISOLATION_ROOT"
+            echo "HOME=$ISOLATION_ROOT/home"
+            echo "XDG_CONFIG_HOME=$ISOLATION_ROOT/config"
+            echo "XDG_CACHE_HOME=$ISOLATION_ROOT/cache"
+            echo "XDG_DATA_HOME=$ISOLATION_ROOT/data"
+            echo "XDG_STATE_HOME=$ISOLATION_ROOT/state"
+            echo "XDG_RUNTIME_DIR=$ISOLATION_ROOT/runtime"
+            echo "TMPDIR=$ISOLATION_ROOT/tmp"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+          check-latest: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.0"
+
+      - name: Install workspace dependencies
+        run: bun run install:light
+
+      - name: Build agent runtime closure
+        run: >-
+          node packages/scripts/run-turbo.mjs run build
+          --filter=@elizaos/agent...
+          --concurrency=8
+
+      - name: Prepare packaged runtime
+        run: >-
+          node packages/scripts/prepare-packaged-runtime.mjs
+          --source-root .
+          --destination-root packages/app-core/packaging/flatpak/runtime
+          --entry @elizaos/agent
+          --stub @elizaos/plugin-vision
+          --stub @elizaos/plugin-wallet
+          --stub @elizaos/plugin-whatsapp
+          --target-os linux
+          --target-cpu x64
+
+      - name: Generate runtime license inventory
+        run: >-
+          node packages/app-core/packaging/generate-license-inventory.mjs
+          packages/app-core/packaging/flatpak/runtime
+
+      - name: Reject bundled FFmpeg executables
+        env:
+          PACKAGED_RUNTIME: packages/app-core/packaging/flatpak/runtime
+        run: |
+          set -euo pipefail
+          test -d "$PACKAGED_RUNTIME"
+          mapfile -t bundled_media_bins < <(
+            find "$PACKAGED_RUNTIME" \
+              \( -type f -o -type l \) \
+              \( -name ffmpeg -o -name ffmpeg.exe -o -name ffprobe -o -name ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Packaged runtime must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
 
       - name: Install Flatpak tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder appstream-util
-          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y --user flathub org.freedesktop.Platform//24.08
-          flatpak install -y --user flathub org.freedesktop.Sdk//24.08
+          sudo apt-get install -y flatpak flatpak-builder appstream-util ostree
+          sudo flatpak remote-add --if-not-exists --system flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install -y --system flathub org.freedesktop.Platform//24.08
+          sudo flatpak install -y --system flathub org.freedesktop.Sdk//24.08
+          sudo flatpak install -y --system flathub org.freedesktop.Platform.ffmpeg-full//24.08
 
       - name: Validate AppStream metadata
         working-directory: packages/app-core/packaging/flatpak
@@ -39,55 +160,123 @@ jobs:
       - name: Validate desktop entry
         run: desktop-file-validate packages/app-core/packaging/flatpak/ai.elizaos.App.desktop
 
-      # Offline-mode prep: generate node-sources.json on every PR so we
-      # catch regressions in the generator pipeline before they show up
-      # in a Flathub submission. Non-fatal for now — the manifest still
-      # uses `npm install -g` over the build-time network share.
-      - name: Install flatpak-node-generator
-        id: install-fng
-        continue-on-error: true
-        run: pipx install flatpak-node-generator || pip install --user flatpak-node-generator
-
-      - name: Generate offline node sources
-        if: steps.install-fng.outcome == 'success'
-        id: gen-sources
-        continue-on-error: true
-        working-directory: packages/app-core/packaging/flatpak
-        run: |
-          chmod +x generate-sources.sh
-          ./generate-sources.sh
-          test -s node-sources.json
-
-      - name: Upload node-sources.json
-        if: steps.gen-sources.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: flatpak-node-sources
-          path: packages/app-core/packaging/flatpak/node-sources.json
-          retention-days: 30
-
       - name: Build Flatpak
         working-directory: packages/app-core/packaging/flatpak
         run: |
-          flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
+          set -euo pipefail
+          flatpak-builder \
+            --repo="$FLATPAK_REPO" \
+            --force-clean \
+            "$FLATPAK_BUILD_DIR" \
+            "$FLATPAK_MANIFEST"
 
       - name: Create bundle
         working-directory: packages/app-core/packaging/flatpak
-        run: flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+        run: >-
+          flatpak build-bundle
+          "$FLATPAK_REPO"
+          "$FLATPAK_BUNDLE"
+          ai.elizaos.App
 
       - name: Install and test
         working-directory: packages/app-core/packaging/flatpak
         run: |
           set -euo pipefail
-          flatpak --user install -y elizaos-app.flatpak
-          EXPECTED_VERSION="$(node -p "require('../../../../package.json').version")"
+          mapfile -t APP_REFS < <(
+            ostree --repo="$FLATPAK_REPO" refs |
+              grep '^app/ai\.elizaos\.App/'
+          )
+          if [[ "${#APP_REFS[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one ai.elizaos.App ref in $FLATPAK_REPO"
+            exit 1
+          fi
+          EXPECTED_COMMIT="$(ostree --repo="$FLATPAK_REPO" rev-parse "${APP_REFS[0]}")"
+          APP_CHECKOUT="$RUNNER_TEMP/elizaos-flatpak-payload-${{ matrix.profile }}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          test ! -e "$APP_CHECKOUT"
+          cleanup_app_checkout() {
+            rm -rf -- "$APP_CHECKOUT"
+          }
+          trap cleanup_app_checkout EXIT
+          ostree --repo="$FLATPAK_REPO" checkout "$EXPECTED_COMMIT" "$APP_CHECKOUT"
+          test -d "$APP_CHECKOUT/files"
+          mapfile -t bundled_media_bins < <(
+            find "$APP_CHECKOUT/files" \
+              \( -type f -o -type l \) \
+              \( -iname ffmpeg -o -iname ffmpeg.exe -o -iname ffprobe -o -iname ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Final Flatpak app payload must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
+          rm -rf -- "$APP_CHECKOUT"
+          trap - EXIT
+          sudo flatpak --system install -y --reinstall "$FLATPAK_BUNDLE"
+          INSTALLED_COMMIT="$(sudo flatpak --system info --show-commit ai.elizaos.App)"
+          if [[ "$INSTALLED_COMMIT" != "$EXPECTED_COMMIT" ]]; then
+            echo "::error::Installed Flatpak commit $INSTALLED_COMMIT does not match bundle commit $EXPECTED_COMMIT"
+            exit 1
+          fi
+          sudo flatpak --system run --command=/bin/sh ai.elizaos.App -s <<'FLATPAK_MEDIA'
+          set -eu
+          NODE_LICENSE=/app/share/licenses/ai.elizaos.App/nodejs-LICENSE
+          NODE_PROVENANCE=/app/share/licenses/ai.elizaos.App/nodejs-runtime-provenance.json
+          test "$(/app/bin/node --version)" = v24.15.0
+          test "$(/usr/bin/sha256sum /app/bin/node | /usr/bin/cut -d ' ' -f 1)" = d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c
+          test "$(/usr/bin/sha256sum "$NODE_LICENSE" | /usr/bin/cut -d ' ' -f 1)" = 4573185d56580da2b890ba34a85a409257640f1c5632eade4300137266194d18
+          test "$(/usr/bin/sha256sum "$NODE_PROVENANCE" | /usr/bin/cut -d ' ' -f 1)" = 7b8cd9c2ea24afdb7ad8b1a0ba29a205909181a82ca25c3f45bcea96b9a8cc5f
+          PROJECT_LICENSE=/app/share/licenses/ai.elizaos.App/elizaos-LICENSE
+          THIRD_PARTY_NOTICES=/app/share/licenses/ai.elizaos.App/third-party-notices.json
+          test "$(/usr/bin/sha256sum "$PROJECT_LICENSE" | /usr/bin/cut -d ' ' -f 1)" = d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d
+          /usr/bin/cmp "$PROJECT_LICENSE" /app/lib/elizaos-app/LICENSE
+          /usr/bin/cmp "$THIRD_PARTY_NOTICES" /app/lib/elizaos-app/THIRD_PARTY_NOTICES.json
+          /app/bin/node -e '
+          const inventory = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+          if (
+            inventory.schemaVersion !== 1 ||
+            inventory.project.sha256 !== "d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d" ||
+            inventory.packageCount !== inventory.packages.length ||
+            inventory.packageCount < 1 ||
+            inventory.licenseTextCount !== inventory.licenseTexts.length ||
+            inventory.licenseTextCount < 1 ||
+            inventory.packages.some((entry) => !entry.licenseDeclared)
+          ) process.exit(1);
+          ' "$THIRD_PARTY_NOTICES"
+          test -n "$XDG_STATE_HOME"
+          /usr/bin/mkdir -p "$XDG_STATE_HOME/eliza"
+          : > "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke"
+
+          MEDIA_SMOKE="/tmp/elizaos-ffmpeg-smoke-$$.mp4"
+          trap 'rm -f "$MEDIA_SMOKE"' 0
+          /usr/bin/ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i color=c=black:s=16x16:d=0.04 \
+            -c:v libx264 -pix_fmt yuv420p -y "$MEDIA_SMOKE"
+          CODEC_NAME="$(
+            /usr/bin/ffprobe -v error -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of default=noprint_wrappers=1:nokey=1 "$MEDIA_SMOKE"
+          )"
+          test "$CODEC_NAME" = h264
+          rm -f "$MEDIA_SMOKE"
+          trap - 0
+          FLATPAK_MEDIA
+          EXPECTED_VERSION="$(node -p "require('../../../agent/package.json').version")"
           node ../../../scripts/verify-packaged-cli.mjs \
             --expected "$EXPECTED_VERSION" \
-            -- flatpak run ai.elizaos.App
+            --health-url http://127.0.0.1:${{ matrix.health_port }}/api/health \
+            --isolation-root "$FLATPAK_ISOLATION_ROOT/verifier" \
+            --service-arg serve \
+            -- flatpak --system run ai.elizaos.App
+          sudo flatpak --system run --command=/bin/sh ai.elizaos.App -c \
+            'test -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke" && rm -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke"'
+
 
       - name: Upload bundle artifact
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: flatpak-test-bundle
-          path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
+          name: flatpak-test-bundle-${{ matrix.profile }}
+          path: packages/app-core/packaging/flatpak/${{ env.FLATPAK_BUNDLE }}
+          if-no-files-found: error
           retention-days: 7

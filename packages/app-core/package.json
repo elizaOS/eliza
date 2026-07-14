@@ -236,8 +236,7 @@
     "@elizaos/capacitor-swabble": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/capacitor-talkmode": "workspace:*",
-    "@elizaos/capacitor-websiteblocker": "workspace:*",
-    "sharp": "^0.34.5"
+    "@elizaos/capacitor-websiteblocker": "workspace:*"
   },
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",

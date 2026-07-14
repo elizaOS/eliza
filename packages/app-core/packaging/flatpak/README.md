@@ -1,159 +1,159 @@
-# Flatpak packaging — store and direct variants
+# Flatpak side-load packaging
 
-Two manifests live in this directory. They produce the same `ai.elizaos.App`
-app-id, but with very different sandbox postures.
+These manifests build x86_64 bundles for local testing, GitHub Release
+attachments, and other side-load distribution. Both consume a native production
+runtime generated from the exact checkout before `flatpak-builder` starts.
+That runtime is intentionally ignored by git, so neither manifest is currently
+self-contained enough for Flathub's remote build service.
 
-| Variant | Manifest | Wrapper | Posture | Distribution |
-|---------|----------|---------|---------|--------------|
-| **Store** (Flathub) | `ai.elizaos.App.store.yml` | `elizaos-app-wrapper.store.sh` | Locked-down sandbox, no host escape | Flathub |
-| **Direct** (power-user) | `ai.elizaos.App.yml` | `elizaos-app-wrapper.sh` | Full `$HOME` access, host shell reach, EXECUTE_CODE permitted | Self-hosted repo, side-loaded bundles |
+| Variant | Manifest | Wrapper | Posture |
+|---------|----------|---------|---------|
+| Hardened | `ai.elizaos.App.store.yml` | `elizaos-app-wrapper.store.sh` | Restricted home access and store-mode runtime gates |
+| Direct | `ai.elizaos.App.yml` | `elizaos-app-wrapper.sh` | Full home access for a side-loaded power-user build |
 
-Pick the variant that matches the audience. Flathub will reject the direct
-manifest on review. Power users who want host-Ollama, docker reach, and
-EXECUTE_CODE want the direct manifest (or, equivalently, the AppImage /
-.deb / .rpm builds).
+The prepared closure is architecture-specific and may include native addons.
+The release and test lanes therefore build it on x86_64, package the matching
+x86_64 Node 24.15.0 archive, and reject other build hosts. ARM64 support requires
+a separate native build-and-boot lane before an ARM source can be restored to
+the manifests.
 
-The build is selected by the `ELIZA_BUILD_VARIANT` env var at build time —
-see `bun run build:flatpak` (`packages/app-core/scripts/build-flatpak.mjs`).
+The runtime preparer uses the committed Bun lockfile and the repository's exact
+Node and Bun toolchain. It retains each workspace package's own version, installs
+the production closure, and rejects source-path residue, escaped links, missing
+artifacts, and unresolved runtime probes before Flatpak sees the payload.
 
-## Sandbox philosophy (store variant)
+The Node module preserves the complete upstream `LICENSE` as
+`/app/share/licenses/ai.elizaos.App/nodejs-LICENSE` and installs
+`node-runtime-provenance.json` beside it. That record is mechanically checked
+against the shared locked-Node helper: Node 24.15.0, the official Linux x64
+archive SHA-256 `472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6`,
+the official source archive SHA-256
+`a4f653d79ed140aaad921e8c22a3b585ca85cfdab80d4030f6309e4663a8a1c8`,
+and executable SHA-256
+`d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c`.
 
-The store manifest grants only the capabilities a managed-cloud Eliza
-agent needs:
+The exact repository MIT license is installed as
+`/app/share/licenses/ai.elizaos.App/elizaos-LICENSE`. The runtime builder also
+verifies every package in the hashed dependency inventory emitted from its
+frozen Bun install, records installed manifest and payload digests, and retains
+every artifact-local license or notice byte in `third-party-notices.json`.
+Installed smokes compare both legal files with the copies inside
+`/app/lib/elizaos-app` and validate the inventory counts; the project license
+does not make a blanket MIT claim about third-party code.
 
-- `--share=network` — cloud APIs, model providers, plugin registry, the
-  loopback web dashboard.
-- `--share=ipc` — required for localhost loopback the dashboard binds.
-- `--socket=wayland` + `--socket=fallback-x11` — desktop integration.
-- `--filesystem=xdg-documents/Eliza:create` — a single user-granted
-  workspace folder under `~/Documents/Eliza`. The user picks (or
-  confirms) this through the FileChooser portal at first run.
-- `--filesystem=xdg-config/elizaos-app:create` — config and account
-  storage under `~/.config/elizaos-app`.
-- `--persist=.eliza` — `~/.eliza` is rewritten transparently by
-  Flatpak to `~/.var/app/ai.elizaos.App/.eliza`, surviving upgrades.
-- `--talk-name=org.freedesktop.Notifications` — desktop notifications.
-- `--talk-name=org.kde.StatusNotifierWatcher` — system tray.
+FFmpeg executables are deliberately outside that closure. The manifests use
+Freedesktop's `org.freedesktop.Platform.ffmpeg-full//24.08` extension point and
+create `/app/lib/ffmpeg` for its codec libraries. The wrappers pin all supported
+media environment variables to the platform's `/usr/bin/ffmpeg` and
+`/usr/bin/ffprobe`. Freedesktop/Flathub distributes that media stack and remains
+its source and license-compliance boundary; the elizaOS bundle retains only the
+npm adapters that call it.
 
-What it explicitly does NOT grant — and what bubblewrap therefore blocks
-unconditionally:
+## Sandbox profiles
 
-- **No `--filesystem=home` / `--filesystem=host`.** No reading or writing
-  outside the granted folders.
-- **No `--talk-name=org.freedesktop.Flatpak`.** That D-Bus name is the
-  host-spawn portal; it is the standard way for sandboxed apps to escape
-  the sandbox and run host commands. The store posture forbids host
-  escape, so it is excluded.
-- **No `--device=all`.** No raw device access.
-- **No `--socket=session-bus` / `--socket=system-bus`.** Direct D-Bus
-  exposure would let the runtime talk to anything; we go through the
-  portal stack instead.
+The hardened profile grants network access and the fixed `~/Documents/Eliza`
+directory. The latter is a manifest filesystem grant; it is not a FileChooser
+portal selection. App state and configuration remain in Flatpak's persistent
+per-app XDG directories without a host filesystem grant; the wrapper explicitly
+sets `ELIZA_STATE_DIR=$XDG_STATE_HOME/eliza`. The profile does not grant the
+whole home directory, host XDG configuration, the host filesystem, display
+sockets, raw devices, session/system buses, or the Flatpak host-spawn D-Bus
+name.
 
-The runtime reads `ELIZA_BUILD_VARIANT=store` (set by the store wrapper)
-and gates off:
+Its wrapper exports `ELIZA_BUILD_VARIANT=store`. Runtime components use that
+signal to disable features that require arbitrary local process execution,
+including coding-shell and PTY surfaces. It does not imply that every remaining
+runtime feature is cloud-only.
 
-- PATH-lookup CLI spawning (no `bun`, `python`, `git`, `docker`, etc. on
-  the host PATH — they're not in `$PATH` inside the sandbox anyway, but
-  the runtime reports the disablement explicitly so users see "local
-  agent execution disabled in this build" instead of opaque ENOENT).
-- The `EXECUTE_CODE` action.
-- Host-Ollama discovery (no `127.0.0.1:11434` reach — the sandbox sees
-  its own loopback, not the host's, so Ollama-on-host wouldn't work
-  even if we tried).
+The direct profile grants the sandbox the user's home directory and leaves the
+runtime in direct mode. It is appropriate only when that broader file access is
+intentional. It still does not add the `org.freedesktop.Flatpak` host-spawn
+D-Bus permission.
 
-Hosting flips to the cloud-only routing: the agent talks to Eliza Cloud
-for inference, plugin registry, app deploys, billing, and any other
-backend that would otherwise have a local fallback.
+Portal services such as OpenURI remain available through the Freedesktop
+runtime without an explicit `--talk-name=org.freedesktop.portal.*` grant.
 
-## Required portals
+## Local build and smoke
 
-The store variant relies on these portals (ambient on the
-`org.freedesktop.Platform//24.08` runtime — no extra `--talk-name=`
-needed):
-
-| Portal | Purpose |
-|--------|---------|
-| `org.freedesktop.portal.FileChooser` | Workspace folder picker (first run + "open in workspace") |
-| `org.freedesktop.portal.OpenURI` | Browser launches for OAuth flows (Eliza Cloud sign-in, app domain verification) |
-| `org.freedesktop.portal.Notification` | Notification fallback (the older `org.freedesktop.Notifications` D-Bus name is also granted) |
-
-If a future feature needs camera, microphone, or location, add the
-corresponding portal — do NOT add a raw `--device=` or `--socket=` rule.
-
-## Local testing
+Install Flatpak and the 24.08 runtime/SDK, then run the repository build driver:
 
 ```bash
-# Install build tooling.
-sudo apt install flatpak flatpak-builder        # Debian / Ubuntu
-sudo dnf install flatpak flatpak-builder        # Fedora
+sudo apt install flatpak flatpak-builder
+sudo flatpak remote-add --if-not-exists --system flathub \
+  https://dl.flathub.org/repo/flathub.flatpakrepo
+sudo flatpak install --system flathub org.freedesktop.Platform//24.08
+sudo flatpak install --system flathub org.freedesktop.Sdk//24.08
+sudo flatpak install --system flathub org.freedesktop.Platform.ffmpeg-full//24.08
 
-# Install the runtime + SDK once.
-flatpak install --user flathub org.freedesktop.Platform//24.08
-flatpak install --user flathub org.freedesktop.Sdk//24.08
+# Hardened side-load profile (the default).
+bun run --cwd packages/app-core build:flatpak
 
-# Build the store variant.
-ELIZA_BUILD_VARIANT=store bun run build:flatpak
-
-# Or call flatpak-builder directly.
-cd packages/app-core/packaging/flatpak
-flatpak-builder --user --install --force-clean build-dir ai.elizaos.App.store.yml
-
-# Run.
-flatpak run ai.elizaos.App --version
-flatpak run ai.elizaos.App start
-
-# Inspect the granted permissions to confirm the lockdown.
-flatpak info --show-permissions ai.elizaos.App
-# Expect: shared=network;ipc; sockets=wayland;fallback-x11; filesystems
-# limited to xdg-documents/Eliza and xdg-config/elizaos-app; talk-names
-# limited to Notifications + StatusNotifierWatcher.
+# Direct side-load profile.
+bun run --cwd packages/app-core build:flatpak:direct
 ```
 
-## Flathub submission checklist
+The driver builds `@elizaos/agent` and its workspace dependencies, prepares the
+locked production runtime and legal inventory, invokes `flatpak-builder`, and
+writes `dist-flatpak/elizaos-app.flatpak`.
 
-When you're ready to submit the store variant to Flathub:
+Install and exercise the resulting bundle without exposing the host account's
+normal Flatpak state:
 
-1. **Vendor the npm tree as offline sources.** Flathub's build
-   infrastructure does not allow network access during `build`. The
-   `test-flatpak.yml` CI workflow regenerates `node-sources.json` on
-   every run via `./generate-sources.sh` and uploads it as the
-   `flatpak-node-sources` artifact. To refresh the committed copy
-   locally (Linux only):
-   ```bash
-   ./generate-sources.sh        # writes node-sources.json next to this README
-   ```
-   Or download the CI artifact from the most recent successful
-   `Test Flatpak Build` workflow run on `develop` and drop it next to
-   this README. Once `node-sources.json` is committed, the manifest can
-   build offline (`npm install -g --offline`) and the
-   `build-options.build-args: --share=network` shim is no longer needed.
-2. **Review the screenshot URLs** in `ai.elizaos.App.metainfo.xml`. They point
-   at the repository's current desktop visual baselines so CI and Flathub can
-   fetch reviewed application pixels from a stable public source. Update the
-   captions, dimensions, and URLs together whenever those listing images are
-   replaced; Flathub fetches and validates them at review time.
-3. **Verify the manifest** with `appstream-util validate` and
-   `flatpak-builder --show-manifest --show-deps`.
-4. **Open a submission issue at https://github.com/flathub/flathub/issues/new**
-   — pick the "App submission" template, link to this manifest in the
-   public elizaos repo, and explicitly call out:
-   - The store variant uses portal-mediated FS access (no
-     `--filesystem=home`).
-   - The runtime hosting mode is forced to Eliza Cloud — no local CLI
-     spawning, no host Ollama.
-   - This Flathub submission is the **store** variant; an unrestricted
-     "direct" build for power users is published separately as a
-     side-loadable bundle and is **not** on Flathub.
-5. **Hand over** to a Flathub maintainer who creates
-   `github.com/flathub/ai.elizaos.App` and applies the manifest +
-   supporting files.
+```bash
+ISOLATION_ROOT="$(mktemp -d /tmp/elizaos-flatpak.XXXXXX)"
+export HOME="$ISOLATION_ROOT/home"
+export XDG_CONFIG_HOME="$ISOLATION_ROOT/config"
+export XDG_CACHE_HOME="$ISOLATION_ROOT/cache"
+export XDG_DATA_HOME="$ISOLATION_ROOT/data"
+export XDG_STATE_HOME="$ISOLATION_ROOT/state"
+export XDG_RUNTIME_DIR="$ISOLATION_ROOT/runtime"
+install -d -m 700 "$HOME" "$XDG_CONFIG_HOME" "$XDG_CACHE_HOME" \
+  "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_RUNTIME_DIR" \
+  "$ISOLATION_ROOT/verifier"
 
-## Direct variant
+sudo flatpak --system install -y dist-flatpak/elizaos-app.flatpak
+sudo flatpak --system run --command=/bin/sh ai.elizaos.App -s <<'EOF'
+set -eu
+NODE_LICENSE=/app/share/licenses/ai.elizaos.App/nodejs-LICENSE
+NODE_PROVENANCE=/app/share/licenses/ai.elizaos.App/nodejs-runtime-provenance.json
+PROJECT_LICENSE=/app/share/licenses/ai.elizaos.App/elizaos-LICENSE
+THIRD_PARTY_NOTICES=/app/share/licenses/ai.elizaos.App/third-party-notices.json
+test "$(/app/bin/node --version)" = v24.15.0
+test "$(/usr/bin/sha256sum /app/bin/node | /usr/bin/cut -d ' ' -f 1)" = d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c
+test "$(/usr/bin/sha256sum "$NODE_LICENSE" | /usr/bin/cut -d ' ' -f 1)" = 4573185d56580da2b890ba34a85a409257640f1c5632eade4300137266194d18
+test "$(/usr/bin/sha256sum "$NODE_PROVENANCE" | /usr/bin/cut -d ' ' -f 1)" = 7b8cd9c2ea24afdb7ad8b1a0ba29a205909181a82ca25c3f45bcea96b9a8cc5f
+test "$(/usr/bin/sha256sum "$PROJECT_LICENSE" | /usr/bin/cut -d ' ' -f 1)" = d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d
+/usr/bin/cmp "$PROJECT_LICENSE" /app/lib/elizaos-app/LICENSE
+/usr/bin/cmp "$THIRD_PARTY_NOTICES" /app/lib/elizaos-app/THIRD_PARTY_NOTICES.json
+STATE_SENTINEL="$XDG_STATE_HOME/eliza/flatpak-persistence-smoke"
+/usr/bin/mkdir -p "$XDG_STATE_HOME/eliza"
+: > "$STATE_SENTINEL"
+MEDIA_SMOKE="/tmp/elizaos-ffmpeg-smoke-$$.mp4"
+/usr/bin/ffmpeg -hide_banner -loglevel error \
+  -f lavfi -i color=c=black:s=16x16:d=0.04 \
+  -c:v libx264 -pix_fmt yuv420p -y "$MEDIA_SMOKE"
+test "$(/usr/bin/ffprobe -v error -select_streams v:0 \
+  -show_entries stream=codec_name \
+  -of default=noprint_wrappers=1:nokey=1 "$MEDIA_SMOKE")" = h264
+rm -f "$MEDIA_SMOKE"
+EOF
+node packages/scripts/verify-packaged-cli.mjs \
+  --expected "$(node -p "require('./packages/agent/package.json').version")" \
+  --health-url http://127.0.0.1:43139/api/health \
+  --isolation-root "$ISOLATION_ROOT/verifier" \
+  --service-arg serve \
+  -- flatpak --system run ai.elizaos.App
+flatpak --system run --command=/bin/sh ai.elizaos.App -c \
+  'test -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke" && rm -f "$XDG_STATE_HOME/eliza/flatpak-persistence-smoke"'
+```
 
-The direct manifest (`ai.elizaos.App.yml`) keeps the existing
-`--filesystem=home` posture so power users who self-host a Flatpak repo
-or side-load a bundle get the same experience as the AppImage / .deb /
-.rpm builds. It does NOT set `ELIZA_BUILD_VARIANT=store`, so the
-runtime exposes the full coding-agent surface.
+## Flathub boundary
 
-Don't submit this manifest to Flathub. It will fail review.
+Do not submit either manifest to Flathub in its current form. A reviewable
+submission must replace the ignored local `runtime/` source with immutable,
+publicly fetchable sources whose checksums reproduce the same locked closure.
+It also needs a native ARM64 build-and-boot lane before advertising that
+architecture. The external FFmpeg extension supplies media tools but does not
+make the application runtime remotely reproducible. The hardened manifest
+records the intended permission posture, but permission shape alone does not
+make a remotely reproducible store build.

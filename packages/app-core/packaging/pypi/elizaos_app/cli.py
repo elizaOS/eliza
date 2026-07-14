@@ -13,6 +13,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return run(argv)
     except ElizaOSAppError as error:
+        # error-policy:J1 the console boundary translates typed failures to exit status.
         print(f"elizaos-app: {error}", file=sys.stderr)
         return 1
 

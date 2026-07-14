@@ -28,8 +28,8 @@
   </description>
 
   <url type="homepage">https://app.elizacloud.ai</url>
-  <url type="bugtracker">https://github.com/elizaos/elizaos-app/issues</url>
-  <url type="vcs-browser">https://github.com/elizaos/elizaos-app</url>
+  <url type="bugtracker">https://github.com/elizaOS/eliza/issues</url>
+  <url type="vcs-browser">https://github.com/elizaOS/eliza</url>
   <url type="help">https://docs.elizaos.ai</url>
 
   <provides>
@@ -44,9 +44,9 @@
   <launchable type="desktop-id">ai.elizaos.App.desktop</launchable>
 
   <!--
-  Required for Flathub submission. URLs point at repository-hosted PNG assets
-  so `appstream-util validate-relax` can verify them without depending on a
-  marketing host.
+  Repository-hosted listing assets keep side-load metadata validation
+  independent of a marketing host. Their presence does not imply Flathub
+  availability.
   -->
   <screenshots>
     <screenshot type="default">

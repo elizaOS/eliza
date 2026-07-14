@@ -1,4 +1,4 @@
-// Drives repo automation copy package assets with explicit CLI and CI behavior.
+/** Copies publishable package assets while excluding generated local state. */
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -30,21 +30,47 @@ const COPY_RETRY_DELAY_MS = 100;
 const EXCLUDED_ASSET_DIRS = new Set([
   ".gradle",
   ".kotlin",
+  ".mypy_cache",
+  ".pytest_cache",
+  ".ruff_cache",
   ".turbo",
+  ".venv",
+  "ENV",
+  "__pycache__",
   "artifacts",
   "build",
   "dist",
+  "env",
   "node_modules",
+  "venv",
 ]);
+const EXCLUDED_ASSET_EXTENSIONS = new Set([".pyc", ".pyo"]);
+const GENERATED_PACKAGING_OUTPUTS = [
+  "packaging/debian/node-runtime",
+  "packaging/debian/runtime",
+  "packaging/flatpak/runtime",
+  "packaging/snap/runtime",
+];
 
 function shouldCopyAsset(src) {
   const relative = path.relative(packageDir, src);
   if (!relative || relative.startsWith("..")) {
     return true;
   }
-  return !relative
-    .split(path.sep)
-    .some((segment) => EXCLUDED_ASSET_DIRS.has(segment));
+  const segments = relative.split(path.sep);
+  const leaf = segments.at(-1) ?? "";
+  return (
+    !segments.some(
+      (segment) =>
+        EXCLUDED_ASSET_DIRS.has(segment) || segment.endsWith(".egg-info"),
+    ) &&
+    !leaf.startsWith(".coverage") &&
+    !EXCLUDED_ASSET_EXTENSIONS.has(path.extname(leaf)) &&
+    !GENERATED_PACKAGING_OUTPUTS.some(
+      (output) =>
+        relative === output || relative.startsWith(`${output}${path.sep}`),
+    )
+  );
 }
 
 function shouldRetryCopy(error, sourcePath, attempt) {

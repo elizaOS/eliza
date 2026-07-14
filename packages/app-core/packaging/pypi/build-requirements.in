@@ -1,0 +1,7 @@
+# Direct tools for building and validating the PyPI artifacts. Regenerate the
+# hashed lock only after reviewing release notes and Python 3.9-3.14 support.
+build==1.4.4
+PyYAML==6.0.3
+setuptools==82.0.1
+twine==6.2.0
+wheel==0.47.0

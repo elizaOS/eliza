@@ -2,22 +2,49 @@ name: Test Packaging
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
-      - 'packages/app-core/packaging/**'
-      - 'packages/core/**'
-      - 'plugins/*/typescript/**'
-      - 'packages/app-core/scripts/pack-upstreams.mjs'
-      - 'packages/elizaos/**'
+      - 'packages/**'
+      - 'plugins/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'patches/**'
+      - '.github/workflows/build-debian-package.yml'
+      - '.github/workflows/build-linux-iso.yml'
+      - '.github/workflows/build-vm-image.yml'
+      - '.github/workflows/elizaos-os-full-release.yml'
+      - '.github/workflows/flatpak-publish.yml'
+      - '.github/workflows/publish-apt-repo.yml'
       - '.github/workflows/publish-packages.yml'
+      - '.github/workflows/release-all.yml'
+      - '.github/workflows/release-orchestrator.yml'
+      - '.github/workflows/release.yaml'
+      - '.github/workflows/snap-build-test.yml'
+      - '.github/workflows/snap-publish.yml'
+      - '.github/workflows/test-flatpak.yml'
       - '.github/workflows/test-packaging.yml'
   push:
-    branches: [main]
+    branches: [develop, main]
     paths:
-      - 'packages/app-core/packaging/**'
-      - 'packages/core/**'
-      - 'plugins/*/typescript/**'
-      - 'packages/elizaos/**'
+      - 'packages/**'
+      - 'plugins/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'patches/**'
+      - '.github/workflows/build-debian-package.yml'
+      - '.github/workflows/build-linux-iso.yml'
+      - '.github/workflows/build-vm-image.yml'
+      - '.github/workflows/elizaos-os-full-release.yml'
+      - '.github/workflows/flatpak-publish.yml'
+      - '.github/workflows/publish-apt-repo.yml'
+      - '.github/workflows/publish-packages.yml'
+      - '.github/workflows/release-all.yml'
+      - '.github/workflows/release-orchestrator.yml'
+      - '.github/workflows/release.yaml'
+      - '.github/workflows/snap-build-test.yml'
+      - '.github/workflows/snap-publish.yml'
+      - '.github/workflows/test-flatpak.yml'
+      - '.github/workflows/test-packaging.yml'
   workflow_dispatch:
 
 concurrency:
@@ -48,14 +75,316 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Install validation dependencies
-        run: pip install pyyaml build twine
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          set -euo pipefail
+          python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --requirement build-requirements.lock
 
       - name: Run packaging validation suite
         run: bash packages/app-core/packaging/test-packaging.sh
+
+  build-deb:
+    name: Build, Install & Boot Debian Package
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Free disk space on runner
+        run: |
+          set -euo pipefail
+          echo "=== before ==="
+          df -h /
+          # error-policy:J6 optional hosted-runner toolchains are reclaimed on
+          # a best-effort basis; package verification remains fail-closed.
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          echo "=== after ==="
+          df -h /
+          AVAILABLE_KB="$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+          MIN_FREE_KB=$((30 * 1024 * 1024))
+          if (( AVAILABLE_KB < MIN_FREE_KB )); then
+            echo "::error::Debian build requires at least 30 GiB free; found ${AVAILABLE_KB} KiB"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+          check-latest: false
+
+      - name: Install Debian build tools
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "x86_64"
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            ca-certificates \
+            curl \
+            debhelper \
+            devscripts \
+            fakeroot \
+            lintian \
+            xz-utils
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.4.0"
+
+      - name: Install workspace dependencies
+        run: bun run install:light
+
+      - name: Build agent runtime closure
+        run: >-
+          node packages/scripts/run-turbo.mjs run build
+          --filter=@elizaos/agent...
+          --concurrency=8
+
+      - name: Prepare packaged runtime
+        run: >-
+          node packages/scripts/prepare-packaged-runtime.mjs
+          --source-root .
+          --destination-root packages/app-core/packaging/debian/runtime
+          --entry @elizaos/agent
+          --stub @elizaos/plugin-vision
+          --stub @elizaos/plugin-wallet
+          --stub @elizaos/plugin-whatsapp
+
+      - name: Provision locked Node.js runtime
+        run: >-
+          node packages/scripts/locked-node-runtime.mjs
+          packages/app-core/packaging/debian/node-runtime
+
+      - name: Generate runtime license inventory
+        run: >-
+          node packages/app-core/packaging/generate-license-inventory.mjs
+          packages/app-core/packaging/debian/runtime
+
+      - name: Reject bundled FFmpeg executables
+        env:
+          PACKAGED_RUNTIME: packages/app-core/packaging/debian/runtime
+        run: |
+          set -euo pipefail
+          test -d "$PACKAGED_RUNTIME"
+          mapfile -t bundled_media_bins < <(
+            find "$PACKAGED_RUNTIME" \
+              \( -type f -o -type l \) \
+              \( -name ffmpeg -o -name ffmpeg.exe -o -name ffprobe -o -name ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Packaged runtime must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
+
+      - name: Build Debian package
+        run: |
+          set -euo pipefail
+          test ! -e debian
+          install -d debian
+          git archive --format=tar HEAD packages/app-core/packaging/debian | \
+            tar --extract --directory=debian --strip-components=4
+          test ! -e debian/runtime
+          test ! -e debian/node-runtime
+          VERSION="$(node -p "require('./packages/agent/package.json').version")"
+          DEB_VERSION="$(printf '%s' "$VERSION" | sed -E 's/-beta\./~beta/; s/-rc\./~rc/')-1"
+          sed -i "1s/([^)]*)/($DEB_VERSION)/" debian/changelog
+          dpkg-checkbuilddeps debian/control
+          dpkg-buildpackage -us -uc -b
+          mkdir -p deb-output
+          mapfile -t main_debs < <(
+            find .. -maxdepth 1 -type f -name 'elizaos-app_*.deb' \
+              ! -name '*-dbgsym_*' -print
+          )
+          if [[ "${#main_debs[@]}" -ne 1 ]]; then
+            printf 'Expected one main elizaos-app .deb, found %s\n' \
+              "${#main_debs[@]}" >&2
+            printf '%s\n' "${main_debs[@]}" >&2
+            exit 1
+          fi
+          bash packages/app-core/packaging/debian/verify-maintainer-scripts.sh \
+            "${main_debs[0]}"
+          cp "${main_debs[0]}" ../*.changes deb-output/
+
+      - name: Reject FFmpeg executables in final Debian payload
+        run: |
+          set -euo pipefail
+          mapfile -t main_debs < <(
+            find deb-output -maxdepth 1 -type f -name 'elizaos-app_*.deb' \
+              ! -name '*-dbgsym_*' -print
+          )
+          test "${#main_debs[@]}" -eq 1
+          PAYLOAD_ROOT="$RUNNER_TEMP/elizaos-deb-payload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          test ! -e "$PAYLOAD_ROOT"
+          cleanup_payload_root() {
+            rm -rf -- "$PAYLOAD_ROOT"
+          }
+          trap cleanup_payload_root EXIT
+          dpkg-deb --extract "${main_debs[0]}" "$PAYLOAD_ROOT"
+          mapfile -t bundled_media_bins < <(
+            find "$PAYLOAD_ROOT" \
+              \( -type f -o -type l \) \
+              \( -iname ffmpeg -o -iname ffmpeg.exe -o -iname ffprobe -o -iname ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Final Debian payload must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
+          rm -rf -- "$PAYLOAD_ROOT"
+          trap - EXIT
+
+      - name: Lint Debian package
+        run: |
+          set +e
+          lintian --fail-on error -i --pedantic --no-tag-display-limit \
+            deb-output/elizaos-app_*.deb > lintian.log 2>&1
+          LINTIAN_EXIT=$?
+          set -e
+          while IFS= read -r line; do
+            case "$line" in
+              E:*) echo "::error::lintian: $line" ;;
+              W:*) echo "::warning::lintian: $line" ;;
+              I:*|P:*) echo "::notice::lintian: $line" ;;
+            esac
+          done < lintian.log
+          if [[ "$LINTIAN_EXIT" -ne 0 ]] || grep -Eq '^E:' lintian.log; then
+            echo "::error::lintian reported a policy error (exit $LINTIAN_EXIT)"
+            exit 1
+          fi
+
+      - name: Upload lintian log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: test-debian-lintian-log
+          path: lintian.log
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Install and boot Debian package
+        run: |
+          set -euo pipefail
+          mapfile -t main_debs < <(
+            find deb-output -maxdepth 1 -type f -name 'elizaos-app_*.deb' \
+              ! -name '*-dbgsym_*' -print
+          )
+          test "${#main_debs[@]}" -eq 1
+          DEB_PATH="$(realpath "${main_debs[0]}")"
+          DEB_DEPENDS="$(dpkg-deb -f "$DEB_PATH" Depends)"
+          if grep -Eq '(^|[,[:space:]])nodejs([,[:space:]()]|$)' <<< "$DEB_DEPENDS"; then
+            echo "::error::Debian package unexpectedly depends on host nodejs: $DEB_DEPENDS"
+            exit 1
+          fi
+          if [[ "$DEB_DEPENDS" == *'${'* ]] ||
+             ! grep -Eq '(^|,[[:space:]]*)libc6([[:space:],(]|$)' <<< "$DEB_DEPENDS" ||
+             ! grep -Eq '(^|,[[:space:]]*)libstdc\+\+6([[:space:],(]|$)' <<< "$DEB_DEPENDS"; then
+            echo "::error::Debian shared-library dependencies were not derived: $DEB_DEPENDS"
+            exit 1
+          fi
+          sudo apt-get install -y "$DEB_PATH"
+          BUNDLED_NODE=/usr/lib/elizaos-app/node/bin/node
+          test "$("$BUNDLED_NODE" --version)" = "v24.15.0"
+          test "$(sha256sum "$BUNDLED_NODE" | cut -d' ' -f1)" = \
+            "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+          test -s /usr/lib/elizaos-app/node/LICENSE
+          test -s /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json
+          test -s /usr/share/doc/elizaos-app/nodejs-LICENSE
+          test -s /usr/share/doc/elizaos-app/nodejs-runtime-provenance.json
+          test -L /usr/lib/elizaos-app/node/bin/npm
+          test -f /usr/lib/elizaos-app/node/include/node/node.h
+          test -f /usr/lib/elizaos-app/node/lib/node_modules/npm/package.json
+          cmp /usr/lib/elizaos-app/node/LICENSE \
+            /usr/share/doc/elizaos-app/nodejs-LICENSE
+          cmp /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json \
+            /usr/share/doc/elizaos-app/nodejs-runtime-provenance.json
+          test -s /usr/lib/elizaos-app/LICENSE
+          test -s /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json
+          test -s /usr/share/doc/elizaos-app/elizaos-LICENSE
+          test -s /usr/share/doc/elizaos-app/third-party-notices.json
+          test "$(sha256sum /usr/share/doc/elizaos-app/elizaos-LICENSE | cut -d ' ' -f 1)" = \
+            "d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d"
+          cmp /usr/lib/elizaos-app/LICENSE \
+            /usr/share/doc/elizaos-app/elizaos-LICENSE
+          cmp /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json \
+            /usr/share/doc/elizaos-app/third-party-notices.json
+          "$BUNDLED_NODE" -e '
+          const inventory = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+          if (
+            inventory.schemaVersion !== 1 ||
+            inventory.project.sha256 !== "d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d" ||
+            inventory.packageCount !== inventory.packages.length ||
+            inventory.packageCount < 1 ||
+            inventory.licenseTextCount !== inventory.licenseTexts.length ||
+            inventory.licenseTextCount < 1 ||
+            inventory.packages.some((entry) => !entry.licenseDeclared)
+          ) process.exit(1);
+          ' /usr/share/doc/elizaos-app/third-party-notices.json
+
+          grep -Fq 'export PATH=/usr/lib/elizaos-app/node/bin:$PATH' \
+            /usr/bin/elizaos-app
+          grep -Fq \
+            'exec /usr/lib/elizaos-app/node/bin/node /usr/lib/elizaos-app/node_modules/@elizaos/agent/bin.js' \
+            /usr/bin/elizaos-app
+          "$BUNDLED_NODE" --input-type=module <<'NODE_PROVENANCE'
+          import { readFileSync } from "node:fs";
+          const provenance = JSON.parse(readFileSync(
+            "/usr/lib/elizaos-app/node/elizaos-runtime-provenance.json",
+            "utf8",
+          ));
+          if (
+            provenance.version !== "24.15.0" ||
+            provenance.platform !== "linux-x64" ||
+            provenance.archiveSha256 !== "472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6" ||
+            provenance.executableSha256 !== "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c" ||
+            provenance.source?.sha256 !== "a4f653d79ed140aaad921e8c22a3b585ca85cfdab80d4030f6309e4663a8a1c8"
+          ) {
+            throw new Error(`Unexpected installed Node.js provenance: ${JSON.stringify(provenance)}`);
+          }
+          NODE_PROVENANCE
+          MEDIA_SMOKE="$(mktemp --suffix=.mp4)"
+          trap 'rm -f "$MEDIA_SMOKE"' EXIT
+          /usr/bin/ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i color=c=black:s=16x16:d=0.04 \
+            -c:v libx264 -pix_fmt yuv420p -y "$MEDIA_SMOKE"
+          CODEC_NAME="$(
+            /usr/bin/ffprobe -v error -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of default=noprint_wrappers=1:nokey=1 "$MEDIA_SMOKE"
+          )"
+          test "$CODEC_NAME" = h264
+          rm -f "$MEDIA_SMOKE"
+          trap - EXIT
+          EXPECTED_VERSION="$(node -p "require('./packages/agent/package.json').version")"
+          test "$(PATH=/nonexistent /usr/bin/elizaos-app --version)" = \
+            "$EXPECTED_VERSION"
+          PATH=/usr/bin:/bin "$BUNDLED_NODE" packages/scripts/verify-packaged-cli.mjs \
+            --expected "$EXPECTED_VERSION" \
+            --health-url http://127.0.0.1:43138/api/health \
+            --service-arg serve \
+            -- /usr/bin/elizaos-app
+
+      - name: Upload Debian artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: debian-test-package
+          path: deb-output/
+          retention-days: 30
 
   build-pypi:
     name: Build & Test PyPI Package
@@ -67,48 +396,42 @@ jobs:
           # PyPI packaging does not need native inference submodules.
           submodules: false
 
-      - name: Check for PyPI package directory
-        id: pypi_check
-        run: |
-          if [[ -d packages/app-core/packaging/pypi ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::packages/app-core/packaging/pypi not present in this branch — skipping PyPI build"
-          fi
-
       - name: Setup Python
-        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: "3.14"
 
       - name: Setup Node.js
-        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Build
-        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
-          pip install build
-          python -m build
+          set -euo pipefail
+          python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --requirement build-requirements.lock
+          DIST_DIR="$RUNNER_TEMP/elizaos-pypi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "$DIST_DIR"
+          python -m build --no-isolation --outdir "$DIST_DIR"
+          python verify_artifacts.py "$DIST_DIR"
 
       - name: Check dist
-        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
-          pip install twine
-          twine check dist/*
+          python -m twine check "$RUNNER_TEMP"/elizaos-pypi-"${GITHUB_RUN_ID}"-"${GITHUB_RUN_ATTEMPT}"/*
 
       - name: Install and test
-        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
-          pip install dist/*.whl
+          python -m unittest -v test_loader.py
+          wheels=("$RUNNER_TEMP"/elizaos-pypi-"${GITHUB_RUN_ID}"-"${GITHUB_RUN_ATTEMPT}"/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m pip install --no-deps "${wheels[0]}"
 
           # Module import test
           python -c "
@@ -124,6 +447,7 @@ jobs:
           python -c "
           from elizaos_app.loader import (
               _parse_version,
+              _pep440_to_npm_version,
               _find_node,
               _get_node_version,
               _check_node,
@@ -138,12 +462,23 @@ jobs:
           assert _parse_version('v1.2.3-nightly') == (1, 2, 3)
           assert _parse_version('not-a-version') is None
           assert _parse_version('') is None
+          assert _pep440_to_npm_version('2.1.3') == '2.1.3'
+          assert _pep440_to_npm_version('2.1.3b4') == '2.1.3-beta.4'
+          assert _pep440_to_npm_version('2.1.3rc5') == '2.1.3-rc.5'
+          for unsupported in ('2.1.3a1', '2.1.3.dev1', 'latest', ''):
+              try:
+                  _pep440_to_npm_version(unsupported)
+              except ValueError:
+                  # error-policy:J3 these cases must produce the explicit invalid signal.
+                  pass
+              else:
+                  raise AssertionError(f'accepted unsupported version: {unsupported}')
 
           # Node detection (Node.js is installed in this runner)
           node = _find_node()
           assert node, 'Node not found on PATH'
           ver = _get_node_version(node)
-          assert ver and ver >= (22, 0, 0), f'Node version too old: {ver}'
+          assert ver and ver >= (24, 0, 0), f'Node version too old: {ver}'
           checked = _check_node()
           assert checked == node
 
@@ -156,6 +491,9 @@ jobs:
 
           # CLI entry point exists
           which elizaos-app
+          EXPECTED_NPM_VERSION="$(python -c \
+            'from elizaos_app.loader import _pep440_to_npm_version, get_version; print(_pep440_to_npm_version(get_version()))')"
+          test "$(timeout 180 elizaos-app --version)" = "$EXPECTED_NPM_VERSION"
 
   build-pypi-matrix:
     name: PyPI on Python ${{ matrix.python }}
@@ -172,36 +510,32 @@ jobs:
           # PyPI packaging does not need native inference submodules.
           submodules: false
 
-      - name: Check for PyPI package directory
-        id: pypi_check
-        run: |
-          if [[ -d packages/app-core/packaging/pypi ]]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::packages/app-core/packaging/pypi not present in this branch — skipping PyPI matrix build"
-          fi
-
       - name: Setup Python ${{ matrix.python }}
-        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: ${{ matrix.python }}
 
       - name: Setup Node.js
-        if: steps.pypi_check.outputs.present == 'true'
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Build and test
-        if: steps.pypi_check.outputs.present == 'true'
         working-directory: packages/app-core/packaging/pypi
         run: |
-          pip install build
-          python -m build
-          pip install dist/*.whl
+          set -euo pipefail
+          python -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            --requirement build-requirements.lock
+          DIST_DIR="$RUNNER_TEMP/elizaos-pypi-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${{ matrix.python }}"
+          test ! -e "$DIST_DIR"
+          python -m build --no-isolation --outdir "$DIST_DIR"
+          python verify_artifacts.py "$DIST_DIR"
+          wheels=("$DIST_DIR"/*.whl)
+          test "${#wheels[@]}" -eq 1
+          python -m pip install --no-deps "${wheels[0]}"
           python -c "import elizaos_app; print(f'OK: elizaos_app {elizaos_app.__version__} on Python ${{ matrix.python }}')"
 
   pack-and-test-js:
@@ -217,13 +551,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          bun-version: "1.4.0"
 
       - name: Install dependencies
         run: bun install --ignore-scripts
@@ -287,13 +621,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           check-latest: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          bun-version: "1.4.0"
 
       - name: Install dependencies
         run: bun install --ignore-scripts

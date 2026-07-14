@@ -17,17 +17,8 @@ on:
         type: string
         default: stable
     secrets:
-      # All three GPG secrets are `required: false` — the workflow body has
-      # an early `Check GPG credentials` step that emits a warning + skips
-      # the publish path with `can_publish=false` when DEBIAN_GPG_PRIVATE_KEY
-      # is empty. Declaring them `required: true` here would fail the
-      # reusable-workflow startup validation in 0-3 seconds BEFORE any job
-      # runs — turning every release-tag of elizaos-os-full-release.yml
-      # into a startup_failure with no logs (verified 2026-05-25:
-      # v2.0.0 / v2.0.1 / v2.0.3 all startup_failure'd at 0-3 sec because
-      # the elizaOS/eliza repo doesn't have DEBIAN_GPG_PRIVATE_KEY set).
-      # `required: false` lets the body decide; the existing graceful
-      # skip then carries the rest of the release through.
+      # Optional declarations let the job emit a precise configuration error
+      # instead of failing reusable-workflow startup without logs.
       DEBIAN_GPG_PRIVATE_KEY:
         required: false
       DEBIAN_GPG_KEY_ID:
@@ -51,35 +42,70 @@ on:
         type: string
         default: stable
 
+concurrency:
+  group: publish-apt-repo
+  cancel-in-progress: false
+
 permissions:
   contents: write
-  pages: write
-  id-token: write
 
 jobs:
   publish-apt:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    env:
+      RELEASE_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      APT_CHANNEL: ${{ inputs.channel }}
 
     steps:
+      - name: Initialize isolated publishing state
+        run: |
+          set -euo pipefail
+          PUBLISH_ROOT="$RUNNER_TEMP/elizaos-apt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          {
+            echo "APT_PUBLISH_ROOT=$PUBLISH_ROOT"
+            echo "GNUPGHOME=$PUBLISH_ROOT/gnupg"
+            echo "DEB_DOWNLOAD_DIR=$PUBLISH_ROOT/downloads"
+          } >> "$GITHUB_ENV"
+          test ! -e "$PUBLISH_ROOT"
+          install -d -m 700 "$PUBLISH_ROOT/gnupg" "$PUBLISH_ROOT/downloads"
+
+      - name: Validate release inputs
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(beta|rc)\.(0|[1-9][0-9]*))?$ ]]; then
+            echo "::error::Release version must be stable, beta.N, or rc.N semver"
+            exit 1
+          fi
+          if [[ "$RELEASE_TAG" != "v$RELEASE_VERSION" ]]; then
+            echo "::error::Release tag must equal v$RELEASE_VERSION"
+            exit 1
+          fi
+          if [[ ! "$APT_CHANNEL" =~ ^(stable|beta)$ ]]; then
+            echo "::error::APT channel must be stable or beta"
+            exit 1
+          fi
+
       - name: Check GPG credentials
         id: gpg_check
         env:
           DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
           DEBIAN_GPG_KEY_ID: ${{ secrets.DEBIAN_GPG_KEY_ID }}
         run: |
-          # Both PRIVATE_KEY and KEY_ID are needed to sign Release files —
-          # a half-configured repo where only one is set still can't sign,
-          # and reprepro would fail later with a less obvious error.
-          # Surface the actual gap up front.
+          set -euo pipefail
           if [[ -z "$DEBIAN_GPG_PRIVATE_KEY" ]]; then
-            echo "::warning::DEBIAN_GPG_PRIVATE_KEY not configured. Apt repo publish skipped."
-            echo "can_publish=false" >> "$GITHUB_OUTPUT"
+            echo "::error::APT publishing is enabled but DEBIAN_GPG_PRIVATE_KEY is unavailable"
+            exit 1
           elif [[ -z "$DEBIAN_GPG_KEY_ID" ]]; then
-            echo "::warning::DEBIAN_GPG_KEY_ID not configured (PRIVATE_KEY was set). Apt repo publish skipped."
-            echo "can_publish=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "can_publish=true" >> "$GITHUB_OUTPUT"
+            echo "::error::APT publishing is enabled but DEBIAN_GPG_KEY_ID is unavailable"
+            exit 1
           fi
+          if [[ ! "$DEBIAN_GPG_KEY_ID" =~ ^[0-9A-Fa-f]{40}$ ]]; then
+            echo "::error::DEBIAN_GPG_KEY_ID must be the exact 40-hex primary-key fingerprint"
+            exit 1
+          fi
+          echo "DEBIAN_GPG_FINGERPRINT=${DEBIAN_GPG_KEY_ID^^}" >> "$GITHUB_ENV"
+          echo "can_publish=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout main repo (to create apt-repo branch if needed)
         if: steps.gpg_check.outputs.can_publish == 'true'
@@ -91,13 +117,22 @@ jobs:
       - name: Ensure apt-repo branch exists
         if: steps.gpg_check.outputs.can_publish == 'true'
         run: |
+          set -euo pipefail
           cd main-repo
           if git ls-remote --heads origin apt-repo | grep -q apt-repo; then
             echo "apt-repo branch already exists"
           else
-            echo "apt-repo branch does not exist — creating orphan branch"
-            git push origin "$(git hash-object -t tree /dev/null):refs/heads/apt-repo"
-            echo "Created empty apt-repo branch"
+            echo "apt-repo branch does not exist — creating an empty-root commit"
+            EMPTY_TREE="$(git mktree </dev/null)"
+            EMPTY_COMMIT="$(
+              printf '%s\n' 'Initialize apt repository' |
+                git -c user.name='elizaOS CI' \
+                  -c user.email='ci@elizaos.ai' \
+                  commit-tree "$EMPTY_TREE"
+            )"
+            git cat-file -e "$EMPTY_COMMIT^{commit}"
+            git push origin "$EMPTY_COMMIT:refs/heads/apt-repo"
+            echo "Created apt-repo branch at commit $EMPTY_COMMIT"
           fi
 
       - name: Checkout apt-repo branch
@@ -112,7 +147,7 @@ jobs:
         if: steps.gpg_check.outputs.can_publish == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ env.RELEASE_TAG }}
           path: src-repo
           submodules: false
 
@@ -120,55 +155,209 @@ jobs:
         if: steps.gpg_check.outputs.can_publish == 'true'
         env:
           DEBIAN_GPG_PRIVATE_KEY: ${{ secrets.DEBIAN_GPG_PRIVATE_KEY }}
-          DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
         run: |
-          echo "$DEBIAN_GPG_PRIVATE_KEY" | gpg --batch --import
-          # Trust the key
-          KEY_ID=$(gpg --list-secret-keys --with-colons | grep '^sec' | head -1 | cut -d: -f5)
-          echo "$KEY_ID:6:" | gpg --import-ownertrust
+          set -euo pipefail
+          printf '%s' "$DEBIAN_GPG_PRIVATE_KEY" | gpg --batch --import
+
+          mapfile -t SECRET_PRIMARY_FINGERPRINTS < <(
+            gpg --batch --with-colons --fingerprint --list-secret-keys |
+              awk -F: '$1 == "sec" { want_fpr=1; next } want_fpr && $1 == "fpr" { print toupper($10); want_fpr=0 }'
+          )
+          mapfile -t PUBLIC_PRIMARY_FINGERPRINTS < <(
+            gpg --batch --with-colons --fingerprint --list-keys |
+              awk -F: '$1 == "pub" { want_fpr=1; next } want_fpr && $1 == "fpr" { print toupper($10); want_fpr=0 }'
+          )
+          if [[ "${#SECRET_PRIMARY_FINGERPRINTS[@]}" -ne 1 ]] ||
+             [[ "${#PUBLIC_PRIMARY_FINGERPRINTS[@]}" -ne 1 ]]; then
+            echo "::error::The signing import must contain exactly one primary key with secret material"
+            exit 1
+          fi
+          if [[ "${SECRET_PRIMARY_FINGERPRINTS[0]}" != "$DEBIAN_GPG_FINGERPRINT" ]] ||
+             [[ "${PUBLIC_PRIMARY_FINGERPRINTS[0]}" != "$DEBIAN_GPG_FINGERPRINT" ]]; then
+            echo "::error::Imported primary-key fingerprint does not exactly match DEBIAN_GPG_KEY_ID"
+            exit 1
+          fi
+          printf '%s:6:\n' "$DEBIAN_GPG_FINGERPRINT" | gpg --batch --import-ownertrust
 
       - name: Install reprepro
         if: steps.gpg_check.outputs.can_publish == 'true'
-        run: sudo apt-get install -y reprepro
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends reprepro
 
       - name: Download .deb from release
         if: steps.gpg_check.outputs.can_publish == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p /tmp/deb
-          gh release download "${{ inputs.tag }}" --pattern "*.deb" --dir /tmp/deb/
-          ls -la /tmp/deb/
+          set -euo pipefail
+          test -d "$DEB_DOWNLOAD_DIR"
+          test -z "$(find "$DEB_DOWNLOAD_DIR" -mindepth 1 -print -quit)"
+          gh release download "$RELEASE_TAG" \
+            --pattern "elizaos-app_*.deb" \
+            --dir "$DEB_DOWNLOAD_DIR"
+          mapfile -t main_debs < <(
+            find "$DEB_DOWNLOAD_DIR" -maxdepth 1 -type f -name 'elizaos-app_*.deb' \
+              ! -name '*-dbgsym_*' -print
+          )
+          if [[ "${#main_debs[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one main elizaos-app .deb in the release"
+            exit 1
+          fi
+          echo "DEB_PATH=${main_debs[0]}" >> "$GITHUB_ENV"
+
+      - name: Validate downloaded Debian artifact
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: |
+          set -euo pipefail
+          test -f "$DEB_PATH"
+          EXPECTED_DEBIAN_VERSION="${RELEASE_VERSION/-beta./~beta}"
+          EXPECTED_DEBIAN_VERSION="${EXPECTED_DEBIAN_VERSION/-rc./~rc}-1"
+          PACKAGE_NAME="$(dpkg-deb --field "$DEB_PATH" Package)"
+          PACKAGE_ARCHITECTURE="$(dpkg-deb --field "$DEB_PATH" Architecture)"
+          PACKAGE_VERSION="$(dpkg-deb --field "$DEB_PATH" Version)"
+          if [[ "$PACKAGE_NAME" != "elizaos-app" ]]; then
+            echo "::error::Downloaded artifact Package is $PACKAGE_NAME; expected elizaos-app"
+            exit 1
+          fi
+          if [[ "$PACKAGE_ARCHITECTURE" != "amd64" ]]; then
+            echo "::error::Downloaded artifact Architecture is $PACKAGE_ARCHITECTURE; expected amd64"
+            exit 1
+          fi
+          if [[ "$PACKAGE_VERSION" != "$EXPECTED_DEBIAN_VERSION" ]]; then
+            echo "::error::Downloaded artifact Version is $PACKAGE_VERSION; expected $EXPECTED_DEBIAN_VERSION"
+            exit 1
+          fi
 
       - name: Add .deb to reprepro
         if: steps.gpg_check.outputs.can_publish == 'true'
         env:
           DEBIAN_GPG_PASSPHRASE: ${{ secrets.DEBIAN_GPG_PASSPHRASE }}
         run: |
-          CODENAME="${{ inputs.channel }}"
-          # Ensure conf/ exists in apt-repo branch
+          set -euo pipefail
+          CODENAME="$APT_CHANNEL"
           mkdir -p apt-repo/conf
           cp src-repo/packages/app-core/packaging/debian/apt-repo-config/conf/distributions apt-repo/conf/distributions
 
-          # Add the package
-          cd apt-repo
-          if [[ -n "$DEBIAN_GPG_PASSPHRASE" ]]; then
-            echo "$DEBIAN_GPG_PASSPHRASE" | reprepro --ask-passphrase includedeb "$CODENAME" /tmp/deb/*.deb
-          else
-            reprepro includedeb "$CODENAME" /tmp/deb/*.deb
+          SIGNWITH_DEFAULT_COUNT="$(
+            awk '$1 == "SignWith:" && $2 == "default" && NF == 2 { count++ } END { print count + 0 }' \
+              apt-repo/conf/distributions
+          )"
+          if [[ "$SIGNWITH_DEFAULT_COUNT" -eq 0 ]]; then
+            echo "::error::APT distribution template has no SignWith: default entries to bind"
+            exit 1
           fi
+          sed -i -E \
+            "s/^SignWith:[[:space:]]+default[[:space:]]*$/SignWith: $DEBIAN_GPG_FINGERPRINT/" \
+            apt-repo/conf/distributions
+          if grep -Eq '^SignWith:[[:space:]]+default([[:space:]]|$)' apt-repo/conf/distributions; then
+            echo "::error::APT configuration retained an ambiguous SignWith: default"
+            exit 1
+          fi
+          BOUND_SIGNER_COUNT="$(
+            awk -v signer="$DEBIAN_GPG_FINGERPRINT" \
+              '$1 == "SignWith:" && $2 == signer && NF == 2 { count++ } END { print count + 0 }' \
+              apt-repo/conf/distributions
+          )"
+          if [[ "$BOUND_SIGNER_COUNT" -ne "$SIGNWITH_DEFAULT_COUNT" ]]; then
+            echo "::error::Not every APT distribution stanza was bound to the release fingerprint"
+            exit 1
+          fi
+
+          cd apt-repo
+          SIGNING_PROBE="$APT_PUBLISH_ROOT/signing-probe"
+          printf '%s\n' 'elizaOS APT signing credential probe' > "$SIGNING_PROBE"
+          printf '%s' "$DEBIAN_GPG_PASSPHRASE" |
+            gpg --batch --yes --pinentry-mode loopback --passphrase-fd 0 \
+              --local-user "$DEBIAN_GPG_FINGERPRINT!" \
+              --detach-sign --output "$SIGNING_PROBE.sig" "$SIGNING_PROBE"
+          rm -f "$SIGNING_PROBE" "$SIGNING_PROBE.sig"
+
+          PACKAGE_NAME="$(dpkg-deb --field "$DEB_PATH" Package)"
+          PACKAGE_VERSION="$(dpkg-deb --field "$DEB_PATH" Version)"
+          PACKAGE_ARCHITECTURE="$(dpkg-deb --field "$DEB_PATH" Architecture)"
+          PACKAGE_LIST="$(
+            reprepro \
+              --list-format '${package}\t${version}\t${$architecture}\t${$fullfilename}\n' \
+              list "$CODENAME" "$PACKAGE_NAME"
+          )"
+          MATCHING_PACKAGE_FILES="$(
+            printf '%s\n' "$PACKAGE_LIST" |
+              awk -F '\t' \
+                  -v package="$PACKAGE_NAME" \
+                  -v version="$PACKAGE_VERSION" \
+                  -v architecture="$PACKAGE_ARCHITECTURE" \
+                  '$1 == package && $2 == version && $3 == architecture { print $4 }'
+          )"
+          EXISTING_PACKAGE_FILES=()
+          if [[ -n "$MATCHING_PACKAGE_FILES" ]]; then
+            mapfile -t EXISTING_PACKAGE_FILES <<< "$MATCHING_PACKAGE_FILES"
+          fi
+          if [[ "${#EXISTING_PACKAGE_FILES[@]}" -gt 1 ]]; then
+            echo "::error::APT repository contains duplicate records for $PACKAGE_NAME $PACKAGE_VERSION $PACKAGE_ARCHITECTURE"
+            exit 1
+          fi
+
+          if [[ "${#EXISTING_PACKAGE_FILES[@]}" -eq 1 ]]; then
+            REPOSITORY_ROOT="$(realpath .)"
+            EXISTING_PACKAGE="$(realpath -- "${EXISTING_PACKAGE_FILES[0]}")"
+            if [[ "$EXISTING_PACKAGE" != "$REPOSITORY_ROOT"/* ]]; then
+              echo "::error::Existing APT package resolves outside the repository"
+              exit 1
+            fi
+            EXISTING_SHA256="$(sha256sum "$EXISTING_PACKAGE" | cut -d ' ' -f 1)"
+            DOWNLOADED_SHA256="$(sha256sum "$DEB_PATH" | cut -d ' ' -f 1)"
+            if [[ "$EXISTING_SHA256" != "$DOWNLOADED_SHA256" ]]; then
+              echo "::error::APT already contains $PACKAGE_NAME $PACKAGE_VERSION $PACKAGE_ARCHITECTURE with different bytes"
+              exit 1
+            fi
+            echo "APT already contains the byte-identical $PACKAGE_NAME $PACKAGE_VERSION $PACKAGE_ARCHITECTURE"
+          else
+            reprepro includedeb "$CODENAME" "$DEB_PATH"
+          fi
+          reprepro export
 
       - name: Export GPG public key
         if: steps.gpg_check.outputs.can_publish == 'true'
         run: |
-          gpg --armor --export > apt-repo/gpg.key
+          set -euo pipefail
+          gpg --batch --armor --export "$DEBIAN_GPG_FINGERPRINT!" > apt-repo/gpg.key
+          test -s apt-repo/gpg.key
 
       - name: Commit and push apt-repo branch
         if: steps.gpg_check.outputs.can_publish == 'true'
         run: |
+          set -euo pipefail
           cd apt-repo
           git config user.name "elizaOS CI"
           git config user.email "ci@elizaos.ai"
           git add -A
-          git commit -m "chore: add elizaos-app ${{ inputs.version }} to apt repo" || echo "Nothing to commit"
+          if git diff --cached --quiet; then
+            echo "APT repository already contains elizaos-app $RELEASE_VERSION"
+          else
+            git commit -m "chore: add elizaos-app $RELEASE_VERSION to apt repo"
+          fi
           git push origin apt-repo
+
+      - name: Remove isolated publishing state
+        if: always()
+        run: |
+          set -euo pipefail
+          # error-policy:J6 the signing and download tree is disposable runner-local teardown state.
+          EXPECTED_ROOT="$RUNNER_TEMP/elizaos-apt-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          APT_PUBLISH_ROOT="${APT_PUBLISH_ROOT:-$EXPECTED_ROOT}"
+          if [[ "$APT_PUBLISH_ROOT" != "$EXPECTED_ROOT" ]]; then
+            echo "::error::Refusing to remove an unexpected APT publishing path"
+            exit 1
+          fi
+          if [[ -d "$APT_PUBLISH_ROOT/gnupg" ]] &&
+             ! GNUPGHOME="$APT_PUBLISH_ROOT/gnupg" gpgconf --kill all; then
+            echo "::warning::GnuPG agent teardown failed; removing its isolated home"
+          fi
+          if [[ -e "$APT_PUBLISH_ROOT" ]] || [[ -L "$APT_PUBLISH_ROOT" ]]; then
+            rm -rf -- "$APT_PUBLISH_ROOT"
+            echo "Removed isolated APT publishing state"
+          else
+            echo "APT publishing state was not initialized"
+          fi

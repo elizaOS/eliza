@@ -1,14 +1,14 @@
 # Admin: enable the apt-repo publish path
 
 This is the maintainer playbook for turning on signed apt-repo
-publishing for elizaOS Live. It's a one-time setup per repo. After
-this lands the `publish-apt-repo.yml` workflow stops skipping (see
-PR #7976) and every release tag publishes a signed `.deb` to the
-`apt-repo` branch of this repo.
+publishing for elizaOS Live. It's a one-time setup per repo. Once configured,
+the post-publication `release-orchestrator.yml` → `publish-packages.yml` path
+attaches one verified `.deb` and invokes `publish-apt-repo.yml` to update this
+repo's `apt-repo` branch.
 
-Status today (2026-05-25): the workflow has `required: false` on its
-GPG secrets so it emits a clean warning and skips when the secrets
-aren't present. Configure them per below to flip publishing on.
+The reusable-workflow declarations remain optional so configuration errors
+produce job logs. An enabled apt publishing run fails at its credential gate
+when the signing identity is unavailable or ambiguous.
 
 ## What you need
 
@@ -33,19 +33,25 @@ gpg --batch --quick-generate-key \
 Confirm it landed:
 
 ```sh
-gpg --list-secret-keys --with-colons | grep '^sec' | head -1
-# sec:u:4096:1:<KEY_ID_HEX>:<created>:<expires>:::...
+gpg --with-colons --fingerprint \
+  'elizaOS apt-repo signing <ci@elizaos.ai>' |
+  awk -F: '$1 == "fpr" { print $10; exit }'
+# 0123456789ABCDEF0123456789ABCDEF01234567
 ```
 
-Record the **key id** — the 16-char hex after the third colon. You'll
-set it as `DEBIAN_GPG_KEY_ID`. Example: `1A2B3C4D5E6F7890`.
+Record the complete 40-hex **primary-key fingerprint** and set it as
+`DEBIAN_GPG_KEY_ID`. Short and long key IDs are intentionally rejected because
+they do not bind the publisher to one exact primary key.
 
 Optionally set a passphrase. The workflow handles both:
 
-- No passphrase → leave `DEBIAN_GPG_PASSPHRASE` unset, `reprepro` runs
-  without `--ask-passphrase`.
-- Passphrase set → also set `DEBIAN_GPG_PASSPHRASE` secret; the
-  workflow pipes it to `reprepro --ask-passphrase`.
+- No passphrase → leave `DEBIAN_GPG_PASSPHRASE` unset.
+- Passphrase set → also set the `DEBIAN_GPG_PASSPHRASE` secret.
+
+In both cases the workflow performs a loopback detached-signature probe before
+`reprepro`. The probe validates the credential and primes the isolated GPG
+agent without an interactive pinentry. It deliberately does not use
+`reprepro --ask-passphrase`, whose prompt does not consume the piped secret.
 
 ## Step 2 — Export the private key for CI
 
@@ -53,7 +59,9 @@ CI needs the ASCII-armored private key (so it can be stored as a GitHub
 secret string):
 
 ```sh
-gpg --armor --export-secret-keys "1A2B3C4D5E6F7890" > /tmp/elizaos-apt-private.asc
+gpg --armor --export-secret-keys \
+  "0123456789ABCDEF0123456789ABCDEF01234567" \
+  > /tmp/elizaos-apt-private.asc
 ```
 
 Verify it round-trips (must be importable as an exact reverse):
@@ -77,13 +85,13 @@ In https://github.com/elizaOS/eliza/settings/secrets/actions click
 | Secret name | Value | Required? |
 | --- | --- | --- |
 | `DEBIAN_GPG_PRIVATE_KEY` | The full contents of the ASCII-armored private key from Step 2 (the whole `-----BEGIN PGP PRIVATE KEY BLOCK-----` block, newlines preserved) | Yes — sign-blocking |
-| `DEBIAN_GPG_KEY_ID` | The 16-char hex key id from Step 1 | Yes — sign-blocking |
+| `DEBIAN_GPG_KEY_ID` | The exact 40-hex primary-key fingerprint from Step 1 | Yes — sign-blocking |
 | `DEBIAN_GPG_PASSPHRASE` | Passphrase if you set one in Step 1; leave the secret unset otherwise | Optional |
 
-Both required secrets must be set together. The workflow's
-`Check GPG credentials` step (see PR #7976) skips publishing with a
-clear warning if either is missing, so a half-configured repo doesn't
-silently produce an unsigned apt repo.
+Both required secrets must be set together. The workflow's credential gate
+fails if either is missing, if the fingerprint is not exactly 40 hex
+characters, or if the armored import contains a different or additional
+primary key.
 
 Org-level secrets work too — set them under
 https://github.com/organizations/elizaOS/settings/secrets/actions if
@@ -111,45 +119,35 @@ gh run watch --repo elizaOS/eliza
 A green run will:
 
 1. Print `can_publish=true` from the `Check GPG credentials` step.
-2. Create the `apt-repo` branch as an orphan if it doesn't exist.
+2. Create the `apt-repo` branch at a real empty-root commit if it doesn't exist.
 3. Download the `.deb` from the release tag.
-4. Run `reprepro includedeb` to add the package.
-5. Commit + push the updated `apt-repo` branch.
+4. Validate and unlock the exact signing key with the loopback signing probe.
+5. Add the package with `reprepro`, or verify an existing same-version package
+   is byte-identical on an idempotent retry.
+6. Re-export signed repository metadata for every configured distribution,
+   including on an identical retry.
+7. Commit + push the updated `apt-repo` branch.
 
-A red run with a clear warning ("DEBIAN_GPG_PRIVATE_KEY not configured")
-means the secret wasn't set. Re-check Step 3.
+A red run with `APT publishing is enabled but DEBIAN_GPG_PRIVATE_KEY is
+unavailable` means the secret wasn't set. Re-check Step 3.
 
-## Step 5 — Publish the public key
+## Step 5 — Configure and prove the public boundary
 
-End users who add the apt repo need the matching public key. Export it
-ASCII-armored:
+The only automated repository writer is the in-repo
+`release-orchestrator.yml` → `publish-packages.yml` → `publish-apt-repo.yml`
+path. It commits to this repository's `apt-repo` branch and exports the
+selected public key as `gpg.key`. Standalone Debian builds are reusable/manual
+validation lanes and do not attach a release asset; `release-all.yml` and
+`elizaos-os-full-release.yml` do not start competing Debian or APT producers.
+There is no external repository dispatch or token.
 
-```sh
-gpg --armor --export "1A2B3C4D5E6F7890" > /tmp/elizaos-apt-public.asc
-```
-
-Commit it to a publicly-readable location — recommended:
-`packages/os/release/apt-repo/elizaos-apt-public.asc` in the main
-branch. That's stable, version-controlled, and discoverable.
-
-Document the user-side install in your release notes:
-
-```sh
-# Trust the elizaOS apt-repo signing key
-curl -fsSL https://raw.githubusercontent.com/elizaOS/eliza/main/packages/os/release/apt-repo/elizaos-apt-public.asc \
-    | sudo tee /etc/apt/trusted.gpg.d/elizaos.asc > /dev/null
-
-# Add the repo
-echo "deb https://elizaos.github.io/eliza/apt-repo stable main" \
-    | sudo tee /etc/apt/sources.list.d/elizaos.list
-
-# Install
-sudo apt update
-sudo apt install elizaos-app
-```
-
-(Substitute the actual `apt-repo` branch URL — GitHub Pages serves it
-automatically if you enable Pages → "Deploy from a branch: apt-repo".)
+Configure GitHub Pages to serve the `apt-repo` branch, then create and verify
+the `apt.elizaos.ai` DNS record under an owner-controlled zone. The hostname
+currently has no DNS record, so this is a release blocker rather than an
+already-proven channel. Verify `gpg.key`, `InRelease`, `Release.gpg`, and the
+stable/beta `Packages` indexes over HTTPS, then install through apt on a clean
+supported host. A successful branch push by itself is not distribution
+evidence.
 
 ## Rotating the key
 
@@ -185,9 +183,6 @@ If the private key leaks:
 
 ## Related
 
-- PR #7976 (this PR's prerequisite) — makes the secrets optional in
-  `publish-apt-repo.yml` so a fresh repo doesn't startup_failure
-  before this admin work is done.
 - [packages/os/docs/ci-cd-production-plan.md](./ci-cd-production-plan.md) —
   broader release pipeline status.
 - [packages/os/docs/verify-iso-download.md](./verify-iso-download.md)

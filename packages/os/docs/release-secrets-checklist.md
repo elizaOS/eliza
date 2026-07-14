@@ -21,17 +21,21 @@ map; the playbooks are the procedure.
 
 ## How secrets reach the workflows
 
-All channel workflows are reusable (`workflow_call`) and are invoked by the
-orchestrators `release-all.yml` / `release-orchestrator.yml` with
-`secrets: inherit`. Each channel workflow also has a `workflow_dispatch` trigger
-so you can run it standalone for a sanity check.
+The post-publication `release-orchestrator.yml` invokes reusable channel
+workflows with `secrets: inherit`. `release-all.yml` owns the draft-time
+platform builds, always leaves the GitHub Release as a draft, and refuses an
+already-public release. A maintainer publishes the reviewed draft so GitHub's
+durable `release: published` event starts `release-orchestrator.yml` and the
+stable npm workflow. Debian/APT and Snap have one producer in
+`publish-packages.yml` after that event. Channel workflows that expose
+`workflow_dispatch` can also be run standalone for an explicit sanity check or
+recovery.
 
 GitHub validates a reusable workflow's secret contract **before any job starts**.
-To stop a missing optional secret from aborting the whole pipeline at startup
-with no logs, every channel secret is declared `required: false`, and the job
-body has an explicit "check credentials" step that warns and skips (or fails
-loudly inside the job) when the secret is absent. This is the same pattern
-established for the apt repo in PR #7976.
+Channel secrets are declared `required: false` so a missing value produces a
+specific job log instead of a reusable-workflow startup failure with no logs.
+When a publisher is enabled, its credential check fails the job rather than
+reporting a successful build that never reached the registry.
 
 Set all secrets at: **repo Settings → Secrets and variables → Actions → New
 repository secret** (`https://github.com/elizaOS/eliza/settings/secrets/actions`).
@@ -97,15 +101,16 @@ Workflow: `snap-publish.yml`
 
 | Secret | Consumed by | Origin |
 | --- | --- | --- |
-| `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft upload`; gates the Store upload (build still runs) | generate fresh (`snapcraft export-login`) |
+| `SNAPCRAFT_STORE_CREDENTIALS` | Required by enabled Snap publishers before build and Store upload | generate fresh (`snapcraft export-login`) |
 
 ### Flathub — [release-secrets-flathub.md](./release-secrets-flathub.md)
 
-Workflow: `flatpak-publish.yml`
+Workflow: `flatpak-publish.yml` (disabled, fail-closed)
 
-| Secret | Consumed by | Origin |
-| --- | --- | --- |
-| `FLATHUB_TOKEN` | `GH_TOKEN` for the fork checkout + Flathub PR (falls back to `GITHUB_TOKEN`, which may lack push perms to the fork) | generate fresh (GitHub fine-grained PAT scoped to the Flathub fork) |
+No secret is consumed while the checked-in manifests depend on a generated,
+git-ignored runtime. The release pipeline attaches a tested side-load bundle;
+it does not claim a Flathub publication. See the playbook for the architecture
+and evidence required before provisioning a dedicated token.
 
 ### Windows — [release-secrets-windows.md](./release-secrets-windows.md)
 
@@ -127,7 +132,7 @@ Workflow: `publish-apt-repo.yml`
 | Secret | Consumed by | Origin |
 | --- | --- | --- |
 | `DEBIAN_GPG_PRIVATE_KEY` | Armored GPG private key reprepro signs the `Release` file with | generate fresh (dedicated GPG key) |
-| `DEBIAN_GPG_KEY_ID` | 16-char hex key id passed to reprepro | re-enter from source (the generated key's id) |
+| `DEBIAN_GPG_KEY_ID` | Exact 40-hex primary-key fingerprint verified before reprepro signs | re-enter from source (`gpg --with-colons --fingerprint`) |
 | `DEBIAN_GPG_PASSPHRASE` | Passphrase for the GPG key (optional) | re-enter from source (chosen at key creation; omit if none) |
 
 ## OTA release host (optional)
@@ -150,8 +155,8 @@ desktop Authenticode path; the MSIX build defaults it when unset.
 
 A channel is ready to publish only when every secret in its row block is set.
 The half-configured failure mode is the dangerous one: a build that succeeds but
-silently skips the store upload, or an unsigned artifact. The per-channel "check
-credentials" steps surface this as a warning in the run log — read them.
+silently skips the store upload, or an unsigned artifact. Enabled publishing
+jobs fail at their credential checks so the orchestrator cannot report success.
 
 Run each channel's `workflow_dispatch` once (see the channel playbook) before
 trusting it inside the orchestrated release.

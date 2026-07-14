@@ -1,161 +1,166 @@
-// Drives repo automation prepare package dist with explicit CLI and CI behavior.
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+/**
+ * Produces the publishable manifest beside each compiled workspace package.
+ * Workspace dependency versions come only from roots selected by the root
+ * workspace globs, so nested tool manifests cannot impersonate a package.
+ */
+import { globSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveRegistryFallbackTags } from "./lib/script-metadata.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "../..");
 
-const [packageDirArg, ...restArgs] = process.argv.slice(2);
-
-if (!packageDirArg) {
-  console.error(
-    "usage: node packages/scripts/prepare-package-dist.mjs <package-dir> [--compiled-prefix=path] [--asset-prefix=path]",
-  );
-  process.exit(1);
-}
-
-const options = Object.fromEntries(
-  restArgs.map((arg) => {
-    const match = arg.match(/^--([^=]+)=(.*)$/);
-    if (!match) {
-      console.error(`invalid option: ${arg}`);
-      process.exit(1);
-    }
-    return [match[1], match[2]];
-  }),
-);
-
-const compiledPrefix = normalizePrefix(options["compiled-prefix"] ?? "");
-const assetPrefix = normalizePrefix(options["asset-prefix"] ?? "");
-const packageDir = path.resolve(repoRoot, packageDirArg);
-const packageJsonPath = path.join(packageDir, "package.json");
-const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
-const workspaceVersions = collectWorkspaceVersions(repoRoot);
-const skipLocalUpstreams = process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1";
-// npm dist-tag to fall back to when an optional/independently-published plugin's
-// workspace: version cannot be resolved (ELIZA_SKIP_LOCAL_UPSTREAMS=1). Each
-// plugin declares `elizaos.scripts.publish.registryFallbackTag` in its own
-// package.json; resolved through the discovery seam so no plugin names live here.
-const OPTIONAL_PLUGIN_FALLBACK_VERSIONS = resolveRegistryFallbackTags({
-  repoRoot,
-});
-
-const publishManifest = {
-  ...packageJson,
-  main: packageJson.main
-    ? transformModulePath(packageJson.main, compiledPrefix)
-    : undefined,
-  module: packageJson.module
-    ? transformModulePath(packageJson.module, compiledPrefix)
-    : undefined,
-  types: transformTypesPath(getRootTypesEntry(packageJson), compiledPrefix),
-  bin: transformBin(packageJson.bin, compiledPrefix),
-  exports: transformExports(packageJson.exports, compiledPrefix, assetPrefix),
-  dependencies: rewriteWorkspaceDeps(
-    packageJson.dependencies,
-    workspaceVersions,
-  ),
-  peerDependencies: rewriteWorkspaceDeps(
-    packageJson.peerDependencies,
-    workspaceVersions,
-  ),
-  optionalDependencies: rewriteWorkspaceDeps(
-    packageJson.optionalDependencies,
-    workspaceVersions,
-  ),
-  publishConfig: {
-    ...(packageJson.publishConfig ?? {}),
-    access:
-      packageJson.publishConfig?.access ??
-      (String(packageJson.name).startsWith("@") ? "public" : undefined),
-  },
-};
-
-delete publishManifest.private;
-delete publishManifest.scripts;
-delete publishManifest.devDependencies;
-delete publishManifest.workspaces;
-delete publishManifest.files;
-
-if (!publishManifest.exports?.["./package.json"]) {
-  publishManifest.exports = {
-    ...publishManifest.exports,
-    "./package.json": "./package.json",
-  };
-}
-
-if (!publishManifest.publishConfig?.access) {
-  delete publishManifest.publishConfig;
-}
-
-const distDir = path.join(packageDir, "dist");
-mkdirSync(distDir, { recursive: true });
-writeFileSync(
-  path.join(distDir, "package.json"),
-  `${JSON.stringify(cleanUndefined(publishManifest), null, 2)}\n`,
-);
-
-function collectWorkspaceVersions(rootDir) {
-  const packageRoots = [
-    path.join(rootDir, "packages"),
-    path.join(rootDir, "plugins"),
-  ];
-  const versions = new Map();
-
-  for (const packageRoot of packageRoots) {
-    walk(packageRoot, (entryPath) => {
-      if (path.basename(entryPath) !== "package.json") {
-        return;
-      }
-      let data;
-      try {
-        data = JSON.parse(readFileSync(entryPath, "utf8"));
-      } catch {
-        return;
-      }
-      if (typeof data.name === "string" && typeof data.version === "string") {
-        versions.set(data.name, data.version);
-      }
-    });
+export function collectWorkspaceVersions(rootDir) {
+  const rootManifestPath = path.join(rootDir, "package.json");
+  const rootManifest = JSON.parse(readFileSync(rootManifestPath, "utf8"));
+  const workspacePatterns = Array.isArray(rootManifest.workspaces)
+    ? rootManifest.workspaces
+    : rootManifest.workspaces?.packages;
+  if (!Array.isArray(workspacePatterns) || workspacePatterns.length === 0) {
+    throw new Error(
+      `Root manifest has no workspace globs: ${rootManifestPath}`,
+    );
   }
 
+  const manifestPaths = new Set();
+  for (const pattern of workspacePatterns.filter(
+    (entry) => typeof entry === "string" && !entry.startsWith("!"),
+  )) {
+    for (const manifestPath of globSync(
+      `${pattern.replace(/\/+$/u, "")}/package.json`,
+      { cwd: rootDir },
+    )) {
+      manifestPaths.add(manifestPath);
+    }
+  }
+  for (const pattern of workspacePatterns.filter(
+    (entry) => typeof entry === "string" && entry.startsWith("!"),
+  )) {
+    for (const manifestPath of globSync(
+      `${pattern.slice(1).replace(/\/+$/u, "")}/package.json`,
+      { cwd: rootDir },
+    )) {
+      manifestPaths.delete(manifestPath);
+    }
+  }
+
+  const versions = new Map();
+  const workspacePathsByName = new Map();
+  for (const manifestPath of [...manifestPaths].sort()) {
+    const absoluteManifestPath = path.resolve(rootDir, manifestPath);
+    let manifest;
+    try {
+      manifest = JSON.parse(readFileSync(absoluteManifestPath, "utf8"));
+    } catch (error) {
+      // error-policy:J2 a malformed canonical workspace must identify the
+      // selected manifest rather than disappearing from dependency rewriting.
+      throw new Error(`Invalid workspace manifest: ${absoluteManifestPath}`, {
+        cause: error,
+      });
+    }
+    if (typeof manifest.name !== "string" || !manifest.name.trim()) continue;
+    const workspaceName = manifest.name.trim();
+    const previousPath = workspacePathsByName.get(workspaceName);
+    if (previousPath && previousPath !== absoluteManifestPath) {
+      throw new Error(
+        `Duplicate canonical workspace name ${workspaceName}: ${previousPath} and ${absoluteManifestPath}`,
+      );
+    }
+    workspacePathsByName.set(workspaceName, absoluteManifestPath);
+    if (typeof manifest.version === "string" && manifest.version.trim()) {
+      versions.set(workspaceName, manifest.version.trim());
+    }
+  }
   return versions;
 }
 
-function walk(dirPath, visit) {
-  let entries;
-  try {
-    entries = readdirSync(dirPath, { withFileTypes: true });
-  } catch {
-    return;
+export function preparePackageDist({
+  repositoryRoot,
+  packageDirectory,
+  compiledPrefix = "",
+  assetPrefix = "",
+  skipLocalUpstreams = false,
+  optionalPluginFallbackVersions,
+}) {
+  const normalizedCompiledPrefix = normalizePrefix(compiledPrefix);
+  const normalizedAssetPrefix = normalizePrefix(assetPrefix);
+  const packageDir = path.resolve(repositoryRoot, packageDirectory);
+  const packageJsonPath = path.join(packageDir, "package.json");
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  const workspaceVersions = collectWorkspaceVersions(repositoryRoot);
+  // Optional plugins declare their registry fallback tags in package metadata;
+  // callers may inject the map so fixtures exercise the same rewrite boundary.
+  const fallbackVersions =
+    optionalPluginFallbackVersions ??
+    resolveRegistryFallbackTags({ repoRoot: repositoryRoot });
+  const rewriteOptions = { skipLocalUpstreams, fallbackVersions };
+
+  const publishManifest = {
+    ...packageJson,
+    main: packageJson.main
+      ? transformModulePath(packageJson.main, normalizedCompiledPrefix)
+      : undefined,
+    module: packageJson.module
+      ? transformModulePath(packageJson.module, normalizedCompiledPrefix)
+      : undefined,
+    types: transformTypesPath(
+      getRootTypesEntry(packageJson),
+      normalizedCompiledPrefix,
+    ),
+    bin: transformBin(packageJson.bin, normalizedCompiledPrefix),
+    exports: transformExports(
+      packageJson.exports,
+      normalizedCompiledPrefix,
+      normalizedAssetPrefix,
+    ),
+    dependencies: rewriteWorkspaceDeps(
+      packageJson.dependencies,
+      workspaceVersions,
+      rewriteOptions,
+    ),
+    peerDependencies: rewriteWorkspaceDeps(
+      packageJson.peerDependencies,
+      workspaceVersions,
+      rewriteOptions,
+    ),
+    optionalDependencies: rewriteWorkspaceDeps(
+      packageJson.optionalDependencies,
+      workspaceVersions,
+      rewriteOptions,
+    ),
+    publishConfig: {
+      ...(packageJson.publishConfig ?? {}),
+      access:
+        packageJson.publishConfig?.access ??
+        (String(packageJson.name).startsWith("@") ? "public" : undefined),
+    },
+  };
+
+  delete publishManifest.private;
+  delete publishManifest.scripts;
+  delete publishManifest.devDependencies;
+  delete publishManifest.workspaces;
+  delete publishManifest.files;
+
+  if (!publishManifest.exports?.["./package.json"]) {
+    publishManifest.exports = {
+      ...publishManifest.exports,
+      "./package.json": "./package.json",
+    };
+  }
+  if (!publishManifest.publishConfig?.access) {
+    delete publishManifest.publishConfig;
   }
 
-  for (const entry of entries) {
-    const entryPath = path.join(dirPath, entry.name);
-    if (entry.isDirectory()) {
-      if (
-        [
-          "node_modules",
-          "dist",
-          ".git",
-          ".venv",
-          "venv",
-          "__pycache__",
-          "android",
-          "ios",
-          "external",
-          "output",
-        ].includes(entry.name)
-      ) {
-        continue;
-      }
-      walk(entryPath, visit);
-      continue;
-    }
-    visit(entryPath);
-  }
+  const cleanedManifest = cleanUndefined(publishManifest);
+  const distDir = path.join(packageDir, "dist");
+  mkdirSync(distDir, { recursive: true });
+  writeFileSync(
+    path.join(distDir, "package.json"),
+    `${JSON.stringify(cleanedManifest, null, 2)}\n`,
+  );
+  return cleanedManifest;
 }
 
 function normalizePrefix(prefix) {
@@ -183,7 +188,7 @@ function getRootTypesEntry(pkg) {
   return getRootEntry(pkg);
 }
 
-function rewriteWorkspaceDeps(section, versions) {
+function rewriteWorkspaceDeps(section, versions, options) {
   if (!section) {
     return undefined;
   }
@@ -193,8 +198,11 @@ function rewriteWorkspaceDeps(section, versions) {
     if (typeof version === "string" && version.startsWith("workspace:")) {
       const resolvedVersion = versions.get(name);
       if (!resolvedVersion) {
-        if (skipLocalUpstreams) {
-          const fallbackVersion = resolveWorkspaceFallbackVersion(name);
+        if (options.skipLocalUpstreams) {
+          const fallbackVersion = resolveWorkspaceFallbackVersion(
+            name,
+            options,
+          );
           if (fallbackVersion) {
             rewrittenEntries.push([name, fallbackVersion]);
           }
@@ -218,11 +226,11 @@ function rewriteWorkspaceDeps(section, versions) {
   return rewritten;
 }
 
-function resolveWorkspaceFallbackVersion(name) {
-  if (!skipLocalUpstreams) {
+function resolveWorkspaceFallbackVersion(name, options) {
+  if (!options.skipLocalUpstreams) {
     return null;
   }
-  return OPTIONAL_PLUGIN_FALLBACK_VERSIONS.get(name) ?? null;
+  return options.fallbackVersions.get(name) ?? null;
 }
 
 function normalizeWorkspaceVersion(spec, resolvedVersion) {
@@ -385,4 +393,43 @@ function cleanUndefined(value) {
     );
   }
   return value;
+}
+
+function main(argv = process.argv.slice(2)) {
+  const [packageDirectory, ...restArgs] = argv;
+  if (!packageDirectory) {
+    throw new TypeError(
+      "usage: node packages/scripts/prepare-package-dist.mjs <package-dir> [--compiled-prefix=path] [--asset-prefix=path]",
+    );
+  }
+  const options = Object.fromEntries(
+    restArgs.map((argument) => {
+      const match = argument.match(/^--([^=]+)=(.*)$/u);
+      if (!match) throw new TypeError(`invalid option: ${argument}`);
+      return [match[1], match[2]];
+    }),
+  );
+  preparePackageDist({
+    repositoryRoot: repoRoot,
+    packageDirectory,
+    compiledPrefix: options["compiled-prefix"] ?? "",
+    assetPrefix: options["asset-prefix"] ?? "",
+    skipLocalUpstreams: process.env.ELIZA_SKIP_LOCAL_UPSTREAMS === "1",
+  });
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  try {
+    main();
+  } catch (error) {
+    // error-policy:J1 the CLI boundary exposes invalid workspace or manifest
+    // state to the invoking build instead of emitting a partial dist manifest.
+    const message =
+      error instanceof Error ? (error.stack ?? error.message) : String(error);
+    process.stderr.write(`${message}\n`);
+    process.exitCode = 1;
+  }
 }

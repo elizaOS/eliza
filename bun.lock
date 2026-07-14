@@ -395,7 +395,6 @@
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/capacitor-talkmode": "workspace:*",
         "@elizaos/capacitor-websiteblocker": "workspace:*",
-        "sharp": "^0.34.5",
       },
       "peerDependencies": {
         "react": "^19.0.0",

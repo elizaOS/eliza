@@ -2,17 +2,17 @@ Source: elizaos-app
 Section: misc
 Priority: optional
 Maintainer: elizaos <dev@app.elizaos.ai>
-Build-Depends: debhelper-compat (= 13), nodejs (>= 22.12.0), npm
+Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.6.2
 Homepage: https://app.elizacloud.ai
-Vcs-Git: https://github.com/elizaos/elizaos-app.git
-Vcs-Browser: https://github.com/elizaos/elizaos-app
+Vcs-Git: https://github.com/elizaOS/eliza.git
+Vcs-Browser: https://github.com/elizaOS/eliza
 Rules-Requires-Root: no
 
 Package: elizaos-app
-Architecture: all
-Depends: nodejs (>= 22.12.0), ${misc:Depends}
-Recommends: npm, systemd
+Architecture: amd64
+Depends: ffmpeg, ${shlibs:Depends}, ${misc:Depends}
+Recommends: systemd
 Description: Personal AI assistant built on elizaOS
  elizaOS App is a personal AI assistant you run on your own devices, built
  on elizaOS. It provides zero-config onboarding, multi-provider AI

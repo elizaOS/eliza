@@ -1,0 +1,11 @@
+{
+  "sourceUrl": "https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.xz",
+  "archiveSha256": "472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6",
+  "executableSha256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c",
+  "source": {
+    "url": "https://nodejs.org/dist/v24.15.0/node-v24.15.0.tar.xz",
+    "sha256": "a4f653d79ed140aaad921e8c22a3b585ca85cfdab80d4030f6309e4663a8a1c8"
+  },
+  "version": "24.15.0",
+  "platform": "linux-x64"
+}

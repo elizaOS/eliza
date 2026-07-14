@@ -1,80 +1,21 @@
-# Homebrew Distribution
+# Homebrew distribution
 
-This directory contains Homebrew formula and cask definitions for elizaOS App.
+The authoritative formula and cask live in
+[`elizaOS/homebrew-tap`](https://github.com/elizaOS/homebrew-tap). This
+repository deliberately carries no versioned Ruby definitions: checked-in
+copies become stale independently of the external tap and can make a syntax-only
+packaging check look healthy while users receive old artifacts.
 
-## Files
+Stable releases call `.github/workflows/update-homebrew.yml` after the exact npm
+release is observable. That workflow sends the stable version to the tap's
+`update-homebrew` repository-dispatch handler, where the formula/cask URLs,
+digests, Node requirement, installation, and audits are generated and tested.
+The dispatch fails if its credential or stable version is invalid.
 
-- `elizaos-app.rb` — Formula for the CLI tool (installed via npm)
-- `elizaos-app.cask.rb` — Cask for the desktop app (DMG installer)
-
-## Setup
-
-### 1. Create Homebrew Tap Repository
-
-Create a new repo: `elizaos/homebrew-elizaos-app`
-
-Structure:
-```
-homebrew-elizaos-app/
-├── Formula/
-│   └── elizaos-app.rb
-├── Casks/
-│   └── elizaos-app.cask.rb
-└── README.md
-```
-
-### 2. Update SHA256 Hashes
-
-Before publishing, replace placeholder hashes:
-
-**For the cask (DMG files):**
-```bash
-# Download and hash ARM64 DMG
-curl -sL https://github.com/elizaos/elizaos-app/releases/download/v2.0.0-beta.0/ElizaOSApp-2.0.0-beta.0-arm64.dmg | shasum -a 256
-
-# Download and hash Intel DMG
-curl -sL https://github.com/elizaos/elizaos-app/releases/download/v2.0.0-beta.0/ElizaOSApp-2.0.0-beta.0.dmg | shasum -a 256
-```
-
-**For the formula (npm tarball):**
-```bash
-curl -sL https://registry.npmjs.org/elizaos/-/elizaos-2.0.0-beta.0.tgz | shasum -a 256
-```
-
-### 3. Users Can Install
+Users install from the authoritative tap:
 
 ```bash
-# Add tap
-brew tap elizaos/elizaos-app
-
-# Install desktop app
-brew install --cask elizaos-app
-
-# Or install CLI only
+brew tap elizaOS/tap
 brew install elizaos-app
+brew install --cask elizaos-app
 ```
-
-## Auto-Update Workflow
-
-See the publishing guide at `../PUBLISHING_GUIDE.md` for full instructions.
-
-## Testing Locally
-
-```bash
-# Test formula syntax
-brew audit --strict elizaos-app.rb
-
-# Test cask syntax
-brew audit --cask --strict elizaos-app.cask.rb
-
-# Test installation (from local file)
-brew install --formula ./elizaos-app.rb
-brew install --cask ./elizaos-app.cask.rb
-```
-
-## Notes
-
-- The cask requires macOS Monterey (12.0) or later
-- The formula requires Node.js 22+ (installed as dependency)
-- Both support auto-updates via Homebrew's built-in mechanisms
-- Desktop app also has built-in auto-update via the native Electrobun updater

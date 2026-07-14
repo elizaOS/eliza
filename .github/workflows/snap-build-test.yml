@@ -3,12 +3,20 @@ name: Snap Build & Test
 on:
   push:
     paths:
-      - 'packages/app-core/packaging/snap/**'
+      - 'packages/**'
+      - 'plugins/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'patches/**'
       - '.github/workflows/snap-build-test.yml'
   pull_request:
-    branches: [main]
+    branches: [develop, main]
     paths:
-      - 'packages/app-core/packaging/snap/**'
+      - 'packages/**'
+      - 'plugins/**'
+      - 'package.json'
+      - 'bun.lock'
+      - 'patches/**'
       - '.github/workflows/snap-build-test.yml'
   workflow_dispatch:
 
@@ -22,71 +30,104 @@ permissions:
 
 jobs:
   build-snap:
-    name: Build Snap (${{ matrix.arch }})
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-24.04
-            experimental: false
-          # Linux arm64 hosted runners are in public preview for public
-          # repositories (free, but queue-prone). Mark this matrix entry
-          # experimental so a flaky ARM run doesn't block amd64 PRs.
-          # Promote `experimental: false` once ARM is GA and stable.
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-            experimental: true
-    continue-on-error: ${{ matrix.experimental }}
+    name: Build Snap (amd64)
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Free disk space on runner
-        # Snapcraft multipass + bun install of every workspace dependency
-        # inside the sandbox consistently exhausts the default 14GB GHA
-        # runner disk, producing `System.IO.IOException: No space left on
-        # device` halfway through the build. Reclaim ~30GB up front by
-        # dropping unused toolchains.
         run: |
           set -euo pipefail
           echo "=== before ==="
           df -h /
+          # error-policy:J6 optional hosted-runner toolchains are reclaimed on
+          # a best-effort basis; package verification remains fail-closed.
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
           sudo docker image prune -af 2>/dev/null || true
           echo "=== after ==="
           df -h /
+          AVAILABLE_KB="$(df --output=avail -k / | tail -n 1 | tr -d ' ')"
+          MIN_FREE_KB=$((30 * 1024 * 1024))
+          if (( AVAILABLE_KB < MIN_FREE_KB )); then
+            echo "::error::Snap build requires at least 30 GiB free; found ${AVAILABLE_KB} KiB"
+            exit 1
+          fi
 
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          # Skip submodules entirely. The snap build uses
-          # `bun install --ignore-scripts` (see snapcraft.yaml) and
-          # `SKIP_NATIVE_PLUGINS=1`, so it never reads from any of the
-          # repo's git submodules (plugin-local-inference/native/llama.cpp,
-          # vendor/opencode).
-          # Fetching them only risks "not our ref" failures when upstream
-          # branches are force-pushed and the pinned SHA is no longer
-          # reachable on the remote. The runtime closure under plugins/*/src
-          # ships from the main repo tree and is unaffected.
+          # This lane packages tracked workspace outputs and the locked npm
+          # production closure. Native submodule source trees have dedicated
+          # build/provenance lanes and are not Snap test inputs.
           submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+          check-latest: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
-          bun-version: "canary"
+          bun-version: "1.4.0"
 
       - name: Setup Buf
         uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install workspace dependencies
+        run: bun run install:light
+
+      - name: Build agent runtime closure
+        run: >-
+          node packages/scripts/run-turbo.mjs run build
+          --filter=@elizaos/agent...
+          --concurrency=8
+
+      - name: Prepare packaged runtime
+        run: >-
+          node packages/scripts/prepare-packaged-runtime.mjs
+          --source-root .
+          --destination-root packages/app-core/packaging/snap/runtime
+          --entry @elizaos/agent
+          --stub @elizaos/plugin-vision
+          --stub @elizaos/plugin-wallet
+          --stub @elizaos/plugin-whatsapp
+          --target-os linux
+          --target-cpu x64
+
+      - name: Generate runtime license inventory
+        run: >-
+          node packages/app-core/packaging/generate-license-inventory.mjs
+          packages/app-core/packaging/snap/runtime
+
+      - name: Reject bundled FFmpeg executables
+        env:
+          PACKAGED_RUNTIME: packages/app-core/packaging/snap/runtime
+        run: |
+          set -euo pipefail
+          test -d "$PACKAGED_RUNTIME"
+          mapfile -t bundled_media_bins < <(
+            find "$PACKAGED_RUNTIME" \
+              \( -type f -o -type l \) \
+              \( -name ffmpeg -o -name ffmpeg.exe -o -name ffprobe -o -name ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Packaged runtime must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
+
       - name: Prepare snapcraft.yaml
         run: |
           mkdir -p snap
           cp packages/app-core/packaging/snap/snapcraft.yaml snap/snapcraft.yaml
 
-          # Use package.json version
-          VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0-dev")
+          # The snap launches @elizaos/agent, so its manifest is the package
+          # version authority for both the snap metadata and runtime smoke.
+          VERSION=$(node -p "require('./packages/agent/package.json').version")
           sed -i "s/^version: .*/version: '${VERSION}'/" snap/snapcraft.yaml
           echo "Building snap version: $VERSION"
 
@@ -95,20 +136,40 @@ jobs:
           set -euo pipefail
           ROOT_OWNER="$(stat -c '%u:%g' /)"
           echo "Runner root owner: ${ROOT_OWNER}"
-          if [ "${ROOT_OWNER}" = "0:0" ]; then
-            echo "Root is already 0:0 — snapd canonicalization OK"
-            exit 0
-          fi
-          echo "Attempting to repair / ownership so snapd/systemd path canonicalization accepts this runner"
-          if sudo -n chown root:root / 2>/dev/null; then
-            echo "Chown succeeded; new owner: $(stat -c '%u:%g' /)"
-          else
-            echo "::warning::Unable to chown / to root:root (sudo unavailable or passwordless sudo disabled). snapd may fail downstream. Remediation: run this job on a standard ubuntu-latest / ubuntu-24.04 GitHub-hosted runner, or configure the container image so / is owned by 0:0."
+          if [ "${ROOT_OWNER}" != "0:0" ]; then
+            echo "::error::Snap build runner root must be owned by 0:0; found ${ROOT_OWNER}"
+            exit 1
           fi
 
       - name: Build snap
         uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79
         id: snapcraft
+
+      - name: Reject FFmpeg executables in final Snap payload
+        env:
+          SNAP_PATH: ${{ steps.snapcraft.outputs.snap }}
+        run: |
+          set -euo pipefail
+          PAYLOAD_ROOT="$RUNNER_TEMP/elizaos-snap-payload-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}"
+          test ! -e "$PAYLOAD_ROOT"
+          cleanup_payload_root() {
+            rm -rf -- "$PAYLOAD_ROOT"
+          }
+          trap cleanup_payload_root EXIT
+          unsquashfs -no-progress -d "$PAYLOAD_ROOT" "$SNAP_PATH" >/dev/null
+          mapfile -t bundled_media_bins < <(
+            find "$PAYLOAD_ROOT" \
+              \( -type f -o -type l \) \
+              \( -iname ffmpeg -o -iname ffmpeg.exe -o -iname ffprobe -o -iname ffprobe.exe \) \
+              -print
+          )
+          if [[ "${#bundled_media_bins[@]}" -ne 0 ]]; then
+            printf 'Final Snap payload must not redistribute FFmpeg executables:\n' >&2
+            printf '  %s\n' "${bundled_media_bins[@]}" >&2
+            exit 1
+          fi
+          rm -rf -- "$PAYLOAD_ROOT"
+          trap - EXIT
 
       - name: Verify snap contents
         run: |
@@ -118,20 +179,84 @@ jobs:
           echo "=== Snap info ==="
           snap info ${{ steps.snapcraft.outputs.snap }} 2>/dev/null || unsquashfs -l ${{ steps.snapcraft.outputs.snap }} | head -50
 
-      - name: Install and test snap
+      - name: Install, explicitly connect, and test snap
         run: |
           set -euo pipefail
+          sudo snap install ffmpeg-2204
           sudo snap install ${{ steps.snapcraft.outputs.snap }} --dangerous
+          sudo snap connect elizaos-app:ffmpeg-2204 ffmpeg-2204:ffmpeg-2204
+          snap connections elizaos-app | grep -Eq \
+            '^content[[:space:]]+elizaos-app:ffmpeg-2204[[:space:]]+ffmpeg-2204:ffmpeg-2204[[:space:]]'
           echo "=== Installed snap ==="
           snap list elizaos-app
-          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          NATIVE_AUDIT="$({
+            sudo snap run --shell elizaos-app <<'SNAP_SHELL'
+          set -eu
+          export LD_LIBRARY_PATH="$SNAP/ffmpeg-platform/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/x86_64-linux-gnu:$SNAP/lib/x86_64-linux-gnu"
+          test "$FFMPEG_BIN" = "$SNAP/ffmpeg-platform/usr/bin/ffmpeg"
+          test "$FFPROBE_PATH" = "$SNAP/ffmpeg-platform/usr/bin/ffprobe"
+          test "$(command -v ffmpeg)" = "$SNAP/ffmpeg-platform/usr/bin/ffmpeg"
+          test "$(command -v ffprobe)" = "$SNAP/ffmpeg-platform/usr/bin/ffprobe"
+          PROJECT_LICENSE="$SNAP/usr/share/licenses/elizaos-app/LICENSE"
+          THIRD_PARTY_NOTICES="$SNAP/usr/share/licenses/elizaos-app/THIRD_PARTY_NOTICES.json"
+          test "$(sha256sum "$PROJECT_LICENSE" | cut -d ' ' -f 1)" = d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d
+          cmp "$PROJECT_LICENSE" "$SNAP/lib/elizaos-app/LICENSE"
+          cmp "$THIRD_PARTY_NOTICES" "$SNAP/lib/elizaos-app/THIRD_PARTY_NOTICES.json"
+          "$SNAP/node/bin/node" -e '
+          const inventory = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+          if (
+            inventory.schemaVersion !== 1 ||
+            inventory.project.sha256 !== "d0590837a439c742e89c8226137dd4e902fa1e0df486347dbfc9b8ba68b5826d" ||
+            inventory.packageCount !== inventory.packages.length ||
+            inventory.packageCount < 1 ||
+            inventory.licenseTextCount !== inventory.licenseTexts.length ||
+            inventory.licenseTextCount < 1 ||
+            inventory.packages.some((entry) => !entry.licenseDeclared)
+          ) process.exit(1);
+          ' "$THIRD_PARTY_NOTICES"
+          test "$ELIZA_STATE_DIR" = "$SNAP_USER_COMMON/state/eliza"
+          mkdir -p "$ELIZA_STATE_DIR"
+          : > "$ELIZA_STATE_DIR/snap-persistence-smoke"
+
+          MEDIA_SMOKE="$SNAP_USER_COMMON/ffmpeg-smoke-$$.mp4"
+          trap 'rm -f "$MEDIA_SMOKE"' 0
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i color=c=black:s=16x16:d=0.04 \
+            -c:v libx264 -pix_fmt yuv420p -y "$MEDIA_SMOKE"
+          CODEC_NAME="$(
+            ffprobe -v error -select_streams v:0 \
+              -show_entries stream=codec_name \
+              -of default=noprint_wrappers=1:nokey=1 "$MEDIA_SMOKE"
+          )"
+          test "$CODEC_NAME" = h264
+          rm -f "$MEDIA_SMOKE"
+          trap - 0
+          find "$SNAP/lib/elizaos-app" -type f -name '*.node' -exec ldd '{}' ';'
+          SNAP_SHELL
+          } 2>&1)"
+          printf '%s\n' "$NATIVE_AUDIT"
+          if grep -q 'not found' <<< "$NATIVE_AUDIT"; then
+            echo "::error::Installed Snap has unresolved native-library dependencies"
+            exit 1
+          fi
+          sudo snap run --shell elizaos-app <<'SNAP_STATE'
+          set -eu
+          test "$ELIZA_STATE_DIR" = "$SNAP_USER_COMMON/state/eliza"
+          test -f "$ELIZA_STATE_DIR/snap-persistence-smoke"
+          rm -f "$ELIZA_STATE_DIR/snap-persistence-smoke"
+          SNAP_STATE
+
+          EXPECTED_VERSION="$(node -p "require('./packages/agent/package.json').version")"
           node packages/scripts/verify-packaged-cli.mjs \
             --expected "$EXPECTED_VERSION" \
+            --health-url http://127.0.0.1:43137/api/health \
+            --service-arg serve \
             -- elizaos-app
 
       - name: Upload snap artifact
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: snap-${{ matrix.arch }}
+          name: snap-amd64
           path: ${{ steps.snapcraft.outputs.snap }}
           retention-days: 30

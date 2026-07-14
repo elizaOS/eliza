@@ -1,0 +1,38 @@
+rpc-websockets 9.3.9 — LGPL-3.0-only distribution notice
+
+Copyright (c) Elpheria j.d.o.o.
+
+rpc-websockets is an Open Source project licensed under the terms of
+the LGPLv3 license. Please see <https://www.gnu.org/licenses/lgpl-3.0.html>
+for license text.
+
+rpc-websockets Pro has a commercial-friendly license allowing private forks
+and modifications of rpc-websockets.
+Please see https://www.elpheria.com/products/rpc-websockets-pro.html
+or email us at info@elpheria.com for more detail.
+
+SOURCE AND RELINKING INFORMATION
+
+This distribution contains the JavaScript build of rpc-websockets 9.3.9 from
+upstream commit af8980776b55c2320b790556f775266fd5afc3ce:
+https://github.com/elpheria/rpc-websockets/tree/af8980776b55c2320b790556f775266fd5afc3ce
+
+The corresponding elizaOS application source, packaging scripts, and exact
+dependency lock are available in the source tree for the distributed elizaOS
+version at https://github.com/elizaOS/eliza.
+
+To recombine the application with a modified, interface-compatible build:
+
+1. Check out the rpc-websockets source commit above and install its declared
+   development dependencies.
+2. Modify the library and run its documented `npm run build` command.
+3. Check out the matching elizaOS release source and install its frozen Bun
+   dependency graph.
+4. Replace the prepared runtime's `node_modules/rpc-websockets/dist` directory
+   with the modified build output, retaining the package manifest and notices.
+5. Run the elizaOS package build for the desired distribution format. The
+   package scripts impose no signature or technical restriction that prevents
+   a locally rebuilt application from loading that replacement.
+
+The complete GNU Lesser General Public License version 3 and GNU General
+Public License version 3 follow this notice in the combined artifact.

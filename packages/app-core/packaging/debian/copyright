@@ -1,11 +1,49 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: elizaos-app
 Upstream-Contact: dev@app.elizaos.ai
-Source: https://github.com/elizaos/elizaos-app
+Source: https://github.com/elizaOS/eliza
+Comment:
+ The amd64 package embeds the official Node.js v24.15.0 Linux x64 runtime.
+ .
+ Binary: https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.xz
+ Binary-SHA256: 472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6
+ Executable-SHA256: d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c
+ Source: https://nodejs.org/dist/v24.15.0/node-v24.15.0.tar.xz
+ Source-SHA256: a4f653d79ed140aaad921e8c22a3b585ca85cfdab80d4030f6309e4663a8a1c8
+ .
+ The complete upstream license and bundled-dependency notices are installed at
+ /usr/lib/elizaos-app/node/LICENSE and
+ /usr/share/doc/elizaos-app/nodejs-LICENSE. Verified artifact provenance is at
+ /usr/lib/elizaos-app/node/elizaos-runtime-provenance.json and
+ /usr/share/doc/elizaos-app/nodejs-runtime-provenance.json.
+ .
+ elizaOS project bytes remain under the repository MIT license, installed at
+ /usr/lib/elizaos-app/LICENSE and
+ /usr/share/doc/elizaos-app/elizaos-LICENSE. The generated runtime closure is not covered by a blanket MIT assertion:
+ every inventoried component, declared license,
+ bundled license/notice file, exact digest, and retained text is recorded at
+ /usr/lib/elizaos-app/THIRD_PARTY_NOTICES.json and
+ /usr/share/doc/elizaos-app/third-party-notices.json.
 
-Files: *
+Files: packages/app-core/packaging/debian/apt-repo-config/*
+ packages/app-core/packaging/debian/changelog
+ packages/app-core/packaging/debian/control
+ packages/app-core/packaging/debian/copyright
+ packages/app-core/packaging/debian/elizaos-app.user.service
+ packages/app-core/packaging/debian/postinst
+ packages/app-core/packaging/debian/prerm
+ packages/app-core/packaging/debian/rules
+ packages/app-core/packaging/debian/source/format
+ packages/app-core/packaging/debian/verify-maintainer-scripts.sh
 Copyright: 2024-2026 elizaos
 License: MIT
+
+Files: packages/app-core/packaging/debian/node-runtime/*
+Copyright: Node.js contributors
+License: Node.js
+Comment:
+ The complete Node.js license and bundled third-party notices are retained in
+ the installed runtime and documentation paths listed in the header Comment.
 
 License: MIT
  Permission is hereby granted, free of charge, to any person obtaining a
@@ -25,3 +63,8 @@ License: MIT
  OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
  OTHER DEALINGS IN THE SOFTWARE.
+
+License: Node.js
+ The complete upstream terms and bundled-dependency notices are installed at
+ /usr/lib/elizaos-app/node/LICENSE and
+ /usr/share/doc/elizaos-app/nodejs-LICENSE.
