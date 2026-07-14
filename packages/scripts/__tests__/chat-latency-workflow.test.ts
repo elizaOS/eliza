@@ -179,6 +179,7 @@ describe("chat latency live workflow", () => {
     expect(isolated).toContain("consecutiveExactResponses === 3");
     expect(isolated).toContain("steps.auth-probe.outcome != 'skipped'");
     expect(isolated).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
+    expect(isolated).not.toContain("--sampling-rate");
     expect(isolated).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
     expect(isolated).toContain("sanitizeInferenceAuthTail");
     expect(isolated).toContain("safe.slice(-2_000)");

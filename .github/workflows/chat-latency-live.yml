@@ -738,7 +738,6 @@ jobs:
 
           bunx wrangler tail "$AUTH_PROBE_WORKER_NAME" \
             --format json \
-            --sampling-rate 1 \
             --search "[InferenceAuth] trace" \
             --version-id "$AUTH_PROBE_VERSION_ID" \
             > "$raw_tail" 2> "$tail_log" &
