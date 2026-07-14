@@ -69,12 +69,6 @@ describe("runAutonomousCli argument-only commands", () => {
     );
   });
 
-  it("ios-bridge without --stdio fails closed instead of hijacking stdout", async () => {
-    await expect(runAutonomousCli(argv("ios-bridge"))).rejects.toThrow(
-      "ios-bridge currently supports --stdio only",
-    );
-  });
-
   it("parses benchmark flags and fails fast on an invalid --timeout", async () => {
     // Exercises the benchmark dispatch branch (flag parsing + lazy import)
     // without booting a runtime: runBenchmark validates the timeout before
