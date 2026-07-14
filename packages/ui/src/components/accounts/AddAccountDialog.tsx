@@ -46,6 +46,11 @@ interface AddAccountDialogProps {
   open: boolean;
   /** Optional initial provider. When omitted, the dialog starts with the consolidated provider picker. */
   providerId?: LinkedAccountProviderId;
+  /** Unhealthy account whose credential is replaced in place after verification. */
+  credentialRepairAccount?: Pick<
+    LinkedAccountConfig,
+    "id" | "label" | "source" | "health"
+  > | null;
   onClose: () => void;
   onCreated: (account: LinkedAccountConfig) => void;
 }
@@ -180,6 +185,7 @@ function providerDisplayName(
 export function AddAccountDialog({
   open,
   providerId,
+  credentialRepairAccount = null,
   onClose,
   onCreated,
 }: AddAccountDialogProps) {
@@ -196,8 +202,10 @@ export function AddAccountDialog({
       ? initialStepForProvider(activeProviderId)
       : "provider-select",
   );
-  const [label, setLabel] = useState(() =>
-    activeProviderId ? defaultOAuthLabel(activeProviderId) : "",
+  const [label, setLabel] = useState(
+    () =>
+      credentialRepairAccount?.label ??
+      (activeProviderId ? defaultOAuthLabel(activeProviderId) : ""),
   );
   const [apiKey, setApiKey] = useState("");
   const [oauthCode, setOauthCode] = useState("");
@@ -243,7 +251,13 @@ export function AddAccountDialog({
         ? initialStepForProvider(activeProviderId)
         : "provider-select",
     );
-    setLabel(activeProviderId ? defaultOAuthLabel(activeProviderId) : "");
+    setLabel(
+      credentialRepairAccount?.id
+        ? credentialRepairAccount.label
+        : activeProviderId
+          ? defaultOAuthLabel(activeProviderId)
+          : "",
+    );
     setApiKey("");
     setOauthCode("");
     setErrorMessage(null);
@@ -251,7 +265,12 @@ export function AddAccountDialog({
     setDeviceCode(null);
     setDeviceCodeCopied(false);
     setOauthUrl(null);
-  }, [closeEventSource, activeProviderId]);
+  }, [
+    closeEventSource,
+    activeProviderId,
+    credentialRepairAccount?.id,
+    credentialRepairAccount?.label,
+  ]);
 
   const copyDeviceCode = useCallback(async (code: string) => {
     try {
@@ -419,6 +438,9 @@ export function AddAccountDialog({
         const flow = await client.startAccountOAuth(activeProviderId, {
           label: label.trim(),
           mode,
+          ...(credentialRepairAccount
+            ? { replaceAccountId: credentialRepairAccount.id }
+            : {}),
         });
         sessionIdRef.current = flow.sessionId;
         restoredSessionRef.current = flow.sessionId;
@@ -461,7 +483,14 @@ export function AddAccountDialog({
         }
       }
     },
-    [label, activeProviderId, subscribeToFlow, subscriptionAddMode, t],
+    [
+      label,
+      activeProviderId,
+      credentialRepairAccount,
+      subscribeToFlow,
+      subscriptionAddMode,
+      t,
+    ],
   );
 
   const submitOAuthCode = useCallback(
@@ -510,6 +539,9 @@ export function AddAccountDialog({
         const account = await client.createApiKeyAccount(activeProviderId, {
           label: trimmedLabel,
           apiKey: trimmedKey,
+          ...(credentialRepairAccount
+            ? { replaceAccountId: credentialRepairAccount.id }
+            : {}),
         });
         onCreated(account);
         onClose();
@@ -525,7 +557,15 @@ export function AddAccountDialog({
         setStep("error");
       }
     },
-    [apiKey, label, onClose, onCreated, activeProviderId, t],
+    [
+      apiKey,
+      label,
+      onClose,
+      onCreated,
+      activeProviderId,
+      credentialRepairAccount,
+      t,
+    ],
   );
 
   const handleClose = useCallback(() => {
@@ -562,38 +602,66 @@ export function AddAccountDialog({
     setStep(
       providerId ? initialStepForProvider(providerId) : "provider-select",
     );
-    setLabel(providerId ? defaultOAuthLabel(providerId) : "");
-  }, [open, providerId]);
+    setLabel(
+      credentialRepairAccount?.id
+        ? credentialRepairAccount.label
+        : providerId
+          ? defaultOAuthLabel(providerId)
+          : "",
+    );
+    setApiKey("");
+    setOauthCode("");
+    setErrorMessage(null);
+    setSessionId(null);
+    setDeviceCode(null);
+    setDeviceCodeCopied(false);
+    setOauthUrl(null);
+  }, [
+    open,
+    providerId,
+    credentialRepairAccount?.id,
+    credentialRepairAccount?.label,
+  ]);
 
-  const dialogDescription = !activeProviderId
-    ? t("accounts.add.chooseDescription", {
-        defaultValue:
-          "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
-      })
-    : subscriptionAddMode === "oauth"
-      ? t("accounts.add.subscriptionDescription", {
+  const dialogDescription = credentialRepairAccount
+    ? credentialRepairAccount.source === "oauth"
+      ? t("accounts.reauthenticate.description", {
           defaultValue:
-            "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
+            "Sign in again with the same provider. Your current credential stays active until the new sign-in succeeds, then this account is updated in place.",
         })
-      : subscriptionAddMode === "api-key"
-        ? t("accounts.add.codingPlanDescription", {
+      : t("accounts.replaceCredential.description", {
+          defaultValue:
+            "Enter a new credential for the same provider. The current credential stays unchanged until the replacement is verified and saved.",
+        })
+    : !activeProviderId
+      ? t("accounts.add.chooseDescription", {
+          defaultValue:
+            "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
+        })
+      : subscriptionAddMode === "oauth"
+        ? t("accounts.add.subscriptionDescription", {
             defaultValue:
-              "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
+              "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
           })
-        : subscriptionAddMode === "external-cli"
-          ? t("accounts.add.externalCliDescription", {
+        : subscriptionAddMode === "api-key"
+          ? t("accounts.add.codingPlanDescription", {
               defaultValue:
-                "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
+                "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
             })
-          : subscriptionAddMode === "unavailable"
-            ? t("accounts.add.unavailableDescription", {
+          : subscriptionAddMode === "external-cli"
+            ? t("accounts.add.externalCliDescription", {
                 defaultValue:
-                  "This provider does not expose a safe first-party coding subscription surface for linking here.",
+                  "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
               })
-            : t("accounts.add.apiDescription", {
-                defaultValue:
-                  "Paste your API key. The key is stored locally with mode 0600.",
-              });
+            : subscriptionAddMode === "unavailable"
+              ? t("accounts.add.unavailableDescription", {
+                  defaultValue:
+                    "This provider does not expose a safe first-party coding subscription surface for linking here.",
+                })
+              : t("accounts.add.apiDescription", {
+                  defaultValue:
+                    "Paste your API key. The key is stored locally with mode 0600.",
+                });
 
   const apiKeyLabel =
     subscriptionAddMode === "api-key"
@@ -666,10 +734,20 @@ export function AddAccountDialog({
         <DialogHeader>
           <DialogTitle>
             {activeProviderId
-              ? t("accounts.add.title", {
-                  defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
-                  provider: providerDisplayName(activeProviderId, t),
-                })
+              ? credentialRepairAccount
+                ? credentialRepairAccount.source === "oauth"
+                  ? t("accounts.reauthenticate.title", {
+                      defaultValue: `Reauthenticate ${credentialRepairAccount.label}`,
+                      account: credentialRepairAccount.label,
+                    })
+                  : t("accounts.replaceCredential.title", {
+                      defaultValue: `Replace credential for ${credentialRepairAccount.label}`,
+                      account: credentialRepairAccount.label,
+                    })
+                : t("accounts.add.title", {
+                    defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
+                    provider: providerDisplayName(activeProviderId, t),
+                  })
               : t("accounts.add.chooseTitle", {
                   defaultValue: "Add a provider account",
                 })}
@@ -684,7 +762,9 @@ export function AddAccountDialog({
         {step === "choose" ? (
           <div className="grid gap-3 py-2">
             <p className="text-xs text-muted">
-              The connected account's email address will be used as its name.
+              {credentialRepairAccount
+                ? `${credentialRepairAccount.label} keeps its name, priority, and position in the account pool.`
+                : "The connected account's email address will be used as its name."}
             </p>
             <Button
               type="button"
@@ -858,7 +938,14 @@ export function AddAccountDialog({
 
         {step === "apikey" || step === "apikey-submitting" ? (
           <form onSubmit={submitApiKey} className="grid gap-3 py-2">
-            {labelInput}
+            {credentialRepairAccount ? (
+              <div className="rounded-sm border border-border/50 bg-bg-accent/50 px-3 py-2 text-xs text-muted">
+                Replacing the credential for {credentialRepairAccount.label}.
+                The account name and pool position will not change.
+              </div>
+            ) : (
+              labelInput
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="add-account-apikey">{apiKeyLabel}</Label>
               <Input
@@ -881,6 +968,10 @@ export function AddAccountDialog({
             >
               {step === "apikey-submitting" ? (
                 <Spinner className="h-3 w-3" />
+              ) : credentialRepairAccount ? (
+                t("accounts.replaceCredential.save", {
+                  defaultValue: "Save replacement",
+                })
               ) : (
                 t("accounts.add.save", { defaultValue: "Add account" })
               )}

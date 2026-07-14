@@ -72,6 +72,8 @@ export function AccountManagementPanel({
   const [addDialogOpen, setAddDialogOpen] = useState(() =>
     Boolean(pendingProviderId),
   );
+  const [credentialRepairAccount, setCredentialRepairAccount] =
+    useState<AccountWithCredentialFlag | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [showAvailable, setShowAvailable] = useState(false);
 
@@ -119,9 +121,22 @@ export function AccountManagementPanel({
   }, []);
 
   const openAdd = useCallback((providerId?: LinkedAccountProviderId) => {
+    setCredentialRepairAccount(null);
     setPendingProviderId(providerId);
     setAddDialogOpen(true);
   }, []);
+
+  const openCredentialRepair = useCallback(
+    (
+      providerId: LinkedAccountProviderId,
+      account: AccountWithCredentialFlag,
+    ) => {
+      setCredentialRepairAccount(account);
+      setPendingProviderId(providerId);
+      setAddDialogOpen(true);
+    },
+    [],
+  );
 
   const handleMove = useCallback(
     async (
@@ -181,6 +196,7 @@ export function AccountManagementPanel({
     onSelectChatProvider,
     onSelectSubscription,
     onAdd: openAdd,
+    onReauthenticate: openCredentialRepair,
   };
 
   // ── Loading skeleton (structural, matches the row layout) ──
@@ -344,9 +360,11 @@ export function AccountManagementPanel({
       <AddAccountDialog
         open={addDialogOpen}
         providerId={pendingProviderId}
+        credentialRepairAccount={credentialRepairAccount}
         onClose={() => {
           setAddDialogOpen(false);
           setPendingProviderId(undefined);
+          setCredentialRepairAccount(null);
         }}
         onCreated={() => {
           void accounts.refresh();
