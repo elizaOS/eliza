@@ -5,8 +5,8 @@
 # secrets required — cloud-api owns auth/billing upstream and the Docker image
 # contains the model required by the route.
 #
-# healthcheckTimeout is generous: the first boot downloads the CTranslate2 model
-# weights, so early /health probes can be slow on a cold deploy.
+# healthcheckTimeout is generous because cold containers must unpack the model
+# layer and initialize the API before Railway probes the serving socket.
 
 [build]
 builder = "DOCKERFILE"
