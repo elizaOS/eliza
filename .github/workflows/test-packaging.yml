@@ -490,11 +490,16 @@ jobs:
           print('All loader unit tests passed')
           "
 
-          # CLI entry point exists
+          # CLI entry point exists. Run the launcher from an isolated empty
+          # directory: npm exec resolves project context from the cwd, and the
+          # monorepo root's overrides would otherwise poison the install.
           which elizaos-app
           EXPECTED_NPM_VERSION="$(python -c \
             'from elizaos_app.loader import _pep440_to_npm_version, get_version; print(_pep440_to_npm_version(get_version()))')"
-          test "$(timeout 180 elizaos-app --version)" = "$EXPECTED_NPM_VERSION"
+          SMOKE_DIR="$RUNNER_TEMP/elizaos-pypi-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          test ! -e "$SMOKE_DIR"
+          install -d "$SMOKE_DIR"
+          test "$(cd "$SMOKE_DIR" && timeout 180 elizaos-app --version)" = "$EXPECTED_NPM_VERSION"
 
   build-pypi-matrix:
     name: PyPI on Python ${{ matrix.python }}
