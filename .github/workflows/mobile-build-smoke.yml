@@ -559,13 +559,18 @@ jobs:
             if [ "$smoke_status" -eq 0 ]; then
               AUTH_RESULT="$EVIDENCE_DIR/orchestrator/test-results/auth/result.json"
               FULL_BUN_RESULT="$EVIDENCE_DIR/orchestrator/test-results/ios-full-bun/result.json"
+              SCHEME_APPROVAL_RESULT="$EVIDENCE_DIR/orchestrator/reports/ios-scheme-approval.json"
               ORCHESTRATOR_SUMMARY="$EVIDENCE_DIR/orchestrator/summary.json"
-              for required in "$AUTH_RESULT" "$FULL_BUN_RESULT" "$ORCHESTRATOR_SUMMARY"; do
+              for required in "$AUTH_RESULT" "$FULL_BUN_RESULT" "$SCHEME_APPROVAL_RESULT" "$ORCHESTRATOR_SUMMARY"; do
                 if [ ! -s "$required" ]; then
                   echo "ERROR: composed iOS e2e evidence is missing: $required"
                   evidence_status=1
                 fi
               done
+              if [ -s "$SCHEME_APPROVAL_RESULT" ] && ! node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.callbackDisposition!=="deliver-to-app"||r.appId!=="ai.elizaos.app"||r.urlScheme!=="elizaos"||typeof r.rebooted!=="boolean"||r.plist!=="com.apple.launchservices.schemeapproval.plist"||"plistPath" in r)process.exit(1)' "$SCHEME_APPROVAL_RESULT"; then
+                echo "ERROR: simulator custom-scheme approval receipt was invalid or exposed its host path"
+                evidence_status=1
+              fi
               if [ -s "$ORCHESTRATOR_SUMMARY" ] && ! node -e 'const fs=require("fs");const r=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(r.result!=="passed")process.exit(1)' "$ORCHESTRATOR_SUMMARY"; then
                 echo "ERROR: composed iOS e2e summary did not report result=passed"
                 evidence_status=1

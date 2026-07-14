@@ -15,16 +15,21 @@
 //        --skip-local-chat  --skip-auth  --cloud  --no-wait  --output <dir>
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  applyIosSimulatorSchemeApproval,
   assertNonVacuousPlan,
   buildAuthSmokeCommand,
   buildCloudProvisioningCommand,
   buildIosSimBuildCommand,
   buildLocalChatSmokeCommand,
-  extractAppId,
+  classifyIosSimulatorSchemeDispatch,
+  extractAppIdentity,
+  iosSimulatorSchemeApproval,
   isAppInstalled,
+  parseAuthSmokeResult,
   parseIosE2eArgs,
   planIosE2eSteps,
   resolveTargetDevice,
@@ -56,13 +61,13 @@ const flags = parseIosE2eArgs(process.argv);
 const log = (m) => console.log(`[ios-e2e] ${m}`);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function readAppId() {
+function readAppIdentity() {
   const configPath = path.join(appDir, "app.config.ts");
-  return extractAppId(fs.readFileSync(configPath, "utf8"));
+  return extractAppIdentity(fs.readFileSync(configPath, "utf8"));
 }
 
 function run(bundle, name, cmd, args, env = {}) {
-  runBundledCommand(bundle, name, cmd, args, {
+  return runBundledCommand(bundle, name, cmd, args, {
     cwd: appDir,
     env,
     onFailure: (step, error) => captureIosFailure(bundle, step, error),
@@ -258,7 +263,62 @@ function installBuiltSimulatorApp(udid, appId) {
   });
 }
 
-function runStep(bundle, step, { udid, appId }) {
+function ensureSimulatorSchemeApproval(udid, appId, urlScheme) {
+  const approval = iosSimulatorSchemeApproval({
+    homeDir: os.homedir(),
+    udid,
+    urlScheme,
+    appId,
+  });
+  fs.mkdirSync(path.dirname(approval.plistPath), { recursive: true });
+  const readEntries = () => {
+    if (!fs.existsSync(approval.plistPath)) return {};
+    const raw = execFileSync(
+      "plutil",
+      ["-convert", "json", "-o", "-", approval.plistPath],
+      { encoding: "utf8" },
+    );
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(
+        `Simulator scheme-approval plist was not an object: ${approval.plistPath}`,
+      );
+    }
+    return parsed;
+  };
+  const existingEntries = readEntries();
+  const mutation = applyIosSimulatorSchemeApproval(existingEntries, approval);
+  if (mutation.changed) {
+    execFileSync(
+      "plutil",
+      ["-convert", "binary1", "-o", approval.plistPath, "-"],
+      { input: JSON.stringify(mutation.entries) },
+    );
+  }
+  const callbackDisposition = classifyIosSimulatorSchemeDispatch(
+    readEntries(),
+    approval,
+  );
+  if (callbackDisposition !== "deliver-to-app") {
+    throw new Error(
+      `LaunchServices did not persist the ${urlScheme} simulator callback approval`,
+    );
+  }
+  return {
+    ...approval,
+    previousAppId: mutation.previousAppId,
+    changed: mutation.changed,
+    callbackDisposition,
+  };
+}
+
+function rebootSimulatorAfterSchemeApproval(udid) {
+  simctl(["shutdown", udid]);
+  simctl(["boot", udid]);
+  simctl(["bootstatus", udid, "-b"]);
+}
+
+function runStep(bundle, step, { udid, appId, urlScheme }) {
   switch (step.id) {
     case "build": {
       log("building the iOS Simulator app…");
@@ -270,6 +330,36 @@ function runStep(bundle, step, { udid, appId }) {
       const installStep = startBundleStep(bundle, step.label);
       try {
         const stamp = installBuiltSimulatorApp(udid, appId);
+        const approval = ensureSimulatorSchemeApproval(udid, appId, urlScheme);
+        if (approval.changed) {
+          log(
+            `rebooting simulator so LaunchServices loads ${urlScheme} scheme approval`,
+          );
+          rebootSimulatorAfterSchemeApproval(udid);
+        }
+        const approvalReport = path.join(
+          bundle.reportsDir,
+          "ios-scheme-approval.json",
+        );
+        fs.writeFileSync(
+          approvalReport,
+          `${JSON.stringify(
+            {
+              appId: approval.appId,
+              urlScheme,
+              approvalKey: approval.key,
+              previousAppId: approval.previousAppId,
+              changed: approval.changed,
+              callbackDisposition: approval.callbackDisposition,
+              rebooted: approval.changed,
+              plist: path.basename(approval.plistPath),
+              verifiedAt: new Date().toISOString(),
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        recordBundleArtifact(bundle, approvalReport, "log", installStep);
         setBundleBuild(bundle, {
           buildId: stamp?.buildId ?? null,
           commit: stamp?.commit ?? null,
@@ -283,11 +373,14 @@ function runStep(bundle, step, { udid, appId }) {
     }
     case "auth": {
       log(`${step.label}…`);
-      const auth = buildAuthSmokeCommand(
-        udid,
-        path.join(bundle.root, "test-results", "auth"),
+      const auth = buildAuthSmokeCommand(udid);
+      const result = run(bundle, step.label, auth.cmd, auth.args);
+      const evidenceDir = path.join(bundle.root, "test-results", "auth");
+      fs.mkdirSync(evidenceDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(evidenceDir, "result.json"),
+        `${JSON.stringify(parseAuthSmokeResult(result.stdout), null, 2)}\n`,
       );
-      run(bundle, step.label, auth.cmd, auth.args);
       return;
     }
     case "local-chat": {
@@ -326,6 +419,7 @@ async function main() {
   let lease = null;
   let udid = null;
   let appId = null;
+  let urlScheme = null;
 
   try {
     const steps = planIosE2eSteps(flags);
@@ -333,7 +427,7 @@ async function main() {
     assertNonVacuousPlan(steps);
     log(`plan: ${steps.map((s) => s.id).join(" → ")}`);
 
-    appId = readAppId();
+    ({ appId, urlScheme } = readAppIdentity());
     const bootStep = startBundleStep(bundle, "boot iOS Simulator");
     try {
       udid = ensureSimulatorBooted(flags.device);
@@ -352,7 +446,7 @@ async function main() {
 
     clearIosSmokeDefaults({ udid, bundleId: appId, log });
     for (const step of steps) {
-      runStep(bundle, step, { udid, appId });
+      runStep(bundle, step, { udid, appId, urlScheme });
     }
     finalResult = "passed";
     log("ALL iOS E2E PASSED ✅");

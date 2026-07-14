@@ -98,6 +98,9 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     expect(fullBun).toContain('process == "App"');
     expect(fullBun).toContain("test-results/auth/result.json");
     expect(fullBun).toContain("test-results/ios-full-bun/result.json");
+    expect(fullBun).toContain("reports/ios-scheme-approval.json");
+    expect(fullBun).toContain('callbackDisposition!=="deliver-to-app"');
+    expect(fullBun).toContain('"plistPath" in r');
     expect(fullBun).toContain("orchestrator/summary.json");
     expect(iosE2e).toContain("ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR");
   });

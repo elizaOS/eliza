@@ -1,9 +1,5 @@
 #!/usr/bin/env node
-/**
- * Drives synthetic mobile auth callbacks through installed simulator apps and
- * validates registration, handler classification, and unchanged session state.
- * The CLI can persist the validated payload for composed device-e2e evidence.
- */
+/** Supports app-core build, packaging, or development orchestration for mobile auth simulator smoke mjs. */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -72,7 +68,6 @@ export function parseArgs(argv) {
     query: "state=simulator-oauth-state&code=simulator-oauth-code",
     url: "",
     appDir: "",
-    evidenceDir: process.env.ELIZA_MOBILE_AUTH_SMOKE_EVIDENCE_DIR ?? "",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -101,9 +96,6 @@ export function parseArgs(argv) {
         break;
       case "--app-dir":
         options.appDir = argv[++index] ?? "";
-        break;
-      case "--evidence-dir":
-        options.evidenceDir = argv[++index] ?? "";
         break;
       case "--help":
       case "-h":
@@ -135,9 +127,7 @@ Options:
   --query <query>               Callback query. Default: state=...&code=...
   --url <url>                   Full callback URL override
   --app-dir <dir>               Pin the target app directory (overrides
-                                ELIZA_MOBILE_REPO_ROOT and the repo-root walk)
-  --evidence-dir <dir>          Persist the validated result as result.json
-                                (or set ELIZA_MOBILE_AUTH_SMOKE_EVIDENCE_DIR)`);
+                                ELIZA_MOBILE_REPO_ROOT and the repo-root walk)`);
   process.exit(0);
 }
 
@@ -154,24 +144,6 @@ function readAppIdentity(appDir) {
     throw new Error("Could not parse appId/appName from app.config.ts");
   }
   return { appId, appName, urlScheme };
-}
-
-/** Persist the exact payload printed by the CLI for artifact-based review. */
-export function writeAuthSmokeEvidence(result, evidenceDir) {
-  const directory = evidenceDir?.trim();
-  if (!directory) return null;
-  fs.mkdirSync(directory, { recursive: true });
-  const resultPath = path.join(directory, "result.json");
-  fs.writeFileSync(resultPath, `${JSON.stringify(result, null, 2)}\n`);
-  return resultPath;
-}
-
-function emitAuthSmokeResult(result, evidenceDir) {
-  const evidencePath = writeAuthSmokeEvidence(result, evidenceDir);
-  console.log(JSON.stringify(result, null, 2));
-  if (evidencePath) {
-    console.log(`[mobile-auth-smoke] result evidence: ${evidencePath}`);
-  }
 }
 
 function escapeRegExp(value) {
@@ -922,16 +894,19 @@ async function main() {
   );
 
   if (options.registrationOnly) {
-    emitAuthSmokeResult(
-      {
-        lane: AUTH_SMOKE_LANE,
-        appDir,
-        appDirSource,
-        app,
-        registrationOnly: true,
-        registrations: registrationResults,
-      },
-      options.evidenceDir,
+    console.log(
+      JSON.stringify(
+        {
+          lane: AUTH_SMOKE_LANE,
+          appDir,
+          appDirSource,
+          app,
+          registrationOnly: true,
+          registrations: registrationResults,
+        },
+        null,
+        2,
+      ),
     );
     return;
   }
@@ -945,16 +920,19 @@ async function main() {
     );
   }
 
-  emitAuthSmokeResult(
-    {
-      lane: AUTH_SMOKE_LANE,
-      appDir,
-      appDirSource,
-      app,
-      registrations: registrationResults,
-      simulators: simulatorResults,
-    },
-    options.evidenceDir,
+  console.log(
+    JSON.stringify(
+      {
+        lane: AUTH_SMOKE_LANE,
+        appDir,
+        appDirSource,
+        app,
+        registrations: registrationResults,
+        simulators: simulatorResults,
+      },
+      null,
+      2,
+    ),
   );
 }
 

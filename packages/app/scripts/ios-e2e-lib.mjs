@@ -147,6 +147,65 @@ export function extractAppId(configSrc) {
   return configSrc.match(/appId:\s*["']([^"']+)["']/)?.[1] ?? "ai.elizaos.app";
 }
 
+/** Extract the simulator's bundle and custom-scheme identities from app config. */
+export function extractAppIdentity(configSrc) {
+  const appId = extractAppId(configSrc);
+  return {
+    appId,
+    urlScheme: configSrc.match(/urlScheme:\s*["']([^"']+)["']/)?.[1] ?? appId,
+  };
+}
+
+/**
+ * Describe the LaunchServices approval that lets `simctl openurl` deliver a
+ * custom scheme without presenting an untappable simulator confirmation.
+ */
+export function iosSimulatorSchemeApproval({
+  homeDir,
+  udid,
+  urlScheme,
+  appId,
+}) {
+  if (!homeDir || !udid || !urlScheme || !appId) {
+    throw new Error(
+      "iOS scheme approval requires homeDir, udid, urlScheme, and appId",
+    );
+  }
+  return {
+    plistPath: `${homeDir}/Library/Developer/CoreSimulator/Devices/${udid}/data/Library/Preferences/com.apple.launchservices.schemeapproval.plist`,
+    key: `com.apple.CoreSimulator.CoreSimulatorBridge-->${urlScheme}`,
+    appId,
+  };
+}
+
+/**
+ * Apply one approval to the LaunchServices dictionary without discarding
+ * approvals belonging to other installed apps.
+ */
+export function applyIosSimulatorSchemeApproval(entries, approval) {
+  if (!entries || typeof entries !== "object" || Array.isArray(entries)) {
+    throw new Error("iOS simulator scheme approvals must be an object");
+  }
+  const previousAppId = entries[approval.key] ?? null;
+  const changed = previousAppId !== approval.appId;
+  return {
+    entries: changed ? { ...entries, [approval.key]: approval.appId } : entries,
+    previousAppId,
+    changed,
+  };
+}
+
+/**
+ * Model the LaunchServices custom-scheme decision used by CoreSimulatorBridge.
+ * A missing or wrong bundle-id mapping leaves the callback behind the system
+ * confirmation sheet; the exact mapping lets the bridge deliver it to the app.
+ */
+export function classifyIosSimulatorSchemeDispatch(entries, approval) {
+  return entries?.[approval.key] === approval.appId
+    ? "deliver-to-app"
+    : "confirmation-blocked";
+}
+
 // Leg command builders. Each returns { cmd, args } exactly as spawned. Kept
 // pure so the tests pin the flags that make each leg *real* — e.g. the chat leg
 // must carry --require-installed (no host fallback) and --ios-full-bun-smoke
@@ -156,9 +215,8 @@ export function buildIosSimBuildCommand() {
   return { cmd: "bun", args: ["run", "build:ios:local:sim"] };
 }
 
-export function buildAuthSmokeCommand(udid, evidenceDir) {
+export function buildAuthSmokeCommand(udid) {
   if (!udid) throw new Error("buildAuthSmokeCommand requires a simulator udid");
-  const evidenceArgs = evidenceDir ? ["--evidence-dir", evidenceDir] : [];
   return {
     cmd: "node",
     args: [
@@ -167,9 +225,38 @@ export function buildAuthSmokeCommand(udid, evidenceDir) {
       "ios",
       "--device",
       udid,
-      ...evidenceArgs,
     ],
   };
+}
+
+/**
+ * Extract the auth smoke's final structured payload from its mixed human/JSON
+ * stdout. The auth CLI deliberately keeps stdout as its stable interface; the
+ * composed runner persists this exact object without adding a second evidence
+ * mode to the platform-neutral auth harness.
+ */
+export function parseAuthSmokeResult(stdout) {
+  const text = String(stdout ?? "").trim();
+  const starts = [0];
+  for (
+    let index = text.indexOf("\n{");
+    index >= 0;
+    index = text.indexOf("\n{", index + 2)
+  ) {
+    starts.push(index + 1);
+  }
+  for (const start of starts.reverse()) {
+    try {
+      const value = JSON.parse(text.slice(start));
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return value;
+      }
+    } catch {
+      // error-policy:J3 Earlier braces may belong to human log lines; only a
+      // complete trailing JSON object is a valid auth receipt.
+    }
+  }
+  throw new Error("mobile auth smoke stdout did not end with a JSON object");
 }
 
 export function buildLocalChatSmokeCommand() {

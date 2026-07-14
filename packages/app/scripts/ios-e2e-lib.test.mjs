@@ -6,19 +6,24 @@
  * exact argv each real leg is spawned with. Runs in the packages/app vitest
  * suite (`bun run --cwd packages/app test`), i.e. the root test:client lane.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "bun:test";
 import {
+  applyIosSimulatorSchemeApproval,
   assertNonVacuousPlan,
   buildAuthSmokeCommand,
   buildCloudProvisioningCommand,
   buildIosSimBuildCommand,
   buildLocalChatSmokeCommand,
+  classifyIosSimulatorSchemeDispatch,
   classifyStepExit,
   DEFAULT_IOS_SIMULATOR,
   extractAppId,
+  extractAppIdentity,
   IOS_E2E_STEP_IDS,
   IOS_E2E_VERIFICATION_STEP_IDS,
+  iosSimulatorSchemeApproval,
   isAppInstalled,
+  parseAuthSmokeResult,
   parseIosE2eArgs,
   planIosE2eSteps,
   resolveTargetDevice,
@@ -243,6 +248,116 @@ describe("extractAppId", () => {
   });
 });
 
+describe("iOS app identity and custom-scheme approval", () => {
+  it("extracts the configured scheme independently from the bundle id", () => {
+    expect(
+      extractAppIdentity(
+        'export default { appId: "ai.elizaos.app", urlScheme: "elizaos" }',
+      ),
+    ).toEqual({ appId: "ai.elizaos.app", urlScheme: "elizaos" });
+  });
+
+  it("uses the bundle id when a config omits urlScheme", () => {
+    expect(
+      extractAppIdentity('export default { appId: "dev.example" }'),
+    ).toEqual({ appId: "dev.example", urlScheme: "dev.example" });
+  });
+
+  it("pins the CoreSimulatorBridge LaunchServices approval record", () => {
+    expect(
+      iosSimulatorSchemeApproval({
+        homeDir: "/Users/runner",
+        udid: UDID,
+        urlScheme: "elizaos",
+        appId: "ai.elizaos.app",
+      }),
+    ).toEqual({
+      plistPath: `/Users/runner/Library/Developer/CoreSimulator/Devices/${UDID}/data/Library/Preferences/com.apple.launchservices.schemeapproval.plist`,
+      key: "com.apple.CoreSimulator.CoreSimulatorBridge-->elizaos",
+      appId: "ai.elizaos.app",
+    });
+  });
+
+  it("rejects an incomplete approval identity", () => {
+    expect(() =>
+      iosSimulatorSchemeApproval({
+        homeDir: "/Users/runner",
+        udid: "",
+        urlScheme: "elizaos",
+        appId: "ai.elizaos.app",
+      }),
+    ).toThrow(/requires homeDir, udid, urlScheme, and appId/);
+  });
+
+  it("keeps an unapproved callback blocked and lets the approved path reach the app", () => {
+    const approval = iosSimulatorSchemeApproval({
+      homeDir: "/Users/runner",
+      udid: UDID,
+      urlScheme: "elizaos",
+      appId: "ai.elizaos.app",
+    });
+    const unrelatedApproval = {
+      "com.apple.CoreSimulator.CoreSimulatorBridge-->other": "dev.other",
+    };
+
+    expect(
+      classifyIosSimulatorSchemeDispatch(unrelatedApproval, approval),
+    ).toBe("confirmation-blocked");
+
+    const mutation = applyIosSimulatorSchemeApproval(
+      unrelatedApproval,
+      approval,
+    );
+    expect(mutation).toEqual({
+      entries: {
+        ...unrelatedApproval,
+        "com.apple.CoreSimulator.CoreSimulatorBridge-->elizaos":
+          "ai.elizaos.app",
+      },
+      previousAppId: null,
+      changed: true,
+    });
+    expect(classifyIosSimulatorSchemeDispatch(mutation.entries, approval)).toBe(
+      "deliver-to-app",
+    );
+  });
+
+  it("repairs a scheme mapped to the wrong bundle and is idempotent once approved", () => {
+    const approval = iosSimulatorSchemeApproval({
+      homeDir: "/Users/runner",
+      udid: UDID,
+      urlScheme: "elizaos",
+      appId: "ai.elizaos.app",
+    });
+    const wrong = { [approval.key]: "dev.impostor" };
+    const repaired = applyIosSimulatorSchemeApproval(wrong, approval);
+    expect(repaired.previousAppId).toBe("dev.impostor");
+    expect(repaired.changed).toBe(true);
+    expect(classifyIosSimulatorSchemeDispatch(repaired.entries, approval)).toBe(
+      "deliver-to-app",
+    );
+
+    const unchanged = applyIosSimulatorSchemeApproval(
+      repaired.entries,
+      approval,
+    );
+    expect(unchanged.changed).toBe(false);
+    expect(unchanged.entries).toBe(repaired.entries);
+  });
+
+  it("rejects a malformed approval dictionary", () => {
+    const approval = iosSimulatorSchemeApproval({
+      homeDir: "/Users/runner",
+      udid: UDID,
+      urlScheme: "elizaos",
+      appId: "ai.elizaos.app",
+    });
+    expect(() => applyIosSimulatorSchemeApproval([], approval)).toThrow(
+      /must be an object/,
+    );
+  });
+});
+
 describe("leg command builders", () => {
   it("builds the sim build command", () => {
     expect(buildIosSimBuildCommand()).toEqual({
@@ -252,7 +367,7 @@ describe("leg command builders", () => {
   });
 
   it("targets the booted udid for the auth leg", () => {
-    expect(buildAuthSmokeCommand(UDID, "/tmp/auth-evidence")).toEqual({
+    expect(buildAuthSmokeCommand(UDID)).toEqual({
       cmd: "node",
       args: [
         "../../packages/app-core/scripts/mobile-auth-simulator-smoke.mjs",
@@ -260,8 +375,6 @@ describe("leg command builders", () => {
         "ios",
         "--device",
         UDID,
-        "--evidence-dir",
-        "/tmp/auth-evidence",
       ],
     });
   });
@@ -287,6 +400,25 @@ describe("leg command builders", () => {
       cmd: "node",
       args: ["scripts/cloud-provisioning-e2e.mjs"],
     });
+  });
+});
+
+describe("parseAuthSmokeResult", () => {
+  it("extracts the final JSON receipt after human-readable logs", () => {
+    expect(
+      parseAuthSmokeResult(
+        '[mobile-auth-smoke] opening callback\n{\n  "lane": "callback",\n  "simulators": [{"platform":"ios"}]\n}\n',
+      ),
+    ).toEqual({
+      lane: "callback",
+      simulators: [{ platform: "ios" }],
+    });
+  });
+
+  it("rejects output without a complete trailing object", () => {
+    expect(() =>
+      parseAuthSmokeResult("[mobile-auth-smoke] no receipt"),
+    ).toThrow(/did not end with a JSON object/);
   });
 });
 

@@ -30,6 +30,61 @@ export default defineConfig({
   root: here,
   resolve: {
     ...baseConfig.resolve,
+    alias: [
+      {
+        find: /^@elizaos\/cloud-ui$/,
+        replacement: path.join(here, "../cloud-ui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-ui\/(.+)$/,
+        replacement: path.join(here, "../cloud-ui/src/$1"),
+      },
+      {
+        find: /^@elizaos\/app-model-tester$/,
+        replacement: path.join(
+          here,
+          "../../plugins/app-model-tester/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-task-coordinator\/register$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-task-coordinator/src/register.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-appblocker$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-appblocker/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-llama$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-llama/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-mobile-agent-bridge$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-websiteblocker$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-websiteblocker/src/index.ts",
+        ),
+      },
+      ...(Array.isArray(baseConfig.resolve?.alias)
+        ? baseConfig.resolve.alias
+        : []),
+    ],
   },
   test: {
     ...baseConfig.test,
@@ -37,5 +92,9 @@ export default defineConfig({
     setupFiles: [path.join(here, "test/setup.ts")],
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     exclude: unitExcludes,
+    coverage: {
+      ...baseConfig.test?.coverage,
+      include: ["src/**/*.{ts,tsx}"],
+    },
   },
 });

@@ -6,13 +6,7 @@
  * the fire-and-forget deep-link leg that never asserted which package handled
  * the intent.
  */
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -26,7 +20,6 @@ import {
   readAndroidPreferenceFromXml,
   resolvedActivityMatchesApp,
   resolveTargetAppDir,
-  writeAuthSmokeEvidence,
 } from "../../scripts/mobile-auth-simulator-smoke.mjs";
 
 const ELIZA_APP_ID = "ai.elizaos.app";
@@ -133,33 +126,9 @@ describe("mobile-auth-simulator-smoke: callback URL + args", () => {
   });
 
   it("parses the new --app-dir flag", () => {
-    const opts = parseArgs([
-      "--platform",
-      "android",
-      "--app-dir",
-      "/some/app",
-      "--evidence-dir",
-      "/some/evidence",
-    ]);
+    const opts = parseArgs(["--platform", "android", "--app-dir", "/some/app"]);
     expect(opts.platform).toBe("android");
     expect(opts.appDir).toBe("/some/app");
-    expect(opts.evidenceDir).toBe("/some/evidence");
-  });
-
-  it("persists the exact reviewable auth payload as result.json", () => {
-    const directory = mkdtempSync(path.join(tmpdir(), "auth-smoke-evidence-"));
-    const result = {
-      lane: "auth-callback-delivery+handler-classification",
-      simulators: [{ platform: "ios", handled: { sessionChanged: false } }],
-    };
-    try {
-      const resultPath = writeAuthSmokeEvidence(result, directory);
-      expect(resultPath).toBe(path.join(directory, "result.json"));
-      if (!resultPath) throw new Error("auth evidence path was not returned");
-      expect(JSON.parse(readFileSync(resultPath, "utf8"))).toEqual(result);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
   });
 });
 

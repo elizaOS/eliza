@@ -191,6 +191,7 @@ import { runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
+import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -3104,6 +3105,21 @@ async function main(): Promise<void> {
   // call is made. No-op (and never throws) off the /embed route.
   await runEmbedHandshake({ client });
 
+  // The headless device gate owns the WebView when requested, so resolve it
+  // before route/plugin initialization can add unrelated work or early exits.
+  if (
+    await runIosFullBunEntrypoint({
+      isIOS,
+      initializeStorageBridge,
+      initializeCapacitorBridge,
+      installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
+      installFetchBridge: installIosLocalAgentFetchBridge,
+      runSmoke: runIosFullBunSmokeIfRequested,
+    })
+  ) {
+    return;
+  }
+
   const appWindowSlug = window.location.pathname.startsWith("/apps/")
     ? window.location.pathname.slice("/apps/".length).split("/")[0]
     : resolveAppWindowSlug();
@@ -3150,22 +3166,6 @@ async function main(): Promise<void> {
   // is only consumed at the per-platform await sites further down; load
   // failure resolves null there (never gates mounting the app).
   const voiceModuleReady = startVoiceModuleLoad();
-
-  // The iOS full-Bun backend smoke is a headless QA gate that must run BEFORE
-  // any window-shell / popout routing — some shell routes return before the
-  // main boot path, so wiring the smoke only into the main path left it
-  // structurally unreachable on those routes and its request flag silently
-  // no-op'd. Run it (and the iOS local-agent bridges it needs) up front; when
-  // requested it takes over the WebView and returns.
-  if (isIOS) {
-    await initializeStorageBridge();
-    initializeCapacitorBridge();
-    installIosLocalAgentNativeRequestBridge();
-    installIosLocalAgentFetchBridge();
-    if (await runIosFullBunSmokeIfRequested()) {
-      return;
-    }
-  }
 
   if (isPopoutWindow()) {
     injectPopoutApiBase();
