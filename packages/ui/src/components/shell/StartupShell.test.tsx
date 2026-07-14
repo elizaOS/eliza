@@ -87,6 +87,17 @@ describe("StartupShell — delayed loading splash", () => {
     // Visual contract preserved: phase + role attributes still present.
     expect(splash?.getAttribute("data-startup-phase")).toBe("starting-backend");
     expect(splash?.getAttribute("role")).toBe("status");
+    const status = screen.getByText("Starting");
+    expect(status.classList.contains("shimmer")).toBe(true);
+    expect(status.classList.contains("text-base")).toBe(true);
+    expect(status.classList.contains("font-medium")).toBe(true);
+    expect(status.classList.contains("text-white/60")).toBe(true);
+    expect(status.className).toContain("[--shimmer-color:rgba(255,255,255,1)]");
+    expect(status.className).toContain("[--shimmer-duration:1.8s]");
+    expect(status.classList.contains("motion-reduce:shimmer-none")).toBe(true);
+    expect(status.classList.contains("motion-reduce:animate-none")).toBe(true);
+    expect(status.classList.contains("opacity-80")).toBe(false);
+    expect(status.classList.contains("animate-pulse")).toBe(false);
     // first-paint telemetry fires only when the splash actually paints.
     expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(true);
   });

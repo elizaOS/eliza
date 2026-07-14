@@ -59,6 +59,10 @@ function brandName(): string {
   return getBootConfig().branding?.appName ?? "elizaOS";
 }
 
+function startupStatusLabel(status: string): string {
+  return status.replace(/(?:\.{3}|…)\s*$/u, "").trim();
+}
+
 // Host-overridable brand glyph (whitelabel seam); falls back to the elizaOS mark.
 function BrandMark(props: { className?: string }) {
   const Mark = getBootConfig().brandMark ?? ElizaMark;
@@ -137,7 +141,7 @@ function StartupLoading(props: { phase: string; status: string }) {
       className={`fixed inset-0 flex items-center justify-center overflow-hidden ${LAUNCH_SURFACE}`}
       style={{ fontFamily: FONT }}
     >
-      <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-5 px-6 text-center">
+      <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-4 px-6 text-center">
         <div className="flex items-center justify-center gap-3">
           <BrandMark className="h-12 w-12" />
           <span className="text-4xl font-medium leading-none tracking-normal">
@@ -145,11 +149,8 @@ function StartupLoading(props: { phase: string; status: string }) {
           </span>
         </div>
 
-        <p
-          style={{ fontFamily: FONT }}
-          className="min-h-5 text-sm opacity-80 animate-pulse motion-reduce:animate-none"
-        >
-          {props.status}
+        <p className="min-h-6 text-base font-medium leading-6 tracking-[0.01em] text-white/60 shimmer [--shimmer-color:rgba(255,255,255,1)] [--shimmer-duration:1.8s] [--shimmer-spread:calc(2.5ch+32px)] motion-reduce:shimmer-none motion-reduce:animate-none">
+          {startupStatusLabel(props.status)}
         </p>
       </div>
     </div>

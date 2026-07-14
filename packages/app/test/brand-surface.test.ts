@@ -190,7 +190,18 @@ describe("brand surfaces", () => {
     const html = read("index.html");
     expect(html).toContain('class="eliza-preboot-shell__mark"');
     expect(html).toContain('class="eliza-preboot-shell__status"');
-    expect(html).toContain("Booting up&hellip;");
+    expect(html).toContain(
+      '<p class="eliza-preboot-shell__status">Booting up</p>',
+    );
+    expect(html).toContain(
+      "animation: eliza-preboot-status-shimmer 1.8s linear infinite",
+    );
+    expect(html).toContain("font-size: 1rem");
+    expect(html).toContain("color: rgba(255, 255, 255, 0.6)");
+    expect(html).toContain("-webkit-text-fill-color: transparent");
+    expect(html).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.eliza-preboot-shell__status\s*\{[\s\S]*?animation: none/,
+    );
   });
 
   it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {
