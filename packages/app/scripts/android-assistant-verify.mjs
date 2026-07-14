@@ -1,45 +1,25 @@
 #!/usr/bin/env node
 /**
- * Automated, repeatable adb-driven verification lane for Eliza's Android
- * assistant surfaces (issue #13581): the ROLE_ASSISTANT VoiceInteractionService,
- * the voice-input IME, and the assist-key / assist-gesture routing. It is the
- * regression lane the surfaces shipped without — every `adb install -r` clears
- * the assistant role and the enabled/selected IME, so a dev-loop reinstall
- * silently un-configures the surface and, until now, nothing noticed.
+ * Drives an installed Android debug build through Eliza's assistant role,
+ * voice-input IME, assist gesture, and assist-key surfaces (#13581).
  *
- * What it does, against whatever build is installed on the attached device:
- *   1. Assert the manifest-declared surfaces survived install-time parsing —
- *      the VIS/session/recognition services, the IME service, the assist
- *      activity — via `dumpsys package` (a rejected VoiceInteractionServiceInfo
- *      never registers, so this catches a broken manifest as a hard failure).
- *   2. Re-apply the assistant role (`cmd role add-role-holder …ASSISTANT`) and
- *      the IME (`ime enable` + `ime set`) that a reinstall clears, then assert
- *      the secure settings (`voice_interaction_service`, `default_input_method`).
- *   3. Fire the assistant (`cmd voiceinteraction show`), the assist key
- *      (`input keyevent KEYCODE_ASSIST`), and the IME open-app path, and assert
- *      via logcat + `dumpsys activity` that the Eliza deep-link
- *      (`elizaos://voice?source=android-assistant-session` / `…=android-ime`)
- *      lands in MainActivity.
- *   4. Classify the IME ASR round-trip: a committed transcript when a full
- *      engine is up, or the designed ENGINE_OFF state when it is not — asserted,
- *      never skipped silently.
+ * Reinstalling clears role and IME selection, so the lane reapplies and then
+ * re-reads both. Explicit package-manager component queries cover services
+ * without intent filters. Runtime proof comes from native logcat markers plus
+ * resumed activity state. A debug-only focused editor raises the installed IME;
+ * automation locates its real mic view, taps it, and requires either a committed
+ * transcript or the designed unavailable state and its open-app route.
  *
- * Honest device gating (never green-by-skip): with NO device attached the lane
- * prints an N/A verdict and exits 0 — UNLESS `ELIZA_ANDROID_REQUIRE_AGENT=1`
- * (or `--require-device`), which makes a missing device a hard failure (exit 1).
- * The ASR engine is gated SEPARATELY (`--require-engine` /
- * `ELIZA_ANDROID_REQUIRE_ENGINE=1`): only then does an ENGINE_OFF ASR outcome
- * fail — the engine-less emulator leaves it unset and asserts the designed
- * ENGINE_OFF state instead. All decision logic lives in the pure, unit-tested
- * `android-assistant-verify-lib.mjs`; this file only runs adb and feeds its
- * stdout to those parsers.
- *
- * Flags: --serial <s>  --require-device  --require-engine  --json  --no-apply
- * Env:   ANDROID_SERIAL, ELIZA_ANDROID_REQUIRE_AGENT, ELIZA_ANDROID_REQUIRE_ENGINE
+ * `--require-device` rejects a missing device; `--require-engine` additionally
+ * requires a committed transcript. Parser and verdict policy remain isolated in
+ * the unit-tested library so malformed shell receipts cannot read as success.
  */
 import {
   APP_PACKAGE,
+  ASSIST_ACTIVITY_COMPONENT,
   ASSISTANT_IME_COMPONENT,
+  ASSISTANT_RECOGNITION_COMPONENT,
+  ASSISTANT_SESSION_COMPONENT,
   ASSISTANT_VIS_COMPONENT,
   assertDeepLinkLanded,
   classifyImeAsrOutcome,
@@ -50,12 +30,13 @@ import {
   parseDefaultInputMethod,
   parseEnabledImes,
   parseRoleHolders,
+  parseUiAutomatorBounds,
   parseVoiceInteractionService,
   ROLE_ASSISTANT,
   summarizeLaneVerdict,
 } from "./lib/android-assistant-verify-lib.mjs";
 import {
-  adbTry,
+  adbDevice,
   ensureEmulatorPermissive,
   isInstalled,
   listDevices,
@@ -68,7 +49,11 @@ const val = (flag, fb) => {
   const i = process.argv.indexOf(flag);
   return i >= 0 ? process.argv[i + 1] : fb;
 };
-const log = (m) => console.log(`[android-assistant-verify] ${m}`);
+const log = (m) => {
+  const line = `[android-assistant-verify] ${m}`;
+  if (process.argv.includes("--json")) console.error(line);
+  else console.log(line);
+};
 
 // Two INDEPENDENT gates — do not conflate them.
 //  REQUIRE_DEVICE governs device presence: a required-but-missing device is a
@@ -93,20 +78,32 @@ const JSON_OUT = has("--json");
 
 const IME_COMPONENT = ASSISTANT_IME_COMPONENT;
 const VIS_COMPONENT = ASSISTANT_VIS_COMPONENT;
+const IME_PROBE_COMPONENT = `${APP_PACKAGE}/.ElizaImeProbeActivity`;
+const IME_MIC_RESOURCE_ID = `${APP_PACKAGE}:id/eliza_ime_mic`;
 
-/** Run an adb shell command on the device, returning trimmed stdout (or "" on failure). */
+/** Run a required adb shell command; a non-zero status aborts the verifier. */
 function sh(adb, serial, args) {
-  return adbTry(adb, ["-s", serial, "shell", ...args]).trim();
+  return adbDevice(adb, serial, ["shell", ...args]).trim();
 }
 
 /** Clear the logcat ring so a subsequent scrape only sees this run's lines. */
 function clearLogcat(adb, serial) {
-  adbTry(adb, ["-s", serial, "logcat", "-c"], { stdio: "ignore" });
+  adbDevice(adb, serial, ["logcat", "-c"], { stdio: "ignore" });
 }
 
 /** Dump and return the current logcat buffer (bounded to the assistant tags). */
 function dumpLogcat(adb, serial) {
-  return adbTry(adb, ["-s", serial, "logcat", "-d", "-v", "brief"]);
+  return adbDevice(adb, serial, [
+    "logcat",
+    "-d",
+    "-v",
+    "brief",
+    "-s",
+    `${LOG_TAGS.vis}:V`,
+    `${LOG_TAGS.ime}:V`,
+    "ElizaImeProbe:V",
+    "ActivityTaskManager:I",
+  ]);
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -125,6 +122,8 @@ function applyRoleAndIme(adb, serial) {
     "cmd",
     "role",
     "add-role-holder",
+    "--user",
+    "0",
     ROLE_ASSISTANT,
     APP_PACKAGE,
   ]);
@@ -143,21 +142,50 @@ function applyRoleAndIme(adb, serial) {
 async function verifyOnDevice(adb, serial) {
   const checks = {};
 
-  // (1) Surfaces registered — dumpsys package for the app, then fall back to a
-  // full package dump if the per-package form is unavailable on this image.
-  let pkgDump = adbTry(adb, [
-    "-s",
-    serial,
-    "shell",
-    "dumpsys",
+  // Resolver tables omit components with no intent filter, including the
+  // paired session service. Explicit package-manager intents prove that each
+  // installed component resolves, while the package dump remains a second,
+  // independently useful receipt for filtered surfaces and metadata.
+  const pkgDump = sh(adb, serial, ["dumpsys", "package", APP_PACKAGE]);
+  const serviceComponents = [
+    ASSISTANT_VIS_COMPONENT,
+    ASSISTANT_SESSION_COMPONENT,
+    ASSISTANT_RECOGNITION_COMPONENT,
+    ASSISTANT_IME_COMPONENT,
+  ];
+  const serviceReceipts = Object.fromEntries(
+    serviceComponents.map((component) => [
+      component,
+      sh(adb, serial, [
+        "cmd",
+        "package",
+        "query-services",
+        "--brief",
+        "--components",
+        "--user",
+        "0",
+        "-n",
+        component,
+      ]),
+    ]),
+  );
+  const assistActivityReceipt = sh(adb, serial, [
+    "cmd",
     "package",
-    APP_PACKAGE,
+    "resolve-activity",
+    "--brief",
+    "--user",
+    "0",
+    "-n",
+    ASSIST_ACTIVITY_COMPONENT,
   ]);
-  if (!pkgDump.includes(APP_PACKAGE)) {
-    pkgDump = adbTry(adb, ["-s", serial, "shell", "dumpsys", "package"]);
-  }
-  const surfaces = parseAssistantSurfaces(pkgDump);
+  const surfaces = parseAssistantSurfaces(
+    [pkgDump, ...Object.values(serviceReceipts), assistActivityReceipt].join(
+      "\n",
+    ),
+  );
   checks.surfaces = surfaces;
+  checks.surfaceReceipts = { serviceReceipts, assistActivityReceipt };
   log(
     surfaces.allPresent
       ? "surfaces: VIS + session + recognition + IME + assist activity all registered"
@@ -167,7 +195,14 @@ async function verifyOnDevice(adb, serial) {
   if (APPLY) applyRoleAndIme(adb, serial);
 
   // (2) Secure settings + role holders reflect Eliza.
-  const roleOut = sh(adb, serial, ["cmd", "role", "holders", ROLE_ASSISTANT]);
+  const roleOut = sh(adb, serial, [
+    "cmd",
+    "role",
+    "get-role-holders",
+    "--user",
+    "0",
+    ROLE_ASSISTANT,
+  ]);
   const role = parseRoleHolders(roleOut);
   const visSetting = parseVoiceInteractionService(
     sh(adb, serial, ["settings", "get", "secure", "voice_interaction_service"]),
@@ -191,14 +226,7 @@ async function verifyOnDevice(adb, serial) {
   sh(adb, serial, ["cmd", "voiceinteraction", "show"]);
   await sleep(2_500);
   const assistLog = dumpLogcat(adb, serial);
-  const assistDump = adbTry(adb, [
-    "-s",
-    serial,
-    "shell",
-    "dumpsys",
-    "activity",
-    "activities",
-  ]);
+  const assistDump = sh(adb, serial, ["dumpsys", "activity", "activities"]);
   const visInvoked = detectSurfaceInvocation(assistLog, {
     tag: LOG_TAGS.vis,
     bracket: "ElizaVoiceInteractionSession",
@@ -218,14 +246,7 @@ async function verifyOnDevice(adb, serial) {
   sh(adb, serial, ["input", "keyevent", "KEYCODE_ASSIST"]);
   await sleep(2_500);
   const keyLog = dumpLogcat(adb, serial);
-  const keyDump = adbTry(adb, [
-    "-s",
-    serial,
-    "shell",
-    "dumpsys",
-    "activity",
-    "activities",
-  ]);
+  const keyDump = sh(adb, serial, ["dumpsys", "activity", "activities"]);
   const keySessionLanded = assertDeepLinkLanded(
     keyDump,
     keyLog,
@@ -242,42 +263,59 @@ async function verifyOnDevice(adb, serial) {
   checks.assistKeyActivityLanded = keyAssistLanded;
   log(`assist key (KEYCODE_ASSIST) reached Eliza: ${keyLanded}`);
 
-  // (3c) IME invocation → open-app deep link. Fire the IME's open-Eliza intent
-  // directly (elizaos://voice?source=android-ime) so the entry point runs even
-  // headless where no editor has focus to raise the keyboard.
+  // (3c) Raise the installed IME against a focused editor and tap its actual
+  // mic affordance. On the engine-less emulator this must expose ENGINE_OFF and
+  // route through the IME's own open-app deep link. On a full-engine device the
+  // same tap starts the mic round-trip; a second tap stops capture so the lane
+  // can require a committed transcript.
   clearLogcat(adb, serial);
-  adbTry(adb, [
-    "-s",
-    serial,
-    "shell",
-    "am",
-    "start",
-    "-a",
-    "android.intent.action.VIEW",
-    "-d",
-    `elizaos://voice?source=${DEEP_LINK_SOURCES.ime}&action=voice&voice=1`,
-    `${APP_PACKAGE}/.MainActivity`,
-  ]);
-  await sleep(2_500);
+  sh(adb, serial, ["am", "start", "-W", "-n", IME_PROBE_COMPONENT]);
+  await sleep(3_500);
+  const hierarchyPath = "/sdcard/eliza-ime-verifier-window.xml";
+  sh(adb, serial, ["uiautomator", "dump", hierarchyPath]);
+  const imeHierarchy = sh(adb, serial, ["cat", hierarchyPath]);
+  sh(adb, serial, ["rm", "-f", hierarchyPath]);
+  const imeUi = parseUiAutomatorBounds(imeHierarchy, IME_MIC_RESOURCE_ID);
+  checks.imeUi = imeUi;
+  log(`real IME mic affordance visible: ${imeUi.found}`);
+
+  const imeStatusLog = dumpLogcat(adb, serial);
+  let asrOutcome = classifyImeAsrOutcome(imeStatusLog);
+  if (imeUi.center) {
+    sh(adb, serial, [
+      "input",
+      "tap",
+      String(imeUi.center.x),
+      String(imeUi.center.y),
+    ]);
+    await sleep(2_500);
+    if (asrOutcome === "unknown") {
+      // A ready engine leaves the IME in IDLE; stop the real recording after a
+      // non-trivial capture so its production transcription path executes.
+      sh(adb, serial, [
+        "input",
+        "tap",
+        String(imeUi.center.x),
+        String(imeUi.center.y),
+      ]);
+      await sleep(32_500);
+    }
+  }
   const imeLog = dumpLogcat(adb, serial);
-  const imeDump = adbTry(adb, [
-    "-s",
-    serial,
-    "shell",
-    "dumpsys",
-    "activity",
-    "activities",
-  ]);
+  asrOutcome = classifyImeAsrOutcome(`${imeStatusLog}\n${imeLog}`);
+  const imeDump = sh(adb, serial, ["dumpsys", "activity", "activities"]);
   const imeLanded = assertDeepLinkLanded(
     imeDump,
     imeLog,
     DEEP_LINK_SOURCES.ime,
   );
   checks.imeLanded = imeLanded;
-  log(`IME deep-link reached MainActivity: ${imeLanded.landed}`);
+  checks.runtimeReceipts = { assistLog, keyLog, imeStatusLog, imeLog };
+  log(
+    `IME unavailable-state deep-link reached MainActivity: ${imeLanded.landed}`,
+  );
 
   // (4) IME ASR round-trip classification (committed vs. designed ENGINE_OFF).
-  const asrOutcome = classifyImeAsrOutcome(`${imeLog}\n${assistLog}`);
   checks.asrOutcome = asrOutcome;
   log(`IME ASR outcome: ${asrOutcome}`);
 
@@ -288,7 +326,7 @@ async function verifyOnDevice(adb, serial) {
       imeSelected: imeSetting.isEliza && imeEnabled.elizaEnabled,
       voiceinteractionLanded: assistLanded.landed,
       assistKeyLanded: keyLanded,
-      imeLanded: imeLanded.landed,
+      imeLanded: imeLanded.landed || asrOutcome === "committed",
       asrOutcome,
     },
     REQUIRE_ENGINE,
@@ -302,6 +340,7 @@ async function main() {
   try {
     adb = resolveAdb();
   } catch (error) {
+    // error-policy:J1 command boundary translates missing tooling to the lane's explicit N/A/fail result.
     return finish({
       status: "na",
       reason: `adb unavailable: ${error.message}`,
@@ -370,6 +409,9 @@ function finish(result) {
 }
 
 main().catch((error) => {
-  console.error(`[android-assistant-verify] ERROR: ${error?.stack ?? error}`);
-  process.exit(1);
+  // error-policy:J1 process boundary preserves adb stderr and exits observably.
+  finish({
+    status: "fail",
+    reason: `unhandled verifier error: ${error?.stack ?? error}`,
+  });
 });

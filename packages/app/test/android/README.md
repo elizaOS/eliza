@@ -136,6 +136,13 @@ Artifacts are written under
 `packages/app/test-results/android-onboarding-to-home/`:
 `home-landing.png`, `onboarding-to-home.mp4`, and `host-agent.log`.
 
+The same workflow's `native-plugin-androidtest` job runs the app and plugin
+instrumentation suites before `android-assistant-verify.mjs` raises the selected
+Eliza IME against a debug-only focused editor. The verifier drives the installed
+mic affordance and assistant entry points, while the job uploads the raw Android
+test reports plus JSON, package-manager, settings, logcat, screenshot, and MP4
+receipts under `packages/app/test-results/android-assistant-verify/`.
+
 ## On-device agent: where it runs
 
 The embedded agent (bun + llama) **runs on real arm64 hardware** (verified on a

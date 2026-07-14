@@ -36,6 +36,7 @@ import {
   parseEnabledImes,
   parseRoleHolders,
   parseServiceRegistration,
+  parseUiAutomatorBounds,
   parseVoiceInteractionService,
   ROLE_ASSISTANT,
   summarizeLaneVerdict,
@@ -191,6 +192,25 @@ test("parseEnabledImes finds the Eliza IME in an `ime list -s` set", () => {
   assert.equal(without.elizaEnabled, false);
 });
 
+test("parseUiAutomatorBounds finds the real IME mic without fixed coordinates", () => {
+  const hierarchy = `<?xml version="1.0"?><hierarchy>
+    <node index="0" resource-id="ai.elizaos.app:id/eliza_ime_switch" bounds="[900,1700][1040,1840]" />
+    <node index="1" text="" resource-id="ai.elizaos.app:id/eliza_ime_mic" class="android.widget.ImageButton" bounds="[456,1880][624,2048]" />
+  </hierarchy>`;
+  assert.deepEqual(
+    parseUiAutomatorBounds(hierarchy, "ai.elizaos.app:id/eliza_ime_mic"),
+    {
+      found: true,
+      bounds: { left: 456, top: 1880, right: 624, bottom: 2048 },
+      center: { x: 540, y: 1964 },
+    },
+  );
+  assert.deepEqual(
+    parseUiAutomatorBounds(hierarchy, "ai.elizaos.app:id/missing"),
+    { found: false, bounds: null, center: null },
+  );
+});
+
 test("detectSurfaceInvocation catches the IME class tag, bracket marker, and deep-link source", () => {
   const byTag = detectSurfaceInvocation(
     "07-04 12:00:01.234  4210  4210 I ElizaVoiceIme: [ElizaVoiceInputMethodService] opening Eliza",
@@ -266,6 +286,12 @@ test("classifyImeAsrOutcome distinguishes committed / engineOff / modelNotReady 
   );
   assert.equal(
     classifyImeAsrOutcome(
+      "ElizaVoiceIme: [ElizaVoiceInputMethodService] engine status unreachable: Connection refused",
+    ),
+    "engineOff",
+  );
+  assert.equal(
+    classifyImeAsrOutcome(
       "ElizaVoiceIme: [ElizaVoiceInputMethodService] ASR responded 503",
     ),
     "modelNotReady",
@@ -302,7 +328,7 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
     true,
   );
   assert.equal(requiredButOff.pass, false);
-  assert.match(requiredButOff.failures.join(" "), /ENGINE_OFF/);
+  assert.match(requiredButOff.failures.join(" "), /did not commit/);
 
   const roleMissing = summarizeLaneVerdict(
     { ...green, roleHeld: false },
@@ -325,21 +351,21 @@ test("summarizeLaneVerdict passes only when every required surface checks out", 
   assert.equal(assistKeyMissing.pass, false);
   assert.match(assistKeyMissing.failures.join(" "), /KEYCODE_ASSIST/);
 
-  // An unknown ASR outcome is the emulator lane's designed state: the verify
-  // lane never raises the IME keyboard or captures audio, so no ASR line is
-  // logged and the round-trip cannot be classified. It is acceptable when the
-  // agent is NOT required...
-  assert.equal(
-    summarizeLaneVerdict({ ...green, asrOutcome: "unknown" }, false).pass,
-    true,
-  );
-  // ...but a hard failure when a full engine IS required (never green-by-skip).
-  const requiredButUnknown = summarizeLaneVerdict(
+  // The verifier raises the real IME, so an unknown result is always a missing
+  // observation rather than an acceptable emulator state.
+  const optionalButUnknown = summarizeLaneVerdict(
     { ...green, asrOutcome: "unknown" },
+    false,
+  );
+  assert.equal(optionalButUnknown.pass, false);
+  assert.match(optionalButUnknown.failures.join(" "), /unknown/);
+
+  const requiredButModelMissing = summarizeLaneVerdict(
+    { ...green, asrOutcome: "modelNotReady" },
     true,
   );
-  assert.equal(requiredButUnknown.pass, false);
-  assert.match(requiredButUnknown.failures.join(" "), /unknown/);
+  assert.equal(requiredButModelMissing.pass, false);
+  assert.match(requiredButModelMissing.failures.join(" "), /did not commit/);
 
   // A transcription error always fails, engine required or not.
   assert.equal(

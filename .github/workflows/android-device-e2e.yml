@@ -381,5 +381,7 @@ jobs:
           path: |
             plugins/plugin-native-*/android/build/reports/androidTests/**
             plugins/plugin-native-*/android/build/outputs/androidTest-results/**
+            packages/app-core/platforms/android/app/build/reports/androidTests/**
+            packages/app-core/platforms/android/app/build/outputs/androidTest-results/**
             packages/app/test-results/android-assistant-verify/**
           if-no-files-found: ignore

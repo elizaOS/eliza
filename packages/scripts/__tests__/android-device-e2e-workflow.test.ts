@@ -18,6 +18,32 @@ const onboardingSpec = readFileSync(
   join(root, "packages/app/test/android/onboarding-to-home.android.spec.ts"),
   "utf8",
 );
+const nativePluginCi = readFileSync(
+  join(root, "scripts/mobile/android-native-plugin-ci.sh"),
+  "utf8",
+);
+const assistantVerifier = readFileSync(
+  join(root, "packages/app/scripts/android-assistant-verify.mjs"),
+  "utf8",
+);
+const assistantVerifierLib = readFileSync(
+  join(root, "packages/app/scripts/lib/android-assistant-verify-lib.mjs"),
+  "utf8",
+);
+const imeProbeManifest = readFileSync(
+  join(
+    root,
+    "packages/app-core/platforms/android/app/src/debug/AndroidManifest.xml",
+  ),
+  "utf8",
+);
+const imeProbeActivity = readFileSync(
+  join(
+    root,
+    "packages/app-core/platforms/android/app/src/debug/java/ai/elizaos/app/ElizaImeProbeActivity.java",
+  ),
+  "utf8",
+);
 const actionSha = "a421e43855164a8197daf9d8d40fe71c6996bb0d";
 const setupNodeSha = "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e";
 const expectedCommands = [
@@ -121,5 +147,41 @@ describe("Android emulator workflow shell contract", () => {
     ).toHaveLength(1);
     expect(onboardingSpec).not.toContain("localStorage.removeItem(");
     expect(onboardingSpec).toMatch(/page\.goto\(`\$\{ORIGIN\}\/\?reset`/);
+  });
+
+  test("uses the supported role interface and explicit component receipts", () => {
+    expect(nativePluginCi).toContain("cmd role get-role-holders");
+    for (const source of [assistantVerifier, nativePluginCi])
+      expect(source).not.toMatch(/cmd role holders/);
+    expect(assistantVerifier).toContain('"get-role-holders"');
+    expect(assistantVerifier).toContain('"--user"');
+    expect(assistantVerifier).toContain('"query-services"');
+    expect(assistantVerifier).toContain("ASSISTANT_SESSION_COMPONENT");
+    expect(nativePluginCi).toContain("dumpsys-package.txt");
+    expect(nativePluginCi).toContain("package-manager-components.txt");
+  });
+
+  test("raises the real IME and makes unknown ASR plus missing visual proof fail", () => {
+    expect(imeProbeManifest).toContain(".ElizaImeProbeActivity");
+    expect(imeProbeActivity).toContain("showSoftInput");
+    expect(assistantVerifier).toContain("IME_PROBE_COMPONENT");
+    expect(assistantVerifier).toContain("parseUiAutomatorBounds");
+    expect(assistantVerifier).toContain(
+      'if (process.argv.includes("--json")) console.error(line)',
+    );
+    expect(assistantVerifierLib).toContain(
+      "IME ASR outcome was unknown after raising the real IME",
+    );
+    expect(nativePluginCi).toContain("assistant-verification.mp4");
+    expect(nativePluginCi).toContain("assistant-final.png");
+    expect(nativePluginCi).toContain(
+      'JSON.parse(fs.readFileSync(process.argv[1], "utf8"))',
+    );
+    expect(workflow).toContain(
+      "packages/app-core/platforms/android/app/build/reports/androidTests/**",
+    );
+    expect(workflow).toContain(
+      "packages/app-core/platforms/android/app/build/outputs/androidTest-results/**",
+    );
   });
 });

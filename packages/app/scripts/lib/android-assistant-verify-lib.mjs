@@ -149,7 +149,7 @@ export function parseAssistantSurfaces(dumpsysPackageOutput) {
 }
 
 /**
- * Parse `cmd role holders android.app.role.ASSISTANT` output for whether our
+ * Parse `cmd role get-role-holders --user 0 android.app.role.ASSISTANT` output for whether our
  * package holds the assistant role. The command prints one holder package per
  * line (empty when no holder). A held role is the precondition for the assist
  * gesture / assist-key routing to Eliza's VIS session.
@@ -226,6 +226,36 @@ export function parseEnabledImes(imeListOutput) {
     elizaEnabled: enabled.some((id) =>
       componentMatches(id, ASSISTANT_IME_COMPONENT),
     ),
+  };
+}
+
+/**
+ * Locate one Android view by resource id in a `uiautomator dump` receipt. The
+ * verifier taps the real IME mic affordance by its installed resource id rather
+ * than assuming emulator dimensions or a keyboard height, which keeps the
+ * gesture tied to the product surface across device profiles.
+ */
+export function parseUiAutomatorBounds(hierarchyOutput, expectedResourceId) {
+  const node =
+    String(hierarchyOutput ?? "")
+      .match(/<node\b[^>]*>/g)
+      ?.find((tag) => tag.includes(`resource-id="${expectedResourceId}"`)) ??
+    null;
+  const match = node?.match(/bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"/);
+  if (!match) {
+    return { found: false, bounds: null, center: null };
+  }
+  const [left, top, right, bottom] = match.slice(1).map(Number);
+  if (right <= left || bottom <= top) {
+    return { found: false, bounds: null, center: null };
+  }
+  return {
+    found: true,
+    bounds: { left, top, right, bottom },
+    center: {
+      x: Math.floor((left + right) / 2),
+      y: Math.floor((top + bottom) / 2),
+    },
   };
 }
 
@@ -312,7 +342,9 @@ export function assertDeepLinkLanded(
 export function classifyImeAsrOutcome(logcatOutput) {
   const text = String(logcatOutput ?? "");
   if (/transcript committed \(\d+ chars\)/.test(text)) return "committed";
-  if (/ASR loopback unreachable/.test(text)) return "engineOff";
+  if (/ASR loopback unreachable|engine status unreachable/.test(text)) {
+    return "engineOff";
+  }
   if (
     /ASR responded 503/.test(text) ||
     /model_not_ready|MODEL_NOT_READY/.test(text)
@@ -325,22 +357,16 @@ export function classifyImeAsrOutcome(logcatOutput) {
 
 /**
  * Roll the individual scrape results into one lane verdict. Fails the lane if
- * any required surface is missing/misrouted. The surface/routing checks always
- * gate; the ASR-outcome checks are conditioned on whether a full engine is
- * required, because the verify lane only drives the deep-link entry points — it
- * never raises the IME keyboard or captures audio, so the mic→transcribe round
- * trip is exercised only on a full-engine build/device, never on the engine-less
- * emulator lane.
+ * any required surface is missing/misrouted. The verifier raises the installed
+ * IME against a focused native editor, observes its engine probe, then taps the
+ * actual mic affordance. `unknown` therefore means the real path produced no
+ * classifiable state and is always a failure, never an emulator exemption.
  *
  * ASR-outcome gating:
- *   - `error` always fails: the native code hit a transcription exception, which
- *     is a real defect regardless of whether an engine was expected.
- *   - `engineOff`/`unknown` fail ONLY when `requireAgent` is set. An honest
- *     ENGINE_OFF (loopback refused) is the designed state when no engine is
- *     staged; `unknown` is the "the round-trip was never driven" state the
- *     emulator lane legitimately produces (the deep-link path logs no ASR line).
- *     When a full engine IS required, neither is acceptable — the lane must see a
- *     committed transcript (or the model-not-ready shape), so both fail loud.
+ *   - `error` and `unknown` always fail.
+ *   - `engineOff`/`modelNotReady` are explicit, designed unavailable states and
+ *     pass only when a full engine is not required.
+ *   - a required full-engine lane passes only on a committed transcript.
  *
  * @param {object} results
  * @param {boolean} results.surfacesRegistered
@@ -350,7 +376,7 @@ export function classifyImeAsrOutcome(logcatOutput) {
  * @param {boolean} results.assistKeyLanded
  * @param {boolean} results.imeLanded
  * @param {string}  results.asrOutcome  from classifyImeAsrOutcome
- * @param {boolean} requireAgent        when true, engine must be up (committed/modelNotReady only)
+ * @param {boolean} requireAgent        when true, the IME must commit a transcript
  */
 export function summarizeLaneVerdict(results, requireAgent) {
   const failures = [];
@@ -364,16 +390,13 @@ export function summarizeLaneVerdict(results, requireAgent) {
     failures.push("KEYCODE_ASSIST did not reach MainActivity");
   if (!results.imeLanded)
     failures.push("IME invocation did not reach MainActivity");
-  if (results.asrOutcome === "error")
+  if (results.asrOutcome === "error") {
     failures.push("IME ASR round-trip errored");
-  if (requireAgent && results.asrOutcome === "engineOff") {
+  } else if (results.asrOutcome === "unknown") {
+    failures.push("IME ASR outcome was unknown after raising the real IME");
+  } else if (requireAgent && results.asrOutcome !== "committed") {
     failures.push(
-      "full engine required but ASR loopback was unreachable (ENGINE_OFF)",
-    );
-  }
-  if (requireAgent && results.asrOutcome === "unknown") {
-    failures.push(
-      "full engine required but IME ASR outcome was unknown (no committed transcript)",
+      `full engine required but IME ASR did not commit a transcript (${results.asrOutcome})`,
     );
   }
   return { pass: failures.length === 0, failures };
