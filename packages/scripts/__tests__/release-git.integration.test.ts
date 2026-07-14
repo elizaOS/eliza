@@ -46,6 +46,25 @@ function writeJson(filePath: string, value: unknown) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function preserveGitEvidence(
+  fixture: ReturnType<typeof makeScenario>,
+  receipt: Record<string, unknown>,
+) {
+  const evidenceRoot = process.env.RELEASE_EVIDENCE_DIR;
+  if (!evidenceRoot) return;
+  const target = path.join(evidenceRoot, "git");
+  fs.mkdirSync(target, { recursive: true });
+  fs.cpSync(fixture.candidateDirectory, path.join(target, "candidate"), {
+    recursive: true,
+    errorOnExist: true,
+  });
+  writeJson(path.join(target, "git-receipt.json"), receipt);
+  fs.writeFileSync(
+    path.join(target, "canonical-tag-object.txt"),
+    `${git(fixture.repoRoot, ["cat-file", "tag", "refs/tags/v1.0.0"])}\n`,
+  );
+}
+
 function makeScenario() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "release-git-"));
   roots.push(base);
@@ -262,14 +281,16 @@ describe("atomic release refs", () => {
     const branchBefore = remoteRefs(fixture.repoRoot, fixture.remote);
     git(fixture.repoRoot, ["tag", "unrelated-local-tag", fixture.releaseSha]);
 
-    expect(
-      pushReleaseTag({
-        repoRoot: fixture.repoRoot,
-        candidateDirectory: fixture.candidateDirectory,
-        remote: fixture.remote,
-        tag: "v1.0.0",
-      }),
-    ).toMatchObject({ pushed: true, expectedCommit: fixture.releaseSha });
+    const firstPush = pushReleaseTag({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory: fixture.candidateDirectory,
+      remote: fixture.remote,
+      tag: "v1.0.0",
+    });
+    expect(firstPush).toMatchObject({
+      pushed: true,
+      expectedCommit: fixture.releaseSha,
+    });
     const firstRefs = remoteRefs(fixture.repoRoot, fixture.remote);
     expect(firstRefs).toContain(`${fixture.releaseSha}\trefs/heads/develop`);
     expect(firstRefs.match(/refs\/heads\/develop/g)).toEqual(
@@ -289,6 +310,18 @@ describe("atomic release refs", () => {
     expect(
       git(fixture.repoRoot, ["cat-file", "tag", "refs/tags/v1.0.0"]),
     ).toContain(`Plan-Integrity: sha512-`);
+    expect(git(fixture.repoRoot, ["rev-parse", "refs/tags/v1.0.0"])).toBe(
+      firstPush.tagObject,
+    );
+    expect(
+      git(fixture.repoRoot, [
+        "for-each-ref",
+        "--format=%(taggerdate:raw)",
+        "refs/tags/v1.0.0",
+      ]),
+    ).toBe(
+      `${git(fixture.repoRoot, ["show", "-s", "--format=%ct", fixture.releaseSha])} +0000`,
+    );
 
     expect(
       pushReleaseTag({
@@ -302,6 +335,24 @@ describe("atomic release refs", () => {
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
       "git-tagged",
     );
+    preserveGitEvidence(fixture, {
+      transport: "ephemeral bare Git repository",
+      sourceSha: fixture.releaseSha,
+      branchBefore,
+      refsAfter: firstRefs,
+      canonicalTagObject: firstPush.tagObject,
+      tagger: git(fixture.repoRoot, [
+        "for-each-ref",
+        "--format=%(taggername)|%(taggeremail)|%(taggerdate:raw)",
+        "refs/tags/v1.0.0",
+      ]),
+      tagContents: git(fixture.repoRoot, [
+        "cat-file",
+        "tag",
+        "refs/tags/v1.0.0",
+      ]),
+      finalState: loadReleaseState(fixture.candidateDirectory),
+    });
   }, 30_000);
 
   test("tag-only rejection and a mismatched planned tag fail without ref mutation", () => {
@@ -456,7 +507,7 @@ describe("atomic release refs", () => {
         remote: fixture.remote,
         tag: "v1.0.0",
       }),
-    ).toThrow("must be annotated");
+    ).toThrow("expected canonical object");
     expect(remoteRefs(fixture.repoRoot, fixture.remote)).not.toContain(
       "refs/tags/v1.0.0",
     );
@@ -490,7 +541,7 @@ describe("atomic release refs", () => {
     );
   }, 30_000);
 
-  test("matching annotated tag dereferences to the expected commit and no-ops", () => {
+  test("same-commit annotated tag with a noncanonical message is a conflict", () => {
     const fixture = makeScenario();
     git(fixture.repoRoot, [
       "tag",
@@ -506,7 +557,7 @@ describe("atomic release refs", () => {
       `${fixture.releaseSha}:refs/heads/develop`,
       "refs/tags/v1.0.0:refs/tags/v1.0.0",
     ]);
-    expect(
+    expect(() =>
       pushAtomicReleaseRefs({
         repoRoot: fixture.repoRoot,
         candidateDirectory: fixture.candidateDirectory,
@@ -515,9 +566,33 @@ describe("atomic release refs", () => {
         tag: "v1.0.0",
         expectedOldBranchSha: fixture.baseSha,
       }),
-    ).toMatchObject({ pushed: false, expectedCommit: fixture.releaseSha });
+    ).toThrow("expected canonical object");
     expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
-      "git-tagged",
+      "git-bound",
+    );
+  }, 30_000);
+
+  test("same-commit lightweight remote tag is a conflict", () => {
+    const fixture = makeScenario();
+    git(fixture.repoRoot, ["tag", "v1.0.0", fixture.releaseSha]);
+    git(fixture.repoRoot, [
+      "push",
+      "release-test",
+      `${fixture.releaseSha}:refs/heads/develop`,
+      "refs/tags/v1.0.0:refs/tags/v1.0.0",
+    ]);
+    expect(() =>
+      pushAtomicReleaseRefs({
+        repoRoot: fixture.repoRoot,
+        candidateDirectory: fixture.candidateDirectory,
+        remote: fixture.remote,
+        branch: "develop",
+        tag: "v1.0.0",
+        expectedOldBranchSha: fixture.baseSha,
+      }),
+    ).toThrow("expected canonical object");
+    expect(loadReleaseState(fixture.candidateDirectory).state.phase).toBe(
+      "git-bound",
     );
   }, 30_000);
 
@@ -538,7 +613,7 @@ describe("atomic release refs", () => {
         tag: "v1.0.0",
         expectedOldBranchSha: fixture.baseSha,
       }),
-    ).toThrow("Remote tag refs/tags/v1.0.0 resolves");
+    ).toThrow("expected canonical object");
     for (const tag of ["v2.0.3-beta.8", "v2.0.3-beta.9", "v2.0.3-beta.10"]) {
       expect(() => assertReleaseTagAllowed(tag)).toThrow(
         "reserved failed-release residue",

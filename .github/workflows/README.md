@@ -12,7 +12,9 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
 | `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
-| `release.yaml` | Manual, reusable call | Exact-SHA transactional npm + GitHub release |
+| `release-orchestrator.yml` | Manual on protected `develop` | Sole full-cohort npm/GitHub Release entry; exact-SHA gate before distribution fan-out |
+| `release.yaml` | Reusable call only | Exact-SHA transactional npm, tag, and GitHub release |
+| `release-candidate-pr.yml` | PRs changing release authority | Credential-free candidate plus real local transport receipts |
 | `claude.yml` | @claude mentions | Interactive Claude assistance |
 | `claude-code-review.yml` | PR opened | Automated code review |
 | `claude-security-review.yml` | PR opened | Security-focused review |
@@ -34,18 +36,24 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 Alpha version tags are tags only. They do not publish NPM packages, run packaging
 CI, or create GitHub Release entries.
 
-### NPM Beta/Production Packages (`release.yaml`)
+### Public Release Orchestration (`release-orchestrator.yml` and `release.yaml`)
 
-Publishes one explicitly prepared, immutable TypeScript/JavaScript package
-cohort to npm, verifies the entire cohort, then creates the exact Git tag and
-GitHub Release. A tag push or an existing GitHub Release never starts npm
-publication.
+`release-orchestrator.yml` is the only full-cohort npm and GitHub Release
+dispatch surface. It calls
+`release.yaml` with one explicitly prepared, immutable TypeScript/JavaScript
+package cohort, waits for the complete registry/tag/GitHub Release readback,
+and passes those exact outputs to every enabled distribution. A tag push, an
+existing GitHub Release, or the removed develop-staging beta watcher never
+starts npm publication.
 
 **Triggers:**
 
-- Explicit reusable-workflow call with `source_sha`, canonical `source_ref`,
-  `version`, `channel`, and the expected npm publisher username
-- Manual dispatch with the same required identity
+- Manual `release-orchestrator.yml` dispatch from protected `develop` with
+  `source_sha`, canonical `source_ref`, `version`, `channel`, and the expected
+  npm publisher username
+- One relative reusable-workflow call from that protected orchestrator into
+  `release.yaml`; a real-tree contract rejects every other call or shell
+  dispatch
 - Optional `candidate_run_id` resumes a prior candidate artifact without
   rebuilding or repacking it
 
@@ -240,13 +248,15 @@ Manual workflow for generating JSDoc documentation.
 1. Prepare a clean commit whose allowlisted manifests already contain the
    exact release version, public access metadata, and published internal semver
    ranges.
-2. Dispatch `release.yaml` with that commit's full SHA, the canonical branch
-   ref that currently resolves to it, the same exact semver, either `beta` or
-   `latest`, and the npm username represented by the granular token. Beta
-   requires prerelease semver; latest requires stable semver.
-3. If a run is interrupted after candidate creation, dispatch with the same
-   identity and the original `candidate_run_id`. The workflow downloads and
-   verifies the recorded tarballs instead of rebuilding them.
+2. Dispatch `release-orchestrator.yml` **at protected `develop`** with that
+   commit's full SHA, the canonical branch ref that currently resolves to it,
+   the same exact semver, either `beta` or `latest`, and the npm username
+   represented by the protected environment token. Beta requires prerelease
+   semver; latest requires stable semver.
+3. If a run is interrupted after candidate creation, dispatch the orchestrator
+   with the same identity and the original `candidate_run_id`. The called npm
+   workflow downloads and verifies the recorded tarballs instead of rebuilding
+   or repacking them.
 4. Review the finalized candidate artifact. Its state must show npm staging,
    full integrity verification, public-channel promotion, exact tag
    publication, and GitHub Release readback in order.
@@ -275,6 +285,103 @@ Turbo caching is GitHub-native (`.github/actions/turbo-cache-github` via
 `setup-bun-workspace`) — no Vercel SaaS remote cache, so `TURBO_TOKEN` /
 `TURBO_TEAM` are no longer used and are banned by
 `ci-workflow-dedup-contract.mjs` (#12341).
+
+`NPM_TOKEN` is an npm granular access token stored as an environment secret,
+not a repository secret. Because the cohort exceeds npm's 50-entry limit for
+individual package restrictions, give it read/write package permission only
+for the `@elizaos` scope and the exact unscoped `elizaos` package. Give it no
+npm organization-management permission, enable the noninteractive 2FA bypass,
+and use the shortest practical expiry with an owner-visible rotation reminder.
+GitHub-hosted runner egress is not stable enough for an IP allowlist. The npm
+user represented by the token must have publish rights to every cohort member.
+
+The `npm-public-release` environment requires a reviewer other than the
+dispatcher, forbids admin bypass, and accepts only the selected `develop`
+branch. The credentialed jobs also query `refs/heads/develop` at runtime,
+require the caller workflow/ref/SHA, requested source ref/SHA, and
+`github.workflow_sha` to equal that protected tip, and check out release tooling
+by the resulting immutable SHA.
+
+For the one-time migration from the repository-scoped token:
+
+1. A maintainer copies the existing value directly into the
+   `npm-public-release` environment as `NPM_TOKEN`; never print or round-trip it
+   through workflow output.
+2. The maintainer verifies the environment readback shows required reviewers,
+   `prevent_self_review: true`, `can_admins_bypass: false`, and the selected
+   `develop` branch policy. Because self-review is forbidden, a different
+   listed reviewer must approve both protected publish and finalize jobs.
+3. From a protected `develop` commit whose entire cohort already has one fresh
+   beta version, dispatch the real npm-only canary below. `publish-npm` is
+   unconditional; `publish_packages=false` disables only the separate PyPI,
+   Snap, Flatpak, and APT workflow. The other false flags prevent unrelated
+   public distributions from changing during the token canary.
+4. Download and review the exact candidate artifact, then run the built-in
+   public registry readback against all cohort members. The canary is not a
+   credential preflight: it publishes a new public npm version, promotes
+   `beta`, creates the canonical annotated tag, and creates the GitHub Release.
+5. After that canary authenticates the planned npm username and completes its
+   registry readback, the maintainer deletes the repository-level `NPM_TOKEN`.
+   Until deletion, a branch-authored workflow could still name the broader
+   secret, so the release workflow must not be treated as enabled.
+
+```bash
+REPOSITORY=elizaOS/eliza
+VERSION='<fresh-uniform-beta-version>'
+NPM_PUBLISHER='<exact-npm-username>'
+SOURCE_SHA="$(gh api "repos/$REPOSITORY/git/ref/heads/develop" --jq .object.sha)"
+
+gh workflow run release-orchestrator.yml --repo "$REPOSITORY" --ref develop \
+  -f source_sha="$SOURCE_SHA" \
+  -f source_ref=refs/heads/develop \
+  -f version="$VERSION" \
+  -f channel=beta \
+  -f npm_publisher="$NPM_PUBLISHER" \
+  -f candidate_run_id=0 \
+  -f publish_packages=false \
+  -f publish_android=false \
+  -f publish_apple=false \
+  -f publish_desktop=false \
+  -f update_homebrew=false \
+  -f deploy_homepage=false
+```
+
+Do not dispatch until the fresh version is present in every allowlisted
+manifest, absent from every corresponding npm package, the environment secret
+exists, and an independent listed reviewer has agreed to approve both protected
+jobs. The successful run summary names the exact candidate artifact. Download
+it as `CANDIDATE_DIRECTORY`, read its plan, state, and tarballs, then perform a
+credential-free full-cohort readback:
+
+```bash
+PLAN_INTEGRITY="$(jq -r .planIntegrity "$CANDIDATE_DIRECTORY/release-state.json")"
+bun packages/scripts/release-candidate.mjs verify-promoted \
+  --candidate "$CANDIDATE_DIRECTORY" \
+  --repository elizaOS/eliza \
+  --source-ref refs/heads/develop \
+  --source-sha "$SOURCE_SHA" \
+  --registry https://registry.npmjs.org/ \
+  --publisher "$NPM_PUBLISHER" \
+  --version "$VERSION" \
+  --channel beta \
+  --plan-integrity "$PLAN_INTEGRITY" \
+  --allow-public-registry
+gh release view "v$VERSION" --repo "$REPOSITORY" \
+  --json tagName,targetCommitish,isPrerelease,url
+```
+
+The following preflight fails closed if the credential remains broad or the
+environment copy is absent:
+
+```bash
+gh secret list --repo elizaOS/eliza --env npm-public-release | grep '^NPM_TOKEN'
+if gh secret list --repo elizaOS/eliza | grep -q '^NPM_TOKEN'; then
+  echo 'repository-scoped NPM_TOKEN must be deleted after the canary' >&2
+  exit 1
+fi
+gh api repos/elizaOS/eliza/environments/npm-public-release
+gh api repos/elizaOS/eliza/environments/npm-public-release/deployment-branch-policies
+```
 
 ## Package dependencies
 
@@ -327,23 +434,28 @@ The normalized registry and resolved Git push destination are recorded before
 their first external mutation, so an interrupted run cannot be resumed against
 a different target. Git publication uses explicitly named refs, never
 `--follow-tags`, and binds the resolved push destination before mutation.
-The credential-bearing jobs execute release tooling checked out from
-`github.workflow_sha`; the candidate source is a separate checkout used only as
-verified data and as the exact Git repository for the final tag. Selecting a
-different source SHA therefore cannot replace the script that receives the npm
-or GitHub token. Candidate state writes use an exclusive owner lock; a dead
-local owner or an expired cross-runner lease is recoverable without treating a
-live writer as stale.
+The credential-bearing jobs execute release tooling checked out from the live
+protected `develop` ref after independently verifying its exact SHA and the
+protected orchestrator caller identity. The candidate source is a separate
+checkout used only as verified data and as the exact Git repository for the
+final tag. Selecting a different source SHA therefore cannot replace the script
+that receives the npm or GitHub token. Candidate state writes use an exclusive
+owner lock; a dead local owner or an expired cross-runner lease is recoverable
+without treating a live writer as stale.
 
 Finalization pushes only `refs/tags/v<exact-version>`; it never pushes a branch,
 uses `--follow-tags`, rebases, or resolves conflicts automatically. The named
 Git remote must resolve to the planned GitHub repository, and the planned
 source commit must remain reachable from the planned branch. New annotated
-tags use the fixed GitHub Actions bot identity and record the source, cohort,
-and plan digests. A matching remote tag target is an idempotent retry and a
-conflicting tag fails. The GitHub Release is then created or read back with the
-candidate's exact repository, tag, target commit, and prerelease identity. One
-fixed workflow concurrency group serializes all versions and channels.
+tags use the fixed GitHub Actions bot identity, the source commit timestamp in
+UTC, and a canonical message recording the source, cohort, and plan digests.
+Idempotence requires the exact annotated tag object ID and peeled commit; a
+same-commit lightweight tag or differently annotated tag is a conflict. The
+GitHub Release is then created or read back with the candidate's exact
+repository, tag, target commit, and prerelease identity. The orchestrator calls
+this path directly and consumes its outputs, so no downstream publisher relies
+on a `release/published` event suppressed by `GITHUB_TOKEN`. Fixed workflow
+concurrency groups serialize all versions and channels.
 `v2.0.3-beta.8`, `.9`, and `.10` are permanently reserved.
 
 ## Troubleshooting

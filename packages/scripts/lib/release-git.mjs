@@ -2,8 +2,9 @@
  * Publishes explicitly named release refs without wildcard or follow-tag
  * expansion. The transactional workflow uses the tag-only path so source
  * branches are never mutated; the branch/tag primitive remains available for
- * callers that need one atomic fast-forward. Matching tags are idempotent,
- * while conflicts and reserved failed beta tags are hard failures.
+ * callers that need one atomic fast-forward. Idempotence requires the exact
+ * canonical annotated-tag object, not merely a tag that peels to the same
+ * commit, so the plan digest and release identity cannot be substituted.
  */
 
 import { spawnSync } from "node:child_process";
@@ -34,6 +35,24 @@ function runGit(repoRoot, args) {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const detail = [result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+    throw new Error(`git ${args[0]} failed${detail ? `:\n${detail}` : ""}`);
+  }
+  return result.stdout.trim();
+}
+
+function runGitWithInput(repoRoot, args, input) {
+  const result = spawnSync("git", args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    input,
+    stdio: ["pipe", "pipe", "pipe"],
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -193,8 +212,11 @@ function remoteReleaseRefs(repoRoot, remote, branchRef, tagRef) {
     `${tagRef}^{}`,
   ]);
   const refs = parseLsRemote(output);
-  const tagCommit = refs.get(`${tagRef}^{}`) || refs.get(tagRef) || null;
-  return { branchCommit: refs.get(branchRef) || null, tagCommit };
+  return {
+    branchCommit: refs.get(branchRef) || null,
+    tagObject: refs.get(tagRef) || null,
+    tagCommit: refs.get(`${tagRef}^{}`) || null,
+  };
 }
 
 function assertCommitExists(repoRoot, expectedCommit) {
@@ -217,8 +239,8 @@ function assertTagMatchesPlan(tag, version) {
   }
 }
 
-function localTagCommit(repoRoot, tagRef) {
-  const result = spawnSync("git", ["rev-parse", `${tagRef}^{commit}`], {
+function localRefObject(repoRoot, ref) {
+  const result = spawnSync("git", ["rev-parse", "--verify", ref], {
     cwd: repoRoot,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -228,47 +250,90 @@ function localTagCommit(repoRoot, tagRef) {
   return result.stdout.trim().toLowerCase();
 }
 
-function ensureLocalAnnotatedTag(
+function canonicalReleaseTag(
   repoRoot,
   tag,
-  tagRef,
   expectedCommit,
   plan,
   planIntegrity,
 ) {
-  const existingCommit = localTagCommit(repoRoot, tagRef);
-  if (existingCommit) {
-    if (existingCommit !== expectedCommit) {
-      throw new Error(
-        `Local tag ${tagRef} resolves to ${existingCommit}, expected ${expectedCommit}`,
-      );
-    }
-    if (runGit(repoRoot, ["cat-file", "-t", tagRef]) !== "tag") {
-      throw new Error(`Local release tag ${tagRef} must be annotated`);
-    }
-    return;
-  }
-  runGit(repoRoot, [
-    "-c",
-    `user.name=${RELEASE_TAGGER_NAME}`,
-    "-c",
-    `user.email=${RELEASE_TAGGER_EMAIL}`,
-    "tag",
-    "-a",
-    "-m",
-    [
-      `Release ${tag}`,
-      "",
-      `Repository: ${plan.repository}`,
-      `Source-Ref: ${plan.sourceRef}`,
-      `Source-SHA: ${expectedCommit}`,
-      `Cohort-Integrity: ${plan.cohortIntegrity}`,
-      `Plan-Integrity: ${planIntegrity}`,
-    ].join("\n"),
-    "--",
-    tag,
+  const taggerTimestamp = runGit(repoRoot, [
+    "show",
+    "-s",
+    "--format=%ct",
     expectedCommit,
   ]);
+  if (!/^(0|[1-9]\d*)$/.test(taggerTimestamp)) {
+    throw new Error(
+      `Release source ${expectedCommit} has invalid commit timestamp ${JSON.stringify(taggerTimestamp)}`,
+    );
+  }
+  const message = [
+    `Release ${tag}`,
+    "",
+    `Repository: ${plan.repository}`,
+    `Source-Ref: ${plan.sourceRef}`,
+    `Source-SHA: ${expectedCommit}`,
+    `Cohort-Integrity: ${plan.cohortIntegrity}`,
+    `Plan-Integrity: ${planIntegrity}`,
+  ].join("\n");
+  const source = [
+    `object ${expectedCommit}`,
+    "type commit",
+    `tag ${tag}`,
+    `tagger ${RELEASE_TAGGER_NAME} <${RELEASE_TAGGER_EMAIL}> ${taggerTimestamp} +0000`,
+    "",
+    message,
+    "",
+  ].join("\n");
+  const objectId = runGitWithInput(
+    repoRoot,
+    ["hash-object", "-t", "tag", "--stdin"],
+    source,
+  ).toLowerCase();
+  return { objectId, source, taggerTimestamp };
+}
+
+function ensureLocalCanonicalTag(repoRoot, tagRef, canonicalTag) {
+  const existingObject = localRefObject(repoRoot, tagRef);
+  if (existingObject) {
+    if (existingObject !== canonicalTag.objectId) {
+      throw new Error(
+        `Local release tag ${tagRef} is ${existingObject}, expected canonical object ${canonicalTag.objectId}`,
+      );
+    }
+    return existingObject;
+  }
+  const writtenObject = runGitWithInput(
+    repoRoot,
+    ["mktag"],
+    canonicalTag.source,
+  ).toLowerCase();
+  if (writtenObject !== canonicalTag.objectId) {
+    throw new Error(
+      `Canonical tag write produced ${writtenObject}, expected ${canonicalTag.objectId}`,
+    );
+  }
+  runGit(repoRoot, ["update-ref", tagRef, writtenObject]);
+  return writtenObject;
+}
+
+function assertRemoteCanonicalTag(
+  tagRef,
+  remoteRefs,
+  expectedCommit,
+  expectedTagObject,
+) {
+  if (!remoteRefs.tagObject && !remoteRefs.tagCommit) return false;
+  if (
+    remoteRefs.tagObject !== expectedTagObject ||
+    remoteRefs.tagCommit !== expectedCommit
+  ) {
+    throw new Error(
+      `Remote tag ${tagRef} is object=${remoteRefs.tagObject}, commit=${remoteRefs.tagCommit}; expected canonical object=${expectedTagObject}, commit=${expectedCommit}`,
+    );
+  }
+  return true;
 }
 
 /** Prove an exact checked-out source SHA is the tip of its named repository ref. */
@@ -343,8 +408,8 @@ function assertFastForward(repoRoot, oldCommit, expectedCommit) {
 /**
  * Push only the planned `refs/tags/v<version>` ref. A failed push is re-read
  * once because the remote may have accepted the exact tag before the client
- * lost its response; only an exact matching commit converts that ambiguity to
- * an idempotent success.
+ * lost its response; only the exact canonical tag object converts that
+ * ambiguity to an idempotent success.
  */
 export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
   if (typeof remote !== "string" || remote.length === 0)
@@ -374,12 +439,21 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
   }
 
   assertSourceStillReachable(repoRoot, remote, plan.sourceRef, expectedCommit);
+  const canonicalTag = canonicalReleaseTag(
+    repoRoot,
+    tag,
+    expectedCommit,
+    plan,
+    planIntegrity,
+  );
   const bindingEvidence = {
     remote,
     remotePushUrls: resolveRemotePushUrls(repoRoot, remote),
     repository: plan.repository,
     sourceRef: plan.sourceRef,
     tagRef,
+    tagObject: canonicalTag.objectId,
+    taggerTimestamp: canonicalTag.taggerTimestamp,
     expectedCommit,
     cohortIntegrity: plan.cohortIntegrity,
     planIntegrity,
@@ -403,21 +477,15 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
     "refs/heads/__unused__",
     tagRef,
   );
-  if (before.tagCommit && before.tagCommit !== expectedCommit) {
-    throw new Error(
-      `Remote tag ${tagRef} resolves to ${before.tagCommit}, expected ${expectedCommit}`,
-    );
-  }
+  const exists = assertRemoteCanonicalTag(
+    tagRef,
+    before,
+    expectedCommit,
+    canonicalTag.objectId,
+  );
   let pushed = false;
-  if (!before.tagCommit) {
-    ensureLocalAnnotatedTag(
-      repoRoot,
-      tag,
-      tagRef,
-      expectedCommit,
-      plan,
-      planIntegrity,
-    );
+  if (!exists) {
+    ensureLocalCanonicalTag(repoRoot, tagRef, canonicalTag);
     const push = spawnSync(
       "git",
       ["push", "--atomic", "--", remote, `${tagRef}:${tagRef}`],
@@ -437,12 +505,25 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
         "refs/heads/__unused__",
         tagRef,
       );
-      if (raced.tagCommit !== expectedCommit) {
+      try {
+        const racedExists = assertRemoteCanonicalTag(
+          tagRef,
+          raced,
+          expectedCommit,
+          canonicalTag.objectId,
+        );
+        if (!racedExists) {
+          throw new Error(`Remote tag ${tagRef} is still absent`);
+        }
+      } catch (error) {
+        // error-policy:J2 retain the canonical-tag conflict behind the push failure
         const detail = [push.stdout, push.stderr]
           .filter(Boolean)
           .join("\n")
           .trim();
-        throw new Error(`git push failed${detail ? `:\n${detail}` : ""}`);
+        throw new Error(`git push failed${detail ? `:\n${detail}` : ""}`, {
+          cause: error,
+        });
       }
     }
   }
@@ -453,13 +534,15 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
     "refs/heads/__unused__",
     tagRef,
   );
-  if (after.tagCommit !== expectedCommit) {
-    throw new Error(
-      `Release tag verification failed: tag=${after.tagCommit}, expected=${expectedCommit}`,
-    );
-  }
+  assertRemoteCanonicalTag(
+    tagRef,
+    after,
+    expectedCommit,
+    canonicalTag.objectId,
+  );
   const completionEvidence = {
     ...bindingEvidence,
+    tagObject: after.tagObject,
     tagCommit: after.tagCommit,
   };
   if (phaseIndex >= taggedIndex) {
@@ -477,7 +560,12 @@ export function pushReleaseTag({ repoRoot, candidateDirectory, remote, tag }) {
       completionEvidence,
     );
   }
-  return { tagRef, expectedCommit, pushed };
+  return {
+    tagRef,
+    tagObject: canonicalTag.objectId,
+    expectedCommit,
+    pushed,
+  };
 }
 
 /**
@@ -529,6 +617,14 @@ export function pushAtomicReleaseRefs({
     );
   }
 
+  const canonicalTag = canonicalReleaseTag(
+    repoRoot,
+    tag,
+    expectedCommit,
+    plan,
+    planIntegrity,
+  );
+
   const bindingEvidence = {
     remote,
     remotePushUrls: resolveRemotePushUrls(repoRoot, remote),
@@ -536,6 +632,8 @@ export function pushAtomicReleaseRefs({
     sourceRef: plan.sourceRef,
     branchRef,
     tagRef,
+    tagObject: canonicalTag.objectId,
+    taggerTimestamp: canonicalTag.taggerTimestamp,
     expectedCommit,
     expectedOldBranchSha: expectedOld,
     cohortIntegrity: plan.cohortIntegrity,
@@ -555,11 +653,12 @@ export function pushAtomicReleaseRefs({
   }
 
   const before = remoteReleaseRefs(repoRoot, remote, branchRef, tagRef);
-  if (before.tagCommit && before.tagCommit !== expectedCommit) {
-    throw new Error(
-      `Remote tag ${tagRef} resolves to ${before.tagCommit}, expected ${expectedCommit}`,
-    );
-  }
+  const tagExists = assertRemoteCanonicalTag(
+    tagRef,
+    before,
+    expectedCommit,
+    canonicalTag.objectId,
+  );
   if (before.branchCommit !== expectedCommit) {
     if (before.branchCommit !== expectedOld) {
       throw new Error(
@@ -568,15 +667,7 @@ export function pushAtomicReleaseRefs({
     }
     assertFastForward(repoRoot, before.branchCommit, expectedCommit);
   }
-  if (!before.tagCommit)
-    ensureLocalAnnotatedTag(
-      repoRoot,
-      tag,
-      tagRef,
-      expectedCommit,
-      plan,
-      planIntegrity,
-    );
+  if (!tagExists) ensureLocalCanonicalTag(repoRoot, tagRef, canonicalTag);
 
   const refspecs = [];
   const pushArgs = ["push", "--atomic"];
@@ -584,22 +675,26 @@ export function pushAtomicReleaseRefs({
     pushArgs.push(`--force-with-lease=${branchRef}:${expectedOld}`);
     refspecs.push(`${expectedCommit}:${branchRef}`);
   }
-  if (!before.tagCommit) refspecs.push(`${tagRef}:${tagRef}`);
+  if (!tagExists) refspecs.push(`${tagRef}:${tagRef}`);
   if (refspecs.length > 0)
     runGit(repoRoot, [...pushArgs, "--", remote, ...refspecs]);
 
   const after = remoteReleaseRefs(repoRoot, remote, branchRef, tagRef);
-  if (
-    after.branchCommit !== expectedCommit ||
-    after.tagCommit !== expectedCommit
-  ) {
+  if (after.branchCommit !== expectedCommit) {
     throw new Error(
-      `Atomic ref verification failed: branch=${after.branchCommit}, tag=${after.tagCommit}, expected=${expectedCommit}`,
+      `Atomic ref verification failed: branch=${after.branchCommit}, expected=${expectedCommit}`,
     );
   }
+  assertRemoteCanonicalTag(
+    tagRef,
+    after,
+    expectedCommit,
+    canonicalTag.objectId,
+  );
   const completionEvidence = {
     ...bindingEvidence,
     branchCommit: after.branchCommit,
+    tagObject: after.tagObject,
     tagCommit: after.tagCommit,
   };
   if (phaseIndex >= taggedIndex) {

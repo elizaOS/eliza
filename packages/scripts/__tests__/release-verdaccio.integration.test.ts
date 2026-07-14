@@ -48,6 +48,27 @@ function writeJson(filePath: string, value: unknown) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function evidencePath(...parts: string[]) {
+  const evidenceRoot = process.env.RELEASE_EVIDENCE_DIR;
+  return evidenceRoot ? path.join(evidenceRoot, "verdaccio", ...parts) : null;
+}
+
+function preserveEvidence(
+  candidateDirectory: string,
+  receipt: Record<string, unknown>,
+  logs: string,
+) {
+  const target = evidencePath();
+  if (!target) return;
+  fs.mkdirSync(target, { recursive: true });
+  fs.cpSync(candidateDirectory, path.join(target, "candidate"), {
+    recursive: true,
+    errorOnExist: true,
+  });
+  writeJson(path.join(target, "registry-receipt.json"), receipt);
+  fs.writeFileSync(path.join(target, "verdaccio.log"), logs);
+}
+
 async function unusedPort() {
   const server = http.createServer();
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -369,13 +390,12 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
   expect(loadReleaseState(candidateDirectory).state.phase).toBe(
     "channel-promoted",
   );
-  expect(
-    await inspectReleaseRegistry({
-      registryUrl: resumedServer.registryUrl,
-      plan: candidate.plan,
-      token,
-    }),
-  ).toEqual(
+  const finalInspection = await inspectReleaseRegistry({
+    registryUrl: resumedServer.registryUrl,
+    plan: candidate.plan,
+    token,
+  });
+  expect(finalInspection).toEqual(
     candidate.plan.packages.map(({ name, version, tarball }) => ({
       name,
       version,
@@ -386,32 +406,50 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
       provenance: "candidate-integrity+authenticated-publisher",
     })),
   );
+  const channels = [];
+  const metadata: Record<string, unknown> = {};
   for (const packageRecord of candidate.plan.packages) {
-    expect(
-      await inspectRegistryChannel({
-        registryUrl: resumedServer.registryUrl,
-        packageRecord,
-        channel: "beta",
-        token,
-      }),
-    ).toBe("1.0.0");
-    expect(
-      await inspectRegistryChannel({
-        registryUrl: resumedServer.registryUrl,
-        packageRecord,
-        channel: candidate.plan.candidateTag,
-        token,
-      }),
-    ).toBeNull();
-  }
-  expect(
-    await verifyPromotedReleaseCandidate({
-      repoRoot: fixture.repoRoot,
-      candidateDirectory,
+    const publicVersion = await inspectRegistryChannel({
       registryUrl: resumedServer.registryUrl,
+      packageRecord,
+      channel: "beta",
       token,
-    }),
-  ).toMatchObject({
+    });
+    const candidateVersion = await inspectRegistryChannel({
+      registryUrl: resumedServer.registryUrl,
+      packageRecord,
+      channel: candidate.plan.candidateTag,
+      token,
+    });
+    expect(publicVersion).toBe("1.0.0");
+    expect(candidateVersion).toBeNull();
+    channels.push({
+      name: packageRecord.name,
+      beta: publicVersion,
+      candidateTag: candidate.plan.candidateTag,
+      candidateVersion,
+    });
+    const response = await fetch(
+      new URL(
+        encodeURIComponent(packageRecord.name),
+        resumedServer.registryUrl,
+      ),
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `Verdaccio evidence metadata failed for ${packageRecord.name}: ${response.status}`,
+      );
+    }
+    metadata[packageRecord.name] = await response.json();
+  }
+  const promoted = await verifyPromotedReleaseCandidate({
+    repoRoot: fixture.repoRoot,
+    candidateDirectory,
+    registryUrl: resumedServer.registryUrl,
+    token,
+  });
+  expect(promoted).toMatchObject({
     state: "channel-promoted",
     channel: "beta",
     channels: candidate.plan.packages.map(({ name }) => ({
@@ -439,4 +477,20 @@ test("real Verdaccio transport failure resumes only the integrity-matched partia
       npmCommand: writeAuthenticatedNpm(base, npmConfigPath),
     }),
   ).rejects.toThrow("Candidate registry is");
+  preserveEvidence(
+    candidateDirectory,
+    {
+      transport: "ephemeral local Verdaccio",
+      sourceSha: fixture.sourceSha,
+      plan: candidate.plan,
+      interruptedState: "registry-bound",
+      partial,
+      finalInspection,
+      channels,
+      metadata,
+      promoted,
+      finalState: loadReleaseState(candidateDirectory),
+    },
+    resumedServer.logs(),
+  );
 }, 120_000);

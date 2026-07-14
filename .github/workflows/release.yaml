@@ -33,10 +33,6 @@ on:
         required: false
         type: number
         default: 0
-    secrets:
-      NPM_TOKEN:
-        description: Granular npm automation token used only by the publish job
-        required: true
     outputs:
       source_sha:
         description: Verified source commit
@@ -68,37 +64,6 @@ on:
       candidate_artifact:
         description: Final release plan, tarballs, and transition evidence artifact
         value: ${{ jobs.finalize.outputs.candidate_artifact }}
-  workflow_dispatch:
-    inputs:
-      source_sha:
-        description: Full source commit SHA of the prepared release candidate
-        required: true
-        type: string
-      source_ref:
-        description: Canonical branch ref whose exact tip was verified
-        required: true
-        type: string
-      version:
-        description: Exact canonical semver already present in every cohort manifest
-        required: true
-        type: string
-      channel:
-        description: Public npm channel
-        required: true
-        type: choice
-        options:
-          - beta
-          - latest
-      npm_publisher:
-        description: Exact npm username represented by NPM_TOKEN
-        required: true
-        type: string
-      candidate_run_id:
-        description: Prior workflow run ID to resume without rebuilding (0 creates one)
-        required: false
-        type: number
-        default: 0
-
 concurrency:
   group: public-npm-release-transaction
   cancel-in-progress: false
@@ -107,8 +72,82 @@ permissions:
   contents: read
 
 jobs:
+  authorize:
+    name: Bind protected release authority
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tooling_sha: ${{ steps.authority.outputs.tooling_sha }}
+    steps:
+      - name: Require current protected orchestrator
+        id: authority
+        shell: bash
+        env:
+          EXPECTED_CALLER_REF: elizaOS/eliza/.github/workflows/release-orchestrator.yml@refs/heads/develop
+          EXPECTED_REPOSITORY: elizaOS/eliza
+          OBSERVED_REF: ${{ github.ref }}
+          OBSERVED_REPOSITORY: ${{ github.repository }}
+          OBSERVED_SHA: ${{ github.sha }}
+          OBSERVED_SOURCE_REF: ${{ inputs.source_ref }}
+          OBSERVED_SOURCE_SHA: ${{ inputs.source_sha }}
+          OBSERVED_WORKFLOW_REF: ${{ github.workflow_ref }}
+          OBSERVED_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          API_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "$OBSERVED_REPOSITORY" != "$EXPECTED_REPOSITORY" ]; then
+            echo "::error::Release caller repository is $OBSERVED_REPOSITORY, expected $EXPECTED_REPOSITORY."
+            exit 1
+          fi
+          if [ "$OBSERVED_REF" != "refs/heads/develop" ]; then
+            echo "::error::Release caller ref is $OBSERVED_REF, expected refs/heads/develop."
+            exit 1
+          fi
+          if [ "$OBSERVED_SOURCE_REF" != "refs/heads/develop" ]; then
+            echo "::error::Release source ref is $OBSERVED_SOURCE_REF, expected refs/heads/develop."
+            exit 1
+          fi
+          if [ "$OBSERVED_WORKFLOW_REF" != "$EXPECTED_CALLER_REF" ]; then
+            echo "::error::Release caller workflow is $OBSERVED_WORKFLOW_REF, expected $EXPECTED_CALLER_REF."
+            exit 1
+          fi
+
+          protected_sha="$({
+            curl --fail-with-body --silent --show-error \
+              --header 'Accept: application/vnd.github+json' \
+              --header "Authorization: Bearer $API_TOKEN" \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${GITHUB_API_URL}/repos/${EXPECTED_REPOSITORY}/git/ref/heads/develop"
+          } | node -e '
+            let source = "";
+            process.stdin.setEncoding("utf8");
+            process.stdin.on("data", (chunk) => { source += chunk; });
+            process.stdin.on("end", () => {
+              const value = JSON.parse(source)?.object?.sha;
+              if (typeof value !== "string" || !/^[0-9a-f]{40}$/.test(value)) process.exit(1);
+              process.stdout.write(value);
+            });
+          ')"
+          if [ "$OBSERVED_SHA" != "$protected_sha" ]; then
+            echo "::error::Release caller SHA is $OBSERVED_SHA, current protected develop is $protected_sha."
+            exit 1
+          fi
+          if [ "$OBSERVED_SOURCE_SHA" != "$protected_sha" ]; then
+            echo "::error::Release source SHA is $OBSERVED_SOURCE_SHA, current protected develop is $protected_sha."
+            exit 1
+          fi
+          if [ "$OBSERVED_WORKFLOW_SHA" != "$protected_sha" ]; then
+            echo "::error::Release workflow SHA is $OBSERVED_WORKFLOW_SHA, current protected develop is $protected_sha."
+            exit 1
+          fi
+          echo "tooling_sha=$protected_sha" >> "$GITHUB_OUTPUT"
+          echo "Protected release tooling: $protected_sha" >> "$GITHUB_STEP_SUMMARY"
+
   candidate:
     name: Build immutable candidate
+    needs: authorize
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
@@ -140,6 +179,7 @@ jobs:
           bun-version: "1.3.14"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+          run-postinstall: "false"
 
       - name: Validate explicit release identity
         id: release_inputs
@@ -259,9 +299,13 @@ jobs:
 
   publish:
     name: Stage, verify, and promote npm cohort
-    needs: candidate
+    needs:
+      - authorize
+      - candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    environment:
+      name: npm-public-release
     permissions:
       actions: read
       contents: read
@@ -269,7 +313,7 @@ jobs:
       - name: Checkout trusted release tooling
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ needs.authorize.outputs.tooling_sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -344,8 +388,11 @@ jobs:
     needs:
       - candidate
       - publish
+      - authorize
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    environment:
+      name: npm-public-release
     permissions:
       actions: read
       contents: write
@@ -364,7 +411,7 @@ jobs:
       - name: Checkout trusted release tooling
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ needs.authorize.outputs.tooling_sha }}
           fetch-depth: 0
           persist-credentials: false
 

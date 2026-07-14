@@ -49,6 +49,21 @@ function writeJson(filePath: string, value: unknown) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function preserveGitHubEvidence(
+  fixture: ReturnType<typeof makeTaggedCandidate>,
+  receipt: Record<string, unknown>,
+) {
+  const evidenceRoot = process.env.RELEASE_EVIDENCE_DIR;
+  if (!evidenceRoot) return;
+  const target = path.join(evidenceRoot, "github");
+  fs.mkdirSync(target, { recursive: true });
+  fs.cpSync(fixture.candidateDirectory, path.join(target, "candidate"), {
+    recursive: true,
+    errorOnExist: true,
+  });
+  writeJson(path.join(target, "github-release-receipt.json"), receipt);
+}
+
 function makeTaggedCandidate() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), "release-github-"));
   roots.push(base);
@@ -232,18 +247,32 @@ describe("GitHub release finalization", () => {
       "release-published",
     );
 
-    expect(
-      await publishGitHubRelease({
-        repoRoot: fixture.repoRoot,
-        candidateDirectory: fixture.candidateDirectory,
-        repository: "elizaOS/eliza",
-        tag: "v1.0.0-beta.1",
-        token: "fixture-token",
-        apiUrl: api.apiUrl,
-      }),
-    ).toMatchObject({ created: false, releaseId: 71 });
+    const retry = await publishGitHubRelease({
+      repoRoot: fixture.repoRoot,
+      candidateDirectory: fixture.candidateDirectory,
+      repository: "elizaOS/eliza",
+      tag: "v1.0.0-beta.1",
+      token: "fixture-token",
+      apiUrl: api.apiUrl,
+    });
+    expect(retry).toMatchObject({ created: false, releaseId: 71 });
     expect(api.posts).toHaveLength(1);
     expect(api.release()).not.toBeNull();
+    preserveGitHubEvidence(fixture, {
+      transport: "ephemeral loopback GitHub Releases API",
+      sourceSha: fixture.sourceSha,
+      created,
+      retry,
+      requests: api.posts,
+      releaseReadback: api.release(),
+      remoteRefs: git(fixture.repoRoot, ["ls-remote", fixture.remote]),
+      tagObject: git(fixture.repoRoot, [
+        "cat-file",
+        "tag",
+        "refs/tags/v1.0.0-beta.1",
+      ]),
+      finalState: loadReleaseState(fixture.candidateDirectory),
+    });
   }, 30_000);
 
   test("rejects an existing release with a different public identity", async () => {
