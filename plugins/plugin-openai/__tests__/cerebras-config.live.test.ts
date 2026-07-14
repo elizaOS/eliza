@@ -50,11 +50,15 @@ function isModelAccessError(error: unknown, modelId: string): boolean {
  * Asserts the model returned actual visible text. A null/undefined `text`
  * must fail with a truthful type assertion, not a vitest arguments-shape
  * error (`toContain` on null throws "invalid combination of arguments").
+ * The full response rides along in the failure message so an empty-content
+ * regression (e.g. everything spent in the reasoning channel) stays
+ * diagnosable from CI logs alone.
  */
-function expectRealText(text: string | undefined): string {
-  expect(typeof text).toBe("string");
+function expectRealText(text: string | undefined, response?: unknown): string {
+  const receipt = response === undefined ? "" : ` — full response: ${JSON.stringify(response)}`;
+  expect(typeof text, `expected visible text, got ${typeof text}${receipt}`).toBe("string");
   const value = text as string;
-  expect(value.trim().length).toBeGreaterThan(0);
+  expect(value.trim().length, `expected non-empty visible text${receipt}`).toBeGreaterThan(0);
   return value;
 }
 
@@ -73,7 +77,7 @@ describeLive(
       })) as string | UseModelResult;
 
       const text = typeof result === "string" ? result : result.text;
-      expectRealText(text);
+      expectRealText(text, typeof result === "string" ? undefined : result);
       if (typeof result !== "string") {
         expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
         expect(result.usage?.completionTokens ?? 0).toBeGreaterThan(0);
@@ -88,13 +92,25 @@ describeLive(
       // default ("low") must bound hidden reasoning so visible content
       // survives the capped response — the wire behavior this PR bounds,
       // proven on a model every Cerebras key can reach.
+      //
+      // `messages` is load-bearing: prompt-only calls return a plain string
+      // (usesNativeTextResult — no usage to assert), and reading `.text` off
+      // that string is exactly how run 29297039074 failed here. The forceful
+      // phrasing keeps gpt-oss from spending the entire budget in the
+      // reasoning channel on a trivial ask.
       const result = (await runtime.useModel(ModelType.TEXT_LARGE, {
-        prompt: "Reply with the single word: ready",
+        prompt: "Respond with exactly the word READY and nothing else.",
+        messages: [
+          {
+            role: "user",
+            content: "Respond with exactly the word READY and nothing else.",
+          },
+        ],
         maxTokens: 160,
       })) as UseModelResult;
 
-      const text = expectRealText(result.text);
-      expect(text.toLowerCase()).toContain("ready");
+      const text = expectRealText(result.text, result);
+      expect(text.toUpperCase()).toContain("READY");
       expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
       expect(result.usage?.completionTokens ?? 0).toBeGreaterThan(0);
 
@@ -147,7 +163,7 @@ describeLive(
 
       // A live model may wrap PONG in whitespace/punctuation despite the
       // instruction — assert containment, not exact equality.
-      const text = expectRealText(result.text);
+      const text = expectRealText(result.text, result);
       expect(text.trim().toUpperCase()).toContain("PONG");
       expect(result.finishReason).toBe("stop");
       expect(result.usage?.promptTokens ?? 0).toBeGreaterThan(0);
