@@ -95,7 +95,7 @@ const fakeZod = {
 function makeSession(
   scripts: TurnScript[],
   opts: {
-    router?: boolean;
+    mode?: "text" | "route" | "envelope";
     restartAfterTurns?: number;
     turnTimeoutMs?: number;
     subprocessEnv?: Record<string, string | undefined>;
@@ -105,7 +105,7 @@ function makeSession(
   const session = new ClaudeSdkSession({
     model: "test-model",
     systemPrompt: "test system",
-    router: opts.router ?? false,
+    mode: opts.mode ?? "text",
     restartAfterTurns: opts.restartAfterTurns,
     turnTimeoutMs: opts.turnTimeoutMs,
     subprocessEnv: opts.subprocessEnv,
@@ -124,14 +124,14 @@ describe("ClaudeSdkSession — TEXT mode", () => {
       zodModule: fakeZod,
     });
 
-    expect(await session.generate("hi")).toBe("hello world");
+    expect(await session.send("hi")).toBe("hello world");
     expect(queryOptions()[0].model).toBe("claude-opus-4-8");
     await session.dispose();
   });
 
   it("returns streamed assistant text", async () => {
     const { session } = makeSession([{ text: "hello world", subtype: "success" }]);
-    expect(await session.generate("hi")).toBe("hello world");
+    expect(await session.send("hi")).toBe("hello world");
     await session.dispose();
   });
 
@@ -140,14 +140,14 @@ describe("ClaudeSdkSession — TEXT mode", () => {
     const { session, queryOptions } = makeSession([{ text: "hello world", subtype: "success" }], {
       subprocessEnv,
     });
-    expect(await session.generate("hi")).toBe("hello world");
+    expect(await session.send("hi")).toBe("hello world");
     expect(queryOptions()[0].env).toBe(subprocessEnv);
     await session.dispose();
   });
 
   it("falls back to result.result only on a clean success turn", async () => {
     const { session } = makeSession([{ text: "", subtype: "success", resultText: "the answer" }]);
-    expect(await session.generate("hi")).toBe("the answer");
+    expect(await session.send("hi")).toBe("the answer");
     await session.dispose();
   });
 
@@ -155,13 +155,13 @@ describe("ClaudeSdkSession — TEXT mode", () => {
     const { session } = makeSession([
       { text: "", subtype: "error_max_turns", resultText: "Reached maximum turns" },
     ]);
-    await expect(session.generate("hi")).rejects.toThrow(/empty completion/);
+    await expect(session.send("hi")).rejects.toThrow(/empty completion/);
     await session.dispose();
   });
 
   it("THROWS when the generator ends before a result (session died mid-turn)", async () => {
     const { session } = makeSession([{ text: "partial", noResult: true }]);
-    await expect(session.generate("hi")).rejects.toThrow(/session-ended|empty completion/);
+    await expect(session.send("hi")).rejects.toThrow(/session-ended|empty completion/);
     await session.dispose();
   });
 
@@ -173,7 +173,7 @@ describe("ClaudeSdkSession — TEXT mode", () => {
         resultText: "You've hit your session limit · resets 9:30pm (UTC)",
       },
     ]);
-    await expect(session.generate("hi")).rejects.toThrow(/subscription rate limit reached/);
+    await expect(session.send("hi")).rejects.toThrow(/subscription rate limit reached/);
     await session.dispose();
   });
 
@@ -184,7 +184,7 @@ describe("ClaudeSdkSession — TEXT mode", () => {
         subtype: "success",
       },
     ]);
-    await expect(session.generate("hi")).rejects.toMatchObject({
+    await expect(session.send("hi")).rejects.toMatchObject({
       name: "ProviderApiError",
       statusCode: 529,
       retryable: true,
@@ -195,7 +195,7 @@ describe("ClaudeSdkSession — TEXT mode", () => {
   it("bounds a hung SDK turn below connector timeouts", async () => {
     const { session } = makeSession([{ hang: true }], { turnTimeoutMs: 5 });
     const started = Date.now();
-    await expect(session.generate("hi")).rejects.toBeInstanceOf(ProviderApiError);
+    await expect(session.send("hi")).rejects.toBeInstanceOf(ProviderApiError);
     expect(Date.now() - started).toBeLessThan(1_000);
     await session.dispose();
   });
@@ -205,8 +205,8 @@ describe("ClaudeSdkSession — TEXT mode", () => {
       { text: "", subtype: "error_max_turns" }, // turn 1 throws
       { text: "recovered", subtype: "success" }, // turn 2 ok (fresh start)
     ]);
-    await expect(session.generate("a")).rejects.toThrow();
-    expect(await session.generate("b")).toBe("recovered");
+    await expect(session.send("a")).rejects.toThrow();
+    expect(await session.send("b")).toBe("recovered");
     expect(starts()).toBe(2); // re-started after the failure
     await session.dispose();
   });
@@ -220,15 +220,15 @@ describe("ClaudeSdkSession — TEXT mode", () => {
       ],
       { restartAfterTurns: 1 }
     );
-    expect(await session.generate("1")).toBe("one");
-    expect(await session.generate("2")).toBe("two");
+    expect(await session.send("1")).toBe("one");
+    expect(await session.send("2")).toBe("two");
     expect(starts()).toBeGreaterThanOrEqual(2); // restarted between turns
     await session.dispose();
   });
 
   it("rejects an empty prompt body", async () => {
     const { session } = makeSession([{ text: "x", subtype: "success" }]);
-    await expect(session.generate("   ")).rejects.toThrow(/empty prompt body/);
+    await expect(session.send("   ")).rejects.toThrow(/empty prompt body/);
     await session.dispose();
   });
 });
@@ -237,9 +237,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
   it("captures the tool decision and returns it as bare {action,params} JSON", async () => {
     const { session } = makeSession(
       [{ toolCall: { action: "WEB_FETCH", params: { url: "u" } }, subtype: "error_max_turns" }],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("price?"));
+    const out = JSON.parse(await session.send("price?"));
     expect(out).toEqual({ action: "WEB_FETCH", params: { url: "u" } });
     await session.dispose();
   });
@@ -253,9 +253,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
           subtype: "error_max_turns",
         },
       ],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("hi"));
+    const out = JSON.parse(await session.send("hi"));
     expect(out.action).toBe("REPLY");
     expect(out.params.text).toBe("real");
     await session.dispose();
@@ -270,9 +270,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
           subtype: "error_max_turns",
         },
       ],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("price?"));
+    const out = JSON.parse(await session.send("price?"));
     expect(out).toEqual({
       action: "WEB_FETCH",
       params: { url: "https://example.test" },
@@ -283,18 +283,18 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
   it("does NOT surface an agentic preamble as a REPLY when the model skips the tool (error_max_turns)", async () => {
     const { session } = makeSession(
       [{ text: "I'll route this to WEB_FETCH...", subtype: "error_max_turns" }],
-      { router: true }
+      { mode: "route" }
     );
     // No decision + non-success subtype => throw, never leak the thought.
-    await expect(session.route("hi")).rejects.toThrow(/no decision/);
+    await expect(session.send("hi")).rejects.toThrow(/no decision/);
     await session.dispose();
   });
 
   it("accepts a genuine terminal answer (clean success, no tool) as a REPLY", async () => {
     const { session } = makeSession([{ text: "2 + 2 is 4.", subtype: "success" }], {
-      router: true,
+      mode: "route",
     });
-    const out = JSON.parse(await session.route("2+2?"));
+    const out = JSON.parse(await session.send("2+2?"));
     expect(out).toEqual({ action: "REPLY", params: { text: "2 + 2 is 4." } });
     await session.dispose();
   });
@@ -302,9 +302,9 @@ describe("ClaudeSdkSession — ROUTE mode", () => {
   it("coerces malformed params to {} but keeps the action", async () => {
     const { session } = makeSession(
       [{ toolCall: { action: "IGNORE", params: "not-an-object" }, subtype: "error_max_turns" }],
-      { router: true }
+      { mode: "route" }
     );
-    const out = JSON.parse(await session.route("hi"));
+    const out = JSON.parse(await session.send("hi"));
     expect(out).toEqual({ action: "IGNORE", params: {} });
     await session.dispose();
   });
@@ -318,9 +318,9 @@ describe("ClaudeSdkSession — serialization", () => {
         { toolCall: { action: "A", params: {} }, subtype: "error_max_turns" },
         { toolCall: { action: "B", params: {} }, subtype: "error_max_turns" },
       ],
-      { router: true }
+      { mode: "route" }
     );
-    const [r1, r2] = await Promise.all([session.route("one"), session.route("two")]);
+    const [r1, r2] = await Promise.all([session.send("one"), session.send("two")]);
     const actions = [JSON.parse(r1).action, JSON.parse(r2).action].sort();
     expect(actions).toEqual(["A", "B"]); // both distinct, no cross-contamination
     await session.dispose();
