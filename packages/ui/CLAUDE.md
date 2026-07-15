@@ -300,6 +300,10 @@ This package mostly reads config injected by the host, not raw env vars:
 - `ConnectionStatus` exists twice (cloud-ui string union vs. the composite
   component) — the cloud-ui one is intentionally NOT re-exported from the root
   barrel to avoid the collision (see comment in `index.ts`).
+- **Chat turn status is phase-neutral.** `TurnStatus` uses the same neutral
+  shimmer and spinner for thinking, tool work, and speaking so transport-phase
+  changes do not flash the app accent. Preserve its `motion-reduce` fallback
+  when changing the status treatment.
 - **Builtin view mutations need semantic action twins.** First-party shell views
   are covered by `src/testing/builtin-view-action-ratchet.ts`: every local
   mutation site in the baseline either maps to a semantic action (`SETTINGS`,
