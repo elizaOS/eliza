@@ -1792,7 +1792,9 @@ describe("ContinuousChatOverlay", () => {
       .getByText("fix my typo")
       .closest('[data-testid="thread-line"]')
       ?.querySelector("div.select-text") as HTMLElement;
-    fireEvent.click(bubble);
+    const row = bubble.closest('[data-testid="thread-line"]');
+    if (!row) throw new Error("message row not found");
+    fireEvent.mouseEnter(row);
     fireEvent.click(screen.getByTestId("thread-line-edit"));
     const editInput = screen.getByTestId("thread-line-edit-input");
 
@@ -3866,8 +3868,8 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
   });
 });
 
-// Per-message click-to-reveal action row (#10713): assistant → Copy + Play,
-// user → Copy + Edit-and-resend, temp turns are not editable.
+// Per-message hover/touch action row (#10713): assistant → Copy + Play, user →
+// Copy + Edit-and-resend, and optimistic turns stay non-editable.
 describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   function openThreadWith(overrides: Partial<ShellController>) {
     render(
@@ -3886,6 +3888,12 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ?.querySelector("div.select-text") as HTMLElement;
   }
 
+  function revealActionsFor(text: string): void {
+    const row = bubbleFor(text).closest('[data-testid="thread-line"]');
+    if (!row) throw new Error(`message row not found for: ${text}`);
+    fireEvent.mouseEnter(row);
+  }
+
   it("reveals Copy + Play on an assistant message and no top-menu copy button", () => {
     const speak = vi.fn();
     openThreadWith({
@@ -3895,12 +3903,12 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    // The plate stays mounted so height and opacity can settle together; inert
-    // keeps its hidden controls out of interaction until the bubble is clicked.
+    // The bare lane stays mounted in its reserved slot; inert keeps hidden
+    // controls out of interaction until the row is hovered or touch-revealed.
     const actions = screen.getByTestId("thread-line-actions");
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
-    fireEvent.click(bubbleFor("the answer"));
+    revealActionsFor("the answer");
     expect(actions.getAttribute("aria-hidden")).toBe("false");
     expect(actions.hasAttribute("inert")).toBe(false);
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
@@ -3922,7 +3930,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    fireEvent.click(bubbleFor("read me aloud"));
+    revealActionsFor("read me aloud");
     fireEvent.click(screen.getByTestId("thread-line-speak"));
     expect(speak).toHaveBeenCalledWith("read me aloud");
   });
@@ -3938,7 +3946,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       stopSpeaking,
       speaking: true,
     });
-    fireEvent.click(bubbleFor("now playing"));
+    revealActionsFor("now playing");
     const play = screen.getByTestId("thread-line-speak");
     // The agent is globally speaking, but nothing has been Played from THIS
     // bubble, so it still offers Play (not a spurious Stop — the old bug).
@@ -3966,8 +3974,8 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     });
     // Reveal both action rows. With the global `speaking` flag set but nothing
     // Played yet, NEITHER bubble claims Stop (the old bug lit every bubble).
-    fireEvent.click(bubbleFor("first answer"));
-    fireEvent.click(bubbleFor("second answer"));
+    revealActionsFor("first answer");
+    revealActionsFor("second answer");
     expect(
       screen
         .getAllByTestId("thread-line-speak")
@@ -3992,7 +4000,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ],
       speak: vi.fn(),
     });
-    fireEvent.click(bubbleFor("copy this text"));
+    revealActionsFor("copy this text");
     fireEvent.click(screen.getByTestId("thread-line-copy"));
     expect(copyTextToClipboard).toHaveBeenCalledWith("copy this text");
   });
@@ -4015,7 +4023,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       send,
       stopSpeaking,
     });
-    fireEvent.click(bubbleFor("helo wrld"));
+    revealActionsFor("helo wrld");
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.getByTestId("thread-line-edit")).toBeTruthy();
     // User turns have no play control.
@@ -4047,7 +4055,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ],
       send: vi.fn(),
     });
-    fireEvent.click(bubbleFor("pending turn"));
+    revealActionsFor("pending turn");
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.queryByTestId("thread-line-edit")).toBeNull();
   });
@@ -4059,7 +4067,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ],
       speak: vi.fn(),
     });
-    fireEvent.click(bubbleFor("tap away"));
+    revealActionsFor("tap away");
     const actions = screen.getByTestId("thread-line-actions");
     expect(actions.getAttribute("aria-hidden")).toBe("false");
     fireEvent.pointerDown(document.body);
@@ -4073,7 +4081,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       messages: [{ id: "u", role: "user", content: "keep me", createdAt: 1 }],
       send,
     });
-    fireEvent.click(bubbleFor("keep me"));
+    revealActionsFor("keep me");
     fireEvent.click(screen.getByTestId("thread-line-edit"));
     const input = screen.getByTestId("thread-line-edit-input");
     fireEvent.change(input, { target: { value: "changed" } });
@@ -4092,7 +4100,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       messages: [{ id: "u", role: "user", content: "keep me", createdAt: 1 }],
       send: vi.fn(),
     });
-    fireEvent.click(bubbleFor("keep me"));
+    revealActionsFor("keep me");
     fireEvent.click(screen.getByTestId("thread-line-edit"));
     fireEvent.click(screen.getByTestId("thread-line-edit-cancel"));
 
