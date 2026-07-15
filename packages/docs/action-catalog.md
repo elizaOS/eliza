@@ -10,9 +10,9 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 
 ## Summary
 
-- **Canonical actions:** 23
+- **Canonical actions:** 25
 - **Core actions:** 14
-- **Plugin overlay actions:** 9
+- **Plugin overlay actions:** 11
 - **Canonical providers:** 23
 - **Core providers:** 23
 - **Registered runtime actions:** 187
@@ -222,6 +222,28 @@ Trust system control. action=evaluate reads a trust profile for an entity; recor
 | `duration` | no | number | Requested duration in hours (request_elevation). Defaults to 60. |
 | `roleAssignments` | no | array | Role assignments (update_role). |
 
+### ACCOUNTS_COMMAND
+
+View provider accounts and usage, or manage them
+
+- **Aliases:** /accounts
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `action` | no | string | use, enable, disable, strategy, refresh — omit for the report |
+| `provider` | no | string | claude, codex, cerebras, or a full provider id |
+| `value` | no | string | account by id, label, or email — or the strategy name for `strategy` |
+
+### BACKEND_COMMAND
+
+Show or set the default coding backend
+
+- **Aliases:** /backend
+
+| Parameter | Required | Type | Description |
+| --- | --- | --- | --- |
+| `backend` | no | string | default coding backend for new tasks |
+
 ### COMPACT_COMMAND
 
 Compact conversation history
@@ -261,7 +283,7 @@ Set or show current model
 | Parameter | Required | Type | Description |
 | --- | --- | --- | --- |
 | `target` | no | string | small, large, coding, show, local, cloud — or a model for this room |
-| `model` | no | string | model id — for coding, the backend (codex, claude, opencode, elizaos) |
+| `model` | no | string | model id — for coding, the backend (codex, claude, eliza) |
 | `effort` | no | string | reasoning effort — for coding, the model id |
 | `coding-effort` | no | string | reasoning effort (coding target) |
 
