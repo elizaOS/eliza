@@ -49,6 +49,7 @@ import type { AgentNotification } from "@elizaos/core";
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import {
+  type CSSProperties,
   type RefObject,
   useCallback,
   useEffect,
@@ -210,7 +211,7 @@ const MAX_VISIBLE_STACK_LAYERS = 3;
 const STACK_PEEK_OFFSET_PX = 7;
 
 /** Clear space after the final peek before the next notification group. */
-const STACK_BOTTOM_CLEARANCE_PX = 10;
+const STACK_BOTTOM_CLEARANCE_PX = 2;
 
 const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
 const SHADE_SETTLE_MS = 460;
@@ -396,6 +397,27 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   isolation: isolate;
   scrollbar-width: none;
 }
+/* Pull previews insert rows above the resting count. Disable scroll anchoring
+   while that projection is mounted so Chromium cannot turn the insertion into
+   a positive scrollTop and revoke a gesture the user already owns. The live
+   overshoot padding keeps translated cards inside the scrollport; the edge mask
+   returns on release, when card opacity owns the close transition. */
+.eliza-notif-scroll[data-shade-preview],
+.eliza-notif-scroll[data-shade-mode="expanded"] {
+  padding-bottom: calc(
+    var(--eliza-notif-base-padding, 0px) +
+    var(--eliza-notif-pull-overshoot, 0px)
+  );
+  transition: padding-bottom var(--eliza-notif-settle-duration, ${SHADE_SETTLE_MS}ms) ${SHADE_EASING};
+}
+.eliza-notif-scroll[data-shade-preview] {
+  overflow-anchor: none;
+}
+.eliza-notif-scroll[data-shade-preview][data-shade-dragging] {
+  -webkit-mask-image: none;
+  mask-image: none;
+  transition: none;
+}
 /* Count and card shells become independent compositor layers while they trade
    flow space. Keep cards above the count so its label fades behind their
    material instead of painting through it during either shade direction. */
@@ -510,6 +532,7 @@ export function NotificationsHomeCenter({
 } = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated, hydrationStatus } = useNotifications();
+  const inboxEmpty = notifications.length === 0;
   const reduceMotion = usePrefersReducedMotion();
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
@@ -1081,6 +1104,9 @@ export function NotificationsHomeCenter({
     // active drag/close so they cannot overwrite click-entry interpolation.
     if (!pullDirection && !shadeClosing) return;
     if (pullDirection) {
+      if (pullDirection === "expand" && !shadeExpanded && scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
       pullVisibleGroupsRef.current = visibleNotificationGroups(
         centerRef.current,
         scrollRef.current,
@@ -1288,8 +1314,7 @@ export function NotificationsHomeCenter({
   const commitPull = useCallback(() => {
     const px = pullPxRef.current;
     const { canExpand, canCollapse } = shadeGestureRef.current;
-    const commitPx =
-      notifications.length === 0 ? EMPTY_PULL_COMMIT_PX : PULL_COMMIT_PX;
+    const commitPx = inboxEmpty ? EMPTY_PULL_COMMIT_PX : PULL_COMMIT_PX;
     const canMove = (px > 0 && canExpand) || (px < 0 && canCollapse);
     const now = performance.now();
     const momentum = pullMomentumRef.current;
@@ -1314,10 +1339,9 @@ export function NotificationsHomeCenter({
         displacementPx: px,
         releaseVelocityPxPerMs: releaseVelocity,
         distanceThresholdPx: commitPx,
-        minimumFlickDistancePx:
-          notifications.length === 0
-            ? EMPTY_PULL_COMMIT_PX / 2
-            : SHADE_MIN_FLICK_DISTANCE_PX,
+        minimumFlickDistancePx: inboxEmpty
+          ? EMPTY_PULL_COMMIT_PX / 2
+          : SHADE_MIN_FLICK_DISTANCE_PX,
         flickVelocityThresholdPxPerMs: SHADE_FLICK_VELOCITY_PX_PER_MS,
       });
     const targetPullPx = shouldCommit ? Math.sign(px) * PULL_TRAVEL_PX : 0;
@@ -1346,7 +1370,7 @@ export function NotificationsHomeCenter({
   }, [
     beginPullCancellation,
     flushPullPresentation,
-    notifications.length,
+    inboxEmpty,
     reduceMotion,
     requestShadeCollapse,
     setPullPx,
@@ -1373,7 +1397,7 @@ export function NotificationsHomeCenter({
   // native background listener can suppress browser overscroll.
   const handleWheelDelta = useCallback(
     (deltaY: number, scrollTop: number): boolean => {
-      const empty = notifications.length === 0;
+      const empty = inboxEmpty;
       if (Date.now() < wheelCommitLockUntil.current) return true;
       // Away from the top the scroller owns every wheel event.
       if (scrollTop > 0) {
@@ -1413,7 +1437,7 @@ export function NotificationsHomeCenter({
       }
       return true;
     },
-    [beginProgrammaticShadeOpen, notifications.length, requestShadeCollapse],
+    [beginProgrammaticShadeOpen, inboxEmpty, requestShadeCollapse],
   );
 
   const onListWheel = useCallback(
@@ -1432,7 +1456,7 @@ export function NotificationsHomeCenter({
   // ordinary scrolling (see reference: pan-y pull gestures are dead on arrival
   // without this). `surfaceReady` re-runs the bind when hydration establishes a
   // genuinely empty inbox or when a notification arrives before hydration.
-  const hasNotifications = notifications.length > 0;
+  const hasNotifications = !inboxEmpty;
   const surfaceReady = hydrated || hasNotifications;
   useEffect(() => {
     const list = scrollRef.current;
@@ -1552,11 +1576,15 @@ export function NotificationsHomeCenter({
         }
         return;
       }
-      if (gestureTarget.scrollTop <= 0 && canExpand) {
+      if (
+        canExpand &&
+        (expandAnchorY !== null || gestureTarget.scrollTop <= 0)
+      ) {
         if (expandAnchorY === null) expandAnchorY = t.clientY;
         const pull = t.clientY - expandAnchorY;
         if (pull > PULL_SLOP_PX) {
           event?.preventDefault();
+          if (gestureTarget.scrollTop !== 0) gestureTarget.scrollTop = 0;
           setPullPx(dampenPull(pull));
         } else if (pullPxRef.current !== 0) {
           // Finger reversed back above the anchor — the pull is withdrawn, so
@@ -1653,11 +1681,13 @@ export function NotificationsHomeCenter({
     const list = scrollRef.current;
     if (!hasNotifications || !surface || !list || surface === list) return;
     let start: { identifier: number; x: number; y: number } | null = null;
+    let expandAnchorY: number | null = null;
     let axis: "none" | "x" | "y" = "none";
     let ownsPull = false;
 
     const reset = () => {
       start = null;
+      expandAnchorY = null;
       axis = "none";
       ownsPull = false;
     };
@@ -1683,6 +1713,7 @@ export function NotificationsHomeCenter({
         x: touch.clientX,
         y: touch.clientY,
       };
+      expandAnchorY = surface.scrollTop <= 0 ? touch.clientY : null;
     };
     const updateTouchPosition = (touch: Touch, event?: TouchEvent) => {
       if (!start || !touch) return;
@@ -1702,12 +1733,19 @@ export function NotificationsHomeCenter({
       if (
         axis === "y" &&
         dy > PULL_SLOP_PX &&
-        surface.scrollTop <= 0 &&
+        (expandAnchorY !== null || surface.scrollTop <= 0) &&
         shadeGestureRef.current.canExpand
       ) {
-        ownsPull = true;
-        event?.preventDefault();
-        setPullPx(dampenPull(dy));
+        if (expandAnchorY === null) expandAnchorY = touch.clientY;
+        const pull = touch.clientY - expandAnchorY;
+        if (pull > PULL_SLOP_PX) {
+          ownsPull = true;
+          event?.preventDefault();
+          if (surface.scrollTop !== 0) surface.scrollTop = 0;
+          setPullPx(dampenPull(pull));
+        } else if (ownsPull && pullPxRef.current !== 0) {
+          setPullPx(0, true);
+        }
       } else if (ownsPull && pullPxRef.current !== 0) {
         setPullPx(0, true);
       }
@@ -1887,6 +1925,7 @@ export function NotificationsHomeCenter({
       startX: number;
       startY: number;
       axis: "none" | "x" | "y";
+      ownsPull: boolean;
     } | null = null;
     const armClickSuppression = () => {
       suppressBackgroundClick.current = true;
@@ -1940,6 +1979,7 @@ export function NotificationsHomeCenter({
         startX: event.clientX,
         startY: event.clientY,
         axis: "none",
+        ownsPull: false,
       };
     };
     const onPointerMove = (event: PointerEvent) => {
@@ -1962,7 +2002,9 @@ export function NotificationsHomeCenter({
       if (current.axis !== "y") return;
       event.preventDefault();
       const { canExpand, canCollapse } = shadeGestureRef.current;
-      if (dy > 0 && canExpand && surface.scrollTop <= 0) {
+      if (dy > 0 && canExpand && (current.ownsPull || surface.scrollTop <= 0)) {
+        current.ownsPull = true;
+        if (surface.scrollTop !== 0) surface.scrollTop = 0;
         setPullPx(dy > PULL_SLOP_PX ? dampenPull(dy) : 0, dy <= PULL_SLOP_PX);
       } else if (dy < 0 && canCollapse) {
         setPullPx(
@@ -2078,7 +2120,7 @@ export function NotificationsHomeCenter({
   // unbinds before touchend, so a stale translateY would otherwise ride into
   // the next arrival's first paint.
   useEffect(() => {
-    if (notifications.length === 0) {
+    if (inboxEmpty) {
       cancelAllStackFolds();
       setShadeExpanded(false);
       setShadeOpenedByStack(false);
@@ -2089,12 +2131,7 @@ export function NotificationsHomeCenter({
       cancelPullCancellation();
       setPullPx(0);
     }
-  }, [
-    cancelAllStackFolds,
-    cancelPullCancellation,
-    notifications.length,
-    setPullPx,
-  ]);
+  }, [cancelAllStackFolds, cancelPullCancellation, inboxEmpty, setPullPx]);
 
   // Build stable rested and expanded projections. During a downward pull,
   // lower-priority groups reveal under the finger while already-visible
@@ -2203,6 +2240,7 @@ export function NotificationsHomeCenter({
     notificationCountVisibility,
     notificationCountOffset,
     pullOvershootOffset,
+    collapseControlOvershootOffset,
     notificationCountLayoutVisibility,
     emptyStateVisibility,
     collapseControlVisibility,
@@ -2274,9 +2312,10 @@ export function NotificationsHomeCenter({
       return;
     }
     // Downward drag: the expand gesture, only from the list top.
-    if (el.scrollTop <= 0 && mayExpand) {
+    if (mayExpand && (g.anchorY !== null || el.scrollTop <= 0)) {
       if (g.anchorY === null) g.anchorY = e.clientY;
       const pull = e.clientY - g.anchorY;
+      if (pull > PULL_SLOP_PX && el.scrollTop !== 0) el.scrollTop = 0;
       setPullPx(
         pull > PULL_SLOP_PX ? dampenPull(pull) : 0,
         pull <= PULL_SLOP_PX,
@@ -2391,11 +2430,17 @@ export function NotificationsHomeCenter({
         data-shade-preview={previewingExpansion ? "expanding" : undefined}
         data-shade-dragging={isPulling ? "" : undefined}
         data-shade-settling={shadeClosing ? "" : undefined}
+        style={
+          {
+            "--eliza-notif-base-padding": showCollapseControl ? "4px" : "40px",
+            "--eliza-notif-pull-overshoot": `${Math.max(0, pullOvershootOffset)}px`,
+          } as CSSProperties
+        }
         className={cn(
           // select-none: a mouse pull-drag must read as a gesture, not a text
           // selection sweep across the cards (platform-shade idiom).
           "eliza-notif-scroll relative flex min-h-0 touch-pan-y select-none flex-col gap-2 overflow-y-auto overflow-x-hidden overscroll-y-contain px-1.5 pt-1",
-          showCollapseControl ? "flex-[0_1_auto] pb-2" : "flex-1 pb-10",
+          showCollapseControl ? "flex-[0_1_auto] pb-1" : "flex-1 pb-10",
           hasNotifications &&
             "scroll-fade scroll-fade-t-[1.25rem] scroll-fade-b-[1.5rem]",
           shadeClosing && "pointer-events-none",
@@ -2771,7 +2816,7 @@ export function NotificationsHomeCenter({
             opacity: collapseControlPresentationVisibility,
             transform: `translateY(${
               (1 - collapseControlPresentationVisibility) * 4 +
-              pullOvershootOffset
+              collapseControlOvershootOffset
             }px)`,
             transition: isPulling
               ? "none"
