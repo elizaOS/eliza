@@ -2790,6 +2790,47 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     await route.fallback();
   });
 
+  // Orchestrator task-progress rail (orchestrator-task-widget) — polls a compact
+  // snapshot (`GET /api/orchestrator/widgets`) and subscribes to its SSE stream
+  // (`/widgets/stream`) wherever it mounts. The Node-only agent-orchestrator
+  // plugin is absent from the keyless smoke stack, so these routes answer 501
+  // exactly like /orchestrator/status and /tasks above; a fresh agent has no
+  // orchestrator tasks, so the canonical empty snapshot matches real zero-state
+  // and keeps the diagnostics guard clean.
+  const emptyOrchestratorWidgetSnapshot = {
+    version: "orchestrator.widgets.v1",
+    generatedAt: SMOKE_GENERATED_AT,
+    totalTaskCount: 0,
+    tasks: [],
+  };
+  await page.route("**/api/orchestrator/widgets**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === "/api/orchestrator/widgets/stream") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        headers: { "cache-control": "no-cache, no-transform" },
+        body: `event: snapshot\ndata: ${JSON.stringify(
+          emptyOrchestratorWidgetSnapshot,
+        )}\n\n`,
+      });
+      return;
+    }
+    if (pathname === "/api/orchestrator/widgets") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(emptyOrchestratorWidgetSnapshot),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
   await page.route("**/api/auth/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
