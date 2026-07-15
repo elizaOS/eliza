@@ -1395,6 +1395,16 @@ export function ContinuousChatOverlay({
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
+  const previousSheetOpenRef = React.useRef(sheetOpen);
+  React.useLayoutEffect(() => {
+    const wasOpen = previousSheetOpenRef.current;
+    previousSheetOpenRef.current = sheetOpen;
+    // A reply belongs to the visible thread it references. Clear it on the
+    // shared open → closed edge so every dismissal path has identical behavior.
+    if (wasOpen && !sheetOpen && chatReplyTarget) {
+      setChatReplyTarget(null);
+    }
+  }, [chatReplyTarget, setChatReplyTarget, sheetOpen]);
   // Free-drag rest height (px): when set, the sheet rests exactly where the user
   // released a deliberate drag instead of snapping to a detent. Cleared whenever
   // a detent is taken (tap/flick/focus/collapse) so the detents stay the
@@ -5472,7 +5482,7 @@ export function ContinuousChatOverlay({
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
                   <MessageScroller>
                     <motion.div
-                      className="flex size-full min-h-0 flex-col"
+                      className="flex min-h-0 w-full flex-1 flex-col"
                       style={{ opacity: threadContentOpacity }}
                     >
                       <MessageScrollerViewport
@@ -5617,6 +5627,30 @@ export function ContinuousChatOverlay({
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>
+                    {/* Reply stays inside the motion-bounded thread. Arming it can
+                        reduce the transcript viewport, but never changes the sheet
+                        detent or pushes the whole bottom-anchored panel upward. */}
+                    <AnimatePresence initial={false}>
+                      {chatReplyTarget ? (
+                        <motion.div
+                          key="chat-reply-target"
+                          initial={reduce ? false : { opacity: 0, y: 4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={reduce ? undefined : { opacity: 0, y: 4 }}
+                          transition={{
+                            duration: reduce ? 0 : 0.18,
+                            ease: "easeOut",
+                          }}
+                          className="relative z-10 shrink-0 px-3 pb-2"
+                        >
+                          <ChatReplyPill
+                            appearance="glass"
+                            target={chatReplyTarget}
+                            onCancel={() => setChatReplyTarget(null)}
+                          />
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
               </motion.div>
@@ -5628,16 +5662,6 @@ export function ContinuousChatOverlay({
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
             <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
-            {/* Reply target pill, just above the input (glass chrome). */}
-            {chatReplyTarget ? (
-              <div className="relative z-10 shrink-0 px-3 pt-2">
-                <ChatReplyPill
-                  appearance="glass"
-                  target={chatReplyTarget}
-                  onCancel={() => setChatReplyTarget(null)}
-                />
-              </div>
-            ) : null}
             {/* Pending image attachments + any read error, just above the input. */}
             {hasImages || imageError ? (
               <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
