@@ -26,9 +26,11 @@ import {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { AccountCard } from "./AccountCard";
+import { AccountCommandTable } from "./AccountCommandTable";
 import {
   eligibilityChips,
   providerConnectionState,
@@ -38,6 +40,13 @@ import type { AccountProviderOption } from "./account-provider-options";
 import { ProviderMark } from "./provider-icons";
 import { RotationStrategyPicker } from "./RotationStrategyPicker";
 import { accountResetAt, bySoonestReset, formatResetIn } from "./reset-time";
+
+/**
+ * Pool size at which the desktop command-center table replaces the card
+ * stack. Below this a table is more chrome than signal, so small pools keep
+ * the richer per-card affordances (test / refresh / reorder arrows).
+ */
+const ACCOUNT_TABLE_MIN_ROWS = 4;
 
 interface ProviderAccountRowProps {
   option: AccountProviderOption;
@@ -169,11 +178,17 @@ export function ProviderAccountRow({
   onStrategyChange,
 }: ProviderAccountRowProps) {
   const t = useAppSelector((s) => s.t);
+  // Match the settings rail breakpoint (SettingsView uses the same query) so
+  // the table only appears where the desktop workspace layout does.
+  const isDesktop = useMediaQuery("(min-width: 1024px)");
   const accounts = provider?.accounts ?? [];
   const sorted = useMemo(
     () => [...accounts].sort((a, b) => a.priority - b.priority),
     [accounts],
   );
+  // A table earns its keep only for a genuinely multi-account pool; small
+  // pools keep the richer per-card affordances (test/refresh/reorder).
+  const useCommandTable = isDesktop && sorted.length >= ACCOUNT_TABLE_MIN_ROWS;
   const connected = sorted.length > 0;
   const connState = providerConnectionState(sorted);
   const healthy = sorted.filter((a) => a.enabled && a.health === "ok").length;
@@ -379,42 +394,71 @@ export function ProviderAccountRow({
               disabled={saving.has(`strategy:${option.id}`)}
             />
           </div>
-          <div className="grid gap-2">
-            {sorted.map((account, index) => (
-              <div key={account.id} className="relative">
-                {account.id === selection.accountId ? (
-                  <span
-                    className="absolute -left-px top-3 h-6 w-0.5 rounded-full bg-accent"
-                    aria-hidden
-                    title={t("accounts.row.activeAccount", {
-                      defaultValue: "Next in rotation",
-                    })}
+          {useCommandTable ? (
+            <AccountCommandTable
+              providerId={option.id}
+              accounts={sorted}
+              activeAccountId={selection.accountId}
+              saving={saving}
+              onPatch={(accountId, body) =>
+                onPatch(option.id, accountId, body)
+              }
+              onReauthenticate={
+                onReauthenticate
+                  ? (account) => onReauthenticate(option.id, account)
+                  : undefined
+              }
+              onDelete={(accountId) => onDelete(option.id, accountId)}
+              onTest={(accountId) => onTest(option.id, accountId)}
+              onRefreshUsage={(accountId) =>
+                onRefreshUsage(option.id, accountId)
+              }
+              onMove={(priorityOrder, accountId, direction) =>
+                onMove(option.id, priorityOrder, accountId, direction)
+              }
+            />
+          ) : (
+            <div className="grid gap-2">
+              {sorted.map((account, index) => (
+                <div key={account.id} className="relative">
+                  {account.id === selection.accountId ? (
+                    <span
+                      className="absolute -left-px top-3 h-6 w-0.5 rounded-full bg-accent"
+                      aria-hidden
+                      title={t("accounts.row.activeAccount", {
+                        defaultValue: "Next in rotation",
+                      })}
+                    />
+                  ) : null}
+                  <AccountCard
+                    account={account}
+                    isFirst={index === 0}
+                    isLast={index === sorted.length - 1}
+                    saving={saving.has(account.id)}
+                    testBusy={saving.has(`test:${account.id}`)}
+                    refreshBusy={saving.has(`usage:${account.id}`)}
+                    onPatch={(body) => onPatch(option.id, account.id, body)}
+                    onMoveUp={() =>
+                      onMove(option.id, sorted, account.id, "up")
+                    }
+                    onMoveDown={() =>
+                      onMove(option.id, sorted, account.id, "down")
+                    }
+                    onTest={() => onTest(option.id, account.id)}
+                    onRefreshUsage={() =>
+                      onRefreshUsage(option.id, account.id)
+                    }
+                    onDelete={() => onDelete(option.id, account.id)}
+                    onReauthenticate={
+                      onReauthenticate
+                        ? () => onReauthenticate(option.id, account)
+                        : undefined
+                    }
                   />
-                ) : null}
-                <AccountCard
-                  account={account}
-                  isFirst={index === 0}
-                  isLast={index === sorted.length - 1}
-                  saving={saving.has(account.id)}
-                  testBusy={saving.has(`test:${account.id}`)}
-                  refreshBusy={saving.has(`usage:${account.id}`)}
-                  onPatch={(body) => onPatch(option.id, account.id, body)}
-                  onMoveUp={() => onMove(option.id, sorted, account.id, "up")}
-                  onMoveDown={() =>
-                    onMove(option.id, sorted, account.id, "down")
-                  }
-                  onTest={() => onTest(option.id, account.id)}
-                  onRefreshUsage={() => onRefreshUsage(option.id, account.id)}
-                  onDelete={() => onDelete(option.id, account.id)}
-                  onReauthenticate={
-                    onReauthenticate
-                      ? () => onReauthenticate(option.id, account)
-                      : undefined
-                  }
-                />
-              </div>
-            ))}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
     </div>
