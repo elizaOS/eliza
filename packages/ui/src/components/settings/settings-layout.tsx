@@ -61,10 +61,10 @@ export function SettingsGroup({
         <div className="flex min-h-[1.5rem] flex-wrap items-end justify-between gap-x-3 gap-y-2">
           <div className="min-w-0">
             {title ? (
-              <h3 className="text-xs font-medium text-muted/70">{title}</h3>
+              <h3 className="text-xs font-medium text-muted">{title}</h3>
             ) : null}
             {description ? (
-              <p className="mt-1 text-xs leading-relaxed text-muted/80">
+              <p className="mt-1 text-xs leading-relaxed text-muted">
                 {description}
               </p>
             ) : null}
@@ -75,7 +75,7 @@ export function SettingsGroup({
       {/* Flat list — no card, no dividers; rows breathe via their own spacing. */}
       {bare ? children : <div className="flex flex-col">{children}</div>}
       {footer ? (
-        <p className="pt-1 text-xs leading-relaxed text-muted/70">{footer}</p>
+        <p className="pt-1 text-xs leading-relaxed text-muted">{footer}</p>
       ) : null}
     </section>
   );
