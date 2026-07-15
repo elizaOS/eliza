@@ -249,7 +249,7 @@ export function AccountManagementPanel() {
           <button
             type="button"
             onClick={() => setShowAvailable((v) => !v)}
-            className="flex w-full items-center gap-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong focus:outline-none focus-visible:text-txt-strong"
+            className="flex w-full items-center gap-1.5 text-left text-[11px] font-medium uppercase tracking-wider text-muted transition-colors hover:text-txt-strong"
             aria-expanded={showAvailable}
           >
             <span

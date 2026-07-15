@@ -149,9 +149,14 @@ describe("NotificationsHomeCenter mode", () => {
     render(<NotificationsHomeCenter />);
 
     expect(screen.getByTestId("notifications-unavailable")).toBeTruthy();
-    expect(
-      screen.getByRole("button", { name: "Retry loading notifications" }),
-    ).toBeTruthy();
+    const retry = screen.getByRole("button", {
+      name: "Retry loading notifications",
+    });
+    const retryClass = retry.getAttribute("class") ?? "";
+    expect(retryClass).not.toMatch(
+      /(?:^|\s)(?:focus|focus-visible|focus-within):/,
+    );
+    expect(retryClass).not.toMatch(/(?:^|\s)!?ring-/);
   });
 
   it("rests on interrupt notifications and exposes one persistent mode toggle", () => {

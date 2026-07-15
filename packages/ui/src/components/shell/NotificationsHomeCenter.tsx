@@ -273,7 +273,7 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
             type="button"
             aria-label="Retry loading notifications"
             onClick={() => void retryNotificationHydration()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white/60 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white/60 transition-colors hover:text-white"
           >
             <RefreshCw aria-hidden className="h-4 w-4" />
           </button>
