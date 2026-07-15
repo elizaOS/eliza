@@ -330,10 +330,11 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
             setData((prev) => replaceAccount(prev, providerId, authoritative));
             setError(null);
           }
-        } catch {
+        } catch (reconcileError) {
           // error-policy:J7 diagnostics-must-not-kill-the-loop. Preserve and
           // rethrow the primary usage failure; the regular list poll retries
           // reconciliation without replacing the actionable probe notice.
+          void reconcileError;
         }
         throw err;
       } finally {
