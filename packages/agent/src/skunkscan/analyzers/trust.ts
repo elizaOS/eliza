@@ -165,11 +165,13 @@ export function analyzeWalletTrust(
       positiveSignals,
     ),
 
-  whatReducedConfidence:
+    whatReducedConfidence:
     buildLimitationExplanation(
       limitations,
     ),
-},
+    },
+  };
+}
 
 function buildInvestorSummary(
   trustLevel: WalletTrustSummary["trustLevel"],
