@@ -151,3 +151,17 @@ service declarations.
 The release APK is staged at
 `<repoRoot>/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk` (or
 the brand-aware vendor dir resolved from `app.config.ts > aosp:`).
+## Pinned debug signing key
+
+Debug APKs use one repository-managed, non-production signing key so `adb install -r` works across CI and local rebuilds. Debug keystores are public development credentials, not release secrets. The release signing path remains separate and secret-backed.
+
+CI restores the key from the `ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64` repository variable. For a local build, install the same key once with GitHub CLI access:
+
+```bash
+mkdir -p "$HOME/.android"
+gh variable get ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64 -R elizaOS/eliza \
+  | base64 -d > "$HOME/.android/eliza-debug.keystore"
+chmod 600 "$HOME/.android/eliza-debug.keystore"
+```
+
+To keep it elsewhere, set `ELIZAOS_DEBUG_KEYSTORE_PATH` to the decoded keystore path. The fixed debug alias is `androiddebugkey`; store and key passwords are the conventional Android debug password, `android`. When the pinned file is absent, Gradle warns and falls back to its machine-local debug identity so unrelated Android workflows remain usable; those APKs are not guaranteed to upgrade CI artifacts in place.
