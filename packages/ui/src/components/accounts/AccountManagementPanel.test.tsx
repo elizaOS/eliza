@@ -49,6 +49,9 @@ const accounts = vi.hoisted(() => ({
 }));
 
 vi.mock("../../hooks/useAccounts", () => ({ useAccounts: () => accounts }));
+vi.mock("../../providers", () => ({
+  SUBSCRIPTION_PROVIDER_SELECTIONS: [],
+}));
 vi.mock("../../state", () => ({
   useAppSelector: (
     selector: (state: {
@@ -59,14 +62,20 @@ vi.mock("../../state", () => ({
 vi.mock("./subscription-oauth-state", () => ({
   readSubscriptionOAuth: vi.fn(() => null),
 }));
-vi.mock("./AddAccountDialog", async (original) => {
-  const actual = await original<typeof import("./AddAccountDialog")>();
-  return {
-    ...actual,
-    AddAccountDialog: ({ open }: { open: boolean }) =>
-      open ? <div role="dialog">add dialog</div> : null,
-  };
-});
+vi.mock("./AddAccountDialog", () => ({
+  AddAccountDialog: ({
+    open,
+    credentialRepairAccount,
+  }: {
+    open: boolean;
+    credentialRepairAccount?: { id: string } | null;
+  }) =>
+    open ? (
+      <div role="dialog">
+        add dialog {credentialRepairAccount?.id ?? "new"}
+      </div>
+    ) : null,
+}));
 vi.mock("./RotationStrategyPicker", () => ({
   RotationStrategyPicker: ({
     onChange,
@@ -85,12 +94,14 @@ vi.mock("./AccountCard", () => ({
     onTest,
     onRefreshUsage,
     onDelete,
+    onReauthenticate,
   }: {
     account: { label: string };
     onMoveDown: () => void;
     onTest: () => void;
     onRefreshUsage: () => void;
     onDelete: () => void;
+    onReauthenticate: () => void;
   }) => (
     <div>
       <span>{account.label}</span>
@@ -105,6 +116,9 @@ vi.mock("./AccountCard", () => ({
       </button>
       <button type="button" onClick={onDelete}>
         delete {account.label}
+      </button>
+      <button type="button" onClick={onReauthenticate}>
+        reauthenticate {account.label}
       </button>
     </div>
   ),
@@ -148,5 +162,9 @@ describe("AccountManagementPanel", () => {
       "openai-api",
       "round-robin",
     );
+    fireEvent.click(
+      screen.getByRole("button", { name: "reauthenticate Second" }),
+    );
+    expect(screen.getByRole("dialog").textContent).toContain("second");
   });
 });

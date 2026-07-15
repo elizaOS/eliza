@@ -1074,7 +1074,7 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
       // refresh below burns on the consumed token and this sweep marks a
       // perfectly recoverable account needs-reauth.
       if (providerId === "openai-codex") {
-        await adoptRotatedCodexTokens(record.id).catch(() => false);
+        await adoptRotatedCodexTokens(record.id);
       }
       const token = await getAccountAccessToken(providerId, record.id);
       if (!token) {
@@ -1148,7 +1148,9 @@ export function startAccountPoolKeepAlive(
     keepAliveRunning = true;
     void sweepAccountPoolKeepAlive()
       .catch((err) => {
-        logger.debug(`[AccountPool] keep-alive sweep failed: ${String(err)}`);
+        // error-policy:J1 timer boundary observes rejected sweeps; the next
+        // interval retries without translating credential failure to health.
+        logger.error(`[AccountPool] keep-alive sweep failed: ${String(err)}`);
       })
       .finally(() => {
         keepAliveRunning = false;

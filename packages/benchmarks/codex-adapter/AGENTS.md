@@ -7,11 +7,11 @@ against the **Codex CLI** agent, authenticated per OpenAI-Codex account
 registered as a standalone benchmark — it wraps other benchmarks.
 
 Each turn spawns a one-shot `codex exec` subprocess authenticated **as** a
-selected account by pointing `CODEX_HOME` at that account's materialized home
-(`<stateDir>/auth/_codex-home/<accountId>/`, written by the TS runtime's
-`coding-account-bridge.ts`). The orchestrator process imports no Codex/Node
-dependency — it only needs the `codex` binary (or `CODEX_BIN`) and at least one
-materialized home.
+selected account by pointing `CODEX_HOME` at the credential generation named by
+`<stateDir>/auth/_codex-home/<accountId>/active-home` (written atomically by the
+TS runtime's `coding-account-bridge.ts`). The orchestrator process imports no
+Codex/Node dependency — it only needs the `codex` binary (or `CODEX_BIN`) and at
+least one materialized home.
 
 ## Layout
 
@@ -30,6 +30,9 @@ materialized home.
 
 - **`--accounts`**: integer `N` = first `N` accounts; `a,b` = exactly those ids;
   omitted = all. Turns round-robin: turn `i` → `accounts[i % len]`.
+- Discovery fails loudly when an `active-home` pointer is malformed, escapes
+  its account root, or names a missing generation; a missing pointer or `.`
+  selects the legacy account-root layout.
 - The client **never fabricates a response** — a missing binary, an
   unauthenticated account (`auth.json` absent), or a nonzero `codex exec` raises.
 - A live gpt-5.5 run needs real authenticated Codex homes + entitlement; the

@@ -23,6 +23,7 @@ import { ElizaError, logger } from "@elizaos/core";
 import {
   type AccountCredentialRecord,
   listAccounts,
+  loadAccount,
   saveAccount,
 } from "./account-storage.ts";
 import { startCodexDeviceLogin } from "./codex-device.ts";
@@ -59,6 +60,8 @@ export interface FlowState {
   authUrl?: string;
   /** Whether the client must offer a callback URL/code input. */
   needsCodeSubmission: boolean;
+  /** Existing account selected by the initiating request for atomic replacement. */
+  replaceAccountId?: string;
   account?: FlowAccountSummary;
   error?: string;
   startedAt: number;
@@ -119,40 +122,98 @@ function resolveAccountId(opts: { accountId?: string }): string {
   return opts.accountId?.trim() || crypto.randomUUID();
 }
 
-/**
- * Build an `AccountCredentialRecord` and persist it via `saveAccount`.
- * Returns the canonical record (with `createdAt`/`updatedAt` filled).
- */
-function persistAccount(args: {
+function normalizeIdentity(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function assertReplacementIdentity(
+  existing: AccountCredentialRecord,
+  incoming: {
+    organizationId?: string;
+    providerAccountId?: string;
+    email?: string;
+  },
+): void {
+  const comparisons = [
+    ["organization", existing.organizationId, incoming.organizationId],
+    ["user", existing.userId, incoming.providerAccountId],
+    [
+      "email",
+      normalizeIdentity(existing.email),
+      normalizeIdentity(incoming.email),
+    ],
+  ] as const;
+  for (const [field, expected, actual] of comparisons) {
+    if (!expected) continue;
+    if (!actual || expected !== actual) {
+      throw new ElizaError(
+        `OAuth replacement ${field} identity does not match`,
+        {
+          code: "oauth_flow.replacement_identity_mismatch",
+          severity: "fatal",
+          context: { field },
+        },
+      );
+    }
+  }
+}
+
+/** Build the canonical account record without mutating credential storage. */
+function buildAccountRecord(args: {
   providerId: SubscriptionProvider;
   accountId: string;
+  replaceAccountId?: string;
   label: string;
   access: string;
   refresh: string;
   expires: number;
   idToken?: string;
   organizationId?: string;
+  providerAccountId?: string;
   email?: string;
-}): AccountCredentialRecord {
+}): { record: AccountCredentialRecord; previous?: AccountCredentialRecord } {
   const now = Date.now();
-  const normalizedEmail = args.email?.trim().toLowerCase();
-  const existing = listAccounts(args.providerId).find((account) => {
-    if (args.organizationId && account.organizationId === args.organizationId) {
-      return true;
-    }
-    return Boolean(
-      normalizedEmail &&
-        account.email?.trim().toLowerCase() === normalizedEmail,
-    );
-  });
+  const normalizedEmail = normalizeIdentity(args.email);
+  const replacement = args.replaceAccountId
+    ? loadAccount(args.providerId, args.replaceAccountId)
+    : null;
+  if (args.replaceAccountId && !replacement) {
+    throw new ElizaError("OAuth replacement account no longer exists", {
+      code: "oauth_flow.replacement_target_missing",
+      severity: "fatal",
+      context: {
+        providerId: args.providerId,
+        accountId: args.replaceAccountId,
+      },
+    });
+  }
+  if (replacement) {
+    assertReplacementIdentity(replacement, {
+      organizationId: args.organizationId,
+      providerAccountId: args.providerAccountId,
+      email: args.email,
+    });
+  }
+  const deduplicated = replacement
+    ? null
+    : listAccounts(args.providerId).find((account) => {
+        if (
+          args.organizationId &&
+          account.organizationId === args.organizationId
+        ) {
+          return true;
+        }
+        return Boolean(
+          normalizedEmail &&
+            normalizeIdentity(account.email) === normalizedEmail,
+        );
+      });
+  const existing = replacement ?? deduplicated;
   const record: AccountCredentialRecord = {
-    // OAuth starts before the provider identity is known, so callers commonly
-    // reserve a fresh UUID for every attempt. Once we have a stable provider
-    // identity, update its existing credential record instead of creating a
-    // duplicate account on every relink.
     id: existing?.id ?? args.accountId,
     providerId: args.providerId,
-    label: args.label,
+    label: replacement?.label ?? args.email ?? args.label,
     source: "oauth",
     credentials: {
       access: args.access,
@@ -163,17 +224,22 @@ function persistAccount(args: {
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     ...(existing?.lastUsedAt ? { lastUsedAt: existing.lastUsedAt } : {}),
-    ...(existing?.userId ? { userId: existing.userId } : {}),
+    ...(args.providerAccountId
+      ? { userId: args.providerAccountId }
+      : existing?.userId
+        ? { userId: existing.userId }
+        : {}),
     ...(args.organizationId ? { organizationId: args.organizationId } : {}),
     ...(args.email ? { email: args.email } : {}),
   };
-  saveAccount(record);
-  return record;
+  return { record, ...(replacement ? { previous: replacement } : {}) };
 }
 
 interface StartOptions {
   label: string;
   accountId?: string;
+  /** Existing same-provider account to replace only after OAuth succeeds. */
+  replaceAccountId?: string;
   /** Remote/headless clients use Codex device auth instead of loopback PKCE. */
   headless?: boolean;
   /**
@@ -182,6 +248,10 @@ interface StartOptions {
    * `eliza.json`. Failures here propagate as flow `error`.
    */
   onAccountSaved?: (account: AccountCredentialRecord) => void | Promise<void>;
+  /** Restores host metadata if replacement adoption fails after a pool write. */
+  onReplacementRollback?: (
+    account: AccountCredentialRecord,
+  ) => void | Promise<void>;
 }
 
 // Anthropic.
@@ -305,6 +375,9 @@ async function startGenericFlow(args: {
     status: "pending",
     authUrl: vendor.authUrl,
     needsCodeSubmission,
+    ...(opts.replaceAccountId
+      ? { replaceAccountId: opts.replaceAccountId }
+      : {}),
     startedAt,
   };
 
@@ -376,19 +449,36 @@ async function startGenericFlow(args: {
         if (codexAccountId) organizationId = codexAccountId;
         email = extractJwtEmail(creds.idToken);
       }
-      const record = persistAccount({
+      const { record, previous } = buildAccountRecord({
         providerId,
         accountId: providerAccountId ?? accountId,
+        ...(opts.replaceAccountId
+          ? { replaceAccountId: opts.replaceAccountId }
+          : {}),
         label: email ?? opts.label,
         access: creds.access,
         refresh: creds.refresh,
         expires: creds.expires,
         ...(creds.idToken ? { idToken: creds.idToken } : {}),
         ...(organizationId ? { organizationId } : {}),
+        ...(providerAccountId ? { providerAccountId } : {}),
         ...(email ? { email } : {}),
       });
-      if (opts.onAccountSaved) {
-        await opts.onAccountSaved(record);
+      saveAccount(record);
+      try {
+        if (opts.onAccountSaved) {
+          await opts.onAccountSaved(record);
+        }
+      } catch (cause) {
+        if (previous) {
+          saveAccount(previous);
+          await opts.onReplacementRollback?.(previous);
+        }
+        throw new ElizaError("OAuth credential adoption failed", {
+          code: "oauth_flow.replacement_adoption_failed",
+          severity: "fatal",
+          cause,
+        });
       }
       // The broadcast state must never carry the tokens — every SSE
       // subscriber receives it verbatim; only the in-process completion
@@ -404,6 +494,7 @@ async function startGenericFlow(args: {
     }
   })();
 
+  let submittedCode: string | null = null;
   const handle: OAuthFlowHandle = {
     sessionId,
     authUrl: vendor.authUrl,
@@ -411,6 +502,11 @@ async function startGenericFlow(args: {
     needsCodeSubmission,
     completion,
     submitCode: (code: string) => {
+      if (submittedCode === code) return;
+      if (submittedCode !== null) {
+        throw new Error("OAuth callback code was already submitted");
+      }
+      submittedCode = code;
       vendor.submitCode(code);
     },
     cancel: (reason = "Cancelled") => {
@@ -476,8 +572,12 @@ export function submitFlowCode(sessionId: string, code: string): boolean {
   if (!entry) return false;
   if (entry.state.status !== "pending") return false;
   if (!entry.state.needsCodeSubmission) return false;
-  entry.handle.submitCode(code);
-  return true;
+  try {
+    entry.handle.submitCode(code);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

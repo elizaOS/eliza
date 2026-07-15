@@ -1,12 +1,10 @@
 /**
- * Test-runtime helpers for LifeOps: wraps createRealTestRuntime and provides an in-memory
- * notification sink standing in for the production NotificationService, so in-app
- * scheduled-task dispatches report honest DispatchResults and tests can assert what was
- * delivered. Also registers a deterministic TEXT_LARGE stand-in when no live model is
- * present, because the production dispatcher renders `promptInstructions` through the
- * model before every user-visible surface and fails the dispatch closed without one.
+ * Builds LifeOps test runtimes with the production-owned knowledge graph plus honest
+ * notification and model collaborators. These registrations mirror the default Eliza
+ * host closely enough that passive services cannot degrade while tests appear healthy.
  */
-import { ModelType } from "@elizaos/core";
+import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+import { ModelType, type Plugin } from "@elizaos/core";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
@@ -33,6 +31,14 @@ interface TestNotificationSink {
   notify(input: RecordedTestNotification): Promise<{ id: string }>;
   stop(): Promise<void>;
 }
+
+const knowledgeGraphPlugin: Plugin = {
+  name: "lifeops-test-knowledge-graph",
+  description:
+    "Runtime-owned entity and relationship graph required by LifeOps services.",
+  schema: knowledgeGraphSchema,
+  services: [KnowledgeGraphService],
+};
 
 /**
  * In-memory notification sink standing in for the production
@@ -118,6 +124,7 @@ export async function createLifeOpsTestRuntime(
     const result = await createRealTestRuntime({
       ...options,
       plugins: [
+        knowledgeGraphPlugin,
         schedulingPlugin,
         personalAssistantPlugin,
         ...(options?.plugins ?? []),

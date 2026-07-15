@@ -143,6 +143,24 @@ describe("real/live guarded-suite manifest (#9310 §E)", () => {
     });
   });
 
+  test("Cerebras wire evidence is credentialed and uploaded as a structured artifact", () => {
+    expect(
+      manifest.find(
+        (entry) =>
+          entry.file ===
+          "plugins/plugin-openai/__tests__/cerebras-evidence.live.test.ts",
+      ),
+    ).toMatchObject({ requires: ["CEREBRAS_API_KEY"] });
+
+    const workflow = fs.readFileSync(
+      path.join(repoRoot, ".github/workflows/develop-live.yml"),
+      "utf8",
+    );
+    expect(workflow).toContain("run-live-test-with-artifacts.mjs");
+    expect(workflow).toContain("name: develop-live-evidence");
+    expect(workflow).toContain("runner.temp }}/develop-live-evidence");
+  });
+
   test("computer-use service actuation is isolated behind a per-command acknowledgment", () => {
     const entry = manifest.find(
       (candidate) =>

@@ -9,6 +9,7 @@ import * as authActual from "@/lib/auth";
 import * as workersHonoAuthActual from "@/lib/auth/workers-hono-auth";
 import * as rateLimitActual from "@/lib/middleware/rate-limit";
 import * as rateLimitHonoActual from "@/lib/middleware/rate-limit-hono-cloudflare";
+import type { InferenceAuthTelemetry } from "@/lib/services/inference-auth-context";
 import * as inferenceAuthActual from "@/lib/services/inference-auth-context";
 
 const ORG = "00000000-0000-4000-8000-0000000000aa";
@@ -19,6 +20,7 @@ const requireUserOrApiKeyWithOrg = mock();
 const requireUserWithOrg = mock();
 const enforceOrgRateLimit = mock();
 const resolveInferenceAuthContext = mock();
+let authExecutionCtx: unknown;
 
 mock.module("@/lib/auth", () => ({
   ...authActual,
@@ -78,6 +80,7 @@ beforeEach(() => {
   requireUserWithOrg.mockReset();
   enforceOrgRateLimit.mockReset();
   resolveInferenceAuthContext.mockReset();
+  authExecutionCtx = undefined;
 
   requireAuthOrApiKeyWithOrg.mockResolvedValue({
     user: { id: USER, organization_id: ORG },
@@ -91,10 +94,40 @@ beforeEach(() => {
   );
   requireUserWithOrg.mockResolvedValue({ id: USER, organization_id: ORG });
   enforceOrgRateLimit.mockResolvedValue(null);
-  resolveInferenceAuthContext.mockResolvedValue({
-    kind: "slow_path",
-    reason: "non_api_key",
-  });
+  resolveInferenceAuthContext.mockImplementation(
+    async (
+      _request: Request,
+      options?: {
+        onTelemetry?(value: InferenceAuthTelemetry): void;
+        executionCtx?: unknown;
+      },
+    ) => {
+      authExecutionCtx = options?.executionCtx;
+      options?.onTelemetry?.({
+        v: 1,
+        traceId: "01890f47-6c4a-7b2d-8f31-123456789abc",
+        authSource: "other",
+        controlledProbe: "off",
+        cacheAvailability: "not_checked",
+        cacheBackend: "none",
+        cacheRead: "not_run",
+        authoritative: "not_run",
+        cacheWrite: "not_run",
+        result: "slow_path",
+        timings: {
+          extractMs: 0.1,
+          cacheAvailabilityMs: null,
+          cacheReadMs: null,
+          keyLookupMs: null,
+          userOrgLookupMs: null,
+          moderationMs: null,
+          cacheWriteMs: null,
+          totalMs: 0.1,
+        },
+      });
+      return { kind: "slow_path", reason: "non_api_key" };
+    },
+  );
 });
 
 function malformedJsonRequest(path = "/") {
@@ -118,8 +151,10 @@ async function expectStatus(res: Response, expected: number) {
 
 describe("malformed JSON body handling", () => {
   test("chat completions returns 400 before model/provider work", async () => {
+    const executionCtx = { waitUntil: (_promise: Promise<unknown>) => {} };
     const res = await handleChatCompletionsPOST(malformedJsonRequest(), {
       skipOrgRateLimit: true,
+      executionCtx,
     });
 
     await expectStatus(res, 400);
@@ -128,6 +163,9 @@ describe("malformed JSON body handling", () => {
     };
     expect(body.error?.type).toBe("invalid_request_error");
     expect(body.error?.code).toBe("missing_required_parameter");
+    expect(res.headers.get("X-Eliza-Auth-Trace")).toContain("result=slow_path");
+    expect(res.headers.get("Server-Timing")).toContain("auth_resolve;dur=0.1");
+    expect(authExecutionCtx).toBe(executionCtx);
   });
 
   test("embeddings returns 400 before embedding or billing work", async () => {

@@ -91,13 +91,53 @@ const createCreditReservationSettler = mock(() => async () => null);
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
 // the org-credits branch (not app-credits) is taken and moderation is skipped.
+type AuthResolveOptions = NonNullable<
+  Parameters<typeof inferenceAuthContextActual.resolveInferenceAuthContext>[1]
+>;
+const authResolveOptions: AuthResolveOptions[] = [];
+const resolveInferenceAuthContext = mock(
+  async (_request: Request, options: AuthResolveOptions = {}) => {
+    authResolveOptions.push(options);
+    options.onTelemetry?.({
+      v: 1,
+      traceId: "11111111-1111-4111-8111-111111111111",
+      authSource: "x_api_key",
+      controlledProbe: "off",
+      cacheAvailability: "available",
+      cacheBackend: "cloudflare_kv",
+      cacheRead: "hit",
+      authoritative: "not_run",
+      cacheWrite: "not_run",
+      result: "authorized_cache",
+      timings: {
+        extractMs: 0.1,
+        cacheAvailabilityMs: 0.1,
+        cacheReadMs: 1,
+        keyLookupMs: null,
+        userOrgLookupMs: null,
+        moderationMs: null,
+        cacheWriteMs: null,
+        totalMs: 1.2,
+      },
+    });
+    return {
+      kind: "authorized" as const,
+      source: "cache" as const,
+      ctx: {
+        v: 1 as const,
+        cachedAt: Date.now(),
+        userId: USER,
+        orgId: ORG,
+        apiKeyId: API_KEY_ID,
+        keyHash: "a".repeat(64),
+      },
+    };
+  },
+);
 mock.module("@/lib/services/inference-auth-context", () => ({
   ...inferenceAuthContextActual,
   isInferenceHotPathCacheEnabled: () => true,
-  resolveInferenceAuthContext: async () => ({
-    kind: "authorized",
-    ctx: { userId: USER, orgId: ORG, apiKeyId: API_KEY_ID },
-  }),
+  resolveInferenceAuthContext,
 }));
 
 // Provider config: pretend a provider is configured; the model object is unused
@@ -302,6 +342,8 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     createLedgerDebitSettler.mockClear();
     ledgerInnerSettler.mockClear();
     createCreditReservationSettler.mockClear();
+    authResolveOptions.length = 0;
+    resolveInferenceAuthContext.mockClear();
     generateText.mockClear();
     streamText.mockClear();
   });
@@ -377,6 +419,14 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     expect(keys).toEqual(["public"]);
     expect(response.headers.get("X-RateLimit-Policy")).toBe(
       "cloudflare-native",
+    );
+    expect(authResolveOptions).toHaveLength(1);
+    expect(authResolveOptions[0]?.executionCtx).toBeDefined();
+    expect(response.headers.get("X-Eliza-Auth-Trace")).toContain(
+      "result=authorized_cache",
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "auth_resolve;dur=1.2",
     );
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
