@@ -1316,8 +1316,16 @@ export function NotificationsHomeCenter({
       // A background drag may end over a tile that synthesizes a click. The
       // drag already decided the shade state; do not reinterpret that release
       // as a separate outside-tap collapse before the surface can consume it.
-      if (suppressBackgroundClick.current) return;
       const target = event.target;
+      const gestureSurface =
+        emptyGestureTargetRef?.current ?? centerRef.current;
+      if (
+        suppressBackgroundClick.current &&
+        target instanceof Node &&
+        gestureSurface?.contains(target)
+      ) {
+        return;
+      }
       const center = centerRef.current;
       if (target instanceof Node && center && !center.contains(target)) {
         requestShadeCollapse();
@@ -1326,7 +1334,7 @@ export function NotificationsHomeCenter({
     document.addEventListener("click", collapseOnOutsideClick, true);
     return () =>
       document.removeEventListener("click", collapseOnOutsideClick, true);
-  }, [requestShadeCollapse, shadeExpanded]);
+  }, [emptyGestureTargetRef, requestShadeCollapse, shadeExpanded]);
 
   const commitPull = useCallback(() => {
     const px = pullPxRef.current;
@@ -1376,8 +1384,10 @@ export function NotificationsHomeCenter({
     setShadeSettleDuration(settleMs);
     // Directional: a downward pull only expands, an upward push only
     // collapses. A gesture in the direction of the current state is a no-op.
-    if (shouldCommit && px > 0 && canExpand) setShade(true);
-    else if (shouldCommit && px < 0 && canCollapse) {
+    if (shouldCommit && px > 0 && canExpand) {
+      armBackgroundClickSuppression();
+      setShade(true);
+    } else if (shouldCommit && px < 0 && canCollapse) {
       requestShadeCollapse(settleMs);
       return;
     } else if (px !== 0 && !reduceMotion && canMove) {
@@ -1385,6 +1395,7 @@ export function NotificationsHomeCenter({
     }
     setPullPx(0);
   }, [
+    armBackgroundClickSuppression,
     beginPullCancellation,
     flushPullPresentation,
     inboxEmpty,
@@ -1959,6 +1970,11 @@ export function NotificationsHomeCenter({
           window.clearTimeout(suppressBackgroundClickTimer.current);
           suppressBackgroundClickTimer.current = null;
         }
+        suppressNotificationClick.current = false;
+        if (suppressNotificationClickTimer.current !== null) {
+          window.clearTimeout(suppressNotificationClickTimer.current);
+          suppressNotificationClickTimer.current = null;
+        }
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
@@ -2281,7 +2297,12 @@ export function NotificationsHomeCenter({
     shadeOpenProgress *
     stackCollapseControlVisibility;
   const collapseControlInteractive =
-    collapseControlPresentationVisibility === 1 && expandedStacks.size === 0;
+    shadeExpanded &&
+    !shadeClosing &&
+    !isPulling &&
+    pullCancellingDirection === null &&
+    collapseControlPresentationVisibility === 1 &&
+    expandedStacks.size === 0;
   const showCollapseControl =
     (shadeExpanded || previewingExpansion) && hasNotifications;
   const onListPointerDown = (e: React.PointerEvent) => {
