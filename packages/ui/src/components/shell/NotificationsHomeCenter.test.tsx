@@ -61,6 +61,7 @@ import {
 } from "./NotificationsHomeCenter";
 import {
   notificationGroupContainerOffset,
+  notificationPullOvershootOffset,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
 
@@ -152,7 +153,7 @@ function collapseShade(): HTMLElement {
 }
 
 function finishShadeCollapse(): void {
-  act(() => vi.advanceTimersByTime(400));
+  act(() => vi.advanceTimersByTime(500));
 }
 
 function finishStackFold(): void {
@@ -539,7 +540,7 @@ describe("interrupt priority projection", () => {
     });
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.getAllByTestId("notification-row")).toHaveLength(6);
-    act(() => vi.advanceTimersByTime(340));
+    act(() => vi.advanceTimersByTime(500));
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(0);
   });
 });
@@ -587,15 +588,21 @@ describe("dampenPull", () => {
     expect(dampenPull(96)).toBe(PULL_TRAVEL_PX);
     expect(dampenPull(124)).toBeCloseTo(97.8);
   });
+
+  it("preserves resisted travel as signed visual overshoot", () => {
+    const overpull = dampenPull(124);
+
+    expect(notificationPullOvershootOffset(PULL_TRAVEL_PX)).toBe(0);
+    expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8);
+    expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8);
+  });
 });
 
 describe("notificationPullRevealProgress", () => {
   it("tracks full detent travel while staggering later groups", () => {
     expect(notificationPullRevealProgress(0, 0)).toBe(0);
     expect(notificationPullRevealProgress(PULL_TRAVEL_PX / 2, 0)).toBe(0.5);
-    expect(
-      notificationPullRevealProgress(PULL_TRAVEL_PX / 2, 2),
-    ).toBeLessThan(
+    expect(notificationPullRevealProgress(PULL_TRAVEL_PX / 2, 2)).toBeLessThan(
       0.5,
     );
     expect(notificationPullRevealProgress(PULL_TRAVEL_PX, 4)).toBe(1);
@@ -689,8 +696,9 @@ describe("NotificationsHomeCenter", () => {
       clientX: 10,
       clientY: 300,
     });
+    act(() => vi.advanceTimersByTime(16));
     expect(empty.style.opacity).toBe(restingEmptyStyle.opacity);
-    expect(empty.style.transform).toBe(restingEmptyStyle.transform);
+    expect(empty.style.transform).not.toBe(restingEmptyStyle.transform);
     expect(list.style.transform).toBe("");
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -701,7 +709,7 @@ describe("NotificationsHomeCenter", () => {
 
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getByTestId("notifications-empty").style.opacity).toBe("1");
-    expect(empty.style.transform).toBe(restingEmptyStyle.transform);
+    expect(empty.style.transform).toBe("translate3d(0, 0px, 0)");
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
 
     fireEvent.click(document.body);
@@ -2096,7 +2104,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     expect(revealedGroups).toHaveLength(2);
     for (const group of revealedGroups) {
-      const opacity = Number.parseFloat((group as HTMLElement).style.opacity);
+      const content = group.querySelector<HTMLElement>(
+        "[data-notification-group-content]",
+      );
+      const opacity = Number.parseFloat(content?.style.opacity ?? "");
       expect(opacity).toBeGreaterThan(0);
       expect(opacity).toBeLessThan(1);
     }
@@ -2131,10 +2142,52 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(collapseReveal).toBeGreaterThan(0);
     expect(collapseReveal).toBeLessThan(1);
     for (const group of revealedGroups) {
-      const opacity = Number.parseFloat((group as HTMLElement).style.opacity);
+      const content = group.querySelector<HTMLElement>(
+        "[data-notification-group-content]",
+      );
+      const opacity = Number.parseFloat(content?.style.opacity ?? "");
       expect(opacity).toBeGreaterThan(0);
       expect(opacity).toBeLessThan(1);
     }
+  });
+
+  it("keeps resisted overpull on stable shade contents without translating the scroller", () => {
+    __ingestNotificationForTests(
+      makeNotification({ priority: "normal", source: "files" }),
+    );
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 108,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 108,
+      clientX: 10,
+      clientY: 142,
+    });
+    act(() => vi.advanceTimersByTime(20));
+
+    const overpull = notificationPullOvershootOffset(dampenPull(132));
+    const expectedTransform = `translate3d(0, ${overpull}px, 0)`;
+    const groupContent = list.querySelector<HTMLElement>(
+      "[data-notification-group-content]",
+    );
+    const clearSlot = list.querySelector<HTMLElement>(
+      "[data-notification-clear-slot]",
+    );
+    const count = screen.getByTestId("notifications-count");
+    const collapse = screen.getByTestId("notifications-collapse-footer");
+
+    expect(list.style.transform).toBe("");
+    expect(groupContent?.style.transform).toBe(expectedTransform);
+    expect(clearSlot?.style.transform).toBe(expectedTransform);
+    expect(count.style.transform).toBe(expectedTransform);
+    expect(collapse.style.transform).toBe(`translateY(${overpull}px)`);
   });
 
   it("a short pull springs back without toggling", () => {
@@ -2193,12 +2246,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
     expect(
-      previewGroups.every(
-        (group) =>
+      previewGroups.every((group) => {
+        const content = group.querySelector<HTMLElement>(
+          "[data-notification-group-content]",
+        );
+        return (
           group.isConnected &&
-          group.classList.contains("eliza-notif-shade-transition") &&
-          group.style.opacity === "0",
-      ),
+          content?.classList.contains("eliza-notif-shade-transition") &&
+          content.style.opacity === "0"
+        );
+      }),
     ).toBe(true);
     expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
     expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
@@ -2206,7 +2263,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(previewGroups.every((group) => group.isConnected)).toBe(true);
     expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
     expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
-    act(() => vi.advanceTimersByTime(239));
+    act(() => vi.advanceTimersByTime(393));
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       true,
     );
@@ -2221,7 +2278,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });
 
-  it("keeps the same preview nodes mounted when an active pull crosses zero", () => {
+  it("keeps the same preview nodes mounted through zero and a committed settle", () => {
     __ingestNotificationForTests(
       makeNotification({ priority: "urgent", source: "mail" }),
     );
@@ -2247,6 +2304,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       "[data-notification-pull-reveal]",
     );
     expect(preview).toBeTruthy();
+    const previewContent = preview?.querySelector<HTMLElement>(
+      "[data-notification-group-content]",
+    );
+    expect(previewContent).toBeTruthy();
 
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
@@ -2257,7 +2318,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     act(() => vi.advanceTimersByTime(20));
     expect(list.getAttribute("data-shade-dragging")).not.toBeNull();
     expect(list.querySelector("[data-notification-pull-reveal]")).toBe(preview);
-    expect(preview?.style.opacity).toBe("0");
+    expect(previewContent?.style.opacity).toBe("0");
 
     fireEvent.pointerMove(list, {
       pointerType: "mouse",
@@ -2267,7 +2328,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
     act(() => vi.advanceTimersByTime(20));
     expect(list.querySelector("[data-notification-pull-reveal]")).toBe(preview);
-    expect(Number.parseFloat(preview?.style.opacity ?? "0")).toBeGreaterThan(0);
+    expect(
+      Number.parseFloat(previewContent?.style.opacity ?? "0"),
+    ).toBeGreaterThan(0);
 
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -2275,9 +2338,12 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientX: 10,
       clientY: 80,
     });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(preview?.isConnected).toBe(true);
-    act(() => vi.advanceTimersByTime(340));
-    expect(preview?.isConnected).toBe(false);
+    expect(preview?.hasAttribute("data-notification-pull-reveal")).toBe(false);
+    expect(previewContent?.style.opacity).toBe("1");
+    act(() => vi.advanceTimersByTime(460));
+    expect(preview?.isConnected).toBe(true);
   });
 
   it("clears a cancelled-pull settle before starting a committed collapse", () => {
@@ -2361,7 +2427,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
-    act(() => vi.advanceTimersByTime(340));
+    act(() => vi.advanceTimersByTime(460));
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
