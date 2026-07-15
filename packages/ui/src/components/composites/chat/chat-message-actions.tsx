@@ -32,6 +32,8 @@ export interface ChatMessageActionsProps {
   onReply?: () => void;
   /** True while THIS message's audio is playing — flips play → stop (glass-row). */
   playing?: boolean;
+  /** Quiet live state placed after the icon controls in the same action rail. */
+  trailingAccessory?: React.ReactNode;
 }
 
 /**
@@ -101,7 +103,7 @@ function MessageActionButton({
         onClick();
       }}
       className={cn(
-        "h-7 w-7 bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 pointer-coarse:h-11 pointer-coarse:w-11",
+        "h-6 w-6 bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 pointer-coarse:h-11 pointer-coarse:w-11",
         bare
           ? "rounded-none hover:bg-transparent active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55"
           : "rounded-lg transition-[background-color,color,transform] hover:bg-white/10 active:bg-white/10",
@@ -126,6 +128,7 @@ export function ChatMessageActions({
   onPlay,
   onReply,
   playing = false,
+  trailingAccessory,
 }: ChatMessageActionsProps) {
   const reduceMotion = useReducedMotion() ?? false;
   const copyLabel = labels.copy ?? "Copy message";
@@ -228,6 +231,15 @@ export function ChatMessageActions({
           onClick={onEdit}
           bare={glassRow}
         />
+      ) : null}
+
+      {trailingAccessory ? (
+        <div
+          data-testid="thread-line-action-accessory"
+          className="ml-1 min-w-0 shrink-0"
+        >
+          {trailingAccessory}
+        </div>
       ) : null}
     </ChatMessageActionSurface>
   );
