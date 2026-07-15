@@ -13,11 +13,11 @@
     "evidence:bargein": "bun run src/cli.ts --scenario=bargein",
     "evidence:error": "bun run src/cli.ts --scenario=error-auth",
     "evidence:all": "bun run src/cli.ts --scenario=all",
-    "typecheck": "tsgo --noEmit || tsc --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
-    "typescript": "^6.0.3"
+    "typescript": "7.0.2"
   },
   "dependencies": {
     "@types/ws": "^8.18.1",
