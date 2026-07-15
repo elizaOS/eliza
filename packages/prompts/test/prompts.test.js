@@ -259,8 +259,8 @@ describe("prompt templates (src/index.ts)", () => {
     );
     assert.match(
       body,
-      /When the user asks for current\/live\/latest information and no tool is available to fetch it this turn, decline plainly/,
-      "unrelated current/live/latest asks should still use tools or decline",
+      /When the user asks for current\/live\/latest information — a price, the weather, news, a score, anything whose answer changes with the world — never answer from stale knowledge and never decline from the simple path/,
+      "current/live/latest asks must route to planning, not decline at Stage 1",
     );
   });
 
@@ -481,13 +481,13 @@ describe("prompt templates (src/index.ts)", () => {
     );
     assert.match(
       body,
-      /decline plainly \("I don't have live access to check the current X — try Y"\) without referring to model internals/,
-      "rule should provide the correct decline pattern",
+      /this stage does not decide whether a fetch tool exists, the planner does\. Route it to planning \(non-simple contexts, requiresTool=true, a web\/fetch-style candidateActions hint\)/,
+      "rule should route live-info asks to planning instead of deciding tool availability at Stage 1",
     );
     assert.match(
       body,
-      /if a BROWSER or fetch action is exposed, route there instead of answering from stale knowledge/,
-      "rule should redirect to BROWSER when one is exposed",
+      /THAT reply declines plainly \("I don't have live access to check the current X — try Y"\) without referring to model internals/,
+      "rule should reserve the plain decline for the planner stage, not Stage 1",
     );
     assert.match(
       body,

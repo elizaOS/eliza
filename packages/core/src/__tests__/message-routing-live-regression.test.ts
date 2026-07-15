@@ -1228,6 +1228,48 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(routed.plan.requiresTool).toBe(true);
 		expect(routed.plan.candidateActions).toContain("VIEWS");
 	});
+
+	// Provenance stamp: the planner loop relaxes its required-tool budget only
+	// for heuristic-inferred escalations, so the plan must record which side
+	// the candidates came from (see MessageHandlerPlan.requiredToolEvidence).
+	it("stamps inferred evidence when only the text heuristics injected the candidates", () => {
+		const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "WEB_FETCH",
+			similes: [],
+			tags: [],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Checking the price now."),
+			undefined,
+			{
+				actions: [replyAction, webAction],
+				messageText: "what is btc at rn?",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.requiredToolEvidence).toBe("inferred");
+	});
+
+	it("leaves evidence unset when the model emitted the candidates itself", () => {
+		const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "WEB_FETCH",
+			similes: [],
+			tags: [],
+		};
+		const routed = messageHandlerFromFieldResult(
+			stageOneAnswered("Checking the price now.", ["WEB_FETCH"]),
+			undefined,
+			{
+				actions: [replyAction, webAction],
+				messageText: "what is btc at rn?",
+			},
+		);
+
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.candidateActions).toContain("WEB_FETCH");
+		expect(routed.plan.requiredToolEvidence).toBeUndefined();
+	});
 });
 
 // Regression fence for the vim-window iteration burn (live trajectory,
