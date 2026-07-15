@@ -43,7 +43,7 @@ function makeMessage(
 }
 
 describe("ChatMessage desktop hover action plate", () => {
-  it("reveals the overlay's bare actions into a compact animated lane", () => {
+  it("reveals the overlay's bare actions without changing row flow", () => {
     render(
       <ChatMessage
         appearance="glass"
@@ -58,23 +58,25 @@ describe("ChatMessage desktop hover action plate", () => {
     const actions = screen.getByTestId("thread-line-actions");
     const surface = screen.getByTestId("thread-line-action-surface");
     const content = actions.parentElement;
+    const restingContentClass = content?.className;
 
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.className).toContain("absolute");
-    expect(content?.className).toContain("pb-0");
-    expect(content?.className).toContain("pointer-coarse:pb-11");
-    expect(content?.className).toContain("transition-[padding-bottom]");
+    expect(content?.className).toContain("pb-5");
+    expect(content?.className).toContain("pointer-coarse:pb-9");
+    expect(actions.className).toContain("pointer-coarse:-bottom-1");
     expect(message.className).toContain("mb-0");
     expect(surface.className).not.toContain("bg-black/55");
 
     fireEvent.mouseEnter(message);
     expect(actions.getAttribute("aria-hidden")).toBe("false");
     expect(actions.hasAttribute("inert")).toBe(false);
-    expect(actions.parentElement?.className).toContain("pb-6");
+    expect(actions.parentElement?.className).toBe(restingContentClass);
 
     fireEvent.mouseLeave(message);
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.hasAttribute("inert")).toBe(true);
+    expect(actions.parentElement?.className).toBe(restingContentClass);
   });
 
   it("fades and settles the neutral action plate without a delete control", () => {
@@ -151,6 +153,6 @@ describe("ChatMessage desktop hover action plate", () => {
     expect(bubble?.classList.contains("rounded-br-md")).toBe(true);
     expect(bubble?.classList.contains("border-white/15")).toBe(true);
     expect(bubble?.classList.contains("px-3.5")).toBe(true);
-    expect(bubble?.classList.contains("py-1")).toBe(true);
+    expect(bubble?.classList.contains("py-[3px]")).toBe(true);
   });
 });

@@ -1030,6 +1030,7 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     id: m.id,
     role: m.role,
     text: m.content,
+    timestamp: m.createdAt,
     ...(m.source ? { source: m.source } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.reasoning ? { reasoning: m.reasoning } : {}),
