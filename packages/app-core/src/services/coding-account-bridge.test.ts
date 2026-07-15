@@ -3,8 +3,9 @@
  * and its auth-failure triage (isAuthFailure): least-used vs priority vs config-
  * vs env-driven selection, per-agent env patches (CLAUDE_CODE_OAUTH_TOKEN, a
  * materialized CODEX_HOME/auth.json + config.toml with a TOML-injection guard,
- * CEREBRAS_API_KEY), usage attribution, and rate-limit skipping. Runs against a
- * real temp ELIZA_HOME / ELIZA_STATE_DIR and real account storage — no mocked pool.
+ * active-generation discovery, CEREBRAS_API_KEY), usage attribution, and rate-
+ * limit skipping. Runs against a real temp ELIZA_HOME / ELIZA_STATE_DIR and real
+ * account storage — no mocked pool.
  */
 import {
   mkdirSync,
@@ -15,7 +16,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -226,17 +227,35 @@ describe("coding-account-bridge", () => {
       organizationId: "acct_123",
       idToken: "codex-id-token-1",
     });
+    const canonical = loadAccount("openai-codex", "codex-1");
+    if (!canonical) throw new Error("expected canonical Codex account");
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();
     const sel = await bridge?.select("codex");
     expect(sel?.providerId).toBe("openai-codex");
     const codexHome = sel?.envPatch.CODEX_HOME;
     expect(codexHome).toBeTruthy();
+    const accountHome = path.join(home, "auth", "_codex-home", "codex-1");
+    const activeHome = readFileSync(
+      path.join(accountHome, "active-home"),
+      "utf-8",
+    ).trim();
+    expect(path.resolve(accountHome, activeHome)).toBe(
+      path.resolve(codexHome as string),
+    );
+    const [generationDir, generationName] = activeHome.split(path.sep);
+    expect(generationDir).toBe("generations");
+    expect(generationName).toMatch(/^[a-f0-9]{24}$/);
     const authJson = JSON.parse(
       readFileSync(path.join(codexHome as string, "auth.json"), "utf-8"),
     );
     expect(authJson.tokens.access_token).toBe("codex-access-1");
     expect(authJson.tokens.account_id).toBe("acct_123");
     expect(authJson.auth_mode).toBe("chatgpt");
+    // The timestamp identifies the source credential generation. Selection
+    // must not stamp "now" and make a stale materialization look newer.
+    expect(authJson.last_refresh).toBe(
+      new Date(canonical.updatedAt).toISOString(),
+    );
     // id_token must be present or codex-acp fails "Authentication required".
     expect(authJson.tokens.id_token).toBe("codex-id-token-1");
     // A minimal config.toml with a model — without it codex-acp falls back to a
@@ -468,6 +487,9 @@ describe("coding-account-bridge", () => {
     ) as { tokens?: { refresh_token?: string } };
     expect(authOnDisk.tokens?.refresh_token).toBe(
       "cx-rot-access-refresh-ROTATED",
+    );
+    expect(readFileSync(path.join(codexHome, "active-home"), "utf-8")).toBe(
+      ".\n",
     );
   });
 

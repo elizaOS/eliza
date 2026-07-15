@@ -39,6 +39,7 @@ import {
   resolveElizaTraceId,
   snapshotGatewayPreforwardTiming,
   withGatewayPreforwardTelemetry,
+  withInferenceAuthTelemetry,
 } from "@/lib/observability/http-telemetry";
 import {
   calculateCost,
@@ -88,7 +89,10 @@ import {
   type CreditReservation,
   creditsService,
 } from "@/lib/services/credits";
-import { resolveInferenceAuthContext } from "@/lib/services/inference-auth-context";
+import {
+  type InferenceAuthTelemetry,
+  resolveInferenceAuthContext,
+} from "@/lib/services/inference-auth-context";
 import {
   createDeferredAdmissionSettler,
   type DeferredAdmissionOutcome,
@@ -1156,16 +1160,12 @@ interface ChatCompletionsHandlerOptions {
   /** Stable application trace id supplied by the outer Worker middleware. */
   traceId?: string;
   /**
-   * Cloudflare ExecutionContext. When present, the post-response billing /
-   * settlement chain (billUsage → settleReservation → reconcileCredits →
-   * recordUsageAnalytics → audit) is deferred via `waitUntil` so it never
-   * blocks the model response. The OpenAI response `usage` is built directly
-   * from the model's reported tokens (the same numbers billUsage derives), so
-   * the client sees identical output and billing amounts are unchanged — only
-   * the *timing* of the reconciliation writes moves off the hot path. This
-   * removes ~0.7–1.1s of serial DB writes from every model call; a dedicated
-   * agent makes ~10 calls/turn, so it is several seconds saved per turn.
-   * Falls back to inline `await` when absent (tests / non-Worker callers).
+   * Cloudflare ExecutionContext. When present, positive inference-auth cache
+   * population and the post-response billing/settlement chain are registered
+   * with `waitUntil`; neither optimization write blocks the model response.
+   * The writes still begin immediately and their promises remain observable to
+   * the Worker runtime. Callers without an execution context preserve inline
+   * awaiting, which keeps non-Worker and test behavior deterministic.
    */
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
 }
@@ -1178,10 +1178,15 @@ export async function handleChatCompletionsPOST(
   const telemetryStartedAt = performance.now();
   const traceId = options.traceId ?? resolveElizaTraceId(req.headers);
   let preforwardTiming: GatewayPreforwardTiming | undefined;
-  const attachPreforwardTelemetry = (response: Response): Response =>
-    preforwardTiming
-      ? withGatewayPreforwardTelemetry(response, traceId, preforwardTiming)
+  let authTelemetry: InferenceAuthTelemetry | undefined;
+  const attachPreforwardTelemetry = (response: Response): Response => {
+    const withAuth = authTelemetry
+      ? withInferenceAuthTelemetry(response, traceId, authTelemetry)
       : response;
+    return preforwardTiming
+      ? withGatewayPreforwardTelemetry(withAuth, traceId, preforwardTiming)
+      : withAuth;
+  };
   // #11588: the billing requestId feeds the affiliate-earnings dedupe sourceId
   // (getAffiliateEarningsSourceId → `ai_billing:<op>:<requestId>`, deduped on
   // addEarnings) while the org charge is unconditional. It MUST NOT be
@@ -1205,25 +1210,33 @@ export async function handleChatCompletionsPOST(
   try {
     // 1. Authenticate (+ moderation). #9899: API-key dedicated-agent requests
     // resolve auth + org + moderation in a SINGLE cache read when the cache is
-    // available. Non-API-key / cache-unavailable requests take the authoritative
-    // slow path verbatim.
+    // available. API-key cache failures are resolved from the database;
+    // non-API-key credentials take the general auth path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let moderationAlreadyChecked = false;
 
-    const resolution = await resolveInferenceAuthContext(req);
+    const resolution = await resolveInferenceAuthContext(req, {
+      traceId,
+      executionCtx: options.executionCtx,
+      onTelemetry: (telemetry) => {
+        authTelemetry = telemetry;
+      },
+    });
     if (resolution.kind === "suspended") {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message:
-                "Your account has been suspended due to policy violations.",
-              type: "account_suspended",
-              code: "moderation_violation",
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message:
+                  "Your account has been suspended due to policy violations.",
+                type: "account_suspended",
+                code: "moderation_violation",
+              },
             },
-          },
-          { status: 403 },
+            { status: 403 },
+          ),
         ),
       );
     }
@@ -1282,16 +1295,18 @@ export async function handleChatCompletionsPOST(
       !Array.isArray(request.messages) ||
       !request.messages.length
     ) {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message: "Missing required fields: model and messages",
-              type: "invalid_request_error",
-              code: "missing_required_parameter",
+      return attachPreforwardTelemetry(
+        addCorsHeaders(
+          Response.json(
+            {
+              error: {
+                message: "Missing required fields: model and messages",
+                type: "invalid_request_error",
+                code: "missing_required_parameter",
+              },
             },
-          },
-          { status: 400 },
+            { status: 400 },
+          ),
         ),
       );
     }

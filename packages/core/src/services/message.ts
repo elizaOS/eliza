@@ -171,6 +171,7 @@ import {
 	getModelStreamChunkDeliveryDepth,
 	getStreamingContext,
 	runWithStreamingContext,
+	runWithSuppressedModelStream,
 	type StreamingContext,
 } from "../streaming-context";
 import {
@@ -6239,17 +6240,24 @@ export async function runShortcutGate(args: {
 	let captured: string | undefined;
 	let shortcutActionResult: ActionResult | undefined;
 	try {
-		shortcutActionResult = await action.handler(
-			args.runtime,
-			args.message,
-			args.state,
-			{ ...target.parameters, ...match.parameters, mode: "simple" },
-			async (content) => {
-				if (typeof content?.text === "string" && content.text) {
-					captured = content.text;
-				}
-				return [];
-			},
+		// The shortcut action runs its handler here, outside the planned-tool-call
+		// executor. Detach the visible token stream so an action's *internal*
+		// `runtime.useModel` calls (e.g. the compactor's ledger extraction) do not
+		// masquerade as the reply (#16230); the designed reply reaches the client
+		// through `captured` below, not the raw model stream.
+		shortcutActionResult = await runWithSuppressedModelStream(() =>
+			action.handler(
+				args.runtime,
+				args.message,
+				args.state,
+				{ ...target.parameters, ...match.parameters, mode: "simple" },
+				async (content) => {
+					if (typeof content?.text === "string" && content.text) {
+						captured = content.text;
+					}
+					return [];
+				},
+			),
 		);
 	} catch (err) {
 		args.runtime.logger?.warn?.(

@@ -71,6 +71,16 @@ The harness **exits non-zero** if any required stage/artifact is missing — the
 is NO path that turns absent data into a healthy zero (the 16011 closure cited
 exactly that).
 
+Two env overrides (both must be **absolute** paths; blank or relative values
+fail loudly) redirect the CLI's home-derived locations — tests use them to keep
+runs out of the real `~/.moltbot` tree, since reassigning `HOME` does not move
+Bun's `os.homedir()` (#16180):
+
+- `VOICE_EVIDENCE_ROOT` — where evidence runs are written (default
+  `~/.moltbot/projects/eliza-fleet/evidence/voice-e2e`).
+- `VOICE_EVIDENCE_SECRETS_DIR` — where `deepgram.json` / `cartesia.json` are
+  read (default `~/.moltbot/secrets`).
+
 ## Scenarios
 
 - **baseline** — full happy-path turn: mint → hello → ready → real STT final →

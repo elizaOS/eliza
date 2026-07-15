@@ -309,11 +309,13 @@ const apiKeyAccountSchema = z.object({
   source: z.literal("api-key"),
   label: z.string().trim().min(1).max(120),
   apiKey: z.string().min(8).max(2048),
+  replaceAccountId: z.string().trim().min(1).max(200).optional(),
 });
 
 const oauthStartSchema = z.object({
   label: z.string().trim().min(1).max(120),
   mode: z.enum(["auto", "localhost", "device"]).optional(),
+  replaceAccountId: z.string().trim().min(1).max(200).optional(),
 });
 
 const oauthSubmitCodeSchema = z.object({
@@ -613,6 +615,24 @@ function healthForProbeStatus(status: number): LinkedAccountConfig["health"] {
   return "invalid";
 }
 
+function retainsTerminalCredentialHealth(
+  account: LinkedAccountConfig,
+): boolean {
+  return account.health === "needs-reauth" || account.health === "invalid";
+}
+
+function preserveTerminalCredentialHealth(
+  current: LinkedAccountConfig,
+  next: LinkedAccountConfig,
+): LinkedAccountConfig {
+  if (!retainsTerminalCredentialHealth(current)) return next;
+  return {
+    ...next,
+    health: current.health,
+    ...(current.healthDetail ? { healthDetail: current.healthDetail } : {}),
+  };
+}
+
 // ─── Route handler ──────────────────────────────────────────────────
 
 export interface AccountsRouteContext extends RouteRequestContext {
@@ -784,14 +804,63 @@ async function handleCreateApiKeyAccount(
   // the new account at the next default index, which would offset
   // `nextPriorityFromPool` by one.
   const pool = await getPool();
-  const priority = nextPriorityFromPool(pool, providerId);
+  const replaceAccountId = parsed.data.replaceAccountId;
+  const replacementTarget = replaceAccountId
+    ? pool.get(replaceAccountId, providerId)
+    : null;
+  if (replaceAccountId && !replacementTarget) {
+    const belongsToAnotherProvider = pool
+      .list()
+      .some(
+        (account) =>
+          account.id === replaceAccountId && account.providerId !== providerId,
+      );
+    error(
+      res,
+      belongsToAnotherProvider
+        ? "Replacement account belongs to a different provider"
+        : "Replacement account not found",
+      belongsToAnotherProvider ? 400 : 404,
+    );
+    return true;
+  }
+  const previousRecord = replaceAccountId
+    ? loadAccount(accountProvider, replaceAccountId)
+    : null;
+  if (replaceAccountId && !previousRecord) {
+    error(res, "Replacement account credential not found", 404);
+    return true;
+  }
 
-  const id = nodeCrypto.randomUUID();
+  if (replaceAccountId) {
+    const probe =
+      accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
+        ? await probeDirectApiKey(
+            accountProvider as DirectAccountProvider,
+            parsed.data.apiKey,
+          )
+        : isCodingPlanKeySubscriptionProvider(accountProvider)
+          ? await probeCodingPlanKey(accountProvider, parsed.data.apiKey)
+          : null;
+    if (!probe?.ok) {
+      error(
+        res,
+        probe?.error ?? "Replacement credential could not be verified",
+        400,
+      );
+      return true;
+    }
+  }
+
+  const priority = replacementTarget
+    ? replacementTarget.priority
+    : nextPriorityFromPool(pool, providerId);
+  const id = replaceAccountId ?? nodeCrypto.randomUUID();
   const now = Date.now();
   const record: AccountCredentialRecord = {
     id,
     providerId: accountProvider,
-    label: parsed.data.label,
+    label: replacementTarget?.label ?? parsed.data.label,
     source: "api-key",
     credentials: {
       access: parsed.data.apiKey,
@@ -799,10 +868,43 @@ async function handleCreateApiKeyAccount(
       // Sentinel: api-key creds never expire.
       expires: Number.MAX_SAFE_INTEGER,
     },
-    createdAt: now,
+    createdAt: previousRecord?.createdAt ?? now,
     updatedAt: now,
+    ...(previousRecord?.lastUsedAt
+      ? { lastUsedAt: previousRecord.lastUsedAt }
+      : {}),
   };
+  const stableReplacementTarget = replacementTarget
+    ? (({ healthDetail: _healthDetail, usage: _usage, ...stable }) => stable)(
+        replacementTarget,
+      )
+    : null;
+  const linkedConfig = stableReplacementTarget
+    ? {
+        ...stableReplacementTarget,
+        ...buildLinkedAccountConfigFromRecord(record, priority),
+        enabled: stableReplacementTarget.enabled,
+        priority,
+        createdAt: stableReplacementTarget.createdAt,
+        health: "ok" as const,
+      }
+    : buildLinkedAccountConfigFromRecord(record, priority);
   saveAccount(record);
+  try {
+    await pool.upsert(linkedConfig);
+  } catch (cause) {
+    if (previousRecord && replacementTarget) {
+      saveAccount(previousRecord);
+      await pool.upsert(replacementTarget);
+    } else {
+      deleteAccount(accountProvider, record.id);
+    }
+    throw new ElizaError("Account credential adoption failed", {
+      code: "accounts.credential_adoption_failed",
+      severity: "fatal",
+      cause,
+    });
+  }
 
   const envKey =
     accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
@@ -815,10 +917,7 @@ async function handleCreateApiKeyAccount(
     }
   }
 
-  const linkedConfig = buildLinkedAccountConfigFromRecord(record, priority);
-  await pool.upsert(linkedConfig);
-
-  json(res, linkedConfig, 201);
+  json(res, linkedConfig, replacementTarget ? 200 : 201);
   return true;
 }
 
@@ -847,10 +946,11 @@ async function handleOAuthRoutes(
   const action = rest[0];
 
   if (action === "start" && method === "POST") {
-    const body = await readJsonBody<{ label?: string; mode?: string }>(
-      req,
-      res,
-    );
+    const body = await readJsonBody<{
+      label?: string;
+      mode?: string;
+      replaceAccountId?: string;
+    }>(req, res);
     if (!body) return true;
     const parsed = oauthStartSchema.safeParse(body);
     if (!parsed.success) {
@@ -866,10 +966,61 @@ async function handleOAuthRoutes(
     // the post-save hook is monotonic regardless of concurrency since
     // the on-disk credential file appears strictly before the hook
     // fires.
-    const accountId = nodeCrypto.randomUUID();
     const pool = await getPool();
+    const replaceAccountId = parsed.data.replaceAccountId;
+    const replacementTarget = replaceAccountId
+      ? pool.get(replaceAccountId, providerId)
+      : null;
+    if (replaceAccountId && !replacementTarget) {
+      const belongsToAnotherProvider = pool
+        .list()
+        .some(
+          (account) =>
+            account.id === replaceAccountId &&
+            account.providerId !== providerId,
+        );
+      error(
+        res,
+        belongsToAnotherProvider
+          ? "Replacement account belongs to a different provider"
+          : "Replacement account not found",
+        belongsToAnotherProvider ? 400 : 404,
+      );
+      return true;
+    }
+    if (replaceAccountId && !loadAccount(subscription, replaceAccountId)) {
+      error(res, "Replacement account credential not found", 404);
+      return true;
+    }
 
+    const accountId = replaceAccountId ?? nodeCrypto.randomUUID();
+    let replacementMetadataBeforeAdoption: LinkedAccountConfig | null = null;
     const onAccountSaved = async (record: AccountCredentialRecord) => {
+      if (replacementTarget) {
+        const liveTarget = pool.get(replacementTarget.id, providerId);
+        if (!liveTarget) {
+          throw new Error("Replacement account metadata no longer exists");
+        }
+        replacementMetadataBeforeAdoption = liveTarget;
+        const canonical = buildLinkedAccountConfigFromRecord(
+          record,
+          liveTarget.priority,
+        );
+        const {
+          healthDetail: _healthDetail,
+          usage: _usage,
+          ...stableTarget
+        } = liveTarget;
+        await pool.upsert({
+          ...stableTarget,
+          ...canonical,
+          enabled: liveTarget.enabled,
+          priority: liveTarget.priority,
+          createdAt: liveTarget.createdAt,
+          health: "ok",
+        });
+        return;
+      }
       // Exclude the just-saved record from the priority calc — its
       // credential file already exists on disk so `pool.list` would
       // include it at a default priority (createdAt-sorted index),
@@ -898,7 +1049,17 @@ async function handleOAuthRoutes(
       handle = await startFlow({
         label: parsed.data.label,
         accountId,
+        ...(replaceAccountId ? { replaceAccountId } : {}),
         onAccountSaved,
+        ...(replacementTarget
+          ? {
+              onReplacementRollback: async () => {
+                if (replacementMetadataBeforeAdoption) {
+                  await pool.upsert(replacementMetadataBeforeAdoption);
+                }
+              },
+            }
+          : {}),
         ...(subscription === "openai-codex"
           ? {
               headless:
@@ -1173,7 +1334,7 @@ async function handleRefreshUsage(
 
   if (direct) {
     const probe = await probeDirectApiKey(direct, accessToken);
-    const next: LinkedAccountConfig = {
+    const next = preserveTerminalCredentialHealth(linked, {
       ...linked,
       health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
       healthDetail: {
@@ -1186,7 +1347,7 @@ async function handleRefreshUsage(
         ...(linked.usage ?? {}),
         refreshedAt: Date.now(),
       },
-    };
+    });
     await pool.upsert(next);
     json(res, { account: next, probe, source: "direct-probe" });
     return true;
@@ -1194,7 +1355,7 @@ async function handleRefreshUsage(
 
   if (subscription && isCodingPlanKeySubscriptionProvider(subscription)) {
     const probe = await probeCodingPlanKey(subscription, accessToken);
-    const next: LinkedAccountConfig = {
+    const next = preserveTerminalCredentialHealth(linked, {
       ...linked,
       health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
       healthDetail: {
@@ -1207,7 +1368,7 @@ async function handleRefreshUsage(
         ...(linked.usage ?? {}),
         refreshedAt: Date.now(),
       },
-    };
+    });
     await pool.upsert(next);
     json(res, { account: next, probe, source: "coding-plan-probe" });
     return true;
@@ -1236,7 +1397,9 @@ async function handleRefreshUsage(
     });
     const refreshed = pool.get(accountId, providerId);
     if (refreshed) {
-      json(res, { account: refreshed, source: "pool" });
+      const canonical = preserveTerminalCredentialHealth(linked, refreshed);
+      if (canonical !== refreshed) await pool.upsert(canonical);
+      json(res, { account: canonical, source: "pool" });
       return true;
     }
   } catch (err) {
@@ -1254,7 +1417,7 @@ async function handleRefreshUsage(
             error: `Usage refresh not supported for ${providerId}`,
             latencyMs: 0,
           };
-  const next: LinkedAccountConfig = {
+  const next = preserveTerminalCredentialHealth(linked, {
     ...linked,
     ...(probe.usage ? { usage: probe.usage } : {}),
     health: probe.ok ? "ok" : "rate-limited",
@@ -1264,7 +1427,7 @@ async function handleRefreshUsage(
           lastChecked: Date.now(),
           ...(probe.error ? { lastError: probe.error } : {}),
         },
-  };
+  });
   await pool.upsert(next);
   json(res, { account: next, probe, source: "inline-probe" });
   return true;

@@ -24,6 +24,7 @@ import {
   type RuntimeMode,
   type RuntimeModeSnapshot,
 } from "../api/runtime-mode-client";
+import { useProtectedAgentProbesEnabled } from "./useProtectedAgentProbesEnabled";
 
 export type UseRuntimeModeState =
   | { phase: "loading" }
@@ -79,6 +80,10 @@ export function __resetRuntimeModeCacheForTests(): void {
 export function useRuntimeMode(): UseRuntimeModeResult {
   const [state, setState] = useState<UseRuntimeModeState>(snapshot);
   const mountedRef = useRef(true);
+  // GET /api/runtime/mode is protected; hold the first fetch until probes are
+  // allowed so fresh Cloud onboarding fires no 401 (#16242). Cached at module
+  // scope, so it runs at most once per session regardless of consumer count.
+  const probesEnabled = useProtectedAgentProbesEnabled();
 
   const refetch = useCallback(() => {
     if (!mountedRef.current) return;
@@ -89,12 +94,15 @@ export function useRuntimeMode(): UseRuntimeModeResult {
     mountedRef.current = true;
     subscribers.add(setState);
     setState(snapshot);
-    if (snapshot.phase === "loading") void refresh();
     return () => {
       mountedRef.current = false;
       subscribers.delete(setState);
     };
   }, []);
+
+  useEffect(() => {
+    if (probesEnabled && snapshot.phase === "loading") void refresh();
+  }, [probesEnabled]);
 
   const mode = state.phase === "ready" ? state.snapshot.mode : null;
   return {

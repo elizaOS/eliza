@@ -7,6 +7,12 @@ name: Scenario PR E2E
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+    inputs:
+      concurrency_scope:
+        description: "Caller-owned concurrency namespace"
+        required: false
+        type: string
+        default: standalone
   # Heavy family moved off per-PR push (#14051 Tier A): PR runs are opt-in via
   # the `ci:full` label (job-level gate on `changes` below). Unlabeled PRs
   # skip every job instantly and consume zero runners.
@@ -20,8 +26,10 @@ on:
     - cron: "0 7 * * *"
   workflow_dispatch:
 
+# A reusable caller's scope separates it from the standalone ref domain. PRs
+# still supersede obsolete work; scheduled and exhaustive work always completes.
 concurrency:
-  group: scenario-pr-e2e-${{ github.event.pull_request.number || github.ref }}
+  group: scenario-pr-e2e-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:

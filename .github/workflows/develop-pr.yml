@@ -68,6 +68,12 @@ jobs:
             node "$self_test"
           done < scripts/security/coverage-node-self-tests.txt
 
+      # The aggregate itself is base-trusted and therefore cannot execute its
+      # new implementation on the PR that introduces a change. This required
+      # lane validates the proposed state machine and workflow contract first.
+      - name: Develop PR aggregate contract self-test
+        run: node packages/scripts/develop-pr-aggregate.self-test.mjs
+
       # View→action ratchet (#14369): every builtin-view on-screen mutation
       # must map to a registered agent action (chat twin), and the generated
       # action catalog must reflect the real registered surface. Dependency-free

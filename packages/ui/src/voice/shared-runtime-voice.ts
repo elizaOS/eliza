@@ -23,6 +23,7 @@
  * container.
  */
 
+import { getBootConfig } from "../config/boot-config-store";
 import { normalizeDirectCloudSharedAgentApiBase } from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
 
@@ -98,9 +99,124 @@ export function isVoiceTargetResolvableForActiveAgent(): boolean {
   return /^https?:\/\//i.test(sharedOrigin);
 }
 
-/** Build the shared-tier TTS URL (`<origin>/api/v1/voice/tts`). */
+/** Build the cloud-worker v1 TTS URL (`<origin>/api/v1/voice/tts`). */
 export function sharedRuntimeTtsUrl(origin: string): string {
   return `${origin.replace(/\/+$/, "")}/api/v1/voice/tts`;
+}
+
+/**
+ * Resolve the configured Eliza Cloud worker origin from boot config, for
+ * forced-cloud voice that must bypass the on-device proxy (#16116).
+ *
+ * Boot config carries the cloud SITE base (`cloudApiBase`, e.g.
+ * `https://elizacloud.ai`, or a staging/custom origin). The provider-agnostic
+ * v1 voice routes hang off the bare origin, so we strip a trailing `/api/v1`
+ * (some hosts pass the API base with the version path) and any trailing
+ * slashes. Returns `null` when boot config has no usable https origin — the
+ * caller then keeps the on-device proxy path. Reading from boot config (not a
+ * hardcoded production URL) keeps staging/custom cloud environments correct.
+ */
+export function configuredCloudVoiceOrigin(): string | null {
+  const raw = getBootConfig().cloudApiBase?.trim();
+  if (!raw) return null;
+  const origin = raw
+    .replace(/\/+$/, "")
+    .replace(/\/api\/v1$/i, "")
+    .replace(/\/+$/, "");
+  return /^https?:\/\//i.test(origin) ? origin : null;
+}
+
+/** How a forced-cloud TTS request was routed (drives the request + debug). */
+export interface ForcedCloudTtsRoute {
+  /** Absolute TTS endpoint to POST `{ text }` to. */
+  url: string;
+  /** Bearer to send, or `null` to omit the `Authorization` header. */
+  bearer: string | null;
+  /** Which target was chosen — observability + regression assertions. */
+  via: "shared-runtime" | "direct-cloud" | "on-device-proxy";
+  /** Voice/model to carry in the direct request body (parity with a caller-known pin). */
+  voiceId?: string;
+  modelId?: string;
+}
+
+/**
+ * Decide where forced-cloud (`provider === "eliza-cloud"`) TTS should POST and
+ * which bearer to carry.
+ *
+ * A dedicated/on-device agent otherwise relays TTS through its own
+ * `/api/tts/cloud` proxy — an extra audio download through the phone-side event
+ * loop plus a base64 IPC re-marshal (~5–6 s/reply on constrained devices, #16116)
+ * even though the cloud worker completes in 1–2 s. When a cloud session bearer
+ * and a configured cloud origin are both available, POST straight to the cloud
+ * worker's v1 voice route instead. Shared-runtime agents (no container) already
+ * resolve directly to that route off their active base and are left unchanged
+ * (#15395). With no cloud auth/config, the on-device proxy path is preserved.
+ *
+ * Voice/model parity with the proxy: in the default (unpinned) setup the direct
+ * `{ text }` body and the proxy produce the SAME voice — the proxy injects
+ * `LEGACY_DEFAULT_ELEVENLABS_VOICE_ID`, which the worker's provider selection
+ * (`packages/cloud/api/v1/voice/tts/provider-selection.ts`) explicitly treats
+ * as "caller did not pin a voice", identical to an omitted `voiceId`. The
+ * residual gap is a server-side `ELIZAOS_CLOUD_TTS_VOICE` / `_MODEL` env pin:
+ * those env vars live only in the agent-server process and are exposed through
+ * no renderer channel (not boot config, not `VoiceConfig`, not `getConfig()`),
+ * so the client cannot detect a pin to route around it. When the caller DOES
+ * know a voice/model (any future renderer channel), pass `voiceId`/`modelId`
+ * here and the direct body carries them; until then, operators with an env pin
+ * get the worker default on the direct path — a documented limitation, and the
+ * direct→proxy failure fallback in `useVoiceChat` does not cover it (the direct
+ * request succeeds, with the unpinned voice).
+ *
+ * Pure so the routing decision is unit-testable without a network or DOM.
+ */
+export function resolveForcedCloudTtsRoute(input: {
+  /** On-device proxy target, `resolveApiUrl("/api/tts/cloud")`. */
+  proxyUrl: string;
+  /** Bearer used for the shared-runtime + proxy paths (active-base token). */
+  proxyBearer: string | null;
+  /** `currentSharedRuntimeVoiceOrigin()` — non-null only for shared-tier bases. */
+  sharedRuntimeOrigin: string | null;
+  /** `configuredCloudVoiceOrigin()` — the boot-config cloud worker origin. */
+  configuredCloudOrigin: string | null;
+  /** `getCloudAuthToken()` — the canonical Steward cloud session bearer. */
+  cloudSessionToken: string | null;
+  /** Caller-known voice pin to carry in the direct body (parity; see header). */
+  voiceId?: string | null;
+  /** Caller-known model pin to carry in the direct body (parity; see header). */
+  modelId?: string | null;
+}): ForcedCloudTtsRoute {
+  const {
+    proxyUrl,
+    proxyBearer,
+    sharedRuntimeOrigin,
+    configuredCloudOrigin,
+    cloudSessionToken,
+    voiceId,
+    modelId,
+  } = input;
+
+  if (sharedRuntimeOrigin) {
+    return {
+      url: sharedRuntimeTtsUrl(sharedRuntimeOrigin),
+      bearer: proxyBearer,
+      via: "shared-runtime",
+    };
+  }
+
+  const token = cloudSessionToken?.trim();
+  if (token && configuredCloudOrigin) {
+    const pinnedVoice = voiceId?.trim();
+    const pinnedModel = modelId?.trim();
+    return {
+      url: sharedRuntimeTtsUrl(configuredCloudOrigin),
+      bearer: token,
+      via: "direct-cloud",
+      ...(pinnedVoice ? { voiceId: pinnedVoice } : {}),
+      ...(pinnedModel ? { modelId: pinnedModel } : {}),
+    };
+  }
+
+  return { url: proxyUrl, bearer: proxyBearer, via: "on-device-proxy" };
 }
 
 /** Build the shared-tier STT URL (`<origin>/api/v1/voice/stt`). */

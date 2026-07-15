@@ -30,7 +30,11 @@ function runBindProgram(env: Record<string, string>): {
     encoding: "utf8",
     env,
   });
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
 }
 
 function extractRun(stepName: string): string {
@@ -41,8 +45,8 @@ function extractRun(stepName: string): string {
       "m",
     ),
   )?.groups?.step;
-  const run = body?.match(/^ {8}run: \|\n(?<run>(?: {10}.*(?:\n|$))*)/m)?.groups
-    ?.run;
+  const run = body?.match(/^ {8}run: \|\n(?<run>(?:(?: {10}.*)?(?:\n|$))*)/m)
+    ?.groups?.run;
   if (!run) throw new Error(`Missing run body for ${stepName}`);
   return run
     .split("\n")
@@ -54,7 +58,7 @@ describe("chat latency live workflow", () => {
   test("keeps paid live probes manual and production environment-gated", () => {
     expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).not.toContain("pull_request_target:");
-    expect(workflow).toContain("if: github.event_name == 'workflow_dispatch'");
+    expect(workflow).toContain("github.event_name == 'workflow_dispatch'");
     expect(workflow).toMatch(/environment: \$\{\{ inputs\.environment \}\}/);
     expect(workflow).toContain("- staging");
     expect(workflow).toContain("- production");
@@ -122,6 +126,81 @@ describe("chat latency live workflow", () => {
     );
     expect(workflow).toContain("needs: contract");
     expect(workflow).toContain("Enforce probe result");
+    expect(workflow).toContain(
+      "node --test packages/scripts/cloud/inference-auth-latency.test.mjs",
+    );
+  });
+
+  test("feature refs deploy one exact version to an isolated auth Worker", () => {
+    const isolated = workflow.slice(workflow.indexOf("\n  auth-isolated:"));
+    expect(isolated).toContain("environment: staging");
+    expect(isolated).toContain("bun-version: 1.3.14");
+    expect(isolated).toContain("wrangler versions upload");
+    expect(isolated).toContain(
+      "node packages/shared/scripts/generate-keywords.mjs",
+    );
+    expect(isolated).toContain("--keep-vars");
+    expect(isolated).not.toContain("--preview-alias");
+    expect(isolated).toContain("preview_urls = false");
+    expect(isolated).toContain("--config .wrangler-auth-probe.toml");
+    expect(isolated).not.toContain("wrangler deploy");
+    expect(isolated).toContain(
+      "Create an isolated suspended-auth staging fixture",
+    );
+    expect(isolated).toContain("Create an isolated diagnostic Worker");
+    expect(isolated).toContain('"/workers/workers"');
+    expect(isolated).toContain("body?.result?.deployed_on != null");
+    expect(isolated).toContain("workerState?.result?.deployed_on");
+    expect(isolated).toContain("workers_dev = true");
+    expect(isolated).toContain("Delete isolated auth Worker");
+    expect(isolated).toContain(
+      "Delete isolated suspended-auth staging fixture",
+    );
+    expect(isolated).toContain("previews_enabled: false");
+    expect(isolated).toContain(
+      "versions: [{ percentage: 100, version_id: versionId }]",
+    );
+    expect(isolated).toContain('"/workers/scripts/" + worker + "/deployments"');
+    expect(isolated).toContain("activeDeployment?.id !== deploymentId");
+    expect(isolated).toContain("deployedVersions[0]?.version_id !== versionId");
+    expect(isolated).toContain('"/workers/subdomain"');
+    expect(isolated).toContain("REDIS_RATE_LIMITING:false");
+    expect(isolated).toContain("--hit-count 30");
+    expect(isolated).toContain("--miss-count 10");
+    expect(isolated).toContain(
+      "--suspended-api-key-env AUTH_PROBE_SUSPENDED_API_KEY",
+    );
+    expect(isolated).toContain("INFERENCE_AUTH_PROBE_TOKEN");
+    expect(isolated).toContain(
+      "JSON.stringify({ DATABASE_URL: databaseUrl, INFERENCE_AUTH_PROBE_TOKEN: token })",
+    );
+    expect(isolated).toContain(
+      'rm -f "$config" "$RUNNER_TEMP/auth-probe-secrets.json"',
+    );
+    expect(isolated).toContain(`ELIZA_DEPLOY_COMMIT:\${GITHUB_SHA}`);
+    expect(isolated).toContain(
+      "Isolated deployment remained on the exact checkout",
+    );
+    expect(isolated).toContain("attempt <= 24");
+    expect(isolated).toContain("consecutiveExactResponses === 3");
+    expect(isolated).toContain("steps.auth-probe.outcome != 'skipped'");
+    expect(isolated).toContain('wrangler tail "$AUTH_PROBE_WORKER_NAME" \\');
+    expect(isolated).not.toContain("--sampling-rate");
+    expect(isolated).toContain('--version-id "$AUTH_PROBE_VERSION_ID"');
+    expect(isolated).toContain("waitForInferenceAuthTail");
+    expect(isolated).toContain("sleep 5");
+    expect(isolated).toContain(
+      'set +e\n          node --input-type=module - "$raw_tail"',
+    );
+    expect(isolated).toContain('readiness_status="$?"\n          set -e');
+    expect(isolated).toContain(
+      "Worker Tail observed an authenticated readiness trace",
+    );
+    expect(isolated).toContain("sanitizeInferenceAuthTail");
+    expect(isolated).toContain("safe.slice(-2_000)");
+    expect(isolated).not.toContain("[process.argv[2], process.argv[3]]");
+    expect(isolated).toContain("inference-auth-worker-logs-");
+    expect(isolated).toContain('rm -f "$raw_tail" "$tail_log"');
   });
 
   test("collects statistical warm evidence plus cold and post-idle labels", () => {
@@ -210,6 +289,20 @@ describe("chat latency live workflow", () => {
       "Reverify the exact deployed gateway SHA",
       "Add privacy-safe timing table to summary",
       "Enforce probe result",
+      "Bind isolated deployment checkout to the requested SHA",
+      "Generate source-mode keyword data",
+      "Create an isolated authenticated probe control",
+      "Create an isolated suspended-auth staging fixture",
+      "Create an isolated diagnostic Worker",
+      "Upload a non-deployed exact-SHA Worker version",
+      "Deploy exact version to the isolated Worker subdomain",
+      "Verify isolated deployment serves the exact checkout",
+      "Capture 30 cache hits and 10 unique controlled KV misses",
+      "Reverify exact isolated deployment after capture",
+      "Add auth timing distribution to summary",
+      "Delete isolated auth Worker",
+      "Delete isolated suspended-auth staging fixture",
+      "Enforce auth probe result",
     ];
     for (const step of steps) {
       const shell = extractRun(step);
@@ -218,10 +311,15 @@ describe("chat latency live workflow", () => {
         encoding: "utf8",
       });
       expect(bash.status, `${step}: ${bash.stderr}`).toBe(0);
+      expect(bash.stderr, `${step}: ${bash.stderr}`).not.toContain(
+        "here-document at line",
+      );
 
-      const nodeBody = shell.match(/<<'NODE'\n(?<node>[\s\S]*?)\nNODE(?:\n|$)/)
-        ?.groups?.node;
-      if (nodeBody) {
+      const nodeBodies = [
+        ...shell.matchAll(/<<'NODE'\n(?<node>[\s\S]*?)\nNODE(?:\n|$)/g),
+      ].map((match) => match.groups?.node);
+      for (const nodeBody of nodeBodies) {
+        if (!nodeBody) throw new Error(`${step}: empty embedded Node program`);
         const node = spawnSync(
           process.execPath,
           ["--input-type=module", "--check"],

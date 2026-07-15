@@ -81,7 +81,12 @@ export const client = {
 `,
 );
 const authStub = join(outDir, "auth-stub.ts");
-await writeFile(authStub, `export function useIsAuthenticated() { return true; }\n`);
+await writeFile(
+  authStub,
+  `export function useIsAuthenticated() { return true; }\n` +
+    `export function isAuthenticatedNow() { return true; }\n` +
+    `export function subscribeAuthStatus() { return () => {}; }\n`,
+);
 const navStub = join(outDir, "nav-stub.ts");
 await writeFile(
   navStub,

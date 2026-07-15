@@ -126,6 +126,7 @@ jobs:
           inputs.filter != 'anthropic-thinking-receipt'
         env:
           RUNNER_TEMP_LOG: ${{ runner.temp }}/develop-live-sweep.log
+          LIVE_EVIDENCE_ROOT: ${{ runner.temp }}/develop-live-evidence
           TEST_FILTER: ${{ inputs.filter }}
         run: |
           set -o pipefail
@@ -133,7 +134,11 @@ jobs:
           if [ -n "${TEST_FILTER:-}" ]; then
             filter_args+=(--filter="$TEST_FILTER")
           fi
-          node packages/scripts/run-all-tests.mjs --all --no-cloud "${filter_args[@]}" 2>&1 | tee "$RUNNER_TEMP_LOG"
+          node packages/scripts/run-live-test-with-artifacts.mjs \
+            --label "develop-live-${TEST_FILTER:-all}" \
+            --report-root "$LIVE_EVIDENCE_ROOT" \
+            -- node packages/scripts/run-all-tests.mjs --all --no-cloud "${filter_args[@]}" \
+            2>&1 | tee "$RUNNER_TEMP_LOG"
 
       - name: Cloud unit suite
         if: >-
@@ -190,4 +195,12 @@ jobs:
         with:
           name: develop-live-sweep-log
           path: ${{ runner.temp }}/develop-live-sweep.log
+          if-no-files-found: ignore
+
+      - name: Upload structured live evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: develop-live-evidence
+          path: ${{ runner.temp }}/develop-live-evidence
           if-no-files-found: ignore

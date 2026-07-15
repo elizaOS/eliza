@@ -242,6 +242,12 @@ export const GUARDED_REAL_LIVE_SUITES = [
     requires: ["CEREBRAS_API_KEY"],
   },
   {
+    file: "plugins/plugin-openai/__tests__/cerebras-evidence.live.test.ts",
+    requires: ["CEREBRAS_API_KEY"],
+    notes:
+      "credential-redacted raw request/response/SSE, trajectory, tool, structured-output, and provider/transport error evidence",
+  },
+  {
     file: "plugins/plugin-openai/__tests__/openai-drift.real.test.ts",
     requires: ["OPENAI_API_KEY"],
     notes: "also runs nightly in external-api-live-drift.yml",

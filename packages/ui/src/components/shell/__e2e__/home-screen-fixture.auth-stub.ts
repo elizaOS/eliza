@@ -30,6 +30,23 @@ export function useIsAuthenticated(): boolean {
   return true;
 }
 
+/**
+ * Non-hook auth reads the notification store consults from its module seam
+ * (#16242). The fixture is a resolved authenticated snapshot with no
+ * transitions, so `isAuthenticatedNow()` is always true and the store hydrates
+ * without ever re-arming on `subscribeAuthStatus` — but both exports must exist
+ * here or the aliased e2e bundle fails to resolve the store's imports.
+ */
+export function isAuthenticatedNow(): boolean {
+  return true;
+}
+
+export function subscribeAuthStatus(
+  _listener: (state: typeof AUTHENTICATED_STATE) => void,
+): () => void {
+  return () => {};
+}
+
 export function useAuthStatus(): {
   state: typeof AUTHENTICATED_STATE;
   refetch: () => void;
