@@ -103,4 +103,21 @@ describe("TurnStatus working indicator", () => {
     expect(screen.queryByTestId("typing-dots")).toBeNull();
     expect(screen.queryByTestId("turn-status-spinner")).toBeNull();
   });
+
+  it("keeps the speaking phase neutral and shimmering", () => {
+    const { rerender } = render(
+      <TurnStatus status={{ kind: "speaking" }} showLabel={false} />,
+    );
+    const compactLabel = screen.getByTestId("turn-status-label");
+    expect(compactLabel.textContent).toBe("Speaking");
+    expect(compactLabel.className).toContain("shimmer");
+    expect(compactLabel.className).not.toContain("255,200,150");
+
+    rerender(<TurnStatus status={{ kind: "speaking" }} />);
+    const fullLabel = screen.getByTestId("turn-status-label");
+    expect(fullLabel.className).toContain("shimmer");
+    expect(
+      screen.getByTestId("turn-status-spinner").getAttribute("class"),
+    ).toContain("text-white/70");
+  });
 });
