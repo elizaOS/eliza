@@ -1611,7 +1611,7 @@ try {
       mountedFanFrames[0]?.controls.opacity <= 0.05 &&
       mountedFanFrames[0]?.peeks.length === 2 &&
       mountedFanFrames[0]?.peeks.every((opacity) => opacity >= 0.98) &&
-      mountedFanFrames[0]?.group.paddingBottom >= 23,
+      mountedFanFrames[0]?.group.paddingBottom >= 15,
     "stack fan mounts controls and rows from collapsed geometry",
   );
   console.log(
