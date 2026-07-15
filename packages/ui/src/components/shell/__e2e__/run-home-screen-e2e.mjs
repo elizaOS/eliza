@@ -2590,6 +2590,9 @@ try {
       const clearLabel = clear?.querySelector(
         "[data-notification-clear-resting-label]",
       );
+      const clearConfirmingLabel = clear?.querySelector(
+        "[data-notification-clear-confirming-label]",
+      );
       const clearIcon = clear?.querySelector("svg");
       if (
         !(home instanceof HTMLElement) ||
@@ -2599,6 +2602,7 @@ try {
         !(secondary instanceof HTMLElement) ||
         !(clear instanceof HTMLElement) ||
         !(clearLabel instanceof HTMLElement) ||
+        !(clearConfirmingLabel instanceof HTMLElement) ||
         !(clearIcon instanceof SVGElement)
       ) {
         return null;
@@ -2632,6 +2636,11 @@ try {
         ),
         clear: {
           ...rect(clear),
+          confirming: clear.hasAttribute("data-confirming"),
+          confirmingLabel: clearConfirmingLabel.textContent,
+          confirmingLabelOpacity: Number.parseFloat(
+            getComputedStyle(clearConfirmingLabel).opacity,
+          ),
           labelOpacity: Number.parseFloat(
             getComputedStyle(clearLabel).opacity,
           ),
@@ -2672,12 +2681,38 @@ try {
       `overflowing expanded notifications scroll inside their available region (${JSON.stringify(initialExpandedGeometry.list)})`,
     );
     assert(
-      initialExpandedGeometry.clear.width >= 55 &&
-        initialExpandedGeometry.clear.labelOpacity >= 0.99 &&
-        initialExpandedGeometry.clear.iconOpacity <= 0.01,
-      `coarse-pointer clear control visibly rests as “Clear all” (${JSON.stringify(initialExpandedGeometry.clear)})`,
+      initialExpandedGeometry.clear.width <= 33 &&
+        initialExpandedGeometry.clear.labelOpacity <= 0.01 &&
+        initialExpandedGeometry.clear.iconOpacity >= 0.99 &&
+        !initialExpandedGeometry.clear.confirming,
+      `coarse-pointer clear control rests as a compact X (${JSON.stringify(initialExpandedGeometry.clear)})`,
     );
   }
+
+  await touchTap(
+    notificationGeometry,
+    '[data-testid="notifications-clear-all"]',
+  );
+  await notificationGeometry.waitForTimeout(220);
+  const armedCoarseClearGeometry = await readExpandedGeometry();
+  assert(
+    armedCoarseClearGeometry?.clear.confirming === true &&
+      armedCoarseClearGeometry.clear.confirmingLabel === "Clear all" &&
+      armedCoarseClearGeometry.clear.confirmingLabelOpacity >= 0.99 &&
+      armedCoarseClearGeometry.clear.width >= 63,
+    `coarse-pointer first tap reveals “Clear all” without adding a third step (${JSON.stringify(armedCoarseClearGeometry?.clear)})`,
+  );
+  await notificationGeometry.evaluate(() => {
+    document.body.dispatchEvent(
+      new PointerEvent("pointerdown", { bubbles: true }),
+    );
+  });
+  await notificationGeometry.waitForFunction(
+    () =>
+      !document
+        .querySelector('[data-testid="notifications-clear-all"]')
+        ?.hasAttribute("data-confirming"),
+  );
 
   await notificationGeometry.evaluate(
     () =>
@@ -2938,6 +2973,41 @@ try {
         Math.abs(clearRest.row.top - clearHover.row.top) <= 1 &&
         clearReturned.button.width <= 33,
       `desktop clear reveals leftward without shifting its slot or cards (${JSON.stringify({ clearRest, clearHover, clearReturned })})`,
+    );
+    await clear.click();
+    await desktop.waitForTimeout(220);
+    const desktopConfirmation = await clear.evaluate((button) => {
+      const label = button.querySelector(
+        "[data-notification-clear-confirming-label]",
+      );
+      return {
+        ariaLabel: button.getAttribute("aria-label"),
+        confirming: button.hasAttribute("data-confirming"),
+        label: label?.textContent,
+        labelOpacity:
+          label instanceof HTMLElement
+            ? Number.parseFloat(getComputedStyle(label).opacity)
+            : 0,
+      };
+    });
+    assert(
+      desktopConfirmation.confirming &&
+        desktopConfirmation.label === "Confirm?" &&
+        desktopConfirmation.labelOpacity >= 0.99 &&
+        desktopConfirmation.ariaLabel ===
+          "Confirm clear all notifications",
+      `desktop first click changes Clear all to an explicit Confirm? step (${JSON.stringify(desktopConfirmation)})`,
+    );
+    await desktop.evaluate(() => {
+      document.body.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true }),
+      );
+    });
+    await desktop.waitForFunction(
+      () =>
+        !document
+          .querySelector('[data-testid="notifications-clear-all"]')
+          ?.hasAttribute("data-confirming"),
     );
     await center.getByTestId("notifications-collapse").click();
     await center
