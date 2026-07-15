@@ -322,8 +322,6 @@ const frameworkCooldowns = new Map<
   SupportedTaskAgentAdapter,
   { until: number; reason: string }
 >();
-const TASK_AGENT_USAGE_EXHAUSTED_RE =
-  /\b(insufficient(?:[_\s]+(?:credits?|quota))|insufficient_quota|out of credits|credit balance|usage (?:has )?(?:reached|exceeded)|(?:you(?:'ve| have)? hit your usage limits?)|usage[-\s]?limits?|quota exceeded|payment required|status(?:code)?[:\s]*402)\b/i;
 
 function frameworkDiscoveryCacheKey(
   probe?: TaskAgentFrameworkProbe,
@@ -384,19 +382,6 @@ function safeGetSetting(
 
 function trimModelPref(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-export function readTaskAgentModelPrefs(
-  value: unknown,
-): TaskAgentModelPrefs | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  return compactTaskAgentModelPrefs({
-    powerful: trimModelPref(record.powerful),
-    fast: trimModelPref(record.fast),
-  });
 }
 
 function compactTaskAgentModelPrefs(
@@ -1334,30 +1319,6 @@ export function clearTaskAgentFrameworkStateCache(): void {
   frameworkStateInflight.clear();
 }
 
-export function isUsageExhaustedTaskAgentError(text: string): boolean {
-  return TASK_AGENT_USAGE_EXHAUSTED_RE.test(text);
-}
-
-export function markTaskAgentFrameworkUnavailable(
-  id: SupportedTaskAgentAdapter,
-  reason: string,
-  cooldownMs = 30 * 60 * 1000,
-): void {
-  frameworkCooldowns.set(id, {
-    until: Date.now() + cooldownMs,
-    reason,
-  });
-  clearTaskAgentFrameworkStateCache();
-}
-
-export function markTaskAgentFrameworkHealthy(
-  id: SupportedTaskAgentAdapter,
-): void {
-  if (frameworkCooldowns.delete(id)) {
-    clearTaskAgentFrameworkStateCache();
-  }
-}
-
 export function formatTaskAgentFrameworkLine(
   framework: TaskAgentFrameworkAvailability,
 ): string {
@@ -1390,19 +1351,6 @@ export function formatTaskAgentStatus(status: string): string {
     default:
       return status;
   }
-}
-
-export function truncateTaskAgentText(text: string, max = 120): string {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}...` : trimmed;
-}
-
-export function rewriteTaskAgentText(text: string): string {
-  return text
-    .replace(/\bcoding agents\b/gi, "task agents")
-    .replace(/\bcoding agent\b/gi, "task agent")
-    .replace(/\bcoding sessions\b/gi, "task-agent sessions")
-    .replace(/\bcoding session\b/gi, "task-agent session");
 }
 
 export { FRAMEWORK_LABELS as TASK_AGENT_FRAMEWORK_LABELS };
