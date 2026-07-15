@@ -1902,8 +1902,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     render(<NotificationsHomeCenter />);
     const priorityRow = screen.getByTestId("notification-row");
     fireEvent.click(priorityRow);
+    act(() => vi.advanceTimersByTime(40));
     const controls = screen.getByTestId("notification-stack-controls");
     const quietRow = screen.getByText("Calendar summary").closest("li");
+    const stackRows = document.querySelector(
+      "[data-notification-stack-rows]",
+    ) as HTMLElement;
+    const sourceCount = screen.getByTestId("notification-source-count");
+    expect(stackRows.style.rowGap).toBe("6px");
+    expect(sourceCount.style.opacity).toBe("0");
 
     fireEvent.click(document.body);
 
@@ -1914,6 +1921,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(controls.style.height).toBe("0px");
     expect(quietRow?.style.opacity).toBe("0");
     expect(quietRow?.style.gridTemplateRows).toBe("0fr");
+    expect(stackRows.style.rowGap).toBe("0px");
+    expect(sourceCount.style.opacity).toBe("1");
     finishShadeCollapse();
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
     expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
