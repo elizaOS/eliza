@@ -41,6 +41,17 @@ const MIN_HASH_MEMORY_SCORE = 0.5;
 const HASH_MEMORY_SNIPPET_LENGTH = 700;
 const RELEVANT_SNIPPET_LENGTH = 200;
 
+// #16393: this provider runs a TEXT_EMBEDDING query and can add seconds to
+// composeState's barrier. Opt-in soft deadline: set
+// COMPOSE_RELEVANT_CONVERSATIONS_TIMEOUT_MS to compose without it once it
+// exceeds that budget; unset keeps the global COMPOSE_STATE_PROVIDER_TIMEOUT_MS
+// fallback, i.e. no behavior change.
+const RELEVANT_CONVERSATIONS_TIMEOUT_MS = (() => {
+  const raw = process.env.COMPOSE_RELEVANT_CONVERSATIONS_TIMEOUT_MS;
+  const parsed = raw != null ? Number.parseInt(raw, 10) : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+})();
+
 function memoryText(memory: Memory): string {
   return typeof memory.content.text === "string" ? memory.content.text : "";
 }
@@ -93,6 +104,7 @@ export const relevantConversationsProvider: Provider = {
     "relevant conversation snippets across platforms; rerank by current message",
   dynamic: true,
   position: 6,
+  timeoutMs: RELEVANT_CONVERSATIONS_TIMEOUT_MS,
   relevanceKeywords: getValidationKeywordTerms(
     "provider.relevantConversations.relevance",
     {
