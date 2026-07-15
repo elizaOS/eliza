@@ -2,7 +2,7 @@
  * Composes the startup shell around boot, retry, pairing, and handoff states
  * before the app is ready.
  */
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect } from "react";
 import { getBootConfig } from "../../config/boot-config-store";
 import { markStartup } from "../../state/startup-telemetry";
 import { ElizaMark } from "../brand/eliza-mark";
@@ -11,7 +11,9 @@ import { PairingView } from "./PairingView";
 import { StartupFailureView } from "./StartupFailureView";
 import type { StartupShellProps } from "./startup-shell-types";
 
-const FONT = "'Poppins', Arial, system-ui, sans-serif";
+// The startup surface can paint before the bundled Poppins face is ready. An
+// OS-resident stack keeps the centered brand row fixed through that handoff.
+const FONT = "Arial, system-ui, sans-serif";
 
 // Launch surface for the startup splash + loading: it must match the default
 // HOME background base (#000000 = DEFAULT_BACKGROUND_COLOR, the black field
@@ -24,36 +26,6 @@ const FONT = "'Poppins', Arial, system-ui, sans-serif";
 // elizaOS defaults.
 const LAUNCH_SURFACE =
   "bg-[var(--launch-bg,#000000)] text-[var(--accent-foreground,#fff)]";
-
-// A fast, already-cached boot flips the view through the loading state for only
-// a few milliseconds before the app is ready. Painting the full-screen orange
-// splash for those few ms and then ripping it away reads as a jarring flash. So
-// the splash is gated behind a short delay: it renders ONLY once the loading
-// state has persisted this long. A boot that becomes ready first never paints
-// it. Error / pairing / bootstrap views are NOT gated — they are terminal or
-// interactive states the user is meant to see immediately, not fast-flash cases.
-// NOTE: during the ≤220ms null-render window the shell paints nothing — the
-// host's FOUC guard painting `--launch-bg` is what keeps the screen non-blank.
-export const STARTUP_SPLASH_DELAY_MS = 220;
-
-/**
- * True only after `active` has stayed `true` continuously for `delayMs`.
- * Flips back to `false` the instant `active` goes `false`. The timer lives in
- * an effect (never at render time) so the render path stays deterministic and
- * the `audit:ui-determinism` gate stays green.
- */
-function useDelayElapsed(active: boolean, delayMs: number): boolean {
-  const [elapsed, setElapsed] = useState(false);
-  useEffect(() => {
-    if (!active) {
-      setElapsed(false);
-      return;
-    }
-    const timer = setTimeout(() => setElapsed(true), delayMs);
-    return () => clearTimeout(timer);
-  }, [active, delayMs]);
-  return elapsed;
-}
 
 function brandName(): string {
   return getBootConfig().branding?.appName ?? "elizaOS";
@@ -70,17 +42,9 @@ function BrandMark(props: { className?: string }) {
 }
 
 export function StartupShell({ view, onRetry }: StartupShellProps) {
-  // The loading splash is delay-gated (see STARTUP_SPLASH_DELAY_MS): it renders
-  // only once the loading state has persisted past the threshold, so a fast
-  // cached boot that becomes ready first never flashes it.
-  const splashElapsed = useDelayElapsed(
-    view.kind === "loading",
-    STARTUP_SPLASH_DELAY_MS,
-  );
-
-  // Unconditional mount checkpoint: unlike the gated first-paint mark below,
-  // this fires as soon as the shell mounts (any view, including a fast boot
-  // that never paints the splash), so the boot-trace harness
+  // Unconditional mount checkpoint: unlike the visible-paint mark below, this
+  // fires as soon as the shell mounts (including a ready boot that never needs
+  // the React splash), so the boot-trace harness
   // (capture-startup-trace.mjs) always has a reachable renderer-only mark.
   // markStartup dedupes by name, so re-renders keep it single.
   useEffect(() => {
@@ -88,16 +52,11 @@ export function StartupShell({ view, onRetry }: StartupShellProps) {
   }, [view.kind]);
 
   // Renderer cold-start checkpoint (#9565): "first paint" of the startup front
-  // door = the moment visible startup UI actually renders. Error / pairing /
-  // bootstrap paint immediately; the loading splash paints only once the delay
-  // gate opens; the "none" (ready) branch renders null and must NOT count as a
-  // startup-shell paint (nothing painted). markStartup dedupes by name, so the
-  // first real paint wins.
-  const painting =
-    view.kind === "error" ||
-    view.kind === "pairing" ||
-    view.kind === "bootstrap" ||
-    (view.kind === "loading" && splashElapsed);
+  // door = the moment visible startup UI actually renders. Loading paints
+  // immediately because it replaces the host's identical preboot lockup; a
+  // delay would erase that lockup and expose a blank frame between renderers.
+  // The "none" (ready) branch renders null and must not count as a paint.
+  const painting = view.kind !== "none";
   useEffect(() => {
     if (painting) {
       markStartup("startup-shell:first-paint", { view: view.kind });
@@ -121,16 +80,19 @@ export function StartupShell({ view, onRetry }: StartupShellProps) {
   }
 
   if (view.kind === "loading") {
-    return splashElapsed ? (
-      <StartupLoading phase={view.phase} status={view.status} />
-    ) : null;
+    return <StartupLoading phase={view.phase} status={view.status} />;
   }
 
   // kind === "none": app is ready, the startup shell renders nothing.
   return null;
 }
 
-function StartupLoading(props: { phase: string; status: string }) {
+/**
+ * Branded loading lockup shared by the app's root Suspense handoff and the
+ * startup state machine so replacing the static preboot DOM never blanks or
+ * changes geometry while lazy UI chunks resolve.
+ */
+export function StartupLoading(props: { phase: string; status: string }) {
   return (
     <div
       data-testid="startup-shell-loading"
@@ -142,7 +104,10 @@ function StartupLoading(props: { phase: string; status: string }) {
       style={{ fontFamily: FONT }}
     >
       <div className="relative z-10 flex w-full max-w-[24rem] flex-col items-center gap-4 px-6 text-center">
-        <div className="flex items-center justify-center gap-3">
+        <div
+          data-testid="startup-brand-lockup"
+          className="flex items-center justify-center gap-3"
+        >
           <BrandMark className="h-12 w-12" />
           <span className="text-4xl font-medium leading-none tracking-normal">
             {brandName()}
