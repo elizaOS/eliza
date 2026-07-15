@@ -132,7 +132,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
           placeholder={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}
-          className="h-9 w-full rounded-md border border-border/60 bg-bg-accent/40 pl-8 pr-3 text-sm text-txt-strong outline-none placeholder:text-muted focus:border-txt/30 focus:ring-2 focus:ring-accent/40"
+          className="h-9 w-full rounded-md border border-border/60 bg-bg-accent/40 pl-8 pr-3 text-sm text-txt-strong outline-none placeholder:text-muted"
           aria-label={t("accounts.add.search", {
             defaultValue: "Search providers",
           })}
@@ -175,7 +175,7 @@ export function ProviderPicker({ onPick }: ProviderPickerProps) {
                   onMouseMove={() => setActiveIndex(index)}
                   onClick={() => onPick(option.id)}
                   className={cn(
-                    "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors focus:outline-none",
+                    "flex w-full items-center gap-3 rounded-md px-2 py-2 text-left transition-colors",
                     active ? "bg-bg-accent" : "hover:bg-bg-accent/60",
                     option.unavailable && "opacity-60",
                   )}

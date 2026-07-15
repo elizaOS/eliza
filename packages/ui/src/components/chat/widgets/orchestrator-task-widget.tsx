@@ -132,7 +132,7 @@ export function OrchestratorTaskWidgetView({
         </div>
       ) : error ? (
         <div
-          className="my-2 flex items-start gap-2 rounded-sm border border-danger/35 bg-danger/10 p-2 text-3xs text-danger"
+          className="my-2 flex items-start gap-2 rounded-sm bg-danger/10 p-2 text-3xs text-danger"
           role="alert"
         >
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
