@@ -10,9 +10,12 @@ import type { ChatMessage, IAgentRuntime, PluginAutoEnableContext } from "@eliza
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
 import {
+  buildCleanRoutingParams,
+  buildCleanRoutingSystemPrompt,
   buildEnvelopeBody,
   buildModelMetadata,
   buildModels,
+  buildRouterBody,
   ClaudeCli,
   ClaudeSdkSession,
   CodexSdkSession,
@@ -1106,6 +1109,71 @@ describe("Stage-1 ENVELOPE mode (claude-sdk handle_response tool)", () => {
         { name: "SOME_OTHER_TOOL", description: "", parameters: {} },
       ] as never)
     ).toBeUndefined();
+  });
+
+  it("buildRouterBody renders the action menu, param hints, and transcript", () => {
+    const body = buildRouterBody({
+      system: "You are the agent.",
+      messages: [
+        { role: "system", content: "steering (dropped)" },
+        { role: "user", content: "whats btc at" },
+        { role: "assistant", content: "Checking now." },
+      ],
+      tools: [
+        {
+          name: "WEB_FETCH",
+          description: "Fetch one URL.",
+          parameters: {
+            type: "object",
+            properties: {
+              url: { type: "string" },
+              extract: { type: "string" },
+              mode: { type: "string", enum: ["fast", "full"] },
+            },
+            required: ["url"],
+          },
+        },
+        { name: "VIEWS", description: "Open a view.", parameters: {} },
+      ],
+    } as never);
+    expect(body).toContain("WEB_FETCH — Fetch one URL.");
+    expect(body).toContain("url: string");
+    expect(body).toContain("extract?: string");
+    expect(body).toContain('one of ["fast", "full"]');
+    expect(body).toContain("VIEWS — Open a view. [params: (no params)]");
+    expect(body).toContain("User: whats btc at");
+    expect(body).toContain("Assistant: Checking now.");
+    expect(body).not.toContain("steering (dropped)");
+    expect(body).toContain("Agent persona / voice");
+  });
+
+  it("buildCleanRoutingParams rewrites a grammar-heavy planner call into the clean routing form", () => {
+    const clean = buildCleanRoutingParams({
+      system: "persona here",
+      messages: [
+        { role: "user", content: "whats eth at" },
+        { role: "user", content: "planner_stage: <grammar blob that must be stripped>" },
+      ],
+      tools: [{ name: "WEB_FETCH", description: "Fetch.", parameters: {} }],
+    } as never);
+    expect(clean.system).toContain("action router");
+    expect(clean.system).toContain("WEB_FETCH");
+    expect(clean.prompt).toContain("whats eth at");
+    expect(clean.prompt).not.toContain("grammar blob");
+    // only system+prompt survive so flattenPrompt forwards exactly the clean form
+    expect(clean.messages).toBeUndefined();
+    expect(clean.tools).toBeUndefined();
+  });
+
+  it("buildCleanRoutingSystemPrompt states the tool requirement only on flagged turns", () => {
+    const menu = "- WEB_FETCH — Fetch. [params: url: string]";
+    const forced = buildCleanRoutingSystemPrompt(menu, "persona", true);
+    expect(forced).toContain("flagged as needing a tool");
+    expect(forced).toContain("Do NOT answer such requests from memory");
+    const free = buildCleanRoutingSystemPrompt(menu, undefined, false);
+    expect(free).toContain("choose REPLY and put the COMPLETE answer");
+    expect(free).not.toContain("flagged as needing a tool");
+    expect(free).not.toContain("persona");
   });
 
   it("buildEnvelopeBody folds the per-turn system into the body and closes with the tool directive", () => {
