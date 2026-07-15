@@ -4140,6 +4140,34 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     ).toBeNull();
   });
 
+  it("keeps reply state inside the bounded thread and clears it when the sheet closes", async () => {
+    openThreadWith({
+      messages: [
+        {
+          id: "reply-source",
+          role: "assistant",
+          content: "Reply without moving the sheet",
+          createdAt: 1,
+        },
+      ],
+    });
+    const sheet = screen.getByTestId("chat-sheet");
+    const detentBeforeReply = sheet.getAttribute("data-detent");
+
+    revealActionsFor("Reply without moving the sheet");
+    fireEvent.click(screen.getByTestId("thread-line-reply"));
+
+    const replyPill = screen.getByTestId("chat-reply-pill");
+    expect(screen.getByTestId("chat-thread").contains(replyPill)).toBe(true);
+    expect(sheet.getAttribute("data-detent")).toBe(detentBeforeReply);
+
+    fireEvent.keyDown(screen.getByLabelText("message"), { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-reply-pill")).toBeNull();
+    });
+  });
+
   it("Play speaks the assistant message via the controller", () => {
     const speak = vi.fn();
     openThreadWith({
