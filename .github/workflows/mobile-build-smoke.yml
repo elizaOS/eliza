@@ -3,6 +3,12 @@ name: Mobile Build Smoke Test
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+    inputs:
+      concurrency_scope:
+        description: "Caller-owned concurrency namespace"
+        required: false
+        type: string
+        default: standalone
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
@@ -19,8 +25,10 @@ on:
     # gates that nightly run instead of every pull request.
     - cron: "0 7 * * *"
 
+# A reusable caller's scope separates it from the standalone ref domain. PRs
+# still supersede obsolete work; scheduled and exhaustive work always completes.
 concurrency:
-  group: mobile-smoke-${{ github.ref }}
+  group: mobile-smoke-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
