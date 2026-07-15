@@ -16,6 +16,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -660,6 +661,66 @@ describe("Memory Integration Tests", () => {
       expect(results.length).toBe(1);
       expect(results[0].id).toBe(memory1.id as UUID);
       expect(results[0].similarity).toBeGreaterThan(0.99);
+    });
+
+    it("creates the HNSW cosine index for the active dimension on ensure", async () => {
+      await adapter.ensureEmbeddingDimension(384);
+      const rows = await (
+        adapter as unknown as { db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> } }
+      ).db.execute(
+        sql`SELECT indexname FROM pg_indexes WHERE tablename = 'embeddings' AND indexname = 'idx_embeddings_dim_384_hnsw_cosine'`
+      );
+      const names = (rows.rows ?? rows) as Array<{ indexname: string }>;
+      expect(names.length).toBe(1);
+    });
+
+    it("ranks by similarity, honors the threshold, and filters through the KNN pool", async () => {
+      // Orthogonal-ish vectors with known cosine ordering against the query.
+      const dims = 384;
+      const query = Array.from({ length: dims }, (_, i) => (i === 0 ? 1 : 0));
+      const near = Array.from({ length: dims }, (_, i) => (i === 0 ? 1 : i === 1 ? 0.1 : 0));
+      const far = Array.from({ length: dims }, (_, i) => (i === 1 ? 1 : 0));
+      const nearId = v4() as UUID;
+      const farId = v4() as UUID;
+      for (const [id, embedding, text] of [
+        [nearId, near, "near"],
+        [farId, far, "far"],
+      ] as const) {
+        await adapter.createMemory(
+          {
+            id,
+            content: { text },
+            createdAt: Date.now(),
+            embedding: [...embedding],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+          } as Memory,
+          "knn-order"
+        );
+      }
+
+      const ranked = await adapter.searchMemoriesByEmbedding(query, {
+        tableName: "knn-order",
+        count: 10,
+      });
+      expect(ranked[0]?.id).toBe(nearId);
+      expect(ranked[0]?.similarity ?? 0).toBeGreaterThan(ranked[1]?.similarity ?? 1);
+
+      // The orthogonal vector (similarity 0) must fall to the threshold.
+      const thresholded = await adapter.searchMemoriesByEmbedding(query, {
+        tableName: "knn-order",
+        count: 10,
+        match_threshold: 0.5,
+      });
+      expect(thresholded.map((m) => m.id)).toEqual([nearId]);
+
+      // Type filtering applies after the KNN candidate fetch.
+      const otherTable = await adapter.searchMemoriesByEmbedding(query, {
+        tableName: "some-other-table",
+        count: 10,
+      });
+      expect(otherTable.length).toBe(0);
     });
   });
 

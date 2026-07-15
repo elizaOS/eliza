@@ -212,6 +212,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lt,
   lte,
@@ -565,7 +566,44 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       this.embeddingDimension = resolvedDimension;
+      await this.ensureEmbeddingVectorIndex(dimension);
     });
+  }
+
+  /**
+   * Create the HNSW cosine index for the active embedding column if it does
+   * not exist. Without it every `searchMemoriesByEmbedding` call is a full
+   * sequential scan computing cosine distance across the whole embeddings
+   * table — on PGlite that scan runs WASM on the main thread and freezes the
+   * event loop for the duration. Only the ACTIVE dimension is indexed (each
+   * row populates exactly one column, and deployments use one width), so
+   * fresh agents pay nothing and existing stores pay a one-time build on the
+   * first boot after upgrade.
+   */
+  private async ensureEmbeddingVectorIndex(dimension: number): Promise<void> {
+    const columnName = `dim_${dimension}`;
+    try {
+      await this.db.execute(
+        sql.raw(
+          `CREATE INDEX IF NOT EXISTS "idx_embeddings_${columnName}_hnsw_cosine" ` +
+            `ON "embeddings" USING hnsw ("${columnName}" vector_cosine_ops)`
+        )
+      );
+    } catch (error) {
+      // error-policy:J4 designed degrade — the index is a performance
+      // structure only; the KNN query is correct (just slower) without it,
+      // e.g. on a pgvector build without HNSW support. Search must not fail
+      // closed over a missing optimization.
+      logger.warn(
+        {
+          src: "plugin:sql",
+          agentId: this.agentId,
+          dimension,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Could not create HNSW index for embeddings; vector search will sequential-scan"
+      );
+    }
   }
 
   /**
@@ -2603,12 +2641,31 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
+      const activeColumn = embeddingTable[this.embeddingDimension];
+      const count = params.count ?? 10;
 
-      const similarity = sql<number>`1 - (${cosineDistance(
-        embeddingTable[this.embeddingDimension],
-        cleanVector
-      )})`;
+      // KNN-first: the inner query orders by the raw distance operator over
+      // the embeddings table alone, which is the only shape the HNSW index
+      // (see ensureEmbeddingVectorIndex) can serve — the previous
+      // similarity>=threshold + join form forced a full sequential scan.
+      // Filters and the threshold apply AFTER the candidate fetch, so the
+      // candidate pool overfetches: vector search over an index is
+      // approximate by nature, and the pool bound keeps worst-case work flat
+      // regardless of table size.
+      const candidatePool = Math.min(Math.max(count * 16, 256), 1024);
+      const knn = this.db
+        .select({
+          memoryId: embeddingTable.memoryId,
+          embedding: activeColumn,
+          distance: cosineDistance(activeColumn, cleanVector).as("distance"),
+        })
+        .from(embeddingTable)
+        .where(isNotNull(activeColumn))
+        .orderBy(asc(cosineDistance(activeColumn, cleanVector)))
+        .limit(candidatePool)
+        .as("knn");
 
+      const similarity = sql<number>`1 - ${knn.distance}`;
       const conditions = [eq(memoryTable.type, params.tableName)];
 
       if (params.unique) {
@@ -2636,13 +2693,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: memoryTable,
           similarity,
-          embedding: embeddingTable[this.embeddingDimension],
+          embedding: knn.embedding,
         })
-        .from(embeddingTable)
-        .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
+        .from(knn)
+        .innerJoin(memoryTable, eq(memoryTable.id, knn.memoryId))
         .where(and(...conditions))
         .orderBy(desc(similarity))
-        .limit(params.count ?? 10);
+        .limit(count);
 
       return results.map((row) => ({
         id: row.memory.id as UUID,
