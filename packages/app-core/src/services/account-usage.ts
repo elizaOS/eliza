@@ -47,7 +47,8 @@ function utilizationToPct(
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   // Legacy flat fields used fractions, while current nested fields and limits
   // report percentage points (including 1.0 meaning 1%, not 100%).
-  const percent = scaleFractional && value >= 0 && value <= 1 ? value * 100 : value;
+  const percent =
+    scaleFractional && value >= 0 && value <= 1 ? value * 100 : value;
   return Math.max(0, Math.min(100, percent));
 }
 
