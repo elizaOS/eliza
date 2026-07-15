@@ -1045,7 +1045,7 @@ export const ChatMessage = memo(function ChatMessage({
         initial={initial}
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={transition}
-        className="mb-1.5"
+        className="mb-0.5"
         onMouseEnter={
           supportsHover && hasActions ? () => setShowActions(true) : undefined
         }
@@ -1068,7 +1068,7 @@ export const ChatMessage = memo(function ChatMessage({
         <MessageRowContent
           className={cn(
             "relative flex flex-col",
-            hasActions && "pb-8 pointer-coarse:pb-12",
+            hasActions && "pb-7 pointer-coarse:pb-11",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
