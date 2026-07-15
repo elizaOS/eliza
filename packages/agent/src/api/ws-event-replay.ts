@@ -30,6 +30,13 @@ export interface ReplayableEvent {
   bufferSeq?: number;
 }
 
+/** Label a replay copy without mutating the canonical buffered envelope. */
+export function markReplayEvent<T extends ReplayableEvent>(
+  event: T,
+): T & { replayed: true } {
+  return { ...event, replayed: true };
+}
+
 /**
  * Resolve the monotonic sequence of a buffered envelope.
  *

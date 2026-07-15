@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_REPLAY_LIMIT,
   eventSequence,
+  markReplayEvent,
   parseEventCursor,
   type ReplayableEvent,
   selectReplayEvents,
@@ -54,6 +55,14 @@ describe("eventSequence", () => {
 
   it("returns null for an unparseable eventId", () => {
     expect(eventSequence({ eventId: "no-digits-here" })).toBeNull();
+  });
+});
+
+describe("markReplayEvent", () => {
+  it("labels a copy without contaminating the live buffered envelope", () => {
+    const live = { eventId: "evt-7", bufferSeq: 7, payload: { value: 1 } };
+    expect(markReplayEvent(live)).toEqual({ ...live, replayed: true });
+    expect(live).not.toHaveProperty("replayed");
   });
 });
 

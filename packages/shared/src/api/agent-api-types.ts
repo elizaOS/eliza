@@ -44,6 +44,12 @@ export interface StreamEventEnvelope {
    * for backward compatibility with envelopes that predate the cursor.
    */
   bufferSeq?: number;
+  /**
+   * Set only on envelopes resent from the server's connection replay buffer.
+   * Consumers may rebuild idempotent state from these frames, but must not
+   * repeat one-shot effects such as notifications, sounds, or navigation.
+   */
+  replayed?: boolean;
   stream?: string;
   sessionKey?: string;
   agentId?: string;
