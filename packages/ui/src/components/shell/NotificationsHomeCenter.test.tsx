@@ -2213,6 +2213,15 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       pointerType: "mouse",
       pointerId: 108,
       clientX: 10,
+      clientY: 80,
+    });
+    // Establish the React drag state before the deep move. Subsequent frames
+    // update the runway imperatively, which is the real-browser path that can
+    // otherwise leave stale padding behind on release.
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 108,
+      clientX: 10,
       clientY: 142,
     });
     act(() => vi.advanceTimersByTime(20));
@@ -2251,7 +2260,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.hasAttribute("data-shade-dragging")).toBe(false);
     expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
-      "0px",
+      "",
     );
   });
 
