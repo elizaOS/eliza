@@ -34,6 +34,35 @@ function isCloudflareWorkerRuntime(): boolean {
 export const NEGATIVE_CACHE_SENTINEL = { __none: true } as const;
 type NegativeSentinel = typeof NEGATIVE_CACHE_SENTINEL;
 
+/** Bounded backend names safe to include in cache telemetry. */
+export type CacheBackendKind =
+  | "cloudflare_kv"
+  | "memory"
+  | "redis_native"
+  | "redis_rest"
+  | "redis_socket"
+  | "wadis"
+  | "none"
+  | "unknown";
+
+/** Explicit cache-read result so security paths never confuse an outage with a miss. */
+export type CacheReadOutcome<T> =
+  | { kind: "hit"; value: T; backend: CacheBackendKind }
+  | { kind: "miss" | "invalid" | "unavailable" | "error"; backend: CacheBackendKind };
+
+/** Explicit cache-write result for observability without fabricating durability. */
+export type CacheWriteOutcome = {
+  kind: "written" | "invalid" | "unavailable" | "error";
+  backend: CacheBackendKind;
+};
+
+export type CacheKeyClass = "inference_auth";
+
+export interface CacheOperationOptions {
+  /** Replaces identifier-bearing cache keys with a bounded class in logs. */
+  keyClass?: CacheKeyClass;
+}
+
 function isNegativeSentinel(value: unknown): value is NegativeSentinel {
   return (
     typeof value === "object" && value !== null && (value as { __none?: unknown }).__none === true
@@ -388,6 +417,33 @@ export class CacheClient {
     return this.redis;
   }
 
+  /** Return a bounded adapter label without exposing configuration or endpoints. */
+  getBackendKind(): CacheBackendKind {
+    this.initialize();
+    switch (this.redis?.backend) {
+      case "cloudflare-kv":
+        return "cloudflare_kv";
+      case "memory":
+        return "memory";
+      case "redis-native":
+        return "redis_native";
+      case "redis-rest":
+        return "redis_rest";
+      case "redis-socket":
+        return "redis_socket";
+      case "wadis":
+        return "wadis";
+      case undefined:
+        return "none";
+      default:
+        return "unknown";
+    }
+  }
+
+  private cacheLogContext(key: string, options?: CacheOperationOptions): Record<string, string> {
+    return options?.keyClass ? { keyClass: options.keyClass } : { key };
+  }
+
   /**
    * Whether the underlying cache backend supports atomic SET NX PX (used for
    * distributed stampede locks). All Redis-protocol backends in this client
@@ -436,8 +492,23 @@ export class CacheClient {
    * @returns Cached value or null if not found or invalid.
    */
   async get<T>(key: string): Promise<T | null> {
+    const outcome = await this.getWithOutcome<T>(key);
+    return outcome.kind === "hit" ? outcome.value : null;
+  }
+
+  /**
+   * Reads a value while preserving miss, malformed-value, and backend-failure states.
+   * Auth callers use this instead of the legacy nullable contract because an
+   * unavailable cache must remain observable even though authorization safely
+   * falls back to its authoritative store.
+   */
+  async getWithOutcome<T>(
+    key: string,
+    options?: CacheOperationOptions,
+  ): Promise<CacheReadOutcome<T>> {
     const redis = await this.getRedisClient();
-    if (!redis) return null;
+    const backend = this.getBackendKind();
+    if (!redis) return { kind: "unavailable", backend };
 
     const prefixedKey = this.pk(key);
     try {
@@ -447,34 +518,40 @@ export class CacheClient {
 
       if (value === null || value === undefined) {
         this.logMetric(key, "miss", duration);
-        return null;
+        return { kind: "miss", backend };
       }
 
       // Check for corrupted cache values
       if (typeof value === "string" && value === "[object Object]") {
-        logger.warn(`[Cache] Corrupted cache value detected for key ${key}, deleting`);
-        await this.del(key);
-        return null;
+        logger.warn("[Cache] Corrupted cache value detected; deleting", {
+          ...this.cacheLogContext(key, options),
+        });
+        await this.del(key, options);
+        return { kind: "invalid", backend };
       }
 
       const parsed = parseCacheValue<T>(value);
 
       if (!this.isValidCacheValue(parsed)) {
-        logger.warn(`[Cache] Invalid cached value for key ${key}, deleting`);
-        await this.del(key);
-        return null;
+        logger.warn("[Cache] Invalid cached value; deleting", {
+          ...this.cacheLogContext(key, options),
+        });
+        await this.del(key, options);
+        return { kind: "invalid", backend };
       }
 
       this.resetFailures();
       this.logMetric(key, "hit", duration);
-      return parsed;
+      return { kind: "hit", value: parsed, backend };
     } catch (error) {
+      // error-policy:J1 cache-adapter boundary translates backend failure into
+      // an explicit error outcome; security callers then use authoritative data.
       this.recordFailure();
-      logger.warn("[Cache] GET failed, treating as cache miss", {
-        key,
+      logger.warn("[Cache] GET failed", {
+        ...this.cacheLogContext(key, options),
         error: error instanceof Error ? error.message : String(error),
       });
-      return null;
+      return { kind: "error", backend };
     }
   }
 
@@ -597,12 +674,25 @@ export class CacheClient {
    * @param ttlSeconds - Time to live in seconds.
    */
   async set<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    await this.setWithOutcome(key, value, ttlSeconds);
+  }
+
+  /** Write a value while reporting whether the backend actually accepted it. */
+  async setWithOutcome<T>(
+    key: string,
+    value: T,
+    ttlSeconds: number,
+    options?: CacheOperationOptions,
+  ): Promise<CacheWriteOutcome> {
     const redis = await this.getRedisClient();
-    if (!redis) return;
+    const backend = this.getBackendKind();
+    if (!redis) return { kind: "unavailable", backend };
 
     if (!this.isValidCacheValue(value)) {
-      logger.error(`[Cache] Attempted to cache invalid value for key ${key}`);
-      return;
+      logger.error("[Cache] Attempted to cache invalid value", {
+        ...this.cacheLogContext(key, options),
+      });
+      return { kind: "invalid", backend };
     }
 
     const serialized = serializeCacheValue(value);
@@ -613,12 +703,16 @@ export class CacheClient {
 
       this.resetFailures();
       this.logMetric(key, "set", Date.now() - start);
+      return { kind: "written", backend };
     } catch (error) {
+      // error-policy:J1 cache-adapter boundary preserves a failed write as an
+      // explicit outcome instead of claiming the value became durable.
       this.recordFailure();
       logger.warn("[Cache] SET failed", {
-        key,
+        ...this.cacheLogContext(key, options),
         error: error instanceof Error ? error.message : String(error),
       });
+      return { kind: "error", backend };
     }
   }
 
@@ -748,8 +842,8 @@ export class CacheClient {
    *
    * @param key - Cache key to delete.
    */
-  async del(key: string): Promise<void> {
-    await this.delConfirmed(key);
+  async del(key: string, options?: CacheOperationOptions): Promise<void> {
+    await this.delConfirmed(key, options);
   }
 
   /**
@@ -766,7 +860,7 @@ export class CacheClient {
    *   revoked key/session kept serving from cache until its TTL lapsed.
    *   Security-sensitive invalidation MUST fail closed on `false`. (#13417)
    */
-  async delConfirmed(key: string): Promise<boolean> {
+  async delConfirmed(key: string, options?: CacheOperationOptions): Promise<boolean> {
     const redis = await this.getRedisClient();
     if (!redis) return !this.isBackendConfigured();
 
@@ -774,14 +868,16 @@ export class CacheClient {
       const start = Date.now();
       await redis.del(this.pk(key));
 
-      logger.debug(`[Cache] DEL: ${key}`);
+      logger.debug("[Cache] DEL", this.cacheLogContext(key, options));
       this.resetFailures();
       this.logMetric(key, "del", Date.now() - start);
       return true;
     } catch (error) {
+      // error-policy:J1 cache-adapter boundary returns false so lifecycle
+      // callers can fail closed when security-sensitive invalidation fails.
       this.recordFailure();
       logger.warn("[Cache] DEL failed", {
-        key,
+        ...this.cacheLogContext(key, options),
         error: error instanceof Error ? error.message : String(error),
       });
       return false;

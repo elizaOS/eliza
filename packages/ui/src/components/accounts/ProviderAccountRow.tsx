@@ -52,6 +52,10 @@ interface ProviderAccountRowProps {
     providerId: SubscriptionProviderSelectionId,
   ) => Promise<void> | void;
   onAdd: (providerId: LinkedAccountProviderId) => void;
+  onReauthenticate?: (
+    providerId: LinkedAccountProviderId,
+    account: AccountWithCredentialFlag,
+  ) => void;
   saving: Set<string>;
   onPatch: (
     providerId: LinkedAccountProviderId,
@@ -155,6 +159,7 @@ export function ProviderAccountRow({
   onSelectChatProvider,
   onSelectSubscription,
   onAdd,
+  onReauthenticate,
   saving,
   onPatch,
   onMove,
@@ -401,6 +406,11 @@ export function ProviderAccountRow({
                   onTest={() => onTest(option.id, account.id)}
                   onRefreshUsage={() => onRefreshUsage(option.id, account.id)}
                   onDelete={() => onDelete(option.id, account.id)}
+                  onReauthenticate={
+                    onReauthenticate
+                      ? () => onReauthenticate(option.id, account)
+                      : undefined
+                  }
                 />
               </div>
             ))}

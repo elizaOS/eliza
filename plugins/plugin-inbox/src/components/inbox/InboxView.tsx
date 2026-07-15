@@ -402,7 +402,35 @@ export function InboxView(props: InboxViewProps = {}): ReactNode {
     };
   }, [state, items, filters, activeChannels]);
 
-  return <InboxSpatialView snapshot={snapshot} onAction={onAction} />;
+  const view = <InboxSpatialView snapshot={snapshot} onAction={onAction} />;
+
+  // While the initial fetch is in flight the placeholder lists ALL channels in
+  // its filter row (the connected set is unknown until data arrives), so the
+  // loading frame is denser than the settled list, which shows only connected
+  // channels. A host readiness gate that samples an unsettled frame therefore
+  // measures a different divider density than the settled one. Expose the shared
+  // `data-view-status="loading"` settle signal (the same marker DynamicViewLoader
+  // uses for bundle loading) so those gates wait for the fetch to resolve before
+  // capturing, instead of racing the placeholder (#15912). Only the transient
+  // loading frame is wrapped; the settled ready/empty/error renders are
+  // unchanged, so nothing a screenshot captures shifts.
+  if (state.kind === "loading") {
+    return (
+      <div
+        data-view-status="loading"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          flex: "1 1 auto",
+          minHeight: 0,
+          minWidth: 0,
+        }}
+      >
+        {view}
+      </div>
+    );
+  }
+  return view;
 }
 
 export default InboxView;

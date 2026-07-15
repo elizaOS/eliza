@@ -2,11 +2,11 @@
 #
 # Consumed by the cloud-api /api/v1/voice/stt route via the WHISPER_STT_URL env
 # var; serves POST /v1/audio/transcriptions (OpenAI-compatible) -> { text }. No
-# secrets required — cloud-api owns auth/billing upstream and the model is fetched
-# from Hugging Face at boot (WHISPER__MODEL in the Dockerfile).
+# secrets required — cloud-api owns auth/billing upstream and the Docker image
+# contains the model required by the route.
 #
-# healthcheckTimeout is generous: the first boot downloads the CTranslate2 model
-# weights, so early /health probes can be slow on a cold deploy.
+# healthcheckTimeout is generous because cold containers must unpack the model
+# layer and initialize the API before Railway probes the serving socket.
 
 [build]
 builder = "DOCKERFILE"

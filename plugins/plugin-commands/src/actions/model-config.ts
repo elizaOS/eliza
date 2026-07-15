@@ -374,8 +374,20 @@ export function renderModelConfigShow(
 	activeChat?: ActiveChatInfo,
 ): string {
 	const lines = ["Model configuration:"];
-	const small = chatLine("small", targets.small, "SMALL", activeChat, endpoints);
-	const large = chatLine("large", targets.large, "LARGE", activeChat, endpoints);
+	const small = chatLine(
+		"small",
+		targets.small,
+		"SMALL",
+		activeChat,
+		endpoints,
+	);
+	const large = chatLine(
+		"large",
+		targets.large,
+		"LARGE",
+		activeChat,
+		endpoints,
+	);
 	if (small) lines.push(small);
 	if (large) lines.push(large);
 

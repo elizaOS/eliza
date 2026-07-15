@@ -114,8 +114,12 @@ describe("CacheClient in Worker envs", () => {
         ];
 
         expect(cache.isAvailable()).toBe(true);
+        expect(cache.getBackendKind()).toBe("redis_rest");
 
-        await cache.set(key, history, 60);
+        expect(await cache.setWithOutcome(key, history, 60)).toEqual({
+          kind: "written",
+          backend: "redis_rest",
+        });
 
         expect(constructedClients).toEqual([
           {
@@ -124,7 +128,11 @@ describe("CacheClient in Worker envs", () => {
           },
         ]);
         expect(store.has(`staging:${key}`)).toBe(true);
-        expect(await cache.get(key)).toEqual(history);
+        expect(await cache.getWithOutcome(key)).toEqual({
+          kind: "hit",
+          value: history,
+          backend: "redis_rest",
+        });
       },
     );
   });

@@ -15,12 +15,19 @@ on:
 permissions:
   contents: read
 
+env:
+  BUN_VERSION: "canary"
+  NODE_VERSION: "24.15.0"
+
 jobs:
   collect:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 45
     env:
+      CI: "true"
       ELIZA_SKIP_ARTIFACT_SYNC: "1"
       ELIZA_LIVE_TEST: "1"
+      LIFEOPS_EVIDENCE_DIR: ${{ github.workspace }}/reports/lifeops-live-validation/11632-status
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -53,26 +60,41 @@ jobs:
       PAYPAL_CLIENT_ID: ${{ secrets.PAYPAL_CLIENT_ID }}
       PAYPAL_CLIENT_SECRET: ${{ secrets.PAYPAL_CLIENT_SECRET }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: oven-sh/setup-bun@v2
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          bun-version: latest
+          submodules: false
+          show-progress: false
 
-      - name: Install
-        run: bun run install:light
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Prepare evidence directory
+        run: |
+          set -euo pipefail
+          rm -rf "$LIFEOPS_EVIDENCE_DIR"
+          mkdir -p "$LIFEOPS_EVIDENCE_DIR/pre" "$LIFEOPS_EVIDENCE_DIR/post"
 
       - name: Collect pre-run status
-        run: node scripts/lifeops/collect-11632-live-validation-status.mjs
+        run: >-
+          node scripts/lifeops/collect-11632-live-validation-status.mjs
+          --out "$LIFEOPS_EVIDENCE_DIR/pre/status.json"
 
       - name: Run OWNER/AGENT matrix
         if: ${{ inputs.run_keyless_matrix }}
         env:
           LIFEOPS_PERMISSION_MATRIX: "1"
-          LIFEOPS_EVIDENCE_DIR: ${{ runner.temp }}/evidence/8833-lifeops-live-validation/11632-status
         run: |
-          set -o pipefail
-          mkdir -p "$LIFEOPS_EVIDENCE_DIR"
+          set -euo pipefail
           bunx vitest run \
             --config packages/test/vitest/integration.config.ts \
             plugins/plugin-personal-assistant/test/owner-agent-permission-matrix.integration.test.ts \
@@ -82,10 +104,8 @@ jobs:
         if: ${{ inputs.run_live_connectors }}
         env:
           TEST_LANE: post-merge
-          LIFEOPS_EVIDENCE_DIR: ${{ runner.temp }}/evidence/8833-lifeops-live-validation/11632-status
         run: |
-          set -o pipefail
-          mkdir -p "$LIFEOPS_EVIDENCE_DIR"
+          set -euo pipefail
           bun run --cwd plugins/plugin-google test \
             2>&1 | tee "$LIFEOPS_EVIDENCE_DIR/plugin-google-live.txt"
 
@@ -93,20 +113,29 @@ jobs:
         if: ${{ inputs.run_live_connectors }}
         env:
           TEST_LANE: post-merge
-          LIFEOPS_EVIDENCE_DIR: ${{ runner.temp }}/evidence/8833-lifeops-live-validation/11632-status
         run: |
-          set -o pipefail
-          mkdir -p "$LIFEOPS_EVIDENCE_DIR"
+          set -euo pipefail
           bun run --cwd plugins/plugin-x test \
             2>&1 | tee "$LIFEOPS_EVIDENCE_DIR/plugin-x-live.txt"
 
       - name: Collect post-run status
         if: always()
-        run: node scripts/lifeops/collect-11632-live-validation-status.mjs
+        run: >-
+          node scripts/lifeops/collect-11632-live-validation-status.mjs
+          --out "$LIFEOPS_EVIDENCE_DIR/post/status.json"
+
+      - name: Validate evidence contract
+        if: always()
+        env:
+          RUN_KEYLESS_MATRIX: ${{ inputs.run_keyless_matrix }}
+          RUN_LIVE_CONNECTORS: ${{ inputs.run_live_connectors }}
+        run: node scripts/lifeops/validate-11632-evidence.mjs
 
       - name: Upload status artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: lifeops-11632-live-validation-status
-          path: ${{ runner.temp }}/evidence/8833-lifeops-live-validation/11632-status/
+          name: lifeops-11632-live-validation-status-${{ github.sha }}
+          path: reports/lifeops-live-validation/11632-status/
+          if-no-files-found: error
+          retention-days: 14

@@ -7,7 +7,9 @@ name: coverage-gate
 # classifier strips TypeScript-only syntax before excluding modules with no
 # runtime code; declarations and deleted files are not targets. LCOV LF:0 never
 # proves type-only status. Source covered only by e2e/live lanes still needs a
-# focused unit test in this gate. Docs-only PRs do not spend coverage time.
+# focused unit test in this gate. Docs-only PRs run only the dependency-free
+# classifier so this required context always reaches a terminal success without
+# spending workspace-install or test time.
 # Standalone Node self-tests are excluded only when listed in the manifest that
 # the Develop PR Test Integrity job executes on every PR.
 # A test-only PR (changed tests, no changed source) executes its changed tests —
@@ -25,10 +27,6 @@ name: coverage-gate
 on:
   pull_request:
     branches: [develop, main]
-    paths:
-      - "packages/**"
-      - "plugins/**"
-      - "apps/**"
 
 # cancel superseded in-flight runs for the same PR to free hosted-runner
 # capacity. only cancels pull_request runs; push runs on protected branches
@@ -119,7 +117,7 @@ jobs:
               packages/cloud/api/__tests__/chat-completions-optimistic-billing.test.ts|packages/cloud/api/__tests__/chat-completions-passthrough-streaming.test.ts)
                 chat_group_tests+=("$test_file")
                 ;;
-              packages/cloud/api/__tests__/agent-a2a-billing.test.ts|packages/cloud/api/__tests__/bootstrap-app-unhandled-error.test.ts|packages/cloud/api/__tests__/messages-billing-offpath.test.ts|packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts|packages/tools/voice-evidence-harness/src/cli-run.test.ts)
+              packages/cloud/api/__tests__/agent-a2a-billing.test.ts|packages/cloud/api/__tests__/bootstrap-app-unhandled-error.test.ts|packages/cloud/api/__tests__/malformed-json-body-routes.test.ts|packages/cloud/api/__tests__/messages-billing-offpath.test.ts|packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts|packages/cloud/shared/src/lib/auth-inference-api-key.test.ts|packages/cloud/shared/src/lib/services/inference-auth-context.test.ts|packages/cloud/shared/src/lib/services/inference-hot-path-benchmark.test.ts|packages/tools/voice-evidence-harness/src/cli-run.test.ts)
                 process_isolated_tests+=("$test_file")
                 ;;
               *) shared_tests+=("$test_file") ;;

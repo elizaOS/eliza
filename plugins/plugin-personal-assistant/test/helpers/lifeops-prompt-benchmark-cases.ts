@@ -562,8 +562,9 @@ function buildCapabilityCoverageCases(): PromptBenchmarkCase[] {
     },
     {
       task: "schedule_plan",
-      prompt:
-        "Start a scheduling negotiation with Mia for a 30 minute review next week.",
+      // Listing exercises the same schedule_plan model path without dispatching
+      // to a real counterparty or requiring benchmark-owned contact fixtures.
+      prompt: "List my open scheduling negotiations.",
       expectedAction: "PERSONAL_ASSISTANT",
       expectedOperation: "scheduling",
       acceptableActions: ["CALENDAR"],

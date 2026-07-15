@@ -53,6 +53,10 @@ vi.mock("./notification-banner-store", () => ({
 }));
 
 import {
+  __resetAuthStatusForTests,
+  __setAuthStatusForTests,
+} from "../../hooks/useAuthStatus";
+import {
   __getStateForTests,
   __ingestEphemeralNotificationForTests,
   __ingestNotificationForTests,
@@ -711,5 +715,77 @@ describe("notification-store", () => {
       await expect(seedDevNotificationsIfEmpty()).resolves.toBeUndefined();
       expect(__getStateForTests().notifications).toHaveLength(0);
     });
+  });
+});
+
+describe("notification-store — protected hydrate gate (#16242)", () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, "location");
+
+  function setOrigin(url: string): void {
+    const u = new URL(url);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        href: u.href,
+        origin: u.origin,
+        protocol: u.protocol,
+        host: u.host,
+        hostname: u.hostname,
+        port: u.port,
+        pathname: u.pathname,
+        search: u.search,
+        hash: u.hash,
+        assign: () => {},
+        replace: () => {},
+        reload: () => {},
+        toString: () => u.href,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+    listNotifications
+      .mockReset()
+      .mockResolvedValue({ notifications: [], unreadCount: 0 });
+    onWsEvent.mockReset().mockReturnValue(() => {});
+    invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
+  });
+
+  afterEach(() => {
+    __resetNotificationStoreForTests();
+    __resetAuthStatusForTests();
+    if (originalLocation) {
+      Object.defineProperty(window, "location", originalLocation);
+    }
+  });
+
+  it("holds GET /api/notifications on the unauthenticated Cloud origin, then hydrates after sign-in", async () => {
+    setOrigin("https://app.elizacloud.ai/");
+    initNotifications();
+    // WS subscriptions still wire up; only the protected hydrate is held.
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+    expect(onWsEvent).toHaveBeenCalled();
+
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+  });
+
+  it("hydrates on mount on a non-Cloud origin regardless of auth (unchanged)", async () => {
+    setOrigin("http://localhost:2138/");
+    initNotifications();
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
   });
 });
