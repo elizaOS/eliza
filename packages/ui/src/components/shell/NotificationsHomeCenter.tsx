@@ -111,6 +111,7 @@ import {
   notificationGroupContainerOffset,
   notificationGroupPullOffset,
   notificationGroupPullVisibility,
+  notificationPullOvershootOffset,
   notificationPullPresentation,
   notificationPullRevealProgress,
   notificationPullRevealStyle,
@@ -386,7 +387,8 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   transition: none;
 }
 .eliza-notif-scroll[data-shade-dragging] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-settling] .eliza-notif-row {
+.eliza-notif-scroll[data-shade-settling] .eliza-notif-row,
+.eliza-notif-scroll[data-shade-release-settling] .eliza-notif-row {
   animation: none !important;
 }
 .eliza-notif-scroll .eliza-notif-row.eliza-notif-pull-reveal,
@@ -417,6 +419,13 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   -webkit-mask-image: none;
   mask-image: none;
   transition: none;
+}
+/* A released deep pull keeps the same unmasked runway until every translated
+   card reaches rest. Restoring the edge mask earlier clips the returning cards
+   while their container is still settling. */
+.eliza-notif-scroll[data-shade-release-settling] {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 /* Count and card shells become independent compositor layers while they trade
    flow space. Keep cards above the count so its label fades behind their
@@ -575,8 +584,10 @@ export function NotificationsHomeCenter({
   const [pullCancellingDirection, setPullCancellingDirection] = useState<
     "expand" | "collapse" | null
   >(null);
+  const [pullReleaseSettling, setPullReleaseSettling] = useState(false);
   const shadeCloseTimer = useRef<number | null>(null);
   const pullCancelTimer = useRef<number | null>(null);
+  const pullReleaseTimer = useRef<number | null>(null);
   const stackFoldTimers = useRef(new Map<string, PendingStackFold>());
   const centerRef = useRef<HTMLElement | null>(null);
   const pendingShadeFocusRef = useRef(false);
@@ -589,6 +600,13 @@ export function NotificationsHomeCenter({
       pullCancelTimer.current = null;
     }
     setPullCancellingDirection(null);
+  }, []);
+  const cancelPullReleaseSettle = useCallback(() => {
+    if (pullReleaseTimer.current !== null) {
+      window.clearTimeout(pullReleaseTimer.current);
+      pullReleaseTimer.current = null;
+    }
+    setPullReleaseSettling(false);
   }, []);
   const cancelStackFold = useCallback((key: string) => {
     const pending = stackFoldTimers.current.get(key);
@@ -1014,12 +1032,8 @@ export function NotificationsHomeCenter({
       // direct manipulation and must update in the current input event.
       if (!nextDirection) {
         cancelScheduledPullPresentation();
-        // Drag frames write overshoot padding directly onto the scrollport.
-        // Release must remove it in the same input event: touch and pointer
-        // commits can batch the declarative render, leaving the expanded cards
-        // with stale runway that strands the Collapse footer below them.
-        scrollRef.current?.style.removeProperty("--eliza-notif-pull-overshoot");
       } else if (directionChanged) {
+        cancelPullReleaseSettle();
         cancelScheduledPullPresentation();
         applyPullPresentation(px);
       } else {
@@ -1028,10 +1042,26 @@ export function NotificationsHomeCenter({
     },
     [
       applyPullPresentation,
+      cancelPullReleaseSettle,
       cancelScheduledPullPresentation,
       schedulePullPresentation,
     ],
   );
+
+  const beginPullReleaseSettle = useCallback((settleMs: number) => {
+    if (pullReleaseTimer.current !== null) {
+      window.clearTimeout(pullReleaseTimer.current);
+    }
+    setPullReleaseSettling(true);
+    pullReleaseTimer.current = window.setTimeout(() => {
+      pullReleaseTimer.current = null;
+      scrollRef.current?.style.setProperty(
+        "--eliza-notif-pull-overshoot",
+        "0px",
+      );
+      setPullReleaseSettling(false);
+    }, settleMs + STACK_FOLD_COMPACTION_BUFFER_MS);
+  }, []);
 
   const cancelClearConfirmation = useCallback(() => {
     setConfirmingClearAll(false);
@@ -1119,10 +1149,14 @@ export function NotificationsHomeCenter({
     // Settled renders are fully declarative. Direct writes are reserved for an
     // active drag/close so they cannot overwrite click-entry interpolation.
     if (!pullDirection && !shadeClosing) {
-      // Later drag frames mutate this custom property without a React render.
-      // Clear that imperative value after the dragging marker is removed so
-      // the enabled padding transition settles the footer back into place.
-      scrollRef.current?.style.removeProperty("--eliza-notif-pull-overshoot");
+      const list = scrollRef.current;
+      if (list) {
+        // The drag leaves its positive runway in place through the React commit
+        // that removes `data-shade-dragging`. Flush that retained start before
+        // targeting zero so padding and card transforms share one transition.
+        if (pullReleaseSettling) list.getBoundingClientRect();
+        list.style.setProperty("--eliza-notif-pull-overshoot", "0px");
+      }
       return;
     }
     if (pullDirection) {
@@ -1387,6 +1421,17 @@ export function NotificationsHomeCenter({
 
     if (px !== 0) flushPullPresentation();
     setShadeSettleDuration(settleMs);
+    const hasPositiveRunway =
+      px > 0 && notificationPullOvershootOffset(px) > 0 && canExpand;
+    if (!reduceMotion && hasPositiveRunway) {
+      beginPullReleaseSettle(settleMs);
+    } else {
+      cancelPullReleaseSettle();
+      scrollRef.current?.style.setProperty(
+        "--eliza-notif-pull-overshoot",
+        "0px",
+      );
+    }
     // Directional: a downward pull only expands, an upward push only
     // collapses. A gesture in the direction of the current state is a no-op.
     if (shouldCommit && px > 0 && canExpand) {
@@ -1401,7 +1446,9 @@ export function NotificationsHomeCenter({
     setPullPx(0);
   }, [
     armBackgroundClickSuppression,
+    beginPullReleaseSettle,
     beginPullCancellation,
+    cancelPullReleaseSettle,
     flushPullPresentation,
     inboxEmpty,
     reduceMotion,
@@ -1422,8 +1469,24 @@ export function NotificationsHomeCenter({
         );
       }
     }
+    if (!reduceMotion && px > 0 && notificationPullOvershootOffset(px) > 0) {
+      beginPullReleaseSettle(PULL_CANCEL_SETTLE_MS);
+    } else {
+      cancelPullReleaseSettle();
+      scrollRef.current?.style.setProperty(
+        "--eliza-notif-pull-overshoot",
+        "0px",
+      );
+    }
     setPullPx(0);
-  }, [beginPullCancellation, flushPullPresentation, reduceMotion, setPullPx]);
+  }, [
+    beginPullCancellation,
+    beginPullReleaseSettle,
+    cancelPullReleaseSettle,
+    flushPullPresentation,
+    reduceMotion,
+    setPullPx,
+  ]);
 
   // Shared wheel accumulator for both the list and, while empty, the wider
   // home background. Returns whether the shade consumed this delta so the
@@ -1514,7 +1577,7 @@ export function NotificationsHomeCenter({
     };
     const abortTouchPull = () => {
       resetTouchState();
-      setPullPx(0);
+      abortPointerPull();
     };
     const onTouchStart = (e: TouchEvent) => {
       const t = e.touches[0];
@@ -1696,6 +1759,7 @@ export function NotificationsHomeCenter({
       gestureTarget.removeEventListener("wheel", onEmptyBackgroundWheel);
     };
   }, [
+    abortPointerPull,
     armNotificationClickSuppression,
     commitPull,
     emptyGestureTargetRef,
@@ -1726,7 +1790,7 @@ export function NotificationsHomeCenter({
     };
     const abort = () => {
       reset();
-      setPullPx(0);
+      abortPointerPull();
     };
     const onTouchStart = (event: TouchEvent) => {
       const touch = event.touches[0];
@@ -1845,6 +1909,7 @@ export function NotificationsHomeCenter({
       surface.removeEventListener("wheel", onWheel);
     };
   }, [
+    abortPointerPull,
     armBackgroundClickSuppression,
     commitPull,
     emptyGestureTargetRef,
@@ -2098,6 +2163,9 @@ export function NotificationsHomeCenter({
       if (pullCancelTimer.current !== null) {
         window.clearTimeout(pullCancelTimer.current);
       }
+      if (pullReleaseTimer.current !== null) {
+        window.clearTimeout(pullReleaseTimer.current);
+      }
       for (const pending of stackFoldTimers.current.values()) {
         window.clearTimeout(pending.timer);
       }
@@ -2305,6 +2373,7 @@ export function NotificationsHomeCenter({
     shadeExpanded &&
     !shadeClosing &&
     !isPulling &&
+    !pullReleaseSettling &&
     pullCancellingDirection === null &&
     collapseControlPresentationVisibility === 1 &&
     expandedStacks.size === 0;
@@ -2472,6 +2541,7 @@ export function NotificationsHomeCenter({
         data-shade-preview={previewingExpansion ? "expanding" : undefined}
         data-shade-dragging={isPulling ? "" : undefined}
         data-shade-settling={shadeClosing ? "" : undefined}
+        data-shade-release-settling={pullReleaseSettling ? "" : undefined}
         style={
           {
             "--eliza-notif-base-padding": showCollapseControl ? "4px" : "40px",
@@ -2667,6 +2737,7 @@ export function NotificationsHomeCenter({
               layout={
                 !reduceMotion &&
                 !isPulling &&
+                !pullReleaseSettling &&
                 !pullCancellingDirection &&
                 !shadeClosing &&
                 !stackClosing
