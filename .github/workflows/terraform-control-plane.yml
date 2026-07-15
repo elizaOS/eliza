@@ -8,7 +8,7 @@ name: Terraform — Control Plane (Hetzner)
 #                                        environment (staging | production)
 #
 # Apply provisions a real billed Hetzner control-plane VM (the box that runs
-# eliza-provisioning-worker, agent-router, headscale, and cloudflared). It is
+# eliza-provisioning-worker, agent-router, headscale, and nginx). It is
 # an explicit operator action — it never auto-runs.
 # "develop = staging" is expressed by choosing environment=staging on dispatch.
 #

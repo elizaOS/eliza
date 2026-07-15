@@ -1,39 +1,38 @@
 # Package Infra Terraform
 
-This package-level Terraform root is not an active deployment source.
+Terraform roots for the Eliza Cloud edge and control plane. Active roots are
+`hetzner/` and `cloudflare/pages-domains/`; the `gcp/` roots are experimental.
 
-- The canonical Gateway Discord deployment terraform lives in
-  `cloud/services/gateway-discord/terraform` (AWS / EKS). It is being retired
-  as part of the AWS → Railway/Hetzner migration. See
-  [`../AWS_RETIREMENT.md`](../AWS_RETIREMENT.md) for the staged retirement
-  plan and current owner per stage.
-- The previous package-level duplicate AWS copy in
-  `legacy-gateway-discord-aws/` has been **deleted** (was a stale duplicate of
-  the gateway-discord terraform, ~1.9k lines of dead Terraform).
+- The AWS/EKS Gateway Discord Terraform (both the service-local copy and the
+  package-level `legacy-gateway-discord-aws/` duplicate) has been **deleted**
+  as part of the completed AWS retirement — see
+  [`../AWS_RETIREMENT.md`](../AWS_RETIREMENT.md). The gateways deploy on
+  Railway from their own `railway.toml` manifests.
 - The `gcp/` roots are partial and are not wired to any CI workflow in this
   repository. Treat them as experimental until a consumer is added and
   documented.
 
-Do not run Terraform from this directory expecting Gateway Discord
-infrastructure to change.
-
 ## Current deployment topology
 
-See [`../RAILWAY.md`](../RAILWAY.md) for the canonical map of where each
-service runs today. Short version:
+See [`../RAILWAY.md`](../RAILWAY.md) for the canonical
+service/runtime/request-path map. Short version:
 
-- `cloud-frontend` → Cloudflare Pages.
-- `cloud-api` → Cloudflare Worker.
-- `headscale` → Hetzner control-plane VM (agent path); `tunnel-proxy` → Railway (customer-tunnel path).
-- `gateway-discord`, `gateway-webhook` → Docker (target: Railway).
-- `agent-server`, per-customer compute → Hetzner via
-  `container-control-plane`.
-- Database → Neon (Postgres) — ONE shared DB per env (prod `ep-wild-smoke`,
-  staging `ep-wild-dawn`); Steward is an embedded `steward` schema in that same
-  shared DB, not a separate DB. Per-agent Neon branches are legacy/retired.
+- Frontends → Cloudflare Pages: `eliza-cloud` (apex) + `eliza-app`
+  (`app.elizacloud.ai`), both built from `packages/app`.
+- `eliza-cloud-api` → one Cloudflare Worker (REST API, auth, billing, model
+  gateway, dedicated-agent proxy, batch voice routes).
+- `gateway-discord`, `gateway-webhook`, `voice-kokoro-tts`,
+  `voice-whisper-stt`, `tunnel-proxy` → Railway (Docker manifests in each
+  service directory).
+- `headscale` + the provisioning daemons → Hetzner control-plane VM
+  (`hetzner/control-plane/` here); per-customer `agent-server` containers →
+  Hetzner data-plane nodes (runtime-provisioned, not Terraform).
+- Database → Railway managed Postgres (env-scoped `DATABASE_URL`; the Worker
+  connects via Hyperdrive). Redis → Railway managed Redis. Neon and
+  Upstash-as-primary are retired.
 - Object storage → Cloudflare R2 (S3-compatible).
-- Secrets/KMS → local AES-256-GCM with `SECRETS_MASTER_KEY`; optional AWS
-  KMS provider retained for callers that have already provisioned a key.
+- Secrets/KMS → local AES-256-GCM with `SECRETS_MASTER_KEY`; the deprecated
+  AWS KMS provider remains only for callers that already provisioned a key.
 
 ## What lives here today
 
