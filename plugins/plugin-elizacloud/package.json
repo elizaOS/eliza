@@ -80,7 +80,7 @@
     "@opentelemetry/api": "1.9.1",
     "@scure/bip32": "2.2.0",
     "@scure/bip39": "1.6.0",
-    "abitype": "1.2.3",
+    "abitype": "1.2.4",
     "ai": "^6.0.30",
     "isows": "1.0.7",
     "jose": "^6.2.2",
