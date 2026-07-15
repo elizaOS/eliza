@@ -423,8 +423,11 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   }
 }
 /* A view-timeline animation reattaches from its entry keyframe when a transient
-   release marker disappears. Keep it suspended for the expanded projection so
-   that handoff cannot reapply opacity/scale to otherwise-settled glass cards. */
+   drag marker disappears. Preview groups retain their own marker through a
+   cancelled settle, so their parent opacity can finish cleanly before unmount;
+   expanded and committed-release projections likewise keep one presentation
+   owner until their handoff completes. */
+.eliza-notif-scroll [data-notification-pull-reveal] .eliza-notif-row,
 .eliza-notif-scroll[data-shade-dragging] .eliza-notif-row,
 .eliza-notif-scroll[data-shade-settling] .eliza-notif-row,
 .eliza-notif-scroll[data-shade-release-settling] .eliza-notif-row,
