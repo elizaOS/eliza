@@ -8,7 +8,7 @@ name: LifeOps Prompt Benchmark
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - "plugins/plugin-personal-assistant/test/helpers/lifeops-prompt-benchmark-*.ts"
       - "plugins/plugin-personal-assistant/test/lifeops-prompt-benchmark.test.ts"
@@ -69,9 +69,25 @@ jobs:
         env:
           LIFEOPS_PROMPT_BENCHMARK_LIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.live == true && '1' || '0' }}
           LIFEOPS_PROMPT_BENCHMARK_CASE_LIMIT: ${{ inputs.case_limit || '15' }}
+          LIFEOPS_PROMPT_BENCHMARK_TARGET: host
+          LIFEOPS_PROMPT_BENCHMARK_ARTIFACT_DIR: ${{ runner.temp }}/lifeops-prompt-benchmark
+          ELIZA_TRAJECTORY_DIR: ${{ runner.temp }}/lifeops-prompt-benchmark/native-trajectories
+          ELIZA_TRAJECTORY_LOGGING: ${{ github.event_name == 'workflow_dispatch' && inputs.live == true && '1' || '0' }}
+          ELIZA_AWAIT_FACTS_STAGE: "true"
+          ELIZA_TRAJECTORY_REVIEW_MODE: "1"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           LOCAL_LLAMA_CPP_API_KEY: ${{ secrets.LOCAL_LLAMA_CPP_API_KEY }}
         run: |
+          mkdir -p "$LIFEOPS_PROMPT_BENCHMARK_ARTIFACT_DIR"
           bun run --cwd plugins/plugin-personal-assistant test -- test/lifeops-prompt-benchmark.test.ts
+
+      - name: Upload benchmark rows and native trajectories
+        if: ${{ always() && github.event_name == 'workflow_dispatch' && inputs.live == true }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: lifeops-prompt-benchmark-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/lifeops-prompt-benchmark
+          if-no-files-found: error
+          retention-days: 14
