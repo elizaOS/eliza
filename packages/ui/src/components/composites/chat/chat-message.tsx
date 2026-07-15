@@ -1156,8 +1156,10 @@ export const ChatMessage = memo(function ChatMessage({
                 ease: GLASS_EASE,
               }}
               className={cn(
-                "absolute bottom-0 z-10 min-w-0 pointer-coarse:-bottom-1",
-                isUser ? "right-0 origin-top-right" : "left-0 origin-top-left",
+                "absolute z-10 min-w-0",
+                isUser
+                  ? "-bottom-0.5 right-0 origin-top-right pointer-coarse:-bottom-1.5"
+                  : "bottom-0 left-0 origin-top-left pointer-coarse:-bottom-1",
               )}
             >
               <MessageRowFooter className="flex items-center p-0 text-white/70">
