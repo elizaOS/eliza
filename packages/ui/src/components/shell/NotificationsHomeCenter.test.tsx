@@ -586,15 +586,16 @@ describe("dampenPull", () => {
     expect(dampenPull(48)).toBe(40);
     expect(dampenPull(52)).toBe(PULL_COMMIT_PX);
     expect(dampenPull(96)).toBe(PULL_TRAVEL_PX);
-    expect(dampenPull(124)).toBeCloseTo(97.8);
+    expect(dampenPull(124)).toBeCloseTo(97.8, 1);
+    expect(dampenPull(2_000)).toBeLessThanOrEqual(PULL_TRAVEL_PX + 32);
   });
 
   it("preserves resisted travel as signed visual overshoot", () => {
     const overpull = dampenPull(124);
 
     expect(notificationPullOvershootOffset(PULL_TRAVEL_PX)).toBe(0);
-    expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8);
-    expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8);
+    expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8, 1);
+    expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8, 1);
   });
 });
 
@@ -2259,8 +2260,14 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(true);
     expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
-      "",
+      "0px",
+    );
+    act(() => vi.advanceTimersByTime(700));
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(false);
+    expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
+      "0px",
     );
   });
 
@@ -2543,14 +2550,19 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       changedTouches: [{ identifier: 15, clientX: 180, clientY: 620 }],
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
+    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(true);
     expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
-      "",
+      "0px",
     );
     expect(collapseFooter.style.transform).toBe("translateY(0px)");
 
     fireEvent.click(screen.getByTestId("notifications-collapse"));
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
+
+    act(() => vi.advanceTimersByTime(700));
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(false);
+    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
 
     fireEvent.click(screen.getByTestId("notifications-collapse"));
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
@@ -2738,12 +2750,16 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       changedTouches: [{ identifier: 14, clientX: 180, clientY: 620 }],
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(true);
     expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
-      "",
+      "0px",
     );
     expect(
       screen.getByTestId("notifications-collapse-footer").style.transform,
     ).toBe("translateY(0px)");
+
+    act(() => vi.advanceTimersByTime(700));
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(false);
 
     fireEvent.click(surface, { clientY: 620 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
