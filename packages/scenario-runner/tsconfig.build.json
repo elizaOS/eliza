@@ -4,6 +4,7 @@
     "allowImportingTsExtensions": false,
     "rewriteRelativeImportExtensions": true,
     "noEmit": false,
+    "noResolve": true,
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
