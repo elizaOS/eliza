@@ -3,6 +3,9 @@
  * the chat/prompt/response tap helpers, and add/remove listener fan-out.
  * Pure unit test — `createLogger` writes to an in-memory buffer, no I/O.
  */
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -123,7 +126,44 @@ describe("stripAnsi", () => {
     expect(stripAnsi("\x1b]0;window title\x07rest")).toBe("rest");
   });
 
+  it("strips an OSC sequence terminated by ST", () => {
+    expect(stripAnsi("\x1b]0;window title\x1b\\rest")).toBe("rest");
+  });
+
+  it("strips a standalone charset reset", () => {
+    expect(stripAnsi("\x1b(Bhello")).toBe("hello");
+  });
+
+  it("does not treat a charset reset inside OSC payload as its terminator", () => {
+    expect(stripAnsi("\x1b]0;foo(Bbar\x07rest")).toBe("rest");
+  });
+
   it("leaves text with no escape sequences unchanged", () => {
     expect(stripAnsi("no ansi here")).toBe("no ansi here");
+  });
+
+  it("writes ANSI-free messages to the configured log file", () => {
+    const directory = mkdtempSync(join(tmpdir(), "eliza-logger-"));
+    const logPath = join(directory, "output.log");
+    const previousLogFile = process.env.LOG_FILE;
+
+    try {
+      process.env.LOG_FILE = logPath;
+      __loggerTestHooks.resetFileLogForTests();
+
+      createLogger({ level: "info" }).info(
+        { src: "file-test" },
+        "\x1b[36mwritten\x1b[39m once",
+      );
+
+      const contents = readFileSync(logPath, "utf8");
+      expect(contents).toContain("[INFO    ] [FILE-TEST] written once");
+      expect(contents).not.toContain("\x1b");
+    } finally {
+      __loggerTestHooks.resetFileLogForTests();
+      if (previousLogFile === undefined) delete process.env.LOG_FILE;
+      else process.env.LOG_FILE = previousLogFile;
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

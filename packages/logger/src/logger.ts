@@ -12,6 +12,7 @@
 export const __loggerTestHooks = {
   clearEnvCacheForTests: () => {},
   stripAnsi: (str: string): string => stripAnsi(str),
+  resetFileLogForTests: (): void => resetFileLogForTests(),
 };
 
 import adze, {
@@ -371,6 +372,25 @@ function getFs(): typeof import("node:fs") | null {
   }
 }
 
+function resetFileLogForTests(): void {
+  const fs = getFs();
+  for (const fd of [_fileLogFd, _promptLogFd, _chatLogFd]) {
+    if (fs && fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // Test cleanup is best-effort; the state reset below is authoritative.
+      }
+    }
+  }
+  _fileLogFd = null;
+  _promptLogFd = null;
+  _chatLogFd = null;
+  _fileLogState = "pending";
+  _fileLogWriteErrorWarned = false;
+  _promptLogCounter = 0;
+}
+
 /**
  * Strip ANSI escape codes from a string for plain-text logging.
  * Uses RegExp constructor to avoid control-character-in-regex lint.
@@ -379,7 +399,7 @@ function stripAnsi(str: string): string {
   const ESC = "\x1b";
   const BEL = "\x07";
   const re = new RegExp(
-    `${ESC}(?:\\[[\\x20-\\x3F]*[\\x40-\\x7E]|\\].*?(?:${BEL}|${ESC}\\\\|\\(B))`,
+    `${ESC}(?:\\][\\s\\S]*?(?:${BEL}|${ESC}\\\\)|\\[[\\x20-\\x3F]*[\\x40-\\x7E]|\\(B)`,
     "g",
   );
   return str.replace(re, "");
