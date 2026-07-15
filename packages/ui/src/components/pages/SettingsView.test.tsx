@@ -1,11 +1,9 @@
 // @vitest-environment jsdom
 
 // Renders the real SettingsView against mocked state + stub sections to cover
-// the uniform layout: ONE shared ViewHeader + the iOS-style grouped hub list
-// (no desktop `w-60` rail, no horizontal tab strip, no responsive branch),
-// hub → subview navigation (hub row → section body → back to hub), the
-// initialSection prop, and per-section error boundaries (isolate a throwing
-// section, recover on retry). jsdom; sections and state barrel are stubbed.
+// the mobile hub → subview flow, the persistent desktop workspace, breakpoint
+// switching, initialSection, and per-section error boundaries. jsdom; sections
+// and state barrel are stubbed.
 
 import {
   cleanup,
@@ -217,12 +215,10 @@ describe("SettingsView", () => {
     expect(screen.queryByTestId("stub-runtime")).toBeNull();
   });
 
-  it("renders exactly ONE header and NO desktop w-60 rail", () => {
-    const { container } = render(<SettingsView />);
-    // Uniform top bar: a single shared header, never two stacked.
+  it("renders exactly one header in the mobile hub", () => {
+    render(<SettingsView />);
     expect(screen.getAllByTestId("view-header")).toHaveLength(1);
-    // The old persistent desktop rail (`nav.w-60`) is gone in every layout.
-    expect(container.querySelector("nav.w-60")).toBeNull();
+    expect(screen.queryByTestId("desktop-settings-navigation")).toBeNull();
   });
 
   it("groups the hub rows by Agent / System under the header", () => {
@@ -341,11 +337,7 @@ describe("SettingsView", () => {
     }
   });
 
-  // ── #13590: form-factor independence ──────────────────────────────────────
-  //
-  // The uniform layout has NO responsive branch (the desktop rail + mobile-hub
-  // split is gone). The same header + folded nav render regardless of viewport,
-  // so a mocked matchMedia must NOT change what is shown.
+  // ── Responsive settings workspace ─────────────────────────────────────────
 
   /** Mock matchMedia so each query resolves by the supplied predicate. */
   function mockMatchMedia(matches: (query: string) => boolean) {
@@ -365,21 +357,31 @@ describe("SettingsView", () => {
     };
   }
 
-  it("renders the same hub list on a wide (desktop) viewport", () => {
-    const restore = mockMatchMedia(() => true);
+  it("renders a persistent rail and default work area on a desktop viewport", () => {
+    const restore = mockMatchMedia((query) =>
+      query.includes("min-width: 1024px"),
+    );
     try {
       render(<SettingsView />);
-      // No auto-selected pane, no rail — the same grouped hub as on mobile.
-      expect(hubRow("identity")).toBeTruthy();
-      expect(hubRow("runtime")).toBeTruthy();
-      expect(screen.queryByTestId("stub-identity")).toBeNull();
-      expect(screen.getAllByTestId("view-header")).toHaveLength(1);
+      expect(screen.getByTestId("desktop-settings-navigation")).toBeTruthy();
+      expect(screen.getByTestId("desktop-settings-work-area")).toBeTruthy();
+      expect(screen.getByTestId("stub-identity")).toBeTruthy();
+      expect(
+        screen
+          .getByTestId("desktop-settings-item-identity")
+          .getAttribute("aria-current"),
+      ).toBe("page");
+      expect(screen.queryByTestId("settings-hub-list")).toBeNull();
+      expect(screen.queryByTestId("view-header")).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Back to launcher" }),
+      ).toBeTruthy();
     } finally {
       restore();
     }
   });
 
-  it("renders the same hub list on a narrow (mobile) viewport", () => {
+  it("keeps the current hub list on a narrow mobile viewport", () => {
     const restore = mockMatchMedia(() => false);
     try {
       render(<SettingsView />);
