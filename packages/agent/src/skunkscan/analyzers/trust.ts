@@ -156,16 +156,20 @@ export function analyzeWalletTrust(
     limitations,
 
     investorExplanation: {
-      summary: buildInvestorSummary(
-        trustLevel,
-      ),
+  summary: buildInvestorSummary(
+    trustLevel,
+  ),
 
-      whyThisAssessment: positiveSignals,
+  whyThisAssessment:
+    buildPositiveExplanation(
+      positiveSignals,
+    ),
 
-      whatReducedConfidence: limitations,
-    },
-  };
-}
+  whatReducedConfidence:
+    buildLimitationExplanation(
+      limitations,
+    ),
+},
 
 function buildInvestorSummary(
   trustLevel: WalletTrustSummary["trustLevel"],
@@ -187,4 +191,71 @@ function buildInvestorSummary(
     default:
       return "This wallet currently demonstrates very limited trust indicators. Based on the available blockchain evidence, significant uncertainties or negative indicators reduce confidence in the overall trust assessment.";
   }
+}
+
+function buildPositiveExplanation(
+  signals: string[],
+): string[] {
+  return signals.map((signal) => {
+    switch (signal) {
+      case "Wallet has a long history.":
+        return "The wallet has existed long enough to establish a meaningful blockchain history.";
+
+      case "Wallet is established.":
+        return "The wallet has been active for a sufficient period to provide meaningful historical evidence.";
+
+      case "Wallet has consistent recent activity.":
+        return "The wallet has shown consistent blockchain activity during the analyzed period.";
+
+      case "Wallet has moderate recent activity.":
+        return "The wallet demonstrates ongoing blockchain activity without appearing inactive.";
+
+      case "Wallet has some recent activity.":
+        return "Recent blockchain activity confirms that the wallet remains active.";
+
+      case "Wallet appears to have exchange-linked funding.":
+        return "Funding patterns indicate a likely connection with a centralized exchange.";
+
+      case "Wallet has an identifiable funding wallet.":
+        return "The origin of funding could be partially identified through blockchain analysis.";
+
+      case "No known exposure was identified.":
+        return "No known scam, rug-pull or suspicious exposure was identified in the connected intelligence sources.";
+
+      case "Current risk level is low.":
+        return "The calculated wallet risk remains low based on the currently available evidence.";
+
+      default:
+        return signal;
+    }
+  });
+}
+
+function buildLimitationExplanation(
+  limitations: string[],
+): string[] {
+  return limitations.map((limitation) => {
+    switch (limitation) {
+      case "Funding source is unknown.":
+        return "The original funding source could not be confidently identified.";
+
+      case "Wallet age could not be confidently determined.":
+        return "The available blockchain history was insufficient to confidently determine wallet age.";
+
+      case "Known exposure indicators reduce trust.":
+        return "Known exposure indicators reduce confidence in the overall trust assessment.";
+
+      case "Low exposure indicators were identified.":
+        return "Some exposure indicators were identified, although they are currently assessed as low impact.";
+
+      case "Medium risk level limits trust.":
+        return "The calculated wallet risk prevents a higher trust assessment.";
+
+      case "High risk level significantly limits trust.":
+        return "High-risk indicators significantly reduce the overall trust assessment.";
+
+      default:
+        return limitation;
+    }
+  });
 }
