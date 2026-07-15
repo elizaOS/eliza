@@ -36,7 +36,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
         with:
@@ -72,7 +72,7 @@ jobs:
       TF_VAR_staging_agent_certificate_pack_id: ${{ vars.STAGING_AGENT_CERTIFICATE_PACK_ID }}
       TF_VAR_staging_agent_certificate_hosts: ${{ vars.STAGING_AGENT_CERTIFICATE_HOSTS_JSON || '[]' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}

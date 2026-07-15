@@ -74,7 +74,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Lint and typecheck cloud workspaces
         run: bun run verify:cloud
@@ -95,7 +95,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
       # Guards the batch runner's output-flush contract: a failing batch must
       # surface its diagnostic instead of being swallowed by a process.exit()
@@ -127,7 +127,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
@@ -142,7 +142,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
