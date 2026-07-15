@@ -145,7 +145,7 @@
 		"@elizaos/shared": "workspace:*"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.3",
+		"@biomejs/biome": "2.5.4",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.18.1",
 		"typescript": "^6.0.3",
