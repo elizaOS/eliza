@@ -77,9 +77,43 @@ describe("evaluateOcrContent", () => {
   });
 
   it("catches a blank paint on a non-exempt view (the DOM-metric blind spot)", () => {
-    const f = evaluateOcrContent({ ocr: ocr("+", { words: 1 }) });
+    const f = evaluateOcrContent({
+      ocr: ocr("+", {
+        words: 1,
+        pixelBlank: true,
+        pixelBlankReasons: ["screenshot is one color"],
+      }),
+    });
     expect(f.blankPixels).toBe(true);
+    expect(f.ocrInconclusive).toBe(false);
     expect(f.verdict).toBe("broken");
+    expect(f.reasons).toContain("pixels are blank — screenshot is one color");
+  });
+
+  it("keeps an unreadable nonblank frame distinct from a proven blank render", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("oY)", {
+        words: 1,
+        meanConfidence: 0.4,
+        pixelBlank: false,
+      }),
+    });
+    expect(f.blankPixels).toBe(false);
+    expect(f.ocrInconclusive).toBe(true);
+    expect(f.verdict).toBe("needs-eyeball");
+    expect(f.reasons.join(" ")).toMatch(/OCR inconclusive.*not blank/);
+  });
+
+  it("does not fabricate a missing-label defect from low-confidence OCR", () => {
+    const f = evaluateOcrContent({
+      ocr: ocr("glyph noise", {
+        meanConfidence: 0.2,
+        pixelBlank: false,
+      }),
+      expectation: { requireAll: ["Ask Eliza"] },
+    });
+    expect(f.missingRequired).toHaveLength(0);
+    expect(f.verdict).toBe("needs-eyeball");
   });
 
   it("exempts TUI/canvas surfaces from the blank floor", () => {

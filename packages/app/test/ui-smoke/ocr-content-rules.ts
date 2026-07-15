@@ -1,8 +1,7 @@
 /**
- * Pixel-truth content rules for the all-views audit: given the text Apple Vision
- * OCR'd out of a captured view screenshot, decide whether the pixels a user
- * actually sees are healthy, and whether they match what the view is supposed to
- * show.
+ * Pixel-truth content rules for the all-views audit: given OCR plus independent
+ * pixel diagnostics from a captured view screenshot, decide whether the pixels
+ * a user actually sees are healthy and match what the view is supposed to show.
  *
  * This closes the gap the DOM-derived metrics in `aesthetic-audit-rules.ts` can't
  * see. `readableChars` counts text in the DOM tree; it says nothing about what
@@ -14,7 +13,7 @@
  *
  * Kept dependency-free (no OCR engine, no `page`, no fs) so it unit-tests as pure
  * functions, mirroring how `aesthetic-audit-rules.ts` was extracted from its
- * Playwright spec. The CLI (`ocr-triage.mjs`) and, in CI, the audit spec, supply
+ * Playwright spec. The CLI (`ocr-triage.ts`) and, in CI, the audit spec, supply
  * the OCR and consume the verdict.
  */
 
@@ -27,6 +26,24 @@ export interface OcrResult {
   /** Mean OCR confidence, 0..1 when the engine reports it. */
   meanConfidence: number;
   /** Present when OCR could not read the screenshot because the image or engine failed. */
+  reason?: string;
+  /** Independent pixel analysis found no opaque samples or one quantized color. */
+  pixelBlank?: boolean;
+  /** Inspectable evidence behind `pixelBlank`; OCR silence alone never populates this. */
+  pixelBlankReasons?: string[];
+  /** OCR preprocessing/segmentation path selected by the engine. */
+  selectedMode?: string;
+  /** Raw transcripts and confidences retained when the engine made multiple attempts. */
+  attempts?: OcrAttempt[];
+}
+
+export interface OcrAttempt {
+  mode: string;
+  ok: boolean;
+  text: string;
+  words: number;
+  chars: number;
+  meanConfidence: number;
   reason?: string;
 }
 
@@ -46,8 +63,10 @@ export type OcrVerdict = "verified" | "needs-eyeball" | "broken";
 
 export interface OcrContentFinding {
   verdict: OcrVerdict;
-  /** ok && the pixels carry essentially no readable text, on a view that should show some. */
+  /** Independent image analysis proved the pixels are effectively blank. */
   blankPixels: boolean;
+  /** OCR could not read the frame reliably, but the frame was not proven blank. */
+  ocrInconclusive: boolean;
   /** Developer-only strings that must never reach a user (see {@link DEVELOPER_LEAK_PATTERNS}). */
   errorLeaks: string[];
   /** Scaffolding text left in the render (lorem, TODO, unresolved template tokens). */
@@ -117,11 +136,12 @@ export function detectPlaceholderLeaks(text: string): string[] {
 }
 
 /**
- * Minimum words of OCR'd text below which a non-exempt view is considered to
- * have painted nothing. A single glyph (a lone "+" FAB, a spinner) clears no bar;
- * two real words is the floor for "this view showed the user something".
+ * Minimum words for a transcript to support content assertions. A single glyph
+ * (a lone "+" FAB, a spinner) cannot prove what the view rendered, so a shorter
+ * transcript is inconclusive; it never proves the underlying pixels are blank.
  */
-export const BLANK_PIXEL_WORD_FLOOR = 2;
+export const OCR_RELIABLE_WORD_FLOOR = 2;
+export const OCR_RELIABLE_CONFIDENCE_FLOOR = 0.45;
 
 export interface EvaluateArgs {
   ocr: OcrResult;
@@ -141,26 +161,34 @@ export function evaluateOcrContent({
     return {
       verdict: "broken",
       blankPixels: false,
+      ocrInconclusive: false,
       errorLeaks: [],
       placeholderLeaks: [],
       missingRequired: [],
       forbiddenPresent: [],
       reasons: [
         ocr.reason
-          ? `OCR failed: ${ocr.reason}`
-          : "screenshot failed to decode",
+          ? `OCR diagnostics error: ${ocr.reason}`
+          : "OCR diagnostics error: screenshot failed to decode",
       ],
     };
   }
 
   const hay = normalize(ocr.text);
-  const errorLeaks = detectErrorLeaks(ocr.text);
-  const placeholderLeaks = detectPlaceholderLeaks(ocr.text);
-  const blankPixels = !exemptFromBlank && ocr.words < BLANK_PIXEL_WORD_FLOOR;
+  const blankPixels = !exemptFromBlank && ocr.pixelBlank === true;
+  const ocrInconclusive =
+    !exemptFromBlank &&
+    !blankPixels &&
+    (ocr.words < OCR_RELIABLE_WORD_FLOOR ||
+      ocr.meanConfidence < OCR_RELIABLE_CONFIDENCE_FLOOR);
+  const errorLeaks = ocrInconclusive ? [] : detectErrorLeaks(ocr.text);
+  const placeholderLeaks = ocrInconclusive
+    ? []
+    : detectPlaceholderLeaks(ocr.text);
 
   const missingRequired: string[] = [];
   const forbiddenPresent: string[] = [];
-  if (expectation) {
+  if (expectation && !ocrInconclusive && !blankPixels) {
     for (const label of expectation.requireAll ?? []) {
       if (!hay.includes(normalize(label))) missingRequired.push(label);
     }
@@ -177,8 +205,18 @@ export function evaluateOcrContent({
     }
   }
 
-  if (blankPixels)
-    reasons.push("pixels are blank — view painted no readable text");
+  if (blankPixels) {
+    const evidence = ocr.pixelBlankReasons?.join(", ");
+    reasons.push(
+      evidence
+        ? `pixels are blank — ${evidence}`
+        : "pixels are blank — independent pixel analysis found no rendered content",
+    );
+  } else if (ocrInconclusive) {
+    reasons.push(
+      `OCR inconclusive — ${ocr.words} word(s), ${(ocr.meanConfidence * 100).toFixed(1)}% mean confidence; pixels were not blank`,
+    );
+  }
   if (errorLeaks.length)
     reasons.push(`developer string on screen: ${errorLeaks.join(", ")}`);
   if (missingRequired.length)
@@ -198,7 +236,11 @@ export function evaluateOcrContent({
   let verdict: OcrVerdict;
   if (blankPixels || errorLeaks.length > 0 || missingRequired.length > 0) {
     verdict = "broken";
-  } else if (placeholderLeaks.length > 0 || forbiddenPresent.length > 0) {
+  } else if (
+    ocrInconclusive ||
+    placeholderLeaks.length > 0 ||
+    forbiddenPresent.length > 0
+  ) {
     verdict = "needs-eyeball";
   } else if (
     expectation &&
@@ -216,6 +258,7 @@ export function evaluateOcrContent({
   return {
     verdict,
     blankPixels,
+    ocrInconclusive,
     errorLeaks,
     placeholderLeaks,
     missingRequired,

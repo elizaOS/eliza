@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveAuditAppOutput } from "../../scripts/lib/audit-output.mjs";
 import {
@@ -39,18 +40,18 @@ if (appDirCandidates.length !== 1) {
 const [APP_DIR] = appDirCandidates;
 const CLI = join(APP_DIR, "scripts", "ocr-triage.ts");
 
-/** Minimal valid 1×1 PNG — enough for `existsSync`; the CLI OCR comes from ndjson. */
-const PNG_1x1 = Buffer.from(
-  "89504e470d0a1a0a0000000d494844520000000100000001080600000" +
-    "01f15c4890000000d49444154789c62000100000500010d0a2db40000" +
-    "000049454e44ae426082",
+/** Multicolor pixels keep provenance fixtures outside the proven-blank path. */
+const PNG_2x2 = Buffer.from(
+  "89504e470d0a1a0a0000000d494844520000000200000002080600000" +
+    "072b60d240000000970485973000003e8000003e801b57b526b000000" +
+    "1349444154789c63f8cfc0f01f0c1918fe83010049c809f71463329d" +
+    "0000000049454e44ae426082",
   "hex",
 );
-
 function shot(dir: string, viewport: string, slug: string): void {
   const vp = join(dir, viewport);
   mkdirSync(vp, { recursive: true });
-  writeFileSync(join(vp, `${slug}.png`), PNG_1x1);
+  writeFileSync(join(vp, `${slug}.png`), PNG_2x2);
 }
 
 function ocrLine(viewport: string, slug: string, text: string): string {
@@ -295,6 +296,44 @@ describe("ocr-triage CLI (end-to-end provenance)", () => {
     ).toThrow(/builtin-chat::desktop-landscape points to/);
   });
 
+  it("binds pixel diagnostics by screenshot path when OCR records arrive out of order", async () => {
+    for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
+    await sharp({
+      create: {
+        width: 2,
+        height: 2,
+        channels: 4,
+        background: { r: 208, g: 216, b: 216, alpha: 1 },
+      },
+    })
+      .png()
+      .toFile(join(dir, "desktop-landscape", "builtin-chat.png"));
+    writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
+    writeFileSync(
+      join(dir, "ocr.ndjson"),
+      [
+        ocrLine("desktop-landscape", "builtin-phone", "Phone dialer keypad"),
+        ocrLine("desktop-landscape", "builtin-chat", "Chat messages composer"),
+      ].join("\n"),
+    );
+
+    const result = await runOcrTriage([
+      "--audit-dir",
+      dir,
+      "--ocr",
+      join(dir, "ocr.ndjson"),
+      "--out",
+      join(dir, "ocr-triage.json"),
+    ]);
+    const chat = result.entries.find((entry) => entry.slug === "builtin-chat");
+    const phone = result.entries.find(
+      (entry) => entry.slug === "builtin-phone",
+    );
+    if (!chat || !phone) throw new Error("expected current audit entries");
+    expect(chat.pixelBlank).toBe(true);
+    expect(phone.pixelBlank).toBe(false);
+  });
+
   it("exits non-zero when imported OCR contains a stale record", async () => {
     for (const r of CURRENT_ROWS) shot(dir, r.viewport, r.slug);
     writeFileSync(join(dir, "report.json"), JSON.stringify(CURRENT_ROWS));
@@ -394,7 +433,7 @@ describe("audit runner cleanup", () => {
   it("resets stale artifacts once before Playwright owns the run", () => {
     const stale = join(dir, "mobile-portrait", "plugin-retired-gui.png");
     mkdirSync(join(dir, "mobile-portrait"));
-    writeFileSync(stale, PNG_1x1);
+    writeFileSync(stale, PNG_2x2);
 
     const output = execFileSync(
       process.execPath,
