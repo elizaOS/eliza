@@ -26,7 +26,7 @@
     "@elizaos/plugin-openrouter": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react-dom": "19.2.7",
     "uuid": "^14.0.0"
   },
   "devDependencies": {
