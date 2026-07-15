@@ -303,6 +303,43 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("does not brick a healthy Codex credential when usage parsing fails", async () => {
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: { used_percent: 10 },
+              secondary_window: "unexpected-provider-shape",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    writeAccount(
+      "openai-codex",
+      "codex-work",
+      {
+        access: fakeJwt(Date.now() + HOUR_MS),
+        refresh: "rt-valid",
+        expires: Date.now() + HOUR_MS,
+      },
+      { organizationId: "org-work" },
+    );
+
+    const pool = getDefaultAccountPool();
+    expect(pool.get("codex-work", "openai-codex")?.health).toBe("ok");
+
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 1,
+    });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(pool.get("codex-work", "openai-codex")?.health).toBe("ok");
+  });
+
   it("heals a flagged direct-API account after its stored credential resolves", async () => {
     writeAccount("anthropic-api", "direct-work", {
       access: "sk-ant-valid",
