@@ -64,6 +64,7 @@ export const LINKED_ACCOUNT_HEALTH_STATES = [
 	'needs-reauth',
 	'invalid',
 	'unknown',
+	'expired',
 ] as const;
 
 export type LinkedAccountHealth = (typeof LINKED_ACCOUNT_HEALTH_STATES)[number];
@@ -107,6 +108,8 @@ export interface LinkedAccountConfig {
 	health: LinkedAccountHealth;
 	healthDetail?: LinkedAccountHealthDetail;
 	usage?: LinkedAccountUsage;
+	/** epoch ms — account subscription cutoff; expired when <= now */
+	subscriptionEndsAt?: number;
 	organizationId?: string;
 	userId?: string;
 	email?: string;
@@ -133,6 +136,9 @@ export const SERVICE_ROUTE_ACCOUNT_STRATEGIES = [
 	// (accounts that just reset are held in reserve). Falls back to
 	// least-recently-used when reset instants are unknown.
 	'reset-soonest',
+	// Subscription-expiry-aware: drain healthy eligible accounts whose paid
+	// window ends soon, then fall back to the provider's default ordering.
+	'drain-expiring',
 ] as const;
 
 export type ServiceRouteAccountStrategy = (typeof SERVICE_ROUTE_ACCOUNT_STRATEGIES)[number];

@@ -9,8 +9,11 @@
  */
 import { logger } from "@elizaos/core";
 import type { LinkedAccountConfig } from "@elizaos/shared";
-import { describe, expect, it, vi } from "vitest";
-import { AccountPool } from "./account-pool";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  AccountPool,
+  configureDefaultAccountPoolSelection,
+} from "./account-pool";
 
 function account(
   providerId: LinkedAccountConfig["providerId"],
@@ -28,6 +31,11 @@ function account(
     ...overrides,
   };
 }
+
+afterEach(() => {
+  vi.useRealTimers();
+  configureDefaultAccountPoolSelection();
+});
 
 describe("AccountPool provider-scoped account resolution", () => {
   it("delegates metadata deletion with the provider-qualified account id", async () => {
@@ -688,5 +696,195 @@ describe("AccountPool reset-soonest selection", () => {
         "reset-soonest",
       ),
     ).toEqual({ activeAccountId: "solo", reason: "only-eligible" });
+  });
+});
+
+// ── drain-expiring strategy + subscription expiry ────────────────────
+// Drain-expiring uses a half-open time definition around "now": accounts at
+// or before now are expired and unselectable; accounts with
+// `now < subscriptionEndsAt <= now + windowMs` are drain candidates. The upper
+// edge is inclusive so an account with exactly the configured window left is
+// drained before normal priority ordering resumes.
+describe("AccountPool drain-expiring selection", () => {
+  const fixedNow = 1_800_000_000_000;
+  const hour = 60 * 60 * 1000;
+  const poolOf = (
+    accounts: Record<string, LinkedAccountConfig>,
+    writes: LinkedAccountConfig[] = [],
+  ) =>
+    new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        writes.push(next);
+        accounts[`${next.providerId}:${next.id}`] = next;
+      },
+    });
+
+  it("prefers the earliest eligible subscription ending inside the default 48h window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:later": account("anthropic-subscription", {
+        id: "later",
+        priority: 0,
+        subscriptionEndsAt: fixedNow + 30 * hour,
+      }),
+      "anthropic-subscription:soon": account("anthropic-subscription", {
+        id: "soon",
+        priority: 10,
+        subscriptionEndsAt: fixedNow + 2 * hour,
+      }),
+      "anthropic-subscription:outside": account("anthropic-subscription", {
+        id: "outside",
+        priority: 1,
+        subscriptionEndsAt: fixedNow + 49 * hour,
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-expiring",
+      }),
+    ).resolves.toMatchObject({ id: "soon" });
+  });
+
+  it("includes the exact upper window boundary and excludes already-expired accounts", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const writes: LinkedAccountConfig[] = [];
+    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    try {
+      const accounts = {
+        "anthropic-subscription:expired": account("anthropic-subscription", {
+          id: "expired",
+          priority: 0,
+          subscriptionEndsAt: fixedNow,
+        }),
+        "anthropic-subscription:boundary": account("anthropic-subscription", {
+          id: "boundary",
+          priority: 5,
+          subscriptionEndsAt: fixedNow + 48 * hour,
+        }),
+      };
+      const pool = poolOf(accounts, writes);
+
+      await expect(
+        pool.select({
+          providerId: "anthropic-subscription",
+          strategy: "drain-expiring",
+        }),
+      ).resolves.toMatchObject({ id: "boundary" });
+      expect(writes).toHaveLength(1);
+      expect(writes[0]).toMatchObject({ id: "expired", health: "expired" });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+
+      await pool.sweepExpired("anthropic-subscription");
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("skips rate-limited, session-exhausted, and needs-reauth drain candidates", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:rate": account("anthropic-subscription", {
+        id: "rate",
+        health: "rate-limited",
+        // Even after its backoff elapses, drain-expiring only drains accounts
+        // whose persisted health is explicitly healthy.
+        healthDetail: { until: fixedNow - hour },
+        subscriptionEndsAt: fixedNow + hour,
+      }),
+      "anthropic-subscription:exhausted": account("anthropic-subscription", {
+        id: "exhausted",
+        usage: { sessionPct: 96, refreshedAt: fixedNow },
+        subscriptionEndsAt: fixedNow + 2 * hour,
+      }),
+      "anthropic-subscription:reauth": account("anthropic-subscription", {
+        id: "reauth",
+        health: "needs-reauth",
+        subscriptionEndsAt: fixedNow + 3 * hour,
+      }),
+      "anthropic-subscription:eligible": account("anthropic-subscription", {
+        id: "eligible",
+        priority: 10,
+        subscriptionEndsAt: fixedNow + 4 * hour,
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-expiring",
+      }),
+    ).resolves.toMatchObject({ id: "eligible" });
+  });
+
+  it("falls back to the provider default priority ordering when no account is inside the window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:primary": account("anthropic-subscription", {
+        id: "primary",
+        priority: 0,
+        subscriptionEndsAt: fixedNow + 72 * hour,
+      }),
+      "anthropic-subscription:older": account("anthropic-subscription", {
+        id: "older",
+        priority: 5,
+        subscriptionEndsAt: fixedNow + 49 * hour,
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-expiring",
+      }),
+    ).resolves.toMatchObject({ id: "primary" });
+    expect(
+      poolOf(accounts).selectionState(
+        "anthropic-subscription",
+        "drain-expiring",
+      ),
+    ).toEqual({ activeAccountId: "primary", reason: "priority" });
+  });
+
+  it("honors the configured per-provider drain window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    configureDefaultAccountPoolSelection({
+      accountStrategySettings: {
+        "anthropic-subscription": { drainExpiringWindowMs: 6 * hour },
+      },
+    });
+    const accounts = {
+      "anthropic-subscription:inside-custom": account(
+        "anthropic-subscription",
+        {
+          id: "inside-custom",
+          priority: 5,
+          subscriptionEndsAt: fixedNow + 5 * hour,
+        },
+      ),
+      "anthropic-subscription:outside-custom": account(
+        "anthropic-subscription",
+        {
+          id: "outside-custom",
+          priority: 0,
+          subscriptionEndsAt: fixedNow + 7 * hour,
+        },
+      ),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-expiring",
+      }),
+    ).resolves.toMatchObject({ id: "inside-custom" });
   });
 });

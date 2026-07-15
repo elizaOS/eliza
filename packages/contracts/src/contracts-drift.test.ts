@@ -72,6 +72,7 @@ describe('@elizaos/contracts public literals', () => {
 			'needs-reauth',
 			'invalid',
 			'unknown',
+			'expired',
 		]);
 		expect([...LINKED_ACCOUNT_PROVIDER_IDS]).toEqual([
 			'anthropic-subscription',
@@ -116,6 +117,7 @@ describe('@elizaos/contracts public literals', () => {
 			'least-used',
 			'quota-aware',
 			'reset-soonest',
+			'drain-expiring',
 		]);
 		expect(new Set(SERVICE_ROUTE_ACCOUNT_STRATEGIES).size).toBe(
 			SERVICE_ROUTE_ACCOUNT_STRATEGIES.length

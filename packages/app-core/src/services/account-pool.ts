@@ -67,7 +67,8 @@ export type Strategy =
   | "round-robin"
   | "least-used"
   | "quota-aware"
-  | "reset-soonest";
+  | "reset-soonest"
+  | "drain-expiring";
 
 export type PoolProviderId = LinkedAccountProviderId;
 
@@ -109,6 +110,7 @@ interface AccountPoolSelectionRoute {
 
 interface AccountPoolSelectionConfig {
   accountStrategies?: Partial<Record<PoolProviderId, unknown>>;
+  accountStrategySettings?: Partial<Record<PoolProviderId, unknown>>;
   serviceRouting?: {
     llmText?: AccountPoolSelectionRoute;
   } | null;
@@ -117,6 +119,7 @@ interface AccountPoolSelectionConfig {
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
+const DEFAULT_DRAIN_EXPIRING_WINDOW_MS = 48 * 60 * 60 * 1000;
 const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   Record<string, DirectAccountProvider>
 > = {
@@ -180,6 +183,44 @@ function bySoonestReset(
   return a.priority - b.priority;
 }
 
+function bySoonestSubscriptionEnd(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+): number {
+  const aEnd = a.subscriptionEndsAt;
+  const bEnd = b.subscriptionEndsAt;
+  if (aEnd !== bEnd)
+    return (
+      (aEnd ?? Number.MAX_SAFE_INTEGER) - (bEnd ?? Number.MAX_SAFE_INTEGER)
+    );
+  const aUsed = accountLastUsedAt(a);
+  const bUsed = accountLastUsedAt(b);
+  if (aUsed !== bUsed) return aUsed - bUsed;
+  return a.priority - b.priority;
+}
+
+function isWithinDrainWindow(
+  account: LinkedAccountConfig,
+  now: number,
+  windowMs: number,
+): boolean {
+  return (
+    typeof account.subscriptionEndsAt === "number" &&
+    account.subscriptionEndsAt > now &&
+    account.subscriptionEndsAt <= now + windowMs
+  );
+}
+
+function isAccountExpired(
+  account: LinkedAccountConfig,
+  now: number = Date.now(),
+): boolean {
+  return (
+    typeof account.subscriptionEndsAt === "number" &&
+    account.subscriptionEndsAt <= now
+  );
+}
+
 // affinity is keyed by sessionKey, which is per-conversation/per-request, so the
 // map grows one entry per distinct session over the process lifetime. Cap it
 // (FIFO by Map insertion order) — an evicted session simply re-selects on its
@@ -206,6 +247,7 @@ export class AccountPool {
 
   async select(input: SelectInput): Promise<LinkedAccountConfig | null> {
     const all = this.deps.readAccounts();
+    await this.markExpiredAccounts(input.providerId, all);
     const eligible = this.filterEligible(all, input);
     if (eligible.length === 0) return null;
 
@@ -271,8 +313,55 @@ export class AccountPool {
       reason = eligible.some((a) => accountResetAt(a) != null)
         ? "reset-soonest"
         : "least-recently-throttled";
+    } else if (strategy === "drain-expiring") {
+      const now = Date.now();
+      reason = eligible.some(
+        (a) =>
+          a.health === "ok" &&
+          accountSessionPct(a) < QUOTA_AWARE_SKIP_PCT &&
+          isWithinDrainWindow(
+            a,
+            now,
+            drainExpiringWindowMsForProvider(providerId),
+          ),
+      )
+        ? "drain-expiring"
+        : "priority";
     }
     return { activeAccountId: picked.id, reason };
+  }
+
+  async sweepExpired(providerId?: PoolProviderId): Promise<number> {
+    const all = this.deps.readAccounts();
+    return this.markExpiredAccounts(providerId, all);
+  }
+
+  private async markExpiredAccounts(
+    providerId: PoolProviderId | undefined,
+    all: Record<string, LinkedAccountConfig>,
+  ): Promise<number> {
+    const now = Date.now();
+    let changed = 0;
+    for (const account of Object.values(all)) {
+      if (providerId && account.providerId !== providerId) continue;
+      if (
+        typeof account.subscriptionEndsAt !== "number" ||
+        account.subscriptionEndsAt > now ||
+        account.health === "expired"
+      ) {
+        continue;
+      }
+      changed += 1;
+      logger.warn(
+        `[AccountPool] account expired providerId=${account.providerId} accountId=${account.id} subscriptionEndsAt=${account.subscriptionEndsAt}`,
+      );
+      await this.deps.writeAccount({
+        ...account,
+        health: "expired",
+        healthDetail: { lastChecked: now },
+      });
+    }
+    return changed;
   }
 
   private filterEligible(
@@ -337,6 +426,20 @@ export class AccountPool {
         );
         const pool = underQuota.length > 0 ? underQuota : eligible;
         return [...pool].sort(bySoonestReset)[0] ?? null;
+      }
+      case "drain-expiring": {
+        const now = Date.now();
+        const windowMs = drainExpiringWindowMsForProvider(providerId);
+        const draining = eligible.filter(
+          (account) =>
+            account.health === "ok" &&
+            accountSessionPct(account) < QUOTA_AWARE_SKIP_PCT &&
+            isWithinDrainWindow(account, now, windowMs),
+        );
+        if (draining.length > 0) {
+          return [...draining].sort(bySoonestSubscriptionEnd)[0] ?? null;
+        }
+        return [...eligible].sort(byPriorityThenAge)[0] ?? null;
       }
       default:
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
@@ -456,6 +559,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
 
     let usage: LinkedAccountUsage;
     // Anthropic's OAuth token is opaque (no OIDC claims), so accounts linked
@@ -552,6 +661,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
     // Repeated probes may report the same state; log only the transition while
     // still persisting the newest diagnostic detail on every call.
     if (account.health !== "needs-reauth") {
@@ -580,6 +695,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
     await this.deps.writeAccount({
       ...account,
       health: "invalid",
@@ -600,6 +721,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
     if (account.health === "ok") return;
     await this.deps.writeAccount({
       ...account,
@@ -644,6 +771,7 @@ export function isAccountSelectableNow(
   account: LinkedAccountConfig,
   now: number = Date.now(),
 ): boolean {
+  if (isAccountExpired(account, now)) return false;
   if (account.health === "ok") return true;
   return (
     account.health === "rate-limited" &&
@@ -717,6 +845,7 @@ interface PoolMetaFields {
   health: LinkedAccountHealth;
   healthDetail?: LinkedAccountHealthDetail;
   usage?: LinkedAccountUsage;
+  subscriptionEndsAt?: number;
   /** Persisted so recordCall's "last used" survives restarts and feeds both the
    * dashboard and the least-used age tiebreak (the credential record's own
    * lastUsedAt is only bumped by touchAccount, not by usage recording). */
@@ -791,6 +920,9 @@ function recordToLinked(
       : {}),
     ...(meta?.healthDetail ? { healthDetail: meta.healthDetail } : {}),
     ...(meta?.usage ? { usage: meta.usage } : {}),
+    ...(typeof meta?.subscriptionEndsAt === "number"
+      ? { subscriptionEndsAt: meta.subscriptionEndsAt }
+      : {}),
     ...(record.organizationId ? { organizationId: record.organizationId } : {}),
     ...(record.userId ? { userId: record.userId } : {}),
     ...(() => {
@@ -861,6 +993,9 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     health: account.health,
     ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
     ...(account.usage ? { usage: account.usage } : {}),
+    ...(typeof account.subscriptionEndsAt === "number"
+      ? { subscriptionEndsAt: account.subscriptionEndsAt }
+      : {}),
     ...(account.lastUsedAt !== undefined
       ? { lastUsedAt: account.lastUsedAt }
       : {}),
@@ -889,9 +1024,28 @@ function normalizeStrategy(value: unknown): Strategy | undefined {
     value === "round-robin" ||
     value === "least-used" ||
     value === "quota-aware" ||
-    value === "reset-soonest"
+    value === "reset-soonest" ||
+    value === "drain-expiring"
     ? value
     : undefined;
+}
+
+function readPositiveFiniteMs(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+function drainExpiringWindowMsForProvider(providerId: PoolProviderId): number {
+  const settings = defaultSelectionConfig.accountStrategySettings?.[providerId];
+  if (settings && typeof settings === "object" && !Array.isArray(settings)) {
+    const record = settings as Record<string, unknown>;
+    const windowMs = readPositiveFiniteMs(record.drainExpiringWindowMs);
+    if (windowMs !== undefined) return windowMs;
+    const windowHours = readPositiveFiniteMs(record.drainExpiringWindowHours);
+    if (windowHours !== undefined) return windowHours * 60 * 60 * 1000;
+  }
+  return DEFAULT_DRAIN_EXPIRING_WINDOW_MS;
 }
 
 function normalizeAccountIdsFromRoute(
@@ -957,6 +1111,7 @@ export function configureDefaultAccountPoolSelection(
 ): void {
   defaultSelectionConfig = {
     accountStrategies: config.accountStrategies ?? {},
+    accountStrategySettings: config.accountStrategySettings ?? {},
     serviceRouting: config.serviceRouting ?? null,
   };
 }
@@ -984,11 +1139,13 @@ export async function applyAccountPoolApiCredentials(
   opts: {
     activeBackend?: string | null;
     accountStrategies?: AccountPoolSelectionConfig["accountStrategies"];
+    accountStrategySettings?: AccountPoolSelectionConfig["accountStrategySettings"];
     serviceRouting?: AccountPoolSelectionConfig["serviceRouting"];
   } = {},
 ): Promise<void> {
   configureDefaultAccountPoolSelection({
     accountStrategies: opts.accountStrategies,
+    accountStrategySettings: opts.accountStrategySettings,
     serviceRouting: opts.serviceRouting,
   });
   const pool = getDefaultAccountPool();
@@ -1066,8 +1223,10 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
   };
 
   for (const providerId of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
+    await pool.sweepExpired(providerId);
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
+      if (pool.get(record.id, providerId)?.health === "expired") continue;
 
       // A Codex CLI may have rotated the one-time refresh token inside its
       // per-account CODEX_HOME mid-session; adopt it BEFORE resolving, or the

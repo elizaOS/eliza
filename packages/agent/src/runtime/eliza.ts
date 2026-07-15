@@ -3892,6 +3892,11 @@ export async function startEliza(
             accountStrategies?: Record<string, unknown>;
           }
         ).accountStrategies,
+        accountStrategySettings: (
+          config as Record<string, unknown> & {
+            accountStrategySettings?: Record<string, unknown>;
+          }
+        ).accountStrategySettings,
         serviceRouting: resolveServiceRoutingInConfig(
           config as Record<string, unknown>,
         ),
@@ -5585,6 +5590,11 @@ export async function startEliza(
                   accountStrategies?: Record<string, unknown>;
                 }
               ).accountStrategies,
+              accountStrategySettings: (
+                freshConfig as Record<string, unknown> & {
+                  accountStrategySettings?: Record<string, unknown>;
+                }
+              ).accountStrategySettings,
               serviceRouting: resolveServiceRoutingInConfig(
                 freshConfig as Record<string, unknown>,
               ),

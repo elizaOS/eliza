@@ -89,4 +89,18 @@ describe("AccountCard health and repair actions", () => {
     expect(screen.getByText(/Rate-limited/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Reauthenticate" })).toBeNull();
   });
+
+  it("renders expired as a distinct non-reauth health state", () => {
+    renderAccount({
+      ...baseAccount,
+      health: "expired",
+      subscriptionEndsAt: Date.now() - 1,
+    });
+
+    expect(screen.getByText("Expired")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reauthenticate" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Replace credential" }),
+    ).toBeNull();
+  });
 });

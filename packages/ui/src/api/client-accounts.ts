@@ -17,6 +17,7 @@ export interface ProviderSelectionState {
   activeAccountId: string | null;
   reason:
     | "reset-soonest"
+    | "drain-expiring"
     | "only-eligible"
     | "priority"
     | "round-robin"

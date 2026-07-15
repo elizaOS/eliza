@@ -97,7 +97,8 @@ export type CodingAccountStrategy =
 	// plugin-cli-inference (#16203). The type accepts it here so the
 	// settings picker can persist it; the actual reset-soonest ordering is
 	// implemented in AccountPool.applyStrategy (app-core).
-	| "reset-soonest";
+	| "reset-soonest"
+	| "drain-expiring";
 
 export interface CodingAccountUsage {
 	sessionPct?: number;

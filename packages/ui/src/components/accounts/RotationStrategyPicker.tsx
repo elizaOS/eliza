@@ -65,6 +65,14 @@ const STRATEGY_OPTIONS: readonly StrategyOption[] = [
     descriptionFallback:
       "Spend the account whose weekly limit resets first; hold freshly-reset accounts in reserve.",
   },
+  {
+    id: "drain-expiring",
+    labelKey: "accounts.strategy.drainExpiring.label",
+    labelFallback: "Drain expiring",
+    descriptionKey: "accounts.strategy.drainExpiring.description",
+    descriptionFallback:
+      "Prefer healthy accounts whose subscription ends within the drain window.",
+  },
 ];
 
 export function RotationStrategyPicker({

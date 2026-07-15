@@ -160,6 +160,13 @@ function deriveHealthLabel(
         }),
         tone: "danger",
       };
+    case "expired":
+      return {
+        label: t("accounts.health.expired", {
+          defaultValue: "Expired",
+        }),
+        tone: "warning",
+      };
     default:
       return {
         label: t("accounts.health.unknown", { defaultValue: "Unknown" }),

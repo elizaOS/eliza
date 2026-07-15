@@ -77,6 +77,8 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "round-robin",
   "least-used",
   "quota-aware",
+  "reset-soonest",
+  "drain-expiring",
 ]);
 
 /** Last-resort strategy — the ELIZA_CODING_ACCOUNT_STRATEGY env var, else least-used. */

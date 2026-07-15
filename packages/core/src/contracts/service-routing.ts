@@ -211,7 +211,8 @@ function normalizeServiceRouteAccountStrategy(
 		value === "round-robin" ||
 		value === "least-used" ||
 		value === "quota-aware" ||
-		value === "reset-soonest"
+		value === "reset-soonest" ||
+		value === "drain-expiring"
 		? value
 		: undefined;
 }
@@ -296,7 +297,8 @@ function normalizeLinkedAccountHealth(
 		value === "rate-limited" ||
 		value === "needs-reauth" ||
 		value === "invalid" ||
-		value === "unknown"
+		value === "unknown" ||
+		value === "expired"
 		? value
 		: undefined;
 }
@@ -398,6 +400,11 @@ export function normalizeLinkedAccountRecord(
 			: undefined;
 	const healthDetail = normalizeLinkedAccountHealthDetail(record.healthDetail);
 	const usage = normalizeLinkedAccountUsage(record.usage);
+	const subscriptionEndsAt =
+		typeof record.subscriptionEndsAt === "number" &&
+		Number.isFinite(record.subscriptionEndsAt)
+			? record.subscriptionEndsAt
+			: undefined;
 	const organizationId = readTrimmedString(record, "organizationId");
 	const userId = readTrimmedString(record, "userId");
 	const email = readTrimmedString(record, "email");
@@ -414,6 +421,7 @@ export function normalizeLinkedAccountRecord(
 		...(lastUsedAt !== undefined ? { lastUsedAt } : {}),
 		...(healthDetail ? { healthDetail } : {}),
 		...(usage ? { usage } : {}),
+		...(subscriptionEndsAt !== undefined ? { subscriptionEndsAt } : {}),
 		...(organizationId ? { organizationId } : {}),
 		...(userId ? { userId } : {}),
 		...(email ? { email } : {}),
