@@ -1880,6 +1880,9 @@ export function ContinuousChatOverlay({
   ]);
   const turnStatusAnchorId = React.useMemo(() => {
     if (!responding) return null;
+    // Manual playback belongs to the message that started it. Automatic voice
+    // replies have no source id and continue to use the latest visible turn.
+    if (speaking && playingMessageId) return playingMessageId;
     for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
       const candidate = visibleMessages[index];
       if (!candidate) continue;
@@ -1894,7 +1897,7 @@ export function ContinuousChatOverlay({
       if (!isEmptyAssistantPlaceholder) return candidate.id;
     }
     return null;
-  }, [responding, visibleMessages]);
+  }, [playingMessageId, responding, speaking, visibleMessages]);
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The thread body is mounted while the sheet is open OR during an upward

@@ -4172,6 +4172,59 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     ).toEqual(["Stop", "Play audio"]);
   });
 
+  it("keeps the Speaking status on the older message that started playback", () => {
+    const speak = vi.fn();
+    const messages: ShellMessage[] = [
+      {
+        id: "older-assistant",
+        role: "assistant",
+        content: "older answer",
+        createdAt: 1,
+      },
+      {
+        id: "newer-assistant",
+        role: "assistant",
+        content: "newer answer",
+        createdAt: 2,
+      },
+    ];
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({ messages, speak, speaking: false })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    revealActionsFor("older answer");
+    const olderRow = screen
+      .getByText("older answer")
+      .closest('[data-testid="thread-line"]');
+    if (!olderRow) throw new Error("older message row not found");
+    fireEvent.click(
+      olderRow.querySelector(
+        '[data-testid="thread-line-speak"]',
+      ) as HTMLElement,
+    );
+
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages,
+          speak,
+          speaking: true,
+          responding: true,
+          turnStatus: { kind: "speaking" },
+        })}
+      />,
+    );
+
+    const statusRow = screen
+      .getByTestId("turn-status-accessory")
+      .closest('[data-testid="thread-line"]');
+    expect(statusRow).toBe(olderRow);
+    expect(statusRow?.textContent).toContain("Speaking");
+    expect(statusRow?.textContent).not.toContain("newer answer");
+  });
+
   it("row Copy writes the message text to the clipboard", () => {
     vi.mocked(copyTextToClipboard).mockClear();
     openThreadWith({
