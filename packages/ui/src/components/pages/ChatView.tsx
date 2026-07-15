@@ -885,7 +885,7 @@ export function ChatView({
           ttsError={voiceSession.ttsError}
           realtimeActive={voiceSession.realtimeActive}
           realtimeConnecting={voiceSession.realtimeConnecting}
-          realtimeAvailable={voiceSession.realtimeAvailable}
+          realtimeEligible={voiceSession.realtimeEligible}
           realtimePaused={voiceSession.paused}
           // Every realtime error renders, actionable or not — a consent/mint
           // failure must never read as healthy-idle (UI three-state rule).

@@ -957,10 +957,10 @@ export function useChatVoiceController(options: {
       // state. An actionable error (permission re-granted, transport drop,
       // connect timeout) advertises "tap the mic to try again" — so that tap
       // must re-enter the realtime branch (start() clears the error); only
-      // non-actionable failures (consent/mint, which also latch `available`
+      // non-actionable failures (consent/mint, which also latch eligibility
       // off) hand the tap to the batch path as their copy promises.
       if (
-        voiceSession.realtimeAvailable &&
+        voiceSession.realtimeEligible &&
         (!voiceSession.realtimeError || voiceSession.realtimeError.actionable)
       ) {
         setManualRealtimeIntent(true);
@@ -972,7 +972,12 @@ export function useChatVoiceController(options: {
           : null;
         voiceDraftBaseInputRef.current = chatInput;
         stopSpeaking();
-        void voiceSession.start();
+        void voiceSession.start().then((outcome) => {
+          realtimeStartPendingRef.current = false;
+          if (outcome.kind !== "fallback-to-batch") return;
+          setManualRealtimeIntent(false);
+          beginBatchVoiceCapture(mode);
+        });
         return;
       }
       beginBatchVoiceCapture(mode);

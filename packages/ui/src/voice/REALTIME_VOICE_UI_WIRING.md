@@ -20,7 +20,8 @@ batch ASR path completely unchanged.
   before every initial or reconnect mint. A local/self-hosted runtime yields no
   UUID → realtime never arms.
 - `useContinuousVoiceSession` — composes the batch continuous-chat engine with
-  the realtime session; selects realtime when `available`, else batch UNCHANGED.
+  the realtime session; tries realtime when eligible, else batch UNCHANGED.
+  Eligibility is not proof that mint or WebSocket setup has succeeded.
 - `chat-view-hooks.tsx` — `useChatVoiceController` now creates the realtime
   session + composed surface, drives realtime on/off from the SAME continuous-
   chat toggle, and `disabled`s the batch passive capture while realtime owns the
@@ -83,9 +84,10 @@ path to arm.
 2. Repeat steps 2–6 above. Extra iOS checks:
    - **Autoplay unlock:** the FIRST agent audio must be audible without a second
      tap — the session `start()` resumes the AudioContext on the start gesture.
-   - **Background/foreground:** background the app mid-session; the status bar
-     shows a **Paused** pill (not a dead/broken bar). Foreground it; the pill
-     clears and capture resumes.
+  - **Background/foreground:** backgrounding may let the app render a
+    **Paused** pill, but iOS can also suspend the WebView before JS runs and
+    kill the JS/WS session outright. On foreground, expect reconnect/re-mint;
+    if the turn was interrupted before final STT, re-speak that turn.
    - **AudioWorklet vs ScriptProcessor:** the client probes at runtime; both are
      covered. On the installed PWA the AudioWorklet path is expected.
 

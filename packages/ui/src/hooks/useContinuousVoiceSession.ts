@@ -16,6 +16,7 @@ import type {
 } from "./useContinuousChat";
 import type {
   RealtimeVoiceError,
+  RealtimeVoiceStartOutcome,
   UseRealtimeVoiceSessionState,
 } from "./useRealtimeVoiceSession";
 
@@ -31,8 +32,8 @@ export interface ContinuousVoiceSessionState {
   realtimeActive: boolean;
   /** True while a started realtime session is still working toward live. */
   realtimeConnecting: boolean;
-  /** True when the realtime path COULD drive the mic (flag on + mint ok). */
-  realtimeAvailable: boolean;
+  /** True when realtime is eligible to try; not proof that mint succeeded. */
+  realtimeEligible: boolean;
   /** Unified status for `ChatVoiceStatusBar` (realtime wins when active). */
   status: VoiceContinuousStatus;
   /** Live partial transcript (realtime `stt_partial`, else batch interim). */
@@ -58,12 +59,11 @@ export interface ContinuousVoiceSessionState {
   /** Fail-closed TTS error banner (batch). */
   ttsError: ContinuousChatState["ttsError"];
   /**
-   * Start capture. Realtime when available (mint + WS + mic), else resume the
-   * batch passive capture. On a realtime start that resolves to feature-disabled
-   * (404), the realtime path flips unavailable and the caller can fall through
-   * to batch on the next tap.
+   * Start capture. Realtime when eligible, else resume the batch passive
+   * capture. Pre-live realtime failures return a typed fallback outcome so the
+   * caller can start the existing batch path from the same mic tap.
    */
-  start: () => Promise<void>;
+  start: () => Promise<RealtimeVoiceStartOutcome | { kind: "batch" }>;
   /** Stop capture on whichever path is live. */
   stop: () => Promise<void>;
   /** Barge-in (realtime-only; no-op on batch). */
@@ -79,13 +79,10 @@ export function useContinuousVoiceSession(
 
   const start = useCallback(async () => {
     if (realtime.available) {
-      await realtime.start();
-      // If the start resolved to feature-disabled, `realtime.available` is now
-      // false; the caller's NEXT gesture takes the batch branch. We do not
-      // silently start batch here — the user's single gesture starts one path.
-      return;
+      return realtime.start();
     }
     await batch.resume();
+    return { kind: "batch" };
   }, [batch, realtime]);
 
   const stop = useCallback(async () => {
@@ -115,7 +112,7 @@ export function useContinuousVoiceSession(
     return {
       realtimeActive,
       realtimeConnecting: realtime.available && realtime.connecting,
-      realtimeAvailable: realtime.available,
+      realtimeEligible: realtime.available,
       status,
       interimTranscript,
       finalTranscript: realtimeActive ? realtime.transcriptFinal : "",

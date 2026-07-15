@@ -489,6 +489,7 @@ jobs:
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
           # Keep this mirror locked to wrangler.toml's env.production value.
           # The workflow contract test fails if they drift.
           PRODUCTION_REALTIME_WS_ENABLED: "false"
@@ -516,21 +517,22 @@ jobs:
             [ -n "${value//[[:space:]]/}" ]
           }
 
-          # Construct the staging fallback only when the source key is real.
-          # Never publish the invalid-but-nonempty string "Bearer ".
-          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
-             ! has_nonblank_value "$VOICE_REALTIME_ELIZA_AUTHORIZATION" && \
-             has_nonblank_value "$STAGING_ELIZACLOUD_API_KEY"; then
-            VOICE_REALTIME_ELIZA_AUTHORIZATION="Bearer $STAGING_ELIZACLOUD_API_KEY"
-            export VOICE_REALTIME_ELIZA_AUTHORIZATION
-          fi
-
           is_truthy() {
             case "${1,,}" in
               1|true|yes|on) return 0 ;;
               *) return 1 ;;
             esac
           }
+
+          # Construct the staging fallback only when the source key is real.
+          # Never publish the invalid-but-nonempty string "Bearer ".
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             is_truthy "$VOICE_REALTIME_WS_ENABLED" && \
+             ! has_nonblank_value "$VOICE_REALTIME_ELIZA_AUTHORIZATION" && \
+             has_nonblank_value "$STAGING_ELIZACLOUD_API_KEY"; then
+            VOICE_REALTIME_ELIZA_AUTHORIZATION="Bearer $STAGING_ELIZACLOUD_API_KEY"
+            export VOICE_REALTIME_ELIZA_AUTHORIZATION
+          fi
 
           # Production realtime is currently explicitly disabled. A stale
           # Worker secret may therefore remain stored but is unreachable. If a
@@ -552,11 +554,12 @@ jobs:
             fi
           fi
 
-          # Staging has VOICE_REALTIME_WS_ENABLED=true in wrangler.toml. Refuse
-          # to deploy that advertised feature unless every required provider
-          # and bridge credential is present; a green deploy with a 503-only
-          # voice route is not an honest availability signal.
-          if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
+          # Staging advertises realtime only when the repository variable
+          # VOICE_REALTIME_WS_ENABLED is explicitly truthy. Refuse that opt-in
+          # unless every required provider and bridge credential is present; a
+          # green deploy with a 503-only voice route is not honest availability.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
             missing_voice_secrets=()
             for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
               if ! has_nonblank_value "${!name:-}"; then
@@ -580,6 +583,14 @@ jobs:
           publish_secret() {
             local name="$1"
             local value="${!name:-}"
+            case "$name" in
+              DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
+                if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+                  echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
+                  return 0
+                fi
+                ;;
+            esac
             if ! has_nonblank_value "$value"; then
               echo "::notice::$name is not configured; skipping"
               return 0
@@ -921,7 +932,7 @@ jobs:
           # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
           # the only thing the bundle can see at runtime.
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && '0' || '1' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
@@ -1304,7 +1315,7 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
-          VITE_VOICE_REALTIME_WS: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && '0' || '1' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main')) && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
           VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
