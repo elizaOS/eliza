@@ -94,9 +94,11 @@ export function groupDashboardNotifications(
 }
 
 export function ClearConfirmationContent({
+  confirmingLabel = "Clear",
   confirming,
   restingLabel,
 }: {
+  confirmingLabel?: string;
   confirming: boolean;
   restingLabel?: string;
 }): JSX.Element {
@@ -125,6 +127,7 @@ export function ClearConfirmationContent({
       </span>
       <span
         aria-hidden={!confirming}
+        data-notification-clear-confirming-label=""
         className={cn(
           "eliza-notif-control-transition absolute transition-[opacity,transform] duration-200 ease-out",
           confirming
@@ -132,7 +135,7 @@ export function ClearConfirmationContent({
             : "translate-y-0.5 scale-95 opacity-0",
         )}
       >
-        Clear
+        {confirmingLabel}
       </span>
     </span>
   );

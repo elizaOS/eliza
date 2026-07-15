@@ -67,6 +67,40 @@ import {
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
+const FINE_POINTER_QUERY = "(hover: hover) and (pointer: fine)";
+
+function staticMediaQuery(media: string, matches: boolean): MediaQueryList {
+  return {
+    matches,
+    media,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  } as unknown as MediaQueryList;
+}
+
+function installPointerCapability(finePointer: boolean): void {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(
+    window,
+    "matchMedia",
+  );
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: (query: string) =>
+      staticMediaQuery(query, query === FINE_POINTER_QUERY && finePointer),
+  });
+  restoreMatchMediaForTest = () => {
+    if (originalDescriptor) {
+      Object.defineProperty(window, "matchMedia", originalDescriptor);
+    } else {
+      Reflect.deleteProperty(window, "matchMedia");
+    }
+    restoreMatchMediaForTest = null;
+  };
+}
 
 function installReducedMotionController(initialMatches = false): {
   setMatches: (matches: boolean) => void;
@@ -99,7 +133,8 @@ function installReducedMotionController(initialMatches = false): {
   } as unknown as MediaQueryList;
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
-    value: () => mediaQuery,
+    value: (query: string) =>
+      query === media ? mediaQuery : staticMediaQuery(query, false),
   });
   restoreMatchMediaForTest = () => {
     if (originalDescriptor) {
@@ -1997,7 +2032,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   });
 
-  it("requires X then Clear before clearing the expanded inbox", () => {
+  it("asks for an explicit second-click confirmation on fine pointers", () => {
+    installPointerCapability(true);
     seedTriage();
     render(<NotificationsHomeCenter />);
     expandShade();
@@ -2011,7 +2047,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       .closest("section")
       ?.querySelector("style")?.textContent;
     expect(clearCss).toContain(".eliza-notif-clear-all {");
-    expect(clearCss).toContain("@media (hover: none), (pointer: coarse)");
+    expect(clearCss).not.toContain("@media (hover: none), (pointer: coarse)");
     expect(clearCss).toContain("@media (hover: hover) and (pointer: fine)");
     expect(clearCss).toContain(
       ".eliza-notif-clear-all:not([data-confirming]):focus-visible",
@@ -2026,7 +2062,39 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(clear.dataset.confirming).toBeUndefined();
     fireEvent.click(clear);
     expect(clear.dataset.confirming).toBe("true");
+    expect(clear.getAttribute("aria-label")).toBe(
+      "Confirm clear all notifications",
+    );
+    expect(
+      clear.querySelector("[data-notification-clear-confirming-label]")
+        ?.textContent,
+    ).toBe("Confirm?");
     expect(__getStateForTests().notifications).toHaveLength(3);
+    fireEvent.click(clear);
+    expect(__getStateForTests().notifications).toHaveLength(0);
+  });
+
+  it("keeps the coarse-pointer X then Clear all two-tap flow", () => {
+    installPointerCapability(false);
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    expandShade();
+    const clear = screen.getByTestId("notifications-clear-all");
+    expect(clear.dataset.confirming).toBeUndefined();
+    expect(clear.getAttribute("aria-label")).toBe("Clear all notifications");
+
+    fireEvent.click(clear);
+
+    expect(clear.dataset.confirming).toBe("true");
+    expect(clear.getAttribute("aria-label")).toBe(
+      "Confirm clear all notifications",
+    );
+    expect(
+      clear.querySelector("[data-notification-clear-confirming-label]")
+        ?.textContent,
+    ).toBe("Clear all");
+    expect(__getStateForTests().notifications).toHaveLength(3);
+
     fireEvent.click(clear);
     expect(__getStateForTests().notifications).toHaveLength(0);
   });
