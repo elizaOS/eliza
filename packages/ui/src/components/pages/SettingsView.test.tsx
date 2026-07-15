@@ -358,12 +358,15 @@ describe("SettingsView", () => {
   }
 
   it("renders a persistent rail and default work area on a desktop viewport", () => {
-    const restore = mockMatchMedia((query) =>
-      query.includes("min-width: 1024px"),
-    );
+    const restore = mockMatchMedia((query) => query.includes("min-width:"));
     try {
       render(<SettingsView />);
-      expect(screen.getByTestId("desktop-settings-navigation")).toBeTruthy();
+      const navigation = screen.getByTestId("desktop-settings-navigation");
+      expect(navigation).toBeTruthy();
+      expect(screen.getByTestId("desktop-settings-fixed-pane")).toBeTruthy();
+      // The fixed pane is a sibling of WorkspaceLayout's scrolling <main>, not
+      // a sticky child that disappears as the section content scrolls.
+      expect(navigation.closest("main")).toBeNull();
       expect(screen.getByTestId("desktop-settings-work-area")).toBeTruthy();
       expect(screen.getByTestId("stub-identity")).toBeTruthy();
       expect(
@@ -388,6 +391,9 @@ describe("SettingsView", () => {
       expect(hubRow("identity")).toBeTruthy();
       expect(screen.queryByTestId("stub-identity")).toBeNull();
       expect(screen.getAllByTestId("view-header")).toHaveLength(1);
+      expect(
+        screen.queryByTestId("page-layout-mobile-sidebar-trigger"),
+      ).toBeNull();
     } finally {
       restore();
     }

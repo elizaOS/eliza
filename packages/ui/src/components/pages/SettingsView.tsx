@@ -306,12 +306,24 @@ export function SettingsView({
     : settingsTitle;
   const onBack = activeSectionDef ? backToHub : navigateBackToLauncher;
   const backLabel = activeSectionDef ? "Back to Settings" : "Back to launcher";
+  const desktopSidebar = isDesktop ? (
+    <DesktopSettingsNavigation
+      grouped={grouped}
+      activeId={desktopSectionDef?.id ?? null}
+      onSelect={openSection}
+      onBack={navigateBackToLauncher}
+      settingsLabel={settingsTitle}
+      label={(labelKey, fallback) => t(labelKey, { defaultValue: fallback })}
+    />
+  ) : null;
 
   return (
     <ShellViewAgentSurface viewId="settings">
       <ContentLayout
         inModal={inModal}
         contentClassName={isDesktop ? "px-0 pt-0" : "max-sm:pt-1"}
+        sidebar={desktopSidebar}
+        sidebarCollapsible={false}
       >
         <div
           data-testid="settings-shell"
@@ -333,19 +345,6 @@ export function SettingsView({
               />
             ))}
           </div>
-
-          {isDesktop ? (
-            <DesktopSettingsNavigation
-              grouped={grouped}
-              activeId={desktopSectionDef?.id ?? null}
-              onSelect={openSection}
-              onBack={navigateBackToLauncher}
-              settingsLabel={settingsTitle}
-              label={(labelKey, fallback) =>
-                t(labelKey, { defaultValue: fallback })
-              }
-            />
-          ) : null}
 
           <div className="min-w-0 flex-1 pb-32">
             {isDesktop ? (
