@@ -7,9 +7,11 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | Workflow | Trigger | Purpose |
 |----------|---------|---------|
 | `ci.yaml` | Push/PR to main | Main-specific CI - typecheck, tests, lint, build, dev startup |
-| `test.yml` | Push/PR to develop, manual, schedule | Broader develop tests plus required zero-key deterministic E2E; live jobs are separate |
-| `quality.yml` | Push/PR to main/develop, manual | Develop/main quality gates: format, type-safety ratchet, prompt-secret scan, UI determinism, lint |
-| `scenario-pr.yml` | PR to main/develop, manual | Secret-free deterministic scenario/browser E2E gate |
+| `develop-pr.yml` | PR to develop | Lightweight lint, typecheck, build, and deterministic lane-integrity checks |
+| `develop-pr-gate.yml` | PR target to develop, manual canaries | Stable fail-closed aggregate over the nine lightweight required contexts |
+| `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
+| `quality.yml` | PR to main, push main/develop, manual | Extended format, type-safety, homepage, secret, UI-determinism, and lint checks |
+| `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
 | `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release.yaml` | Push to main, Release | NPM beta/production package releases |
@@ -49,10 +51,10 @@ Publishes TypeScript/JavaScript packages to NPM.
 
 ### Linux Runner Policy
 
-The heavy develop **test lanes** in `test.yml` run on the self-hosted
+The heavy post-merge develop **test lanes** in `test.yml` run on the self-hosted
 `self-hosted, hetzner-robot` pool (GitHub-hosted minutes are billing-frozen for
-this org, #13481). Everything the **merge gate** depends on to *reach a
-conclusion* stays GitHub-hosted so a drained fleet can never wedge develop:
+this org, #13481). Everything the pre-merge **Develop PR Gate** depends on is
+the lightweight PR surface and remains independent of the exhaustive fleet:
 
 - **Path classifiers** (`Classify changed paths`) across `test.yml`,
   `scenario-pr.yml`, `dev-smoke.yml`, `docker-ci-smoke.yml`,
@@ -60,9 +62,18 @@ conclusion* stays GitHub-hosted so a drained fleet can never wedge develop:
   `windows-desktop-preload-smoke.yml` run on `ubuntu-24.04`. They are git-diff +
   node scripts with no self-hosted needs; pinning them to the fleet (#8501) once
   left every downstream job queued indefinitely and gridlocked develop.
-- **`ci-ok`** (the merge queue's sole required context), its
-  `plugin-tests-status` roll-up, and the hosted **`merge-quality-gate`** all run
-  on `ubuntu-24.04`.
+- **`Develop PR Gate`** runs on `ubuntu-24.04` and only observes check metadata
+  from the nine lightweight component contexts. It never waits for post-merge,
+  scheduled, device, aesthetic, or exhaustive suites.
+- **`ci-ok`**, `plugin-tests-status`, and `merge-quality-gate` remain hosted
+  roll-ups inside the post-merge `test.yml` orchestrator. They report branch
+  health after a develop push; they are not the pre-merge required context.
+
+The aggregate contract runs directly under Node in
+`packages/scripts/develop-pr-aggregate.self-test.mjs`; the changed-file gate
+loads the same assertions through
+`packages/scripts/develop-pr-aggregate.test.mjs` so the implementation also
+produces enforced per-file coverage.
 
 Two SPOF guards, enforced by `packages/scripts/ci-merge-gate-contract.mjs` (run
 in the `changes` job, #13617):
@@ -75,13 +86,12 @@ in the `changes` job, #13617):
    the whole workflow falls back to hosted — one flip unblocks the entire queue
    instead of per-PR admin-bypass. Keep the runner-agnostic step hardening (no
    `sudo`-only install/cleanup) so lanes run on either runner type.
-2. **Hosted quality parity.** `merge-quality-gate` runs the same lint /
+2. **Post-merge quality parity.** `merge-quality-gate` runs the same lint /
    `format:check` / repo-wide `typecheck` / gitleaks secret scan that guard
-   `main`, and `ci-ok` needs it — so a lint, type, format, or committed-secret
-   regression is refused by the merge queue on develop, not just on `main`. It
-   runs on `merge_group` + develop `push`. The lightweight `develop-pr.yml`
-   lint job also runs `format:check`, so formatting fails on the PR even when a
-   busy push wave supersedes post-merge quality runs (#15959).
+   `main`, and `ci-ok` needs it on develop `push`. The pre-merge
+   `develop-pr.yml` lint job runs `format:check`, and the stable aggregate waits
+   for that exact job, so formatting is refused before merge even when a busy
+   push wave supersedes post-merge quality runs (#15959).
 
 CodeQL is a separate exception: trusted push, scheduled, and manual CodeQL runs
 use `self-hosted, Linux, X64, hetzner-robot` because full JavaScript analysis is
@@ -181,10 +191,10 @@ Runs on PRs and pushes to main:
 - Dev startup + HMR propagation
 - Interop TypeScript tests (`packages/interop`)
 
-The broader `test.yml` orchestrator runs automatically on `develop` only to
-avoid duplicating the main-branch CI gate. Secret-free deterministic zero-key
-coverage for PRs to either protected branch is handled by `scenario-pr.yml`;
-`test.yml` keeps the broader develop push/PR, manual, and scheduled coverage.
+The broader `test.yml` orchestrator runs after pushes to `develop` to avoid
+duplicating the main-branch CI gate on every PR. The lightweight develop PR
+surface is owned by `develop-pr.yml` and aggregated by `develop-pr-gate.yml`;
+`test.yml` keeps the broader develop push, manual, and scheduled coverage.
 
 ### Live E2E
 
