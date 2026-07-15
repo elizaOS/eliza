@@ -2666,6 +2666,43 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
+  it("keeps a deep lower-surface touch pull open through its synthetic release click", () => {
+    seedTriage();
+    const surfaceRef = { current: null as HTMLElement | null };
+    render(
+      <div
+        ref={(node) => {
+          surfaceRef.current = node;
+        }}
+        data-testid="home-gesture-surface"
+      >
+        <NotificationsHomeCenter emptyGestureTargetRef={surfaceRef} />
+      </div>,
+    );
+    const surface = screen.getByTestId("home-gesture-surface");
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(surface, {
+      touches: [{ identifier: 14, clientX: 180, clientY: 220 }],
+    });
+    fireEvent.touchMove(surface, {
+      touches: [{ identifier: 14, clientX: 180, clientY: 620 }],
+    });
+    // A slow hold must not let the release-click guard expire before touchend.
+    act(() => vi.advanceTimersByTime(700));
+    fireEvent.touchEnd(surface, {
+      touches: [],
+      changedTouches: [{ identifier: 14, clientX: 180, clientY: 620 }],
+    });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+
+    fireEvent.click(surface, { clientY: 620 });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+
+    fireEvent.click(surface, { clientY: 620 });
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+  });
+
   it("a continuous drag that scrolls the expanded list back to the top does NOT collapse (re-base at the crossing)", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
