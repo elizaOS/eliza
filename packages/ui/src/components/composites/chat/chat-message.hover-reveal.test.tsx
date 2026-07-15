@@ -43,6 +43,37 @@ function makeMessage(
 }
 
 describe("ChatMessage desktop hover action plate", () => {
+  it("reveals the overlay's bare actions on hover without changing row flow", () => {
+    render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage()}
+        onCopy={vi.fn()}
+        onReply={vi.fn()}
+        onSpeak={vi.fn()}
+      />,
+    );
+
+    const message = screen.getByTestId("thread-line");
+    const actions = screen.getByTestId("thread-line-actions");
+    const surface = screen.getByTestId("thread-line-action-surface");
+    const content = actions.parentElement;
+
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.className).toContain("absolute");
+    expect(content?.className).toContain("pb-8");
+    expect(content?.className).toContain("pointer-coarse:pb-12");
+    expect(surface.className).not.toContain("bg-black/55");
+
+    fireEvent.mouseEnter(message);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.hasAttribute("inert")).toBe(false);
+
+    fireEvent.mouseLeave(message);
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+  });
+
   it("fades and settles the neutral action plate without a delete control", () => {
     render(
       <ChatMessage

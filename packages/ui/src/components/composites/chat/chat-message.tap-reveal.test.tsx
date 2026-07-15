@@ -71,6 +71,36 @@ function touchPoint(clientX: number, clientY: number) {
 }
 
 describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
+  it("toggles the overlay's reserved action lane on touch-style taps", () => {
+    render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage()}
+        onCopy={vi.fn()}
+        onReply={vi.fn()}
+      />,
+    );
+
+    const actions = screen.getByTestId("thread-line-actions");
+    const bubble = screen.getByRole("button", {
+      name: "Show message actions",
+    });
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.className).toContain("absolute");
+    expect(actions.parentElement?.className).toContain("pointer-coarse:pb-12");
+
+    fireEvent.click(bubble);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Hide message actions" }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide message actions" }),
+    );
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("a clean tap toggles the action rail on and off", () => {
     render(<ChatMessage message={makeMessage()} onCopy={vi.fn()} />);
     const article = getArticle();

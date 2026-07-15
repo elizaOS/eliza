@@ -1,8 +1,8 @@
 /**
- * Per-message reply, copy, playback, and edit controls. Both panel chat and the
- * continuous overlay use the same neutral liquid-glass plate so revealing a
- * row never swaps between unrelated button treatments. Individual controls
- * stay visually unframed at rest; copy and playback use a quiet selected state.
+ * Per-message reply, copy, playback, and edit controls. Panel chat groups the
+ * controls on a neutral liquid-glass plate; the continuous overlay renders a
+ * bare icon lane beneath each message so hover and touch affordances stay
+ * visually quiet. Copy and playback retain their compact state transitions.
  * Wired by ChatMessage.
  */
 import { Check, Copy, Pencil, Reply, Square, Volume2 } from "lucide-react";
@@ -35,49 +35,58 @@ export interface ChatMessageActionsProps {
 }
 
 /**
- * Shared glass material for message actions and the inline editor controls.
- * It reuses the notification-center sheen, blur, and inset edge stack so chat
- * controls read as part of the shell rather than a row of independent bubbles.
+ * Shared action container for the material panel and the overlay's bare lane.
+ * Inline editor controls retain the notification-center glass stack, while
+ * message actions can opt out without duplicating their interaction wiring.
  */
 export function ChatMessageActionSurface({
+  bare = false,
   className,
   style,
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+}: React.HTMLAttributes<HTMLDivElement> & { bare?: boolean }) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-0.5 rounded-xl border border-white/25 bg-black/55 p-0.5 text-white transition-colors duration-150",
+        "inline-flex items-center text-white",
+        bare
+          ? "gap-0.5"
+          : "gap-0.5 rounded-xl border border-white/25 bg-black/55 p-0.5 transition-colors duration-150",
         className,
       )}
-      style={{
-        backgroundImage: LIQUID_GLASS_SHEEN,
-        boxShadow: LIQUID_GLASS_EDGE_SHADOW,
-        WebkitBackdropFilter: LIQUID_GLASS_BLUR,
-        backdropFilter: LIQUID_GLASS_BLUR,
-        ...style,
-      }}
+      style={
+        bare
+          ? style
+          : {
+              backgroundImage: LIQUID_GLASS_SHEEN,
+              boxShadow: LIQUID_GLASS_EDGE_SHADOW,
+              WebkitBackdropFilter: LIQUID_GLASS_BLUR,
+              backdropFilter: LIQUID_GLASS_BLUR,
+              ...style,
+            }
+      }
       {...props}
     />
   );
 }
 
 /**
- * One icon control inside the shared plate. The full square remains the hit
- * target while its resting state has no fill; taps stop at the control so the
- * parent message does not re-toggle its reveal state.
+ * One icon control with a full hit target and an unframed resting state. Taps
+ * stop at the control so the parent message does not re-toggle its reveal.
  */
 function MessageActionButton({
   label,
   icon,
   onClick,
   active,
+  bare,
   testId,
 }: {
   label: string;
   icon: React.ReactNode;
   onClick: () => void;
   active?: boolean;
+  bare?: boolean;
   testId?: string;
 }) {
   return (
@@ -92,8 +101,12 @@ function MessageActionButton({
         onClick();
       }}
       className={cn(
-        "h-7 w-7 rounded-lg bg-transparent p-0 text-white/65 transition-[background-color,color,transform] duration-150 hover:bg-white/10 hover:text-white active:scale-95",
-        active && "bg-white/10 text-white hover:bg-white/15",
+        "h-7 w-7 bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:text-white active:scale-95 pointer-coarse:h-11 pointer-coarse:w-11",
+        bare
+          ? "rounded-none hover:bg-transparent active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55"
+          : "rounded-lg transition-[background-color,color,transform] hover:bg-white/10 active:bg-white/10",
+        active &&
+          (bare ? "text-white" : "bg-white/10 text-white hover:bg-white/15"),
       )}
     >
       {icon}
@@ -125,6 +138,7 @@ export function ChatMessageActions({
 
   return (
     <ChatMessageActionSurface
+      bare={glassRow}
       data-testid={
         glassRow ? "thread-line-action-surface" : "chat-message-actions"
       }
@@ -135,6 +149,7 @@ export function ChatMessageActions({
           testId={glassRow ? "thread-line-reply" : "chat-message-reply"}
           icon={<Reply className="h-3.5 w-3.5" />}
           onClick={onReply}
+          bare={glassRow}
         />
       ) : null}
 
@@ -184,6 +199,7 @@ export function ChatMessageActions({
             </span>
           }
           onClick={onCopy}
+          bare={glassRow}
         />
       ) : null}
 
@@ -200,6 +216,7 @@ export function ChatMessageActions({
           }
           onClick={onPlay}
           active={playing}
+          bare={glassRow}
         />
       ) : null}
 
@@ -209,6 +226,7 @@ export function ChatMessageActions({
           testId={glassRow ? "thread-line-edit" : undefined}
           icon={<Pencil className="h-3.5 w-3.5" />}
           onClick={onEdit}
+          bare={glassRow}
         />
       ) : null}
     </ChatMessageActionSurface>
