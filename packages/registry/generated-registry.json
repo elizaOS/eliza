@@ -138,6 +138,51 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@ophis/plugin-elizaos": {
+      "git": {
+        "repo": "ophis-fi/ophis",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@ophis/plugin-elizaos",
+        "v0": null,
+        "v1": null,
+        "v2": "0.3.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "MEV-protected same-chain swaps via Ophis (CoW Protocol): the agent signs a GPv2 order with its own EVM key and it settles gaslessly in a batch auction (surplus returned, no sandwiching). Carries an integrator partner fee + optional referral rebate.",
+      "homepage": "https://docs.ophis.fi/ai-agents",
+      "topics": [
+        "defi",
+        "swap",
+        "dex",
+        "cow-protocol",
+        "mev-protection"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@seekdaseek/plugin-agentfeed": {
       "git": {
         "repo": "seekdaseek/plugin-agentfeed",
