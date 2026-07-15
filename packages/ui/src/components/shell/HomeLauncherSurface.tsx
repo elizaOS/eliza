@@ -158,11 +158,12 @@ export function HomeLauncherSurface({
           {launcher}
         </div>
       </div>
-      {/* Web/desktop `< >` edge buttons for the home↔launcher rail (hidden on
-          touch). PagerEdgeButtons self-hides each chevron at the rail's
-          first/last page, so the `>` (Launcher) hides on the launcher half and
-          the `<` (Home) hides on the home half. These drive goPrev/goNext
-          directly, so paging works even where touch swipes don't apply. */}
+      {/* Desktop `< >` edge buttons for the home↔launcher rail (hidden in the
+          compact mobile layout and on touch devices). PagerEdgeButtons
+          self-hides each chevron at the rail's first/last page, so the `>`
+          (Launcher) hides on the launcher half and the `<` (Home) hides on the
+          home half. These drive goPrev/goNext directly, so desktop paging
+          remains available alongside pointer dragging. */}
       <PagerEdgeButtons
         idPrefix="rail"
         canPrev={pager.canPrev}
