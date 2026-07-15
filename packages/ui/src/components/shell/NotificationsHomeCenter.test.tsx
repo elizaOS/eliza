@@ -893,6 +893,7 @@ describe("NotificationsHomeCenter", () => {
     expandShade();
     const clear = screen.getByTestId("notifications-clear-all");
     expect(clear.parentElement?.className).not.toContain("sticky");
+    expect(clear.parentElement?.className).toContain("px-2");
     expect(clear.parentElement).toBe(
       screen.getByTestId("home-notification-list").firstElementChild,
     );
@@ -921,6 +922,11 @@ describe("NotificationsHomeCenter", () => {
     expect(css).toContain(".eliza-notif-glass");
     expect(css).toContain("backdrop-filter");
     expect(css).toContain("box-shadow");
+    const focusedGlassRule = css.match(
+      /\.eliza-notif-glass:focus-within\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(focusedGlassRule).toContain("box-shadow:");
+    expect(focusedGlassRule).toContain("!important");
     expect(css).toContain(".eliza-notif-row-inner[data-swipe-dragging]");
     expect(surface.getAttribute("data-swipe-dragging")).toBeNull();
   });
@@ -1157,6 +1163,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     fireEvent.click(openingPeek, { detail: 0 });
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     const enteringControls = screen.getByTestId("notification-stack-controls");
+    expect(enteringControls.className).toContain("px-2");
     const groupContent = document.querySelector(
       "[data-notification-group-content]",
     ) as HTMLElement;
