@@ -224,15 +224,23 @@ function runningCloudAgents(
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 }
 
-function preferredRunningCloudAgentId(
-  running: readonly CloudCompatAgent[],
-): string | null {
+/** Re-read the active cloud agent id for cloud-agent selection guards. */
+export function readActiveCloudAgentId(): string | null {
   const active = loadPersistedActiveServer();
   if (active?.kind !== "cloud") return null;
   const persistedAgentId = active.id?.startsWith("cloud:")
     ? active.id.slice("cloud:".length).trim()
     : "";
-  if (!persistedAgentId || persistedAgentId.includes("/")) return null;
+  return persistedAgentId && !persistedAgentId.includes("/")
+    ? persistedAgentId
+    : null;
+}
+
+function preferredRunningCloudAgentId(
+  running: readonly CloudCompatAgent[],
+): string | null {
+  const persistedAgentId = readActiveCloudAgentId();
+  if (!persistedAgentId) return null;
   return running.some((agent) => agent.agent_id === persistedAgentId)
     ? persistedAgentId
     : null;

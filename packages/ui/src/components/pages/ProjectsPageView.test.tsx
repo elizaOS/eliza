@@ -72,6 +72,11 @@ function task(
     latestWorkdir: null,
     latestRepo: null,
     latestActivityAt: null,
+    latestSessionModel: null,
+    latestAccountProviderId: null,
+    latestAccountId: null,
+    latestAccountLabel: null,
+    parentTaskId: null,
     decisionCount: 0,
     usage: {
       inputTokens: 0,
