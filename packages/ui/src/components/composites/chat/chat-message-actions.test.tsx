@@ -67,6 +67,7 @@ describe("ChatMessageActions copy", () => {
     for (const button of screen.getAllByRole("button")) {
       expect(button.className).toContain("bg-transparent");
       expect(button.className).toContain("rounded-none");
+      expect(button.className).toContain("h-5");
       expect(button.className).toContain("hover:bg-transparent");
       expect(button.className).toContain("pointer-coarse:h-11");
       expect(button.className).not.toContain("text-[rgb(255");
