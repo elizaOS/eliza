@@ -17,7 +17,7 @@
  * deliberately excluded from that check (see `enterOnMount`).
  * Presentation only — actions are delegated to callbacks.
  */
-import { RotateCcw, Sparkles, X } from "lucide-react";
+import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import type * as React from "react";
 import {
@@ -750,37 +750,82 @@ export const ChatMessage = memo(function ChatMessage({
     savingEdit || !draftText.trim() || draftText.trim() === message.text.trim();
   const inlineEditControls = (
     <ChatMessageActionSurface
+      bare={glass}
       data-testid={
         glass ? "thread-line-edit-controls" : "chat-message-edit-controls"
       }
       className={cn(
-        "gap-0 px-1.5 py-0.5",
+        glass ? "gap-0.5" : "gap-0 px-1.5 py-0.5",
         !glass && "absolute right-0 top-full z-30 mt-1",
       )}
     >
-      <Button
-        unstyled
-        data-testid={glass ? "thread-line-edit-cancel" : undefined}
-        onClick={handleCancelEditing}
-        disabled={savingEdit}
-        className="min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
-      >
-        {labels.cancel ?? "Cancel"}
-      </Button>
-      <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
-      <Button
-        unstyled
-        data-testid={glass ? "thread-line-edit-save" : undefined}
-        onClick={() => void handleSaveEdit()}
-        disabled={editSaveDisabled}
-        className="min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
-      >
-        {savingEdit
-          ? (labels.saving ?? "Saving...")
-          : glass
-            ? (labels.send ?? "Send")
-            : (labels.saveAndResend ?? "Save and resend")}
-      </Button>
+      {glass ? (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={labels.cancel ?? "Cancel"}
+            title={labels.cancel ?? "Cancel"}
+            data-testid="thread-line-edit-cancel"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleCancelEditing();
+            }}
+            disabled={savingEdit}
+            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55 disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={
+              savingEdit
+                ? (labels.saving ?? "Saving...")
+                : (labels.send ?? "Send")
+            }
+            title={savingEdit ? undefined : (labels.send ?? "Send")}
+            data-testid="thread-line-edit-save"
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleSaveEdit();
+            }}
+            disabled={editSaveDisabled}
+            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55 disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+          >
+            {savingEdit ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+              />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button
+            unstyled
+            onClick={handleCancelEditing}
+            disabled={savingEdit}
+            className="min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+          >
+            {labels.cancel ?? "Cancel"}
+          </Button>
+          <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
+          <Button
+            unstyled
+            onClick={() => void handleSaveEdit()}
+            disabled={editSaveDisabled}
+            className="min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+          >
+            {savingEdit
+              ? (labels.saving ?? "Saving...")
+              : (labels.saveAndResend ?? "Save and resend")}
+          </Button>
+        </>
+      )}
     </ChatMessageActionSurface>
   );
 
