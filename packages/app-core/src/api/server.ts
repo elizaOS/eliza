@@ -149,7 +149,6 @@ import {
   sqlLiteral,
 } from "@elizaos/shared/utils/sql-compat";
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
-import { handleAccountPoolBrokerRoute } from "./account-pool-broker-routes";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
@@ -841,12 +840,6 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     id: "background-tasks",
     handler: ({ req, res, state }) =>
       handleBackgroundTasksRoute(req, res, state),
-  },
-  {
-    // Localhost-only raw account-pool lease broker. It is disabled unless
-    // explicitly env-enabled and bearer-secret configured.
-    id: "account-pool-broker",
-    handler: ({ req, res }) => handleAccountPoolBrokerRoute(req, res),
   },
   {
     // Internal wake route called by Capacitor BackgroundRunner JSContexts on

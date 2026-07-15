@@ -4,9 +4,16 @@
  * mutation to the canonical AccountPool and credential store; callers receive
  * short-lived access tokens but never refresh tokens or display identities.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { getAccessToken } from "@elizaos/auth/credentials";
 import { logger } from "@elizaos/core";
+import type {
+  AccountPoolBrokerAccountSnapshot,
+  AccountPoolBrokerFailoverSnapshot,
+  AccountPoolBrokerLastReportedStatus,
+  AccountPoolBrokerProviderSnapshot,
+  AccountPoolBrokerSnapshot,
+} from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
@@ -29,6 +36,8 @@ const DEFAULT_LEASE_TTL_MS = 5 * 60_000;
 const MAX_LEASE_TTL_MS = 15 * 60_000;
 const MAX_RETRY_AFTER_MS = 60 * 60_000;
 const DEFAULT_RATE_LIMIT_MS = 60_000;
+const FAILOVER_WINDOW_MS = 60_000;
+const MAX_RECENT_FAILOVERS = 10;
 
 export interface AccountPoolBrokerLeaseRequest {
   providerId: PoolProviderId;
@@ -68,7 +77,25 @@ interface LeaseEntry {
   providerId: PoolProviderId;
   accountId: string;
   sessionKey: string;
+  sessionKeyHash: string;
+  atMs: number;
   expiresAt: number;
+  model?: string;
+}
+
+interface AccountObservabilityState {
+  lastLease: AccountPoolBrokerAccountSnapshot["lastLease"];
+  lastReportedStatus: AccountPoolBrokerLastReportedStatus | null;
+  lastFailureAtMs: number | null;
+}
+
+interface PendingFailoverSignal {
+  providerId: PoolProviderId;
+  accountId: string;
+  sessionKeyHash: string;
+  atMs: number;
+  cause: AccountPoolBrokerFailoverSnapshot["cause"];
+  model?: string;
 }
 
 export interface AccountPoolBrokerDeps {
@@ -171,6 +198,24 @@ function makeLeaseId(): string {
   return randomBytes(32).toString("base64url");
 }
 
+function hashSessionKey(sessionKey: string): string {
+  return createHash("sha256").update(sessionKey).digest("hex").slice(0, 12);
+}
+
+function observabilityAccountKey(
+  providerId: PoolProviderId,
+  accountId: string,
+): string {
+  return `${providerId}:${accountId}`;
+}
+
+function pendingFailoverKey(
+  providerId: PoolProviderId,
+  sessionKeyHash: string,
+): string {
+  return `${providerId}:${sessionKeyHash}`;
+}
+
 function retryUntilMs(now: number, retryAfterMs: number | undefined): number {
   if (
     typeof retryAfterMs !== "number" ||
@@ -203,6 +248,62 @@ function reportIsTransient(report: AccountPoolBrokerReportRequest): boolean {
   return /\b(timeout|timed.?out|overload|unavailable|reset|network)\b/i.test(
     report.errorCode ?? "",
   );
+}
+
+function normalizeReportCause(
+  report: AccountPoolBrokerReportRequest,
+): AccountPoolBrokerFailoverSnapshot["cause"] | null {
+  // Keep this precedence aligned with report(), which applies rate-limit
+  // health before auth when a provider response ambiguously matches both.
+  if (reportIsRateLimit(report)) {
+    return {
+      category: "rate_limit",
+      reason: report.httpStatus === 429 ? "http_429" : "rate_limit",
+    };
+  }
+  if (reportIsAuthFailure(report)) {
+    return {
+      category: "auth",
+      reason:
+        report.httpStatus === 401
+          ? "http_401"
+          : report.httpStatus === 403
+            ? "http_403"
+            : "auth_failed",
+    };
+  }
+  if (reportIsTransient(report)) {
+    const status = report.httpStatus;
+    return {
+      category: "transient",
+      reason:
+        typeof status === "number" && status >= 500 && status <= 599
+          ? "http_5xx"
+          : /\b(timeout|timed.?out)\b/i.test(report.errorCode ?? "")
+            ? "timeout"
+            : /\b(network|reset)\b/i.test(report.errorCode ?? "")
+              ? "network"
+              : "transient_error",
+    };
+  }
+  return null;
+}
+
+function lastReportedStatusFromReport(
+  report: AccountPoolBrokerReportRequest,
+  atMs: number,
+): AccountPoolBrokerLastReportedStatus {
+  const failoverCause = normalizeReportCause(report);
+  return {
+    atMs,
+    ok: report.ok,
+    category: report.ok ? "ok" : (failoverCause?.category ?? "other"),
+    reason: report.ok ? "ok" : (failoverCause?.reason ?? "error"),
+    ...(typeof report.httpStatus === "number"
+      ? { httpStatus: report.httpStatus }
+      : {}),
+    ...(report.model ? { model: report.model } : {}),
+  };
 }
 
 export async function resolveBrokerAccessToken(
@@ -247,6 +348,22 @@ export class AccountPoolBroker {
   private readonly leaseTtlMs: number;
   private readonly byLeaseId = new Map<string, LeaseEntry>();
   private readonly bySessionKey = new Map<string, string>();
+  private readonly accountObservability = new Map<
+    string,
+    AccountObservabilityState
+  >();
+  private readonly lastSelectionByProvider = new Map<
+    PoolProviderId,
+    NonNullable<AccountPoolBrokerProviderSnapshot["lastSelection"]>
+  >();
+  private readonly recentFailoversByProvider = new Map<
+    PoolProviderId,
+    AccountPoolBrokerFailoverSnapshot[]
+  >();
+  private readonly pendingFailoversBySession = new Map<
+    string,
+    PendingFailoverSignal
+  >();
 
   constructor(deps: AccountPoolBrokerDeps = {}) {
     this.pool = deps.pool ?? getDefaultAccountPool();
@@ -269,7 +386,9 @@ export class AccountPoolBroker {
     const account =
       pinned &&
       pinned.providerId === request.providerId &&
-      !exclude.has(pinned.accountId)
+      !exclude.has(pinned.accountId) &&
+      (!configured.accountIds ||
+        configured.accountIds.includes(pinned.accountId))
         ? await this.pool.select({
             providerId: request.providerId,
             sessionKey: request.sessionKey,
@@ -291,15 +410,19 @@ export class AccountPoolBroker {
     const token = await this.tokenResolver(request.providerId, selected.id);
     const leaseId = this.idGenerator();
     const leaseExpiresAt = now + this.leaseTtlMs;
+    const sessionKeyHash = hashSessionKey(request.sessionKey);
     const lease: LeaseEntry = {
       leaseId,
       providerId: request.providerId,
       accountId: selected.id,
       sessionKey: request.sessionKey,
+      sessionKeyHash,
+      atMs: now,
       expiresAt: leaseExpiresAt,
     };
     this.byLeaseId.set(leaseId, lease);
     this.bySessionKey.set(request.sessionKey, leaseId);
+    this.observeLease(lease, request.strategy ?? configured.strategy);
 
     return {
       leaseId,
@@ -326,6 +449,32 @@ export class AccountPoolBroker {
       this.deleteLease(lease);
       return { ok: false, error: "expired_lease" };
     }
+    const reportAt = this.now();
+    if (report.model) {
+      lease.model = report.model;
+      const state = this.ensureAccountObservability(
+        lease.providerId,
+        lease.accountId,
+      );
+      if (state.lastLease?.leaseId === lease.leaseId) {
+        state.lastLease = { ...state.lastLease, model: report.model };
+      }
+    }
+    const observability = this.ensureAccountObservability(
+      lease.providerId,
+      lease.accountId,
+    );
+    const successPredatesFailure =
+      report.ok &&
+      observability.lastFailureAtMs !== null &&
+      lease.atMs <= observability.lastFailureAtMs;
+    if (!successPredatesFailure) {
+      observability.lastReportedStatus = lastReportedStatusFromReport(
+        report,
+        reportAt,
+      );
+    }
+    if (!report.ok) observability.lastFailureAtMs = reportAt;
 
     await this.pool.recordCall(
       lease.accountId,
@@ -342,10 +491,35 @@ export class AccountPoolBroker {
     );
 
     if (report.ok) {
-      await this.pool.markHealthy(lease.accountId, {
-        providerId: lease.providerId,
-      });
+      const pendingKey = pendingFailoverKey(
+        lease.providerId,
+        lease.sessionKeyHash,
+      );
+      const pending = this.pendingFailoversBySession.get(pendingKey);
+      if (pending?.accountId === lease.accountId) {
+        this.pendingFailoversBySession.delete(pendingKey);
+      }
+      if (!successPredatesFailure) {
+        await this.pool.markHealthy(lease.accountId, {
+          providerId: lease.providerId,
+        });
+      }
       return { ok: true };
+    }
+
+    const failoverCause = normalizeReportCause(report);
+    if (failoverCause) {
+      this.pendingFailoversBySession.set(
+        pendingFailoverKey(lease.providerId, lease.sessionKeyHash),
+        {
+          providerId: lease.providerId,
+          accountId: lease.accountId,
+          sessionKeyHash: lease.sessionKeyHash,
+          atMs: reportAt,
+          cause: failoverCause,
+          ...(report.model ? { model: report.model } : {}),
+        },
+      );
     }
 
     if (reportIsRateLimit(report)) {
@@ -394,11 +568,21 @@ export class AccountPoolBroker {
       total: number;
       enabled: number;
       selectable: number;
+      lastSelection: AccountPoolBrokerProviderSnapshot["lastSelection"];
     }>;
     activeLeases: number;
+    accounts: Record<
+      string,
+      {
+        activeLeaseCount: number;
+        lastLeaseAt: number | null;
+        lastReportedStatus: AccountPoolBrokerLastReportedStatus | null;
+      }
+    >;
   } {
     this.pruneExpired();
     const now = this.now();
+    const snapshot = this.snapshot();
     const providers = new Set<PoolProviderId>(
       this.pool.list().map((account) => account.providerId),
     );
@@ -406,12 +590,23 @@ export class AccountPoolBroker {
       ok: true,
       enabled: true,
       activeLeases: this.byLeaseId.size,
+      accounts: Object.fromEntries(
+        Object.entries(snapshot.accounts).map(([accountId, account]) => [
+          accountId,
+          {
+            activeLeaseCount: account.activeLeaseCount,
+            lastLeaseAt: account.lastLeaseAt,
+            lastReportedStatus: account.lastReportedStatus,
+          },
+        ]),
+      ),
       providers: [...providers].sort().map((providerId) => {
         const accounts = this.pool.list(providerId);
         return {
           providerId,
           total: accounts.length,
           enabled: accounts.filter((account) => account.enabled).length,
+          lastSelection: this.lastSelectionByProvider.get(providerId) ?? null,
           selectable: accounts.filter(
             (account) =>
               account.enabled &&
@@ -423,6 +618,115 @@ export class AccountPoolBroker {
         };
       }),
     };
+  }
+
+  snapshot(): AccountPoolBrokerSnapshot {
+    this.pruneExpired();
+    const activeCounts = new Map<string, number>();
+    for (const lease of this.byLeaseId.values()) {
+      const key = observabilityAccountKey(lease.providerId, lease.accountId);
+      activeCounts.set(key, (activeCounts.get(key) ?? 0) + 1);
+    }
+
+    const accounts: AccountPoolBrokerSnapshot["accounts"] = {};
+    for (const account of this.pool.list()) {
+      const key = observabilityAccountKey(account.providerId, account.id);
+      const state = this.accountObservability.get(key);
+      accounts[key] = {
+        activeLeaseCount: activeCounts.get(key) ?? 0,
+        lastLease: state?.lastLease ?? null,
+        lastLeaseAt: state?.lastLease?.atMs ?? null,
+        lastReportedStatus: state?.lastReportedStatus ?? null,
+      };
+    }
+    for (const [key, state] of this.accountObservability) {
+      accounts[key] ??= {
+        activeLeaseCount: activeCounts.get(key) ?? 0,
+        lastLease: state.lastLease,
+        lastLeaseAt: state.lastLease?.atMs ?? null,
+        lastReportedStatus: state.lastReportedStatus,
+      };
+    }
+
+    const providerIds = new Set<PoolProviderId>([
+      ...this.pool.list().map((account) => account.providerId),
+      ...this.lastSelectionByProvider.keys(),
+      ...this.recentFailoversByProvider.keys(),
+    ]);
+    const providers: AccountPoolBrokerSnapshot["providers"] = {};
+    for (const providerId of providerIds) {
+      providers[providerId] = {
+        lastSelection: this.lastSelectionByProvider.get(providerId) ?? null,
+        recentFailovers: [
+          ...(this.recentFailoversByProvider.get(providerId) ?? []),
+        ],
+      };
+    }
+    return { accounts, providers };
+  }
+
+  private observeLease(lease: LeaseEntry, reason: string | undefined): void {
+    const state = this.ensureAccountObservability(
+      lease.providerId,
+      lease.accountId,
+    );
+    state.lastLease = {
+      leaseId: lease.leaseId,
+      atMs: lease.atMs,
+      sessionKeyHash: lease.sessionKeyHash,
+      ...(lease.model ? { model: lease.model } : {}),
+    };
+    this.lastSelectionByProvider.set(lease.providerId, {
+      accountId: lease.accountId,
+      atMs: lease.atMs,
+      reason: reason ?? "priority",
+    });
+
+    const pendingKey = pendingFailoverKey(
+      lease.providerId,
+      lease.sessionKeyHash,
+    );
+    const pending = this.pendingFailoversBySession.get(pendingKey);
+    if (!pending) return;
+    this.pendingFailoversBySession.delete(pendingKey);
+    if (
+      pending.accountId === lease.accountId ||
+      lease.atMs - pending.atMs > FAILOVER_WINDOW_MS
+    ) {
+      return;
+    }
+    const failover: AccountPoolBrokerFailoverSnapshot = {
+      atMs: lease.atMs,
+      providerId: lease.providerId,
+      sessionKeyHash: lease.sessionKeyHash,
+      fromAccountId: pending.accountId,
+      toAccountId: lease.accountId,
+      cause: pending.cause,
+      ...(pending.model ? { model: pending.model } : {}),
+    };
+    const recent = this.recentFailoversByProvider.get(lease.providerId) ?? [];
+    recent.push(failover);
+    this.recentFailoversByProvider.set(
+      lease.providerId,
+      recent.slice(-MAX_RECENT_FAILOVERS),
+    );
+  }
+
+  private ensureAccountObservability(
+    providerId: PoolProviderId,
+    accountId: string,
+  ): AccountObservabilityState {
+    const key = observabilityAccountKey(providerId, accountId);
+    let state = this.accountObservability.get(key);
+    if (!state) {
+      state = {
+        lastLease: null,
+        lastReportedStatus: null,
+        lastFailureAtMs: null,
+      };
+      this.accountObservability.set(key, state);
+    }
+    return state;
   }
 
   private resolveSessionPin(sessionKey: string): LeaseEntry | null {
@@ -448,6 +752,11 @@ export class AccountPoolBroker {
     const now = this.now();
     for (const lease of this.byLeaseId.values()) {
       if (lease.expiresAt <= now) this.deleteLease(lease);
+    }
+    for (const [sessionKey, pending] of this.pendingFailoversBySession) {
+      if (now - pending.atMs > FAILOVER_WINDOW_MS) {
+        this.pendingFailoversBySession.delete(sessionKey);
+      }
     }
   }
 }

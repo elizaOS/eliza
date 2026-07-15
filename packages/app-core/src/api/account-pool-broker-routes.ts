@@ -5,6 +5,7 @@
  * pass through this handler.
  */
 import type http from "node:http";
+import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
 import { isLoopbackRemoteAddress } from "@elizaos/shared";
 import {
   AccountPoolBroker,
@@ -63,6 +64,10 @@ function safeEqual(a: string, b: string): boolean {
 function broker(): AccountPoolBroker {
   brokerSingleton ??= new AccountPoolBroker();
   return brokerSingleton;
+}
+
+export function getAccountPoolBrokerSnapshot(): AccountPoolBrokerSnapshot {
+  return brokerSingleton?.snapshot() ?? { accounts: {}, providers: {} };
 }
 
 function sendBrokerJson(
