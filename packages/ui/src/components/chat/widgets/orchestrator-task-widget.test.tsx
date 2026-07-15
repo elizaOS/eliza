@@ -152,9 +152,14 @@ describe("OrchestratorTaskWidget", () => {
     mocks.getWidgets.mockRejectedValue(new Error("task store unavailable"));
     render(<OrchestratorTaskWidget {...props} />);
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "task store unavailable",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("task store unavailable");
+    // #10708 (chromeless widgets): the error state is a danger-tinted strip —
+    // a radius + translucent fill, never the glass-card triad. It must NOT
+    // reintroduce a `border border-*` on the container.
+    const alertClass = alert.getAttribute("class") ?? "";
+    expect(alertClass).not.toMatch(/\bborder\s+border-/);
+    expect(alertClass).toMatch(/bg-danger/);
     expect(screen.queryByText("No orchestration tasks yet")).toBeNull();
 
     mocks.getWidgets.mockResolvedValue(populated);

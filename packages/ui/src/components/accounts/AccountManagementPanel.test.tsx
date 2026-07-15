@@ -146,7 +146,16 @@ describe("AccountManagementPanel", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     // Account operations live behind progressive disclosure: expand the
     // connected provider row to reveal its account cards + strategy picker.
-    fireEvent.click(screen.getByRole("button", { name: /OpenAI API/ }));
+    const providerToggle = screen.getByRole("button", { name: /OpenAI API/ });
+    // Product policy disables focus rings globally (styles.css); the provider
+    // row toggle must not carry Tailwind focus/ring utilities — guards the
+    // no-focus-ring-gate at the component level.
+    const toggleClass = providerToggle.getAttribute("class") ?? "";
+    expect(toggleClass).not.toMatch(
+      /(?:^|\s)(?:focus|focus-visible|focus-within):/,
+    );
+    expect(toggleClass).not.toMatch(/(?:^|\s)!?ring-/);
+    fireEvent.click(providerToggle);
     fireEvent.click(screen.getByRole("button", { name: "move First" }));
     await waitFor(() => expect(accounts.patch).toHaveBeenCalledTimes(2));
     fireEvent.click(screen.getByRole("button", { name: "test First" }));
