@@ -751,13 +751,19 @@ export function ChatView({
     },
     [copyToClipboard],
   );
-  // Reply arms the composer: set the shared reply target so the next turn
-  // carries replyToMessageId (→ REPLY_CONTEXT) and the pill renders above the
-  // input. Focus the composer so the user can type the reply immediately.
+  // Reply arms the composer so the next turn carries replyToMessageId (→
+  // REPLY_CONTEXT). Fine pointers keep the desktop one-click-to-type flow;
+  // touch pointers stay put so arming context never raises the mobile keyboard.
   const handleReplyMessage = useCallback(
     (message: ChatMessageData) => {
       setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
-      textareaRef.current?.focus();
+      if (
+        typeof window === "undefined" ||
+        typeof window.matchMedia !== "function" ||
+        window.matchMedia("(hover: hover) and (pointer: fine)").matches
+      ) {
+        textareaRef.current?.focus();
+      }
     },
     [setChatReplyTarget, agentName],
   );

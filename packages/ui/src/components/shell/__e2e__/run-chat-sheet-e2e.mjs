@@ -2211,6 +2211,18 @@ try {
     await snap(p, "state-plus-menu-glass");
     await p.keyboard.press("Escape");
     assert((await p.getByTestId("chat-composer-mic").count()) === 1, "EMPTY: mic button shown (no draft)");
+    const [voiceBox, transcriptionBox] = await Promise.all([
+      p.getByTestId("chat-composer-mic").boundingBox(),
+      p.getByTestId("chat-composer-transcribe").boundingBox(),
+    ]);
+    assert(
+      Boolean(
+        voiceBox &&
+          transcriptionBox &&
+          voiceBox.x < transcriptionBox.x,
+      ),
+      "EMPTY: spoken conversation sits before the rightmost transcription mic",
+    );
     await snap(p, "state-empty");
     await p.close();
   }
@@ -2337,9 +2349,112 @@ try {
     await p.close();
   }
 
-  // Transcription owns the text lane even while an inline reply is in flight:
-  // activity replaces the textarea, the mic slot becomes Stop, and the chat
-  // actions control stays put so starting capture does not reshuffle the row.
+  // Reply is an armed context state, not a request to begin typing. A measured
+  // lane eases into the bounded scroller so the latest message glides clear of
+  // the pill while the sheet, composer, and visual viewport stay fixed.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    await gotoFixture(p);
+    await p.waitForSelector('[data-testid="chat-sheet"]');
+    await p.getByTestId("chat-sheet-grabber").focus();
+    await p.keyboard.press("ArrowUp");
+    await p.waitForTimeout(450);
+
+    const sampleReplyGeometry = () =>
+      p.evaluate(() => {
+        const rect = (testId) => {
+          const box = document
+            .querySelector(`[data-testid="${testId}"]`)
+            ?.getBoundingClientRect();
+          return box
+            ? { top: box.top, height: box.height, bottom: box.bottom }
+            : null;
+        };
+        return {
+          sheet: rect("chat-sheet"),
+          composer: rect("chat-composer-row"),
+          thread: rect("chat-thread"),
+          viewport: rect("chat-thread-scroll"),
+        };
+      });
+    const message = p.getByTestId("thread-line").last();
+    await message
+      .getByRole("button", { name: "Show message actions" })
+      .click();
+    await message
+      .getByTestId("thread-line-actions")
+      .waitFor({ state: "visible" });
+    const beforeReply = await sampleReplyGeometry();
+    await message.getByTestId("thread-line-reply").click();
+    await p.getByTestId("chat-reply-pill").waitFor();
+    await p.waitForTimeout(420);
+    const afterReply = await sampleReplyGeometry();
+
+    assert(
+      await p
+        .getByTestId("chat-reply-lane")
+        .evaluate(
+          (lane) =>
+            getComputedStyle(lane).position !== "absolute" &&
+            lane.getBoundingClientRect().height > 0,
+        ),
+      "REPLY: context pill reserves a visible lane below the transcript",
+    );
+    for (const key of ["sheet", "composer", "thread"]) {
+      const before = beforeReply[key];
+      const after = afterReply[key];
+      assert(
+        Boolean(
+          before &&
+            after &&
+            near(before.top, after.top, 1) &&
+            near(before.height, after.height, 1),
+        ),
+        `REPLY: outer ${key} geometry stays fixed while its inner viewport yields room`,
+      );
+    }
+    assert(
+      Boolean(
+        beforeReply.viewport &&
+          afterReply.viewport &&
+          near(beforeReply.viewport.top, afterReply.viewport.top, 1) &&
+          afterReply.viewport.height < beforeReply.viewport.height,
+      ),
+      "REPLY: transcript viewport yields the pill's space without moving its top edge",
+    );
+    const pillBox = await p
+      .getByTestId("chat-reply-pill")
+      .evaluate((element) => element.getBoundingClientRect().toJSON());
+    const latestActionsBox = await message
+      .getByTestId("thread-line-reply")
+      .evaluate((element) => element.getBoundingClientRect().toJSON());
+    assert(
+      latestActionsBox.bottom <= pillBox.top + 1,
+      "REPLY: context lane never covers the latest message actions",
+    );
+    assert(
+      await p.evaluate(
+        () =>
+          document.activeElement?.getAttribute("data-testid") !==
+          "chat-composer-textarea",
+      ),
+      "REPLY: arming context does not focus input or raise the keyboard",
+    );
+    await snap(p, "state-reply-context-no-shift");
+    await p.getByTestId("chat-sheet-grabber").focus();
+    await p.keyboard.press("Escape");
+    await p.waitForTimeout(500);
+    assert(
+      (await p.getByTestId("chat-reply-pill").count()) === 0 &&
+        (await variant(p)) === "closed",
+      "REPLY: closing the sheet clears its reply context",
+    );
+    await p.close();
+  }
+
+  // Transcription owns the whole composer lane even while a reply is in flight:
+  // activity replaces text/+ and the rightmost mic becomes the sole Stop.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2350,12 +2465,28 @@ try {
       '[data-testid="chat-composer-transcription-stop"]',
     );
     await p.waitForTimeout(500);
+    const detentBeforeStop = await detent(p);
     assert(
       (await p.getByTestId("chat-composer-mic").count()) === 0 &&
         (await p.getByTestId("chat-composer-mic-activity").count()) === 1 &&
-        (await p.getByTestId("chat-composer-plus").count()) === 1 &&
+        (await p.getByTestId("chat-composer-plus").count()) === 0 &&
+        (await p.getByTestId("chat-composer-action").count()) === 0 &&
         (await p.getByTestId("chat-composer-transcription-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: activity replaces text and Stop replaces the mic in place",
+      "TRANSCRIBING+REPLY: wide activity plus one Stop owns the composer",
+    );
+    const [activityBox, rowBox, stopBox] = await Promise.all([
+      p.getByTestId("chat-composer-mic-activity").boundingBox(),
+      p.getByTestId("chat-composer-row").boundingBox(),
+      p.getByTestId("chat-composer-transcription-stop").boundingBox(),
+    ]);
+    assert(
+      Boolean(
+        activityBox &&
+          rowBox &&
+          stopBox &&
+          activityBox.width >= rowBox.width - stopBox.width - 40,
+      ),
+      "TRANSCRIBING+REPLY: live activity spans the available composer width",
     );
     assert(
       (await p.getByTestId("chat-composer-transcribe-status").count()) === 0,
@@ -2381,6 +2512,10 @@ try {
       "TRANSCRIBING+REPLY: Stop preserves the transcript without sending it",
     );
     assert(
+      (await detent(p)) === detentBeforeStop,
+      "TRANSCRIBING+REPLY: Stop preserves the resting chat detent",
+    );
+    assert(
       (await p.getByTestId("chat-composer-mic-activity").count()) === 0 &&
         (await p.getByTestId("chat-composer-textarea").count()) === 1 &&
         (await p.getByTestId("chat-composer-action").count()) === 1 &&
@@ -2391,47 +2526,6 @@ try {
       (await p.getByTestId("chat-composer-textarea").inputValue()) ===
         "tell me the plan for…",
       "TRANSCRIBING+REPLY: finalized words remain intact in the composer",
-    );
-    await p.close();
-  }
-
-  // Send uses the same drain sink as Stop, then submits the finalized text once.
-  // This fixture path guards the ordering between session teardown and delivery:
-  // teardown must not replace the send-triggered responding state or lose text.
-  {
-    const p = await ctrl();
-    attachConsole(p, sink);
-    const logs = [];
-    p.on("console", (m) => logs.push(m.text()));
-    await gotoFixture(
-      p,
-      `${url}?transcribing&recording&phase=listening&transcript=send%20this%20transcript`,
-    );
-    await p.waitForSelector('[data-testid="chat-composer-action"]');
-    assert(
-      (await p
-        .getByTestId("chat-composer-action")
-        .getAttribute("aria-label")) === "send transcription",
-      "TRANSCRIBING+SEND: dedicated Send control is available during capture",
-    );
-    await p.getByTestId("chat-composer-action").click();
-    await p.waitForTimeout(300);
-    assert(
-      logs.some((t) =>
-        t.includes("[fixture] finalizeTranscriptSession segments=1"),
-      ),
-      "TRANSCRIBING+SEND: Send drains the captured session through the composer sink",
-    );
-    assert(
-      logs.filter((t) =>
-        t.includes('[fixture] send: "send this transcript"'),
-      ).length === 1,
-      "TRANSCRIBING+SEND: finalized transcript submits exactly once",
-    );
-    assert(
-      (await p.getByTestId("chat-composer-mic-activity").count()) === 0 &&
-        (await p.getByTestId("chat-composer-textarea").inputValue()) === "",
-      "TRANSCRIBING+SEND: capture exits and leaves no duplicate draft behind",
     );
     await p.close();
   }
@@ -3560,8 +3654,8 @@ try {
     await p.close();
   }
 
-  // ── STREAMING: one approved shimmer row spans the turn while the empty
-  // assistant transport placeholder stays non-visual.
+  // ── STREAMING: one approved shimmer shares the latest message's action lane
+  // while the empty assistant transport placeholder stays non-visual.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -3572,11 +3666,20 @@ try {
     await gesture(p, 400, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
     const inlineStatus = p
-      .getByTestId("turn-status-row")
+      .getByTestId("turn-status-accessory")
       .getByTestId("turn-status-indicator");
     assert(
       (await inlineStatus.count()) === 1,
-      "STREAMING: exactly one standalone status shimmer spans the active turn",
+      "STREAMING: exactly one action-lane status shimmer spans the active turn",
+    );
+    assert(
+      await p
+        .getByTestId("turn-status-accessory")
+        .evaluate(
+          (element) =>
+            element.closest('[data-testid="thread-line-actions"]') !== null,
+        ),
+      "STREAMING: status stays on the same row as Copy and Reply",
     );
     assert(
       await inlineStatus
