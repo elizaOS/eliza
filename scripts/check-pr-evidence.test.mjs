@@ -15,6 +15,7 @@ import {
   extractEvidenceRows,
   findRetiredRepoEvidenceFiles,
   hasArtifactReference,
+  hasEvidenceFileReference,
   hasNaWithReason,
   hasOcrEvidenceReference,
   hasVisualArtifactReference,
@@ -381,9 +382,7 @@ describe("check-pr-evidence row primitives", () => {
       true,
     );
     assert.equal(
-      requiresSurfaceArtifactsFromFiles([
-        String.raw`apps\app\src\Panel.tsx`,
-      ]),
+      requiresSurfaceArtifactsFromFiles([String.raw`apps\app\src\Panel.tsx`]),
       true,
     );
     // Tests, stories, and server code render nothing a user sees.
@@ -482,7 +481,10 @@ describe("check-pr-evidence row primitives", () => {
     // But a rendered-UI file still forces artifacts regardless of labels.
     const forced = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
       labels: "",
-      changedFiles: ["packages/ui/src/navigation/index.ts", "packages/ui/src/components/Foo.tsx"],
+      changedFiles: [
+        "packages/ui/src/navigation/index.ts",
+        "packages/ui/src/components/Foo.tsx",
+      ],
     });
     assert.equal(forced.ok, false);
   });
@@ -522,6 +524,99 @@ describe("check-pr-evidence row primitives", () => {
     );
   });
 });
+
+describe("check-pr-evidence pr-evidence release family", () => {
+  const dl = (tag, name) =>
+    `https://github.com/elizaOS/eliza/releases/download/${tag}/${name}`;
+
+  it("accepts an overflow-release screenshot on a visual row exactly like the primary release", () => {
+    // The unblock: once `pr-evidence` fills, pr-evidence.mjs emits pr-evidence-N
+    // URLs; a media asset there must satisfy the visual rows identically.
+    assert.equal(
+      hasVisualArtifactReference(dl("pr-evidence", "15171-after-desktop.jpg")),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        dl("pr-evidence-2", "16367-after-desktop.jpg"),
+      ),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference(dl("pr-evidence-3", "16367-walkthrough.mp4")),
+      true,
+    );
+  });
+
+  it("recognizes any pr-evidence-family asset as an evidence file, even a non-whitelisted extension", () => {
+    // A `.jsonl` is not in EVIDENCE_FILE_RE, so acceptance here comes from the
+    // release-family host matcher — the generalized rule, applied to overflow
+    // releases too.
+    assert.equal(
+      EVIDENCE_FILE_RE_MATCHES(".jsonl"),
+      false,
+      "guard: .jsonl must not be a whitelisted evidence extension",
+    );
+    assert.equal(
+      hasEvidenceFileReference(dl("pr-evidence", "15171-ocr-readout.txt")),
+      true,
+    );
+    assert.equal(
+      hasEvidenceFileReference(dl("pr-evidence-3", "16367-ocr-readout.jsonl")),
+      true,
+    );
+  });
+
+  it("does NOT accept a link to the release PAGE (no /download/ asset path)", () => {
+    // Strictness: the tag page is not an asset. A page link never counts as a
+    // screenshot, and never as an evidence file.
+    const pageLink =
+      "https://github.com/elizaOS/eliza/releases/tag/pr-evidence-2";
+    assert.equal(hasVisualArtifactReference(pageLink), false);
+    assert.equal(hasEvidenceFileReference(pageLink), false);
+  });
+
+  it("passes a UI-file surface PR whose screenshots live on an overflow release", () => {
+    const body = buildBody({
+      "before-screenshots": `- [x] ![before](${dl("pr-evidence-2", "16367-before-desktop.jpg")})`,
+      "after-screenshots": `- [x] ![after](${dl("pr-evidence-2", "16367-after-desktop.jpg")})`,
+      "walkthrough-video": `- [x] ${dl("pr-evidence-2", "16367-walkthrough.mp4")}`,
+      "domain-artifacts": `- [ ] OCR text readout: ${dl("pr-evidence-2", "16367-ocr.txt")}`,
+    });
+    const changedFiles = ["packages/ui/src/components/Foo.tsx"];
+    const { ok } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles,
+    });
+    assert.equal(ok, true);
+  });
+
+  it("still FAILS a UI-file surface PR with no real media, even citing the release page", () => {
+    // Invariant: the storage location changed, the strictness did not.
+    const body = buildBody({
+      "before-screenshots":
+        "- [ ] Before screenshots: https://github.com/elizaOS/eliza/releases/tag/pr-evidence-2",
+      "after-screenshots": "- [ ] After screenshots `N/A - nothing to show`.",
+      "walkthrough-video": "- [ ] Walkthrough video `N/A - nothing to show`.",
+    });
+    const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: ["packages/ui/src/components/Foo.tsx"],
+    });
+    assert.equal(ok, false);
+    for (const id of SURFACE_ARTIFACT_ROW_IDS) {
+      assert.equal(
+        findings.find((finding) => finding.id === id).status,
+        "artifact-required",
+      );
+    }
+  });
+});
+
+// Mirror of check-pr-evidence's internal EVIDENCE_FILE_RE, used only to prove
+// the release-family matcher (not the extension whitelist) is what accepts a
+// pr-evidence `.jsonl` asset above.
+function EVIDENCE_FILE_RE_MATCHES(ext) {
+  return /\.(json|txt|log|csv|md)(\?\S*)?(\s|$|\)|"|')/i.test(`file${ext} `);
+}
 
 describe("check-pr-evidence marker extraction", () => {
   it("captures the checkbox line plus indented continuation lines", () => {

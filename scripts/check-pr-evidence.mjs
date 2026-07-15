@@ -116,8 +116,7 @@ export function hasOcrEvidenceReference(rows) {
     // actual media artifact or a linked report/log file next to OCR keywords.
     if (
       OCR_EVIDENCE_RE.test(rowText) &&
-      (hasVisualArtifactReference(rowText) ||
-        hasEvidenceFileReference(rowText))
+      (hasVisualArtifactReference(rowText) || hasEvidenceFileReference(rowText))
     ) {
       return true;
     }
@@ -126,13 +125,17 @@ export function hasOcrEvidenceReference(rows) {
 }
 
 // Linked non-media evidence file (an OCR report/JSON/log) — still stricter
-// than "any URL": the link target must look like a file, not a web page.
+// than "any URL": the link target must look like a file, not a web page, OR live
+// on the pr-evidence release family (`PR_EVIDENCE_RELEASE_RE`), where every URL
+// is by construction an uploaded asset rather than a page.
 const EVIDENCE_FILE_RE = /\.(json|txt|log|csv|md)(\?\S*)?(\s|$|\)|"|')/i;
 
 export function hasEvidenceFileReference(text) {
   const value = String(text ?? "");
   return (
-    (EVIDENCE_FILE_RE.test(value) || GITHUB_ATTACHMENT_RE.test(value)) &&
+    (EVIDENCE_FILE_RE.test(value) ||
+      GITHUB_ATTACHMENT_RE.test(value) ||
+      PR_EVIDENCE_RELEASE_RE.test(value)) &&
     !RETIRED_REPO_EVIDENCE_RE.test(value)
   );
 }
@@ -171,6 +174,16 @@ const GITHUB_ATTACHMENT_RE =
 // A URL/path whose tail is an image or video file — a directly-linked media file.
 const MEDIA_EXT_RE =
   /\.(png|jpe?g|gif|webp|apng|avif|bmp|svg|mp4|mov|webm|m4v|ogg)(\?\S*)?(\s|$|\)|"|')/i;
+// The canonical CLI evidence store: the shared `pr-evidence` release plus its
+// `pr-evidence-2`, `pr-evidence-3`, … overflow releases (scripts/pr-evidence.mjs
+// rolls uploads into the next release once GitHub's hard 1000-assets-per-release
+// cap is hit). A `/releases/download/` URL there points at an uploaded asset, not
+// a web page, so the whole family is a first-class evidence host — matched here
+// so an overflow-release link is accepted identically to a primary-release one.
+// The trailing slash after the tag keeps a link to the release *page*
+// (`/releases/tag/pr-evidence`) from matching.
+const PR_EVIDENCE_RELEASE_RE =
+  /(https?:\/\/)?github\.com\/[^/\s)]+\/[^/\s)]+\/releases\/download\/pr-evidence(-\d+)?\//i;
 
 /**
  * Strict media check for the VISUAL evidence rows (screenshots, walkthrough
@@ -187,6 +200,11 @@ export function hasVisualArtifactReference(text) {
   if (GITHUB_ATTACHMENT_RE.test(value)) return true;
   if (/!\[[^\]]*\]\(\s*\S+\s*\)/.test(value)) return true; // ![alt](url) embed
   if (/<(img|video|source|picture)\b[^>]*>/i.test(value)) return true;
+  // A directly-linked media file — including screenshots/videos uploaded to the
+  // pr-evidence release family (primary or `pr-evidence-N` overflow), whose asset
+  // URLs carry a media extension. The extension is required so a non-image
+  // release asset cannot satisfy a screenshot/video row; the retired repo-local
+  // evidence path never counts.
   if (MEDIA_EXT_RE.test(value) && !RETIRED_REPO_EVIDENCE_RE.test(value)) {
     return true;
   }
@@ -299,7 +317,11 @@ export function evaluatePrEvidence(
     const artifactRequired =
       surfaceArtifactsRequired &&
       SURFACE_ARTIFACT_ROW_IDS.includes(id) &&
-      !(id === "before-screenshots" && beforeNaAllowed && hasNaWithReason(rowText));
+      !(
+        id === "before-screenshots" &&
+        beforeNaAllowed &&
+        hasNaWithReason(rowText)
+      );
     // Visual rows on a surface PR demand REAL media (attachment/embed/media
     // URL) — a link to the PR page or a /checks tab is not a screenshot.
     if (artifactRequired && !hasVisualArtifactReference(rowText)) {
@@ -308,8 +330,7 @@ export function evaluatePrEvidence(
     return {
       id,
       label,
-      status:
-        artifactRequired || isRowSatisfied(rowText) ? "ok" : "blank",
+      status: artifactRequired || isRowSatisfied(rowText) ? "ok" : "blank",
     };
   });
   if (surfaceArtifactsRequired && !hasOcrEvidenceReference(rows)) {
@@ -483,13 +504,17 @@ function runSelfTest() {
   }
 
   {
-    const { ok } = evaluatePrEvidence(buildFixtureBody(), REQUIRED_EVIDENCE_ROWS, {
-      changedFiles: [
-        "packages/ui/src/components/Foo.test.tsx",
-        "packages/app-core/src/services/thing.ts",
-        "packages/ui/src/components/Foo.stories.tsx",
-      ],
-    });
+    const { ok } = evaluatePrEvidence(
+      buildFixtureBody(),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        changedFiles: [
+          "packages/ui/src/components/Foo.test.tsx",
+          "packages/app-core/src/services/thing.ts",
+          "packages/ui/src/components/Foo.stories.tsx",
+        ],
+      },
+    );
     if (!ok) {
       failures.push(
         "test/story/server-only diff should not trigger surface artifacts",
@@ -544,12 +569,45 @@ function runSelfTest() {
     }
   }
 
+  {
+    // An overflow-release (pr-evidence-N) screenshot satisfies a UI-file surface
+    // PR identically to a primary-release one — the storage location moved, the
+    // gate did not.
+    const dl = (tag, name) =>
+      `https://github.com/elizaOS/eliza/releases/download/${tag}/${name}`;
+    const { ok } = evaluatePrEvidence(
+      buildFixtureBody({
+        "before-screenshots": `- [x] ![before](${dl("pr-evidence-2", "16367-before.jpg")})`,
+        "after-screenshots": `- [x] ![after](${dl("pr-evidence-2", "16367-after.jpg")})`,
+        "walkthrough-video": `- [x] ${dl("pr-evidence-2", "16367-walk.mp4")}`,
+        "domain-artifacts": `- [ ] OCR text readout: ${dl("pr-evidence-3", "16367-ocr.jsonl")}`,
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/ui/src/components/Foo.tsx"] },
+    );
+    if (!ok)
+      failures.push("overflow-release evidence on a surface PR should pass");
+  }
+
+  {
+    // A link to the release PAGE (not a /download/ asset) is not a screenshot.
+    const { ok } = evaluatePrEvidence(
+      buildFixtureBody({
+        "before-screenshots":
+          "- [ ] Before screenshots: https://github.com/elizaOS/eliza/releases/tag/pr-evidence-2",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/ui/src/components/Foo.tsx"] },
+    );
+    if (ok) failures.push("release-page link must not satisfy a visual row");
+  }
+
   if (failures.length > 0) {
     console.error("check-pr-evidence self-test FAILED:");
     for (const failure of failures) console.error(`  - ${failure}`);
     process.exit(1);
   }
-  console.log("check-pr-evidence self-test passed (11 cases).");
+  console.log("check-pr-evidence self-test passed (13 cases).");
 }
 
 function main() {
