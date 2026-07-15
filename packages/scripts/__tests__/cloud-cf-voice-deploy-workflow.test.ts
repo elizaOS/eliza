@@ -31,9 +31,15 @@ const workflow = Bun.YAML.parse(workflowSource) as Workflow;
 const publishStep = workflow.jobs?.["deploy-api"]?.steps?.find(
   (step) => step.name === "Publish Worker AI secrets",
 );
+const deployStep = workflow.jobs?.["deploy-api"]?.steps?.find(
+  (step) => step.name === "Deploy to Cloudflare Workers",
+);
 
 if (!publishStep?.run) {
   throw new Error("Missing Publish Worker AI secrets workflow step");
+}
+if (!deployStep?.run) {
+  throw new Error("Missing Deploy to Cloudflare Workers workflow step");
 }
 
 const preflight = publishStep.run.slice(
@@ -212,5 +218,46 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(publishStep.env?.PRODUCTION_REALTIME_ELIZA_ENDPOINT).toBe("");
     expect(wrangler).not.toContain("VOICE_AMBIENT_ENABLED");
     expect(wrangler).not.toContain("VOICE_AMBIENT_PENDANT_BASE_URL");
+  });
+
+  test("deploy Worker passes the same fail-closed runtime realtime opt-in as secrets", () => {
+    const runtimeFlag = deployStep.env?.VOICE_REALTIME_WS_ENABLED;
+    expect(runtimeFlag).toBe(publishStep.env?.VOICE_REALTIME_WS_ENABLED);
+    expect(runtimeFlag).toContain("steps.env.outputs.deploy_environment");
+    expect(runtimeFlag).toContain("!= 'production'");
+    expect(runtimeFlag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
+    expect(runtimeFlag).toContain("&& 'true' || 'false'");
+    expect(deployStep.run).toContain(
+      '--var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED"',
+    );
+  });
+
+  test("runtime realtime override stays default-off and production-safe across Worker and frontend", () => {
+    const wrangler = read("packages/cloud/api/wrangler.toml");
+    const stagingVars = wrangler.slice(
+      wrangler.indexOf("[env.staging.vars]"),
+      wrangler.indexOf("[env.production.vars]"),
+    );
+    const productionVars = wrangler.slice(
+      wrangler.indexOf("[env.production.vars]"),
+    );
+    expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(deployStep.env?.VOICE_REALTIME_WS_ENABLED).toBe(
+      publishStep.env?.VOICE_REALTIME_WS_ENABLED,
+    );
+    expect(deployStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
+      "&& 'true' || 'false'",
+    );
+
+    const frontendRealtimeFlags = workflowSource.match(
+      /VITE_VOICE_REALTIME_WS: \$\{\{[^}]*vars\.VOICE_REALTIME_WS_ENABLED[^}]*&& '1' \|\| '0' \}\}/g,
+    );
+    expect(frontendRealtimeFlags?.length).toBeGreaterThanOrEqual(2);
+    for (const flag of frontendRealtimeFlags ?? []) {
+      expect(flag).toContain("inputs.environment == 'production'");
+      expect(flag).toContain("github.ref == 'refs/heads/main'");
+      expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
+    }
   });
 });
