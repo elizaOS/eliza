@@ -1158,7 +1158,7 @@ export const ChatMessage = memo(function ChatMessage({
               className={cn(
                 "absolute z-10 min-w-0",
                 isUser
-                  ? "-bottom-0.5 right-0 origin-top-right pointer-coarse:-bottom-1.5"
+                  ? "-bottom-1 right-0 origin-top-right pointer-coarse:-bottom-2"
                   : "bottom-0 left-0 origin-top-left pointer-coarse:-bottom-1",
               )}
             >
