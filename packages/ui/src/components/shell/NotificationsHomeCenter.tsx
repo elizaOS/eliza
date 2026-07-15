@@ -2687,7 +2687,11 @@ export function NotificationsHomeCenter({
                     fanned && "eliza-notif-shade-transition",
                   )}
                   style={
-                    fanned ? { rowGap: `${stackFanProgress * 6}px` } : undefined
+                    fanned
+                      ? {
+                          rowGap: `${stackFanProgress * disposableLayoutVisibility * 6}px`,
+                        }
+                      : undefined
                   }
                 >
                   {rows.map((notification, rowIndex) => (
@@ -2707,7 +2711,7 @@ export function NotificationsHomeCenter({
                       stackCountVisibility={
                         rowIndex === 0 && allGroupRows.length > 1
                           ? fanned
-                            ? 1 - stackFanProgress
+                            ? Math.max(1 - stackFanProgress, shadeCloseProgress)
                             : 1
                           : undefined
                       }
