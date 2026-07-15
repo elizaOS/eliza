@@ -3,8 +3,9 @@
  * `panel` — avatar/name grouping, theme-token bubble, hover action rail,
  * touch tap-reveal (ChatView + detached windows via ChatTranscript) — and
  * `glass` — the continuous overlay's floating dark-glass row: motion
- * entrance/exit, press-and-hold copy, click-to-reveal action plate, Retry on
- * recoverable failures, and the suggestion affordance in glass trim.
+ * entrance/exit, press-and-hold copy, hover/focus or touch-revealed bare
+ * actions, Retry on recoverable failures, and the suggestion affordance in
+ * glass trim.
  * Reveal/edit/copy state, eligibility rules, and the suggestion detection are
  * shared; only the chrome branches. Editing replaces the message text in place
  * and pins the bubble's measured width so the transcript does not reflow.
@@ -880,6 +881,7 @@ export const ChatMessage = memo(function ChatMessage({
     };
     const handleBubbleClick = (e: MouseEvent<HTMLDivElement>) => {
       if (!bubbleInteractive) return;
+      if (supportsHover) return;
       if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
       toggleRevealed();
     };
@@ -999,12 +1001,29 @@ export const ChatMessage = memo(function ChatMessage({
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={transition}
         className="mb-1.5"
+        onMouseEnter={
+          supportsHover && hasActions ? () => setShowActions(true) : undefined
+        }
+        onMouseLeave={
+          supportsHover && hasActions ? () => setShowActions(false) : undefined
+        }
+        onFocusCapture={
+          supportsHover && hasActions ? () => setShowActions(true) : undefined
+        }
+        onBlurCapture={
+          supportsHover && hasActions
+            ? (event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setShowActions(false);
+                }
+              }
+            : undefined
+        }
       >
-        {/* Bubble + its click-to-reveal action row stack vertically, aligned to
-            the turn's side (#10713). */}
         <MessageRowContent
           className={cn(
-            "flex flex-col",
+            "relative flex flex-col",
+            hasActions && "pb-8 pointer-coarse:pb-12",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1063,9 +1082,8 @@ export const ChatMessage = memo(function ChatMessage({
               initial={false}
               animate={
                 accessoryVisible
-                  ? { height: "auto", opacity: 1, y: 0, scale: 1 }
+                  ? { opacity: 1, y: 0, scale: 1 }
                   : {
-                      height: 0,
                       opacity: 0,
                       y: reduceMotion ? 0 : 4,
                       scale: reduceMotion ? 1 : 0.98,
@@ -1076,13 +1094,11 @@ export const ChatMessage = memo(function ChatMessage({
                 ease: GLASS_EASE,
               }}
               className={cn(
-                "min-w-0 overflow-hidden",
-                isUser
-                  ? "self-end origin-top-right"
-                  : "self-start origin-top-left",
+                "absolute bottom-0 z-10 min-w-0",
+                isUser ? "right-0 origin-top-right" : "left-0 origin-top-left",
               )}
             >
-              <MessageRowFooter className="flex items-center px-0 pt-1 text-white/70">
+              <MessageRowFooter className="flex items-center p-0 text-white/70">
                 <motion.div
                   key={accessoryMode}
                   initial={reduceMotion ? false : { opacity: 0, y: 2 }}
