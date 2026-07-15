@@ -14,7 +14,7 @@
  */
 
 import type { CustomActionDef } from "@elizaos/shared";
-import { renderHook, waitFor } from "@testing-library/react";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CommandSurface,
@@ -94,6 +94,14 @@ beforeEach(() => {
   listCustomActions.mockResolvedValue([]);
   window.localStorage.clear();
 });
+
+// Unmount the hook root after each test. The catalog effect setStates when its
+// (mocked) fetch resolves; the protected-probe test only awaits the fetch being
+// CALLED, so it returns with a React update still queued on setImmediate.
+// Without this unmount that task flushes after jsdom is torn down and React
+// dereferences `window`, surfacing as an "unhandled" ReferenceError that fails
+// the shard even though every assertion passed.
+afterEach(cleanup);
 
 describe("useSlashCommandController — catalog load (#11112)", () => {
   it("resolves commands whenever the catalog fetch resolves, hiding auth-gated commands under the fail-closed defaults (#12087 Item 20)", async () => {

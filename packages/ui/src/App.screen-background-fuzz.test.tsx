@@ -37,6 +37,15 @@
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { stubOfflineAppFetch } from "../test/offline-app-fetch";
+
+// The offline fetch stub keeps every probe permanently pending; withTimeout's
+// real timer would fire seconds later — after this file's jsdom env is torn
+// down — and reject that pending probe into a post-teardown setState that reads
+// the deleted `window`. Pass it through so the probe simply stays pending.
+vi.mock("./utils/with-timeout", () => ({
+  withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
+}));
 import { getShaderPreset } from "./backgrounds/shader-presets";
 import { BACKGROUND_APPLY_EVENT } from "./backgrounds/useBackgroundApplyChannel";
 import type { BuiltinTab } from "./navigation";
@@ -623,6 +632,7 @@ describe("App screen-background fuzz — color invariant across view switching",
     desktopTabsState.tabs = [];
     glslRuntimeState.compileOk = true;
     glslRuntimeState.rendererCount = 0;
+    stubOfflineAppFetch();
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     vi.stubGlobal(
       "requestAnimationFrame",
@@ -869,6 +879,7 @@ describe("App view-surface mutation isolation — rogue view cannot leak global 
     glslRuntimeState.compileOk = true;
     glslRuntimeState.rendererCount = 0;
     bgState.config = { mode: "shader", color: "#059669" };
+    stubOfflineAppFetch();
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
     vi.stubGlobal(
       "requestAnimationFrame",

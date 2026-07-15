@@ -237,6 +237,16 @@ export default defineConfig({
   },
   test: {
     setupFiles: ["./vitest.setup.ts"],
+    // Write worker console output straight to stdout instead of shipping every
+    // line to the main process over birpc. The heavy `<App />` suites emit
+    // console output (React act/unmounted-update warnings from data-loader
+    // effects that resolve after a test) right as the file's jsdom environment
+    // is torn down; an in-flight `onUserConsoleLog` RPC at that moment aborts
+    // with `EnvironmentTeardownError: Closing rpc while "onUserConsoleLog" was
+    // pending`, which vitest counts as an unhandled error and fails the whole
+    // shard even though every test passed. No test asserts through the intercept
+    // (they spy on `console` directly), so bypassing it is lossless here.
+    disableConsoleIntercept: true,
     pool: "forks",
     poolOptions: {
       forks: {

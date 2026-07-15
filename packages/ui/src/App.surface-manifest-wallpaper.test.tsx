@@ -22,6 +22,16 @@
 import { act, cleanup, render } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// This suite keeps every probe permanently pending (the forever-pending `fetch`
+// below); withTimeout's real timer would fire seconds later — after this file's
+// jsdom env is torn down — and reject that pending probe into a post-teardown
+// setState that reads the deleted `window`. Pass it through so the probe simply
+// stays pending.
+vi.mock("./utils/with-timeout", () => ({
+  withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
+}));
+
 import { BACKGROUND_APPLY_EVENT } from "./backgrounds/useBackgroundApplyChannel";
 import type { BuiltinTab } from "./navigation";
 import type { BackgroundConfig } from "./state/ui-preferences";
