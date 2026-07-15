@@ -419,6 +419,51 @@
       "registryKind": "plugin",
       "directory": "packages/eliza-rollout-plugin"
     },
+    "@wealthville/plugin-wealthville": {
+      "git": {
+        "repo": "amitesh-m/wealthville-integrations",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@wealthville/plugin-wealthville",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Wealthville liquidity-pool scores, ENTER/HOLD/EXIT verdicts, and public miss-inclusive track record for DeFi agents (Solana + EVM).",
+      "homepage": "https://wealthville.net/developers",
+      "topics": [
+        "solana",
+        "defi",
+        "liquidity-pools",
+        "scoring",
+        "wealthville"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "elizaos-plugin"
+    },
     "@xynqai/plugin-eliza": {
       "git": {
         "repo": "visionsXBT/xynq",
