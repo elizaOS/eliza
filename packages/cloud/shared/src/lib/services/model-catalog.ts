@@ -37,37 +37,44 @@ function buildSWRValue<T>(data: T): SWRCachedValue<T> {
 }
 
 async function fetchBitRouterModelCatalog(): Promise<CatalogModel[]> {
+  // "No provider configured" is a real empty catalog — safe to cache. A fetch
+  // FAILURE must NOT be: it throws so getWithSWR keeps serving the last-good
+  // stale catalog instead of overwriting it with `[]` for the whole TTL on a
+  // transient OpenRouter blip. getCachedBitRouterModelCatalog degrades a cold
+  // miss (no stale to serve) to `[]`.
+  if (!hasOpenRouterProviderConfigured()) {
+    return [];
+  }
+
+  const response = await getOpenRouterProvider().listModels();
+  const data = (await response.json()) as OpenAIModelsResponse;
+
+  if (!Array.isArray(data.data)) {
+    throw new Error("OpenRouter returned an invalid model catalog");
+  }
+
+  return data.data;
+}
+
+export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> {
   try {
-    if (!hasOpenRouterProviderConfigured()) {
-      return [];
-    }
+    const cached = await cache.getWithSWR<CatalogModel[]>(
+      CacheKeys.models.bitrouterCatalog(),
+      CacheStaleTTL.models.catalog,
+      fetchBitRouterModelCatalog,
+      CacheTTL.models.catalog,
+    );
 
-    const response = await getOpenRouterProvider().listModels();
-    const data = (await response.json()) as OpenAIModelsResponse;
-
-    if (!Array.isArray(data.data)) {
-      logger.warn("[Model Catalog] OpenRouter returned an invalid model catalog");
-      return [];
-    }
-
-    return data.data;
+    return cached ?? [];
   } catch (error) {
+    // Cold-miss fetch failure only: there is no stale catalog to serve, so
+    // degrade to empty rather than throwing into the hot path. On a stale hit
+    // getWithSWR already returned the last-good catalog and swallowed this.
     logger.warn("[Model Catalog] Failed to fetch OpenRouter model catalog", {
       error,
     });
     return [];
   }
-}
-
-export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> {
-  const cached = await cache.getWithSWR<CatalogModel[]>(
-    CacheKeys.models.bitrouterCatalog(),
-    CacheStaleTTL.models.catalog,
-    fetchBitRouterModelCatalog,
-    CacheTTL.models.catalog,
-  );
-
-  return cached ?? [];
 }
 
 export function hasModelCatalogProviderConfigured(): boolean {
