@@ -2513,6 +2513,35 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(screen.getByTestId("notifications-count").style.opacity).toBe("0");
   });
 
+  it("keeps preview Collapse inert and ignores its deep-pull release click", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.touchStart(list, {
+      touches: [{ identifier: 15, clientX: 180, clientY: 120 }],
+    });
+    fireEvent.touchMove(list, {
+      touches: [{ identifier: 15, clientX: 180, clientY: 620 }],
+    });
+    const collapseFooter = screen.getByTestId("notifications-collapse-footer");
+    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
+
+    act(() => vi.advanceTimersByTime(700));
+    fireEvent.touchEnd(list, {
+      touches: [],
+      changedTouches: [{ identifier: 15, clientX: 180, clientY: 620 }],
+    });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+
+    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+  });
+
   it("keeps an owned touch pull after preview scroll anchoring", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
