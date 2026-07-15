@@ -580,38 +580,6 @@ export function initNotifications(): void {
   void requestHydration();
 }
 
-let devSeedAttempted = false;
-
-/**
- * Dev-only: populate the demo spread when the inbox is empty so the home
- * notification surface is visible by default while developing. The boot wiring
- * calls this only in dev builds (`import.meta.env.DEV`); the server's
- * `/dev/seed` route is itself non-production (404s in prod), so this stays a
- * no-op outside dev. Runs at most once per session and never seeds over a real
- * inbox — production is strictly data-driven.
- */
-export async function seedDevNotificationsIfEmpty(): Promise<void> {
-  if (devSeedAttempted) return;
-  devSeedAttempted = true;
-  // Hydrate first so we only seed a genuinely-empty inbox, never over real rows.
-  if (!state.hydrated) await requestHydration();
-  if (state.hydrationStatus !== "ready" || state.hydrationError !== null) {
-    return;
-  }
-  if (state.notifications.length > 0) return;
-  try {
-    const res = await client.seedDevNotifications();
-    setState({
-      notifications: res.notifications,
-      unreadCount: countUnread(res.notifications),
-      hydrated: true,
-    });
-  } catch {
-    // Prod 404s the seed route (or it is otherwise unavailable) — stay
-    // data-driven; a dev seed failure must never break boot.
-  }
-}
-
 // ── Mutations (optimistic; backed by the HTTP API) ──────────────────────────
 
 /**
@@ -741,7 +709,6 @@ export function __resetNotificationStoreForTests(): void {
     hydrationError: null,
   };
   initialized = false;
-  devSeedAttempted = false;
   ephemeralNotificationIds.clear();
   listeners.clear();
 }
