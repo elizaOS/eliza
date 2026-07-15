@@ -386,9 +386,59 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-scroll[data-shade-dragging] .eliza-notif-count-transition {
   transition: none;
 }
+/* Bulk clear keeps its right edge aligned with each producer's X. Touch-first
+   surfaces expose the command label at rest; precise pointers retain the
+   compact X and reveal the same label leftward on hover or keyboard focus. */
+.eliza-notif-clear-all {
+  width: 2rem;
+}
+.eliza-notif-clear-all[data-confirming] {
+  width: 3rem;
+}
+.eliza-notif-clear-all:not([data-confirming]):focus-visible {
+  width: 3.5rem;
+}
+.eliza-notif-clear-all:not([data-confirming]):focus-visible [data-notification-clear-resting-label] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.eliza-notif-clear-all:not([data-confirming]):focus-visible [data-notification-clear-resting-icon] {
+  opacity: 0;
+  transform: scale(0.75);
+}
+@media (hover: none), (pointer: coarse) {
+  .eliza-notif-clear-all:not([data-confirming]) {
+    width: 3.5rem;
+  }
+  .eliza-notif-clear-all:not([data-confirming]) [data-notification-clear-resting-label] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  .eliza-notif-clear-all:not([data-confirming]) [data-notification-clear-resting-icon] {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+}
+@media (hover: hover) and (pointer: fine) {
+  .eliza-notif-clear-all:not([data-confirming]):hover {
+    width: 3.5rem;
+  }
+  .eliza-notif-clear-all:not([data-confirming]):hover [data-notification-clear-resting-label] {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  .eliza-notif-clear-all:not([data-confirming]):hover [data-notification-clear-resting-icon] {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+}
+/* A view-timeline animation reattaches from its entry keyframe when a transient
+   release marker disappears. Keep it suspended for the expanded projection so
+   that handoff cannot reapply opacity/scale to otherwise-settled glass cards. */
 .eliza-notif-scroll[data-shade-dragging] .eliza-notif-row,
 .eliza-notif-scroll[data-shade-settling] .eliza-notif-row,
-.eliza-notif-scroll[data-shade-release-settling] .eliza-notif-row {
+.eliza-notif-scroll[data-shade-release-settling] .eliza-notif-row,
+.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-row {
   animation: none !important;
 }
 .eliza-notif-scroll .eliza-notif-row.eliza-notif-pull-reveal,
@@ -420,12 +470,14 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   mask-image: none;
   transition: none;
 }
-/* A released deep pull keeps the same unmasked runway until every translated
-   card reaches rest. Restoring the edge mask earlier clips the returning cards
-   while their container is still settling. */
+/* A released deep pull keeps a static feather at both scrollport edges while
+   translated cards return through the retained runway. The scroll-linked mask
+   normally removes its top fade at scrollTop=0; freezing it here prevents the
+   returning cards from ending at the center's hard overflow clip. */
 .eliza-notif-scroll[data-shade-release-settling] {
-  -webkit-mask-image: none;
-  mask-image: none;
+  animation: none;
+  --scroll-fade-t: 1.25rem;
+  --scroll-fade-b: 1.5rem;
 }
 /* Count and card shells become independent compositor layers while they trade
    flow space. Keep cards above the count so its label fades behind their
@@ -532,12 +584,19 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
  */
 export function NotificationsHomeCenter({
   emptyGestureTargetRef,
+  shadeLayoutTargetRef,
 }: {
   /**
    * Larger background surface that may start the pull only while the inbox is
    * empty. Populated shades continue to own their list gestures directly.
    */
   emptyGestureTargetRef?: RefObject<HTMLElement | null>;
+  /**
+   * Home column whose secondary region shares the shade's geometry clock.
+   * Keeping this explicit avoids querying through component ownership while
+   * velocity-aware releases still settle as one layout transaction.
+   */
+  shadeLayoutTargetRef?: RefObject<HTMLElement | null>;
 } = {}): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
   const { notifications, hydrated, hydrationStatus } = useNotifications();
@@ -952,12 +1011,20 @@ export function NotificationsHomeCenter({
     cancel: cancelScheduledPullPresentation,
   } = useRafCoalescer(applyPullPresentation);
 
-  const setShadeSettleDuration = useCallback((durationMs: number) => {
-    centerRef.current?.style.setProperty(
-      "--eliza-notif-settle-duration",
-      `${durationMs}ms`,
-    );
-  }, []);
+  const setShadeSettleDuration = useCallback(
+    (durationMs: number) => {
+      const duration = `${durationMs}ms`;
+      centerRef.current?.style.setProperty(
+        "--eliza-notif-settle-duration",
+        duration,
+      );
+      shadeLayoutTargetRef?.current?.style.setProperty(
+        "--eliza-home-notification-settle-duration",
+        duration,
+      );
+    },
+    [shadeLayoutTargetRef],
+  );
 
   const flushPullPresentation = useCallback(() => {
     flushScheduledPullPresentation();
@@ -1181,8 +1248,10 @@ export function NotificationsHomeCenter({
     (settleMs = SHADE_SETTLE_MS) => {
       if (!shadeExpanded || shadeClosing) return;
       cancelPullCancellation();
+      cancelPullReleaseSettle();
       cancelClearConfirmation();
       const list = scrollRef.current;
+      list?.style.setProperty("--eliza-notif-pull-overshoot", "0px");
       if (list && list.scrollTop > 0) {
         list.scrollTo?.({
           top: 0,
@@ -1226,6 +1295,7 @@ export function NotificationsHomeCenter({
     [
       cancelClearConfirmation,
       cancelPullCancellation,
+      cancelPullReleaseSettle,
       flushPullPresentation,
       reduceMotion,
       setPullPx,
@@ -2585,11 +2655,14 @@ export function NotificationsHomeCenter({
                 }
                 onClick={clearAll}
                 className={cn(
-                  "eliza-notif-control-transition h-8 overflow-hidden text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90",
-                  confirmingClearAll ? "w-12 text-white" : "w-8",
+                  "eliza-notif-clear-all eliza-notif-control-transition h-8 shrink-0 overflow-hidden whitespace-nowrap text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90 focus-visible:text-white/90",
+                  confirmingClearAll && "text-white",
                 )}
               >
-                <ClearConfirmationContent confirming={confirmingClearAll} />
+                <ClearConfirmationContent
+                  confirming={confirmingClearAll}
+                  restingLabel="Clear all"
+                />
               </button>
             ) : null}
           </li>
