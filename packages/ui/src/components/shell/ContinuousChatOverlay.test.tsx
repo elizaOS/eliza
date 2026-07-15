@@ -894,6 +894,7 @@ describe("ContinuousChatOverlay", () => {
       expect(waveform.className).toContain("animate-pulse");
       expect(waveform.className).toContain("motion-reduce:animate-none");
       expect(waveform.className).toContain("text-accent");
+      expect(waveform.className).toContain("hover:text-accent");
     });
 
     it("keeps the pulsing waveform neutral during push-to-talk recording", () => {
@@ -2592,7 +2593,7 @@ describe("ContinuousChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("replaces the composer with dedicated neutral transcription controls", () => {
+  it("keeps chat actions and replaces the mic slot with transcription stop", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -2608,7 +2609,7 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
-    expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
+    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
     expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
     expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
     expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
@@ -2622,10 +2623,12 @@ describe("ContinuousChatOverlay", () => {
     );
     // A stopped agent blocks delivery, not finalization back into the draft.
     expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
-
-    const micStatus = screen.getByTestId("chat-composer-transcribe-status");
-    expect(micStatus.className).toContain("text-white/80");
-    expect(micStatus.className).not.toContain("text-accent");
+    expect(
+      screen
+        .getByTestId("chat-composer-trailing-controls")
+        .contains(stopTranscription),
+    ).toBe(true);
+    expect(screen.queryByTestId("chat-composer-transcribe-status")).toBeNull();
 
     const sendTranscription = screen.getByTestId("chat-composer-action");
     expect(sendTranscription.getAttribute("aria-label")).toBe(
@@ -2791,13 +2794,6 @@ describe("ContinuousChatOverlay", () => {
         .getByTestId("chat-composer-mic-activity")
         .getAttribute("aria-label"),
     ).toBe("Finishing transcription");
-    const micStatus = screen.getByTestId("chat-composer-transcribe-status");
-    expect(micStatus.getAttribute("aria-label")).toBe(
-      "Finishing transcription",
-    );
-    expect(micStatus.querySelector("svg")?.getAttribute("class")).not.toContain(
-      "animate-pulse",
-    );
     expect(
       screen
         .getByTestId("chat-composer-transcription-stop")
@@ -4143,6 +4139,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
 
     const replyPill = screen.getByTestId("chat-reply-pill");
     expect(screen.getByTestId("chat-thread").contains(replyPill)).toBe(true);
+    expect(replyPill.parentElement?.className).toContain("absolute");
     expect(sheet.getAttribute("data-detent")).toBe(detentBeforeReply);
 
     fireEvent.keyDown(screen.getByLabelText("message"), { key: "Escape" });

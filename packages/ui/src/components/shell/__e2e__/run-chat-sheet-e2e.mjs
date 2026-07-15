@@ -2337,9 +2337,9 @@ try {
     await p.close();
   }
 
-  // Transcription owns the whole composer even while an inline reply is in
-  // flight: Stop/activity/neutral mic/Send replace the attachment, textarea,
-  // and spoken-conversation controls until finalization completes.
+  // Transcription owns the text lane even while an inline reply is in flight:
+  // activity replaces the textarea, the mic slot becomes Stop, and the chat
+  // actions control stays put so starting capture does not reshuffle the row.
   {
     const p = await ctrl();
     attachConsole(p, sink);
@@ -2353,17 +2353,13 @@ try {
     assert(
       (await p.getByTestId("chat-composer-mic").count()) === 0 &&
         (await p.getByTestId("chat-composer-mic-activity").count()) === 1 &&
-        (await p.getByTestId("chat-composer-transcribe-status").count()) === 1,
-      "TRANSCRIBING+REPLY: dedicated activity replaces the voice waveform",
+        (await p.getByTestId("chat-composer-plus").count()) === 1 &&
+        (await p.getByTestId("chat-composer-transcription-stop").count()) === 1,
+      "TRANSCRIBING+REPLY: activity replaces text and Stop replaces the mic in place",
     );
-    const statusClass =
-      (await p
-        .getByTestId("chat-composer-transcribe-status")
-        .getAttribute("class")) ?? "";
     assert(
-      statusClass.includes("text-white/80") &&
-        !statusClass.includes("text-accent"),
-      "TRANSCRIBING+REPLY: live mic status is neutral white, never accent orange",
+      (await p.getByTestId("chat-composer-transcribe-status").count()) === 0,
+      "TRANSCRIBING+REPLY: no duplicate live-mic status control remains",
     );
     await snap(p, "state-transcribing-inline-reply");
     await p.getByTestId("chat-composer-transcription-stop").click();
