@@ -244,6 +244,7 @@ function ingest(
 }
 
 interface WsAgentEvent {
+  replayed?: boolean;
   stream?: string;
   payload?: unknown;
 }
@@ -330,6 +331,10 @@ function validateWsNotification(value: unknown): AgentNotification | null {
 
 function handleWsAgentEvent(data: Record<string, unknown>): void {
   const event = data as WsAgentEvent;
+  // HTTP hydration/reconciliation is the canonical inbox snapshot. Buffered
+  // socket history exists for idempotent stream consumers and must never be
+  // mistaken for a fresh arrival that replays banners or stale unread state.
+  if (event.replayed === true) return;
   if (event.stream !== "notification") return;
   const payload =
     event.payload && typeof event.payload === "object"

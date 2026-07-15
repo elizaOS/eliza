@@ -143,6 +143,7 @@ export function parseStreamEventEnvelopeEvent(
   };
   if (typeof data.runId === "string") envelope.runId = data.runId;
   if (typeof data.seq === "number") envelope.seq = data.seq;
+  if (data.replayed === true) envelope.replayed = true;
   if (typeof data.stream === "string") envelope.stream = data.stream;
   if (typeof data.sessionKey === "string")
     envelope.sessionKey = data.sessionKey;
