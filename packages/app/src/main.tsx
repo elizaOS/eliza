@@ -80,6 +80,7 @@ import { RenderTelemetryProfiler } from "@elizaos/ui/cloud-ui/runtime/render-tel
 import { AppWindowRenderer } from "@elizaos/ui/components/apps/AppWindowRenderer";
 import { ShellModalityProvider } from "@elizaos/ui/components/ShellModalityProvider";
 import { ShellRoleProvider } from "@elizaos/ui/components/ShellRoleProvider";
+import { StartupLoading } from "@elizaos/ui/components/shell/StartupShell";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -2466,7 +2467,9 @@ function mountReactApp(): void {
   createRoot(rootEl).render(
     <ErrorBoundary>
       <StrictMode>
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={<StartupLoading phase="loading-ui" status="Booting up" />}
+        >
           <RenderTelemetryProfiler id="AppRoot">
             {mainTree}
           </RenderTelemetryProfiler>

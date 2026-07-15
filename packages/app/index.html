@@ -313,6 +313,10 @@
       overflow: hidden;
       background: var(--launch-bg, #000000);
       color: #ffffff;
+      /* This surface paints before the bundled Poppins face is declared. An
+         OS-resident stack keeps the centered brand row fixed while app CSS
+         loads and React takes ownership of the root. */
+      font-family: Arial, system-ui, sans-serif;
     }
 
     .eliza-preboot-shell__content {
@@ -396,7 +400,7 @@
       <div class="eliza-preboot-shell__content">
         <div class="eliza-preboot-shell__brand" aria-hidden="true">
           <img class="eliza-preboot-shell__mark" src="%BASE_URL%brand/logos/logo_white_nobg.svg" alt="" />
-          <span class="eliza-preboot-shell__name">elizaOS</span>
+          <span class="eliza-preboot-shell__name">__APP_NAME__</span>
         </div>
         <p class="eliza-preboot-shell__status">Booting up</p>
       </div>
