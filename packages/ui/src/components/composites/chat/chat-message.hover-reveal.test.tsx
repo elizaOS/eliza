@@ -43,7 +43,7 @@ function makeMessage(
 }
 
 describe("ChatMessage desktop hover action plate", () => {
-  it("reveals the overlay's bare actions on hover without changing row flow", () => {
+  it("reveals the overlay's bare actions into a compact animated lane", () => {
     render(
       <ChatMessage
         appearance="glass"
@@ -61,14 +61,16 @@ describe("ChatMessage desktop hover action plate", () => {
 
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.className).toContain("absolute");
-    expect(content?.className).toContain("pb-6");
+    expect(content?.className).toContain("pb-0");
     expect(content?.className).toContain("pointer-coarse:pb-11");
-    expect(message.className).toContain("mb-0.5");
+    expect(content?.className).toContain("transition-[padding-bottom]");
+    expect(message.className).toContain("mb-0");
     expect(surface.className).not.toContain("bg-black/55");
 
     fireEvent.mouseEnter(message);
     expect(actions.getAttribute("aria-hidden")).toBe("false");
     expect(actions.hasAttribute("inert")).toBe(false);
+    expect(actions.parentElement?.className).toContain("pb-6");
 
     fireEvent.mouseLeave(message);
     expect(actions.getAttribute("aria-hidden")).toBe("true");
@@ -149,6 +151,6 @@ describe("ChatMessage desktop hover action plate", () => {
     expect(bubble?.classList.contains("rounded-br-md")).toBe(true);
     expect(bubble?.classList.contains("border-white/15")).toBe(true);
     expect(bubble?.classList.contains("px-3.5")).toBe(true);
-    expect(bubble?.classList.contains("py-2")).toBe(true);
+    expect(bubble?.classList.contains("py-1")).toBe(true);
   });
 });
