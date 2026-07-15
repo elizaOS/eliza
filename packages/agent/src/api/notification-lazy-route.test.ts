@@ -20,15 +20,17 @@ function makeContext(pathname: string, method = "GET") {
   const json = vi.fn();
   const error = vi.fn();
   const readJsonBody = vi.fn();
+  const setHeader = vi.fn();
   return {
     args: {
       req: { url: pathname } as http.IncomingMessage,
-      res: {} as http.ServerResponse,
+      res: { setHeader } as unknown as http.ServerResponse,
       method,
       pathname,
       url: new URL(pathname, "http://localhost"),
-      // No runtime → the notification handler serves an empty inbox for GET,
-      // which still proves the wrapper forwarded the request (returned true).
+      // No runtime → the notification handler fails closed with a retryable 503
+      // (it does not fabricate an empty inbox), which still proves the wrapper
+      // forwarded the request (returned true).
       state: { runtime: null },
       json,
       error,
@@ -52,10 +54,17 @@ describe("handleInboxAndCloudRelayRouteGroup (lazy wrapper guard)", () => {
       >[0],
     );
     expect(handled).toBe(true);
-    expect(json).toHaveBeenCalledWith(args.res, {
-      notifications: [],
-      unreadCount: 0,
-    });
+    // No runtime → the dispatch fails closed with a retryable 503 rather than
+    // fabricating an empty inbox; the wrapper still forwarded (handled === true).
+    expect(json).toHaveBeenCalledWith(
+      args.res,
+      {
+        error: "Notification service is still starting",
+        code: "NOTIFICATION_SERVICE_NOT_READY",
+        retryAfter: 1,
+      },
+      503,
+    );
   });
 
   it("forwards /api/notifications/push-tokens to the dispatch", async () => {

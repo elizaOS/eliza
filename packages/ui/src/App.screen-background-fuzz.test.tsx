@@ -161,6 +161,11 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // the overlay throws mid-render and the mutation-isolation block below can't
   // settle the DOM to assert on. Authenticated => overlay stays out of the way.
   useIsAuthenticated: () => true,
+  // notification-store (#16242) reads these to gate + re-arm its boot hydration
+  // probe from the mounted App's notifications-boot effect; the mock must
+  // provide them or the probe throws mid-effect. Authenticated => probe on.
+  isAuthenticatedNow: () => true,
+  subscribeAuthStatus: () => vi.fn(),
 }));
 vi.mock("./hooks/useActivityEvents", () => ({
   useActivityEvents: () => ({ events: [], clearEvents: vi.fn() }),

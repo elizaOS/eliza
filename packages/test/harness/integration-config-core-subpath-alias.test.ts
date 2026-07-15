@@ -84,14 +84,22 @@ describe("integration.config.ts @elizaos/core alias (#11047)", () => {
     ).toBe(true);
   });
 
-  it("leaves unknown @elizaos/core subpaths to package-exports resolution", () => {
-    // Prefix rewriting turned every unaliased subpath into an ENOTDIR path
-    // under the entry file. Unknown subpaths must instead fall through so
-    // Vite resolves them via packages/core's exports map.
+  it("source-aliases other @elizaos/core subpaths to a real sibling file, never ENOTDIR", () => {
+    // The lane's generic source alias maps every remaining `@elizaos/core/<x>`
+    // to its `src/<x>.ts` sibling — Vite's SSR resolver ignores the package's
+    // `eliza-source` export condition and would otherwise pick unbuilt dist.
+    // The #11047 guarantee still holds: the rewrite lands on a real FILE, never
+    // an ENOTDIR path nested under the core entry file. `@elizaos/core/roles`
+    // (a real export since #14904) is the representative subpath.
     const resolved = resolveThroughAliases(
       getIntegrationAliases(),
       "@elizaos/core/roles",
     );
-    expect(resolved).toBeUndefined();
+    expect(resolved, "@elizaos/core/roles must resolve").toBeDefined();
+    const target = resolved as string;
+    expect(
+      existsSync(target) && statSync(target).isFile(),
+      `@elizaos/core/roles resolved to "${target}", which is not a file (ENOTDIR, #11047)`,
+    ).toBe(true);
   });
 });

@@ -5,7 +5,8 @@
  * content header inside the scrollable column for single-pane pages.
  */
 
-import type { ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
+import type { SidebarProps } from "../../components/composites/sidebar";
 import { cn } from "../../lib/utils";
 import { WorkspaceLayout } from "../workspace-layout";
 
@@ -20,6 +21,10 @@ export interface ContentLayoutProps {
   className?: string;
   /** Additional classes on the inner content wrapper. */
   contentClassName?: string;
+  /** Optional desktop workspace sidebar, forwarded to WorkspaceLayout. */
+  sidebar?: ReactElement<SidebarProps> | null;
+  /** Whether the forwarded sidebar can collapse on desktop. */
+  sidebarCollapsible?: boolean;
 }
 
 export function ContentLayout({
@@ -28,6 +33,8 @@ export function ContentLayout({
   inModal,
   className,
   contentClassName,
+  sidebar,
+  sidebarCollapsible,
 }: ContentLayoutProps) {
   return (
     <WorkspaceLayout
@@ -36,6 +43,8 @@ export function ContentLayout({
       contentHeader={contentHeader}
       contentPadding={!inModal}
       headerPlacement="inside"
+      sidebar={sidebar}
+      sidebarCollapsible={sidebarCollapsible}
     >
       {children}
     </WorkspaceLayout>

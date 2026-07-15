@@ -230,13 +230,7 @@ async function loadZod(): Promise<ZodModule> {
 }
 
 /** Effort levels the Agent SDK's `effort` option accepts (== `claude --effort`). */
-const VALID_EFFORT_LEVELS: ReadonlySet<string> = new Set([
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-]);
+const VALID_EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
 
 /**
  * Validate a caller-supplied effort string. Unknown values are dropped (return

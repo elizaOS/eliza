@@ -154,10 +154,7 @@ function claudeSessionKey(model: string, systemPrompt: string, router: boolean):
  * to the SDK default (high) when unset. Validation lives in the session
  * (normalizeEffort) so an unknown value is dropped, never forwarded.
  */
-function resolveSdkEffort(
-  runtime: IAgentRuntime,
-  router: boolean,
-): string | undefined {
+export function resolveSdkEffort(runtime: IAgentRuntime, router: boolean): string | undefined {
   const shared = getSetting(runtime, "ELIZA_CLI_CLAUDE_EFFORT");
   if (router) {
     return getSetting(runtime, "ELIZA_CLI_CLAUDE_PLANNER_EFFORT") ?? shared;

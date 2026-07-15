@@ -254,6 +254,13 @@ vi.mock("./hooks/useAuthStatus", () => ({
   // Home widgets gate their loaders on this (#11084); the mounted App renders
   // them, so the mock must export it alongside useAuthStatus.
   useIsAuthenticated: () => authStatusMock.phase === "authenticated",
+  // notification-store reads auth state outside React to gate its boot probe and
+  // re-arm hydration once a session lands (initNotifications -> requestHydration,
+  // #16242); the mounted App runs that one-time boot effect, so the mock must
+  // export both seams. Auth phase is static in these tests, so the re-arm
+  // subscription never fires — returning a no-op unsubscribe is faithful.
+  isAuthenticatedNow: () => authStatusMock.phase === "authenticated",
+  subscribeAuthStatus: () => vi.fn(),
 }));
 
 vi.mock("./utils/cloud-agent-base", async (importOriginal) => {
