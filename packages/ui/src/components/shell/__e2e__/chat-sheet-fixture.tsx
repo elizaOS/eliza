@@ -110,7 +110,7 @@ const MANY_SEED: ShellMessage[] = Array.from({ length: 40 }, (_, i) => {
     content:
       role === "user"
         ? `message number ${i + 1} — a question that takes a full line to read`
-        : `reply ${i + 1}: here is a deliberately long answer so the transcript grows well past the tallest sheet detent and the scroll container has real overflow to scroll through on every viewport.`,
+        : `reply ${i + 1}: here is a deliberately long answer so the transcript grows well past the tallest sheet detent and the scroll container has real overflow to scroll through on every viewport. The extra detail ensures a full render window still exercises scrolling at the tallest mobile detent.`,
     createdAt: i + 1,
   } as ShellMessage;
 });
