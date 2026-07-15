@@ -23,7 +23,6 @@
 import {
   type Action,
   type ActionResult,
-  type Content,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -237,12 +236,11 @@ export const webSearch: Action & Record<string, unknown> = {
       }
 
       const value = results.slice(0, WEB_SEARCH_RESULT_CHARS);
-      const content: Content = {
-        text: value,
-        actions: ["WEB_SEARCH"],
-        data: { actionName: "WEB_SEARCH", query, provider, value },
-      };
-      callback?.(content);
+      // Data-gathering action: the raw results are returned in the ActionResult
+      // (below) for the RESPONSE_HANDLER to synthesize an answer from, and are
+      // NOT delivered as a user-facing callback. Delivering them dumped the raw
+      // search JSON/article text straight into the chat (chunked into several
+      // messages) before the synthesized reply. Errors DO still call back.
       return {
         text: value,
         success: true,
