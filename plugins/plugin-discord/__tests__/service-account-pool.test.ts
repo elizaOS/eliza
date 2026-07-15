@@ -130,6 +130,10 @@ function makeDiscordGraph() {
 		),
 		sendTyping: vi.fn().mockResolvedValue(undefined),
 		messages: {
+			// The chat-context hook reads the gateway-populated cache (never a
+			// REST fetch — see getConnectorChatContext); fetch remains for the
+			// message operations that do address single messages by id.
+			cache: new Collection(messages),
 			fetch: vi.fn(async (arg?: string | { limit?: number }) => {
 				if (typeof arg === "string") {
 					return messages.get(arg);
