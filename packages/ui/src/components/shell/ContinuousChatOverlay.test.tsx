@@ -1862,10 +1862,28 @@ describe("ContinuousChatOverlay", () => {
     expect(log?.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("shows the attach (+) control", () => {
+  it("keeps the chat-actions menu focused on search and upload", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
+    const plus = screen.getByTestId("chat-composer-plus");
+    expect(plus).toBeTruthy();
     expect(screen.getByLabelText("chat actions")).toBeTruthy();
+
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("Search chat…")).toBeTruthy();
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(screen.queryByText("Enable camera")).toBeNull();
+    expect(screen.queryByText("Transcribe")).toBeNull();
+    expect(screen.queryByText("Stop transcribing")).toBeNull();
   });
 
   it("attaches an image and enables an image-only send", async () => {
