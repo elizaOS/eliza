@@ -59,7 +59,7 @@
     "typecheck": "tsgo --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
     "rollup": "^4.60.2",
