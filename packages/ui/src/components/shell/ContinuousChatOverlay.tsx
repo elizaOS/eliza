@@ -568,6 +568,90 @@ function SoftButton({
   );
 }
 
+const COMPOSER_MIC_BARS = [
+  { id: "outer-left", height: 10 },
+  { id: "mid-left", height: 16 },
+  { id: "inner-left", height: 22 },
+  { id: "center", height: 28 },
+  { id: "inner-right", height: 22 },
+  { id: "mid-right", height: 16 },
+  { id: "outer-right", height: 10 },
+] as const;
+
+// Audio-frame writes stay imperative so live microphone activity never
+// rerenders the chat tree while transcription owns the composer's text lane.
+function ComposerMicActivity({
+  analyser,
+  finishing,
+  reduceMotion,
+  transcript,
+}: {
+  analyser: AnalyserNode | null;
+  finishing: boolean;
+  reduceMotion: boolean;
+  transcript: string;
+}): React.JSX.Element {
+  const barsRef = React.useRef<Array<HTMLSpanElement | null>>([]);
+
+  React.useEffect(() => {
+    if (!analyser || finishing || reduceMotion) return;
+    const samples = new Uint8Array(analyser.fftSize);
+    let frame = 0;
+    const renderFrame = () => {
+      analyser.getByteTimeDomainData(samples);
+      let energy = 0;
+      for (const sample of samples) {
+        const normalized = (sample - 128) / 128;
+        energy += normalized * normalized;
+      }
+      const rms = Math.sqrt(energy / Math.max(samples.length, 1));
+      const activity = Math.min(1, Math.max(0.14, rms * 5));
+      barsRef.current.forEach((bar, index) => {
+        if (!bar) return;
+        const centerWeight = 1 - Math.abs(index - 3) * 0.1;
+        bar.style.transform = `scaleY(${Math.max(0.18, activity * centerWeight)})`;
+      });
+      frame = window.requestAnimationFrame(renderFrame);
+    };
+    frame = window.requestAnimationFrame(renderFrame);
+    return () => window.cancelAnimationFrame(frame);
+  }, [analyser, finishing, reduceMotion]);
+
+  return (
+    <div
+      role="status"
+      aria-label={
+        finishing ? "Finishing transcription" : "Live microphone activity"
+      }
+      data-testid="chat-composer-mic-activity"
+      className="flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1.5 px-3 text-txt"
+    >
+      <span className="sr-only" aria-live="polite">
+        {finishing
+          ? "Finishing transcription"
+          : transcript.trim() || "Listening"}
+      </span>
+      {COMPOSER_MIC_BARS.map(({ id, height }, index) => (
+        <span
+          // The fixed seven-bar geometry is presentation-only and never reorders.
+          key={id}
+          ref={(node) => {
+            barsRef.current[index] = node;
+          }}
+          aria-hidden="true"
+          className={cn(
+            "w-1 origin-center rounded-full bg-current shadow-[0_0_9px_rgba(255,255,255,0.38)] transition-transform duration-75",
+            !finishing &&
+              !analyser &&
+              "animate-pulse motion-reduce:animate-none",
+          )}
+          style={{ height, transform: "scaleY(0.32)" }}
+        />
+      ))}
+    </div>
+  );
+}
+
 /** Inert conversation-nav fallback for minimal mock controllers. */
 const EMPTY_CONVERSATION_NAV: ConversationNav = {
   hasPrev: false,
@@ -1059,13 +1143,14 @@ export function ContinuousChatOverlay({
     send,
     canSend,
     recording,
+    analyser,
+    transcript,
     startRecording,
     stopRecording,
     handsFree,
     toggleHandsFree,
     transcriptionMode,
     toggleTranscriptionMode,
-    stopTranscriptionAndMic,
     setDictationSink,
     setTranscriptSessionSink,
     setComposerHasDraft,
@@ -1254,6 +1339,19 @@ export function ContinuousChatOverlay({
   // without subscribing (dictation append), same pattern as messagesRef above.
   const draftRef = React.useRef(draft);
   draftRef.current = draft;
+  const pendingImagesRef = React.useRef(pendingImages);
+  pendingImagesRef.current = pendingImages;
+  // Session completion is normally delivered back into the editable draft.
+  // The transcription Send control changes that disposition for exactly one
+  // drain/finalize cycle without teaching the voice engine about composer UI.
+  const transcriptionDeliveryRef = React.useRef<"draft" | "send">("draft");
+  // Finalization drains the capture asynchronously. An immediate ref closes
+  // the same-frame double-tap gap before React can paint the disabled controls.
+  const transcriptionFinishingRef = React.useRef(false);
+  const [transcriptionFinishing, setTranscriptionFinishing] =
+    React.useState(false);
+  const transcriptionComposerActive =
+    transcriptionMode || transcriptionFinishing;
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -2184,6 +2282,31 @@ export function ContinuousChatOverlay({
     [canSend, firstRunOpen, send, setDraft, setPendingImages, viewChatBinding],
   );
 
+  const finishTranscription = React.useCallback(
+    async (delivery: "draft" | "send") => {
+      if (transcriptionFinishingRef.current) return;
+      transcriptionFinishingRef.current = true;
+      setTranscriptionFinishing(true);
+      transcriptionDeliveryRef.current = delivery;
+      try {
+        await toggleTranscriptionMode();
+      } finally {
+        // An empty/error session never reaches the sink. Reset here as well so
+        // its delivery intent cannot leak into a later recording.
+        transcriptionDeliveryRef.current = "draft";
+        transcriptionFinishingRef.current = false;
+        setTranscriptionFinishing(false);
+        // The textarea remounts only after the finishing guard drops. Restore
+        // focus on the next frame so Stop opens the editable result and Send
+        // leaves the composer ready for the next turn.
+        if (typeof window !== "undefined") {
+          window.requestAnimationFrame(() => inputRef.current?.focus());
+        }
+      }
+    },
+    [toggleTranscriptionMode],
+  );
+
   const addImageFiles = React.useCallback(
     (files: FileList | File[]) => {
       void intakeAttachmentFiles(files)
@@ -2262,20 +2385,6 @@ export function ContinuousChatOverlay({
       voiceCaptureDebug("mic:noop", { reason: "suppress-click" });
       return;
     }
-    // While transcribing, the mic is the master voice control: a tap turns the
-    // mic OFF, which also ends transcription (mic = parent — turning off the mic
-    // turns off transcript). This is distinct from the transcript button, which
-    // turns transcript off but LEAVES THE MIC ON. The finished transcript still
-    // drops into the composer as an attachment. This OFF path is checked FIRST
-    // — never gated on `responding`: a wake-word inline reply (#9880) flips
-    // `responding` true while `handsFree` stays false mid-transcription, and
-    // gating it left a lit, dead "stop transcription" mic until the reply
-    // finished.
-    if (transcriptionMode) {
-      voiceCaptureDebug("mic:branch", { action: "stop-transcription" });
-      stopTranscriptionAndMic();
-      return;
-    }
     // Voice can't be turned ON while a reply is in flight (it's gated until the
     // turn finishes), but an active hands-free session can always be turned OFF.
     if (responding && !handsFree) {
@@ -2291,7 +2400,6 @@ export function ContinuousChatOverlay({
     handsFree,
     toggleHandsFree,
     transcriptionMode,
-    stopTranscriptionAndMic,
     shouldSuppressClick,
   ]);
 
@@ -3521,30 +3629,29 @@ export function ContinuousChatOverlay({
     return () => setDictationSink(null);
   }, [setDictationSink, setDraft, expand]);
 
-  // A completed transcription SESSION works like ChatGPT dictation: the full
-  // transcript is INSERTED AS TEXT at the end of the composer draft — never
-  // auto-sent, never a document chip the user has to open. The captured audio
-  // becomes a pending AUDIO ATTACHMENT (the sharable artifact: sending it
-  // routes the WAV through the content-addressed media store, so the thread
-  // carries a playable, downloadable /api/media/<sha256>.wav recording). The
-  // session is also archived (Transcript record + audio) for the Transcripts
-  // view, best-effort and silent.
+  // A completed transcription session has one drain path. Stop returns its text
+  // and optional recording to the editable composer; Send delivers that exact
+  // combined payload directly, avoiding a render-timing race between draining
+  // the capture and submitting the draft. Both paths still archive the session.
   React.useEffect(() => {
     setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
       if (segments.length === 0) return;
+      const delivery = transcriptionDeliveryRef.current;
+      transcriptionDeliveryRef.current = "draft";
       const text = transcriptPlainText(segments);
       const stamp = new Date(startedAtMs)
         .toISOString()
         .slice(0, 16)
         .replace("T", " ");
-      if (text) {
-        // Append at the END of whatever is already typed (through the live
-        // ref — the shared context setter takes a plain string), mirroring the
-        // push-to-talk dictation sink above.
-        const current = draftRef.current;
-        setDraft(current ? `${current} ${text}` : text);
-      }
+      const currentDraft = draftRef.current;
+      const combinedText = text
+        ? currentDraft
+          ? `${currentDraft} ${text}`
+          : text
+        : currentDraft;
       const hasAudio = Boolean(audioWav && audioWav.byteLength > 0);
+      let recordingAttachment: ImageAttachment | null = null;
+      let recordingError: string | null = null;
       if (audioWav && hasAudio) {
         // Enforce the SAME per-file media size cap the attach/paste/drop paths
         // go through (intakeAttachmentFiles → perFileByteCap): a several-minute
@@ -3553,23 +3660,38 @@ export function ContinuousChatOverlay({
         // cap, drop just the audio artifact — the transcript TEXT inserted above
         // is the primary output and always lands — and say so inline.
         if (audioWav.byteLength > MAX_CHAT_MEDIA_RAW_BYTES) {
-          setImageError(
-            `Recording too large to attach (max ${bytesToMb(
-              MAX_CHAT_MEDIA_RAW_BYTES,
-            )}MB) — transcript kept.`,
-          );
+          recordingError = `Recording too large to attach (max ${bytesToMb(
+            MAX_CHAT_MEDIA_RAW_BYTES,
+          )}MB) — transcript kept.`;
         } else {
-          const recording: ImageAttachment = {
+          recordingAttachment = {
             data: wavBytesToBase64(audioWav),
             mimeType: "audio/wav",
             name: `Recording ${stamp}.wav`,
           };
-          setPendingImages((prev) =>
-            [...prev, recording].slice(0, MAX_CHAT_IMAGES),
-          );
         }
       }
-      if (text || hasAudio) {
+      const combinedImages = recordingAttachment
+        ? [...pendingImagesRef.current, recordingAttachment].slice(
+            0,
+            MAX_CHAT_IMAGES,
+          )
+        : pendingImagesRef.current;
+      // Agent availability can change while the microphone drains. Never discard
+      // the finished session because Send was valid at pointer-down but no longer
+      // valid when the final ASR payload arrives; preserve it as an editable draft.
+      const deliverImmediately =
+        delivery === "send" && canSend && !firstRunOpen;
+      if (deliverImmediately) {
+        submitText(combinedText, combinedImages);
+      } else {
+        if (text) setDraft(combinedText);
+        if (recordingAttachment) setPendingImages(combinedImages);
+      }
+      // submitText clears attachment errors as part of a successful send. Apply
+      // this notice afterwards so a sent transcript never silently omits its WAV.
+      if (recordingError) setImageError(recordingError);
+      if (!deliverImmediately && (text || hasAudio)) {
         expand();
         inputRef.current?.focus();
       }
@@ -3584,12 +3706,25 @@ export function ContinuousChatOverlay({
               }
             : {}),
         })
-        .catch(() => {
-          /* archival is best-effort; a failed save just skips the record */
+        .catch((err: unknown) => {
+          // error-policy:J7 transcript archival must not break composer delivery;
+          // the failed diagnostic artifact remains observable to developers.
+          logger.warn(
+            { err },
+            "[ContinuousChatOverlay] transcript archive failed",
+          );
         });
     });
     return () => setTranscriptSessionSink(null);
-  }, [setTranscriptSessionSink, setDraft, setPendingImages, expand]);
+  }, [
+    setTranscriptSessionSink,
+    setDraft,
+    setPendingImages,
+    submitText,
+    expand,
+    canSend,
+    firstRunOpen,
+  ]);
 
   // Tell the controller whether a draft is pending so the hands-free always-on
   // loop pauses while the user is typing (or editing a PTT dictation) and
@@ -5245,12 +5380,14 @@ export function ContinuousChatOverlay({
                     Upload live in the composer "+" menu, while Home lives in
                     the launcher. This bar exists only to reserve the safe-area
                     top inset at full-bleed and host the transcription badge. */}
-                {transcriptionMode ? (
+                {transcriptionComposerActive ? (
                   <div
                     data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-medium text-accent"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/75"
                   >
-                    Transcribing — say “exit transcription mode” to stop
+                    {transcriptionFinishing
+                      ? "Finishing transcription…"
+                      : "Transcribing — say “exit transcription mode” to stop"}
                   </div>
                 ) : null}
               </motion.div>
@@ -5650,7 +5787,7 @@ export function ContinuousChatOverlay({
               ) : null}
               {/* Inline slash-command autocomplete, floating just above the
                     input row. */}
-              {slashProp && !slashDismissed ? (
+              {!transcriptionComposerActive && slashProp && !slashDismissed ? (
                 <SlashCommandMenu
                   state={slashMenu}
                   loading={isSlashDraft && slash.loading}
@@ -5662,142 +5799,169 @@ export function ContinuousChatOverlay({
                   in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-lg"
-                    aria-label="chat actions"
-                    disabled={firstRunOpen}
-                    data-testid="chat-composer-plus"
-                    // Same 40px box / 20px mark / padded-back-to-44px hit zone
-                    // as the SoftButton controls, so the row reads as one family.
-                    className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
-                  >
-                    <Glyph d={PLUS_GLYPH} className="size-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  sideOffset={10}
-                  // Above the shell overlay (z 9000); mirrors the config-select
-                  // floating layer so the menu never hides behind the glass.
-                  style={{ zIndex: 12000 }}
-                  // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
-                  // variant) instead of the flat opaque card.
-                  glass
-                  className="min-w-[13rem]"
-                >
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    onSelect={() => openSearch()}
-                  >
-                    <Search
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Search chat…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    disabled={pendingImages.length >= MAX_CHAT_IMAGES}
-                    onSelect={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Upload file
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Textarea
-                ref={inputRef}
-                rows={1}
-                value={draft}
-                // Onboarding is sign-in-first: lock the composer until the user
-                // signs in, so they can't type into a chat that isn't ready yet.
-                disabled={firstRunOpen}
-                onChange={(e) => {
-                  const nextDraft = e.target.value;
-                  if (
-                    draft.trim().length > 0 &&
-                    nextDraft.trim().length === 0
-                  ) {
-                    reportComposerActivity({
-                      activity: "draft_abandoned",
-                      surface: COMPOSER_ACTIVITY_SURFACE,
-                      conversationId: activeConversationIdRef.current,
-                      draftLength: 0,
-                      reason: "cleared",
-                    });
+              {transcriptionComposerActive ? (
+                <SoftButton
+                  glyph={STOP_GLYPH}
+                  label={
+                    transcriptionFinishing
+                      ? "finishing transcription"
+                      : "stop transcription"
                   }
-                  setDraft(nextDraft);
-                  // Mirror the live draft to the active view (Help search etc.).
-                  viewChatBinding?.onQuery?.(nextDraft);
-                  if (nextDraft.trim().length > 0) expand();
-                }}
-                onFocus={() => {
-                  // Widen out of the short-landscape compact affordance (#14173)
-                  // on focus, before the first keystroke.
-                  setComposerFocused(true);
-                  // A pill-open focus only raises the keyboard; it must not
-                  // expand a history thread (see suppressExpandOnFocusRef).
-                  if (suppressExpandOnFocusRef.current) {
-                    suppressExpandOnFocusRef.current = false;
-                  } else {
-                    expand();
+                  disabled={firstRunOpen || transcriptionFinishing}
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => void finishTranscription("draft")}
+                  testId="chat-composer-transcription-stop"
+                />
+              ) : (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-lg"
+                      aria-label="chat actions"
+                      disabled={firstRunOpen}
+                      data-testid="chat-composer-plus"
+                      // Same 40px box / 20px mark / padded-back-to-44px hit zone
+                      // as the SoftButton controls, so the row reads as one family.
+                      className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
+                    >
+                      <Glyph d={PLUS_GLYPH} className="size-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    side="top"
+                    align="start"
+                    sideOffset={10}
+                    // Above the shell overlay (z 9000); mirrors the config-select
+                    // floating layer so the menu never hides behind the glass.
+                    style={{ zIndex: 12000 }}
+                    // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
+                    // variant) instead of the flat opaque card.
+                    glass
+                    className="min-w-[13rem]"
+                  >
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      onSelect={() => openSearch()}
+                    >
+                      <Search
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Search chat…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      disabled={pendingImages.length >= MAX_CHAT_IMAGES}
+                      onSelect={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Upload file
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              {transcriptionComposerActive ? (
+                <ComposerMicActivity
+                  analyser={analyser}
+                  finishing={transcriptionFinishing}
+                  reduceMotion={reduce}
+                  transcript={transcript}
+                />
+              ) : (
+                <Textarea
+                  ref={inputRef}
+                  rows={1}
+                  value={draft}
+                  // Onboarding is sign-in-first: lock the composer until the user
+                  // signs in, so they can't type into a chat that isn't ready yet.
+                  disabled={firstRunOpen}
+                  onChange={(e) => {
+                    const nextDraft = e.target.value;
+                    if (
+                      draft.trim().length > 0 &&
+                      nextDraft.trim().length === 0
+                    ) {
+                      reportComposerActivity({
+                        activity: "draft_abandoned",
+                        surface: COMPOSER_ACTIVITY_SURFACE,
+                        conversationId: activeConversationIdRef.current,
+                        draftLength: 0,
+                        reason: "cleared",
+                      });
+                    }
+                    setDraft(nextDraft);
+                    // Mirror the live draft to the active view (Help search etc.).
+                    viewChatBinding?.onQuery?.(nextDraft);
+                    if (nextDraft.trim().length > 0) expand();
+                  }}
+                  onFocus={() => {
+                    // Widen out of the short-landscape compact affordance (#14173)
+                    // on focus, before the first keystroke.
+                    setComposerFocused(true);
+                    // A pill-open focus only raises the keyboard; it must not
+                    // expand a history thread (see suppressExpandOnFocusRef).
+                    if (suppressExpandOnFocusRef.current) {
+                      suppressExpandOnFocusRef.current = false;
+                    } else {
+                      expand();
+                    }
+                  }}
+                  onBlur={() => setComposerFocused(false)}
+                  onPaste={handleComposerPaste}
+                  onKeyDown={handleComposerKeyDown}
+                  // The composer is LOCKED during onboarding: first-run is
+                  // sign-in-first, so the input is disabled (see `disabled` above)
+                  // until the user signs in.
+                  // (This surface's strings are plain literals by design — see
+                  // the imageError note above.)
+                  placeholder={
+                    compactLanding
+                      ? "Ask"
+                      : firstRunOpen
+                        ? "Sign in to start chatting"
+                        : noProviderConfigured
+                          ? "Connect a model provider in Settings to chat"
+                          : modelBlocksSend
+                            ? modelStatus?.kind === "downloading"
+                              ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                              : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                            : booting
+                              ? `Ask ${agentName} — waking up…`
+                              : (viewChatBinding?.placeholder ??
+                                `Ask ${agentName}`)
                   }
-                }}
-                onBlur={() => setComposerFocused(false)}
-                onPaste={handleComposerPaste}
-                onKeyDown={handleComposerKeyDown}
-                // The composer is LOCKED during onboarding: first-run is
-                // sign-in-first, so the input is disabled (see `disabled` above)
-                // until the user signs in.
-                // (This surface's strings are plain literals by design — see
-                // the imageError note above.)
-                placeholder={
-                  compactLanding
-                    ? "Ask"
-                    : firstRunOpen
-                      ? "Sign in to start chatting"
-                      : noProviderConfigured
-                        ? "Connect a model provider in Settings to chat"
-                        : modelBlocksSend
-                          ? modelStatus?.kind === "downloading"
-                            ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                            : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                          : booting
-                            ? `Ask ${agentName} — waking up…`
-                            : (viewChatBinding?.placeholder ??
-                              `Ask ${agentName}`)
-                }
-                aria-label="message"
-                data-testid="chat-composer-textarea"
-                data-chat-sheet-scroll-region
-                data-scroll-fade={composerScrollFade}
-                onScroll={(event) =>
-                  updateComposerScrollFade(event.currentTarget)
-                }
-                aria-describedby={
-                  booting && !noProviderConfigured && !firstRunOpen
-                    ? "cc-booting-hint"
-                    : undefined
-                }
-                // Combobox semantics (role + aria-*) are applied as one spread,
-                // and only when a slash catalog is wired in — a plain message
-                // box otherwise.
-                {...comboboxAria}
-                // The floating composer is the primary chat affordance on the
-                // ambient home surface, so its placeholder must stay readable
-                // even when the glass pill sits over dark wallpaper. During
-                // onboarding `disabled:opacity-100` prevents the browser from
-                // dimming the locked cue.
-                className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center overflow-y-auto overscroll-contain border-none bg-transparent py-1 pr-3 pl-1.5 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
-              />
-              {booting && !noProviderConfigured && !firstRunOpen ? (
+                  aria-label="message"
+                  data-testid="chat-composer-textarea"
+                  data-chat-sheet-scroll-region
+                  data-scroll-fade={composerScrollFade}
+                  onScroll={(event) =>
+                    updateComposerScrollFade(event.currentTarget)
+                  }
+                  aria-describedby={
+                    booting && !noProviderConfigured && !firstRunOpen
+                      ? "cc-booting-hint"
+                      : undefined
+                  }
+                  // Combobox semantics (role + aria-*) are applied as one spread,
+                  // and only when a slash catalog is wired in — a plain message
+                  // box otherwise.
+                  {...comboboxAria}
+                  // The floating composer is the primary chat affordance on the
+                  // ambient home surface, so its placeholder must stay readable
+                  // even when the glass pill sits over dark wallpaper. During
+                  // onboarding `disabled:opacity-100` prevents the browser from
+                  // dimming the locked cue.
+                  className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center overflow-y-auto overscroll-contain border-none bg-transparent py-1 pr-3 pl-1.5 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
+                />
+              )}
+              {!transcriptionComposerActive &&
+              booting &&
+              !noProviderConfigured &&
+              !firstRunOpen ? (
                 <span id="cc-booting-hint" className="sr-only">
                   {agentName} is waking up — you can type now; your message
                   sends and the reply arrives in a moment.
@@ -5805,125 +5969,115 @@ export function ContinuousChatOverlay({
               ) : null}
               {/* Trailing controls. */}
               <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                {/* Transcription start/stop — ChatGPT-style dictation, always
-                sitting next to the voice control (mic glyph = "transcribe my
-                speech into the box"; the waveform next door is the spoken
-                conversation). Tap to start; tap again (or say "exit
-                transcription mode") to stop — the full transcript lands at the
-                END of the draft and the recording attaches as a sharable audio
-                artifact (see the transcript-session sink). The voice button
-                stays the master control (a tap there ends transcription AND the
-                mic); this one LEAVES THE MIC ON, matching
-                toggleTranscriptionMode's off-path (#10699). Hidden when a
-                send/stop control is showing (a draft or a streaming reply). */}
-                {!((hasDraft || hasImages) && !recording) &&
-                !(!recording && responding) ? (
-                  <SoftButton
-                    icon={Mic}
-                    label={
-                      transcriptionMode
-                        ? "stop transcription"
-                        : "start transcription"
-                    }
-                    disabled={firstRunOpen}
-                    active={transcriptionMode}
-                    pulse={transcriptionMode}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={toggleTranscriptionMode}
-                    testId="chat-composer-transcribe"
-                  />
-                ) : null}
-                {/* One trailing control, ChatGPT-style: mic when there's nothing
-                to send (or while recording, to stop), swapping to send once the
-                user starts typing or attaches an image. It morphs IN PLACE (one
-                persistent <div>, no `key`): React reconciles the SoftButton's
-                glyph/label/handlers without a remount, so there's no scale/fade
-                pop on every keystroke that crosses the draft boundary. */}
-                <div className="shrink-0">
-                  {(hasDraft || hasImages) && !recording ? (
+                {transcriptionComposerActive ? (
+                  <>
+                    {/* Stop owns session finalization; this neutral status is a
+                    live capture cue, not a second toggle for the same mic. */}
+                    <div
+                      role="status"
+                      aria-label={
+                        transcriptionFinishing
+                          ? "Finishing transcription"
+                          : "Transcribing"
+                      }
+                      data-testid="chat-composer-transcribe-status"
+                      className="relative grid h-10 w-10 shrink-0 place-items-center text-white/80 drop-shadow-[0_0_8px_rgba(255,255,255,0.62)] [&_svg]:size-5"
+                    >
+                      <Mic
+                        aria-hidden="true"
+                        className={cn(
+                          !transcriptionFinishing &&
+                            "animate-pulse motion-reduce:animate-none",
+                        )}
+                      />
+                    </div>
                     <SoftButton
                       icon={SendHorizontal}
                       label={
-                        !canSend
-                          ? "send (agent stopped)"
-                          : responding
-                            ? "send another"
-                            : "send"
+                        transcriptionFinishing
+                          ? "send transcription (finishing)"
+                          : canSend
+                            ? "send transcription"
+                            : "send transcription (agent stopped)"
                       }
-                      // Onboarding is sign-in-first; if a synthetic draft exists
-                      // anyway, send stays locked with the rest of the composer.
-                      disabled={firstRunOpen || !canSend}
-                      // Keep focus in the textarea on tap: without this the
-                      // button steals focus, the textarea blurs, the keyboard
-                      // retracts and the composer relayouts between pointerdown
-                      // and click — so the first tap only dismissed the keyboard
-                      // and a second tap was needed to actually send. Chromium
-                      // still dispatches click after a preventDefaulted
-                      // pointerdown, so onClick fires on the first tap and the
-                      // keyboard stays up for the next message.
-                      onPointerDown={(e) => e.preventDefault()}
-                      onClick={submit}
+                      disabled={
+                        firstRunOpen || !canSend || transcriptionFinishing
+                      }
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => void finishTranscription("send")}
                       testId="chat-composer-action"
                     />
-                  ) : !recording && responding ? (
-                    // While a reply is streaming and nothing is typed, the mic becomes a
-                    // stop control so the user can interrupt a runaway generation.
-                    <SoftButton
-                      glyph={STOP_GLYPH}
-                      label="stop generating"
-                      onClick={() => stop()}
-                      testId="chat-composer-stop"
-                    />
-                  ) : (
-                    // VOICE — the spoken-conversation control (waveform glyph;
-                    // the mic glyph lives on the transcribe/dictate button
-                    // beside it). Tap = hands-free conversation; hold =
-                    // push-to-talk dictation; while transcribing a tap is the
-                    // master off (ends transcription AND the mic).
-                    <SoftButton
-                      icon={AudioLines}
-                      label={
-                        pttHolding
-                          ? // Press-and-hold dictates into the composer draft; a
-                            // release drops the transcript into the text box and
-                            // does NOT send (usePushToTalk onHoldEnd). Label the
-                            // real behavior.
-                            "release to insert"
-                          : transcriptionMode
-                            ? // Distinct from the transcribe button's "stop
-                              // transcription" (which leaves the mic on): the
-                              // voice control is the MASTER off — a tap ends
-                              // transcription AND the mic — so a screen reader
-                              // can tell the two adjacent controls apart.
-                              "stop transcription and mic"
-                            : handsFree
-                              ? "end conversation"
-                              : recording
-                                ? "stop listening"
-                                : "talk"
-                      }
-                      // Voice input is free text too — locked with the rest of
-                      // the composer while onboarding is choice-driven.
-                      disabled={firstRunOpen}
-                      // The adjacent mic owns transcription. Keep this waveform
-                      // neutral when that separate control starts recording;
-                      // orange active state belongs only to conversation mode
-                      // initiated by this waveform (or its push-to-talk hold).
-                      active={handsFree || pttHolding}
-                      // Recording can also be owned by the adjacent transcription
-                      // control. Report the live voice state without coloring this
-                      // separate waveform control as active.
-                      pressed={recording || handsFree || transcriptionMode}
-                      pulse={recording || handsFree || transcriptionMode}
-                      onClick={handleMicClick}
-                      onPointerDown={micHoldHandlers.onPointerDown}
-                      onPointerUp={micHoldHandlers.onPointerUp}
-                      onPointerCancel={micHoldHandlers.onPointerCancel}
-                      onPointerLeave={micHoldHandlers.onPointerLeave}
-                      testId="chat-composer-mic"
-                    />
-                  )}
-                </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Dictation and spoken conversation are separate controls.
+                    Starting dictation temporarily replaces this whole layout so
+                    the waveform never reflects or owns transcript capture. */}
+                    {!((hasDraft || hasImages) && !recording) &&
+                    !(!recording && responding) ? (
+                      <SoftButton
+                        icon={Mic}
+                        label="start transcription"
+                        disabled={firstRunOpen}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={toggleTranscriptionMode}
+                        testId="chat-composer-transcribe"
+                      />
+                    ) : null}
+                    {/* The rightmost slot morphs in place across send, generation
+                    stop, and voice so ordinary composer changes never pop it. */}
+                    <div className="shrink-0">
+                      {(hasDraft || hasImages) && !recording ? (
+                        <SoftButton
+                          icon={SendHorizontal}
+                          label={
+                            !canSend
+                              ? "send (agent stopped)"
+                              : responding
+                                ? "send another"
+                                : "send"
+                          }
+                          disabled={firstRunOpen || !canSend}
+                          onPointerDown={(event) => event.preventDefault()}
+                          onClick={submit}
+                          testId="chat-composer-action"
+                        />
+                      ) : !recording && responding ? (
+                        <SoftButton
+                          glyph={STOP_GLYPH}
+                          label="stop generating"
+                          onClick={() => stop()}
+                          testId="chat-composer-stop"
+                        />
+                      ) : (
+                        // Tap starts hands-free conversation; hold inserts
+                        // push-to-talk dictation into the editable draft.
+                        <SoftButton
+                          icon={AudioLines}
+                          label={
+                            pttHolding
+                              ? "release to insert"
+                              : handsFree
+                                ? "end conversation"
+                                : recording
+                                  ? "stop listening"
+                                  : "talk"
+                          }
+                          disabled={firstRunOpen}
+                          active={handsFree || pttHolding}
+                          pressed={recording || handsFree}
+                          pulse={recording || handsFree}
+                          onClick={handleMicClick}
+                          onPointerDown={micHoldHandlers.onPointerDown}
+                          onPointerUp={micHoldHandlers.onPointerUp}
+                          onPointerCancel={micHoldHandlers.onPointerCancel}
+                          onPointerLeave={micHoldHandlers.onPointerLeave}
+                          testId="chat-composer-mic"
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </motion.div>

@@ -539,7 +539,7 @@ function trackAsrPosts(page: Page): { count: () => number } {
   return { count: () => posted };
 }
 
-async function toggleTranscriptionViaSlash(page: Page): Promise<void> {
+async function startTranscriptionViaSlash(page: Page): Promise<void> {
   const composer = page.getByTestId("chat-composer-textarea");
   await composer.fill("/transcribe");
   await expect(page.getByTestId("slash-command-menu")).toBeVisible({
@@ -549,31 +549,38 @@ async function toggleTranscriptionViaSlash(page: Page): Promise<void> {
   await expect(page.getByTestId("slash-command-menu")).toBeHidden({
     timeout: 15_000,
   });
-  await expect(composer).toHaveValue("", { timeout: 15_000 });
-}
-
-async function startTranscriptionViaSlash(page: Page): Promise<void> {
-  await toggleTranscriptionViaSlash(page);
+  await expect(composer).toHaveCount(0, { timeout: 15_000 });
   await expect(page.getByTestId("chat-transcribing-badge")).toBeVisible({
     timeout: 15_000,
   });
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
+  await expect(page.getByTestId("chat-composer-mic-activity")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
+  await expect(page.getByTestId("chat-composer-action")).toHaveAttribute(
     "aria-label",
-    "stop transcription and mic",
+    "send transcription",
     { timeout: 15_000 },
   );
 }
 
-async function finalizeTranscriptionViaSlash(page: Page): Promise<void> {
-  await toggleTranscriptionViaSlash(page);
+async function finalizeTranscriptionViaComposerStop(page: Page): Promise<void> {
+  const stop = page.getByTestId("chat-composer-transcription-stop");
+  await expect(stop).toHaveAttribute("aria-label", "stop transcription", {
+    timeout: 15_000,
+  });
+  await stop.click();
+  await expect(page.getByTestId("chat-composer-mic-activity")).toHaveCount(0, {
+    timeout: 15_000,
+  });
   await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
     timeout: 15_000,
   });
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
-    "aria-label",
-    "end conversation",
-    { timeout: 15_000 },
-  );
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 async function dispatchTranscriptionAgentAction(
@@ -591,14 +598,14 @@ async function dispatchTranscriptionAgentAction(
 
 async function startTranscriptionViaAgentAction(page: Page): Promise<void> {
   await dispatchTranscriptionAgentAction(page, "start");
-  // The agent-action bridge flips the shell controller directly; unlike the
-  // slash-command path it may not expand the sheet far enough to render the
-  // visible badge, so the mic control state is the durable proof.
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
-    "aria-label",
-    "stop transcription and mic",
-    { timeout: 15_000 },
-  );
+  // The agent-action bridge flips the shell controller directly. The dedicated
+  // composer activity and Stop control are durable even at a short sheet detent.
+  await expect(page.getByTestId("chat-composer-mic-activity")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
 }
 
 async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
@@ -606,11 +613,12 @@ async function finalizeTranscriptionViaAgentAction(page: Page): Promise<void> {
   await expect(page.getByTestId("chat-transcribing-badge")).toHaveCount(0, {
     timeout: 15_000,
   });
-  await expect(page.getByTestId("chat-composer-mic")).toHaveAttribute(
-    "aria-label",
-    "end conversation",
-    { timeout: 15_000 },
-  );
+  await expect(page.getByTestId("chat-composer-mic-activity")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("chat-composer-textarea")).toBeVisible({
+    timeout: 15_000,
+  });
 }
 
 /**
@@ -729,10 +737,9 @@ async function openTranscriptViewer(page: Page): Promise<Locator> {
 
 /**
  * Drive the REAL transcript-capture chain from the chat overlay: tap mic ->
- * /transcribe -> (real audio captured + POSTed) -> /transcribe again to
- * finalize -> the transcript chip lands in the composer -> send -> the
- * transcript ATTACHMENT tile renders in the thread. Returns once the tile is
- * visible.
+ * /transcribe -> real audio captured + POSTed -> composer Stop finalizes ->
+ * the transcript chip lands in the composer -> send -> the transcript
+ * ATTACHMENT tile renders in the thread. Returns once the tile is visible.
  */
 async function captureTranscriptToAttachment(
   page: Page,
@@ -756,7 +763,7 @@ async function captureTranscriptToAttachment(
 
   await expect.poll(() => asr.count(), { timeout: 30_000 }).toBeGreaterThan(0);
 
-  await finalizeTranscriptionViaSlash(page);
+  await finalizeTranscriptionViaComposerStop(page);
   await expect
     .poll(
       () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
@@ -859,7 +866,7 @@ async function captureTranscriptRecordViaControlPath(
   if (controlPath === "agent-action") {
     await finalizeTranscriptionViaAgentAction(page);
   } else {
-    await finalizeTranscriptionViaSlash(page);
+    await finalizeTranscriptionViaComposerStop(page);
   }
 
   await expect
@@ -883,7 +890,7 @@ test.beforeEach(async ({ page }) => {
   await installDefaultAppRoutes(page);
 });
 
-test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/transcripts, keeps the mic active, and drops a transcript attachment", async ({
+test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/transcripts, uses dedicated capture controls, and drops a transcript attachment", async ({
   page,
 }) => {
   const probes = freshProbes();
@@ -903,17 +910,10 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
     timeout: 15_000,
   });
 
-  // (LINKAGE b) /transcribe -> transcription mode. The mic STAYS active
-  // (transcript is an additive layer; the mic is the parent).
+  // (LINKAGE b) /transcribe transfers capture ownership from conversation mode
+  // to the dedicated transcription composer.
   await startTranscriptionViaSlash(page);
-  // The mic button is still the active mic control while transcribing.
-  await expect(mic).toHaveAttribute(
-    "aria-label",
-    "stop transcription and mic",
-    {
-      timeout: 15_000,
-    },
-  );
+  await expect(mic).toHaveCount(0);
 
   // (REAL AUDIO) The transcription re-listen loop opens the REAL local-ASR
   // recorder against the fake device, WAV-encodes the injected audio, and POSTs
@@ -929,10 +929,10 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
     "the captured WAV POSTed to ASR must be a non-trivial recording",
   ).toBeGreaterThan(1000);
 
-  // (REAL AUDIO + ATTACHMENT) Run /transcribe again to FINALIZE. The shell POSTs
-  // the segments + the REAL captured audio (audioBase64) to /api/transcripts and
-  // drops a `Transcript ….md` chip into the composer.
-  await finalizeTranscriptionViaSlash(page);
+  // (REAL AUDIO + ATTACHMENT) Stop finalizes the session. The shell POSTs the
+  // segments + REAL captured audio (audioBase64) to /api/transcripts and returns
+  // the finished payload to the editable composer.
+  await finalizeTranscriptionViaComposerStop(page);
   await expect
     .poll(
       () => probes.createBodies.find((b) => b.audioBase64Length > 1000) ?? null,
@@ -948,11 +948,14 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
   );
   expect(realCreate?.segmentCount ?? 0).toBeGreaterThan(0);
 
-  // (LINKAGE c) Transcript OFF leaves the mic ON. After finalize,
-  // transcriptionMode is false and the hands-free parent loop resumes.
-  await expect(mic).toHaveAttribute("aria-label", "end conversation", {
-    timeout: 15_000,
-  });
+  // (LINKAGE c) Finalization does not silently resume the prior conversation
+  // mode. The pending transcript owns the ordinary Send slot instead.
+  await expect(mic).toHaveCount(0);
+  await expect(page.getByTestId("chat-composer-action")).toHaveAttribute(
+    "aria-label",
+    "send",
+    { timeout: 15_000 },
+  );
 
   // The finished transcript becomes a composer attachment chip (document kind).
   await expect(page.getByText(/^Transcript .*\.md$/).first()).toBeVisible({
@@ -961,15 +964,12 @@ test("REAL audio: /transcribe records the injected WAV, POSTs it to ASR + /api/t
 
   // (ATTACHMENT) Type a caption (so the tile-bearing user turn has text and isn't
   // dropped by the overlay's empty-turn filter), then send via the textarea Enter
-  // key — robust against the trailing-button morph (mic<->send) while the
-  // hands-free re-listen loop runs.
+  // key; the dedicated transcription flow leaves no hands-free re-listen loop.
   await page.getByTestId("chat-composer-textarea").fill(TRANSCRIPT_CAPTION);
   await page.getByTestId("chat-composer-textarea").press("Enter");
 
-  // (LINKAGE d) The mic is the master voice control: tapping it turns BOTH the
-  // mic and transcript fully off. stopVoiceAndSettle taps the mic and asserts
-  // the mic returns to "talk", stopping the re-listen loop so the thread
-  // settles for the tile click below.
+  // (LINKAGE d) Voice remains off after the transcript send. This helper also
+  // waits through the in-flight response until the idle "talk" control returns.
   await stopVoiceAndSettle(page);
   // Let the turn finish (clean stream done) so the assistant bubble stops
   // animating and the thread goes static, then the persisted history (carrying
