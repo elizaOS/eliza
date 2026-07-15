@@ -61,6 +61,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699
 
+      - name: Restore pinned debug keystore
+        env:
+          ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64: ${{ vars.ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [[ -z "$ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64" ]]; then
+            echo "Repository variable ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64 is required" >&2
+            exit 1
+          fi
+          install -d -m 700 "$HOME/.android"
+          printf '%s' "$ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/eliza-debug.keystore"
+          chmod 600 "$HOME/.android/eliza-debug.keystore"
+
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
