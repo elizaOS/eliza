@@ -71,9 +71,7 @@ vi.mock("./AddAccountDialog", () => ({
     credentialRepairAccount?: { id: string } | null;
   }) =>
     open ? (
-      <div role="dialog">
-        add dialog {credentialRepairAccount?.id ?? "new"}
-      </div>
+      <div role="dialog">add dialog {credentialRepairAccount?.id ?? "new"}</div>
     ) : null,
 }));
 vi.mock("./RotationStrategyPicker", () => ({
