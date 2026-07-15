@@ -11,6 +11,10 @@ import {
   confidenceLevelFromScore,
 } from "../confidence/framework";
 
+import { createInvestorInsight } from "../explainability/builder";
+import { INVESTOR_INSIGHT_TEMPLATES } from "../explainability/templates";
+import { InvestorEvidenceCollection } from "../explainability/evidenceCollection";
+
 export function analyzeWalletTrust(
   age: WalletAgeSummary,
   activity: WalletActivitySummary,
