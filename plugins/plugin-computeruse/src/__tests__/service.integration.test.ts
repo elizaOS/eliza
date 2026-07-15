@@ -1,8 +1,13 @@
 /**
  * Exercises ComputerUseService through a real AgentRuntime and in-memory
- * database without capturing or actuating the host desktop.
+ * database without capturing or actuating the host desktop. The final block is
+ * a regression guard for the headless-CI hang: input validation must run before
+ * the approval gate, which blocks on a decision no headless runner can produce.
  */
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import {
   afterAll,
@@ -195,3 +200,77 @@ describe("ComputerUseService window validation", () => {
     expect(result.error).toContain("Unknown window action");
   });
 });
+
+// Regression guard for the CI Plugin-lane hang. The approval gate awaits a
+// human/API decision; the default smart_approve mode gives a headless runner no
+// way to produce one, so any destructive action requested before its input is
+// validated blocks until the 90s test timeout. This pins "off" (deny-all): the
+// gate resolves immediately, so instead of hanging we get an observable
+// distinction — with validation running first, malformed input yields the
+// *field* error; if the gate ran first it would yield the deny message. The
+// host's persisted approval mode is saved and restored (setMode persists to
+// ~/.eliza), and this block runs last so its transient on-disk mode cannot leak
+// into the earlier blocks.
+describe("ComputerUseService validates input before the approval gate", () => {
+  const approvalConfigPath = path.join(
+    os.homedir(),
+    ".eliza",
+    "computer-use-approval.json",
+  );
+  let savedApprovalConfig: string | null = null;
+  let runtime: AgentRuntime;
+  let service: ComputerUseService;
+
+  beforeAll(async () => {
+    savedApprovalConfig = readApprovalConfig(approvalConfigPath);
+    ({ runtime, service } = await startComputerUseRuntime({
+      COMPUTER_USE_APPROVAL_MODE: "off",
+    }));
+  });
+
+  afterAll(async () => {
+    await stopComputerUseRuntime(runtime);
+    restoreApprovalConfig(approvalConfigPath, savedApprovalConfig);
+  });
+
+  it("runs deny-all so the gate cannot auto-approve", () => {
+    expect(service.getApprovalMode()).toBe("off");
+  });
+
+  it("rejects a coordinate-less click at validation, not the gate", async () => {
+    const result = await service.executeDesktopAction({ action: "click" });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("coordinate");
+    expect(result.error).not.toContain("paused");
+  }, 10_000);
+
+  it("rejects a targetless window focus at validation, not the gate", async () => {
+    const result = await service.executeWindowAction({ action: "focus" });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("windowId");
+    expect(result.error).not.toContain("paused");
+  }, 10_000);
+});
+
+/** Reads the persisted approval-mode config, or null when none exists. */
+function readApprovalConfig(configPath: string): string | null {
+  try {
+    return fs.readFileSync(configPath, "utf8");
+  } catch (err) {
+    // error-policy:J3 a missing file is the expected first-run/CI shape; a
+    // different read error means we cannot safely restore, so surface it.
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    throw err;
+  }
+}
+
+/** Restores the approval-mode config to its pre-test contents (or absence). */
+function restoreApprovalConfig(configPath: string, saved: string | null): void {
+  if (saved === null) {
+    fs.rmSync(configPath, { force: true });
+    return;
+  }
+  fs.writeFileSync(configPath, saved, "utf8");
+}
