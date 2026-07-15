@@ -5,6 +5,7 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "noCheck": true,
+    "noResolve": true,
     "rootDir": ".",
     "outDir": "dist"
   },
