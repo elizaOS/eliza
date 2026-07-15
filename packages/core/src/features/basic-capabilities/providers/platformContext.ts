@@ -31,10 +31,24 @@ import {
 	getExplicitRoutingContexts,
 	routingContextsOverlap,
 } from "../../../utils/context-routing.ts";
+import { getEnv } from "../../../utils/environment.ts";
 import { getMessageConnectorsWithHook } from "../../advanced-capabilities/actions/connectorActionUtils.ts";
 
 export const PLATFORM_CHAT_CONTEXT_PROVIDER_NAME = "PLATFORM_CHAT_CONTEXT";
 export const PLATFORM_USER_CONTEXT_PROVIDER_NAME = "PLATFORM_USER_CONTEXT";
+
+/**
+ * Opt-in soft deadline (ms) for PLATFORM_CHAT_CONTEXT during `composeState`.
+ * This connector-metadata provider can add 0.3–3.4s to a turn before Stage-1
+ * (#16393); set `COMPOSE_PLATFORM_CONTEXT_TIMEOUT_MS` to compose without it once
+ * it exceeds that budget. Unset keeps the global
+ * `COMPOSE_STATE_PROVIDER_TIMEOUT_MS` fallback, i.e. no behavior change.
+ */
+const PLATFORM_CHAT_CONTEXT_TIMEOUT_MS = (() => {
+	const raw = getEnv("COMPOSE_PLATFORM_CONTEXT_TIMEOUT_MS");
+	const parsed = raw != null ? Number.parseInt(raw, 10) : Number.NaN;
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+})();
 
 /** Pretty-print a provider payload as JSON; returns "" if it can't serialize. */
 function renderJson(payload: Record<string, ProviderValue>): string {
@@ -299,6 +313,7 @@ export const platformChatContextProvider: Provider = {
 		"Connector room metadata and output guidance; not the canonical transcript.",
 	dynamic: true,
 	position: 125,
+	timeoutMs: PLATFORM_CHAT_CONTEXT_TIMEOUT_MS,
 	contexts: PLATFORM_CONTEXTS,
 	contextGate: { anyOf: ["general"] },
 	cacheStable: false,

@@ -661,6 +661,17 @@ export interface Provider {
 	position?: number;
 
 	/**
+	 * Per-provider soft deadline (ms) for `composeState`. `composeState` runs
+	 * providers concurrently but barriers on the slowest, so an embedding-gated
+	 * provider (relevant-conversations, platform chat context) can add seconds
+	 * to every turn before Stage-1. When set, a provider that misses this
+	 * deadline resolves to an empty result — the turn composes without it —
+	 * instead of gating the whole barrier. Omit to keep the global
+	 * `COMPOSE_STATE_PROVIDER_TIMEOUT_MS` fallback (#16393).
+	 */
+	timeoutMs?: number;
+
+	/**
 	 * Explicit override policy for name collisions during registration.
 	 * See {@link Action.override}: set `override: true` on the later registrant
 	 * to intentionally supersede an already-registered provider of the same name.

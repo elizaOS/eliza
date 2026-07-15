@@ -127,4 +127,55 @@ describe("composeState refreshProviders", () => {
 		expect(second.text).toContain("AAA#2");
 		expect(second.text).toContain("BBB#1");
 	});
+
+	// #16393: composeState barriers on the slowest provider, so a per-provider
+	// soft deadline lets an embedding-gated one degrade instead of gating.
+	it("composes without a provider that misses its per-provider soft deadline", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-soft-deadline" } as Character,
+		});
+		const slow: Provider = {
+			name: "SLOW",
+			timeoutMs: 10,
+			get: async () => {
+				await new Promise((r) => setTimeout(r, 80));
+				return { text: "SLOW-DATA", values: {}, data: {} };
+			},
+		};
+		const fast = countingProvider("FAST");
+		runtime.registerProvider(slow);
+		runtime.registerProvider(fast.provider);
+
+		const message = makeMessage("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+		const state = await runtime.composeState(
+			message,
+			["SLOW", "FAST"],
+			true,
+			false,
+		);
+
+		// FAST composed in; SLOW missed its 10ms deadline → composed without it.
+		expect(state.text).toContain("FAST#1");
+		expect(state.text).not.toContain("SLOW-DATA");
+	});
+
+	it("keeps a slow provider that declares no soft deadline (global fallback)", async () => {
+		const runtime = new AgentRuntime({
+			character: { name: "provider-no-deadline" } as Character,
+		});
+		const slowNoDeadline: Provider = {
+			name: "SLOW2",
+			get: async () => {
+				await new Promise((r) => setTimeout(r, 80));
+				return { text: "SLOW2-DATA", values: {}, data: {} };
+			},
+		};
+		runtime.registerProvider(slowNoDeadline);
+
+		const message = makeMessage("cccccccc-cccc-cccc-cccc-cccccccccccc");
+		const state = await runtime.composeState(message, ["SLOW2"], true, false);
+
+		// No timeoutMs → the 30s global fallback → the 80ms provider completes.
+		expect(state.text).toContain("SLOW2-DATA");
+	});
 });

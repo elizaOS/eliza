@@ -4267,6 +4267,14 @@ export class AgentRuntime implements IAgentRuntime {
 				let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 				let timedOut = false;
 				const providerRuntime: IAgentRuntime = this;
+				// A provider may declare a shorter soft deadline than the global
+				// fallback so an embedding-gated provider can't gate every turn's
+				// barrier (#16393). Missing a declared soft deadline is intentional
+				// degradation (compose without it) — a warn; the global fallback
+				// firing is a real stall — an error.
+				const softDeadline = provider.timeoutMs != null;
+				const providerTimeoutMs =
+					provider.timeoutMs ?? COMPOSE_STATE_PROVIDER_TIMEOUT_MS;
 				try {
 					const result = await Promise.race([
 						withProviderStep(providerRuntime, provider.name, () =>
@@ -4275,17 +4283,20 @@ export class AgentRuntime implements IAgentRuntime {
 						new Promise<ProviderResult>((resolve) => {
 							timeoutHandle = setTimeout(() => {
 								timedOut = true;
-								this.logger.error(
+								this.logger[softDeadline ? "warn" : "error"](
 									{
 										src: "agent",
 										agentId: this.agentId,
 										provider: provider.name,
-										timeoutMs: COMPOSE_STATE_PROVIDER_TIMEOUT_MS,
+										timeoutMs: providerTimeoutMs,
+										softDeadline,
 									},
-									"Provider timed out during state composition",
+									softDeadline
+										? "Provider soft deadline exceeded during state composition; composing without it"
+										: "Provider timed out during state composition",
 								);
 								resolve({ text: "", values: {}, data: {} });
-							}, COMPOSE_STATE_PROVIDER_TIMEOUT_MS);
+							}, providerTimeoutMs);
 						}),
 					]);
 					const duration = Date.now() - start;
