@@ -1102,7 +1102,13 @@ export function NotificationsHomeCenter({
   useLayoutEffect(() => {
     // Settled renders are fully declarative. Direct writes are reserved for an
     // active drag/close so they cannot overwrite click-entry interpolation.
-    if (!pullDirection && !shadeClosing) return;
+    if (!pullDirection && !shadeClosing) {
+      // Later drag frames mutate this custom property without a React render.
+      // Clear that imperative value after the dragging marker is removed so
+      // the enabled padding transition settles the footer back into place.
+      scrollRef.current?.style.removeProperty("--eliza-notif-pull-overshoot");
+      return;
+    }
     if (pullDirection) {
       if (pullDirection === "expand" && !shadeExpanded && scrollRef.current) {
         scrollRef.current.scrollTop = 0;
@@ -2433,7 +2439,6 @@ export function NotificationsHomeCenter({
         style={
           {
             "--eliza-notif-base-padding": showCollapseControl ? "4px" : "40px",
-            "--eliza-notif-pull-overshoot": `${Math.max(0, pullOvershootOffset)}px`,
           } as CSSProperties
         }
         className={cn(
