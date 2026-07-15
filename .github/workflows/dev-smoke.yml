@@ -66,7 +66,7 @@ jobs:
     outputs:
       dev_smoke: ${{ steps.filter.outputs.dev_smoke }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           submodules: false
@@ -101,7 +101,7 @@ jobs:
     env:
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           submodules: false
 
@@ -172,7 +172,7 @@ jobs:
     env:
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           submodules: false
 

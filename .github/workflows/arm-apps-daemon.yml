@@ -141,7 +141,7 @@ jobs:
       # runner; we also ::add-mask:: it before writing to $GITHUB_ENV.
       - name: Checkout (for terraform fetch)
         if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Terraform (for DSN fetch)
         if: ${{ github.event.inputs.fetch_dsn_from_shared_state == 'true' }}
