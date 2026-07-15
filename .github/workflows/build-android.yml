@@ -64,7 +64,9 @@ jobs:
       - name: Restore pinned debug keystore
         env:
           ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64: ${{ vars.ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          EXPECTED_ANDROID_DEBUG_SIGNER_SHA256: AFA5AFB6BA582F67222548872292341DF0BF6D625F705904858B81051DDE91F4
         run: |
+          set -euo pipefail
           if [[ -z "$ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64" ]]; then
             echo "Repository variable ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64 is required" >&2
             exit 1
@@ -72,6 +74,35 @@ jobs:
           install -d -m 700 "$HOME/.android"
           printf '%s' "$ELIZA_ANDROID_DEBUG_KEYSTORE_BASE64" | base64 -d > "$HOME/.android/eliza-debug.keystore"
           chmod 600 "$HOME/.android/eliza-debug.keystore"
+
+          signer_cert="$RUNNER_TEMP/eliza-android-debug-signer.der"
+          trap 'rm -f "$signer_cert"' EXIT
+          rm -f "$signer_cert"
+          if ! keytool -exportcert \
+            -keystore "$HOME/.android/eliza-debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -file "$signer_cert" >/dev/null; then
+            echo "::error::Pinned Android debug keystore is missing a readable signer for alias androiddebugkey" >&2
+            exit 1
+          fi
+          if [[ ! -s "$signer_cert" ]]; then
+            echo "::error::Pinned Android debug keystore signer certificate is empty" >&2
+            exit 1
+          fi
+
+          signer_digest=$(sha256sum "$signer_cert")
+          signer_fingerprint="${signer_digest%% *}"
+          signer_fingerprint="${signer_fingerprint^^}"
+          if [[ ! "$signer_fingerprint" =~ ^[0-9A-F]{64}$ ]]; then
+            echo "::error::Could not derive the Android debug signer SHA-256 fingerprint" >&2
+            exit 1
+          fi
+          if [[ "$signer_fingerprint" != "$EXPECTED_ANDROID_DEBUG_SIGNER_SHA256" ]]; then
+            echo "::error::Pinned Android debug signer fingerprint mismatch: expected $EXPECTED_ANDROID_DEBUG_SIGNER_SHA256, got $signer_fingerprint" >&2
+            exit 1
+          fi
+          echo "Verified pinned Android debug signer fingerprint: $signer_fingerprint"
 
       - name: Cache Gradle
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
