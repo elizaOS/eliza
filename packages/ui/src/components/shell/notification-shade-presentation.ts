@@ -95,6 +95,7 @@ export function notificationPullPresentation(
     notificationCountVisibility,
     notificationCountOffset,
     pullOvershootOffset,
+    collapseControlOvershootOffset: Math.min(0, pullOvershootOffset),
     notificationCountLayoutVisibility:
       shadeExpanded && pullPx < 0 && !shadeClosing
         ? 1
@@ -183,6 +184,13 @@ export function applyNotificationPullPresentation(
     shadeExpanded,
     shadeClosing,
   );
+  const scrollport = root.querySelector<HTMLElement>(
+    "[data-testid='home-notification-list']",
+  );
+  scrollport?.style.setProperty(
+    "--eliza-notif-pull-overshoot",
+    `${Math.max(0, presentation.pullOvershootOffset)}px`,
+  );
   if (count) {
     count.style.height = `${presentation.notificationCountLayoutVisibility * 32}px`;
     count.style.marginBottom = `${(presentation.notificationCountLayoutVisibility - 1) * 8}px`;
@@ -220,7 +228,7 @@ export function applyNotificationPullPresentation(
     collapse.style.opacity = String(presentation.collapseControlVisibility);
     collapse.style.transform = `translateY(${
       (1 - presentation.collapseControlVisibility) * 4 +
-      presentation.pullOvershootOffset
+      presentation.collapseControlOvershootOffset
     }px)`;
   }
   const groups =
