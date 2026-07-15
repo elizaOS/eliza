@@ -359,7 +359,7 @@ describe("interrupt priority projection", () => {
       value: 240,
       writable: true,
     });
-    fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
 
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.scrollTop).toBe(0);
@@ -433,7 +433,7 @@ describe("interrupt priority projection", () => {
       touches: [{ clientX: 12, clientY: 40 }],
     });
     fireEvent.touchEnd(list, { touches: [] });
-    fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
@@ -1662,9 +1662,12 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientX: 10,
       clientY: 30,
     });
-    fireEvent.click(countButton);
+    fireEvent.click(countButton, { detail: 1 });
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
+
+    fireEvent.click(countButton, { detail: 0 });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
   it("animates groups that mount when the notification total opens the shade", () => {
@@ -2327,7 +2330,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(previewGroups.every((group) => group.isConnected)).toBe(true);
     expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
     expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
-    act(() => vi.advanceTimersByTime(393));
+    act(() => vi.advanceTimersByTime(273));
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       true,
     );
@@ -2443,7 +2446,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       false,
     );
-    act(() => vi.advanceTimersByTime(459));
+    act(() => vi.advanceTimersByTime(219));
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     act(() => vi.advanceTimersByTime(1));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
@@ -2484,8 +2487,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
     // The list consumes the first post-drag synthetic click. The next click is
     // the intentional activation and must start on its own transition clock.
-    fireEvent.click(screen.getByTestId("notification-row"));
-    fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       false,
     );
@@ -2535,10 +2538,14 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
 
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.click(screen.getByTestId("notifications-collapse"), {
+      detail: 1,
+    });
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
 
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.click(screen.getByTestId("notifications-collapse"), {
+      detail: 1,
+    });
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
   });
 
@@ -2725,10 +2732,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
 
-    fireEvent.click(surface, { clientY: 620 });
+    fireEvent.click(surface, { clientY: 620, detail: 1 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
 
-    fireEvent.click(surface, { clientY: 620 });
+    fireEvent.click(surface, { clientY: 620, detail: 1 });
     expect(list.hasAttribute("data-shade-settling")).toBe(true);
   });
 
@@ -3046,7 +3053,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       false,
     );
 
-    act(() => vi.advanceTimersByTime(459));
+    act(() => vi.advanceTimersByTime(219));
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     act(() => vi.advanceTimersByTime(1));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
@@ -3082,7 +3089,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       false,
     );
 
-    act(() => vi.advanceTimersByTime(459));
+    act(() => vi.advanceTimersByTime(219));
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     act(() => vi.advanceTimersByTime(1));
     expect(list.getAttribute("data-shade-mode")).toBe("rested");

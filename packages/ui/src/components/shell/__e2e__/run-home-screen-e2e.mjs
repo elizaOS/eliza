@@ -1492,7 +1492,7 @@ try {
     steps: 12,
   });
   await notificationMotion.mouse.up();
-  await notificationMotion.waitForTimeout(280);
+  await notificationMotion.waitForTimeout(360);
   assert(
     (await notificationCenter
       .getByTestId("home-notification-list")
@@ -1515,7 +1515,7 @@ try {
     -160,
     { steps: 12, stepDelayMs: 12 },
   );
-  await notificationMotion.waitForTimeout(280);
+  await notificationMotion.waitForTimeout(360);
   assert(
     (await notificationCenter
       .getByTestId("home-notification-list")
@@ -1777,13 +1777,15 @@ try {
     `stack fold uses the 340ms settle (${mountedFoldFrames[0]?.controls.duration ?? "missing"})`,
   );
   const foldTimingFunctions = new Set(
-    (mountedFoldFrames[0]?.controls.timing ?? "")
-      .split(",")
+    ((mountedFoldFrames[0]?.controls.timing ?? "").match(
+      /cubic-bezier\([^)]*\)|[^,]+/g,
+    ) ?? [])
       .map((timing) => timing.trim())
       .filter(Boolean),
   );
   assert(
-    foldTimingFunctions.size === 1 && foldTimingFunctions.has("ease"),
+    foldTimingFunctions.size === 1 &&
+      foldTimingFunctions.has("cubic-bezier(0.25, 0.1, 0.25, 1)"),
     `stack fold geometry and opacity share one ease curve (${mountedFoldFrames[0]?.controls.timing ?? "missing"})`,
   );
   assert(

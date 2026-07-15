@@ -214,14 +214,17 @@ const STACK_PEEK_OFFSET_PX = 7;
 const STACK_BOTTOM_CLEARANCE_PX = 2;
 
 const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
-const SHADE_SETTLE_MS = 460;
+const SHADE_SETTLE_MS = 220;
 const SHADE_MIN_SETTLE_MS = 320;
 const SHADE_MAX_SETTLE_MS = 600;
 const SHADE_MIN_SETTLE_SPEED_PX_PER_MS = 0.15;
 const SHADE_EASING = "cubic-bezier(0.25,0.1,0.25,1)";
 /** Ignore trackpad rebound while the committed shade settle is running. */
 const WHEEL_COMMIT_LOCK_MS = SHADE_SETTLE_MS;
-const PULL_CANCEL_SETTLE_MS = SHADE_SETTLE_MS;
+// A cancelled direct-manipulation gesture needs a softer return than a
+// command-driven open/close so the surface does not appear to snap away from
+// the finger at release.
+const PULL_CANCEL_SETTLE_MS = 340;
 const SHADE_MIN_FLICK_DISTANCE_PX = 22;
 const SHADE_FLICK_VELOCITY_PX_PER_MS = 0.45;
 const SHADE_MIN_VELOCITY_SAMPLE_MS = 16;
@@ -1371,14 +1374,16 @@ export function NotificationsHomeCenter({
       });
     const targetPullPx = shouldCommit ? Math.sign(px) * PULL_TRAVEL_PX : 0;
     const remainingDistancePx = Math.abs(targetPullPx - px);
-    const settleMs = getVelocityAwareSettleDuration({
-      velocityPxPerMs: releaseVelocity,
-      remainingDistancePx,
-      fallbackDurationMs: PULL_CANCEL_SETTLE_MS,
-      minimumDurationMs: SHADE_MIN_SETTLE_MS,
-      maximumDurationMs: SHADE_MAX_SETTLE_MS,
-      minimumSpeedPxPerMs: SHADE_MIN_SETTLE_SPEED_PX_PER_MS,
-    });
+    const settleMs = shouldCommit
+      ? getVelocityAwareSettleDuration({
+          velocityPxPerMs: releaseVelocity,
+          remainingDistancePx,
+          fallbackDurationMs: PULL_CANCEL_SETTLE_MS,
+          minimumDurationMs: SHADE_MIN_SETTLE_MS,
+          maximumDurationMs: SHADE_MAX_SETTLE_MS,
+          minimumSpeedPxPerMs: SHADE_MIN_SETTLE_SPEED_PX_PER_MS,
+        })
+      : PULL_CANCEL_SETTLE_MS;
 
     if (px !== 0) flushPullPresentation();
     setShadeSettleDuration(settleMs);
@@ -2384,6 +2389,9 @@ export function NotificationsHomeCenter({
       window.clearTimeout(suppressNotificationClickTimer.current);
       suppressNotificationClickTimer.current = null;
     }
+    // Keyboard activation has no pointer-release click to suppress. Clearing
+    // the stale guard still prevents it from leaking into the next real tap.
+    if (e.detail === 0) return;
     e.preventDefault();
     e.stopPropagation();
   };
