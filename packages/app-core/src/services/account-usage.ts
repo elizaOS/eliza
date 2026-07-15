@@ -40,11 +40,14 @@ export interface UsageEntry {
 const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 type FetchLike = typeof fetch;
 
-function utilizationToPct(value: unknown): number | undefined {
+function utilizationToPct(
+  value: unknown,
+  scaleFractional = true,
+): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  // Anthropic has returned both fractional (0..1) and percentage (0..100)
-  // shapes. Scale only fractional values; otherwise 5% becomes 500%/clamped.
-  const percent = value >= 0 && value <= 1 ? value * 100 : value;
+  // Legacy flat fields used fractions, while current nested fields and limits
+  // report percentage points (including 1.0 meaning 1%, not 100%).
+  const percent = scaleFractional && value >= 0 && value <= 1 ? value * 100 : value;
   return Math.max(0, Math.min(100, percent));
 }
 
@@ -125,7 +128,7 @@ export async function pollAnthropicUsage(
       if (limit.kind !== "weekly_scoped" || limit.group !== "weekly") {
         continue;
       }
-      const pct = utilizationToPct(limit.percent);
+      const pct = utilizationToPct(limit.percent, false);
       if (pct === undefined) continue;
       const resetsAt = normalizeResetTimestamp(limit.resets_at);
       const modelName = limit.scope?.model?.display_name?.trim();
@@ -139,10 +142,10 @@ export async function pollAnthropicUsage(
   }
 
   const sessionPct =
-    utilizationToPct(fiveHour?.utilization) ??
+    utilizationToPct(fiveHour?.utilization, false) ??
     utilizationToPct(payload.five_hour_utilization);
   const weeklyPct =
-    utilizationToPct(sevenDay?.utilization) ??
+    utilizationToPct(sevenDay?.utilization, false) ??
     utilizationToPct(payload.seven_day_utilization);
   const resetsAt =
     normalizeResetTimestamp(sevenDay?.resets_at) ??

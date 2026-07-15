@@ -98,15 +98,15 @@ describe("pollAnthropicUsage", () => {
   it("parses the NESTED response shape with the weekly reset timestamp", async () => {
     stubFetch(
       jsonResponse({
-        five_hour: { utilization: 0.5, resets_at: 1_700_000_000 },
+        five_hour: { utilization: 1, resets_at: 1_700_000_000 },
         seven_day: { utilization: 0.25, resets_at: 1_700_604_800 },
       }),
     );
 
     const snap = await pollAnthropicUsage("nested-token");
 
-    expect(snap.sessionPct).toBe(50);
-    expect(snap.weeklyPct).toBe(25);
+    expect(snap.sessionPct).toBe(1);
+    expect(snap.weeklyPct).toBe(0.25);
     // resets_at given in epoch SECONDS -> normalized to ms (* 1000).
     expect(snap.resetsAt).toBe(1_700_604_800 * 1000);
   });
@@ -161,8 +161,8 @@ describe("pollAnthropicUsage", () => {
 
     const snap = await pollAnthropicUsage("both-token");
 
-    expect(snap.sessionPct).toBe(90);
-    expect(snap.weeklyPct).toBe(80);
+    expect(snap.sessionPct).toBe(0.9);
+    expect(snap.weeklyPct).toBe(0.8);
   });
 
   it("preserves utilization already expressed as a 0..100 percentage", async () => {
