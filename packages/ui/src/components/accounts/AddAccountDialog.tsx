@@ -764,7 +764,7 @@ export function AddAccountDialog({
             <p className="text-xs text-muted">
               {credentialRepairAccount
                 ? `${credentialRepairAccount.label} keeps its name, priority, and position in the account pool.`
-                  : "The connected account's email address will be used as its name."}
+                : "The connected account's email address will be used as its name."}
             </p>
             <Button
               type="button"

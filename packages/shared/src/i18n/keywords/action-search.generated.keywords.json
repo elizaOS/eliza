@@ -1,13 +1,6 @@
 {
   "$schema": "./keywords.schema.json",
-  "locales": [
-    "es",
-    "ko",
-    "pt",
-    "tl",
-    "vi",
-    "zh-CN"
-  ],
+  "locales": ["es", "ko", "pt", "tl", "vi", "zh-CN"],
   "entries": {
     "action.activatePluginIfReady.request": {
       "base": [
@@ -1661,34 +1654,10 @@
         "wait for child decision",
         "wait_for_child_decision"
       ],
-      "es": [
-        "accion",
-        "agente",
-        "bloquear",
-        "herramienta",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "에이전트",
-        "요청",
-        "작업",
-        "차단"
-      ],
-      "pt": [
-        "acao",
-        "agente",
-        "bloquear",
-        "ferramenta",
-        "solicitacao"
-      ],
-      "tl": [
-        "agent",
-        "aksyon",
-        "i-block",
-        "kahilingan",
-        "kasangkapan"
-      ],
+      "es": ["accion", "agente", "bloquear", "herramienta", "solicitud"],
+      "ko": ["도구", "에이전트", "요청", "작업", "차단"],
+      "pt": ["acao", "agente", "bloquear", "ferramenta", "solicitacao"],
+      "tl": ["agent", "aksyon", "i-block", "kahilingan", "kasangkapan"],
       "vi": [
         "chan",
         "chặn",
@@ -1701,14 +1670,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "代理",
-        "工具",
-        "操作",
-        "智能体",
-        "请求",
-        "阻止"
-      ]
+      "zh-CN": ["代理", "工具", "操作", "智能体", "请求", "阻止"]
     },
     "action.awaitOauthCallback.request": {
       "base": [
@@ -1729,33 +1691,10 @@
         "wait oauth",
         "wait_for_oauth_callback"
       ],
-      "es": [
-        "accion",
-        "autorizacion",
-        "herramienta",
-        "oauth",
-        "solicitud"
-      ],
-      "ko": [
-        "oauth",
-        "도구",
-        "요청",
-        "인증",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "autorizacao",
-        "ferramenta",
-        "oauth",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "oauth"
-      ],
+      "es": ["accion", "autorizacion", "herramienta", "oauth", "solicitud"],
+      "ko": ["oauth", "도구", "요청", "인증", "작업"],
+      "pt": ["acao", "autorizacao", "ferramenta", "oauth", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "oauth"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -1767,13 +1706,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "oauth",
-        "工具",
-        "授权",
-        "操作",
-        "请求"
-      ]
+      "zh-CN": ["oauth", "工具", "授权", "操作", "请求"]
     },
     "action.background.request": {
       "base": [
@@ -2241,14 +2174,7 @@
         "oauth",
         "solicitud"
       ],
-      "ko": [
-        "oauth",
-        "도구",
-        "요청",
-        "인증",
-        "작업",
-        "커넥터"
-      ],
+      "ko": ["oauth", "도구", "요청", "인증", "작업", "커넥터"],
       "pt": [
         "acao",
         "autorizacao",
@@ -2257,13 +2183,7 @@
         "oauth",
         "solicitacao"
       ],
-      "tl": [
-        "aksyon",
-        "connector",
-        "kahilingan",
-        "kasangkapan",
-        "oauth"
-      ],
+      "tl": ["aksyon", "connector", "kahilingan", "kasangkapan", "oauth"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -2277,14 +2197,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "oauth",
-        "工具",
-        "授权",
-        "操作",
-        "请求",
-        "连接器"
-      ]
+      "zh-CN": ["oauth", "工具", "授权", "操作", "请求", "连接器"]
     },
     "action.bookInfluencer.request": {
       "base": [
@@ -3502,30 +3415,9 @@
         "topics",
         "topics rooms"
       ],
-      "es": [
-        "accion",
-        "buscar",
-        "chat",
-        "herramienta",
-        "sala",
-        "solicitud"
-      ],
-      "ko": [
-        "검색",
-        "도구",
-        "방",
-        "요청",
-        "작업",
-        "채팅방"
-      ],
-      "pt": [
-        "acao",
-        "buscar",
-        "chat",
-        "ferramenta",
-        "sala",
-        "solicitacao"
-      ],
+      "es": ["accion", "buscar", "chat", "herramienta", "sala", "solicitud"],
+      "ko": ["검색", "도구", "방", "요청", "작업", "채팅방"],
+      "pt": ["acao", "buscar", "chat", "ferramenta", "sala", "solicitacao"],
       "tl": [
         "aksyon",
         "kahilingan",
@@ -3546,14 +3438,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "房间",
-        "搜索",
-        "操作",
-        "聊天室",
-        "请求"
-      ]
+      "zh-CN": ["工具", "房间", "搜索", "操作", "聊天室", "请求"]
     },
     "action.character.request": {
       "base": [
@@ -5824,15 +5709,7 @@
         "revisar",
         "solicitud"
       ],
-      "ko": [
-        "도구",
-        "목록",
-        "요청",
-        "일정",
-        "작업",
-        "캘린더",
-        "확인"
-      ],
+      "ko": ["도구", "목록", "요청", "일정", "작업", "캘린더", "확인"],
       "pt": [
         "acao",
         "calendario",
@@ -5864,14 +5741,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "列出",
-        "工具",
-        "操作",
-        "日历",
-        "检查",
-        "请求"
-      ]
+      "zh-CN": ["列出", "工具", "操作", "日历", "检查", "请求"]
     },
     "action.createAdSlot.request": {
       "base": [
@@ -8336,15 +8206,7 @@
         "oauth",
         "solicitud"
       ],
-      "ko": [
-        "oauth",
-        "도구",
-        "보내기",
-        "보내기 oauth",
-        "요청",
-        "인증",
-        "작업"
-      ],
+      "ko": ["oauth", "도구", "보내기", "보내기 oauth", "요청", "인증", "작업"],
       "pt": [
         "acao",
         "autorizacao",
@@ -8376,15 +8238,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "oauth",
-        "发送",
-        "发送 oauth",
-        "工具",
-        "授权",
-        "操作",
-        "请求"
-      ]
+      "zh-CN": ["oauth", "发送", "发送 oauth", "工具", "授权", "操作", "请求"]
     },
     "action.deliverPluginConfigForm.request": {
       "base": [
@@ -10370,14 +10224,7 @@
         "herramienta",
         "solicitud"
       ],
-      "ko": [
-        "도구",
-        "실행",
-        "실행 코드",
-        "요청",
-        "작업",
-        "코드"
-      ],
+      "ko": ["도구", "실행", "실행 코드", "요청", "작업", "코드"],
       "pt": [
         "acao",
         "codigo",
@@ -10407,14 +10254,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "代码",
-        "工具",
-        "操作",
-        "请求",
-        "运行",
-        "运行 代码"
-      ]
+      "zh-CN": ["代码", "工具", "操作", "请求", "运行", "运行 代码"]
     },
     "action.exportAdCampaignReport.request": {
       "base": [
@@ -10585,30 +10425,10 @@
         "show",
         "smartglasses"
       ],
-      "es": [
-        "accion",
-        "conectar",
-        "herramienta",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "연결",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "conectar",
-        "ferramenta",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "ikonekta",
-        "kahilingan",
-        "kasangkapan"
-      ],
+      "es": ["accion", "conectar", "herramienta", "solicitud"],
+      "ko": ["도구", "연결", "요청", "작업"],
+      "pt": ["acao", "conectar", "ferramenta", "solicitacao"],
+      "tl": ["aksyon", "ikonekta", "kahilingan", "kasangkapan"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -10619,12 +10439,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "请求",
-        "连接"
-      ]
+      "zh-CN": ["工具", "操作", "请求", "连接"]
     },
     "action.facewearDebug.request": {
       "base": [
@@ -10644,31 +10459,10 @@
         "facewear_diagnostics",
         "show"
       ],
-      "es": [
-        "accion",
-        "comprobar",
-        "herramienta",
-        "revisar",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "요청",
-        "작업",
-        "확인"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "solicitacao",
-        "verificar"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "suriin"
-      ],
+      "es": ["accion", "comprobar", "herramienta", "revisar", "solicitud"],
+      "ko": ["도구", "요청", "작업", "확인"],
+      "pt": ["acao", "ferramenta", "solicitacao", "verificar"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "suriin"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -10679,12 +10473,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "检查",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "检查", "请求"]
     },
     "action.file.request": {
       "base": [
@@ -11304,33 +11093,11 @@
       ]
     },
     "action.finish.request": {
-      "base": [
-        "finish"
-      ],
-      "es": [
-        "accion",
-        "finalizar",
-        "herramienta",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "완료",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "finalizar",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "tapusin"
-      ],
+      "base": ["finish"],
+      "es": ["accion", "finalizar", "herramienta", "solicitud"],
+      "ko": ["도구", "완료", "요청", "작업"],
+      "pt": ["acao", "ferramenta", "finalizar", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "tapusin"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -11341,12 +11108,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "结束",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "结束", "请求"]
     },
     "action.form.request": {
       "base": [
@@ -13034,30 +12796,10 @@
         "show_meeting_transcript",
         "transcript"
       ],
-      "es": [
-        "accion",
-        "herramienta",
-        "obtener",
-        "solicitud"
-      ],
-      "ko": [
-        "가져오기",
-        "도구",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "obter",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "kunin"
-      ],
+      "es": ["accion", "herramienta", "obtener", "solicitud"],
+      "ko": ["가져오기", "도구", "요청", "작업"],
+      "pt": ["acao", "ferramenta", "obter", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "kunin"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -13068,12 +12810,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "获取",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "获取", "请求"]
     },
     "action.github.request": {
       "base": [
@@ -13688,34 +13425,10 @@
         "voice",
         "voice agent"
       ],
-      "es": [
-        "accion",
-        "agente",
-        "herramienta",
-        "identificar",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "식별",
-        "에이전트",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "agente",
-        "ferramenta",
-        "identificar",
-        "solicitacao"
-      ],
-      "tl": [
-        "agent",
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "tukuyin"
-      ],
+      "es": ["accion", "agente", "herramienta", "identificar", "solicitud"],
+      "ko": ["도구", "식별", "에이전트", "요청", "작업"],
+      "pt": ["acao", "agente", "ferramenta", "identificar", "solicitacao"],
+      "tl": ["agent", "aksyon", "kahilingan", "kasangkapan", "tukuyin"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -13728,14 +13441,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "代理",
-        "工具",
-        "操作",
-        "智能体",
-        "识别",
-        "请求"
-      ]
+      "zh-CN": ["代理", "工具", "操作", "智能体", "识别", "请求"]
     },
     "action.joinMeeting.request": {
       "base": [
@@ -13904,31 +13610,10 @@
         "stop_meeting_transcription",
         "transcript"
       ],
-      "es": [
-        "accion",
-        "detener",
-        "herramienta",
-        "parar",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "요청",
-        "작업",
-        "중지"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "parar",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "itigil",
-        "kahilingan",
-        "kasangkapan"
-      ],
+      "es": ["accion", "detener", "herramienta", "parar", "solicitud"],
+      "ko": ["도구", "요청", "작업", "중지"],
+      "pt": ["acao", "ferramenta", "parar", "solicitacao"],
+      "tl": ["aksyon", "itigil", "kahilingan", "kasangkapan"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -13939,12 +13624,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "停止",
-        "工具",
-        "操作",
-        "请求"
-      ]
+      "zh-CN": ["停止", "工具", "操作", "请求"]
     },
     "action.linear.request": {
       "base": [
@@ -20918,30 +20598,10 @@
         "transactions",
         "transactions spending"
       ],
-      "es": [
-        "accion",
-        "herramienta",
-        "solicitud",
-        "transaccion"
-      ],
-      "ko": [
-        "거래",
-        "도구",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "solicitacao",
-        "transacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "transaksyon"
-      ],
+      "es": ["accion", "herramienta", "solicitud", "transaccion"],
+      "ko": ["거래", "도구", "요청", "작업"],
+      "pt": ["acao", "ferramenta", "solicitacao", "transacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "transaksyon"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -20952,12 +20612,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "交易",
-        "工具",
-        "操作",
-        "请求"
-      ]
+      "zh-CN": ["交易", "工具", "操作", "请求"]
     },
     "action.ownerGoals.request": {
       "base": [
@@ -24154,15 +23809,7 @@
         "solicitud",
         "tecla"
       ],
-      "ko": [
-        "도구",
-        "요청",
-        "작업",
-        "키",
-        "플러그인",
-        "확인",
-        "확인 플러그인"
-      ],
+      "ko": ["도구", "요청", "작업", "키", "플러그인", "확인", "확인 플러그인"],
       "pt": [
         "acao",
         "chave",
@@ -24341,34 +23988,10 @@
         "withholds",
         "withholds audio"
       ],
-      "es": [
-        "accion",
-        "audio",
-        "crear",
-        "herramienta",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "생성",
-        "오디오",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "audio",
-        "criar",
-        "ferramenta",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "audio",
-        "gumawa",
-        "kahilingan",
-        "kasangkapan"
-      ],
+      "es": ["accion", "audio", "crear", "herramienta", "solicitud"],
+      "ko": ["도구", "생성", "오디오", "요청", "작업"],
+      "pt": ["acao", "audio", "criar", "ferramenta", "solicitacao"],
+      "tl": ["aksyon", "audio", "gumawa", "kahilingan", "kasangkapan"],
       "vi": [
         "am thanh",
         "âm thanh",
@@ -24381,13 +24004,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "创建",
-        "工具",
-        "操作",
-        "请求",
-        "音频"
-      ]
+      "zh-CN": ["创建", "工具", "操作", "请求", "音频"]
     },
     "action.regenerateAppApiKey.request": {
       "base": [
@@ -24914,15 +24531,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "代理",
-        "工具",
-        "操作",
-        "智能体",
-        "获取",
-        "获取 代理",
-        "请求"
-      ]
+      "zh-CN": ["代理", "工具", "操作", "智能体", "获取", "获取 代理", "请求"]
     },
     "action.revokeOauthCredential.request": {
       "base": [
@@ -24941,33 +24550,10 @@
         "revoke_oauth",
         "revoke_oauth_credential"
       ],
-      "es": [
-        "accion",
-        "autorizacion",
-        "herramienta",
-        "oauth",
-        "solicitud"
-      ],
-      "ko": [
-        "oauth",
-        "도구",
-        "요청",
-        "인증",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "autorizacao",
-        "ferramenta",
-        "oauth",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "oauth"
-      ],
+      "es": ["accion", "autorizacion", "herramienta", "oauth", "solicitud"],
+      "ko": ["oauth", "도구", "요청", "인증", "작업"],
+      "pt": ["acao", "autorizacao", "ferramenta", "oauth", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "oauth"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -24979,13 +24565,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "oauth",
-        "工具",
-        "授权",
-        "操作",
-        "请求"
-      ]
+      "zh-CN": ["oauth", "工具", "授权", "操作", "请求"]
     },
     "action.role.request": {
       "base": [
@@ -27732,31 +27312,11 @@
       ]
     },
     "action.securityEvaluator.request": {
-      "base": [
-        "security evaluator",
-        "security_evaluator",
-        "securityevaluator"
-      ],
-      "es": [
-        "accion",
-        "herramienta",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "요청",
-        "작업"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan"
-      ],
+      "base": ["security evaluator", "security_evaluator", "securityevaluator"],
+      "es": ["accion", "herramienta", "solicitud"],
+      "ko": ["도구", "요청", "작업"],
+      "pt": ["acao", "ferramenta", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -27765,11 +27325,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "请求"]
     },
     "action.sendMediaTo.request": {
       "base": [
@@ -28867,15 +28423,7 @@
         "herramienta",
         "solicitud"
       ],
-      "ko": [
-        "관리자",
-        "내용",
-        "도구",
-        "생성",
-        "요청",
-        "작업",
-        "콘텐츠"
-      ],
+      "ko": ["관리자", "내용", "도구", "생성", "요청", "작업", "콘텐츠"],
       "pt": [
         "acao",
         "administrador",
@@ -28906,14 +28454,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "内容",
-        "创建",
-        "工具",
-        "操作",
-        "管理员",
-        "请求"
-      ]
+      "zh-CN": ["内容", "创建", "工具", "操作", "管理员", "请求"]
     },
     "action.shell.request": {
       "base": [
@@ -29765,30 +29306,10 @@
         "wrapped",
         "wrapping"
       ],
-      "es": [
-        "accion",
-        "herramienta",
-        "pagina",
-        "solicitud"
-      ],
-      "ko": [
-        "도구",
-        "요청",
-        "작업",
-        "페이지"
-      ],
-      "pt": [
-        "acao",
-        "ferramenta",
-        "pagina",
-        "solicitacao"
-      ],
-      "tl": [
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "pahina"
-      ],
+      "es": ["accion", "herramienta", "pagina", "solicitud"],
+      "ko": ["도구", "요청", "작업", "페이지"],
+      "pt": ["acao", "ferramenta", "pagina", "solicitacao"],
+      "tl": ["aksyon", "kahilingan", "kasangkapan", "pahina"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -29798,12 +29319,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "请求",
-        "页面"
-      ]
+      "zh-CN": ["工具", "操作", "请求", "页面"]
     },
     "action.smartglassesMicrophone.request": {
       "base": [
@@ -29976,14 +29492,7 @@
         "operacion estado",
         "solicitud"
       ],
-      "ko": [
-        "도구",
-        "상태",
-        "오디오",
-        "요청",
-        "작업",
-        "작업 상태"
-      ],
+      "ko": ["도구", "상태", "오디오", "요청", "작업", "작업 상태"],
       "pt": [
         "acao",
         "audio",
@@ -30018,14 +29527,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "操作 状态",
-        "状态",
-        "请求",
-        "音频"
-      ]
+      "zh-CN": ["工具", "操作", "操作 状态", "状态", "请求", "音频"]
     },
     "action.startTranscription.request": {
       "base": [
@@ -30065,14 +29567,7 @@
         "usuario",
         "usuario preguntar"
       ],
-      "ko": [
-        "도구",
-        "사용자",
-        "사용자 질문",
-        "요청",
-        "작업",
-        "질문"
-      ],
+      "ko": ["도구", "사용자", "사용자 질문", "요청", "작업", "질문"],
       "pt": [
         "acao",
         "ferramenta",
@@ -30103,14 +29598,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "用户",
-        "用户 询问",
-        "询问",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "用户", "用户 询问", "询问", "请求"]
     },
     "action.stopTranscription.request": {
       "base": [
@@ -30144,14 +29632,7 @@
         "solicitud",
         "usuario"
       ],
-      "ko": [
-        "도구",
-        "사용자",
-        "완료",
-        "요청",
-        "작업",
-        "중지"
-      ],
+      "ko": ["도구", "사용자", "완료", "요청", "작업", "중지"],
       "pt": [
         "acao",
         "ferramenta",
@@ -30183,14 +29664,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "停止",
-        "工具",
-        "操作",
-        "用户",
-        "结束",
-        "请求"
-      ]
+      "zh-CN": ["停止", "工具", "操作", "用户", "结束", "请求"]
     },
     "action.stream.request": {
       "base": [
@@ -32147,34 +31621,10 @@
         "under",
         "value"
       ],
-      "es": [
-        "accion",
-        "agente",
-        "herramienta",
-        "solicitud",
-        "tunel"
-      ],
-      "ko": [
-        "도구",
-        "에이전트",
-        "요청",
-        "작업",
-        "터널"
-      ],
-      "pt": [
-        "acao",
-        "agente",
-        "ferramenta",
-        "solicitacao",
-        "tunel"
-      ],
-      "tl": [
-        "agent",
-        "aksyon",
-        "kahilingan",
-        "kasangkapan",
-        "tunnel"
-      ],
+      "es": ["accion", "agente", "herramienta", "solicitud", "tunel"],
+      "ko": ["도구", "에이전트", "요청", "작업", "터널"],
+      "pt": ["acao", "agente", "ferramenta", "solicitacao", "tunel"],
+      "tl": ["agent", "aksyon", "kahilingan", "kasangkapan", "tunnel"],
       "vi": [
         "cong cu",
         "công cụ",
@@ -32187,14 +31637,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "代理",
-        "工具",
-        "操作",
-        "智能体",
-        "请求",
-        "隧道"
-      ]
+      "zh-CN": ["代理", "工具", "操作", "智能体", "请求", "隧道"]
     },
     "action.turnAbort.request": {
       "base": [
@@ -32301,15 +31744,7 @@
         "sala",
         "solicitud"
       ],
-      "ko": [
-        "도구",
-        "방",
-        "상태",
-        "요청",
-        "작업",
-        "채팅방",
-        "활성"
-      ],
+      "ko": ["도구", "방", "상태", "요청", "작업", "채팅방", "활성"],
       "pt": [
         "acao",
         "ativo",
@@ -32343,15 +31778,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "房间",
-        "操作",
-        "活跃",
-        "状态",
-        "聊天室",
-        "请求"
-      ]
+      "zh-CN": ["工具", "房间", "操作", "活跃", "状态", "聊天室", "请求"]
     },
     "action.updateApp.request": {
       "base": [
@@ -33143,14 +32570,7 @@
         "revisar",
         "solicitud"
       ],
-      "ko": [
-        "도구",
-        "업데이트",
-        "요청",
-        "작업",
-        "주문",
-        "확인"
-      ],
+      "ko": ["도구", "업데이트", "요청", "작업", "주문", "확인"],
       "pt": [
         "acao",
         "atualizar",
@@ -33186,14 +32606,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "工具",
-        "操作",
-        "更新",
-        "检查",
-        "订单",
-        "请求"
-      ]
+      "zh-CN": ["工具", "操作", "更新", "检查", "订单", "请求"]
     },
     "action.views.request": {
       "base": [
@@ -33924,21 +33337,8 @@
         "web_caption",
         "webqa"
       ],
-      "es": [
-        "accion",
-        "herramienta",
-        "solicitud",
-        "tarea",
-        "tarea web",
-        "web"
-      ],
-      "ko": [
-        "도구",
-        "요청",
-        "웹",
-        "작업",
-        "작업 웹"
-      ],
+      "es": ["accion", "herramienta", "solicitud", "tarea", "tarea web", "web"],
+      "ko": ["도구", "요청", "웹", "작업", "작업 웹"],
       "pt": [
         "acao",
         "ferramenta",
@@ -33967,14 +33367,7 @@
         "yeu cau",
         "yêu cầu"
       ],
-      "zh-CN": [
-        "任务",
-        "任务 网页",
-        "工具",
-        "操作",
-        "网页",
-        "请求"
-      ]
+      "zh-CN": ["任务", "任务 网页", "工具", "操作", "网页", "请求"]
     },
     "action.wallet.request": {
       "base": [

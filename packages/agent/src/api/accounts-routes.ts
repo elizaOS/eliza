@@ -111,7 +111,8 @@ function requestUsesLocalRoot(req: RouteRequestContext["req"]): boolean {
   const originOrReferer =
     (typeof req.headers.origin === "string" && req.headers.origin) ||
     (typeof req.headers.referer === "string" && req.headers.referer);
-  const requestHost = typeof req.headers.host === "string" ? req.headers.host.trim() : "";
+  const requestHost =
+    typeof req.headers.host === "string" ? req.headers.host.trim() : "";
   const raw =
     originOrReferer || (requestHost ? `http://${requestHost}` : undefined);
   if (!raw) return false;
