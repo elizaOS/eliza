@@ -136,7 +136,11 @@ import {
   useChatInputRef,
 } from "./state/ChatComposerContext.hooks";
 import { isShellPaintable } from "./state/startup-coordinator";
-import { authProbeShouldHoldShell } from "./state/top-level-auth-gate";
+import {
+  authProbeShouldHoldShell,
+  firstRunOwnsLoginSurface,
+  topLevelAuthGateOwnsSurface,
+} from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
 import {
   SurfaceRealmScope,
@@ -144,6 +148,7 @@ import {
 } from "./surface-realm-broker";
 import { shellHistory } from "./surface-realm-channel";
 import { TutorialConductorMount } from "./tutorial/TutorialConductor";
+import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
@@ -2186,12 +2191,20 @@ export function App() {
     uiLanguage,
   ]);
 
-  // Keep probing auth during first-run-required. A remote, already-initialized
-  // backend can return 401 for the protected first-run status route before this
-  // browser has an owner session. In that case the password wall must win over
-  // the in-chat Cloud onboarding surface.
+  const isAgentlessCloudOrigin =
+    typeof window !== "undefined" &&
+    isElizaCloudControlPlaneAgentlessBase(window.location.origin);
+
+  // Existing remote backends still probe during first-run so a real 401 can
+  // surface their password wall. The shared Cloud app defers that probe because
+  // its in-chat first-run conductor owns Cloud sign-in; its same-origin 401 is
+  // not evidence that this browser is on a dedicated agent host.
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
-    skip: !isShellPaintableNow || isPopout,
+    skip:
+      !isShellPaintableNow ||
+      isPopout ||
+      (isAgentlessCloudOrigin &&
+        firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
   });
   // #15132: after a dedicated cloud agent's container upgrade the persisted
   // agent credential is stale (every agent-subdomain call 401s) while the cloud
@@ -2728,7 +2741,16 @@ export function App() {
   // Restored sessions usually arrive here already decided: the restore phase
   // primes the probe (primeAuthStatusProbe) so it overlaps backend polling /
   // hydration instead of serializing an extra round-trip after first paint.
-  if (authState.phase !== "authenticated") {
+  if (
+    isShellPaintableNow &&
+    !isPopout &&
+    topLevelAuthGateOwnsSurface(
+      startupCoordinator.phase,
+      firstRunComplete,
+      authState.phase,
+      isAgentlessCloudOrigin,
+    )
+  ) {
     if (authProbeShouldHoldShell(authState.phase)) {
       return (
         <BugReportProvider value={bugReport}>

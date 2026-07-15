@@ -6,9 +6,11 @@ import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL as BRIDGE_SYMBOL } from "@elizaos/c
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   accountMetaFromSessionMetadata,
+  classifyAccountFailure,
   diagnoseCodingAccountFallback,
   getCodingAccountBridge,
   isMultiAccountAgentType,
+  isTokenExpiryText,
   resolveCodingAccountStrategy,
   selectCodingAccount,
 } from "../../src/services/coding-account-selection.js";
@@ -205,5 +207,48 @@ describe("diagnoseCodingAccountFallback (#9960 loud degradation)", () => {
       throw new Error("describe exploded");
     });
     expect(diagnoseCodingAccountFallback("codex")).toBeNull();
+  });
+});
+
+describe("isTokenExpiryText", () => {
+  it("detects explicit injected-token expiry phrasing", () => {
+    for (const phrase of [
+      "OAuth token has expired",
+      "access token expired",
+      "the token is expired",
+      "jwt expired",
+      "session expired",
+      "expired_token from provider",
+      "Error 401: token expired, refresh required",
+    ]) {
+      expect(isTokenExpiryText(phrase)).toBe(true);
+    }
+  });
+
+  it("does NOT treat a bare auth failure as a token-expiry (stays needs-reauth)", () => {
+    for (const phrase of [
+      "401 Unauthorized",
+      "invalid_grant",
+      "please re-authenticate",
+      "revoked credential",
+      "authentication failed",
+    ]) {
+      expect(isTokenExpiryText(phrase)).toBe(false);
+    }
+  });
+
+  it("is false/empty-safe on nullish input", () => {
+    expect(isTokenExpiryText("")).toBe(false);
+    expect(isTokenExpiryText(null)).toBe(false);
+    expect(isTokenExpiryText(undefined)).toBe(false);
+  });
+
+  it("a token-expiry message is still an auth-shaped failure for the pool", () => {
+    // The typed reason REFINES an auth failure; it must not change that the
+    // pool still classifies it as needs-reauth (so account-health marking and
+    // the router's failover keep working).
+    expect(classifyAccountFailure("oauth token has expired")).toBe(
+      "needs-reauth",
+    );
   });
 });

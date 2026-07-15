@@ -42,7 +42,6 @@ import {
 import type { EmbeddedWorkflowService } from '../../src/services/embedded-workflow-service';
 import {
   registerWorkflowDispatchService,
-  WORKFLOW_DISPATCH_SERVICE_TYPE,
   type WorkflowDispatchResult,
 } from '../../src/services/workflow-dispatch';
 import { type EmbeddedHarness, makeEmbeddedHarness } from './embedded-harness';
@@ -228,21 +227,26 @@ describe('dispatch_workflow step e2e (LifeOps registry -> WORKFLOW_DISPATCH -> e
   });
 
   test('(c) missing WORKFLOW_DISPATCH service yields a structured failure and no execution', async () => {
-    const workflowId = await createDispatchableWorkflow(h.workflow, 'Nested orphan');
-    h.services.delete(WORKFLOW_DISPATCH_SERVICE_TYPE);
+    const missing = await makeEmbeddedHarness('dispatch-step-missing-service-agent');
+    try {
+      const registry = createWorkflowStepRegistry();
+      registerDefaultWorkflowStepPack(registry);
+      registerWorkflowStepRegistry(missing.runtime, registry);
+      const workflowId = await createDispatchableWorkflow(missing.workflow, 'Nested orphan');
 
-    const result = (await executeStepViaRegistry(
-      h,
-      { kind: 'dispatch_workflow', workflowId },
-      makeStepArgs()
-    )) as { ok: boolean; error?: string };
+      const result = (await executeStepViaRegistry(
+        missing,
+        { kind: 'dispatch_workflow', workflowId },
+        makeStepArgs()
+      )) as { ok: boolean; error?: string };
 
-    expect(result.ok).toBe(false);
-    expect(result.error).toBe('WORKFLOW_DISPATCH service not registered');
-    const { data: executions } = await h.workflow.listExecutions({
-      workflowId,
-    });
-    expect(executions).toHaveLength(0);
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('WORKFLOW_DISPATCH service not registered');
+      const { data: executions } = await missing.workflow.listExecutions({ workflowId });
+      expect(executions).toHaveLength(0);
+    } finally {
+      await missing.close();
+    }
   });
 
   test('(d) unknown workflowId is a structured failure from the real dispatch, not a throw', async () => {

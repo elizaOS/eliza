@@ -64,12 +64,12 @@ describe("writeWorkspaceIdentity", () => {
   });
 
   it("buildSubAgentIdentityMd never leaves the placeholder in either mode", () => {
-    expect(buildSubAgentIdentityMd({ brokerWired: true })).not.toContain(
-      "{{BROKER_SECTION}}",
-    );
-    expect(buildSubAgentIdentityMd({ brokerWired: false })).not.toContain(
-      "{{BROKER_SECTION}}",
-    );
+    for (const brokerWired of [true, false]) {
+      const manual = buildSubAgentIdentityMd({ brokerWired });
+      expect(manual).not.toContain("{{BROKER_SECTION}}");
+      expect(manual.endsWith("\n")).toBe(true);
+      expect(manual.endsWith("\n\n")).toBe(false);
+    }
   });
 
   it("advertises the skills bridge endpoints and originatingTask read-back", () => {

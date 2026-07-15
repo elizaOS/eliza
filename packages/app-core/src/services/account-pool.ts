@@ -29,6 +29,7 @@ import {
   getAccessToken as getAccountAccessToken,
   listProviderAccounts,
 } from "@elizaos/auth/credentials";
+import { fetchAnthropicOAuthProfile } from "@elizaos/auth/oauth-flow";
 import {
   ACCOUNT_CREDENTIAL_PROVIDER_IDS,
   DIRECT_ACCOUNT_PROVIDER_ENV,
@@ -65,7 +66,8 @@ export type Strategy =
   | "priority"
   | "round-robin"
   | "least-used"
-  | "quota-aware";
+  | "quota-aware"
+  | "reset-soonest";
 
 export type PoolProviderId = LinkedAccountProviderId;
 
@@ -143,6 +145,41 @@ function accountLastUsedAt(account: LinkedAccountConfig): number {
   return typeof account.lastUsedAt === "number" ? account.lastUsedAt : 0;
 }
 
+/**
+ * The instant an account's weekly budget refunds. Prefers the usage
+ * snapshot's `resetsAt`; falls back to a live rate-limit `until`. Undefined
+ * when the provider hasn't reported a reset window yet.
+ */
+function accountResetAt(account: LinkedAccountConfig): number | undefined {
+  return account.usage?.resetsAt ?? account.healthDetail?.until;
+}
+
+/**
+ * `reset-soonest` comparator. Prefer the account whose weekly reset arrives
+ * SOONEST: its budget refunds first, so spending it now is the cheapest.
+ * Accounts with a known reset instant sort ahead of unknowns; ties and
+ * all-unknown pools fall back to least-recently-used (held-in-reserve
+ * heuristic), then priority for a fully stable order.
+ */
+function bySoonestReset(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+): number {
+  const ar = accountResetAt(a);
+  const br = accountResetAt(b);
+  if (ar != null && br != null) {
+    if (ar !== br) return ar - br;
+  } else if (ar != null) {
+    return -1;
+  } else if (br != null) {
+    return 1;
+  }
+  const aUsed = accountLastUsedAt(a);
+  const bUsed = accountLastUsedAt(b);
+  if (aUsed !== bUsed) return aUsed - bUsed;
+  return a.priority - b.priority;
+}
+
 // affinity is keyed by sessionKey, which is per-conversation/per-request, so the
 // map grows one entry per distinct session over the process lifetime. Cap it
 // (FIFO by Map insertion order) — an evicted session simply re-selects on its
@@ -204,6 +241,40 @@ export class AccountPool {
     return picked;
   }
 
+  /**
+   * Non-mutating dry-run of selection for the accounts API / settings UI:
+   * "which account would we serve next for this provider, and why?" Uses the
+   * SAME eligibility + strategy ordering as {@link select} but never stamps a
+   * selection or touches affinity, so polling it from the UI has no runtime
+   * side effects. Ignores session affinity (that's per-request state the UI
+   * can't meaningfully reflect).
+   */
+  selectionState(
+    providerId: PoolProviderId,
+    strategy: Strategy = "priority",
+  ): { activeAccountId: string | null; reason: string | null } {
+    const all = this.deps.readAccounts();
+    const eligible = this.filterEligible(all, { providerId });
+    if (eligible.length === 0) return { activeAccountId: null, reason: null };
+    if (eligible.length === 1) {
+      return {
+        activeAccountId: eligible[0]?.id ?? null,
+        reason: "only-eligible",
+      };
+    }
+    const picked = this.applyStrategy(strategy, eligible, providerId);
+    if (!picked) return { activeAccountId: null, reason: null };
+    let reason: string = strategy;
+    if (strategy === "reset-soonest") {
+      // Distinguish a real reset-time pick from the least-recently-used
+      // fallback so the UI copy stays honest.
+      reason = eligible.some((a) => accountResetAt(a) != null)
+        ? "reset-soonest"
+        : "least-recently-throttled";
+    }
+    return { activeAccountId: picked.id, reason };
+  }
+
   private filterEligible(
     all: Record<string, LinkedAccountConfig>,
     input: SelectInput,
@@ -256,6 +327,16 @@ export class AccountPool {
         );
         const pool = underQuota.length > 0 ? underQuota : eligible;
         return [...pool].sort(byPriorityThenAge)[0] ?? null;
+      }
+      case "reset-soonest": {
+        // Among accounts still under quota, serve the one whose weekly budget
+        // refunds soonest. Accounts that just reset (far-off resetsAt) are
+        // naturally held in reserve because they sort last.
+        const underQuota = eligible.filter(
+          (a) => accountSessionPct(a) < QUOTA_AWARE_SKIP_PCT,
+        );
+        const pool = underQuota.length > 0 ? underQuota : eligible;
+        return [...pool].sort(bySoonestReset)[0] ?? null;
       }
       default:
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
@@ -377,8 +458,29 @@ export class AccountPool {
     if (!account) return;
 
     let usage: LinkedAccountUsage;
+    // Anthropic's OAuth token is opaque (no OIDC claims), so accounts linked
+    // before the OAuth flow started persisting the profile email — or imported
+    // from a CLI login — have no identity to display. Backfill it here from the
+    // same profile endpoint the link flow uses.
+    let email: string | undefined;
     if (account.providerId === "anthropic-subscription") {
       usage = await pollAnthropicUsage(accessToken, opts?.fetch);
+      if (!account.email) {
+        try {
+          email = (await fetchAnthropicOAuthProfile(accessToken, opts?.fetch))
+            .email;
+        } catch (err) {
+          // error-policy:J7 diagnostics-must-not-kill-the-loop — the identity
+          // backfill is enrichment on top of the usage refresh. A profile
+          // failure is REPORTED here (typed ElizaError from the profile
+          // boundary, logged with the account id) and the email stays absent —
+          // never fabricated as a healthy empty identity — while the
+          // successfully fetched usage snapshot below is still persisted.
+          logger.warn(
+            `[AccountPool] Anthropic profile backfill failed for account ${accountId}: ${String(err)}`,
+          );
+        }
+      }
     } else if (account.providerId === "openai-codex") {
       const codexAccountId = opts?.codexAccountId ?? account.organizationId;
       if (!codexAccountId) {
@@ -396,6 +498,7 @@ export class AccountPool {
       ...account,
       health: "ok",
       usage,
+      ...(email ? { email } : {}),
     });
   }
 
@@ -449,6 +552,13 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    // Repeated probes may report the same state; log only the transition while
+    // still persisting the newest diagnostic detail on every call.
+    if (account.health !== "needs-reauth") {
+      logger.warn(
+        `[account-pool] ${account.providerId} account "${account.label ?? account.id}" (${account.id}) → needs-reauth: ${detail ?? "no detail provided"}`,
+      );
+    }
     await this.deps.writeAccount({
       ...account,
       health: "needs-reauth",
@@ -611,6 +721,11 @@ interface PoolMetaFields {
    * dashboard and the least-used age tiebreak (the credential record's own
    * lastUsedAt is only bumped by touchAccount, not by usage recording). */
   lastUsedAt?: number;
+  /** Account email. New OAuth links persist it on the credential record, but
+   * Anthropic's token is opaque, so accounts linked earlier (or imported from a
+   * CLI login) get it backfilled by refreshUsage's profile probe and persisted
+   * HERE — the credential file is never rewritten for display metadata. */
+  email?: string;
 }
 
 type PoolMetaStore = Record<PoolProviderId, Record<string, PoolMetaFields>>;
@@ -678,8 +793,38 @@ function recordToLinked(
     ...(meta?.usage ? { usage: meta.usage } : {}),
     ...(record.organizationId ? { organizationId: record.organizationId } : {}),
     ...(record.userId ? { userId: record.userId } : {}),
-    ...(record.email ? { email: record.email } : {}),
+    ...(() => {
+      // Show WHO an account is: prefer the credential record's email (new OAuth
+      // links persist it), then the pool-meta backfill (refreshUsage profile
+      // probe for older Anthropic links), then derive it from the id_token's
+      // OIDC `email` claim (Codex CLI imports carry an id_token; providers
+      // without one simply have no email to show).
+      const email =
+        record.email ??
+        meta?.email ??
+        emailFromIdToken(record.credentials.idToken);
+      return email ? { email } : {};
+    })(),
   };
+}
+
+/** The OIDC `email` claim from a JWT id_token, or undefined. */
+function emailFromIdToken(idToken: string | undefined): string | undefined {
+  if (!idToken) return undefined;
+  try {
+    const segments = idToken.split(".");
+    const encodedPayload = segments.length === 3 ? segments[1] : undefined;
+    if (!encodedPayload) return undefined;
+    const payload = JSON.parse(
+      Buffer.from(encodedPayload, "base64url").toString("utf8"),
+    ) as { email?: unknown };
+    return typeof payload.email === "string" && payload.email.includes("@")
+      ? payload.email
+      : undefined;
+  } catch {
+    // error-policy:J3 untrusted id_token payload — undecodable ⇒ no email.
+    return undefined;
+  }
 }
 
 function loadAllAccounts(): Record<string, LinkedAccountConfig> {
@@ -719,6 +864,7 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     ...(account.lastUsedAt !== undefined
       ? { lastUsedAt: account.lastUsedAt }
       : {}),
+    ...(account.email ? { email: account.email } : {}),
   };
   writeMetaStore(store);
 }
@@ -915,7 +1061,7 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
       // refresh below burns on the consumed token and this sweep marks a
       // perfectly recoverable account needs-reauth.
       if (providerId === "openai-codex") {
-        await adoptRotatedCodexTokens(record.id).catch(() => false);
+        await adoptRotatedCodexTokens(record.id);
       }
       const token = await getAccountAccessToken(providerId, record.id);
       if (!token) {
@@ -989,7 +1135,9 @@ export function startAccountPoolKeepAlive(
     keepAliveRunning = true;
     void sweepAccountPoolKeepAlive()
       .catch((err) => {
-        logger.debug(`[AccountPool] keep-alive sweep failed: ${String(err)}`);
+        // error-policy:J1 timer boundary observes rejected sweeps; the next
+        // interval retries without translating credential failure to health.
+        logger.error(`[AccountPool] keep-alive sweep failed: ${String(err)}`);
       })
       .finally(() => {
         keepAliveRunning = false;

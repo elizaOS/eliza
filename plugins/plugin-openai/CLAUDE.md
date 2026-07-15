@@ -12,10 +12,10 @@ This plugin registers **model handlers only** (no actions, providers, services, 
 
 | `ModelType` | Default model | Handler |
 |---|---|---|
-| `TEXT_SMALL` | `gpt-5.4-mini` | `handleTextSmall` |
+| `TEXT_SMALL` | `gpt-5.6-luna` | `handleTextSmall` |
 | `TEXT_NANO` | falls back to small | `handleTextNano` |
 | `TEXT_MEDIUM` | falls back to small | `handleTextMedium` |
-| `TEXT_LARGE` | `gpt-5` | `handleTextLarge` |
+| `TEXT_LARGE` | `gpt-5.6-sol` | `handleTextLarge` |
 | `TEXT_MEGA` | falls back to large | `handleTextMega` |
 | `RESPONSE_HANDLER` | falls back to small | `handleResponseHandler` |
 | `ACTION_PLANNER` | falls back to medium | `handleActionPlanner` |
@@ -87,10 +87,10 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `CEREBRAS_API_KEY` | one-of | — | Auth when using Cerebras endpoint |
 | `EVOLINK_API_KEY` | one-of | — | Auth when using EvoLink endpoint |
 | `OPENAI_BASE_URL` | no | `https://api.openai.com/v1` | Override API endpoint |
-| `OPENAI_SMALL_MODEL` / `SMALL_MODEL` | no | `gpt-5.4-mini` | TEXT_SMALL model |
+| `OPENAI_SMALL_MODEL` / `SMALL_MODEL` | no | `gpt-5.6-luna` | TEXT_SMALL model |
 | `OPENAI_NANO_MODEL` / `NANO_MODEL` | no | falls back to small | TEXT_NANO model |
 | `OPENAI_MEDIUM_MODEL` / `MEDIUM_MODEL` | no | falls back to small | TEXT_MEDIUM model |
-| `OPENAI_LARGE_MODEL` / `LARGE_MODEL` | no | `gpt-5` | TEXT_LARGE model |
+| `OPENAI_LARGE_MODEL` / `LARGE_MODEL` | no | `gpt-5.6-sol` | TEXT_LARGE model |
 | `OPENAI_MEGA_MODEL` / `MEGA_MODEL` | no | falls back to large | TEXT_MEGA model |
 | `OPENAI_RESPONSE_HANDLER_MODEL` | no | falls back to small | RESPONSE_HANDLER model |
 | `OPENAI_ACTION_PLANNER_MODEL` | no | falls back to medium | ACTION_PLANNER model |

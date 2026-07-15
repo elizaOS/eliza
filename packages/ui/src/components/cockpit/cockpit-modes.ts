@@ -213,6 +213,36 @@ export function cockpitModeToProviderPolicy(
   return policy;
 }
 
+/**
+ * Optional spawn targeting a cockpit session can carry alongside its goal +
+ * mode: the repo to point the coding agent at, and an optional working
+ * subdirectory within it. Both are threaded into the second spawn step
+ * (`addOrchestratorAgent`) — `createOrchestratorTask` writes only the durable
+ * record. Empty/omitted ⇒ the orchestrator's default scratch-dir resolution.
+ */
+export interface CockpitSpawnTarget {
+  /** Repo to clone/target (owner/repo, host/owner/repo, or a full clone URL). */
+  repo?: string;
+  /** Optional working subdirectory within the repo/workspace. */
+  workdir?: string;
+}
+
+/**
+ * Normalize a raw repo/workdir pair into a {@link CockpitSpawnTarget}, trimming
+ * whitespace and dropping empty values. Returns `undefined` when neither field
+ * has content so callers can omit the target entirely rather than send blanks.
+ */
+export function normalizeCockpitSpawnTarget(
+  raw: CockpitSpawnTarget,
+): CockpitSpawnTarget | undefined {
+  const repo = raw.repo?.trim();
+  const workdir = raw.workdir?.trim();
+  const target: CockpitSpawnTarget = {};
+  if (repo) target.repo = repo;
+  if (workdir) target.workdir = workdir;
+  return target.repo || target.workdir ? target : undefined;
+}
+
 /** First non-empty line of `text`, trimmed to `max` chars — used as a task title. */
 function deriveTitle(text: string, max = 80): string {
   const firstLine = text.split("\n").find((l) => l.trim().length > 0) ?? "";

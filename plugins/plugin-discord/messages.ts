@@ -8,13 +8,11 @@ import {
 	ChannelType,
 	type Content,
 	ContentType,
-	checkPairingAllowed,
 	createUniqueUuid,
 	type EventPayload,
 	EventType,
 	type FetchedDocumentUrl as FetchedKnowledgeUrl,
 	fetchDocumentFromUrl,
-	getConnectorAdminWhitelist,
 	type HandlerCallback,
 	type IAgentRuntime,
 	isInAllowlist,
@@ -43,6 +41,7 @@ import { AttachmentManager } from "./attachments";
 // Key point: Discord snowflake IDs (e.g., "1253563208833433701") are NOT valid UUIDs.
 // Use stringToUuid() to convert them, not asUUID() which would throw an error.
 import type { ICompatRuntime } from "./compat";
+import { checkDiscordDmAccess } from "./dm-access";
 import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
@@ -702,108 +701,11 @@ export class MessageManager {
 		allowed: boolean;
 		replyMessage?: string;
 	}> {
-		const policy = this.discordSettings.dmPolicy ?? "pairing";
-		const userId = message.author.id;
-
-		// Disabled policy - block all DMs
-		if (policy === "disabled") {
-			this.runtime.logger.debug(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					userId,
-				},
-				"DM blocked: policy is disabled",
-			);
-			return { allowed: false };
-		}
-
-		// Open policy - allow all DMs
-		if (policy === "open") {
-			return { allowed: true };
-		}
-
-		// Allowlist policy - check static allowFrom list and dynamic pairing allowlist
-		if (policy === "allowlist") {
-			// Check static allowlist first
-			if (this.discordSettings.allowFrom?.includes(userId)) {
-				return { allowed: true };
-			}
-
-			// Check dynamic pairing allowlist
-			const inDynamicAllowlist = await isInAllowlist(
-				this.runtime,
-				"discord",
-				userId,
-			);
-			if (inDynamicAllowlist) {
-				return { allowed: true };
-			}
-
-			this.runtime.logger.debug(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					userId,
-				},
-				"DM blocked: user not in allowlist",
-			);
-			return { allowed: false };
-		}
-
-		// Pairing policy - use PairingService
-		if (policy === "pairing") {
-			// Check static allowlist first (if configured, allow bypass of pairing)
-			if (this.discordSettings.allowFrom?.includes(userId)) {
-				return { allowed: true };
-			}
-
-			// The resolved bot owner and explicitly whitelisted connector admins
-			// (seeded by refreshOwnerDiscordUserIds from the application owner /
-			// team / ELIZA_DISCORD_OWNER_USER_IDS_JSON) are the pairing APPROVERS —
-			// they must never be locked behind their own pairing gate (#14710).
-			const discordAdminIds =
-				getConnectorAdminWhitelist(this.runtime).discord ?? [];
-			if (discordAdminIds.includes(userId)) {
-				return { allowed: true };
-			}
-
-			// Use the PairingService for pairing workflow
-			const result = await checkPairingAllowed(this.runtime, {
-				channel: "discord",
-				senderId: userId,
-				metadata: {
-					username: message.author.username,
-					displayName: message.author.displayName ?? message.author.username,
-					discriminator: message.author.discriminator ?? "",
-				},
-			});
-
-			if (result.allowed) {
-				return { allowed: true };
-			}
-
-			// Not allowed - return pairing reply message only for new requests
-			this.runtime.logger.debug(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					userId,
-					pairingCode: result.pairingCode,
-					newRequest: result.newRequest,
-				},
-				"DM blocked: pairing required",
-			);
-
-			return {
-				allowed: false,
-				// Only send reply for new pairing requests (avoid spamming on every message)
-				replyMessage: result.newRequest ? result.replyMessage : undefined,
-			};
-		}
-
-		// Default: allow
-		return { allowed: true };
+		return checkDiscordDmAccess(
+			this.runtime,
+			this.discordSettings,
+			message.author,
+		);
 	}
 
 	private async persistInboundMemory(memory: Memory): Promise<void> {

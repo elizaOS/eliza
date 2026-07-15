@@ -1,6 +1,7 @@
-/** Exercises the curated Eliza-1 `Downloader`: disk preflight, gated-repo handling, and registry writes on completion, against a real temp state dir with a fake HardwareProbe. No network. */
+/** Exercises the curated Eliza-1 `Downloader` against real temp state, including a local HTTP range server for restart recovery; other network and hardware boundaries stay controlled. */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -246,6 +247,12 @@ function installRangeAwareFetchFixture(files: Map<string, string>): {
 				const match = /^bytes=(\d+)-$/.exec(range);
 				const start = match?.[1] ? Number.parseInt(match[1], 10) : 0;
 				const buf = Buffer.from(body);
+				if (start >= buf.length) {
+					return new Response("range not satisfiable", {
+						status: 416,
+						headers: { "content-range": `bytes */${buf.length}` },
+					});
+				}
 				const tail = buf.subarray(start);
 				return new Response(tail, {
 					status: 206,
@@ -262,6 +269,63 @@ function installRangeAwareFetchFixture(files: Map<string, string>): {
 		},
 	) as unknown as typeof fetch;
 	return { rangeRequests };
+}
+
+async function startRangeServer(files: Map<string, string>): Promise<{
+	baseUrl: string;
+	requests: Map<string, string[]>;
+	close: () => Promise<void>;
+}> {
+	const requests = new Map<string, string[]>();
+	const server = createServer((request, response) => {
+		const remotePath = remotePathOf(
+			new URL(request.url ?? "/", "http://127.0.0.1"),
+		);
+		const body = files.get(remotePath);
+		if (body === undefined) {
+			response.writeHead(404).end(`missing ${remotePath}`);
+			return;
+		}
+		const range = request.headers.range;
+		const seen = requests.get(remotePath) ?? [];
+		seen.push(range ?? "full");
+		requests.set(remotePath, seen);
+		const bytes = Buffer.from(body);
+		const match = range ? /^bytes=(\d+)-$/.exec(range) : null;
+		const start = match?.[1] ? Number.parseInt(match[1], 10) : 0;
+		if (range && start >= bytes.length) {
+			response
+				.writeHead(416, { "content-range": `bytes */${bytes.length}` })
+				.end("range not satisfiable");
+			return;
+		}
+		const payload = range ? bytes.subarray(start) : bytes;
+		response.writeHead(range ? 206 : 200, {
+			"content-length": payload.length,
+			...(range
+				? {
+						"content-range": `bytes ${start}-${bytes.length - 1}/${bytes.length}`,
+					}
+				: {}),
+		});
+		response.end(payload);
+	});
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", resolve);
+	});
+	const address = server.address();
+	if (!address || typeof address === "string") {
+		throw new Error("range server did not bind a TCP port");
+	}
+	return {
+		baseUrl: `http://127.0.0.1:${address.port}`,
+		requests,
+		close: () =>
+			new Promise<void>((resolve, reject) => {
+				server.close((error) => (error ? reject(error) : resolve()));
+			}),
+	};
 }
 
 /** Standard 2b bundle content set for stale-content robustness tests. */
@@ -1380,6 +1444,46 @@ describe("local inference downloader stale-content robustness", () => {
 		).toBe(freshBundleBytes.text);
 		const main = readOwnedRegistryModels().find((m) => m.id === model.id);
 		expect(main?.sha256).toBe(sha256(freshBundleBytes.text));
+	});
+
+	it("commits a complete .part after restart without requesting a range past EOF", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+		process.env.ELIZA_STATE_DIR = root;
+		const model = findCatalogModel("eliza-1-2b");
+		if (!model) throw new Error("missing test catalog model");
+		const server = await startRangeServer(freshBundleFixtureFiles());
+		process.env.ELIZA_HF_BASE_URL = server.baseUrl;
+
+		const textPart = eliza1StagingPartPath(root, "text/eliza-1-2b-128k.gguf");
+		fs.mkdirSync(path.dirname(textPart), { recursive: true });
+		fs.writeFileSync(textPart, freshBundleBytes.text);
+		fs.writeFileSync(`${textPart}.expected`, sha256(freshBundleBytes.text));
+
+		try {
+			const downloader = new Downloader({
+				probeDeviceCaps: async () => cpuOnlyCaps,
+			});
+			const completed = waitForTerminal(downloader, model.id);
+			await downloader.start(model.id);
+			const job = await completed;
+
+			expect(job.state).toBe("completed");
+			expect(
+				server.requests.get(
+					eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"),
+				),
+			).toBeUndefined();
+			expect(
+				fs.readFileSync(
+					eliza1BundleFinalPath(root, "text/eliza-1-2b-128k.gguf"),
+					"utf8",
+				),
+			).toBe(freshBundleBytes.text);
+			expect(fs.existsSync(textPart)).toBe(false);
+			expect(fs.existsSync(`${textPart}.expected`)).toBe(false);
+		} finally {
+			await server.close();
+		}
 	});
 
 	it("re-fetches from scratch when a completed transfer fails the sha gate (stale edge)", async () => {

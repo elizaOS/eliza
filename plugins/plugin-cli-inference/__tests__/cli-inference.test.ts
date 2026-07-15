@@ -1,15 +1,16 @@
 /**
  * Unit and opportunistic real-binary tests for the CLI inference route: the
  * `ELIZA_CHAT_VIA_CLI` auto-enable gate, backend resolution, the large-tier
- * model map, and the claude/codex spawn plus JSONL-parse and prompt-flatten
- * paths. The child-process spawn seam is mocked so no real model runs; the few
- * real-binary cases are skipped unless `claude`/`codex` resolve through the SOC2
- * allowlist on this box.
+ * model map and registration metadata, and the claude/codex spawn plus
+ * JSONL-parse and prompt-flatten paths. The child-process spawn seam is mocked
+ * so no real model runs; the few real-binary cases are skipped unless
+ * `claude`/`codex` resolve through the SOC2 allowlist on this box.
  */
-import type { ChatMessage, PluginAutoEnableContext } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ChatMessage, IAgentRuntime, PluginAutoEnableContext } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { shouldEnable } from "../auto-enable";
 import {
+  buildModelMetadata,
   buildModels,
   ClaudeCli,
   ClaudeSdkSession,
@@ -17,6 +18,7 @@ import {
   cliInferencePlugin,
   LARGE_TIER_MODEL_TYPES,
   resolveCliBackend,
+  resolveSdkEffort,
 } from "../index";
 import {
   __setSpawnForTests as __setClaudeSpawn,
@@ -24,6 +26,7 @@ import {
   type SpawnOptions,
   type SpawnResult,
 } from "../src/claude-cli";
+import { normalizeEffort } from "../src/claude-sdk-session";
 import {
   __setSpawnForTests as __setCodexSpawn,
   CodexCli,
@@ -610,5 +613,210 @@ describe("models map gating (large-tier only)", () => {
   it("auto-enables for claude-sdk with the same trim/case normalization", () => {
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "  Claude-SDK " }))).toBe(true);
     expect(shouldEnable(autoEnableCtx({ ELIZA_CHAT_VIA_CLI: "gemini" }))).toBe(false);
+  });
+});
+
+describe("reasoning effort (SDK effort option)", () => {
+  it("normalizeEffort accepts the SDK's levels and drops everything else", () => {
+    for (const lvl of ["low", "medium", "high", "xhigh", "max"]) {
+      expect(normalizeEffort(lvl)).toBe(lvl);
+      expect(normalizeEffort(`  ${lvl.toUpperCase()} `)).toBe(lvl);
+    }
+    for (const junk of ["ultra", "insane", "", "  ", undefined, null, "9"]) {
+      expect(normalizeEffort(junk as string)).toBeNull();
+    }
+  });
+
+  it("forwards a valid effort into the SDK query options", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield {
+              type: "assistant",
+              message: { content: [{ type: "text", text: "ok" }] },
+            };
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      effort: "xhigh",
+      sdkModule: fakeSdk as never,
+    });
+    await session.generate("hi");
+    expect(captured?.effort).toBe("xhigh");
+    await session.dispose();
+  });
+
+  it("omits effort entirely when unset (SDK keeps its default)", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      sdkModule: fakeSdk as never,
+    });
+    await session.generate("hi");
+    expect(captured && "effort" in captured).toBe(false);
+    await session.dispose();
+  });
+
+  it("drops a bogus effort rather than forwarding it (would fail the turn)", async () => {
+    let captured: Record<string, unknown> | undefined;
+    const fakeSdk = {
+      query: ({ options }: { options: Record<string, unknown> }) => {
+        captured = options;
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield { type: "result", subtype: "success", result: "ok" };
+          },
+        };
+      },
+      tool: () => ({}),
+      createSdkMcpServer: () => ({}),
+    };
+    const session = new ClaudeSdkSession({
+      model: "claude-opus-4-8",
+      effort: "ultra",
+      sdkModule: fakeSdk as never,
+    });
+    await session.generate("hi");
+    expect(captured && "effort" in captured).toBe(false);
+    await session.dispose();
+  });
+});
+
+describe("resolveSdkEffort (per-tier effort env precedence)", () => {
+  // getSetting() falls back to process.env when the runtime returns undefined,
+  // so a stray ambient value would defeat the "unset" cases. Clear both keys and
+  // drive resolution purely off the fake runtime's settings map.
+  const prev = {
+    effort: process.env.ELIZA_CLI_CLAUDE_EFFORT,
+    planner: process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT,
+  };
+  beforeEach(() => {
+    delete process.env.ELIZA_CLI_CLAUDE_EFFORT;
+    delete process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT;
+  });
+  afterEach(() => {
+    if (prev.effort === undefined) delete process.env.ELIZA_CLI_CLAUDE_EFFORT;
+    else process.env.ELIZA_CLI_CLAUDE_EFFORT = prev.effort;
+    if (prev.planner === undefined) delete process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT;
+    else process.env.ELIZA_CLI_CLAUDE_PLANNER_EFFORT = prev.planner;
+  });
+
+  const runtimeWith = (settings: Record<string, string>): IAgentRuntime =>
+    ({ getSetting: (key: string) => settings[key] }) as unknown as IAgentRuntime;
+
+  it("reply tier (router=false) reads ELIZA_CLI_CLAUDE_EFFORT", () => {
+    const runtime = runtimeWith({ ELIZA_CLI_CLAUDE_EFFORT: "high" });
+    expect(resolveSdkEffort(runtime, false)).toBe("high");
+  });
+
+  it("reply tier ignores the planner override even when it is set", () => {
+    const runtime = runtimeWith({
+      ELIZA_CLI_CLAUDE_EFFORT: "medium",
+      ELIZA_CLI_CLAUDE_PLANNER_EFFORT: "max",
+    });
+    expect(resolveSdkEffort(runtime, false)).toBe("medium");
+  });
+
+  it("planner tier (router=true) prefers ELIZA_CLI_CLAUDE_PLANNER_EFFORT", () => {
+    const runtime = runtimeWith({
+      ELIZA_CLI_CLAUDE_EFFORT: "low",
+      ELIZA_CLI_CLAUDE_PLANNER_EFFORT: "max",
+    });
+    expect(resolveSdkEffort(runtime, true)).toBe("max");
+  });
+
+  it("planner tier falls back to the shared ELIZA_CLI_CLAUDE_EFFORT when its own key is unset", () => {
+    const runtime = runtimeWith({ ELIZA_CLI_CLAUDE_EFFORT: "high" });
+    expect(resolveSdkEffort(runtime, true)).toBe("high");
+  });
+
+  it("returns undefined for both tiers when no effort is configured (SDK keeps its default)", () => {
+    const runtime = runtimeWith({});
+    expect(resolveSdkEffort(runtime, false)).toBeUndefined();
+    expect(resolveSdkEffort(runtime, true)).toBeUndefined();
+  });
+
+  it("passes an unrecognized level through unvalidated — validation is normalizeEffort's job at the session", () => {
+    // resolveSdkEffort only resolves precedence; the session's normalizeEffort
+    // (tested above) drops unknown levels. Keeping the two concerns split means a
+    // bad env never silently downgrades a valid per-tier override.
+    const runtime = runtimeWith({ ELIZA_CLI_CLAUDE_EFFORT: "ultra" });
+    expect(resolveSdkEffort(runtime, false)).toBe("ultra");
+    expect(normalizeEffort(resolveSdkEffort(runtime, false))).toBeNull();
+  });
+});
+
+describe("buildModelMetadata (RUNTIME_MODEL_CONTEXT self-report)", () => {
+  const prev = {
+    planner: process.env.ELIZA_PLANNER_NATIVE_TOOLS,
+    claudeLarge: process.env.ELIZA_CLI_CLAUDE_MODEL,
+    claudePlanner: process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL,
+    codexLarge: process.env.ELIZA_CLI_CODEX_MODEL,
+  };
+  afterEach(() => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = prev.planner ?? "";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = prev.claudeLarge ?? "";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = prev.claudePlanner ?? "";
+    process.env.ELIZA_CLI_CODEX_MODEL = prev.codexLarge ?? "";
+  });
+
+  it("is undefined when the plugin is inert", () => {
+    expect(buildModelMetadata({ ELIZA_CHAT_VIA_CLI: undefined })).toBeUndefined();
+    expect(buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "gemini" })).toBeUndefined();
+  });
+
+  it("reports the configured claude models per tier (nubs's live config shape)", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-sonnet-5";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "claude-opus-4-8";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    for (const t of LARGE_TIER_MODEL_TYPES) {
+      expect(md?.[t]).toEqual({ displayModel: "claude-sonnet-5" });
+    }
+    expect(md?.ACTION_PLANNER).toEqual({ displayModel: "claude-opus-4-8" });
+  });
+
+  it("planner falls back to the large model when its own key is unset", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-opus-4-8";
+    process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    expect(md?.ACTION_PLANNER).toEqual({ displayModel: "claude-opus-4-8" });
+  });
+
+  it("omits ACTION_PLANNER when native-tools planner mode is on (not served here)", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "1";
+    process.env.ELIZA_CLI_CLAUDE_MODEL = "claude-opus-4-8";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "claude-sdk" });
+    expect(md?.ACTION_PLANNER).toBeUndefined();
+    expect(md?.RESPONSE_HANDLER).toEqual({ displayModel: "claude-opus-4-8" });
+  });
+
+  it("reports codex models for the codex backend", () => {
+    process.env.ELIZA_PLANNER_NATIVE_TOOLS = "0";
+    process.env.ELIZA_CLI_CODEX_MODEL = "gpt-5.6-sol";
+    const md = buildModelMetadata({ ELIZA_CHAT_VIA_CLI: "codex-sdk" });
+    expect(md?.RESPONSE_HANDLER).toEqual({ displayModel: "gpt-5.6-sol" });
   });
 });

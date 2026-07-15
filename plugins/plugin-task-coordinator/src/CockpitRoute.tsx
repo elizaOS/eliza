@@ -1,6 +1,7 @@
-// Composes the mobile coding cockpit route from deck, session, and terminal panes.
+/** Composes the mobile coding cockpit route from deck, session, and terminal panes. */
 import {
   Button,
+  type CockpitSpawnTarget,
   CockpitView,
   type CodingAgentCreateTaskInput,
   client,
@@ -36,6 +37,12 @@ export function CockpitRoute() {
   const [terminalTier, setTerminalTier] = useState<CockpitTerminalTier | null>(
     null,
   );
+  // Repo suggestions for the new-session form's repo field, sourced from the
+  // project registry (the same list the project switcher reads). Best-effort:
+  // an absent/empty registry just yields a plain text input, no dropdown.
+  const [knownRepos, setKnownRepos] = useState<string[]>([]);
+  const [repoSuggestionsUnavailable, setRepoSuggestionsUnavailable] =
+    useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -54,8 +61,36 @@ export function CockpitRoute() {
     return () => clearInterval(id);
   }, [refresh]);
 
+  // Load known repos once for the repo-field autocomplete. Registry-less hosts
+  // (mobile/web) resolve to an empty list, so the field degrades to plain text.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { projects } = await client.listProjects();
+        if (cancelled) return;
+        const repos = Array.from(
+          new Set(
+            projects
+              .map((p) => p.repoUrl?.trim())
+              .filter((r): r is string => !!r),
+          ),
+        );
+        setKnownRepos(repos);
+        setRepoSuggestionsUnavailable(false);
+      } catch {
+        // error-policy:J4 Manual repo entry remains usable, while the form
+        // distinguishes a failed registry from a legitimately empty registry.
+        if (!cancelled) setRepoSuggestionsUnavailable(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const onCreateSession = useCallback(
-    async (input: CodingAgentCreateTaskInput) => {
+    async (input: CodingAgentCreateTaskInput, target?: CockpitSpawnTarget) => {
       setBusy(true);
       try {
         // 1. Create the durable task record.
@@ -64,15 +99,18 @@ export function CockpitRoute() {
         // the record — the sub-agent actually starts via addOrchestratorAgent.
         // Thread the picked mode (framework / providerSource / model) so the
         // chosen mode runs. NOT a follow-up message: that path silently spawns
-        // the default opencode framework and discards the pick. (workdir is left
-        // to the orchestrator's default resolution; a cwd/repo picker is a
-        // follow-up.)
+        // the default opencode framework and discards the pick. The optional
+        // repo/workdir target (from the form) is threaded here exactly as the
+        // chat TASKS action does — the orchestrator route already accepts both
+        // and resolves the spawn workdir/repo from them; omitted ⇒ scratch dir.
         const policy = input.providerPolicy;
         await client.addOrchestratorAgent(task.id, {
           framework: policy?.preferredFramework,
           providerSource: policy?.providerSource,
           model: policy?.model,
           task: input.goal,
+          ...(target?.repo ? { repo: target.repo } : {}),
+          ...(target?.workdir ? { workdir: target.workdir } : {}),
         });
         setError(null);
         await refresh();
@@ -103,6 +141,9 @@ export function CockpitRoute() {
       <CockpitView
         rooms={rooms}
         onCreateSession={onCreateSession}
+        className="pb-20"
+        knownRepos={knownRepos}
+        repoSuggestionsUnavailable={repoSuggestionsUnavailable}
         busy={busy}
         error={error}
         onSelectRoom={setSelectedTaskId}

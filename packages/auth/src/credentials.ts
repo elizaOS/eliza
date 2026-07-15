@@ -22,7 +22,6 @@ import {
   resolveUserPath,
 } from "@elizaos/core";
 import type { SubscriptionCredentialSource } from "@elizaos/shared/contracts/first-run-options";
-import { ensureBuiltinSubscriptionAuthProviders } from "./subscription-auth/builtin-providers.ts";
 import {
   type AccountCredentialRecord,
   deleteAccount,
@@ -33,6 +32,7 @@ import {
 import { refreshAnthropicToken } from "./anthropic.ts";
 import { refreshCodexToken } from "./openai-codex.ts";
 import { accountRefreshMutex } from "./refresh-mutex.ts";
+import { ensureBuiltinSubscriptionAuthProviders } from "./subscription-auth/builtin-providers.ts";
 import {
   type AccountCredentialProvider,
   isCodingPlanKeySubscriptionProvider,
@@ -53,6 +53,73 @@ const DEFAULT_ACCOUNT_ID = "default";
 /** Buffer before expiry to trigger refresh (5 minutes) */
 const REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const invalidClaudeCodeRefreshTokens = new Set<string>();
+
+/** Stable failure categories for callers that manage account-pool health. */
+export type AccessTokenFailureKind =
+  | "auth"
+  | "transient"
+  | "insufficient-lifetime";
+
+/** Typed token resolution result for callers that cannot treat every failure as reauthentication. */
+export type AccessTokenOutcome =
+  | {
+      ok: true;
+      accessToken: string;
+      expiresAt: number;
+      refreshed: boolean;
+    }
+  | {
+      ok: false;
+      kind: AccessTokenFailureKind;
+      message: string;
+      expiresAt?: number;
+      minRemainingMs?: number;
+    };
+
+/** Freshness requested by a token consumer before it starts work. */
+export interface GetAccessTokenOptions {
+  minRemainingMs?: number;
+}
+
+/** Selects the typed token result instead of the legacy nullable return. */
+export interface GetAccessTokenOutcomeOptions extends GetAccessTokenOptions {
+  outcome: true;
+}
+
+function tokenFailure(
+  kind: AccessTokenFailureKind,
+  message: string,
+  extra: { expiresAt?: number; minRemainingMs?: number } = {},
+): Extract<AccessTokenOutcome, { ok: false }> {
+  return {
+    ok: false,
+    kind,
+    message,
+    ...(extra.expiresAt !== undefined ? { expiresAt: extra.expiresAt } : {}),
+    ...(extra.minRemainingMs !== undefined
+      ? { minRemainingMs: extra.minRemainingMs }
+      : {}),
+  };
+}
+
+function classifyRefreshError(err: unknown): AccessTokenFailureKind {
+  const message = err instanceof Error ? err.message : String(err);
+  if (
+    /\b(?:401|403|invalid[_ ]?grant|invalid[_ ]?token|unauthor|forbidden|re-?auth|revoked|(?:access |refresh |oauth |jwt |session |credential )?token (?:has |is )?expired|expired[_ ]?(?:access[_ ]?|refresh[_ ]?|oauth[_ ]?|jwt[_ ]?)?token|(?:credential|jwt|session) (?:has |is )?expired)\b/i.test(
+      message,
+    )
+  ) {
+    return "auth";
+  }
+  if (
+    /\b(?:5\d\d|timeout|timed? ?out|fetch failed|network|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket hang up|service unavailable|bad gateway)\b/i.test(
+      message,
+    )
+  ) {
+    return "transient";
+  }
+  return "transient";
+}
 
 function recordToStored(record: AccountCredentialRecord): StoredCredentials {
   return {
@@ -173,30 +240,107 @@ export function listProviderAccounts(
  * `accountRefreshMutex` so concurrent callers don't race on the
  * refresh-token grant or the credential file write.
  *
- * Returns `null` when no credentials are stored or the refresh fails.
+ * `opts.minRemainingMs` widens the refresh window: the token is refreshed
+ * unless it has at least this much life left (instead of the default 5-minute
+ * buffer). This lets a caller that is about to INJECT the token into a
+ * long-running subprocess it cannot later refresh (e.g. a Claude coding spawn
+ * with a bare `CLAUDE_CODE_OAUTH_TOKEN`) hand off a token that survives the
+ * expected run duration.
+ *
+ * Returns `null` when no credentials are stored or refresh cannot yield a
+ * usable token. Pass `opts.outcome: true` to receive a typed failure reason
+ * instead of the legacy nullable token result.
  */
+export function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId: string,
+  opts: GetAccessTokenOutcomeOptions,
+): Promise<AccessTokenOutcome>;
+export function getAccessToken(
+  provider: AccountCredentialProvider,
+  accountId?: string,
+  opts?: GetAccessTokenOptions,
+): Promise<string | null>;
 export async function getAccessToken(
   provider: AccountCredentialProvider,
   accountId: string = DEFAULT_ACCOUNT_ID,
-): Promise<string | null> {
+  opts?: GetAccessTokenOptions | GetAccessTokenOutcomeOptions,
+): Promise<string | null | AccessTokenOutcome> {
+  const returnOutcome =
+    (opts as GetAccessTokenOutcomeOptions | undefined)?.outcome === true;
+  const finish = (
+    outcome: AccessTokenOutcome,
+  ): string | null | AccessTokenOutcome =>
+    returnOutcome ? outcome : outcome.ok ? outcome.accessToken : null;
+  // The token must have at least this much life left to be returned without a
+  // refresh. Never below the historical buffer; a non-positive/NaN override is
+  // ignored (fail-safe: a bad value can't disable the refresh).
+  const raw = opts?.minRemainingMs;
+  const effectiveBufferMs =
+    typeof raw === "number" && Number.isFinite(raw) && raw > REFRESH_BUFFER_MS
+      ? raw
+      : REFRESH_BUFFER_MS;
+  const requestedWidenedLifetime = effectiveBufferMs > REFRESH_BUFFER_MS;
+
   if (!isSubscriptionProvider(provider)) {
     const direct = loadAccount(provider, accountId);
-    if (!direct) return null;
-    if (direct.credentials.expires <= Date.now()) return null;
-    return direct.credentials.access;
+    if (!direct) {
+      return finish(tokenFailure("auth", "No credential is stored"));
+    }
+    // Direct API keys can't be refreshed; a still-valid key is returned even if
+    // it is inside the widened window (there is nothing to refresh into).
+    if (direct.credentials.expires <= Date.now()) {
+      return finish(
+        tokenFailure("auth", "Stored credential is expired", {
+          expiresAt: direct.credentials.expires,
+        }),
+      );
+    }
+    return finish({
+      ok: true,
+      accessToken: direct.credentials.access,
+      expiresAt: direct.credentials.expires,
+      refreshed: false,
+    });
   }
 
   const initial = loadCredentials(provider, accountId);
-  if (!initial) return null;
+  if (!initial) {
+    return finish(tokenFailure("auth", "No credential is stored"));
+  }
 
-  if (initial.credentials.expires > Date.now() + REFRESH_BUFFER_MS) {
-    return initial.credentials.access;
+  if (initial.credentials.expires > Date.now() + effectiveBufferMs) {
+    return finish({
+      ok: true,
+      accessToken: initial.credentials.access,
+      expiresAt: initial.credentials.expires,
+      refreshed: false,
+    });
   }
 
   if (isCodingPlanKeySubscriptionProvider(provider)) {
-    return initial.credentials.expires > Date.now()
-      ? initial.credentials.access
-      : null;
+    if (initial.credentials.expires > Date.now() && !requestedWidenedLifetime) {
+      return finish({
+        ok: true,
+        accessToken: initial.credentials.access,
+        expiresAt: initial.credentials.expires,
+        refreshed: false,
+      });
+    }
+    return finish(
+      initial.credentials.expires > Date.now()
+        ? tokenFailure(
+            "insufficient-lifetime",
+            "Credential cannot be refreshed to satisfy the requested lifetime",
+            {
+              expiresAt: initial.credentials.expires,
+              minRemainingMs: effectiveBufferMs,
+            },
+          )
+        : tokenFailure("auth", "Stored credential is expired", {
+            expiresAt: initial.credentials.expires,
+          }),
+    );
   }
 
   if (
@@ -206,17 +350,29 @@ export async function getAccessToken(
     logger.info(
       `[auth] ${provider} is not an importable OAuth credential; use its first-party coding client or supported coding endpoint.`,
     );
-    return null;
+    return finish(
+      tokenFailure(
+        "auth",
+        `${provider} cannot provide importable OAuth tokens`,
+      ),
+    );
   }
 
   return accountRefreshMutex.acquire(`${provider}:${accountId}`, async () => {
     // Re-read after acquiring the lock — a concurrent caller may have
     // already refreshed the token, in which case we want the new one.
     const stored = loadCredentials(provider, accountId);
-    if (!stored) return null;
+    if (!stored) {
+      return finish(tokenFailure("auth", "No credential is stored"));
+    }
     const { credentials } = stored;
-    if (credentials.expires > Date.now() + REFRESH_BUFFER_MS) {
-      return credentials.access;
+    if (credentials.expires > Date.now() + effectiveBufferMs) {
+      return finish({
+        ok: true,
+        accessToken: credentials.access,
+        expiresAt: credentials.expires,
+        refreshed: false,
+      });
     }
 
     logger.info(
@@ -230,20 +386,45 @@ export async function getAccessToken(
         refreshed = await refreshCodexToken(credentials.refresh);
       } else if (!isOAuthSubscriptionProvider(provider)) {
         logger.error(`[auth] Unknown provider: ${provider}`);
-        return null;
+        return finish(
+          tokenFailure("auth", `Unknown credential provider: ${provider}`),
+        );
       } else {
         logger.error(`[auth] Refresh unsupported for provider: ${provider}`);
-        return null;
+        return finish(
+          tokenFailure("auth", `Refresh unsupported for provider: ${provider}`),
+        );
       }
     } catch (err) {
+      // error-policy:J1 Provider refresh failures become typed outcomes at the
+      // credential boundary so pool callers can distinguish auth from outages.
       logger.error(
         `[auth] Failed to refresh ${provider} token for "${accountId}": ${err}`,
       );
-      return null;
+      return finish(
+        tokenFailure(
+          classifyRefreshError(err),
+          err instanceof Error ? err.message : String(err),
+        ),
+      );
     }
 
     saveCredentials(provider, refreshed, accountId);
-    return refreshed.access;
+    if (refreshed.expires <= Date.now() + effectiveBufferMs) {
+      return finish(
+        tokenFailure(
+          "insufficient-lifetime",
+          "Refreshed token does not satisfy the requested lifetime",
+          { expiresAt: refreshed.expires, minRemainingMs: effectiveBufferMs },
+        ),
+      );
+    }
+    return finish({
+      ok: true,
+      accessToken: refreshed.access,
+      expiresAt: refreshed.expires,
+      refreshed: true,
+    });
   });
 }
 

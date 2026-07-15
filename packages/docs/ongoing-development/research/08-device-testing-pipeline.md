@@ -110,11 +110,13 @@ runner itself.
   installed-build-vs-HEAD.
 
 **CI cannot replace the dev-machine fleet.**
-`.github/workflows/android-device-e2e.yml:1-35`: workflow_dispatch only, plus a minimal
-PR slice behind the `ci:device` label; the file header documents that the on-device agent
-SIGSEGVs on stock x86_64 emulators, so the local-model route only greens on real arm64
-hardware. There is no iOS e2e workflow at all (`build-ios.yml` is build-only on
-macos-15). The plugged-in device fleet is the only place the real mobile paths run.
+`.github/workflows/mobile-build-smoke.yml` is the canonical simulator build/smoke
+authority for iOS and Android; its iOS local-runtime lane is nightly because it stages a
+real GGUF and performs CPU inference. `.github/workflows/android-device-e2e.yml` adds a
+dispatch-only hardware lane plus a minimal PR slice behind the `ci:device` label, but its
+header documents that the on-device agent SIGSEGVs on stock x86_64 emulators. The
+local-model route only greens on real arm64 hardware, so the plugged-in device fleet
+remains the authority for real mobile-device paths.
 
 **No device lease.** Concurrent agent sessions on one machine collide on the same
 simulator/device — `ios-e2e.mjs:50-61` grabs the first booted simulator; nothing locks a

@@ -49,10 +49,12 @@
     "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "@types/pg": "^8.16.0",
+    "@types/ws": "^8.18.1",
     "dotenv": "^17.4.2",
     "pg": "^8.20.0",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "ws": "^8.21.0"
   }
 }

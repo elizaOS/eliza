@@ -171,7 +171,13 @@ function clearBridge(): void {
 }
 
 function runtime(settings: Record<string, string | undefined> = {}) {
-  const values = { ELIZA_ACP_TRANSPORT: "native", ...settings };
+  const values = {
+    ELIZA_ACP_TRANSPORT: "native",
+    // NativeAcpClient is mocked in this contract suite; command provisioning is
+    // outside its scope and must not depend on workspace build artifacts.
+    ELIZA_ELIZAOS_ACP_COMMAND: "test-eliza-code-acp",
+    ...settings,
+  };
   return {
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     getSetting: vi.fn((key: string) => values[key]),

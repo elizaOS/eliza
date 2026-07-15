@@ -41,6 +41,7 @@ import {
   validateOcrRecordPaths,
 } from "./lib/audit-capture-manifest";
 import {
+  analyzeImageFile,
   closeOcrEngines,
   ocrImage,
   resolveOcrEngine,
@@ -56,12 +57,6 @@ const BLANK_EXEMPT_SLUGS = new Set<string>([
   ...OVERLAY_NATIVE_OR_CANVAS_SLUGS,
   "builtin-background",
   "plugin-focus-gui",
-  // Legacy alias route that resolves to the launcher-grid fallback (see
-  // launcher-curation.ts and the ocr-view-expectations.ts trailer). The grid's
-  // white-on-gradient icon labels sit right at the engine's blank word floor
-  // (1–2 garbled words across runs), so without the exemption the same healthy
-  // render flaps between needs-eyeball and blank-broken run to run.
-  "builtin-rolodex",
 ]);
 
 export interface ReportEntry {
@@ -97,6 +92,8 @@ function parseOcrRecord(value: unknown, index: number): OcrRecord {
     !Number.isFinite(value.words) ||
     typeof value.meanConfidence !== "number" ||
     !Number.isFinite(value.meanConfidence) ||
+    value.meanConfidence < 0 ||
+    value.meanConfidence > 1 ||
     (value.reason !== undefined && typeof value.reason !== "string")
   ) {
     throw new Error(`Invalid OCR input record at line ${index + 1}`);
@@ -122,6 +119,12 @@ export interface TriageEntry {
   /** DOM audit passed (good/needs-eyeball) but the pixels are broken — the caught bug. */
   regression: boolean;
   text: string;
+  words: number;
+  meanConfidence: number;
+  selectedMode: string | null;
+  attempts: OcrResult["attempts"];
+  pixelBlank: boolean;
+  pixelBlankReasons: string[];
 }
 
 export interface TriageSummary {
@@ -181,7 +184,11 @@ async function runPackagedOcr(paths: string[]): Promise<OcrRecord[]> {
       text: result.text,
       lines: result.text.split("\n").filter(Boolean),
       words: result.words,
-      meanConfidence: 1,
+      meanConfidence: result.meanConfidence,
+      pixelBlank: result.pixelBlank,
+      pixelBlankReasons: result.pixelBlankReasons,
+      selectedMode: result.selectedMode,
+      attempts: result.attempts,
     });
   }
   return out;
@@ -276,16 +283,43 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
   const reportByKey = new Map<string, ReportEntry>();
   for (const r of report) reportByKey.set(`${r.slug}::${r.viewport}`, r);
 
-  const ocr: OcrRecord[] = args.ocr
+  const rawOcr: OcrRecord[] = args.ocr
     ? readFileSync(args.ocr, "utf8")
         .split("\n")
         .filter((l) => l.trim())
         .map((line, index) => parseOcrRecord(JSON.parse(line), index))
     : await runPackagedOcr(manifest.map((entry) => entry.path));
-  validateOcrRecordPaths(ocr, manifest, auditDir);
+  validateOcrRecordPaths(rawOcr, manifest, auditDir);
+  const shotsByKey = new Map(manifest.map((shot) => [shot.key, shot]));
+  const ocr: OcrRecord[] = await Promise.all(
+    rawOcr.map(async (record) => {
+      if (record.pixelBlank !== undefined) {
+        if (!record.pixelBlankReasons) {
+          throw new Error(
+            `OCR record ${record.path} has a pixel verdict without its diagnostics`,
+          );
+        }
+        return record;
+      }
+      const key = `${slugOf(record.path)}::${viewportOf(record.path)}`;
+      const shot = shotsByKey.get(key);
+      if (!shot) {
+        throw new Error(`OCR record ${key} has no authorized shot`);
+      }
+      const analysis = await analyzeImageFile(shot.path);
+      return {
+        ...record,
+        pixelBlank: analysis.pixelBlank,
+        pixelBlankReasons: analysis.pixelBlankReasons,
+      };
+    }),
+  );
 
   const entries: TriageEntry[] = [];
   for (const rec of ocr) {
+    if (rec.pixelBlank === undefined || !rec.pixelBlankReasons) {
+      throw new Error(`OCR record ${rec.path} has no pixel diagnostics`);
+    }
     const slug = slugOf(rec.path);
     const viewport = viewportOf(rec.path);
     const rep = reportByKey.get(`${slug}::${viewport}`) ?? null;
@@ -307,6 +341,12 @@ export async function runOcrTriage(argv: string[]): Promise<TriageResult> {
       reasons: finding.reasons,
       regression: domPassed && finding.verdict === "broken",
       text: rec.text,
+      words: rec.words,
+      meanConfidence: rec.meanConfidence,
+      selectedMode: rec.selectedMode ?? null,
+      attempts: rec.attempts,
+      pixelBlank: rec.pixelBlank,
+      pixelBlankReasons: rec.pixelBlankReasons,
     });
   }
 

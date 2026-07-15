@@ -39,6 +39,10 @@ const agentSessionRecoveryMock = vi.hoisted(() => ({
   runAgentSessionRecovery: vi.fn(),
 }));
 
+const cloudHandoffMock = vi.hoisted(() => ({
+  resumePendingCloudHandoff: vi.fn(),
+}));
+
 const androidBootStateMock = vi.hoisted(() => ({
   getAndroidLocalAgentBootStateForUrl: vi.fn(
     async (): Promise<{
@@ -75,6 +79,10 @@ vi.mock("../api/client-cloud", () => ({
 
 vi.mock("./agent-session-recovery-runner", () => ({
   runAgentSessionRecovery: agentSessionRecoveryMock.runAgentSessionRecovery,
+}));
+
+vi.mock("../cloud/handoff/resume-pending-handoff", () => ({
+  resumePendingCloudHandoff: cloudHandoffMock.resumePendingCloudHandoff,
 }));
 
 vi.mock("../platform", async (importOriginal) => ({
@@ -1028,6 +1036,7 @@ describe("runPollingBackend", () => {
 
     expect(clientMock.getCloudCompatAgent).toHaveBeenCalledWith("agent-123");
     expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(cloudHandoffMock.resumePendingCloudHandoff).toHaveBeenCalledTimes(1);
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
     expect(deps.setFirstRunComplete).toHaveBeenCalledWith(true);
     expect(dispatch).toHaveBeenCalledWith({
@@ -1350,6 +1359,7 @@ describe("runPollingBackend", () => {
 
     expect(clientMock.getCloudCompatAgent).not.toHaveBeenCalled();
     expect(clearPersistedActiveServer).not.toHaveBeenCalled();
+    expect(cloudHandoffMock.resumePendingCloudHandoff).toHaveBeenCalledTimes(1);
     expect(dispatch).not.toHaveBeenCalledWith({ type: "BACKEND_NOT_FOUND" });
     expect(dispatch).toHaveBeenCalledWith({
       type: "BACKEND_REACHED",

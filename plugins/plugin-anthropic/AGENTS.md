@@ -13,9 +13,9 @@ The exported `Plugin` object (`anthropicPlugin`) registers these model handlers:
 | ModelType | Handler | Default model |
 |---|---|---|
 | `TEXT_NANO` | `handleTextNano` | falls back to `ANTHROPIC_SMALL_MODEL` |
-| `TEXT_SMALL` | `handleTextSmall` | `claude-haiku-4-5-20251001` |
+| `TEXT_SMALL` | `handleTextSmall` | `claude-sonnet-5` |
 | `TEXT_MEDIUM` | `handleTextMedium` | falls back to `ANTHROPIC_SMALL_MODEL` |
-| `TEXT_LARGE` | `handleTextLarge` | `claude-opus-4-7` |
+| `TEXT_LARGE` | `handleTextLarge` | `claude-opus-4-8` |
 | `TEXT_MEGA` | `handleTextMega` | falls back to `ANTHROPIC_LARGE_MODEL` |
 | `TEXT_REASONING_SMALL` | `handleReasoningSmall` | falls back to `ANTHROPIC_SMALL_MODEL` |
 | `TEXT_REASONING_LARGE` | `handleReasoningLarge` | falls back to `ANTHROPIC_LARGE_MODEL` |
@@ -82,8 +82,8 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_API_KEY` | Yes (or `CLAUDE_API_KEY` or OAuth) | — | Anthropic API key |
 | `CLAUDE_API_KEY` | Alt to above | — | Alias accepted by auto-enable and `getApiKeyOptional` |
 | `ANTHROPIC_AUTH_MODE` | No | `apikey` | Set to `claude-cli` (CLI mode via `claude -p`) or `oauth` |
-| `ANTHROPIC_SMALL_MODEL` / `SMALL_MODEL` | No | `claude-haiku-4-5-20251001` | Model for TEXT_SMALL, RESPONSE_HANDLER, IMAGE_DESCRIPTION |
-| `ANTHROPIC_LARGE_MODEL` / `LARGE_MODEL` | No | `claude-opus-4-7` | Model for TEXT_LARGE, ACTION_PLANNER |
+| `ANTHROPIC_SMALL_MODEL` / `SMALL_MODEL` | No | `claude-sonnet-5` | Model for TEXT_SMALL, RESPONSE_HANDLER, IMAGE_DESCRIPTION |
+| `ANTHROPIC_LARGE_MODEL` / `LARGE_MODEL` | No | `claude-opus-4-8` | Model for TEXT_LARGE, ACTION_PLANNER |
 | `ANTHROPIC_NANO_MODEL` / `NANO_MODEL` | No | falls back to small | Model for TEXT_NANO |
 | `ANTHROPIC_MEDIUM_MODEL` / `MEDIUM_MODEL` | No | falls back to small | Model for TEXT_MEDIUM |
 | `ANTHROPIC_MEGA_MODEL` / `MEGA_MODEL` | No | falls back to large | Model for TEXT_MEGA |
@@ -97,6 +97,9 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_COT_BUDGET` | No | `0` | Chain-of-thought token budget (both sizes) |
 | `ANTHROPIC_COT_BUDGET_SMALL` | No | — | CoT budget for small-size models |
 | `ANTHROPIC_COT_BUDGET_LARGE` | No | — | CoT budget for large-size models |
+| `ANTHROPIC_EFFORT` | No | — | Reasoning effort (`low`\|`medium`\|`high`\|`xhigh`\|`max`) sent as adaptive thinking + `output_config.effort`; wins over the CoT budget. xhigh/max clamp to high below opus 4.7/fable-5; haiku ignores it (model rejects the parameter) |
+| `ANTHROPIC_EFFORT_SMALL` | No | — | Effort for small-size models (what `POST /api/models/config` persists) |
+| `ANTHROPIC_EFFORT_LARGE` | No | — | Effort for large-size models |
 | `ANTHROPIC_PROMPT_CACHE_TTL` | No | `5m` | Prompt cache TTL: `"5m"` or `"1h"` |
 | `ANTHROPIC_TEMPERATURE_LOCKED_MODELS` | No | — | Comma-separated model ids that only accept `temperature=1`, applied on top of the built-in `opus-4` name check |
 | `ANTHROPIC_MAX_OUTPUT_TOKENS` | No | — | Output-token cap override: a bare number and/or comma-separated `model-id:tokens` pairs; unlisted models keep the built-in caps |

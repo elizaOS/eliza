@@ -464,6 +464,12 @@ describe("FineTuningView analysis coverage panel", () => {
 
     render(React.createElement(FineTuningView));
 
+    const statusHeading = await screen.findByText("finetuningview.Status");
+    const statusGrid = statusHeading.parentElement?.nextElementSibling;
+    expect(statusGrid?.className).toContain(
+      "grid-cols-[repeat(auto-fit,minmax(min(100%,8rem),1fr))]",
+    );
+
     // No coverage before the index is built.
     expect(
       await screen.findByText("finetuningview.NoAnalysisIndexBuilt"),
@@ -547,5 +553,47 @@ describe("FineTuningView analysis coverage panel", () => {
         "2b eliza_harness_action_selection base:0.4 trained:0.5 reference:0.8 improvement:25% vs-ref:-37.5%",
       ),
     ).toBeTruthy();
+  });
+
+  it("keeps the complete empty-state action surface operable", async () => {
+    for (const [name, operation] of Object.entries(trainingClient)) {
+      if (name !== "onWsEvent" && "mockRejectedValue" in operation) {
+        operation.mockRejectedValue(new Error("expected boundary failure"));
+      }
+    }
+    mockBaselineState();
+
+    render(React.createElement(FineTuningView));
+    await screen.findByText("finetuningview.Status");
+
+    const actionIds = [
+      "action-build-analysis-index",
+      "action-build-readiness-report",
+      "action-ingest-hf-dataset",
+      "action-generate-feed-trajectories",
+      "action-run-scenarios",
+      "action-run-eval-comparison",
+      "action-run-benchmark-vs-cerebras",
+      "action-stage-eliza1-bundle",
+      "action-run-action-benchmark",
+      "action-collection-preflight",
+      "action-collect-and-index",
+    ];
+    for (const actionId of actionIds) {
+      const button = document.querySelector<HTMLButtonElement>(
+        `[data-agent-id="${actionId}"]`,
+      );
+      expect(button, `${actionId} should render`).toBeTruthy();
+      if (button) fireEvent.click(button);
+      await Promise.resolve();
+    }
+
+    await waitFor(() => {
+      const transportCalls = Object.values(trainingClient).reduce(
+        (total, operation) => total + operation.mock.calls.length,
+        0,
+      );
+      expect(transportCalls).toBeGreaterThan(12);
+    });
   });
 });

@@ -9,6 +9,10 @@ import type { Context } from "hono";
 import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
+export interface RuntimeRateLimitBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Bindings {
   // ---- Deployment environment ----
   /**
@@ -35,6 +39,10 @@ export interface Bindings {
    */
   CACHE_KV?: KvNamespaceLike;
 
+  // ---- Cloudflare machine-local protective rate limits ----
+  GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
+  CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
+
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
@@ -42,6 +50,17 @@ export interface Bindings {
 
   // ---- ElevenLabs ----
   ELEVENLABS_API_KEY?: string;
+
+  // ---- Cartesia ----
+  /**
+   * Server-side Cartesia API key. When set, WAV-format TTS requests (codec-less
+   * clients) synthesize via Cartesia Sonic streaming (~150 ms to first audio)
+   * instead of the buffered ElevenLabs PCM round-trip, billed at the same
+   * ElevenLabs catalog rate. Unset → ElevenLabs behavior is unchanged.
+   */
+  CARTESIA_API_KEY?: string;
+  /** Overrides the default Cartesia voice id used for un-pinned WAV requests. */
+  CARTESIA_DEFAULT_VOICE_ID?: string;
 
   // ---- Free self-hosted voice (default) ----
   /**
@@ -81,8 +100,47 @@ export interface Bindings {
    */
   WHISPER_STT_MODEL?: string;
 
+  // ---- Realtime voice-session WebSocket (Phase 1, flag-gated) ----
+  /**
+   * Master flag for the realtime voice-session WebSocket path
+   * (VOICE-INTEGRATION-DECISION §8). Default OFF. The mint/revoke route and the
+   * WS handler both consult `isVoiceRealtimeWsEnabled(env)`; when unset/false the
+   * route returns 404 (feature-absent) so the client falls back to the existing
+   * batch STT/TTS path. This is a REAL runtime consumer, not a dead flag.
+   */
+  VOICE_REALTIME_WS_ENABLED?: string;
+  /** Cartesia voice id (UUID) used for the realtime downlink. */
+  VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
+  /**
+   * Worker-internal SSE endpoint for the LLM leg. MUST be an agent-scoped
+   * conversation endpoint (or a voice-aware shim) that consumes the
+   * `X-Eliza-Agent-Id` / `X-Eliza-Conversation-Id` scope headers the bridge
+   * sends — NOT raw `/api/v1/chat/completions`, whose ChatRequest ignores that
+   * scope and would run turns without agent context/persistence.
+   */
+  VOICE_REALTIME_ELIZA_ENDPOINT?: string;
+  /**
+   * Server-held credential (Bearer value) the voice-session uses to call the
+   * internal chat/completions SSE leg. The realtime WS is headerless (WebView
+   * 113), so the client's Authorization is unavailable inside the session; the
+   * server presents this credential instead. The user identity is carried by
+   * the verified voice-token claims, NOT by the client. Deploy as a wrangler
+   * secret; never returned to clients.
+   */
+  VOICE_REALTIME_ELIZA_AUTHORIZATION?: string;
+  /** Gemma pass-through model id for the LLM leg. */
+  VOICE_REALTIME_ELIZA_MODEL?: string;
+  /** Per-org daily voice minute cap (SEC-15). */
+  VOICE_REALTIME_ORG_DAILY_MINUTES?: string;
+  /** Per-user daily voice minute cap (SEC-15). */
+  VOICE_REALTIME_USER_DAILY_MINUTES?: string;
+  /** Max concurrent live voice sessions per worker. */
+  VOICE_REALTIME_MAX_SESSIONS?: string;
+
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
+  /** Deepgram Flux realtime STT key (server-held; NEVER returned to clients). */
+  DEEPGRAM_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
   OPENROUTER_BASE_URL?: string;
@@ -264,6 +322,10 @@ export interface Bindings {
   // #11058: reclaim TTL (ms) for the reclaim-stale-domains cron — external
   // managed-domain rows still unverified after this age are released. 48h default.
   MANAGED_DOMAIN_UNVERIFIED_TTL_MS?: string;
+  // #16071: grace window (ms) for the gc-stranded-sandbox-keys cron — stranded
+  // agent-sandbox keys older than this are revoked. 6h default; must exceed any
+  // real mint-to-commit latency so an in-flight single-flight mint is untouched.
+  STRANDED_SANDBOX_KEY_GRACE_MS?: string;
 
   // Allow overflow — handlers can read any env var via c.env.
   [key: string]: unknown;
@@ -292,6 +354,8 @@ export interface Variables {
   user: AuthedUser | null | undefined;
   authMethod?: "session" | "api_key" | "wallet_signature" | "anonymous";
   requestId: string;
+  /** Application-level correlation id forwarded across Worker/origin hops. */
+  traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
 }

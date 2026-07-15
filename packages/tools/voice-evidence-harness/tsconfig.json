@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "bun"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "@/lib/*": ["../../cloud/shared/src/lib/*"],
+      "@harness-adapters/deepgram-flux.ts": [
+        "../../cloud/api/v1/voice/stt/providers/deepgram-flux.ts"
+      ],
+      "@harness-adapters/cartesia-sonic-tts.ts": [
+        "../../cloud/shared/src/lib/services/cartesia-sonic-tts.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

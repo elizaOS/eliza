@@ -28,6 +28,8 @@ export function AccountList({ providerId }: AccountListProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(
     () => readSubscriptionOAuth(providerId) !== null,
   );
+  const [credentialRepairAccount, setCredentialRepairAccount] =
+    useState<AccountWithCredentialFlag | null>(null);
 
   useEffect(() => {
     const restorePendingDialog = () => {
@@ -82,7 +84,10 @@ export function AccountList({ providerId }: AccountListProps) {
             type="button"
             variant="default"
             size="sm"
-            onClick={() => setAddDialogOpen(true)}
+            onClick={() => {
+              setCredentialRepairAccount(null);
+              setAddDialogOpen(true);
+            }}
             className="h-8 gap-1 px-2.5 text-xs"
           >
             <Plus className="h-3.5 w-3.5" aria-hidden />
@@ -114,8 +119,11 @@ export function AccountList({ providerId }: AccountListProps) {
               onRefreshUsage={() =>
                 accounts.refreshUsage(providerId, account.id)
               }
-              onReauthenticate={() => setAddDialogOpen(true)}
               onDelete={() => accounts.remove(providerId, account.id)}
+              onReauthenticate={() => {
+                setCredentialRepairAccount(account);
+                setAddDialogOpen(true);
+              }}
             />
           ))}
         </div>
@@ -124,7 +132,11 @@ export function AccountList({ providerId }: AccountListProps) {
       <AddAccountDialog
         open={addDialogOpen}
         providerId={providerId}
-        onClose={() => setAddDialogOpen(false)}
+        credentialRepairAccount={credentialRepairAccount}
+        onClose={() => {
+          setAddDialogOpen(false);
+          setCredentialRepairAccount(null);
+        }}
         onCreated={() => {
           // useAccounts already injects the new entry on success, so
           // there's nothing to do here. Refresh anyway in case the

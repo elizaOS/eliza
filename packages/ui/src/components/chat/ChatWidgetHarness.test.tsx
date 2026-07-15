@@ -27,7 +27,10 @@ describe("ChatWidgetHarness", () => {
   it("renders the backend-free widget transcript", () => {
     render(<ChatWidgetHarness />);
 
-    expect(screen.getByTestId("chat-widget-harness")).toBeTruthy();
+    const harness = screen.getByTestId("chat-widget-harness");
+    expect(harness).toBeTruthy();
+    expect(harness.querySelector('[class*="backdrop-blur"]')).toBeNull();
+    expect(harness.querySelector('[class*="focus-visible:ring-0"]')).toBeNull();
     expect(screen.getByText("Choice")).toBeTruthy();
     expect(screen.getByText("Structured form")).toBeTruthy();
     expect(screen.getByText("Workflow")).toBeTruthy();

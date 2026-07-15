@@ -132,6 +132,7 @@ import {
 	getStreamingContext,
 	runInsideModelStreamChunkDelivery,
 	runWithStreamingContext,
+	runWithSuppressedModelStream,
 } from "./streaming-context";
 import {
 	getTrajectoryContext,
@@ -3698,13 +3699,15 @@ export class AgentRuntime implements IAgentRuntime {
 				await runWithActionRoutingContext(
 					{ actionName: action.name, modelClass: action.modelClass },
 					() =>
-						action.handler(
-							this,
-							message,
-							composedState,
-							{ mode },
-							actionCallback,
-							options?.responses,
+						runWithSuppressedModelStream(() =>
+							action.handler(
+								this,
+								message,
+								composedState,
+								{ mode },
+								actionCallback,
+								options?.responses,
+							),
 						),
 				);
 			} catch (err) {
@@ -9448,6 +9451,12 @@ ${section_end}`;
 			| UUID
 			| {
 					roomId?: UUID;
+					/** The IAgentRuntime/adapter param form. The implementation
+					 * previously read only `roomId` and silently dropped this,
+					 * turning interface-correct room-scoped counts into TABLE-WIDE
+					 * ones (/reset reported "cleared 31k message(s)" for a
+					 * 40-message room). */
+					roomIds?: UUID[];
 					unique?: boolean;
 					tableName?: string;
 					entityId?: UUID;
@@ -9465,7 +9474,9 @@ ${section_end}`;
 			});
 		}
 		return this.adapter.countMemories({
-			roomIds: roomIdOrParams.roomId ? [roomIdOrParams.roomId] : undefined,
+			roomIds:
+				roomIdOrParams.roomIds ??
+				(roomIdOrParams.roomId ? [roomIdOrParams.roomId] : undefined),
 			unique: roomIdOrParams.unique,
 			tableName: roomIdOrParams.tableName ?? "messages",
 			entityId: roomIdOrParams.entityId,

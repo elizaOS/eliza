@@ -5,12 +5,8 @@
 # Eval judge: cerebras/gpt-oss-120b
 # Testing harness: nebius
 #
-# Usage:
-#   python -m scripts.rl.tinker.tinker_trainer --config config/tinker.yaml
-#
-# Environment variables (required):
-#   TINKER_API_KEY     - Your Tinker API key
-#   ELIZA_STATE_DIR    - Trajectory source (defaults to ~/.eliza/state)
+# This is a declarative locked-target reference only. No --config CLI reads
+# this file; executable surfaces define their own runtime options.
 
 # =============================================================================
 # Tinker Model Settings
@@ -32,9 +28,9 @@ training:
 # Environment / Data Settings
 # =============================================================================
 environment:
-  # Continuous RL data source: on-disk JSONL exports from eliza native.
-  trajectory_source: "jsonl"
-  trajectory_dir: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/trajectories"
+  # Reference shape only; executable surfaces must resolve their own source.
+  trajectory_source: "local_export"
+  source_dir: null
 
   lookback_hours: 72
   min_actions_per_trajectory: 3
@@ -77,14 +73,6 @@ inference:
     - "<eos>"
 
 # =============================================================================
-# Logging
-# =============================================================================
-logging:
-  log_to_file: true
-  log_file: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/tinker_metrics.jsonl"
-  log_level: "INFO"
-
-# =============================================================================
 # Advanced
 # =============================================================================
 advanced:
@@ -92,6 +80,3 @@ advanced:
   adam_beta2: 0.95
   adam_epsilon: 1.0e-8
   checkpoint_prefix: "eliza-1"
-
-# Curriculum state — written to user state dir, NOT the repo.
-curriculum_state_path: "${ELIZA_STATE_DIR:-${HOME}/.eliza/state}/training/curriculum_state.json"

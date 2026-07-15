@@ -12,9 +12,11 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import * as loggerActual from "../utils/logger";
 
 mock.module("@elizaos/cloud-routing", () => ({}));
 mock.module("../utils/logger", () => ({
+  ...loggerActual,
   logger: {
     debug: mock(() => undefined),
     error: mock(() => undefined),
@@ -35,13 +37,17 @@ const throwingRedis = {
   pexpire: async () => {
     throw new Error("ECONNREFUSED: redis down");
   },
+  pipeline: () => {
+    const pipeline = {
+      incr: () => pipeline,
+      pttl: () => pipeline,
+      exec: async () => {
+        throw new Error("ECONNREFUSED: redis down");
+      },
+    };
+    return pipeline;
+  },
 };
-
-mock.module("../cache/redis-factory", () => ({
-  buildRedisClient: () => throwingRedis,
-  hasRedisConfig: () => true,
-  isCloudflareWorkerRuntime: () => false,
-}));
 
 const { rateLimit, RateLimitPresets, getIpKey, _resetRedisUnavailableFallbackBuckets } =
   await import("./rate-limit-hono-cloudflare");
@@ -51,7 +57,7 @@ const ENV = { REDIS_URL: "redis://mock:6379", NODE_ENV: "production" };
 
 function appWith(config: Parameters<typeof rateLimit>[0]) {
   const app = new Hono();
-  app.use(rateLimit(config));
+  app.use(rateLimit(config, undefined, { buildRedisClient: () => throwingRedis }));
   app.get("/", (c) => c.json({ ok: true }));
   return app;
 }
@@ -64,6 +70,7 @@ function req() {
 }
 
 afterAll(() => {
+  mock.module("../utils/logger", () => loggerActual);
   mock.restore();
 });
 

@@ -1,19 +1,15 @@
 // @vitest-environment jsdom
 //
 // Boot parallelization of the restoring-session phase: (1) a cloud restore
-// derives the dedicated per-agent base synchronously from the persisted id —
-// no backfill network lookup — and routes the client while the Steward-token
-// refresh round-trip is still in flight (client mutations still land base →
-// token), and (2) a desktop local restore issues ONE runtime-mode RPC shared
-// by the agent-autostart gate and the embedded-local target reclassification.
+// derives a missing per-agent base synchronously from the persisted id and
+// routes the client while the Steward-token refresh round-trip is still in
+// flight (client mutations still land base → token), and (2) a desktop local
+// restore issues ONE runtime-mode RPC shared by the agent-autostart gate and
+// the embedded-local target reclassification.
 // Real restore module under test; only the network / desktop-bridge
 // boundaries are stubbed.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  clearPendingCloudHandoff,
-  savePendingCloudHandoff,
-} from "../cloud/handoff/pending-handoff-store";
 import {
   DEFAULT_BOOT_CONFIG,
   setBootConfig,
@@ -111,7 +107,6 @@ describe("cloud restore routes the client without waiting on the Steward refresh
 
   afterEach(() => {
     globalThis.fetch = realFetch;
-    clearPendingCloudHandoff();
     setBootConfig(DEFAULT_BOOT_CONFIG);
     localStorage.clear();
     vi.restoreAllMocks();
@@ -172,16 +167,9 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     );
   });
 
-  it("repairs a pending shared adapter unless the host explicitly enables shared tier", async () => {
+  it("preserves a shared adapter regardless of the dedicated-create default", async () => {
     const sharedApiBase =
       "https://api.elizacloud.ai/api/v1/eliza/agents/shared-agent";
-    savePendingCloudHandoff({
-      sharedAgentId: "shared-agent",
-      dedicatedAgentId: "dedicated-agent",
-      sharedApiBase,
-      cloudApiBase: "https://elizacloud.ai",
-      startedAt: Date.now(),
-    });
     const restored: PersistedActiveServer = {
       id: "cloud:shared-agent",
       kind: "cloud",
@@ -195,9 +183,7 @@ describe("cloud restore routes the client without waiting on the Steward refresh
       restoredActiveServer: restored,
       clientRef: dedicatedClient,
     });
-    expect(dedicatedClient.setBaseUrl).toHaveBeenCalledWith(
-      "https://shared-agent.elizacloud.ai",
-    );
+    expect(dedicatedClient.setBaseUrl).toHaveBeenCalledWith(sharedApiBase);
     expect(dedicatedClient.setToken).toHaveBeenCalledWith("paired-token");
 
     setBootConfig({ ...DEFAULT_BOOT_CONFIG, preferSharedCloudTier: true });
@@ -208,6 +194,101 @@ describe("cloud restore routes the client without waiting on the Steward refresh
     });
     expect(sharedClient.setBaseUrl).toHaveBeenCalledWith(sharedApiBase);
     expect(sharedClient.setToken).toHaveBeenCalledWith("paired-token");
+  });
+
+  it("keeps a staging shared adapter on the staging control plane", async () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    const restored: PersistedActiveServer = {
+      id: "cloud:agent-staging",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase:
+        "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-staging",
+      accessToken: "paired-token",
+    };
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef,
+    });
+
+    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
+      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-staging",
+    );
+    expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
+  });
+
+  it("repairs a legacy dedicated-looking staging base when the owner record is shared", async () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    const stewardToken = makeJwt(3600);
+    localStorage.setItem(STEWARD_TOKEN_KEY, stewardToken);
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: { executionTier: "shared" },
+      }),
+    } as Response);
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: {
+        id: "cloud:shared-agent",
+        kind: "cloud",
+        label: "Eliza Cloud",
+        apiBase: "https://shared-agent.elizacloud.ai",
+      },
+      clientRef,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/shared-agent",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${stewardToken}`,
+        }),
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(clientRef.setBaseUrl).toHaveBeenLastCalledWith(
+        "https://api-staging.elizacloud.ai/api/v1/eliza/agents/shared-agent",
+      );
+      expect(clientRef.setToken).toHaveBeenLastCalledWith(stewardToken);
+    });
+    expect(clientRef.setToken).toHaveBeenCalledWith(stewardToken);
+  });
+
+  it("repairs a previously persisted production ingress in the staging app", async () => {
+    setBootConfig({
+      ...DEFAULT_BOOT_CONFIG,
+      cloudApiBase: "https://staging.elizacloud.ai",
+    });
+    const restored: PersistedActiveServer = {
+      id: "cloud:agent-staging",
+      kind: "cloud",
+      label: "Eliza Cloud",
+      apiBase: "https://agent-staging.elizacloud.ai",
+      accessToken: "paired-token",
+    };
+    const clientRef = { setBaseUrl: vi.fn(), setToken: vi.fn() };
+
+    await applyRestoredConnection({
+      restoredActiveServer: restored,
+      clientRef,
+    });
+
+    expect(clientRef.setBaseUrl).toHaveBeenCalledWith(
+      "https://agent-staging.staging.elizacloud.ai",
+    );
+    expect(clientRef.setToken).toHaveBeenCalledWith("paired-token");
   });
 });
 

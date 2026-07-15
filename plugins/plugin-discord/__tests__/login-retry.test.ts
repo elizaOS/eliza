@@ -23,6 +23,9 @@ type FakeClient = {
 	emit: (event: string, ...args: unknown[]) => void;
 };
 
+const GATEWAY_CLOSE_ABNORMAL = 1006;
+const GATEWAY_CLOSE_DISALLOWED_INTENTS = 4014;
+
 function makeFakeClient(shouldSucceed: boolean): FakeClient {
 	const handlers = new Map<string, (...args: unknown[]) => void>();
 	const client: FakeClient = {
@@ -46,6 +49,34 @@ function makeFakeClient(shouldSucceed: boolean): FakeClient {
 			return "token";
 		}),
 	};
+	return client;
+}
+
+function makeNeverReadyClient(): FakeClient {
+	const handlers = new Map<string, (...args: unknown[]) => void>();
+	const client: FakeClient = {
+		once(event, cb) {
+			handlers.set(event, cb);
+			return client;
+		},
+		on: () => client,
+		destroy: vi.fn().mockResolvedValue(undefined),
+		isReady: () => false,
+		emit(event, ...args) {
+			handlers.get(event)?.(...args);
+		},
+		login: vi.fn().mockReturnValue(new Promise(() => undefined)),
+	};
+	return client;
+}
+
+function makeInvalidTokenClient(): FakeClient {
+	const client = makeNeverReadyClient();
+	client.login.mockRejectedValue(
+		Object.assign(new Error("An invalid token was provided."), {
+			code: "TokenInvalid",
+		}),
+	);
 	return client;
 }
 
@@ -254,6 +285,35 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		expect(runtime.logger.warn).toHaveBeenCalledTimes(2);
 	});
 
+	it("classifies malformed close events and non-object rejections as transient", () => {
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime: makeRuntime(),
+		}) as unknown as DiscordService & {
+			getGatewayCloseCode: (closeEvent: unknown) => number | undefined;
+			isTerminalInitialLoginError: (error: unknown) => boolean;
+		};
+
+		// A close event without a numeric `code` must never read as a terminal
+		// gateway close — the fail-safe direction is transient (keep retrying),
+		// since misclassifying a flaky transport as terminal leaves the account
+		// connected-but-deaf forever.
+		expect(service.getGatewayCloseCode(null)).toBeUndefined();
+		expect(service.getGatewayCloseCode("closed")).toBeUndefined();
+		expect(service.getGatewayCloseCode({ code: "4004" })).toBeUndefined();
+		expect(service.getGatewayCloseCode({ code: 4004 })).toBe(4004);
+
+		// Only a discord.js TokenInvalid-coded error is terminal pre-gateway;
+		// string rejections and differently-coded errors stay retryable.
+		expect(service.isTerminalInitialLoginError("TokenInvalid")).toBe(false);
+		expect(service.isTerminalInitialLoginError(new Error("boom"))).toBe(false);
+		expect(service.isTerminalInitialLoginError({ code: "TokenInvalid" })).toBe(
+			true,
+		);
+		expect(service.isTerminalInitialLoginError({ code: "ECONNRESET" })).toBe(
+			false,
+		);
+	});
+
 	it("does not schedule a retry when the first login succeeds", async () => {
 		const runtime = makeRuntime();
 		const clients: FakeClient[] = [];
@@ -290,5 +350,196 @@ describe("DiscordService initial-login retry (#15855)", () => {
 		expect(clients.length).toBe(1);
 		expect(service.timeouts.length).toBe(0);
 		expect(runtime.logger.warn).not.toHaveBeenCalled();
+	});
+
+	it("rejects the in-flight ready wait when stop interrupts initial login", async () => {
+		const runtime = makeRuntime();
+		const client = makeNeverReadyClient();
+		const state = makeState("default");
+		state.client = client as never;
+
+		const accountPool = {
+			list: vi.fn(() => [state]),
+			clear: vi.fn(),
+		};
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+			defaultAccountId: "default",
+			_loginFailed: false,
+			timeouts: [] as ReturnType<typeof setTimeout>[],
+			accountPool,
+			voiceTargets: {
+				unregisterAccount: vi.fn(),
+				clear: vi.fn(),
+			},
+			audioSinks: new Map(),
+			createDiscordJsClient: () => client,
+			setupEventListenersForAccount: vi.fn(),
+			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
+			syncLegacyDefaultAliases: vi.fn(),
+		}) as unknown as DiscordService & {
+			attemptDiscordLogin: (
+				state: DiscordAccountClientState,
+				token: string,
+				attempt: number,
+				resolve: () => void,
+				reject: (error: unknown) => void,
+			) => void;
+		};
+
+		state.clientReadyPromise = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject);
+		});
+		const observedReady = state.clientReadyPromise.then(
+			() => "resolved" as const,
+			(error) => (error instanceof Error ? error.message : String(error)),
+		);
+
+		await service.stop();
+		const settlement = await Promise.race([
+			observedReady,
+			Promise.resolve("pending" as const),
+		]);
+
+		expect(settlement).toMatch(/stopped/i);
+		expect(client.destroy).toHaveBeenCalledTimes(1);
+		expect(accountPool.clear).toHaveBeenCalledTimes(1);
+	});
+
+	it("classifies terminal gateway close during initial login and does not retry", async () => {
+		const runtime = makeRuntime();
+		const client = makeNeverReadyClient();
+
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+			defaultAccountId: "default",
+			_loginFailed: false,
+			timeouts: [] as ReturnType<typeof setTimeout>[],
+			createDiscordJsClient: () => client,
+			setupEventListenersForAccount: vi.fn(),
+			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
+			syncLegacyDefaultAliases: vi.fn(),
+		}) as unknown as DiscordService & {
+			attemptDiscordLogin: (
+				state: DiscordAccountClientState,
+				token: string,
+				attempt: number,
+				resolve: () => void,
+				reject: (error: unknown) => void,
+			) => void;
+			timeouts: ReturnType<typeof setTimeout>[];
+		};
+
+		const state = makeState("default");
+		state.client = client as never;
+		const ready = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject);
+		});
+		const terminalReady = expect(ready).rejects.toThrow(/terminal/i);
+
+		client.emit(Events.ShardDisconnect, {
+			code: GATEWAY_CLOSE_DISALLOWED_INTENTS,
+			reason: "Disallowed intents",
+			wasClean: false,
+		});
+
+		await terminalReady;
+		await vi.advanceTimersByTimeAsync(120_000);
+
+		expect(client.login).toHaveBeenCalledTimes(1);
+		expect(service.timeouts).toHaveLength(0);
+		expect(state.loginRetryTimer).toBeUndefined();
+		expect(runtime.logger.warn).not.toHaveBeenCalledWith(
+			expect.anything(),
+			expect.stringContaining("connected-but-deaf"),
+		);
+		expect(runtime.logger.error).toHaveBeenCalledWith(
+			expect.objectContaining({
+				closeCode: GATEWAY_CLOSE_DISALLOWED_INTENTS,
+			}),
+			expect.stringContaining("terminal"),
+		);
+	});
+
+	it("classifies a pre-gateway invalid-token rejection without waiting for a shard close", async () => {
+		const runtime = makeRuntime();
+		const client = makeInvalidTokenClient();
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+			defaultAccountId: "default",
+			_loginFailed: false,
+			timeouts: [] as ReturnType<typeof setTimeout>[],
+			createDiscordJsClient: () => client,
+			setupEventListenersForAccount: vi.fn(),
+			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
+			syncLegacyDefaultAliases: vi.fn(),
+		}) as unknown as DiscordService & {
+			attemptDiscordLogin: (
+				state: DiscordAccountClientState,
+				token: string,
+				attempt: number,
+				resolve: () => void,
+				reject: (error: unknown) => void,
+			) => void;
+			timeouts: ReturnType<typeof setTimeout>[];
+		};
+
+		const state = makeState("default");
+		const ready = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "invalid-token", 0, resolve, reject);
+		});
+
+		await expect(ready).rejects.toThrow(/terminal/i);
+		await vi.advanceTimersByTimeAsync(120_000);
+
+		expect(client.login).toHaveBeenCalledTimes(1);
+		expect(service.timeouts).toHaveLength(0);
+		expect(state.loginRetryTimer).toBeUndefined();
+	});
+
+	it("still retries transient gateway close during initial login", async () => {
+		const runtime = makeRuntime();
+		const clients: FakeClient[] = [];
+
+		const service = Object.assign(Object.create(DiscordService.prototype), {
+			runtime,
+			defaultAccountId: "default",
+			_loginFailed: false,
+			timeouts: [] as ReturnType<typeof setTimeout>[],
+			createDiscordJsClient: () => {
+				const client =
+					clients.length === 0 ? makeNeverReadyClient() : makeFakeClient(true);
+				clients.push(client);
+				return client;
+			},
+			setupEventListenersForAccount: vi.fn(),
+			onReadyForAccount: vi.fn().mockResolvedValue(undefined),
+			syncLegacyDefaultAliases: vi.fn(),
+		}) as unknown as DiscordService & {
+			attemptDiscordLogin: (
+				state: DiscordAccountClientState,
+				token: string,
+				attempt: number,
+				resolve: () => void,
+				reject: (error: unknown) => void,
+			) => void;
+		};
+
+		const state = makeState("default");
+		const ready = new Promise<void>((resolve, reject) => {
+			service.attemptDiscordLogin(state, "bot-token", 0, resolve, reject);
+		});
+
+		clients[0]?.emit(Events.ShardDisconnect, {
+			code: GATEWAY_CLOSE_ABNORMAL,
+			reason: "Transient gateway close",
+			wasClean: false,
+		});
+		await vi.advanceTimersByTimeAsync(1_000);
+		await ready;
+
+		expect(clients).toHaveLength(2);
+		expect(state.loginFailed).toBe(false);
+		expect(state.loginRetryTimer).toBeUndefined();
 	});
 });

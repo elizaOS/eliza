@@ -7,6 +7,10 @@
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ShortcutRegistry } from "../runtime/shortcut-registry";
+import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../streaming-context";
 import type { Action } from "../types/components";
 import { EventType } from "../types/events";
 import type { Memory, State, UUID } from "../types/index";
@@ -89,6 +93,16 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(result).not.toBeNull();
 		expect(result?.kind).toBe("direct_reply");
 		expect(result?.result.responseContent.text).toBe("echoed: /echo hi");
+		expect(result?.result.actionResults).toEqual([
+			{
+				success: true,
+				text: "echoed: /echo hi",
+				data: { actionName: "ECHO_COMMAND" },
+			},
+		]);
+		expect(result?.result.state.data.actionResults).toEqual(
+			result?.result.actionResults,
+		);
 		expect(useModel).not.toHaveBeenCalled();
 		// #8792: a SLASH_COMMAND_INVOKED interaction event is emitted.
 		expect(emitEvent).toHaveBeenCalledTimes(1);
@@ -236,12 +250,89 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 			senderRole: "OWNER",
 		});
 		expect(result?.kind).toBe("direct_reply");
+		expect(result?.result.actionResults).toMatchObject([
+			{ success: true, data: { actionName: "ECHO_COMMAND" } },
+		]);
+		expect(result?.result.responseContent.thought).toBe("Shortcut: nl:echo");
 		expect(seenOptions[0]).toEqual({ what: "hello there", mode: "simple" });
 		expect(useModel).not.toHaveBeenCalled();
 		const shortcutEvents = emitEvent.mock.calls.filter(
 			(c) => c[0] === EventType.SHORTCUT_FIRED,
 		);
 		expect(shortcutEvents).toHaveLength(1);
+	});
+
+	it("does not publish sensitive shortcut result data or values", async () => {
+		const sensitiveAction: Action = {
+			...echoAction(),
+			suppressActionResultClipboard: true,
+			handler: async (_rt, _message, _state, _options, callback) => {
+				await callback?.({ text: "Sensitive action completed." });
+				return {
+					success: true,
+					text: "Sensitive action completed.",
+					values: { secret: "must-not-leak" },
+					data: { credential: "must-not-leak" },
+				};
+			},
+		};
+		const { runtime } = makeRuntime({ actions: [sensitiveAction] });
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo secret"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+
+		expect(result?.result.actionResults).toEqual([
+			{
+				success: true,
+				text: "Sensitive action completed.",
+				data: { actionName: "ECHO_COMMAND" },
+			},
+		]);
+	});
+
+	it("honors dynamic shortcut suppression and preserves a failed outcome", async () => {
+		const sensitiveAction: Action = {
+			...echoAction(),
+			handler: async (_rt, _message, _state, _options, callback) => {
+				await callback?.({ text: "View edit did not start." });
+				return {
+					success: false,
+					text: "View edit did not start.",
+					userFacingText: "View edit did not start.",
+					values: { workdir: "/private/must-not-leak" },
+					data: {
+						task: { sessionId: "must-not-leak" },
+						suppressActionResultClipboard: true,
+					},
+				};
+			},
+		};
+		const { runtime } = makeRuntime({ actions: [sensitiveAction] });
+
+		const result = await runShortcutGate({
+			// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+			runtime: runtime as any,
+			message: msg("/echo edit view"),
+			state: {} as State,
+			responseId,
+			senderRole: "OWNER",
+		});
+
+		expect(result?.result.actionResults).toEqual([
+			{
+				success: false,
+				text: "View edit did not start.",
+				userFacingText: "View edit did not start.",
+				data: { actionName: "ECHO_COMMAND" },
+			},
+		]);
+		expect(JSON.stringify(result)).not.toContain("must-not-leak");
 	});
 
 	// #12087 Item 3: the shortcut path enforces the target action's declared
@@ -273,6 +364,85 @@ describe("runShortcutGate (#8791 pre-LLM gate)", () => {
 		expect(result).toBeNull();
 		expect(handler).not.toHaveBeenCalled();
 		expect(useModel).not.toHaveBeenCalled();
+	});
+
+	// #16230: a shortcut action's INTERNAL model call (e.g. the /compact
+	// compactor's ledger extraction) must not stream into the turn's visible
+	// reply. runShortcutGate runs the handler inside runWithSuppressedModelStream,
+	// so intermediate model output never reaches the chat SSE sink; the designed
+	// reply reaches the client through the captured callback text.
+	it("keeps a shortcut action's internal model output off the visible stream, surfacing only the reply (#16230)", async () => {
+		const LEDGER = '```json\n{"state":{"facts":["internal fact"]}}\n```';
+		const SUMMARY = "Compacted 8 older message(s); preserved the latest 4.";
+		const visibleSink = vi.fn();
+
+		const registry = new ShortcutRegistry();
+		registry.register({
+			id: "cmd:compact",
+			kind: "explicit",
+			aliases: ["/compact"],
+			target: { kind: "action", name: "COMPACT_CONVERSATION" },
+		});
+		const compactAction: Action = {
+			name: "COMPACT_CONVERSATION",
+			description: "compact the conversation",
+			validate: async () => true,
+			handler: async (rt, _message, _state, _options, callback) => {
+				// Internal model call: streaming happens inside useModel, which reads
+				// the active streaming context — the leak vector.
+				await rt.useModel("TEXT_LARGE" as never, {
+					prompt: "extract the conversation ledger",
+				});
+				// The action's actual, user-visible reply.
+				if (callback) await callback({ text: SUMMARY });
+				return { success: true, text: SUMMARY };
+			},
+		};
+		const runtime = {
+			agentId: "00000000-0000-0000-0000-0000000000a1" as UUID,
+			actions: [compactAction],
+			shortcutRegistry: registry,
+			emitEvent: vi.fn(async () => undefined),
+			// A streaming model that pushes intermediate ledger JSON into whatever
+			// streaming context is active during the call.
+			useModel: async () => {
+				const active = getStreamingContext();
+				await active?.onStreamChunk?.(LEDGER, undefined, LEDGER);
+				return LEDGER;
+			},
+			logger: { debug: () => {}, warn: () => {} },
+		};
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "00000000-0000-0000-0000-0000000000f1" as UUID,
+				onStreamChunk: async (chunk: string) => {
+					visibleSink(chunk);
+				},
+			} as never,
+			() =>
+				runShortcutGate({
+					// biome-ignore lint/suspicious/noExplicitAny: minimal fake runtime
+					runtime: runtime as any,
+					message: msg("/compact"),
+					state: {} as State,
+					responseId,
+					senderRole: "OWNER",
+				}),
+		);
+
+		// The internal ledger JSON never surfaced as a visible token...
+		expect(visibleSink).not.toHaveBeenCalled();
+		// ...and the designed summary is the reply.
+		expect(result?.kind).toBe("direct_reply");
+		expect(result?.result.responseContent.text).toBe(SUMMARY);
+		expect(result?.result.actionResults).toMatchObject([
+			{
+				success: true,
+				text: SUMMARY,
+				data: { actionName: "COMPACT_CONVERSATION" },
+			},
+		]);
 	});
 
 	it("allows an OWNER to trigger the same OWNER-gated shortcut action", async () => {

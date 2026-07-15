@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           submodules: false
           # Full history: the error-policy ratchet diffs every touched file
@@ -68,6 +68,12 @@ jobs:
             node "$self_test"
           done < scripts/security/coverage-node-self-tests.txt
 
+      # The aggregate itself is base-trusted and therefore cannot execute its
+      # new implementation on the PR that introduces a change. This required
+      # lane validates the proposed state machine and workflow contract first.
+      - name: Develop PR aggregate contract self-test
+        run: node packages/scripts/develop-pr-aggregate.self-test.mjs
+
       # View→action ratchet (#14369): every builtin-view on-screen mutation
       # must map to a registered agent action (chat twin), and the generated
       # action catalog must reflect the real registered surface. Dependency-free
@@ -82,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -113,7 +119,7 @@ jobs:
     # typecheck step alone, on top of checkout/install/build:core (#15140).
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           # Full history so `turbo run typecheck --affected` can resolve the PR
           # merge base (#12341); a shallow clone degrades to typechecking all.
@@ -156,7 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e

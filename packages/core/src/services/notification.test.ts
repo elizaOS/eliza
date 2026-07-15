@@ -1,58 +1,75 @@
 /**
- * Unit coverage for NotificationService over a mock runtime with an in-memory
- * cache and event bus: creation/validation, listing filters, read state,
- * groupKey collapse, expiry, retention-cap eviction, and cache rehydration.
+ * Integration coverage for NotificationService over a real AgentRuntime,
+ * in-memory database adapter, and AgentEventService. External systems are not involved.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createCharacter } from "../character.ts";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
+import { AgentRuntime } from "../runtime.ts";
+import type { AgentEventPayload } from "../types/agentEvent.ts";
 import type { AgentNotification } from "../types/notification.ts";
-import type { IAgentRuntime } from "../types/runtime.ts";
+import type { Plugin } from "../types/plugin.ts";
 import { ServiceType } from "../types/service.ts";
+import { AgentEventService } from "./agentEvent.ts";
 import { NotificationService } from "./notification.ts";
 
-interface EmittedEvent {
-	runId: string;
-	stream: string;
-	data: Record<string, unknown>;
-	agentId?: string;
-}
-
-function createRuntime(): {
-	runtime: IAgentRuntime;
-	cache: Map<string, unknown>;
-	emitted: EmittedEvent[];
-} {
-	const cache = new Map<string, unknown>();
-	const emitted: EmittedEvent[] = [];
-	const bus = {
-		emit: (event: EmittedEvent) => {
-			emitted.push(event);
+async function createRuntime(
+	services: NonNullable<Plugin["services"]>,
+	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+): Promise<{
+	runtime: AgentRuntime;
+	cleanup: () => Promise<void>;
+}> {
+	const runtime = new AgentRuntime({
+		character: createCharacter({ name: "NotificationIntegrationAgent" }),
+		adapter,
+		logLevel: "fatal",
+		enableAutonomy: false,
+	});
+	await runtime.initialize();
+	await runtime.registerPlugin({
+		name: "notification-integration-test",
+		description: "Real notification services for integration coverage",
+		services,
+	});
+	return {
+		runtime,
+		cleanup: async () => {
+			await runtime.stop();
+			await runtime.close();
 		},
 	};
-	const runtime = createMockRuntime({
-		agentId: "00000000-0000-0000-0000-0000000000aa",
-		getCache: async <T>(key: string): Promise<T | undefined> =>
-			cache.get(key) as T | undefined,
-		setCache: async <T>(key: string, value: T): Promise<boolean> => {
-			cache.set(key, value);
-			return true;
-		},
-		deleteCache: async (key: string): Promise<boolean> => cache.delete(key),
-		getService: (type: string) =>
-			type === ServiceType.AGENT_EVENT ? bus : null,
-	});
-	return { runtime, cache, emitted };
 }
 
 describe("NotificationService", () => {
-	let ctx: ReturnType<typeof createRuntime>;
+	let runtime: AgentRuntime;
+	let cleanup: (() => Promise<void>) | undefined;
 	let service: NotificationService;
+	let unsubscribe: (() => void) | undefined;
+	const emitted: AgentEventPayload[] = [];
+
+	beforeAll(async () => {
+		({ runtime, cleanup } = await createRuntime([
+			AgentEventService,
+			NotificationService,
+		]));
+		service = (await runtime.getServiceLoadPromise(
+			ServiceType.NOTIFICATION,
+		)) as NotificationService;
+		const eventService = (await runtime.getServiceLoadPromise(
+			ServiceType.AGENT_EVENT,
+		)) as AgentEventService;
+		unsubscribe = eventService.subscribe((event) => emitted.push(event));
+	}, 180_000);
+
+	afterAll(async () => {
+		unsubscribe?.();
+		await cleanup?.();
+	});
 
 	beforeEach(async () => {
-		ctx = createRuntime();
-		service = (await NotificationService.start(
-			ctx.runtime,
-		)) as NotificationService;
+		emitted.length = 0;
+		await service.clear();
 	});
 
 	it("creates, stores, and returns a stamped notification", async () => {
@@ -86,8 +103,8 @@ describe("NotificationService", () => {
 
 	it("broadcasts on the agent event bus as a notification stream", async () => {
 		await service.notify({ title: "Ping", priority: "urgent" });
-		expect(ctx.emitted).toHaveLength(1);
-		const event = ctx.emitted[0];
+		expect(emitted).toHaveLength(1);
+		const event = emitted[0];
 		expect(event.stream).toBe("notification");
 		expect(event.data.type).toBe("notification");
 		expect((event.data.notification as AgentNotification).title).toBe("Ping");
@@ -95,15 +112,157 @@ describe("NotificationService", () => {
 	});
 
 	it("still records when no event bus is present", async () => {
-		const noBus = createRuntime();
-		(noBus.runtime as unknown as { getService: () => null }).getService = () =>
-			null;
-		const svc = (await NotificationService.start(
-			noBus.runtime,
-		)) as NotificationService;
-		const n = await svc.notify({ title: "Headless" });
-		expect(n.title).toBe("Headless");
-		expect(svc.list()).toHaveLength(1);
+		const headless = await createRuntime([NotificationService]);
+		try {
+			const svc = (await headless.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			const n = await svc.notify({ title: "Headless" });
+			expect(n.title).toBe("Headless");
+			expect(svc.list()).toHaveLength(1);
+		} finally {
+			await headless.cleanup();
+		}
+	});
+
+	it("fails startup when persisted notification state cannot be read", async () => {
+		class UnreadableCacheAdapter extends InMemoryDatabaseAdapter {
+			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
+				throw new Error("notification cache unavailable");
+			}
+		}
+
+		const failing = await createRuntime(
+			[NotificationService],
+			new UnreadableCacheAdapter(),
+		);
+		try {
+			await expect(
+				failing.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("Service notification not found or failed to start");
+			await expect(NotificationService.start(failing.runtime)).rejects.toThrow(
+				"notification cache unavailable",
+			);
+		} finally {
+			await failing.cleanup();
+		}
+	});
+
+	it("recovers persisted history after a transient hydration failure", async () => {
+		class TransientCacheAdapter extends InMemoryDatabaseAdapter {
+			readAttempts = 0;
+
+			override async getCaches<T>(keys: string[]): Promise<Map<string, T>> {
+				this.readAttempts += 1;
+				if (this.readAttempts === 1) {
+					throw new Error("notification cache temporarily unavailable");
+				}
+				return super.getCaches<T>(keys);
+			}
+		}
+
+		const adapter = new TransientCacheAdapter();
+		const transient = await createRuntime([NotificationService], adapter);
+		try {
+			await expect(
+				transient.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("Service notification not found or failed to start");
+			expect(
+				transient.runtime.getServiceRegistrationStatus(
+					ServiceType.NOTIFICATION,
+				),
+			).toBe("failed");
+
+			const persisted = {
+				id: "00000000-0000-0000-0000-0000000000cc",
+				title: "Recovered history",
+				category: "general",
+				priority: "normal",
+				source: "test",
+				createdAt: Date.now(),
+				readAt: null,
+			} as AgentNotification;
+			await transient.runtime.setCache(
+				`notifications:${transient.runtime.agentId}`,
+				[persisted],
+			);
+
+			const attempts = Array.from({ length: 8 }, () =>
+				NotificationService.requestRecovery(transient.runtime),
+			);
+			expect(
+				attempts.filter((attempt) => attempt.state === "started"),
+			).toHaveLength(1);
+			expect(
+				attempts.filter((attempt) => attempt.state === "in-flight"),
+			).toHaveLength(7);
+
+			const recovered = (await transient.runtime.getServiceLoadPromise(
+				ServiceType.NOTIFICATION,
+			)) as NotificationService;
+			expect(adapter.readAttempts).toBe(2);
+			expect(
+				recovered.list().map((notification) => notification.title),
+			).toEqual(["Recovered history"]);
+			expect(
+				transient.runtime.getServiceRegistrationStatus(
+					ServiceType.NOTIFICATION,
+				),
+			).toBe("registered");
+		} finally {
+			await transient.cleanup();
+		}
+	});
+
+	it("backs off repeated recovery requests after a persistent failure", async () => {
+		class UnavailableCacheAdapter extends InMemoryDatabaseAdapter {
+			readAttempts = 0;
+
+			override async getCaches<T>(_keys: string[]): Promise<Map<string, T>> {
+				this.readAttempts += 1;
+				throw new Error("notification cache unavailable");
+			}
+		}
+
+		const adapter = new UnavailableCacheAdapter();
+		const unavailable = await createRuntime([NotificationService], adapter);
+		try {
+			await expect(
+				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			expect(
+				NotificationService.requestRecovery(unavailable.runtime).state,
+			).toBe("started");
+			await expect(
+				unavailable.runtime.getServiceLoadPromise(ServiceType.NOTIFICATION),
+			).rejects.toThrow("failed to start");
+			await Promise.resolve();
+			expect(unavailable.runtime.getRecentReportedErrors()).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({
+						scope: "NotificationService.recovery",
+						message: "Service notification not found or failed to start",
+						context: expect.objectContaining({
+							attempt: 1,
+							retryAfterSeconds: 1,
+						}),
+					}),
+				]),
+			);
+
+			const deferred = Array.from({ length: 10 }, () =>
+				NotificationService.requestRecovery(unavailable.runtime),
+			);
+			expect(deferred.every((attempt) => attempt.state === "backoff")).toBe(
+				true,
+			);
+			expect(deferred.every((attempt) => attempt.retryAfterSeconds === 1)).toBe(
+				true,
+			);
+			expect(adapter.readAttempts).toBe(2);
+		} finally {
+			await unavailable.cleanup();
+		}
 	});
 
 	it("collapses notifications sharing a groupKey", async () => {
@@ -191,7 +350,7 @@ describe("NotificationService", () => {
 		await service.notify({ title: "Persisted", category: "system" });
 		// A fresh service over the same cache should see the prior notification.
 		const restarted = (await NotificationService.start(
-			ctx.runtime,
+			runtime,
 		)) as NotificationService;
 		const list = restarted.list();
 		expect(list).toHaveLength(1);
@@ -219,23 +378,12 @@ describe("NotificationService", () => {
 		await service.notify({ title: "Expired", expiresAt: Date.now() - 1000 });
 		await service.notify({ title: "Alive" });
 		const restarted = (await NotificationService.start(
-			ctx.runtime,
+			runtime,
 		)) as NotificationService;
 		const list = restarted.list();
 		expect(list).toHaveLength(1);
 		expect(list[0].title).toBe("Alive");
 		expect(restarted.getUnreadCount()).toBe(1);
-	});
-
-	it("hydrates empty when the cache adapter throws", async () => {
-		const throwing = createRuntime();
-		(
-			throwing.runtime as unknown as { getCache: () => Promise<never> }
-		).getCache = () => Promise.reject(new Error("no adapter"));
-		const svc = (await NotificationService.start(
-			throwing.runtime,
-		)) as NotificationService;
-		expect(svc.list()).toHaveLength(0);
 	});
 
 	it("evicts oldest beyond the retention cap", async () => {
@@ -254,13 +402,8 @@ describe("NotificationService", () => {
 		await service.notify({ title: "R", groupKey: "g" });
 		await service.notify({ title: "R2", groupKey: "g" });
 		// Two emits, but the second reflects a single unread (collapsed).
-		expect(ctx.emitted).toHaveLength(2);
-		expect(ctx.emitted[1].data.unreadCount).toBe(1);
-	});
-
-	it("uses vi spies without leaking timers", () => {
-		// Guard: the suite must not depend on fake timers.
-		expect(vi.isFakeTimers()).toBe(false);
+		expect(emitted).toHaveLength(2);
+		expect(emitted[1].data.unreadCount).toBe(1);
 	});
 
 	// ── §C.1 Triage tiers: category → priority producer defaults ────────────
@@ -428,12 +571,12 @@ describe("NotificationService", () => {
 
 	it("broadcasts non-interruptive updates when marking a groupKey read", async () => {
 		await service.notify({ title: "Approval", groupKey: "approval:7" });
-		ctx.emitted.length = 0;
+		emitted.length = 0;
 		await service.markReadByGroupKey("approval:7");
-		expect(ctx.emitted).toHaveLength(1);
-		expect(ctx.emitted[0].data.type).toBe("notification_update");
-		expect(ctx.emitted[0].data.unreadCount).toBe(0);
-		const notification = ctx.emitted[0].data.notification as AgentNotification;
+		expect(emitted).toHaveLength(1);
+		expect(emitted[0].data.type).toBe("notification_update");
+		expect(emitted[0].data.unreadCount).toBe(0);
+		const notification = emitted[0].data.notification as AgentNotification;
 		expect(notification.readAt).toBeTruthy();
 	});
 

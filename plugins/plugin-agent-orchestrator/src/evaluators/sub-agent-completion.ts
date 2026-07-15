@@ -11,9 +11,15 @@
  * relayed once instead of re-spawned; that is the guard against the weak-model
  * re-spawn loop (elizaOS/eliza#8875). Its failure-side twin is
  * `sub-agent-failure.ts`.
+ *
+ * Relayed replies are verification-aware: when the durable task behind the
+ * session is still `validating` (or was knocked back by a failed verification)
+ * the relay carries an explicit pending/provisional note, so the user never
+ * reads an unverified claim as a final result.
  */
 import {
   type AgentContext,
+  type IAgentRuntime,
   MESSAGE_SOURCE_SUB_AGENT,
   type Memory,
   type MessageHandlerResult,
@@ -506,6 +512,98 @@ function hasVerifiedCompletionReply(
   );
 }
 
+// ---- verification-aware framing --------------------------------------------
+//
+// A sub-agent's `task_complete` arrives BEFORE the durable task has finished
+// validation (the verifier runs fire-and-forget off the same event), so a
+// relayed completion is a CLAIM, not a verified result. When the durable task
+// record is reachable, the relay's framing must say so: `validating` gets a
+// verification-pending note, and a task knocked back by a failed verification
+// (re-engage in flight, or parked for a human after the attempt cap) gets a
+// provisional note. Content heuristics above are untouched — only the framing
+// changes. When no durable record backs the session (non-durable flows, tests
+// without the service), behavior is exactly as before.
+
+/** Matches OrchestratorTaskService.serviceType. String-referenced so this
+ * planner-path module does not pull the whole task-service dependency tree. */
+const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
+
+const VERIFICATION_PENDING_NOTE =
+  "Note: independent verification of this result is still running — I'll flag it if anything fails.";
+const VERIFICATION_REENGAGED_NOTE =
+  "Note: verification found gaps in this result and the agent is being re-engaged to close them — treat the above as provisional.";
+
+interface CompletionVerificationView {
+  pendingVerification: boolean;
+  verificationFailed: boolean;
+  /** Worker-disclosed residual risks from the completion-time gate snapshot.
+   * Disclosure is deliberately non-blocking (blocking it teaches workers to
+   * delete the admission), so the user-facing relay is where it must surface. */
+  disclosedRisks: string[];
+}
+
+interface TaskRecordLookup {
+  getTaskForSession(sessionId: string): Promise<{
+    status: string;
+    metadata: Record<string, unknown>;
+  } | null>;
+}
+
+async function verificationViewFor(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<CompletionVerificationView | undefined> {
+  const sessionId = textOf(metadataRecord(message)?.subAgentSessionId);
+  if (!sessionId) return undefined;
+  try {
+    if (typeof runtime?.getService !== "function") return undefined;
+    const service = runtime.getService(
+      ORCHESTRATOR_TASK_SERVICE_TYPE,
+    ) as unknown as TaskRecordLookup | null;
+    if (!service || typeof service.getTaskForSession !== "function") {
+      return undefined;
+    }
+    const task = await service.getTaskForSession(sessionId);
+    if (!task) return undefined;
+    const attemptsRaw = task.metadata?.autoVerifyAttempts;
+    const attempts =
+      typeof attemptsRaw === "number" && Number.isFinite(attemptsRaw)
+        ? attemptsRaw
+        : 0;
+    const snapshot = asRecord(task.metadata?.completionResiduals);
+    const disclosedRisks = stringArrayOf(snapshot?.disclosedRisks);
+    return {
+      pendingVerification: task.status === "validating",
+      // A `validating` task that fell back to `active` (re-engage) or parked
+      // `waiting_on_user` with a non-zero attempt counter means verification
+      // rejected the claim being relayed right now.
+      verificationFailed:
+        (task.status === "active" || task.status === "waiting_on_user") &&
+        attempts > 0,
+      disclosedRisks,
+    };
+  } catch {
+    // error-policy:J4 the durable-task lookup is optional enrichment for
+    // framing only; on failure the relay keeps its pre-verification behavior
+    // (non-durable flows have no record to consult).
+    return undefined;
+  }
+}
+
+function frameReplyWithVerification(
+  reply: string,
+  view: CompletionVerificationView | undefined,
+): string {
+  if (!view) return reply;
+  const notes: string[] = [];
+  if (view.pendingVerification) notes.push(VERIFICATION_PENDING_NOTE);
+  else if (view.verificationFailed) notes.push(VERIFICATION_REENGAGED_NOTE);
+  if (view.disclosedRisks.length > 0) {
+    notes.push(`Note: the worker flagged: ${view.disclosedRisks.join("; ")}.`);
+  }
+  return notes.length > 0 ? `${reply}\n\n${notes.join("\n")}` : reply;
+}
+
 function respondIfNeeded(messageHandler: MessageHandlerResult) {
   return messageHandler.processMessage === "RESPOND"
     ? {}
@@ -578,10 +676,14 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     if (hasConcreteFollowUp || hasConcreteParentHint) return false;
     return true;
   },
-  evaluate: ({ message, messageHandler }) => {
+  evaluate: async ({ runtime, message, messageHandler }) => {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
+    // Durable-task verification state, when the session has a record. Every
+    // branch below that relays the completion as a user-facing reply frames it
+    // through this view so an unverified claim is never presented as final.
+    const verification = await verificationViewFor(runtime, message);
     // The deliverable IS the sub-agent's printed/tool output (short, single
     // block; the router stripped it from the narration). Relay it verbatim
     // rather than letting the parent model re-summarize or truncate it.
@@ -593,7 +695,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         setContexts: [SIMPLE_CONTEXT_ID],
         clearCandidateActions: true,
         clearParentActionHints: true,
-        reply: deliverable,
+        reply: frameReplyWithVerification(deliverable, verification),
         debug: [
           "verified sub-agent completion carries a captured deliverable; relaying it verbatim",
         ],
@@ -618,7 +720,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
           setContexts: [SIMPLE_CONTEXT_ID],
           clearCandidateActions: true,
           clearParentActionHints: true,
-          reply: partial,
+          reply: frameReplyWithVerification(partial, verification),
           debug: [
             `sub-agent completion finished with stopReason=${finishReason} (truncated/blocked); relaying best partial once instead of re-spawning the same request`,
           ],
@@ -686,7 +788,7 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         setContexts: [SIMPLE_CONTEXT_ID],
         clearCandidateActions: true,
         clearParentActionHints: true,
-        reply,
+        reply: frameReplyWithVerification(reply, verification),
         debug: [
           "verified sub-agent completion has no concrete follow-up action; using direct reply",
         ],
@@ -730,13 +832,16 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
         ],
       };
     }
+    const framedReply = reply
+      ? frameReplyWithVerification(reply, verification)
+      : reply;
     return {
       ...respondIfNeeded(messageHandler),
       requiresTool: false,
       setContexts: [SIMPLE_CONTEXT_ID],
       clearCandidateActions: true,
       clearParentActionHints: true,
-      ...(reply ? { reply } : {}),
+      ...(framedReply ? { reply: framedReply } : {}),
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
       ],

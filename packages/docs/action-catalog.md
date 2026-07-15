@@ -260,7 +260,10 @@ Set or show current model
 
 | Parameter | Required | Type | Description |
 | --- | --- | --- | --- |
-| `model` | no | string | provider/model or alias |
+| `target` | no | string | small, large, coding, show, local, cloud — or a model for this room |
+| `model` | no | string | model id — for coding, the backend (codex, claude, opencode, elizaos) |
+| `effort` | no | string | reasoning effort — for coding, the model id |
+| `coding-effort` | no | string | reasoning effort (coding target) |
 
 ### QUEUE_COMMAND
 

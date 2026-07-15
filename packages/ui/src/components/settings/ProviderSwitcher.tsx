@@ -1,31 +1,20 @@
 /**
- * Settings → "Models & Providers" section (the `ai-model` section id). Thin
- * compositional shell that wires the provider hooks
- * (useProviderEntries/useProviderSelection/useProviderBootstrap/
- * useCloudModelConfig) to the presentational pieces: the ProviderCard grid, the
- * per-provider panels (cloud tier dropdowns, API-key form, local models), and
- * the routing matrix. `ActiveProviderSummary` renders the single active-provider
- * row for other surfaces. Section body lazy-loaded via settings-sections.ts.
+ * Composes provider discovery, selection, account enrollment, model routing,
+ * and voice status into the Models & Providers settings section. Hooks own
+ * runtime state; this surface keeps the provider panels presentational.
  */
 
 import { Mic } from "lucide-react";
 import { useCallback, useMemo } from "react";
 import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
-import {
-  getDirectAccountProviderForFirstRunProvider,
-  isSubscriptionProviderSelectionId,
-  SUBSCRIPTION_PROVIDER_SELECTIONS,
-} from "../../providers";
+import { isSubscriptionProviderSelectionId } from "../../providers";
 import { useAppSelectorShallow } from "../../state";
+import { AccountManagementPanel } from "../accounts/AccountManagementPanel";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
+import { ModelConfigurationPanel } from "./ModelConfigurationPanel";
 import { ProviderCard } from "./ProviderCard";
-import {
-  ApiKeyPanel,
-  CloudPanel,
-  LocalProviderPanel,
-  SubscriptionPanel,
-} from "./ProviderPanels";
+import { ApiKeyPanel, CloudPanel, LocalProviderPanel } from "./ProviderPanels";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 import { useCloudModelConfig } from "./useCloudModelConfig";
@@ -130,6 +119,19 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [providerEntries],
   );
 
+  // Pin the model-configuration panel's chat provider to the active
+  // intelligence selection when it unambiguously maps to a catalog provider.
+  // Subscription selections don't route chat and other BYOK providers have no
+  // curated catalog slice — those keep the free per-target choice.
+  const activeChatCatalogProvider =
+    resolvedSelectedId === "__cloud__"
+      ? "elizacloud"
+      : resolvedSelectedId === "cerebras"
+        ? "cerebras"
+        : resolvedSelectedId === "anthropic"
+          ? "claude-chat"
+          : undefined;
+
   const selectedPanelProvider = useMemo(() => {
     if (
       visibleProviderPanelId === "__cloud__" ||
@@ -143,21 +145,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         ?.provider ?? null
     );
   }, [apiProviderChoices, visibleProviderPanelId]);
-
-  const selectedPanelAccountProvider = useMemo(
-    () => getDirectAccountProviderForFirstRunProvider(visibleProviderPanelId),
-    [visibleProviderPanelId],
-  );
-
-  const activeSubscriptionSelection = useMemo(
-    () =>
-      isSubscriptionProviderSelectionId(visibleProviderPanelId)
-        ? (SUBSCRIPTION_PROVIDER_SELECTIONS.find(
-            (provider) => provider.id === visibleProviderPanelId,
-          ) ?? null)
-        : null,
-    [visibleProviderPanelId],
-  );
 
   const apiKeyPanelLabel =
     apiProviderChoices.find((choice) => choice.id === visibleProviderPanelId)
@@ -182,9 +169,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const intelligenceEntries = providerEntries.filter(
     (entry) => entry.category === "cloud" || entry.category === "local",
   );
-  const subscriptionEntries = providerEntries.filter(
-    (entry) => entry.category === "subscription",
-  );
   const keyEntries = providerEntries.filter(
     (entry) => entry.category === "key",
   );
@@ -199,12 +183,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
       status={entry.status}
       current={entry.current}
       selected={visibleProviderPanelId === entry.id}
-      onSelect={(panelId) => {
-        selection.handleProviderPanelSelect(panelId);
-        if (isSubscriptionProviderSelectionId(panelId)) {
-          void selection.handleSelectSubscription(panelId);
-        }
-      }}
+      onSelect={selection.handleProviderPanelSelect}
     />
   );
 
@@ -281,25 +260,22 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         ) : null}
       </SettingsGroup>
 
-      {subscriptionEntries.length > 0 ? (
-        <SettingsGroup
-          title={t("providerswitcher.orchestratorGroupTitle", {
-            defaultValue: "Code orchestrator & workflows",
-          })}
-          bare
-        >
-          <div className="flex flex-wrap gap-2">
-            {subscriptionEntries.map(renderChip)}
-          </div>
+      {/* Per-role model configuration (small/large chat brains + coding
+          sub-agent), driven by the validated /api/models catalog. */}
+      <ModelConfigurationPanel activeChatProvider={activeChatCatalogProvider} />
 
-          {activeSubscriptionSelection ? (
-            <SubscriptionPanel
-              selection={activeSubscriptionSelection}
-              cloudCallsDisabled={selection.cloudCallsDisabled}
-            />
-          ) : null}
-        </SettingsGroup>
-      ) : null}
+      <SettingsGroup
+        title={t("providerswitcher.accountsGroupTitle", {
+          defaultValue: "Accounts",
+        })}
+        description={t("providerswitcher.accountsGroupDescription", {
+          defaultValue:
+            "Connect provider accounts without scattering provider pickers across the page.",
+        })}
+        bare
+      >
+        <AccountManagementPanel />
+      </SettingsGroup>
 
       {/* Voice folds into this section for MVP (the standalone Voice tab is
           developer-only): speech is pinned to the bundled Kokoro TTS, so a
@@ -358,7 +334,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 visibleProviderPanelId={visibleProviderPanelId}
                 resolvedSelectedId={resolvedSelectedId}
                 cloudCallsDisabled={selection.cloudCallsDisabled}
-                selectedPanelAccountProvider={selectedPanelAccountProvider}
                 onSwitchProvider={onSwitchProvider}
                 pluginSaving={pluginSaving}
                 pluginSaveSuccess={pluginSaveSuccess}

@@ -92,6 +92,7 @@ describe("bindReadyPhase voice-control agent-event bridge", () => {
     expect(event.detail).toEqual({ command: "start" });
 
     teardown(cleanup);
+    expect(clientMock.handlers.has("agent_event")).toBe(false);
   });
 
   it("re-dispatches a STOP_TRANSCRIPTION voice-control agent_event to the shell", () => {

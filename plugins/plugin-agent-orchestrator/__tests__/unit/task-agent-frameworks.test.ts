@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTaskAgentFrameworkStateCache,
   getTaskAgentFrameworkState,
+  getTaskAgentModelPrefs,
   type TaskAgentFrameworkProbe,
 } from "../../src/services/task-agent-frameworks.js";
 
@@ -238,5 +239,66 @@ describe("getTaskAgentFrameworkState", () => {
       preflightState.frameworks.find((item) => item.id === "codex")
         ?.installCommand,
     ).toBe("preflight-codex-install");
+  });
+});
+
+// Model prefs must honor a freshly-saved config-file value on the NEXT spawn:
+// runtime.getSetting snapshots character settings at boot, so config-env is
+// checked first (matching how the codex/opencode prefs already behave).
+describe("getTaskAgentModelPrefs", () => {
+  const PREF_ENV_KEYS = [
+    "ELIZA_CONFIG_PATH",
+    "ELIZA_CLAUDE_MODEL_POWERFUL",
+    "ELIZA_CLAUDE_MODEL_FAST",
+  ] as const;
+  const savedPrefEnv = new Map<string, string | undefined>();
+  let prefTempHome: string;
+
+  beforeEach(() => {
+    for (const key of PREF_ENV_KEYS) {
+      savedPrefEnv.set(key, process.env[key]);
+      delete process.env[key];
+    }
+    prefTempHome = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-modelprefs-"));
+    process.env.ELIZA_CONFIG_PATH = path.join(
+      prefTempHome,
+      "missing-eliza.json",
+    );
+  });
+
+  afterEach(() => {
+    for (const key of PREF_ENV_KEYS) {
+      const value = savedPrefEnv.get(key);
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    savedPrefEnv.clear();
+    fs.rmSync(prefTempHome, { recursive: true, force: true });
+  });
+
+  it("defaults the claude powerful model to claude-opus-4-8", () => {
+    const prefs = getTaskAgentModelPrefs(runtime(), "claude");
+    expect(prefs?.powerful).toBe("claude-opus-4-8");
+  });
+
+  it("resolves a freshly-saved config value without restart (config beats the stale runtime snapshot)", () => {
+    const configPath = path.join(prefTempHome, "eliza.json");
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        env: { ELIZA_CLAUDE_MODEL_POWERFUL: "claude-sonnet-5" },
+      }),
+    );
+    process.env.ELIZA_CONFIG_PATH = configPath;
+    // The runtime still holds the boot-time value — the config file must win.
+    const stale = runtime({ ELIZA_CLAUDE_MODEL_POWERFUL: "claude-opus-4-7" });
+    expect(getTaskAgentModelPrefs(stale, "claude")?.powerful).toBe(
+      "claude-sonnet-5",
+    );
+    // Without the config entry, the runtime setting is the fallback.
+    fs.writeFileSync(configPath, JSON.stringify({ env: {} }));
+    expect(getTaskAgentModelPrefs(stale, "claude")?.powerful).toBe(
+      "claude-opus-4-7",
+    );
   });
 });

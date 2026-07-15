@@ -2,16 +2,19 @@
  * Collects a coding-agent goal and cockpit mode selection, then emits the
  * orchestrator create-task input used to start a session.
  */
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import type { CodingAgentCreateTaskInput } from "../../api/client-types-cloud";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
 import { CockpitModePicker } from "./CockpitModePicker";
 import {
   buildCockpitCreateTaskInput,
   type CockpitModeConfig,
+  type CockpitSpawnTarget,
+  normalizeCockpitSpawnTarget,
 } from "./cockpit-modes";
 
 const DEFAULT_MODE: CockpitModeConfig = {
@@ -21,10 +24,27 @@ const DEFAULT_MODE: CockpitModeConfig = {
 };
 
 export interface CockpitNewSessionFormProps {
-  /** Called with the orchestrator create-task input when the user starts a session. */
-  onCreate: (input: CodingAgentCreateTaskInput) => void | Promise<void>;
+  /**
+   * Called with the orchestrator create-task input when the user starts a
+   * session. The optional {@link CockpitSpawnTarget} carries the repo/workdir to
+   * thread into the second spawn step; `undefined` when the user left both blank
+   * (scratch-dir default). Kept as a distinct second arg so the create-task body
+   * stays pure — the target belongs to `addOrchestratorAgent`, not the task record.
+   */
+  onCreate: (
+    input: CodingAgentCreateTaskInput,
+    target?: CockpitSpawnTarget,
+  ) => void | Promise<void>;
   /** Initial mode (defaults to Eliza Cloud · Fast). */
   defaultMode?: CockpitModeConfig;
+  /**
+   * Known repos to offer as autocomplete suggestions for the repo field (from
+   * the project registry). When non-empty the repo input gets a `datalist`;
+   * otherwise it's a plain text input — no invented dropdown.
+   */
+  knownRepos?: readonly string[];
+  /** Whether repo suggestions are unavailable because the project registry failed. */
+  repoSuggestionsUnavailable?: boolean;
   /** Arm the TOS-unsafe experimental options in the picker. */
   experimentalEnabled?: boolean;
   /** Parent-controlled in-flight flag (disables submit + shows "Starting…"). */
@@ -43,19 +63,31 @@ export interface CockpitNewSessionFormProps {
 export function CockpitNewSessionForm({
   onCreate,
   defaultMode = DEFAULT_MODE,
+  knownRepos = [],
+  repoSuggestionsUnavailable = false,
   experimentalEnabled = false,
   busy = false,
   className,
 }: CockpitNewSessionFormProps) {
   const [mode, setMode] = useState<CockpitModeConfig>(defaultMode);
   const [goal, setGoal] = useState("");
+  const [repo, setRepo] = useState("");
+  const [workdir, setWorkdir] = useState("");
+  const repoListId = useId();
 
-  const canSubmit = goal.trim().length > 0 && !busy;
+  const hasWorkdirWithoutRepo =
+    workdir.trim().length > 0 && repo.trim().length === 0;
+  const canSubmit = goal.trim().length > 0 && !hasWorkdirWithoutRepo && !busy;
 
   const submit = () => {
     if (!canSubmit) return;
-    void onCreate(buildCockpitCreateTaskInput({ goal, mode }));
+    void onCreate(
+      buildCockpitCreateTaskInput({ goal, mode }),
+      normalizeCockpitSpawnTarget({ repo, workdir }),
+    );
   };
+
+  const hasKnownRepos = knownRepos.length > 0;
 
   return (
     <form
@@ -85,6 +117,69 @@ export function CockpitNewSessionForm({
             }
           }}
         />
+      </label>
+
+      <label htmlFor="cockpit-repo-input" className="flex flex-col gap-1.5">
+        <span className="text-xs font-semibold text-muted">
+          Repo <span className="font-normal text-muted">(optional)</span>
+        </span>
+        <Input
+          id="cockpit-repo-input"
+          data-testid="cockpit-repo-input"
+          value={repo}
+          onChange={(e) => setRepo(e.target.value)}
+          placeholder="owner/repo or https://github.com/owner/repo"
+          disabled={busy}
+          list={hasKnownRepos ? repoListId : undefined}
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        {hasKnownRepos ? (
+          <datalist id={repoListId} data-testid="cockpit-repo-suggestions">
+            {knownRepos.map((r) => (
+              <option key={r} value={r} />
+            ))}
+          </datalist>
+        ) : null}
+        <span className="text-[11px] text-muted">
+          {repoSuggestionsUnavailable
+            ? "Repo suggestions are unavailable. Enter a repo manually or leave blank for a scratch workspace."
+            : "Leave blank to run in a scratch workspace."}
+        </span>
+      </label>
+
+      <label htmlFor="cockpit-workdir-input" className="flex flex-col gap-1.5">
+        <span className="text-xs font-semibold text-muted">
+          Working directory{" "}
+          <span className="font-normal text-muted">(optional)</span>
+        </span>
+        <Input
+          id="cockpit-workdir-input"
+          data-testid="cockpit-workdir-input"
+          value={workdir}
+          onChange={(e) => setWorkdir(e.target.value)}
+          placeholder="e.g. packages/ui"
+          disabled={busy}
+          hasError={hasWorkdirWithoutRepo}
+          aria-invalid={hasWorkdirWithoutRepo}
+          aria-describedby={
+            hasWorkdirWithoutRepo ? "cockpit-workdir-error" : undefined
+          }
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+        />
+        {hasWorkdirWithoutRepo ? (
+          <span
+            id="cockpit-workdir-error"
+            data-testid="cockpit-workdir-error"
+            role="alert"
+            className="text-[11px] text-destructive"
+          >
+            Set a repo to target a working directory.
+          </span>
+        ) : null}
       </label>
 
       <div className="flex flex-col gap-1.5">

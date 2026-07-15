@@ -1,11 +1,11 @@
-// @vitest-environment jsdom
-
 /**
  * Core coverage of the chat send lifecycle (`useChatSend`): Stop/abort
  * handling, 404 conversation-gone recovery, always-streaming delivery,
  * transient send-failure notices, and the cloud shared→dedicated handoff queue.
  * Real hook under jsdom with a fake API client — deterministic, no live model
  * or network.
+ *
+ * @vitest-environment jsdom
  */
 import { act, renderHook } from "@testing-library/react";
 import type { MutableRefObject } from "react";
@@ -22,7 +22,11 @@ import {
   __resetNetworkStatusForTests,
   StreamGenerationError,
 } from "../api/client-base";
-import { APP_RESUME_EVENT, CLOUD_HANDOFF_PHASE_EVENT } from "../events";
+import {
+  APP_RESUME_EVENT,
+  CLOUD_HANDOFF_PHASE_EVENT,
+  NAVIGATE_VIEW_EVENT,
+} from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
 import {
   buildSendFailureNotice,
@@ -633,6 +637,118 @@ describe("useChatSend always streams (#9174)", () => {
     expect(deps.setChatFirstTokenReceived).toHaveBeenCalledWith(true);
     // The streaming callback actually received incremental tokens.
     expect(tokens).toEqual([["Hello", " world"]]);
+  });
+});
+
+describe("useChatSend VIEWS action handoff", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    mocks.client.renameConversation.mockResolvedValue(undefined);
+    window.history.replaceState(null, "", "/chat");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("opens the canonical current view from a completed stream without a WebSocket frame", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Opening Calendar.",
+      completed: true,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ],
+    });
+    const fetchMock = vi.fn(async () =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            currentView: {
+              viewId: "calendar",
+              viewPath: "/calendar",
+              viewLabel: "Calendar",
+              viewType: "gui",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const navigations: CustomEvent[] = [];
+    const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
+    window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open calendar", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/views/current",
+      expect.any(Object),
+    );
+    expect(navigations).toHaveLength(1);
+    expect(navigations[0]?.detail).toEqual({
+      viewId: "calendar",
+      viewPath: "/calendar",
+      viewLabel: "Calendar",
+      viewType: "gui",
+    });
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+  });
+
+  it("preserves the successful reply and surfaces a distinct current-view fetch failure", async () => {
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Opening Calendar.",
+      completed: true,
+      actionResults: [
+        {
+          actionName: "VIEWS",
+          success: true,
+          values: { mode: "show", viewId: "calendar" },
+        },
+      ],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("offline", { status: 503 })),
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("open calendar", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringMatching(/couldn't open/i),
+      "error",
+      8_000,
+    );
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) =>
+          message.role === "assistant" && message.text === "Opening Calendar.",
+      ),
+    ).toBe(true);
   });
 });
 

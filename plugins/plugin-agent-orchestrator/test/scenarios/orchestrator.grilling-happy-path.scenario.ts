@@ -41,13 +41,20 @@ export default scenario({
     {
       type: "custom",
       name: "grilling-happy-path",
-      predicate: (ctx) => {
+      predicate: async (ctx) => {
         const runtime =
           (ctx.runtime as IAgentRuntime | undefined) ?? capturedRuntime;
         if (!runtime) return "scenario runtime unavailable";
-        return runGrillingHappyPathCheck(runtime, (...args: unknown[]) =>
-          runtime.useModel(...(args as Parameters<typeof runtime.useModel>)),
+        const result = await runGrillingHappyPathCheck(
+          runtime,
+          (...args: unknown[]) =>
+            runtime.useModel(...(args as Parameters<typeof runtime.useModel>)),
         );
+        if (result.failure) return result.failure;
+        if (result.finalStatus !== "done") {
+          return `expected the verified task to end 'done', saw '${result.finalStatus}'`;
+        }
+        return undefined;
       },
     },
   ],

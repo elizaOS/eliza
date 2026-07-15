@@ -363,13 +363,18 @@ const EXPECTED_PR_DETERMINISTIC_SCENARIO_IDS = [
   "nostr.search-posts",
   // Registered here retroactively: the scenario landed (#13778) without the
   // same-commit guard update this list requires, leaving the guard red.
+  // Orchestrator deterministic scenarios from the de-larp sweep (#16256),
+  // registered here retroactively for the same reason as the block above.
+  "orchestrator-completion-residuals",
   "orchestrator-concurrency-admission",
   "orchestrator-device-modality-reach",
   "orchestrator-evidence-bundle",
+  "orchestrator-follow-up-forwarding",
   "orchestrator-grilling-happy-path",
   "orchestrator-multi-project-failure-isolation",
   "orchestrator-multi-project-portfolio",
   "orchestrator-multi-task-supervisor",
+  "orchestrator-question-for-creator",
   "orchestrator-reflexion-respawn",
   "orchestrator-view-cloud-deploy",
   "orchestrator-watchdog-stall",

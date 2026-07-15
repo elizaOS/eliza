@@ -14,8 +14,18 @@
  * pass-through that mirrors its real semantics (throw on non-OK / 429, else run
  * the parser) so the changed branch — not the retry backoff — is under test.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SocialCredentials } from "../../../types/social-media";
+import * as realRateLimit from "../rate-limit";
+
+// bun's `mock.restore()` (afterEach below) restores spies but does NOT undo
+// `mock.module` overrides — those patch the process-global module registry and
+// persist. Under the batched cloud-unit runner (`--isolate` occasionally fails
+// to contain these on a memory-pressured runner) this reddit-specific
+// `../rate-limit` double otherwise bleeds into the shared rate-limit /
+// token-refresh suites. Snapshot the real exports now and reinstall them in
+// afterAll so this file's stub is strictly local.
+const realRateLimitExports = { ...realRateLimit };
 
 mock.module("../rate-limit", () => ({
   withRetry: async (fn: () => Promise<Response>, parser: (r: Response) => Promise<unknown>) => {
@@ -59,6 +69,10 @@ beforeEach(() => {
 afterEach(() => {
   globalThis.fetch = originalFetch;
   mock.restore();
+});
+
+afterAll(() => {
+  mock.module("../rate-limit", () => realRateLimitExports);
 });
 
 async function rejects(p: Promise<unknown>): Promise<Error> {

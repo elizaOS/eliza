@@ -9,6 +9,7 @@ import {
   getSharedSourceRoot,
   getUiSourceRoot,
 } from "../eliza-package-paths";
+import { buildHarnessSourceAliases } from "../harness/source-aliases";
 import { repoRoot } from "./repo-root";
 import {
   getAgentSourceAliases,
@@ -119,6 +120,35 @@ const appManagerAliases: ModuleAlias[] = existsSync(appManagerSource)
       },
     ]
   : [];
+// Core is source-aliased in this lane and re-exports the cloud-routing package.
+// Clean CI checkouts do not build that package first, so resolving its default
+// dist export would abort collection before any integration test can run.
+const cloudRoutingSource = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "cloud",
+  "routing",
+  "src",
+  "index.ts",
+);
+// The agent barrel keeps Cloud route handlers lazy, but Vite still resolves
+// the literal dynamic import during transform. Point it at the Node source
+// entry (and its SDK dependency at source) so an unused lazy route cannot make
+// an unrelated integration suite depend on prebuilt plugin artifacts.
+const cloudSdkSource = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "cloud",
+  "sdk",
+  "src",
+  "index.ts",
+);
+const elizaCloudSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-elizacloud",
+  "src",
+);
 // Include/exclude globs are cwd-relative, but the eliza workspace sits at
 // `eliza/` in the nested eliza layout and at the repo root in a flat eliza
 // checkout (#11047). Derive the prefix instead of hardcoding `eliza/` so the
@@ -147,6 +177,35 @@ const integrationResolveAlias: ModuleAlias[] = [
   ...discordSubpathAliases,
   ...appControlSubpathAliases,
   ...appManagerAliases,
+  {
+    find: /^@elizaos\/cloud-routing$/,
+    replacement: cloudRoutingSource,
+  },
+  {
+    find: /^@elizaos\/cloud-sdk$/,
+    replacement: cloudSdkSource,
+  },
+  {
+    find: /^@elizaos\/plugin-elizacloud$/,
+    replacement: path.join(elizaCloudSourceRoot, "index.node.ts"),
+  },
+  {
+    find: /^@elizaos\/plugin-elizacloud\/(.+)$/,
+    replacement: `${elizaCloudSourceRoot.split(path.sep).join("/")}/$1`,
+  },
+  {
+    // The generic source alias maps subpaths to sibling `.ts` files; `kms` is
+    // an index directory, so preserve the package's explicit export shape.
+    find: /^@elizaos\/security\/kms$/,
+    replacement: path.join(
+      elizaWorkspaceRoot,
+      "packages",
+      "security",
+      "src",
+      "kms",
+      "index.ts",
+    ),
+  },
   ...(elizaCoreEntry
     ? [
         // Subpath aliases must precede the bare specifier. A bare-string
@@ -175,6 +234,10 @@ const integrationResolveAlias: ModuleAlias[] = [
     "plugin-shopify",
   ]),
   ...getSharedSourceAliases(sharedSourceRoot),
+  // Vite's SSR resolver does not consistently select custom export
+  // conditions, so source-alias the remaining workspace leaves after the
+  // specialized entry points above. This keeps clean CI independent of dist.
+  ...buildHarnessSourceAliases(elizaWorkspaceRoot),
   ...getOptionalInstalledPackageAliases(repoRoot, [
     {
       find: "@elizaos/plugin-signal",
@@ -223,6 +286,10 @@ const integrationResolveAlias: ModuleAlias[] = [
 
 export default defineConfig({
   resolve: {
+    // Prefer the workspace TypeScript branches in resolver paths that honor
+    // custom export conditions. The explicit and comprehensive aliases above
+    // cover Vite SSR paths that do not apply this condition consistently.
+    conditions: ["eliza-source"],
     alias: integrationResolveAlias,
   },
   test: {

@@ -1,16 +1,5 @@
 /**
- * @module plugin-app-control/services/__tests__/app-verification.integration
- *
- * Integration test for AppVerificationService.verifyApp against a real
- * temp project on disk that uses real `tsc` for typecheck. We do NOT rely
- * on a global eslint install — lint is wired to a local shim so the fast
- * profile (typecheck + lint) returns a pure typecheck verdict.
- *
- * The test is gated on `bun --version` succeeding because the verifier's
- * default packageManager detection picks bun when bun.lockb is present, and
- * we explicitly pass packageManager: "npm" to keep the surface narrow. We
- * still need npx to be available to run the local tsc; if npx + npm aren't
- * on PATH the test is skipped to keep CI portable.
+ * Exercises AppVerificationService against real temporary projects and local toolchain commands.
  */
 
 import { execFile } from "node:child_process";
@@ -64,6 +53,7 @@ export const broken: number = ({ hello: "world" } as Greeting).foo;
 
 const PASS_SHIM_JS = `process.stdout.write("lint ok\\n"); process.exit(0);\n`;
 const TEST_SHIM_JS = `process.stdout.write(" Tests  2 passed (2)\\n"); process.exit(0);\n`;
+const BUILD_SHIM_JS = `process.stdout.write("build ok\\n"); process.exit(0);\n`;
 
 function writeMinimalTsProject(workdir: string, source: string): void {
 	writeFileSync(path.join(workdir, "src.ts"), source, "utf8");
@@ -93,6 +83,8 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 	writeFileSync(lintShim, PASS_SHIM_JS, "utf8");
 	const testShim = path.join(workdir, "test-shim.mjs");
 	writeFileSync(testShim, TEST_SHIM_JS, "utf8");
+	const buildShim = path.join(workdir, "build-shim.mjs");
+	writeFileSync(buildShim, BUILD_SHIM_JS, "utf8");
 
 	writeFileSync(
 		path.join(workdir, "package.json"),
@@ -109,6 +101,7 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 						"npx --yes -p typescript@7.0.2 tsc --noEmit -p tsconfig.json",
 					lint: `node ${JSON.stringify(lintShim).slice(1, -1)}`,
 					test: `node ${JSON.stringify(testShim).slice(1, -1)}`,
+					build: `node ${JSON.stringify(buildShim).slice(1, -1)}`,
 				},
 			},
 			null,
@@ -155,6 +148,42 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 	);
 
 	itIf(pkgManagerAvailable)(
+		"builds a verified plugin before reporting a pass",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-plugin-build-"));
+			writeMinimalTsProject(workdir, PASS_TS);
+
+			const result = await service.verifyPlugin({
+				workdir,
+				profile: "full",
+				runId: "int-plugin-build",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "PLUGIN_CREATE_DONE",
+					pluginName: "verify-int-fixture",
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("pass");
+			expect(result.checks.map((check) => check.kind)).toEqual([
+				"typecheck",
+				"lint",
+				"test",
+				"build",
+				"structured-proof",
+			]);
+			expect(
+				result.checks.find((check) => check.kind === "build")?.passed,
+			).toBe(true);
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
 		"returns verdict=fail with non-empty diagnostics when TS has a type error",
 		async () => {
 			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-fail-"));
@@ -175,6 +204,7 @@ describeIntegration("AppVerificationService.verifyApp (integration)", () => {
 			expect(result.retryablePromptForChild.toLowerCase()).toContain(
 				"typecheck",
 			);
+			expect(result.retryablePromptForChild).toContain("bun run build");
 		},
 		120_000,
 	);

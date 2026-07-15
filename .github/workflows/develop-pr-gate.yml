@@ -1,0 +1,70 @@
+# Base-trusted aggregate for the lightweight develop pull-request gate. It
+# observes GitHub check metadata only: the privileged pull_request_target job
+# never checks out or executes pull-request code, receives no secrets, and has
+# read-only permissions. The stable job stays pending until every component is
+# terminal and fails for every outcome except success.
+name: Develop PR Gate
+
+on:
+  pull_request_target:
+    branches: [develop]
+    types: [opened, synchronize, reopened, ready_for_review, edited, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      canary:
+        description: Deterministic terminal-state canary (success is the only green outcome)
+        required: true
+        type: choice
+        options:
+          - success
+          - missing
+          - cancelled
+          - timed-out
+          - failed
+          - skipped
+          - pending-timeout
+
+concurrency:
+  group: develop-pr-gate-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+  pull-requests: read
+
+jobs:
+  gate:
+    name: Develop PR Gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      AGGREGATE_EVENT_NAME: ${{ github.event_name }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      PR_ACTION: ${{ github.event.action || '' }}
+      PR_UPDATED_AT: ${{ github.event.pull_request.updated_at || '' }}
+      POLL_TIMEOUT_SECONDS: "2400"
+      POLL_INTERVAL_SECONDS: "30"
+      CANARY_SCENARIO: ${{ github.event_name == 'workflow_dispatch' && inputs.canary || '' }}
+    steps:
+      - name: Check out the trusted aggregate implementation
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Verify the aggregate state machine and workflow contract
+        run: node packages/scripts/develop-pr-aggregate.self-test.mjs
+
+      - name: Evaluate required develop checks
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node packages/scripts/develop-pr-aggregate.mjs

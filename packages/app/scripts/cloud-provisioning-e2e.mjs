@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Cloud route e2e: provision a REAL Eliza Cloud agent (Hetzner-backed) and prove
-// its runtime answers. Fails LOUDLY (non-zero exit + redacted diagnostics) when
-// provisioning fails or the runtime never answers — the user's "if Hetzner
-// fails to provision, we need to know". Programmatic surface only; the on-device
+// Cloud route e2e: resolve/create a REAL Eliza Cloud agent and prove its runtime
+// answers status/health/auth. The create body has no `alwaysOn` (or another
+// dedicated-tier signal), so a fresh agent is SHARED by default. This is not
+// proof of managed dedicated/Hetzner ingress; that contract belongs to
+// managed-dedicated-canary.ts. Programmatic surface only; the on-device
 // cloud surface is driven by the Playwright Android suite (ELIZA_ANDROID_BACKEND
 // =cloud) once a runtime URL + token are known.
 //

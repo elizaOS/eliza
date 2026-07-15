@@ -1,8 +1,8 @@
 # Local development services for eliza-cloud.
 #
-# Production uses Cloudflare R2 for object storage and Neon for Postgres; this
-# file exists only so contributors can run the cloud's "heavy payload" object
-# offload paths offline. The S3-compatible API is provided by self-hosted
+# Production uses Cloudflare R2 for object storage and Railway for Postgres;
+# this file exists only so contributors can run the cloud's "heavy payload"
+# object offload paths offline. The S3-compatible API is provided by self-hosted
 # Supabase Storage; the storage-api container speaks S3 at /storage/v1/s3.
 #
 # Start: docker compose up -d storage

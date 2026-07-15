@@ -224,7 +224,7 @@ describe("pollCodexUsage", () => {
     expect(snap.sessionPct).toBe(73);
     // reset_at in seconds -> normalized to ms.
     expect(snap.resetsAt).toBe(1_700_000_000 * 1000);
-    // Codex has no weekly window.
+    // No secondary window in this payload -> no weekly.
     expect(snap.weeklyPct).toBeUndefined();
     expect(typeof snap.refreshedAt).toBe("number");
 
@@ -238,6 +238,33 @@ describe("pollCodexUsage", () => {
     expect(headers.Authorization).toBe("Bearer codex-token");
     expect(headers["ChatGPT-Account-Id"]).toBe("acct-123");
     expect(headers["User-Agent"]).toBe("codex-cli");
+  });
+
+  it("maps the secondary (7-day) window to weeklyPct", async () => {
+    stubFetch(
+      jsonResponse({
+        plan_type: "pro",
+        rate_limit: {
+          primary_window: {
+            used_percent: 88,
+            reset_at: 1_783_812_204,
+            limit_window_seconds: 18000,
+          },
+          secondary_window: {
+            used_percent: 25,
+            reset_at: 1_784_357_126,
+            limit_window_seconds: 604800,
+          },
+        },
+      }),
+    );
+
+    const snap = await pollCodexUsage("codex-token", "acct-123");
+
+    expect(snap.sessionPct).toBe(88);
+    expect(snap.weeklyPct).toBe(25);
+    // resetsAt stays the SESSION window's reset (the sooner, actionable one).
+    expect(snap.resetsAt).toBe(1_783_812_204 * 1000);
   });
 
   it("clamps used_percent above 100 down to 100 and 0 stays 0", async () => {

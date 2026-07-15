@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
+  getLastCloudHandoffPhaseDetail,
 } from "../events";
 
 // How long a successful terminal phase lingers before the banner self-clears.
@@ -25,7 +26,14 @@ const SUCCESS_LINGER_MS = 4000;
  * the banner dismisses itself. Returns `null` when there is nothing to show.
  */
 export function useCloudHandoffPhase(): CloudHandoffPhaseDetail | null {
-  const [detail, setDetail] = useState<CloudHandoffPhaseDetail | null>(null);
+  // Seed from the session's last dispatched phase: the home provisioning tile
+  // mounts AFTER onboarding lands, which is after the runner's initial
+  // `migrating` dispatch — without the seed a late subscriber would render
+  // nothing for the whole container boot (#15902). The linger effect below
+  // still self-clears a stale success phase.
+  const [detail, setDetail] = useState<CloudHandoffPhaseDetail | null>(
+    getLastCloudHandoffPhaseDetail,
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;

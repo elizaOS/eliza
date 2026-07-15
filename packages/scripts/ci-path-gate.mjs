@@ -375,8 +375,30 @@ function matches(pattern, path) {
   return patternCache.get(pattern).test(path);
 }
 
-function gitChangedFiles(base, head) {
-  const result = spawnSync("git", ["diff", "--name-only", base, head], {
+// Diffs from the merge-base of base..head, not from the base TIP. The base
+// SHA the workflow passes is `pull_request.base.sha` — the base branch's tip,
+// which advances as other PRs merge. A plain two-dot `git diff base head`
+// would charge a PR that trails its base branch with every develop-side file
+// it never touched, over-triggering heavy lanes (including the fail-safe
+// lanes) for unrelated changes (#16125). The merge-base diff is exactly what
+// the GitHub "Files changed" tab shows. Callers check out with fetch-depth: 0
+// so the merge-base is resolvable; if it is not (bad fetch depth, unrelated
+// histories), fail loud rather than silently diffing the entire tree.
+export function gitChangedFiles(base, head, cwd) {
+  const mergeBaseResult = spawnSync("git", ["merge-base", base, head], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const mergeBase = mergeBaseResult.stdout.trim();
+  if (mergeBaseResult.status !== 0 || !mergeBase) {
+    throw new Error(
+      `no merge-base between ${base} and ${head} — insufficient fetch depth or unrelated histories` +
+        (mergeBaseResult.stderr ? `: ${mergeBaseResult.stderr.trim()}` : ""),
+    );
+  }
+  const result = spawnSync("git", ["diff", "--name-only", mergeBase, head], {
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -594,4 +616,6 @@ function main() {
   }
 }
 
-main();
+if (import.meta.main) {
+  main();
+}

@@ -15,6 +15,7 @@ import {
 } from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { decideInterruptionWithModel } from "./interruption-decider.js";
+import { sessionBoundRoomIds } from "./session-room-binding.js";
 import type { SubAgentInbox } from "./sub-agent-inbox.js";
 import { requireTaskAgentAccess } from "./task-policy.js";
 import { type SessionInfo, TERMINAL_SESSION_STATUSES } from "./types.js";
@@ -43,9 +44,11 @@ export function isSessionBusy(status: string): boolean {
 const SRC = "@elizaos/plugin-agent-orchestrator";
 
 /**
- * Build the MESSAGE_RECEIVED handler that forwards mid-task user messages to the
- * live sub-agent bound to the message's room. Bind is on (source, roomId) — no
- * Discord-thread dependency, so plain SMS/WhatsApp follow-ups work too.
+ * Build the MESSAGE_RECEIVED handler that forwards mid-task user messages to
+ * every live sub-agent bound to the message's room. Bind matches any of the
+ * session's rooms (task room, origin channel, thread — see
+ * {@link sessionBoundRoomIds}) with no Discord-thread dependency, so plain
+ * SMS/WhatsApp follow-ups in the origin channel work too.
  */
 export function createActiveSessionForwardHandler(
   runtime: IAgentRuntime,
@@ -81,20 +84,19 @@ export function createActiveSessionForwardHandler(
           return [] as SessionInfo[];
         },
       );
+      // Binding covers every room the session is conversationally reachable
+      // from: with per-task GROUP rooms on by default, `meta.roomId` is the
+      // minted task room while the user types in the origin connector channel
+      // (`originRoomId`/`sourceRoomId`) — matching only the raw roomId
+      // silently dropped every origin-channel follow-up.
       const boundToRoom = (s: SessionInfo): boolean => {
         if (TERMINAL_SESSION_STATUSES.has(s.status)) return false;
-        const meta = s.metadata;
-        const roomId =
-          typeof meta?.roomId === "string" ? meta.roomId : undefined;
-        // threadRoomId matches replies posted inside the per-label thread.
-        const threadRoomId =
-          typeof meta?.threadRoomId === "string"
-            ? meta.threadRoomId
-            : undefined;
-        return roomId === message.roomId || threadRoomId === message.roomId;
+        return sessionBoundRoomIds(
+          s.metadata as Record<string, unknown> | undefined,
+        ).has(message.roomId);
       };
-      const active = sessions.find(boundToRoom);
-      if (!active) return;
+      const bound = sessions.filter(boundToRoom);
+      if (bound.length === 0) return;
       const text =
         typeof (message.content as { text?: unknown })?.text === "string"
           ? ((message.content as { text: string }).text ?? "").trim()
@@ -107,101 +109,126 @@ export function createActiveSessionForwardHandler(
       const access = await requireTaskAgentAccess(runtime, message, "interact");
       if (!access.allowed) return;
 
-      const label =
-        typeof active.metadata?.label === "string"
-          ? active.metadata.label
-          : active.name;
       // "Crowded room": more than one live sub-agent bound to this room.
-      const multiParty = sessions.filter(boundToRoom).length > 1;
-      const busy = isSessionBusy(active.status);
-      // What the sub-agent is working on, for the model classifier's relevance
-      // judgement — best-effort from session metadata (all optional).
-      const meta = (active.metadata ?? {}) as Record<string, unknown>;
-      const taskContext = [
-        meta.originalTask,
-        meta.task,
-        meta.goal,
-        meta.taskTitle,
-      ].find((v): v is string => typeof v === "string" && v.trim().length > 0);
-      const decision = await decideInterruptionWithModel(runtime, {
-        text,
-        agentType: active.agentType,
-        sessionBusy: busy,
-        multiParty,
-        ...(label ? { agentLabel: label } : {}),
-        ...(taskContext ? { taskContext } : {}),
-      });
-      runtime.logger?.debug?.(
-        {
-          src: SRC,
-          sessionId: active.id,
-          status: active.status,
-          busy,
+      const multiParty = bound.length > 1;
+      // Every bound live session gets its own interruption decision and its
+      // own delivery/queue — a room with several live sub-agents must not
+      // quietly forward the user's text to only the first in list order.
+      for (const active of bound) {
+        const label =
+          typeof active.metadata?.label === "string"
+            ? active.metadata.label
+            : active.name;
+        const busy = isSessionBusy(active.status);
+        // What the sub-agent is working on, for the model classifier's
+        // relevance judgement — best-effort from session metadata (all
+        // optional).
+        const meta = (active.metadata ?? {}) as Record<string, unknown>;
+        const taskContext = [
+          meta.originalTask,
+          meta.task,
+          meta.goal,
+          meta.taskTitle,
+        ].find(
+          (v): v is string => typeof v === "string" && v.trim().length > 0,
+        );
+        // The message reached this session via its ORIGIN connector channel
+        // rather than a room dedicated to the task (task room / thread). The
+        // origin channel is shared with the orchestrator planner, so the
+        // decider must classify task-relevance there instead of
+        // blanket-delivering planner-directed messages into the sub-agent.
+        const originMatch =
+          message.roomId === meta.originRoomId ||
+          message.roomId === meta.sourceRoomId;
+        const dedicatedMatch =
+          message.roomId === meta.threadRoomId ||
+          message.roomId === meta.taskRoomId ||
+          // Sessions spawned without a distinct task room bind roomId to the
+          // origin channel itself; only then does roomId count as dedicated,
+          // preserving the pre-task-rooms delivery behavior.
+          (meta.taskRoomId === undefined && message.roomId === meta.roomId);
+        const sharedChannel = originMatch && !dedicatedMatch;
+        const decision = await decideInterruptionWithModel(runtime, {
+          text,
+          agentType: active.agentType,
+          sessionBusy: busy,
           multiParty,
-          action: decision.action,
-          reason: decision.reason,
-        },
-        "interruption decision",
-      );
+          sharedChannel,
+          ...(label ? { agentLabel: label } : {}),
+          ...(taskContext ? { taskContext } : {}),
+        });
+        runtime.logger?.debug?.(
+          {
+            src: SRC,
+            sessionId: active.id,
+            status: active.status,
+            busy,
+            multiParty,
+            sharedChannel,
+            action: decision.action,
+            reason: decision.reason,
+          },
+          "interruption decision",
+        );
 
-      // Deliver now (idle path): flush any queued messages, then this one.
-      // Requeue on failure (e.g. a racing busy transition) so the user's text
-      // is never silently dropped — the flush listener retries it.
-      const deliverNow = async (payload: string) => {
-        try {
-          await acp.sendPrompt(active.id, payload);
-        } catch (err) {
-          // error-policy:J4 sendPrompt failed → requeue for flush-listener retry; user text never dropped
-          subAgentInbox.enqueue(active.id, payload);
-          runtime.logger?.warn?.(
-            {
-              src: SRC,
-              sessionId: active.id,
-              err: err instanceof Error ? err.message : String(err),
-            },
-            "active-session forward failed; requeued for flush",
-          );
-        }
-      };
-
-      switch (decision.action) {
-        case "ignore":
-          return;
-        case "interrupt": {
-          if (!busy) {
-            // Nothing in flight to cancel — deliver the instruction to the idle
-            // agent instead of dropping it.
-            const queued = subAgentInbox.drain(active.id);
-            await deliverNow(queued ? `${queued}\n${text}` : text);
-            return;
-          }
-          // Cancel the in-flight turn (status → terminal `cancelled`). The
-          // planner pipeline runs on this same MESSAGE_RECEIVED and routes the
-          // user's redirect; we do not re-deliver to the dead session.
-          subAgentInbox.clear(active.id);
-          // error-policy:J6 best-effort session cancel on interrupt; warn only
-          await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
+        // Deliver now (idle path): flush any queued messages, then this one.
+        // Requeue on failure (e.g. a racing busy transition) so the user's
+        // text is never silently dropped — the flush listener retries it.
+        const deliverNow = async (payload: string) => {
+          try {
+            await acp.sendPrompt(active.id, payload);
+          } catch (err) {
+            // error-policy:J4 sendPrompt failed → requeue for flush-listener retry; user text never dropped
+            subAgentInbox.enqueue(active.id, payload);
             runtime.logger?.warn?.(
               {
                 src: SRC,
                 sessionId: active.id,
                 err: err instanceof Error ? err.message : String(err),
               },
-              "interrupt cancel failed",
-            ),
-          );
-          return;
-        }
-        default: {
-          // deliver / queue. Mid-turn → queue for the flush listener; otherwise
-          // flush + deliver immediately.
-          if (busy) {
-            subAgentInbox.enqueue(active.id, text);
-            return;
+              "active-session forward failed; requeued for flush",
+            );
           }
-          const queued = subAgentInbox.drain(active.id);
-          await deliverNow(queued ? `${queued}\n${text}` : text);
-          return;
+        };
+
+        switch (decision.action) {
+          case "ignore":
+            continue;
+          case "interrupt": {
+            if (!busy) {
+              // Nothing in flight to cancel — deliver the instruction to the
+              // idle agent instead of dropping it.
+              const queued = subAgentInbox.drain(active.id);
+              await deliverNow(queued ? `${queued}\n${text}` : text);
+              continue;
+            }
+            // Cancel the in-flight turn (status → terminal `cancelled`). The
+            // planner pipeline runs on this same MESSAGE_RECEIVED and routes
+            // the user's redirect; we do not re-deliver to the dead session.
+            subAgentInbox.clear(active.id);
+            // error-policy:J6 best-effort session cancel on interrupt; warn only
+            await acp.cancelSession?.(active.id)?.catch?.((err: unknown) =>
+              runtime.logger?.warn?.(
+                {
+                  src: SRC,
+                  sessionId: active.id,
+                  err: err instanceof Error ? err.message : String(err),
+                },
+                "interrupt cancel failed",
+              ),
+            );
+            continue;
+          }
+          default: {
+            // deliver / queue. Mid-turn → queue for the flush listener;
+            // otherwise flush + deliver immediately.
+            if (busy) {
+              subAgentInbox.enqueue(active.id, text);
+              continue;
+            }
+            const queued = subAgentInbox.drain(active.id);
+            await deliverNow(queued ? `${queued}\n${text}` : text);
+          }
         }
       }
     } catch (err) {

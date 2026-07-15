@@ -31,10 +31,15 @@ const clientMock = vi.hoisted(() => {
     string,
     Set<(data: Record<string, unknown>) => void>
   >();
+  const recoveredViews: string[] = [];
   return {
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
     getCodingAgentStatus: vi.fn(async () => ({ tasks: [] })),
+    recoverMissedCurrentView: vi.fn(async () => {
+      recoveredViews.push("current");
+    }),
+    recoveredViews,
     onWsEvent: vi.fn(
       (type: string, handler: (data: Record<string, unknown>) => void) => {
         if (!wsHandlers.has(type)) wsHandlers.set(type, new Set());
@@ -62,6 +67,9 @@ const clientMock = vi.hoisted(() => {
 });
 
 vi.mock("../api", () => ({ client: clientMock }));
+vi.mock("../view-action-handoff", () => ({
+  recoverMissedCurrentView: clientMock.recoverMissedCurrentView,
+}));
 vi.mock("../components/views/view-interact-registry", () => ({
   dispatchViewInteract: vi.fn(async () => {}),
 }));
@@ -101,6 +109,8 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     clientMock.connectWs.mockClear();
     clientMock.disconnectWs.mockClear();
     clientMock.onWsEvent.mockClear();
+    clientMock.recoverMissedCurrentView.mockClear();
+    clientMock.recoveredViews.length = 0;
     navHandler = vi.fn();
     window.addEventListener(NAVIGATE_VIEW_EVENT, navHandler);
     cleanup = bindReadyPhase({ current: makeDeps() });
@@ -114,6 +124,19 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
   it("registers a shell:navigate:view handler on ready-phase start", () => {
     expect(clientMock.wsHandlers.has(SHELL_NAVIGATE_VIEW_WS_EVENT)).toBe(true);
     teardown();
+  });
+
+  it("reconciles the current view after reconnect and unbinds that recovery", async () => {
+    clientMock.deliverFrame(JSON.stringify({ type: "ws-reconnected" }));
+    await vi.waitFor(() => {
+      expect(clientMock.recoveredViews).toEqual(["current"]);
+    });
+
+    cleanup();
+    clientMock.deliverFrame(JSON.stringify({ type: "ws-reconnected" }));
+    await Promise.resolve();
+    expect(clientMock.recoveredViews).toEqual(["current"]);
+    window.removeEventListener(NAVIGATE_VIEW_EVENT, navHandler);
   });
 
   it("normalizes a full backend pin-tab frame carrying the type discriminator", () => {

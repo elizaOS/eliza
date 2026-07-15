@@ -1,12 +1,10 @@
 /**
- * The four per-provider panel bodies rendered by ProviderSwitcher inside the AI
- * Model settings section: Local (on-device inference), Eliza Cloud (routing +
- * model selection), Subscription (Claude/Codex plans), and API-key providers.
- * Each renders a shared header with an agent-addressable "use this" activation
- * button; ProviderSwitcher owns the selection state and passes it in as props.
+ * Provider-specific bodies for local inference, cloud routing, coding
+ * subscriptions, and API keys. The parent owns selection state while each
+ * panel exposes an agent-addressable activation control.
  */
 
-import type { LinkedAccountProviderId, ModelOption } from "@elizaos/shared";
+import type { ModelOption } from "@elizaos/shared";
 import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
 import type { ComponentType, ReactNode } from "react";
 import type { SUBSCRIPTION_PROVIDER_SELECTIONS } from "../../providers";
@@ -205,7 +203,6 @@ export interface ApiKeyPanelProps {
   visibleProviderPanelId: string;
   resolvedSelectedId: string | null;
   cloudCallsDisabled: boolean;
-  selectedPanelAccountProvider: LinkedAccountProviderId | null;
   onSwitchProvider: (id: string) => void;
   pluginSaving: Set<string>;
   pluginSaveSuccess: Set<string>;
@@ -222,7 +219,6 @@ export function ApiKeyPanel({
   visibleProviderPanelId,
   resolvedSelectedId,
   cloudCallsDisabled,
-  selectedPanelAccountProvider,
   onSwitchProvider,
   pluginSaving,
   pluginSaveSuccess,
@@ -262,9 +258,6 @@ export function ApiKeyPanel({
           handlePluginConfigSave={handlePluginConfigSave}
           loadPlugins={loadPlugins}
         />
-        {selectedPanelAccountProvider ? (
-          <AccountList providerId={selectedPanelAccountProvider} />
-        ) : null}
       </div>
     </div>
   );

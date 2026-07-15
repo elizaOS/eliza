@@ -19,6 +19,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyLayeredEnvToProcess } from "./env-layers.mjs";
+import {
+  isLiveVitestProof,
+  parseVitestCounts,
+} from "./validate-11632-evidence.mjs";
 
 const ROOT = resolve(new URL("../..", import.meta.url).pathname);
 const DEFAULT_OUT = join(
@@ -26,6 +30,10 @@ const DEFAULT_OUT = join(
   "reports/lifeops-live-validation/11632-status/status.json",
 );
 const LIFEOPS_REPORT_ROOT = "reports/lifeops-live-validation";
+const REQUIRED_LIVE_EVIDENCE_PATHS = [
+  `${LIFEOPS_REPORT_ROOT}/11632-status/plugin-google-live.txt`,
+  `${LIFEOPS_REPORT_ROOT}/11632-status/plugin-x-live.txt`,
+];
 
 export const CONNECTOR_GROUPS = [
   {
@@ -215,7 +223,7 @@ function adbHasOnlineSerial(adbSummary, serial) {
   });
 }
 
-function applyDeviceReadiness(envGroups, devices) {
+export function applyDeviceReadiness(envGroups, devices) {
   const androidGroup = envGroups.find((group) => group.id === "native_android");
   if (!androidGroup?.readyForOperatorRun) return;
 
@@ -245,10 +253,19 @@ function parseEvidenceLog(path, patterns) {
     path,
     exists: true,
     matched: patterns.filter((pattern) => pattern.test(text)).map(String),
+    vitestCounts: parseVitestCounts(text),
   };
 }
 
-function buildStatus() {
+/** Require a real, skip-free Vitest result for every live connector row. */
+export function liveConnectorRowsProven(existingEvidence) {
+  return REQUIRED_LIVE_EVIDENCE_PATHS.every((path) => {
+    const entry = existingEvidence.find((candidate) => candidate.path === path);
+    return Boolean(entry?.exists && isLiveVitestProof(entry.vitestCounts));
+  });
+}
+
+export function buildStatus() {
   const envGroups = CONNECTOR_GROUPS.map(groupStatus);
   const existingEvidence = [
     fileStatus(`${LIFEOPS_REPORT_ROOT}/README.md`),
@@ -316,12 +333,7 @@ function buildStatus() {
     (group) => group.readyForOperatorRun,
   );
   const blockedGroups = envGroups.filter((group) => !group.readyForOperatorRun);
-  const liveRowsProven = existingEvidence.some(
-    (entry) =>
-      entry.exists &&
-      (entry.path?.includes("plugin-google-live") ||
-        entry.path?.includes("plugin-x-live")),
-  );
+  const liveRowsProven = liveConnectorRowsProven(existingEvidence);
 
   return {
     issue: 11632,
@@ -348,7 +360,7 @@ function buildStatus() {
   };
 }
 
-function renderMarkdown(status) {
+export function renderMarkdown(status) {
   const cell = (value) =>
     String(value || "n/a")
       .replaceAll("|", "\\|")

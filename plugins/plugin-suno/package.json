@@ -53,7 +53,7 @@
         "typecheck": "tsc --noEmit -p tsconfig.json"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.5.3",
+        "@biomejs/biome": "2.5.4",
         "@types/node": "^22.19.17",
         "tsup": "^8.5.1",
         "typescript": "7.0.2",

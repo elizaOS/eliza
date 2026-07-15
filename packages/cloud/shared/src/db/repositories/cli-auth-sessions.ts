@@ -1,6 +1,7 @@
-// Persists cli auth sessions records for cloud services through the shared DB boundary.
-import { and, eq, gt, lt } from "drizzle-orm";
+/** Persists CLI auth sessions through primary-safe reveal and lifecycle operations. */
+import { and, eq, exists, gt, isNull, lt, or } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
+import { type ApiKey, apiKeys } from "../schemas/api-keys";
 import {
   type CliAuthSession,
   cliAuthSessions,
@@ -8,6 +9,11 @@ import {
 } from "../schemas/cli-auth-sessions";
 
 export type { CliAuthSession, NewCliAuthSession };
+
+export interface CliAuthApiKeyRevealState {
+  session: CliAuthSession;
+  apiKey: ApiKey | null;
+}
 
 /**
  * Repository for CLI authentication session database operations.
@@ -47,6 +53,27 @@ export class CliAuthSessionsRepository {
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================
+
+  /**
+   * Loads the durable reveal state from the primary database.
+   *
+   * CLI completion writes the session and API-key row on the primary, then the
+   * CLI polls immediately. A replica read here can observe a false miss or an
+   * older session state, so the complete candidate is read consistently in one
+   * left-joined query before the external KMS decrypt. The left join preserves
+   * a broken API-key reference so the service can report an integrity failure
+   * instead of misclassifying it as an already-consumed session.
+   */
+  async findApiKeyRevealState(sessionId: string): Promise<CliAuthApiKeyRevealState | undefined> {
+    const [state] = await dbWrite
+      .select({ session: cliAuthSessions, apiKey: apiKeys })
+      .from(cliAuthSessions)
+      .leftJoin(apiKeys, eq(cliAuthSessions.api_key_id, apiKeys.id))
+      .where(eq(cliAuthSessions.session_id, sessionId))
+      .limit(1);
+
+    return state;
+  }
 
   /**
    * Creates a new CLI auth session.
@@ -99,18 +126,56 @@ export class CliAuthSessionsRepository {
   }
 
   /**
-   * Marks a session's API key as consumed (single-use token flow, D-6).
-   * The actual decrypted plaintext is returned directly by the route
-   * handler from the encrypted api_keys row — it is never persisted here.
+   * Atomically claims a session's single-use plaintext reveal (D-6).
+   *
+   * Every eligibility condition used before decryption is repeated on the
+   * primary write. Concurrent pollers may both do the read/decrypt work, but
+   * only the update winner receives the plaintext. Matching the expected key
+   * and owner also prevents a stale read from consuming a changed session.
    */
-  async markConsumed(sessionId: string): Promise<void> {
-    await dbWrite
+  async claimConsumed(input: {
+    sessionId: string;
+    apiKeyId: string;
+    userId: string;
+    organizationId: string;
+    keyHash: string;
+  }): Promise<CliAuthSession | undefined> {
+    const consumedAt = new Date();
+    const [claimed] = await dbWrite
       .update(cliAuthSessions)
       .set({
-        consumed_at: new Date(),
-        updated_at: new Date(),
+        consumed_at: consumedAt,
+        updated_at: consumedAt,
       })
-      .where(eq(cliAuthSessions.session_id, sessionId));
+      .where(
+        and(
+          eq(cliAuthSessions.session_id, input.sessionId),
+          eq(cliAuthSessions.status, "authenticated"),
+          eq(cliAuthSessions.api_key_id, input.apiKeyId),
+          eq(cliAuthSessions.user_id, input.userId),
+          gt(cliAuthSessions.expires_at, consumedAt),
+          isNull(cliAuthSessions.consumed_at),
+          exists(
+            dbWrite
+              .select({ id: apiKeys.id })
+              .from(apiKeys)
+              .where(
+                and(
+                  eq(apiKeys.id, input.apiKeyId),
+                  eq(apiKeys.user_id, input.userId),
+                  eq(apiKeys.organization_id, input.organizationId),
+                  eq(apiKeys.key_hash, input.keyHash),
+                  eq(apiKeys.is_active, true),
+                  isNull(apiKeys.deleted_at),
+                  or(isNull(apiKeys.expires_at), gt(apiKeys.expires_at, consumedAt)),
+                ),
+              ),
+          ),
+        ),
+      )
+      .returning();
+
+    return claimed;
   }
 
   /**

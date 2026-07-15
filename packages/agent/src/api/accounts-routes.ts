@@ -37,6 +37,7 @@ import {
   loadAccount,
   saveAccount,
 } from "@elizaos/auth/account-storage";
+import { fetchCodexUsage } from "@elizaos/auth/codex-usage";
 import { getAccessToken } from "@elizaos/auth/credentials";
 import { probeDirectApiKey } from "@elizaos/auth/direct-api-probe";
 import {
@@ -59,7 +60,7 @@ import {
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,
@@ -77,7 +78,6 @@ const execFileAsync = promisify(execFile);
 async function commandAvailable(command: string): Promise<boolean> {
   const executablePath = process.env.PATH;
   if (!executablePath) return false;
-
   for (const dir of executablePath.split(path.delimiter)) {
     if (!dir) continue;
     const available = await access(path.join(dir, command)).then(
@@ -111,12 +111,10 @@ function requestUsesLocalRoot(req: RouteRequestContext["req"]): boolean {
   const originOrReferer =
     (typeof req.headers.origin === "string" && req.headers.origin) ||
     (typeof req.headers.referer === "string" && req.headers.referer);
-  const requestHost =
-    typeof req.headers.host === "string" ? req.headers.host : undefined;
+  const requestHost = typeof req.headers.host === "string" ? req.headers.host.trim() : "";
   const raw =
     originOrReferer || (requestHost ? `http://${requestHost}` : undefined);
   if (!raw) return false;
-
   try {
     const host = new URL(raw).hostname;
     return host === "localhost" || host === "127.0.0.1" || host === "::1";
@@ -142,6 +140,14 @@ interface PoolFacade {
     accessToken: string,
     opts?: { codexAccountId?: string; providerId?: string },
   ): Promise<void>;
+  /**
+   * Non-mutating "which account is next + why" dry-run for the accounts API.
+   * Older host bridges may not implement it; callers must null-guard.
+   */
+  selectionState?(
+    providerId: string,
+    strategy?: ServiceRouteAccountStrategy,
+  ): { activeAccountId: string | null; reason: string | null };
 }
 
 let cachedPool: PoolFacade | null = null;
@@ -184,6 +190,104 @@ const DIRECT_PROVIDER_IDS = new Set<LinkedAccountProviderId>([
   "cerebras-api",
 ]);
 
+type ProviderRuntimeCapability = {
+  available: boolean;
+  defaultModel?: string;
+  credentialPath?: "account-pool" | "direct-api" | "external-cli" | "none";
+  unavailableReason?: string;
+};
+
+type ProviderRuntimeEligibility = {
+  chat: ProviderRuntimeCapability;
+  codingAgent: ProviderRuntimeCapability;
+};
+
+const ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON =
+  "Claude subscription OAuth credentials are scoped to Claude Code CLI/coding-agent use. Fable chat must use a direct Anthropic API/app-owned provider path; the shared external Anthropic proxy is a dev fallback only.";
+
+function runtimeEligibilityForProvider(
+  providerId: LinkedAccountProviderId,
+): ProviderRuntimeEligibility {
+  switch (providerId) {
+    case "anthropic-subscription":
+      return {
+        chat: {
+          available: false,
+          defaultModel: "claude-fable-5",
+          credentialPath: "none",
+          unavailableReason: ANTHROPIC_SUBSCRIPTION_CHAT_BLOCKED_REASON,
+        },
+        codingAgent: {
+          available: true,
+          defaultModel: "claude-fable-5",
+          credentialPath: "account-pool",
+        },
+      };
+    case "openai-codex":
+      return {
+        chat: {
+          available: true,
+          defaultModel: "gpt-5.6-sol",
+          credentialPath: "account-pool",
+        },
+        codingAgent: {
+          available: true,
+          defaultModel: "gpt-5.6-terra",
+          credentialPath: "account-pool",
+        },
+      };
+    case "anthropic-api":
+      return {
+        chat: {
+          available: true,
+          defaultModel: "claude-fable-5",
+          credentialPath: "direct-api",
+        },
+        codingAgent: {
+          available: true,
+          defaultModel: "claude-fable-5",
+          credentialPath: "direct-api",
+        },
+      };
+    case "gemini-cli":
+      return {
+        chat: {
+          available: false,
+          credentialPath: "none",
+          unavailableReason:
+            "Gemini subscription auth stays inside Gemini CLI and is not a runtime chat provider.",
+        },
+        codingAgent: { available: true, credentialPath: "external-cli" },
+      };
+    default: {
+      const direct = DIRECT_PROVIDER_IDS.has(providerId);
+      const codingPlan = isCodingPlanKeySubscriptionProvider(providerId);
+      return {
+        chat: {
+          available: direct,
+          credentialPath: direct ? "direct-api" : "none",
+          ...(direct
+            ? {}
+            : {
+                unavailableReason:
+                  "This provider is not registered as a runtime chat provider.",
+              }),
+        },
+        codingAgent: {
+          available: direct || codingPlan,
+          credentialPath: direct ? "direct-api" : "account-pool",
+          ...(!direct && !codingPlan
+            ? {
+                unavailableReason:
+                  "This provider is not registered as a coding-agent credential source.",
+              }
+            : {}),
+        },
+      };
+    }
+  }
+}
+
 function asSubscriptionProvider(
   providerId: LinkedAccountProviderId,
 ): SubscriptionProvider | null {
@@ -202,11 +306,13 @@ const apiKeyAccountSchema = z.object({
   source: z.literal("api-key"),
   label: z.string().trim().min(1).max(120),
   apiKey: z.string().min(8).max(2048),
+  replaceAccountId: z.string().trim().min(1).max(200).optional(),
 });
 
 const oauthStartSchema = z.object({
   label: z.string().trim().min(1).max(120),
   mode: z.enum(["auto", "localhost", "device"]).optional(),
+  replaceAccountId: z.string().trim().min(1).max(200).optional(),
 });
 
 const oauthSubmitCodeSchema = z.object({
@@ -239,6 +345,7 @@ const STRATEGY_VALUES = [
   "round-robin",
   "least-used",
   "quota-aware",
+  "reset-soonest",
 ] as const satisfies readonly ServiceRouteAccountStrategy[];
 
 const strategyPatchSchema = z.object({
@@ -389,50 +496,42 @@ async function probeCodexUsage(
   latencyMs: number;
 }> {
   const start = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 10_000);
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${accessToken}`,
-    };
-    if (codexAccountId) headers["ChatGPT-Account-Id"] = codexAccountId;
-    // @duplicate-component-audit-allow: usage probe reads auth/rate-limit headers; response text is ignored.
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      signal: controller.signal,
-      headers,
-      body: JSON.stringify({
-        model: "gpt-5-mini",
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }],
-      }),
-    });
-    const latencyMs = Date.now() - start;
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      return {
-        ok: false,
-        status: response.status,
-        error: `OpenAI ${response.status}: ${text.slice(0, 200)}`,
-        latencyMs,
-      };
-    }
+    // One canonical probe: `@elizaos/auth/codex-usage` hits the ChatGPT/Codex
+    // backend the subscription token actually authenticates against (NOT
+    // api.openai.com completions, which bills the API platform org and fails
+    // healthy subscription accounts with billing errors), runtime-validates
+    // the payload, and throws typed ElizaErrors on any failure.
+    const usage = await fetchCodexUsage(accessToken, codexAccountId);
     return {
       ok: true,
-      status: response.status,
-      usage: { refreshedAt: Date.now() },
-      latencyMs,
+      status: 200,
+      usage: {
+        refreshedAt: Date.now(),
+        ...(usage.sessionPct !== undefined
+          ? { sessionPct: usage.sessionPct }
+          : {}),
+        ...(usage.weeklyPct !== undefined
+          ? { weeklyPct: usage.weeklyPct }
+          : {}),
+        ...(usage.resetsAt !== undefined ? { resetsAt: usage.resetsAt } : {}),
+      },
+      latencyMs: Date.now() - start,
     };
   } catch (err) {
+    // error-policy:J1 boundary translation — the probe route reports a
+    // structured pass/fail to the dashboard; the typed client error (with the
+    // HTTP status in its context) becomes that failure verbatim.
+    const status =
+      err instanceof ElizaError && typeof err.context?.status === "number"
+        ? err.context.status
+        : 0;
     return {
       ok: false,
-      status: 0,
+      status,
       error: err instanceof Error ? err.message : String(err),
       latencyMs: Date.now() - start,
     };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -511,6 +610,24 @@ export function healthForProbeStatus(
   if (status === 429) return "rate-limited";
   if (status >= 500 || status === 0) return "unknown";
   return "invalid";
+}
+
+function retainsTerminalCredentialHealth(
+  account: LinkedAccountConfig,
+): boolean {
+  return account.health === "needs-reauth" || account.health === "invalid";
+}
+
+function preserveTerminalCredentialHealth(
+  current: LinkedAccountConfig,
+  next: LinkedAccountConfig,
+): LinkedAccountConfig {
+  if (!retainsTerminalCredentialHealth(current)) return next;
+  return {
+    ...next,
+    health: current.health,
+    ...(current.healthDetail ? { healthDetail: current.healthDetail } : {}),
+  };
 }
 
 // ─── Route handler ──────────────────────────────────────────────────
@@ -627,13 +744,20 @@ async function handleListAllAccounts(
       ? listAccounts(accountProvider).map((r) => r.id)
       : [];
     const onDiskSet = new Set(onDiskAccounts);
+    const strategy = readAccountStrategy(ctx.state.config, providerId);
+    // Non-mutating dry-run: which account the pool would serve next + why,
+    // so the UI can label the active row without re-deriving policy. Guarded
+    // because older host bridges may not implement selectionState.
+    const selection = pool.selectionState?.(providerId, strategy);
     return {
       providerId,
-      strategy: readAccountStrategy(ctx.state.config, providerId),
+      strategy,
+      runtimeEligibility: runtimeEligibilityForProvider(providerId),
       accounts: linkedConfigs.map((cfg) => ({
         ...cfg,
         hasCredential: onDiskSet.has(cfg.id),
       })),
+      ...(selection ? { selection } : {}),
     };
   });
   json(res, { providers });
@@ -677,14 +801,63 @@ async function handleCreateApiKeyAccount(
   // the new account at the next default index, which would offset
   // `nextPriorityFromPool` by one.
   const pool = await getPool();
-  const priority = nextPriorityFromPool(pool, providerId);
+  const replaceAccountId = parsed.data.replaceAccountId;
+  const replacementTarget = replaceAccountId
+    ? pool.get(replaceAccountId, providerId)
+    : null;
+  if (replaceAccountId && !replacementTarget) {
+    const belongsToAnotherProvider = pool
+      .list()
+      .some(
+        (account) =>
+          account.id === replaceAccountId && account.providerId !== providerId,
+      );
+    error(
+      res,
+      belongsToAnotherProvider
+        ? "Replacement account belongs to a different provider"
+        : "Replacement account not found",
+      belongsToAnotherProvider ? 400 : 404,
+    );
+    return true;
+  }
+  const previousRecord = replaceAccountId
+    ? loadAccount(accountProvider, replaceAccountId)
+    : null;
+  if (replaceAccountId && !previousRecord) {
+    error(res, "Replacement account credential not found", 404);
+    return true;
+  }
 
-  const id = nodeCrypto.randomUUID();
+  if (replaceAccountId) {
+    const probe =
+      accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
+        ? await probeDirectApiKey(
+            accountProvider as DirectAccountProvider,
+            parsed.data.apiKey,
+          )
+        : isCodingPlanKeySubscriptionProvider(accountProvider)
+          ? await probeCodingPlanKey(accountProvider, parsed.data.apiKey)
+          : null;
+    if (!probe?.ok) {
+      error(
+        res,
+        probe?.error ?? "Replacement credential could not be verified",
+        400,
+      );
+      return true;
+    }
+  }
+
+  const priority = replacementTarget
+    ? replacementTarget.priority
+    : nextPriorityFromPool(pool, providerId);
+  const id = replaceAccountId ?? nodeCrypto.randomUUID();
   const now = Date.now();
   const record: AccountCredentialRecord = {
     id,
     providerId: accountProvider,
-    label: parsed.data.label,
+    label: replacementTarget?.label ?? parsed.data.label,
     source: "api-key",
     credentials: {
       access: parsed.data.apiKey,
@@ -692,10 +865,43 @@ async function handleCreateApiKeyAccount(
       // Sentinel: api-key creds never expire.
       expires: Number.MAX_SAFE_INTEGER,
     },
-    createdAt: now,
+    createdAt: previousRecord?.createdAt ?? now,
     updatedAt: now,
+    ...(previousRecord?.lastUsedAt
+      ? { lastUsedAt: previousRecord.lastUsedAt }
+      : {}),
   };
+  const stableReplacementTarget = replacementTarget
+    ? (({ healthDetail: _healthDetail, usage: _usage, ...stable }) => stable)(
+        replacementTarget,
+      )
+    : null;
+  const linkedConfig = stableReplacementTarget
+    ? {
+        ...stableReplacementTarget,
+        ...buildLinkedAccountConfigFromRecord(record, priority),
+        enabled: stableReplacementTarget.enabled,
+        priority,
+        createdAt: stableReplacementTarget.createdAt,
+        health: "ok" as const,
+      }
+    : buildLinkedAccountConfigFromRecord(record, priority);
   saveAccount(record);
+  try {
+    await pool.upsert(linkedConfig);
+  } catch (cause) {
+    if (previousRecord && replacementTarget) {
+      saveAccount(previousRecord);
+      await pool.upsert(replacementTarget);
+    } else {
+      deleteAccount(accountProvider, record.id);
+    }
+    throw new ElizaError("Account credential adoption failed", {
+      code: "accounts.credential_adoption_failed",
+      severity: "fatal",
+      cause,
+    });
+  }
 
   const envKey =
     accountProvider in DIRECT_ACCOUNT_PROVIDER_ENV
@@ -708,10 +914,7 @@ async function handleCreateApiKeyAccount(
     }
   }
 
-  const linkedConfig = buildLinkedAccountConfigFromRecord(record, priority);
-  await pool.upsert(linkedConfig);
-
-  json(res, linkedConfig, 201);
+  json(res, linkedConfig, replacementTarget ? 200 : 201);
   return true;
 }
 
@@ -740,10 +943,11 @@ async function handleOAuthRoutes(
   const action = rest[0];
 
   if (action === "start" && method === "POST") {
-    const body = await readJsonBody<{ label?: string; mode?: string }>(
-      req,
-      res,
-    );
+    const body = await readJsonBody<{
+      label?: string;
+      mode?: string;
+      replaceAccountId?: string;
+    }>(req, res);
     if (!body) return true;
     const parsed = oauthStartSchema.safeParse(body);
     if (!parsed.success) {
@@ -759,10 +963,61 @@ async function handleOAuthRoutes(
     // the post-save hook is monotonic regardless of concurrency since
     // the on-disk credential file appears strictly before the hook
     // fires.
-    const accountId = nodeCrypto.randomUUID();
     const pool = await getPool();
+    const replaceAccountId = parsed.data.replaceAccountId;
+    const replacementTarget = replaceAccountId
+      ? pool.get(replaceAccountId, providerId)
+      : null;
+    if (replaceAccountId && !replacementTarget) {
+      const belongsToAnotherProvider = pool
+        .list()
+        .some(
+          (account) =>
+            account.id === replaceAccountId &&
+            account.providerId !== providerId,
+        );
+      error(
+        res,
+        belongsToAnotherProvider
+          ? "Replacement account belongs to a different provider"
+          : "Replacement account not found",
+        belongsToAnotherProvider ? 400 : 404,
+      );
+      return true;
+    }
+    if (replaceAccountId && !loadAccount(subscription, replaceAccountId)) {
+      error(res, "Replacement account credential not found", 404);
+      return true;
+    }
 
+    const accountId = replaceAccountId ?? nodeCrypto.randomUUID();
+    let replacementMetadataBeforeAdoption: LinkedAccountConfig | null = null;
     const onAccountSaved = async (record: AccountCredentialRecord) => {
+      if (replacementTarget) {
+        const liveTarget = pool.get(replacementTarget.id, providerId);
+        if (!liveTarget) {
+          throw new Error("Replacement account metadata no longer exists");
+        }
+        replacementMetadataBeforeAdoption = liveTarget;
+        const canonical = buildLinkedAccountConfigFromRecord(
+          record,
+          liveTarget.priority,
+        );
+        const {
+          healthDetail: _healthDetail,
+          usage: _usage,
+          ...stableTarget
+        } = liveTarget;
+        await pool.upsert({
+          ...stableTarget,
+          ...canonical,
+          enabled: liveTarget.enabled,
+          priority: liveTarget.priority,
+          createdAt: liveTarget.createdAt,
+          health: "ok",
+        });
+        return;
+      }
       // Exclude the just-saved record from the priority calc — its
       // credential file already exists on disk so `pool.list` would
       // include it at a default priority (createdAt-sorted index),
@@ -791,7 +1046,17 @@ async function handleOAuthRoutes(
       handle = await startFlow({
         label: parsed.data.label,
         accountId,
+        ...(replaceAccountId ? { replaceAccountId } : {}),
         onAccountSaved,
+        ...(replacementTarget
+          ? {
+              onReplacementRollback: async () => {
+                if (replacementMetadataBeforeAdoption) {
+                  await pool.upsert(replacementMetadataBeforeAdoption);
+                }
+              },
+            }
+          : {}),
         ...(subscription === "openai-codex"
           ? {
               headless:
@@ -1066,7 +1331,7 @@ async function handleRefreshUsage(
 
   if (direct) {
     const probe = await probeDirectApiKey(direct, accessToken);
-    const next: LinkedAccountConfig = {
+    const next = preserveTerminalCredentialHealth(linked, {
       ...linked,
       health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
       healthDetail: {
@@ -1079,7 +1344,7 @@ async function handleRefreshUsage(
         ...(linked.usage ?? {}),
         refreshedAt: Date.now(),
       },
-    };
+    });
     await pool.upsert(next);
     json(res, { account: next, probe, source: "direct-probe" });
     return true;
@@ -1087,7 +1352,7 @@ async function handleRefreshUsage(
 
   if (subscription && isCodingPlanKeySubscriptionProvider(subscription)) {
     const probe = await probeCodingPlanKey(subscription, accessToken);
-    const next: LinkedAccountConfig = {
+    const next = preserveTerminalCredentialHealth(linked, {
       ...linked,
       health: probe.ok ? "ok" : healthForProbeStatus(probe.status),
       healthDetail: {
@@ -1100,7 +1365,7 @@ async function handleRefreshUsage(
         ...(linked.usage ?? {}),
         refreshedAt: Date.now(),
       },
-    };
+    });
     await pool.upsert(next);
     json(res, { account: next, probe, source: "coding-plan-probe" });
     return true;
@@ -1129,7 +1394,9 @@ async function handleRefreshUsage(
     });
     const refreshed = pool.get(accountId, providerId);
     if (refreshed) {
-      json(res, { account: refreshed, source: "pool" });
+      const canonical = preserveTerminalCredentialHealth(linked, refreshed);
+      if (canonical !== refreshed) await pool.upsert(canonical);
+      json(res, { account: canonical, source: "pool" });
       return true;
     }
   } catch (err) {
@@ -1147,7 +1414,7 @@ async function handleRefreshUsage(
             error: `Usage refresh not supported for ${providerId}`,
             latencyMs: 0,
           };
-  const next: LinkedAccountConfig = {
+  const next = preserveTerminalCredentialHealth(linked, {
     ...linked,
     ...(probe.usage ? { usage: probe.usage } : {}),
     // Preserve the provider's actual failure class. Treating every fallback
@@ -1160,7 +1427,7 @@ async function handleRefreshUsage(
           lastChecked: Date.now(),
           ...(probe.error ? { lastError: probe.error } : {}),
         },
-  };
+  });
   await pool.upsert(next);
   json(res, { account: next, probe, source: "inline-probe" });
   return true;

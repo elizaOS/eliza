@@ -1,0 +1,997 @@
+name: Chat Latency Live
+
+# Manual, privacy-safe comparison of Cerebras direct and the Eliza Cloud model
+# gateway from the same GitHub-hosted runner. Production is never automatic:
+# selecting it binds the job to the protected production environment.
+#
+# Dispatch sequence for exact artifacts (checkout SHA == deployed SHA, #16185):
+#   1. Merge to develop; Cloud CF Deploy ships that exact commit and
+#      /api/health serves it as `commit`.
+#   2. Confirm refs/heads/develop still equals the served deployment SHA.
+#   3. Dispatch this workflow on ref develop with expected_gateway_sha set to
+#      that commit. GITHUB_SHA of the dispatched run is the head of the
+#      dispatch ref, so the live job's bind step fails before any paid request
+#      unless the checkout equals expected_gateway_sha; the served SHA is then
+#      re-verified before and after the benchmark. If develop advanced past
+#      the deployment, redeploy (or wait for CF Deploy) instead of bypassing.
+# Feature refs use the separate auth-isolated job below. It deploys the exact
+# version only to a uniquely named workers.dev Worker and never moves canonical
+# staging traffic or attaches a custom route.
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - ".github/workflows/chat-latency-live.yml"
+      - "packages/scripts/cloud/chat-latency.mjs"
+      - "packages/scripts/cloud/chat-latency.test.mjs"
+      - "packages/scripts/cloud/inference-auth-latency.mjs"
+      - "packages/scripts/cloud/inference-auth-latency.test.mjs"
+      - "packages/scripts/__tests__/chat-latency-workflow.test.ts"
+      - "packages/cloud/api/wrangler.toml"
+      - "package.json"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Eliza Cloud gateway environment
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+      repeats:
+        description: Repetitions for each model/reasoning case
+        required: true
+        default: "30"
+        type: choice
+        options:
+          - "3"
+          - "10"
+          - "30"
+      expected_gateway_sha:
+        description: Exact 40-character commit expected from /api/health
+        required: true
+        type: string
+
+concurrency:
+  group: chat-latency-live-${{ github.event_name }}-${{ inputs.environment || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    name: Probe contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Validate probe syntax and privacy contract
+        run: |
+          node --check packages/scripts/cloud/chat-latency.mjs
+          node --test packages/scripts/cloud/chat-latency.test.mjs
+          node --check packages/scripts/cloud/inference-auth-latency.mjs
+          node --test packages/scripts/cloud/inference-auth-latency.test.mjs
+
+  live:
+    name: paired direct + gateway (${{ inputs.environment }})
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      ((inputs.environment == 'staging' && github.ref == 'refs/heads/develop') ||
+      (inputs.environment == 'production' && github.ref == 'refs/heads/main'))
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: ${{ inputs.environment }}
+    env:
+      ELIZA_CLOUD_CHAT_LATENCY_BASE_URL: ${{ inputs.environment == 'production' && 'https://api.elizacloud.ai' || 'https://api-staging.elizacloud.ai' }}
+      ELIZA_GATEWAY_DEPLOY_SHA: ${{ inputs.expected_gateway_sha }}
+      REPORT_PATH: reports/chat-latency-paired-${{ inputs.environment }}.jsonl
+    steps:
+      - name: Checkout exact requested ref
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      # Fails closed before any network or paid request: the artifact must be
+      # intrinsically tied to one source revision, so the checkout that supplies
+      # scripts and config has to be the same commit the gateway serves.
+      - name: Bind checkout to the requested gateway SHA
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const checkout = process.env.GITHUB_SHA ?? "";
+          if (!/^[a-f0-9]{40}$/.test(expected)) {
+            throw new Error("expected_gateway_sha must be a 40-character lowercase commit");
+          }
+          if (checkout !== expected) {
+            throw new Error(
+              "Checkout " +
+                (checkout || "<missing>") +
+                " does not match expected_gateway_sha " +
+                expected +
+                "; dispatch from develop at the exact deployed commit (see the dispatch sequence at the top of this workflow).",
+            );
+          }
+          console.log("Checkout " + checkout + " matches the requested gateway deployment");
+          NODE
+
+      - name: Verify the exact deployed gateway SHA
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const base = process.env.ELIZA_CLOUD_CHAT_LATENCY_BASE_URL ?? "";
+          if (!/^[a-f0-9]{40}$/.test(expected)) {
+            throw new Error("expected_gateway_sha must be a 40-character lowercase commit");
+          }
+          const response = await fetch(base + "/api/health", {
+            headers: { "user-agent": "eliza-chat-latency/1.0" },
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (!response.ok) {
+            throw new Error("Gateway health returned HTTP " + response.status);
+          }
+          const body = await response.json();
+          if (body?.commit !== expected) {
+            throw new Error(
+              "Gateway serves " + (body?.commit ?? "<missing>") + ", expected " + expected,
+            );
+          }
+          console.log(
+            "Verified gateway deployment " +
+              expected +
+              " (" +
+              (body.environment ?? "unknown") +
+              ")",
+          );
+          NODE
+
+      - name: Probe Gemma and GLM reasoning modes on one runner
+        id: probe
+        shell: bash
+        env:
+          CEREBRAS_CHAT_LATENCY_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ELIZA_CLOUD_CHAT_LATENCY_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_GATEWAY_DEPLOY_SHA: ${{ inputs.expected_gateway_sha }}
+          BENCHMARK_SEED: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          mkdir -p reports
+          set +e
+
+          # One process holds runner, clock, prompts, and case set constant.
+          # It randomizes case order, alternates target-first order exactly for
+          # each case and labels cold/warm/post-idle phases.
+          # It idles before every target labeled post-idle.
+          # Warm pairs are paced at 40 gateway requests/minute, below the
+          # lowest Cloud organization tier, so this remains a latency test.
+          node packages/scripts/cloud/chat-latency.mjs \
+            --target paired \
+            --direct-base-url https://api.cerebras.ai \
+            --gateway-base-url "$ELIZA_CLOUD_CHAT_LATENCY_BASE_URL" \
+            --direct-api-key-env CEREBRAS_CHAT_LATENCY_API_KEY \
+            --gateway-api-key-env ELIZA_CLOUD_CHAT_LATENCY_API_KEY \
+            --repeat "${{ inputs.repeats }}" \
+            --timeout-ms 30000 \
+            --idle-ms 30000 \
+            --pair-interval-ms 1500 \
+            --max-proof-miss-rate 0.05 \
+            --seed "$BENCHMARK_SEED" \
+            --case gemma-4-31b@omit@512 \
+            --case gemma-4-31b@none@512 \
+            --case zai-glm-4.7@omit@4096 \
+            --case zai-glm-4.7@none@4096 \
+            --case zai-glm-4.7@none@512 \
+            | tee "$REPORT_PATH"
+          probe_status="${PIPESTATUS[0]}"
+          set -e
+          echo "status=$probe_status" >> "$GITHUB_OUTPUT"
+
+      - name: Reverify the exact deployed gateway SHA
+        if: always()
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const base = process.env.ELIZA_CLOUD_CHAT_LATENCY_BASE_URL ?? "";
+          const response = await fetch(base + "/api/health", {
+            headers: { "user-agent": "eliza-chat-latency/1.0" },
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (!response.ok) {
+            throw new Error("Gateway health returned HTTP " + response.status);
+          }
+          const body = await response.json();
+          if (body?.commit !== expected) {
+            throw new Error(
+              "Gateway changed during the benchmark: served " +
+                (body?.commit ?? "<missing>") +
+                ", expected " +
+                expected,
+            );
+          }
+          console.log("Gateway deployment remained exact through benchmark completion");
+          NODE
+
+      - name: Add privacy-safe timing table to summary
+        if: always() && hashFiles(env.REPORT_PATH) != ''
+        run: |
+          node --input-type=module - "$REPORT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { summarizeLatencyRecords } from "./packages/scripts/cloud/chat-latency.mjs";
+          const path = process.argv[2];
+          const records = readFileSync(path, "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+          const summaries = summarizeLatencyRecords(records);
+          console.log("### Paired chat latency: direct + gateway / ${{ inputs.environment }}");
+          console.log("");
+          // Both provenance SHAs are emitted so the summary alone shows the
+          // checkout-SHA == deployed-SHA invariant the bind step enforces. The
+          // gateway value is the requested SHA; the verify/reverify steps prove
+          // /api/health served exactly it before and after the benchmark.
+          console.log("Checkout: " + (process.env.GITHUB_SHA ?? "unknown"));
+          console.log("");
+          console.log(
+            "Gateway deployment (requested, health-verified before/after): " +
+              (process.env.ELIZA_GATEWAY_DEPLOY_SHA ?? "unknown"),
+          );
+          console.log("");
+          console.log("| target | model | reasoning | cap | ok/total | TTFT p50/p90/p95 ms | total p50/p90/p95 ms | preforward p50/p90/p95 ms |");
+          console.log("| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |");
+          const fmt = (metric) =>
+            [metric.p50, metric.p90, metric.p95]
+              .map((value) => value ?? "—")
+              .join(" / ");
+          for (const row of summaries) {
+            const values = [
+              row.target,
+              row.model,
+              row.reasoningEffort,
+              row.maxTokens,
+              row.successes + "/" + row.samples,
+              fmt(row.firstTokenMs),
+              fmt(row.totalMs),
+              fmt(row.preforwardMs),
+            ];
+            console.log("| " + values.join(" | ") + " |");
+          }
+          const phaseCounts = Object.groupBy(
+            records,
+            (row) => row.phase ?? "unlabelled",
+          );
+          console.log("");
+          console.log(
+            "Phases: " +
+              Object.entries(phaseCounts)
+                .map(([phase, rows]) => phase + "=" + rows.length)
+                .join(", "),
+          );
+          NODE
+
+      - name: Upload exact-SHA latency evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: chat-latency-paired-${{ inputs.environment }}-${{ inputs.expected_gateway_sha }}
+          path: ${{ env.REPORT_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Enforce probe result
+        if: always()
+        run: |
+          status="${{ steps.probe.outputs.status }}"
+          if [ -z "$status" ]; then
+            echo "::error::Probe did not produce a status."
+            exit 1
+          fi
+          exit "$status"
+
+  auth-isolated:
+    name: exact-version inference auth (${{ inputs.expected_gateway_sha }})
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.environment == 'staging' &&
+      github.ref != 'refs/heads/develop' &&
+      github.ref != 'refs/heads/main'
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    env:
+      REPORT_PATH: reports/inference-auth-${{ inputs.expected_gateway_sha }}.jsonl
+      AUTH_LOG_PATH: reports/inference-auth-worker-logs-${{ inputs.expected_gateway_sha }}.jsonl
+      ELIZA_GATEWAY_DEPLOY_SHA: ${{ inputs.expected_gateway_sha }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Checkout exact requested ref
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          # bun@1.4.0 is the packageManager target but has no stable release
+          # artifact; repository CI pins the newest lockfile-compatible stable.
+          bun-version: 1.3.14
+
+      - name: Bind isolated deployment checkout to the requested SHA
+        env:
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const expected = process.env.EXPECTED_GATEWAY_SHA ?? "";
+          const checkout = process.env.GITHUB_SHA ?? "";
+          if (!/^[a-f0-9]{40}$/.test(expected) || checkout !== expected) {
+            throw new Error("Isolated deployment checkout must equal the requested 40-character SHA");
+          }
+          console.log("Isolated deployment checkout is exactly " + checkout);
+          NODE
+
+      - name: Install Worker bundle dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Generate source-mode keyword data
+        run: |
+          node packages/shared/scripts/generate-keywords.mjs
+
+      - name: Create an isolated authenticated probe control
+        id: auth-control
+        env:
+          AUTH_PROBE_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module - <<'NODE'
+          import { appendFileSync, writeFileSync } from "node:fs";
+          import { randomBytes } from "node:crypto";
+          const databaseUrl = process.env.AUTH_PROBE_DATABASE_URL;
+          if (!databaseUrl) throw new Error("Staging database secret is unavailable");
+          const token = randomBytes(32).toString("hex");
+          const cacheEnvironment = "staging-auth-" + process.env.GITHUB_SHA.slice(0, 12);
+          const workerName = "eliza-cloud-api-auth-" + process.env.GITHUB_SHA.slice(0, 12);
+          console.log("::add-mask::" + token);
+          appendFileSync(process.env.GITHUB_ENV, "INFERENCE_AUTH_PROBE_TOKEN=" + token + "\n");
+          appendFileSync(process.env.GITHUB_ENV, "AUTH_PROBE_CACHE_ENV=" + cacheEnvironment + "\n");
+          appendFileSync(process.env.GITHUB_ENV, "AUTH_PROBE_WORKER_NAME=" + workerName + "\n");
+          appendFileSync(process.env.GITHUB_OUTPUT, "worker-name=" + workerName + "\n");
+          writeFileSync(
+            process.env.RUNNER_TEMP + "/auth-probe-secrets.json",
+            JSON.stringify({ DATABASE_URL: databaseUrl, INFERENCE_AUTH_PROBE_TOKEN: token }),
+            { mode: 0o600 },
+          );
+          NODE
+
+      - name: Create an isolated suspended-auth staging fixture
+        id: auth-fixture
+        working-directory: packages/cloud/shared
+        env:
+          AUTH_PROBE_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module - <<'NODE'
+          import { createHash, randomBytes } from "node:crypto";
+          import { appendFileSync } from "node:fs";
+          import pg from "pg";
+
+          const sha = process.env.GITHUB_SHA;
+          if (!/^[a-f0-9]{40}$/.test(sha ?? "")) throw new Error("Invalid fixture commit SHA");
+          const fixtureUuid = (label) => {
+            const digest = createHash("sha256").update(sha + ":" + label).digest("hex").slice(0, 32);
+            const uuid = digest.slice(0, 12) + "4" + digest.slice(13, 16) + "8" + digest.slice(17);
+            return uuid.slice(0, 8) + "-" + uuid.slice(8, 12) + "-" + uuid.slice(12, 16) + "-" + uuid.slice(16, 20) + "-" + uuid.slice(20);
+          };
+          const orgId = fixtureUuid("organization");
+          const userId = fixtureUuid("user");
+          const keyId = fixtureUuid("api-key");
+          const moderationId = fixtureUuid("moderation");
+          const slug = "auth-probe-" + sha.slice(0, 12);
+          const rawKey = "eliza_probe_" + randomBytes(32).toString("hex");
+          const keyHash = createHash("sha256").update(rawKey).digest("hex");
+          console.log("::add-mask::" + rawKey);
+          appendFileSync(process.env.GITHUB_OUTPUT, "cleanup=true\n");
+
+          const client = new pg.Client({
+            connectionString: process.env.AUTH_PROBE_DATABASE_URL,
+            application_name: "issue-16159-auth-fixture",
+          });
+          await client.connect();
+          try {
+            await client.query("BEGIN");
+            await client.query("DELETE FROM organizations WHERE id = $1 AND slug = $2", [orgId, slug]);
+            await client.query(
+              "INSERT INTO organizations (id, name, slug, credit_balance, is_active) VALUES ($1, $2, $3, $4, true)",
+              [orgId, "Inference auth diagnostic", slug, "0.000000"],
+            );
+            await client.query(
+              "INSERT INTO users (id, steward_user_id, name, organization_id, role, is_active) VALUES ($1, $2, $3, $4, $5, true)",
+              [userId, "auth-probe-" + sha, "Inference auth diagnostic", orgId, "owner"],
+            );
+            await client.query(
+              "INSERT INTO api_keys (id, name, key_hash, key_prefix, organization_id, user_id, is_active) VALUES ($1, $2, $3, $4, $5, $6, true)",
+              [keyId, "Inference auth diagnostic", keyHash, rawKey.slice(0, 12), orgId, userId],
+            );
+            await client.query(
+              "INSERT INTO user_moderation_status (id, user_id, status, total_violations, warning_count, risk_score) VALUES ($1, $2, 'banned', 5, 1, 100)",
+              [moderationId, userId],
+            );
+            await client.query("COMMIT");
+            appendFileSync(process.env.GITHUB_ENV, "AUTH_PROBE_SUSPENDED_API_KEY=" + rawKey + "\n");
+          } finally {
+            await client.end();
+          }
+          console.log("Created one isolated suspended-auth fixture");
+          NODE
+
+      - name: Create an isolated diagnostic Worker
+        run: |
+          node --input-type=module - <<'NODE'
+          const worker = process.env.AUTH_PROBE_WORKER_NAME;
+          if (!/^eliza-cloud-api-auth-[a-f0-9]{12}$/.test(worker ?? "")) {
+            throw new Error("Invalid isolated diagnostic Worker name");
+          }
+          const endpoint =
+            "https://api.cloudflare.com/client/v4/accounts/" +
+            process.env.CLOUDFLARE_ACCOUNT_ID +
+            "/workers/workers";
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              name: worker,
+              subdomain: { enabled: true, previews_enabled: false },
+            }),
+            signal: AbortSignal.timeout(30_000),
+          });
+          const body = await response.json();
+          if (
+            !response.ok ||
+            body?.success !== true ||
+            body?.result?.name !== worker ||
+            body?.result?.deployed_on != null ||
+            body?.result?.subdomain?.enabled !== true ||
+            body?.result?.subdomain?.previews_enabled !== false
+          ) {
+            throw new Error("Could not create an isolated never-deployed diagnostic Worker");
+          }
+          console.log("Created isolated never-deployed diagnostic Worker " + worker);
+          NODE
+
+      - name: Upload a non-deployed exact-SHA Worker version
+        id: upload
+        run: |
+          set -euo pipefail
+          output="$RUNNER_TEMP/wrangler-version-output.ndjson"
+          config="packages/cloud/api/.wrangler-auth-probe.toml"
+          node --input-type=module - "$config" <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const source = readFileSync("packages/cloud/api/wrangler.toml", "utf8");
+          const marker = '[env.staging]\nname = "eliza-cloud-api-staging"\nworkers_dev = false\n';
+          if (source.split(marker).length !== 2 || source.includes("preview_urls")) {
+            throw new Error("Could not derive the isolated diagnostic configuration");
+          }
+          const isolated =
+            '[env.staging]\nname = "eliza-cloud-api-staging"\n' +
+            "workers_dev = true\npreview_urls = false\n";
+          writeFileSync(process.argv[2], source.replace(marker, isolated), { mode: 0o600 });
+          NODE
+          trap 'rm -f "$config" "$RUNNER_TEMP/auth-probe-secrets.json"' EXIT
+          WRANGLER_OUTPUT_FILE_PATH="$output" bunx wrangler versions upload \
+            --cwd packages/cloud/api \
+            --config .wrangler-auth-probe.toml \
+            --env staging \
+            --name "$AUTH_PROBE_WORKER_NAME" \
+            --keep-vars \
+            --message "issue-16159 auth timing ${GITHUB_SHA}" \
+            --var "ELIZA_DEPLOY_COMMIT:${GITHUB_SHA}" \
+            --var "ENVIRONMENT:${AUTH_PROBE_CACHE_ENV}" \
+            --var "REDIS_RATE_LIMITING:false" \
+            --var "VERBOSE_LOGGING:true" \
+            --secrets-file "$RUNNER_TEMP/auth-probe-secrets.json"
+          node --input-type=module - "$output" <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const records = readFileSync(process.argv[2], "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+          const uploads = records.filter((record) => record.type === "version-upload");
+          if (uploads.length !== 1) throw new Error("Wrangler did not emit one version-upload record");
+          const upload = uploads[0];
+          if (
+            upload.version !== 1 ||
+            upload.worker_name !== process.env.AUTH_PROBE_WORKER_NAME ||
+            !/^[a-f0-9-]{36}$/.test(upload.version_id ?? "")
+          ) {
+            throw new Error("Wrangler returned invalid exact-version provenance");
+          }
+          const stateResponse = await fetch(
+            "https://api.cloudflare.com/client/v4/accounts/" +
+              process.env.CLOUDFLARE_ACCOUNT_ID +
+              "/workers/workers/" +
+              process.env.AUTH_PROBE_WORKER_NAME,
+            {
+              headers: { Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN },
+              signal: AbortSignal.timeout(30_000),
+            },
+          );
+          const state = await stateResponse.json();
+          if (
+            !stateResponse.ok ||
+            state?.success !== true ||
+            state?.result?.deployed_on != null ||
+            state?.result?.subdomain?.enabled !== true ||
+            state?.result?.subdomain?.previews_enabled !== false
+          ) {
+            throw new Error("Exact Worker version was not retained before deployment");
+          }
+          appendFileSync(process.env.GITHUB_OUTPUT, "version-id=" + upload.version_id + "\n");
+          console.log("Exact Worker version uploaded without a deployment");
+          NODE
+
+      - name: Deploy exact version to the isolated Worker subdomain
+        id: deployment
+        env:
+          AUTH_PROBE_VERSION_ID: ${{ steps.upload.outputs.version-id }}
+        run: |
+          node --input-type=module - <<'NODE'
+          import { appendFileSync } from "node:fs";
+
+          const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const token = process.env.CLOUDFLARE_API_TOKEN;
+          const worker = process.env.AUTH_PROBE_WORKER_NAME;
+          const versionId = process.env.AUTH_PROBE_VERSION_ID;
+          if (!/^eliza-cloud-api-auth-[a-f0-9]{12}$/.test(worker ?? "")) {
+            throw new Error("Invalid isolated diagnostic Worker name");
+          }
+          if (!/^[a-f0-9-]{36}$/.test(versionId ?? "")) {
+            throw new Error("Invalid exact Worker version ID");
+          }
+          const headers = {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+          };
+          const api = "https://api.cloudflare.com/client/v4/accounts/" + account;
+          const deploymentResponse = await fetch(
+            api + "/workers/scripts/" + worker + "/deployments",
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                strategy: "percentage",
+                versions: [{ percentage: 100, version_id: versionId }],
+                annotations: {
+                  "workers/message": "issue-16159 isolated auth timing " + process.env.GITHUB_SHA,
+                },
+              }),
+              signal: AbortSignal.timeout(30_000),
+            },
+          );
+          const deployment = await deploymentResponse.json();
+          if (!deploymentResponse.ok || deployment?.success !== true) {
+            const errors = Array.isArray(deployment?.errors)
+              ? deployment.errors.map((error) => ({ code: error?.code, message: error?.message }))
+              : [];
+            throw new Error(
+              "Cloudflare deployment request failed with HTTP " +
+                deploymentResponse.status +
+                ": " +
+                JSON.stringify(errors),
+            );
+          }
+          const deploymentId = deployment?.result?.id;
+          if (!/^[a-f0-9-]{36}$/.test(deploymentId ?? "")) {
+            throw new Error("Cloudflare deployment response omitted its deployment ID");
+          }
+
+          const [deploymentsResponse, accountSubdomainResponse, workerStateResponse, workerSubdomainResponse] =
+            await Promise.all([
+              fetch(api + "/workers/scripts/" + worker + "/deployments", {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
+              fetch(api + "/workers/subdomain", {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
+              fetch(api + "/workers/workers/" + worker, {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
+              fetch(api + "/workers/scripts/" + worker + "/subdomain", {
+                headers,
+                signal: AbortSignal.timeout(30_000),
+              }),
+            ]);
+          const [deployments, accountSubdomain, workerState, workerSubdomain] = await Promise.all([
+            deploymentsResponse.json(),
+            accountSubdomainResponse.json(),
+            workerStateResponse.json(),
+            workerSubdomainResponse.json(),
+          ]);
+          const activeDeployment = deployments?.result?.deployments?.[0];
+          const deployedVersions = activeDeployment?.versions;
+          if (
+            !deploymentsResponse.ok ||
+            deployments?.success !== true ||
+            activeDeployment?.id !== deploymentId ||
+            activeDeployment?.strategy !== "percentage" ||
+            !Array.isArray(deployedVersions) ||
+            deployedVersions.length !== 1 ||
+            deployedVersions[0]?.version_id !== versionId ||
+            deployedVersions[0]?.percentage !== 100
+          ) {
+            throw new Error("Active deployment does not send 100 percent to the exact uploaded version");
+          }
+          const subdomain = accountSubdomain?.result?.subdomain;
+          if (
+            !accountSubdomainResponse.ok ||
+            accountSubdomain?.success !== true ||
+            !/^[a-z0-9-]{1,63}$/.test(subdomain ?? "")
+          ) {
+            throw new Error("Cloudflare returned an invalid account workers.dev subdomain");
+          }
+          if (
+            !workerStateResponse.ok ||
+            workerState?.success !== true ||
+            workerState?.result?.name !== worker ||
+            typeof workerState?.result?.deployed_on !== "string"
+          ) {
+            throw new Error("Isolated Worker state does not record the exact deployment");
+          }
+          if (
+            !workerSubdomainResponse.ok ||
+            workerSubdomain?.success !== true ||
+            workerSubdomain?.result?.enabled !== true ||
+            workerSubdomain?.result?.previews_enabled !== false
+          ) {
+            throw new Error("Isolated Worker is not restricted to its non-preview workers.dev subdomain");
+          }
+          const url = new URL("https://" + worker + "." + subdomain + ".workers.dev");
+          appendFileSync(process.env.GITHUB_OUTPUT, "base-url=" + url.origin + "\n");
+          console.log("Deployed exact version only to isolated Worker " + worker);
+          NODE
+
+      - name: Verify isolated deployment serves the exact checkout
+        env:
+          AUTH_PROBE_BASE_URL: ${{ steps.deployment.outputs.base-url }}
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          let body;
+          let consecutiveExactResponses = 0;
+          let lastOutcome = "no response";
+          for (let attempt = 1; attempt <= 24; attempt += 1) {
+            try {
+              const response = await fetch(process.env.AUTH_PROBE_BASE_URL + "/api/health", {
+                signal: AbortSignal.timeout(30_000),
+              });
+              if (response.ok) {
+                const candidate = await response.json();
+                if (candidate?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
+                  throw new Error("Isolated deployment does not serve the requested checkout");
+                }
+                if (candidate?.environment !== process.env.AUTH_PROBE_CACHE_ENV) {
+                  throw new Error("Diagnostic Worker cache environment is not isolated");
+                }
+                consecutiveExactResponses += 1;
+                lastOutcome = consecutiveExactResponses + " consecutive exact responses";
+                if (consecutiveExactResponses === 3) {
+                  body = candidate;
+                  break;
+                }
+              } else {
+                consecutiveExactResponses = 0;
+                lastOutcome = "HTTP " + response.status;
+              }
+            } catch {
+              // error-policy:J1 Worker readiness is this workflow's external transport boundary.
+              consecutiveExactResponses = 0;
+              lastOutcome = "request error";
+            }
+            if (attempt < 24) await sleep(5_000);
+          }
+          if (!body) {
+            throw new Error("Isolated deployment did not stabilize after 24 attempts; last outcome " + lastOutcome);
+          }
+          console.log("Verified exact isolated deployment and cache environment");
+          NODE
+
+      - name: Capture 30 cache hits and 10 unique controlled KV misses
+        id: auth-probe
+        env:
+          AUTH_PROBE_BASE_URL: ${{ steps.deployment.outputs.base-url }}
+          AUTH_PROBE_VERSION_ID: ${{ steps.upload.outputs.version-id }}
+          AUTH_PROBE_API_KEY: ${{ secrets.ELIZACLOUD_API_KEY }}
+        run: |
+          set -uo pipefail
+          mkdir -p reports
+          raw_tail="$RUNNER_TEMP/inference-auth-tail.raw"
+          tail_log="$RUNNER_TEMP/inference-auth-tail.stderr"
+          tail_pid=""
+          print_tail_diagnostics() {
+            node --input-type=module - "$tail_log" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const raw = readFileSync(process.argv[2], "utf8");
+          const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+          const safe = accountId ? raw.replaceAll(accountId, "[account]") : raw;
+          console.error(safe.slice(-2_000));
+          NODE
+          }
+          cleanup() {
+            if [ -n "$tail_pid" ] && kill -0 "$tail_pid" 2>/dev/null; then
+              kill -INT "$tail_pid" 2>/dev/null || true
+              wait "$tail_pid" 2>/dev/null || true
+            fi
+            rm -f "$raw_tail" "$tail_log"
+          }
+          trap cleanup EXIT
+
+          bunx wrangler tail "$AUTH_PROBE_WORKER_NAME" \
+            --format json \
+            --search "[InferenceAuth] trace" \
+            --version-id "$AUTH_PROBE_VERSION_ID" \
+            > "$raw_tail" 2> "$tail_log" &
+          tail_pid="$!"
+          # workers.dev route propagation can lag a healthy response by a few
+          # seconds, while Tail needs its own websocket startup grace.
+          sleep 5
+          if ! kill -0 "$tail_pid" 2>/dev/null; then
+            print_tail_diagnostics
+            echo "::error::Worker Tail exited before the auth capture started."
+            exit 1
+          fi
+
+          set +e
+          node --input-type=module - "$raw_tail" <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { waitForInferenceAuthTail } from "./packages/scripts/cloud/inference-auth-latency.mjs";
+          const attempts = await waitForInferenceAuthTail({
+            baseUrl: process.env.AUTH_PROBE_BASE_URL,
+            apiKey: process.env.AUTH_PROBE_API_KEY,
+            probeToken: process.env.INFERENCE_AUTH_PROBE_TOKEN,
+            deploySha: process.env.GITHUB_SHA,
+            timeoutMs: 30_000,
+            readTail: () => readFileSync(process.argv[2], "utf8"),
+          });
+          console.log("Worker Tail observed an authenticated readiness trace after " + attempts + " probe(s)");
+          NODE
+          readiness_status="$?"
+          set -e
+          if [ "$readiness_status" -ne 0 ]; then
+            print_tail_diagnostics
+            echo "::error::Worker Tail was not ready before the auth capture."
+            exit "$readiness_status"
+          fi
+
+          set +e
+          node packages/scripts/cloud/inference-auth-latency.mjs \
+            --base-url "$AUTH_PROBE_BASE_URL" \
+            --api-key-env AUTH_PROBE_API_KEY \
+            --suspended-api-key-env AUTH_PROBE_SUSPENDED_API_KEY \
+            --probe-token-env INFERENCE_AUTH_PROBE_TOKEN \
+            --deploy-sha "$GITHUB_SHA" \
+            --hit-count 30 \
+            --miss-count 10 \
+            --timeout-ms 30000 \
+            --interval-ms 250 \
+            --enforce \
+            | tee "$REPORT_PATH"
+          probe_status="${PIPESTATUS[0]}"
+          sleep 3
+          kill -INT "$tail_pid" 2>/dev/null
+          wait "$tail_pid" 2>/dev/null
+          tail_pid=""
+
+          node --input-type=module - "$raw_tail" "$REPORT_PATH" "$AUTH_LOG_PATH" <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          import {
+            sanitizeInferenceAuthTail,
+            summarizeDeferredCacheWrites,
+          } from "./packages/scripts/cloud/inference-auth-latency.mjs";
+          const report = readFileSync(process.argv[3], "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+          const traceIds = report
+            .filter((record) => record.kind === "sample" || record.kind === "guard")
+            .map((record) => record.traceId);
+          if (traceIds.length !== 43) throw new Error("Auth report did not retain exactly 43 probe traces");
+          const logs = sanitizeInferenceAuthTail(
+            readFileSync(process.argv[2], "utf8"),
+            traceIds,
+            process.env.GITHUB_SHA,
+          );
+          const summary = report.findLast((record) => record.kind === "summary");
+          if (!summary) throw new Error("Auth report has no summary record");
+          summary.missCacheWriteMs = summarizeDeferredCacheWrites(logs);
+          writeFileSync(
+            process.argv[3],
+            report.map((record) => JSON.stringify(record)).join("\n") + "\n",
+          );
+          writeFileSync(process.argv[4], logs.map((record) => JSON.stringify(record)).join("\n") + "\n");
+          console.log("Sanitized and correlated " + logs.length + " Worker auth traces");
+          NODE
+          sanitize_status="$?"
+          rm -f "$raw_tail" "$tail_log"
+          set -e
+          if [ "$probe_status" -ne 0 ]; then
+            echo "status=$probe_status" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=$sanitize_status" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reverify exact isolated deployment after capture
+        if: always() && steps.deployment.outputs.base-url != '' && steps.auth-probe.outcome != 'skipped'
+        env:
+          AUTH_PROBE_BASE_URL: ${{ steps.deployment.outputs.base-url }}
+          EXPECTED_GATEWAY_SHA: ${{ inputs.expected_gateway_sha }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+          let body;
+          let lastOutcome = "no response";
+          for (let attempt = 1; attempt <= 6; attempt += 1) {
+            try {
+              const response = await fetch(process.env.AUTH_PROBE_BASE_URL + "/api/health", {
+                signal: AbortSignal.timeout(30_000),
+              });
+              if (response.ok) {
+                body = await response.json();
+                break;
+              }
+              lastOutcome = "HTTP " + response.status;
+            } catch {
+              // error-policy:J1 Post-capture health is this workflow's external transport boundary.
+              lastOutcome = "request error";
+            }
+            if (attempt < 6) await sleep(5_000);
+          }
+          if (!body) throw new Error("Isolated Worker health failed after capture: " + lastOutcome);
+          if (body?.commit !== process.env.EXPECTED_GATEWAY_SHA) {
+            throw new Error("Isolated deployment changed during auth capture");
+          }
+          console.log("Isolated deployment remained on the exact checkout through capture");
+          NODE
+
+      - name: Add auth timing distribution to summary
+        if: always() && hashFiles(env.REPORT_PATH) != ''
+        run: |
+          node --input-type=module - "$REPORT_PATH" >> "$GITHUB_STEP_SUMMARY" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const records = readFileSync(process.argv[2], "utf8")
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+          const summary = records.findLast((record) => record.kind === "summary");
+          if (!summary) throw new Error("Auth report has no summary record");
+          console.log("### Exact-version inference auth timing");
+          console.log("");
+          console.log("Checkout / Worker commit: " + process.env.GITHUB_SHA);
+          console.log("");
+          console.log("| path | count | p50 | p90 | p95 | max |");
+          console.log("| --- | ---: | ---: | ---: | ---: | ---: |");
+          for (const [path, count, metric] of [
+            ["cache hit", summary.counts.hit, summary.hitAuthResolveMs],
+            ["authoritative miss", summary.counts.miss, summary.missAuthResolveMs],
+            ["miss: key lookup", summary.counts.miss, summary.missKeyLookupMs],
+            ["miss: user/org", summary.counts.miss, summary.missUserOrgMs],
+            ["miss: moderation", summary.counts.miss, summary.missModerationMs],
+            ["miss: KV read", summary.counts.miss, summary.missCacheReadMs],
+            ["miss: KV write", summary.counts.miss, summary.missCacheWriteMs],
+          ]) {
+            console.log(`| ${path} | ${count} | ${metric.p50} | ${metric.p90} | ${metric.p95} | ${metric.max} |`);
+          }
+          NODE
+
+      - name: Upload exact-version auth evidence
+        if: always() && hashFiles(env.REPORT_PATH) != '' && hashFiles(env.AUTH_LOG_PATH) != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: inference-auth-staging-${{ inputs.expected_gateway_sha }}
+          path: |
+            ${{ env.REPORT_PATH }}
+            ${{ env.AUTH_LOG_PATH }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Delete isolated auth Worker
+        if: always() && steps.auth-control.outputs.worker-name != ''
+        env:
+          AUTH_PROBE_WORKER_NAME: ${{ steps.auth-control.outputs.worker-name }}
+        run: |
+          node --input-type=module - <<'NODE'
+          const worker = process.env.AUTH_PROBE_WORKER_NAME;
+          if (!/^eliza-cloud-api-auth-[a-f0-9]{12}$/.test(worker ?? "")) {
+            throw new Error("Refusing to delete a non-diagnostic Worker name");
+          }
+          const endpoint =
+            "https://api.cloudflare.com/client/v4/accounts/" +
+            process.env.CLOUDFLARE_ACCOUNT_ID +
+            "/workers/workers/" +
+            worker;
+          const response = await fetch(endpoint, {
+            method: "DELETE",
+            headers: { Authorization: "Bearer " + process.env.CLOUDFLARE_API_TOKEN },
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (response.status === 404) {
+            console.log("Isolated diagnostic Worker was already absent");
+          } else {
+            const body = await response.json();
+            if (!response.ok || body?.success !== true) {
+              throw new Error("Failed to delete isolated diagnostic Worker");
+            }
+            console.log("Deleted isolated diagnostic Worker " + worker);
+          }
+          NODE
+
+      - name: Delete isolated suspended-auth staging fixture
+        if: always() && steps.auth-fixture.outputs.cleanup == 'true'
+        working-directory: packages/cloud/shared
+        env:
+          AUTH_PROBE_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          node --input-type=module - <<'NODE'
+          import { createHash } from "node:crypto";
+          import pg from "pg";
+
+          const sha = process.env.GITHUB_SHA;
+          if (!/^[a-f0-9]{40}$/.test(sha ?? "")) throw new Error("Invalid fixture cleanup SHA");
+          const digest = createHash("sha256").update(sha + ":organization").digest("hex").slice(0, 32);
+          const uuid = digest.slice(0, 12) + "4" + digest.slice(13, 16) + "8" + digest.slice(17);
+          const orgId = uuid.slice(0, 8) + "-" + uuid.slice(8, 12) + "-" + uuid.slice(12, 16) + "-" + uuid.slice(16, 20) + "-" + uuid.slice(20);
+          const slug = "auth-probe-" + sha.slice(0, 12);
+          const client = new pg.Client({
+            connectionString: process.env.AUTH_PROBE_DATABASE_URL,
+            application_name: "issue-16159-auth-fixture-cleanup",
+          });
+          await client.connect();
+          let deleted = false;
+          try {
+            const result = await client.query(
+              "DELETE FROM organizations WHERE id = $1 AND slug = $2 RETURNING id",
+              [orgId, slug],
+            );
+            if (result.rowCount === 0) {
+              console.log("Isolated suspended-auth fixture was already absent");
+            } else {
+              deleted = true;
+            }
+          } finally {
+            await client.end();
+          }
+          if (deleted) console.log("Deleted one isolated suspended-auth fixture");
+          NODE
+
+      - name: Enforce auth probe result
+        if: always()
+        run: |
+          status="${{ steps.auth-probe.outputs.status }}"
+          if [ -z "$status" ]; then
+            echo "::error::Auth probe did not produce a status."
+            exit 1
+          fi
+          exit "$status"

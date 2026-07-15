@@ -1,14 +1,5 @@
 /**
- * VIEWS create from a packaged install (no monorepo checkout at repoRoot).
- *
- * Before the scaffold-env fallbacks, this flow dead-ended with
- * "min-plugin template not found (tried: <repoRoot>/packages/...)" the moment
- * the agent ran outside an elizaOS checkout (packaged desktop install, wrong
- * cwd). These tests drive the real runViewsCreate handler end to end against
- * an empty repoRoot: the template must resolve from the installed `elizaos`
- * package, the plugin must land in <stateDir>/plugins, and missing
- * orchestrator/CLI prerequisites must answer with setup guidance BEFORE
- * anything is scaffolded.
+ * Exercises VIEWS create against packaged templates and state-directory plugin storage.
  */
 
 import {
@@ -24,7 +15,9 @@ import os from "node:os";
 import path from "node:path";
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import type { ViewSummary } from "./views-client";
 import { runViewsCreate } from "./views-create";
+import { locatePluginSourceDir } from "./views-plugin-source";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -123,6 +116,20 @@ function message(text: string): Memory {
 }
 
 describe("runViewsCreate from a packaged install", () => {
+	it("rejects registry plugin names that could escape the source roots", async () => {
+		await expect(
+			locatePluginSourceDir(tempDir("packaged-install-"), {
+				id: "escape",
+				label: "Escape",
+				pluginName: "@malicious/../../outside",
+				viewType: "gui",
+			} as ViewSummary),
+		).rejects.toMatchObject({
+			name: "ElizaError",
+			code: "VIEW_PLUGIN_NAME_INVALID",
+		});
+	});
+
 	it("scaffolds from the installed elizaos template into <stateDir>/plugins and dispatches", async () => {
 		const packagedRoot = tempDir("packaged-install-");
 		const stateDir = tempDir("state-");
@@ -151,6 +158,33 @@ describe("runViewsCreate from a packaged install", () => {
 		);
 		expect(pkg.name).not.toContain("__PLUGIN_NAME__");
 		expect(existsSync(path.join(workdir, "SCAFFOLD.md"))).toBe(true);
+		const index = readFileSync(path.join(workdir, "src/index.ts"), "utf8");
+		expect(index).toContain('bundlePath: "dist/views/bundle.js"');
+		expect(index).toContain('componentExport: "PluginView"');
+		expect(index).toContain('viewKind: "release"');
+		const component = readFileSync(
+			path.join(workdir, "src/views/PluginView.tsx"),
+			"utf8",
+		);
+		expect(component).toContain("VIEW_SCAFFOLD_MARKER");
+		expect(component).toContain("build me a crypto price ticker view");
+		expect(
+			readFileSync(path.join(workdir, "tests/view-render.test.tsx"), "utf8"),
+		).toContain("renderToStaticMarkup(<PluginView />)");
+		expect(
+			readFileSync(path.join(workdir, "vite.config.views.ts"), "utf8"),
+		).toContain('fileName: () => "bundle.js"');
+		expect(pkg.scripts.build).toContain(
+			"vite build --config vite.config.views.ts",
+		);
+		await expect(
+			locatePluginSourceDir(packagedRoot, {
+				id: "crypto-price-ticker",
+				label: "Crypto Price Ticker",
+				pluginName: pkg.name,
+				viewType: "gui",
+			} as ViewSummary),
+		).resolves.toBe(workdir);
 		// The coding agent was dispatched against that workdir.
 		expect(dispatched).toHaveLength(1);
 		expect(String(dispatched[0].task)).toContain(`sourceDir: ${workdir}`);

@@ -7,7 +7,28 @@
  * — the failure and the legitimately-sparse case are distinguishable.
  */
 
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import * as realDbClient from "../../../../db/client";
+import * as realDbHelpers from "../../../../db/helpers";
+import * as realCacheClient from "../../../cache/client";
+import * as realCloudBindings from "../../../runtime/cloud-bindings";
+import * as realSecrets from "../../secrets";
+import * as realProviderRegistry from "../provider-registry";
+
+// bun's `mock.module` patches the process-global module registry, and this file
+// only restored `globalThis.fetch` in afterEach — it never reinstalled the six
+// modules stubbed below. Under the batched cloud-unit runner (`--isolate`
+// occasionally fails to contain these on a memory-pressured runner) those
+// db/client + db/helpers + cache/secrets doubles otherwise bleed into later
+// suites (e.g. the oxapay payment adapter and orphan reconcilers, whose import
+// chains pull the real db layer), turning them red. Snapshot the real exports
+// now and reinstall them in afterAll so this file's stubs are strictly local.
+const realCacheClientExports = { ...realCacheClient };
+const realCloudBindingsExports = { ...realCloudBindings };
+const realProviderRegistryExports = { ...realProviderRegistry };
+const realSecretsExports = { ...realSecrets };
+const realDbClientExports = { ...realDbClient };
+const realDbHelpersExports = { ...realDbHelpers };
 
 const secretsCreateCalls: unknown[] = [];
 const insertReturning = mock(async () => [{ id: "conn-1" }]);
@@ -70,6 +91,15 @@ mock.module("../../../../db/helpers", () => ({
       }),
     }),
 }));
+
+afterAll(() => {
+  mock.module("../../../cache/client", () => realCacheClientExports);
+  mock.module("../../../runtime/cloud-bindings", () => realCloudBindingsExports);
+  mock.module("../provider-registry", () => realProviderRegistryExports);
+  mock.module("../../secrets", () => realSecretsExports);
+  mock.module("../../../../db/client", () => realDbClientExports);
+  mock.module("../../../../db/helpers", () => realDbHelpersExports);
+});
 
 function jsonResponse(body: unknown) {
   return {

@@ -1,10 +1,11 @@
-// Handles v1 cloud API v1 responses route traffic with route-local auth expectations.
+/** Handles the OpenAI-compatible Responses API with route-local authentication. */
 import { type Context, Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { createPreflightResponse } from "@/lib/middleware/cors-apps";
 import { enforceOrgRateLimit } from "@/lib/middleware/rate-limit";
+import { copyHttpTelemetryHeaders } from "@/lib/observability/http-telemetry";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { handleChatCompletionsPOST } from "../chat/completions/route";
 
@@ -242,11 +243,12 @@ app.post("/", async (c) => {
     const chatResponse = await handleChatCompletionsPOST(chatRequest, {
       skipOrgRateLimit: true,
       executionCtx: c.executionCtx,
+      traceId: c.get("traceId"),
     });
 
     if (!chatResponse.ok) {
       if (chatResponse.status >= 500) {
-        return c.json(
+        const response = c.json(
           {
             success: false,
             error: "Responses provider unavailable",
@@ -254,12 +256,18 @@ app.post("/", async (c) => {
           },
           503,
         );
+        copyHttpTelemetryHeaders(chatResponse.headers, response.headers);
+        return response;
       }
       return chatResponse;
     }
 
     const payload = (await chatResponse.json()) as ChatCompletionPayload;
-    return c.json(mapChatCompletionToResponse(payload, body.model.trim()));
+    const response = c.json(
+      mapChatCompletionToResponse(payload, body.model.trim()),
+    );
+    copyHttpTelemetryHeaders(chatResponse.headers, response.headers);
+    return response;
   } catch (error) {
     const response = failureResponse(c, error);
     if (response.status >= 500) {
@@ -275,5 +283,12 @@ app.post("/", async (c) => {
     return response;
   }
 });
+
+/** Deterministic compatibility transformations exposed for route contract tests. */
+export const __responsesRouteTestHooks = {
+  buildChatRequest,
+  mapChatCompletionToResponse,
+  toChatMessages,
+};
 
 export default app;

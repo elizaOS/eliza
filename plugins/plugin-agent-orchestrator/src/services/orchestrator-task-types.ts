@@ -542,12 +542,20 @@ export const TERMINAL_TASK_STATUSES: ReadonlySet<OrchestratorTaskStatus> =
  * - `awaiting_user` — the task needs human input to proceed (login required,
  *   auto-verify budget exhausted, corrective send failed).
  * - `completion_reported` — a sub-agent claimed done; gates on validation.
- * - `validation_passed` / `validation_failed` — the verifier's verdict.
- * - `retrying` — a recoverable crash is being re-dispatched under budget.
+ * - `validation_passed` / `validation_failed` — the verifier's verdict; legal
+ *   only from `validating`, so an automated verdict can never mint `done` (or
+ *   knock a task back to `active`) from any other state.
+ * - `human_override_passed` / `human_override_failed` — an operator verdict
+ *   with explicit evidence. Legal from every NON-terminal state (operators may
+ *   settle a task that never reached `validating`) but never from a terminal
+ *   one — reviving `done`/`failed`/`archived` is `reopened`/`restarted`, not a
+ *   validation write.
+ * - `retrying` — a recoverable crash / operator retry is being re-dispatched.
  * - `unrecoverable` — a crash with no budget left; the sole producer of `failed`.
  * - `interrupted` — an operator stop / lost-ACP interrupt.
  * - `archived` / `reopened` — operator archive lifecycle.
- * - `restarted` — an operator restart re-engages a fresh sub-agent.
+ * - `restarted` — an operator restart re-engages a fresh sub-agent; legal from
+ *   every state (restart is the universal "run it again" operator move).
  */
 export type TaskLifecycleTrigger =
   | "session_active"
@@ -556,6 +564,8 @@ export type TaskLifecycleTrigger =
   | "completion_reported"
   | "validation_passed"
   | "validation_failed"
+  | "human_override_passed"
+  | "human_override_failed"
   | "retrying"
   | "unrecoverable"
   | "interrupted"
@@ -585,46 +595,63 @@ export const TASK_STATUS_TRANSITIONS: Readonly<
     session_blocked: "blocked",
     awaiting_user: "waiting_on_user",
     completion_reported: "validating",
+    human_override_passed: "done",
+    human_override_failed: "active",
     unrecoverable: "failed",
     interrupted: "interrupted",
     archived: "archived",
+    restarted: "active",
   },
   active: {
     session_blocked: "blocked",
     awaiting_user: "waiting_on_user",
     completion_reported: "validating",
+    human_override_passed: "done",
+    human_override_failed: "active",
     retrying: "active",
     unrecoverable: "failed",
     interrupted: "interrupted",
     archived: "archived",
+    restarted: "active",
   },
   waiting_on_user: {
     session_blocked: "blocked",
     completion_reported: "validating",
+    human_override_passed: "done",
+    human_override_failed: "active",
     retrying: "active",
     unrecoverable: "failed",
     interrupted: "interrupted",
     archived: "archived",
+    restarted: "active",
   },
   blocked: {
     awaiting_user: "waiting_on_user",
     completion_reported: "validating",
+    human_override_passed: "done",
+    human_override_failed: "active",
     retrying: "active",
     unrecoverable: "failed",
     interrupted: "interrupted",
     archived: "archived",
+    restarted: "active",
   },
   validating: {
     validation_passed: "done",
     validation_failed: "active",
+    human_override_passed: "done",
+    human_override_failed: "active",
     awaiting_user: "waiting_on_user",
     retrying: "active",
     unrecoverable: "failed",
     interrupted: "interrupted",
     archived: "archived",
+    restarted: "active",
   },
   interrupted: {
     completion_reported: "validating",
+    human_override_passed: "done",
+    human_override_failed: "active",
     retrying: "active",
     restarted: "active",
     unrecoverable: "failed",

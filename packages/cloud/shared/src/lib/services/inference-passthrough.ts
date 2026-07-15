@@ -113,6 +113,7 @@ function extractUsage(record: SseUsageRecord): PassthroughUsage | null {
  */
 export async function readPassthroughStreamTail(
   stream: ReadableStream<Uint8Array>,
+  abortSignal?: AbortSignal,
 ): Promise<PassthroughStreamTail> {
   const decoder = new TextDecoder();
   const tail: PassthroughStreamTail = {
@@ -164,6 +165,20 @@ export async function readPassthroughStreamTail(
   };
 
   const reader = stream.getReader();
+  const abortMeter = () => {
+    tail.readError ??=
+      abortSignal?.reason ??
+      new DOMException("The client stopped reading the stream", "AbortError");
+    // error-policy:J7 metering cancellation records failure for settlement.
+    void reader.cancel(tail.readError).catch((error) => {
+      tail.readError ??= error;
+    });
+  };
+  if (abortSignal?.aborted) {
+    abortMeter();
+  } else {
+    abortSignal?.addEventListener("abort", abortMeter, { once: true });
+  }
   try {
     let buffer = "";
     for (;;) {
@@ -184,6 +199,7 @@ export async function readPassthroughStreamTail(
     // observes the failure via readError and settles the delivered portion.
     tail.readError = error;
   } finally {
+    abortSignal?.removeEventListener("abort", abortMeter);
     reader.releaseLock();
   }
   return tail;

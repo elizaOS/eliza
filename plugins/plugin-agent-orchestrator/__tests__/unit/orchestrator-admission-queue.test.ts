@@ -145,6 +145,9 @@ afterAll(() => {
 function acpRuntime(settings: Record<string, string | undefined> = {}) {
   const values: Record<string, string | undefined> = {
     ELIZA_ACP_TRANSPORT: undefined, // native
+    // NativeAcpClient is mocked in this queue suite; command provisioning is
+    // outside its scope and must not depend on workspace build artifacts.
+    ELIZA_ELIZAOS_ACP_COMMAND: "test-eliza-code-acp",
     ...settings,
   };
   return {

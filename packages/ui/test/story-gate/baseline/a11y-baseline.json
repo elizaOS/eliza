@@ -487,12 +487,6 @@
   "cockpit-cockpitmodepicker--experimental-armed": [
     "color-contrast"
   ],
-  "cockpit-cockpitnewsessionform--default": [
-    "color-contrast"
-  ],
-  "cockpit-cockpitnewsessionform--experimental-armed": [
-    "color-contrast"
-  ],
   "cockpit-cockpitview--empty": [
     "color-contrast"
   ],

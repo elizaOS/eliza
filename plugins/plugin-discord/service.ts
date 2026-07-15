@@ -27,6 +27,7 @@ import {
 	type MessageConnectorTarget,
 	type MessageConnectorTypingParams,
 	type MessageConnectorUserContext,
+	parseBooleanFromText,
 	type Room,
 	Service,
 	setConnectorAdminWhitelist,
@@ -110,11 +111,7 @@ import type { ICompatRuntime } from "./compat";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import type { ChannelDebouncer } from "./debouncer";
 import { DiscordVoiceTargetAudioSink } from "./discord-audio-sink";
-import {
-	handleGuildCreate as handleGuildCreateExtracted,
-	isGuildOnlyCommand,
-	transformCommandToDiscordApi,
-} from "./discord-commands";
+import { handleGuildCreate as handleGuildCreateExtracted } from "./discord-commands";
 import {
 	type DiscordServiceInternals,
 	setupDiscordEventListeners,
@@ -148,6 +145,10 @@ import {
 	type DiscordOutboundDeliveryReservation,
 	MessageManager,
 } from "./messages";
+import {
+	registerDiscordSlashCommands,
+	type SlashCommandRegistrationHost,
+} from "./slash-command-registration";
 import type {
 	BuildMemoryFromMessageOptions,
 	ChannelHistoryOptions,
@@ -210,6 +211,14 @@ const DISCORD_LOGIN_RETRY_MAX_MS = 60_000;
 // While an account is stuck in the failed state, warn at most this often so the
 // retry storm surfaces as an observable heartbeat without flooding the log.
 const DISCORD_LOGIN_HEARTBEAT_MIN_INTERVAL_MS = 30_000;
+const DISCORD_TERMINAL_INITIAL_LOGIN_CLOSE_CODES = new Set([
+	4004, // Authentication failed: the configured token cannot open a session.
+	4010, // Invalid shard: retrying the same shard parameters cannot succeed.
+	4011, // Sharding required: configuration must change before login can work.
+	4012, // Invalid API version: discord.js/package config must change.
+	4013, // Invalid intents: bot gateway intents are misconfigured.
+	4014, // Disallowed intents: privileged intents must be enabled in Discord.
+]);
 
 // Forward Content.metadata onto the persisted Memory (e.g. `transient: true`
 // for orchestrator status posts). Plain-object guard so arrays/instances don't leak through.
@@ -657,226 +666,35 @@ export class DiscordService extends Service implements IDiscordService {
 		commands: DiscordSlashCommand[],
 		accountId?: string | null,
 	): Promise<void> {
-		const state = this.requireAccountState(accountId);
-		await state.clientReadyPromise;
-
-		const client = state.client;
-		const clientApplication = client?.application;
-		if (!clientApplication) {
-			this.runtime.logger.warn(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					accountId: state.accountId,
-				},
-				"Cannot register commands - Discord client application not available",
-			);
-			return;
-		}
-
-		if (!Array.isArray(commands) || commands.length === 0) {
-			this.runtime.logger.warn(
-				{
-					src: "plugin:discord",
-					agentId: this.runtime.agentId,
-					accountId: state.accountId,
-				},
-				"Cannot register commands - no commands provided",
-			);
-			return;
-		}
-
-		for (const cmd of commands) {
-			if (!cmd.name || !cmd.description) {
-				this.runtime.logger.warn(
-					{
-						src: "plugin:discord",
-						agentId: this.runtime.agentId,
-						accountId: state.accountId,
-					},
-					"Cannot register commands - invalid command (missing name or description)",
-				);
-				return;
-			}
-		}
-
-		let registrationError: Error | null = null;
-		let registrationFailed = false;
-
-		this.commandRegistrationQueue = this.commandRegistrationQueue
-			.then(async () => {
-				const commandMap = new Map<string, DiscordSlashCommand>();
-				for (const cmd of this.slashCommands) {
-					if (cmd.name) commandMap.set(cmd.name, cmd);
-				}
-				for (const cmd of commands) {
-					if (cmd.name) commandMap.set(cmd.name, cmd);
-				}
-				this.slashCommands = Array.from(commandMap.values());
-
-				this.allowAllSlashCommands.clear();
-				for (const cmd of this.slashCommands) {
-					if (cmd.bypassChannelWhitelist) {
-						this.allowAllSlashCommands.add(cmd.name);
-					}
-				}
-
-				const generalCommands = this.slashCommands.filter(
-					(cmd) => (cmd.guildIds?.length ?? 0) === 0,
-				);
-				const globalCommands = generalCommands.filter(
-					(cmd) => !isGuildOnlyCommand(cmd),
-				);
-				const guildOnlyCommands = generalCommands.filter((cmd) =>
-					isGuildOnlyCommand(cmd),
-				);
-				const targetedGuildCommands = this.slashCommands.filter(
-					(cmd) => cmd.guildIds && cmd.guildIds.length > 0,
-				);
-
-				const transformedGlobalCommands = globalCommands.map((cmd) =>
-					transformCommandToDiscordApi(cmd),
-				);
-				const transformedGuildOnlyCommands = guildOnlyCommands.map((cmd) =>
-					transformCommandToDiscordApi(cmd),
-				);
-
-				const clientApp = client.application;
-				if (!clientApp) {
-					throw new Error("Discord client application is not available");
-				}
-
-				try {
-					await clientApp.commands.set(transformedGlobalCommands);
-				} catch (err) {
-					this.runtime.logger.error(
-						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
-							accountId: state.accountId,
-							error: err instanceof Error ? err.message : String(err),
-						},
-						"Failed to register/clear global commands",
-					);
-				}
-
-				// Per-guild registration pushes ONLY the guild-only commands: global
-				// commands live in the global scope, and Discord renders a command
-				// present in BOTH scopes twice in the slash menu. Setting the
-				// guild-only set (often empty) also clears any stale guild-scoped
-				// copies of global commands, which is what removes existing
-				// duplicates.
-				const guilds = client.guilds.cache;
-				if (guilds) {
-					await Promise.all(
-						[...guilds].map(async ([guildId, guild]) => {
-							try {
-								await clientApp.commands.set(
-									transformedGuildOnlyCommands,
-									guildId,
-								);
-							} catch (err) {
-								// error-policy:J7 one guild's failed command write must not
-								// abort the sync fan-out to the remaining guilds; the partial
-								// sync is surfaced to the agent/owner via reportError rather
-								// than left as a healthy-looking startup.
-								this.runtime.reportError(
-									"DiscordService.commandSync",
-									err instanceof Error ? err : new Error(String(err)),
-									{
-										accountId: state.accountId,
-										guildId,
-										guildName: guild.name,
-									},
-								);
-								this.runtime.logger.warn(
-									{
-										src: "plugin:discord",
-										agentId: this.runtime.agentId,
-										accountId: state.accountId,
-										guildId,
-										guildName: guild.name,
-										error: err instanceof Error ? err.message : String(err),
-									},
-									"Failed to register commands to guild",
-								);
-							}
-						}),
-					);
-				}
-
-				if (guilds && targetedGuildCommands.length > 0) {
-					await Promise.all(
-						targetedGuildCommands.flatMap((cmd) => {
-							const transformedCmd = transformCommandToDiscordApi(cmd);
-							return (cmd.guildIds ?? []).map(async (guildId) => {
-								const guild = guilds.get(guildId);
-								if (!guild) return;
-								try {
-									const fullGuild = await guild.fetch();
-									const existingCommands = await fullGuild.commands.fetch();
-									const existingCommand = existingCommands.find(
-										(c) => c.name === cmd.name,
-									);
-									if (existingCommand) {
-										await existingCommand.edit(
-											transformedCmd as Partial<
-												import("discord.js").ApplicationCommandData
-											>,
-										);
-									} else {
-										await fullGuild.commands.create(transformedCmd);
-									}
-								} catch (error) {
-									this.runtime.logger.error(
-										{
-											src: "plugin:discord",
-											agentId: this.runtime.agentId,
-											accountId: state.accountId,
-											commandName: cmd.name,
-											guildId,
-											error:
-												error instanceof Error ? error.message : String(error),
-										},
-										"Failed to register targeted command in guild",
-									);
-								}
-							});
-						}),
-					);
-				}
-
-				this.runtime.logger.info(
-					{
-						src: "plugin:discord",
-						agentId: this.runtime.agentId,
-						accountId: state.accountId,
-						newCommands: commands.length,
-						totalCommands: this.slashCommands.length,
-					},
-					"Commands registered",
-				);
-			})
-			.catch((error) => {
-				registrationFailed = true;
-				registrationError =
-					error instanceof Error ? error : new Error(String(error));
-				this.runtime.logger.error(
-					{
-						src: "plugin:discord",
-						agentId: this.runtime.agentId,
-						accountId: state.accountId,
-						error: registrationError.message,
-					},
-					"Error registering Discord commands",
-				);
-			});
-
-		await this.commandRegistrationQueue;
-
-		if (registrationFailed && registrationError) {
-			throw registrationError;
-		}
+		const service = this;
+		// `runtime` is protected on DiscordService, so the host object copies it
+		// rather than passing `this` directly (which TS structurally rejects: a
+		// protected member can't satisfy a public interface field). The mutable
+		// fields are live getters/setters so the extracted registration logic's
+		// writes (queue chaining, merged command list) land back on the service.
+		const host: SlashCommandRegistrationHost = {
+			runtime: this.runtime,
+			get slashCommands() {
+				return service.slashCommands;
+			},
+			set slashCommands(value) {
+				service.slashCommands = value;
+			},
+			allowAllSlashCommands: this.allowAllSlashCommands,
+			get commandRegistrationQueue() {
+				return service.commandRegistrationQueue;
+			},
+			set commandRegistrationQueue(value) {
+				service.commandRegistrationQueue = value;
+			},
+			requireAccountState: (id) => this.requireAccountState(id),
+		};
+		return registerDiscordSlashCommands(
+			host,
+			commands,
+			parseBooleanFromText,
+			accountId,
+		);
 	}
 
 	private async resolveDiscordTargetUserId(
@@ -1461,6 +1279,7 @@ export class DiscordService extends Service implements IDiscordService {
 			dynamicChannelIds: new Set(),
 			clientReadyPromise: null,
 			loginFailed: false,
+			loginStopRequested: false,
 		};
 
 		this.accountPool.set(state);
@@ -1473,10 +1292,23 @@ export class DiscordService extends Service implements IDiscordService {
 		// first successful ClientReady (any attempt) and only rejects on a
 		// terminal post-ready onReady failure — never on a login rejection.
 		state.clientReadyPromise = new Promise<void>((resolve, reject) => {
+			state.loginReadyReject = reject;
 			this.attemptDiscordLogin(state, account.token, 0, resolve, reject);
 		});
 
 		state.clientReadyPromise.catch((error) => {
+			if (state.loginStopRequested) {
+				this.runtime.logger.debug(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						accountId: state.accountId,
+						error: error instanceof Error ? error.message : String(error),
+					},
+					"Discord client ready promise rejected during service stop",
+				);
+				return;
+			}
 			this.runtime.logger.debug(
 				{
 					src: "plugin:discord",
@@ -1511,6 +1343,11 @@ export class DiscordService extends Service implements IDiscordService {
 		resolve: () => void,
 		reject: (error: unknown) => void,
 	): void {
+		state.loginReadyReject = reject;
+		if (state.loginStopRequested) {
+			reject(this.createLoginStoppedError(state));
+			return;
+		}
 		if (!state.client) {
 			state.client = this.createDiscordJsClient();
 		}
@@ -1524,7 +1361,15 @@ export class DiscordService extends Service implements IDiscordService {
 		// one attempt — settle exactly once so we never both resolve and retry.
 		let settled = false;
 
-		const scheduleRetry = (error: unknown): void => {
+		const settleStopped = (): void => {
+			if (settled) {
+				return;
+			}
+			settled = true;
+			reject(this.createLoginStoppedError(state));
+		};
+
+		const settleTerminal = (error: unknown, closeCode?: number): void => {
 			if (settled) {
 				return;
 			}
@@ -1534,7 +1379,54 @@ export class DiscordService extends Service implements IDiscordService {
 				this._loginFailed = true;
 				this.syncLegacyDefaultAliases(state);
 			}
-			state.client?.destroy().catch((destroyError) => {
+			state.loginReadyReject = undefined;
+			state.client?.destroy().catch((destroyError: unknown) => {
+				// error-policy:J6 best-effort teardown of the client we are replacing
+				this.runtime.logger.debug(
+					`Discord client teardown after terminal login failure for account ${state.accountId}: ${
+						destroyError instanceof Error
+							? destroyError.message
+							: String(destroyError)
+					}`,
+				);
+			});
+			state.client = null;
+			const terminalError = this.createTerminalLoginError(
+				state,
+				error,
+				closeCode,
+			);
+			this.runtime.logger.error(
+				{
+					src: "plugin:discord",
+					agentId: this.runtime.agentId,
+					accountId: state.accountId,
+					closeCode,
+					error:
+						terminalError instanceof Error
+							? terminalError.message
+							: String(terminalError),
+				},
+				"Discord initial login stopped on terminal gateway close",
+			);
+			reject(terminalError);
+		};
+
+		const scheduleRetry = (error: unknown): void => {
+			if (settled) {
+				return;
+			}
+			if (state.loginStopRequested) {
+				settleStopped();
+				return;
+			}
+			settled = true;
+			state.loginFailed = true;
+			if (state.accountId === this.defaultAccountId) {
+				this._loginFailed = true;
+				this.syncLegacyDefaultAliases(state);
+			}
+			state.client?.destroy().catch((destroyError: unknown) => {
 				// error-policy:J6 best-effort teardown of the client we are replacing
 				this.runtime.logger.debug(
 					`Discord client teardown after failed login for account ${state.accountId}: ${
@@ -1559,6 +1451,10 @@ export class DiscordService extends Service implements IDiscordService {
 			if (settled) {
 				return;
 			}
+			if (state.loginStopRequested) {
+				settleStopped();
+				return;
+			}
 			settled = true;
 			if (state.loginRetryTimer) {
 				clearTimeout(state.loginRetryTimer);
@@ -1571,6 +1467,7 @@ export class DiscordService extends Service implements IDiscordService {
 			}
 			try {
 				await this.onReadyForAccount(state.accountId, readyClient);
+				state.loginReadyReject = undefined;
 				resolve();
 			} catch (error) {
 				// A post-ready onReady failure (backfill/voice scan) is terminal, not
@@ -1580,10 +1477,23 @@ export class DiscordService extends Service implements IDiscordService {
 						error instanceof Error ? error.message : String(error)
 					}`,
 				);
+				state.loginReadyReject = undefined;
 				reject(error);
 			}
 		});
-		client.once(Events.Error, (error) => {
+		client.once(Events.ShardDisconnect, (closeEvent: unknown) => {
+			if (state.loginStopRequested) {
+				settleStopped();
+				return;
+			}
+			const closeCode = this.getGatewayCloseCode(closeEvent);
+			if (this.isTerminalInitialLoginCloseCode(closeCode)) {
+				settleTerminal(closeEvent, closeCode);
+				return;
+			}
+			scheduleRetry(closeEvent);
+		});
+		client.once(Events.Error, (error: unknown) => {
 			this.runtime.logger.error(
 				`Discord client error for account ${state.accountId}: ${
 					error instanceof Error ? error.message : String(error)
@@ -1591,7 +1501,15 @@ export class DiscordService extends Service implements IDiscordService {
 			);
 			scheduleRetry(error);
 		});
-		client.login(token).catch((error) => {
+		client.login(token).catch((error: unknown) => {
+			const closeCode = this.getGatewayCloseCode(error);
+			if (
+				this.isTerminalInitialLoginCloseCode(closeCode) ||
+				this.isTerminalInitialLoginError(error)
+			) {
+				settleTerminal(error, closeCode);
+				return;
+			}
 			scheduleRetry(error);
 		});
 	}
@@ -1601,6 +1519,62 @@ export class DiscordService extends Service implements IDiscordService {
 	private computeLoginBackoffMs(attempt: number): number {
 		const scaled = DISCORD_LOGIN_RETRY_BASE_MS * 2 ** attempt;
 		return Math.min(scaled, DISCORD_LOGIN_RETRY_MAX_MS);
+	}
+
+	private getGatewayCloseCode(closeEvent: unknown): number | undefined {
+		if (
+			typeof closeEvent === "object" &&
+			closeEvent !== null &&
+			"code" in closeEvent
+		) {
+			const code = (closeEvent as { code?: unknown }).code;
+			return typeof code === "number" ? code : undefined;
+		}
+		return undefined;
+	}
+
+	private isTerminalInitialLoginCloseCode(
+		closeCode: number | undefined,
+	): boolean {
+		return (
+			closeCode !== undefined &&
+			DISCORD_TERMINAL_INITIAL_LOGIN_CLOSE_CODES.has(closeCode)
+		);
+	}
+
+	private isTerminalInitialLoginError(error: unknown): boolean {
+		if (typeof error !== "object" || error === null || !("code" in error)) {
+			return false;
+		}
+		return (error as { code?: unknown }).code === "TokenInvalid";
+	}
+
+	private createLoginStoppedError(state: DiscordAccountClientState): Error {
+		return new Error(
+			`Discord initial login stopped before ClientReady for account ${state.accountId}`,
+		);
+	}
+
+	private createTerminalLoginError(
+		state: DiscordAccountClientState,
+		error: unknown,
+		closeCode?: number,
+	): Error {
+		const reason =
+			typeof error === "object" && error !== null && "reason" in error
+				? (error as { reason?: unknown }).reason
+				: undefined;
+		const detail =
+			typeof reason === "string" && reason.length > 0
+				? reason
+				: error instanceof Error
+					? error.message
+					: String(error);
+		return new Error(
+			`Discord initial login terminal failure for account ${state.accountId}${
+				closeCode === undefined ? "" : ` (gateway close ${closeCode})`
+			}: ${detail}`,
+		);
 	}
 
 	/**
@@ -3768,6 +3742,16 @@ export class DiscordService extends Service implements IDiscordService {
 		this.timeouts = [];
 
 		const states = this.accountPool.list();
+		for (const state of states) {
+			state.loginStopRequested = true;
+			if (state.loginRetryTimer) {
+				clearTimeout(state.loginRetryTimer);
+				state.loginRetryTimer = undefined;
+			}
+			const rejectLoginReady = state.loginReadyReject;
+			state.loginReadyReject = undefined;
+			rejectLoginReady?.(this.createLoginStoppedError(state));
+		}
 		for (const state of states) {
 			state.channelDebouncer?.destroy();
 			state.channelDebouncer = undefined;

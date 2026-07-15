@@ -175,4 +175,88 @@ describe("context renderer", () => {
 			{ content: "stable provider", stable: true },
 		]);
 	});
+
+	it("marks a provider event's segment stable per its cacheStable flag", () => {
+		const context: ContextObject = {
+			id: "ctx",
+			version: "v5",
+			events: [
+				{
+					id: "provider:STABLE_DOCTRINE",
+					type: "provider",
+					name: "STABLE_DOCTRINE",
+					text: "doctrine: ship velocity outranks deliberation",
+					cacheStable: true,
+				},
+				{
+					id: "provider:VOLATILE_FEED",
+					type: "provider",
+					name: "VOLATILE_FEED",
+					text: "feed: latest market snapshot",
+					cacheStable: false,
+				},
+				{
+					id: "provider:UNSET",
+					type: "provider",
+					name: "UNSET",
+					text: "unset: defaults to volatile",
+				},
+			],
+		};
+
+		const rendered = renderContextObject(context);
+
+		// The segment's `stable` flag now reflects the provider's declared
+		// cacheStable, so buildStageChatMessages can route the stable one into
+		// the cached system message. Unset defaults to volatile.
+		expect(
+			rendered.promptSegments.map((segment) => ({
+				id: segment.id,
+				stable: segment.stable,
+			})),
+		).toEqual([
+			{ id: "provider:STABLE_DOCTRINE", stable: true },
+			{ id: "provider:VOLATILE_FEED", stable: false },
+			{ id: "provider:UNSET", stable: false },
+		]);
+	});
+
+	it("buckets a stable provider event into the cached system message", () => {
+		const context: ContextObject = {
+			id: "ctx",
+			version: "v5",
+			events: [
+				{
+					id: "provider:STABLE_DOCTRINE",
+					type: "provider",
+					name: "STABLE_DOCTRINE",
+					text: "doctrine: ship velocity outranks deliberation",
+					cacheStable: true,
+				},
+				{
+					id: "provider:VOLATILE_FEED",
+					type: "provider",
+					name: "VOLATILE_FEED",
+					text: "feed: latest market snapshot",
+					cacheStable: false,
+				},
+			],
+		};
+
+		const messages = buildStageChatMessages({
+			contextSegments: renderContextObject(context).promptSegments,
+			stageLabel: "planner_stage",
+			instructions: "decide the next action",
+			dynamicBlocks: [],
+			stepMessages: [],
+		});
+
+		const system = messages.find((message) => message.role === "system");
+		const user = messages.find((message) => message.role === "user");
+		expect(system?.content).toContain(
+			"doctrine: ship velocity outranks deliberation",
+		);
+		expect(user?.content).toContain("feed: latest market snapshot");
+		expect(system?.content).not.toContain("feed: latest market snapshot");
+	});
 });

@@ -170,3 +170,172 @@ test("exact-price read transport FAILURE degrades to the fallback tier, never cr
   expect(result.inputCost).toBeGreaterThan(0);
   expect(result.outputCost).toBeGreaterThan(0);
 });
+
+test("starts input and output pricing reads concurrently on the inference hot path", async () => {
+  const started = new Set<string>();
+  let signalBothStarted!: () => void;
+  const bothStarted = new Promise<void>((resolve) => {
+    signalBothStarted = resolve;
+  });
+  let releaseReads!: () => void;
+  const readsReleased = new Promise<void>((resolve) => {
+    releaseReads = resolve;
+  });
+
+  pairsHandler = async (filters: unknown) => {
+    const chargeType = (filters as { chargeType: "input" | "output" }).chargeType;
+    started.add(chargeType);
+    if (started.size === 2) signalBothStarted();
+    await readsReleased;
+    return [
+      catalogRow(
+        "anthropic",
+        "anthropic/claude-opus-4-8",
+        chargeType,
+        chargeType === "input" ? 5 : 25,
+      ),
+    ];
+  };
+
+  const calculation = calculateTextCostFromCatalog({
+    model: "claude-opus-4-8",
+    provider: "anthropic",
+    inputTokens: 1_000,
+    outputTokens: 500,
+  });
+
+  await Promise.race([
+    bothStarted,
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error("pricing reads started serially")), 250),
+    ),
+  ]);
+  expect(started).toEqual(new Set(["input", "output"]));
+  releaseReads();
+
+  const result = await calculation;
+  expect(result.inputCost).toBeGreaterThan(0);
+  expect(result.outputCost).toBeGreaterThan(0);
+});
+
+test("starts both missing-side fallback reads concurrently", async () => {
+  const started = new Set<string>();
+  let signalBothStarted!: () => void;
+  const bothStarted = new Promise<void>((resolve) => {
+    signalBothStarted = resolve;
+  });
+  let releaseReads!: () => void;
+  const readsReleased = new Promise<void>((resolve) => {
+    releaseReads = resolve;
+  });
+
+  pairsHandler = async () => [];
+  listHandler = async (filters: Filters) => {
+    const chargeType = filters.chargeType as "input" | "output";
+    started.add(chargeType);
+    if (started.size === 2) signalBothStarted();
+    await readsReleased;
+    return [
+      catalogRow(
+        "anthropic",
+        "anthropic/claude-opus-4-8",
+        chargeType,
+        chargeType === "input" ? 5 : 25,
+      ),
+    ];
+  };
+
+  const calculation = calculateTextCostFromCatalog({
+    model: "claude-new-model-without-an-exact-price",
+    provider: "anthropic",
+    inputTokens: 1_000,
+    outputTokens: 500,
+  });
+
+  await Promise.race([
+    bothStarted,
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error("fallback reads started serially")), 250),
+    ),
+  ]);
+  expect(started).toEqual(new Set(["input", "output"]));
+  releaseReads();
+
+  const result = await calculation;
+  expect(result.inputCost).toBeGreaterThan(0);
+  expect(result.outputCost).toBeGreaterThan(0);
+});
+
+test("uses a valid environment fallback while skipping an unused zero-token side", async () => {
+  process.env.AI_PRICING_FALLBACK_INPUT_USD_PER_M = "2.5";
+
+  const result = await calculateTextCostFromCatalog({
+    model: "uncatalogued-input-only-model",
+    provider: "someprovider",
+    inputTokens: 1_000_000,
+    outputTokens: 0,
+  });
+
+  expect(result.baseInputCost).toBe(2.5);
+  expect(result.baseOutputCost).toBe(0);
+  expect(result.totalCost).toBe(3);
+});
+
+test("rejects invalid fallback environment rates instead of under-billing", async () => {
+  process.env.AI_PRICING_FALLBACK_INPUT_USD_PER_M = "not-a-number";
+  process.env.AI_PRICING_FALLBACK_OUTPUT_USD_PER_M = "-4";
+
+  await expect(
+    calculateTextCostFromCatalog({
+      model: "uncatalogued-model",
+      provider: "someprovider",
+      inputTokens: 1_000,
+      outputTokens: 500,
+    }),
+  ).rejects.toThrow("refusing to bill unknown-priced inference");
+
+  expect(
+    warnSpy.mock.calls.filter(
+      (call) => call[0] === "ai-pricing: ignoring invalid fallback-rate env value",
+    ),
+  ).toHaveLength(2);
+});
+
+test("rejects a non-finite token quantity before catalog access", async () => {
+  await expect(
+    calculateTextCostFromCatalog({
+      model: "claude-opus-4-8",
+      provider: "anthropic",
+      inputTokens: Number.NaN,
+      outputTokens: 1,
+    }),
+  ).rejects.toThrow("refusing to bill an invalid quantity");
+
+  expect(errorSpy.mock.calls[0]?.[0]).toBe("ai-pricing: refusing to bill an invalid quantity");
+});
+
+test("resolves and observes a persisted catalog alias", async () => {
+  pairsHandler = async (filters: unknown) => {
+    const chargeType = (filters as { chargeType: "input" | "output" }).chargeType;
+    return [
+      catalogRow(
+        "anthropic",
+        "anthropic:claude-opus-4-8",
+        chargeType,
+        chargeType === "input" ? 5 : 25,
+      ),
+    ];
+  };
+
+  const result = await calculateTextCostFromCatalog({
+    model: "claude-opus-4-8",
+    provider: "anthropic",
+    inputTokens: 1_000,
+    outputTokens: 500,
+  });
+
+  expect(result.totalCost).toBeGreaterThan(0);
+  expect(
+    warnSpy.mock.calls.filter((call) => call[0] === "ai-pricing: resolved pricing via alias"),
+  ).toHaveLength(2);
+});

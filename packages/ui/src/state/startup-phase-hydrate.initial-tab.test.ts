@@ -78,6 +78,7 @@ describe("runHydrating initial tab routing", () => {
     expect(deps.setTabRaw).not.toHaveBeenCalledWith("character-select");
     expect(deps.initialTabSetRef.current).toBe(true);
     expect(events).toContainEqual({ type: "HYDRATION_COMPLETE" });
+    expect(events.at(-1)?.type).toBe("HYDRATION_COMPLETE");
   });
 
   it("a deep-linked URL wins: no root landing, the named tab is applied", async () => {

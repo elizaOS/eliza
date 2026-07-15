@@ -3,16 +3,16 @@
  *
  * Two layers of coverage:
  *
- * 1. Pure unit tests run in the vitest worker (Node 22 in this repo's
- *    CI). They exercise the runtime detection + structured error
+ * 1. Pure unit tests run in the vitest worker. They exercise runtime
+ *    detection + the structured error
  *    surface — calling `loadElizaInferenceFfi` from a non-Bun runtime
  *    must throw `VoiceLifecycleError({code:"kernel-missing"})` rather
  *    than crashing.
  *
  * 2. Integration tests spawn a `bun` subprocess that imports
  *    `ffi-bindings.ts` and exercises every entry point against the
- *    stub `libelizainference_stub.{dylib,so}` produced by
- *    `scripts/ffi-stub/Makefile`. This validates that:
+ *    stub `libelizainference_stub.{dylib,so}` compiled from source into
+ *    a temporary directory by `scripts/ffi-stub/Makefile`. This validates that:
  *      - `dlopen` succeeds against a real shared library,
  *      - the `create`/`destroy` round-trip works,
  *      - methods that need the fused build (e.g. `ttsSynthesize`)
@@ -39,7 +39,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import type { ElizaInferenceFfi, TtsStreamChunk } from "./ffi-bindings";
 import {
@@ -185,19 +185,45 @@ const FFI_STUB_DIR = path.resolve(
 	"scripts",
 	"ffi-stub",
 );
+const STUB_BUILD_DIR = mkdtempSync(path.join(tmpdir(), "eliza-ffi-stub-"));
 const STUB_DYLIB = path.join(
-	FFI_STUB_DIR,
+	STUB_BUILD_DIR,
 	// Per-OS shared-library naming. Windows must load a PE `.dll` — attempting to
-	// `dlopen` the committed Linux `.so` fails with error 193 (ERROR_BAD_EXE_FORMAT)
-	// rather than skipping. No Windows stub is built/committed, so the `existsSync`
-	// guards below skip these integration tests on Windows (same as Linux before
-	// `make -C scripts/ffi-stub`), instead of hard-failing on a format mismatch.
+	// `dlopen` a Linux `.so` fails with error 193 (ERROR_BAD_EXE_FORMAT). The
+	// Makefile has no Windows rule, so native-library cases remain explicitly
+	// skipped there instead of loading a binary built for another platform.
 	process.platform === "darwin"
 		? "libelizainference_stub.dylib"
 		: process.platform === "win32"
 			? "libelizainference_stub.dll"
 			: "libelizainference_stub.so",
 );
+
+function buildStubLibrary(): void {
+	const result = spawnSync(
+		"make",
+		["-C", FFI_STUB_DIR, "build-output", `OUTPUT=${STUB_DYLIB}`],
+		{ encoding: "utf8" },
+	);
+	if (result.error) {
+		throw new Error(`failed to start FFI stub build: ${result.error.message}`);
+	}
+	if (result.status !== 0) {
+		throw new Error(
+			`FFI stub build exited ${result.status}\nstdout=${result.stdout}\nstderr=${result.stderr}`,
+		);
+	}
+}
+
+afterAll(() => {
+	rmSync(STUB_BUILD_DIR, { recursive: true, force: true });
+});
+
+const supportsGeneratedStub = process.platform !== "win32";
+if (supportsGeneratedStub) {
+	buildStubLibrary();
+}
+const describeGeneratedStub = supportsGeneratedStub ? describe : describe.skip;
 
 function bunOnPath(): string | null {
 	const direct = spawnSync("bun", ["--version"], { encoding: "utf8" });
@@ -342,16 +368,10 @@ describe("ffi-bindings — ABI v3-compatible surface (fake FFI)", () => {
 	});
 });
 
-describe("ffi-stub stub library — ABI v3 symbol audit", () => {
-	// The committed macOS .dylib / built-on-Linux .so must export the full
-	// ABI v3 symbol set declared in ffi.h — same set verify-symbols.mjs
-	// requires of the real fused libelizainference. Skipped when the
-	// platform artifact isn't present (run `make -C scripts/ffi-stub`).
-	const haveDylib = existsSync(STUB_DYLIB);
-	if (!haveDylib) {
-		it.skip(`stub library missing at ${STUB_DYLIB} — run 'make -C scripts/ffi-stub' first`, () => {});
-		return;
-	}
+describeGeneratedStub("ffi-stub stub library — ABI v3 symbol audit", () => {
+	// The source-built platform library must export the ABI v3 baseline symbol
+	// set declared in ffi.h — the same set verify-symbols.mjs requires of a
+	// compatible fused libelizainference.
 	it("exports every eliza_inference_* ABI v3 symbol", () => {
 		const symbols = readFileSync(STUB_DYLIB);
 		for (const name of ABI_V3_SYMBOLS) {
@@ -361,98 +381,97 @@ describe("ffi-stub stub library — ABI v3 symbol audit", () => {
 	}, 30_000);
 });
 
-describe("ffi-bindings — integration via bun subprocess against stub dylib", () => {
-	const bun = bunOnPath();
-	const haveDylib = existsSync(STUB_DYLIB);
+describeGeneratedStub(
+	"ffi-bindings — integration via bun subprocess against stub dylib",
+	() => {
+		const bun = bunOnPath();
 
-	if (!bun) {
-		it.skip("bun not on PATH — skipping integration tests", () => {});
-		return;
-	}
-	if (!haveDylib) {
-		it.skip(`stub dylib missing at ${STUB_DYLIB} — run 'make -C scripts/ffi-stub' first`, () => {});
-		return;
-	}
+		if (!bun) {
+			it.skip("bun not on PATH — skipping integration tests", () => {});
+			return;
+		}
 
-	it("stub dylib exists and is non-empty", () => {
-		expect(statSync(STUB_DYLIB).size).toBeGreaterThan(1024);
-	});
-
-	it("loads the committed v5 stub at degraded capability (no v6 speaker/diariz classifiers) and completes a create/destroy round-trip", () => {
-		const report = runBunHarness({ scenario: "create-destroy" });
-		expectHarnessOk(report);
-		// The committed stub predates the ABI-v6 speaker/diarizer fusion: it
-		// reports "5" and exports the v5 symbol set (no eliza_inference_speaker_*
-		// / _diariz_*). The binding accepts it at degraded capability — the v6
-		// classifier surfaces report unsupported — so older fused builds still
-		// load instead of hard-failing the ABI check.
-		expect(report.libraryAbiVersion).toBe("5");
-		expect(Number(report.libraryAbiVersion)).toBeLessThanOrEqual(
-			ELIZA_INFERENCE_ABI_VERSION,
-		);
-		expect(report.contextWasNonNull).toBe(true);
-	});
-
-	it("create surfaces a NULL C pointer as a structured lifecycle error", () => {
-		const report = runBunHarness({ scenario: "create-empty-fails" });
-		expectHarnessOk(report);
-		expect(report.threwLifecycleError).toBe(true);
-		expect(report.errorCode).toBe("kernel-missing");
-		expect(report.errorMessage).toMatch(/bundle_dir is required/);
-	});
-
-	it("ttsSynthesize against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error (no crash)", () => {
-		const report = runBunHarness({ scenario: "tts-not-implemented" });
-		expectHarnessOk(report);
-		expect(report.threwLifecycleError).toBe(true);
-		expect(report.errorCode).toBe("kernel-missing");
-		// The C stub's diagnostic must surface verbatim.
-		expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
-	});
-
-	it("mmapEvict against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
-		const report = runBunHarness({ scenario: "mmap-evict-not-implemented" });
-		expectHarnessOk(report);
-		expect(report.threwLifecycleError).toBe(true);
-		expect(report.errorCode).toBe("kernel-missing");
-		expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
-	});
-
-	it("mmapAcquire against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
-		const report = runBunHarness({
-			scenario: "mmap-acquire-not-implemented",
+		it("stub dylib exists and is non-empty", () => {
+			expect(statSync(STUB_DYLIB).size).toBeGreaterThan(1024);
 		});
-		expectHarnessOk(report);
-		expect(report.threwLifecycleError).toBe(true);
-		expect(report.errorCode).toBe("kernel-missing");
-		expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
-	});
 
-	it("stub advertises native VAD unsupported", () => {
-		const report = runBunHarness({ scenario: "vad-unsupported" });
-		expectHarnessOk(report);
-		expect(report.vadSupported).toBe(false);
-	});
+		it("loads the source-built v5 stub at degraded capability (no v6 speaker/diariz classifiers) and completes a create/destroy round-trip", () => {
+			const report = runBunHarness({ scenario: "create-destroy" });
+			expectHarnessOk(report);
+			// The reference stub models the ABI-v5 compatibility floor and predates
+			// the ABI-v6 speaker/diarizer fusion: it
+			// reports "5" and exports the v5 symbol set (no eliza_inference_speaker_*
+			// / _diariz_*). The binding accepts it at degraded capability — the v6
+			// classifier surfaces report unsupported — so older fused builds still
+			// load instead of hard-failing the ABI check.
+			expect(report.libraryAbiVersion).toBe("5");
+			expect(Number(report.libraryAbiVersion)).toBeLessThanOrEqual(
+				ELIZA_INFERENCE_ABI_VERSION,
+			);
+			expect(report.contextWasNonNull).toBe(true);
+		});
 
-	it("ABI mismatch detection: when binding asserts wrong version, load fails structurally", () => {
-		// The harness exposes a dial that bumps the binding's expected ABI
-		// version BEFORE calling the loader, simulating a future binding
-		// loading an older library.
-		const report = runBunHarness({ scenario: "abi-mismatch" });
-		expectHarnessOk(report);
-		expect(report.threwLifecycleError).toBe(true);
-		expect(report.errorCode).toBe("kernel-missing");
-		expect(report.errorMessage).toMatch(/ABI mismatch/);
-	});
+		it("create surfaces a NULL C pointer as a structured lifecycle error", () => {
+			const report = runBunHarness({ scenario: "create-empty-fails" });
+			expectHarnessOk(report);
+			expect(report.threwLifecycleError).toBe(true);
+			expect(report.errorCode).toBe("kernel-missing");
+			expect(report.errorMessage).toMatch(/bundle_dir is required/);
+		});
 
-	it("ELIZA_OK constant matches C side", () => {
-		// Sanity — the integration harness asserts the C stub returns
-		// ELIZA_OK for the create path; if this ever drifts, every other
-		// assertion above is suspect.
-		expect(ELIZA_OK).toBe(0);
-		expect(ELIZA_ERR_NOT_IMPLEMENTED).toBe(-1);
-	});
-});
+		it("ttsSynthesize against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error (no crash)", () => {
+			const report = runBunHarness({ scenario: "tts-not-implemented" });
+			expectHarnessOk(report);
+			expect(report.threwLifecycleError).toBe(true);
+			expect(report.errorCode).toBe("kernel-missing");
+			// The C stub's diagnostic must surface verbatim.
+			expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
+		});
+
+		it("mmapEvict against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
+			const report = runBunHarness({ scenario: "mmap-evict-not-implemented" });
+			expectHarnessOk(report);
+			expect(report.threwLifecycleError).toBe(true);
+			expect(report.errorCode).toBe("kernel-missing");
+			expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
+		});
+
+		it("mmapAcquire against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
+			const report = runBunHarness({
+				scenario: "mmap-acquire-not-implemented",
+			});
+			expectHarnessOk(report);
+			expect(report.threwLifecycleError).toBe(true);
+			expect(report.errorCode).toBe("kernel-missing");
+			expect(report.errorMessage).toMatch(/unsupported in ABI-only build/);
+		});
+
+		it("stub advertises native VAD unsupported", () => {
+			const report = runBunHarness({ scenario: "vad-unsupported" });
+			expectHarnessOk(report);
+			expect(report.vadSupported).toBe(false);
+		});
+
+		it("ABI mismatch detection: when binding asserts wrong version, load fails structurally", () => {
+			// The harness exposes a dial that bumps the binding's expected ABI
+			// version BEFORE calling the loader, simulating a future binding
+			// loading an older library.
+			const report = runBunHarness({ scenario: "abi-mismatch" });
+			expectHarnessOk(report);
+			expect(report.threwLifecycleError).toBe(true);
+			expect(report.errorCode).toBe("kernel-missing");
+			expect(report.errorMessage).toMatch(/ABI mismatch/);
+		});
+
+		it("ELIZA_OK constant matches C side", () => {
+			// Sanity — the integration harness asserts the C stub returns
+			// ELIZA_OK for the create path; if this ever drifts, every other
+			// assertion above is suspect.
+			expect(ELIZA_OK).toBe(0);
+			expect(ELIZA_ERR_NOT_IMPLEMENTED).toBe(-1);
+		});
+	},
+);
 
 /* ----------------------------------------------------------------- */
 /* Bun subprocess harness                                            */

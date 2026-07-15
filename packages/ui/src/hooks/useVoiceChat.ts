@@ -13,6 +13,7 @@
 
 import type { PluginListenerHandle } from "@capacitor/core";
 import { Capacitor } from "@capacitor/core";
+import { logger } from "@elizaos/logger";
 import {
   useCallback,
   useEffect,
@@ -22,6 +23,7 @@ import {
   useState,
 } from "react";
 import type { VoiceConfig } from "../api/client";
+import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
@@ -56,12 +58,17 @@ import {
   transcribeLocalInferenceWav,
 } from "../voice/local-asr-transcribe";
 import {
+  ensurePlaybackContextRunning,
   PlaybackFramePump,
   type PlaybackFrameTap,
+  PlaybackTapLifecycle,
+  resumeAudioContextForPlayback,
+  warmPlaybackWorklet,
 } from "../voice/playback-frame-pump";
 import {
+  configuredCloudVoiceOrigin,
   currentSharedRuntimeVoiceOrigin,
-  sharedRuntimeTtsUrl,
+  resolveForcedCloudTtsRoute,
 } from "../voice/shared-runtime-voice";
 import {
   collapseWhitespace,
@@ -84,6 +91,7 @@ import {
   DEFAULT_ELEVEN_MODEL,
   DEFAULT_ELEVEN_VOICE,
   describeTtsCloudFetchTargetForDebug,
+  describeTtsFetchTargetForDebug,
   getSpeechRecognitionCtor,
   globalAudioCache,
   isAbortError,
@@ -145,7 +153,6 @@ declare global {
 // ── Shared mutable state ─────────────────────────────────────────────
 
 let sharedAudioCtx: AudioContext | null = null;
-const AUDIO_CONTEXT_RESUME_TIMEOUT_MS = 1200;
 const CLOUD_TTS_TIMEOUT_MS = 60_000;
 const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60_000;
 /** How long the transient `micReconnected` pulse stays set after an auto-restart. */
@@ -164,27 +171,30 @@ const CAPTURE_PAUSE_GRACE_MS = 1500;
 
 // ── Internal helpers ─────────────────────────────────────────────────
 
-async function resumeAudioContextForPlayback(
-  ctx: AudioContext,
-  timeoutMs = AUDIO_CONTEXT_RESUME_TIMEOUT_MS,
-): Promise<boolean> {
-  if (ctx.state !== "suspended") return true;
+/**
+ * Direct-cloud targets whose failure has already been logged at warn. Streamed
+ * replies fire one TTS request per clip segment, so an unreachable worker
+ * would otherwise warn once per sentence; the first failure per target warns,
+ * the rest trace through ELIZA_TTS_DEBUG only.
+ */
+const warnedDirectCloudTtsTargets = new Set<string>();
 
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  try {
-    const resumed = await Promise.race([
-      ctx.resume().then(
-        () => true,
-        () => false,
-      ),
-      new Promise<boolean>((resolve) => {
-        timeoutId = setTimeout(() => resolve(false), timeoutMs);
-      }),
-    ]);
-    return resumed && ctx.state !== "suspended";
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
+/** Test hook: reset the warn-once dedupe between cases. */
+export function __resetDirectCloudTtsFallbackWarnings(): void {
+  warnedDirectCloudTtsTargets.clear();
+}
+
+function warnDirectCloudTtsFallback(target: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  ttsDebug("useVoiceChat:eliza-cloud-direct-fallback", {
+    ttsTarget: target,
+    message,
+  });
+  if (warnedDirectCloudTtsTargets.has(target)) return;
+  warnedDirectCloudTtsTargets.add(target);
+  logger.warn(
+    `[useVoiceChat] Direct cloud TTS to ${target} failed (${message}); falling back to the on-device /api/tts/cloud proxy`,
+  );
 }
 
 function shouldPreferNativeTalkMode(): boolean {
@@ -505,6 +515,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     try {
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
     } catch (error) {
@@ -1537,22 +1548,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "elevenlabs",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(ctx, "elevenlabs", markAudioBlocked);
       markAudioPlaying();
 
       const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
@@ -1755,32 +1754,37 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
+      let playStartMs = 0;
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -1821,10 +1825,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
@@ -1858,22 +1859,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "eliza-cloud",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(ctx, "eliza-cloud", markAudioBlocked);
       markAudioPlaying();
 
       const cacheKey =
@@ -1900,42 +1889,120 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           );
         }, CLOUD_TTS_TIMEOUT_MS);
         let res: Response;
+        // The URL the final `res` actually came from — the http-error debug log
+        // below must name the real target (direct worker vs proxy), not assume
+        // the proxy.
+        let fetchedTtsUrl: string;
         try {
           const apiToken = getElizaApiToken()?.trim() ?? "";
           const dbg = task.debugUtteranceContext;
-          // Shared-tier fallback (#15395): a shared-runtime agent has no
-          // `/api/tts/cloud` container route (404s), so target the cloud API
-          // worker's provider-agnostic v1 TTS route instead. Same `{ text }`
-          // JSON body, same audio-bytes response — no adaptation needed beyond
-          // the URL. Dedicated-tier agents keep `/api/tts/cloud` unchanged
-          // (sharedTtsOrigin is null for them).
-          const sharedTtsOrigin = currentSharedRuntimeVoiceOrigin();
-          const ttsTarget = sharedTtsOrigin
-            ? sharedRuntimeTtsUrl(sharedTtsOrigin)
-            : resolveApiUrl("/api/tts/cloud");
-          res = await fetchWithCsrf(ttsTarget, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-              ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
-              ...(isTtsDebugEnabled() && dbg
-                ? {
-                    "x-elizaos-tts-message-id": encodeURIComponent(
-                      dbg.messageId,
-                    ),
-                    "x-elizaos-tts-clip-segment": encodeURIComponent(
-                      task.segment,
-                    ),
-                    "x-elizaos-tts-full-preview": encodeURIComponent(
-                      dbg.fullAssistTextPreview,
-                    ),
-                  }
-                : {}),
-            },
-            body: JSON.stringify({ text }),
-            signal: controller.signal,
+          const proxyUrl = resolveApiUrl("/api/tts/cloud");
+          // Forced-cloud TTS routing (#15395 shared-tier + #16116 direct-cloud).
+          // `speakElizaCloud` only runs when the configured provider is
+          // `eliza-cloud`, so this IS the forced-cloud path:
+          //  - shared-runtime agents (no container) target the worker's
+          //    provider-agnostic v1 voice route off their active base;
+          //  - a dedicated/on-device agent with a cloud session bearer +
+          //    configured cloud origin POSTs straight to that same v1 route,
+          //    skipping its own `/api/tts/cloud` proxy (the extra phone-side
+          //    download + base64 IPC re-marshal, #16116);
+          //  - otherwise the on-device `/api/tts/cloud` proxy is preserved.
+          // Same `{ text }` body, same audio-bytes response — only the URL and
+          // bearer change.
+          const route = resolveForcedCloudTtsRoute({
+            proxyUrl,
+            proxyBearer: apiToken || null,
+            sharedRuntimeOrigin: currentSharedRuntimeVoiceOrigin(),
+            configuredCloudOrigin: configuredCloudVoiceOrigin(),
+            cloudSessionToken: getCloudAuthToken(),
           });
+          // Debug-only correlation headers. Proxy/shared paths only: they are
+          // not in the cloud worker's CORS allow-list, so sending them on the
+          // direct cross-origin POST would fail the browser preflight.
+          const debugHeaders: Record<string, string> =
+            isTtsDebugEnabled() && dbg
+              ? {
+                  "x-elizaos-tts-message-id": encodeURIComponent(dbg.messageId),
+                  "x-elizaos-tts-clip-segment": encodeURIComponent(
+                    task.segment,
+                  ),
+                  "x-elizaos-tts-full-preview": encodeURIComponent(
+                    dbg.fullAssistTextPreview,
+                  ),
+                }
+              : {};
+          const fetchViaProxy = (url: string, bearer: string | null) =>
+            fetchWithCsrf(url, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
+                ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+                ...debugHeaders,
+              },
+              body: JSON.stringify({ text }),
+              signal: controller.signal,
+            });
+          if (route.via === "direct-cloud") {
+            ttsDebug("useVoiceChat:eliza-cloud-direct-worker", {
+              ttsTarget: route.url,
+              hadBearer: Boolean(route.bearer),
+            });
+            fetchedTtsUrl = route.url;
+            try {
+              // CORS-safe bare fetch for the cross-origin cloud worker POST:
+              // Bearer auth needs no cookies, so no `credentials: "include"`
+              // (the worker answers `Access-Control-Allow-Origin: *`, which a
+              // browser rejects when combined with credentials), and no
+              // `fetchWithCsrf` (it mirrors the csrf cookie into
+              // `x-eliza-csrf`, which is not in the worker's allow-list and
+              // would fail the preflight). Authorization + Content-Type are
+              // both in `CORS_ALLOW_HEADER_NAMES`
+              // (packages/cloud/shared/src/lib/cors-constants.ts), so the
+              // preflight passes.
+              const directRes = await fetch(route.url, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  ...(route.bearer
+                    ? { Authorization: `Bearer ${route.bearer}` }
+                    : {}),
+                },
+                body: JSON.stringify({
+                  text,
+                  ...(route.voiceId ? { voiceId: route.voiceId } : {}),
+                  ...(route.modelId ? { modelId: route.modelId } : {}),
+                }),
+                signal: controller.signal,
+              });
+              if (!directRes.ok) {
+                const preview = await directRes.text().catch(() => "");
+                throw new Error(
+                  `direct cloud TTS ${directRes.status}: ${preview.slice(0, 120)}`,
+                );
+              }
+              res = directRes;
+            } catch (error) {
+              // A caller abort (barge-in / stop / the shared timeout) is not a
+              // direct-target failure — surfacing it keeps cancel semantics;
+              // retrying via the proxy would speak a cancelled clip.
+              if (controller.signal.aborted) {
+                throw error;
+              }
+              // error-policy:J4 designed degrade — the direct cloud worker
+              // failed (expired renderer bearer → 401, CORS preflight, network);
+              // the on-device proxy authenticates server-side with the agent's
+              // cloud API key, so TTS keeps working exactly as before #16116.
+              // The fallback targets `proxyUrl` directly and can never re-enter
+              // this direct branch.
+              warnDirectCloudTtsFallback(route.url, error);
+              fetchedTtsUrl = proxyUrl;
+              res = await fetchViaProxy(proxyUrl, apiToken || null);
+            }
+          } else {
+            fetchedTtsUrl = route.url;
+            res = await fetchViaProxy(route.url, route.bearer);
+          }
         } finally {
           clearTimeout(timeoutId);
           if (activeFetchAbortRef.current === controller) {
@@ -1947,7 +2014,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           const body = await res.text().catch(() => "");
           ttsDebug("useVoiceChat:eliza-cloud-http-error", {
             status: res.status,
-            ttsTarget: describeTtsCloudFetchTargetForDebug(),
+            ttsTarget: describeTtsFetchTargetForDebug(fetchedTtsUrl),
             hadBearer: Boolean(getElizaApiToken()?.trim()),
             bodyPreview: body.slice(0, 120),
           });
@@ -1979,32 +2046,37 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
+      let playStartMs = 0;
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -2023,10 +2095,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         wrappedFinish = finish;
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
@@ -2060,22 +2129,14 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext({ latencyHint: "interactive" });
+        warmPlaybackWorklet(ctx);
         sharedAudioCtx = ctx;
       }
-      if (ctx.state === "suspended") {
-        const resumed = await resumeAudioContextForPlayback(ctx);
-        if (!resumed) {
-          ttsDebug("play:audio-context-blocked", {
-            provider: "local-inference",
-            state: ctx.state,
-          });
-          markAudioBlocked();
-          throw new DOMException(
-            "Audio playback is blocked until a user gesture unlocks the audio context",
-            "NotAllowedError",
-          );
-        }
-      }
+      await ensurePlaybackContextRunning(
+        ctx,
+        "local-inference",
+        markAudioBlocked,
+      );
       markAudioPlaying();
 
       const cacheKey =
@@ -2149,32 +2210,37 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       source.connect(analyser);
       analyser.connect(ctx.destination);
       audioSourceRef.current = source;
-      // error-policy:J6 best-effort visualizer tap; if attaching the frame pump
-      // fails, audio still plays — the tap only drives the waveform decoration.
-      const playbackTap = await getPlaybackFramePump()
+      // The visualizer is optional. A first-use AudioWorklet module load can
+      // take seconds in a busy WebView, so audible playback gets only a short
+      // grace period before the tap is attached later.
+      const tapPromise = getPlaybackFramePump()
         .tapSource(ctx, source, audioBuffer)
-        .catch(() => null);
+        .catch((error) => {
+          // error-policy:J4 Playback-reference capture is optional; audio remains audible.
+          ttsDebug("playback-reference:tap-attach-failed", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        });
+      const tapLifecycle = new PlaybackTapLifecycle(playbackFrameTapRef);
+      await tapLifecycle.attach(tapPromise);
+      let playStartMs = 0;
 
       await new Promise<void>((resolve) => {
         let finished = false;
-        const playStartMs = performance.now();
+        playStartMs = performance.now();
         let wrappedFinish: (() => void) | null = null;
 
         const finish = () => {
           if (finished) return;
           finished = true;
+          tapLifecycle.finish();
           if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
             activeTaskFinishRef.current = null;
           }
           if (audioSourceRef.current === source) {
             audioSourceRef.current = null;
           }
-          if (playbackFrameTapRef.current === playbackTap) {
-            playbackFrameTapRef.current = null;
-          }
-          void playbackTap?.stop({ reset: true }).catch(() => {
-            /* best effort only */
-          });
           source.onended = null;
           try {
             source.disconnect();
@@ -2193,10 +2259,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         wrappedFinish = finish;
         activeTaskFinishRef.current = wrappedFinish;
         source.onended = wrappedFinish;
-        if (playbackTap) {
-          playbackFrameTapRef.current = playbackTap;
-          playbackTap.start(playStartMs);
-        }
+        tapLifecycle.start(playStartMs);
         speechTimeoutRef.current = setTimeout(
           wrappedFinish,
           Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),

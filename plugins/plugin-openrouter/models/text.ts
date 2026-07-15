@@ -62,7 +62,7 @@ import {
   getResponseHandlerModel,
   getSmallModel,
 } from "../utils/config";
-import { emitModelUsageEvent } from "../utils/events";
+import { emitModelUsageEvent, extractCacheTokens } from "../utils/events";
 
 const RESPONSES_ROUTED_PREFIXES = ["openai/", "anthropic/"] as const;
 const NO_SAMPLING_MODEL_PATTERNS = ["o1", "o3", "o4", "gpt-5", "gpt-5-mini"] as const;
@@ -100,6 +100,8 @@ type GenerateTextParamsWithAttachments = GenerateTextParams & {
       cacheSystem?: boolean;
       cacheBreakpoints?: unknown[];
       maxBreakpoints?: number;
+      cacheTools?: boolean;
+      cacheTrajectory?: boolean;
     };
   };
 };
@@ -300,7 +302,10 @@ function readAnthropicCacheControl(
         severity: "fatal",
       });
     }
-    return { type: "ephemeral", ...(ttl === "5m" || ttl === "1h" ? { ttl } : {}) };
+    return {
+      type: "ephemeral",
+      ...(ttl === "5m" || ttl === "1h" ? { ttl } : {}),
+    };
   }
   return anthropicOptions.cacheSystem === true ? { type: "ephemeral" } : undefined;
 }
@@ -319,9 +324,78 @@ function stripLocalAnthropicCacheOptions(
     cacheSystem: _cacheSystem,
     cacheBreakpoints: _cacheBreakpoints,
     maxBreakpoints: _maxBreakpoints,
+    cacheTools: _cacheTools,
+    cacheTrajectory: _cacheTrajectory,
     ...wireOptions
   } = anthropicOptions;
   return Object.keys(wireOptions).length > 0 ? wireOptions : undefined;
+}
+
+function applyToolsCacheBreakpoint(tools: ToolSet, cacheControl: AnthropicCacheControl): ToolSet {
+  const names = Object.keys(tools);
+  const lastName = names[names.length - 1];
+  if (!lastName) return tools;
+  const lastTool = tools[lastName];
+  if (!isRecord(lastTool)) return tools;
+  const existingProviderOptions = isRecord(lastTool.providerOptions)
+    ? lastTool.providerOptions
+    : {};
+  const existingAnthropic = isRecord(existingProviderOptions.anthropic)
+    ? existingProviderOptions.anthropic
+    : {};
+  if (existingAnthropic.cacheControl) return tools;
+  return {
+    ...tools,
+    [lastName]: {
+      ...lastTool,
+      providerOptions: {
+        ...existingProviderOptions,
+        anthropic: { ...existingAnthropic, cacheControl },
+      },
+    },
+  } as ToolSet;
+}
+
+const TRAJECTORY_CACHEABLE_PART_TYPES = new Set(["text", "tool-call", "tool-result"]);
+
+function applyTrajectoryTailCacheBreakpoint(
+  messages: ModelMessage[],
+  cacheControl: AnthropicCacheControl
+): ModelMessage[] {
+  const lastIndex = messages.length - 1;
+  const last = messages[lastIndex];
+  if (!last || (last.role !== "assistant" && last.role !== "tool")) return messages;
+  if (!Array.isArray(last.content) || last.content.length === 0) return messages;
+  const parts = last.content as unknown[];
+  const lastPart = parts[parts.length - 1];
+  if (
+    !isRecord(lastPart) ||
+    typeof lastPart.type !== "string" ||
+    !TRAJECTORY_CACHEABLE_PART_TYPES.has(lastPart.type)
+  )
+    return messages;
+  const existingProviderOptions = isRecord(lastPart.providerOptions)
+    ? lastPart.providerOptions
+    : {};
+  const existingAnthropic = isRecord(existingProviderOptions.anthropic)
+    ? existingProviderOptions.anthropic
+    : {};
+  if (existingAnthropic.cacheControl) return messages;
+  const nextMessages = [...messages];
+  nextMessages[lastIndex] = {
+    ...last,
+    content: [
+      ...parts.slice(0, -1),
+      {
+        ...lastPart,
+        providerOptions: {
+          ...existingProviderOptions,
+          anthropic: { ...existingAnthropic, cacheControl },
+        },
+      },
+    ],
+  } as ModelMessage;
+  return nextMessages;
 }
 
 function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
@@ -329,7 +403,10 @@ function getRuntimeCacheControl(runtime: IAgentRuntime): AnthropicCacheControl {
   return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
 }
 
-type AnthropicCacheBreakpoint = { segmentIndex: number; cacheControl: AnthropicCacheControl };
+type AnthropicCacheBreakpoint = {
+  segmentIndex: number;
+  cacheControl: AnthropicCacheControl;
+};
 
 function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBreakpoint {
   return (
@@ -344,11 +421,13 @@ function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBrea
 
 function readAnthropicCacheBreakpoints(
   anthropicOptions: Record<string, unknown> | undefined,
-  maxBreakpoints: number
+  maxBreakpoints: number,
+  keepLatest = false
 ): AnthropicCacheBreakpoint[] {
   const raw = anthropicOptions?.cacheBreakpoints;
-  if (!Array.isArray(raw)) return [];
-  return raw.filter(isAnthropicCacheBreakpoint).slice(0, maxBreakpoints);
+  if (!Array.isArray(raw) || maxBreakpoints <= 0) return [];
+  const valid = raw.filter(isAnthropicCacheBreakpoint);
+  return keepLatest ? valid.slice(-maxBreakpoints) : valid.slice(0, maxBreakpoints);
 }
 
 /**
@@ -363,7 +442,10 @@ function buildSegmentedPromptUserContent(
   cacheBreakpoints: AnthropicCacheBreakpoint[]
 ): TextPart[] {
   if (cacheBreakpoints.length === 0) {
-    return promptSegments.map((seg) => ({ type: "text" as const, text: seg.content }));
+    return promptSegments.map((seg) => ({
+      type: "text" as const,
+      text: seg.content,
+    }));
   }
   const breakpointMap = new Map<number, AnthropicCacheControl>(
     cacheBreakpoints.map((bp) => [bp.segmentIndex, bp.cacheControl])
@@ -477,7 +559,11 @@ function buildStructuredOutput(responseSchema: unknown): NativeOutput {
 
   const schemaOptions =
     responseSchema && typeof responseSchema === "object" && "schema" in responseSchema
-      ? (responseSchema as { schema: unknown; name?: string; description?: string })
+      ? (responseSchema as {
+          schema: unknown;
+          name?: string;
+          description?: string;
+        })
       : { schema: responseSchema };
 
   return {
@@ -628,18 +714,31 @@ function buildGenerateParams(
   // Collect cacheBreakpoints for per-segment user-content injection.
   // Only used on the prompt-only path (no messages) together with promptSegments.
   // maxBreakpoints caps the number of slots used (Anthropic allows up to 3 user-content).
-  const maxBreakpoints =
+  const requestedMaxBreakpoints =
     typeof anthropicOptions?.maxBreakpoints === "number" &&
     Number.isInteger(anthropicOptions.maxBreakpoints) &&
     anthropicOptions.maxBreakpoints >= 0
       ? anthropicOptions.maxBreakpoints
       : 3;
-  const cacheBreakpoints = readAnthropicCacheBreakpoints(anthropicOptions, maxBreakpoints);
+  const reservesToolsBreakpoint =
+    isAnthropic &&
+    anthropicCacheControl &&
+    anthropicOptions?.cacheTools !== false &&
+    Boolean(paramsWithAttachments.tools && Object.keys(paramsWithAttachments.tools).length > 0);
+  const maxBreakpoints = Math.min(requestedMaxBreakpoints, reservesToolsBreakpoint ? 2 : 3);
+  const cacheBreakpoints = readAnthropicCacheBreakpoints(
+    anthropicOptions,
+    maxBreakpoints,
+    Boolean(reservesToolsBreakpoint)
+  );
   const promptSegments = Array.isArray(
     (paramsWithAttachments as { promptSegments?: unknown }).promptSegments
   )
-    ? ((paramsWithAttachments as { promptSegments?: Array<{ content: string; stable?: boolean }> })
-        .promptSegments ?? [])
+    ? ((
+        paramsWithAttachments as {
+          promptSegments?: Array<{ content: string; stable?: boolean }>;
+        }
+      ).promptSegments ?? [])
     : [];
 
   let finalWireMessages = wireMessages;
@@ -707,7 +806,7 @@ function buildGenerateParams(
   };
 
   // Strip local Anthropic cache options if we injected message-level cache
-  const wireAnthropicOptions = shouldInjectMessageLevelCache
+  const wireAnthropicOptions = isAnthropic
     ? stripLocalAnthropicCacheOptions(anthropicOptions)
     : anthropicOptions;
 
@@ -720,11 +819,26 @@ function buildGenerateParams(
     Object.keys(mergedProviderOptions).length > 0 ? mergedProviderOptions : undefined;
   const normalizedTools = readToolSet(paramsWithAttachments.tools);
   const normalizedToolChoice = readToolChoice(paramsWithAttachments.toolChoice);
+  const cacheToolsEnabled = anthropicOptions?.cacheTools !== false;
+  const wireTools =
+    isAnthropic && normalizedTools && cacheToolsEnabled && anthropicCacheControl
+      ? applyToolsCacheBreakpoint(normalizedTools, anthropicCacheControl)
+      : normalizedTools;
+  const cacheTrajectoryEnabled = anthropicOptions?.cacheTrajectory !== false;
+  const finalPromptOrMessages: NativePrompt =
+    isAnthropic && anthropicCacheControl && cacheTrajectoryEnabled && promptOrMessages.messages
+      ? {
+          messages: applyTrajectoryTailCacheBreakpoint(
+            promptOrMessages.messages,
+            anthropicCacheControl
+          ),
+        }
+      : promptOrMessages;
 
   type NativeProviderOptions = NativeTextParams["providerOptions"];
   const generateParams: NativeTextParams = {
     model: openrouter.chat(modelName) as LanguageModel,
-    ...promptOrMessages,
+    ...finalPromptOrMessages,
     // Omit system parameter when we injected message-level cache to prevent duplication
     ...(shouldInjectMessageLevelCache ? {} : { system: systemPrompt }),
     ...(supportsSampling
@@ -736,7 +850,7 @@ function buildGenerateParams(
         }
       : {}),
     ...(resolvedMaxOutput !== undefined ? { maxOutputTokens: resolvedMaxOutput } : {}),
-    ...(normalizedTools ? { tools: normalizedTools } : {}),
+    ...(wireTools ? { tools: wireTools } : {}),
     ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
     ...(paramsWithAttachments.responseSchema
       ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
@@ -835,6 +949,10 @@ function buildNativeTextResult(result: {
     cachedInputTokens?: number;
     cacheReadInputTokens?: number;
     cacheCreationInputTokens?: number;
+    // Real location of cache-write counts on `ai@^6` results — see
+    // `extractCacheTokens` in utils/events.ts for why the fields above alone
+    // under-report.
+    inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number };
   };
 }): NativeGenerateTextResult {
   const inputTokens = result.usage?.inputTokens ?? result.usage?.promptTokens ?? 0;
@@ -848,8 +966,7 @@ function buildNativeTextResult(result: {
     };
   }
 
-  const cacheRead = result.usage.cacheReadInputTokens ?? result.usage.cachedInputTokens;
-  const cacheCreation = result.usage.cacheCreationInputTokens;
+  const { cacheRead, cacheCreation } = extractCacheTokens(result.usage);
 
   const usage: NormalizedUsage = {
     promptTokens: inputTokens,

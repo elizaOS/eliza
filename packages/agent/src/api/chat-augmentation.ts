@@ -221,6 +221,18 @@ export async function maybeAugmentChatMessageWithDocuments(
   const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt || !runtime.agentId) return message;
 
+  // A slash/`!` command is an instruction to the command layer, never a
+  // document question. Rewriting it into the contextual-documents envelope
+  // breaks the deterministic command path: the pre-LLM shortcut gate matches
+  // the ORIGINAL text, but the command action's validate() re-reads
+  // message.content.text — which by then holds the envelope, so validate
+  // silently fails and the turn falls through to LLM improvisation whenever
+  // the command happens to be embedding-similar to a stored document (e.g.
+  // "/help", "/model" on an agent with model-related docs).
+  if (userPrompt.startsWith("/") || userPrompt.startsWith("!")) {
+    return message;
+  }
+
   // Hosts that run with an empty-vector embedding handler — e.g. Capacitor mobile
   // where loading the bge GGUF on top of the chat GGUF would OOM the
   // process — get only zero-vector embeddings back. The retrieval branch

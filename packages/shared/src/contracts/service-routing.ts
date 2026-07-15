@@ -50,6 +50,9 @@ import { asRecord } from "../type-guards.js";
 // of leaking to OpenRouter when an agent falls back to this default.
 export const DEFAULT_CEREBRAS_TEXT_MODEL = "gemma-4-31b";
 export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
+// The large tier is a genuinely stronger model than small: gemma serves the
+// cheap high-volume slots while GLM-4.7 carries planner/reasoning duty.
+export const DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL = "zai-glm-4.7";
 export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = DEFAULT_CEREBRAS_TEXT_MODEL;
 
 const ELIZA_CLOUD_ROUTE_BASE = {
@@ -203,7 +206,8 @@ function normalizeServiceRouteAccountStrategy(
   return value === "priority" ||
     value === "round-robin" ||
     value === "least-used" ||
-    value === "quota-aware"
+    value === "quota-aware" ||
+    value === "reset-soonest"
     ? value
     : undefined;
 }

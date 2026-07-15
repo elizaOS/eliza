@@ -267,10 +267,10 @@ README → "GitHub credentials".
 | `ELIZA_AGENT_SELECTION_STRATEGY` | `fixed` | Adapter selection policy: `fixed` or `dynamic` |
 | `ELIZA_ELIZAOS_ACP_COMMAND` | `eliza-code-acp` | Native elizaOS ACP command |
 | `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command |
-| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command |
-| `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional Codex ACP `sandbox_mode` override: `read-only`, `workspace-write`, or `danger-full-access` |
+| `ELIZA_CODEX_ACP_COMMAND` | `npx -y @agentclientprotocol/codex-acp@1.1.2` | Native Codex ACP command. The manifest default and the legacy `@zed-industries` default select the isolated managed successor; any other custom command is executed verbatim. |
+| `ELIZA_CODEX_ACP_SANDBOX_MODE` / `ELIZA_CODEX_SANDBOX_MODE` | unset | Optional managed Codex ACP sandbox mode: `read-only`, `workspace-write`, or `danger-full-access`. The successor receives these as `INITIAL_AGENT_MODE`; custom commands are not rewritten. |
 | `ELIZA_CODEX_ACP_NO_LANDLOCK_SANDBOX_MODE` | `danger-full-access` | Codex ACP sandbox mode used when Linux Landlock is unavailable |
-| `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional Codex ACP `approval_policy` override |
+| `ELIZA_CODEX_ACP_APPROVAL_POLICY` / `ELIZA_CODEX_APPROVAL_POLICY` | `never` for no-Landlock fallback, otherwise unset | Optional managed Codex ACP approval policy. Setting it requires an explicit sandbox mode; the successor supports the fixed pairs `read-only`/`on-request`, `workspace-write`/`on-request`, and `danger-full-access`/`never`. |
 | `ELIZA_CODEX_ACP_LANDLOCK` / `ELIZA_CODEX_LANDLOCK` | auto-detect | Force Landlock detection for containers/tests: `1`/`true` or `0`/`false` |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command |
@@ -288,6 +288,7 @@ README → "GitHub credentials".
 | `ELIZA_ORCHESTRATOR_SMITHERS` | `1` (enabled) | Set to `0` to disable the smithers task execution path and fall back to direct prompt |
 | `ELIZA_ORCHESTRATOR_AUTO_GOAL_VERIFY` | unset | Enable LLM-based goal verification on task completion |
 | `ELIZA_REQUIRE_GOAL_CONTRACT` | `1` (enabled) | Auto-generate 3-5 measurable default acceptance criteria for a criteria-free, non-trivial task so the verifier always fires. Set to `0` to keep criteria-free tasks criteria-free (prior behavior). |
+| `ELIZA_ORCHESTRATOR_RESIDUALS_GATE` | `1` (enabled) | Deterministic completion-residuals gate: before a task may promote to `done`, the reporting session's git workspace must have no uncommitted changes or unpushed commits, and a valid CompletionEnvelope must report no failing tests or residual risks. Fail-closed (a missing/non-git claimed workspace blocks). Set to `0` to disable. |
 | `SMITHERS_DB_PROVIDER` | unset | Database provider for smithers task storage |
 | `SMITHERS_DB_URL` | unset | Database URL for smithers task storage |
 | `SMITHERS_DB_DATA_DIR` | unset | Data directory for smithers file-backed storage |
@@ -361,6 +362,12 @@ README → "GitHub credentials".
   commands unless deployment config overrides them.
 - **`git-workspace-service`** is a peer dependency (version `0.4.5`). It must be
   installed alongside this plugin.
+- **Workspace ACP auto-provisioning requires proven OS supervision.** Linux
+  hosts use util-linux `flock` for exclusion and GNU `timeout` for
+  build-process-group termination. When either is unavailable, the service
+  skips the workspace build and falls back to `ELIZA_ELIZAOS_ACP_COMMAND`. Do
+  not replace this fail-closed boundary with PID/mtime stale-lock reclamation
+  or direct-child-only timeout handling (#16169).
 - **Route registration side-effect.** `register-routes.ts` is re-exported as
   `codingAgentRouteRegistration` from `index.ts` to prevent Bun's tree-shaker
   from dropping it. Do not convert it back to a bare side-effect import.

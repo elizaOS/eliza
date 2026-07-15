@@ -1,5 +1,17 @@
 // Exercises signup grant guard behavior with deterministic cloud-shared lib fixtures.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+
+import * as realDbClient from "../../db/client";
+import * as realLogger from "../utils/logger";
+
+// bun's `mock.module` patches the process-global module registry. Under the
+// batched cloud-unit runner (`--isolate` occasionally fails to contain these on
+// a memory-pressured runner), these db/client + logger doubles otherwise bleed
+// into later suites that import the real modules, turning them red. Snapshot the
+// real exports now and reinstall them in afterAll so this file's stubs are
+// strictly local.
+const realDbClientExports = { ...realDbClient };
+const realLoggerExports = { ...realLogger };
 
 // A minimal in-memory Postgres stand-in that models the load-bearing semantics:
 //   1. `pg_advisory_xact_lock(...)` serializes transactions sharing a lock key,
@@ -148,6 +160,11 @@ const {
   parseGrantCount,
   FREE_GRANT_IP_LIMITS,
 } = await import("./signup-grant-guard");
+
+afterAll(() => {
+  mock.module("../../db/client", () => realDbClientExports);
+  mock.module("../utils/logger", () => realLoggerExports);
+});
 
 const CAP = FREE_GRANT_IP_LIMITS.MAX_FREE_GRANTS_PER_IP_DAILY;
 

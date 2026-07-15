@@ -13,7 +13,10 @@ import type {
   CommandArgSource,
   SlashCommandCatalogItem,
 } from "../api/client-types-commands";
-import { isApiError } from "../api/client-types-core";
+import {
+  isApiError,
+  type ModelCatalogProviders,
+} from "../api/client-types-core";
 import {
   resolveSettingsSectionToken,
   SETTINGS_SECTION_SUGGESTIONS,
@@ -21,11 +24,16 @@ import {
 import { useBootConfig } from "../config/boot-config-react.hooks";
 import { COMMAND_PALETTE_EVENT, dispatchNavigateViewEvent } from "../events";
 import { useAvailableViews } from "../hooks/useAvailableViews";
+import { useProtectedAgentProbesEnabled } from "../hooks/useProtectedAgentProbesEnabled";
 import type { Tab } from "../navigation";
 import { useAppSelectorShallow } from "../state";
 import { getElizaApiBase, getElizaApiToken } from "../utils/eliza-globals";
 import { loadSavedCustomCommands, normalizeSlashCommandName } from "./index";
-import { filterCommandsForSurface } from "./slash-menu";
+import { buildModelChoiceLabels, resolveModelChoices } from "./model-choices";
+import {
+  filterCommandsForSurface,
+  type SlashArgChoiceContext,
+} from "./slash-menu";
 
 /** The surface the dashboard chat composer renders on. */
 const GUI_SURFACE = "gui" as const;
@@ -126,8 +134,17 @@ export interface SlashCommandController {
   error: boolean;
   /** Whether natural-language navigate/client shortcuts may short-circuit send. */
   naturalShortcutsEnabled: boolean;
-  /** Resolve dynamic argument completions for a named source. */
-  resolveChoices: (source: CommandArgSource) => string[];
+  /**
+   * Resolve dynamic argument completions for a named source. `context` carries
+   * the completion position so positional sources (the "models" grammar) can
+   * return per-subcommand values; sources without positional needs ignore it.
+   */
+  resolveChoices: (
+    source: CommandArgSource,
+    context?: SlashArgChoiceContext,
+  ) => string[];
+  /** Display label for a resolved choice ("" when the value speaks for itself). */
+  describeChoice: (source: CommandArgSource, choice: string) => string;
   /** Map a user-typed settings token to a canonical section id. */
   resolveSection: (token: string) => string | undefined;
   /**
@@ -239,8 +256,23 @@ export function useSlashCommandController(
   >([]);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState(false);
+  const [modelCatalog, setModelCatalog] =
+    React.useState<ModelCatalogProviders | null>(null);
+  // The catalog load hits the protected GET /api/commands + /api/custom-actions;
+  // hold it until probes are allowed so fresh Cloud onboarding fires no 401
+  // (#16242). Re-runs to populate the menu once the gate opens post-sign-in.
+  const probesEnabled = useProtectedAgentProbesEnabled();
 
   React.useEffect(() => {
+    if (!probesEnabled) {
+      // No session yet on the shared Cloud app — present a resolved-empty
+      // catalog (not a perpetual spinner) and skip the protected fetches.
+      setServerCommands([]);
+      setCustomCommands([]);
+      setLoadError(false);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setLoadError(false);
@@ -289,6 +321,30 @@ export function useSlashCommandController(
           return [];
         });
       if (cancelled) return;
+      // The model catalog only matters when a command actually declares a
+      // "models" dynamic arg (a cold GET /api/models can fan out provider
+      // fetches server-side), and it must not delay the command menu — fetched
+      // in parallel, resolved into state whenever it lands.
+      if (
+        catalog.some((command) =>
+          command.args.some((arg) => arg.dynamicChoices === "models"),
+        )
+      ) {
+        void client
+          .getModelsCatalog()
+          .then((models) => {
+            if (!cancelled) setModelCatalog(models.catalog.providers);
+          })
+          .catch((error: unknown) => {
+            // error-policy:J4 model completions degrade to none with the
+            // failure logged; an unauthenticated 401/403 is expected (#14663).
+            if (isExpectedCatalogAuthError(error)) return;
+            console.error(
+              "[useSlashCommandController] Failed to load the model catalog; model completions will be empty",
+              error,
+            );
+          });
+      }
       setServerCommands(catalog);
       const saved = loadSavedCustomCommands().map((c) =>
         savedCommandToCommand(c.name),
@@ -303,7 +359,7 @@ export function useSlashCommandController(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [probesEnabled]);
 
   const commands = React.useMemo(
     // Server catalog wins over custom/saved on alias collisions; then gate by
@@ -321,17 +377,29 @@ export function useSlashCommandController(
     bootConfig.shortcutFlags?.naturalLanguage === true;
 
   const resolveChoices = React.useCallback(
-    (source: CommandArgSource): string[] => {
+    (source: CommandArgSource, context?: SlashArgChoiceContext): string[] => {
       switch (source) {
         case "settings-sections":
           return SETTINGS_SECTION_SUGGESTIONS;
         case "views":
           return views.map((v) => v.id);
+        case "models":
+          return resolveModelChoices(modelCatalog, context);
         default:
           return [];
       }
     },
-    [views],
+    [views, modelCatalog],
+  );
+
+  const modelChoiceLabels = React.useMemo(
+    () => buildModelChoiceLabels(modelCatalog),
+    [modelCatalog],
+  );
+  const describeChoice = React.useCallback(
+    (source: CommandArgSource, choice: string): string =>
+      source === "models" ? (modelChoiceLabels.get(choice) ?? "") : "",
+    [modelChoiceLabels],
   );
 
   const navigateTab = React.useCallback(
@@ -391,6 +459,7 @@ export function useSlashCommandController(
       error: loadError,
       naturalShortcutsEnabled,
       resolveChoices,
+      describeChoice,
       resolveSection: resolveSettingsSectionToken,
       isAuthorized,
       isElevated,
@@ -406,6 +475,7 @@ export function useSlashCommandController(
       loadError,
       naturalShortcutsEnabled,
       resolveChoices,
+      describeChoice,
       isAuthorized,
       isElevated,
       navigateTab,

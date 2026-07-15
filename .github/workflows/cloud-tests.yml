@@ -18,6 +18,10 @@ on:
       - "packages/cloud/infra/**"
       - "packages/scripts/cloud/**"
       - "packages/scripts/test-cloud-run.mjs"
+      - "packages/scripts/test-cloud-run-helpers.mjs"
+      - "packages/scripts/test-cloud-run-flush.self-test.mjs"
+      - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
+      - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -33,6 +37,10 @@ on:
       - "packages/cloud/infra/**"
       - "packages/scripts/cloud/**"
       - "packages/scripts/test-cloud-run.mjs"
+      - "packages/scripts/test-cloud-run-helpers.mjs"
+      - "packages/scripts/test-cloud-run-flush.self-test.mjs"
+      - "packages/scripts/test-cloud-run-helpers.self-test.mjs"
+      - "packages/scripts/test-cloud-run-preflight.self-test.mjs"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
@@ -66,7 +74,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
       - name: Lint and typecheck cloud workspaces
         run: bun run verify:cloud
@@ -87,8 +95,21 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
+      # Guards the batch runner's output-flush contract: a failing batch must
+      # surface its diagnostic instead of being swallowed by a process.exit()
+      # that truncates buffered stdout (the #16062 silent exit-1 regression).
+      - name: Batch runner flush-integrity self-test
+        run: node packages/scripts/test-cloud-run-flush.self-test.mjs
+      - name: Batch runner helper self-test
+        run: node packages/scripts/test-cloud-run-helpers.self-test.mjs
+      # Guards the clean-install preflight (#16187): `bun run test:cloud` must
+      # build the missing @elizaos/core dist / generated keyword modules itself
+      # instead of dying in `Cannot find module` cascades after a frozen
+      # install with ELIZA_SKIP_ARTIFACT_SYNC=1.
+      - name: Batch runner clean-install preflight self-test
+        run: node packages/scripts/test-cloud-run-preflight.self-test.mjs
       - name: Run cloud unit tests
         run: bun run test:cloud
 
@@ -106,7 +127,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
@@ -121,7 +142,7 @@ jobs:
     env:
       NODE_ENV: test
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"

@@ -225,6 +225,11 @@ const clientThreadReference: CodingAgentTaskThread = {
   latestRepo: "owner/repo",
   projectId: "project-1",
   latestActivityAt: 1,
+  latestSessionModel: "claude-opus-4-7",
+  latestAccountProviderId: "anthropic",
+  latestAccountId: "acct-1",
+  latestAccountLabel: "Personal Max",
+  parentTaskId: "parent-1",
   decisionCount: 1,
   usage: {
     inputTokens: 0,

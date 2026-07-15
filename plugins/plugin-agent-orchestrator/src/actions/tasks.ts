@@ -1,28 +1,7 @@
 /**
- * TASKS — single Pattern C parent action that subsumes the orchestrator's
- * task-agent lifecycle, workspace lifecycle, GitHub issue management, and
- * coding-task archive/reopen surface.
- *
- * Each sub-action is exposed as a simile of the parent and dispatched to a
- * per-action runner in this file.
- *
- * Actions:
- *   create               — CREATE_AGENT_TASK / START_CODING_TASK
- *   spawn_agent          — SPAWN_AGENT
- *   send                 — SEND_TO_AGENT
- *   stop_agent           — STOP_AGENT
- *   list_agents          — LIST_AGENTS
- *   cancel               — CANCEL_TASK
- *   history              — TASK_HISTORY
- *   control              — TASK_CONTROL (action: pause|resume|stop|continue|archive|reopen)
- *   share                — TASK_SHARE
- *   provision_workspace  — CREATE_WORKSPACE / PROVISION_WORKSPACE
- *   submit_workspace     — SUBMIT_WORKSPACE / FINALIZE_WORKSPACE
- *   manage_issues        — MANAGE_ISSUES (action: create|list|get|update|comment|close|reopen|add_labels)
- *   archive              — ARCHIVE_CODING_TASK
- *   reopen               — REOPEN_CODING_TASK
- *
- * @module actions/tasks
+ * Unified action surface for orchestrator task, agent, workspace, and issue operations.
+ * Simile actions normalize into a small operation vocabulary before their
+ * runners enforce access, routing, lifecycle, and session-event invariants.
  */
 
 import * as fs from "node:fs";
@@ -40,6 +19,7 @@ import type {
 import {
   ChannelType,
   logger as coreLogger,
+  ElizaError,
   MESSAGE_SOURCE_SUB_AGENT,
   stringToUuid,
 } from "@elizaos/core";
@@ -268,10 +248,52 @@ function additionalSessionMetadata(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
 ): Record<string, unknown> {
+  const validator = objectValue(params.validator ?? content.validator);
+  const maxRetries = params.maxRetries ?? content.maxRetries;
+  const onVerificationFail =
+    typeof (params.onVerificationFail ?? content.onVerificationFail) ===
+    "string"
+      ? (params.onVerificationFail ?? content.onVerificationFail)
+      : undefined;
   return {
     ...(objectValue(content.metadata) ?? {}),
     ...(objectValue(params.metadata) ?? {}),
+    ...(validator ? { validator } : {}),
+    ...(typeof maxRetries === "number" && Number.isInteger(maxRetries)
+      ? { maxRetries }
+      : {}),
+    ...(onVerificationFail ? { onVerificationFail } : {}),
   };
+}
+
+/**
+ * Only the app-verification retry contract may retain a completed one-shot
+ * session. The model-facing boolean is deliberately ignored: a live session
+ * needs a concrete validator, a bounded retry budget, and a locked verifier
+ * workdir matching the task workdir so the coordinator has an owner that will
+ * either retry or close it.
+ */
+function hasVerifiedRetryLifecycle(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+): boolean {
+  const validator = objectValue(metadata.validator);
+  const validatorParams = objectValue(validator?.params);
+  const taskWorkdir = pickString(params, content, "workdir");
+  const validatorWorkdir = plainString(validatorParams?.workdir);
+  const maxRetries = metadata.maxRetries;
+  return (
+    validator?.service === "app-verification" &&
+    (validator.method === "verifyApp" || validator.method === "verifyPlugin") &&
+    metadata.onVerificationFail === "retry" &&
+    typeof maxRetries === "number" &&
+    Number.isInteger(maxRetries) &&
+    maxRetries > 0 &&
+    pickBoolean(params, content, "lockWorkdir") === true &&
+    taskWorkdir !== undefined &&
+    validatorWorkdir === taskWorkdir
+  );
 }
 
 function inheritedResolvedWorkdirRoute(
@@ -586,37 +608,51 @@ function looksLikePersonalLifeOpsTask(text: string): boolean {
 // Durable variant of runPromptAndClose: drives the spawned session through the
 // Smithers engine (a persisted, crash-resumable run) instead of a single direct
 // prompt. Single-turn by default, so behaviour matches; enabled by default (see
-// shouldUseSmithersTaskRunner). Emits the same session events as runPromptAndClose.
+// shouldUseSmithersTaskRunner). Terminal events come from AcpService itself;
+// structural test doubles and older services are bridged here when needed.
 async function runPromptViaSmithers(
   service: ReturnType<typeof getAcpService> & {},
   session: SpawnResult,
   task: string,
   timeoutMs: number | undefined,
   model: string | undefined,
+  keepAliveAfterComplete: boolean,
 ): Promise<void> {
   const startedAt = Date.now();
+  let completed = false;
   try {
     const { lastResponse } = await runDurableTask(service, session, task, {
       timeoutMs,
       model,
     });
-    emitSessionEvent(service, session.sessionId, "task_complete", {
-      response: lastResponse ?? "",
-      durationMs: Date.now() - startedAt,
-    });
+    if (service.emitsPromptTerminalEvents !== true) {
+      emitSessionEvent(service, session.sessionId, "task_complete", {
+        response: lastResponse,
+        durationMs: Date.now() - startedAt,
+      });
+    }
+    completed = true;
   } catch (error) {
-    // error-policy:J2 emit an observable 'error' session event, then rethrow.
-    emitSessionEvent(service, session.sessionId, "error", {
-      message: failureMessage(error),
-    });
+    // error-policy:J1 action boundary translates a durable-run failure into the
+    // legacy session-event contract before propagating it to TASKS.
+    if (service.emitsPromptTerminalEvents !== true) {
+      emitSessionEvent(service, session.sessionId, "error", {
+        message: failureMessage(error),
+      });
+    }
     throw error;
   } finally {
-    try {
-      await service.stopSession(session.sessionId);
-    } finally {
-      emitSessionEvent(service, session.sessionId, "stopped", {
-        sessionId: session.sessionId,
-      });
+    // A custom validator owns the session after the successful terminal event
+    // so it can send a corrective prompt on the same ACP conversation. Error
+    // paths still close here because no validator completion can follow them.
+    if (!(completed && keepAliveAfterComplete)) {
+      try {
+        await service.stopSession(session.sessionId);
+      } finally {
+        emitSessionEvent(service, session.sessionId, "stopped", {
+          sessionId: session.sessionId,
+        });
+      }
     }
   }
 }
@@ -627,37 +663,69 @@ async function runPromptAndClose(
   task: string,
   timeoutMs: number | undefined,
   model: string | undefined,
+  keepAliveAfterComplete: boolean,
 ): Promise<void> {
   const startedAt = Date.now();
+  let completed = false;
   try {
     const result = service.sendPrompt
       ? await service.sendPrompt(session.sessionId, task, { timeoutMs, model })
       : await service.sendToSession(session.sessionId, task);
-    if (result.error || result.stopReason === "error") {
-      emitSessionEvent(service, session.sessionId, "error", {
-        message: result.error ?? "acpx prompt ended with stopReason error",
+    if (
+      result.error ||
+      result.stopReason === "error" ||
+      result.stopReason === "cancelled" ||
+      result.stopReason === "stopped"
+    ) {
+      const message =
+        result.error ??
+        (result.stopReason === "cancelled"
+          ? "ACP task prompt was cancelled"
+          : result.stopReason === "stopped"
+            ? "ACP task prompt was stopped"
+            : "ACP task prompt failed");
+      throw new ElizaError(message, {
+        code:
+          result.stopReason === "cancelled"
+            ? "ACP_TASK_PROMPT_CANCELLED"
+            : result.stopReason === "stopped"
+              ? "ACP_TASK_PROMPT_STOPPED"
+              : "ACP_TASK_PROMPT_FAILED",
+        context: {
+          sessionId: session.sessionId,
+          stopReason: result.stopReason,
+        },
+        severity: "ephemeral",
+      });
+    }
+    if (service.emitsPromptTerminalEvents !== true) {
+      emitSessionEvent(service, session.sessionId, "task_complete", {
+        response: result.finalText || result.response,
+        durationMs: result.durationMs || Date.now() - startedAt,
         stopReason: result.stopReason,
       });
-      throw new Error(result.error ?? "acpx prompt failed");
     }
-    emitSessionEvent(service, session.sessionId, "task_complete", {
-      response: result.finalText || result.response,
-      durationMs: result.durationMs || Date.now() - startedAt,
-      stopReason: result.stopReason,
-    });
+    completed = true;
   } catch (error) {
-    // error-policy:J2 emit an observable 'error' session event, then rethrow.
-    emitSessionEvent(service, session.sessionId, "error", {
-      message: failureMessage(error),
-    });
+    // error-policy:J1 action boundary translates one prompt failure into the
+    // legacy session-event contract before propagating it to TASKS. AcpService
+    // advertises structural terminal events and therefore bypasses this bridge.
+    if (service.emitsPromptTerminalEvents !== true) {
+      emitSessionEvent(service, session.sessionId, "error", {
+        message: failureMessage(error),
+      });
+    }
     throw error;
   } finally {
-    try {
-      await service.stopSession(session.sessionId);
-    } finally {
-      emitSessionEvent(service, session.sessionId, "stopped", {
-        sessionId: session.sessionId,
-      });
+    // See runPromptViaSmithers: validator retries need the same live session.
+    if (!(completed && keepAliveAfterComplete)) {
+      try {
+        await service.stopSession(session.sessionId);
+      } finally {
+        emitSessionEvent(service, session.sessionId, "stopped", {
+          sessionId: session.sessionId,
+        });
+      }
     }
   }
 }
@@ -721,6 +789,11 @@ async function runCreate(
   const timeoutMs = getTimeoutMs(params, content);
   const baseLabel = pickString(params, content, "label");
   const extraMetadata = additionalSessionMetadata(params, content);
+  const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
+    params,
+    content,
+    extraMetadata,
+  );
   const originConnectorMessageId = connectorMessageIdFromMemory(
     message,
     content,
@@ -787,6 +860,7 @@ async function runCreate(
           source: content.source,
           workdirRouteId: route?.id,
           workdirRoute: route,
+          keepAliveAfterComplete,
         },
       });
       if (shouldUseSmithersTaskRunner()) {
@@ -796,6 +870,7 @@ async function runCreate(
           taskWithRouteHints,
           timeoutMs,
           model,
+          keepAliveAfterComplete,
         );
       } else {
         await runPromptAndClose(
@@ -804,6 +879,7 @@ async function runCreate(
           taskWithRouteHints,
           timeoutMs,
           model,
+          keepAliveAfterComplete,
         );
       }
       return { session, label, agentType, originalTask: taskWithRouteHints };
@@ -956,17 +1032,13 @@ async function runCreate(
     for (const [index, session] of sessions.entries()) {
       const hint = sessionAttachHints[index];
       try {
-        // Every session that resolved fulfilled above was driven through
-        // runPromptAndClose / runPromptViaSmithers, which stop it in their
-        // `finally` before we reach here. So the `SpawnResult.status` captured
-        // at spawn time is a stale `ready` snapshot — passing it would make
-        // attachSession falsely promote the task to `active` and count a
-        // finished single-turn session as live. Read the real post-run status
-        // from the service instead; a fulfilled outcome always means the
-        // session was stopped, so fall back to a terminal status if its record
-        // is already gone.
+        // The spawn snapshot can be stale after the prompt: ordinary sessions
+        // are stopped, while validator-owned sessions deliberately remain
+        // ready for a corrective turn. Read the real state so the task widget
+        // reflects whichever lifecycle owns the session.
         const refreshed = await service.getSession(session.sessionId);
-        const effectiveStatus = refreshed?.status ?? "stopped";
+        const effectiveStatus =
+          refreshed?.status ?? (keepAliveAfterComplete ? "ready" : "stopped");
         await taskService.attachSession(threadId, {
           sessionId: session.sessionId,
           agentType: session.agentType,
@@ -1176,12 +1248,12 @@ async function runSpawnAgent(
     const approvalPreset = parseApproval(
       pickString(params, content, "approvalPreset"),
     );
-    const keepAliveAfterComplete = pickBoolean(
+    const extraMetadata = additionalSessionMetadata(params, content);
+    const keepAliveAfterComplete = hasVerifiedRetryLifecycle(
       params,
       content,
-      "keepAliveAfterComplete",
+      extraMetadata,
     );
-    const extraMetadata = additionalSessionMetadata(params, content);
     // Structural only: the planner emits deferUserReply when the user asked for
     // no interim reply. No regex over the task text (the model judges intent).
     const deferUserReply =
@@ -3433,13 +3505,6 @@ export const tasksAction: Action & {
         type: "string" as const,
         enum: ["readonly", "standard", "permissive", "autonomous"],
       },
-    },
-    {
-      name: "keepAliveAfterComplete",
-      description:
-        "Keep session alive after completion for action=spawn_agent.",
-      required: false,
-      schema: { type: "boolean" as const },
     },
     {
       name: "deferUserReply",

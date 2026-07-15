@@ -55,6 +55,7 @@ from .rewards import (
     enhanced_composite_reward,
 )
 from .rubric_loader import has_custom_rubric, normalize_archetype
+from .state_paths import default_trajectory_dir
 from .temporal_credit import attribute_temporal_credit
 from .tokenization_utils import tokenize_for_trainer
 
@@ -95,7 +96,8 @@ class FeedEnvConfig(BaseEnvConfig):
         description="HuggingFace dataset split to use: 'raw', 'preferences', 'sft'",
     )
     local_export_dir: str = Field(
-        default_factory=lambda: os.getenv("LOCAL_EXPORT_DIR", ""),
+        default_factory=lambda: os.getenv("LOCAL_EXPORT_DIR", "").strip()
+        or default_trajectory_dir(),
         description="Local Feed trajectory export directory when trajectory_source='local_export'",
     )
 

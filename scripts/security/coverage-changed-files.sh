@@ -35,7 +35,8 @@ fi
 # and pull in heavy harnesses that the changed-file coverage gate must not.
 is_excluded_test() {
   case "$1" in
-    *.e2e.test.*|*.live.test.*|packages/app/test/android/*.android.spec.*) return 0 ;;
+    *.e2e.test.*|*.live.test.*|*.real.test.*|*.real.e2e.test.*|packages/app/test/android/*.android.spec.*) return 0 ;;
+    packages/test/cloud-e2e/tests/*.spec.*) return 0 ;;
     */test/e2e/*|test/e2e/*|*/e2e/*.test.*|e2e/*.test.*) return 0 ;;
   esac
   return 1
@@ -45,14 +46,14 @@ changed_source() {
   {
     git diff --name-only --diff-filter=ACMRT "$MERGE_BASE" "$HEAD" -- \
       '*.ts' '*.tsx' '*.js' '*.jsx' '*.mjs' '*.cjs' '*.mts' '*.cts' \
-      | grep -vE '(^|/)(__tests__|__e2e__|test|tests)/|[.](test|spec|stories)[.](ts|tsx|js|jsx|mjs|cjs|mts|cts)$|(^|/)vitest[.]config[.](ts|js|mts|mjs|cts|cjs)$' || true
+      | grep -vE '(^|/)(__tests__|__e2e__|test|tests|generated)/|([.-]e2e|[.]generated|[.]test|[.]spec|[.]stories)[.](ts|tsx|js|jsx|mjs|cjs|mts|cts)$|(^|/)(vite|vitest)[.]config([.][^.]+)?[.](ts|js|mts|mjs|cts|cjs)$|(^|/)scripts/playwright[^/]*[.](ts|js|mts|mjs|cts|cjs)$' || true
   } \
     | while IFS= read -r file; do
         [ -f "$file" ] || continue
         grep -Fxq "$file" "$NODE_SELF_TEST_MANIFEST" && continue
         echo "$file"
       done \
-    | node --no-warnings "$SCRIPT_DIR/coverage-source-classifier.mjs"
+    | node --no-warnings "$SCRIPT_DIR/coverage-source-classifier.mjs" --base "$MERGE_BASE"
 }
 
 changed_tests() {

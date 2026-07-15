@@ -1,7 +1,8 @@
 /**
  * POST /api/auth/cli-session/[sessionId]/complete
- * Complete CLI authentication for a session. Called by the web UI after
- * the user logs in.
+ * Completes a pending CLI login after an authenticated user approves it in
+ * the web UI. Session and API-key authentication share the same ownership
+ * checks so headless clients can exercise the production boundary too.
  */
 
 import { Hono } from "hono";
@@ -9,7 +10,7 @@ import {
   failureResponse,
   ValidationError,
 } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { cliAuthSessionsService } from "@/lib/services/cli-auth-sessions";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -23,7 +24,7 @@ app.post("/", async (c) => {
       return c.json({ error: "Session ID is required" }, 400);
     }
 
-    const user = await requireUserWithOrg(c);
+    const user = await requireUserOrApiKeyWithOrg(c);
 
     const result = await cliAuthSessionsService.completeAuthentication(
       sessionId,
@@ -33,9 +34,13 @@ app.post("/", async (c) => {
 
     return c.json({
       success: true,
-      apiKey: result.apiKey,
       keyPrefix: result.keyPrefix,
       expiresAt: result.expiresAt,
+      // Idempotent completion: true when this call found the session already
+      // authenticated by the same user (no new key minted). The browser treats
+      // both cases as success; the CLI still reads plaintext via the poll
+      // endpoint. See cli-auth-sessions.ts completeAuthentication.
+      alreadyAuthenticated: result.alreadyAuthenticated,
     });
   } catch (error) {
     logger.error("Error completing CLI authentication:", error);

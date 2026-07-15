@@ -3,15 +3,22 @@
  * and its auth-failure triage (isAuthFailure): least-used vs priority vs config-
  * vs env-driven selection, per-agent env patches (CLAUDE_CODE_OAUTH_TOKEN, a
  * materialized CODEX_HOME/auth.json + config.toml with a TOML-injection guard,
- * CEREBRAS_API_KEY), usage attribution, and rate-limit skipping. Runs against a
- * real temp ELIZA_HOME / ELIZA_STATE_DIR and real account storage — no mocked pool.
+ * active-generation discovery, CEREBRAS_API_KEY), usage attribution, and rate-
+ * limit skipping. Runs against a real temp ELIZA_HOME / ELIZA_STATE_DIR and real
+ * account storage — no mocked pool.
  */
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { saveAccount } from "@elizaos/auth/account-storage";
+import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
   configureDefaultAccountPoolSelection,
@@ -28,6 +35,7 @@ let home: string;
 let prevHome: string | undefined;
 let prevStateDir: string | undefined;
 let prevCodexModel: string | undefined;
+let prevCodexEffort: string | undefined;
 let prevCodingStrategy: string | undefined;
 
 function writeAccount(
@@ -51,6 +59,22 @@ function writeAccount(
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...record,
+  });
+}
+
+function writeExpiringAccount(
+  providerId: AccountCredentialProvider,
+  id: string,
+  credentials: { access: string; refresh: string; expires: number },
+): void {
+  saveAccount({
+    id,
+    providerId,
+    label: id,
+    source: "oauth",
+    credentials,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
   });
 }
 
@@ -83,6 +107,8 @@ beforeEach(() => {
   prevHome = process.env.ELIZA_HOME;
   prevStateDir = process.env.ELIZA_STATE_DIR;
   prevCodexModel = process.env.ELIZA_CODEX_MODEL;
+  prevCodexEffort = process.env.ELIZA_CODEX_EFFORT;
+  delete process.env.ELIZA_CODEX_EFFORT;
   prevCodingStrategy = process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
   delete process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
   home = mkdtempSync(path.join(tmpdir(), "coding-acct-"));
@@ -102,6 +128,8 @@ afterEach(() => {
   else process.env.ELIZA_STATE_DIR = prevStateDir;
   if (prevCodexModel === undefined) delete process.env.ELIZA_CODEX_MODEL;
   else process.env.ELIZA_CODEX_MODEL = prevCodexModel;
+  if (prevCodexEffort === undefined) delete process.env.ELIZA_CODEX_EFFORT;
+  else process.env.ELIZA_CODEX_EFFORT = prevCodexEffort;
   if (prevCodingStrategy === undefined) {
     delete process.env.ELIZA_CODING_ACCOUNT_STRATEGY;
   } else {
@@ -109,9 +137,30 @@ afterEach(() => {
   }
   configureDefaultAccountPoolSelection();
   rmSync(home, { recursive: true, force: true });
+  globalThis.fetch = originalFetch;
 });
 
+const originalFetch = globalThis.fetch;
+
 describe("coding-account-bridge", () => {
+  it("derives identity only from a structurally valid three-segment id token", () => {
+    const encodedPayload = Buffer.from(
+      JSON.stringify({ email: "valid@example.com" }),
+    ).toString("base64url");
+    writeAccount("openai-codex", "valid-jwt", "valid-access", {
+      idToken: `e30.${encodedPayload}.signature`,
+    });
+    writeAccount("openai-codex", "extra-segment", "invalid-access", {
+      idToken: `e30.${encodedPayload}.signature.untrusted`,
+    });
+
+    const pool = getDefaultAccountPool();
+    expect(pool.get("valid-jwt", "openai-codex")?.email).toBe(
+      "valid@example.com",
+    );
+    expect(pool.get("extra-segment", "openai-codex")?.email).toBeUndefined();
+  });
+
   it("selects the least-used Claude subscription and returns CLAUDE_CODE_OAUTH_TOKEN", async () => {
     writeAccount("anthropic-subscription", "busy", "sk-ant-oat-BUSY");
     writeAccount("anthropic-subscription", "idle", "sk-ant-oat-IDLE");
@@ -166,17 +215,35 @@ describe("coding-account-bridge", () => {
       organizationId: "acct_123",
       idToken: "codex-id-token-1",
     });
+    const canonical = loadAccount("openai-codex", "codex-1");
+    if (!canonical) throw new Error("expected canonical Codex account");
     const bridge = getDefaultAccountPool() && getCodingAgentSelectorBridge();
     const sel = await bridge?.select("codex");
     expect(sel?.providerId).toBe("openai-codex");
     const codexHome = sel?.envPatch.CODEX_HOME;
     expect(codexHome).toBeTruthy();
+    const accountHome = path.join(home, "auth", "_codex-home", "codex-1");
+    const activeHome = readFileSync(
+      path.join(accountHome, "active-home"),
+      "utf-8",
+    ).trim();
+    expect(path.resolve(accountHome, activeHome)).toBe(
+      path.resolve(codexHome as string),
+    );
+    const [generationDir, generationName] = activeHome.split(path.sep);
+    expect(generationDir).toBe("generations");
+    expect(generationName).toMatch(/^[a-f0-9]{24}$/);
     const authJson = JSON.parse(
       readFileSync(path.join(codexHome as string, "auth.json"), "utf-8"),
     );
     expect(authJson.tokens.access_token).toBe("codex-access-1");
     expect(authJson.tokens.account_id).toBe("acct_123");
     expect(authJson.auth_mode).toBe("chatgpt");
+    // The timestamp identifies the source credential generation. Selection
+    // must not stamp "now" and make a stale materialization look newer.
+    expect(authJson.last_refresh).toBe(
+      new Date(canonical.updatedAt).toISOString(),
+    );
     // id_token must be present or codex-acp fails "Authentication required".
     expect(authJson.tokens.id_token).toBe("codex-id-token-1");
     // A minimal config.toml with a model — without it codex-acp falls back to a
@@ -213,9 +280,219 @@ describe("coding-account-bridge", () => {
       path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
       "utf-8",
     );
-    // Clean single model line, no injected table/keys.
-    expect(cfg).toMatch(/^model = "[\w.:/-]+"\n$/);
+    // Clean model line + the fixed store pin, no injected table/keys.
+    expect(cfg).toMatch(
+      /^model = "[\w.:/-]+"\ncli_auth_credentials_store = "file"\n$/,
+    );
     expect(cfg).not.toContain("[evil]");
+  });
+
+  it("prefers the app-configured ELIZA_CODEX_MODEL_POWERFUL over the machine config", async () => {
+    writeAccount("openai-codex", "cx-pow", "cx-pow-access", {
+      organizationId: "a",
+    });
+    const prevOsHome = process.env.HOME;
+    const prevPowerful = process.env.ELIZA_CODEX_MODEL_POWERFUL;
+    // Isolated HOME carrying a machine ~/.codex/config.toml — without the
+    // POWERFUL read this operator config silently won on every spawn.
+    process.env.HOME = home;
+    mkdirSync(path.join(home, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(home, ".codex", "config.toml"),
+      'model = "gpt-5.5"\n',
+    );
+    delete process.env.ELIZA_CODEX_MODEL;
+    process.env.ELIZA_CODEX_MODEL_POWERFUL = "gpt-5.6-terra";
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toContain('model = "gpt-5.6-terra"');
+    } finally {
+      if (prevOsHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevOsHome;
+      if (prevPowerful === undefined) {
+        delete process.env.ELIZA_CODEX_MODEL_POWERFUL;
+      } else {
+        process.env.ELIZA_CODEX_MODEL_POWERFUL = prevPowerful;
+      }
+    }
+  });
+
+  it("lets an explicit ELIZA_CODEX_MODEL pin beat the app-configured model", async () => {
+    writeAccount("openai-codex", "cx-pin", "cx-pin-access", {
+      organizationId: "a",
+    });
+    const prevPowerful = process.env.ELIZA_CODEX_MODEL_POWERFUL;
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.5";
+    process.env.ELIZA_CODEX_MODEL_POWERFUL = "gpt-5.6-terra";
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toContain('model = "gpt-5.5"');
+    } finally {
+      if (prevPowerful === undefined) {
+        delete process.env.ELIZA_CODEX_MODEL_POWERFUL;
+      } else {
+        process.env.ELIZA_CODEX_MODEL_POWERFUL = prevPowerful;
+      }
+    }
+  });
+
+  it("falls back to gpt-5.6-sol when no model is configured anywhere", async () => {
+    writeAccount("openai-codex", "cx-fb", "cx-fb-access", {
+      organizationId: "a",
+    });
+    // Isolate os.homedir() so a real ~/.codex/config.toml on the test machine
+    // can't supply the operator-model fallback and mask the compiled default.
+    const prevOsHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toBe(
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
+    } finally {
+      if (prevOsHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevOsHome;
+    }
+  });
+
+  it("writes model_reasoning_effort for a valid ELIZA_CODEX_EFFORT", async () => {
+    writeAccount("openai-codex", "cx-eff", "cx-eff-access", {
+      organizationId: "a",
+    });
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.6-terra";
+    process.env.ELIZA_CODEX_EFFORT = "xhigh";
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    const cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toContain('model = "gpt-5.6-terra"');
+    expect(cfg).toContain('model_reasoning_effort = "xhigh"');
+  });
+
+  it("skips the effort line for an invalid ELIZA_CODEX_EFFORT (keeps the model pin)", async () => {
+    writeAccount("openai-codex", "cx-bad", "cx-bad-access", {
+      organizationId: "a",
+    });
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.6-terra";
+    process.env.ELIZA_CODEX_EFFORT = 'banana"\n[evil]\nx = "1';
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    const cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toBe(
+      'model = "gpt-5.6-terra"\ncli_auth_credentials_store = "file"\n',
+    );
+    expect(cfg).not.toContain("model_reasoning_effort");
+    expect(cfg).not.toContain("[evil]");
+  });
+
+  it("omits max and ultra outside the managed codex-acp effort contract", async () => {
+    writeAccount("openai-codex", "cx-ultra", "cx-ultra-access", {
+      organizationId: "a",
+    });
+    process.env.ELIZA_CODEX_MODEL = "gpt-5.6-sol";
+    for (const effort of ["ultra", "max"]) {
+      process.env.ELIZA_CODEX_EFFORT = effort;
+      __resetDefaultAccountPoolForTests();
+      const sel = await (
+        getDefaultAccountPool() && getCodingAgentSelectorBridge()
+      )?.select("codex");
+      const cfg = readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+        "utf-8",
+      );
+      expect(cfg).toBe(
+        'model = "gpt-5.6-sol"\ncli_auth_credentials_store = "file"\n',
+      );
+    }
+  });
+
+  it("adopts a CLI-rotated refresh token at materialize time instead of clobbering it", async () => {
+    // The session file is the only surviving copy after a one-time refresh
+    // token rotates, so materialization must adopt it before writing.
+    writeAccount("openai-codex", "cx-rot", "cx-rot-access", {
+      organizationId: "a",
+    });
+    const codexHome = path.join(home, "auth", "_codex-home", "cx-rot");
+    mkdirSync(codexHome, { recursive: true });
+    writeFileSync(
+      path.join(codexHome, "auth.json"),
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        OPENAI_API_KEY: null,
+        tokens: {
+          access_token: `e30.${Buffer.from(
+            JSON.stringify({
+              exp: Math.floor((Date.now() + 86_400_000) / 1000),
+            }),
+          ).toString("base64url")}.sig`,
+          refresh_token: "cx-rot-access-refresh-ROTATED",
+          account_id: "a",
+        },
+        // Adoption is newer-only so re-linking an account cannot be undone by
+        // a stale session file.
+        last_refresh: new Date(Date.now() + 60_000).toISOString(),
+      }),
+    );
+
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    expect(sel?.accountId).toBe("cx-rot");
+
+    const pool = getDefaultAccountPool();
+    const adopted = pool.list("openai-codex").find((a) => a.id === "cx-rot");
+    expect(adopted).toBeTruthy();
+    const authOnDisk = JSON.parse(
+      readFileSync(
+        path.join(sel?.envPatch.CODEX_HOME as string, "auth.json"),
+        "utf-8",
+      ),
+    ) as { tokens?: { refresh_token?: string } };
+    expect(authOnDisk.tokens?.refresh_token).toBe(
+      "cx-rot-access-refresh-ROTATED",
+    );
+    expect(readFileSync(path.join(codexHome, "active-home"), "utf-8")).toBe(
+      ".\n",
+    );
+  });
+
+  it("pins cli_auth_credentials_store=file so rotated tokens land in auth.json", async () => {
+    writeAccount("openai-codex", "cx-store", "cx-store-access", {
+      organizationId: "a",
+    });
+    const sel = await (
+      getDefaultAccountPool() && getCodingAgentSelectorBridge()
+    )?.select("codex");
+    const cfg = readFileSync(
+      path.join(sel?.envPatch.CODEX_HOME as string, "config.toml"),
+      "utf-8",
+    );
+    expect(cfg).toContain('cli_auth_credentials_store = "file"');
   });
 
   it("rotates opencode across least-used cerebras-api accounts → CEREBRAS_API_KEY", async () => {
@@ -374,6 +651,77 @@ describe("coding-account-bridge", () => {
       exclude: ["pin-a"],
     });
     expect(failover?.accountId).toBe("pin-b");
+  });
+
+  it("uses the default-buffer fallback when a refreshed Claude token is still below the requested fresh TTL", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "short-fresh-access",
+        refresh_token: "short-fresh-refresh",
+        expires_in: 35 * 60,
+      }),
+    }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    writeExpiringAccount("anthropic-subscription", "short-fresh", {
+      access: "older-access",
+      refresh: "older-refresh",
+      expires: Date.now() + 10 * 60_000,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    const selection = await bridge?.select("claude");
+
+    expect(selection?.accountId).toBe("short-fresh");
+    expect(selection?.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe(
+      "short-fresh-access",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      getDefaultAccountPool().get("short-fresh", "anthropic-subscription")
+        ?.health,
+    ).not.toBe("needs-reauth");
+  });
+
+  it("marks needs-reauth when Claude refresh fails with invalid_grant", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      text: async () => '{"error":"invalid_grant"}',
+      json: async () => ({ error: "invalid_grant" }),
+    })) as unknown as typeof fetch;
+    writeExpiringAccount("anthropic-subscription", "revoked", {
+      access: "still-valid-but-too-short",
+      refresh: "revoked-refresh",
+      expires: Date.now() + 10 * 60_000,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    await expect(bridge?.select("claude")).resolves.toBeNull();
+    expect(
+      getDefaultAccountPool().get("revoked", "anthropic-subscription")?.health,
+    ).toBe("needs-reauth");
+  });
+
+  it("does not mark needs-reauth when Claude refresh fails with a transient 5xx", async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      text: async () => "503 Service Unavailable",
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    writeExpiringAccount("anthropic-subscription", "outage", {
+      access: "expired-access",
+      refresh: "valid-refresh",
+      expires: Date.now() - 60_000,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+
+    await expect(bridge?.select("claude")).resolves.toBeNull();
+    expect(
+      getDefaultAccountPool().get("outage", "anthropic-subscription")?.health,
+    ).not.toBe("needs-reauth");
   });
 });
 

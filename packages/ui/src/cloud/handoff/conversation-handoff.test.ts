@@ -5,6 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type ConversationHandoffDeps,
   type HandoffMessage,
+  HandoffTransientError,
+  isRetryableHandoffHttpStatus,
+  isTransientHandoffError,
   runConversationHandoff,
   toHandoffMessages,
   waitForPersonalAgent,
@@ -105,6 +108,152 @@ describe("runConversationHandoff", () => {
     expect(result.status).toBe("switched");
     expect(result.imported).toBe(0);
     expect(deps.switchToPersonal).toHaveBeenCalledTimes(1);
+  });
+
+  // #15901: the control plane reports `running` minutes before the runtime
+  // proxy routes to the container, so the import 404s during that window. The
+  // orchestrator must spend its budget retrying, not hard-fail in seconds.
+  it("retries a TRANSIENT import failure within the budget and still switches", async () => {
+    let importCalls = 0;
+    const deps = baseDeps({
+      importToPersonal: vi.fn(async () => {
+        importCalls += 1;
+        if (importCalls < 3) {
+          throw new HandoffTransientError(
+            "conversation import failed (HTTP 404)",
+          );
+        }
+        return { inserted: SAMPLE.length };
+      }),
+      intervalMs: 10,
+      timeoutMs: 10_000,
+      now: (() => {
+        let t = 0;
+        return () => {
+          t += 10;
+          return t;
+        };
+      })(),
+    });
+
+    const result = await runConversationHandoff(deps);
+    expect(result).toEqual({ status: "switched", imported: 2 });
+    expect(importCalls).toBe(3);
+    expect(deps.switchToPersonal).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-polls readiness between transient retries (base may still be warming)", async () => {
+    let importCalls = 0;
+    const deps = baseDeps({
+      importToPersonal: vi.fn(async () => {
+        importCalls += 1;
+        if (importCalls === 1) {
+          throw new HandoffTransientError(
+            "conversation import failed (HTTP 404)",
+          );
+        }
+        return { inserted: SAMPLE.length };
+      }),
+      intervalMs: 10,
+      timeoutMs: 10_000,
+      now: (() => {
+        let t = 0;
+        return () => {
+          t += 10;
+          return t;
+        };
+      })(),
+    });
+
+    await runConversationHandoff(deps);
+    // Two attempts ⇒ two readiness resolutions: the retry goes back through
+    // the readiness loop instead of blindly re-hitting a possibly-stale base.
+    expect(deps.checkPersonalReady).toHaveBeenCalledTimes(2);
+  });
+
+  it("a NON-transient step failure still fails immediately (no retry burn)", async () => {
+    const deps = baseDeps({
+      importToPersonal: vi.fn(async () => {
+        throw new Error("conversation import failed (HTTP 401)");
+      }),
+      intervalMs: 10,
+      timeoutMs: 10_000,
+    });
+    const result = await runConversationHandoff(deps);
+    expect(result.status).toBe("failed");
+    expect(deps.importToPersonal).toHaveBeenCalledTimes(1);
+    expect(deps.switchToPersonal).not.toHaveBeenCalled();
+  });
+
+  it("exhausting the budget on transient failures fails with the last error, never a fabricated success", async () => {
+    const deps = baseDeps({
+      importToPersonal: vi.fn(async () => {
+        throw new HandoffTransientError(
+          "conversation import failed (HTTP 404)",
+        );
+      }),
+      intervalMs: 10,
+      timeoutMs: 35,
+      now: (() => {
+        let t = 0;
+        return () => {
+          const cur = t;
+          t += 10;
+          return cur;
+        };
+      })(),
+    });
+    const result = await runConversationHandoff(deps);
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("HTTP 404");
+    expect(deps.switchToPersonal).not.toHaveBeenCalled();
+  });
+
+  it("transient retries share ONE deadline — a step failure never re-arms a fresh budget", async () => {
+    // Clock: each now() call advances 10. With timeoutMs 40 the deadline is
+    // fixed at the first read; the readiness re-poll after a transient failure
+    // gets only the REMAINING budget, so the run ends within ~the original
+    // window instead of timeoutMs-per-attempt.
+    let nowCalls = 0;
+    const deps = baseDeps({
+      checkPersonalReady: vi.fn(async () => ({ ready: true })),
+      importToPersonal: vi.fn(async () => {
+        throw new HandoffTransientError(
+          "conversation import failed (HTTP 503)",
+        );
+      }),
+      intervalMs: 10,
+      timeoutMs: 40,
+      now: () => {
+        nowCalls += 1;
+        return nowCalls * 10;
+      },
+    });
+    const result = await runConversationHandoff(deps);
+    expect(result.status).toBe("failed");
+    // Bounded attempts (not infinite, not one): the shared deadline capped it.
+    const attempts = (deps.importToPersonal as ReturnType<typeof vi.fn>).mock
+      .calls.length;
+    expect(attempts).toBeGreaterThan(1);
+    expect(attempts).toBeLessThan(6);
+  });
+});
+
+describe("transient-error classification", () => {
+  it("flags HandoffTransientError and duck-typed transient errors", () => {
+    expect(isTransientHandoffError(new HandoffTransientError("x"))).toBe(true);
+    expect(isTransientHandoffError({ transient: true })).toBe(true);
+    expect(isTransientHandoffError(new Error("x"))).toBe(false);
+    expect(isTransientHandoffError(null)).toBe(false);
+  });
+
+  it("retryable statuses cover the proxy-readiness window and transient upstream failures only", () => {
+    for (const status of [404, 408, 425, 429, 500, 502, 503, 504]) {
+      expect(isRetryableHandoffHttpStatus(status)).toBe(true);
+    }
+    for (const status of [200, 201, 400, 401, 403, 409, 422]) {
+      expect(isRetryableHandoffHttpStatus(status)).toBe(false);
+    }
   });
 });
 

@@ -12,6 +12,7 @@ import {
 import type { Message as DiscordMessage } from "discord.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	beginDiscordOutboundDelivery,
 	createDiscordMessageMemoryOnce,
 	hasActiveTaskAgentWorkForMessage,
 	MessageManager,
@@ -296,5 +297,66 @@ describe("createDiscordMessageMemoryOnce", () => {
 
 		expect(result).toBe(message);
 		expect(createMemory).toHaveBeenCalledWith(message, "messages");
+	});
+});
+
+describe("beginDiscordOutboundDelivery dedupe window", () => {
+	it("suppresses the same committed logical send inside the window and frees it on release", () => {
+		const state = new Map<string, number>();
+		const base = {
+			channelId: "123",
+			text: "The answer is 42.",
+			now: 1_000,
+			windowMs: 5_000,
+			state,
+		};
+
+		const first = beginDiscordOutboundDelivery(base);
+		expect(first.kind).toBe("deliver");
+		if (first.kind !== "deliver") throw new Error("unreachable");
+		first.reservation.commit();
+
+		// Same account/channel/text inside the window → duplicate (this is the
+		// callback-vs-connector-send double-delivery guard).
+		expect(beginDiscordOutboundDelivery({ ...base, now: 3_000 }).kind).toBe(
+			"duplicate",
+		);
+
+		// A different channel is a different logical send.
+		expect(
+			beginDiscordOutboundDelivery({ ...base, channelId: "456", now: 3_000 })
+				.kind,
+		).toBe("deliver");
+
+		// Past the window the reservation has expired and delivery is allowed.
+		expect(beginDiscordOutboundDelivery({ ...base, now: 7_000 }).kind).toBe(
+			"deliver",
+		);
+	});
+
+	it("released (failed) sends do not block a retry, and empty payloads bypass dedupe", () => {
+		const state = new Map<string, number>();
+		const params = {
+			channelId: "123",
+			text: "retry me",
+			now: 1_000,
+			windowMs: 5_000,
+			state,
+		};
+
+		const first = beginDiscordOutboundDelivery(params);
+		if (first.kind !== "deliver") throw new Error("expected deliver");
+		// The REST send failed; releasing must let the retry through instead of
+		// eating it as a duplicate of the failed attempt.
+		first.reservation.release();
+		expect(beginDiscordOutboundDelivery({ ...params, now: 1_100 }).kind).toBe(
+			"deliver",
+		);
+
+		// No text and no attachments → nothing to dedupe on; always deliver.
+		expect(
+			beginDiscordOutboundDelivery({ channelId: "123", now: 1_000, state })
+				.kind,
+		).toBe("deliver");
 	});
 });

@@ -12,6 +12,7 @@ import {
   captureBaselineDirty,
   captureBaselineSha,
   captureChangeSet,
+  getWorkspaceBranch,
   parseLsFiles,
   summarizeChangeSet,
   verifyChangedFilesOnDisk,
@@ -47,9 +48,17 @@ describe("workspace-diff — real git capture", () => {
     const plain = mkdtempSync(join(tmpdir(), "plain-"));
     try {
       expect(await captureBaselineSha(plain)).toBeUndefined();
+      expect(await getWorkspaceBranch(plain)).toBeUndefined();
     } finally {
       rmSync(plain, { recursive: true, force: true });
     }
+  });
+
+  it("captures the named branch for failover resume metadata", async () => {
+    git(dir, ["branch", "-M", "resume-work"]);
+    expect(await getWorkspaceBranch(dir)).toBe("resume-work");
+    git(dir, ["checkout", "--detach", "-q"]);
+    expect(await getWorkspaceBranch(dir)).toBeUndefined();
   });
 
   it("captures tool-written files outside a git work tree", async () => {

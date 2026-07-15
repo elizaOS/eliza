@@ -34,6 +34,7 @@ import { type ConversationMessage, client } from "../api";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 import { shellLocalStorage } from "../surface-realm-channel";
 import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
+import { recoverMissedCurrentView } from "../view-action-handoff";
 import type { LoadConversationMessagesResult } from "./internal";
 
 /** Storage key for the last-known active conversation id. */
@@ -207,6 +208,12 @@ export function useAppLifecycleEvents({
           // retry path for the websocket.
           logger.warn({ error }, "[AppLifecycle] resume reconnect failed");
         }
+
+        void recoverMissedCurrentView().catch((error) => {
+          // error-policy:J5 the structured warning observes this fire-and-forget
+          // recovery rejection; reconnect or the next resume retries it.
+          logger.warn({ error }, "[AppLifecycle] current view recovery failed");
+        });
 
         // Refetch the active conversation tail so agent messages emitted while
         // backgrounded appear. Dedicated-agent REST mode has no websocket

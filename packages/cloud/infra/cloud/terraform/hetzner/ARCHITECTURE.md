@@ -14,8 +14,8 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 │     ├── eliza-provisioning-worker  (systemd, queue consumer)│
 │     ├── eliza-agent-router         (systemd, HTTP routing)  │
 │     ├── headscale                  (VPN mesh)               │
-│     ├── cloudflared tunnel         (public ingress)         │
-│     ├── nginx                      (reverse proxy)          │
+│     ├── nginx                      (public ingress: agent-  │
+│     │    router + headscale vhosts)                         │
 │     └── (optional: grafana/prometheus)                      │
 │                                                              │
 │   Lifecycle: long-lived. Replaced on demand, not autoscaled.│
@@ -43,7 +43,7 @@ split so we stop treating manually-created VMs as "infrastructure-by-prayer".
 |----------------------|------------------------|---------------------------|
 | **Provisioning**     | Terraform (one-shot)   | Runtime API (node-autoscaler.ts) |
 | **Lifecycle**        | Persistent             | Ephemeral                 |
-| **State**            | Has local state (headscale DB, cloudflared creds) | Stateless |
+| **State**            | Has local state (headscale DB, TLS certs) | Stateless |
 | **Failure mode**     | Page someone           | Replace automatically     |
 | **Cost predictability** | Fixed monthly       | Elastic                   |
 | **What lives here**  | Orchestrator, routing, monitoring | Just Docker + agents |
@@ -68,8 +68,8 @@ and the SEV-SNP/TDX hardware-attestation requirement.
 
 | Component | Code | Infra |
 |---|---|---|
-| Control plane VM | [`packages/scripts/cloud/admin/daemons/provisioning-worker.ts`](../../../../scripts/cloud/admin/daemons/provisioning-worker.ts) | [Terraform: `control-plane/`](./control-plane/) |
-| Agent router | [`packages/scripts/cloud/admin/daemons/agent-router.ts`](../../../../scripts/cloud/admin/daemons/agent-router.ts) | systemd unit on control-plane VM |
+| Control plane VM | [`packages/scripts/cloud/admin/daemons/provisioning-worker.ts`](../../../../../scripts/cloud/admin/daemons/provisioning-worker.ts) | [Terraform: `control-plane/`](./control-plane/) |
+| Agent router | [`packages/scripts/cloud/admin/daemons/agent-router.ts`](../../../../../scripts/cloud/admin/daemons/agent-router.ts) | systemd unit on control-plane VM |
 | Data plane autoscaler | [`packages/cloud/shared/src/lib/services/containers/node-autoscaler.ts`](../../../../shared/src/lib/services/containers/node-autoscaler.ts) | Hetzner Cloud API at runtime |
 | Sandbox provisioning | [`packages/cloud/shared/src/lib/services/docker-sandbox-provider.ts`](../../../../shared/src/lib/services/docker-sandbox-provider.ts) | SSH from control plane to data plane |
 
@@ -170,11 +170,14 @@ Hetzner has **no move-resource-between-projects** API. The move is destructive:
 Downtime is per-agent during recreate; control-plane is unaffected because
 the daemon stays running on its own VM.
 
-## Followups (not in this initial PR)
+## Followups
+
+CI for this module exists: `.github/workflows/terraform-control-plane.yml`
+runs fmt + validate on PRs and plan/apply on operator dispatch
+(`terraform-pages-domains.yml` covers the Cloudflare Pages-domains root).
+Still open:
 
 - [ ] Terraform module for headscale state (preauth keys, ACLs)
-- [ ] Terraform module for the cloudflared tunnel (currently created by-hand)
-- [ ] Terraform-apply GitHub workflow (`infra/**` path filter)
 - [ ] Move the 4 remaining cron paths off the orphan
       `container-control-plane` service onto the daemon-queue pattern
       (`pool-replenish`, `pool-health-check`, `pool-image-rollout`,

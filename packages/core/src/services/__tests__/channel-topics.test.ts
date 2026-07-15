@@ -1,13 +1,14 @@
 /**
  * Exercises `ChannelTopicsService`: the per-room LRU of recent channel topics —
  * dedup with move-to-most-recent, FIFO eviction at capacity, persistence to
- * room.metadata, hydration on restart, and defensive handling when rooms or the
- * DB are missing. Backed by a mock runtime over an in-memory room map.
+ * room.metadata, hydration on restart, and missing-room handling. The suite
+ * uses AgentRuntime and the real in-memory database adapter.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockRuntime } from "../../testing/mock-runtime";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createCharacter } from "../../character.ts";
+import { InMemoryDatabaseAdapter } from "../../database/inMemoryAdapter.ts";
+import { AgentRuntime } from "../../runtime.ts";
 import type { Room, UUID } from "../../types/index";
-import type { IAgentRuntime } from "../../types/runtime";
 import {
 	CHANNEL_TOPICS_LRU_CAPACITY,
 	CHANNEL_TOPICS_METADATA_KEY,
@@ -17,24 +18,37 @@ import {
 const ROOM_A = "00000000-0000-0000-0000-0000000000aa" as UUID;
 const ROOM_B = "00000000-0000-0000-0000-0000000000bb" as UUID;
 
-interface MockRuntime {
-	runtime: IAgentRuntime;
-	rooms: Map<UUID, Room>;
-	getRoom: ReturnType<typeof vi.fn>;
-	updateRoom: ReturnType<typeof vi.fn>;
+const activeRuntimes: AgentRuntime[] = [];
+
+class FailingRoomAdapter extends InMemoryDatabaseAdapter {
+	failReads = false;
+	failWrites = false;
+
+	override async getRoomsByIds(roomIds: UUID[]): Promise<Room[]> {
+		if (this.failReads) throw new Error("room read unavailable");
+		return super.getRoomsByIds(roomIds);
+	}
+
+	override async updateRooms(rooms: Room[]): Promise<void> {
+		if (this.failWrites) throw new Error("room write unavailable");
+		return super.updateRooms(rooms);
+	}
 }
 
-function makeRuntime(seed?: Partial<Record<UUID, Room>>): MockRuntime {
-	const rooms = new Map<UUID, Room>();
-	for (const [id, room] of Object.entries(seed ?? {})) {
-		if (room) rooms.set(id as UUID, room);
-	}
-	const getRoom = vi.fn(async (roomId: UUID) => rooms.get(roomId) ?? null);
-	const updateRoom = vi.fn(async (room: Room) => {
-		rooms.set(room.id, room);
+async function makeRuntime(
+	seed: Room[] = [],
+	adapter: InMemoryDatabaseAdapter = new InMemoryDatabaseAdapter(),
+): Promise<AgentRuntime> {
+	const runtime = new AgentRuntime({
+		character: createCharacter({ name: "ChannelTopicsIntegrationAgent" }),
+		adapter,
+		logLevel: "fatal",
+		enableAutonomy: false,
 	});
-	const runtime = createMockRuntime({ getRoom, updateRoom });
-	return { runtime, rooms, getRoom, updateRoom };
+	await runtime.initialize();
+	if (seed.length > 0) await runtime.createRooms(seed);
+	activeRuntimes.push(runtime);
+	return runtime;
 }
 
 function makeRoom(id: UUID, currentTopics?: string[]): Room {
@@ -49,15 +63,21 @@ function makeRoom(id: UUID, currentTopics?: string[]): Room {
 }
 
 describe("ChannelTopicsService", () => {
-	let mock: MockRuntime;
+	let runtime: AgentRuntime;
 	let service: ChannelTopicsService;
 
 	beforeEach(async () => {
-		mock = makeRuntime({
-			[ROOM_A]: makeRoom(ROOM_A),
-			[ROOM_B]: makeRoom(ROOM_B),
-		});
-		service = await ChannelTopicsService.start(mock.runtime);
+		runtime = await makeRuntime([makeRoom(ROOM_A), makeRoom(ROOM_B)]);
+		service = await ChannelTopicsService.start(runtime);
+	});
+
+	afterEach(async () => {
+		await Promise.all(
+			activeRuntimes.splice(0).map(async (activeRuntime) => {
+				await activeRuntime.stop();
+				await activeRuntime.close();
+			}),
+		);
 	});
 
 	it("records topics most-recent-last and returns a defensive copy", async () => {
@@ -100,10 +120,9 @@ describe("ChannelTopicsService", () => {
 		expect(got.at(-1)).toBe("newest");
 	});
 
-	it("persists the LRU to room.metadata.currentTopics via updateRoom", async () => {
+	it("persists the LRU to room.metadata.currentTopics", async () => {
 		await service.recordTopics(ROOM_A, ["billing", "auth"]);
-		expect(mock.updateRoom).toHaveBeenCalledTimes(1);
-		const persisted = mock.rooms.get(ROOM_A);
+		const persisted = await runtime.getRoom(ROOM_A);
 		expect(persisted?.metadata?.[CHANNEL_TOPICS_METADATA_KEY]).toEqual([
 			"billing",
 			"auth",
@@ -113,10 +132,10 @@ describe("ChannelTopicsService", () => {
 	it("hydrates from room metadata on first access (survives restart)", async () => {
 		// Simulate a restart: a fresh service over a runtime whose room already
 		// has persisted topics.
-		const restarted = makeRuntime({
-			[ROOM_A]: makeRoom(ROOM_A, ["persisted-one", "persisted-two"]),
-		});
-		const fresh = await ChannelTopicsService.start(restarted.runtime);
+		const restarted = await makeRuntime([
+			makeRoom(ROOM_A, ["persisted-one", "persisted-two"]),
+		]);
+		const fresh = await ChannelTopicsService.start(restarted);
 
 		// ensureHydrated pulls metadata into the cache.
 		const hydrated = await fresh.ensureHydrated(ROOM_A);
@@ -143,44 +162,79 @@ describe("ChannelTopicsService", () => {
 	});
 
 	it("is a no-op for empty/invalid topic input and does not persist", async () => {
+		const before = await runtime.getRoom(ROOM_A);
 		await service.recordTopics(ROOM_A, []);
 		expect(service.getTopicsForRoom(ROOM_A)).toEqual([]);
-		expect(mock.updateRoom).not.toHaveBeenCalled();
+		expect(await runtime.getRoom(ROOM_A)).toEqual(before);
 	});
 
 	it("never throws when the room is missing (defensive persistence)", async () => {
-		const noRoom = makeRuntime();
-		const svc = await ChannelTopicsService.start(noRoom.runtime);
+		const noRoom = await makeRuntime();
+		const svc = await ChannelTopicsService.start(noRoom);
 		await expect(
 			svc.recordTopics(ROOM_A, ["billing"]),
 		).resolves.toBeUndefined();
 		// Cache still updated even though persistence found no room to write.
 		expect(svc.getTopicsForRoom(ROOM_A)).toEqual(["billing"]);
-		expect(noRoom.updateRoom).not.toHaveBeenCalled();
+		expect(await noRoom.getRoom(ROOM_A)).toBeNull();
 	});
 
-	it("never throws when getRoom rejects (defensive hydration)", async () => {
-		const failing = makeRuntime();
-		failing.getRoom.mockRejectedValue(new Error("db down"));
-		const svc = await ChannelTopicsService.start(failing.runtime);
-		await expect(
-			svc.recordTopics(ROOM_A, ["billing"]),
-		).resolves.toBeUndefined();
-		// Cache still reflects the recorded topic despite the hydration failure.
-		expect(svc.getTopicsForRoom(ROOM_A)).toEqual(["billing"]);
+	it("reports hydration failure and retries the unhydrated room", async () => {
+		const adapter = new FailingRoomAdapter();
+		const failingRuntime = await makeRuntime(
+			[makeRoom(ROOM_A, ["persisted"])],
+			adapter,
+		);
+		const svc = await ChannelTopicsService.start(failingRuntime);
+		adapter.failReads = true;
+
+		await expect(svc.ensureHydrated(ROOM_A)).rejects.toMatchObject({
+			code: "CHANNEL_TOPICS_HYDRATE_FAILED",
+			cause: expect.objectContaining({ message: "room read unavailable" }),
+		});
+		expect(failingRuntime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "ChannelTopicsService.hydrate",
+				code: "CHANNEL_TOPICS_HYDRATE_FAILED",
+				context: expect.objectContaining({ roomId: ROOM_A }),
+			}),
+		);
+
+		adapter.failReads = false;
+		expect(await svc.ensureHydrated(ROOM_A)).toEqual(["persisted"]);
+	});
+
+	it("reports and propagates a failed room update", async () => {
+		const adapter = new FailingRoomAdapter();
+		const failingRuntime = await makeRuntime([makeRoom(ROOM_A)], adapter);
+		const svc = await ChannelTopicsService.start(failingRuntime);
+		adapter.failWrites = true;
+
+		await expect(svc.recordTopics(ROOM_A, ["billing"])).rejects.toMatchObject({
+			code: "CHANNEL_TOPICS_PERSIST_FAILED",
+			cause: expect.objectContaining({ message: "room write unavailable" }),
+		});
+		expect(failingRuntime.getRecentReportedErrors()).toContainEqual(
+			expect.objectContaining({
+				scope: "ChannelTopicsService.persist",
+				code: "CHANNEL_TOPICS_PERSIST_FAILED",
+				context: expect.objectContaining({ roomId: ROOM_A }),
+			}),
+		);
 	});
 
 	it("ignores non-string garbage in persisted metadata on hydrate", async () => {
-		const dirty = makeRuntime();
-		dirty.rooms.set(ROOM_A, {
-			id: ROOM_A,
-			source: "test",
-			type: "GROUP" as Room["type"],
-			metadata: {
-				[CHANNEL_TOPICS_METADATA_KEY]: ["ok", 42, "", "  ", "ok"],
+		const dirty = await makeRuntime([
+			{
+				id: ROOM_A,
+				source: "test",
+				type: "GROUP" as Room["type"],
+				metadata: {
+					[CHANNEL_TOPICS_METADATA_KEY]: ["ok", 42, "", "  ", "ok"],
+				},
 			},
-		});
-		const svc = await ChannelTopicsService.start(dirty.runtime);
+		]);
+		const svc = await ChannelTopicsService.start(dirty);
 		expect(await svc.ensureHydrated(ROOM_A)).toEqual(["ok"]);
 	});
 

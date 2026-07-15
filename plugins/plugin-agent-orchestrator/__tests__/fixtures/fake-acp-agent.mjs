@@ -31,25 +31,38 @@ const SCENARIOS = {
     ],
     files: [
       {
+        path: "package.json",
+        content: `{
+  "name": "random-color-app",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --test" }
+}\n`,
+      },
+      {
         path: "index.html",
         content: `<!doctype html><html><head><meta charset="utf-8"><title>Random Color</title></head>
 <body><button id="go">New color</button>
-<script src="./app.js"></script></body></html>\n`,
+<script type="module" src="./app.js"></script></body></html>\n`,
       },
       {
         path: "app.js",
+        // DOM wiring is guarded so the module is genuinely importable (and its
+        // tests genuinely runnable) under plain Node — the e2e test executes
+        // `node --test` against these files for real.
         content: `function randomColor(){return '#'+Math.floor(Math.random()*0xffffff).toString(16).padStart(6,'0');}
-document.getElementById('go').addEventListener('click',()=>{document.body.style.background=randomColor();});
+if (typeof document !== "undefined") {
+  document.getElementById('go').addEventListener('click',()=>{document.body.style.background=randomColor();});
+}
 export { randomColor };\n`,
       },
       {
         path: "app.test.js",
-        content: `import { describe, it, expect } from "vitest";
+        content: `import test from "node:test";
+import assert from "node:assert/strict";
 import { randomColor } from "./app.js";
-describe("randomColor", () => {
-  it("returns a #rrggbb hex string", () => expect(randomColor()).toMatch(/^#[0-9a-f]{6}$/));
-  it("is deterministic in shape across calls", () => { for (let i=0;i<5;i++) expect(randomColor()).toMatch(/^#[0-9a-f]{6}$/); });
-});\n`,
+test("returns a #rrggbb hex string", () => { assert.match(randomColor(), /^#[0-9a-f]{6}$/); });
+test("is well-formed across repeated calls", () => { for (let i=0;i<5;i++) assert.match(randomColor(), /^#[0-9a-f]{6}$/); });\n`,
       },
     ],
     completion: `Done — built a random-color web app.
@@ -66,11 +79,10 @@ new file mode 100644
 \`\`\`
 $ npm test
 
- RUN  v4.1.5
- ✓ app.test.js (2 tests) 12ms
-
- Test Files  1 passed (1)
-      Tests  2 passed (2)
+# tests 2
+# suites 0
+# pass 2
+# fail 0
 \`\`\`
 `,
   },

@@ -2123,7 +2123,7 @@ def test_hf_release_audit_blocks_smoke_corpus_manifest() -> None:
     report = audit_hf_release(
         fetch_json=_fetcher(),
         fetch_text=_text_fetcher(
-            manifest='{"schema":"eliza.eliza1_smoke_corpus_manifest.v1","purpose":"smoke only"}'
+            manifest='{"schema":"eliza.eliza1_smoke_corpus_manifest.v2","purpose":"smoke only"}'
         ),
     )
     assert not report.ok

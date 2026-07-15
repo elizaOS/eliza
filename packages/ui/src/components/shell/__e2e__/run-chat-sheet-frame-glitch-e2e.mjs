@@ -22,8 +22,10 @@
  *      [0.55,0.95]). Assert they are never BOTH visible at once — the exact
  *      "two bars stranded on screen" bug #9142 calls out.
  *
- * A `--canary` run injects a one-frame wrong state into BOTH detectors and
- * asserts each FIRES — proving the harness is not a no-op.
+ * A `--canary` run uses a fresh burst as detector input, injects a one-frame
+ * wrong state into BOTH detectors, and asserts each FIRES. The preceding
+ * non-canary workflow step owns the product gate; the canary owns detector
+ * sensitivity and does not duplicate the timing-sensitive product assertion.
  *
  * Evidence (frame burst, per-frame diff overlays, opacity trace, summary, logs)
  * → test-results/evidence/9142-frame-glitch/.
@@ -45,6 +47,7 @@ import {
   stubElizaCore,
   stubNodeBuiltins,
 } from "../../../testing/e2e-runner/esbuild-stubs.ts";
+import { detectFlashes } from "../../../testing/frame-glitch-detect.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..", "..", "..");
@@ -373,40 +376,38 @@ for (let i = 0; i < imgs.length - 1; i += 1) {
   pairDiff.push(diffCount(imgs[i], imgs[i + 1]));
 }
 
-// Detector 1 — single-frame flash.
-const FLASH_RATIO = 0.4; // neighbours must agree ≥2.5× closer than to frame k
-const NOISE = Math.max(40, 0.0002 * imgs[0].width * imgs[0].height); // ~px floor
-function neighbourDiff(k) {
-  // diff(frame k-1, frame k+1)
-  const d = diffCount(imgs[k - 1], imgs[k + 1]);
-  return d.n;
+// Detector 1 — single-frame flash (shift-tolerant; see frame-glitch-detect.ts).
+// FLASH_RATIO: neighbours must agree ≥2.5× closer with each other than either
+// does with frame k. NOISE: per-pair floor below which a change is sub-pixel/
+// caret noise. ACTIVE_FRACTION: only frames whose change is ≥25% of the burst's
+// peak motion are candidates, so the settled tail can't flash. maxShift aligns
+// away the ≤1px whole-frame scroll jog (the bottom-anchored transcript tracking
+// the open-spring's pixel settle) that a naive diff misreads as a ~17k-px flash.
+const DETECTOR_OPTIONS = {
+  maxShift: 1,
+  noise: Math.max(40, 0.0002 * imgs[0].width * imgs[0].height),
+  activeFraction: 0.25,
+  flashRatio: 0.4,
+};
+// pixelmatch over the common box, wrapped as the detector's PixelDiff. The
+// detector aligns the crops itself, so equal dims are guaranteed here.
+const pixelDiff = (a, b, w, h) => pixelmatch(a, b, null, w, h, { threshold: 0.1 });
+const rgbaFrames = imgs.map((p) => ({
+  width: p.width,
+  height: p.height,
+  data: p.data,
+}));
+const flashes = detectFlashes(rgbaFrames, pixelDiff, DETECTOR_OPTIONS);
+if (CANARY) {
+  console.log(
+    `  canary seed burst: ${flashes.length} product-frame candidate(s) (informational; product gate ran in the preceding step)`,
+  );
+} else {
+  assert(
+    flashes.length === 0,
+    `no single-frame flashes (found ${flashes.length}${flashes.length ? `: ${JSON.stringify(flashes)}` : ""})`,
+  );
 }
-// A single-frame flash is only meaningful DURING the animation — a frame showing
-// the wrong state mid-morph, a large-diff outlier. Once the spring has settled
-// the UI is static and any 1-frame diff is sub-pixel/caret noise, not a glitch.
-// Gate on activity (in/out diff a real fraction of the peak movement) so the
-// static tail can't produce false positives.
-const ACTIVE_FRACTION = 0.25;
-function detectFlashes(diffSeq) {
-  const peak = Math.max(...diffSeq.map((d) => d.n), 1);
-  const hits = [];
-  for (let k = 1; k < imgs.length - 1; k += 1) {
-    const a = diffSeq[k - 1].n; // diff(k-1,k)
-    const b = diffSeq[k].n; // diff(k,k+1)
-    if (a < NOISE || b < NOISE) continue;
-    if (Math.max(a, b) < ACTIVE_FRACTION * peak) continue; // static tail → skip
-    const c = neighbourDiff(k); // diff(k-1,k+1)
-    if (c < FLASH_RATIO * Math.min(a, b)) {
-      hits.push({ frame: k, in: a, out: b, neighbours: c });
-    }
-  }
-  return hits;
-}
-const flashes = detectFlashes(pairDiff);
-assert(
-  flashes.length === 0,
-  `no single-frame flashes (found ${flashes.length}${flashes.length ? `: ${JSON.stringify(flashes)}` : ""})`,
-);
 
 // Detector 2 — "two pills": pill and grabber never both visible.
 const BOTH_VISIBLE = 0.2;
@@ -414,10 +415,16 @@ const overlaps = samples
   .map((s) => ({ ...s, both: Math.min(s.pill, s.grabber) }))
   .filter((s) => s.both > BOTH_VISIBLE);
 const worstOverlap = Math.max(0, ...samples.map((s) => Math.min(s.pill, s.grabber)));
-assert(
-  overlaps.length === 0,
-  `pill+grabber never stranded together (worst min-opacity ${worstOverlap.toFixed(3)} ≤ ${BOTH_VISIBLE})`,
-);
+if (CANARY) {
+  console.log(
+    `  canary seed trace: ${overlaps.length} product overlap(s) (informational; product gate ran in the preceding step)`,
+  );
+} else {
+  assert(
+    overlaps.length === 0,
+    `pill+grabber never stranded together (worst min-opacity ${worstOverlap.toFixed(3)} ≤ ${BOTH_VISIBLE})`,
+  );
+}
 
 // ── Canary — prove both detectors FIRE on an injected one-frame wrong state ───
 if (CANARY) {
@@ -437,22 +444,16 @@ if (CANARY) {
       bad.data[idx + 3] = 255;
     }
   }
-  const cImgs = imgs.slice();
-  cImgs[k] = bad;
-  const cDiff = [];
-  for (let i = 0; i < cImgs.length - 1; i += 1)
-    cDiff.push(diffCount(cImgs[i], cImgs[i + 1]));
-  const cNeighbour = (kk) => diffCount(cImgs[kk - 1], cImgs[kk + 1]).n;
-  const cPeak = Math.max(...cDiff.map((d) => d.n), 1);
-  let canaryFlash = false;
-  for (let kk = 1; kk < cImgs.length - 1; kk += 1) {
-    const a = cDiff[kk - 1].n;
-    const b = cDiff[kk].n;
-    if (a < NOISE || b < NOISE) continue;
-    if (Math.max(a, b) < ACTIVE_FRACTION * cPeak) continue;
-    if (cNeighbour(kk) < FLASH_RATIO * Math.min(a, b)) canaryFlash = true;
-  }
-  assert(canaryFlash, "canary: flash detector FIRES on the injected bad frame");
+  // Route the injected frame through the SAME shipped detector so the canary
+  // guards the shift-tolerant metric itself: a solid block is genuine content,
+  // not a translation, so no alignment can hide it.
+  const canaryFrames = rgbaFrames.slice();
+  canaryFrames[k] = { width: bad.width, height: bad.height, data: bad.data };
+  const canaryFlashes = detectFlashes(canaryFrames, pixelDiff, DETECTOR_OPTIONS);
+  assert(
+    canaryFlashes.length > 0,
+    "canary: flash detector FIRES on the injected bad frame",
+  );
 
   // (b) Two-pills detector: inject a sample where both bars are fully visible.
   const canarySamples = [...samples, { t: 0, pill: 1, grabber: 1, state: "X" }];

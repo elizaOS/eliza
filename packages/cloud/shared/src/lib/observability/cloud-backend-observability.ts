@@ -8,6 +8,7 @@ const DEFAULT_DB_BURST_COUNT = 20;
 
 export interface CloudRequestTelemetry {
   id: string;
+  traceId?: string;
   method: string;
   path: string;
   status: number;
@@ -50,6 +51,7 @@ export interface CloudTelemetrySnapshot {
 
 interface RequestContext {
   id: string;
+  traceId?: string;
   method: string;
   path: string;
   startedAt: number;
@@ -97,7 +99,7 @@ function readKey(label: string): string {
 }
 
 export async function observeCloudRequest<T>(
-  input: { id: string; method: string; path: string },
+  input: { id: string; traceId?: string; method: string; path: string },
   fn: () => Promise<{
     result: T;
     status: number;
@@ -118,32 +120,44 @@ export async function observeCloudRequest<T>(
   };
 
   return requestAls.run(context, async () => {
-    const response = await fn();
-    const duplicateReadKeys = [...context.readKeys]
-      .filter(([, count]) => count > 1)
-      .map(([key, count]) => ({ key, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
+    let response:
+      | {
+          result: T;
+          status: number;
+          userId?: string | null;
+          organizationId?: string | null;
+          authMethod?: string | null;
+        }
+      | undefined;
 
-    pushBounded(requests, {
-      id: input.id,
-      method: input.method,
-      path: input.path,
-      status: response.status,
-      durationMs: elapsedMs(context.startedAt),
-      userId: response.userId,
-      organizationId: response.organizationId,
-      authMethod: response.authMethod,
-      dbCalls: context.dbCalls,
-      dbReadCalls: context.dbReadCalls,
-      dbWriteCalls: context.dbWriteCalls,
-      duplicateDbReadCalls: context.duplicateDbReadCalls,
-      duplicateReadKeys,
-      slowDbCalls: context.slowDbCalls.slice(0, 20),
-      createdAt: nowIso(),
-    });
-
-    return response.result;
+    try {
+      response = await fn();
+      return response.result;
+    } finally {
+      const duplicateReadKeys = [...context.readKeys]
+        .filter(([, count]) => count > 1)
+        .map(([key, count]) => ({ key, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 20);
+      pushBounded(requests, {
+        id: input.id,
+        traceId: input.traceId,
+        method: input.method,
+        path: input.path,
+        status: response?.status ?? 500,
+        durationMs: elapsedMs(context.startedAt),
+        userId: response?.userId,
+        organizationId: response?.organizationId,
+        authMethod: response?.authMethod,
+        dbCalls: context.dbCalls,
+        dbReadCalls: context.dbReadCalls,
+        dbWriteCalls: context.dbWriteCalls,
+        duplicateDbReadCalls: context.duplicateDbReadCalls,
+        duplicateReadKeys,
+        slowDbCalls: context.slowDbCalls.slice(0, 20),
+        createdAt: nowIso(),
+      });
+    }
   });
 }
 

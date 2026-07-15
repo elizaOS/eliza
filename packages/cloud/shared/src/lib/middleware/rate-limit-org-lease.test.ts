@@ -9,6 +9,7 @@
  */
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "node:crypto";
 import * as orgRateLimitsActual from "../services/org-rate-limits";
 import * as rateLimitRedisActual from "./rate-limit-redis";
 
@@ -27,6 +28,7 @@ let simulateWindow = false;
 let windowCount = 0;
 let pauseRedisChecks = false;
 const redisCheckWaiters: Array<() => void> = [];
+let redisKeys: string[] = [];
 
 async function waitForRedisWaiters(count: number): Promise<void> {
   for (let i = 0; i < 100; i++) {
@@ -39,12 +41,13 @@ async function waitForRedisWaiters(count: number): Promise<void> {
 mock.module("./rate-limit-redis", () => ({
   ...rateLimitRedisActual,
   checkRateLimitRedis: async (
-    _key: string,
+    key: string,
     _windowMs: number,
     maxRequests: number,
     options?: { carriedCount?: number },
   ) => {
     redisChecks++;
+    redisKeys.push(key);
     const carried = options?.carriedCount ?? 0;
     carriedCounts.push(carried);
     if (pauseRedisChecks) {
@@ -72,7 +75,17 @@ mock.module("../services/org-rate-limits", () => ({
   },
 }));
 
-const { enforceOrgRateLimit, __clearOrgRateLimitLeases } = await import("./rate-limit");
+const {
+  enforceOrgRateLimit,
+  __clearOrgRateLimitLeases,
+  checkCostBasedRateLimit,
+  checkRateLimitAsync,
+  enforceMcpOrganizationRateLimit,
+  mcpOrgRateLimitRedisKey,
+  rateLimitExceededPayload,
+  rateLimitExceededResponse,
+  withRateLimit,
+} = await import("./rate-limit");
 
 const originalRedisRateLimiting = process.env.REDIS_RATE_LIMITING;
 const originalHotPathCaches = process.env.INFERENCE_HOT_PATH_CACHES;
@@ -98,6 +111,7 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     process.env.INFERENCE_HOT_PATH_CACHES = "true";
     __clearOrgRateLimitLeases();
     redisChecks = 0;
+    redisKeys = [];
     tierReads = 0;
     carriedCounts = [];
     pauseRedisChecks = false;
@@ -230,6 +244,26 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     expect(redisChecks).toBe(2);
   });
 
+  test("turning the lease flag off flushes pending local usage before dropping the lease", async () => {
+    const org = uid();
+    redisResult = { allowed: true, remaining: 3, resetAt: Date.now() + 60_000 };
+
+    await enforceOrgRateLimit(org, "completions"); // authoritative
+    await enforceOrgRateLimit(org, "completions"); // locally leased
+    expect(redisChecks).toBe(1);
+
+    process.env.INFERENCE_HOT_PATH_CACHES = "false";
+    await enforceOrgRateLimit(org, "completions");
+    expect(redisChecks).toBe(2);
+    expect(carriedCounts).toEqual([0, 1]);
+
+    // The old lease was dropped, so switching the feature back on starts with
+    // another authoritative decision instead of reviving stale local budget.
+    process.env.INFERENCE_HOT_PATH_CACHES = "true";
+    await enforceOrgRateLimit(org, "completions");
+    expect(redisChecks).toBe(3);
+  });
+
   test("D1 convergence: a hot isolate cannot exceed the org limit by more than one in-flight lease budget", async () => {
     // Real-window simulation: carried members count like live appends. Limit
     // 120/60s → lease budget ceil(120×5/60) = 10. Drive far more traffic than
@@ -256,5 +290,122 @@ describe("enforceOrgRateLimit lease (#9899 Tier-3)", () => {
     // appended (authoritative members + flushed carries), minus at most the
     // one in-flight budget not yet flushed.
     expect(windowCount).toBeGreaterThanOrEqual(allowed - budget);
+  });
+});
+
+describe("public rate-limit contracts", () => {
+  beforeEach(() => {
+    process.env.REDIS_RATE_LIMITING = "false";
+    redisChecks = 0;
+    redisKeys = [];
+    simulateWindow = false;
+    windowCount = 0;
+    redisResult = {
+      allowed: true,
+      remaining: 99,
+      resetAt: Date.now() + 60_000,
+    };
+  });
+
+  test("hashes stable credentials before a Redis-backed decision", async () => {
+    process.env.REDIS_RATE_LIMITING = "true";
+    const apiKey = "eliza_secret-api-key";
+    const result = await checkRateLimitAsync(
+      new Request("https://api.example.test", {
+        headers: { authorization: `Bearer ${apiKey}` },
+      }),
+      { windowMs: 60_000, maxRequests: 100 },
+    );
+
+    expect(result.allowed).toBe(true);
+    expect(redisKeys).toEqual([`apikey:${createHash("sha256").update(apiKey).digest("hex")}`]);
+    expect(redisKeys[0]).not.toContain(apiKey);
+  });
+
+  test("in-memory async checks and wrapped handlers enforce one shared bucket", async () => {
+    const key = `public-contract-${uid()}`;
+    const config = { windowMs: 60_000, maxRequests: 2, keyGenerator: () => key };
+    const request = new Request("https://api.example.test");
+
+    expect((await checkRateLimitAsync(request, config)).remaining).toBe(1);
+
+    const wrapped = withRateLimit(
+      async () => new Response("ok", { status: 201, headers: { "X-Origin": "handler" } }),
+      config,
+    );
+    const allowed = await wrapped(request);
+    expect(allowed.status).toBe(201);
+    expect(allowed.headers.get("X-Origin")).toBe("handler");
+    expect(allowed.headers.get("X-RateLimit-Policy")).toBe("in-memory");
+
+    const denied = await wrapped(request);
+    expect(denied.status).toBe(429);
+    expect(await denied.json()).toMatchObject({
+      code: "rate_limit_exceeded",
+      retryAfter: 60,
+    });
+  });
+
+  test("dynamic wrapped handlers receive their route context", async () => {
+    const key = `dynamic-contract-${uid()}`;
+    const wrapped = withRateLimit<{ id: string }>(
+      async (_request, context) => Response.json({ id: (await context.params).id }),
+      { windowMs: 60_000, maxRequests: 1, keyGenerator: () => key },
+    );
+
+    const response = await wrapped(new Request("https://api.example.test"), {
+      params: Promise.resolve({ id: "route-id" }),
+    });
+    expect(await response.json()).toEqual({ id: "route-id" });
+  });
+
+  test("MCP keys and denial responses preserve the shared response contract", async () => {
+    expect(mcpOrgRateLimitRedisKey("org-1")).toBe("mcp:ratelimit:org-1");
+    expect(mcpOrgRateLimitRedisKey("org-1", "github")).toBe("mcp:ratelimit:github:org-1");
+
+    redisResult = {
+      allowed: false,
+      remaining: 0,
+      resetAt: Date.now() + 30_000,
+      retryAfter: 30,
+    };
+    const response = await enforceMcpOrganizationRateLimit("org-1", "github");
+    expect(redisKeys).toEqual(["mcp:ratelimit:github:org-1"]);
+    expect(response?.status).toBe(429);
+    expect(await response?.json()).toMatchObject({
+      code: "rate_limit_exceeded",
+      retryAfter: 30,
+    });
+
+    const payload = rateLimitExceededPayload(redisResult, 100, 60_000, "redis");
+    expect(payload.headers["X-RateLimit-Policy"]).toBe("redis");
+    expect(payload.body.message).toContain("Maximum 100 requests");
+    expect(rateLimitExceededResponse(redisResult, 100, 60_000, "redis").status).toBe(429);
+  });
+
+  test("cost limits accumulate sync and async costs without crossing identities", async () => {
+    const session = `cost-${uid()}`;
+    const request = new Request("https://api.example.test", {
+      headers: { "x-anonymous-session": session },
+    });
+    const config = {
+      windowMs: 60_000,
+      maxCost: 5,
+      getCost: async () => 3,
+    };
+
+    const first = await checkCostBasedRateLimit(request, config);
+    const second = await checkCostBasedRateLimit(request, config);
+    expect(first).toMatchObject({ allowed: true, remaining: 2 });
+    expect(second.allowed).toBe(false);
+    expect(second.retryAfter).toBe(60);
+
+    const otherIdentity = await checkCostBasedRateLimit(
+      new Request("https://api.example.test", {
+        headers: { "x-anonymous-session": `${session}-other` },
+      }),
+      config,
+    );
+    expect(otherIdentity.allowed).toBe(true);
   });
 });

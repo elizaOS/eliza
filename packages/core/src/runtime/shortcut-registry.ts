@@ -97,6 +97,17 @@ function patternRegex(pattern: ShortcutPattern): RegExp | null {
 	return null;
 }
 
+/** A single leading Discord user mention and its separator. */
+const LEADING_RAW_MENTION = /^<@!?\d+>\s*/;
+
+/**
+ * Expose the command behind a connector-native mention to the deterministic
+ * shortcut gate. Inner mentions remain arguments.
+ */
+export function stripLeadingMentionForShortcut(text: string): string {
+	return text.replace(LEADING_RAW_MENTION, "");
+}
+
 function aliasMatches(raw: string, alias: string): boolean {
 	const a = alias.toLowerCase();
 	if (raw === a) return true;
@@ -140,7 +151,9 @@ export function matchShortcut(
 	text: string,
 	context: ShortcutMatchContext = {},
 ): ShortcutMatch | null {
-	const raw = text.trim().toLowerCase();
+	// The natural tier already dissolves mentions during normalization; only the
+	// exact explicit tier needs this connector-wire normalization.
+	const raw = stripLeadingMentionForShortcut(text.trim()).trim().toLowerCase();
 	if (!raw) return null;
 
 	// ── Tier 1: explicit (slash/`!`) — unambiguous, always eligible ──────────

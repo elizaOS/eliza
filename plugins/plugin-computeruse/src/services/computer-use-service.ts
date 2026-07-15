@@ -166,6 +166,35 @@ const COORDINATE_BEARING_ACTIONS = new Set<DesktopActionParams["action"]>([
   "set_value",
 ]);
 
+// Every verb the desktop dispatch switch can execute. Used to reject an unknown
+// action up front, before the approval gate blocks on a decision that a
+// malformed request will never earn (see validateDesktopActionInput).
+const KNOWN_DESKTOP_ACTIONS = new Set<DesktopActionParams["action"]>([
+  "screenshot",
+  "click",
+  "click_with_modifiers",
+  "double_click",
+  "right_click",
+  "mouse_move",
+  "middle_click",
+  "mouse_down",
+  "mouse_up",
+  "type",
+  "key",
+  "key_combo",
+  "key_down",
+  "key_up",
+  "scroll",
+  "drag",
+  "get_cursor_position",
+  "detect_elements",
+  "ocr",
+  "open",
+  "launch",
+  "kill_app",
+  "set_value",
+]);
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -430,6 +459,13 @@ export class ComputerUseService extends Service {
     const entry = this.createEntry(params.action, this.toParamsRecord(params));
 
     try {
+      // Reject malformed input before requesting approval or resolving a
+      // display: the approval gate awaits a human/API decision that never
+      // arrives on a non-interactive or headless host (no approval UI), so
+      // asking approval for input the dispatch switch would reject anyway
+      // hangs the action forever. Validating first fails such input fast.
+      this.validateDesktopActionInput(params);
+
       const approvalError = await this.awaitApproval(
         this.desktopApprovalCommand(params.action),
         this.toParamsRecord(params),
@@ -1095,6 +1131,11 @@ export class ComputerUseService extends Service {
     );
 
     try {
+      // Validate before approval for the same reason as executeDesktopAction:
+      // the approval gate blocks on a decision a malformed window request will
+      // never receive on a headless/non-interactive host.
+      this.validateWindowActionInput(params);
+
       const approvalError = await this.awaitApproval(
         this.windowApprovalCommand(params.action),
         this.toParamsRecord(params),
@@ -1579,6 +1620,108 @@ export class ComputerUseService extends Service {
         return "context";
       default:
         return action;
+    }
+  }
+
+  /**
+   * Presence/enum check for a desktop action's required input, run before the
+   * approval gate. Throws a typed error (caught by the J1 boundary in
+   * executeDesktopAction and returned as {success:false,error}) for an unknown
+   * verb or a missing required field, so a malformed request fails fast instead
+   * of blocking on an approval decision that a headless/non-interactive host
+   * cannot produce. The dispatch switch keeps its own require* assertions for
+   * type narrowing; this is the gate that decides accept/reject.
+   */
+  private validateDesktopActionInput(params: DesktopActionParams): void {
+    const { action } = params;
+    if (!KNOWN_DESKTOP_ACTIONS.has(action)) {
+      throw new Error(`Unknown desktop action: ${action}`);
+    }
+    if (action === "drag") {
+      // A ≥2-point polyline supersedes the start→end pair (see the drag case).
+      if (params.path && params.path.length >= 2) return;
+      this.requireCoordinate(params.startCoordinate, "drag", "startCoordinate");
+      this.requireCoordinate(params.coordinate, "drag");
+      return;
+    }
+    if (COORDINATE_BEARING_ACTIONS.has(action)) {
+      this.requireCoordinate(params.coordinate, action);
+    }
+    switch (action) {
+      case "type":
+        if (!params.text) throw new Error("text is required for type action");
+        break;
+      case "key":
+      case "key_combo":
+      case "key_down":
+      case "key_up":
+        if (!params.key) {
+          throw new Error(`key is required for ${action} action`);
+        }
+        break;
+      case "set_value":
+        if (typeof params.text !== "string") {
+          throw new Error("text (the value) is required for set_value action");
+        }
+        break;
+      case "open":
+        if (!params.target) {
+          throw new Error("target is required for open action");
+        }
+        break;
+      case "launch":
+        if (!params.app) throw new Error("app is required for launch action");
+        break;
+      case "kill_app":
+        if (!(params.target ?? params.app)) {
+          throw new Error(
+            "target (pid or app name) is required for kill_app action",
+          );
+        }
+        break;
+    }
+  }
+
+  /**
+   * Presence check for a window action's required input, run before the
+   * approval gate — same rationale as validateDesktopActionInput. Throws a
+   * typed error the J1 boundary returns as {success:false,error}.
+   */
+  private validateWindowActionInput(params: WindowActionParams): void {
+    switch (params.action) {
+      case "list":
+      case "arrange":
+      case "get_current_window_id":
+      case "get_window_size":
+      case "get_window_position":
+        return;
+      case "focus":
+      case "switch":
+      case "minimize":
+      case "maximize":
+      case "restore":
+      case "close":
+        this.requireWindowTarget(params);
+        return;
+      case "move":
+        this.requireWindowTarget(params);
+        this.requireNumber(params.x, "x is required for window move");
+        this.requireNumber(params.y, "y is required for window move");
+        return;
+      case "set_bounds":
+        this.requireWindowTarget(params);
+        this.requireNumber(params.x, "x is required for set_bounds");
+        this.requireNumber(params.y, "y is required for set_bounds");
+        return;
+      case "get_application_windows":
+        if (!(params.appName ?? params.title ?? params.window)) {
+          throw new Error("appName is required for get_application_windows");
+        }
+        return;
+      default:
+        throw new Error(
+          `Unknown window action: ${(params as { action: string }).action}`,
+        );
     }
   }
 

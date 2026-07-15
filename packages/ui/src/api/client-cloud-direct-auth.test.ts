@@ -135,6 +135,38 @@ describe("ElizaClient direct Cloud auth on native", () => {
     );
   });
 
+  it("keeps a staging dedicated agent login on the staging auth host, not the production apex", async () => {
+    // Regression for the staging dedicated-ingress fix: a session whose agent
+    // base is `<uuid>.staging.elizacloud.ai` belongs to the STAGING tenant.
+    // Auth for it must ride the staging API/auth hosts — a hop to the
+    // production apex would mint a production session that can never see the
+    // staging agent.
+    capacitorMocks.post.mockResolvedValue({ status: 200, data: {} });
+
+    const client = new ElizaClient(
+      "https://0b5fca39-8d55-4c96-a1a3-000000000000.staging.elizacloud.ai",
+    );
+    const result = await client.cloudLoginDirect(
+      "https://staging.elizacloud.ai",
+    );
+
+    expect(capacitorMocks.post).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api-staging.elizacloud.ai/api/auth/cli-session",
+      }),
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        apiBase: "https://api-staging.elizacloud.ai",
+        browserUrl: expect.stringMatching(
+          /^https:\/\/staging\.elizacloud\.ai\/auth\/cli-login\?session=/,
+        ),
+      }),
+    );
+    expectNoLocalPersistOrStatusProbe();
+  });
+
   it("polls native CLI sessions through the Cloud API host", async () => {
     capacitorMocks.get.mockResolvedValue({
       status: 200,
@@ -234,6 +266,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
             agentName: "My Agent",
             status: "running",
             bridgeUrl: "https://agent-1.example.test",
+            executionTier: "dedicated-always",
           },
         ],
       },
@@ -259,6 +292,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
           agent_name: "My Agent",
           status: "running",
           bridge_url: "https://agent-1.example.test",
+          execution_tier: "dedicated-always",
         }),
       ],
     });

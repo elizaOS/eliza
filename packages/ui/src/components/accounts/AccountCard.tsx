@@ -6,7 +6,7 @@
  * confirm dialog for delete.
  */
 
-import { FlaskConical, LogIn, RefreshCw, Trash2 } from "lucide-react";
+import { FlaskConical, KeyRound, RefreshCw, Trash2 } from "lucide-react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
 import { cn } from "../../lib/utils";
@@ -34,8 +34,9 @@ export interface AccountCardProps {
   ) => Promise<void>;
   onTest: () => Promise<void>;
   onRefreshUsage: () => Promise<void>;
-  onReauthenticate?: () => void;
   onDelete: () => Promise<void>;
+  /** Opens the provider credential flow for this unhealthy account. */
+  onReauthenticate?: () => void;
   testBusy?: boolean;
   refreshBusy?: boolean;
 }
@@ -82,7 +83,10 @@ function UsageBar({ label, pct, resetsAt }: UsageBarProps) {
       className="flex min-w-0 items-center gap-1.5"
       title={titleParts.join(" · ")}
     >
-      <span className="w-9 shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
+      {/* Auto width, never a fixed box: "SESSION" (uppercase, tracked) is wider
+          than the old w-9 (36px) box, so the flexed bar rendered on top of the
+          overflowing text. */}
+      <span className="shrink-0 whitespace-nowrap text-[10px] font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
       <div className="relative h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-full bg-bg-accent">
@@ -175,7 +179,9 @@ export function AccountCard({
   const isCodingPlan =
     account.providerId === "zai-coding" || account.providerId === "kimi-coding";
   const usage = account.usage;
-  const needsReauth = account.health === "needs-reauth";
+  const requiresCredentialRepair =
+    account.health === "needs-reauth" || account.health === "invalid";
+  const healthReason = account.healthDetail?.lastError?.trim();
 
   return (
     <div
@@ -198,6 +204,18 @@ export function AccountCard({
               defaultValue: "Click to rename",
             })}
           />
+          {/* Show WHO the account is. New OAuth links use the email as the
+              label, so only render the email separately when the label is
+              something else (renamed, or linked/imported before emails were
+              persisted) — never duplicate it. */}
+          {account.email && account.email !== account.label ? (
+            <span
+              className="min-w-0 shrink truncate text-[11px] text-muted"
+              title={account.email}
+            >
+              {account.email}
+            </span>
+          ) : null}
           <Badge variant="outline" className="shrink-0 text-[10px] uppercase">
             {isCodingPlan
               ? t("accounts.source.codingPlan", {
@@ -223,6 +241,25 @@ export function AccountCard({
             />
             {t("accounts.enabled", { defaultValue: "Enabled" })}
           </div>
+          {requiresCredentialRepair && onReauthenticate ? (
+            <Button
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={saving}
+              onClick={onReauthenticate}
+              className="h-7 gap-1.5 px-2 text-xs"
+            >
+              <KeyRound className="h-3.5 w-3.5" aria-hidden />
+              {account.source === "oauth"
+                ? t("accounts.reauthenticate", {
+                    defaultValue: "Reauthenticate",
+                  })
+                : t("accounts.replaceCredential", {
+                    defaultValue: "Replace credential",
+                  })}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -244,38 +281,15 @@ export function AccountCard({
             variant="outline"
             size="sm"
             disabled={refreshBusy || saving}
-            onClick={() => {
-              if (needsReauth && onReauthenticate) {
-                onReauthenticate();
-                return;
-              }
-              void onRefreshUsage();
-            }}
-            aria-label={
-              needsReauth
-                ? t("accounts.reauthenticate", {
-                    defaultValue: "Reauthenticate",
-                  })
-                : t("accounts.refresh", { defaultValue: "Refresh usage" })
-            }
-            title={
-              needsReauth
-                ? t("accounts.reauthenticate", {
-                    defaultValue: "Reauthenticate",
-                  })
-                : t("accounts.refresh", { defaultValue: "Refresh usage" })
-            }
-            className={needsReauth ? "h-7 gap-1.5 px-2 text-xs" : "h-7 w-7 p-0"}
+            onClick={() => void onRefreshUsage()}
+            aria-label={t("accounts.refresh", {
+              defaultValue: "Refresh usage",
+            })}
+            title={t("accounts.refresh", { defaultValue: "Refresh usage" })}
+            className="h-7 w-7 p-0"
           >
             {refreshBusy ? (
               <Spinner className="h-3 w-3" />
-            ) : needsReauth ? (
-              <>
-                <LogIn className="h-3.5 w-3.5" aria-hidden />
-                {t("accounts.reauthenticate", {
-                  defaultValue: "Reauthenticate",
-                })}
-              </>
             ) : (
               <RefreshCw className="h-3.5 w-3.5" aria-hidden />
             )}
@@ -298,7 +312,10 @@ export function AccountCard({
       </div>
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-        {isAnthropic ? (
+        {/* Anthropic and Codex both expose a 5h session window AND a 7-day
+            window (Codex: rate_limit.primary_window / secondary_window), so
+            both render the same pair of bars. */}
+        {isAnthropic || isCodex ? (
           <>
             <UsageBar
               label={t("accounts.usage.session5h", { defaultValue: "5h" })}
@@ -311,12 +328,6 @@ export function AccountCard({
               resetsAt={usage?.resetsAt}
             />
           </>
-        ) : isCodex ? (
-          <UsageBar
-            label={t("accounts.usage.session", { defaultValue: "Session" })}
-            pct={usage?.sessionPct}
-            resetsAt={usage?.resetsAt}
-          />
         ) : usage ? (
           <UsageBar
             label={t("accounts.usage.session", { defaultValue: "Session" })}
@@ -330,6 +341,14 @@ export function AccountCard({
             })}
           </span>
         )}
+        {requiresCredentialRepair && healthReason ? (
+          <span
+            className="min-w-0 truncate text-[10px] text-destructive"
+            title={healthReason}
+          >
+            {healthReason}
+          </span>
+        ) : null}
         {!account.hasCredential ? (
           <span
             className="text-[10px] text-warn"

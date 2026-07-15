@@ -55,6 +55,10 @@ describe("detectTurnDone", () => {
     expect(detectTurnDone({ stopReason: "max_turn_requests" })).toBe(false);
     expect(detectTurnDone({ stopReason: "interrupted" })).toBe(false);
   });
+  it("treats cancelled and stopped turns as terminal failures", () => {
+    expect(detectTurnDone({ stopReason: "cancelled" })).toBe(false);
+    expect(detectTurnDone({ stopReason: "stopped" })).toBe(false);
+  });
 });
 
 describe("SmithersTaskExecutor", () => {
@@ -102,6 +106,22 @@ describe("SmithersTaskExecutor", () => {
     await expect(
       executor.runTurn({ taskId: "t", runId: "t", turn: 1, prompt: "P" }),
     ).rejects.toThrow("agent failed");
+  });
+
+  it.each([
+    "cancelled",
+    "stopped",
+  ])("throws when a turn is %s", async (stopReason) => {
+    const acp = new FakeAcp({ stopReason });
+    const executor = new SmithersTaskExecutor(acp);
+    await expect(
+      executor.runTurn({ taskId: "t", runId: "t", turn: 1, prompt: "P" }),
+    ).rejects.toMatchObject({
+      code:
+        stopReason === "cancelled"
+          ? "ACP_TASK_PROMPT_CANCELLED"
+          : "ACP_TASK_PROMPT_STOPPED",
+    });
   });
 
   it("uses injected approval/submit callbacks", async () => {

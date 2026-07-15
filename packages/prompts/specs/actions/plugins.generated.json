@@ -51,8 +51,32 @@
       "description": "Set or show current model",
       "parameters": [
         {
+          "name": "target",
+          "description": "small, large, coding, show, local, cloud — or a model for this room",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
           "name": "model",
-          "description": "provider/model or alias",
+          "description": "model id — for coding, the backend (codex, claude, opencode, elizaos)",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "effort",
+          "description": "reasoning effort — for coding, the model id",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "coding-effort",
+          "description": "reasoning effort (coding target)",
           "required": false,
           "schema": {
             "type": "string"

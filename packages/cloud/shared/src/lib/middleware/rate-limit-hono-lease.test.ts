@@ -6,13 +6,15 @@
  * check, and denials lease without repeated backend round-trips.
  */
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Hono } from "hono";
+import * as loggerActual from "../utils/logger";
 
 class FakeRedis {
   count = 0;
   incrCalls = 0;
   expireCalls = 0;
+  pipelineExecCalls = 0;
   ttl = -1;
 
   async incr(): Promise<number> {
@@ -30,17 +32,35 @@ class FakeRedis {
     this.ttl = windowMs;
     return 1;
   }
+
+  pipeline() {
+    const operations: Array<"incr" | "pttl"> = [];
+    const pipeline = {
+      incr: () => {
+        operations.push("incr");
+        return pipeline;
+      },
+      pttl: () => {
+        operations.push("pttl");
+        return pipeline;
+      },
+      exec: async () => {
+        this.pipelineExecCalls++;
+        const results: number[] = [];
+        for (const operation of operations) {
+          results.push(operation === "incr" ? await this.incr() : await this.pttl());
+        }
+        return results;
+      },
+    };
+    return pipeline;
+  }
 }
 
 const redis = new FakeRedis();
 
-mock.module("../cache/redis-factory", () => ({
-  buildRedisClient: () => redis,
-  hasRedisConfig: () => true,
-  isCloudflareWorkerRuntime: () => false,
-}));
-
 mock.module("../utils/logger", () => ({
+  ...loggerActual,
   logger: {
     debug: mock(() => undefined),
     error: mock(() => undefined),
@@ -51,6 +71,10 @@ mock.module("../utils/logger", () => ({
 
 const { rateLimit, _resetHonoRateLimitLeases } = await import("./rate-limit-hono-cloudflare");
 
+afterAll(() => {
+  mock.module("../utils/logger", () => loggerActual);
+});
+
 const BASE_ENV = {
   NODE_ENV: "production",
   REDIS_RATE_LIMITING: "true",
@@ -59,7 +83,7 @@ const BASE_ENV = {
 
 function makeApp(config: Parameters<typeof rateLimit>[0]) {
   const app = new Hono();
-  app.use(rateLimit(config));
+  app.use(rateLimit(config, undefined, { buildRedisClient: () => redis }));
   app.get("/", (c) => c.json({ ok: true }));
   return app;
 }
@@ -75,6 +99,7 @@ describe("Hono rateLimit lease (#15428)", () => {
     redis.count = 0;
     redis.incrCalls = 0;
     redis.expireCalls = 0;
+    redis.pipelineExecCalls = 0;
     redis.ttl = -1;
     _resetHonoRateLimitLeases();
   });
@@ -90,6 +115,7 @@ describe("Hono rateLimit lease (#15428)", () => {
     }
 
     expect(redis.incrCalls).toBe(4);
+    expect(redis.pipelineExecCalls).toBe(4);
   });
 
   test("flag-on repeats within budget skip Redis and advertise the lease policy", async () => {
@@ -125,6 +151,7 @@ describe("Hono rateLimit lease (#15428)", () => {
 
     // First authoritative hit + two carried INCRs + current authoritative hit.
     expect(redis.incrCalls).toBe(4);
+    expect(redis.pipelineExecCalls).toBe(2);
   });
 
   test("denials are leased instead of hammering Redis", async () => {

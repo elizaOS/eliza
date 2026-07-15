@@ -402,9 +402,14 @@ export function resolveVoiceProxyEndpoint(mode: VoiceMode): string {
   );
 }
 
-/** For ELIZA_TTS_DEBUG: shows whether cloud TTS hits the API or the wrong (page) origin. */
-export function describeTtsCloudFetchTargetForDebug(): string {
-  const target = resolveApiUrl("/api/tts/cloud");
+/**
+ * For ELIZA_TTS_DEBUG: describe the actual TTS fetch target — the worker/proxy
+ * origin for an absolute URL, or a diagnosis when a relative URL would resolve
+ * against the UI host instead of the app API. Pass the URL that was actually
+ * fetched (on-device proxy, shared-runtime worker, or direct cloud worker) so
+ * the debug line never claims the proxy when a different target was hit.
+ */
+export function describeTtsFetchTargetForDebug(target: string): string {
   if (/^https?:\/\//i.test(target)) {
     try {
       return `${new URL(target).origin} (absolute)`;
@@ -417,6 +422,11 @@ export function describeTtsCloudFetchTargetForDebug(): string {
     typeof window !== "undefined" ? window.location.origin : "(no-window)";
   const path = target.startsWith("/") ? target : `/${target}`;
   return `${origin}${path} — relative URL (TTS fetch goes to the UI host, not the app API). Set __ELIZAOS_API_BASE__ / session elizaos_api_base / boot apiBase to http://127.0.0.1:<apiPort>`;
+}
+
+/** For ELIZA_TTS_DEBUG: shows whether cloud TTS hits the API or the wrong (page) origin. */
+export function describeTtsCloudFetchTargetForDebug(): string {
+  return describeTtsFetchTargetForDebug(resolveApiUrl("/api/tts/cloud"));
 }
 
 function isRedactedSecret(value: unknown): boolean {

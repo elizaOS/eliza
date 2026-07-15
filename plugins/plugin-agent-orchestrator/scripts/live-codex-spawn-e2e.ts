@@ -144,7 +144,7 @@ async function main() {
   acp.onSessionEvent((_sid, event, data) => events.push({ event, data }));
 
   log(
-    "Spawning REAL Codex sub-agent (npx @zed-industries/codex-acp; may take a minute)...",
+    "Spawning REAL Codex sub-agent (npx @agentclientprotocol/codex-acp; may take a minute)...",
   );
   const result = await acp.spawnSession({
     agentType: "codex",

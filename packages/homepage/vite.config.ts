@@ -62,6 +62,15 @@ export default defineConfig({
         find: "@elizaos/shared/brand",
         replacement: path.resolve(__dirname, "../shared/src/brand/index.ts"),
       },
+      // Keep this bare-package alias after the brand subpath: Vite string
+      // aliases also match slash-prefixed subpaths. The source-aliased UI
+      // region helper imports only these dependency-free language primitives,
+      // so clean homepage builds neither require shared/dist nor bundle the
+      // full shared (and transitively core) barrel.
+      {
+        find: "@elizaos/shared",
+        replacement: path.resolve(__dirname, "../shared/src/i18n/language.ts"),
+      },
       // Icon-only subpath MUST come before the cloud-ui barrel alias —
       // the homepage onboarding pages import only icons here to avoid
       // pulling the full barrel (which drags in hast + framer-motion).

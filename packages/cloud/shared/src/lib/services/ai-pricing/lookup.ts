@@ -422,20 +422,22 @@ export async function calculateTextCostFromCatalog(params: {
   // only when a real fallback exists (provider max → env default). If neither
   // source exists, fail closed because we should not sell inference we do not
   // know how to price (#11635).
-  const inputEntry = await resolvePreparedPricingEntry({
-    billingSource: params.billingSource,
-    provider: params.provider,
-    model: canonicalModel,
-    productFamily,
-    chargeType: "input",
-  }).catch(() => null);
-  const outputEntry = await resolvePreparedPricingEntry({
-    billingSource: params.billingSource,
-    provider: params.provider,
-    model: canonicalModel,
-    productFamily,
-    chargeType: "output",
-  }).catch(() => null);
+  const [inputEntry, outputEntry] = await Promise.all([
+    resolvePreparedPricingEntry({
+      billingSource: params.billingSource,
+      provider: params.provider,
+      model: canonicalModel,
+      productFamily,
+      chargeType: "input",
+    }).catch(() => null),
+    resolvePreparedPricingEntry({
+      billingSource: params.billingSource,
+      provider: params.provider,
+      model: canonicalModel,
+      productFamily,
+      chargeType: "output",
+    }).catch(() => null),
+  ]);
 
   // Resolve a fallback only for a side that actually bills tokens: a
   // zero-token side costs $0 at any rate, and skipping it keeps input-only
@@ -477,10 +479,10 @@ export async function calculateTextCostFromCatalog(params: {
     return fallback;
   };
 
-  const inputFallback = inputEntry ? null : await resolveMissingSide("input", params.inputTokens);
-  const outputFallback = outputEntry
-    ? null
-    : await resolveMissingSide("output", params.outputTokens);
+  const [inputFallback, outputFallback] = await Promise.all([
+    inputEntry ? null : resolveMissingSide("input", params.inputTokens),
+    outputEntry ? null : resolveMissingSide("output", params.outputTokens),
+  ]);
 
   // Defense-in-depth money-boundary guard mirroring `computeCostFromEntry`.
   // Candidate selection already drops non-finite/non-positive catalog prices, but the token

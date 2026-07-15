@@ -326,6 +326,12 @@ describe("extractAgentIdFromHost", () => {
     expect(
       extractAgentIdFromHost(`${agentId}.elizacloud.ai:443`, "elizacloud.ai"),
     ).toBe(agentId);
+    expect(
+      extractAgentIdFromHost(
+        `${agentId}.staging.elizacloud.ai`,
+        "staging.elizacloud.ai",
+      ),
+    ).toBe(agentId);
   });
 
   it("rejects root, unrelated, and malformed hosts", () => {

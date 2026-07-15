@@ -211,7 +211,7 @@ describe("Cloud active server persistence", () => {
     );
   });
 
-  it("repairs a stale shared-adapter cloud active server back to the dedicated runtime on restore", async () => {
+  it("preserves a shared adapter until server-authoritative tier selection", async () => {
     const server = createPersistedActiveServer({
       kind: "cloud",
       id: "cloud:agent-dedicated",
@@ -228,7 +228,8 @@ describe("Cloud active server persistence", () => {
       clientRef: { setBaseUrl, setToken },
     });
 
-    const expectedApiBase = "https://agent-dedicated.elizacloud.ai";
+    const expectedApiBase =
+      "https://api.elizacloud.ai/api/v1/eliza/agents/agent-dedicated";
     expect(setBaseUrl).toHaveBeenCalledWith(expectedApiBase);
     expect(setToken).toHaveBeenCalledWith("cloud-token");
     expect(loadPersistedActiveServer()).toEqual(

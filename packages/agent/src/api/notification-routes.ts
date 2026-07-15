@@ -39,13 +39,16 @@ import type {
   NotificationCategory,
   NotificationInput,
   NotificationPriority,
+  NotificationServiceLifecycleRuntime,
   RouteHelpers,
 } from "@elizaos/core";
 import { NotificationService, ServiceType } from "@elizaos/core";
 
 export interface NotificationRouteState {
-  runtime: { getService: (type: string) => unknown } | null;
+  runtime: NotificationServiceLifecycleRuntime | null;
 }
+
+const NOTIFICATION_RETRY_AFTER_SECONDS = 1;
 
 const CATEGORIES: NotificationCategory[] = [
   "reminder",
@@ -134,6 +137,77 @@ function getService(state: NotificationRouteState): NotificationService | null {
   return svc instanceof NotificationService ? svc : null;
 }
 
+function respondServiceUnavailable(
+  res: http.ServerResponse,
+  state: NotificationRouteState,
+  method: string,
+  pathname: string,
+  helpers: RouteHelpers,
+): boolean {
+  const runtime = state.runtime;
+  if (!runtime) {
+    res.setHeader("Retry-After", String(NOTIFICATION_RETRY_AFTER_SECONDS));
+    helpers.json(
+      res,
+      {
+        error: "Notification service is still starting",
+        code: "NOTIFICATION_SERVICE_NOT_READY",
+        retryAfter: NOTIFICATION_RETRY_AFTER_SECONDS,
+      },
+      503,
+    );
+    return true;
+  }
+
+  const availability = NotificationService.getAvailability(runtime);
+  if (availability === "disabled") {
+    if (method === "GET" && pathname === "/api/notifications") {
+      helpers.json(res, {
+        notifications: [],
+        unreadCount: 0,
+        serviceStatus: "disabled",
+      });
+      return true;
+    }
+    helpers.json(
+      res,
+      {
+        error: "Notification service is disabled",
+        code: "NOTIFICATION_SERVICE_DISABLED",
+      },
+      503,
+    );
+    return true;
+  }
+
+  if (availability === "failed") {
+    const recovery = NotificationService.requestRecovery(runtime);
+    res.setHeader("Retry-After", String(recovery.retryAfterSeconds));
+    helpers.json(
+      res,
+      {
+        error: "Notification inbox is temporarily unavailable",
+        code: "NOTIFICATION_SERVICE_FAILED",
+        retryAfter: recovery.retryAfterSeconds,
+      },
+      503,
+    );
+    return true;
+  }
+
+  res.setHeader("Retry-After", String(NOTIFICATION_RETRY_AFTER_SECONDS));
+  helpers.json(
+    res,
+    {
+      error: "Notification service is still starting",
+      code: "NOTIFICATION_SERVICE_NOT_READY",
+      retryAfter: NOTIFICATION_RETRY_AFTER_SECONDS,
+    },
+    503,
+  );
+  return true;
+}
+
 function parseLimit(raw: string | null): number | undefined {
   if (!raw) return undefined;
   const parsed = Number.parseInt(raw, 10);
@@ -206,15 +280,7 @@ export async function handleNotificationRoute(
 
   const service = getService(state);
   if (!service) {
-    // The runtime is up but the notification service isn't registered yet
-    // (very early boot). Serve an empty inbox rather than 500 so the UI
-    // degrades gracefully and retries.
-    if (method === "GET" && pathname === "/api/notifications") {
-      helpers.json(res, { notifications: [], unreadCount: 0 });
-      return true;
-    }
-    helpers.error(res, "notification service not ready", 503);
-    return true;
+    return respondServiceUnavailable(res, state, method, pathname, helpers);
   }
 
   // ── GET /api/notifications ────────────────────────────────────────
@@ -228,6 +294,7 @@ export async function handleNotificationRoute(
     helpers.json(res, {
       notifications,
       unreadCount: service.getUnreadCount(),
+      serviceStatus: "ready",
     });
     return true;
   }

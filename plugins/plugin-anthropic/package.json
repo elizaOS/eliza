@@ -61,7 +61,7 @@
     "ai": "^6.0.23"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "@elizaos/core": "workspace:*",
     "@elizaos/test-harness": "workspace:*",
     "@types/node": "^25.0.3",
@@ -108,7 +108,7 @@
         "type": "string",
         "description": "Override the default Anthropic large model identifier used by the plugin",
         "required": false,
-        "default": "claude-opus-4-7",
+        "default": "claude-opus-4-8",
         "sensitive": false
       },
       "ANTHROPIC_EXPERIMENTAL_TELEMETRY": {

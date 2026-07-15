@@ -19,6 +19,8 @@
  */
 
 import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
+import { brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import {
   APP_DIST,
   existsSync,
@@ -37,6 +39,9 @@ const TARGET_URL = urlArg
   ? urlArg.slice("--url=".length)
   : (process.env.LOADPERF_FE_URL ?? null);
 const SETTLE_MS = Number(process.env.LOADPERF_FE_SETTLE_MS ?? 8000);
+const BROTLI_OPTIONS = {
+  params: { [zlibConstants.BROTLI_PARAM_QUALITY]: 4 },
+};
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -63,35 +68,77 @@ function contentTypeFor(path) {
   return MIME[ext] ?? "application/octet-stream";
 }
 
-/** Serve APP_DIST as an SPA (history fallback to index.html). Returns { url, close }. */
-function serveDist() {
-  const indexPath = join(APP_DIST, "index.html");
+function shouldCompress(contentType) {
+  return /^(text\/|application\/(javascript|json|wasm)|image\/svg\+xml)/.test(
+    contentType,
+  );
+}
+
+/** Serve a production build as an SPA. Returns { url, close }. */
+export function serveDist(
+  distRoot = APP_DIST,
+  { readFile = readFileSync } = {},
+) {
+  const indexPath = join(distRoot, "index.html");
   if (!existsSync(indexPath)) {
     throw new Error(
       `no build at ${APP_DIST} — run \`bun run --cwd packages/app build\` first.`,
     );
   }
   const server = createServer((req, res) => {
-    const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
-    const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
-    // block path traversal
-    const safe = rel
-      .split("/")
-      .filter((seg) => seg && seg !== "..")
-      .join("/");
-    const candidate = join(APP_DIST, safe);
-    const file =
-      existsSync(candidate) && !candidate.endsWith("/") ? candidate : indexPath;
     try {
-      const buf = readFileSync(file);
+      const urlPath = decodeURIComponent((req.url ?? "/").split("?")[0]);
+      const rel = urlPath === "/" ? "index.html" : urlPath.replace(/^\/+/, "");
+      const safe = rel
+        .split("/")
+        .filter((segment) => segment && segment !== "..")
+        .join("/");
+      const candidate = join(distRoot, safe);
+      const file =
+        existsSync(candidate) && !candidate.endsWith("/")
+          ? candidate
+          : indexPath;
+      const buf = readFile(file);
+      const contentType = contentTypeFor(file);
+      const acceptsBrotli = /(?:^|,)\s*br(?:\s*;|\s*,|\s*$)/i.test(
+        req.headers["accept-encoding"] ?? "",
+      );
+      // The transfer budget models the deployed CDN path, where text assets
+      // are encoded; serving raw dist bytes would measure bundle weight twice.
+      const body =
+        acceptsBrotli && shouldCompress(contentType)
+          ? brotliCompressSync(buf, BROTLI_OPTIONS)
+          : buf;
       res.writeHead(200, {
-        "content-type": contentTypeFor(file),
-        "content-length": buf.length,
+        "content-type": contentType,
+        "content-length": body.length,
+        ...(body !== buf ? { "content-encoding": "br" } : {}),
+        vary: "accept-encoding",
       });
-      res.end(buf);
-    } catch {
-      res.writeHead(404, { "content-type": "text/plain" });
-      res.end("not found");
+      res.end(body);
+    } catch (error) {
+      if (error instanceof URIError) {
+        // error-policy:J3 malformed URL escapes are invalid input, not missing assets.
+        res.writeHead(400, { "content-type": "text/plain" });
+        res.end("invalid URL encoding");
+        return;
+      }
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        // error-policy:J1 an asset can disappear between existence check and read.
+        res.writeHead(404, { "content-type": "text/plain" });
+        res.end("not found");
+        return;
+      }
+      // error-policy:J1 the HTTP boundary reports unexpected filesystem failures.
+      process.stderr.write(
+        `[frontend-kpi] static asset read failed: ${error instanceof Error ? error.stack : String(error)}\n`,
+      );
+      res.writeHead(500, { "content-type": "text/plain" });
+      res.end("static asset read failed");
     }
   });
   return new Promise((resolve) => {
@@ -148,7 +195,7 @@ const COLLECT = `(() => {
   };
 })()`;
 
-function checkBudgets(metrics) {
+export function checkBudgets(metrics) {
   const b = loadBudgets().frontend;
   const checks = [
     { name: "fcpMs", value: metrics.fcpMs, budget: b.fcpMs, unit: "ms" },
@@ -178,50 +225,64 @@ function checkBudgets(metrics) {
   }));
 }
 
-async function main() {
-  let playwright;
+export async function runFrontendKpi({
+  playwright: suppliedPlaywright,
+  targetUrl = TARGET_URL,
+  settleMs = SETTLE_MS,
+  jsonOnly = JSON_ONLY,
+  serve = serveDist,
+  record = recordResult,
+} = {}) {
+  let playwright = suppliedPlaywright;
   try {
-    playwright = await import("playwright");
+    playwright ??= await import("playwright");
   } catch (err) {
+    // error-policy:J1 CLI boundary translation — the optional browser is a
+    // documented prerequisite, so its absence produces a skipped artifact.
     const payload = {
       skipped: true,
       error: `playwright unavailable: ${err?.message ?? String(err)}`,
     };
-    const { file } = recordResult("frontend", payload, NOW);
-    if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
+    const { file } = record("frontend", payload, NOW);
+    if (jsonOnly) console.log(JSON.stringify({ ...payload, file }, null, 2));
     else
       console.error(
         `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
       );
-    process.exit(2);
+    return 2;
   }
 
   let served = null;
-  let target = TARGET_URL;
+  let target = targetUrl;
   if (!target) {
     try {
-      served = await serveDist();
+      served = await serve();
       target = served.url;
     } catch (err) {
+      // error-policy:J1 CLI boundary translation — an unavailable build
+      // produces a skipped artifact rather than a fabricated KPI result.
       const payload = { skipped: true, error: err?.message ?? String(err) };
-      const { file } = recordResult("frontend", payload, NOW);
-      if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
+      const { file } = record("frontend", payload, NOW);
+      if (jsonOnly) console.log(JSON.stringify({ ...payload, file }, null, 2));
       else
         console.error(
           `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
         );
-      process.exit(2);
+      return 2;
     }
   }
 
   let browser = null;
   try {
     browser = await playwright.chromium.launch({ args: ["--no-sandbox"] });
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+      // Keep Resource Timing scoped to network responses instead of decoded service-worker cache bodies.
+      serviceWorkers: "block",
+    });
     await context.addInitScript(OBSERVER_INIT);
     const page = await context.newPage();
     await page.goto(target, { waitUntil: "load", timeout: 60_000 });
-    await page.waitForTimeout(SETTLE_MS);
+    await page.waitForTimeout(settleMs);
     const metrics = await page.evaluate(COLLECT);
 
     const checks = checkBudgets(metrics);
@@ -234,9 +295,9 @@ async function main() {
       checks,
       pass: checks.every((c) => c.pass),
     };
-    const { file } = recordResult("frontend", result, NOW);
+    const { file } = record("frontend", result, NOW);
 
-    if (JSON_ONLY) {
+    if (jsonOnly) {
       console.log(JSON.stringify(result, null, 2));
     } else {
       console.log("\n=== Frontend KPI ===");
@@ -268,24 +329,41 @@ async function main() {
         `\nresult: ${result.pass ? "PASS" : "FAIL"}   recorded -> ${file}\n`,
       );
     }
-    process.exit(result.pass ? 0 : 1);
+    return result.pass ? 0 : 1;
   } catch (err) {
+    // error-policy:J1 CLI boundary translation — browser and navigation
+    // failures become a recorded skipped result for the benchmark caller.
     const payload = {
       skipped: true,
       url: target,
       error: err?.message ?? String(err),
     };
-    const { file } = recordResult("frontend", payload, NOW);
-    if (JSON_ONLY) console.log(JSON.stringify({ ...payload, file }, null, 2));
+    const { file } = record("frontend", payload, NOW);
+    if (jsonOnly) console.log(JSON.stringify({ ...payload, file }, null, 2));
     else
       console.error(
         `[frontend-kpi] skipped: ${payload.error}\nrecorded -> ${file}`,
       );
-    process.exit(2);
+    return 2;
   } finally {
-    if (browser) await browser.close().catch(() => {});
-    if (served) await served.close().catch(() => {});
+    for (const [label, close] of [
+      ["browser", browser ? () => browser.close() : null],
+      ["static server", served ? () => served.close() : null],
+    ]) {
+      if (!close) continue;
+      try {
+        await close();
+      } catch (error) {
+        // error-policy:J6 best-effort teardown — the primary benchmark result
+        // is already recorded, while teardown failures remain visible.
+        console.error(
+          `[frontend-kpi] ${label} teardown failed: ${error?.message ?? String(error)}`,
+        );
+      }
+    }
   }
 }
 
-main();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  process.exitCode = await runFrontendKpi();
+}

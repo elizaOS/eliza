@@ -35,6 +35,7 @@ import {
   __ingestNotificationForTests,
   __resetNotificationStoreForTests,
   __setHydratedForTests,
+  __setHydrationFailureForTests,
 } from "../../state/notifications/notification-store";
 import {
   groupDashboardNotifications,
@@ -141,6 +142,16 @@ describe("NotificationsHomeCenter mode", () => {
     __setHydratedForTests(true);
     rerender(<NotificationsHomeCenter />);
     expect(screen.queryByTestId("home-notification-center")).toBeNull();
+  });
+
+  it("surfaces a terminal hydration failure with a compact retry action", () => {
+    __setHydrationFailureForTests("backend unavailable");
+    render(<NotificationsHomeCenter />);
+
+    expect(screen.getByTestId("notifications-unavailable")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Retry loading notifications" }),
+    ).toBeTruthy();
   });
 
   it("rests on interrupt notifications and exposes one persistent mode toggle", () => {

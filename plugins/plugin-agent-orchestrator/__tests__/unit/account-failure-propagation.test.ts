@@ -8,14 +8,41 @@
 
 // biome-ignore assist/source/organizeImports: comment-only pass preserves import token order.
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
+import { classifyAuthFailureReason } from "@elizaos/auth/token-expiry";
 import type { Content, HandlerCallback, Memory } from "@elizaos/core";
+import { isTokenExpiryText } from "@elizaos/auth/token-expiry";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  accountMetaFromSessionMetadata,
+  assessCodingAccountReadiness,
   classifyAccountFailure,
+  diagnoseCodingAccountFallback,
+  hasHealthyPooledAccount,
+  isMultiAccountAgentType,
   RATE_LIMIT_COOLOFF_MS,
+  selectCodingAccount,
+  resolveCodingAccountStrategy,
 } from "../../src/services/coding-account-selection.js";
 import { SubAgentRouter } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
+
+describe("token expiry classifier", () => {
+  it("recognizes only explicit expiry language", () => {
+    expect(isTokenExpiryText("jwt expired")).toBe(true);
+    expect(isTokenExpiryText("OAuth token has expired")).toBe(true);
+    expect(isTokenExpiryText("access token is expired")).toBe(true);
+    expect(isTokenExpiryText("401 unauthorized")).toBe(false);
+    expect(isTokenExpiryText("invalid token")).toBe(false);
+    expect(isTokenExpiryText(undefined)).toBe(false);
+  });
+
+  it("refines auth-shaped failures without widening expiry detection", () => {
+    expect(classifyAuthFailureReason("session expired")).toBe("token_expired");
+    expect(classifyAuthFailureReason("invalid_grant")).toBe("needs_reauth");
+    expect(classifyAuthFailureReason("")).toBe("unknown");
+    expect(classifyAuthFailureReason(null)).toBe("unknown");
+  });
+});
 
 describe("classifyAccountFailure", () => {
   it("flags unambiguous rate-limit signals", () => {
@@ -72,6 +99,10 @@ describe("classifyAccountFailure", () => {
     expect(
       classifyAccountFailure("token expired, please re-authenticate"),
     ).toBe("needs-reauth");
+    expect(isTokenExpiryText("Claude access token has expired")).toBe(true);
+    expect(classifyAccountFailure("Claude access token has expired")).toBe(
+      "needs-reauth",
+    );
   });
 
   it("does NOT flag ordinary build output (no healthy-account eviction)", () => {
@@ -86,6 +117,165 @@ describe("classifyAccountFailure", () => {
     expect(
       classifyAccountFailure("build failed: missing login form"),
     ).toBeNull();
+  });
+});
+
+describe("coding account selection helpers", () => {
+  it("normalizes valid strategy names and rejects malformed input", () => {
+    expect(resolveCodingAccountStrategy(" QUOTA-AWARE ")).toBe("quota-aware");
+    expect(resolveCodingAccountStrategy("round-robin")).toBe("round-robin");
+    expect(resolveCodingAccountStrategy("")).toBeUndefined();
+    expect(resolveCodingAccountStrategy("weighted-random")).toBeUndefined();
+    expect(resolveCodingAccountStrategy(undefined)).toBeUndefined();
+  });
+
+  it("reads stamped account metadata with defaults and rejects malformed metadata", () => {
+    expect(
+      accountMetaFromSessionMetadata({
+        account: {
+          providerId: "openai-codex",
+          accountId: "acct-1",
+        },
+      }),
+    ).toEqual({
+      providerId: "openai-codex",
+      accountId: "acct-1",
+      label: "acct-1",
+      source: "oauth",
+      strategy: "least-used",
+    });
+    expect(
+      accountMetaFromSessionMetadata({
+        account: {
+          providerId: "openai-codex",
+          accountId: "acct-2",
+          label: "Team",
+          source: "api-key",
+          strategy: "priority",
+        },
+      }),
+    ).toMatchObject({ label: "Team", source: "api-key", strategy: "priority" });
+    expect(accountMetaFromSessionMetadata(undefined)).toBeNull();
+    expect(
+      accountMetaFromSessionMetadata({ account: "not-object" }),
+    ).toBeNull();
+    expect(
+      accountMetaFromSessionMetadata({
+        account: { providerId: "openai-codex", accountId: 123 },
+      }),
+    ).toBeNull();
+  });
+
+  it("assesses readiness for canonical and rotation account postures", () => {
+    const readiness = assessCodingAccountReadiness({
+      claude: [
+        {
+          providerId: "anthropic-subscription",
+          total: 2,
+          enabled: 2,
+          healthy: 2,
+        },
+      ],
+      codex: [{ providerId: "openai-codex", total: 1, enabled: 1, healthy: 1 }],
+    });
+    expect(readiness.ready).toBe(true);
+    expect(readiness.problems).toEqual([]);
+
+    const rotation = assessCodingAccountReadiness(
+      {
+        claude: [
+          {
+            providerId: "anthropic-subscription",
+            total: 2,
+            enabled: 2,
+            healthy: 1,
+          },
+        ],
+        codex: [],
+      },
+      { rotation: true },
+    );
+    expect(rotation.ready).toBe(false);
+    expect(rotation.required).toBe(2);
+    expect(rotation.problems).toEqual([
+      "claude: 1 healthy account(s), need >= 2 (2 connected)",
+      "codex: 0 healthy account(s), need >= 2 (none connected)",
+    ]);
+  });
+
+  it("selects pooled accounts only for multi-account agents", async () => {
+    const select = vi.fn(async () => ({
+      providerId: "anthropic-subscription",
+      accountId: "acct-1",
+      label: "Work",
+      source: "oauth" as const,
+      strategy: "least-used" as const,
+      credential: { type: "env" as const, env: {} },
+    }));
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({}),
+      select,
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: async () => undefined,
+    };
+
+    expect(isMultiAccountAgentType("claude")).toBe(true);
+    expect(isMultiAccountAgentType("elizaos")).toBe(false);
+    await expect(selectCodingAccount("elizaos")).resolves.toBeNull();
+    const picked = await selectCodingAccount("claude", {
+      sessionKey: "task-1",
+      strategy: "least-used",
+    });
+    expect(select).toHaveBeenCalledWith("claude", {
+      sessionKey: "task-1",
+      strategy: "least-used",
+    });
+    expect(picked?.meta).toMatchObject({
+      providerId: "anthropic-subscription",
+      accountId: "acct-1",
+      label: "Work",
+    });
+  });
+
+  it("diagnoses exhausted pools and fails healthy-account probes closed", async () => {
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => ({
+        claude: [
+          {
+            providerId: "anthropic-subscription",
+            total: 2,
+            enabled: 2,
+            healthy: 0,
+          },
+        ],
+        codex: [
+          { providerId: "openai-codex", total: 1, enabled: 1, healthy: 1 },
+        ],
+      }),
+      select: vi.fn(async () => null),
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: async () => undefined,
+    };
+
+    expect(diagnoseCodingAccountFallback("claude")).toContain(
+      "2 account(s) connected but 0 healthy",
+    );
+    expect(diagnoseCodingAccountFallback("codex")).toBeNull();
+    expect(hasHealthyPooledAccount("codex")).toBe(true);
+
+    (globalThis as Record<symbol, unknown>)[BRIDGE_SYMBOL] = {
+      describe: () => {
+        throw new Error("bridge unavailable");
+      },
+      select: vi.fn(async () => null),
+      markRateLimited: vi.fn(async () => undefined),
+      markNeedsReauth: vi.fn(async () => undefined),
+      recordUsage: async () => undefined,
+    };
+    expect(diagnoseCodingAccountFallback("claude")).toBeNull();
+    expect(hasHealthyPooledAccount("claude")).toBe(false);
   });
 });
 
@@ -243,6 +433,36 @@ describe("router → pool account-failure propagation", () => {
     acp.emit(SESSION_ID, "error", { message: "401 Unauthorized" });
     await new Promise((r) => setImmediate(r));
     expect(bridge.markNeedsReauth).not.toHaveBeenCalled();
+    await router.stop();
+  });
+
+  it("routes canonical task_complete output as a sub-agent message without account mutation", async () => {
+    const acp = makeAcp(makeSession(account));
+    const runtime = makeRuntime(acp.service) as {
+      messageService: { handleMessage: ReturnType<typeof vi.fn> };
+      sendMessageToTarget: ReturnType<typeof vi.fn>;
+    };
+    const router = await SubAgentRouter.start(runtime as never);
+    acp.emit(SESSION_ID, "task_complete", {
+      response: "Implemented the widget and ran focused tests.",
+    });
+    await new Promise((r) => setImmediate(r));
+    await new Promise((r) => setImmediate(r));
+
+    expect(runtime.messageService.handleMessage).toHaveBeenCalledTimes(1);
+    const memory = runtime.messageService.handleMessage.mock.calls[0]?.[1] as
+      | Memory
+      | undefined;
+    expect(memory?.content.text).toContain("task_complete");
+    expect(memory?.content.text).toContain(
+      "Implemented the widget and ran focused tests.",
+    );
+    expect(memory?.content.metadata).toMatchObject({
+      subAgentSessionId: SESSION_ID,
+      subAgentEvent: "task_complete",
+    });
+    expect(bridge.markNeedsReauth).not.toHaveBeenCalled();
+    expect(bridge.markRateLimited).not.toHaveBeenCalled();
     await router.stop();
   });
 });

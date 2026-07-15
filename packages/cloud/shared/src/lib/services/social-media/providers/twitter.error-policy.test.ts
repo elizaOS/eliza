@@ -15,8 +15,18 @@
  * and JSON parser run without the exponential-backoff sleeps; `globalThis.fetch` supplies
  * the raw upstream Response.
  */
-import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { SocialCredentials } from "../../../types/social-media";
+import * as realRateLimit from "../rate-limit";
+
+// bun's `mock.module` patches the process-global module registry (afterEach
+// here only restores fetch). Under the batched cloud-unit runner (`--isolate`
+// occasionally fails to contain these on a memory-pressured runner) this
+// twitter-specific `../rate-limit` double otherwise bleeds into the shared
+// rate-limit / token-refresh suites, whose `withRetry` then throws
+// "twitter API error". Snapshot the real exports now and reinstall them in
+// afterAll so this file's stub is strictly local.
+const realRateLimitExports = { ...realRateLimit };
 
 // Pass-through withRetry: run fetch once, mirror the real non-ok throw, run the parser.
 // No backoff sleeps, no retry loop — the point under test is that the provider does NOT
@@ -58,6 +68,10 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+});
+
+afterAll(() => {
+  mock.module("../rate-limit", () => realRateLimitExports);
 });
 
 describe("twitterProvider.getPostAnalytics — internal failure propagates, guard stays null", () => {

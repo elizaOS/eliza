@@ -204,6 +204,7 @@ export {
   type CockpitModeConfig,
   CockpitModePicker,
   CockpitNewSessionForm,
+  type CockpitSpawnTarget,
   CockpitTierToggle,
   type CockpitTierToggleProps,
   CockpitView,
@@ -211,6 +212,7 @@ export {
   cockpitModeToProviderPolicy,
   ELIZA_CLOUD_TIER_MODEL,
   type ElizaCloudTier,
+  normalizeCockpitSpawnTarget,
 } from "./components/cockpit/index";
 // Surfaced directly on the root barrel (also reachable via the composites/hooks
 // chains) so dist-mapped consumers resolve them by name.

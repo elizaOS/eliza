@@ -801,7 +801,10 @@ export default defineConfig({
     },
     coverage: {
       ...baseConfig.test?.coverage,
-      include: [`${packageRootFromRepo}/src/**/*.{ts,tsx}`],
+      include: [
+        `${packageRootFromRepo}/src/**/*.{ts,tsx}`,
+        `${packageRootFromRepo}/scripts/run-cerebras-journey-eval.mjs`,
+      ],
       exclude: [
         `${packageRootFromRepo}/src/**/*.test.{ts,tsx}`,
         `${packageRootFromRepo}/src/**/*.live.test.{ts,tsx}`,

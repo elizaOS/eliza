@@ -123,6 +123,13 @@ const publicPathPrefixes = [
   "/api/v1/proxy/birdeye",
   "/api/v1/discord/callback",
   "/api/v1/twitter/callback",
+  // Realtime voice-session WebSocket upgrade. WebView-113 clients (Light Phone
+  // III) cannot set an Authorization header on `new WebSocket()`, so the voice
+  // token is presented and verified in the first `hello` frame instead. ONLY
+  // the /ws upgrade is public; the mint (POST /session) and revoke
+  // (POST /session/:id/revoke) siblings still require the Eliza bearer. The
+  // `=== p || startsWith(p+"/")` match keeps this scoped to the ws path.
+  "/api/v1/voice/session/ws",
   "/api/v1/oauth/providers",
   "/api/v1/oauth/callback",
   "/api/v1/user/wallets/rpc",

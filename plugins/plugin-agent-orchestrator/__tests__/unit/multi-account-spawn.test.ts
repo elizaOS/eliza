@@ -4,6 +4,9 @@
  * with single-account fallback when the bridge is absent.
  */
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { CODING_AGENT_SELECTOR_BRIDGE_SYMBOL } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -137,7 +140,13 @@ function clearBridge() {
 }
 
 function runtime(settings: Record<string, string | undefined> = {}) {
-  const values = { ELIZA_ACP_TRANSPORT: "native", ...settings };
+  const values = {
+    ELIZA_ACP_TRANSPORT: "native",
+    // NativeAcpClient is mocked in this contract suite; command provisioning is
+    // outside its scope and must not depend on workspace build artifacts.
+    ELIZA_ELIZAOS_ACP_COMMAND: "test-eliza-code-acp",
+    ...settings,
+  };
   return {
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     getSetting: vi.fn((key: string) => values[key]),
@@ -374,5 +383,146 @@ describe("multi-account coding-agent spawn", () => {
       nativeClientMock.instances[1]?.opts.env?.CLAUDE_CODE_OAUTH_TOKEN,
     ).toBe("sk-ant-oat-acc-b");
     await service.stop();
+  });
+});
+
+// Same spawn-env surface (buildEnv), different knob: the config-env
+// ELIZA_CLAUDE_EFFORT → CLAUDE_CODE_EFFORT_LEVEL plumbing for the Claude Code
+// CLI. Uses a real temp config file behind ELIZA_CONFIG_PATH to prove a
+// freshly-saved UI value applies on the next spawn without a restart.
+describe("claude effort env (ELIZA_CLAUDE_EFFORT → CLAUDE_CODE_EFFORT_LEVEL)", () => {
+  let tempDir: string;
+  let prevConfigPath: string | undefined;
+  let prevEffort: string | undefined;
+  let prevEffortLevel: string | undefined;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-effort-"));
+    prevConfigPath = process.env.ELIZA_CONFIG_PATH;
+    prevEffort = process.env.ELIZA_CLAUDE_EFFORT;
+    prevEffortLevel = process.env.CLAUDE_CODE_EFFORT_LEVEL;
+    delete process.env.ELIZA_CLAUDE_EFFORT;
+    // A host-level effort would forward via the allowlist and mask the
+    // config-driven assertion below.
+    delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
+  });
+
+  afterEach(() => {
+    if (prevConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+    else process.env.ELIZA_CONFIG_PATH = prevConfigPath;
+    if (prevEffort === undefined) delete process.env.ELIZA_CLAUDE_EFFORT;
+    else process.env.ELIZA_CLAUDE_EFFORT = prevEffort;
+    if (prevEffortLevel === undefined) {
+      delete process.env.CLAUDE_CODE_EFFORT_LEVEL;
+    } else {
+      process.env.CLAUDE_CODE_EFFORT_LEVEL = prevEffortLevel;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(env: Record<string, string>): void {
+    const file = path.join(tempDir, "eliza.json");
+    fs.writeFileSync(file, JSON.stringify({ env }));
+    process.env.ELIZA_CONFIG_PATH = file;
+  }
+
+  async function spawnAndGetEnv(agentType: string): Promise<NodeJS.ProcessEnv> {
+    const service = new AcpService(runtime());
+    await service.start();
+    await service.spawnSession({
+      name: `${agentType}-effort`,
+      agentType: agentType as never,
+      workdir: "/tmp/acp-test",
+    });
+    const env = firstNativeClient().opts.env ?? {};
+    await service.stop();
+    return env;
+  }
+
+  it("sets CLAUDE_CODE_EFFORT_LEVEL from a freshly-saved config value (no restart)", async () => {
+    // Mixed case proves the value is normalized before the CLI sees it.
+    writeConfig({ ELIZA_CLAUDE_EFFORT: "Max" });
+    const env = await spawnAndGetEnv("claude");
+    expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBe("max");
+  });
+
+  it("skips an invalid effort — the spawn proceeds and the CLI keeps its default", async () => {
+    writeConfig({ ELIZA_CLAUDE_EFFORT: "turbo" });
+    const env = await spawnAndGetEnv("claude");
+    expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
+  });
+
+  it("does not set the effort env for non-claude agent types", async () => {
+    writeConfig({ ELIZA_CLAUDE_EFFORT: "max" });
+    const env = await spawnAndGetEnv("codex");
+    expect(env.CLAUDE_CODE_EFFORT_LEVEL).toBeUndefined();
+  });
+});
+
+// Same buildEnv surface again: the app-configured claude coding model
+// (ELIZA_CLAUDE_MODEL_POWERFUL, written by POST /api/models/config) must reach
+// the spawned Claude Code CLI as ANTHROPIC_MODEL when the spawn carries no
+// explicit model — before this fallback the key was write-only.
+describe("claude model env (ELIZA_CLAUDE_MODEL_POWERFUL → ANTHROPIC_MODEL)", () => {
+  let tempDir: string;
+  let prevConfigPath: string | undefined;
+  let prevAnthropicModel: string | undefined;
+
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "acp-model-"));
+    prevConfigPath = process.env.ELIZA_CONFIG_PATH;
+    prevAnthropicModel = process.env.ANTHROPIC_MODEL;
+    // A host-level ANTHROPIC_MODEL would forward via the allowlist and mask
+    // the config-driven assertion below.
+    delete process.env.ANTHROPIC_MODEL;
+  });
+
+  afterEach(() => {
+    if (prevConfigPath === undefined) delete process.env.ELIZA_CONFIG_PATH;
+    else process.env.ELIZA_CONFIG_PATH = prevConfigPath;
+    if (prevAnthropicModel === undefined) delete process.env.ANTHROPIC_MODEL;
+    else process.env.ANTHROPIC_MODEL = prevAnthropicModel;
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function writeConfig(env: Record<string, string>): void {
+    const file = path.join(tempDir, "eliza.json");
+    fs.writeFileSync(file, JSON.stringify({ env }));
+    process.env.ELIZA_CONFIG_PATH = file;
+  }
+
+  async function spawnAndGetEnv(
+    agentType: string,
+    model?: string,
+  ): Promise<NodeJS.ProcessEnv> {
+    const service = new AcpService(runtime());
+    await service.start();
+    await service.spawnSession({
+      name: `${agentType}-model`,
+      agentType: agentType as never,
+      workdir: "/tmp/acp-test",
+      ...(model ? { model } : {}),
+    });
+    const env = firstNativeClient().opts.env ?? {};
+    await service.stop();
+    return env;
+  }
+
+  it("sets ANTHROPIC_MODEL from a freshly-saved config value (no restart)", async () => {
+    writeConfig({ ELIZA_CLAUDE_MODEL_POWERFUL: "claude-opus-4-8" });
+    const env = await spawnAndGetEnv("claude");
+    expect(env.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
+  });
+
+  it("lets an explicit per-spawn model beat the configured one", async () => {
+    writeConfig({ ELIZA_CLAUDE_MODEL_POWERFUL: "claude-opus-4-8" });
+    const env = await spawnAndGetEnv("claude", "claude-sonnet-5");
+    expect(env.ANTHROPIC_MODEL).toBe("claude-sonnet-5");
+  });
+
+  it("does not set ANTHROPIC_MODEL for non-claude agent types", async () => {
+    writeConfig({ ELIZA_CLAUDE_MODEL_POWERFUL: "claude-opus-4-8" });
+    const env = await spawnAndGetEnv("codex");
+    expect(env.ANTHROPIC_MODEL).toBeUndefined();
   });
 });

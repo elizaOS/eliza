@@ -8,7 +8,7 @@
  * own fan/fold state and may be expanded independently in either inbox mode.
  */
 import type { AgentNotification } from "@elizaos/core";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "../../lib/utils";
@@ -18,6 +18,7 @@ import {
 } from "../../state/notifications/navigate-deep-link";
 import {
   removeNotification,
+  retryNotificationHydration,
   useNotifications,
 } from "../../state/notifications/notification-store";
 import {
@@ -130,7 +131,7 @@ export function __setNotificationsHomeCenterRenderObserverForTests(
 
 export function NotificationsHomeCenter(): React.JSX.Element | null {
   notificationsHomeCenterRenderObserverForTests?.();
-  const { notifications, hydrated } = useNotifications();
+  const { notifications, hydrated, hydrationStatus } = useNotifications();
   const [inboxExpanded, setInboxExpanded] = useState(false);
   const [expandedStacks, setExpandedStacks] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -250,6 +251,36 @@ export function NotificationsHomeCenter(): React.JSX.Element | null {
     setInboxExpanded(false);
     setExpandedStacks(new Set());
   }, [notifications.length]);
+
+  if (hydrationStatus === "failed" && notifications.length === 0) {
+    return (
+      <section
+        aria-label="Notifications"
+        data-testid="home-notification-center"
+        className="relative w-full px-1.5 py-1 text-white"
+      >
+        <style>{NOTIF_SCROLL_CSS}</style>
+        <LiquidGlassRefractionDefs />
+        <div
+          role="alert"
+          data-testid="notifications-unavailable"
+          className="eliza-notif-glass flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
+        >
+          <span className="text-sm text-white/75">
+            Notifications unavailable
+          </span>
+          <button
+            type="button"
+            aria-label="Retry loading notifications"
+            onClick={() => void retryNotificationHydration()}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white/60 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
+          >
+            <RefreshCw aria-hidden className="h-4 w-4" />
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   // Hydration must settle before an empty result is trusted. An empty inbox has
   // no gesture band: it occupies no layout space above Apps.

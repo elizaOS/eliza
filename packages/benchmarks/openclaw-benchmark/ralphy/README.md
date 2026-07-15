@@ -25,6 +25,11 @@ ralphy --opencode --prd PRD.md
 - ✅ Keine Verbindung zu deinem lokalen OpenCode
 - ✅ Container wird nach `exit` gelöscht (`--rm`)
 
+## Benchmarkberichte
+
+- [Laufprotokoll und Messwerte](BENCHMARK.md)
+- [Kritische Ergebnisanalyse](RESULTS.md)
+
 ---
 
 ## Later: Antigravity Auth (ausgeklammert)

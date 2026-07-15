@@ -26,11 +26,13 @@ function detectFor(
   osName: PlatformOS,
   availableCommands: string[],
   browserAvailable = true,
+  driverName: "legacy" | "nutjs" = "legacy",
 ) {
   const commands = new Set(availableCommands);
   return detectPlatformCapabilities({
     osName,
     commandExists: (command) => commands.has(command),
+    driverName,
     isBrowserAvailable: () => browserAvailable,
     shell: "/bin/zsh",
   });
@@ -123,6 +125,20 @@ describe("cross-platform computer-use capabilities", () => {
     });
     expect(caps.windowList.available).toBe(false);
     expect(caps.browser.available).toBe(false);
+  });
+
+  it("reports capture and input through the resolved nutjs driver", () => {
+    const caps = detectFor("linux", ["/bin/zsh"], false, "nutjs");
+
+    expect(caps.screenshot).toEqual({
+      available: true,
+      tool: "@nut-tree-fork/nut-js",
+    });
+    expect(caps.computerUse).toEqual({
+      available: true,
+      tool: "@nut-tree-fork/nut-js",
+    });
+    expect(caps.windowList.available).toBe(false);
   });
 });
 

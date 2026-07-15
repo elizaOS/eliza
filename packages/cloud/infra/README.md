@@ -15,15 +15,27 @@ Infrastructure-as-code for the elizaOS Cloud stack. Contains Kubernetes manifest
 
 ## Deployment topology
 
-See `cloud/RAILWAY.md` for the canonical service map. Short version:
+See `cloud/RAILWAY.md` for the canonical service/runtime/request-path map.
+Short version:
 
-- `cloud-frontend` → Cloudflare Pages
-- `cloud-api` → Cloudflare Worker
+- Frontends → Cloudflare Pages: two projects (`eliza-cloud` at the
+  `elizacloud.ai` apex, `eliza-app` at `app.elizacloud.ai`), both built from
+  `packages/app` (`packages/cloud-frontend` was deleted)
+- `eliza-cloud-api` → ONE Cloudflare Worker (`packages/cloud/api`): REST API,
+  auth, billing, model gateway, dedicated-agent proxy, and the public batch
+  voice routes
+- Database → Railway managed Postgres — one env-scoped `DATABASE_URL` per
+  environment; the Worker connects through its Hyperdrive binding. Neon is
+  retired. Steward auth runs embedded in the Worker at `/steward*`.
+- Redis → Railway managed Redis (TCP `REDIS_URL`); Upstash REST is a legacy
+  fallback only
+- `gateway-discord` / `gateway-webhook` → Railway (Docker manifests in each
+  service directory)
+- `voice-kokoro-tts` / `voice-whisper-stt` → Railway, private origins behind
+  the Worker's `/api/v1/voice/*` routes
 - `headscale` → Hetzner control-plane VM (agent path); `tunnel-proxy` → Railway (customer-tunnel path)
-- `agent-server` (per-customer compute) → Hetzner via `container-control-plane`
-- Database → Neon (Postgres) — ONE shared DB per env (prod `ep-wild-smoke`,
-  staging `ep-wild-dawn`); Steward lives as an embedded `steward` schema inside
-  that same shared DB, not a separate DB. Per-agent Neon branches are legacy/retired.
+- `agent-server` (per-customer compute) → containers on Hetzner data-plane
+  nodes, provisioned by the control-plane daemons
 - Object storage → Cloudflare R2
 
 ## Local development cluster
@@ -58,7 +70,7 @@ docker compose down -v            # stop + wipe volumes
 
 ## Hetzner control-plane Terraform
 
-Manages the persistent control-plane VM(s) that host the elizaOS Cloud provisioning worker, agent router, headscale, and cloudflared. The elastic data-plane sandbox cores are provisioned at runtime by `node-autoscaler.ts`, not by this Terraform.
+Manages the persistent control-plane VM(s) that host the elizaOS Cloud provisioning worker, agent router, headscale, and the nginx ingress. The elastic data-plane sandbox cores are provisioned at runtime by `node-autoscaler.ts`, not by this Terraform.
 
 ```bash
 cd cloud/terraform/hetzner/control-plane
@@ -92,5 +104,11 @@ bun run --cwd packages/cloud/infra test
 ## Notes
 
 - GCP Terraform (`cloud/terraform/gcp/`) is experimental and not wired to CI.
-- AWS resources are being retired; see `cloud/AWS_RETIREMENT.md` for the migration plan.
-- Production secrets are supplied via external-secrets-operator; the `.env.example` files are for local dev only.
+- AWS is retired (open: the KMS sunset and deleting the stale gateway role-ARN
+  vars from the GitHub environments); see `cloud/AWS_RETIREMENT.md` for the record.
+- Production secrets are not in this package. Each runtime reads its own:
+  Worker secrets via `wrangler secret put` (published on deploy by
+  `cloud-cf-deploy.yml`), deploy-time secrets in the `staging`/`production`
+  GitHub Environments, per-service Railway env vars (see each `railway.toml`
+  header), and the control-plane daemon env in `/opt/eliza/cloud/.env.local`.
+  The `.env.example` files here are for local dev only.

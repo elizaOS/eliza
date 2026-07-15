@@ -107,6 +107,40 @@ describe("TASK_STATUS_TRANSITIONS — legality", () => {
     }
   });
 
+  it("automated validation verdicts are legal ONLY from `validating`", () => {
+    for (const from of ALL_STATUSES) {
+      const passed = resolveTaskTransition(from, "validation_passed");
+      const failed = resolveTaskTransition(from, "validation_failed");
+      if (from === "validating") {
+        expect(passed).toBe("done");
+        expect(failed).toBe("active");
+      } else {
+        expect(passed).toBeNull();
+        expect(failed).toBeNull();
+      }
+    }
+  });
+
+  it("human overrides are legal from every non-terminal state and from no terminal one", () => {
+    for (const from of ALL_STATUSES) {
+      const passed = resolveTaskTransition(from, "human_override_passed");
+      const failed = resolveTaskTransition(from, "human_override_failed");
+      if (TERMINAL_TASK_STATUSES.has(from)) {
+        expect(passed).toBeNull();
+        expect(failed).toBeNull();
+      } else {
+        expect(passed).toBe("done");
+        expect(failed).toBe("active");
+      }
+    }
+  });
+
+  it("`restarted` is total — the operator restart is legal from every state", () => {
+    for (const from of ALL_STATUSES) {
+      expect(resolveTaskTransition(from, "restarted")).toBe("active");
+    }
+  });
+
   it("nextTaskStatus throws on an illegal transition; resolveTaskTransition returns null", () => {
     expect(() => nextTaskStatus("done", "session_active")).toThrow(
       /Illegal task transition/,

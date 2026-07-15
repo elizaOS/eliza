@@ -1345,9 +1345,15 @@ const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
-function appDevWsBasePlugin(): Plugin {
-  const wsBase = `ws://127.0.0.1:${apiPort}`;
+export function appDevWsBasePlugin(): Plugin {
   const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
+
+  // The browser must dial the origin it actually loaded, because tunneled
+  // development exposes the Vite port without exposing the API loopback port.
+  // Vite proxies the resulting same-origin `/ws` upgrade to the API alongside
+  // its `/api` proxy, while packaged builds supply their own runtime base.
+  const wsBaseExpr =
+    "((location.protocol==='https:'?'wss://':'ws://')+location.host)";
 
   return {
     name: "eliza-dev-ws-base",
@@ -1359,9 +1365,9 @@ function appDevWsBasePlugin(): Plugin {
           attrs: { type: "text/javascript" },
           injectTo: "head-prepend",
           children: [
-            `window.__ELIZA_WS_BASE__ = ${JSON.stringify(wsBase)};`,
-            `window.__ELIZAOS_WS_BASE__ = ${JSON.stringify(wsBase)};`,
-            `window[${JSON.stringify(brandedWsBaseKey)}] = ${JSON.stringify(wsBase)};`,
+            `window.__ELIZA_WS_BASE__ = ${wsBaseExpr};`,
+            `window.__ELIZAOS_WS_BASE__ = ${wsBaseExpr};`,
+            `window[${JSON.stringify(brandedWsBaseKey)}] = ${wsBaseExpr};`,
           ].join("\n"),
         },
       ];

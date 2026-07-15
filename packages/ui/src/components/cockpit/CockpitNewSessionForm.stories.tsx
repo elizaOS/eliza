@@ -32,3 +32,13 @@ export const ExperimentalArmed: Story = {
 export const Busy: Story = {
   args: { onCreate: noop, busy: true },
 };
+
+export const WithRepoSuggestions: Story = {
+  args: {
+    onCreate: noop,
+    knownRepos: [
+      "https://github.com/elizaOS/eliza.git",
+      "https://github.com/elizaOS/babylon.git",
+    ],
+  },
+};

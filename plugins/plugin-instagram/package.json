@@ -40,7 +40,7 @@
     "typescript": "7.0.2"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "vitest": "^4.0.0"
   },
   "scripts": {

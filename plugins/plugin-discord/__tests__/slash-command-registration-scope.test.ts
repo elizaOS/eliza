@@ -44,6 +44,7 @@ function makeService() {
 	};
 	const runtime = {
 		agentId: AGENT_ID,
+		getSetting: vi.fn(() => undefined),
 		logger: {
 			debug: vi.fn(),
 			error: vi.fn(),
@@ -63,6 +64,25 @@ function makeService() {
 }
 
 describe("Discord slash-command registration scopes", () => {
+	// Regression (#deadlock): the account ready promise resolves only AFTER
+	// onReady returns, but onReady itself awaits this registration — waiting on
+	// the promise from that path hung forever and no command set ever reached
+	// Discord (live: registered commands frozen at a 2-day-old snapshot). With
+	// a ready client the push must proceed without touching the promise.
+	it("pushes commands while the ready promise is still pending when the client is already ready", async () => {
+		const { globalAndGuildSet, service } = makeService();
+		const state = service.requireAccountState() as unknown as {
+			clientReadyPromise: Promise<void>;
+			client: { isReady?: () => boolean };
+		};
+		state.clientReadyPromise = new Promise<void>(() => {}); // never resolves
+		state.client.isReady = () => true;
+
+		await service.registerSlashCommands([command("global")]);
+
+		expect(globalAndGuildSet).toHaveBeenCalled();
+	});
+
 	it("keeps global commands out of guild scope while retaining guild-only and targeted commands", async () => {
 		const { globalAndGuildSet, service, targetedCreate } = makeService();
 
@@ -128,6 +148,7 @@ describe("Discord slash-command registration scopes", () => {
 		};
 		const runtime = {
 			agentId: AGENT_ID,
+			getSetting: vi.fn(() => undefined),
 			reportError,
 			logger: {
 				debug: vi.fn(),
@@ -186,6 +207,7 @@ describe("handleGuildCreate registration scopes", () => {
 		};
 		const runtime = {
 			agentId: AGENT_ID,
+			getSetting: vi.fn(() => undefined),
 			reportError,
 			emitEvent: vi.fn(async () => undefined),
 			logger: {

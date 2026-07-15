@@ -169,6 +169,13 @@ export interface ClaudeSdkSessionConfig {
   /** Hard wall-clock budget for one SDK turn. Defaults below common 120s connector timeouts. */
   turnTimeoutMs?: number;
   /**
+   * Reasoning effort for this session's turns, forwarded to the Agent SDK's
+   * `effort` option (the same knob as `claude --effort`). One of
+   * low|medium|high|xhigh|max; omitted → the SDK's own default (high). An
+   * unsupported value on the selected model is silently downgraded by the SDK.
+   */
+  effort?: string | null;
+  /**
    * Optional subprocess-only env for a pooled account. Passed to the Claude SDK
    * query options; never written to the parent process env.
    */
@@ -222,6 +229,19 @@ async function loadZod(): Promise<ZodModule> {
   return zod;
 }
 
+/** Effort levels the Agent SDK's `effort` option accepts (== `claude --effort`). */
+const VALID_EFFORT_LEVELS: ReadonlySet<string> = new Set(["low", "medium", "high", "xhigh", "max"]);
+
+/**
+ * Validate a caller-supplied effort string. Unknown values are dropped (return
+ * null → SDK default) rather than forwarded — the SDK/CLI would reject an
+ * unrecognized level and fail the whole turn.
+ */
+export function normalizeEffort(value: string | null | undefined): string | null {
+  const v = value?.trim().toLowerCase();
+  return v && VALID_EFFORT_LEVELS.has(v) ? v : null;
+}
+
 /**
  * A single warm Agent SDK session for one (model, systemPrompt, mode). Lazily
  * starts on first call, serializes calls, and self-heals (restarts) on error or
@@ -235,6 +255,7 @@ export class ClaudeSdkSession {
   private readonly claudeExecutablePath: string | null;
   private readonly restartAfterTurns: number;
   private readonly turnTimeoutMs: number;
+  private readonly effort: string | null;
   private readonly subprocessEnv: RotationSubprocessEnv | null;
   private readonly sdkOverride?: SdkModule;
   private readonly zodOverride?: ZodModule;
@@ -263,6 +284,7 @@ export class ClaudeSdkSession {
       config.turnTimeoutMs && config.turnTimeoutMs > 0
         ? config.turnTimeoutMs
         : DEFAULT_TURN_TIMEOUT_MS;
+    this.effort = normalizeEffort(config.effort);
     this.subprocessEnv = config.subprocessEnv ?? null;
     this.sdkOverride = config.sdkModule;
     this.zodOverride = config.zodModule;
@@ -354,6 +376,11 @@ export class ClaudeSdkSession {
       // "I'll fetch it…" preamble-then-act pattern that leaks when maxTurns>1.
       maxTurns: this.router ? 1 : this.textMaxTurns,
     };
+    // Reasoning depth. Omitted → SDK default (high); an unsupported level for
+    // the selected model is silently downgraded by the SDK, not an error.
+    if (this.effort) {
+      options.effort = this.effort;
+    }
     if (this.subprocessEnv) {
       options.env = this.subprocessEnv;
     }

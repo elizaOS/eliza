@@ -17,9 +17,31 @@ import { Redis as UpstashRedis } from "@upstash/redis";
 import { MockSocketRedis } from "./mock-redis";
 import { SocketRedis } from "./socket-redis";
 
-// MockSocketRedis is duck-typed to SocketRedis; expose it as such so callers
-// don't need to widen their type signatures.
-export type CompatibleRedis = SocketRedis | UpstashRedis;
+interface CompatibleRedisPipeline {
+  zremrangebyscore(key: string, min: number | string, max: number | string): this;
+  zcard(key: string): this;
+  zadd(key: string, member: { score: number; member: string }): this;
+  zrem(key: string, ...members: string[]): this;
+  expire(key: string, seconds: number): this;
+  pexpire(key: string, ms: number): this;
+  set(key: string, value: unknown, options?: { nx?: boolean; ex?: number; px?: number }): this;
+  setex(key: string, ttlSeconds: number, value: unknown): this;
+  get(key: string): this;
+  del(...keys: string[]): this;
+  incr(key: string): this;
+  pttl(key: string): this;
+  exec<T extends unknown[] = unknown[]>(): Promise<T>;
+}
+
+// Keep the TCP side structural so both the real and mock clients must implement
+// the same public surface. This avoids a double cast (which hid pipeline drift)
+// without adding a third overloaded class to the Upstash union. Override the
+// pipeline class itself because its private fields are intentionally nominal.
+type CompatibleSocketRedis = Pick<
+  SocketRedis,
+  Exclude<Extract<keyof SocketRedis, keyof MockSocketRedis>, "pipeline">
+> & { pipeline(): CompatibleRedisPipeline };
+export type CompatibleRedis = CompatibleSocketRedis | UpstashRedis;
 
 export interface RedisFactoryEnv {
   REDIS_URL?: string;
@@ -30,11 +52,13 @@ export interface RedisFactoryEnv {
   MOCK_REDIS?: string;
 }
 
-export function buildRedisClient(env?: RedisFactoryEnv): CompatibleRedis | null {
-  const e = env ?? (process.env as RedisFactoryEnv);
+export type RedisFactoryEnvSource = RedisFactoryEnv | NodeJS.ProcessEnv;
+
+export function buildRedisClient(env?: RedisFactoryEnvSource): CompatibleRedis | null {
+  const e = env ?? process.env;
 
   if (e.MOCK_REDIS === "1") {
-    return new MockSocketRedis() as unknown as SocketRedis;
+    return new MockSocketRedis();
   }
 
   const url = e.REDIS_URL;
@@ -55,8 +79,8 @@ export function buildRedisClient(env?: RedisFactoryEnv): CompatibleRedis | null 
  * callers gate on the same condition the factory uses, instead of hard-coding
  * an Upstash-only `KV_REST_API_*` check that misses a TCP `REDIS_URL` deploy.
  */
-export function hasRedisConfig(env?: RedisFactoryEnv): boolean {
-  const e = env ?? (process.env as RedisFactoryEnv);
+export function hasRedisConfig(env?: RedisFactoryEnvSource): boolean {
+  const e = env ?? process.env;
   if (e.MOCK_REDIS === "1") return true;
   if (e.REDIS_URL) return true;
   const restUrl = e.KV_REST_API_URL || e.UPSTASH_REDIS_REST_URL;

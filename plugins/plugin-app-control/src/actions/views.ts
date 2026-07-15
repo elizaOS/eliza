@@ -1,11 +1,7 @@
 /**
- * @module plugin-app-control/actions/views
- *
- * Unified VIEWS action. Lets the Eliza agent list, open, search, manage,
- * create, edit, and delete UI views contributed by plugins via `Plugin.views`.
- *
- * Sub-modes dispatched from a single action keep the planner surface minimal
- * and the handler testable. Mirrors the APP action structure.
+ * Unified action for discovering, opening, managing, and authoring plugin-contributed views.
+ * Sub-modes share owner checks, view resolution, and client boundaries while
+ * keeping the planner surface to one action.
  */
 
 import path from "node:path";
@@ -942,7 +938,11 @@ function resolveViewCapability({
 		(MODES as readonly string[]).includes(explicitAction.trim().toLowerCase());
 	const actionToken = actionIsMode ? null : explicitAction;
 	const requestedView = resolveViewTarget(readViewTargetOption(options), views);
-	const currentView = views.find((view) => view.id === currentViewId) ?? null;
+	// A resolved planner target is authoritative. Foreground UI state is only a
+	// fallback for requests that do not identify a registered view.
+	const currentView = requestedView
+		? null
+		: (views.find((view) => view.id === currentViewId) ?? null);
 	const candidates = capabilityCandidates(views, viewType);
 
 	if (explicitCapability) {
@@ -968,6 +968,7 @@ function resolveViewCapability({
 	let best: { candidate: ResolvedViewCapability; score: number } | null = null;
 
 	for (const candidate of candidates) {
+		if (requestedView && candidate.view.id !== requestedView.id) continue;
 		const vTokens = viewTokens(candidate.view);
 		const cTokens = capabilityTokens(candidate.capability);
 		const capOperation = operationFamilyForCapability(candidate.capability);
@@ -2464,7 +2465,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 				}
 
-				logger.info(`[plugin-app-control] VIEWS mode=${effectiveMode}`);
+				logger.info(
+					`[plugin-app-control] VIEWS requestedMode=${mode} effectiveMode=${effectiveMode} action=${readStringOption(actionOptions, "action") ?? "inferred"} view=${readViewTargetOption(actionOptions) ?? "none"} resolvedCapability=${forcedResolvedCapability ? `${forcedResolvedCapability.view.id}:${forcedResolvedCapability.capability.id}` : "none"}`,
+				);
 
 				switch (effectiveMode) {
 					case "list":

@@ -80,9 +80,10 @@
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
+    "@elizaos/logger": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@types/bun": "^1.3.9",
     "@types/node": "^25.2.3",
@@ -170,14 +171,14 @@
       },
       "ELIZA_CODEX_ACP_COMMAND": {
         "type": "string",
-        "description": "Native ACP command used for Codex sessions when ELIZA_ACP_TRANSPORT=native. Pin this in production to avoid implicit package upgrades.",
+        "description": "Native ACP command used for Codex sessions when ELIZA_ACP_TRANSPORT=native. The manifest default and legacy @zed-industries default select the isolated managed successor; any other custom command is executed verbatim.",
         "required": false,
-        "default": "npx -y @zed-industries/codex-acp@0.14.0",
+        "default": "npx -y @agentclientprotocol/codex-acp@1.1.2",
         "sensitive": false
       },
       "ELIZA_CODEX_ACP_SANDBOX_MODE": {
         "type": "string",
-        "description": "Optional Codex ACP sandbox_mode override. Accepted values: read-only, workspace-write, danger-full-access.",
+        "description": "Optional managed Codex ACP sandbox mode, passed through INITIAL_AGENT_MODE. Accepted values: read-only, workspace-write, danger-full-access. Custom commands are not rewritten.",
         "required": false,
         "sensitive": false
       },
@@ -196,7 +197,7 @@
       },
       "ELIZA_CODEX_ACP_APPROVAL_POLICY": {
         "type": "string",
-        "description": "Optional Codex ACP approval_policy override. The no-Landlock fallback defaults this to never when unset.",
+        "description": "Optional managed Codex ACP approval policy. Requires an explicit sandbox mode; fixed pairs are read-only/on-request, workspace-write/on-request, and danger-full-access/never. The no-Landlock fallback defaults to never.",
         "required": false,
         "sensitive": false
       },

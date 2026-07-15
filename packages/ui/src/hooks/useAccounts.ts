@@ -33,6 +33,13 @@ export interface UseAccountsOptions {
 export interface UseAccountsResult {
   data: AccountsListResponse | null;
   loading: boolean;
+  /**
+   * Last fetch error message, or null. Distinct from mutation notices: a
+   * non-null value here means the account LIST itself failed to load, so a
+   * panel can render an explicit error+retry instead of collapsing into an
+   * apparently-empty surface.
+   */
+  error: string | null;
   saving: Set<string>;
   refresh: () => Promise<void>;
   createApiKey: (
@@ -99,6 +106,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const { setActionNotice, pollMs = DEFAULT_POLL_MS } = opts;
   const [data, setData] = useState<AccountsListResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<Set<string>>(() => new Set<string>());
   const mountedRef = useRef(true);
   const dataRef = useRef(data);
@@ -116,8 +124,10 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       const next = await client.listAccounts();
       if (!mountedRef.current) return;
       setData(next);
+      setError(null);
     } catch (err) {
       if (!mountedRef.current) return;
+      setError(describeError("Failed to load accounts", err));
       notify("Failed to load accounts", err);
     } finally {
       if (mountedRef.current) setLoading(false);
@@ -313,6 +323,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   return {
     data,
     loading,
+    error,
     saving,
     refresh,
     createApiKey,

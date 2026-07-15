@@ -10,6 +10,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { collectWorkspaceMaps } from "../../app-core/scripts/lib/workspace-discovery.mjs";
 import {
   expandWorkspaceGlobs,
   listPackages,
@@ -169,6 +170,17 @@ describe("listWorkspaceDirs — package.json filtering", () => {
 
     expect(listWorkspaceDirs({ repoRoot: root })).toEqual(["packages/core"]);
   });
+
+  test("a non-file workspace manifest is an error, not an absent package", () => {
+    const root = makeRepo();
+    writeRootPackage(root, ["packages/*"]);
+    fs.mkdirSync(path.join(root, "packages/broken/package.json"), {
+      recursive: true,
+    });
+    expect(() => listWorkspaceDirs({ repoRoot: root })).toThrow(
+      "Workspace manifest is not a file",
+    );
+  });
 });
 
 describe("listPackages — name mapping", () => {
@@ -187,6 +199,32 @@ describe("listPackages — name mapping", () => {
       },
       { name: undefined, dir: "packages/beta", packageJson: {} },
     ]);
+  });
+
+  test("malformed intended manifests fail discovery instead of disappearing", () => {
+    const root = makeRepo();
+    writeRootPackage(root, ["packages/*"]);
+    writeFile(root, "packages/broken/package.json", "{broken");
+    expect(() => listPackages({ repoRoot: root })).toThrow("Invalid JSON in");
+  });
+
+  test("duplicate package names fail instead of overwriting a resolver map", () => {
+    const root = makeRepo();
+    writeRootPackage(root, ["packages/*"]);
+    writePackage(root, "packages/a", "@x/duplicate");
+    writePackage(root, "packages/b", "@x/duplicate");
+    expect(() => listPackages({ repoRoot: root })).toThrow(
+      "Duplicate workspace package name",
+    );
+  });
+
+  test("app-core compatibility uses the same resolver and absolute maps", () => {
+    const root = makeRepo();
+    writeRootPackage(root, ["packages/*"]);
+    writePackage(root, "packages/a", "@x/a");
+    const maps = collectWorkspaceMaps(root, ["packages/*"]);
+    expect(maps.nameToDir.get("@x/a")).toBe(path.join(root, "packages/a"));
+    expect(maps.workspaceDirs).toContain(path.join(root, "packages/a"));
   });
 });
 
@@ -263,9 +301,9 @@ describe("live-repo parity", () => {
       path.join(REPO_ROOT, ".gitmodules"),
       "utf8",
     );
-    const declaredPaths = [...gitmodules.matchAll(/^\s*path\s*=\s*(.+)$/gm)].map(
-      (m) => m[1].trim(),
-    );
+    const declaredPaths = [
+      ...gitmodules.matchAll(/^\s*path\s*=\s*(.+)$/gm),
+    ].map((m) => m[1].trim());
     const libPaths = listSubmodules({ repoRoot: REPO_ROOT }).map((s) => s.path);
     expect(libPaths.sort()).toEqual([...declaredPaths].sort());
   });

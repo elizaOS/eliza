@@ -25,6 +25,7 @@ import {
   CircleDashed,
   CirclePlay,
   CircleX,
+  GitPullRequest,
   type LucideIcon,
   OctagonX,
   UserRound,
@@ -101,6 +102,66 @@ function formatCompactTokens(total: number | null | undefined): string | null {
   return `${(total / 1_000_000).toFixed(1)}M`;
 }
 
+/** A pull request the task's sub-agent opened, read off the task metadata bag. */
+interface TaskPullRequest {
+  url: string;
+  number: number;
+  /** `owner/repo`, if the server parsed it. */
+  repo?: string;
+}
+
+// A GitHub PR URL, mirrored from the server-side `extractPullRequestLink`
+// contract. The chip only ever renders a URL that matches this shape, so a
+// stray/spoofed `prUrl` in the metadata bag can never become a non-GitHub link.
+const PR_URL_RE = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/pull\/(\d+)$/;
+
+/**
+ * Read the sub-agent's opened pull request off the durable task metadata
+ * (`prUrl`/`prNumber`/`prRepo`, stamped by the orchestrator at `task_complete`),
+ * or `null` when absent/malformed. Pure and defensive: an untyped metadata bag
+ * is validated here so the chip render stays a dumb, safe consumer.
+ */
+function readTaskPullRequest(
+  metadata: Record<string, unknown> | null | undefined,
+): TaskPullRequest | null {
+  if (!metadata) return null;
+  const url = metadata.prUrl;
+  if (typeof url !== "string") return null;
+  const match = PR_URL_RE.exec(url);
+  if (!match) return null;
+  const [, owner, repository, numberRaw] = match;
+  const number = Number.parseInt(numberRaw, 10);
+  if (!Number.isSafeInteger(number) || number <= 0) return null;
+  return { url, number, repo: `${owner}/${repository}` };
+}
+
+/**
+ * The PR-link chip: a compact, clickable pill surfacing the pull request a
+ * sub-agent opened. Opens in a new tab; shows `#<number>` with the `owner/repo`
+ * as a title/secondary label when available. Rendered inline in the collapsed
+ * header so a human watching a task sees the link the instant createPR lands.
+ */
+function PrChip({ pr }: { pr: TaskPullRequest }) {
+  return (
+    <a
+      data-testid="task-widget-pr-chip"
+      href={pr.url}
+      target="_blank"
+      rel="noreferrer"
+      // The chip lives inside a chat message; keep the click from bubbling into
+      // any message-level handlers (selection, focus) — it is purely a link.
+      onClick={(e) => e.stopPropagation()}
+      title={
+        pr.repo ? `${pr.repo} #${pr.number}` : `Pull request #${pr.number}`
+      }
+      className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1 rounded-full border border-border bg-surface px-2.5 text-xs font-medium text-accent transition-colors hover:border-accent hover:text-accent-hover"
+    >
+      <GitPullRequest className="h-3 w-3" aria-hidden="true" />
+      <span className="tabular-nums">#{pr.number}</span>
+    </a>
+  );
+}
+
 export interface TaskWidgetProps {
   threadId: string;
   fallbackTitle: string;
@@ -145,6 +206,25 @@ export const TaskWidget = memo(function TaskWidget({
     };
   }, [hydrate]);
 
+  // A live completion arrives on the stream AFTER the mount hydrate, so the
+  // durable fields stamped at task_complete (PR link, final status/tokens)
+  // would otherwise stay stale until a remount. Re-hydrate on EVERY sub-agent
+  // success (the count, not a first-success boolean: in multi-agent tasks a
+  // later agent may open the PR, and the server's "latest PR wins" replace
+  // must reach the chip), once immediately and once more shortly after — the
+  // stream event races the store write on the server, so a single immediate
+  // refetch can land before `prUrl` is stamped. Bounded (two fetches per
+  // completion), NOT a poll.
+  const completedCount = activity.subagents.filter(
+    (a) => a.status === "success",
+  ).length;
+  useEffect(() => {
+    if (completedCount === 0) return;
+    void hydrate();
+    const settle = setTimeout(() => void hydrate(), 2000);
+    return () => clearTimeout(settle);
+  }, [completedCount, hydrate]);
+
   const handleOpenWorkbench = useCallback(() => {
     if (typeof window === "undefined") return;
     dispatchNavigateViewEvent({ viewPath: `/orchestrator?taskId=${threadId}` });
@@ -184,6 +264,7 @@ export const TaskWidget = memo(function TaskWidget({
     detail?.usage?.state === "unavailable"
       ? null
       : formatCompactTokens(detail?.usage?.totalTokens ?? null);
+  const pullRequest = readTaskPullRequest(detail?.metadata);
 
   return (
     <div
@@ -193,62 +274,74 @@ export const TaskWidget = memo(function TaskWidget({
       data-expanded={expanded ? "true" : "false"}
       className="my-2 overflow-hidden"
     >
-      <Button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        variant="ghost"
-        aria-expanded={expanded}
-        className="flex h-auto w-full items-start justify-start gap-2 whitespace-normal rounded-sm -mx-2 px-2 py-1.5 text-left font-normal transition-colors hover:bg-bg-hover"
-      >
-        <span
-          className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
-          role="img"
-          aria-label={STATUS_LABEL[status]}
-          title={STATUS_LABEL[status]}
+      {/* The PR chip is a SIBLING of the header button, not a child: nesting an
+          anchor inside a button is invalid interactive markup (breaks keyboard
+          and screen-reader navigation). It sits right-aligned on the same row. */}
+      <div className="flex items-start gap-2">
+        <Button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          variant="ghost"
+          aria-expanded={expanded}
+          className="flex h-auto min-w-0 flex-1 items-start justify-start gap-2 whitespace-normal rounded-sm -mx-2 px-2 py-1.5 text-left font-normal transition-colors hover:bg-bg-hover"
         >
-          <StatusIcon
-            className={`h-3.5 w-3.5 ${
-              STATUS_PULSE.has(status) ? "animate-pulse" : ""
+          <span
+            className={`mt-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center ${STATUS_TONE[status]}`}
+            role="img"
+            aria-label={STATUS_LABEL[status]}
+            title={STATUS_LABEL[status]}
+          >
+            <StatusIcon
+              className={`h-3.5 w-3.5 ${
+                STATUS_PULSE.has(status) ? "animate-pulse" : ""
+              }`}
+            />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-medium text-txt">
+              {title}
+            </span>
+            <span
+              data-testid="task-widget-status"
+              className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted"
+            >
+              <span className={STATUS_TONE[status]}>
+                {STATUS_LABEL[status]}
+              </span>
+              {sessionCount > 0 ? (
+                <>
+                  <span className="text-muted/40">·</span>
+                  <span>
+                    {activeSessionCount}/{sessionCount} agents
+                  </span>
+                </>
+              ) : null}
+              {relative ? (
+                <>
+                  <span className="text-muted/40">·</span>
+                  <span>{relative}</span>
+                </>
+              ) : null}
+              {tokens ? (
+                <>
+                  <span className="text-muted/40">·</span>
+                  <span className="tabular-nums">{tokens}</span>
+                </>
+              ) : null}
+            </span>
+          </span>
+          <ChevronDown
+            className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition-transform ${
+              expanded ? "rotate-180" : ""
             }`}
           />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-txt">
-            {title}
+        </Button>
+        {pullRequest ? (
+          <span className="py-1.5">
+            <PrChip pr={pullRequest} />
           </span>
-          <span
-            data-testid="task-widget-status"
-            className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted"
-          >
-            <span className={STATUS_TONE[status]}>{STATUS_LABEL[status]}</span>
-            {sessionCount > 0 ? (
-              <>
-                <span className="text-muted/40">·</span>
-                <span>
-                  {activeSessionCount}/{sessionCount} agents
-                </span>
-              </>
-            ) : null}
-            {relative ? (
-              <>
-                <span className="text-muted/40">·</span>
-                <span>{relative}</span>
-              </>
-            ) : null}
-            {tokens ? (
-              <>
-                <span className="text-muted/40">·</span>
-                <span className="tabular-nums">{tokens}</span>
-              </>
-            ) : null}
-          </span>
-        </span>
-        <ChevronDown
-          className={`mt-0.5 h-4 w-4 shrink-0 text-muted transition-transform ${
-            expanded ? "rotate-180" : ""
-          }`}
-        />
-      </Button>
+        ) : null}
+      </div>
 
       {expanded ? (
         <div

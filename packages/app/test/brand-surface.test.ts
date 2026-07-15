@@ -193,6 +193,18 @@ describe("brand surfaces", () => {
     expect(html).toContain("Booting up&hellip;");
   });
 
+  it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {
+    // BASE_URL resolves from the origin in web builds and beside the document
+    // in packaged builds, preserving both deep SPA routes and bundled assets.
+    const html = read("index.html");
+    expect(html).toMatch(
+      /class="eliza-preboot-shell__mark"\s+src="%BASE_URL%brand\/logos\/logo_white_nobg\.svg"/,
+    );
+    expect(html).not.toMatch(
+      /class="eliza-preboot-shell__mark"\s+src="\.\/brand/,
+    );
+  });
+
   it("renderer root CSS keeps the pre-app surface on the launch black", () => {
     // Same persistence argument as index.html: html/body/#root in the
     // renderer CSS is the page background under the app, so its --launch-bg

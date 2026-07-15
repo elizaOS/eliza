@@ -33,8 +33,8 @@ const DEFAULT_POLICY: TaskAgentPolicyConfig = {
   default: "GUEST",
   connectors: {
     discord: {
-      create: "ADMIN",
-      interact: "ADMIN",
+      create: "OWNER",
+      interact: "OWNER",
     },
   },
 };

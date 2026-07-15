@@ -44,7 +44,9 @@ import { createAnthropicClientWithTopPSupport } from "../providers/anthropic";
 import { createModelName, type ModelName, type ModelSize } from "../types";
 import { generateViaCli, streamViaCli } from "../utils/claude-cli";
 import {
+  type AnthropicEffort,
   getActionPlannerModel,
+  getAnthropicEffort,
   getAuthMode,
   getCoTBudget,
   getExperimentalTelemetry,
@@ -78,11 +80,18 @@ interface ProviderOptions {
 
 interface AnthropicProviderOptions {
   [key: string]: ProviderOptionValue | undefined;
-  readonly thinking?: {
-    [key: string]: ProviderOptionValue | undefined;
-    readonly type: "enabled";
-    readonly budgetTokens: number;
-  };
+  readonly thinking?:
+    | {
+        [key: string]: ProviderOptionValue | undefined;
+        readonly type: "enabled";
+        readonly budgetTokens: number;
+      }
+    | {
+        [key: string]: ProviderOptionValue | undefined;
+        readonly type: "adaptive";
+      };
+  /** output_config.effort on the wire; see getAnthropicEffort. */
+  readonly effort?: AnthropicEffort;
   readonly cacheControl?: {
     [key: string]: ProviderOptionValue | undefined;
     readonly type: "ephemeral";
@@ -396,6 +405,46 @@ function toAnthropicTextParams(params: GenerateTextParams): GenerateTextParamsWi
 
 function isOpus4Model(modelName: ModelName): boolean {
   return modelName.toLowerCase().includes("opus-4");
+}
+
+/**
+ * Whether a model accepts the effort parameter (output_config.effort) at all.
+ * Live-probed 2026-07-12: haiku-4-5 rejects both `effort` ("This model does
+ * not support the effort parameter") and adaptive thinking, so sending the
+ * knob 400s every request. Claude-3-era models predate the parameter. Mirrors
+ * the server-side model catalog (packages/agent/src/api/model-catalog.ts).
+ */
+function supportsEffortParameter(modelName: ModelName): boolean {
+  const name = modelName.toLowerCase();
+  return !name.includes("haiku") && !name.includes("claude-3");
+}
+
+/**
+ * Whether a model accepts the xhigh/max effort tiers. Mirrors the server-side
+ * model catalog (packages/agent/src/api/model-catalog.ts): fable-5 and
+ * opus >= 4.7 take the full range; everything else caps at high — sending
+ * higher 400s the request.
+ */
+function supportsExtendedEffort(modelName: ModelName): boolean {
+  const name = modelName.toLowerCase();
+  if (name.includes("fable-5")) return true;
+  const opus = name.match(/opus-4-(\d+)/);
+  return opus !== null && Number(opus[1]) >= 7;
+}
+
+/**
+ * Clamp a configured effort to what the resolved model accepts. Clamping (to
+ * "high") rather than dropping keeps the operator's intent — they asked for
+ * maximum reasoning; the model's ceiling is the closest legal request.
+ */
+function clampEffortForModel(effort: AnthropicEffort, modelName: ModelName): AnthropicEffort {
+  if ((effort === "xhigh" || effort === "max") && !supportsExtendedEffort(modelName)) {
+    logger.warn(
+      `[Anthropic] effort "${effort}" is not supported by ${modelName}; clamping to "high"`
+    );
+    return "high";
+  }
+  return effort;
 }
 
 function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserContent {
@@ -891,7 +940,8 @@ function resolveTextParams(
   runtime: IAgentRuntime,
   params: GenerateTextParamsWithProviderOptions,
   modelName: ModelName,
-  cotBudget: number
+  cotBudget: number,
+  effort?: AnthropicEffort
 ): ResolvedTextParams {
   const prompt = params.prompt ?? "";
   const stopSequences = params.stopSequences ?? [];
@@ -958,16 +1008,50 @@ function resolveTextParams(
       }
     : {};
 
+  // Effort (the modern knob — maps to the API's output_config.effort, paired
+  // with adaptive thinking) wins over the legacy fixed CoT budget when both
+  // are configured; the budget shape stays for existing ANTHROPIC_COT_BUDGET
+  // operators. A model without the effort parameter falls back to the budget
+  // path (or nothing) — sending the knob anyway would 400 every request.
+  let clampedEffort = effort !== undefined ? clampEffortForModel(effort, modelName) : undefined;
+  if (clampedEffort !== undefined && !supportsEffortParameter(modelName)) {
+    logger.warn(
+      `[Anthropic] effort is configured but ${modelName} does not support the effort parameter; ignoring it for this model`
+    );
+    clampedEffort = undefined;
+  }
   const providerOptions: ProviderOptions =
-    cotBudget > 0
+    clampedEffort !== undefined
       ? {
           ...baseProviderOptions,
           anthropic: {
             ...(baseProviderOptions.anthropic ?? {}),
-            thinking: { type: "enabled", budgetTokens: cotBudget },
+            thinking: { type: "adaptive" },
+            effort: clampedEffort,
           },
         }
-      : baseProviderOptions;
+      : cotBudget > 0
+        ? {
+            ...baseProviderOptions,
+            anthropic: {
+              ...(baseProviderOptions.anthropic ?? {}),
+              thinking: { type: "enabled", budgetTokens: cotBudget },
+            },
+          }
+        : baseProviderOptions;
+
+  // Thinking-enabled requests only accept temperature=1 and reject topP — the
+  // API 400s otherwise. The opus-4 lock above covers those models regardless
+  // of thinking; this covers thinking on everything else.
+  if (clampedEffort !== undefined || cotBudget > 0) {
+    if (temperature !== undefined && temperature !== 1) {
+      temperature = 1;
+    }
+    if (topP !== undefined) {
+      logger.warn("[Anthropic] dropping topP: not accepted alongside extended thinking");
+      topP = undefined;
+    }
+  }
 
   return {
     prompt,
@@ -995,7 +1079,8 @@ async function generateTextWithModel(
     fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
   });
   const cotBudget = getCoTBudget(runtime, modelSize);
-  const resolved = resolveTextParams(runtime, paramsWithAttachments, modelName, cotBudget);
+  const effort = getAnthropicEffort(runtime, modelSize);
+  const resolved = resolveTextParams(runtime, paramsWithAttachments, modelName, cotBudget, effort);
 
   if (getAuthMode(runtime) === "cli") {
     if (shouldReturnNativeResult) {

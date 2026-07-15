@@ -4,7 +4,8 @@
  */
 import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { getConnectorCommands } from "@elizaos/plugin-commands";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { PermissionFlagsBits } from "discord.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The connector bridge gates auth via the agent role model (`hasRoleAccess`).
 // Mock it so each test controls the sender's resolved trust level without
@@ -44,6 +45,7 @@ function makeRuntime(overrides: Partial<IAgentRuntime> = {}): IAgentRuntime {
 			cache.set(key, value);
 			return true;
 		}),
+		deleteCache: vi.fn(async (key: string) => cache.delete(key)),
 		getSetting: vi.fn(() => undefined),
 		character: { name: "TestAgent" },
 		logger: {
@@ -106,22 +108,29 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 		}
 	});
 
-	it("maps option choices for the /settings section option", () => {
-		const catalogSettings = getConnectorCommands("discord").find(
-			(c) => c.name === "settings",
-		);
-		expect(catalogSettings).toBeDefined();
-
-		const mapped = mapCatalogCommand(
-			catalogSettings as NonNullable<typeof catalogSettings>,
-		);
+	it("caps mapped option choices at Discord's 25 and keeps token shape", () => {
+		// Navigation commands (the old /settings source of a choices-bearing
+		// option) are app-surface-only now, so drive the mapper directly.
+		const mapped = mapCatalogCommand({
+			name: "pick",
+			description: "Pick a token",
+			target: { kind: "agent" },
+			options: [
+				{
+					name: "section",
+					description: "Token",
+					required: false,
+					choices: Array.from({ length: 30 }, (_, i) => `token-${i}`),
+				},
+			],
+			requiresAuth: false,
+			requiresElevated: false,
+		});
 		const section = mapped.options?.find((o) => o.name === "section");
 		expect(section).toBeDefined();
 		expect(section?.type).toBe("string");
 		// Discord caps option choices at 25; mapping must respect that.
-		expect(section?.choices?.length).toBeGreaterThan(0);
-		expect(section?.choices?.length).toBeLessThanOrEqual(25);
-		// Choice name + value should be the catalog token.
+		expect(section?.choices?.length).toBe(25);
 		for (const choice of section?.choices ?? []) {
 			expect(choice.name.length).toBeLessThanOrEqual(100);
 			expect(choice.value.length).toBeGreaterThan(0);
@@ -129,8 +138,42 @@ describe("catalog → DiscordSlashCommand mapping", () => {
 	});
 
 	it("omits options for argless commands", () => {
-		const orchestrator = findCatalog("orchestrator");
-		expect(orchestrator.options).toBeUndefined();
+		const whoami = findCatalog("whoami");
+		expect(whoami.options).toBeUndefined();
+	});
+
+	it("gates the native picker on catalog auth flags", () => {
+		// elevated -> Administrator, auth -> ManageGuild, open -> ungated. Discord
+		// still hides these in the guild picker; server-side trust re-checks.
+		const elevated = mapCatalogCommand({
+			name: "op",
+			description: "op",
+			target: { kind: "agent" },
+			options: [],
+			requiresAuth: true,
+			requiresElevated: true,
+		});
+		expect(elevated.requiredPermissions).toBe(
+			PermissionFlagsBits.Administrator,
+		);
+		const authed = mapCatalogCommand({
+			name: "auth",
+			description: "auth",
+			target: { kind: "agent" },
+			options: [],
+			requiresAuth: true,
+			requiresElevated: false,
+		});
+		expect(authed.requiredPermissions).toBe(PermissionFlagsBits.ManageGuild);
+		const open = mapCatalogCommand({
+			name: "open",
+			description: "open",
+			target: { kind: "agent" },
+			options: [],
+			requiresAuth: false,
+			requiresElevated: false,
+		});
+		expect(open.requiredPermissions).toBeUndefined();
 	});
 });
 
@@ -138,14 +181,17 @@ describe("buildCatalogSlashCommands dedupe", () => {
 	it("excludes names already present (built-ins win)", () => {
 		const withoutDedupe = buildCatalogSlashCommands();
 		const names = new Set(withoutDedupe.map((c) => c.name));
-		expect(names.has("settings")).toBe(true);
+		expect(names.has("whoami")).toBe(true);
+		// Navigation commands are app-surface-only and never reach Discord.
+		expect(names.has("orchestrator")).toBe(false);
+		expect(names.has("views")).toBe(false);
 
-		const deduped = buildCatalogSlashCommands(new Set(["settings", "help"]));
+		const deduped = buildCatalogSlashCommands(new Set(["whoami", "help"]));
 		const dedupedNames = deduped.map((c) => c.name);
-		expect(dedupedNames).not.toContain("settings");
+		expect(dedupedNames).not.toContain("whoami");
 		expect(dedupedNames).not.toContain("help");
 		// Non-overlapping commands still come through.
-		expect(dedupedNames).toContain("orchestrator");
+		expect(dedupedNames).toContain("think");
 	});
 
 	it("never emits duplicate names", () => {
@@ -155,8 +201,19 @@ describe("buildCatalogSlashCommands dedupe", () => {
 });
 
 describe("per-target execute branching", () => {
-	it("navigate: replies ephemerally describing the destination", async () => {
-		const orchestrator = findCatalog("orchestrator");
+	it("navigate: replies ephemerally describing the destination (defensive)", async () => {
+		// Navigation commands are filtered off connector surfaces upstream; the
+		// branch stays as defensive handling, mirroring the client-target case.
+		const orchestrator = mapCatalogCommand({
+			name: "orchestrator",
+			description: "Open the orchestrator",
+			target: {
+				kind: "navigate",
+				path: "/orchestrator",
+				viewId: "orchestrator",
+			},
+			options: [],
+		});
 		const interaction = makeInteraction();
 		await orchestrator.execute(interaction as never, makeRuntime());
 
@@ -167,12 +224,23 @@ describe("per-target execute branching", () => {
 		};
 		expect(arg.ephemeral).toBe(true);
 		expect(arg.content).toContain("orchestrator");
-		expect(arg.content).toContain("/orchestrator");
 		expect(interaction.deferReply).not.toHaveBeenCalled();
 	});
 
-	it("navigate: resolves the /settings section alias to its canonical id", async () => {
-		const settings = findCatalog("settings");
+	it("navigate: resolves the /settings section alias to its canonical id (defensive)", async () => {
+		const settings = mapCatalogCommand({
+			name: "settings",
+			description: "Open agent settings",
+			target: { kind: "navigate", path: "/settings", tab: "settings" },
+			options: [
+				{
+					name: "section",
+					description: "Settings section to open",
+					required: false,
+					choices: [],
+				},
+			],
+		});
 		const interaction = makeInteraction({ section: "providers" });
 		await settings.execute(interaction as never, makeRuntime());
 
@@ -410,7 +478,8 @@ describe("registerCatalogSlashCommands", () => {
 			} else {
 				expect(names).toContain("app");
 			}
-			expect(names).toContain("orchestrator");
+			// Navigation commands are app-surface-only and never reach Discord.
+			expect(names).not.toContain("orchestrator");
 			expect(names).toContain("think");
 
 			const registry = getRegisteredCommands();
@@ -427,4 +496,107 @@ describe("registerCatalogSlashCommands", () => {
 			cleanup();
 		}
 	});
+});
+
+/**
+ * Full native-picker simulation sweep (#16172 follow-through): every catalog
+ * command on the discord surface is executed through a synthetic
+ * ChatInputCommandInteraction — the same execute path a real picker invocation
+ * takes (sender auth -> connector gate -> deterministic resolve or pipeline
+ * dispatch) — and must reply without throwing. Deterministic commands hit a
+ * canned loopback router instead of the live API; pipeline commands hit a
+ * mocked messageService. This is the owner-side "fire every command" check
+ * that cannot be driven from outside Discord (bots cannot invoke application
+ * commands), productized so rot in ANY command is caught in CI.
+ */
+describe("native interaction sweep — full catalog surface", () => {
+	/** Canned loopback API for the deterministic command handlers. */
+	function stubLoopbackFetch(): ReturnType<typeof vi.fn> {
+		const json = (body: unknown) =>
+			new Response(JSON.stringify(body), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			});
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.includes("/api/models/config")) {
+				return json({ targets: { small: {}, large: {}, coding: {} } });
+			}
+			if (url.includes("/api/models")) {
+				return json({ providers: {}, catalog: { providers: {} } });
+			}
+			if (url.includes("/api/accounts")) {
+				return json({ providers: [] });
+			}
+			if (url.includes("/api/runtime/model-switch")) {
+				return json({ ok: true, target: "cloud", model: "m", status: "ready" });
+			}
+			return json({ ok: true });
+		});
+		vi.stubGlobal("fetch", fetchMock);
+		return fetchMock;
+	}
+
+	function makePipelineRuntime() {
+		const handleMessage = vi.fn(
+			async (
+				_runtime: IAgentRuntime,
+				_message: Memory,
+				callback: (content: Content) => Promise<Memory[]>,
+			) => {
+				await callback({ text: "pipeline reply" } as Content);
+				return { handled: true };
+			},
+		);
+		return makeRuntime({
+			messageService: { handleMessage } as never,
+		});
+	}
+
+	function repliedOnce(interaction: MockInteraction): boolean {
+		return (
+			interaction.reply.mock.calls.length > 0 ||
+			interaction.editReply.mock.calls.length > 0
+		);
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	const surface = getConnectorCommands("discord");
+
+	for (const command of surface) {
+		it(`/${command.name} (owner, bare) replies without throwing`, async () => {
+			hasRoleAccess.mockResolvedValue(true);
+			stubLoopbackFetch();
+			const interaction = makeInteraction();
+			const mapped = mapCatalogCommand(command);
+			await mapped.execute(interaction as never, makePipelineRuntime());
+			expect(repliedOnce(interaction)).toBe(true);
+		});
+	}
+
+	for (const command of surface.filter((c) => c.requiresAuth)) {
+		it(`/${command.name} (guest) refuses and never reaches a backend`, async () => {
+			hasRoleAccess.mockResolvedValue(false);
+			const fetchMock = stubLoopbackFetch();
+			const interaction = makeInteraction();
+			const runtime = makePipelineRuntime();
+			const mapped = mapCatalogCommand(command);
+			await mapped.execute(interaction as never, runtime);
+			expect(interaction.reply).toHaveBeenCalledTimes(1);
+			const arg = interaction.reply.mock.calls[0][0] as {
+				content: string;
+				ephemeral: boolean;
+			};
+			expect(arg.ephemeral).toBe(true);
+			expect(arg.content).toMatch(/authorization|elevated/);
+			expect(fetchMock).not.toHaveBeenCalled();
+			expect(
+				(runtime.messageService as { handleMessage: ReturnType<typeof vi.fn> })
+					.handleMessage,
+			).not.toHaveBeenCalled();
+		});
+	}
 });

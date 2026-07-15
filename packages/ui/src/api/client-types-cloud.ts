@@ -287,6 +287,9 @@ export interface CloudCompatAgent {
   database_status: string;
   error_message: string | null;
   last_heartbeat_at: string | null;
+  /** Authoritative Cloud execution tier ("shared" | "dedicated"); the
+   * dedicated-mode agent picker filters shared bridges on it. */
+  execution_tier?: string | null;
 }
 
 export interface CloudCompatAgentStatus {
@@ -963,6 +966,15 @@ export interface CodingAgentTaskThread {
    * detail (#13776). */
   projectId: string | null;
   latestActivityAt: number | null;
+  /** Model + account provenance of the latest session, surfaced on the summary
+   * so widgets can show which model/account a task runs under without fetching
+   * its detail (#16203). */
+  latestSessionModel: string | null;
+  latestAccountProviderId: string | null;
+  latestAccountId: string | null;
+  latestAccountLabel: string | null;
+  /** Fork lineage: the task this one was forked from (null = root task). */
+  parentTaskId: string | null;
   decisionCount: number;
   usage: CodingAgentTaskUsageSummary;
   createdAt: string;

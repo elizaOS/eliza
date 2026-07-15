@@ -61,6 +61,9 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
   /^\/bsc(?:\/|$)/,
   /^\/dashboard(?:\/|$)/,
   /^\/login(?:\/|$)/,
+  // JoinPage needs the runtime before a token is persisted so its cookie-backed
+  // session can resolve, provision the account, and enter the application.
+  /^\/join(?:\/|$)/,
   /^\/invite(?:\/|$)/,
   /^\/accept-invitation(?:\/|$)/,
   /^\/payment(?:\/|$)/,
@@ -69,7 +72,12 @@ const STEWARD_RUNTIME_ROUTE_PATTERNS = [
   /^\/ballot(?:\/|$)/,
 ] as const;
 
-function shouldLoadStewardRuntime(pathname: string): boolean {
+/**
+ * Whether the heavy `@stwd/*` Steward runtime must mount for a route. Join
+ * requires it before token persistence because session resolution precedes
+ * provisioning.
+ */
+export function shouldLoadStewardRuntime(pathname: string): boolean {
   if (readStoredToken()) return true;
   return STEWARD_RUNTIME_ROUTE_PATTERNS.some((pattern) =>
     pattern.test(pathname),

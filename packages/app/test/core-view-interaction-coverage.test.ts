@@ -106,9 +106,9 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
         proves:
           "Drives representative settings controls through real UI events and backend requests.",
         signals: [
-          "voice settings: the auto-learn toggle flips state",
+          "voice settings: the wake-word toggle flips state",
           "capabilities settings: the Wallet switch fires the real config write",
-          "backup & reset settings: Back Up opens its modal",
+          "backup settings: Back Up opens its modal",
         ],
       },
       {
@@ -179,7 +179,7 @@ const CORE_VIEW_INTERACTIONS: Readonly<Record<string, CoreViewInteraction>> = {
         spec: "packages/app/test/ui-smoke/transcript-realaudio.spec.ts",
         proves:
           "Runs the real-audio transcript browser path and verifies transcript UI output.",
-        signals: ["transcripts-view", "transcript", "real audio"],
+        signals: ["live-meeting-page", "transcript", "real audio"],
       },
       {
         spec: "packages/ui/src/components/transcripts/TranscriptsView.test.tsx",

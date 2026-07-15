@@ -6,8 +6,9 @@
 > custom KV kernels are untouched. Fork PR **elizaOS/llama.cpp#32** (branch
 > `feat/gemma4-assistant-arch`, 22 files +419/-26), eliza gitlink bump **eliza
 > #9268**. Validated on M4 Max Metal: loads `gemma4-assistant` cleanly, correct
-> output, ~41-49% draft acceptance, **~1.1x decode speedup** (evidence:
-> `native/verify/evidence/platform/gemma4-assistant-fork-draft-mtp.log`). Three
+> output, ~41-49% draft acceptance, **~1.1x decode speedup**. The reviewed run
+> belongs to elizaOS/llama.cpp#32 and eliza#9268; its reproduction command and
+> model provenance are recorded below. Three
 > fork-side MTP correctness bugs were fixed in the process (hidden-state row
 > sizing by n_embd vs n_embd_out; the target gemma4 graph never exposed its
 > post-norm hidden — `res->t_h_pre_norm = cur` took acceptance 8%->41%; the
@@ -136,4 +137,5 @@ The additive parts are safe; the KV-core parts (★) are the risk.
 - Upstream KV-share core: upstream `src/llama-kv-cache.cpp:191`
 - Upstream host linkage: upstream `tools/server/server-context.cpp:1217,1240`
 - Fork naming template: `src/models/gemma4.cpp`; existing drafter arch: `src/models/dflash-draft.cpp`
-- Drafter validation: `native/verify/evidence/platform/amaranus-draft-mtp-metal.log`
+- Drafter validation: rerun the `llama-cli` command in “What's proven” and
+  attach the generated log to the reviewing issue or PR.

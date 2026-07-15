@@ -23,7 +23,13 @@ const coreMock = vi.hoisted(() => ({
 		error instanceof Error ? error.message : String(error),
 }));
 
-vi.mock("@elizaos/core", () => coreMock);
+vi.mock("@elizaos/core", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("@elizaos/core")>();
+	return {
+		...coreMock,
+		resolveStateDir: actual.resolveStateDir,
+	};
+});
 
 import type { ViewSummary } from "./views-client.js";
 import {

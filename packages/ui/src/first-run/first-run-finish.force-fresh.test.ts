@@ -65,6 +65,7 @@ vi.mock("../state", () => ({
   loadPersistedActiveServer: vi.fn(() => null),
   removeAgentProfile: vi.fn(),
   savePersistedActiveServer: vi.fn(),
+  savePersistedFirstRunComplete: vi.fn(),
 }));
 
 vi.mock("./mobile-runtime-mode", async (importOriginal) => ({

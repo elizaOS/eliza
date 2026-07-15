@@ -1833,6 +1833,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		]);
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe("Spawned coding agent.");
+			expect(result.result.actionResults).toEqual([
+				expect.objectContaining({
+					success: true,
+					data: expect.objectContaining({ actionName: "TASKS" }),
+				}),
+			]);
 		}
 	});
 

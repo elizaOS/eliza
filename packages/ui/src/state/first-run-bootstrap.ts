@@ -3,6 +3,7 @@
  * first-run config and resolves the initial active-server record so a returning
  * user skips re-onboarding. Reads via the injected probe client.
  */
+import { isElizaCloudControlPlaneAgentlessBase } from "../utils/cloud-agent-base";
 import { asRecord, readString } from "./config-readers";
 import {
   createPersistedActiveServer,
@@ -54,11 +55,39 @@ function hasPersistedExistingInstallConfig(
   );
 }
 
+/**
+ * Whether the boot-time existing-install probe (GET /api/first-run/status +
+ * /api/config) should run for `origin`. The probe detects a returning
+ * local/self-hosted install so the user skips re-onboarding. On a bare Eliza
+ * Cloud control-plane origin (app.elizacloud.ai, elizacloud.ai, …) the
+ * same-origin API is the managed cloud endpoint: it requires auth and hosts no
+ * unauthenticated local install to detect, so probing it only yields 401
+ * console noise during fresh onboarding (#16242). Skip it there — the in-chat
+ * first-run conductor owns Cloud sign-in.
+ */
+export function shouldProbeExistingLocalInstall(
+  origin: string | null | undefined,
+): boolean {
+  return !isElizaCloudControlPlaneAgentlessBase(origin ?? "");
+}
+
+function currentOrigin(): string | null {
+  return typeof window !== "undefined" ? window.location.origin : null;
+}
+
 export async function detectExistingFirstRunConnection(args: {
   client: ExistingFirstRunProbeClient;
   timeoutMs: number;
 }): Promise<ExistingFirstRunProbeResult | null> {
   if (!args.client.apiAvailable) {
+    return null;
+  }
+
+  // Skip the probe on a bare Cloud control-plane origin: the same-origin API is
+  // auth-gated, so first-run/status + config only 401 during fresh onboarding
+  // (#16242). Gated here rather than at the restore call site so every caller
+  // inherits it and the guard is testable in isolation.
+  if (!shouldProbeExistingLocalInstall(currentOrigin())) {
     return null;
   }
 

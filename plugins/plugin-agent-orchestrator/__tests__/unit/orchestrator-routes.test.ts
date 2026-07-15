@@ -496,6 +496,44 @@ describe("orchestrator routes — lifecycle", () => {
     expect(validated.json.status).toBe("done");
     expect(validated.json.summary).toBe("shipped");
   });
+
+  it("requires explicit evidence for a humanOverride validate", async () => {
+    const service = makeService();
+    const id = await seedTask(service);
+    // No evidence → 400 at the route boundary, before the service runs.
+    const missing = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/validate`,
+      { passed: true, humanOverride: true },
+    );
+    expect(missing.status).toBe(400);
+    expect(missing.json.error).toBe(
+      "evidence (string) is required for humanOverride",
+    );
+    // With evidence the override lands from a non-`validating` state and the
+    // event carries the who/why verbatim.
+    const approved = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/validate`,
+      {
+        passed: true,
+        humanOverride: true,
+        evidence: "operator approved after manual smoke test",
+      },
+    );
+    expect(approved.status).toBe(200);
+    expect(approved.json.status).toBe("done");
+    // A second override on the now-terminal task is a 409 from the service.
+    const terminal = await call(
+      service,
+      "POST",
+      `/api/orchestrator/tasks/${id}/validate`,
+      { passed: false, humanOverride: true, evidence: "undo" },
+    );
+    expect(terminal.status).toBe(409);
+  });
 });
 
 describe("orchestrator routes — room, telemetry, agents", () => {

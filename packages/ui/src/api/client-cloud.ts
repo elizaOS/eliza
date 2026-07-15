@@ -15,6 +15,7 @@ import {
   type AuthedAgentFetch,
   startCloudConversationHandoff,
 } from "../cloud/handoff/cloud-handoff-supervisor";
+import { isRetryableHandoffHttpStatus } from "../cloud/handoff/conversation-handoff";
 import { getBootConfig } from "../config/boot-config";
 import {
   buildCloudSharedAgentApiBase,
@@ -126,6 +127,8 @@ type DirectCloudAgent = {
   last_heartbeat_at?: string | null;
   agentConfig?: Record<string, unknown>;
   agent_config?: Record<string, unknown>;
+  executionTier?: string | null;
+  execution_tier?: string | null;
 };
 
 type DirectCloudJob = {
@@ -948,6 +951,10 @@ function toCloudCompatAgent(input: DirectCloudAgent): CloudCompatAgent {
       "unknown",
     error_message: input.errorMessage ?? input.error_message ?? null,
     last_heartbeat_at: input.lastHeartbeatAt ?? input.last_heartbeat_at ?? null,
+    execution_tier:
+      stringOrNull(input.executionTier) ??
+      stringOrNull(input.execution_tier) ??
+      null,
   };
 }
 
@@ -1533,6 +1540,7 @@ declare module "./client-base" {
        * Shared-runtime adapters continue to use the Steward session token.
        */
       requiresAgentPairing?: boolean;
+      executionTier?: string | null;
     }>;
     /**
      * Background shared→personal handoff for a freshly provisioned cloud agent:
@@ -3036,7 +3044,9 @@ function resolveDedicatedCloudAgentApiBase(args: {
 }): string {
   const resolved = resolveCloudAgentApiBase(args);
   if (!isDirectCloudSharedAgentBase(resolved)) return resolved;
-  return buildDedicatedCloudAgentApiBase(args.agentId) ?? resolved;
+  return (
+    buildDedicatedCloudAgentApiBase(args.agentId, args.cloudApiBase) ?? resolved
+  );
 }
 
 /**
@@ -3367,6 +3377,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   const onProgress = options.onProgress;
   const resolvedCloudApiBase = resolveDirectCloudAuthApiBase(cloudApiBase);
   let forceCreateForTerminalAgents = false;
+  let forceCreatePastSharedAgents = false;
   // Ensure the direct-cloud requests below authenticate even on a cold boot,
   // where the resolved token may be empty (the caller always passes the session
   // token). Persist it through the canonical steward-session store so
@@ -3407,11 +3418,22 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
           "Couldn't reach Eliza Cloud to find your agents. Check your connection and try again.",
       );
     }
-    const chosen = pickPreferredCloudAgent(list.data, preferAgentId);
+    // Dedicated mode must not bind a temporary shared bridge as if it were a
+    // dedicated sandbox. The Cloud API exposes the authoritative tier; carry
+    // it through the compat model instead of guessing from URL presence. A
+    // shared-only organization needs forceCreate below so the backend reuse
+    // guard cannot hand the same bridge back to an always-on create request.
+    const eligibleAgents = preferSharedTier
+      ? list.data
+      : list.data.filter((agent) => agent.execution_tier !== "shared");
+    forceCreatePastSharedAgents =
+      !preferSharedTier &&
+      list.data.some((agent) => agent.execution_tier === "shared");
+    const chosen = pickPreferredCloudAgent(eligibleAgents, preferAgentId);
     forceCreateForTerminalAgents =
-      list.data.length > 0 &&
+      eligibleAgents.length > 0 &&
       !chosen &&
-      list.data.every(isTerminalFailedCloudAgent);
+      eligibleAgents.every(isTerminalFailedCloudAgent);
     if (chosen) {
       let agent = chosen;
       // A picked agent that is not `running` is a dedicated cold boot: shared
@@ -3438,7 +3460,9 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         agent.bridge_url || agent.web_ui_url || agent.webUiUrl,
       );
       const useSharedAdapter = Boolean(
-        !hasDedicatedBase && (preferSharedTier || preferStewardAgentAdapter),
+        agent.execution_tier === "shared" ||
+          (!hasDedicatedBase &&
+            (preferSharedTier || preferStewardAgentAdapter)),
       );
       const apiBase = useSharedAdapter
         ? buildCloudSharedAgentApiBase(resolvedCloudApiBase, agent.agent_id)
@@ -3456,6 +3480,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
         bridgeUrl: agent.bridge_url,
         created: false,
         requiresAgentPairing: false,
+        executionTier: agent.execution_tier ?? null,
       };
     }
   }
@@ -3471,12 +3496,14 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
   // if that lookup fails or has no URL yet, fall back to the standard dedicated
   // subdomain for the known agent id.
   onProgress?.("creating", `Creating ${name}...`);
+  const mustForceCreate =
+    forceCreate ||
+    forceCreatePastSharedAgents ||
+    (forceCreateForTerminalAgents && !preferSharedTier);
   const created = await this.createCloudCompatAgent({
     agentName: name,
     ...(bio?.length ? { agentConfig: { bio } } : {}),
-    ...(forceCreate || (forceCreateForTerminalAgents && !preferSharedTier)
-      ? { forceCreate: true }
-      : {}),
+    ...(mustForceCreate ? { forceCreate: true } : {}),
     ...(preferSharedTier ? { preferSharedTier: true } : {}),
   });
   if (!created.success || !created.data.agentId) {
@@ -3491,7 +3518,9 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     detailAgent?.bridge_url || detailAgent?.web_ui_url || detailAgent?.webUiUrl,
   );
   const useSharedAdapter = Boolean(
-    !detailHasDedicatedBase && (preferSharedTier || preferStewardAgentAdapter),
+    detailAgent?.execution_tier === "shared" ||
+      (!detailHasDedicatedBase &&
+        (preferSharedTier || preferStewardAgentAdapter)),
   );
   // A freshly-created dedicated agent's subdomain is populated immediately, but
   // its container takes ~30-120s to boot. When the caller wants a dedicated
@@ -3542,6 +3571,7 @@ ElizaClient.prototype.selectOrProvisionCloudAgent = async function (
     // `true` so the pre-existing create UX is unchanged.
     created: created.created !== false,
     requiresAgentPairing: false,
+    executionTier: detailAgent?.execution_tier ?? null,
   };
 };
 
@@ -3614,6 +3644,24 @@ ElizaClient.prototype.startCloudAgentHandoff = function (
       });
       // Never "switch" onto the shared adapter (no migration target there).
       if (isDirectCloudSharedAgentBase(base)) return null;
+      // Control-plane `running` precedes actual routability: the runtime proxy
+      // can keep 404ing the subdomain for minutes after the record flips
+      // (#15901). Probe the base itself and only report ready once the proxy
+      // actually routes to the container — a 404/408/425/429/5xx or a
+      // network-layer failure means "running but not yet routable", so the
+      // supervisor keeps polling inside its budget instead of one-shot
+      // importing into a router that answers 404. Any routed response —
+      // including an auth challenge — proves routability; the import carries
+      // its own credentials.
+      try {
+        const probe = await authedFetch(base, "/api/health");
+        if (isRetryableHandoffHttpStatus(probe.status)) return null;
+      } catch {
+        // error-policy:J4 readiness probe — an unreachable base is the
+        // designed "not ready yet" signal; the poll loop retries within its
+        // budget and times out honestly if the container never serves.
+        return null;
+      }
       return base;
     },
   };

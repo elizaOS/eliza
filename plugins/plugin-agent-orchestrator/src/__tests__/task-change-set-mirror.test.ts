@@ -7,7 +7,16 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AcpService } from "../services/acp-service.js";
-import { toTaskThreadDetail } from "../services/orchestrator-task-mapper.js";
+import {
+  summarizeUsageRows,
+  toTaskEventDto,
+  toTaskMessageDto,
+  toTaskPlanRevisionDto,
+  toTaskThread,
+  toTaskThreadDetail,
+  toTaskTimelineEventDto,
+  toTaskTimelineMessageDto,
+} from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../services/orchestrator-task-store.js";
 import type { WorkspaceChangeSet } from "../services/workspace-diff.js";
@@ -149,6 +158,13 @@ describe("change-set mirror into task store on task_complete", () => {
     const dto = toTaskThreadDetail(doc);
     const sessionDto = dto.sessions.find((s) => s.sessionId === sessionId);
     expect(sessionDto?.metadata.lastChangeSet).toEqual(CHANGE_SET);
+    expect(toTaskThread(doc)).toMatchObject({
+      latestSessionModel: null,
+      latestAccountProviderId: null,
+      latestAccountId: null,
+      latestAccountLabel: null,
+      parentTaskId: null,
+    });
   });
 
   it("stores nothing when there is no change set", async () => {
@@ -165,5 +181,88 @@ describe("change-set mirror into task store on task_complete", () => {
     const found = await store.findSession(sessionId);
     expect(found?.session.metadata.lastChangeSet).toBeUndefined();
     expect(found?.session.metadata.existingKey).toBe("keep");
+  });
+});
+
+describe("task mapper wire records", () => {
+  const message = {
+    id: "message-1",
+    taskId: "task-1",
+    senderKind: "user",
+    direction: "inbound",
+    content: "Continue",
+    timestamp: 10,
+    metadata: {},
+    createdAt: "now",
+  } as never;
+  const event = {
+    id: "event-1",
+    taskId: "task-1",
+    eventType: "status",
+    timestamp: 11,
+    summary: "Running",
+    data: {},
+    createdAt: "now",
+  } as never;
+
+  it("maps messages, events, timeline wrappers, and plan revisions", () => {
+    expect(toTaskMessageDto(message)).toMatchObject({
+      threadId: "task-1",
+      sessionId: null,
+    });
+    expect(toTaskEventDto(event)).toMatchObject({
+      threadId: "task-1",
+      sessionId: null,
+    });
+    expect(toTaskTimelineMessageDto(message)).toMatchObject({
+      id: "message:message-1",
+      kind: "message",
+    });
+    expect(toTaskTimelineEventDto(event)).toMatchObject({
+      id: "event:event-1",
+      kind: "event",
+    });
+    expect(
+      toTaskPlanRevisionDto({
+        id: "revision-1",
+        taskId: "task-1",
+        plan: { steps: [] },
+        createdBy: "owner",
+        metadata: {},
+        timestamp: 12,
+        createdAt: "now",
+      } as never),
+    ).toMatchObject({
+      threadId: "task-1",
+      basePlanRevisionId: null,
+      editSummary: null,
+    });
+  });
+
+  it("rolls usage up by provider without fabricating availability", () => {
+    expect(
+      summarizeUsageRows([
+        {
+          provider: "anthropic",
+          model: "claude",
+          inputTokens: 4,
+          outputTokens: 3,
+          reasoningTokens: 2,
+          cacheTokens: 1,
+          costUsd: 0.5,
+          state: "measured",
+        },
+      ] as never),
+    ).toMatchObject({
+      inputTokens: 4,
+      totalTokens: 9,
+      costUsd: 0.5,
+      state: "measured",
+    });
+    expect(summarizeUsageRows([])).toMatchObject({
+      totalTokens: 0,
+      state: "unavailable",
+      byProvider: [],
+    });
   });
 });

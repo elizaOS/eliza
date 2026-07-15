@@ -9,21 +9,22 @@ name: Windows CI
 # and the helpers under `packages/scripts/`. iOS/macOS/RISC-V/cloud-e2e
 # paths run on their existing dedicated workflows.
 
-# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
-# github.run_id on push, so every develop push got a unique group and
-# nothing ever superseded. A 37-merge wave queued thousands of push runs
-# and starved the self-hosted fleet. Fall back to github.ref (all develop
-# pushes share a group) and cancel superseded runs on push too. PR behavior
-# is unchanged (pull_request.number still wins the key); merge_group and
-# schedule events are not in the cancel set, so the merge queue and nightly
-# runs always complete.
+# Standalone PR and push runs share stable keys so obsolete work is superseded.
+# Reusable callers pass a distinct scope, keeping exhaustive work outside those
+# domains; schedule and dispatch events never cancel an active run.
 concurrency:
-  group: windows-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: windows-ci-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+    inputs:
+      concurrency_scope:
+        description: "Caller-owned concurrency namespace"
+        required: false
+        type: string
+        default: standalone
   push:
     branches: [main, develop]
     paths:
@@ -105,13 +106,9 @@ jobs:
             commands:
               - bun run --cwd packages/app-core test
               - bun run --cwd packages/elizaos test
-              # The tenant-db durable-placement-claimer suite is split out into
-              # its own bounded-retry step below (#15785): under Bun canary on
-              # Windows it intermittently trips a native `Illegal instruction`
-              # panic while driving PGlite (WASM). Ignore it in the whole-package
-              # run so that upstream-runtime flake cannot fail the shard; the rest
-              # of packages/cloud/shared still runs here unchanged.
-              - bun run --cwd packages/cloud/shared test --path-ignore-patterns "**/tenant-db-placement-claimer.test.ts"
+              # The package test runner owns the Windows-only tenant-db PGlite
+              # quarantine and bounded native-crash retry (#15785).
+              - bun run --cwd packages/cloud/shared test
           - lane: framework-packages
             commands:
               - bun run --cwd packages/scenario-runner test
@@ -143,7 +140,7 @@ jobs:
           New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
             -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force | Out-Null
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install bun
         uses: oven-sh/setup-bun@v2
@@ -209,32 +206,3 @@ jobs:
               exit $code
             }
           }
-
-      # #15785: The tenant-db durable-placement-claimer suite drives PGlite
-      # (WASM) and intermittently trips a native `Illegal instruction` panic
-      # under Bun canary on Windows. That is an upstream runtime flake, not a
-      # product regression (the test blob is byte-identical to a run that passed
-      # in 49ms hours earlier — do not bisect). It is ignored by the whole-package
-      # run above and re-run here in isolation with a small bounded retry so a
-      # single native panic is retried instead of failing the whole shard.
-      # Each attempt is logged; the suite still has to pass for the shard to pass.
-      - name: Retry-isolated tenant-db PGlite suite (Windows canary flake, #15785)
-        if: matrix.lane == 'app-and-cli'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = "Continue"
-          $suite = "src/lib/services/tenant-db/tenant-db-placement-claimer.test.ts"
-          $maxAttempts = 3
-          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            Write-Host "::group::tenant-db placement-claimer suite (attempt $attempt/$maxAttempts)"
-            bun run --cwd packages/cloud/shared test $suite
-            $code = $LASTEXITCODE
-            Write-Host "::endgroup::"
-            if ($code -eq 0) {
-              Write-Host "tenant-db placement-claimer suite passed on attempt $attempt/$maxAttempts."
-              exit 0
-            }
-            Write-Warning "tenant-db placement-claimer suite failed on attempt $attempt/$maxAttempts with exit code $code (Bun canary/PGlite native flake, #15785)."
-          }
-          Write-Error "tenant-db placement-claimer suite still failing after $maxAttempts attempts; not the expected transient flake."
-          exit 1

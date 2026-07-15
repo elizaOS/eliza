@@ -23,6 +23,14 @@ export const DEFAULT_OVERFLOW_TOLERANCE_PX = 2;
 
 const TESSERACT_JS_PACKAGE = "tesseract.js";
 const TESSERACT_JS_CACHE_DIR = path.join(tmpdir(), "elizaos-tesseract-cache");
+export const DEFAULT_OCR_CONFIDENCE_FLOOR = 0.45;
+const OCR_FALLBACK_MAX_WIDTH = 2400;
+const OCR_FALLBACK_SCALE = 3;
+const OCR_FALLBACK_THRESHOLD = 225;
+const PROVEN_BLANK_IMAGE_ISSUES = new Set([
+  "screenshot has no sampled pixels",
+  "screenshot is one color",
+]);
 
 /** @type {{ path: string | null } | null} */
 let systemTesseractProbe = null;
@@ -559,35 +567,88 @@ export function resetTesseractProbe() {
   packagedWorkers = new Map();
 }
 
-/** OCR a single PNG, or report an explicit unavailable result. */
+/**
+ * OCR a single PNG, or report an explicit unavailable result.
+ *
+ * Whole-page segmentation is the cheap first pass. When that pass is weak, a
+ * bounded high-contrast upscale plus sparse-text segmentation gets one second
+ * chance; this is particularly important for mobile screenshots whose labels
+ * are only a dozen source pixels tall. The selected transcript, confidence,
+ * every attempted transcript, and independent pixel-blank diagnostics remain
+ * in the result so downstream gates never infer "blank" from OCR silence.
+ */
 export async function ocrImage(pngPath, opts = {}) {
   const engine = await resolveOcrEngine();
   if (!engine.available) return { available: false, reason: engine.reason };
   const lang = opts.lang ?? "eng";
   const timeoutMs = opts.timeoutMs ?? 30_000;
-  const text =
-    engine.kind === "packaged"
-      ? await runPackagedTesseract(pngPath, lang, timeoutMs).catch((err) => ({
-          error: err instanceof Error ? err.message : String(err),
-        }))
-      : await runSystemTesseract(engine.bin, pngPath, lang, timeoutMs).catch(
-          (err) => ({
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
-  if (typeof text !== "string") {
+  const confidenceFloor = opts.confidenceFloor ?? DEFAULT_OCR_CONFIDENCE_FLOOR;
+  const [primaryOutcome, imageOutcome] = await Promise.allSettled([
+    recognizeWithEngine(engine, pngPath, lang, timeoutMs, "auto"),
+    analyzeImageFile(pngPath),
+  ]);
+  if (primaryOutcome.status === "rejected") {
     return {
       available: false,
-      reason: `${engine.label} failed: ${text.error.slice(0, 200)}`,
+      reason: `${engine.label} failed: ${errorMessage(primaryOutcome.reason).slice(0, 200)}`,
     };
   }
-  const normalized = normalizeOcrText(text);
+  if (imageOutcome.status === "rejected") {
+    return {
+      available: false,
+      reason: `pixel diagnostics failed: ${errorMessage(imageOutcome.reason).slice(0, 200)}`,
+    };
+  }
+  const primaryRecognition = primaryOutcome.value;
+  const imageAnalysis = imageOutcome.value;
+
+  const attempts = [buildOcrAttempt("auto", primaryRecognition)];
+  if (!isReliableOcrAttempt(attempts[0], confidenceFloor)) {
+    const fallbackRecognition = await buildHighContrastOcrInput(pngPath)
+      .then((fallbackInput) =>
+        recognizeWithEngine(
+          engine,
+          fallbackInput,
+          lang,
+          timeoutMs,
+          "sparse-high-contrast",
+        ),
+      )
+      .catch((err) => {
+        // error-policy:J1 OCR primitive boundary — a failed fallback is retained
+        // as a diagnostic while the successful primary pass remains inspectable.
+        return { error: err instanceof Error ? err.message : String(err) };
+      });
+    if ("error" in fallbackRecognition) {
+      attempts.push({
+        mode: "sparse-high-contrast",
+        ok: false,
+        reason: fallbackRecognition.error,
+        text: "",
+        words: 0,
+        chars: 0,
+        meanConfidence: 0,
+      });
+    } else {
+      attempts.push(
+        buildOcrAttempt("sparse-high-contrast", fallbackRecognition),
+      );
+    }
+  }
+
+  const selected = selectOcrAttempt(attempts, confidenceFloor);
   return {
     available: true,
-    text: normalized,
-    words: normalized ? normalized.split(/\s+/).filter(Boolean).length : 0,
-    chars: normalized.replace(/\s+/g, "").length,
+    text: selected.text,
+    words: selected.words,
+    chars: selected.chars,
+    meanConfidence: selected.meanConfidence,
     engine: engine.label,
+    selectedMode: selected.mode,
+    attempts,
+    pixelBlank: imageAnalysis.pixelBlank,
+    pixelBlankReasons: imageAnalysis.pixelBlankReasons,
+    imageAnalysis,
   };
 }
 
@@ -686,6 +747,9 @@ export async function analyzeImageFile(filePath) {
   ) {
     issues.push("blue accent candidate exceeds orange pixels");
   }
+  const pixelBlankReasons = issues.filter((issue) =>
+    PROVEN_BLANK_IMAGE_ISSUES.has(issue),
+  );
 
   return {
     width: info.width,
@@ -699,6 +763,8 @@ export async function analyzeImageFile(filePath) {
     redRatio: sampledPixels === 0 ? 0 : redPixels / sampledPixels,
     averageLuminance,
     issues,
+    pixelBlank: pixelBlankReasons.length > 0,
+    pixelBlankReasons,
   };
 }
 
@@ -727,17 +793,35 @@ function containsForbidden(haystack, token) {
   return haystack.includes(needle);
 }
 
-function runSystemTesseract(bin, pngPath, lang, timeoutMs) {
+async function recognizeWithEngine(engine, input, lang, timeoutMs, mode) {
+  return engine.kind === "packaged"
+    ? runPackagedTesseract(input, lang, timeoutMs, mode)
+    : runSystemTesseract(engine.bin, input, lang, timeoutMs, mode);
+}
+
+function runSystemTesseract(bin, input, lang, timeoutMs, mode) {
   return new Promise((resolve, reject) => {
-    const child = spawn(bin, [pngPath, "stdout", "-l", lang], {
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+    const readsStdin = Buffer.isBuffer(input);
+    const inputArg = readsStdin ? "stdin" : input;
+    const pageSegMode = mode === "sparse-high-contrast" ? "11" : "3";
+    const child = spawn(
+      bin,
+      [inputArg, "stdout", "-l", lang, "--psm", pageSegMode, "tsv"],
+      {
+        stdio: [readsStdin ? "pipe" : "ignore", "pipe", "pipe"],
+      },
+    );
+    if (readsStdin) {
+      child.stdin.end(input);
+    }
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(
-        new Error(`tesseract timed out after ${timeoutMs}ms on ${pngPath}`),
+        new Error(
+          `tesseract timed out after ${timeoutMs}ms on ${readsStdin ? mode : input}`,
+        ),
       );
     }, timeoutMs);
     child.stdout.on("data", (d) => {
@@ -752,10 +836,46 @@ function runSystemTesseract(bin, pngPath, lang, timeoutMs) {
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      if (code === 0) resolve(stdout);
+      if (code === 0) resolve(parseSystemTesseractTsv(stdout));
       else reject(new Error(`tesseract exited ${code}: ${stderr.trim()}`));
     });
   });
+}
+
+function parseSystemTesseractTsv(tsv) {
+  const rows = String(tsv).split(/\r?\n/);
+  if (!rows[0]?.startsWith("level\tpage_num\t")) {
+    throw new Error("system tesseract returned an invalid TSV header");
+  }
+  const lines = new Map();
+  let confidenceTotal = 0;
+  let confidenceCount = 0;
+  for (const row of rows.slice(1)) {
+    if (!row) continue;
+    const columns = row.split("\t");
+    if (columns.length < 12 || columns[0] !== "5") continue;
+    const text = columns.slice(11).join("\t").trim();
+    if (!text) continue;
+    const confidence = Number(columns[10]);
+    if (!Number.isFinite(confidence)) {
+      throw new Error("system tesseract returned a non-numeric confidence");
+    }
+    const key = columns.slice(1, 5).join(":");
+    const current = lines.get(key);
+    if (current) current.push(text);
+    else lines.set(key, [text]);
+    if (confidence >= 0) {
+      confidenceTotal += confidence;
+      confidenceCount += 1;
+    }
+  }
+  return {
+    text: [...lines.values()].map((words) => words.join(" ")).join("\n"),
+    meanConfidence:
+      confidenceCount === 0
+        ? 0
+        : Math.min(1, Math.max(0, confidenceTotal / confidenceCount / 100)),
+  };
 }
 
 async function loadPackagedTesseract() {
@@ -765,18 +885,30 @@ async function loadPackagedTesseract() {
   return packagedTesseractProbe;
 }
 
-async function runPackagedTesseract(pngPath, lang, timeoutMs) {
-  const worker = await getPackagedWorker(lang, timeoutMs);
+async function runPackagedTesseract(input, lang, timeoutMs, mode) {
+  const worker = await getPackagedWorker(lang, timeoutMs, mode);
   const result = await withTimeout(
-    worker.recognize(pngPath),
+    worker.recognize(input),
     timeoutMs,
-    `tesseract.js timed out after ${timeoutMs}ms on ${pngPath}`,
+    `tesseract.js timed out after ${timeoutMs}ms during ${mode}`,
   );
-  return result?.data?.text ?? "";
+  if (
+    !result?.data ||
+    typeof result.data.text !== "string" ||
+    typeof result.data.confidence !== "number" ||
+    !Number.isFinite(result.data.confidence)
+  ) {
+    throw new Error("tesseract.js returned no transcript confidence");
+  }
+  return {
+    text: result.data.text,
+    meanConfidence: Math.min(1, Math.max(0, result.data.confidence / 100)),
+  };
 }
 
-async function getPackagedWorker(lang, timeoutMs) {
-  const existing = packagedWorkers.get(lang);
+async function getPackagedWorker(lang, timeoutMs, mode) {
+  const workerKey = `${lang}:${mode}`;
+  const existing = packagedWorkers.get(workerKey);
   if (existing) return existing;
   const workerPromise = (async () => {
     const tesseract = await loadPackagedTesseract();
@@ -784,14 +916,99 @@ async function getPackagedWorker(lang, timeoutMs) {
       throw new Error("tesseract.js createWorker export is unavailable");
     }
     mkdirSync(TESSERACT_JS_CACHE_DIR, { recursive: true });
-    return withTimeout(
+    const worker = await withTimeout(
       tesseract.createWorker(lang, 1, { cachePath: TESSERACT_JS_CACHE_DIR }),
       timeoutMs,
       `tesseract.js worker initialization timed out after ${timeoutMs}ms`,
     );
+    if (mode === "sparse-high-contrast") {
+      if (!tesseract.PSM?.SPARSE_TEXT) {
+        await worker.terminate();
+        throw new Error("tesseract.js sparse-text segmentation is unavailable");
+      }
+      await withTimeout(
+        worker.setParameters({
+          tessedit_pageseg_mode: tesseract.PSM.SPARSE_TEXT,
+        }),
+        timeoutMs,
+        `tesseract.js sparse-text configuration timed out after ${timeoutMs}ms`,
+      );
+    }
+    return worker;
   })();
-  packagedWorkers.set(lang, workerPromise);
-  return workerPromise;
+  const trackedWorkerPromise = workerPromise.then(
+    (worker) => worker,
+    (error) => {
+      packagedWorkers.delete(workerKey);
+      throw error;
+    },
+  );
+  packagedWorkers.set(workerKey, trackedWorkerPromise);
+  return trackedWorkerPromise;
+}
+
+async function buildHighContrastOcrInput(pngPath) {
+  const metadata = await sharp(pngPath).metadata();
+  if (!metadata.width || metadata.width <= 0) {
+    throw new Error("OCR image has no positive pixel width");
+  }
+  const width = Math.min(
+    OCR_FALLBACK_MAX_WIDTH,
+    metadata.width * OCR_FALLBACK_SCALE,
+  );
+  return sharp(pngPath)
+    .resize({ width, kernel: sharp.kernel.lanczos3 })
+    .grayscale()
+    .normalize()
+    .sharpen()
+    .threshold(OCR_FALLBACK_THRESHOLD)
+    .png()
+    .toBuffer();
+}
+
+function buildOcrAttempt(mode, recognition) {
+  const text = normalizeOcrText(recognition.text);
+  return {
+    mode,
+    ok: true,
+    text,
+    words: text ? text.split(/\s+/).filter(Boolean).length : 0,
+    chars: text.replace(/\s+/g, "").length,
+    meanConfidence: recognition.meanConfidence,
+  };
+}
+
+function isReliableOcrAttempt(attempt, confidenceFloor) {
+  return (
+    attempt.ok &&
+    attempt.words >= 2 &&
+    attempt.meanConfidence >= confidenceFloor
+  );
+}
+
+function selectOcrAttempt(attempts, confidenceFloor) {
+  const successful = attempts.filter((attempt) => attempt.ok);
+  if (successful.length === 0) {
+    throw new Error("OCR produced no successful attempt");
+  }
+  return successful.reduce((best, candidate) => {
+    const bestReliable = isReliableOcrAttempt(best, confidenceFloor);
+    const candidateReliable = isReliableOcrAttempt(candidate, confidenceFloor);
+    if (candidateReliable !== bestReliable) {
+      return candidateReliable ? candidate : best;
+    }
+    const bestScore =
+      best.meanConfidence * Math.log2(Math.max(2, best.words + 1));
+    const candidateScore =
+      candidate.meanConfidence * Math.log2(Math.max(2, candidate.words + 1));
+    if (candidateScore !== bestScore) {
+      return candidateScore > bestScore ? candidate : best;
+    }
+    if (candidate.words !== best.words) {
+      return candidate.words > best.words ? candidate : best;
+    }
+    return candidate.chars > best.chars ? candidate : best;
+  });
 }
 
 function withTimeout(promise, ms, message) {
@@ -805,10 +1022,17 @@ function withTimeout(promise, ms, message) {
 }
 
 function normalizeOcrText(text) {
-  return String(text ?? "")
+  if (typeof text !== "string") {
+    throw new Error("OCR transcript must be a string");
+  }
+  return text
     .replace(/\r/g, "")
     .replace(/[ \t]+/g, " ")
     .trim();
+}
+
+function errorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function fileExists(p) {

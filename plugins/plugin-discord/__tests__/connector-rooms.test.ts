@@ -80,6 +80,15 @@ describe("DiscordService.listConnectorRooms — cross-guild completeness", () =>
 		expect(targets.filter((t) => t.target.serverId === "200")).toHaveLength(35);
 	});
 
+	it("returns an empty list when no guilds are cached (fresh login, no servers)", async () => {
+		const service = serviceWithGuilds([]);
+		const targets = await service.listConnectorRooms({
+			runtime,
+		} as MessageConnectorQueryContext);
+
+		expect(targets).toEqual([]);
+	});
+
 	it("still dedupes and drops non-text channels", async () => {
 		const guild = fakeGuild("300", "Guild C", 3, 3000);
 		guild.channels.cache.set("voice-1", {

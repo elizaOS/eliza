@@ -96,7 +96,7 @@ Defined in `src/registry.ts` as `DEFAULT_COMMANDS`. Each agent runtime receives 
 
 **Options** (`category: "options"`): `think` (`/think /thinking /t`), `verbose` (`/verbose /v`), `reasoning` (`/reasoning /reason`), `elevated` (`/elevated /elev`, auth), `model` (`/model /m`), `models` (`/models`), `usage` (`/usage`), `queue` (`/queue /q`)
 
-**Management** (`category: "management"`): `allowlist` (`/allowlist /allow`, auth), `approve` (`/approve`, auth), `subagents` (`/subagents /sub`, auth), `config` (`/config /cfg`, auth, disabled by default), `debug` (`/debug`, auth, disabled by default)
+**Management** (`category: "management"`): `allowlist` (`/allowlist /allow`, auth), `approve` (`/approve`, auth), `subagents` (`/subagents /sub`, auth), `accounts` (`/accounts`, auth + elevated writes), `backend` (`/backend`, auth + elevated writes), `config` (`/config /cfg`, auth, disabled by default), `debug` (`/debug`, auth, disabled by default)
 
 **Media** (`category: "media"`): `tts` (`/tts /voice`)
 

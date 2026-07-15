@@ -405,28 +405,35 @@ function applyLocalProviderCapabilities(
   return Promise.resolve();
 }
 
-/** Default small/large model names by provider family. */
+/**
+ * Default small/large model names by provider family. Keep these ids aligned
+ * with the provider plugins' own defaults (plugin-anthropic / plugin-openai /
+ * plugin-google-genai utils/config.ts): the values stamped here land in env
+ * keys that OVERRIDE those plugin defaults for every user who switches
+ * providers through the UI, so a stale id here quietly pins users one model
+ * generation behind.
+ */
 const PROVIDER_DEFAULT_MODELS: Record<
   string,
   { smallKey: string; smallVal: string; largeKey: string; largeVal: string }
 > = {
   anthropic: {
     smallKey: "ANTHROPIC_SMALL_MODEL",
-    smallVal: "claude-haiku-4-5-20251001",
+    smallVal: "claude-sonnet-5",
     largeKey: "ANTHROPIC_LARGE_MODEL",
-    largeVal: "claude-opus-4-7",
+    largeVal: "claude-opus-4-8",
   },
   openai: {
     smallKey: "OPENAI_SMALL_MODEL",
-    smallVal: "gpt-5-mini",
+    smallVal: "gpt-5.6-luna",
     largeKey: "OPENAI_LARGE_MODEL",
-    largeVal: "gpt-5.5",
+    largeVal: "gpt-5.6-sol",
   },
   google: {
     smallKey: "GOOGLE_SMALL_MODEL",
     smallVal: "gemini-2.0-flash-001",
     largeKey: "GOOGLE_LARGE_MODEL",
-    largeVal: "gemini-2.5-pro-preview-03-25",
+    largeVal: "gemini-2.5-pro",
   },
   groq: {
     smallKey: "GROQ_SMALL_MODEL",

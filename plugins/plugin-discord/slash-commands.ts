@@ -4,7 +4,10 @@
  * matching command's `execute` handler after role-access checks.
  */
 import {
+	ChannelType,
+	type Content,
 	createUniqueUuid,
+	type HandlerCallback,
 	hasRoleAccess,
 	type IAgentRuntime,
 	type Memory,
@@ -14,9 +17,13 @@ import type {
 	AutocompleteInteraction,
 	ChatInputCommandInteraction,
 } from "discord.js";
-import { ApplicationCommandOptionType } from "discord.js";
+import { ApplicationCommandOptionType, PermissionFlagsBits } from "discord.js";
 import { getPreset, listPresets } from "./actions/setup-credentials";
+import { checkDiscordDmAccess } from "./dm-access";
+import { getDiscordSettings } from "./environment";
+import { chunkDiscordText } from "./messaging";
 import type { DiscordSlashCommand } from "./types";
+import { getMessageService } from "./utils";
 import type { VoiceManager } from "./voice";
 
 export type SlashCommandRole = "OWNER" | "ADMIN" | "USER" | "GUEST";
@@ -30,6 +37,10 @@ export interface SlashCommand {
 	ownerOnly?: boolean;
 	/** Minimum elizaOS role required to execute this command. */
 	requiredRole?: SlashCommandRole;
+	/** Discord permission bitfield for `default_member_permissions` —
+	 * hides the command from pickers of members lacking it. Execute-time
+	 * `requiredRole` (the eliza role model) remains the actual gate. */
+	requiredPermissions?: bigint | string | null;
 	execute: (
 		interaction: ChatInputCommandInteraction,
 		runtime: IAgentRuntime,
@@ -76,56 +87,6 @@ const OPTION_TYPE_MAP: Record<string, number> = {
 
 const commands = new Map<string, SlashCommand>();
 const cooldowns = new Map<string, Map<string, number>>();
-
-const FALLBACK_KNOWN_MODELS = [
-	"gpt-4o",
-	"gpt-5-mini",
-	"gpt-5.5",
-	"gpt-3.5-turbo",
-	"claude-sonnet-4-6",
-	"claude-opus-4-7",
-	"claude-3.5-haiku",
-	"openai/gpt-oss-120b",
-	"eliza-1-4b",
-	"gemini-2.5-pro",
-	"gemini-2.5-flash",
-	"mistral-large",
-	"mistral-medium",
-] as const;
-
-function parseStringList(value: unknown): string[] {
-	if (Array.isArray(value)) {
-		return value
-			.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-			.filter(Boolean);
-	}
-	if (typeof value !== "string") {
-		return [];
-	}
-	const trimmed = value.trim();
-	if (!trimmed) {
-		return [];
-	}
-	try {
-		const parsed = JSON.parse(trimmed) as unknown;
-		if (Array.isArray(parsed)) {
-			return parseStringList(parsed);
-		}
-	} catch {
-		// Fall back to comma-separated parsing.
-	}
-	return trimmed
-		.split(",")
-		.map((entry) => entry.trim())
-		.filter(Boolean);
-}
-
-function getKnownModels(runtime: IAgentRuntime): string[] {
-	const configured =
-		parseStringList(runtime.getSetting("DISCORD_KNOWN_MODELS")) ??
-		parseStringList(runtime.getSetting("KNOWN_MODELS"));
-	return configured.length > 0 ? configured : [...FALLBACK_KNOWN_MODELS];
-}
 
 const helpCommand: SlashCommand = {
 	name: "help",
@@ -241,24 +202,16 @@ const searchCommand: SlashCommand = {
 	},
 };
 
-const clearCommand: SlashCommand = {
-	name: "clear",
-	description: "Explain how context clearing works in this channel",
-	ephemeral: true,
-	requiredRole: "USER",
-	async execute(interaction) {
-		await interaction.reply({
-			content:
-				"Context clearing is not wired up for Discord yet. I can search recent messages with `/search`, but I won't pretend existing memory was deleted.",
-			ephemeral: true,
-		});
-	},
-};
-
 const settingsCommand: SlashCommand = {
 	name: "settings",
 	description: "View the current Discord bot settings",
 	requiredRole: "ADMIN",
+	// Hide from the pickers of members who lack the Discord permission —
+	// execute-time `hasRoleAccess` (the eliza role model) stays the actual
+	// gate; this only sets default_member_permissions so privileged plumbing
+	// doesn't clutter every member's command list. Server admins can re-grant
+	// visibility per-role under Server Settings → Integrations as usual.
+	requiredPermissions: PermissionFlagsBits.ManageGuild,
 	options: [
 		{
 			name: "action",
@@ -301,6 +254,8 @@ const setupCommand: SlashCommand = {
 	name: "setup",
 	description: "Set up API credentials for third-party services",
 	requiredRole: "OWNER",
+	// Owner-level credential plumbing — visible only to Administrator members.
+	requiredPermissions: PermissionFlagsBits.Administrator,
 	options: [
 		{
 			name: "service",
@@ -390,49 +345,6 @@ const setupCommand: SlashCommand = {
 	},
 };
 
-const modelCommand: SlashCommand = {
-	name: "model",
-	description: "View or change the active AI model",
-	requiredRole: "ADMIN",
-	options: [
-		{
-			name: "name",
-			description: "Model name to switch to (leave empty to view current)",
-			type: "string",
-			autocomplete: true,
-		},
-	],
-	ephemeral: true,
-	async execute(interaction, runtime) {
-		const modelName = interaction.options.getString("name");
-		if (!modelName) {
-			await interaction.reply({
-				content: `**Current model:** \`${runtime.getSetting("MODEL") ?? runtime.getSetting("DEFAULT_MODEL") ?? "(not configured)"}\``,
-				ephemeral: true,
-			});
-			return;
-		}
-
-		await interaction.reply({
-			content: `Model switching to \`${modelName}\` is noted. The runtime model is still controlled by configuration, so update the setting and restart to switch permanently.`,
-			ephemeral: true,
-		});
-	},
-	async autocomplete(interaction) {
-		const runtime = (interaction.client as { runtime?: IAgentRuntime }).runtime;
-		const models = runtime
-			? getKnownModels(runtime)
-			: [...FALLBACK_KNOWN_MODELS];
-		const focused = interaction.options.getFocused().toLowerCase();
-		const filtered = models
-			.filter((model) => model.toLowerCase().includes(focused))
-			.slice(0, 25);
-		await interaction.respond(
-			filtered.map((model) => ({ name: model, value: model })),
-		);
-	},
-};
-
 /** Label on the embedded-app launch link. */
 const APP_LAUNCH_LABEL = "Open Eliza App";
 
@@ -485,6 +397,7 @@ const appCommand: SlashCommand = {
 	description: "Launch the embedded Eliza app (admins only)",
 	ephemeral: true,
 	requiredRole: "ADMIN",
+	requiredPermissions: PermissionFlagsBits.ManageGuild,
 	async execute(interaction, runtime) {
 		const memory: Memory = {
 			id: createUniqueUuid(runtime, `${interaction.id}-app`) as UUID,
@@ -551,8 +464,9 @@ const transcribeCommand: SlashCommand = {
 	description:
 		"Start or stop live meeting transcription for the current voice channel",
 	// Recording a voice channel is a consent-sensitive mutation — gate it to
-	// ADMIN, matching the other mutating commands (settings/model/app).
+	// ADMIN, matching the other mutating commands (settings/app).
 	requiredRole: "ADMIN",
+	requiredPermissions: PermissionFlagsBits.ManageGuild,
 	options: [
 		{
 			name: "mode",
@@ -660,14 +574,140 @@ const transcribeCommand: SlashCommand = {
 	},
 };
 
+/**
+ * `/ask <message>` — route free text to the agent and return its reply as the
+ * interaction response. This is the ONLY way to talk to the agent where the
+ * connector cannot read the message stream: group DMs and DMs-with-others,
+ * which a user-installed app receives as interactions but never as messages.
+ * It also works in servers and bot DMs, giving a command handle to the agent
+ * everywhere. Not guild-only, so it inherits group-DM availability when
+ * `DISCORD_USER_INSTALL` is on.
+ */
+const askCommand: SlashCommand = {
+	name: "ask",
+	description: "Ask the agent a question and get a reply",
+	cooldown: 10,
+	options: [
+		{
+			name: "message",
+			description: "What you want to ask or say",
+			type: "string",
+			required: true,
+		},
+	],
+	async execute(interaction, runtime) {
+		const text = interaction.options.getString("message", true).trim();
+		if (!text) {
+			await interaction.reply({
+				content: "Ask me something — the message can't be empty.",
+				ephemeral: true,
+			});
+			return;
+		}
+		if (!interaction.inGuild()) {
+			const access = await checkDiscordDmAccess(
+				runtime,
+				getDiscordSettings(runtime),
+				interaction.user,
+			);
+			if (!access.allowed) {
+				await interaction.reply({
+					content:
+						access.replyMessage ??
+						"Direct messages are not available for this account.",
+					ephemeral: true,
+				});
+				return;
+			}
+		}
+
+		const messageService = getMessageService(runtime);
+		if (!messageService) {
+			await interaction.reply({
+				content: "The agent runtime isn't ready to answer right now.",
+				ephemeral: true,
+			});
+			return;
+		}
+
+		// The agent turn takes seconds; acknowledge within Discord's 3s window
+		// and edit the deferred reply once the answer is composed.
+		await interaction.deferReply();
+
+		const channelId = interaction.channelId ?? interaction.user.id;
+		const entityId = createUniqueUuid(runtime, interaction.user.id);
+		const roomId = createUniqueUuid(runtime, channelId);
+		// core's ChannelType has no guild-text variant; DiscordService.getChannelType
+		// (service.ts) maps every guild text/news/thread/forum channel to GROUP, so
+		// this matches that convention rather than inventing a guild-only value.
+		const channelType = interaction.inGuild()
+			? ChannelType.GROUP
+			: ChannelType.DM;
+
+		await runtime.ensureConnection({
+			entityId,
+			roomId,
+			userName: interaction.user.username,
+			name: interaction.user.displayName ?? interaction.user.username,
+			source: "discord",
+			channelId,
+			type: channelType,
+			worldId: createUniqueUuid(runtime, interaction.guildId ?? channelId),
+			worldName: interaction.guild?.name,
+			// Preserve the raw Discord user id in source metadata for role and
+			// allowlist checks (see the "Discord ID Handling" note in service.ts and
+			// the matching cast in messages.ts's ensureConnection call).
+			userId: interaction.user.id as UUID,
+		});
+
+		const message: Memory = {
+			id: createUniqueUuid(runtime, `${interaction.id}-ask`),
+			entityId,
+			agentId: runtime.agentId,
+			roomId,
+			content: {
+				text,
+				source: "discord",
+				channelType,
+			},
+			createdAt: Date.now(),
+		};
+
+		const replies: string[] = [];
+		const callback: HandlerCallback = async (response: Content) => {
+			if (typeof response.text === "string" && response.text.trim()) {
+				replies.push(response.text);
+			}
+			return [];
+		};
+
+		await messageService.handleMessage(runtime, message, callback);
+
+		const answer = replies.join("\n\n").trim();
+		if (!answer) {
+			await interaction.editReply(
+				"I processed that but didn't have anything to say back.",
+			);
+			return;
+		}
+
+		// Discord caps a message at 2000 chars; the first chunk edits the
+		// deferred reply, the rest follow up in the same thread.
+		const chunks = chunkDiscordText(answer);
+		await interaction.editReply(chunks[0] ?? answer.slice(0, 2000));
+		for (const chunk of chunks.slice(1)) {
+			await interaction.followUp(chunk);
+		}
+	},
+};
+
 function registerBuiltins(): void {
 	for (const command of [
+		askCommand,
 		helpCommand,
 		statusCommand,
 		searchCommand,
-		clearCommand,
 		settingsCommand,
-		modelCommand,
 		setupCommand,
 		appCommand,
 		transcribeCommand,
@@ -692,6 +732,12 @@ function toDiscordSlashCommand(command: SlashCommand): DiscordSlashCommand {
 		name: command.name,
 		description: command.description,
 		options,
+		// Without this the admin gate (default_member_permissions) configured on
+		// a built-in never reaches transformCommandToDiscordApi — every gated
+		// command registered as usable by everyone.
+		...(command.requiredPermissions != null
+			? { requiredPermissions: command.requiredPermissions }
+			: {}),
 	};
 }
 

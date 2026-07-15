@@ -248,7 +248,7 @@ export function ChatWidgetHarness() {
             "max(var(--safe-area-top, 0px), env(safe-area-inset-top, 0px))",
         }}
       >
-        <header className="z-10 flex shrink-0 items-center gap-3 border-b border-border/60 bg-bg/70 px-4 py-3 backdrop-blur-2xl">
+        <header className="z-10 flex shrink-0 items-center gap-3 border-b border-border/60 bg-bg px-4 py-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 shadow-sm">
             <Sparkles className="h-4 w-4 text-accent" />
           </div>
@@ -295,7 +295,7 @@ export function ChatWidgetHarness() {
               />
             ))}
             {events.length > 0 ? (
-              <aside className="rounded-2xl border border-border/60 bg-surface/60 p-3 text-xs text-muted backdrop-blur-xl">
+              <aside className="rounded-2xl border border-border/60 bg-surface p-3 text-xs text-muted">
                 <div className="mb-1 font-medium text-txt">Interaction log</div>
                 {events.map((event) => (
                   <div key={event} className="truncate">
@@ -308,19 +308,19 @@ export function ChatWidgetHarness() {
         </section>
 
         <footer
-          className="shrink-0 border-t border-border/60 bg-bg/65 px-3 pt-3 backdrop-blur-2xl"
+          className="shrink-0 border-t border-border/60 bg-bg px-3 pt-3"
           style={{
             paddingBottom:
               "calc(max(var(--safe-area-bottom, 0px), env(safe-area-inset-bottom, 0px), var(--android-gesture-inset-bottom, 0px)) + 0.75rem)",
           }}
         >
-          <div className="mx-auto flex max-w-2xl items-end gap-2 rounded-[1.5rem] border border-white/15 bg-surface/75 p-2 shadow-lg backdrop-blur-2xl">
+          <div className="mx-auto flex max-w-2xl items-end gap-2 rounded-[1.5rem] border border-white/15 bg-surface p-2 shadow-lg">
             <Textarea
               value={draft}
               aria-label="Gallery message"
               placeholder="Type a local message…"
               rows={1}
-              className="min-h-11 flex-1 resize-none border-0 bg-transparent shadow-none focus-visible:ring-0"
+              className="min-h-11 flex-1 resize-none border-0 bg-transparent shadow-none"
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {

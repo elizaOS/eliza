@@ -68,6 +68,11 @@ Thumbs.db
 **/hermes-agent-src/
 .agents/
 
+# OpenClaw-Bench writes timestamped run output here. The misspelled legacy
+# directory stays ignored; its authored Ralphy analyses live under `ralphy/`.
+openclaw-benchmark/outputs/
+openclaw-benchmark/benchmark/benchmark_resukts/
+
 # --- Ad-hoc run output directories (all benchmarks) ---
 **/canonical_*/
 **/smoke_*/

@@ -6,7 +6,9 @@ the elizaOS Cloud control-plane:
 - `eliza-provisioning-worker` — pulls jobs from the `jobs` table and SSHs
   into sandbox cores
 - `eliza-agent-router` — subdomain HTTP routing
-- `cloudflared` — secure tunnel for `sandboxes.elizacloud.ai`
+- `nginx` — public ingress: the agent-router vhost (self-signed wildcard
+  cert; cloud-init) and the headscale vhost (Let's Encrypt; converged by
+  `arm-headscale-control-plane.yml`)
 - `headscale` — VPN mesh for cross-core agent traffic
 
 The **data plane** (the sandbox cores themselves) is **not** managed here —
@@ -92,8 +94,8 @@ want the new content to land back in state.
 **Cloud-init changes need `terraform taint`** to land on existing VMs.
 `user_data` is in `lifecycle.ignore_changes` so subsequent applies are
 no-ops for an already-provisioned CP. To roll a bootstrap fix, taint the
-VM and re-apply — but that wipes local state (headscale DB, cloudflared
-creds, /opt/eliza checkout). Plan that out before touching prod.
+VM and re-apply — but that wipes local state (headscale DB, TLS certs,
+/opt/eliza checkout). Plan that out before touching prod.
 
 **Headscale arm/handoff on a CP.** Cloud-init installs the `headscale` package
 (binary, systemd unit, `/var/lib/headscale` state dir owned by the package user)
@@ -162,8 +164,6 @@ the exact "node registers against the wrong service" failure mode.
   `cp-<env>-router` self-enrollment are all converged by
   `arm-headscale-control-plane.yml`. The headscale public **DNS record** IS
   managed here (`cloudflare_dns_record.headscale`).
-- Cloudflared tunnels — config lives at `/root/.cloudflared/` on the VM and
-  is created via `cloudflared tunnel create` one-shot.
 - The systemd units — installed by `deploy-eliza-provisioning-worker.yml`
   on every push.
 - The actual eliza Cloud sandbox cores (data plane) — runtime autoscale.

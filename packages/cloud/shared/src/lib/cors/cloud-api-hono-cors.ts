@@ -32,6 +32,7 @@ import {
   APP_SCHEME_ORIGIN_RE,
   CORS_ALLOW_HEADER_NAMES,
   CORS_ALLOW_METHOD_NAMES,
+  CORS_EXPOSE_HEADER_NAMES,
 } from "../cors-constants";
 
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
@@ -148,13 +149,30 @@ const publicCors = cors({
   maxAge: 86400,
 });
 
+function appendExposedHeaders(headers: Headers): void {
+  const exposed = new Map<string, string>();
+  for (const name of (headers.get("Access-Control-Expose-Headers") ?? "").split(",")) {
+    const trimmed = name.trim();
+    if (trimmed) exposed.set(trimmed.toLowerCase(), trimmed);
+  }
+  for (const name of CORS_EXPOSE_HEADER_NAMES) {
+    exposed.set(name.toLowerCase(), name);
+  }
+  headers.set("Access-Control-Expose-Headers", [...exposed.values()].join(", "));
+}
+
 export const corsMiddleware: MiddlewareHandler = (c, next) => {
   const origin = c.req.header("origin");
+  let selectedCors: MiddlewareHandler;
   if (origin && isFirstPartyOrigin(origin)) {
-    return firstPartyCors(c, next);
+    selectedCors = firstPartyCors;
+  } else if (!origin || isPublicTokenApiPath(new URL(c.req.url).pathname)) {
+    selectedCors = publicCors;
+  } else {
+    selectedCors = firstPartyCors;
   }
-  if (!origin || isPublicTokenApiPath(new URL(c.req.url).pathname)) {
-    return publicCors(c, next);
-  }
-  return firstPartyCors(c, next);
+  return selectedCors(c, async () => {
+    await next();
+    appendExposedHeaders(c.res.headers);
+  });
 };

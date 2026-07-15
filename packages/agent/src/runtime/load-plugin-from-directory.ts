@@ -9,10 +9,18 @@
  * `extractPlugin` module→Plugin resolver it reuses.
  */
 import { readFile, realpath } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { AgentRuntime, Plugin } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  ElizaError,
+  getViewModalities,
+  type Plugin,
+} from "@elizaos/core";
+import { bindPluginPackageDirectory, getView } from "../api/views-registry.ts";
 import { extractPlugin } from "./load-plugin-from-vfs.ts";
+import { installRuntimePluginLifecycle } from "./plugin-lifecycle.ts";
 
 /**
  * Live-load a plugin from an on-disk directory into the running runtime.
@@ -49,6 +57,183 @@ export interface LoadedDirectoryPlugin {
 }
 
 const loadedPlugins = new Map<string, LoadedDirectoryPlugin>();
+let moduleImportNonce = 0;
+const requireFromAgent = createRequire(import.meta.url);
+
+function isContainedPath(directory: string, candidate: string): boolean {
+  const relative = path.relative(directory, candidate);
+  return (
+    relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function isUnavailableAssetError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const code = Reflect.get(error, "code");
+  return (
+    typeof code === "string" && ["ENOENT", "ENOTDIR", "EISDIR"].includes(code)
+  );
+}
+
+async function importFreshPluginModule(
+  diskPath: string,
+  directory: string,
+): Promise<Record<string, unknown>> {
+  if (process.versions.bun) {
+    // Bun currently keys ESM compilation by disk path even when import() gets a
+    // unique query string. Its interoperable require cache is invalidatable, so
+    // clear the package graph and reload through that API on Bun-based hosts.
+    for (const cachedPath of Object.keys(requireFromAgent.cache)) {
+      if (isContainedPath(directory, cachedPath)) {
+        delete requireFromAgent.cache[cachedPath];
+      }
+    }
+    return requireFromAgent(diskPath) as Record<string, unknown>;
+  }
+
+  const moduleUrl = `${pathToFileURL(diskPath).href}?t=${Date.now()}-${moduleImportNonce++}`;
+  return (await import(moduleUrl)) as Record<string, unknown>;
+}
+
+async function isUsableLocalViewAsset(
+  directory: string,
+  declaredPath: unknown,
+): Promise<boolean> {
+  if (typeof declaredPath !== "string" || declaredPath.trim().length === 0) {
+    return false;
+  }
+
+  const candidate = path.resolve(directory, declaredPath);
+  if (!isContainedPath(directory, candidate)) return false;
+
+  let realAsset: string;
+  try {
+    realAsset = await realpath(candidate);
+  } catch (error) {
+    // error-policy:J3 a missing or non-file replacement asset is an explicit
+    // invalid candidate; other I/O failures remain observable.
+    if (isUnavailableAssetError(error)) return false;
+    throw new ElizaError(
+      "loadPluginFromDirectory: failed to inspect a declared view asset",
+      {
+        code: "PLUGIN_DIRECTORY_VIEW_ASSET_INSPECTION_FAILED",
+        cause: error,
+        context: { directory, declaredPath },
+      },
+    );
+  }
+  if (!isContainedPath(directory, realAsset)) return false;
+
+  try {
+    return (await readFile(realAsset)).byteLength > 0;
+  } catch (error) {
+    // error-policy:J3 directories and paths that disappear during preflight are
+    // invalid candidates, while permission/device failures are surfaced.
+    if (isUnavailableAssetError(error)) return false;
+    throw new ElizaError(
+      "loadPluginFromDirectory: failed to read a declared view asset",
+      {
+        code: "PLUGIN_DIRECTORY_VIEW_ASSET_INSPECTION_FAILED",
+        cause: error,
+        context: { directory, declaredPath },
+      },
+    );
+  }
+}
+
+async function findUnavailableDeclaredViews(
+  plugin: Plugin,
+  directory: string,
+): Promise<string[]> {
+  const unavailableViews: string[] = [];
+  if (!plugin.views) return unavailableViews;
+  for (const view of plugin.views) {
+    const requiresFrameDocument =
+      view.surface?.isolation === "sandboxed-iframe";
+    const hasRemoteAsset = requiresFrameDocument
+      ? typeof view.frameUrl === "string" && view.frameUrl.trim().length > 0
+      : [view.bundleUrl, view.frameUrl].some(
+          (assetUrl) =>
+            typeof assetUrl === "string" && assetUrl.trim().length > 0,
+        );
+    const localAssetPaths = requiresFrameDocument
+      ? [view.framePath]
+      : [view.bundlePath, view.framePath];
+
+    let hasLocalAsset = false;
+    for (const assetPath of localAssetPaths) {
+      if (await isUsableLocalViewAsset(directory, assetPath)) {
+        hasLocalAsset = true;
+        break;
+      }
+    }
+    if (hasRemoteAsset || hasLocalAsset) continue;
+
+    unavailableViews.push(
+      ...getViewModalities(view).map((viewType) => `${viewType}:${view.id}`),
+    );
+  }
+  return unavailableViews;
+}
+
+function viewAssetError(
+  directory: string,
+  pluginName: string,
+  unavailableViews: string[],
+): ElizaError {
+  return new ElizaError(
+    `loadPluginFromDirectory: declared views are missing built assets (${unavailableViews.join(", ")})`,
+    {
+      code: "PLUGIN_DIRECTORY_VIEW_ASSET_MISSING",
+      context: { directory, pluginName, unavailableViews },
+    },
+  );
+}
+
+async function restoreIncumbentAfterFailedReload(
+  runtime: AgentRuntime,
+  incumbent: Plugin,
+  directory: string,
+  reloadError: unknown,
+): Promise<never> {
+  try {
+    await runtime.unloadPlugin(incumbent.name);
+    await runtime.registerPlugin(incumbent);
+  } catch (rollbackError) {
+    // error-policy:J2 retain both failure stages when lifecycle restoration
+    // itself fails, because the runtime can no longer promise either version.
+    throw new ElizaError(
+      `loadPluginFromDirectory: reload failed and incumbent plugin "${incumbent.name}" could not be restored`,
+      {
+        code: "PLUGIN_DIRECTORY_RELOAD_ROLLBACK_FAILED",
+        cause: rollbackError,
+        severity: "fatal",
+        context: {
+          directory,
+          pluginName: incumbent.name,
+          reloadError:
+            reloadError instanceof Error
+              ? reloadError.message
+              : String(reloadError),
+        },
+      },
+    );
+  }
+
+  // error-policy:J2 the replacement failure remains the cause after the
+  // supported lifecycle API has restored the last known-good plugin.
+  throw new ElizaError(
+    `loadPluginFromDirectory: reload failed; restored incumbent plugin "${incumbent.name}"`,
+    {
+      code: "PLUGIN_DIRECTORY_RELOAD_FAILED",
+      cause: reloadError,
+      context: { directory, pluginName: incumbent.name },
+    },
+  );
+}
 
 function asRelativeEntry(value: unknown): string | null {
   if (typeof value !== "string" || value.length === 0) return null;
@@ -154,6 +339,7 @@ export async function loadPluginFromDirectory(
   options: LoadPluginFromDirectoryOptions,
 ): Promise<{ pluginName: string; loaded: true }> {
   const { runtime, directory } = options;
+  installRuntimePluginLifecycle(runtime);
   if (typeof runtime.registerPlugin !== "function") {
     throw new Error(
       "loadPluginFromDirectory: runtime.registerPlugin is not available — ensure installRuntimePluginLifecycle has run",
@@ -161,9 +347,8 @@ export async function loadPluginFromDirectory(
   }
 
   const diskPath = await resolveEntryFile(directory, options.entry);
-  // `?t=` cache-busts Node's ESM loader so a rebuild reloads the module.
-  const moduleUrl = `${pathToFileURL(diskPath).href}?t=${Date.now()}`;
-  const mod = (await import(moduleUrl)) as Record<string, unknown>;
+  const realDirectory = await realpath(directory);
+  const mod = await importFreshPluginModule(diskPath, realDirectory);
 
   const plugin: Plugin | null = extractPlugin(mod);
   if (!plugin) {
@@ -172,11 +357,62 @@ export async function loadPluginFromDirectory(
     );
   }
 
-  await runtime.registerPlugin(plugin);
+  bindPluginPackageDirectory(plugin, realDirectory);
+  const unavailableDeclaredViews = await findUnavailableDeclaredViews(
+    plugin,
+    realDirectory,
+  );
+  if (unavailableDeclaredViews.length > 0) {
+    throw viewAssetError(realDirectory, plugin.name, unavailableDeclaredViews);
+  }
+
+  const incumbent = runtime.plugins.find(
+    (registered) => registered.name === plugin.name,
+  );
+  const findUnavailableRegisteredViews = (): string[] => {
+    if (!plugin.views) return [];
+    return plugin.views.flatMap((view) =>
+      getViewModalities(view).flatMap((viewType) => {
+        const entry = getView(view.id, { viewType });
+        return entry?.pluginName === plugin.name && entry.available
+          ? []
+          : [`${viewType}:${view.id}`];
+      }),
+    );
+  };
+
+  if (incumbent) {
+    try {
+      await runtime.reloadPlugin(plugin);
+      // The preflight protects the normal path. Re-check the registered entries
+      // to catch an asset that disappears between disk validation and lifecycle
+      // registration without committing a broken replacement.
+      const unavailableViews = findUnavailableRegisteredViews();
+      if (unavailableViews.length > 0) {
+        throw viewAssetError(realDirectory, plugin.name, unavailableViews);
+      }
+    } catch (error) {
+      // error-policy:J2 restore the last known-good lifecycle ownership, then
+      // rethrow with the replacement failure preserved as the cause.
+      return restoreIncumbentAfterFailedReload(
+        runtime,
+        incumbent,
+        realDirectory,
+        error,
+      );
+    }
+  } else {
+    await runtime.registerPlugin(plugin);
+    const unavailableViews = findUnavailableRegisteredViews();
+    if (unavailableViews.length > 0) {
+      await runtime.unloadPlugin(plugin.name);
+      throw viewAssetError(realDirectory, plugin.name, unavailableViews);
+    }
+  }
 
   loadedPlugins.set(plugin.name, {
     pluginName: plugin.name,
-    directory: await realpath(directory),
+    directory: realDirectory,
     diskPath,
     loadedAt: Date.now(),
   });
