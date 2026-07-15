@@ -5473,17 +5473,12 @@ export function ContinuousChatOverlay({
                   <div
                     data-testid="chat-message-search"
                     data-keyboard-open={keyboardLiftActive ? "true" : undefined}
-                    // Bottom-anchored, NON-scrolling flex column. The panel
-                    // itself owns scrolling in its results region and pins its
-                    // search input to the bottom (`keyboard-anchored` layout),
-                    // so the input the user types into always sits right above
-                    // a raised soft keyboard — the whole overlay is already
-                    // lifted by `effectiveKeyboardInset`, so the panel bottom IS
-                    // the top of the keyboard. Making THIS wrapper scroll (the
-                    // old `overflow-y-auto`) let the input scroll away under the
-                    // keyboard on iOS; keep it `overflow-hidden` and let the
-                    // inner results list be the only scroll region.
-                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-black/20 px-4 pb-3 pt-2 backdrop-blur-md"
+                    // The sheet already owns the glass surface. Search reuses
+                    // that single layer while the transcript beneath is hidden
+                    // and inert, avoiding the opaque double-blur slab that a
+                    // second backdrop produced. Only the inner results list
+                    // scrolls, keeping the input pinned above the keyboard.
+                    className="absolute inset-0 z-30 flex flex-col overflow-hidden px-4 pb-3 pt-2"
                   >
                     <MessageSearchPanel
                       search={runMessageSearch}
@@ -5502,7 +5497,7 @@ export function ContinuousChatOverlay({
                   <MessageScroller>
                     <motion.div
                       className="flex min-h-0 w-full flex-1 flex-col"
-                      style={{ opacity: threadContentOpacity }}
+                      style={{ opacity: searchOpen ? 0 : threadContentOpacity }}
                     >
                       <MessageScrollerViewport
                         id="continuous-thread"
@@ -5510,8 +5505,8 @@ export function ContinuousChatOverlay({
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
                         aria-label="conversation history"
-                        aria-hidden={!sheetOpen ? true : undefined}
-                        tabIndex={sheetOpen ? 0 : -1}
+                        aria-hidden={!sheetOpen || searchOpen ? true : undefined}
+                        tabIndex={sheetOpen && !searchOpen ? 0 : -1}
                         onKeyDown={(e) => {
                           if (e.key === "Escape") {
                             e.preventDefault();
