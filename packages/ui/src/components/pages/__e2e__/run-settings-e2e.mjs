@@ -194,60 +194,67 @@ const pageErrors = [];
 p.on("pageerror", (e) => pageErrors.push(String(e)));
 
 await p.goto(url, { waitUntil: "domcontentloaded" });
-await p.waitForSelector('[data-testid="settings-hub-list"]');
+await p.waitForSelector('[data-testid="desktop-settings-navigation"]');
 
-// ── 1. Hub structure ─────────────────────────────────────────────────────────
-const hubText = await p
-  .locator('[data-testid="settings-hub-list"]')
+// ── 1. Persistent desktop rail structure ────────────────────────────────────
+const railText = await p
+  .locator('[data-testid="desktop-settings-navigation"]')
   .textContent();
 for (const group of ["Agent", "App", "Privacy & Security", "Cloud"]) {
-  assert(hubText.includes(group), `hub shows the "${group}" group label`);
+  assert(railText.includes(group), `rail shows the "${group}" group label`);
 }
 for (const id of VISIBLE_SECTIONS) {
   assert(
-    (await p.locator(`[data-testid="settings-hub-row-${id}"]`).count()) === 1,
-    `hub lists the "${id}" row`,
+    (await p.locator(`[data-testid="desktop-settings-item-${id}"]`).count()) ===
+      1,
+    `rail lists the "${id}" item`,
   );
 }
 for (const id of HIDDEN_SECTIONS) {
   assert(
-    (await p.locator(`[data-testid="settings-hub-row-${id}"]`).count()) === 0,
-    `hub hides the "${id}" row (Developer Mode off)`,
+    (await p.locator(`[data-testid="desktop-settings-item-${id}"]`).count()) ===
+      0,
+    `rail hides the "${id}" item (Developer Mode off)`,
   );
 }
 assert(
-  (await p.locator('[data-testid="settings-section-nav"]').count()) === 0,
-  "the old horizontal scroll-strip nav is gone",
+  (await p.locator('[data-testid="settings-hub-list"]').count()) === 0,
+  "desktop replaces the mobile hub with the persistent rail",
 );
-await snap(p, "01-hub-desktop");
+await snap(p, "01-rail-desktop");
 
-// ── 2. Every visible row opens its subview; back returns to the hub ─────────
+// ── 2. Every visible rail item switches content in place ────────────────────
 let shotIndex = 2;
 for (const id of VISIBLE_SECTIONS) {
-  await p.locator(`[data-testid="settings-hub-row-${id}"]`).click();
-  await p.waitForSelector('[data-testid="settings-hub-list"]', {
-    state: "detached",
-  });
-  // The section body region is mounted under the retitled header.
+  const item = p.locator(`[data-testid="desktop-settings-item-${id}"]`);
+  await item.click();
   assert(
     (await p.locator(`[id="${id}"]`).count()) === 1,
-    `row "${id}" opens its section subview`,
+    `rail item "${id}" opens its section content`,
   );
-  // Let lazy bodies settle into their loaded/empty/error state before shooting.
+  assert(
+    (await item.getAttribute("aria-current")) === "page",
+    `rail item "${id}" retains the active state`,
+  );
+  assert(
+    (await p.locator('[data-testid="desktop-settings-navigation"]').count()) ===
+      1,
+    `rail remains mounted while "${id}" is open`,
+  );
   await p.waitForTimeout(450);
   await snap(p, `${String(shotIndex).padStart(2, "0")}-section-${id}`);
   shotIndex += 1;
-  await p.getByRole("button", { name: "Back to Settings" }).click();
-  await p.waitForSelector('[data-testid="settings-hub-list"]');
 }
-assert(true, "walked every visible section and returned to the hub each time");
+assert(true, "walked every visible desktop section with the rail retained");
 
 // ── 3. Hash deep-link opens a section directly ───────────────────────────────
 await p.goto(`${url}#appearance`, { waitUntil: "domcontentloaded" });
 await p.waitForSelector("#appearance");
 assert(
-  (await p.locator('[data-testid="settings-hub-list"]').count()) === 0,
-  "#appearance deep-link opens the Appearance subview directly",
+  (await p
+    .locator('[data-testid="desktop-settings-item-appearance"]')
+    .getAttribute("aria-current")) === "page",
+  "#appearance deep-link activates Appearance in the persistent rail",
 );
 await snap(p, `${String(shotIndex).padStart(2, "0")}-deeplink-appearance`);
 shotIndex += 1;
