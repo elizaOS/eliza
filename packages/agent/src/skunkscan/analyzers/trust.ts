@@ -7,7 +7,8 @@ import {
   WalletTrustSummary,
 } from "../types";
 import {
-  createConfidenceResponse,
+  buildConfidenceInput,
+  confidenceLevelFromScore,
 } from "../confidence/framework";
 
 export function analyzeWalletTrust(
@@ -89,19 +90,20 @@ export function analyzeWalletTrust(
 
   if (risk.level === "low") {
     trustScore += 10;
-    positiveSignals.push("Current risk level is low.");
+    positiveSignals.push(
+      "Current risk level is low.",
+    );
   } else if (risk.level === "medium") {
-    limitations.push("Medium risk level limits trust.");
+    limitations.push(
+      "Medium risk level limits trust.",
+    );
   } else {
     limitations.push(
       "High risk level significantly limits trust.",
     );
   }
 
-  trustScore = Math.max(
-    0,
-    Math.min(100, trustScore),
-  );
+  trustScore = Math.max(0, Math.min(100, trustScore));
 
   const trustLevel =
     trustScore >= 85
@@ -114,70 +116,75 @@ export function analyzeWalletTrust(
             ? "low"
             : "very_low";
 
-  const confidenceAnalysis = createConfidenceResponse([
+  const confidenceInput = buildConfidenceInput([
     {
-      condition: age.classification !== "unknown",
-      score: 20,
-      reason:
-        "Wallet age evidence was available.",
+      condition: positiveSignals.length >= 5,
+      score: 40,
+      reason: "Several positive trust indicators were identified.",
     },
     {
-      condition:
-        typeof activity.recentTransactionCount === "number",
-      score: 20,
-      reason:
-        "Wallet activity metrics were available.",
+      condition: limitations.length <= 2,
+      score: 30,
+      reason: "Few evidence limitations were identified.",
     },
     {
-      condition:
-        funding.evidenceConfidence === "high",
-      score: 20,
-      reason:
-        "Funding evidence confidence is high.",
-    },
-    {
-      condition:
-        funding.evidenceConfidence === "medium",
-      score: 10,
-      reason:
-        "Funding evidence confidence is medium.",
-    },
-    {
-      condition:
-        exposure.evidenceConfidence === "high",
-      score: 25,
-      reason:
-        "Exposure evidence confidence is high.",
-    },
-    {
-      condition:
-        exposure.evidenceConfidence === "medium",
-      score: 15,
-      reason:
-        "Exposure evidence confidence is medium.",
-    },
-    {
-      condition: Boolean(risk.level),
-      score: 15,
-      reason:
-        "A wallet risk assessment was available.",
+      condition: trustScore >= 70,
+      score: 30,
+      reason: "Overall trust score is strong.",
     },
   ]);
 
+  const evidenceConfidence =
+    confidenceLevelFromScore(confidenceInput.score);
+
   const confidence =
-    limitations.length === 0
-      ? "high"
-      : positiveSignals.length >= limitations.length
-        ? "medium"
-        : "low";
+    evidenceConfidence;
 
   return {
     trustScore,
+
     trustLevel,
-    evidenceConfidence: confidenceAnalysis.level,
-    confidenceAnalysis,
+
+    evidenceConfidence,
+
+    confidenceAnalysis: confidenceInput,
+
     confidence,
+
     positiveSignals,
+
     limitations,
+
+    investorExplanation: {
+      summary: buildInvestorSummary(
+        trustLevel,
+      ),
+
+      whyThisAssessment: positiveSignals,
+
+      whatReducedConfidence: limitations,
+    },
   };
+}
+
+function buildInvestorSummary(
+  trustLevel: WalletTrustSummary["trustLevel"],
+): string {
+  switch (trustLevel) {
+    case "very_high":
+      return "This wallet demonstrates consistently strong trust indicators based on the available blockchain evidence.";
+
+    case "high":
+      return "This wallet demonstrates mostly positive trust indicators with only limited concerns.";
+
+    case "medium":
+      return "This wallet currently shows a balanced mix of positive indicators and evidence limitations.";
+
+    case "low":
+      return "This wallet currently shows limited positive trust indicators and several areas requiring caution.";
+
+    case "very_low":
+    default:
+      return "This wallet currently demonstrates very limited trust indicators based on the available evidence.";
+  }
 }
