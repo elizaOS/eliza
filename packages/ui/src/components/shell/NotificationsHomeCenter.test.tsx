@@ -2544,6 +2544,10 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
+    expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
+      "",
+    );
+    expect(collapseFooter.style.transform).toBe("translateY(0px)");
 
     fireEvent.click(screen.getByTestId("notifications-collapse"));
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
@@ -2734,6 +2738,12 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       changedTouches: [{ identifier: 14, clientX: 180, clientY: 620 }],
     });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
+      "",
+    );
+    expect(
+      screen.getByTestId("notifications-collapse-footer").style.transform,
+    ).toBe("translateY(0px)");
 
     fireEvent.click(surface, { clientY: 620 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
