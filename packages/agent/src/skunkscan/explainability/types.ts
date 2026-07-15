@@ -5,10 +5,10 @@ export type InvestorExplanation = {
 
   whatReducedConfidence: string[];
 
-  evidenceStrength:
+  evidenceStrength?:
     | "limited"
     | "moderate"
     | "strong";
 
-  informationGaps: string[];
+  informationGaps?: string[];
 };
