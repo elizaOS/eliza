@@ -14,7 +14,6 @@ const markNotificationReadApi = vi.fn();
 const markAllNotificationsReadApi = vi.fn();
 const removeNotificationApi = vi.fn();
 const clearNotificationsApi = vi.fn();
-const seedDevNotificationsApi = vi.fn();
 const onWsEvent = vi.fn();
 const connectWs = vi.fn();
 
@@ -27,8 +26,6 @@ vi.mock("../../api/client", () => ({
       markAllNotificationsReadApi(...args),
     removeNotification: (...args: unknown[]) => removeNotificationApi(...args),
     clearNotifications: (...args: unknown[]) => clearNotificationsApi(...args),
-    seedDevNotifications: (...args: unknown[]) =>
-      seedDevNotificationsApi(...args),
     onWsEvent: (...args: unknown[]) => onWsEvent(...args),
     connectWs: () => connectWs(),
   },
@@ -69,7 +66,6 @@ import {
   markNotificationRead,
   removeNotification,
   removeNotifications,
-  seedDevNotificationsIfEmpty,
 } from "./notification-store";
 
 function makeNotification(
@@ -108,10 +104,6 @@ describe("notification-store", () => {
     markAllNotificationsReadApi.mockReset().mockResolvedValue({ changed: 0 });
     removeNotificationApi.mockReset().mockResolvedValue({ ok: true });
     clearNotificationsApi.mockReset().mockResolvedValue({ ok: true });
-    seedDevNotificationsApi.mockReset().mockResolvedValue({
-      count: 0,
-      notifications: [],
-    });
     onWsEvent.mockReset().mockReturnValue(() => {});
     connectWs.mockReset();
     // Defaults model the plain web platform: no desktop bridge (null), no
@@ -829,47 +821,6 @@ describe("notification-store", () => {
     expect(__getStateForTests().notifications.every((n) => !n.readAt)).toBe(
       true,
     );
-  });
-
-  describe("seedDevNotificationsIfEmpty (dev default-active)", () => {
-    it("seeds the demo spread when the inbox hydrates empty", async () => {
-      const seeded = [
-        makeNotification({ id: "s1", priority: "urgent" }),
-        makeNotification({ id: "s2", priority: "normal", readAt: Date.now() }),
-      ];
-      seedDevNotificationsApi.mockResolvedValueOnce({
-        count: 2,
-        notifications: seeded,
-      });
-      await seedDevNotificationsIfEmpty();
-      expect(seedDevNotificationsApi).toHaveBeenCalledTimes(1);
-      expect(__getStateForTests().notifications).toHaveLength(2);
-      // Unread count is derived from the seeded rows (one is pre-read).
-      expect(__getStateForTests().unreadCount).toBe(1);
-    });
-
-    it("never seeds over a real inbox", async () => {
-      listNotifications.mockResolvedValueOnce({
-        notifications: [makeNotification({ id: "real" })],
-        unreadCount: 1,
-      });
-      await seedDevNotificationsIfEmpty();
-      expect(seedDevNotificationsApi).not.toHaveBeenCalled();
-      expect(__getStateForTests().notifications).toHaveLength(1);
-      expect(__getStateForTests().notifications[0]?.id).toBe("real");
-    });
-
-    it("runs at most once per session", async () => {
-      await seedDevNotificationsIfEmpty();
-      await seedDevNotificationsIfEmpty();
-      expect(seedDevNotificationsApi).toHaveBeenCalledTimes(1);
-    });
-
-    it("stays data-driven when the seed route 404s (no throw)", async () => {
-      seedDevNotificationsApi.mockRejectedValueOnce(new Error("404"));
-      await expect(seedDevNotificationsIfEmpty()).resolves.toBeUndefined();
-      expect(__getStateForTests().notifications).toHaveLength(0);
-    });
   });
 });
 
