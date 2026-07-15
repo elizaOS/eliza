@@ -137,20 +137,50 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+function beginStart(result: {
+  current: UseRealtimeVoiceSessionStateForTest;
+}) {
+  let startPromise!: ReturnType<typeof result.current.start>;
+  act(() => {
+    startPromise = result.current.start();
+  });
+  return startPromise;
+}
+
+type UseRealtimeVoiceSessionStateForTest = ReturnType<
+  typeof useRealtimeVoiceSession
+>;
+
+async function driveReady(
+  ws: ReturnType<typeof makeWsFactory>,
+  sessionId = "sess-1",
+  traceId = "T1",
+) {
+  const sock = ws.last();
+  await act(async () => {
+    sock.emitOpen();
+    await flushAsync();
+    sock.emitControl({ t: "ready", sessionId, traceId });
+    await flushAsync();
+  });
+  return sock;
+}
+
 describe("useRealtimeVoiceSession", () => {
   it("invokes the advertised onMinted callback with the validated mint", async () => {
     const onMinted = vi.fn();
-    const { options } = makeOptions({ onMinted });
+    const { options, ws } = makeOptions({ onMinted });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
-    await act(async () => {
-      await result.current.start();
-    });
+    const startPromise = beginStart(result);
+    await flushAsync();
+    await driveReady(ws);
 
     expect(onMinted).toHaveBeenCalledTimes(1);
     expect(onMinted).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "sess-1" }),
     );
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
   });
 
   it("full flow: start → listening → partial → final → speaking → barge-in → stop through the REAL client", async () => {
@@ -164,9 +194,8 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.status).toBe("idle");
 
     // Start on the user gesture.
-    await act(async () => {
-      await result.current.start();
-    });
+    const startPromise = beginStart(result);
+    await flushAsync();
     // Consent was fetched fresh for the session, mint was called with our ids.
     expect(getConsentNonce).toHaveBeenCalledTimes(1);
 
@@ -185,6 +214,7 @@ describe("useRealtimeVoiceSession", () => {
     expect(micCtx.scriptNode).not.toBeNull();
 
     await waitFor(() => expect(result.current.active).toBe(true));
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
     await waitFor(() => expect(result.current.status).toBe("listening"));
 
     // Partial → final transcript.
@@ -246,10 +276,8 @@ describe("useRealtimeVoiceSession", () => {
     const { options, ws, micCtx } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
-    await act(async () => {
-      await result.current.start();
-      await flushAsync();
-    });
+    const startPromise = beginStart(result);
+    await flushAsync();
     // start() resolved, but nothing is connected yet: connecting, NOT active —
     // the socket has not opened, no server `ready`, no mic.
     expect(result.current.active).toBe(false);
@@ -268,6 +296,7 @@ describe("useRealtimeVoiceSession", () => {
       await flushAsync();
     });
     await waitFor(() => expect(result.current.active).toBe(true));
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
     expect(result.current.connecting).toBe(false);
     // The mic really is capturing (the fake mic graph is attached).
     expect(micCtx.scriptNode).not.toBeNull();
@@ -283,14 +312,16 @@ describe("useRealtimeVoiceSession", () => {
       useRealtimeVoiceSession({ ...options, readyTimeoutMs: 30 }),
     );
 
-    await act(async () => {
-      await result.current.start();
-      await flushAsync();
-    });
+    const firstStart = beginStart(result);
+    await flushAsync();
     expect(result.current.connecting).toBe(true);
     // The socket never opens. The connect/ready watchdog must fail the session
     // into the error path rather than showing "connecting" forever.
     await waitFor(() => expect(result.current.error?.kind).toBe("transport"));
+    await expect(firstStart).resolves.toEqual({
+      kind: "fallback-to-batch",
+      reason: "transport",
+    });
     expect(result.current.error?.actionable).toBe(true);
     expect(result.current.error?.message).toMatch(/timed out/i);
     expect(result.current.active).toBe(false);
@@ -304,10 +335,8 @@ describe("useRealtimeVoiceSession", () => {
 
     // Retry on the next tap: a fresh start clears the error, re-mints with a
     // fresh consent nonce, and can reach live.
-    await act(async () => {
-      await result.current.start();
-      await flushAsync();
-    });
+    const retryStart = beginStart(result);
+    await flushAsync();
     expect(result.current.error).toBeNull();
     expect(mint.calls).toHaveLength(2);
     const sock = ws.last();
@@ -318,6 +347,7 @@ describe("useRealtimeVoiceSession", () => {
       await flushAsync();
     });
     await waitFor(() => expect(result.current.active).toBe(true));
+    await expect(retryStart).resolves.toEqual({ kind: "live" });
 
     await act(async () => {
       await result.current.stop();
@@ -329,8 +359,9 @@ describe("useRealtimeVoiceSession", () => {
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     expect(result.current.available).toBe(true);
+    let startOutcome: Awaited<ReturnType<typeof result.current.start>>;
     await act(async () => {
-      await result.current.start();
+      startOutcome = await result.current.start();
       await flushAsync();
     });
 
@@ -340,6 +371,69 @@ describe("useRealtimeVoiceSession", () => {
     await waitFor(() => expect(result.current.available).toBe(false));
     expect(result.current.active).toBe(false);
     expect(result.current.error).toBeNull();
+    expect(startOutcome!).toEqual({
+      kind: "fallback-to-batch",
+      reason: "mint",
+    });
+  });
+
+  it("fallback: a pre-ready mint failure resolves to same-gesture batch fallback", async () => {
+    const { options } = makeOptions({ mintStatus: 503 });
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    let startOutcome: Awaited<ReturnType<typeof result.current.start>>;
+    await act(async () => {
+      startOutcome = await result.current.start();
+      await flushAsync();
+    });
+
+    expect(result.current.error?.kind).toBe("mint");
+    expect(result.current.active).toBe(false);
+    expect(startOutcome!).toEqual({
+      kind: "fallback-to-batch",
+      reason: "mint",
+    });
+  });
+
+  it("fallback: a pre-ready WebSocket failure resolves to same-gesture batch fallback", async () => {
+    const { options, ws } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    const startPromise = beginStart(result);
+    await flushAsync();
+    const sock = ws.last();
+    await act(async () => {
+      sock.emitOpen();
+      sock.emitClose(1006, "pre-ready");
+      await flushAsync();
+    });
+
+    await waitFor(() => expect(result.current.error?.kind).toBe("transport"));
+    expect(result.current.active).toBe(false);
+    await expect(startPromise).resolves.toEqual({
+      kind: "fallback-to-batch",
+      reason: "transport",
+    });
+  });
+
+  it("does not return a batch fallback after the realtime mic has become live", async () => {
+    const { options, ws } = makeOptions();
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    const startPromise = beginStart(result);
+    await flushAsync();
+    const sock = await driveReady(ws, "sess-1", "T1");
+    await waitFor(() => expect(result.current.active).toBe(true));
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
+
+    await act(async () => {
+      sock.emitClose(1006, "post-ready");
+      await flushAsync();
+    });
+
+    await waitFor(() => expect(result.current.error?.kind).toBe("transport"));
+    expect(result.current.active).toBe(false);
+    expect(result.current.available).toBe(true);
   });
 
   it("does not arm when the VITE flag is off (batch path owns the mic)", async () => {
@@ -347,13 +441,15 @@ describe("useRealtimeVoiceSession", () => {
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     expect(result.current.available).toBe(false);
+    let outcome: Awaited<ReturnType<typeof result.current.start>>;
     await act(async () => {
-      await result.current.start();
+      outcome = await result.current.start();
       await flushAsync();
     });
     // Never minted, never fetched consent, never active.
     expect(getConsentNonce).not.toHaveBeenCalled();
     expect(result.current.active).toBe(false);
+    expect(outcome!).toEqual({ kind: "unavailable" });
   });
 
   it("cancels an in-flight consent start when the realtime flag flips off", async () => {
@@ -375,7 +471,7 @@ describe("useRealtimeVoiceSession", () => {
       { initialProps: { flagEnabled: true } },
     );
 
-    let startPromise: Promise<void> | undefined;
+    let startPromise: ReturnType<typeof result.current.start> | undefined;
     act(() => {
       startPromise = result.current.start();
     });
@@ -396,10 +492,8 @@ describe("useRealtimeVoiceSession", () => {
     });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
-    await act(async () => {
-      await result.current.start();
-      await flushAsync();
-    });
+    const startPromise = beginStart(result);
+    await flushAsync();
     const sock = ws.last();
     await act(async () => {
       sock.emitOpen();
@@ -411,14 +505,19 @@ describe("useRealtimeVoiceSession", () => {
 
     await waitFor(() => expect(result.current.error?.kind).toBe("permission"));
     expect(result.current.error?.actionable).toBe(true);
+    await expect(startPromise).resolves.toMatchObject({
+      kind: "error",
+      error: { kind: "permission" },
+    });
   });
 
   it("consent unavailable (nonce null) surfaces a `consent` error and never mints", async () => {
     const { options, mint } = makeOptions({ consentNonce: null });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
+    let startOutcome: Awaited<ReturnType<typeof result.current.start>>;
     await act(async () => {
-      await result.current.start();
+      startOutcome = await result.current.start();
       await flushAsync();
     });
     expect(result.current.error?.kind).toBe("consent");
@@ -430,6 +529,10 @@ describe("useRealtimeVoiceSession", () => {
     expect(result.current.available).toBe(false);
     expect(result.current.error?.actionable).toBe(false);
     expect(result.current.error?.message).toMatch(/standard voice/i);
+    expect(startOutcome!).toEqual({
+      kind: "fallback-to-batch",
+      reason: "consent",
+    });
   });
 
   it("is unavailable without agent/conversation ids even when the flag is on", () => {
@@ -441,18 +544,11 @@ describe("useRealtimeVoiceSession", () => {
   it("surfaces a paused (not broken) state on a visibility-suspend, and clears on resume", async () => {
     const { options, ws, micCtx } = makeOptions();
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
-    await act(async () => {
-      await result.current.start();
-      await flushAsync();
-    });
-    const sock = ws.last();
-    await act(async () => {
-      sock.emitOpen();
-      await flushAsync();
-      sock.emitControl({ t: "ready", sessionId: "s", traceId: "T1" });
-      await flushAsync();
-    });
+    const startPromise = beginStart(result);
+    await flushAsync();
+    const sock = await driveReady(ws, "s", "T1");
     await waitFor(() => expect(result.current.active).toBe(true));
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
     expect(result.current.paused).toBe(false);
 
     // The mic-capture fires onSuspend on a page-hide, which the client marks
@@ -495,11 +591,10 @@ describe("useRealtimeVoiceSession", () => {
       },
     );
 
-    await act(async () => {
-      await result.current.start();
-    });
-    const first = ws.last();
-    act(() => first.emitOpen());
+    const firstStart = beginStart(result);
+    await flushAsync();
+    const first = await driveReady(ws, "s1", "T1");
+    await expect(firstStart).resolves.toEqual({ kind: "live" });
 
     const nextConversationId = "33333333-3333-3333-3333-333333333333";
     act(() => {
@@ -538,9 +633,10 @@ describe("useRealtimeVoiceSession", () => {
       { initialProps: { conversationId: CONV_ID } },
     );
 
-    await act(async () => {
-      await result.current.start();
-    });
+    const firstStart = beginStart(result);
+    await flushAsync();
+    await driveReady(ws, "s1", "T1");
+    await expect(firstStart).resolves.toEqual({ kind: "live" });
     act(() => {
       rerender({
         conversationId: "33333333-3333-3333-3333-333333333333",
@@ -602,9 +698,10 @@ describe("useRealtimeVoiceSession", () => {
       { initialProps: { conversationId: CONV_ID } },
     );
 
-    await act(async () => {
-      await result.current.start();
-    });
+    const firstStart = beginStart(result);
+    await flushAsync();
+    await driveReady(ws, "s1", "T1");
+    await expect(firstStart).resolves.toEqual({ kind: "live" });
     act(() => {
       rerender({
         conversationId: "33333333-3333-3333-3333-333333333333",
@@ -644,9 +741,10 @@ describe("useRealtimeVoiceSession", () => {
       { initialProps: { conversationId: CONV_ID } },
     );
 
-    await act(async () => {
-      await result.current.start();
-    });
+    const firstStart = beginStart(result);
+    await flushAsync();
+    await driveReady(ws, "s1", "T1");
+    await expect(firstStart).resolves.toEqual({ kind: "live" });
     act(() => {
       rerender({
         conversationId: "44444444-4444-4444-4444-444444444444",
@@ -676,9 +774,8 @@ describe("useRealtimeVoiceSession", () => {
     const playback = new BlockedPlaybackContext(16_000);
     const { options, ws } = makeOptions({ playbackContext: playback });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
-    await act(async () => {
-      await result.current.start();
-    });
+    const startPromise = beginStart(result);
+    await flushAsync();
     const sock = ws.last();
     await act(async () => {
       sock.emitOpen();
@@ -687,6 +784,7 @@ describe("useRealtimeVoiceSession", () => {
       sock.emitAudio(new Uint8Array(320));
       await flushAsync();
     });
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
 
     await waitFor(() => expect(result.current.needsUnlock).toBe(true));
     playback.allowResume = true;
@@ -706,18 +804,11 @@ describe("useRealtimeVoiceSession", () => {
     const { result, unmount } = renderHook(() =>
       useRealtimeVoiceSession(options),
     );
-    await act(async () => {
-      await result.current.start();
-      await flushAsync();
-    });
-    const sock = ws.last();
-    await act(async () => {
-      sock.emitOpen();
-      await flushAsync();
-      sock.emitControl({ t: "ready", sessionId: "s", traceId: "T1" });
-      await flushAsync();
-    });
+    const startPromise = beginStart(result);
+    await flushAsync();
+    const sock = await driveReady(ws, "s", "T1");
     await waitFor(() => expect(result.current.active).toBe(true));
+    await expect(startPromise).resolves.toEqual({ kind: "live" });
 
     unmount();
     await flushAsync();

@@ -90,7 +90,7 @@ describe("useContinuousVoiceSession", () => {
       useContinuousVoiceSession({ batch, realtime }),
     );
     expect(result.current.realtimeActive).toBe(false);
-    expect(result.current.realtimeAvailable).toBe(false);
+    expect(result.current.realtimeEligible).toBe(false);
     expect(result.current.status).toBe("listening");
     expect(result.current.interimTranscript).toBe("batch interim");
     expect(result.current.latency.speechEndToVoiceStartMs).toBe(200);

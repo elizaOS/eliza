@@ -47,7 +47,7 @@ const realtimeHarness = vi.hoisted(() => ({
       | import("../../hooks/useRealtimeVoiceSession").RealtimeVoiceError
       | null,
     speaker: null,
-    start: vi.fn(async () => {}),
+    start: vi.fn(async () => ({ kind: "live" as const })),
     stop: vi.fn(async () => {}),
     bargeIn: vi.fn(),
     unlock: vi.fn(async () => {}),
@@ -167,7 +167,8 @@ describe("useChatVoiceController voice playback unlock", () => {
     realtimeHarness.state.agentSpeaking = false;
     realtimeHarness.state.needsUnlock = false;
     realtimeHarness.state.error = null;
-    realtimeHarness.state.start.mockClear();
+    realtimeHarness.state.start.mockReset();
+    realtimeHarness.state.start.mockResolvedValue({ kind: "live" });
     realtimeHarness.state.stop.mockClear();
     realtimeHarness.state.bargeIn.mockClear();
     continuousHarness.state.resume.mockClear();
@@ -282,6 +283,82 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(voiceState.startListening).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["consent failure", "consent" as const],
+    ["mint 404/failure", "mint" as const],
+    ["pre-ready WS failure", "transport" as const],
+  ])(
+    "falls back to batch on the same mic tap after %s",
+    async (_label, reason) => {
+      realtimeHarness.state.available = true;
+      realtimeHarness.state.start.mockResolvedValueOnce({
+        kind: "fallback-to-batch",
+        reason,
+      });
+      const { result } = renderHook(() =>
+        useChatVoiceController({
+          ...baseOptions,
+          realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+          getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+        }),
+      );
+
+      await act(async () => {
+        result.current.beginVoiceCapture("compose");
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+      expect(voiceState.startListening).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("starts batch directly when realtime eligibility is off", async () => {
+    realtimeHarness.state.available = false;
+    const { result } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: null,
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await act(async () => {
+      result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
+    });
+
+    expect(realtimeHarness.state.start).not.toHaveBeenCalled();
+    expect(voiceState.startListening).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back to batch after realtime has owned the mic", async () => {
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.active = true;
+    realtimeHarness.state.error = {
+      kind: "transport" as const,
+      message: "Voice connection dropped. Tap the mic to try again.",
+      actionable: true,
+    };
+    const { result } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await act(async () => {
+      result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+    expect(voiceState.startListening).not.toHaveBeenCalled();
+  });
+
   it("keeps a normal realtime mic-tap session alive while continuous mode is off", async () => {
     realtimeHarness.state.available = true;
     const { result, rerender } = renderHook(() =>
@@ -313,7 +390,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     realtimeHarness.state.available = true;
     realtimeHarness.state.active = false;
     realtimeHarness.state.start.mockImplementationOnce(
-      () => new Promise<void>(() => {}),
+      () => new Promise<never>(() => {}),
     );
     voiceState = makeVoiceState({ supported: true });
 

@@ -50,6 +50,7 @@ function runPreflight(env: Record<string, string>) {
       DEEPGRAM_API_KEY: "deepgram-test",
       CARTESIA_API_KEY: "cartesia-test",
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer dedicated-test",
+      VOICE_REALTIME_WS_ENABLED: "false",
       STAGING_ELIZACLOUD_API_KEY: "",
       PRODUCTION_REALTIME_WS_ENABLED: "false",
       PRODUCTION_REALTIME_CARTESIA_VOICE_ID: "",
@@ -71,7 +72,28 @@ describe("Cloud CF realtime voice deploy contract", () => {
     expect(workflowSource).not.toContain("format('Bearer {0}'");
   });
 
-  test("requires every realtime provider and bridge secret in staging", () => {
+  test("gates realtime secret publication behind explicit opt-in", () => {
+    expect(publishStep.run).toContain(
+      "is gated by VOICE_REALTIME_WS_ENABLED; skipping",
+    );
+    expect(publishStep.run).toContain(
+      "DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION",
+    );
+  });
+
+  test("does not require realtime secrets when staging opt-in is absent", () => {
+    const result = runPreflight({
+      DEEPGRAM_API_KEY: "",
+      CARTESIA_API_KEY: "",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
+      STAGING_ELIZACLOUD_API_KEY: "repo-key-must-not-be-used",
+      VOICE_REALTIME_WS_ENABLED: "false",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain("Bearer repo-key-must-not-be-used");
+  });
+
+  test("requires every realtime provider and bridge secret in opted-in staging", () => {
     for (const missing of [
       "DEEPGRAM_API_KEY",
       "CARTESIA_API_KEY",
@@ -80,6 +102,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
       const result = runPreflight({
         [missing]: " \t\n",
         STAGING_ELIZACLOUD_API_KEY: "",
+        VOICE_REALTIME_WS_ENABLED: "true",
       });
       expect(
         result.status,
@@ -89,7 +112,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     }
   });
 
-  test("constructs the staging fallback only from a nonblank source key", () => {
+  test("constructs the staging fallback only after truthy opt-in and a nonblank source key", () => {
     const configured = spawnSync(
       "bash",
       [
@@ -103,6 +126,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
           DEPLOY_ENVIRONMENT: "staging",
           DEEPGRAM_API_KEY: "deepgram-test",
           CARTESIA_API_KEY: "cartesia-test",
+          VOICE_REALTIME_WS_ENABLED: "true",
           VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
           STAGING_ELIZACLOUD_API_KEY: "stage-cloud-key",
         },
@@ -114,6 +138,7 @@ describe("Cloud CF realtime voice deploy contract", () => {
     const empty = runPreflight({
       VOICE_REALTIME_ELIZA_AUTHORIZATION: "",
       STAGING_ELIZACLOUD_API_KEY: " \t\n",
+      VOICE_REALTIME_WS_ENABLED: "true",
     });
     expect(empty.status).toBe(1);
     expect(empty.stdout).not.toContain("Bearer ");
@@ -175,8 +200,11 @@ describe("Cloud CF realtime voice deploy contract", () => {
     const productionVars = wrangler.slice(
       wrangler.indexOf("[env.production.vars]"),
     );
-    expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "true"');
+    expect(stagingVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
     expect(productionVars).toContain('VOICE_REALTIME_WS_ENABLED = "false"');
+    expect(publishStep.env?.VOICE_REALTIME_WS_ENABLED).toContain(
+      "vars.VOICE_REALTIME_WS_ENABLED",
+    );
     expect(publishStep.env?.PRODUCTION_REALTIME_WS_ENABLED).toBe("false");
     expect(productionVars).not.toContain("VOICE_REALTIME_CARTESIA_VOICE_ID");
     expect(productionVars).not.toContain("VOICE_REALTIME_ELIZA_ENDPOINT");

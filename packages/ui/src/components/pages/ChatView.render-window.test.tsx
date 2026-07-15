@@ -184,7 +184,7 @@ vi.mock("./chat-view-hooks", () => ({
     },
     voiceSession: {
       realtimeActive: false,
-      realtimeAvailable: false,
+      realtimeEligible: false,
       agentSpeaking: false,
       status: "idle",
       interimTranscript: "",

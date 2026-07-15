@@ -171,7 +171,7 @@ describe("ChatVoiceStatusBar", () => {
   });
 
   it("shows an Armed pill when realtime is selected but not connected yet", () => {
-    render(<ChatVoiceStatusBar status="idle" realtimeAvailable />);
+    render(<ChatVoiceStatusBar status="idle" realtimeEligible />);
     const armed = screen.getByTestId("chat-voice-realtime-armed");
     expect(armed.textContent).toContain("Realtime armed");
     expect(screen.queryByTestId("chat-voice-realtime-live")).toBeNull();
@@ -217,7 +217,7 @@ describe("ChatVoiceStatusBar", () => {
 
   it("shows a Connecting pill (not Live, not Armed) while a started session is pre-live", () => {
     render(
-      <ChatVoiceStatusBar status="idle" realtimeConnecting realtimeAvailable />,
+      <ChatVoiceStatusBar status="idle" realtimeConnecting realtimeEligible />,
     );
     expect(
       screen.getByTestId("chat-voice-realtime-connecting").textContent,
