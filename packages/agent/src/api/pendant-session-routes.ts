@@ -841,7 +841,9 @@ export async function handlePendantSessionRoutes(
       const segmentId = tail[1];
       const event = await withSessionLock(lockKey, async () => {
         const stored = await loadStored({ ...identity, sessionId });
-        assertCanAppend(stored);
+        // Pausing prevents new capture segments, but already-durable pending
+        // segments must still accept late ASR/diarization revisions.
+        assertNotEnded(stored);
         assertLease(stored, parsed.data.leaseToken);
         const existingIndex = stored.segments.findIndex(
           (segment) => segment.id === segmentId,

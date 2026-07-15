@@ -130,6 +130,7 @@ export class PendantSessionSyncClient {
   ): Promise<PendantSessionSnapshot> {
     return this.enqueueOrRun(
       `append:${sessionId}:${request.segment.ordinal}`,
+      sessionId,
       () =>
         this.requestMutation(`${path(sessionId)}/segments`, {
           method: "POST",
@@ -145,6 +146,7 @@ export class PendantSessionSyncClient {
   ): Promise<PendantSessionSnapshot> {
     return this.enqueueOrRun(
       `patch:${sessionId}:${segmentId}:${request.revision}`,
+      sessionId,
       () =>
         this.requestMutation(
           `${path(sessionId)}/segments/${encodeURIComponent(segmentId)}`,
@@ -270,6 +272,7 @@ export class PendantSessionSyncClient {
 
   private async enqueueOrRun(
     id: string,
+    sessionId: string,
     run: () => Promise<PendantSessionSnapshot>,
   ): Promise<PendantSessionSnapshot> {
     try {
@@ -279,7 +282,7 @@ export class PendantSessionSyncClient {
     } catch (err) {
       if (!isOfflineError(err)) throw err;
       this.unsyncedQueue.push({ id, status: "pending", run });
-      if (this.snapshot) return this.snapshot;
+      if (this.snapshot?.session.id === sessionId) return this.snapshot;
       throw err;
     }
   }

@@ -95,6 +95,38 @@ describe("PendantSessionSyncClient", () => {
     expect(fetcher.mock.calls.at(-1)?.[0]).toContain("afterRevision=1");
   });
 
+  it("does not return a stale cached snapshot when a new session goes offline", async () => {
+    const client = new PendantSessionSyncClient({
+      fetcher: fetchWithCsrfMock.mockRejectedValueOnce(
+        new TypeError("Failed to fetch"),
+      ),
+    });
+    Object.defineProperty(client, "snapshot", {
+      value: snapshot(3, "sess-old"),
+      writable: true,
+    });
+
+    await expect(
+      client.appendSegment("sess-new", {
+        leaseToken: "lease",
+        segment: {
+          ordinal: 0,
+          status: "resolved",
+          text: "hello",
+          words: [],
+          speakerCluster: null,
+          speakerAlias: null,
+          confidence: null,
+          error: null,
+          startedAt: "2026-07-09T00:00:00.000Z",
+          endedAt: null,
+          revision: 0,
+        },
+      }),
+    ).rejects.toThrow("Failed to fetch");
+    expect(client.unsyncedQueue).toHaveLength(1);
+  });
+
   it("surfaces offline revision conflicts and converges after explicit discard", async () => {
     const fetcher = fetchWithCsrfMock
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
