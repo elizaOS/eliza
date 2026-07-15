@@ -1018,6 +1018,9 @@ export const ChatMessage = memo(function ChatMessage({
         "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
+      // Match the flat assistant's compact vertical rhythm in the overlay.
+      // The panel chrome keeps its roomier shared bubble padding.
+      isUser && "py-1",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -1036,7 +1039,7 @@ export const ChatMessage = memo(function ChatMessage({
         initial={initial}
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={transition}
-        className="mb-0.5"
+        className="mb-0"
         onMouseEnter={
           supportsHover && hasActions ? () => setShowActions(true) : undefined
         }
@@ -1058,8 +1061,11 @@ export const ChatMessage = memo(function ChatMessage({
       >
         <MessageRowContent
           className={cn(
-            "relative flex flex-col",
-            hasActionLane && "pb-6 pointer-coarse:pb-11",
+            "relative flex flex-col transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
+            hasActionLane &&
+              (accessoryVisible
+                ? "pb-6 pointer-coarse:pb-11"
+                : "pb-0 pointer-coarse:pb-11"),
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
