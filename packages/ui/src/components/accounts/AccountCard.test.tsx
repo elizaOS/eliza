@@ -35,12 +35,8 @@ function renderAccount(
   render(
     <AccountCard
       account={account}
-      isFirst
-      isLast
       saving={false}
       onPatch={vi.fn().mockResolvedValue(undefined)}
-      onMoveUp={vi.fn().mockResolvedValue(undefined)}
-      onMoveDown={vi.fn().mockResolvedValue(undefined)}
       onTest={vi.fn().mockResolvedValue(undefined)}
       onRefreshUsage={vi.fn().mockResolvedValue(undefined)}
       onDelete={vi.fn().mockResolvedValue(undefined)}

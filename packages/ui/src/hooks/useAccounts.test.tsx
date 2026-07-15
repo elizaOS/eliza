@@ -198,12 +198,8 @@ describe("useAccounts", () => {
           </button>
           <AccountCard
             account={account}
-            isFirst
-            isLast
             saving={false}
             onPatch={vi.fn()}
-            onMoveUp={vi.fn()}
-            onMoveDown={vi.fn()}
             onTest={vi.fn()}
             onRefreshUsage={() =>
               accounts

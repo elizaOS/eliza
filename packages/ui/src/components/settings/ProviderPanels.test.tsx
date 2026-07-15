@@ -84,8 +84,7 @@ describe("ProviderPanels", () => {
     expect(screen.getByText("cloud controls:false")).toBeTruthy();
   });
 
-  it("shows and activates a paused subscription", () => {
-    const select = vi.fn().mockResolvedValue(undefined);
+  it("shows the paused state and automatically rotating subscription pool", () => {
     render(
       <SubscriptionPanel
         selection={
@@ -95,15 +94,16 @@ describe("ProviderPanels", () => {
             labelKey: "Codex",
           } as never
         }
-        visibleProviderPanelId="openai-subscription"
-        resolvedSelectedId="openai-subscription"
         cloudCallsDisabled
-        onSelectSubscription={select}
       />,
     );
     expect(screen.getByText(/remote routing is paused/)).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Use subscription" }));
-    expect(select).toHaveBeenCalledWith("openai-subscription");
+    expect(
+      screen.getByText(/Enabled accounts rotate automatically/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "Use subscription" }),
+    ).toBeNull();
     expect(screen.getByText("accounts:openai-codex")).toBeTruthy();
   });
 
