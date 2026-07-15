@@ -1,12 +1,12 @@
 /**
- * Provider model-env defaults seeded at boot, before plugin init. Called from
- * `configureLocalEmbeddingPlugin` in `eliza.ts`; lives apart from the boot
+ * Provider model-env defaults seeded synchronously by runtime boot before
+ * provider selection and plugin initialization. Lives apart from the boot
  * monolith so the seeding rules are unit-testable and have one owner.
  *
  * Seeding order matters: every default here is set-if-missing, so explicit
  * operator config (env or character settings folded into env) always wins.
  */
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 
 /** Set an env default without clobbering an operator-provided value. */
 export function setEnvIfMissing(key: string, value: string | undefined): void {
@@ -15,13 +15,29 @@ export function setEnvIfMissing(key: string, value: string | undefined): void {
 }
 
 /**
- * True for model ids only OpenAI serves (`gpt-*`, `openai/*`) — such a shared
- * model must not leak into another provider's default, where the id would 404.
+ * True for model ids that identify OpenAI-only text families. Open-weight GPT
+ * OSS ids are deliberately excluded because Groq, Cerebras, and other
+ * OpenAI-compatible providers serve them too.
  */
 export function isLikelyOpenAiTextModel(value: string | undefined): boolean {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
-  return normalized.startsWith("gpt-") || normalized.startsWith("openai/");
+  if (!normalized) return false;
+
+  const unqualified = normalized.startsWith("openai/")
+    ? normalized.slice("openai/".length)
+    : normalized;
+  if (unqualified.startsWith("gpt-oss-")) return false;
+
+  const model = unqualified.startsWith("ft:")
+    ? unqualified.slice("ft:".length)
+    : unqualified;
+  return (
+    model.startsWith("gpt-") ||
+    model.startsWith("chatgpt-") ||
+    model.startsWith("codex-") ||
+    /^o[134](?:-|$)/.test(model)
+  );
 }
 
 export function applyProviderModelEnvDefaults(): void {

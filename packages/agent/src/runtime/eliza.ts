@@ -1050,8 +1050,6 @@ export async function configureLocalEmbeddingPlugin(
     process.env.EMBEDDING_PROVIDER = "local";
   }
 
-  applyProviderModelEnvDefaults();
-
   logger.info(
     `[eliza] Configured local embedding env: ${process.env.LOCAL_EMBEDDING_MODEL} (repo: ${process.env.LOCAL_EMBEDDING_MODEL_REPO ?? "auto"}, dims: ${process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "auto"}, ctx: ${process.env.LOCAL_EMBEDDING_CONTEXT_SIZE ?? "auto"}, GPU: ${process.env.LOCAL_EMBEDDING_GPU_LAYERS}, mmap: ${process.env.LOCAL_EMBEDDING_USE_MMAP})`,
   );
@@ -3871,6 +3869,15 @@ export async function startEliza(
       `[eliza] Failed to apply local subscription credentials (agent will continue without them): ${formatError(err)}`,
     );
   }
+
+  // Provider plugins snapshot model env during the blocking resolution wave.
+  // Seed their set-if-missing defaults synchronously on the boot path, after
+  // config/account/subscription env has been applied and before any provider
+  // selection or plugin resolution. This must not live in the deferred local
+  // embedding warmup: that path is skipped on mobile and can run after the
+  // text provider is already initialized.
+  applyProviderModelEnvDefaults();
+
   subscriptionCredentialsDeferredPromise = (async () => {
     const { applySubscriptionCredentialsDeferred } = await import(
       "@elizaos/auth"

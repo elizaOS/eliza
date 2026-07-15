@@ -8,9 +8,13 @@
  * snapshotted/restored; deterministic, no runtime boot.
  */
 
-import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/core";
+import { readFileSync } from "node:fs";
+import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { applyProviderModelEnvDefaults } from "../provider-model-defaults";
+import {
+  applyProviderModelEnvDefaults,
+  isLikelyOpenAiTextModel,
+} from "../provider-model-defaults";
 
 const originalEnv = { ...process.env };
 
@@ -68,5 +72,49 @@ describe("provider model-env seeding", () => {
 
     expect(process.env.GROQ_SMALL_MODEL).toBe("gemma-4-31b");
     expect(process.env.GROQ_LARGE_MODEL).toBe("zai-glm-4.7");
+  });
+
+  it("recognizes OpenAI reasoning/fine-tune families without rejecting portable GPT OSS ids", () => {
+    for (const model of [
+      "gpt-5.5-mini",
+      "chatgpt-4o-latest",
+      "codex-mini-latest",
+      "o1",
+      "o3-mini",
+      "o4-mini",
+      "ft:gpt-5-mini:org:job",
+      "openai/o3",
+    ]) {
+      expect(isLikelyOpenAiTextModel(model), model).toBe(true);
+    }
+    for (const model of [
+      "gpt-oss-120b",
+      "openai/gpt-oss-120b",
+      "gemma-4-31b",
+      "zai-glm-4.7",
+    ]) {
+      expect(isLikelyOpenAiTextModel(model), model).toBe(false);
+    }
+  });
+
+  it("is invoked once on the synchronous boot path before provider selection", () => {
+    const source = readFileSync(
+      new URL("../eliza.ts", import.meta.url),
+      "utf8",
+    );
+    const calls = [
+      ...source.matchAll(/applyProviderModelEnvDefaults\(\);/g),
+    ].map((match) => match.index);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toBeGreaterThan(
+      source.indexOf("applySubscriptionCredentialsLocal(config)"),
+    );
+    expect(calls[0]).toBeLessThan(
+      source.indexOf("const primaryModel = resolvePrimaryModel(config)"),
+    );
+    expect(source.indexOf("const warmEmbeddingModel")).toBeGreaterThan(
+      calls[0],
+    );
   });
 });
