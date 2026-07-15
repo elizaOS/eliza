@@ -2,8 +2,7 @@
  * On-disk path resolution for agent state files, keyed off the canonical
  * state-dir and namespace resolvers. Locates the active config file (honoring
  * ELIZA_CONFIG_PATH and namespace-ordered filename candidates) and derives the
- * per-provider models cache directory, the OAuth credential file, and the
- * Steward credentials file.
+ * per-provider models cache directory and the Steward credentials file.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -54,23 +53,6 @@ export function resolveConfigPath(
   return candidates[0] ?? path.join(stateDirPath, `${namespace}.json`);
 }
 
-export function resolveDefaultConfigCandidates(
-  env: NodeJS.ProcessEnv = process.env,
-): string[] {
-  const explicit = readEnvOverride(env);
-  if (explicit) {
-    return [resolveUserPath(explicit)];
-  }
-
-  const namespace = getElizaNamespace(env);
-  const stateDirPath = resolveStateDir(env);
-  return configFilenameCandidates(namespace).map((name) =>
-    path.join(stateDirPath, name),
-  );
-}
-
-const OAUTH_FILENAME = "oauth.json";
-
 /**
  * Directory for per-provider model cache files.
  * Each provider gets its own file: `<state-dir>/models/<providerId>.json`
@@ -80,13 +62,6 @@ export function resolveModelsCacheDir(
   stateDirPath: string = resolveStateDir(env),
 ): string {
   return path.join(stateDirPath, "models");
-}
-
-export function resolveOAuthPath(
-  env: NodeJS.ProcessEnv = process.env,
-  stateDirPath: string = resolveStateDir(env),
-): string {
-  return path.join(resolveOAuthDir(env, stateDirPath), OAUTH_FILENAME);
 }
 
 const STEWARD_CREDENTIALS_FILENAME = "steward-credentials.json";
