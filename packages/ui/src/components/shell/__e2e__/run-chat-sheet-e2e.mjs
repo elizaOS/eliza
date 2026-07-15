@@ -2337,38 +2337,105 @@ try {
     await p.close();
   }
 
-  // TRANSCRIBING while an inline reply is in flight (regression, #9880 path):
-  // the voice control is the MASTER off — labeled "stop transcription and mic"
-  // (distinct from the transcribe button's "stop transcription", which leaves
-  // the mic on) — and must END the session on tap even while `responding` is
-  // true; the OFF path was gated on the reply finishing, leaving a lit, dead
-  // mic button.
+  // Transcription owns the whole composer even while an inline reply is in
+  // flight: Stop/activity/neutral mic/Send replace the attachment, textarea,
+  // and spoken-conversation controls until finalization completes.
   {
     const p = await ctrl();
     attachConsole(p, sink);
     const logs = [];
     p.on("console", (m) => logs.push(m.text()));
     await gotoFixture(p, `${url}?transcribing&recording&speaking&phase=listening`);
-    await p.waitForSelector('[data-testid="chat-composer-mic"]');
+    await p.waitForSelector(
+      '[data-testid="chat-composer-transcription-stop"]',
+    );
     await p.waitForTimeout(500);
     assert(
-      (await p.getByTestId("chat-composer-mic").getAttribute("aria-label")) ===
-        "stop transcription and mic",
-      "TRANSCRIBING+REPLY: voice control reads 'stop transcription and mic'",
+      (await p.getByTestId("chat-composer-mic").count()) === 0 &&
+        (await p.getByTestId("chat-composer-mic-activity").count()) === 1 &&
+        (await p.getByTestId("chat-composer-transcribe-status").count()) === 1,
+      "TRANSCRIBING+REPLY: dedicated activity replaces the voice waveform",
+    );
+    const statusClass =
+      (await p
+        .getByTestId("chat-composer-transcribe-status")
+        .getAttribute("class")) ?? "";
+    assert(
+      statusClass.includes("text-white/80") &&
+        !statusClass.includes("text-accent"),
+      "TRANSCRIBING+REPLY: live mic status is neutral white, never accent orange",
     );
     await snap(p, "state-transcribing-inline-reply");
-    await p.getByTestId("chat-composer-mic").click();
+    await p.getByTestId("chat-composer-transcription-stop").click();
     await p.waitForTimeout(300);
     assert(
-      logs.some((t) => t.includes("[fixture] stopTranscriptionAndMic")),
-      "TRANSCRIBING+REPLY: mic tap ends transcription even mid-reply (not gated on responding)",
+      logs.some((t) =>
+        t.includes("[fixture] toggleTranscriptionMode -> false"),
+      ),
+      "TRANSCRIBING+REPLY: Stop finalizes transcription even mid-reply",
     );
-    // With the mic off and the (fixture-constant) reply still in flight the
-    // trailing control morphs mic → stop, exactly like the plain speaking state.
     assert(
-      (await p.getByTestId("chat-composer-mic").count()) === 0 &&
-        (await p.getByTestId("chat-composer-stop").count()) === 1,
-      "TRANSCRIBING+REPLY: after the tap the trailing control is the stop (mic off)",
+      logs.some((t) =>
+        t.includes("[fixture] finalizeTranscriptSession segments=1"),
+      ),
+      "TRANSCRIBING+REPLY: Stop drains the captured session through the composer sink",
+    );
+    assert(
+      !logs.some((t) => t.includes("[fixture] send:")),
+      "TRANSCRIBING+REPLY: Stop preserves the transcript without sending it",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-mic-activity").count()) === 0 &&
+        (await p.getByTestId("chat-composer-textarea").count()) === 1 &&
+        (await p.getByTestId("chat-composer-action").count()) === 1 &&
+        (await p.getByTestId("chat-composer-stop").count()) === 0,
+      "TRANSCRIBING+REPLY: Stop restores the transcript as an editable draft",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-textarea").inputValue()) ===
+        "tell me the plan for…",
+      "TRANSCRIBING+REPLY: finalized words remain intact in the composer",
+    );
+    await p.close();
+  }
+
+  // Send uses the same drain sink as Stop, then submits the finalized text once.
+  // This fixture path guards the ordering between session teardown and delivery:
+  // teardown must not replace the send-triggered responding state or lose text.
+  {
+    const p = await ctrl();
+    attachConsole(p, sink);
+    const logs = [];
+    p.on("console", (m) => logs.push(m.text()));
+    await gotoFixture(
+      p,
+      `${url}?transcribing&recording&phase=listening&transcript=send%20this%20transcript`,
+    );
+    await p.waitForSelector('[data-testid="chat-composer-action"]');
+    assert(
+      (await p
+        .getByTestId("chat-composer-action")
+        .getAttribute("aria-label")) === "send transcription",
+      "TRANSCRIBING+SEND: dedicated Send control is available during capture",
+    );
+    await p.getByTestId("chat-composer-action").click();
+    await p.waitForTimeout(300);
+    assert(
+      logs.some((t) =>
+        t.includes("[fixture] finalizeTranscriptSession segments=1"),
+      ),
+      "TRANSCRIBING+SEND: Send drains the captured session through the composer sink",
+    );
+    assert(
+      logs.filter((t) =>
+        t.includes('[fixture] send: "send this transcript"'),
+      ).length === 1,
+      "TRANSCRIBING+SEND: finalized transcript submits exactly once",
+    );
+    assert(
+      (await p.getByTestId("chat-composer-mic-activity").count()) === 0 &&
+        (await p.getByTestId("chat-composer-textarea").inputValue()) === "",
+      "TRANSCRIBING+SEND: capture exits and leaves no duplicate draft behind",
     );
     await p.close();
   }

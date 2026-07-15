@@ -171,7 +171,6 @@ function Harness(): React.JSX.Element {
     micPermission: "unknown",
     recheckMicPermission: async () => "unknown",
     toggleTranscriptionMode: () => {},
-    stopTranscriptionAndMic: () => {},
     setDictationSink: () => {},
     setTranscriptSessionSink: () => {},
     setComposerHasDraft: () => {},

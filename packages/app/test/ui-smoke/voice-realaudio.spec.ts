@@ -556,13 +556,17 @@ test("REAL audio: transcription start during spoken local TTS barges in and sile
   // clip is still playing; the shell's recording-driven barge-in effect must
   // silence the in-flight Web Audio source immediately.
   await dispatchVoiceControl(page, "start");
-  await expect(mic).toHaveAttribute(
-    "aria-label",
-    "stop transcription and mic",
-    {
-      timeout: 15_000,
-    },
-  );
+  await expect(page.getByTestId("chat-composer-mic")).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("chat-composer-mic-activity")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(
+    page.getByTestId("chat-composer-transcription-stop"),
+  ).toHaveAttribute("aria-label", "stop transcription", {
+    timeout: 15_000,
+  });
   await expect
     .poll(
       async () => {

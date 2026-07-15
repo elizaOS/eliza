@@ -58,6 +58,8 @@ vi.mock("../../chat/report-composer-activity", () => ({
   reportComposerActivity: vi.fn(),
 }));
 
+import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
+import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import { client } from "../../api/client";
 import type {
@@ -124,6 +126,7 @@ function makeController(
     responding: false,
     turnStatus: null,
     recording: false,
+    analyser: null,
     transcript: "",
     transcriptionMode: false,
     // Required ShellController surface the overlay reads unconditionally — the
@@ -137,8 +140,6 @@ function makeController(
     handsFree: false,
     toggleHandsFree: vi.fn(),
     toggleTranscriptionMode: vi.fn(),
-    // A mic tap while transcribing routes through this master voice control.
-    stopTranscriptionAndMic: vi.fn(),
     setDictationSink: vi.fn(),
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
@@ -873,9 +874,8 @@ describe("ContinuousChatOverlay", () => {
     expect(grabber.className).toContain("before:bottom-0");
   });
 
-  // #14331: the waveform pulses whenever capture is hot, but only turns orange
-  // when its own conversation mode is active. Transcription belongs to the
-  // adjacent mic and must not recolor this separate control.
+  // #14331: the waveform reflects only spoken-conversation capture. Dedicated
+  // transcription replaces it with the neutral activity presentation below.
   describe("waveform + pill pulse while capture is hot (#14331)", () => {
     it("does not pulse the mic while idle (neutral resting, no motion)", () => {
       render(<ContinuousChatOverlay controller={makeController()} />);
@@ -896,11 +896,12 @@ describe("ContinuousChatOverlay", () => {
       expect(waveform.className).toContain("text-accent");
     });
 
-    it.each([
-      ["recording", { recording: true }],
-      ["transcribing", { transcriptionMode: true }],
-    ] as const)("keeps the pulsing waveform neutral while %s", (_label, override) => {
-      render(<ContinuousChatOverlay controller={makeController(override)} />);
+    it("keeps the pulsing waveform neutral during push-to-talk recording", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({ recording: true })}
+        />,
+      );
       const waveform = screen.getByTestId("chat-composer-mic");
       expect(waveform.className).toContain("animate-pulse");
       expect(waveform.className).not.toContain("text-accent");
@@ -2582,7 +2583,8 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Both controls present in voice mode; the mic stays the master control.
+    // Idle dictation and spoken-conversation controls remain independently
+    // available when neither mode owns capture.
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
     expect(
@@ -2590,95 +2592,287 @@ describe("ContinuousChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("shows the transcribe button (as stop) while transcribing, alongside the status badge (#10699)", () => {
+  it("replaces the composer with dedicated neutral transcription controls", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
           transcriptionMode: true,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
-    const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
-    expect(transcribe.getAttribute("aria-label")).toBe("stop transcription");
-  });
-
-  it("clicking the transcribe button toggles transcription mode (#10699)", () => {
-    const toggleTranscriptionMode = vi.fn();
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          handsFree: true,
-          recording: true,
-          toggleTranscriptionMode,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-transcribe"));
-    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps the waveform pressed but visually neutral while the mic transcribes", () => {
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          toggleTranscriptionMode: vi.fn(),
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    const waveform = screen.getByTestId("chat-composer-mic");
-    expect(waveform.getAttribute("aria-pressed")).toBe("true");
-    expect(waveform.className).toContain("animate-pulse");
-    expect(waveform.className).toContain("text-muted-strong");
-    expect(waveform.className).not.toContain("text-accent");
-  });
-
-  it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    // The mic is the master voice control: a tap ends transcription AND the mic
-    // (stopTranscriptionAndMic → finished transcript drops into the composer);
-    // it must NOT open a hands-free conversation.
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
-  });
-
-  it("a mic tap ends transcription even while a reply is in flight (#9880 inline reply)", () => {
-    // A wake-word inline reply during transcription flips `responding` true
-    // while `handsFree` is false (the transcript layer paused it). The mic —
-    // labeled "stop transcription" — must still turn the session off; gating
-    // the OFF path on `responding` left a lit, dead mic button until the reply
-    // finished.
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          recording: true,
           responding: true,
-          handsFree: false,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
+          canSend: false,
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+    expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    expect(stopTranscription.getAttribute("aria-label")).toBe(
+      "stop transcription",
+    );
+    // A stopped agent blocks delivery, not finalization back into the draft.
+    expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
+
+    const micStatus = screen.getByTestId("chat-composer-transcribe-status");
+    expect(micStatus.className).toContain("text-white/80");
+    expect(micStatus.className).not.toContain("text-accent");
+
+    const sendTranscription = screen.getByTestId("chat-composer-action");
+    expect(sendTranscription.getAttribute("aria-label")).toBe(
+      "send transcription (agent stopped)",
+    );
+    expect(sendTranscription.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("Stop drains a completed transcript into the existing draft without sending", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(async () => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 900,
+            text: "captured words",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        null,
+      );
+    });
+    const setTranscriptSessionSink = vi.fn((nextSink: typeof sink) => {
+      sink = nextSink;
+    });
+    const inactiveController = makeController({
+      send,
+      setTranscriptSessionSink,
+      toggleTranscriptionMode,
+    });
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={inactiveController} />,
+    );
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "notes so far" },
+    });
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          send,
+          transcriptionMode: true,
+          setTranscriptSessionSink,
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("chat-composer-transcription-stop"));
+    });
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+
+    rerender(<ContinuousChatOverlay controller={inactiveController} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("notes so far captured words");
+  });
+
+  it("Send drains and submits the combined draft and transcript exactly once", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(async () => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 900,
+            text: "captured words",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        null,
+      );
+    });
+    const setTranscriptSessionSink = vi.fn((nextSink: typeof sink) => {
+      sink = nextSink;
+    });
+    const inactiveController = makeController({
+      send,
+      setTranscriptSessionSink,
+      toggleTranscriptionMode,
+    });
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={inactiveController} />,
+    );
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "notes so far" },
+    });
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          send,
+          setTranscriptSessionSink,
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("chat-composer-action"));
+    });
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("notes so far captured words");
+  });
+
+  it("an empty finalization never sends and ignores a second in-flight tap", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    let releaseDrain: (() => void) | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          sink?.([], 1_700_000_000_000, null);
+          releaseDrain = resolve;
+        }),
+    );
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          send,
+          setTranscriptSessionSink: (nextSink: typeof sink) => {
+            sink = nextSink;
+          },
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+    const sendTranscription = screen.getByTestId("chat-composer-action");
+    fireEvent.click(sendTranscription);
+    fireEvent.click(sendTranscription);
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .getAttribute("aria-label"),
+    ).toBe("Finishing transcription");
+    const micStatus = screen.getByTestId("chat-composer-transcribe-status");
+    expect(micStatus.getAttribute("aria-label")).toBe(
+      "Finishing transcription",
+    );
+    expect(micStatus.querySelector("svg")?.getAttribute("class")).not.toContain(
+      "animate-pulse",
+    );
+    expect(
+      screen
+        .getByTestId("chat-composer-transcription-stop")
+        .getAttribute("aria-label"),
+    ).toBe("finishing transcription");
+    expect(sendTranscription.getAttribute("aria-label")).toBe(
+      "send transcription (finishing)",
+    );
+
+    await act(async () => {
+      releaseDrain?.();
+    });
+  });
+
+  it("falls back to an editable draft when the agent stops during Send finalization", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    let completeDrain: (() => void) | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completeDrain = () => {
+            sink?.(
+              [
+                {
+                  id: "s1",
+                  startMs: 0,
+                  endMs: 900,
+                  text: "keep these words",
+                  words: [],
+                },
+              ],
+              1_700_000_000_000,
+              null,
+            );
+            resolve();
+          };
+        }),
+    );
+    const setTranscriptSessionSink = (nextSink: typeof sink) => {
+      sink = nextSink;
+    };
+    const activeController = makeController({
+      transcriptionMode: true,
+      send,
+      setTranscriptSessionSink,
+      toggleTranscriptionMode,
+    });
+    const stoppedController = makeController({
+      canSend: false,
+      send,
+      setTranscriptSessionSink,
+      toggleTranscriptionMode,
+    });
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={activeController} />,
+    );
+
+    fireEvent.click(screen.getByTestId("chat-composer-action"));
+    rerender(<ContinuousChatOverlay controller={stoppedController} />);
+    await act(async () => {
+      completeDrain?.();
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("keep these words");
+    expect(screen.getByLabelText("send (agent stopped)")).toBeTruthy();
   });
 
   it("the audio-unlock chip works while the sheet is open (not swallowed as an outside tap)", () => {
@@ -2710,36 +2904,6 @@ describe("ContinuousChatOverlay", () => {
     expect(unlockAudio).toHaveBeenCalledTimes(1);
     // The sheet must stay open — the chip tap is not an outside collapse.
     expect(sheet.getAttribute("data-variant")).toBe("open");
-  });
-
-  it("does not enter push-to-talk on a long press while transcribing", () => {
-    vi.useFakeTimers();
-    try {
-      const stopTranscriptionAndMic = vi.fn();
-      const startRecording = vi.fn();
-      render(
-        <ContinuousChatOverlay
-          controller={makeController({
-            transcriptionMode: true,
-            stopTranscriptionAndMic,
-            startRecording,
-          } as unknown as Partial<ShellController>)}
-        />,
-      );
-
-      const mic = screen.getByTestId("chat-composer-mic");
-      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
-      act(() => {
-        vi.advanceTimersByTime(250);
-      });
-      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
-      fireEvent.click(mic);
-
-      expect(startRecording).not.toHaveBeenCalled();
-      expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("push-to-talk dictates into the composer on release; the label matches (never 'send')", () => {
@@ -2877,6 +3041,61 @@ describe("ContinuousChatOverlay", () => {
     ).toBe("just words");
     expect(screen.queryByText(/^Recording .*\.wav$/)).toBeNull();
     expect(controller.send).not.toHaveBeenCalled();
+  });
+
+  it("keeps the oversized-recording warning visible when Send delivers the transcript", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const oversizedAudio = new Uint8Array([82, 73, 70, 70]);
+    Object.defineProperty(oversizedAudio, "byteLength", {
+      value: MAX_CHAT_MEDIA_RAW_BYTES + 1,
+    });
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(() => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 900,
+            text: "keep the transcript",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        oversizedAudio,
+      );
+    });
+
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          send,
+          setTranscriptSessionSink: (nextSink) => {
+            sink = nextSink;
+          },
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("chat-composer-action"));
+    });
+
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledWith("keep the transcript");
+    expect(screen.queryByText(/^Recording .*\.wav$/)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Recording too large to attach",
+    );
+    expect(screen.getByRole("alert").textContent).toContain("transcript kept");
   });
 
   // ── SheetGrabber inert-while-pilled (the symmetric half of the PillHandle

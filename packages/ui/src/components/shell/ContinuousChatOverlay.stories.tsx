@@ -92,7 +92,6 @@ function makeController(
     toggleHandsFree: () => {},
     transcriptionMode: false,
     toggleTranscriptionMode: () => {},
-    stopTranscriptionAndMic: () => {},
     setDictationSink: () => {},
     setTranscriptSessionSink: () => {},
     setComposerHasDraft: () => {},

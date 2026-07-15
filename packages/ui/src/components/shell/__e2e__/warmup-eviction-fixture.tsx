@@ -209,7 +209,6 @@ function Harness(): React.JSX.Element {
     captureVision: () => {},
     visionCapturing: false,
     toggleTranscriptionMode: () => {},
-    stopTranscriptionAndMic: () => {},
     modelStatus: {
       kind: "ready",
       blocksSend: false,
