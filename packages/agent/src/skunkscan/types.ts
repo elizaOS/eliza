@@ -1,3 +1,5 @@
+import { InvestorExplanation } from "./explainability/types";
+
 export type SupportedChain = "solana" | "ethereum" | "base" | "bnb";
 
 export type WalletInvestigationStatus =
@@ -409,13 +411,7 @@ export type WalletTrustSummary = {
 
   limitations: string[];
 
-  investorExplanation: {
-    summary: string;
-
-    whyThisAssessment: string[];
-
-    whatReducedConfidence: string[];
-  };
+  investorExplanation: InvestorExplanation;
 };
 
 export type WalletInvestigationReplayStep = {
