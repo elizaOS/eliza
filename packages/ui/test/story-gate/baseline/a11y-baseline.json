@@ -1163,6 +1163,9 @@
   "settings-identitysettingssection--default": [
     "color-contrast"
   ],
+  "settings-modelconfigurationpanel--confirm-restart": [
+    "color-contrast"
+  ],
   "settings-permissionssection--default": [
     "color-contrast"
   ],

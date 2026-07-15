@@ -69,7 +69,7 @@ function TaskRow({
           {task.progressSummary}
         </span>
         {assignment || task.parentTaskId || relationshipCount > 0 ? (
-          <span className="mt-1 flex gap-2 text-3xs text-muted/70">
+          <span className="mt-1 flex gap-2 text-3xs text-muted">
             {assignment ? <span className="truncate">{assignment}</span> : null}
             {task.parentTaskId || relationshipCount > 0 ? (
               <span className="ml-auto shrink-0">
