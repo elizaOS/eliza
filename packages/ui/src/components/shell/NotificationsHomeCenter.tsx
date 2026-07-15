@@ -453,7 +453,7 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
    while that projection is mounted so Chromium cannot turn the insertion into
    a positive scrollTop and revoke a gesture the user already owns. The live
    overshoot padding keeps translated cards inside the scrollport; the edge mask
-   returns on release, when card opacity owns the close transition. */
+   returns after the release runway has settled. */
 .eliza-notif-scroll[data-shade-preview],
 .eliza-notif-scroll[data-shade-mode="expanded"] {
   padding-bottom: calc(
@@ -470,14 +470,13 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   mask-image: none;
   transition: none;
 }
-/* A released deep pull keeps a static feather at both scrollport edges while
-   translated cards return through the retained runway. The scroll-linked mask
-   normally removes its top fade at scrollTop=0; freezing it here prevents the
-   returning cards from ending at the center's hard overflow clip. */
+/* The retained overshoot padding is the release runway. Keep the edge mask off
+   until the cards finish crossing it; otherwise the mask darkens the lowest
+   physical stack layers and then brightens them as they settle upward. */
 .eliza-notif-scroll[data-shade-release-settling] {
   animation: none;
-  --scroll-fade-t: 1.25rem;
-  --scroll-fade-b: 1.5rem;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 /* Count and card shells become independent compositor layers while they trade
    flow space. Keep cards above the count so its label fades behind their
