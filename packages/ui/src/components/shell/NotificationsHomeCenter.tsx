@@ -66,6 +66,7 @@ import {
   shouldCommitMomentumDetent,
   useRafCoalescer,
 } from "../../gestures";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,
@@ -215,6 +216,7 @@ const STACK_PEEK_OFFSET_PX = 7;
 const STACK_BOTTOM_CLEARANCE_PX = 2;
 
 const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
+const FINE_POINTER_CLEAR_CONFIRM_QUERY = "(hover: hover) and (pointer: fine)";
 const SHADE_SETTLE_MS = 460;
 const SHADE_MIN_SETTLE_MS = 320;
 const SHADE_MAX_SETTLE_MS = 600;
@@ -387,13 +389,14 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
   transition: none;
 }
 /* Bulk clear keeps its right edge aligned with each producer's X. Touch-first
-   surfaces expose the command label at rest; precise pointers retain the
-   compact X and reveal the same label leftward on hover or keyboard focus. */
+   surfaces reveal the destructive command after the first tap; precise
+   pointers can preview it leftward on hover or keyboard focus before the
+   first click advances to the explicit confirmation. */
 .eliza-notif-clear-all {
   width: 2rem;
 }
 .eliza-notif-clear-all[data-confirming] {
-  width: 3rem;
+  width: 4rem;
 }
 .eliza-notif-clear-all:not([data-confirming]):focus-visible {
   width: 3.5rem;
@@ -405,19 +408,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 .eliza-notif-clear-all:not([data-confirming]):focus-visible [data-notification-clear-resting-icon] {
   opacity: 0;
   transform: scale(0.75);
-}
-@media (hover: none), (pointer: coarse) {
-  .eliza-notif-clear-all:not([data-confirming]) {
-    width: 3.5rem;
-  }
-  .eliza-notif-clear-all:not([data-confirming]) [data-notification-clear-resting-label] {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  .eliza-notif-clear-all:not([data-confirming]) [data-notification-clear-resting-icon] {
-    opacity: 0;
-    transform: scale(0.75);
-  }
 }
 @media (hover: hover) and (pointer: fine) {
   .eliza-notif-clear-all:not([data-confirming]):hover {
@@ -601,6 +591,7 @@ export function NotificationsHomeCenter({
   const { notifications, hydrated, hydrationStatus } = useNotifications();
   const inboxEmpty = notifications.length === 0;
   const reduceMotion = usePrefersReducedMotion();
+  const finePointer = useMediaQuery(FINE_POINTER_CLEAR_CONFIRM_QUERY);
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
@@ -2659,6 +2650,7 @@ export function NotificationsHomeCenter({
                 )}
               >
                 <ClearConfirmationContent
+                  confirmingLabel={finePointer ? "Confirm?" : "Clear all"}
                   confirming={confirmingClearAll}
                   restingLabel="Clear all"
                 />
