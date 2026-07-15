@@ -4,7 +4,7 @@
  * groups remains smooth while React remains authoritative for settled states.
  */
 import type { CSSProperties } from "react";
-import { rubberBand } from "../../gestures/recognizers";
+import { sqrtRubberBand } from "../../gestures/recognizers";
 
 /** Full visual travel between the shade's rested and expanded detents. */
 export const PULL_TRAVEL_PX = 88;
@@ -15,9 +15,15 @@ export const PULL_COMMIT_PX = PULL_TRAVEL_PX / 2;
 /** Dead zone before a vertical drag starts reading as a pull. */
 export const PULL_SLOP_PX = 8;
 
+/** Extreme pulls retain elastic give without moving cards beyond the shade. */
+const PULL_MAX_OVERSHOOT_PX = 32;
+
 /** Track the finger directly between detents, resisting only past the end. */
 export function dampenPull(rawDy: number): number {
-  return rubberBand(Math.max(0, rawDy - PULL_SLOP_PX), PULL_TRAVEL_PX, 0.35);
+  const travel = Math.max(0, rawDy - PULL_SLOP_PX);
+  if (travel <= PULL_TRAVEL_PX) return travel;
+  const overshoot = sqrtRubberBand(travel - PULL_TRAVEL_PX, 1.85);
+  return PULL_TRAVEL_PX + Math.min(PULL_MAX_OVERSHOOT_PX, overshoot);
 }
 
 /** Preserve the resisted travel past either detent as visible elastic give. */
