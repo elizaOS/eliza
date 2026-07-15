@@ -86,6 +86,26 @@ for (const [scenario, code] of [
   assert.equal(resultFor(evaluation, "gitleaks").code, code, scenario);
 }
 
+// Every remaining GitHub conclusion that is neither success nor skipped must
+// still fail closed through the generic terminal branch, so an unexpected or
+// future conclusion string can never be mistaken for a pass.
+for (const conclusion of [
+  "neutral",
+  "action_required",
+  "startup_failure",
+  "stale",
+]) {
+  const runs = successRuns();
+  runs.find(({ name }) => name === "gitleaks").conclusion = conclusion;
+  const evaluation = evaluate(runs, { deadlineReached: true });
+  assert.equal(evaluation.verdict, "failure", conclusion);
+  assert.equal(
+    resultFor(evaluation, "gitleaks").code,
+    `terminal-${conclusion}`,
+    conclusion,
+  );
+}
+
 const settlingRuns = buildCanaryCheckRuns("cancelled", NOW_MS);
 const cancelled = settlingRuns.find(({ name }) => name === "gitleaks");
 cancelled.completed_at = new Date(NOW_MS - 5_000).toISOString();
