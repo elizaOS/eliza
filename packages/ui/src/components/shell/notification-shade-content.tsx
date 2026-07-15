@@ -95,18 +95,34 @@ export function groupDashboardNotifications(
 
 export function ClearConfirmationContent({
   confirming,
+  restingLabel,
 }: {
   confirming: boolean;
+  restingLabel?: string;
 }): JSX.Element {
   return (
     <span className="relative flex h-full w-full items-center justify-center">
-      <X
-        aria-hidden
+      <span
         className={cn(
-          "eliza-notif-control-transition absolute h-3.5 w-3.5 transition-[opacity,transform] duration-200 ease-out",
+          "eliza-notif-control-transition absolute flex items-center justify-center transition-[opacity,transform] duration-200 ease-out",
           confirming ? "scale-75 opacity-0" : "scale-100 opacity-100",
         )}
-      />
+      >
+        <X
+          aria-hidden
+          data-notification-clear-resting-icon={restingLabel ? "" : undefined}
+          className="eliza-notif-control-transition h-3.5 w-3.5 shrink-0 transition-[opacity,transform] duration-200 ease-out"
+        />
+        {restingLabel ? (
+          <span
+            data-notification-clear-resting-label=""
+            aria-hidden
+            className="eliza-notif-control-transition absolute translate-y-0.5 scale-95 whitespace-nowrap opacity-0 transition-[opacity,transform] duration-200 ease-out"
+          >
+            {restingLabel}
+          </span>
+        ) : null}
+      </span>
       <span
         aria-hidden={!confirming}
         className={cn(
