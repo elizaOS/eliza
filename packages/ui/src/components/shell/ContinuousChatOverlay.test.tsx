@@ -2300,7 +2300,7 @@ describe("ContinuousChatOverlay", () => {
     expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
   });
 
-  it("press-and-hold copies an assistant message and flashes confirmation", () => {
+  it("press-and-hold copies an assistant message without a popup", () => {
     vi.useFakeTimers();
     try {
       vi.mocked(copyTextToClipboard).mockClear();
@@ -2328,7 +2328,7 @@ describe("ContinuousChatOverlay", () => {
         vi.advanceTimersByTime(450); // past the hold threshold
       });
       expect(copyTextToClipboard).toHaveBeenCalledWith("the answer is 42");
-      expect(screen.getByTestId("thread-line-copied")).toBeTruthy();
+      expect(screen.queryByText("Copied")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -2539,16 +2539,17 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  it("shows the transcribe (mic-glyph) button beside the voice control at rest — ChatGPT arrangement", () => {
-    // Resting composer: BOTH controls are always available — the mic glyph
-    // starts a transcription/dictation session, the waveform glyph next to it
-    // is the spoken conversation. (Previously transcribe only appeared once a
-    // voice session was already live.)
+  it("keeps spoken conversation before the rightmost transcription mic at rest", () => {
+    // Resting composer: both controls stay available, with spoken conversation
+    // first and dictation rightmost so that mic can morph directly into Stop.
     render(<ContinuousChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    const voice = screen.getByTestId("chat-composer-mic");
     const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
     expect(transcribe.getAttribute("aria-label")).toBe("start transcription");
+    expect(
+      voice.compareDocumentPosition(transcribe) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("resting transcribe tap starts a transcription session", () => {
@@ -2593,7 +2594,7 @@ describe("ContinuousChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("keeps chat actions and replaces the mic slot with transcription stop", () => {
+  it("gives active transcription the full lane plus one Stop control", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -2609,11 +2610,17 @@ describe("ContinuousChatOverlay", () => {
     fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
     fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
     expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
-    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
     expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
     expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
     expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
     expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .querySelectorAll("span[style]").length,
+    ).toBe(15);
 
     const stopTranscription = screen.getByTestId(
       "chat-composer-transcription-stop",
@@ -2629,12 +2636,6 @@ describe("ContinuousChatOverlay", () => {
         .contains(stopTranscription),
     ).toBe(true);
     expect(screen.queryByTestId("chat-composer-transcribe-status")).toBeNull();
-
-    const sendTranscription = screen.getByTestId("chat-composer-action");
-    expect(sendTranscription.getAttribute("aria-label")).toBe(
-      "send transcription (agent stopped)",
-    );
-    expect(sendTranscription.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("Stop drains a completed transcript into the existing draft without sending", async () => {
@@ -2698,7 +2699,7 @@ describe("ContinuousChatOverlay", () => {
     ).toBe("notes so far captured words");
   });
 
-  it("Send drains and submits the combined draft and transcript exactly once", async () => {
+  it("Stop preserves the collapsed detent and does not focus the restored draft", async () => {
     let sink:
       | ((
           segments: TranscriptSegment[],
@@ -2706,7 +2707,6 @@ describe("ContinuousChatOverlay", () => {
           audioWav: Uint8Array | null,
         ) => void)
       | null = null;
-    const send = vi.fn();
     const toggleTranscriptionMode = vi.fn(async () => {
       sink?.(
         [
@@ -2714,7 +2714,7 @@ describe("ContinuousChatOverlay", () => {
             id: "s1",
             startMs: 0,
             endMs: 900,
-            text: "captured words",
+            text: "quietly restored",
             words: [],
           },
         ],
@@ -2726,33 +2726,30 @@ describe("ContinuousChatOverlay", () => {
       sink = nextSink;
     });
     const inactiveController = makeController({
-      send,
       setTranscriptSessionSink,
       toggleTranscriptionMode,
     });
     const { rerender } = render(
-      <ContinuousChatOverlay controller={inactiveController} />,
-    );
-    fireEvent.change(screen.getByLabelText("message"), {
-      target: { value: "notes so far" },
-    });
-    rerender(
       <ContinuousChatOverlay
         controller={makeController({
           transcriptionMode: true,
-          send,
           setTranscriptSessionSink,
           toggleTranscriptionMode,
         })}
       />,
     );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
 
     await act(async () => {
-      fireEvent.click(screen.getByTestId("chat-composer-action"));
+      fireEvent.click(screen.getByTestId("chat-composer-transcription-stop"));
     });
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith("notes so far captured words");
+    rerender(<ContinuousChatOverlay controller={inactiveController} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.value).toBe("quietly restored");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(document.activeElement).not.toBe(input);
   });
 
   it("an empty finalization never sends and ignores a second in-flight tap", async () => {
@@ -2784,9 +2781,11 @@ describe("ContinuousChatOverlay", () => {
         })}
       />,
     );
-    const sendTranscription = screen.getByTestId("chat-composer-action");
-    fireEvent.click(sendTranscription);
-    fireEvent.click(sendTranscription);
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    fireEvent.click(stopTranscription);
+    fireEvent.click(stopTranscription);
     expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
     expect(send).not.toHaveBeenCalled();
     expect(
@@ -2799,76 +2798,11 @@ describe("ContinuousChatOverlay", () => {
         .getByTestId("chat-composer-transcription-stop")
         .getAttribute("aria-label"),
     ).toBe("finishing transcription");
-    expect(sendTranscription.getAttribute("aria-label")).toBe(
-      "send transcription (finishing)",
-    );
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
 
     await act(async () => {
       releaseDrain?.();
     });
-  });
-
-  it("falls back to an editable draft when the agent stops during Send finalization", async () => {
-    let sink:
-      | ((
-          segments: TranscriptSegment[],
-          startedAt: number,
-          audioWav: Uint8Array | null,
-        ) => void)
-      | null = null;
-    let completeDrain: (() => void) | null = null;
-    const send = vi.fn();
-    const toggleTranscriptionMode = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          completeDrain = () => {
-            sink?.(
-              [
-                {
-                  id: "s1",
-                  startMs: 0,
-                  endMs: 900,
-                  text: "keep these words",
-                  words: [],
-                },
-              ],
-              1_700_000_000_000,
-              null,
-            );
-            resolve();
-          };
-        }),
-    );
-    const setTranscriptSessionSink = (nextSink: typeof sink) => {
-      sink = nextSink;
-    };
-    const activeController = makeController({
-      transcriptionMode: true,
-      send,
-      setTranscriptSessionSink,
-      toggleTranscriptionMode,
-    });
-    const stoppedController = makeController({
-      canSend: false,
-      send,
-      setTranscriptSessionSink,
-      toggleTranscriptionMode,
-    });
-    const { rerender } = render(
-      <ContinuousChatOverlay controller={activeController} />,
-    );
-
-    fireEvent.click(screen.getByTestId("chat-composer-action"));
-    rerender(<ContinuousChatOverlay controller={stoppedController} />);
-    await act(async () => {
-      completeDrain?.();
-    });
-
-    expect(send).not.toHaveBeenCalled();
-    expect(
-      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
-    ).toBe("keep these words");
-    expect(screen.getByLabelText("send (agent stopped)")).toBeTruthy();
   });
 
   it("the audio-unlock chip works while the sheet is open (not swallowed as an outside tap)", () => {
@@ -3039,7 +2973,7 @@ describe("ContinuousChatOverlay", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
-  it("keeps the oversized-recording warning visible when Send delivers the transcript", async () => {
+  it("keeps the oversized-recording warning visible when Stop restores the transcript", async () => {
     let sink:
       | ((
           segments: TranscriptSegment[],
@@ -3082,11 +3016,10 @@ describe("ContinuousChatOverlay", () => {
     );
 
     await act(async () => {
-      fireEvent.click(screen.getByTestId("chat-composer-action"));
+      fireEvent.click(screen.getByTestId("chat-composer-transcription-stop"));
     });
 
-    expect(send).toHaveBeenCalledTimes(1);
-    expect(send).toHaveBeenCalledWith("keep the transcript");
+    expect(send).not.toHaveBeenCalled();
     expect(screen.queryByText(/^Recording .*\.wav$/)).toBeNull();
     expect(screen.getByRole("alert").textContent).toContain(
       "Recording too large to attach",
@@ -3169,7 +3102,7 @@ describe("ContinuousChatOverlay", () => {
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
-    it("renders the standalone thinking phase as chromeless shimmer", () => {
+    it("renders the thinking phase as a chromeless action-lane shimmer", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -3188,9 +3121,12 @@ describe("ContinuousChatOverlay", () => {
       expect(label.textContent).toContain("Thinking");
       expect(label.className).toContain("shimmer");
       expect(screen.queryByTestId("turn-status-spinner")).toBeNull();
-      const row = screen.getByTestId("turn-status-row");
-      expect(row.className).not.toContain("rounded");
-      expect(row.className).not.toContain("border");
+      const accessory = screen.getByTestId("turn-status-accessory");
+      expect(accessory.className).not.toContain("rounded");
+      expect(accessory.className).not.toContain("border");
+      expect(
+        accessory.closest('[data-testid="thread-line-actions"]'),
+      ).toBeTruthy();
     });
 
     it("humanizes the action name for a running_action phase", () => {
@@ -3209,7 +3145,7 @@ describe("ContinuousChatOverlay", () => {
       );
     });
 
-    it("keeps one shimmer row while the empty assistant placeholder arrives", () => {
+    it("keeps one action-lane shimmer while the empty assistant placeholder arrives", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -3225,15 +3161,17 @@ describe("ContinuousChatOverlay", () => {
         />,
       );
       fireEvent.focus(screen.getByLabelText("message"));
-      // The transport placeholder stays non-visual; the original status row
-      // remains mounted, so there is no bubble swap before the first token.
+      // The transport placeholder stays non-visual; status stays on the latest
+      // real message's action lane, so there is no bubble swap before token one.
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
       expect(indicators[0].getAttribute("data-status-kind")).toBe("waking");
       expect(
-        screen.getByTestId("turn-status-row").contains(indicators[0]),
+        screen.getByTestId("turn-status-accessory").contains(indicators[0]),
       ).toBe(true);
-      expect(indicators[0].closest('[data-testid="thread-line"]')).toBeNull();
+      expect(
+        indicators[0].closest('[data-testid="thread-line"]')?.textContent,
+      ).toContain("do it");
       const label = screen.getByTestId("turn-status-label");
       expect(label.textContent).toBe("Waking the agent");
       expect(label.className).toContain("shimmer");
@@ -4120,18 +4058,28 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     ).toBeNull();
   });
 
-  it("keeps reply state inside the bounded thread and clears it when the sheet closes", async () => {
-    openThreadWith({
-      messages: [
-        {
-          id: "reply-source",
-          role: "assistant",
-          content: "Reply without moving the sheet",
-          createdAt: 1,
-        },
-      ],
-    });
+  it("reserves an animated reply lane without focusing and clears it when the sheet closes", async () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "reply-source",
+              role: "assistant",
+              content: "Reply without moving the sheet",
+              createdAt: 1,
+            },
+          ],
+        })}
+      />,
+    );
     const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    const input = screen.getByLabelText("message");
+    expect(document.activeElement).not.toBe(input);
     const detentBeforeReply = sheet.getAttribute("data-detent");
 
     revealActionsFor("Reply without moving the sheet");
@@ -4139,10 +4087,14 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
 
     const replyPill = screen.getByTestId("chat-reply-pill");
     expect(screen.getByTestId("chat-thread").contains(replyPill)).toBe(true);
-    expect(replyPill.parentElement?.className).toContain("absolute");
+    const replyLane = screen.getByTestId("chat-reply-lane");
+    expect(replyLane.className).toContain("shrink-0");
+    expect(replyLane.className).toContain("overflow-hidden");
+    expect(replyLane.className).not.toContain("absolute");
     expect(sheet.getAttribute("data-detent")).toBe(detentBeforeReply);
+    expect(document.activeElement).not.toBe(input);
 
-    fireEvent.keyDown(screen.getByLabelText("message"), { key: "Escape" });
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(sheet.getAttribute("data-variant")).toBe("closed");
     await waitFor(() => {
       expect(screen.queryByTestId("chat-reply-pill")).toBeNull();

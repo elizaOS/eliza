@@ -18,7 +18,7 @@
  * Presentation only — actions are delegated to callbacks.
  */
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { motion } from "motion/react";
 import type * as React from "react";
 import {
   type KeyboardEvent,
@@ -70,6 +70,12 @@ export type ChatMessageAppearance = "panel" | "glass";
 const MotionMessageRow = motion.create(MessageRow);
 
 export interface ChatMessageProps {
+  /**
+   * Live, non-message state that shares the glass action lane. The continuous
+   * overlay uses this for the active turn label so status never consumes a
+   * second transcript row.
+   */
+  actionAccessory?: React.ReactNode;
   agentName?: string;
   /** Chrome: theme-token `panel` (default) or the overlay's floating `glass`. */
   appearance?: ChatMessageAppearance;
@@ -403,6 +409,7 @@ function arePropsEqual(
 ): boolean {
   const sharedEqual =
     prev.isGrouped === next.isGrouped &&
+    prev.actionAccessory === next.actionAccessory &&
     prev.agentName === next.agentName &&
     prev.appearance === next.appearance &&
     prev.reduceMotion === next.reduceMotion &&
@@ -464,6 +471,7 @@ function arePropsEqual(
 
 export const ChatMessage = memo(function ChatMessage({
   message,
+  actionAccessory,
   appearance = "panel",
   isGrouped = false,
   agentName = "Agent",
@@ -487,9 +495,6 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const glass = appearance === "glass";
   const [copied, flashCopied] = useCopiedFlash(glass ? 1100 : 2000);
-  // The press-and-hold "Copied" chip (glass) — separate from the action-row
-  // copy state so a hold-flash never lights the row button and vice versa.
-  const [holdCopied, flashHoldCopied] = useCopiedFlash(1100);
   const [showActions, setShowActions] = useState(false);
   const supportsHover = useSupportsHover();
   const [isEditing, setIsEditing] = useState(false);
@@ -571,14 +576,14 @@ export const ChatMessage = memo(function ChatMessage({
 
   const handleReply = useCallback(() => {
     onReply?.(message);
-    // Collapse the tap-revealed rail (touch/glass) after arming the reply so the
-    // focus returns to the composer, not a lingering action row.
+    // Collapse the tap-revealed rail after arming the reply so touch users see
+    // the new context lane instead of a stale action row.
     if (glass || !supportsHover) setShowActions(false);
   }, [message, onReply, glass, supportsHover]);
 
   // Press-and-hold to copy an assistant answer (glass) — the only extraction
-  // affordance on touch. A still hold past COPY_HOLD_MS copies + flashes
-  // "Copied"; real finger travel cancels (shared usePointerPressAndHold).
+  // affordance on touch. A still hold past COPY_HOLD_MS copies silently; real
+  // finger travel cancels (shared usePointerPressAndHold).
   const canHoldCopy =
     glass && isAssistant && !!onLongPressCopy && trimmedText.length > 0;
   const holdBinding = usePointerPressAndHold<HTMLDivElement>({
@@ -587,7 +592,6 @@ export const ChatMessage = memo(function ChatMessage({
     canBegin: (e) => !isNestedInteractiveTarget(e.currentTarget, e.target),
     onHold: () => {
       onLongPressCopy?.(message.text);
-      flashHoldCopied();
     },
   });
   const holdHandlers = canHoldCopy ? holdBinding : null;
@@ -896,7 +900,9 @@ export const ChatMessage = memo(function ChatMessage({
     // capability above already excludes it, so hasActions is false and the
     // bubble stays a plain, non-interactive container.
     const hasActions = canRowCopy || canPlay || canEdit || canReply;
-    const accessoryVisible = actionsVisible || isEditing;
+    const hasActionLane = hasActions || Boolean(actionAccessory);
+    const accessoryVisible =
+      actionsVisible || isEditing || Boolean(actionAccessory);
     if (isEditing) accessoryModeRef.current = "edit";
     else if (actionsVisible) accessoryModeRef.current = "actions";
     // Retain the last visible contents while the shared slot collapses so its
@@ -998,21 +1004,6 @@ export const ChatMessage = memo(function ChatMessage({
               children ??
               message.text}
           </div>
-          <AnimatePresence>
-            {holdCopied ? (
-              <motion.span
-                key="copied"
-                data-testid="thread-line-copied"
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
-              >
-                Copied
-              </motion.span>
-            ) : null}
-          </AnimatePresence>
         </>
       );
 
@@ -1068,7 +1059,7 @@ export const ChatMessage = memo(function ChatMessage({
         <MessageRowContent
           className={cn(
             "relative flex flex-col",
-            hasActions && "pb-7 pointer-coarse:pb-11",
+            hasActionLane && "pb-6 pointer-coarse:pb-11",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1119,7 +1110,7 @@ export const ChatMessage = memo(function ChatMessage({
               {bubbleContent}
             </ChatBubble>
           )}
-          {hasActions ? (
+          {hasActionLane ? (
             <motion.div
               data-testid="thread-line-actions"
               aria-hidden={!accessoryVisible}
@@ -1168,6 +1159,7 @@ export const ChatMessage = memo(function ChatMessage({
                       onPlay={() => onSpeak?.(message.id, message.text)}
                       onReply={handleReply}
                       playing={playing}
+                      trailingAccessory={actionAccessory}
                     />
                   )}
                 </motion.div>

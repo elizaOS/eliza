@@ -568,11 +568,19 @@ function SoftButton({
 
 const COMPOSER_MIC_BARS = [
   { id: "outer-left", height: 10 },
+  { id: "far-left", height: 13 },
+  { id: "mid-far-left", height: 17 },
   { id: "mid-left", height: 16 },
+  { id: "near-left", height: 21 },
   { id: "inner-left", height: 22 },
+  { id: "center-left", height: 26 },
   { id: "center", height: 28 },
+  { id: "center-right", height: 26 },
   { id: "inner-right", height: 22 },
+  { id: "near-right", height: 21 },
   { id: "mid-right", height: 16 },
+  { id: "mid-far-right", height: 17 },
+  { id: "far-right", height: 13 },
   { id: "outer-right", height: 10 },
 ] as const;
 
@@ -597,16 +605,28 @@ function ComposerMicActivity({
     let frame = 0;
     const renderFrame = () => {
       analyser.getByteTimeDomainData(samples);
-      let energy = 0;
-      for (const sample of samples) {
-        const normalized = (sample - 128) / 128;
-        energy += normalized * normalized;
-      }
-      const rms = Math.sqrt(energy / Math.max(samples.length, 1));
-      const activity = Math.min(1, Math.max(0.14, rms * 5));
       barsRef.current.forEach((bar, index) => {
         if (!bar) return;
-        const centerWeight = 1 - Math.abs(index - 3) * 0.1;
+        const segmentStart = Math.floor(
+          (index * samples.length) / COMPOSER_MIC_BARS.length,
+        );
+        const segmentEnd = Math.max(
+          segmentStart + 1,
+          Math.floor(((index + 1) * samples.length) / COMPOSER_MIC_BARS.length),
+        );
+        let energy = 0;
+        for (
+          let sampleIndex = segmentStart;
+          sampleIndex < segmentEnd;
+          sampleIndex += 1
+        ) {
+          const normalized = ((samples[sampleIndex] ?? 128) - 128) / 128;
+          energy += normalized * normalized;
+        }
+        const rms = Math.sqrt(energy / (segmentEnd - segmentStart));
+        const activity = Math.min(1, Math.max(0.16, rms * 5.5));
+        const center = (COMPOSER_MIC_BARS.length - 1) / 2;
+        const centerWeight = 1 - Math.abs(index - center) * 0.035;
         bar.style.transform = `scaleY(${Math.max(0.18, activity * centerWeight)})`;
       });
       frame = window.requestAnimationFrame(renderFrame);
@@ -622,23 +642,27 @@ function ComposerMicActivity({
         finishing ? "Finishing transcription" : "Live microphone activity"
       }
       data-testid="chat-composer-mic-activity"
-      className="flex min-h-8 min-w-0 flex-1 items-center justify-center gap-1.5 px-3 text-txt"
+      className="relative flex min-h-10 min-w-0 flex-1 items-center justify-between gap-1 px-2 text-white/85"
     >
       <span className="sr-only" aria-live="polite">
         {finishing
           ? "Finishing transcription"
           : transcript.trim() || "Listening"}
       </span>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent"
+      />
       {COMPOSER_MIC_BARS.map(({ id, height }, index) => (
         <span
-          // The fixed seven-bar geometry is presentation-only and never reorders.
+          // Stable bar ids keep imperative analyser writes independent of React.
           key={id}
           ref={(node) => {
             barsRef.current[index] = node;
           }}
           aria-hidden="true"
           className={cn(
-            "w-1 origin-center rounded-full bg-current shadow-[0_0_9px_rgba(255,255,255,0.38)] transition-transform duration-75",
+            "relative z-10 w-0.5 origin-center rounded-full bg-current shadow-[0_0_9px_rgba(255,255,255,0.4)] transition-transform duration-75 sm:w-1",
             !finishing &&
               !analyser &&
               "animate-pulse motion-reduce:animate-none",
@@ -849,9 +873,9 @@ function MessageScrollerSendFollow({ request }: { request: number }) {
 }
 
 /**
- * The phase-aware status row shown while the assistant works (#8813). It stays
- * chromeless so the temporary lifecycle state cannot be mistaken for a message;
- * the same compact shimmer is used before and after the placeholder arrives.
+ * The phase-aware status accessory shown while the assistant works (#8813).
+ * It stays chromeless inside the latest message's action lane so temporary
+ * lifecycle state cannot be mistaken for another transcript row.
  */
 function TurnStatusIndicator({
   status,
@@ -862,8 +886,8 @@ function TurnStatusIndicator({
 }): React.JSX.Element {
   return (
     <motion.div
-      className="mb-2 flex w-full justify-start py-1"
-      data-testid="turn-status-row"
+      className="flex min-w-0 shrink-0 items-center whitespace-nowrap"
+      data-testid="turn-status-accessory"
       // A pure opacity dissolve avoids adding another moving surface while the
       // real assistant turn mounts and begins streaming beneath it.
       initial={{ opacity: 0 }}
@@ -1339,10 +1363,6 @@ export function ContinuousChatOverlay({
   draftRef.current = draft;
   const pendingImagesRef = React.useRef(pendingImages);
   pendingImagesRef.current = pendingImages;
-  // Session completion is normally delivered back into the editable draft.
-  // The transcription Send control changes that disposition for exactly one
-  // drain/finalize cycle without teaching the voice engine about composer UI.
-  const transcriptionDeliveryRef = React.useRef<"draft" | "send">("draft");
   // Finalization drains the capture asynchronously. An immediate ref closes
   // the same-frame double-tap gap before React can paint the disabled controls.
   const transcriptionFinishingRef = React.useRef(false);
@@ -1858,6 +1878,23 @@ export function ContinuousChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
+  const turnStatusAnchorId = React.useMemo(() => {
+    if (!responding) return null;
+    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+      const candidate = visibleMessages[index];
+      if (!candidate) continue;
+      const isEmptyAssistantPlaceholder =
+        candidate.role === "assistant" &&
+        !candidate.content.trim() &&
+        !candidate.attachments?.length &&
+        !candidate.failureKind &&
+        !candidate.reasoning?.trim() &&
+        !candidate.secretRequest &&
+        !candidate.toolEvents?.length;
+      if (!isEmptyAssistantPlaceholder) return candidate.id;
+    }
+    return null;
+  }, [responding, visibleMessages]);
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The thread body is mounted while the sheet is open OR during an upward
@@ -2082,13 +2119,13 @@ export function ContinuousChatOverlay({
   );
   // Reply arms the shared composer reply target so the next send() stamps
   // replyToMessageId (attached at the sendChatText chokepoint → REPLY_CONTEXT)
-  // and the pill renders above the input. Opens the sheet so the reply is typed
-  // against the visible thread, not the bare collapsed bar.
+  // and the pill renders above the input. Arming a reply must not focus the
+  // composer: on touch devices that would raise the keyboard and move the
+  // entire sheet before the user has chosen to type.
   const handleReplyMessage = React.useCallback(
     (message: ChatMessageData) => {
       setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
-      inputRef.current?.focus();
     },
     [setChatReplyTarget, agentName],
   );
@@ -2109,8 +2146,8 @@ export function ContinuousChatOverlay({
         !message.secretRequest &&
         !message.toolEvents?.length;
       // The server's empty assistant placeholder is deliberately not a visual
-      // turn. Keeping the single status row mounted across this transport state
-      // prevents a Thinking/Replying bubble swap before the first token lands.
+      // turn. The status remains attached to the latest real message's action
+      // lane, preventing a Thinking/Replying bubble swap before the first token.
       if (isInFlight) return null;
       // Only the last assistant turn reads volatile reasoning suppression;
       // every settled row gets no renderContext so its memo identity is stable.
@@ -2123,6 +2160,11 @@ export function ContinuousChatOverlay({
       return (
         <MessageScrollerItem key={m.id} messageId={m.id} className="w-full">
           <ChatMessage
+            actionAccessory={
+              responding && m.id === turnStatusAnchorId ? (
+                <TurnStatusIndicator status={turnStatus} reduce={reduce} />
+              ) : undefined
+            }
             appearance="glass"
             enterOnMount={m.id.startsWith("temp-")}
             agentName={agentName}
@@ -2145,6 +2187,8 @@ export function ContinuousChatOverlay({
     },
     [
       visibleMessages.length,
+      turnStatusAnchorId,
+      turnStatus,
       agentName,
       reduce,
       handleCopyMessage,
@@ -2290,30 +2334,17 @@ export function ContinuousChatOverlay({
     [canSend, firstRunOpen, send, setDraft, setPendingImages, viewChatBinding],
   );
 
-  const finishTranscription = React.useCallback(
-    async (delivery: "draft" | "send") => {
-      if (transcriptionFinishingRef.current) return;
-      transcriptionFinishingRef.current = true;
-      setTranscriptionFinishing(true);
-      transcriptionDeliveryRef.current = delivery;
-      try {
-        await toggleTranscriptionMode();
-      } finally {
-        // An empty/error session never reaches the sink. Reset here as well so
-        // its delivery intent cannot leak into a later recording.
-        transcriptionDeliveryRef.current = "draft";
-        transcriptionFinishingRef.current = false;
-        setTranscriptionFinishing(false);
-        // The textarea remounts only after the finishing guard drops. Restore
-        // focus on the next frame so Stop opens the editable result and Send
-        // leaves the composer ready for the next turn.
-        if (typeof window !== "undefined") {
-          window.requestAnimationFrame(() => inputRef.current?.focus());
-        }
-      }
-    },
-    [toggleTranscriptionMode],
-  );
+  const finishTranscription = React.useCallback(async () => {
+    if (transcriptionFinishingRef.current) return;
+    transcriptionFinishingRef.current = true;
+    setTranscriptionFinishing(true);
+    try {
+      await toggleTranscriptionMode();
+    } finally {
+      transcriptionFinishingRef.current = false;
+      setTranscriptionFinishing(false);
+    }
+  }, [toggleTranscriptionMode]);
 
   const addImageFiles = React.useCallback(
     (files: FileList | File[]) => {
@@ -3637,15 +3668,12 @@ export function ContinuousChatOverlay({
     return () => setDictationSink(null);
   }, [setDictationSink, setDraft, expand]);
 
-  // A completed transcription session has one drain path. Stop returns its text
-  // and optional recording to the editable composer; Send delivers that exact
-  // combined payload directly, avoiding a render-timing race between draining
-  // the capture and submitting the draft. Both paths still archive the session.
+  // A completed transcription session has one drain path: it restores text and
+  // optional audio to the editable composer without changing the sheet detent.
+  // The user explicitly chooses when to focus, review, or send the result.
   React.useEffect(() => {
     setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
       if (segments.length === 0) return;
-      const delivery = transcriptionDeliveryRef.current;
-      transcriptionDeliveryRef.current = "draft";
       const text = transcriptPlainText(segments);
       const stamp = new Date(startedAtMs)
         .toISOString()
@@ -3685,24 +3713,9 @@ export function ContinuousChatOverlay({
             MAX_CHAT_IMAGES,
           )
         : pendingImagesRef.current;
-      // Agent availability can change while the microphone drains. Never discard
-      // the finished session because Send was valid at pointer-down but no longer
-      // valid when the final ASR payload arrives; preserve it as an editable draft.
-      const deliverImmediately =
-        delivery === "send" && canSend && !firstRunOpen;
-      if (deliverImmediately) {
-        submitText(combinedText, combinedImages);
-      } else {
-        if (text) setDraft(combinedText);
-        if (recordingAttachment) setPendingImages(combinedImages);
-      }
-      // submitText clears attachment errors as part of a successful send. Apply
-      // this notice afterwards so a sent transcript never silently omits its WAV.
+      if (text) setDraft(combinedText);
+      if (recordingAttachment) setPendingImages(combinedImages);
       if (recordingError) setImageError(recordingError);
-      if (!deliverImmediately && (text || hasAudio)) {
-        expand();
-        inputRef.current?.focus();
-      }
       void client
         .createTranscript({
           segments,
@@ -3724,15 +3737,7 @@ export function ContinuousChatOverlay({
         });
     });
     return () => setTranscriptSessionSink(null);
-  }, [
-    setTranscriptSessionSink,
-    setDraft,
-    setPendingImages,
-    submitText,
-    expand,
-    canSend,
-    firstRunOpen,
-  ]);
+  }, [setTranscriptSessionSink, setDraft, setPendingImages]);
 
   // Tell the controller whether a draft is pending so the hands-free always-on
   // loop pauses while the user is typing (or editing a PTT dictation) and
@@ -5608,48 +5613,38 @@ export function ContinuousChatOverlay({
                             : visibleMessages.map((m, i) =>
                                 renderThreadLine(m, i),
                               )}
-                          <AnimatePresence>
-                            {/* One persistent inline status (#8813) spans the
-                          whole active turn. The server's empty assistant
-                          placeholder never replaces it, so rapid Thinking →
-                          Replying phases update one shimmer instead of flashing
-                          between temporary message bubbles. */}
-                            {responding ? (
-                              <MessageScrollerItem
-                                key="turn-status"
-                                className="w-full"
-                              >
-                                <TurnStatusIndicator
-                                  status={turnStatus}
-                                  reduce={reduce}
-                                />
-                              </MessageScrollerItem>
-                            ) : null}
-                          </AnimatePresence>
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>
-                    {/* Reply overlays the motion-bounded thread instead of joining
-                        its flex flow, so arming it cannot move the transcript,
-                        composer, or bottom-anchored sheet. */}
+                    {/* Reply gets a dedicated lane below the viewport. Its measured
+                        height eases into the fixed scroller, so the latest message
+                        and its actions glide clear instead of being covered or
+                        making the bottom-anchored sheet itself jump. */}
                     <AnimatePresence initial={false}>
                       {chatReplyTarget ? (
                         <motion.div
                           key="chat-reply-target"
-                          initial={reduce ? false : { opacity: 0, y: 4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={reduce ? undefined : { opacity: 0, y: 4 }}
+                          data-testid="chat-reply-lane"
+                          initial={
+                            reduce ? false : { height: 0, opacity: 0, y: 5 }
+                          }
+                          animate={{ height: "auto", opacity: 1, y: 0 }}
+                          exit={
+                            reduce ? undefined : { height: 0, opacity: 0, y: 5 }
+                          }
                           transition={{
-                            duration: reduce ? 0 : 0.18,
-                            ease: "easeOut",
+                            duration: reduce ? 0 : 0.32,
+                            ease: OVERLAY_EASE,
                           }}
-                          className="absolute inset-x-0 bottom-0 z-10 px-3 pb-2"
+                          className="z-10 shrink-0 overflow-hidden"
                         >
-                          <ChatReplyPill
-                            appearance="glass"
-                            target={chatReplyTarget}
-                            onCancel={() => setChatReplyTarget(null)}
-                          />
+                          <div className="px-3 pb-2 pt-1">
+                            <ChatReplyPill
+                              appearance="glass"
+                              target={chatReplyTarget}
+                              onCancel={() => setChatReplyTarget(null)}
+                            />
+                          </div>
                         </motion.div>
                       ) : null}
                     </AnimatePresence>
@@ -5817,56 +5812,58 @@ export function ContinuousChatOverlay({
                   in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-lg"
-                    aria-label="chat actions"
-                    disabled={firstRunOpen}
-                    data-testid="chat-composer-plus"
-                    // Same 40px box / 20px mark / padded-back-to-44px hit zone
-                    // as the SoftButton controls, so the row reads as one family.
-                    className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
+              {!transcriptionComposerActive ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-lg"
+                      aria-label="chat actions"
+                      disabled={firstRunOpen}
+                      data-testid="chat-composer-plus"
+                      // Same 40px box / 20px mark / padded-back-to-44px hit zone
+                      // as the SoftButton controls, so the row reads as one family.
+                      className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
+                    >
+                      <Glyph d={PLUS_GLYPH} className="size-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    side="top"
+                    align="start"
+                    sideOffset={10}
+                    // Above the shell overlay (z 9000); mirrors the config-select
+                    // floating layer so the menu never hides behind the glass.
+                    style={{ zIndex: 12000 }}
+                    // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
+                    // variant) instead of the flat opaque card.
+                    glass
+                    className="min-w-[13rem]"
                   >
-                    <Glyph d={PLUS_GLYPH} className="size-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  sideOffset={10}
-                  // Above the shell overlay (z 9000); mirrors the config-select
-                  // floating layer so the menu never hides behind the glass.
-                  style={{ zIndex: 12000 }}
-                  // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
-                  // variant) instead of the flat opaque card.
-                  glass
-                  className="min-w-[13rem]"
-                >
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    onSelect={() => openSearch()}
-                  >
-                    <Search
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Search chat…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    disabled={pendingImages.length >= MAX_CHAT_IMAGES}
-                    onSelect={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Upload file
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      onSelect={() => openSearch()}
+                    >
+                      <Search
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Search chat…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      disabled={pendingImages.length >= MAX_CHAT_IMAGES}
+                      onSelect={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Upload file
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
               {transcriptionComposerActive ? (
                 <ComposerMicActivity
                   analyser={analyser}
@@ -5976,56 +5973,24 @@ export function ContinuousChatOverlay({
                 className="flex shrink-0 items-center gap-1.5 sm:gap-2"
               >
                 {transcriptionComposerActive ? (
-                  <>
-                    {/* Dictation owns the mic slot while live: the same place
-                        that starts capture becomes its single stop control. */}
-                    <SoftButton
-                      glyph={STOP_GLYPH}
-                      label={
-                        transcriptionFinishing
-                          ? "finishing transcription"
-                          : "stop transcription"
-                      }
-                      disabled={firstRunOpen || transcriptionFinishing}
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => void finishTranscription("draft")}
-                      testId="chat-composer-transcription-stop"
-                    />
-                    <SoftButton
-                      icon={SendHorizontal}
-                      label={
-                        transcriptionFinishing
-                          ? "send transcription (finishing)"
-                          : canSend
-                            ? "send transcription"
-                            : "send transcription (agent stopped)"
-                      }
-                      disabled={
-                        firstRunOpen || !canSend || transcriptionFinishing
-                      }
-                      onPointerDown={(event) => event.preventDefault()}
-                      onClick={() => void finishTranscription("send")}
-                      testId="chat-composer-action"
-                    />
-                  </>
+                  /* The rightmost transcription mic becomes Stop. Activity owns
+                     every other composer pixel until capture finishes. */
+                  <SoftButton
+                    glyph={STOP_GLYPH}
+                    label={
+                      transcriptionFinishing
+                        ? "finishing transcription"
+                        : "stop transcription"
+                    }
+                    disabled={firstRunOpen || transcriptionFinishing}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => void finishTranscription()}
+                    testId="chat-composer-transcription-stop"
+                  />
                 ) : (
                   <>
-                    {/* Dictation and spoken conversation are separate controls.
-                    Starting dictation temporarily replaces this whole layout so
-                    the waveform never reflects or owns transcript capture. */}
-                    {!((hasDraft || hasImages) && !recording) &&
-                    !(!recording && responding) ? (
-                      <SoftButton
-                        icon={Mic}
-                        label="start transcription"
-                        disabled={firstRunOpen}
-                        onPointerDown={(event) => event.preventDefault()}
-                        onClick={toggleTranscriptionMode}
-                        testId="chat-composer-transcribe"
-                      />
-                    ) : null}
-                    {/* The rightmost slot morphs in place across send, generation
-                    stop, and voice so ordinary composer changes never pop it. */}
+                    {/* The left trailing slot morphs across send, generation stop,
+                    and spoken conversation without reshuffling the row. */}
                     <div className="shrink-0">
                       {(hasDraft || hasImages) && !recording ? (
                         <SoftButton
@@ -6076,6 +6041,19 @@ export function ContinuousChatOverlay({
                         />
                       )}
                     </div>
+                    {/* Dictation stays rightmost so starting it can morph this mic
+                    directly into the active Stop control. */}
+                    {!((hasDraft || hasImages) && !recording) &&
+                    !(!recording && responding) ? (
+                      <SoftButton
+                        icon={Mic}
+                        label="start transcription"
+                        disabled={firstRunOpen}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={toggleTranscriptionMode}
+                        testId="chat-composer-transcribe"
+                      />
+                    ) : null}
                   </>
                 )}
               </div>
