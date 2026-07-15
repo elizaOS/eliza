@@ -643,6 +643,16 @@ export class CacheClient {
                 );
               }
             })
+            .catch((error) => {
+              // Fire-and-forget: without this catch every failed/timed-out
+              // background revalidation became an unhandled rejection (nobody
+              // awaits the queued promise). The stale value already served
+              // stays in place; the next stale hit retries.
+              logger.warn("[Cache] Background revalidation failed", {
+                key,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            })
             .finally(() => {
               this.revalidationQueue.delete(key);
             });
