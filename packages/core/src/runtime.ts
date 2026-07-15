@@ -5558,7 +5558,7 @@ export class AgentRuntime implements IAgentRuntime {
 						}
 					}
 				}
-				const startTime =
+				let startTime =
 					typeof performance !== "undefined" &&
 					typeof performance.now === "function"
 						? performance.now()
@@ -5933,6 +5933,16 @@ export class AgentRuntime implements IAgentRuntime {
 					"Using model",
 				);
 
+				// The model-call timing window opens HERE, not at useModel entry:
+				// everything above (streaming setup, secret/PII swap sessions,
+				// pre_model hooks, prompt extraction) is runtime work, and charging
+				// it to the provider span makes `model:*` timings unreadable as
+				// provider latency (#16394).
+				startTime =
+					typeof performance !== "undefined" &&
+					typeof performance.now === "function"
+						? performance.now()
+						: Date.now();
 				const rawResponse = await handler(
 					this,
 					modelParams as Record<string, JsonValue | object>,
