@@ -172,19 +172,19 @@ function buildInvestorSummary(
 ): string {
   switch (trustLevel) {
     case "very_high":
-      return "This wallet demonstrates consistently strong trust indicators based on the available blockchain evidence.";
+      return "This wallet demonstrates consistently strong trust indicators. The available blockchain evidence supports a very high level of trust, with only minimal evidence limitations identified.";
 
     case "high":
-      return "This wallet demonstrates mostly positive trust indicators with only limited concerns.";
+      return "This wallet demonstrates mostly positive trust indicators. The available evidence supports a high level of trust, although some information could not be fully verified.";
 
     case "medium":
-      return "This wallet currently shows a balanced mix of positive indicators and evidence limitations.";
+      return "This wallet shows more positive than negative trust indicators. While the available blockchain evidence is generally reassuring, some missing or limited information prevents a higher trust assessment.";
 
     case "low":
-      return "This wallet currently shows limited positive trust indicators and several areas requiring caution.";
+      return "This wallet currently shows limited positive trust indicators. The available evidence contains several uncertainties or concerns that reduce the overall trust assessment.";
 
     case "very_low":
     default:
-      return "This wallet currently demonstrates very limited trust indicators based on the available evidence.";
+      return "This wallet currently demonstrates very limited trust indicators. Based on the available blockchain evidence, significant uncertainties or negative indicators reduce confidence in the overall trust assessment.";
   }
 }
