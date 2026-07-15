@@ -534,6 +534,28 @@ describe("notification-store", () => {
     expect(pushNotificationBanner.mock.calls[0][0].title).toBe("From WS");
   });
 
+  it("ignores replayed notification history and leaves hydration authoritative", async () => {
+    initNotifications();
+    await flushDelivery();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      replayed: true,
+      stream: "notification",
+      payload: {
+        type: "notification",
+        notification: makeNotification({ title: "Historical" }),
+        unreadCount: 99,
+      },
+    });
+    await flushDelivery();
+    expect(__getStateForTests().notifications).toHaveLength(0);
+    expect(__getStateForTests().unreadCount).toBe(0);
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+    expect(showNativeNotification).not.toHaveBeenCalled();
+  });
+
   it("WS handler drops a payload missing id or title (validated, not cast)", async () => {
     initNotifications();
     const handler = onWsEvent.mock.calls[0][1] as (

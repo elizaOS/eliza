@@ -235,11 +235,13 @@ describe("parseStreamEventEnvelopeEvent", () => {
       ...valid,
       runId: "r1",
       seq: 4,
+      replayed: true,
       agentId: "a1",
       stream: 99, // wrong type → ignored
     });
     expect(env?.runId).toBe("r1");
     expect(env?.seq).toBe(4);
+    expect(env?.replayed).toBe(true);
     expect(env?.agentId).toBe("a1");
     expect(env?.stream).toBeUndefined();
   });
