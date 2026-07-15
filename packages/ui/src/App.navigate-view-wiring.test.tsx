@@ -216,6 +216,7 @@ vi.mock("./bridge/electrobun-rpc", () => desktopBridgeMock);
 
 vi.mock("./bridge/electrobun-runtime", () => ({
   isElectrobunRuntime: () => true,
+  getElectrobunWindowId: () => null,
 }));
 
 vi.mock("./platform/init", () => ({
