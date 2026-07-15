@@ -4,8 +4,8 @@
  */
 import type { Content, IAgentRuntime, Memory } from "@elizaos/core";
 import { getConnectorCommands } from "@elizaos/plugin-commands";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PermissionFlagsBits } from "discord.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The connector bridge gates auth via the agent role model (`hasRoleAccess`).
 // Mock it so each test controls the sender's resolved trust level without

@@ -120,8 +120,8 @@ describe("matchShortcut — explicit tier (always-on)", () => {
 	});
 	it("matches a mention-prefixed alias even when natural is disabled", () => {
 		expect(
-			matchShortcut(defs, "<@123> /settings", { allowNatural: false })
-				?.shortcut.id,
+			matchShortcut(defs, "<@123> /settings", { allowNatural: false })?.shortcut
+				.id,
 		).toBe("cmd:settings");
 	});
 	it("does not strip a mention that is part of an argument", () => {

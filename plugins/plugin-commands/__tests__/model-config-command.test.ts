@@ -371,8 +371,12 @@ describe("/model show → GET /api/models/config", () => {
 		expect((init as RequestInit).method).toBe("GET");
 		// Human slots with friendly source labels — the raw persistence keys
 		// (ELIZA_*_MODEL_POWERFUL, …) must never reach the operator.
-		expect(r.reply).toContain("small: gpt-oss-120b (app config, via api.openai.com)");
-		expect(r.reply).toContain("large: zai-glm-4.7 (environment, via api.openai.com)");
+		expect(r.reply).toContain(
+			"small: gpt-oss-120b (app config, via api.openai.com)",
+		);
+		expect(r.reply).toContain(
+			"large: zai-glm-4.7 (environment, via api.openai.com)",
+		);
 		expect(r.reply).toContain("codex: gpt-5.6-terra (default)");
 		expect(r.reply).toContain("eliza: uses the runtime's own chat models");
 		expect(r.reply).not.toContain("MODEL_POWERFUL");
