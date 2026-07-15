@@ -1093,9 +1093,9 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
       } catch (err) {
         result.failed += 1;
         const message = err instanceof Error ? err.message : String(err);
-        if (/401|403|invalid|unauthor/i.test(message)) {
+        if (/\b(?:HTTP\s*)?(?:401|403)\b|unauthoriz/i.test(message)) {
           await pool.markNeedsReauth(record.id, message, { providerId });
-        } else if (/429|rate.?limit/i.test(message)) {
+        } else if (/\b(?:HTTP\s*)?429\b|rate.?limit/i.test(message)) {
           await pool.markRateLimited(
             record.id,
             Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
@@ -1103,8 +1103,16 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
             { providerId },
           );
         } else {
-          await pool.markInvalid(record.id, message, { providerId });
+          logger.warn(
+            `[AccountPool] usage refresh failed for ${providerId}/${record.id} without proving credential failure: ${message}`,
+          );
         }
+        // Usage parsing, transport, and provider-shape failures do not prove
+        // the credential is bad. Keep the current health so a successfully
+        // replaced credential cannot be permanently evicted merely because
+        // an optional usage endpoint changed shape. Explicit authentication
+        // failures above remain terminal; token-resolution failures are
+        // handled before this probe.
       }
     }
   }
