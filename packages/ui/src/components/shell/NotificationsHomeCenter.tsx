@@ -957,6 +957,17 @@ export function NotificationsHomeCenter({
     }, 500);
   }, []);
 
+  const armBackgroundClickSuppression = useCallback(() => {
+    suppressBackgroundClick.current = true;
+    if (suppressBackgroundClickTimer.current !== null) {
+      window.clearTimeout(suppressBackgroundClickTimer.current);
+    }
+    suppressBackgroundClickTimer.current = window.setTimeout(() => {
+      suppressBackgroundClick.current = false;
+      suppressBackgroundClickTimer.current = null;
+    }, 500);
+  }, []);
+
   const setPullPx = useCallback(
     (px: number, preserveDirectionAtZero = false) => {
       pullPxRef.current = px;
@@ -1746,6 +1757,7 @@ export function NotificationsHomeCenter({
         const pull = touch.clientY - expandAnchorY;
         if (pull > PULL_SLOP_PX) {
           ownsPull = true;
+          armBackgroundClickSuppression();
           event?.preventDefault();
           if (surface.scrollTop !== 0) surface.scrollTop = 0;
           setPullPx(dampenPull(pull));
@@ -1779,7 +1791,13 @@ export function NotificationsHomeCenter({
       if (finalTouch) updateTouchPosition(finalTouch);
       const shouldCommit = ownsPull;
       reset();
-      if (shouldCommit) commitPull();
+      if (shouldCommit) {
+        // Touch browsers synthesize a click after release. Refresh suppression
+        // here so a deliberate slow pull cannot expire the move-time guard and
+        // immediately look like an outside-tap collapse.
+        armBackgroundClickSuppression();
+        commitPull();
+      }
     };
     const onTouchCancel = () => {
       abort();
@@ -1811,6 +1829,7 @@ export function NotificationsHomeCenter({
       surface.removeEventListener("wheel", onWheel);
     };
   }, [
+    armBackgroundClickSuppression,
     commitPull,
     emptyGestureTargetRef,
     handleWheelDelta,
@@ -1933,16 +1952,6 @@ export function NotificationsHomeCenter({
       axis: "none" | "x" | "y";
       ownsPull: boolean;
     } | null = null;
-    const armClickSuppression = () => {
-      suppressBackgroundClick.current = true;
-      if (suppressBackgroundClickTimer.current !== null) {
-        window.clearTimeout(suppressBackgroundClickTimer.current);
-      }
-      suppressBackgroundClickTimer.current = window.setTimeout(() => {
-        suppressBackgroundClick.current = false;
-        suppressBackgroundClickTimer.current = null;
-      }, 500);
-    };
     const onClick = (event: MouseEvent) => {
       if (suppressBackgroundClick.current) {
         suppressBackgroundClick.current = false;
@@ -2003,7 +2012,7 @@ export function NotificationsHomeCenter({
           return;
         }
         surface.setPointerCapture?.(event.pointerId);
-        armClickSuppression();
+        armBackgroundClickSuppression();
       }
       if (current.axis !== "y") return;
       event.preventDefault();
@@ -2027,7 +2036,7 @@ export function NotificationsHomeCenter({
       onPointerMove(event);
       if (!gesture) return;
       if (current.axis === "y") {
-        armClickSuppression();
+        armBackgroundClickSuppression();
       }
       gesture = null;
       commitPull();
@@ -2052,6 +2061,7 @@ export function NotificationsHomeCenter({
     };
   }, [
     abortPointerPull,
+    armBackgroundClickSuppression,
     commitPull,
     emptyGestureTargetRef,
     requestShadeCollapse,
