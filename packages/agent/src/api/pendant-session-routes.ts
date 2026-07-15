@@ -228,8 +228,8 @@ function resolveIdentity(
       503,
     );
   }
-  const agentId = String(runtime.agentId ?? "").trim();
-  const ownerId = String(adminEntityId ?? "").trim();
+  const agentId = runtime.agentId == null ? "" : String(runtime.agentId).trim();
+  const ownerId = adminEntityId == null ? "" : String(adminEntityId).trim();
   if (!agentId || !ownerId) {
     throw routeError(
       "auth",
@@ -295,7 +295,7 @@ async function persistStored(params: {
     roomId: sessionRoomId(params.ownerId, params.agentId),
     content: {
       text: `Pendant session ${params.stored.session.id}`,
-      pendantSession: params.stored as unknown as JsonValue,
+      pendantSession: JSON.parse(JSON.stringify(params.stored)) as JsonValue,
     },
     metadata: {
       type: MemoryType.CUSTOM,
