@@ -32,7 +32,26 @@ const params =
 // Inject the home-widget data BEFORE the React tree renders so every widget's
 // mount-time fetch + the WidgetHost's plugin resolution see populated data.
 seedHomeWidgetAppStore();
-if (params.has("notificationMotion")) {
+if (params.has("notificationOverflow")) {
+  __resetNotificationStoreForTests();
+  const now = Date.now();
+  const notifications: AgentNotification[] = Array.from(
+    { length: 14 },
+    (_, index) => ({
+      id: `notif-overflow-${index}`,
+      title: `Overflow notification ${index + 1}`,
+      body: "Enough independent groups to require an internal shade scroll",
+      category: "system",
+      priority: "normal",
+      source: `overflow-source-${index}`,
+      createdAt: now - index * 1_000,
+      readAt: null,
+    }),
+  );
+  for (const notification of notifications) {
+    __ingestNotificationForTests(notification, notifications.length);
+  }
+} else if (params.has("notificationMotion")) {
   __resetNotificationStoreForTests();
   const now = Date.now();
   const notifications: AgentNotification[] = [

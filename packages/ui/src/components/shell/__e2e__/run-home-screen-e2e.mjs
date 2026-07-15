@@ -1483,6 +1483,7 @@ try {
       .getAttribute("data-shade-mode")) === "rested",
     "the original close clock completes after rejected empty-region swipes",
   );
+
   await notificationCenter.getByTestId("notifications-count-button").click();
   await notificationMotion.waitForTimeout(300);
 
@@ -2249,8 +2250,443 @@ try {
         .querySelector('[data-testid="home-notification-center"]')
         ?.hasAttribute("data-notification-reduced-motion"),
   );
+
+  // Reload into a clean shade before the deep-pull marker trace. Keeping this
+  // proof isolated prevents its release-click suppression from changing the
+  // interaction sequence exercised above.
+  await notificationMotion.goto(`${url}?notificationMotion`);
+  await notificationCenter.waitFor({ state: "visible", timeout: 5000 });
+  await waitForHomeEnterSettled(notificationMotion);
+  await notificationMotion.evaluate(() => {
+    window.__ELIZA_NOTIFICATION_DEEP_PULL_TRACE__ = [];
+    const startedAt = performance.now();
+    const sample = () => {
+      const list = document.querySelector(
+        '[data-testid="home-notification-list"]',
+      );
+      const row = document.querySelector(".eliza-notif-row");
+      const glass = row?.querySelector(".eliza-notif-glass");
+      const rowStyle = row ? getComputedStyle(row) : null;
+      window.__ELIZA_NOTIFICATION_DEEP_PULL_TRACE__.push({
+        t: performance.now() - startedAt,
+        mode: list?.getAttribute("data-shade-mode"),
+        releaseSettling: list?.hasAttribute("data-shade-release-settling"),
+        row: rowStyle
+          ? {
+              animationName: rowStyle.animationName,
+              opacity: Number.parseFloat(rowStyle.opacity),
+              transform: rowStyle.transform,
+              backgroundColor: glass
+                ? getComputedStyle(glass).backgroundColor
+                : null,
+            }
+          : null,
+      });
+      if (performance.now() - startedAt < 1_000) requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  });
+  await touchSwipe(
+    notificationMotion,
+    '[data-testid="home-notification-list"]',
+    0,
+    420,
+    { steps: 12, stepDelayMs: 12 },
+  );
+  await notificationMotion.waitForTimeout(700);
+  const deepPullTrace = await notificationMotion.evaluate(
+    () => window.__ELIZA_NOTIFICATION_DEEP_PULL_TRACE__,
+  );
+  const expandedDeepPullFrames = deepPullTrace.filter(
+    (sample) => sample.mode === "expanded" && sample.row,
+  );
+  const settledDeepPullFrames = expandedDeepPullFrames.filter(
+    (sample) => !sample.releaseSettling,
+  );
+  const expandedGlassColors = new Set(
+    expandedDeepPullFrames
+      .map((sample) => sample.row.backgroundColor)
+      .filter(Boolean),
+  );
+  assert(
+    expandedDeepPullFrames.some((sample) => sample.releaseSettling) &&
+      settledDeepPullFrames.length > 0,
+    "deep pull trace spans the release marker handoff",
+  );
+  assert(
+    expandedDeepPullFrames.every(
+      (sample) => sample.row.animationName === "none",
+    ),
+    "expanded notification rows never reactivate their view-timeline animation",
+  );
+  assert(
+    settledDeepPullFrames.every(
+      (sample) =>
+        sample.row.opacity >= 0.99 &&
+        (sample.row.transform === "none" ||
+          sample.row.transform === "matrix(1, 0, 0, 1, 0, 0)"),
+    ) && expandedGlassColors.size === 1,
+    `deep-pull marker clear preserves settled row opacity/transform/material (${JSON.stringify({ settledDeepPullFrames: settledDeepPullFrames.slice(-3), expandedGlassColors: [...expandedGlassColors] })})`,
+  );
   await notificationMotion.close();
   await notificationMotionContext.close();
+
+  // A short mobile viewport with enough independent producers to overflow
+  // proves the expanded shade consumes the column's live safe-bottom region.
+  // The home column owns the composer clearance, so the notification center
+  // must follow that boundary rather than introducing its own viewport cap.
+  const notificationGeometryContext = await browser.newContext({
+    viewport: { width: 393, height: 852 },
+    deviceScaleFactor: 2,
+    hasTouch: true,
+    isMobile: true,
+  });
+  const notificationGeometry = await notificationGeometryContext.newPage();
+  notificationGeometry.on("pageerror", (e) => sink.errors.push(String(e)));
+  await installCoarsePointerMedia(notificationGeometry);
+  await notificationGeometry.goto(`${url}?notificationOverflow`);
+  await notificationGeometry
+    .getByTestId("home-notification-center")
+    .waitFor({ state: "visible", timeout: 5000 });
+  await waitForHomeEnterSettled(notificationGeometry);
+
+  const readShadeLayoutGeometry = () =>
+    notificationGeometry.evaluate(() => {
+      const column = document.querySelector(
+        '[data-testid="home-content-column"]',
+      );
+      const center = document.querySelector(
+        '[data-testid="home-notification-center"]',
+      );
+      const list = document.querySelector(
+        '[data-testid="home-notification-list"]',
+      );
+      const secondary = document.querySelector(
+        "[data-home-below-notifications]",
+      );
+      if (
+        !(column instanceof HTMLElement) ||
+        !(center instanceof HTMLElement) ||
+        !(list instanceof HTMLElement) ||
+        !(secondary instanceof HTMLElement)
+      ) {
+        return null;
+      }
+      return {
+        mode: list.getAttribute("data-shade-mode"),
+        preview: list.getAttribute("data-shade-preview"),
+        dragging: list.hasAttribute("data-shade-dragging"),
+        settling: list.hasAttribute("data-shade-settling"),
+        cancelling: center.hasAttribute(
+          "data-notification-shade-cancelling",
+        ),
+        columnBottom: column.getBoundingClientRect().bottom,
+        centerBottom: center.getBoundingClientRect().bottom,
+        secondary: {
+          height: secondary.getBoundingClientRect().height,
+          visibility: getComputedStyle(secondary).visibility,
+          transitionDuration: getComputedStyle(secondary).transitionDuration,
+        },
+        layoutDuration: column.style.getPropertyValue(
+          "--eliza-home-notification-settle-duration",
+        ),
+      };
+    });
+
+  // Holding a sub-threshold pull proves the preview receives the expanded
+  // runway before commit. Releasing it must reverse the same grid track while
+  // preview DOM is still mounted, with no second layout tail after cancellation.
+  const previewRestGeometry = await readShadeLayoutGeometry();
+  const previewListBox = await notificationGeometry
+    .getByTestId("home-notification-list")
+    .boundingBox();
+  assert(previewListBox !== null, "preview list geometry is measurable");
+  if (previewListBox) {
+    const previewX = previewListBox.x + previewListBox.width / 2;
+    const previewY = previewListBox.y + previewListBox.height / 2;
+    await notificationGeometry.mouse.move(previewX, previewY);
+    await notificationGeometry.mouse.down();
+    for (let step = 1; step <= 5; step += 1) {
+      await notificationGeometry.mouse.move(
+        previewX,
+        previewY + (30 * step) / 5,
+      );
+      await notificationGeometry.waitForTimeout(25);
+    }
+    await notificationGeometry.waitForTimeout(360);
+    const heldPreviewGeometry = await readShadeLayoutGeometry();
+    assert(
+      previewRestGeometry !== null &&
+        heldPreviewGeometry !== null &&
+        heldPreviewGeometry.preview === "expanding" &&
+        heldPreviewGeometry.dragging &&
+        heldPreviewGeometry.secondary.height <= 1 &&
+        heldPreviewGeometry.secondary.visibility === "hidden" &&
+        Math.abs(
+          heldPreviewGeometry.centerBottom - heldPreviewGeometry.columnBottom,
+        ) <= 2,
+      `active pull preview reaches the composer-safe boundary (${JSON.stringify({ previewRestGeometry, heldPreviewGeometry })})`,
+    );
+
+    await notificationGeometry.mouse.up();
+    const cancelStartGeometry = await readShadeLayoutGeometry();
+    await notificationGeometry.waitForTimeout(100);
+    const cancelMidGeometry = await readShadeLayoutGeometry();
+    const cancelDurationMs = Number.parseFloat(
+      cancelStartGeometry?.layoutDuration ?? "460",
+    );
+    await notificationGeometry.waitForTimeout(
+      Math.max(0, cancelDurationMs + 60 - 100),
+    );
+    const cancelSettledGeometry = await readShadeLayoutGeometry();
+    await notificationGeometry.waitForTimeout(220);
+    const cancelTailGeometry = await readShadeLayoutGeometry();
+    assert(
+      previewRestGeometry !== null &&
+        heldPreviewGeometry !== null &&
+        cancelStartGeometry !== null &&
+        cancelMidGeometry !== null &&
+        cancelSettledGeometry !== null &&
+        cancelTailGeometry !== null &&
+        cancelStartGeometry.mode === "rested" &&
+        cancelStartGeometry.preview === "expanding" &&
+        !cancelStartGeometry.dragging &&
+        cancelStartGeometry.cancelling &&
+        cancelMidGeometry.secondary.height >
+          heldPreviewGeometry.secondary.height + 1 &&
+        cancelSettledGeometry.preview === null &&
+        !cancelSettledGeometry.cancelling &&
+        Math.abs(
+          cancelSettledGeometry.secondary.height -
+            previewRestGeometry.secondary.height,
+        ) <= 1 &&
+        Math.abs(
+          cancelTailGeometry.secondary.height -
+            cancelSettledGeometry.secondary.height,
+        ) <= 1 &&
+        Math.abs(
+          cancelTailGeometry.centerBottom -
+            cancelSettledGeometry.centerBottom,
+        ) <= 1,
+      `cancelled pull reverses its layout on one settle clock (${JSON.stringify({ cancelStartGeometry, cancelMidGeometry, cancelSettledGeometry, cancelTailGeometry })})`,
+    );
+  }
+
+  await notificationGeometry
+    .getByTestId("notifications-count-button")
+    .click();
+  await notificationGeometry.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-testid="home-notification-list"]')
+        ?.getAttribute("data-shade-mode") === "expanded",
+  );
+  await notificationGeometry.waitForTimeout(520);
+
+  const readExpandedGeometry = () =>
+    notificationGeometry.evaluate(() => {
+      const home = document.querySelector('[data-testid="home-screen"]');
+      const column = document.querySelector(
+        '[data-testid="home-content-column"]',
+      );
+      const center = document.querySelector(
+        '[data-testid="home-notification-center"]',
+      );
+      const list = document.querySelector(
+        '[data-testid="home-notification-list"]',
+      );
+      const secondary = document.querySelector(
+        "[data-home-below-notifications]",
+      );
+      const clear = document.querySelector(
+        '[data-testid="notifications-clear-all"]',
+      );
+      const clearLabel = clear?.querySelector(
+        "[data-notification-clear-resting-label]",
+      );
+      const clearIcon = clear?.querySelector("svg");
+      if (
+        !(home instanceof HTMLElement) ||
+        !(column instanceof HTMLElement) ||
+        !(center instanceof HTMLElement) ||
+        !(list instanceof HTMLElement) ||
+        !(secondary instanceof HTMLElement) ||
+        !(clear instanceof HTMLElement) ||
+        !(clearLabel instanceof HTMLElement) ||
+        !(clearIcon instanceof SVGElement)
+      ) {
+        return null;
+      }
+      const rect = (element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          top: bounds.top,
+          right: bounds.right,
+          bottom: bounds.bottom,
+          left: bounds.left,
+          width: bounds.width,
+          height: bounds.height,
+        };
+      };
+      return {
+        home: rect(home),
+        column: rect(column),
+        center: rect(center),
+        list: {
+          ...rect(list),
+          clientHeight: list.clientHeight,
+          scrollHeight: list.scrollHeight,
+        },
+        secondary: {
+          ...rect(secondary),
+          visibility: getComputedStyle(secondary).visibility,
+        },
+        homePaddingBottom: Number.parseFloat(
+          getComputedStyle(home).paddingBottom,
+        ),
+        clear: {
+          ...rect(clear),
+          labelOpacity: Number.parseFloat(
+            getComputedStyle(clearLabel).opacity,
+          ),
+          iconOpacity: Number.parseFloat(getComputedStyle(clearIcon).opacity),
+        },
+      };
+    });
+
+  const initialExpandedGeometry = await readExpandedGeometry();
+  assert(
+    initialExpandedGeometry !== null,
+    "expanded overflow geometry is measurable",
+  );
+  if (initialExpandedGeometry) {
+    assert(
+      initialExpandedGeometry.secondary.height <= 1 &&
+        initialExpandedGeometry.secondary.visibility === "hidden",
+      `expanded shade folds secondary home content (${JSON.stringify(initialExpandedGeometry.secondary)})`,
+    );
+    assert(
+      Math.abs(
+        initialExpandedGeometry.center.bottom -
+          initialExpandedGeometry.column.bottom,
+      ) <= 2,
+      `expanded notification center reaches the composer-safe column bottom (${JSON.stringify({ centerBottom: initialExpandedGeometry.center.bottom, columnBottom: initialExpandedGeometry.column.bottom })})`,
+    );
+    assert(
+      Math.abs(
+        initialExpandedGeometry.column.bottom -
+          (initialExpandedGeometry.home.bottom -
+            initialExpandedGeometry.homePaddingBottom),
+      ) <= 2,
+      `home column ends at the live bottom clearance (${JSON.stringify({ homeBottom: initialExpandedGeometry.home.bottom, paddingBottom: initialExpandedGeometry.homePaddingBottom, columnBottom: initialExpandedGeometry.column.bottom })})`,
+    );
+    assert(
+      initialExpandedGeometry.list.scrollHeight >
+        initialExpandedGeometry.list.clientHeight + 2,
+      `overflowing expanded notifications scroll inside their available region (${JSON.stringify(initialExpandedGeometry.list)})`,
+    );
+    assert(
+      initialExpandedGeometry.clear.width >= 55 &&
+        initialExpandedGeometry.clear.labelOpacity >= 0.99 &&
+        initialExpandedGeometry.clear.iconOpacity <= 0.01,
+      `coarse-pointer clear control visibly rests as “Clear all” (${JSON.stringify(initialExpandedGeometry.clear)})`,
+    );
+  }
+
+  await notificationGeometry.evaluate(
+    () =>
+      document.documentElement.style.setProperty(
+        "--eliza-continuous-chat-clearance",
+        "7rem",
+      ),
+  );
+  await notificationGeometry.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  const adjustedExpandedGeometry = await readExpandedGeometry();
+  if (initialExpandedGeometry && adjustedExpandedGeometry) {
+    const expectedClearanceDelta = (7 - 5.25) * 16;
+    assert(
+      Math.abs(
+        initialExpandedGeometry.column.bottom -
+          adjustedExpandedGeometry.column.bottom -
+          expectedClearanceDelta,
+      ) <= 2 &&
+        Math.abs(
+          adjustedExpandedGeometry.center.bottom -
+            adjustedExpandedGeometry.column.bottom,
+        ) <= 2,
+      `expanded shade follows a live composer-clearance change (${JSON.stringify({ before: initialExpandedGeometry.column.bottom, after: adjustedExpandedGeometry.column.bottom, expectedClearanceDelta })})`,
+    );
+  }
+
+  const closeStartExpandedGeometry = await readShadeLayoutGeometry();
+  await notificationGeometry.getByTestId("notifications-collapse").click();
+  const closeStartGeometry = await readShadeLayoutGeometry();
+  await notificationGeometry.waitForTimeout(120);
+  const closeMidGeometry = await readShadeLayoutGeometry();
+  const closeDurationMs = Number.parseFloat(
+    closeStartGeometry?.layoutDuration ?? "460",
+  );
+  await notificationGeometry.waitForTimeout(
+    Math.max(0, closeDurationMs + 60 - 120),
+  );
+  const closeSettledGeometry = await readShadeLayoutGeometry();
+  await notificationGeometry.waitForTimeout(220);
+  const closeTailGeometry = await readShadeLayoutGeometry();
+  assert(
+    closeStartExpandedGeometry !== null &&
+      closeStartGeometry !== null &&
+      closeMidGeometry !== null &&
+      closeSettledGeometry !== null &&
+      closeTailGeometry !== null &&
+      closeStartGeometry.mode === "expanded" &&
+      closeStartGeometry.settling &&
+      closeMidGeometry.secondary.height >
+        closeStartGeometry.secondary.height + 1 &&
+      closeMidGeometry.centerBottom <
+        closeStartExpandedGeometry.centerBottom - 1 &&
+      closeSettledGeometry.mode === "rested" &&
+      !closeSettledGeometry.settling &&
+      Math.abs(
+        closeTailGeometry.secondary.height -
+          closeSettledGeometry.secondary.height,
+      ) <= 1 &&
+      Math.abs(
+        closeTailGeometry.centerBottom - closeSettledGeometry.centerBottom,
+      ) <= 1,
+    `committed close restores secondary content on the shade clock with no layout tail (${JSON.stringify({ closeStartGeometry, closeMidGeometry, closeSettledGeometry, closeTailGeometry })})`,
+  );
+
+  await notificationGeometry.goto(`${url}?notificationMotion`);
+  await notificationGeometry
+    .getByTestId("home-notification-center")
+    .waitFor({ state: "visible", timeout: 5000 });
+  await waitForHomeEnterSettled(notificationGeometry);
+  await notificationGeometry
+    .getByTestId("notifications-count-button")
+    .click();
+  await notificationGeometry.waitForTimeout(520);
+  const shortListGeometry = await notificationGeometry.evaluate(() => {
+    const list = document.querySelector(
+      '[data-testid="home-notification-list"]',
+    );
+    if (!(list instanceof HTMLElement)) return null;
+    return {
+      clientHeight: list.clientHeight,
+      scrollHeight: list.scrollHeight,
+    };
+  });
+  assert(
+    shortListGeometry !== null &&
+      shortListGeometry.scrollHeight <= shortListGeometry.clientHeight + 1,
+    `short expanded notification content does not create a false scroll range (${JSON.stringify(shortListGeometry)})`,
+  );
+  await notificationGeometry.close();
+  await notificationGeometryContext.close();
 
   // Measure the rail in a dedicated non-recording context. Video encoding is
   // intentionally excluded from the frame budget: the product never performs
@@ -2356,6 +2792,66 @@ try {
       (await center.getByTestId("notifications-clear-all").count()) === 1 &&
         (await center.getByTestId("notifications-collapse").count()) === 1,
       "desktop opens the same clear and collapse controls",
+    );
+    await desktop.waitForTimeout(520);
+    const clear = center.getByTestId("notifications-clear-all");
+    const readClearGeometry = () =>
+      clear.evaluate((button) => {
+        const label = button.querySelector(
+          "[data-notification-clear-resting-label]",
+        );
+        const icon = button.querySelector(
+          "[data-notification-clear-resting-icon]",
+        );
+        const slot = button.closest("[data-notification-clear-slot]");
+        const row = document.querySelector(
+          '[data-testid="notification-row"]',
+        );
+        if (
+          !(label instanceof HTMLElement) ||
+          !(icon instanceof SVGElement) ||
+          !(slot instanceof HTMLElement) ||
+          !(row instanceof HTMLElement)
+        ) {
+          return null;
+        }
+        const rect = (element) => {
+          const bounds = element.getBoundingClientRect();
+          return {
+            top: bounds.top,
+            right: bounds.right,
+            width: bounds.width,
+            height: bounds.height,
+          };
+        };
+        return {
+          button: rect(button),
+          slot: rect(slot),
+          row: rect(row),
+          labelOpacity: Number.parseFloat(getComputedStyle(label).opacity),
+          iconOpacity: Number.parseFloat(getComputedStyle(icon).opacity),
+        };
+      });
+    const clearRest = await readClearGeometry();
+    await clear.hover();
+    await desktop.waitForTimeout(220);
+    const clearHover = await readClearGeometry();
+    await desktop.mouse.move(0, 0);
+    await desktop.waitForTimeout(220);
+    const clearReturned = await readClearGeometry();
+    assert(
+      clearRest !== null &&
+        clearHover !== null &&
+        clearReturned !== null &&
+        clearRest.button.width <= 33 &&
+        clearHover.button.width >= 55 &&
+        clearHover.labelOpacity >= 0.99 &&
+        clearHover.iconOpacity <= 0.01 &&
+        Math.abs(clearRest.button.right - clearHover.button.right) <= 1 &&
+        Math.abs(clearRest.slot.width - clearHover.slot.width) <= 1 &&
+        Math.abs(clearRest.row.top - clearHover.row.top) <= 1 &&
+        clearReturned.button.width <= 33,
+      `desktop clear reveals leftward without shifting its slot or cards (${JSON.stringify({ clearRest, clearHover, clearReturned })})`,
     );
     await center.getByTestId("notifications-collapse").click();
     await center

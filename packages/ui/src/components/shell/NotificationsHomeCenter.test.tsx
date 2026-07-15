@@ -1434,6 +1434,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     );
     const clear = screen.getByTestId("notification-stack-clear");
     expect(clear.dataset.confirming).toBeUndefined();
+    expect(clear.className).toContain("w-8");
+    expect(clear.textContent).not.toContain("Clear all");
     fireEvent.click(clear);
     expect(clear.dataset.confirming).toBe("true");
     expect(__getStateForTests().notifications).toHaveLength(3);
@@ -2002,6 +2004,25 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const clear = screen.getByTestId("notifications-clear-all");
     expect(clear.className).toContain("h-8");
     expect(clear.className).not.toContain("min-h-touch");
+    expect(clear.className).toContain("eliza-notif-clear-all");
+    expect(clear.closest("li")?.className).toContain("justify-end");
+    expect(clear.closest("li")?.className).toContain("px-2");
+    const clearCss = clear
+      .closest("section")
+      ?.querySelector("style")?.textContent;
+    expect(clearCss).toContain(".eliza-notif-clear-all {");
+    expect(clearCss).toContain("@media (hover: none), (pointer: coarse)");
+    expect(clearCss).toContain("@media (hover: hover) and (pointer: fine)");
+    expect(clearCss).toContain(
+      ".eliza-notif-clear-all:not([data-confirming]):focus-visible",
+    );
+    const restingLabel = clear.querySelector(
+      "[data-notification-clear-resting-label]",
+    );
+    expect(restingLabel?.textContent).toBe("Clear all");
+    expect(
+      clear.querySelector("[data-notification-clear-resting-icon]"),
+    ).toBeTruthy();
     expect(clear.dataset.confirming).toBeUndefined();
     fireEvent.click(clear);
     expect(clear.dataset.confirming).toBe("true");
@@ -2244,8 +2265,22 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
     expect(list.hasAttribute("data-shade-dragging")).toBe(true);
-    expect(list.parentElement?.querySelector("style")?.textContent).toContain(
+    const css = list.parentElement?.querySelector("style")?.textContent ?? "";
+    expect(css).toContain(
       ".eliza-notif-scroll[data-shade-preview][data-shade-dragging]",
+    );
+    const releaseRule = css.match(
+      /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
+    )?.[1];
+    expect(releaseRule).toContain("animation: none");
+    expect(releaseRule).toContain("--scroll-fade-t: 1.25rem");
+    expect(releaseRule).toContain("--scroll-fade-b: 1.5rem");
+    expect(releaseRule).not.toContain("mask-image: none");
+    const rowAnimationGuard = css
+      .match(/[^{}]+\{\s*animation: none !important;\s*\}/g)
+      ?.find((rule) => rule.includes("data-shade-release-settling"));
+    expect(rowAnimationGuard).toContain(
+      '.eliza-notif-scroll[data-shade-mode="expanded"] .eliza-notif-row',
     );
     expect(groupContent?.style.transform).toBe(expectedTransform);
     expect(clearSlot?.style.transform).toBe(expectedTransform);
@@ -2266,6 +2301,43 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     act(() => vi.advanceTimersByTime(700));
     expect(list.hasAttribute("data-shade-release-settling")).toBe(false);
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
+      "0px",
+    );
+  });
+
+  it("finishes a deep-pull release transaction before an outside close", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = screen.getByTestId("home-notification-list");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 109,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 109,
+      clientX: 10,
+      clientY: 170,
+    });
+    act(() => vi.advanceTimersByTime(20));
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 109,
+      clientX: 10,
+      clientY: 170,
+    });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(true);
+    fireEvent.click(document.body);
+    expect(list.hasAttribute("data-shade-release-settling")).toBe(false);
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
     expect(list.style.getPropertyValue("--eliza-notif-pull-overshoot")).toBe(
       "0px",
     );

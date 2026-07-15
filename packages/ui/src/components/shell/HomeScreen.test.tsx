@@ -183,6 +183,90 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notification-group-label")).toBeNull();
   });
 
+  it("lets an expanded inbox consume the live composer-safe column", () => {
+    __ingestNotificationForTests(makeNotification());
+    render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
+
+    const home = screen.getByTestId("home-screen");
+    const column = screen.getByTestId("home-content-column");
+    const list = screen.getByTestId("home-notification-list");
+    const secondaryRegion = column.querySelector<HTMLElement>(
+      "[data-home-below-notifications]",
+    );
+    const secondaryRegionInner = column.querySelector<HTMLElement>(
+      "[data-home-below-notifications-inner]",
+    );
+    const css = home.querySelector("style")?.textContent ?? "";
+
+    expect(home.className).toContain("--eliza-continuous-chat-clearance");
+    expect(home.className).toContain("--safe-area-bottom");
+    expect(secondaryRegion).toBeTruthy();
+    expect(secondaryRegionInner?.className).toContain("min-h-0");
+    expect(secondaryRegionInner?.className).toContain("overflow-hidden");
+    expect(
+      secondaryRegion?.contains(screen.getByTestId("home-widget-host")),
+    ).toBe(true);
+    expect(secondaryRegion?.contains(screen.getByTestId("home-tiles"))).toBe(
+      true,
+    );
+    expect(css).toContain(
+      '[data-shade-preview="expanding"][data-shade-dragging]',
+    );
+    expect(css).toContain(
+      '[data-shade-mode="expanded"]:not([data-shade-settling])',
+    );
+    expect(css).toContain("grid-template-rows: 0fr");
+    expect(css).toContain("visibility: hidden");
+    expect(css).toContain("--eliza-home-notification-settle-duration");
+
+    fireEvent.pointerDown(list, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 91,
+      clientX: 100,
+      clientY: 100,
+    });
+    fireEvent.pointerMove(list, {
+      pointerType: "mouse",
+      pointerId: 91,
+      clientX: 100,
+      clientY: 130,
+    });
+    expect(list.getAttribute("data-shade-preview")).toBe("expanding");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(true);
+    fireEvent.pointerUp(list, {
+      pointerType: "mouse",
+      pointerId: 91,
+      clientX: 100,
+      clientY: 130,
+    });
+    expect(list.getAttribute("data-shade-preview")).toBe("expanding");
+    expect(list.hasAttribute("data-shade-dragging")).toBe(false);
+    expect(
+      screen
+        .getByTestId("home-notification-center")
+        .hasAttribute("data-notification-shade-cancelling"),
+    ).toBe(true);
+    expect(
+      column.style.getPropertyValue(
+        "--eliza-home-notification-settle-duration",
+      ),
+    ).toMatch(/^\d+ms$/);
+    act(() => vi.advanceTimersByTime(700));
+    expect(list.hasAttribute("data-shade-preview")).toBe(false);
+
+    fireEvent.wheel(list, { deltaY: -(PULL_COMMIT_PX + 10) });
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    expect(
+      column.style.getPropertyValue(
+        "--eliza-home-notification-settle-duration",
+      ),
+    ).toBe("460ms");
+  });
+
   it("keeps widget taps inert and expands a populated shade from a widget-area pull", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),
