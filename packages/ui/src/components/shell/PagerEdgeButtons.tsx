@@ -10,12 +10,11 @@ import { Button } from "../ui/button";
 
 /**
  * Web/desktop `<` `>` edge buttons for a horizontal pager (#10717). Rendered
- * ONLY on fine-pointer / hover-capable devices, so they never appear on
- * touch/coarse phones/tablets where the swipe gesture is the sole navigation.
- * There is deliberately NO width gate: page dots are off in production, so a
- * fine-pointer window below desktop width (a narrow browser window, a small
- * desktop shell) still needs a visible paging control alongside the drag
- * gesture.
+ * ONLY on desktop-width, fine-pointer / hover-capable devices, so they never
+ * appear in the compact mobile layout or on touch/coarse phones and tablets.
+ * Compact layouts keep the swipe gesture as their sole navigation even when a
+ * mouse happens to be attached or browser device emulation reports a fine
+ * pointer.
  *
  * Icon-only (no card chrome), neutral resting → neutral hover (no orange→black,
  * no blue), positioned on the vertical center of the left/right edges. Each
@@ -27,7 +26,7 @@ import { Button } from "../ui/button";
  * complements — every device gets exactly one of them, never both.
  */
 export const FINE_POINTER_EDGE_BUTTON_QUERY =
-  "(hover: hover) and (pointer: fine)";
+  "(min-width: 768px) and (hover: hover) and (pointer: fine)";
 
 export function PagerEdgeButtons({
   canPrev,

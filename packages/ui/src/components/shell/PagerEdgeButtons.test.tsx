@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 //
-// #10717: the web/desktop `< >` pager edge buttons — fine-pointer gated
-// (never on touch/coarse pointers, but at ANY viewport width), self-hiding at
-// the first/last page, click → goPrev/goNext.
+// #10717: the web/desktop `< >` pager edge buttons — desktop-width and
+// fine-pointer gated, self-hiding at the first/last page, click →
+// goPrev/goNext.
 
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,10 +11,18 @@ import {
   PagerEdgeButtons,
 } from "./PagerEdgeButtons";
 
-function mockPointerCapability({ finePointer }: { finePointer: boolean }) {
+function mockPointerCapability({
+  finePointer,
+  desktopViewport = true,
+}: {
+  finePointer: boolean;
+  desktopViewport?: boolean;
+}) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches:
       finePointer &&
+      desktopViewport &&
+      query.includes("(min-width: 768px)") &&
       query.includes("(hover: hover)") &&
       query.includes("(pointer: fine)"),
     media: query,
@@ -42,18 +50,15 @@ describe("PagerEdgeButtons (#10717)", () => {
     expect(queryByTestId("pager-edge-next")).toBeNull();
   });
 
-  it("gates on pointer capability only — no min-width clause, so a narrow fine-pointer window still gets a paging control", () => {
-    mockPointerCapability({ finePointer: true });
+  it("renders nothing in a mobile-width viewport even when the pointer is fine", () => {
+    mockPointerCapability({ finePointer: true, desktopViewport: false });
     const { queryByTestId } = render(
       <PagerEdgeButtons canPrev canNext goPrev={vi.fn()} goNext={vi.fn()} />,
     );
-    // The buttons render from the pointer-capability match alone; the media
-    // gate never consults the viewport width (below 1024px there are no page
-    // dots in production, so these arrows are the only paging control).
-    expect(queryByTestId("pager-edge-prev")).not.toBeNull();
-    expect(queryByTestId("pager-edge-next")).not.toBeNull();
+    expect(queryByTestId("pager-edge-prev")).toBeNull();
+    expect(queryByTestId("pager-edge-next")).toBeNull();
     expect(window.matchMedia).toHaveBeenCalledWith(
-      expect.not.stringContaining("min-width"),
+      expect.stringContaining("min-width: 768px"),
     );
   });
 
@@ -115,7 +120,7 @@ describe("PagerEdgeButtons (#10717)", () => {
 describe("FINE_POINTER_EDGE_BUTTON_QUERY complement contract", () => {
   it("is the exact fine-pointer query FirstSessionSwipeHint inverts", () => {
     expect(FINE_POINTER_EDGE_BUTTON_QUERY).toBe(
-      "(hover: hover) and (pointer: fine)",
+      "(min-width: 768px) and (hover: hover) and (pointer: fine)",
     );
   });
 

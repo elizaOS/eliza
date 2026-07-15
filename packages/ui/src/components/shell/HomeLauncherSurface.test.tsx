@@ -24,12 +24,16 @@ const originalMatchMedia = window.matchMedia;
 
 function mockDesktopPagingMedia({
   finePointer,
+  desktopViewport = true,
 }: {
   finePointer: boolean;
+  desktopViewport?: boolean;
 }): void {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches:
       finePointer &&
+      desktopViewport &&
+      query.includes("(min-width: 768px)") &&
       query.includes("(hover: hover)") &&
       query.includes("(pointer: fine)"),
     media: query,
@@ -189,8 +193,8 @@ describe("HomeLauncherSurface", () => {
     expect(screen.queryByTestId("rail-pager-edge-next")).toBeNull();
   });
 
-  it("shows rail edge buttons on any fine-pointer window — the gate has no min-width clause", () => {
-    mockDesktopPagingMedia({ finePointer: true });
+  it("hides rail edge buttons in the mobile layout even with a fine pointer", () => {
+    mockDesktopPagingMedia({ finePointer: true, desktopViewport: false });
     render(
       <HomeLauncherSurface
         home={<div>home</div>}
@@ -198,12 +202,9 @@ describe("HomeLauncherSurface", () => {
       />,
     );
 
-    // Fine pointer + hover is sufficient: a sub-1024px window still gets the
-    // `>` control (there are no page dots in production, so without it a
-    // narrow fine-pointer window would have no paging affordance at all).
-    expect(screen.queryByTestId("rail-pager-edge-next")).not.toBeNull();
+    expect(screen.queryByTestId("rail-pager-edge-next")).toBeNull();
     expect(window.matchMedia).toHaveBeenCalledWith(
-      expect.not.stringContaining("min-width"),
+      expect.stringContaining("min-width: 768px"),
     );
   });
 
