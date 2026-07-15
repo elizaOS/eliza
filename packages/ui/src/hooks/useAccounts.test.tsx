@@ -222,7 +222,7 @@ describe("useAccounts", () => {
     expect(screen.queryByRole("button", { name: "Reauthenticate" })).toBeNull();
     // Leave a stale regular list poll in flight while the probe fails.
     fireEvent.click(screen.getByRole("button", { name: "Poll" }));
-    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh usage" }));
 
     await screen.findByText("Needs reauth");
     expect(screen.getByRole("button", { name: "Reauthenticate" })).toBeTruthy();
