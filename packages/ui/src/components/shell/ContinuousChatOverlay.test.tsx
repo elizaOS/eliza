@@ -3444,12 +3444,15 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
     // Panel is closed at rest.
     expect(screen.queryByTestId("chat-message-search")).toBeNull();
-    // "+" → "Search chat…" reveals the search panel over the transcript.
+    // "+" → "Search chat…" reveals search on the sheet's existing liquid-glass
+    // surface without stacking a second black backdrop blur over it.
     openSearchFromComposerMenu();
     const searchLayer = screen.getByTestId("chat-message-search");
-    expect(searchLayer.className).toContain("bg-black/20");
-    expect(searchLayer.className).not.toContain("bg-scrim");
+    expect(searchLayer.className).not.toContain("backdrop-blur");
+    expect(searchLayer.className).not.toContain("bg-black");
     expect(screen.getByTestId("message-search-panel")).toBeTruthy();
+    expect(thread().getAttribute("aria-hidden")).toBe("true");
+    expect(thread().tabIndex).toBe(-1);
   });
 
   it("drives the header search → query → jump path against the real search API shape (#14330)", async () => {
