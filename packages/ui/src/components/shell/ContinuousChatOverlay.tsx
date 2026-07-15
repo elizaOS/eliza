@@ -545,7 +545,9 @@ function SoftButton({
         // 2.5.5) is preserved by the invisible `before` overlay that pads the
         // pointer zone back out past the visible box.
         "relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent [&_svg]:size-5",
-        active ? "text-accent" : "text-muted-strong hover:text-txt",
+        active
+          ? "text-accent hover:text-accent"
+          : "text-muted-strong hover:text-txt",
         // Pulse the accent glyph while capture is hot; reduced-motion falls back
         // to the static accent without adding background or border chrome.
         pulse && "animate-pulse motion-reduce:animate-none",
@@ -5635,9 +5637,9 @@ export function ContinuousChatOverlay({
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>
-                    {/* Reply stays inside the motion-bounded thread. Arming it can
-                        reduce the transcript viewport, but never changes the sheet
-                        detent or pushes the whole bottom-anchored panel upward. */}
+                    {/* Reply overlays the motion-bounded thread instead of joining
+                        its flex flow, so arming it cannot move the transcript,
+                        composer, or bottom-anchored sheet. */}
                     <AnimatePresence initial={false}>
                       {chatReplyTarget ? (
                         <motion.div
@@ -5649,7 +5651,7 @@ export function ContinuousChatOverlay({
                             duration: reduce ? 0 : 0.18,
                             ease: "easeOut",
                           }}
-                          className="relative z-10 shrink-0 px-3 pb-2"
+                          className="absolute inset-x-0 bottom-0 z-10 px-3 pb-2"
                         >
                           <ChatReplyPill
                             appearance="glass"
@@ -5823,71 +5825,56 @@ export function ContinuousChatOverlay({
                   in-app conversation, never connector actions on a
                   Discord/Telegram room. Search is agent-driveable; Upload is a
                   pure client affordance. */}
-              {transcriptionComposerActive ? (
-                <SoftButton
-                  glyph={STOP_GLYPH}
-                  label={
-                    transcriptionFinishing
-                      ? "finishing transcription"
-                      : "stop transcription"
-                  }
-                  disabled={firstRunOpen || transcriptionFinishing}
-                  onPointerDown={(event) => event.preventDefault()}
-                  onClick={() => void finishTranscription("draft")}
-                  testId="chat-composer-transcription-stop"
-                />
-              ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon-lg"
-                      aria-label="chat actions"
-                      disabled={firstRunOpen}
-                      data-testid="chat-composer-plus"
-                      // Same 40px box / 20px mark / padded-back-to-44px hit zone
-                      // as the SoftButton controls, so the row reads as one family.
-                      className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
-                    >
-                      <Glyph d={PLUS_GLYPH} className="size-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    side="top"
-                    align="start"
-                    sideOffset={10}
-                    // Above the shell overlay (z 9000); mirrors the config-select
-                    // floating layer so the menu never hides behind the glass.
-                    style={{ zIndex: 12000 }}
-                    // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
-                    // variant) instead of the flat opaque card.
-                    glass
-                    className="min-w-[13rem]"
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon-lg"
+                    aria-label="chat actions"
+                    disabled={firstRunOpen}
+                    data-testid="chat-composer-plus"
+                    // Same 40px box / 20px mark / padded-back-to-44px hit zone
+                    // as the SoftButton controls, so the row reads as one family.
+                    className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
                   >
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                      onSelect={() => openSearch()}
-                    >
-                      <Search
-                        className="h-4 w-4 shrink-0 text-muted"
-                        aria-hidden
-                      />
-                      Search chat…
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                      disabled={pendingImages.length >= MAX_CHAT_IMAGES}
-                      onSelect={() => fileInputRef.current?.click()}
-                    >
-                      <Paperclip
-                        className="h-4 w-4 shrink-0 text-muted"
-                        aria-hidden
-                      />
-                      Upload file
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+                    <Glyph d={PLUS_GLYPH} className="size-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  side="top"
+                  align="start"
+                  sideOffset={10}
+                  // Above the shell overlay (z 9000); mirrors the config-select
+                  // floating layer so the menu never hides behind the glass.
+                  style={{ zIndex: 12000 }}
+                  // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
+                  // variant) instead of the flat opaque card.
+                  glass
+                  className="min-w-[13rem]"
+                >
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                    onSelect={() => openSearch()}
+                  >
+                    <Search
+                      className="h-4 w-4 shrink-0 text-muted"
+                      aria-hidden
+                    />
+                    Search chat…
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                    disabled={pendingImages.length >= MAX_CHAT_IMAGES}
+                    onSelect={() => fileInputRef.current?.click()}
+                  >
+                    <Paperclip
+                      className="h-4 w-4 shrink-0 text-muted"
+                      aria-hidden
+                    />
+                    Upload file
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               {transcriptionComposerActive ? (
                 <ComposerMicActivity
                   analyser={analyser}
@@ -5992,29 +5979,26 @@ export function ContinuousChatOverlay({
                 </span>
               ) : null}
               {/* Trailing controls. */}
-              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <div
+                data-testid="chat-composer-trailing-controls"
+                className="flex shrink-0 items-center gap-1.5 sm:gap-2"
+              >
                 {transcriptionComposerActive ? (
                   <>
-                    {/* Stop owns session finalization; this neutral status is a
-                    live capture cue, not a second toggle for the same mic. */}
-                    <div
-                      role="status"
-                      aria-label={
+                    {/* Dictation owns the mic slot while live: the same place
+                        that starts capture becomes its single stop control. */}
+                    <SoftButton
+                      glyph={STOP_GLYPH}
+                      label={
                         transcriptionFinishing
-                          ? "Finishing transcription"
-                          : "Transcribing"
+                          ? "finishing transcription"
+                          : "stop transcription"
                       }
-                      data-testid="chat-composer-transcribe-status"
-                      className="relative grid h-10 w-10 shrink-0 place-items-center text-white/80 drop-shadow-[0_0_8px_rgba(255,255,255,0.62)] [&_svg]:size-5"
-                    >
-                      <Mic
-                        aria-hidden="true"
-                        className={cn(
-                          !transcriptionFinishing &&
-                            "animate-pulse motion-reduce:animate-none",
-                        )}
-                      />
-                    </div>
+                      disabled={firstRunOpen || transcriptionFinishing}
+                      onPointerDown={(event) => event.preventDefault()}
+                      onClick={() => void finishTranscription("draft")}
+                      testId="chat-composer-transcription-stop"
+                    />
                     <SoftButton
                       icon={SendHorizontal}
                       label={
