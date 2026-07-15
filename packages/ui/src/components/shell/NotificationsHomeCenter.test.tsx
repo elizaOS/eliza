@@ -1159,6 +1159,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expandShade();
     expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
+    const collapseFooter = screen.getByTestId("notifications-collapse-footer");
+    expect(collapseFooter.style.opacity).toBe("1");
     // Tapping the peeked card below the top one fans the stack out.
     const openingPeek = screen.getAllByTestId("notification-stack-peek")[0];
     openingPeek.focus();
@@ -1213,10 +1215,21 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
         screen.getAllByTestId("notification-row")[0],
       ) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(screen.queryByTestId("notifications-collapse")).toBeNull();
+    expect(screen.getByTestId("notifications-collapse-footer")).toBe(
+      collapseFooter,
+    );
+    expect(collapseFooter.style.opacity).toBe("0");
+    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
+    expect(collapseFooter.hasAttribute("inert")).toBe(true);
     fireEvent.click(screen.getByTestId("notification-stack-collapse"), {
       detail: 0,
     });
+    expect(screen.getByTestId("notifications-collapse-footer")).toBe(
+      collapseFooter,
+    );
+    expect(collapseFooter.style.opacity).toBe("1");
+    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
+    expect(collapseFooter.hasAttribute("inert")).toBe(true);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     expect(enteringControls.style.height).toBe("0px");
     expect(enteringControls.style.opacity).toBe("0");
@@ -1249,6 +1262,12 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getByTestId("notification-stack")).toBeTruthy();
     expect(screen.queryByTestId("notification-stack-collapse")).toBeNull();
     expect(document.activeElement).toBe(screen.getByTestId("notification-row"));
+    expect(screen.getByTestId("notifications-collapse-footer")).toBe(
+      collapseFooter,
+    );
+    expect(collapseFooter.style.opacity).toBe("1");
+    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
+    expect(collapseFooter.hasAttribute("inert")).toBe(false);
     expect(screen.getByTestId("notifications-collapse").textContent).toContain(
       "Collapse",
     );
@@ -2570,6 +2589,39 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
     finishShadeCollapse();
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
+  });
+
+  it("collapses a fanned shade from empty space below its cards", () => {
+    seedTriage();
+    render(<NotificationsHomeCenter />);
+    const list = expandShade();
+    fireEvent.click(screen.getAllByTestId("notification-stack-peek")[0]);
+    act(() => vi.advanceTimersByTime(40));
+    const center = screen.getByTestId("home-notification-center");
+    const group = center.querySelector(
+      "[data-notification-group]",
+    ) as HTMLElement;
+    vi.spyOn(group, "getBoundingClientRect").mockReturnValue({
+      x: 20,
+      y: 100,
+      top: 100,
+      right: 300,
+      bottom: 300,
+      left: 20,
+      width: 280,
+      height: 200,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.click(center, { clientY: 240 });
+    expect(list.hasAttribute("data-shade-settling")).toBe(false);
+    expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
+
+    fireEvent.click(center, { clientY: 360 });
+    expect(list.hasAttribute("data-shade-settling")).toBe(true);
+    finishShadeCollapse();
+    expect(list.getAttribute("data-shade-mode")).toBe("rested");
+    expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
   });
 
   it("ignores empty-region drags while the shade close is settling", () => {

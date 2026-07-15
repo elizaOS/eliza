@@ -159,6 +159,28 @@ function isInteractiveGestureTarget(target: EventTarget | null): boolean {
   );
 }
 
+function isClickBelowNotificationCards(
+  target: EventTarget | null,
+  clientY: number,
+  center: HTMLElement,
+): boolean {
+  if (!(target instanceof Node) || !center.contains(target)) return false;
+  if (
+    target instanceof Element &&
+    target.closest("[data-notification-group]")
+  ) {
+    return false;
+  }
+  if (isInteractiveGestureTarget(target)) return false;
+  const groups = center.querySelectorAll<HTMLElement>(
+    "[data-notification-group]",
+  );
+  const lastGroup = groups.item(groups.length - 1);
+  if (!lastGroup) return false;
+  const bounds = lastGroup.getBoundingClientRect();
+  return bounds.height > 0 && clientY > bounds.bottom;
+}
+
 function touchWithIdentifier(
   touches: TouchList,
   identifier: number,
@@ -1874,15 +1896,30 @@ export function NotificationsHomeCenter({
       }, 500);
     };
     const onClick = (event: MouseEvent) => {
-      if (!suppressBackgroundClick.current) return;
-      suppressBackgroundClick.current = false;
-      if (suppressBackgroundClickTimer.current !== null) {
-        window.clearTimeout(suppressBackgroundClickTimer.current);
-        suppressBackgroundClickTimer.current = null;
+      if (suppressBackgroundClick.current) {
+        suppressBackgroundClick.current = false;
+        if (suppressBackgroundClickTimer.current !== null) {
+          window.clearTimeout(suppressBackgroundClickTimer.current);
+          suppressBackgroundClickTimer.current = null;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return;
       }
-      event.preventDefault();
-      event.stopPropagation();
-      event.stopImmediatePropagation();
+      // The list's capture handler owns its post-drag synthetic click. A plain
+      // background tap below the final card, however, should feel like the
+      // full-screen shade surface and close from anywhere in that empty band.
+      if (suppressNotificationClick.current) return;
+      const center = centerRef.current;
+      if (
+        shadePresentationRef.current.expanded &&
+        !shadePresentationRef.current.closing &&
+        center &&
+        isClickBelowNotificationCards(event.target, event.clientY, center)
+      ) {
+        requestShadeCollapse();
+      }
     };
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
@@ -1966,6 +2003,7 @@ export function NotificationsHomeCenter({
     abortPointerPull,
     commitPull,
     emptyGestureTargetRef,
+    requestShadeCollapse,
     setPullPx,
     surfaceReady,
   ]);
@@ -2172,13 +2210,22 @@ export function NotificationsHomeCenter({
     expandedStacks.size > 0 && closingStacks.size === 0
       ? STACK_FAN_LAYOUT_TRANSITION
       : STACK_FOLD_LAYOUT_TRANSITION;
+  const allExpandedStacksAreClosing =
+    expandedStacks.size > 0 &&
+    expandedStacks.size === closingStacks.size &&
+    Array.from(expandedStacks).every((key) => closingStacks.has(key));
+  // The footer stays in flow while a stack fans so its text can crossfade
+  // instead of changing both the list geometry and DOM ownership in one frame.
+  const stackCollapseControlVisibility =
+    expandedStacks.size === 0 || allExpandedStacksAreClosing ? 1 : 0;
   const collapseControlPresentationVisibility =
-    collapseControlVisibility * shadeOpenProgress;
+    collapseControlVisibility *
+    shadeOpenProgress *
+    stackCollapseControlVisibility;
+  const collapseControlInteractive =
+    collapseControlPresentationVisibility === 1 && expandedStacks.size === 0;
   const showCollapseControl =
-    (shadeExpanded || previewingExpansion) &&
-    hasNotifications &&
-    expandedStacks.size === 0 &&
-    !shadeOpenedByStack;
+    (shadeExpanded || previewingExpansion) && hasNotifications;
   const onListPointerDown = (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse" || !e.isPrimary) return;
     const el = scrollRef.current;
@@ -2700,16 +2747,18 @@ export function NotificationsHomeCenter({
         <div
           data-testid="notifications-collapse-footer"
           data-notification-collapse-footer=""
-          aria-hidden={
-            collapseControlPresentationVisibility === 0 ? true : undefined
-          }
-          inert={collapseControlPresentationVisibility < 1 ? true : undefined}
+          aria-hidden={!collapseControlInteractive ? true : undefined}
+          inert={!collapseControlInteractive ? true : undefined}
           style={{
             opacity: collapseControlPresentationVisibility,
             transform: `translateY(${
               (1 - collapseControlPresentationVisibility) * 4
             }px)`,
-            transition: isPulling ? "none" : undefined,
+            transition: isPulling
+              ? "none"
+              : closingStacks.size > 0
+                ? `opacity ${STACK_FOLD_SETTLE_MS}ms ${SHADE_EASING}, transform ${STACK_FOLD_SETTLE_MS}ms ${SHADE_EASING}`
+                : undefined,
           }}
           className="eliza-notif-shade-transition pointer-events-none flex shrink-0 justify-center px-3"
         >
@@ -2720,7 +2769,12 @@ export function NotificationsHomeCenter({
               pendingRestedCountFocusRef.current = event.detail === 0;
               requestShadeCollapse();
             }}
-            className="pointer-events-auto flex min-h-touch items-center justify-center gap-1 px-2 text-2xs font-medium text-white/55 transition-colors hover:text-white/90"
+            className={cn(
+              "flex min-h-touch items-center justify-center gap-1 px-2 text-2xs font-medium text-white/55 transition-colors hover:text-white/90",
+              collapseControlInteractive
+                ? "pointer-events-auto"
+                : "pointer-events-none",
+            )}
           >
             Collapse
             <ChevronUp aria-hidden className="h-3 w-3 shrink-0" />
