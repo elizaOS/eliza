@@ -49,7 +49,7 @@
   },
   "optionalDependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.200",
-    "@openai/codex-sdk": "0.80.0"
+    "@openai/codex-sdk": "0.144.4"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.3",
