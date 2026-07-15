@@ -117,10 +117,15 @@ jobs:
         # ("kernel hash source missing") and the C-reference parity tests
         # silently skipped — a false green. The CPU image ships a C compiler
         # (cc) so the parity tests compile-and-run for real.
+        # The bind mount retains the runner UID, so the process-scoped Git
+        # config trusts only this checkout for provenance queries.
         run: |
           docker run --rm \
             -v "${{ github.workspace }}:/workspace/repo" \
             -e PYTHONPATH=/workspace/repo/packages/training/scripts \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0=safe.directory \
+            -e GIT_CONFIG_VALUE_0=/workspace/repo \
             eliza-training-cpu:ci \
             -c "set -e; \
                 cd /workspace/repo/packages/training; \
