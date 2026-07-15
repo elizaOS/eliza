@@ -1251,6 +1251,49 @@ describe("VIEWS hijack of answered simple turns (tj-501e594bfb23a7)", () => {
 		expect(routed.plan.requiredToolEvidence).toBe("inferred");
 	});
 
+	it("a field-run preempt pins the turn to a direct simple reply regardless of routed contexts", () => {
+		// The preempt seam (ack-and-stop / direct-reply / ignore) is how field
+		// evaluators short-circuit a turn; it must override planning contexts
+		// and never leave requiresTool set.
+		const direct = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["web"],
+				intents: [],
+				replyText: "Handled directly.",
+				candidateActionNames: ["WEB_FETCH"],
+				facts: ["user likes terse replies"],
+				relationships: [
+					{ subject: "nubs", predicate: "owns", object: "the bot" },
+				],
+				addressedTo: ["agent"],
+				topics: ["ops"],
+			} as never,
+			{
+				preempt: { mode: "direct-reply", reason: "field says direct" },
+			} as never,
+			{
+				actions: [{ name: "REPLY", similes: [], tags: [] }],
+				messageText: "whats up",
+			},
+		);
+		expect(direct.plan.simple).toBe(true);
+		expect(direct.plan.requiresTool).toBe(false);
+		expect(direct.plan.contexts).toContain("simple");
+		expect(direct.thought).toBe("field says direct");
+		expect(direct.extract?.facts).toEqual(["user likes terse replies"]);
+		expect(direct.extract?.relationships).toEqual([
+			{ subject: "nubs", predicate: "owns", object: "the bot" },
+		]);
+
+		const ignored = messageHandlerFromFieldResult(
+			{ shouldRespond: "RESPOND", replyText: "hi" } as never,
+			{ preempt: { mode: "ignore", reason: "muted" } } as never,
+			{ actions: [], messageText: "hello" },
+		);
+		expect(ignored.processMessage).toBe("IGNORE");
+	});
+
 	it("leaves evidence unset when the model emitted the candidates itself", () => {
 		const webAction: Pick<Action, "name" | "similes" | "tags"> = {
 			name: "WEB_FETCH",
