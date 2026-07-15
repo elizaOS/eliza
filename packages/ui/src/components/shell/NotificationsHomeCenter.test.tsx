@@ -2465,6 +2465,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       true,
     );
     expect(list.getAttribute("data-shade-preview")).toBe("expanding");
+    const shadeCss = center.querySelector("style")?.textContent ?? "";
+    const previewRowAnimationGuard = shadeCss.match(
+      /\.eliza-notif-scroll \[data-notification-pull-reveal\] \.eliza-notif-row,[^{]+\{([^}]*)\}/,
+    )?.[1];
+    expect(previewRowAnimationGuard).toContain("animation: none !important");
     expect(
       previewGroups.every((group) => {
         const content = group.querySelector<HTMLElement>(
