@@ -12,6 +12,10 @@ import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
 import type { ShellMessage } from "../shell-state";
 import type { CaptureIntent, ShellController } from "../useShellController";
 
+type TranscriptSessionSink = NonNullable<
+  Parameters<ShellController["setTranscriptSessionSink"]>[0]
+>;
+
 declare global {
   interface Window {
     __appendAssistant?: (content: string) => void;
@@ -321,8 +325,14 @@ function Harness(): React.JSX.Element {
   // Capture intent of the active mic session — mirrors the real controller:
   // PTT press → "dictate" (transcript fills the composer draft, no send);
   // hands-free tap → "converse" (final transcript sends a VOICE_DM).
-  const captureIntentRef = React.useRef<CaptureIntent>("converse");
+  const captureIntentRef = React.useRef<CaptureIntent>(
+    initialTranscribing ? "transcription" : "converse",
+  );
   const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
+  const transcriptSessionSinkRef = React.useRef<TranscriptSessionSink | null>(
+    null,
+  );
+  const transcriptFinalsRef = React.useRef<string[]>([]);
 
   const startRecording = React.useCallback(
     (intent: CaptureIntent = "converse") => {
@@ -373,7 +383,12 @@ function Harness(): React.JSX.Element {
     },
     [],
   );
-  const setTranscriptSessionSink = React.useCallback(() => {}, []);
+  const setTranscriptSessionSink = React.useCallback(
+    (sink: TranscriptSessionSink | null) => {
+      transcriptSessionSinkRef.current = sink;
+    },
+    [],
+  );
   // Test hooks for BIDIRECTIONAL voice (asserted by the e2e): a final transcript
   // either fills the composer draft (dictate) or sends a VOICE_DM (converse),
   // routed by the active capture intent — exactly the two real directions.
@@ -382,13 +397,16 @@ function Harness(): React.JSX.Element {
     window.__emitVoiceFinal = (t) => {
       if (captureIntentRef.current === "dictate") {
         dictationSinkRef.current?.(t);
+        setRecording(false);
+        setPhase("summoned");
       } else if (captureIntentRef.current === "transcription") {
+        transcriptFinalsRef.current.push(t);
         setTranscript(t);
       } else {
         send(t, { channelType: "VOICE_DM" });
+        setRecording(false);
+        setPhase("summoned");
       }
-      setRecording(false);
-      setPhase("summoned");
     };
     return () => {
       window.__emitDictation = undefined;
@@ -401,6 +419,45 @@ function Harness(): React.JSX.Element {
       return !m;
     });
   }, []);
+
+  const toggleTranscriptionMode = React.useCallback(() => {
+    const next = !transcriptionMode;
+    console.log(`[fixture] toggleTranscriptionMode -> ${next}`);
+    setTranscriptionMode(next);
+    setRecording(next);
+    setPhase(next ? "listening" : "summoned");
+    if (next) {
+      captureIntentRef.current = "transcription";
+      transcriptFinalsRef.current = [];
+      setTranscript("");
+    } else {
+      const finals =
+        transcriptFinalsRef.current.length > 0
+          ? transcriptFinalsRef.current
+          : transcript.trim()
+            ? [transcript.trim()]
+            : [];
+      transcriptFinalsRef.current = [];
+      if (finals.length > 0) {
+        console.log(
+          `[fixture] finalizeTranscriptSession segments=${finals.length}`,
+        );
+        transcriptSessionSinkRef.current?.(
+          finals.map((text, index) => ({
+            id: `fixture-transcript-${index}`,
+            startMs: index * 1_000,
+            endMs: (index + 1) * 1_000,
+            text,
+            words: [],
+          })),
+          Date.now(),
+          null,
+        );
+      }
+      captureIntentRef.current = "converse";
+      setTranscript("");
+    }
+  }, [transcript, transcriptionMode]);
 
   const controller: ShellController = {
     phase,
@@ -442,20 +499,7 @@ function Harness(): React.JSX.Element {
     agentVoiceMuted,
     needsAudioUnlock,
     transcriptionMode,
-    toggleTranscriptionMode: () => {
-      setTranscriptionMode((t) => {
-        console.log(`[fixture] toggleTranscriptionMode -> ${!t}`);
-        return !t;
-      });
-    },
-    // Mic tap while transcribing: master voice control — everything off.
-    stopTranscriptionAndMic: () => {
-      console.log("[fixture] stopTranscriptionAndMic");
-      setTranscriptionMode(false);
-      setRecording(false);
-      setTranscript("");
-      setPhase("summoned");
-    },
+    toggleTranscriptionMode,
     // The overlay reads `modelStatus.kind` unconditionally; "ready" keeps the
     // local-model status strip dormant in the fixture.
     modelStatus: {

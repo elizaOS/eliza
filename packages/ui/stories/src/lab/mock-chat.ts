@@ -285,7 +285,6 @@ export function useMockChat(config: MockChatConfig): MockChat {
       needsAudioUnlock: false,
       transcriptionMode: config.transcribing,
       toggleTranscriptionMode: () => {},
-      stopTranscriptionAndMic: () => {},
       modelStatus: {
         kind: "ready",
         blocksSend: false,

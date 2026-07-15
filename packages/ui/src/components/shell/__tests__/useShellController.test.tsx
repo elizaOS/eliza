@@ -989,45 +989,31 @@ describe("useShellController — voice capture routing", () => {
     expect(appMock.value.sendChatText).not.toHaveBeenCalled();
   });
 
-  it("transcript button OFF leaves the mic ON (resumes the paused hands-free loop)", async () => {
+  it("transcription exit leaves spoken conversation off", async () => {
     const { result } = renderHook(() => useShellController());
     // Mic on (hands-free) is the base state.
     await act(async () => result.current.toggleHandsFree());
     expect(result.current.handsFree).toBe(true);
 
-    // Transcript ON pauses the reply loop but the mic stays on (transcribing).
+    // Transcription takes sole ownership of the physical microphone.
     await act(async () => result.current.toggleTranscriptionMode());
     expect(result.current.transcriptionMode).toBe(true);
     expect(result.current.handsFree).toBe(false);
 
-    // Transcript OFF (the transcript button) must LEAVE THE MIC ON — the
-    // hands-free loop it paused resumes; it does not kill the mic.
+    // Exiting does not resurrect the separate spoken-conversation mode.
     await act(async () => result.current.toggleTranscriptionMode());
-    expect(result.current.transcriptionMode).toBe(false);
-    expect(result.current.handsFree).toBe(true);
-  });
-
-  it("the mic button while transcribing turns the mic AND transcript fully off", async () => {
-    const { result } = renderHook(() => useShellController());
-    await act(async () => result.current.toggleHandsFree());
-    await act(async () => result.current.toggleTranscriptionMode());
-    expect(result.current.transcriptionMode).toBe(true);
-
-    // stopTranscriptionAndMic is the mic button's action: mic = parent, so
-    // turning the mic off turns transcript off too — nothing resumes.
-    await act(async () => result.current.stopTranscriptionAndMic());
     expect(result.current.transcriptionMode).toBe(false);
     expect(result.current.handsFree).toBe(false);
   });
 
-  it("transcript OFF does not resume the mic when it was started from cold (no prior mic)", async () => {
+  it("transcription started from cold also exits with voice off", async () => {
     const { result } = renderHook(() => useShellController());
     // Enter transcription with the mic NOT already on (e.g. a server command).
     await act(async () => result.current.toggleTranscriptionMode());
     expect(result.current.transcriptionMode).toBe(true);
     expect(result.current.handsFree).toBe(false);
 
-    // Turning it off leaves the mic off — there was no mic loop to resume.
+    // Exit is deterministic regardless of the state that preceded capture.
     await act(async () => result.current.toggleTranscriptionMode());
     expect(result.current.transcriptionMode).toBe(false);
     expect(result.current.handsFree).toBe(false);
