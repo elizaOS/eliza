@@ -293,6 +293,11 @@ const NOTIF_SCROLL_CSS = `
   backdrop-filter: ${LIQUID_GLASS_BLUR};
   transition: background-color 150ms linear;
 }
+/* The global focus reset removes box shadows, but this inset edge is part of
+   the glass material rather than a focus ring and must survive card focus. */
+.eliza-notif-glass:focus-within {
+  box-shadow: ${LIQUID_GLASS_EDGE_SHADOW} !important;
+}
 /* Chromium honors url(#…) on backdrop-filter → refract the background at the
    rim (the "liquid" cue). WebKit can't, so it keeps the frosted blur above. */
 @supports (backdrop-filter: url(#x)) or (-webkit-backdrop-filter: url(#x)) {
@@ -2406,7 +2411,7 @@ export function NotificationsHomeCenter({
               opacity: clearControlVisibility,
               transform: `translate3d(0, ${(1 - clearControlVisibility) * -8}px, 0)`,
             }}
-            className="eliza-notif-shade-transition flex shrink-0 justify-end overflow-hidden px-1"
+            className="eliza-notif-shade-transition flex shrink-0 justify-end overflow-hidden px-2"
           >
             {shadeExpanded || previewingExpansion ? (
               <button
