@@ -78,7 +78,7 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "least-used",
   "quota-aware",
   "reset-soonest",
-  "drain-expiring",
+  "drain-soonest-reset",
 ]);
 
 /** Last-resort strategy — the ELIZA_CODING_ACCOUNT_STRATEGY env var, else least-used. */
@@ -841,6 +841,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           strategy,
           ...(opts?.sessionKey ? { sessionKey: opts.sessionKey } : {}),
           ...(opts?.exclude ? { exclude: opts.exclude } : {}),
+          ...(opts?.model ? { model: opts.model } : {}),
           // Follow-up pin: a continuing session restricts the pool to its
           // spawn-time account so an expired session-affinity can't strategy-
           // drift the subprocess onto a sibling (billing/health stay keyed to

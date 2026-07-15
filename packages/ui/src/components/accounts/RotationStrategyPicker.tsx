@@ -66,12 +66,12 @@ const STRATEGY_OPTIONS: readonly StrategyOption[] = [
       "Spend the account whose weekly limit resets first; hold freshly-reset accounts in reserve.",
   },
   {
-    id: "drain-expiring",
-    labelKey: "accounts.strategy.drainExpiring.label",
-    labelFallback: "Drain expiring",
-    descriptionKey: "accounts.strategy.drainExpiring.description",
+    id: "drain-soonest-reset",
+    labelKey: "accounts.strategy.drainSoonestReset.label",
+    labelFallback: "Drain soonest reset",
+    descriptionKey: "accounts.strategy.drainSoonestReset.description",
     descriptionFallback:
-      "Prefer healthy accounts whose subscription ends within the drain window.",
+      "Prefer hand-set priority, then the account whose relevant weekly limit resets soonest.",
   },
 ];
 
@@ -82,7 +82,11 @@ export function RotationStrategyPicker({
   disabled,
 }: RotationStrategyPickerProps) {
   const t = useAppSelector((s) => s.t);
-  const resolved: AccountStrategy = value ?? "priority";
+  const resolved: AccountStrategy =
+    value ??
+    (providerId === "anthropic-subscription"
+      ? "drain-soonest-reset"
+      : "priority");
 
   return (
     <div className="flex items-center gap-2">

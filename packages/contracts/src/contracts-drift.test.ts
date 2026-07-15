@@ -117,7 +117,7 @@ describe('@elizaos/contracts public literals', () => {
 			'least-used',
 			'quota-aware',
 			'reset-soonest',
-			'drain-expiring',
+			'drain-soonest-reset',
 		]);
 		expect(new Set(SERVICE_ROUTE_ACCOUNT_STRATEGIES).size).toBe(
 			SERVICE_ROUTE_ACCOUNT_STRATEGIES.length

@@ -192,13 +192,13 @@ describe("accounts routes", () => {
     const strategy = makeContext(
       "PATCH",
       "/api/providers/openai-api/strategy",
-      { strategy: "drain-expiring" },
+      { strategy: "drain-soonest-reset" },
     );
     await handleAccountsRoutes(strategy.ctx);
     expect(strategy.saveConfig).toHaveBeenCalledOnce();
     expect(strategy.jsonCalls[0]?.body).toEqual({
       providerId: "openai-api",
-      strategy: "drain-expiring",
+      strategy: "drain-soonest-reset",
     });
   });
 

@@ -195,6 +195,7 @@ export async function handleSubscriptionRoutes(
         source: "oauth",
         enabled: prior?.enabled ?? true,
         priority,
+        prioritySource: prior?.prioritySource ?? "generated",
         createdAt: prior?.createdAt ?? Date.now(),
         health: "ok",
         ...(profile.email ? { email: profile.email } : {}),

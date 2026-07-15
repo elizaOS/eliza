@@ -363,7 +363,7 @@ const STRATEGY_VALUES = [
   "least-used",
   "quota-aware",
   "reset-soonest",
-  "drain-expiring",
+  "drain-soonest-reset",
 ] as const satisfies readonly ServiceRouteAccountStrategy[];
 
 const strategyPatchSchema = z.object({
@@ -393,7 +393,12 @@ function readAccountStrategy(
 ): ServiceRouteAccountStrategy {
   const strategies = (config as ElizaConfig & AccountStrategiesShape)
     .accountStrategies;
-  return strategies?.[providerId] ?? "priority";
+  return (
+    strategies?.[providerId] ??
+    (providerId === "anthropic-subscription"
+      ? "drain-soonest-reset"
+      : "priority")
+  );
 }
 
 function writeAccountStrategy(
@@ -424,6 +429,7 @@ function buildLinkedAccountConfigFromRecord(
     source: record.source,
     enabled: true,
     priority,
+    prioritySource: "generated",
     createdAt: record.createdAt,
     health: "ok",
     ...(record.lastUsedAt !== undefined
@@ -901,6 +907,7 @@ async function handleCreateApiKeyAccount(
         ...buildLinkedAccountConfigFromRecord(record, priority),
         enabled: stableReplacementTarget.enabled,
         priority,
+        prioritySource: stableReplacementTarget.prioritySource,
         createdAt: stableReplacementTarget.createdAt,
         health: "ok" as const,
       }
@@ -1032,6 +1039,7 @@ async function handleOAuthRoutes(
           ...canonical,
           enabled: liveTarget.enabled,
           priority: liveTarget.priority,
+          prioritySource: liveTarget.prioritySource,
           createdAt: liveTarget.createdAt,
           health: "ok",
         });
@@ -1230,7 +1238,7 @@ async function handlePatchAccount(
       ? { enabled: parsed.data.enabled }
       : {}),
     ...(parsed.data.priority !== undefined
-      ? { priority: parsed.data.priority }
+      ? { priority: parsed.data.priority, prioritySource: "explicit" as const }
       : {}),
     ...(parsed.data.subscriptionEndsAt !== undefined
       ? parsed.data.subscriptionEndsAt === null

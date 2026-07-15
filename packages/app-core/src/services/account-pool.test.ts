@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AccountPool,
   configureDefaultAccountPoolSelection,
+  selectionForProvider,
 } from "./account-pool";
 
 function account(
@@ -699,13 +700,13 @@ describe("AccountPool reset-soonest selection", () => {
   });
 });
 
-// ── drain-expiring strategy + subscription expiry ────────────────────
-// Drain-expiring uses a half-open time definition around "now": accounts at
-// or before now are expired and unselectable; accounts with
-// `now < subscriptionEndsAt <= now + windowMs` are drain candidates. The upper
-// edge is inclusive so an account with exactly the configured window left is
-// drained before normal priority ordering resumes.
-describe("AccountPool drain-expiring selection", () => {
+// ── drain-soonest-reset strategy ─────────────────────────────────────
+// Drain-soonest-reset honors only explicitly hand-set priority before weekly
+// drain ordering. Generated creation-order priority is display metadata, not a
+// hard override. Within the non-explicit pool it spends the relevant weekly
+// model bucket whose reset arrives first, then the lower utilization bucket,
+// with subscription end only as a final-days booster/tiebreak.
+describe("AccountPool drain-soonest-reset selection", () => {
   const fixedNow = 1_800_000_000_000;
   const hour = 60 * 60 * 1000;
   const poolOf = (
@@ -720,171 +721,269 @@ describe("AccountPool drain-expiring selection", () => {
       },
     });
 
-  it("prefers the earliest eligible subscription ending inside the default 48h window", async () => {
+  it("prefers soonest weekly reset over generated priority", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(fixedNow);
     const accounts = {
+      "anthropic-subscription:generated-top": account(
+        "anthropic-subscription",
+        {
+          id: "generated-top",
+          priority: 0,
+          prioritySource: "generated",
+          usage: {
+            weeklyPct: 10,
+            resetsAt: fixedNow + 30 * hour,
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+      "anthropic-subscription:soon-reset": account("anthropic-subscription", {
+        id: "soon-reset",
+        priority: 10,
+        prioritySource: "generated",
+        usage: {
+          weeklyPct: 80,
+          resetsAt: fixedNow + 2 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "soon-reset" });
+  });
+
+  it("uses weekly headroom when resets tie", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:busy": account("anthropic-subscription", {
+        id: "busy",
+        usage: {
+          weeklyPct: 70,
+          resetsAt: fixedNow + 5 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:open": account("anthropic-subscription", {
+        id: "open",
+        usage: {
+          weeklyPct: 20,
+          resetsAt: fixedNow + 5 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "open" });
+  });
+
+  it("skips a session-exhausted account without changing weekly ordering", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:exhausted": account("anthropic-subscription", {
+        id: "exhausted",
+        usage: {
+          sessionPct: 100,
+          weeklyPct: 10,
+          resetsAt: fixedNow + hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:ready": account("anthropic-subscription", {
+        id: "ready",
+        usage: {
+          sessionPct: 20,
+          weeklyPct: 60,
+          resetsAt: fixedNow + 10 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "ready" });
+  });
+
+  it("uses the requested model bucket and falls back to blended weeklyPct when unavailable", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:fable-soon": account("anthropic-subscription", {
+        id: "fable-soon",
+        usage: {
+          weeklyPct: 90,
+          resetsAt: fixedNow + 30 * hour,
+          weeklyModelBuckets: {
+            Fable: { pct: 90, resetsAt: fixedNow + hour },
+          },
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:blended-soon": account("anthropic-subscription", {
+        id: "blended-soon",
+        usage: {
+          weeklyPct: 10,
+          resetsAt: fixedNow + 2 * hour,
+          weeklyModelBuckets: {
+            Sonnet: { pct: 5, resetsAt: fixedNow + 10 * hour },
+          },
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+        model: "claude-fable-5",
+      }),
+    ).resolves.toMatchObject({ id: "fable-soon" });
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+        model: "opus",
+      }),
+    ).resolves.toMatchObject({ id: "blended-soon" });
+  });
+
+  it("keeps 429 cooldown separate from weekly ranking after readmission", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "anthropic-subscription:cooling": account("anthropic-subscription", {
+        id: "cooling",
+        usage: {
+          weeklyPct: 90,
+          resetsAt: fixedNow + hour,
+          refreshedAt: fixedNow,
+        },
+      }),
       "anthropic-subscription:later": account("anthropic-subscription", {
         id: "later",
+        usage: {
+          weeklyPct: 5,
+          resetsAt: fixedNow + 10 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+    const pool = poolOf(accounts, writes);
+    await pool.markRateLimited("cooling", fixedNow + 30 * 60 * 1000, "429", {
+      providerId: "anthropic-subscription",
+    });
+    expect(writes[0]?.healthDetail?.until).toBe(fixedNow + 30 * 60 * 1000);
+
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "later" });
+    vi.setSystemTime(fixedNow + 31 * 60 * 1000);
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "cooling" });
+  });
+
+  it("uses subscription end as a final-days tiebreaker after reset and utilization", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:renewing": account("anthropic-subscription", {
+        id: "renewing",
+        createdAt: 1,
+        usage: {
+          weeklyPct: 30,
+          resetsAt: fixedNow + 4 * hour,
+          refreshedAt: fixedNow,
+        },
+        subscriptionEndsAt: fixedNow + 20 * 24 * hour,
+      }),
+      "anthropic-subscription:ending": account("anthropic-subscription", {
+        id: "ending",
+        createdAt: 2,
+        usage: {
+          weeklyPct: 30,
+          resetsAt: fixedNow + 4 * hour,
+          refreshedAt: fixedNow,
+        },
+        subscriptionEndsAt: fixedNow + 2 * hour,
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "ending" });
+  });
+
+  it("honors an explicitly hand-set priority as a hard override", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:manual": account("anthropic-subscription", {
+        id: "manual",
         priority: 0,
-        subscriptionEndsAt: fixedNow + 30 * hour,
+        prioritySource: "explicit",
+        usage: {
+          weeklyPct: 99,
+          resetsAt: fixedNow + 50 * hour,
+          refreshedAt: fixedNow,
+        },
       }),
       "anthropic-subscription:soon": account("anthropic-subscription", {
         id: "soon",
         priority: 10,
-        subscriptionEndsAt: fixedNow + 2 * hour,
-      }),
-      "anthropic-subscription:outside": account("anthropic-subscription", {
-        id: "outside",
-        priority: 1,
-        subscriptionEndsAt: fixedNow + 49 * hour,
-      }),
-    };
-
-    await expect(
-      poolOf(accounts).select({
-        providerId: "anthropic-subscription",
-        strategy: "drain-expiring",
-      }),
-    ).resolves.toMatchObject({ id: "soon" });
-  });
-
-  it("includes the exact upper window boundary and excludes already-expired accounts", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(fixedNow);
-    const writes: LinkedAccountConfig[] = [];
-    const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
-    try {
-      const accounts = {
-        "anthropic-subscription:expired": account("anthropic-subscription", {
-          id: "expired",
-          priority: 0,
-          subscriptionEndsAt: fixedNow,
-        }),
-        "anthropic-subscription:boundary": account("anthropic-subscription", {
-          id: "boundary",
-          priority: 5,
-          subscriptionEndsAt: fixedNow + 48 * hour,
-        }),
-      };
-      const pool = poolOf(accounts, writes);
-
-      await expect(
-        pool.select({
-          providerId: "anthropic-subscription",
-          strategy: "drain-expiring",
-        }),
-      ).resolves.toMatchObject({ id: "boundary" });
-      expect(writes).toHaveLength(1);
-      expect(writes[0]).toMatchObject({ id: "expired", health: "expired" });
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-
-      await pool.sweepExpired("anthropic-subscription");
-      expect(warnSpy).toHaveBeenCalledTimes(1);
-    } finally {
-      warnSpy.mockRestore();
-    }
-  });
-
-  it("skips rate-limited, session-exhausted, and needs-reauth drain candidates", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(fixedNow);
-    const accounts = {
-      "anthropic-subscription:rate": account("anthropic-subscription", {
-        id: "rate",
-        health: "rate-limited",
-        // Even after its backoff elapses, drain-expiring only drains accounts
-        // whose persisted health is explicitly healthy.
-        healthDetail: { until: fixedNow - hour },
-        subscriptionEndsAt: fixedNow + hour,
-      }),
-      "anthropic-subscription:exhausted": account("anthropic-subscription", {
-        id: "exhausted",
-        usage: { sessionPct: 96, refreshedAt: fixedNow },
-        subscriptionEndsAt: fixedNow + 2 * hour,
-      }),
-      "anthropic-subscription:reauth": account("anthropic-subscription", {
-        id: "reauth",
-        health: "needs-reauth",
-        subscriptionEndsAt: fixedNow + 3 * hour,
-      }),
-      "anthropic-subscription:eligible": account("anthropic-subscription", {
-        id: "eligible",
-        priority: 10,
-        subscriptionEndsAt: fixedNow + 4 * hour,
+        prioritySource: "generated",
+        usage: {
+          weeklyPct: 5,
+          resetsAt: fixedNow + hour,
+          refreshedAt: fixedNow,
+        },
       }),
     };
 
     await expect(
       poolOf(accounts).select({
         providerId: "anthropic-subscription",
-        strategy: "drain-expiring",
+        strategy: "drain-soonest-reset",
       }),
-    ).resolves.toMatchObject({ id: "eligible" });
+    ).resolves.toMatchObject({ id: "manual" });
   });
 
-  it("falls back to the provider default priority ordering when no account is inside the window", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(fixedNow);
-    const accounts = {
-      "anthropic-subscription:primary": account("anthropic-subscription", {
-        id: "primary",
-        priority: 0,
-        subscriptionEndsAt: fixedNow + 72 * hour,
-      }),
-      "anthropic-subscription:older": account("anthropic-subscription", {
-        id: "older",
-        priority: 5,
-        subscriptionEndsAt: fixedNow + 49 * hour,
-      }),
-    };
-
-    await expect(
-      poolOf(accounts).select({
-        providerId: "anthropic-subscription",
-        strategy: "drain-expiring",
-      }),
-    ).resolves.toMatchObject({ id: "primary" });
-    expect(
-      poolOf(accounts).selectionState(
-        "anthropic-subscription",
-        "drain-expiring",
-      ),
-    ).toEqual({ activeAccountId: "primary", reason: "priority" });
-  });
-
-  it("honors the configured per-provider drain window", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(fixedNow);
+  it("defaults Anthropic subscription to drain-soonest-reset when unconfigured", () => {
+    expect(selectionForProvider("anthropic-subscription").strategy).toBe(
+      "drain-soonest-reset",
+    );
     configureDefaultAccountPoolSelection({
-      accountStrategySettings: {
-        "anthropic-subscription": { drainExpiringWindowMs: 6 * hour },
-      },
+      accountStrategies: { "anthropic-subscription": "priority" },
     });
-    const accounts = {
-      "anthropic-subscription:inside-custom": account(
-        "anthropic-subscription",
-        {
-          id: "inside-custom",
-          priority: 5,
-          subscriptionEndsAt: fixedNow + 5 * hour,
-        },
-      ),
-      "anthropic-subscription:outside-custom": account(
-        "anthropic-subscription",
-        {
-          id: "outside-custom",
-          priority: 0,
-          subscriptionEndsAt: fixedNow + 7 * hour,
-        },
-      ),
-    };
-
-    await expect(
-      poolOf(accounts).select({
-        providerId: "anthropic-subscription",
-        strategy: "drain-expiring",
-      }),
-    ).resolves.toMatchObject({ id: "inside-custom" });
+    expect(selectionForProvider("anthropic-subscription").strategy).toBe(
+      "priority",
+    );
   });
 });

@@ -63,7 +63,7 @@ const serviceRouteStrategies = [
 	"least-used",
 	"quota-aware",
 	"reset-soonest",
-	"drain-expiring",
+	"drain-soonest-reset",
 ] as const satisfies readonly ServiceRouteAccountStrategy[];
 
 const walletCredentialKeys = [
@@ -229,13 +229,13 @@ describe("core contract implementation alignment", () => {
 		});
 	});
 
-	it("preserves drain-expiring as a supported account strategy", () => {
+	it("preserves drain-soonest-reset as a supported account strategy", () => {
 		expect(
 			normalizeServiceRoutingConfig({
-				llmText: { backend: "elizacloud", strategy: "drain-expiring" },
+				llmText: { backend: "elizacloud", strategy: "drain-soonest-reset" },
 			}),
 		).toEqual({
-			llmText: { backend: "elizacloud", strategy: "drain-expiring" },
+			llmText: { backend: "elizacloud", strategy: "drain-soonest-reset" },
 		});
 	});
 

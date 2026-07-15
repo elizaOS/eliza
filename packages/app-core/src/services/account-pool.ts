@@ -3,7 +3,8 @@
  *
  * Owns the runtime decision "which `LinkedAccountConfig` should serve this
  * request?" given a strategy (priority / round-robin / least-used /
- * quota-aware), session affinity, and per-account health state.
+ * quota-aware / drain-soonest-reset), session affinity, and per-account health
+ * state.
  *
  * The pool never reads OAuth credentials directly — callers resolve them
  * via `getAccessToken(providerId, accountId)` from `@elizaos/agent` once
@@ -68,7 +69,7 @@ export type Strategy =
   | "least-used"
   | "quota-aware"
   | "reset-soonest"
-  | "drain-expiring";
+  | "drain-soonest-reset";
 
 export type PoolProviderId = LinkedAccountProviderId;
 
@@ -94,6 +95,8 @@ export interface SelectInput {
   accountIds?: string[];
   /** Account IDs to skip (e.g. just-failed accounts). */
   exclude?: string[];
+  /** Requested model/display name for provider-specific weekly buckets. */
+  model?: string;
 }
 
 interface AffinityEntry {
@@ -119,7 +122,7 @@ interface AccountPoolSelectionConfig {
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
-const DEFAULT_DRAIN_EXPIRING_WINDOW_MS = 48 * 60 * 60 * 1000;
+const SUBSCRIPTION_END_BOOST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   Record<string, DirectAccountProvider>
 > = {
@@ -144,6 +147,46 @@ function accountSessionPct(account: LinkedAccountConfig): number {
     : 0;
 }
 
+function accountWeeklyPct(account: LinkedAccountConfig): number {
+  return typeof account.usage?.weeklyPct === "number"
+    ? account.usage.weeklyPct
+    : accountSessionPct(account);
+}
+
+function normalizeModelKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function modelKeysMatch(requested: string, bucket: string): boolean {
+  return (
+    requested === bucket ||
+    (bucket.length >= 4 && requested.includes(bucket)) ||
+    (requested.length >= 4 && bucket.includes(requested))
+  );
+}
+
+function accountWeeklyBucket(
+  account: LinkedAccountConfig,
+  requestedModel?: string,
+): { pct: number; resetsAt?: number } {
+  const key = requestedModel ? normalizeModelKey(requestedModel) : "";
+  const buckets = account.usage?.weeklyModelBuckets;
+  if (key && buckets) {
+    for (const [name, bucket] of Object.entries(buckets)) {
+      if (modelKeysMatch(key, normalizeModelKey(name))) return bucket;
+    }
+  }
+  return {
+    pct: accountWeeklyPct(account),
+    ...(account.usage?.resetsAt !== undefined
+      ? { resetsAt: account.usage.resetsAt }
+      : {}),
+  };
+}
+
 function accountLastUsedAt(account: LinkedAccountConfig): number {
   return typeof account.lastUsedAt === "number" ? account.lastUsedAt : 0;
 }
@@ -154,7 +197,7 @@ function accountLastUsedAt(account: LinkedAccountConfig): number {
  * when the provider hasn't reported a reset window yet.
  */
 function accountResetAt(account: LinkedAccountConfig): number | undefined {
-  return account.usage?.resetsAt ?? account.healthDetail?.until;
+  return account.usage?.resetsAt;
 }
 
 /**
@@ -183,32 +226,20 @@ function bySoonestReset(
   return a.priority - b.priority;
 }
 
-function bySoonestSubscriptionEnd(
-  a: LinkedAccountConfig,
-  b: LinkedAccountConfig,
-): number {
-  const aEnd = a.subscriptionEndsAt;
-  const bEnd = b.subscriptionEndsAt;
-  if (aEnd !== bEnd)
-    return (
-      (aEnd ?? Number.MAX_SAFE_INTEGER) - (bEnd ?? Number.MAX_SAFE_INTEGER)
-    );
-  const aUsed = accountLastUsedAt(a);
-  const bUsed = accountLastUsedAt(b);
-  if (aUsed !== bUsed) return aUsed - bUsed;
-  return a.priority - b.priority;
-}
-
-function isWithinDrainWindow(
+function subscriptionEndBoost(
   account: LinkedAccountConfig,
   now: number,
-  windowMs: number,
-): boolean {
-  return (
-    typeof account.subscriptionEndsAt === "number" &&
-    account.subscriptionEndsAt > now &&
-    account.subscriptionEndsAt <= now + windowMs
-  );
+): number {
+  if (
+    typeof account.subscriptionEndsAt !== "number" ||
+    account.subscriptionEndsAt <= now
+  ) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const remaining = account.subscriptionEndsAt - now;
+  return remaining <= SUBSCRIPTION_END_BOOST_WINDOW_MS
+    ? remaining
+    : Number.MAX_SAFE_INTEGER;
 }
 
 function isAccountExpired(
@@ -265,7 +296,9 @@ export class AccountPool {
     }
 
     const strategy: Strategy = input.strategy ?? "priority";
-    const picked = this.applyStrategy(strategy, eligible, input.providerId);
+    const picked = this.applyStrategy(strategy, eligible, input.providerId, {
+      model: input.model,
+    });
     if (!picked) return null;
     this.stampSelection(picked.id);
 
@@ -294,6 +327,7 @@ export class AccountPool {
   selectionState(
     providerId: PoolProviderId,
     strategy: Strategy = "priority",
+    opts?: { model?: string },
   ): { activeAccountId: string | null; reason: string | null } {
     const all = this.deps.readAccounts();
     const eligible = this.filterEligible(all, { providerId });
@@ -304,7 +338,7 @@ export class AccountPool {
         reason: "only-eligible",
       };
     }
-    const picked = this.applyStrategy(strategy, eligible, providerId);
+    const picked = this.applyStrategy(strategy, eligible, providerId, opts);
     if (!picked) return { activeAccountId: null, reason: null };
     let reason: string = strategy;
     if (strategy === "reset-soonest") {
@@ -313,20 +347,8 @@ export class AccountPool {
       reason = eligible.some((a) => accountResetAt(a) != null)
         ? "reset-soonest"
         : "least-recently-throttled";
-    } else if (strategy === "drain-expiring") {
-      const now = Date.now();
-      reason = eligible.some(
-        (a) =>
-          a.health === "ok" &&
-          accountSessionPct(a) < QUOTA_AWARE_SKIP_PCT &&
-          isWithinDrainWindow(
-            a,
-            now,
-            drainExpiringWindowMsForProvider(providerId),
-          ),
-      )
-        ? "drain-expiring"
-        : "priority";
+    } else if (strategy === "drain-soonest-reset") {
+      reason = "drain-soonest-reset";
     }
     return { activeAccountId: picked.id, reason };
   }
@@ -388,6 +410,7 @@ export class AccountPool {
     strategy: Strategy,
     eligible: LinkedAccountConfig[],
     providerId: PoolProviderId,
+    opts: { model?: string } = {},
   ): LinkedAccountConfig | null {
     if (eligible.length === 0) return null;
     if (eligible.length === 1) return eligible[0] ?? null;
@@ -427,19 +450,18 @@ export class AccountPool {
         const pool = underQuota.length > 0 ? underQuota : eligible;
         return [...pool].sort(bySoonestReset)[0] ?? null;
       }
-      case "drain-expiring": {
-        const now = Date.now();
-        const windowMs = drainExpiringWindowMsForProvider(providerId);
-        const draining = eligible.filter(
-          (account) =>
-            account.health === "ok" &&
-            accountSessionPct(account) < QUOTA_AWARE_SKIP_PCT &&
-            isWithinDrainWindow(account, now, windowMs),
+      case "drain-soonest-reset": {
+        // A weekly window is the scarce budget, but a currently exhausted
+        // session cannot serve traffic. Cool it out without changing the
+        // relative weekly drain order used when it becomes eligible again.
+        const underSessionCap = eligible.filter(
+          (a) => accountSessionPct(a) < QUOTA_AWARE_SKIP_PCT,
         );
-        if (draining.length > 0) {
-          return [...draining].sort(bySoonestSubscriptionEnd)[0] ?? null;
-        }
-        return [...eligible].sort(byPriorityThenAge)[0] ?? null;
+        const pool = underSessionCap.length > 0 ? underSessionCap : eligible;
+        return (
+          [...pool].sort((a, b) => byDrainSoonestReset(a, b, opts.model))[0] ??
+          null
+        );
       }
       default:
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
@@ -623,23 +645,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
-    // Callers pass a heuristic cool-off (60s probe default / 15min session
-    // default), but the provider's own usage window is authoritative when we
-    // have it: Anthropic and Codex both report the window's reset timestamp
-    // via the usage probes. Using it re-admits the account exactly when the
-    // limit lifts — a shorter heuristic ping-pongs spawns onto a still-limited
-    // account (a ~5h window retried every 60s), a longer one strands a
-    // recovered account out of rotation.
-    const providerResetMs = account.usage?.resetsAt;
     const heuristicUntil =
       Number.isFinite(untilMs) && untilMs > Date.now()
         ? untilMs
         : Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS;
     const healthDetail: LinkedAccountHealthDetail = {
-      until:
-        typeof providerResetMs === "number" && providerResetMs > Date.now()
-          ? providerResetMs
-          : heuristicUntil,
+      until: heuristicUntil,
       lastChecked: Date.now(),
       ...(detail ? { lastError: detail } : {}),
     };
@@ -814,6 +825,46 @@ function byPriorityThenAge(
   return aLast - bLast; // older first
 }
 
+function byExplicitPriority(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+): number {
+  const aExplicit = a.prioritySource === "explicit";
+  const bExplicit = b.prioritySource === "explicit";
+  if (aExplicit && bExplicit && a.priority !== b.priority) {
+    return a.priority - b.priority;
+  }
+  if (aExplicit !== bExplicit) return aExplicit ? -1 : 1;
+  return 0;
+}
+
+function byDrainSoonestReset(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+  requestedModel?: string,
+): number {
+  const explicit = byExplicitPriority(a, b);
+  if (explicit !== 0) return explicit;
+  const aBucket = accountWeeklyBucket(a, requestedModel);
+  const bBucket = accountWeeklyBucket(b, requestedModel);
+  if (aBucket.resetsAt != null && bBucket.resetsAt != null) {
+    if (aBucket.resetsAt !== bBucket.resetsAt) {
+      return aBucket.resetsAt - bBucket.resetsAt;
+    }
+  } else if (aBucket.resetsAt != null) {
+    return -1;
+  } else if (bBucket.resetsAt != null) {
+    return 1;
+  }
+  if (aBucket.pct !== bBucket.pct) return aBucket.pct - bBucket.pct;
+  const now = Date.now();
+  const aBoost = subscriptionEndBoost(a, now);
+  const bBoost = subscriptionEndBoost(b, now);
+  if (aBoost !== bBoost) return aBoost - bBoost;
+  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /** Mutation-free ordering for the round-robin ring: identity fields only
  * (priority, createdAt, id), so the cursor walks the same sequence no matter
  * how usage recording mutates `lastUsedAt` between selects. */
@@ -842,6 +893,7 @@ interface PoolMetaFields {
   label: string;
   enabled: boolean;
   priority: number;
+  prioritySource?: "explicit" | "generated";
   health: LinkedAccountHealth;
   healthDetail?: LinkedAccountHealthDetail;
   usage?: LinkedAccountUsage;
@@ -911,6 +963,14 @@ function recordToLinked(
     source: record.source,
     enabled: meta?.enabled ?? true,
     priority: meta?.priority ?? defaultPriority,
+    // Legacy metadata persisted creation-order priorities for every account.
+    // Treat an unchanged creation-order value as generated, while preserving a
+    // hand-tuned legacy value as an explicit override.
+    prioritySource:
+      meta?.prioritySource ??
+      (typeof meta?.priority === "number" && meta.priority !== defaultPriority
+        ? "explicit"
+        : "generated"),
     createdAt: record.createdAt,
     health: meta?.health ?? "ok",
     // Prefer the pool-meta lastUsedAt (bumped by recordCall) over the credential
@@ -990,6 +1050,7 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     label: account.label,
     enabled: account.enabled,
     priority: account.priority,
+    prioritySource: account.prioritySource ?? "explicit",
     health: account.health,
     ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
     ...(account.usage ? { usage: account.usage } : {}),
@@ -1025,27 +1086,9 @@ function normalizeStrategy(value: unknown): Strategy | undefined {
     value === "least-used" ||
     value === "quota-aware" ||
     value === "reset-soonest" ||
-    value === "drain-expiring"
+    value === "drain-soonest-reset"
     ? value
     : undefined;
-}
-
-function readPositiveFiniteMs(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value
-    : undefined;
-}
-
-function drainExpiringWindowMsForProvider(providerId: PoolProviderId): number {
-  const settings = defaultSelectionConfig.accountStrategySettings?.[providerId];
-  if (settings && typeof settings === "object" && !Array.isArray(settings)) {
-    const record = settings as Record<string, unknown>;
-    const windowMs = readPositiveFiniteMs(record.drainExpiringWindowMs);
-    if (windowMs !== undefined) return windowMs;
-    const windowHours = readPositiveFiniteMs(record.drainExpiringWindowHours);
-    if (windowHours !== undefined) return windowHours * 60 * 60 * 1000;
-  }
-  return DEFAULT_DRAIN_EXPIRING_WINDOW_MS;
 }
 
 function normalizeAccountIdsFromRoute(
@@ -1101,7 +1144,12 @@ export function selectionForProvider(providerId: PoolProviderId): {
   return {
     strategy:
       routeSelection.strategy ??
-      normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId]),
+      normalizeStrategy(
+        defaultSelectionConfig.accountStrategies?.[providerId],
+      ) ??
+      (providerId === "anthropic-subscription"
+        ? "drain-soonest-reset"
+        : undefined),
     accountIds: routeSelection.accountIds,
   };
 }

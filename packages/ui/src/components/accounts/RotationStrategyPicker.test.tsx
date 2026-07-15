@@ -81,7 +81,7 @@ describe("RotationStrategyPicker", () => {
     expect(onChange).toHaveBeenCalledWith("reset-soonest");
   });
 
-  it("offers and selects the drain-expiring strategy", () => {
+  it("offers and selects the drain-soonest-reset strategy", () => {
     const onChange = vi.fn();
     render(
       <RotationStrategyPicker
@@ -97,7 +97,9 @@ describe("RotationStrategyPicker", () => {
       pointerId: 2,
       pointerType: "mouse",
     });
-    fireEvent.click(screen.getByRole("option", { name: /Drain expiring/i }));
-    expect(onChange).toHaveBeenCalledWith("drain-expiring");
+    fireEvent.click(
+      screen.getByRole("option", { name: /Drain soonest reset/i }),
+    );
+    expect(onChange).toHaveBeenCalledWith("drain-soonest-reset");
   });
 });

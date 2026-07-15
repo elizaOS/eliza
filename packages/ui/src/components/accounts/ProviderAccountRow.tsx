@@ -140,7 +140,7 @@ const SELECTION_REASON_LABEL: Record<
   string
 > = {
   "reset-soonest": "resets soonest",
-  "drain-expiring": "expires soonest",
+  "drain-soonest-reset": "draining weekly reset",
   "only-eligible": "only account",
   priority: "highest priority",
   "round-robin": "round-robin",

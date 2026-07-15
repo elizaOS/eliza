@@ -82,6 +82,12 @@ export interface LinkedAccountUsage {
 	sessionPct?: number;
 	/** 0–100, 7-day (Anthropic only) */
 	weeklyPct?: number;
+	/**
+	 * Per-model 7-day utilization buckets from provider usage APIs. Keys are
+	 * provider display/model names normalized only enough for case-insensitive
+	 * lookup by the selector; values preserve the provider's reset timestamp.
+	 */
+	weeklyModelBuckets?: Record<string, { pct: number; resetsAt?: number }>;
 	/** epoch ms */
 	resetsAt?: number;
 	/** epoch ms — when this snapshot was last refreshed */
@@ -101,6 +107,8 @@ export interface LinkedAccountConfig {
 	enabled: boolean;
 	/** lower = higher priority */
 	priority: number;
+	/** Whether `priority` was hand-set by the operator or generated from creation order. */
+	prioritySource?: 'explicit' | 'generated';
 	/** epoch ms */
 	createdAt: number;
 	/** epoch ms */
@@ -136,9 +144,10 @@ export const SERVICE_ROUTE_ACCOUNT_STRATEGIES = [
 	// (accounts that just reset are held in reserve). Falls back to
 	// least-recently-used when reset instants are unknown.
 	'reset-soonest',
-	// Subscription-expiry-aware: drain healthy eligible accounts whose paid
-	// window ends soon, then fall back to the provider's default ordering.
-	'drain-expiring',
+	// Weekly-drain strategy: explicit hand-set priorities win first, otherwise
+	// spend the account/model bucket whose weekly reset arrives soonest, then
+	// lower utilization, with subscription end as the final-days booster.
+	'drain-soonest-reset',
 ] as const;
 
 export type ServiceRouteAccountStrategy = (typeof SERVICE_ROUTE_ACCOUNT_STRATEGIES)[number];

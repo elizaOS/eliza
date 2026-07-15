@@ -158,12 +158,12 @@ describe("parseAccountsArgs", () => {
 				key: "accounts",
 				canonical: "/accounts",
 				args: [],
-				rawArgs: "strategy claude drain-expiring",
+				rawArgs: "strategy claude drain-soonest-reset",
 			}),
 		).toEqual({
 			kind: "strategy",
 			provider: "anthropic-subscription",
-			strategy: "drain-expiring",
+			strategy: "drain-soonest-reset",
 		});
 		expect(
 			parseAccountsArgs({
@@ -422,18 +422,18 @@ describe("/accounts writes", () => {
 		);
 	});
 
-	it("drain-expiring PATCHes the provider strategy route with the exact body", async () => {
+	it("drain-soonest-reset PATCHes the provider strategy route with the exact body", async () => {
 		const fetchMock = vi.fn(async () =>
 			jsonResponse({
 				providerId: "anthropic-subscription",
-				strategy: "drain-expiring",
+				strategy: "drain-soonest-reset",
 			}),
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
 		const r = await resolveCommand(
 			runtime,
-			msg("/accounts strategy claude drain-expiring"),
+			msg("/accounts strategy claude drain-soonest-reset"),
 			OWNER,
 		);
 		const [call] = recordedCalls(fetchMock);
@@ -441,9 +441,9 @@ describe("/accounts writes", () => {
 		expect(new URL(call?.url ?? "").pathname).toBe(
 			"/api/providers/anthropic-subscription/strategy",
 		);
-		expect(call?.body).toEqual({ strategy: "drain-expiring" });
+		expect(call?.body).toEqual({ strategy: "drain-soonest-reset" });
 		expect(r.reply).toBe(
-			"Account strategy for anthropic-subscription set to drain-expiring.",
+			"Account strategy for anthropic-subscription set to drain-soonest-reset.",
 		);
 	});
 

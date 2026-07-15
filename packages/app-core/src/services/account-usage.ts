@@ -65,6 +65,18 @@ interface AnthropicUsageWindow {
   resets_at?: string | number;
 }
 
+interface AnthropicUsageLimitScope {
+  model?: { display_name?: string };
+}
+
+interface AnthropicUsageLimit {
+  kind?: string;
+  group?: string;
+  percent?: number;
+  resets_at?: string | number;
+  scope?: AnthropicUsageLimitScope;
+}
+
 interface AnthropicUsagePayload {
   five_hour_utilization?: number;
   five_hour_resets_at?: string | number;
@@ -72,6 +84,7 @@ interface AnthropicUsagePayload {
   seven_day_resets_at?: string | number;
   five_hour?: AnthropicUsageWindow;
   seven_day?: AnthropicUsageWindow;
+  limits?: AnthropicUsageLimit[];
 }
 
 /**
@@ -105,6 +118,25 @@ export async function pollAnthropicUsage(
 
   const fiveHour = payload.five_hour;
   const sevenDay = payload.seven_day;
+  const weeklyModelBuckets: NonNullable<UsageSnapshot["weeklyModelBuckets"]> =
+    {};
+  if (Array.isArray(payload.limits)) {
+    for (const limit of payload.limits) {
+      if (limit.kind !== "weekly_scoped" || limit.group !== "weekly") {
+        continue;
+      }
+      const pct = utilizationToPct(limit.percent);
+      if (pct === undefined) continue;
+      const resetsAt = normalizeResetTimestamp(limit.resets_at);
+      const modelName = limit.scope?.model?.display_name?.trim();
+      if (modelName) {
+        weeklyModelBuckets[modelName] = {
+          pct,
+          ...(resetsAt !== undefined ? { resetsAt } : {}),
+        };
+      }
+    }
+  }
 
   const sessionPct =
     utilizationToPct(fiveHour?.utilization) ??
@@ -113,13 +145,16 @@ export async function pollAnthropicUsage(
     utilizationToPct(sevenDay?.utilization) ??
     utilizationToPct(payload.seven_day_utilization);
   const resetsAt =
-    normalizeResetTimestamp(fiveHour?.resets_at) ??
-    normalizeResetTimestamp(payload.five_hour_resets_at);
+    normalizeResetTimestamp(sevenDay?.resets_at) ??
+    normalizeResetTimestamp(payload.seven_day_resets_at);
 
   return {
     refreshedAt: Date.now(),
     ...(sessionPct !== undefined ? { sessionPct } : {}),
     ...(weeklyPct !== undefined ? { weeklyPct } : {}),
+    ...(Object.keys(weeklyModelBuckets).length > 0
+      ? { weeklyModelBuckets }
+      : {}),
     ...(resetsAt !== undefined ? { resetsAt } : {}),
   };
 }

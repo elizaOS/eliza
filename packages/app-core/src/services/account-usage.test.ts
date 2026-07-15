@@ -71,6 +71,7 @@ describe("pollAnthropicUsage", () => {
         five_hour_utilization: 0.42,
         five_hour_resets_at: "2026-06-22T12:00:00.000Z",
         seven_day_utilization: 0.1,
+        seven_day_resets_at: "2026-06-29T12:00:00.000Z",
       }),
     );
 
@@ -79,7 +80,7 @@ describe("pollAnthropicUsage", () => {
     // 0.42 * 100 -> 42
     expect(snap.sessionPct).toBe(42);
     expect(snap.weeklyPct).toBeCloseTo(10, 10);
-    expect(snap.resetsAt).toBe(Date.parse("2026-06-22T12:00:00.000Z"));
+    expect(snap.resetsAt).toBe(Date.parse("2026-06-29T12:00:00.000Z"));
     expect(typeof snap.refreshedAt).toBe("number");
 
     // Probe hit the right endpoint with the OAuth bearer + beta header.
@@ -94,11 +95,11 @@ describe("pollAnthropicUsage", () => {
     expect(headers["anthropic-beta"]).toBe("oauth-2025-04-20");
   });
 
-  it("parses the NESTED response shape (five_hour.utilization / resets_at)", async () => {
+  it("parses the NESTED response shape with the weekly reset timestamp", async () => {
     stubFetch(
       jsonResponse({
         five_hour: { utilization: 0.5, resets_at: 1_700_000_000 },
-        seven_day: { utilization: 0.25 },
+        seven_day: { utilization: 0.25, resets_at: 1_700_604_800 },
       }),
     );
 
@@ -107,7 +108,45 @@ describe("pollAnthropicUsage", () => {
     expect(snap.sessionPct).toBe(50);
     expect(snap.weeklyPct).toBe(25);
     // resets_at given in epoch SECONDS -> normalized to ms (* 1000).
-    expect(snap.resetsAt).toBe(1_700_000_000 * 1000);
+    expect(snap.resetsAt).toBe(1_700_604_800 * 1000);
+  });
+
+  it("parses the current weekly_scoped limits shape into per-model buckets", async () => {
+    stubFetch(
+      jsonResponse({
+        five_hour: { utilization: 0.2, resets_at: 1_700_000_000 },
+        seven_day: {
+          utilization: 0.5,
+          resets_at: "2026-06-28T12:00:00.000Z",
+        },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 64,
+            resets_at: "2026-06-29T12:00:00.000Z",
+            scope: { model: { display_name: "Fable" } },
+          },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 12,
+            resets_at: "2026-06-30T12:00:00.000Z",
+            scope: { model: { display_name: "Sonnet" } },
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("limits-token");
+
+    expect(snap.sessionPct).toBe(20);
+    expect(snap.weeklyPct).toBe(50);
+    expect(snap.resetsAt).toBe(Date.parse("2026-06-28T12:00:00.000Z"));
+    expect(snap.weeklyModelBuckets).toEqual({
+      Fable: { pct: 64, resetsAt: Date.parse("2026-06-29T12:00:00.000Z") },
+      Sonnet: { pct: 12, resetsAt: Date.parse("2026-06-30T12:00:00.000Z") },
+    });
   });
 
   it("prefers the nested utilization over the flat field when both are present", async () => {
@@ -170,7 +209,7 @@ describe("pollAnthropicUsage", () => {
 
   it("passes through an epoch-MILLISECONDS reset timestamp unchanged", async () => {
     const ms = 1_700_000_000_000; // already > 1e12
-    stubFetch(jsonResponse({ five_hour: { resets_at: ms } }));
+    stubFetch(jsonResponse({ seven_day: { resets_at: ms } }));
 
     const snap = await pollAnthropicUsage("ms-token");
 
@@ -178,7 +217,7 @@ describe("pollAnthropicUsage", () => {
   });
 
   it("returns undefined resetsAt for an unparseable reset string", async () => {
-    stubFetch(jsonResponse({ five_hour: { resets_at: "not-a-date" } }));
+    stubFetch(jsonResponse({ seven_day: { resets_at: "not-a-date" } }));
 
     const snap = await pollAnthropicUsage("baddate-token");
 
