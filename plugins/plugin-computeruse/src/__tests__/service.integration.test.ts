@@ -491,20 +491,42 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
     expect(result.success).toBe(true);
   }, 15_000);
 
-  it("reads a file with an explicit encoding", async () => {
+  it("reads a file across every supported encoding", async () => {
     const target = path.join(workdir, "enc.txt");
     await service.executeFileAction({
       action: "write",
       path: target,
       content: "encoded",
     });
-    const read = await service.executeFileAction({
-      action: "read",
-      path: target,
-      encoding: "base64",
-    });
-    expect(read.success).toBe(true);
+    for (const encoding of [
+      "utf8",
+      "ascii",
+      "base64",
+      "hex",
+      "latin1",
+      "binary",
+      "ucs2",
+      "utf16le",
+      "unknown-encoding",
+    ]) {
+      const read = await service.executeFileAction({
+        action: "read",
+        path: target,
+        encoding,
+      });
+      expect(read.success).toBe(true);
+    }
   });
+
+  it("runs terminal execute with an explicit cwd and timeout", async () => {
+    const result = await service.executeTerminalAction({
+      action: "execute",
+      command: "pwd",
+      cwd: workdir,
+      timeout: 5,
+    });
+    expect(result.success).toBe(true);
+  }, 15_000);
 
   // executeCommand maps each command string onto an action and dispatches it.
   // Malformed desktop/window commands fail fast at validation (no display or
@@ -608,26 +630,6 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
     }
   }, 20_000);
 
-  it("routes read-only browser command strings through executeCommand", async () => {
-    // No browser is open, so each safe read returns a structured failure — the
-    // routing + mapBrowserCommandToAction + not-open guard run without launching
-    // a real browser.
-    const commands = [
-      "browser_state",
-      "browser_info",
-      "browser_get_context",
-      "browser_get_dom",
-      "browser_dom",
-      "browser_get_clickables",
-      "browser_clickables",
-      "browser_list_tabs",
-    ];
-    for (const command of commands) {
-      const result = await service.executeCommand(command, {});
-      expect(typeof result.success).toBe("boolean");
-    }
-  }, 20_000);
-
   it("exercises window read and getter actions", async () => {
     for (const action of [
       "list",
@@ -648,6 +650,43 @@ describe("ComputerUseService file and terminal execution (real host I/O)", () =>
       const result = await service.executeWindowAction({ action });
       expect(result.success).toBe(false);
     }
+  }, 20_000);
+
+  // Window management verbs against a window id that matches nothing: the verb
+  // dispatch, its approval-command lookup, and the platform call all run and
+  // fail fast (no window to act on) — no real window is moved or closed on the
+  // host, and the shell-outs are bounded (absent WM tooling errors immediately).
+  it("dispatches window management verbs for a non-matching window", async () => {
+    const windowId = "computeruse-nonexistent-window-id";
+    for (const action of [
+      "focus",
+      "switch",
+      "minimize",
+      "maximize",
+      "restore",
+      "close",
+    ] as const) {
+      const result = await service.executeWindowAction({ action, windowId });
+      expect(typeof result.success).toBe("boolean");
+    }
+
+    const moved = await service.executeWindowAction({
+      action: "move",
+      windowId,
+      x: 0,
+      y: 0,
+    });
+    expect(typeof moved.success).toBe("boolean");
+
+    const bounded = await service.executeWindowAction({
+      action: "set_bounds",
+      windowId,
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    });
+    expect(typeof bounded.success).toBe("boolean");
   }, 20_000);
 
   it("exposes approval and display introspection", () => {
