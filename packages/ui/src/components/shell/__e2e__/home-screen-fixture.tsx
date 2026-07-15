@@ -51,6 +51,25 @@ if (params.has("notificationOverflow")) {
   for (const notification of notifications) {
     __ingestNotificationForTests(notification, notifications.length);
   }
+} else if (params.has("notificationMaterialMotion")) {
+  __resetNotificationStoreForTests();
+  const now = Date.now();
+  const notifications: AgentNotification[] = Array.from(
+    { length: 6 },
+    (_, index) => ({
+      id: `notif-material-motion-${index}`,
+      title: `Material motion ${index + 1}`,
+      body: "Two physical stacks expose the lower backplates during release",
+      category: "system",
+      priority: index < 3 ? "high" : "normal",
+      source: index < 3 ? "trigger" : "system",
+      createdAt: now - index * 1_000,
+      readAt: null,
+    }),
+  );
+  for (const notification of notifications) {
+    __ingestNotificationForTests(notification, notifications.length);
+  }
 } else if (params.has("notificationMotion")) {
   __resetNotificationStoreForTests();
   const now = Date.now();

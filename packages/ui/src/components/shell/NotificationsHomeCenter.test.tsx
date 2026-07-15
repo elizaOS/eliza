@@ -2273,9 +2273,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       /\.eliza-notif-scroll\[data-shade-release-settling\]\s*\{([^}]*)\}/,
     )?.[1];
     expect(releaseRule).toContain("animation: none");
-    expect(releaseRule).toContain("--scroll-fade-t: 1.25rem");
-    expect(releaseRule).toContain("--scroll-fade-b: 1.5rem");
-    expect(releaseRule).not.toContain("mask-image: none");
+    expect(releaseRule).toContain("-webkit-mask-image: none");
+    expect(releaseRule).toContain("mask-image: none");
     const rowAnimationGuard = css
       .match(/[^{}]+\{\s*animation: none !important;\s*\}/g)
       ?.find((rule) => rule.includes("data-shade-release-settling"));

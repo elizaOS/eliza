@@ -191,9 +191,17 @@ const stubElizaCore = {
 // `color-mix(..., var(--brand-white))`, and an undefined var resolves to black —
 // unreadable on the dark ember field, tripping the foreground-contrast gate. The
 // fixture loads no app CSS, so the handful of brand vars the home widgets read
-// must be declared inline.
+// must be declared inline. The standalone esbuild page also bypasses Tailwind's
+// `@utility` transform; mirror the production scroll-fade mask so Chromium can
+// exercise its release handoff instead of treating the class as unstyled.
 const headHtml = `<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<style>:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f}</style>`;
+<style>
+:root{--eliza-continuous-chat-clearance:5.25rem;--safe-area-bottom:0px;--eliza-mobile-nav-offset:0px;--brand-white:#fdfaf7;--brand-black:#000000;--brand-orange:#ff6a1f}
+.scroll-fade{
+  mask-image:linear-gradient(to bottom,transparent 0,#000 1.25rem,#000 calc(100% - 1.5rem),transparent 100%);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 1.25rem,#000 calc(100% - 1.5rem),transparent 100%);
+}
+</style>`;
 const url = await writeFixturePage({
   entry: join(here, "home-screen-fixture.tsx"),
   outDir,
@@ -2254,7 +2262,7 @@ try {
   // Reload into a clean shade before the deep-pull marker trace. Keeping this
   // proof isolated prevents its release-click suppression from changing the
   // interaction sequence exercised above.
-  await notificationMotion.goto(`${url}?notificationMotion`);
+  await notificationMotion.goto(`${url}?notificationMaterialMotion`);
   await notificationCenter.waitFor({ state: "visible", timeout: 5000 });
   await waitForHomeEnterSettled(notificationMotion);
   await notificationMotion.evaluate(() => {
@@ -2267,10 +2275,35 @@ try {
       const row = document.querySelector(".eliza-notif-row");
       const glass = row?.querySelector(".eliza-notif-glass");
       const rowStyle = row ? getComputedStyle(row) : null;
+      const groupContents = Array.from(
+        document.querySelectorAll("[data-notification-group-content]"),
+      );
+      const stackPeeks = Array.from(
+        document.querySelectorAll("[data-notification-stack-peek]"),
+      );
+      const listStyle = list ? getComputedStyle(list) : null;
       window.__ELIZA_NOTIFICATION_DEEP_PULL_TRACE__.push({
         t: performance.now() - startedAt,
         mode: list?.getAttribute("data-shade-mode"),
+        dragging: list?.hasAttribute("data-shade-dragging"),
         releaseSettling: list?.hasAttribute("data-shade-release-settling"),
+        maskImage: listStyle?.maskImage ?? null,
+        webkitMaskImage: listStyle?.webkitMaskImage ?? null,
+        groupOpacities: groupContents.map((group) =>
+          Number.parseFloat(getComputedStyle(group).opacity),
+        ),
+        peekOpacities: stackPeeks.map((peek) =>
+          Number.parseFloat(getComputedStyle(peek).opacity),
+        ),
+        peekColors: stackPeeks.map(
+          (peek) => getComputedStyle(peek).backgroundColor,
+        ),
+        peekImages: stackPeeks.map(
+          (peek) => getComputedStyle(peek).backgroundImage,
+        ),
+        peekShadows: stackPeeks.map(
+          (peek) => getComputedStyle(peek).boxShadow,
+        ),
         row: rowStyle
           ? {
               animationName: rowStyle.animationName,
@@ -2300,8 +2333,17 @@ try {
   const expandedDeepPullFrames = deepPullTrace.filter(
     (sample) => sample.mode === "expanded" && sample.row,
   );
+  const heldDeepPullFrames = deepPullTrace.filter(
+    (sample) =>
+      sample.mode === "rested" &&
+      sample.dragging &&
+      sample.groupOpacities.length > 0,
+  );
   const settledDeepPullFrames = expandedDeepPullFrames.filter(
     (sample) => !sample.releaseSettling,
+  );
+  const releasingDeepPullFrames = expandedDeepPullFrames.filter(
+    (sample) => sample.releaseSettling,
   );
   const expandedGlassColors = new Set(
     expandedDeepPullFrames
@@ -2312,6 +2354,50 @@ try {
     expandedDeepPullFrames.some((sample) => sample.releaseSettling) &&
       settledDeepPullFrames.length > 0,
     "deep pull trace spans the release marker handoff",
+  );
+  assert(
+    heldDeepPullFrames.some(
+      (sample) =>
+        sample.groupOpacities.every((opacity) => opacity >= 0.99) &&
+        sample.groupOpacities.length === 2 &&
+        sample.peekOpacities.length === 4 &&
+        sample.peekOpacities.every((opacity) => opacity >= 0.99),
+    ),
+    "held deep pull advances both mounted stacks and all four backplates to full opacity",
+  );
+  const expandedPeekColors = new Set(
+    expandedDeepPullFrames.flatMap((sample) => sample.peekColors),
+  );
+  const expandedPeekImages = new Set(
+    expandedDeepPullFrames.flatMap((sample) => sample.peekImages),
+  );
+  const expandedPeekShadows = new Set(
+    expandedDeepPullFrames.flatMap((sample) => sample.peekShadows),
+  );
+  assert(
+    expandedDeepPullFrames.every(
+      (sample) =>
+        sample.groupOpacities.length === 2 &&
+        sample.groupOpacities.every((opacity) => opacity >= 0.99) &&
+        sample.peekOpacities.length === 4 &&
+        sample.peekOpacities.every((opacity) => opacity >= 0.99),
+    ) &&
+      expandedPeekColors.size === 1 &&
+      expandedPeekImages.size === 1 &&
+      expandedPeekShadows.size === 1,
+    `deep-pull release keeps every stack backplate at one opacity and material (${JSON.stringify({ expandedPeekColors: [...expandedPeekColors], expandedPeekImages: [...expandedPeekImages], expandedPeekShadows: [...expandedPeekShadows], firstFrames: expandedDeepPullFrames.slice(0, 4) })})`,
+  );
+  assert(
+    releasingDeepPullFrames.length > 0 &&
+      releasingDeepPullFrames.every(
+        (sample) =>
+          sample.maskImage === "none" && sample.webkitMaskImage === "none",
+      ) &&
+      settledDeepPullFrames.some(
+        (sample) =>
+          sample.maskImage !== "none" && sample.webkitMaskImage !== "none",
+      ),
+    `release runway stays unmasked until both stacks settle (${JSON.stringify({ releasing: releasingDeepPullFrames.slice(0, 3), settled: settledDeepPullFrames.slice(0, 2) })})`,
   );
   assert(
     expandedDeepPullFrames.every(
