@@ -18,7 +18,12 @@ import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConversationMessage } from "../../api/client-types-chat";
 import { useContinuousChat } from "../../hooks/useContinuousChat";
-import { useRealtimeVoiceSession } from "../../hooks/useRealtimeVoiceSession";
+import {
+  type RealtimeVoiceError,
+  type RealtimeVoiceStartOutcome,
+  type UseRealtimeVoiceSessionState,
+  useRealtimeVoiceSession,
+} from "../../hooks/useRealtimeVoiceSession";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import {
   getVoiceCaptureBreadcrumbs,
@@ -32,8 +37,20 @@ import {
   useGameModalMessages,
 } from "./chat-view-hooks";
 
-const realtimeHarness = vi.hoisted(() => ({
-  state: {
+type RealtimeHarnessState = Omit<
+  UseRealtimeVoiceSessionState,
+  "start" | "stop" | "bargeIn" | "unlock"
+> & {
+  start: ReturnType<
+    typeof vi.fn<() => Promise<RealtimeVoiceStartOutcome>>
+  >;
+  stop: ReturnType<typeof vi.fn<() => Promise<void>>>;
+  bargeIn: ReturnType<typeof vi.fn<() => void>>;
+  unlock: ReturnType<typeof vi.fn<() => Promise<void>>>;
+};
+
+const realtimeHarness = vi.hoisted(() => {
+  const state: RealtimeHarnessState = {
     available: false,
     active: false,
     connecting: false,
@@ -43,16 +60,17 @@ const realtimeHarness = vi.hoisted(() => ({
     agentSpeaking: false,
     needsUnlock: false,
     paused: false,
-    error: null as
-      | import("../../hooks/useRealtimeVoiceSession").RealtimeVoiceError
-      | null,
+    error: null as RealtimeVoiceError | null,
     speaker: null,
-    start: vi.fn(async () => ({ kind: "live" as const })),
+    start: vi.fn<() => Promise<RealtimeVoiceStartOutcome>>(async () => ({
+      kind: "live",
+    })),
     stop: vi.fn(async () => {}),
     bargeIn: vi.fn(),
     unlock: vi.fn(async () => {}),
-  },
-}));
+  };
+  return { state };
+});
 
 const continuousHarness = vi.hoisted(() => ({
   state: {

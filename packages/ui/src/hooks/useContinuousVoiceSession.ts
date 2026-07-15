@@ -77,13 +77,16 @@ export function useContinuousVoiceSession(
 
   const realtimeActive = realtime.available && realtime.active;
 
-  const start = useCallback(async () => {
-    if (realtime.available) {
-      return realtime.start();
-    }
-    await batch.resume();
-    return { kind: "batch" };
-  }, [batch, realtime]);
+  const start = useCallback(
+    async (): Promise<RealtimeVoiceStartOutcome | { kind: "batch" }> => {
+      if (realtime.available) {
+        return realtime.start();
+      }
+      await batch.resume();
+      return { kind: "batch" };
+    },
+    [batch, realtime],
+  );
 
   const stop = useCallback(async () => {
     // A stop during bring-up (connecting, not yet live) must cancel the pending
