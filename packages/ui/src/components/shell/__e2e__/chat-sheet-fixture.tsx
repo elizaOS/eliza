@@ -28,55 +28,86 @@ declare global {
 
 let nextId = 100;
 const uid = () => `m${nextId++}`;
+const FIXTURE_NOW = Date.now();
 
 const SEED: ShellMessage[] = [
-  { id: "m1", role: "user", content: "what's the plan for today?", createdAt: 1 },
+  {
+    id: "m1",
+    role: "user",
+    content: "what's the plan for today?",
+    createdAt: FIXTURE_NOW - 12 * 60_000,
+  },
   {
     id: "m2",
     role: "assistant",
     content:
       "Three things: ship the chat-sheet redesign, review the screenshots, then wire the drag e2e. Want me to start on the first?",
-    createdAt: 2,
+    createdAt: FIXTURE_NOW - 11 * 60_000,
   },
-  { id: "m3", role: "user", content: "yes, and keep the input fixed", createdAt: 3 },
+  {
+    id: "m3",
+    role: "user",
+    content: "yes, and keep the input fixed",
+    createdAt: FIXTURE_NOW - 10 * 60_000,
+  },
   {
     id: "m4",
     role: "assistant",
     content:
       "Done — the composer stays pinned at the bottom; the history pulls up over it and you pull the grabber back down to close.",
-    createdAt: 4,
+    createdAt: FIXTURE_NOW - 9 * 60_000,
   },
-  { id: "m5", role: "user", content: "nice. show me the open state", createdAt: 5 },
+  {
+    id: "m5",
+    role: "user",
+    content: "nice. show me the open state",
+    createdAt: FIXTURE_NOW - 8 * 60_000,
+  },
   {
     id: "m6",
     role: "assistant",
     content:
       "Pull up anywhere on the sheet (or just start typing) and it springs open into the full transcript.",
-    createdAt: 6,
+    createdAt: FIXTURE_NOW - 7 * 60_000,
   },
-  { id: "m7", role: "user", content: "what closes it?", createdAt: 7 },
+  {
+    id: "m7",
+    role: "user",
+    content: "what closes it?",
+    createdAt: FIXTURE_NOW - 6 * 60_000,
+  },
   {
     id: "m8",
     role: "assistant",
     content:
       "Drag the grabber at the top back down, or press Escape. Clicking the view behind does nothing — it stays open until you pull it down.",
-    createdAt: 8,
+    createdAt: FIXTURE_NOW - 5 * 60_000,
   },
-  { id: "m9", role: "user", content: "and the input?", createdAt: 9 },
+  {
+    id: "m9",
+    role: "user",
+    content: "and the input?",
+    createdAt: FIXTURE_NOW - 4 * 60_000,
+  },
   {
     id: "m10",
     role: "assistant",
     content:
       "The composer is pinned at the very bottom and never moves; the history slides up over it. The latest line always sits just above the input.",
-    createdAt: 10,
+    createdAt: FIXTURE_NOW - 3 * 60_000,
   },
-  { id: "m11", role: "user", content: "great, this scrolls now right?", createdAt: 11 },
+  {
+    id: "m11",
+    role: "user",
+    content: "great, this scrolls now right?",
+    createdAt: FIXTURE_NOW - 2 * 60_000,
+  },
   {
     id: "m12",
     role: "assistant",
     content:
       "Yes — once the transcript is taller than the open sheet it scrolls, and the newest line stays pinned at the bottom. This thread is intentionally long so the open state has history to scroll through.",
-    createdAt: 12,
+    createdAt: FIXTURE_NOW - 60_000,
   },
 ];
 
@@ -111,7 +142,7 @@ const MANY_SEED: ShellMessage[] = Array.from({ length: 40 }, (_, i) => {
       role === "user"
         ? `message number ${i + 1} — a question that takes a full line to read`
         : `reply ${i + 1}: here is a deliberately long answer so the transcript grows well past the tallest sheet detent and the scroll container has real overflow to scroll through on every viewport. The extra detail ensures a full render window still exercises scrolling at the tallest mobile detent.`,
-    createdAt: i + 1,
+    createdAt: FIXTURE_NOW - (40 - i) * 60_000,
   } as ShellMessage;
 });
 const FEW_SEED: ShellMessage[] = [

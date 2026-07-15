@@ -50,9 +50,9 @@ export interface RelativeTimeProps {
  * (and only it) re-renders when the minute rolls over; the formatted string is
  * derived from the wall clock at render time.
  *
- * Memoized on `(ts, className, testid)`: a parent re-render with the same props
- * does not re-render the leaf, and a tick re-renders the leaf without touching
- * the parent - the two directions of the binding pattern.
+ * Memoized on its display props: a parent re-render with the same values does
+ * not re-render the leaf, and a tick re-renders the leaf without touching the
+ * parent - the two directions of the binding pattern.
  */
 function RelativeTimeImpl({
   ts,
@@ -69,10 +69,16 @@ function RelativeTimeImpl({
 
   const date = ts instanceof Date ? ts : new Date(ts);
   const iso = Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
+  const label = short ? formatRelativeTimeShort(ts) : formatRelativeTime(ts, t);
 
   return (
-    <time className={className} dateTime={iso} data-testid={testId}>
-      {short ? formatRelativeTimeShort(ts) : formatRelativeTime(ts, t)}
+    <time
+      className={className}
+      dateTime={iso}
+      data-testid={testId}
+      title={short && iso ? date.toLocaleString() : undefined}
+    >
+      {label}
     </time>
   );
 }

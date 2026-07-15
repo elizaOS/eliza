@@ -40,6 +40,7 @@ import { cn } from "../../../lib/utils";
 import { findChoiceRegions } from "../../chat/message-choice-parser";
 import { findFollowupsRegions } from "../../chat/message-followups-parser";
 import { findFormRegions } from "../../chat/message-form-parser";
+import { RelativeTime } from "../../shell/RelativeTime";
 import { Button } from "../../ui/button";
 import {
   Message as MessageRow,
@@ -445,6 +446,7 @@ function arePropsEqual(
     a.id === b.id &&
     a.role === b.role &&
     a.text === b.text &&
+    a.timestamp === b.timestamp &&
     a.source === b.source &&
     a.interrupted === b.interrupted &&
     a.from === b.from &&
@@ -903,6 +905,23 @@ export const ChatMessage = memo(function ChatMessage({
     const hasActionLane = hasActions || Boolean(actionAccessory);
     const accessoryVisible =
       actionsVisible || isEditing || Boolean(actionAccessory);
+    const timestampAccessory =
+      typeof message.timestamp === "number" &&
+      Number.isFinite(message.timestamp) ? (
+        <RelativeTime
+          ts={message.timestamp}
+          short
+          data-testid="thread-line-timestamp"
+          className="inline-block min-w-[3ch] whitespace-nowrap text-left text-[11px] tabular-nums text-white/45"
+        />
+      ) : null;
+    const trailingAccessory =
+      timestampAccessory || actionAccessory ? (
+        <div className="flex min-w-0 items-center gap-1.5">
+          {actionAccessory}
+          {timestampAccessory}
+        </div>
+      ) : undefined;
     if (isEditing) accessoryModeRef.current = "edit";
     else if (actionsVisible) accessoryModeRef.current = "actions";
     // Retain the last visible contents while the shared slot collapses so its
@@ -1018,9 +1037,9 @@ export const ChatMessage = memo(function ChatMessage({
         "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
-      // Match the flat assistant's compact vertical rhythm in the overlay.
-      // The panel chrome keeps its roomier shared bubble padding.
-      isUser && "py-1",
+      // Measure the overlay's rhythm from the text edge: the user bubble's 1px
+      // border plus 3px padding equals the flat assistant's 4px padding.
+      isUser && "py-[3px]",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -1061,11 +1080,12 @@ export const ChatMessage = memo(function ChatMessage({
       >
         <MessageRowContent
           className={cn(
-            "relative flex flex-col transition-[padding-bottom] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:duration-100",
-            hasActionLane &&
-              (accessoryVisible
-                ? "pb-6 pointer-coarse:pb-11"
-                : "pb-0 pointer-coarse:pb-11"),
+            "relative flex flex-col",
+            // Fine pointers reserve the exact 20px rail height, so revealing
+            // actions never reflows the transcript. Coarse pointers retain
+            // 44px hit targets but overlap four pixels at each edge of a 36px
+            // lane, keeping touch access generous without opening a large gap.
+            hasActionLane && "pb-5 pointer-coarse:pb-9",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1136,7 +1156,7 @@ export const ChatMessage = memo(function ChatMessage({
                 ease: GLASS_EASE,
               }}
               className={cn(
-                "absolute bottom-0 z-10 min-w-0",
+                "absolute bottom-0 z-10 min-w-0 pointer-coarse:-bottom-1",
                 isUser ? "right-0 origin-top-right" : "left-0 origin-top-left",
               )}
             >
@@ -1165,7 +1185,7 @@ export const ChatMessage = memo(function ChatMessage({
                       onPlay={() => onSpeak?.(message.id, message.text)}
                       onReply={handleReply}
                       playing={playing}
-                      trailingAccessory={actionAccessory}
+                      trailingAccessory={trailingAccessory}
                     />
                   )}
                 </motion.div>
