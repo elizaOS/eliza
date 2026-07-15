@@ -317,7 +317,7 @@ function isAnthropicCacheBreakpoint(value: unknown): value is AnthropicCacheBrea
 
 function readAnthropicCacheBreakpoints(
   anthropicOptions: Record<string, unknown> | undefined,
-  maxBreakpoints: number,
+  maxBreakpoints: number
 ): AnthropicCacheBreakpoint[] {
   const raw = anthropicOptions?.cacheBreakpoints;
   if (!Array.isArray(raw)) return [];
@@ -333,13 +333,13 @@ function readAnthropicCacheBreakpoints(
  */
 function buildSegmentedPromptUserContent(
   promptSegments: Array<{ content: string; stable?: boolean }>,
-  cacheBreakpoints: AnthropicCacheBreakpoint[],
+  cacheBreakpoints: AnthropicCacheBreakpoint[]
 ): CacheableTextPart[] {
   if (cacheBreakpoints.length === 0) {
     return promptSegments.map((seg) => ({ type: "text" as const, text: seg.content }));
   }
   const breakpointMap = new Map<number, AnthropicCacheControl>(
-    cacheBreakpoints.map((bp) => [bp.segmentIndex, bp.cacheControl]),
+    cacheBreakpoints.map((bp) => [bp.segmentIndex, bp.cacheControl])
   );
   return promptSegments.map((seg, index) => {
     const cc = breakpointMap.get(index);
@@ -609,9 +609,10 @@ function buildGenerateParams(
       : 3;
   const cacheBreakpoints = readAnthropicCacheBreakpoints(anthropicOptions, maxBreakpoints);
   const promptSegments = Array.isArray(
-    (paramsWithAttachments as { promptSegments?: unknown }).promptSegments,
+    (paramsWithAttachments as { promptSegments?: unknown }).promptSegments
   )
-    ? ((paramsWithAttachments as { promptSegments?: Array<{ content: string; stable?: boolean }> }).promptSegments ?? [])
+    ? ((paramsWithAttachments as { promptSegments?: Array<{ content: string; stable?: boolean }> })
+        .promptSegments ?? [])
     : [];
 
   let finalWireMessages = wireMessages;
@@ -648,7 +649,10 @@ function buildGenerateParams(
                 // additional breakpoints under Anthropic's four-block cap).
                 content:
                   promptSegments.length > 0 && cacheBreakpoints.length > 0 && !userContent
-                    ? (buildSegmentedPromptUserContent(promptSegments, cacheBreakpoints) as UserContent)
+                    ? (buildSegmentedPromptUserContent(
+                        promptSegments,
+                        cacheBreakpoints
+                      ) as UserContent)
                     : (userContent ?? buildUserContent(paramsWithAttachments)),
               },
             ],

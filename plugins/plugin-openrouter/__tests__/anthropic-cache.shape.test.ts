@@ -13,11 +13,15 @@ function createRuntime(settings: Record<string, string> = {}) {
     character: { system: "system prompt" },
     emitEvent: vi.fn(async () => undefined),
     getSetting: vi.fn((key: string) => {
-      return ({
-        OPENROUTER_API_KEY: "test-key",
-        OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8",
-        ...settings,
-      } as Record<string, string>)[key] ?? null;
+      return (
+        (
+          {
+            OPENROUTER_API_KEY: "test-key",
+            OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8",
+            ...settings,
+          } as Record<string, string>
+        )[key] ?? null
+      );
     }),
   } as IAgentRuntime;
 }
@@ -62,15 +66,15 @@ describe("Anthropic cache injection — runtime cacheControl fallback", () => {
     const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
-    await handleTextLarge(
-      createRuntime({ ANTHROPIC_PROMPT_CACHE_TTL: "1h" }),
-      { prompt: "hello" } as never,
-    );
+    await handleTextLarge(createRuntime({ ANTHROPIC_PROMPT_CACHE_TTL: "1h" }), {
+      prompt: "hello",
+    } as never);
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
     const messages = call.messages as Array<Record<string, unknown>>;
-    const anthropicOpts = (messages?.[0]?.providerOptions as Record<string, unknown>)
-      ?.anthropic as Record<string, unknown> | undefined;
+    const anthropicOpts = (messages?.[0]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
     expect(anthropicOpts?.cacheControl).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 
@@ -83,7 +87,7 @@ describe("Anthropic cache injection — runtime cacheControl fallback", () => {
         OPENROUTER_LARGE_MODEL: "google/gemini-2.5-flash",
         ANTHROPIC_PROMPT_CACHE_TTL: "1h",
       }),
-      { prompt: "hello" } as never,
+      { prompt: "hello" } as never
     );
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
@@ -130,18 +134,15 @@ describe("Anthropic cache injection — internal field stripping", () => {
     const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
-    await handleTextLarge(
-      createRuntime({ OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8" }),
-      {
-        messages: [
-          { role: "system", content: "system prompt" },
-          { role: "user", content: "hello" },
-        ],
-        providerOptions: {
-          anthropic: { cacheSystem: true, thinking: { type: "enabled" } },
-        },
-      } as never,
-    );
+    await handleTextLarge(createRuntime({ OPENROUTER_LARGE_MODEL: "anthropic/claude-opus-4-8" }), {
+      messages: [
+        { role: "system", content: "system prompt" },
+        { role: "user", content: "hello" },
+      ],
+      providerOptions: {
+        anthropic: { cacheSystem: true, thinking: { type: "enabled" } },
+      },
+    } as never);
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
     const wireAnthropic = (call.providerOptions as Record<string, unknown> | undefined)
@@ -175,8 +176,9 @@ describe("Anthropic cache injection — segmented user content", () => {
     const content = userMsg?.content as Array<Record<string, unknown>>;
     expect(content).toHaveLength(2);
     expect(content[0]?.text).toBe("seg1");
-    const seg0Opts = (content[0]?.providerOptions as Record<string, unknown>)
-      ?.anthropic as Record<string, unknown> | undefined;
+    const seg0Opts = (content[0]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
     expect(seg0Opts?.cacheControl).toEqual({ type: "ephemeral" });
     expect(content[1]?.text).toBe("seg2");
     expect(content[1]?.providerOptions).toBeUndefined();
@@ -242,8 +244,7 @@ describe("Anthropic cache injection — segmented user content", () => {
     const userMsg = messages?.[1];
     const content = userMsg?.content as Array<Record<string, unknown>>;
     const cachedBlocks = content?.filter(
-      (b) =>
-        (b.providerOptions as Record<string, unknown> | undefined)?.anthropic !== undefined,
+      (b) => (b.providerOptions as Record<string, unknown> | undefined)?.anthropic !== undefined
     );
     // Only segmentIndex 0 survives the cap of 1
     expect(cachedBlocks).toHaveLength(1);
