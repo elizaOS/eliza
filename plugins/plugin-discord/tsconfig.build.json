@@ -22,6 +22,7 @@
 		"dist",
 		"node_modules",
 		"build.ts",
+		"vitest.config.ts",
 		"vitest.harness.config.ts"
 	]
 }
