@@ -144,6 +144,45 @@ export function analyzeWalletTrust(
   const confidence =
     evidenceConfidence;
 
+  const investorInsights: InvestorEvidenceCollection = {
+  positive: [],
+  neutral: [],
+  negative: [],
+};
+
+if (
+  age.classification === "veteran" ||
+  age.classification === "established"
+) {
+  investorInsights.positive.push(
+    createInvestorInsight({
+      id: "established-wallet-history",
+
+      title:
+        INVESTOR_INSIGHT_TEMPLATES
+          .establishedWalletHistory.title,
+
+      finding:
+        age.classification === "veteran"
+          ? "The wallet has a long blockchain history."
+          : "The wallet has an established blockchain history.",
+
+      whyItMatters:
+        INVESTOR_INSIGHT_TEMPLATES
+          .establishedWalletHistory
+          .whyItMatters,
+
+      impact: "positive",
+
+      confidence: "high",
+
+      evidenceRecordIds: [],
+
+      limitations: [],
+    }),
+  );
+}
+
   return {
     trustScore,
 
@@ -159,7 +198,7 @@ export function analyzeWalletTrust(
 
     limitations,
 
-    investorExplanation: {
+   investorExplanation: {
   summary: buildInvestorSummary(
     trustLevel,
   ),
@@ -169,13 +208,14 @@ export function analyzeWalletTrust(
       positiveSignals,
     ),
 
-    whatReducedConfidence:
+  whatReducedConfidence:
     buildLimitationExplanation(
       limitations,
     ),
-    },
-  };
-}
+},
+
+investorInsights,
+};
 
 function buildInvestorSummary(
   trustLevel: WalletTrustSummary["trustLevel"],
