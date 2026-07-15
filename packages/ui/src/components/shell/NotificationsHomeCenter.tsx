@@ -1014,6 +1014,11 @@ export function NotificationsHomeCenter({
       // direct manipulation and must update in the current input event.
       if (!nextDirection) {
         cancelScheduledPullPresentation();
+        // Drag frames write overshoot padding directly onto the scrollport.
+        // Release must remove it in the same input event: touch and pointer
+        // commits can batch the declarative render, leaving the expanded cards
+        // with stale runway that strands the Collapse footer below them.
+        scrollRef.current?.style.removeProperty("--eliza-notif-pull-overshoot");
       } else if (directionChanged) {
         cancelScheduledPullPresentation();
         applyPullPresentation(px);
