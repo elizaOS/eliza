@@ -42,8 +42,10 @@ runs on Kubernetes.
 Steward (the auth provider) runs **embedded in the Worker**: `bootstrap-app.ts`
 mounts the embedded handler at `/steward*`
 (`packages/cloud/api/src/steward/embedded.ts`); the `STEWARD_*` secrets in
-`wrangler.toml` configure it. There is no separate Steward deployment in this
-repo.
+`wrangler.toml` configure it. Its data lives as an embedded `steward` schema in
+the shared Railway Postgres DB (migration
+`packages/cloud/shared/src/db/migrations/0096_steward_embedded_schema.sql`), not
+a separate database. There is no separate Steward deployment in this repo.
 
 ## Request paths
 
