@@ -20,6 +20,12 @@ export function dampenPull(rawDy: number): number {
   return rubberBand(Math.max(0, rawDy - PULL_SLOP_PX), PULL_TRAVEL_PX, 0.35);
 }
 
+/** Preserve the resisted travel past either detent as visible elastic give. */
+export function notificationPullOvershootOffset(pullPx: number): number {
+  const overshoot = Math.max(0, Math.abs(pullPx) - PULL_TRAVEL_PX);
+  return Math.sign(pullPx) * overshoot;
+}
+
 /** Convert live pull travel into a staggered reveal for hidden groups. */
 export function notificationPullRevealProgress(
   pullPx: number,
@@ -30,10 +36,13 @@ export function notificationPullRevealProgress(
   return Math.min(1, Math.max(0, (progress - stagger) / (1 - stagger)));
 }
 
-export function notificationPullRevealStyle(progress: number): CSSProperties {
+export function notificationPullRevealStyle(
+  progress: number,
+  offsetPx = 0,
+): CSSProperties {
   return {
     opacity: progress,
-    transform: `translate3d(0, ${(1 - progress) * -8}px, 0)`,
+    transform: `translate3d(0, ${(1 - progress) * -8 + offsetPx}px, 0)`,
   };
 }
 
@@ -76,6 +85,7 @@ export function notificationPullPresentation(
     shadeExpanded,
     shadeClosing,
   );
+  const pullOvershootOffset = notificationPullOvershootOffset(pullPx);
 
   return {
     shadeCloseProgress,
@@ -84,6 +94,7 @@ export function notificationPullPresentation(
     pullContentVisibility,
     notificationCountVisibility,
     notificationCountOffset,
+    pullOvershootOffset,
     notificationCountLayoutVisibility:
       shadeExpanded && pullPx < 0 && !shadeClosing
         ? 1
@@ -176,7 +187,9 @@ export function applyNotificationPullPresentation(
     count.style.height = `${presentation.notificationCountLayoutVisibility * 32}px`;
     count.style.marginBottom = `${(presentation.notificationCountLayoutVisibility - 1) * 8}px`;
     count.style.opacity = String(presentation.notificationCountVisibility);
-    count.style.transform = `translate3d(0, ${presentation.notificationCountOffset}px, 0)`;
+    count.style.transform = `translate3d(0, ${
+      presentation.notificationCountOffset + presentation.pullOvershootOffset
+    }px, 0)`;
   }
   const clearSlot = root.querySelector<HTMLElement>(
     "[data-notification-clear-slot]",
@@ -185,13 +198,19 @@ export function applyNotificationPullPresentation(
     clearSlot.style.height = `${presentation.clearControlLayoutVisibility * 32}px`;
     clearSlot.style.marginBottom = `${(presentation.clearControlLayoutVisibility - 1) * 8}px`;
     clearSlot.style.opacity = String(presentation.clearControlVisibility);
-    clearSlot.style.transform = `translate3d(0, ${(1 - presentation.clearControlVisibility) * -8}px, 0)`;
+    clearSlot.style.transform = `translate3d(0, ${
+      (1 - presentation.clearControlVisibility) * -8 +
+      presentation.pullOvershootOffset
+    }px, 0)`;
   }
   const empty = root.querySelector<HTMLElement>("[data-notification-empty]");
   if (empty) {
     Object.assign(
       empty.style,
-      notificationPullRevealStyle(presentation.emptyStateVisibility),
+      notificationPullRevealStyle(
+        presentation.emptyStateVisibility,
+        presentation.pullOvershootOffset,
+      ),
     );
   }
   const collapse = root.querySelector<HTMLElement>(
@@ -199,7 +218,10 @@ export function applyNotificationPullPresentation(
   );
   if (collapse) {
     collapse.style.opacity = String(presentation.collapseControlVisibility);
-    collapse.style.transform = `translateY(${(1 - presentation.collapseControlVisibility) * 4}px)`;
+    collapse.style.transform = `translateY(${
+      (1 - presentation.collapseControlVisibility) * 4 +
+      presentation.pullOvershootOffset
+    }px)`;
   }
   const groups =
     visibleGroups ??
@@ -219,41 +241,36 @@ export function applyNotificationPullPresentation(
       shadeExpanded,
       shadeClosing,
     );
-    group.style.transform = `translate3d(0, ${
-      containerOffset + (pullRevealed ? (1 - groupVisibility) * -8 : 0)
-    }px, 0)`;
-    if (pullRevealed) group.style.opacity = String(groupVisibility);
-    if (
-      !pullRevealed &&
-      !group.hasAttribute("data-rested-notification-group")
-    ) {
-      const content = group.querySelector<HTMLElement>(
-        ":scope > [data-notification-group-content]",
-      );
-      if (content) {
-        content.style.opacity = String(groupVisibility);
-        content.style.transform = `translate3d(0, ${notificationGroupPullOffset(
-          pullPx,
-          shadeExpanded,
-          shadeClosing,
-          groupVisibility,
-        )}px, 0)`;
-      }
+    const rested = group.hasAttribute("data-rested-notification-group");
+    const content = group.querySelector<HTMLElement>(
+      ":scope > [data-notification-group-content]",
+    );
+    if (content) {
+      const contentVisibility = pullRevealed || !rested ? groupVisibility : 1;
+      const contentPullOffset = pullRevealed
+        ? (1 - groupVisibility) * -8
+        : rested
+          ? 0
+          : notificationGroupPullOffset(
+              pullPx,
+              shadeExpanded,
+              shadeClosing,
+              groupVisibility,
+            );
+      content.style.opacity = String(contentVisibility);
+      content.style.transform = `translate3d(0, ${
+        containerOffset + contentPullOffset + presentation.pullOvershootOffset
+      }px, 0)`;
     }
     if (!shadeExpanded && pullPx > 0) {
-      const content = group.querySelector<HTMLElement>(
-        ":scope > [data-notification-group-content][data-notification-stacked]",
-      );
-      if (content) {
+      if (content?.hasAttribute("data-notification-stacked")) {
         const restedTailPx = Number(
           content.dataset.notificationRestedTailPx ?? 0,
         );
         const expandedTailPx = Number(
           content.dataset.notificationExpandedTailPx ?? restedTailPx,
         );
-        const tailProgress = group.hasAttribute(
-          "data-rested-notification-group",
-        )
+        const tailProgress = rested
           ? notificationPullRevealProgress(pullPx, groupIndex)
           : 1;
         const tailPx =

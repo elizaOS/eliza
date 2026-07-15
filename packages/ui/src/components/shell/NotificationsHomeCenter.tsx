@@ -203,9 +203,6 @@ function touchWithIdentifier(
  */
 const WHEEL_COLLAPSE_STEP_PX = PULL_COMMIT_PX / 2;
 
-/** Ignore trackpad rebound while the committed shade settle is running. */
-const WHEEL_COMMIT_LOCK_MS = 280;
-
 /** iOS-style visual depth: one, two, or three cards, never more. */
 const MAX_VISIBLE_STACK_LAYERS = 3;
 
@@ -216,11 +213,13 @@ const STACK_PEEK_OFFSET_PX = 7;
 const STACK_BOTTOM_CLEARANCE_PX = 10;
 
 const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
-const SHADE_SETTLE_MS = 340;
-const SHADE_MIN_SETTLE_MS = 260;
-const SHADE_MAX_SETTLE_MS = 440;
-const SHADE_MIN_SETTLE_SPEED_PX_PER_MS = 0.22;
+const SHADE_SETTLE_MS = 460;
+const SHADE_MIN_SETTLE_MS = 320;
+const SHADE_MAX_SETTLE_MS = 600;
+const SHADE_MIN_SETTLE_SPEED_PX_PER_MS = 0.15;
 const SHADE_EASING = "cubic-bezier(0.25,0.1,0.25,1)";
+/** Ignore trackpad rebound while the committed shade settle is running. */
+const WHEEL_COMMIT_LOCK_MS = SHADE_SETTLE_MS;
 const PULL_CANCEL_SETTLE_MS = SHADE_SETTLE_MS;
 const SHADE_MIN_FLICK_DISTANCE_PX = 22;
 const SHADE_FLICK_VELOCITY_PX_PER_MS = 0.45;
@@ -1321,9 +1320,8 @@ export function NotificationsHomeCenter({
             : SHADE_MIN_FLICK_DISTANCE_PX,
         flickVelocityThresholdPxPerMs: SHADE_FLICK_VELOCITY_PX_PER_MS,
       });
-    const remainingDistancePx = shouldCommit
-      ? Math.max(0, PULL_TRAVEL_PX - Math.abs(px))
-      : Math.abs(px);
+    const targetPullPx = shouldCommit ? Math.sign(px) * PULL_TRAVEL_PX : 0;
+    const remainingDistancePx = Math.abs(targetPullPx - px);
     const settleMs = getVelocityAwareSettleDuration({
       velocityPxPerMs: releaseVelocity,
       remainingDistancePx,
@@ -2204,6 +2202,7 @@ export function NotificationsHomeCenter({
     pullContentVisibility,
     notificationCountVisibility,
     notificationCountOffset,
+    pullOvershootOffset,
     notificationCountLayoutVisibility,
     emptyStateVisibility,
     collapseControlVisibility,
@@ -2324,7 +2323,9 @@ export function NotificationsHomeCenter({
         height: `${notificationCountLayoutVisibility * 32}px`,
         marginBottom: `${(notificationCountLayoutVisibility - 1) * 8}px`,
         opacity: notificationCountVisibility,
-        transform: `translate3d(0, ${notificationCountOffset}px, 0)`,
+        transform: `translate3d(0, ${
+          notificationCountOffset + pullOvershootOffset
+        }px, 0)`,
         transition: isPulling ? "none" : undefined,
       }}
       className="eliza-notif-count-transition flex shrink-0 items-center justify-center px-3 text-2xs font-medium text-white/50"
@@ -2409,7 +2410,9 @@ export function NotificationsHomeCenter({
               height: clearControlLayoutVisibility * 32,
               marginBottom: (clearControlLayoutVisibility - 1) * 8,
               opacity: clearControlVisibility,
-              transform: `translate3d(0, ${(1 - clearControlVisibility) * -8}px, 0)`,
+              transform: `translate3d(0, ${
+                (1 - clearControlVisibility) * -8 + pullOvershootOffset
+              }px, 0)`,
             }}
             className="eliza-notif-shade-transition flex shrink-0 justify-end overflow-hidden px-2"
           >
@@ -2445,7 +2448,10 @@ export function NotificationsHomeCenter({
             }
             inert={!shadeExpanded && !previewingExpansion ? true : undefined}
             style={{
-              ...notificationPullRevealStyle(emptyStateVisibility),
+              ...notificationPullRevealStyle(
+                emptyStateVisibility,
+                pullOvershootOffset,
+              ),
               transition: isPulling ? "none" : undefined,
             }}
             className="eliza-notif-pull-reveal eliza-notif-shade-transition flex min-h-14 items-center justify-center px-3 py-3 text-2xs font-medium text-white/45"
@@ -2485,6 +2491,27 @@ export function NotificationsHomeCenter({
             shadeExpanded,
             shadeClosing,
           );
+          const groupContentVisibility = pullRevealed
+            ? revealProgress
+            : groupWasRested
+              ? 1
+              : groupVisibility;
+          const groupContentPullOffset = pullRevealed
+            ? (1 - revealProgress) * -8
+            : groupWasRested
+              ? 0
+              : notificationGroupPullOffset(
+                  pullPx,
+                  shadeExpanded,
+                  shadeClosing,
+                  groupVisibility,
+                );
+          // Framer Motion owns the outer group's layout transform. Keeping the
+          // finger-tracked transform on this stable child lets a committed
+          // preview continue into its CSS settle without either system
+          // replacing the other's transform at pointer-up.
+          const groupContentOffset =
+            groupContainerOffset + groupContentPullOffset + pullOvershootOffset;
           const stackExpanded = expandedStacks.has(group.key);
           // Every presentation shares one shell, so the top NotificationRow
           // stays under the same parent/key while a fanned stack closes.
@@ -2574,17 +2601,6 @@ export function NotificationsHomeCenter({
                 pullRevealed &&
                   "eliza-notif-pull-reveal eliza-notif-shade-transition pointer-events-none",
               )}
-              style={
-                pullRevealed || groupContainerOffset !== 0
-                  ? {
-                      opacity: pullRevealed ? revealProgress : undefined,
-                      transform: `translate3d(0, ${
-                        groupContainerOffset +
-                        (pullRevealed ? (1 - revealProgress) * -8 : 0)
-                      }px, 0)`,
-                    }
-                  : undefined
-              }
             >
               <div
                 data-notification-group-content=""
@@ -2603,15 +2619,8 @@ export function NotificationsHomeCenter({
                     : stacked
                       ? stackTailPx
                       : 0,
-                  opacity: groupWasRested ? 1 : groupVisibility,
-                  transform: groupWasRested
-                    ? undefined
-                    : `translate3d(0, ${notificationGroupPullOffset(
-                        pullPx,
-                        shadeExpanded,
-                        shadeClosing,
-                        groupVisibility,
-                      )}px, 0)`,
+                  opacity: groupContentVisibility,
+                  transform: `translate3d(0, ${groupContentOffset}px, 0)`,
                   transition: isPulling ? "none" : undefined,
                 }}
               >
@@ -2761,7 +2770,8 @@ export function NotificationsHomeCenter({
           style={{
             opacity: collapseControlPresentationVisibility,
             transform: `translateY(${
-              (1 - collapseControlPresentationVisibility) * 4
+              (1 - collapseControlPresentationVisibility) * 4 +
+              pullOvershootOffset
             }px)`,
             transition: isPulling
               ? "none"
