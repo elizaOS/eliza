@@ -18,8 +18,10 @@ single `~/.codex` login. Each home lives at:
 
 ```
 <stateDir>/auth/_codex-home/<accountId>/
-    auth.json      # chatgpt-mode tokens (written by coding-account-bridge.ts)
-    config.toml    # pinned model
+    active-home                         # relative, non-secret pointer
+    generations/<refresh-token-hash>/
+        auth.json                       # chatgpt-mode tokens
+        config.toml                     # pinned model
 ```
 
 `<stateDir>` = `$ELIZA_HOME` (or the resolved per-user state dir, default
@@ -31,7 +33,7 @@ Verify what is materialized:
 
 ```bash
 ls "${ELIZA_HOME:-$HOME/.local/state/eliza}/auth/_codex-home/"
-# one directory per accountId, each containing auth.json
+# one directory per accountId, each pointing at an active generation
 ```
 
 ## 2. Preconditions

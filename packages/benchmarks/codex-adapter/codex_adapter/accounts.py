@@ -1,14 +1,15 @@
 """Multi-account CODEX_HOME selection for the Codex benchmark harness (#10193/#10199).
 
-The elizaOS runtime materializes one ``CODEX_HOME`` directory per authenticated
+The elizaOS runtime materializes a credential generation for each authenticated
 OpenAI-Codex account so a spawned ``codex`` subprocess authenticates AS that
 account instead of the machine's single ``~/.codex`` login. The TS side
-(``packages/app-core/src/services/coding-account-bridge.ts``) writes each home
-at::
+(``packages/app-core/src/services/coding-account-bridge.ts``) writes::
 
     <stateDir>/auth/_codex-home/<accountId>/
-        auth.json      # chatgpt-mode tokens
-        config.toml    # pinned model
+        active-home                         # relative, non-secret pointer
+        generations/<refresh-token-hash>/
+            auth.json                       # chatgpt-mode tokens
+            config.toml                     # pinned model
 
 where ``<stateDir>`` is ``$ELIZA_HOME`` (or the resolved per-user state dir,
 default ``~/.local/state/eliza``). This module is the **offline-testable**
@@ -23,8 +24,13 @@ credential-gated on those homes already existing.
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
+
+
+ACTIVE_HOME_FILE = "active-home"
+GENERATION_NAME = re.compile(r"^[a-f0-9]{24}$")
 
 
 def default_state_dir() -> Path:
@@ -46,6 +52,59 @@ def codex_homes_root(state_dir: Path | None = None) -> Path:
     """The directory containing one subdir per authenticated Codex account."""
     root = state_dir if state_dir is not None else default_state_dir()
     return root / "auth" / "_codex-home"
+
+
+def _active_codex_home(account_root: Path) -> Path:
+    """Resolve the generation the runtime published for one account.
+
+    Homes created before generation isolation remain valid at the account root,
+    represented by no pointer or ``.``. Any other pointer is a strict protocol
+    boundary: only ``generations/<24 lowercase hex>`` is accepted, and broken
+    or escaping targets fail instead of silently selecting stale credentials.
+    """
+    pointer_path = account_root / ACTIVE_HOME_FILE
+    if not os.path.lexists(pointer_path):
+        return account_root
+    try:
+        relative_text = pointer_path.read_text(encoding="utf-8").strip()
+    except OSError as cause:
+        # error-policy:J2 active-home is an on-disk protocol boundary; retain
+        # the filesystem cause while naming the account state that is invalid.
+        raise ValueError(
+            f"cannot read Codex active-home pointer: {pointer_path}"
+        ) from cause
+
+    if relative_text == ".":
+        return account_root.resolve()
+
+    relative = Path(relative_text)
+    if (
+        relative.is_absolute()
+        or len(relative.parts) != 2
+        or relative.parts[0] != "generations"
+        or GENERATION_NAME.fullmatch(relative.parts[1]) is None
+    ):
+        raise ValueError(
+            f"invalid Codex active-home pointer {pointer_path}: {relative_text!r}"
+        )
+
+    account_root_resolved = account_root.resolve()
+    try:
+        active_home = (account_root / relative).resolve()
+    except (OSError, RuntimeError) as cause:
+        # error-policy:J2 symlink and filesystem resolution failures identify
+        # the corrupt pointer without hiding the underlying OS error.
+        raise ValueError(
+            f"cannot resolve Codex active-home pointer: {pointer_path}"
+        ) from cause
+    if (
+        not active_home.is_relative_to(account_root_resolved)
+        or not active_home.is_dir()
+    ):
+        raise ValueError(
+            f"Codex active-home pointer target is unavailable: {pointer_path} -> {active_home}"
+        )
+    return active_home
 
 
 @dataclass(frozen=True)
@@ -75,7 +134,7 @@ def discover_codex_accounts(state_dir: Path | None = None) -> list[CodexAccount]
     if not root.is_dir():
         return []
     accounts = [
-        CodexAccount(account_id=child.name, codex_home=child)
+        CodexAccount(account_id=child.name, codex_home=_active_codex_home(child))
         for child in sorted(root.iterdir(), key=lambda p: p.name)
         if child.is_dir()
     ]
@@ -132,7 +191,9 @@ def select_codex_accounts(
     accounts are materialized at all. The runner surfaces this as a loud failure
     on a live run rather than proceeding with a half-satisfied account set.
     """
-    accounts = discovered if discovered is not None else discover_codex_accounts(state_dir)
+    accounts = (
+        discovered if discovered is not None else discover_codex_accounts(state_dir)
+    )
     count, explicit_ids = _parse_accounts_spec(spec)
 
     if not accounts:
@@ -140,7 +201,7 @@ def select_codex_accounts(
             "no Codex accounts materialized under "
             f"{codex_homes_root(state_dir)}. Authenticate at least one "
             "OpenAI-Codex account so the runtime writes its CODEX_HOME "
-            "(auth/_codex-home/<accountId>/auth.json)."
+            "(auth/_codex-home/<accountId>/active-home)."
         )
 
     by_id = {account.account_id: account for account in accounts}
