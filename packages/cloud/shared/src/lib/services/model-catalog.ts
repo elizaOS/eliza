@@ -19,33 +19,9 @@ import { expandBitRouterModelIdCandidates } from "../providers/model-id-translat
 import type { OpenAIModelsResponse } from "../providers/types";
 import { logger } from "../utils/logger";
 import { isHotPathCachesEnabled } from "./inference-hot-path-caches";
+import { ModelCatalogCache, type ModelCatalogRefreshFailure } from "./model-catalog-cache";
 
-interface SWRCachedValue<T> {
-  data: T;
-  cachedAt: number;
-  staleAt: number;
-}
-
-function buildSWRValue<T>(data: T): SWRCachedValue<T> {
-  const cachedAt = Date.now();
-
-  return {
-    data,
-    cachedAt,
-    staleAt: cachedAt + CacheStaleTTL.models.catalog * 1000,
-  };
-}
-
-async function fetchBitRouterModelCatalog(): Promise<CatalogModel[]> {
-  // "No provider configured" is a real empty catalog — safe to cache. A fetch
-  // FAILURE must NOT be: it throws so getWithSWR keeps serving the last-good
-  // stale catalog instead of overwriting it with `[]` for the whole TTL on a
-  // transient OpenRouter blip. getCachedBitRouterModelCatalog degrades a cold
-  // miss (no stale to serve) to `[]`.
-  if (!hasOpenRouterProviderConfigured()) {
-    return [];
-  }
-
+async function fetchConfiguredBitRouterModelCatalog(): Promise<CatalogModel[]> {
   const response = await getOpenRouterProvider().listModels();
   const data = (await response.json()) as OpenAIModelsResponse;
 
@@ -56,25 +32,36 @@ async function fetchBitRouterModelCatalog(): Promise<CatalogModel[]> {
   return data.data;
 }
 
-export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> {
-  try {
-    const cached = await cache.getWithSWR<CatalogModel[]>(
-      CacheKeys.models.bitrouterCatalog(),
-      CacheStaleTTL.models.catalog,
-      fetchBitRouterModelCatalog,
-      CacheTTL.models.catalog,
-    );
-
-    return cached ?? [];
-  } catch (error) {
-    // Cold-miss fetch failure only: there is no stale catalog to serve, so
-    // degrade to empty rather than throwing into the hot path. On a stale hit
-    // getWithSWR already returned the last-good catalog and swallowed this.
-    logger.warn("[Model Catalog] Failed to fetch OpenRouter model catalog", {
-      error,
-    });
-    return [];
+function refreshErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object" && "error" in error) {
+    const nested = (error as { error?: unknown }).error;
+    if (nested && typeof nested === "object" && "message" in nested) {
+      return String((nested as { message?: unknown }).message);
+    }
   }
+  return "Unknown upstream error";
+}
+
+const bitRouterCatalogCache = new ModelCatalogCache({
+  key: CacheKeys.models.bitrouterCatalog(),
+  store: cache,
+  isProviderConfigured: hasOpenRouterProviderConfigured,
+  fetchModels: fetchConfiguredBitRouterModelCatalog,
+  freshnessSeconds: CacheStaleTTL.models.catalog,
+  retentionSeconds: CacheTTL.models.catalog,
+  onRefreshFailure: (failure: ModelCatalogRefreshFailure) => {
+    logger.warn("[Model Catalog] Refresh failed; retaining the last-good catalog", {
+      error: refreshErrorMessage(failure.error),
+      retryAt: new Date(failure.retryAt).toISOString(),
+      consecutiveFailures: failure.consecutiveFailures,
+    });
+  },
+});
+
+export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> {
+  return await bitRouterCatalogCache.getCached();
 }
 
 export function hasModelCatalogProviderConfigured(): boolean {
@@ -82,15 +69,12 @@ export function hasModelCatalogProviderConfigured(): boolean {
 }
 
 export async function refreshBitRouterModelCatalog(): Promise<CatalogModel[]> {
-  const models = await fetchBitRouterModelCatalog();
+  return await bitRouterCatalogCache.refresh();
+}
 
-  await cache.set(
-    CacheKeys.models.bitrouterCatalog(),
-    buildSWRValue(models),
-    CacheTTL.models.catalog,
-  );
-
-  return models;
+/** Test hook: isolate module-level refresh cooldown state between cases. */
+export function __clearBitRouterCatalogRefreshStateForTests(): void {
+  bitRouterCatalogCache.clearRefreshStateForTests();
 }
 
 export async function getCachedMergedModelCatalog(): Promise<CatalogModel[]> {
