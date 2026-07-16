@@ -236,6 +236,41 @@ describe("useAccounts", () => {
     );
   });
 
+  it("drops a rejected poll invalidated by a newer mutation instead of setting a stale error", async () => {
+    let rejectStalePoll: ((err: Error) => void) | undefined;
+    const stalePoll = new Promise<AccountsListResponse>((_resolve, reject) => {
+      rejectStalePoll = reject;
+    });
+    client.listAccounts
+      .mockResolvedValueOnce(initial)
+      .mockImplementationOnce(() => stalePoll);
+    const notices = vi.fn();
+    const { result } = renderHook(() =>
+      useAccounts({ pollMs: 0, setActionNotice: notices }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Leave a poll in flight, invalidate it with a mutation, then fail it.
+    let pending: Promise<void> | undefined;
+    act(() => {
+      pending = result.current.refresh();
+    });
+    await act(() =>
+      result.current.patch("openai-api", "primary", { label: "Renamed" }),
+    );
+    await act(async () => {
+      rejectStalePoll?.(new Error("transport down"));
+      await pending;
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(notices).not.toHaveBeenCalledWith(
+      "Failed to load accounts: transport down",
+      "error",
+      6000,
+    );
+  });
+
   it("surfaces a rejected strategy save before rethrowing it", async () => {
     client.patchProviderStrategy.mockRejectedValueOnce(
       new Error("config write failed"),

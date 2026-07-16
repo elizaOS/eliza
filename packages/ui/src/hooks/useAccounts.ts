@@ -149,7 +149,12 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       setData(next);
       setError(null);
     } catch (err) {
-      if (!mountedRef.current || listRequestIdRef.current !== requestId) return;
+      if (
+        !mountedRef.current ||
+        listRequestIdRef.current !== requestId ||
+        stateVersionRef.current !== stateVersion
+      )
+        return;
       setError(describeError("Failed to load accounts", err));
       notify("Failed to load accounts", err);
     } finally {
@@ -334,7 +339,10 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
           // error-policy:J7 diagnostics-must-not-kill-the-loop. Preserve and
           // rethrow the primary usage failure; the regular list poll retries
           // reconciliation without replacing the actionable probe notice.
-          void reconcileError;
+          console.warn(
+            "[useAccounts] post-probe reconciliation failed",
+            reconcileError,
+          );
         }
         throw err;
       } finally {
