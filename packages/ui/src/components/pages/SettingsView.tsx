@@ -73,14 +73,24 @@ function SettingsSectionLoading() {
 function SettingsSectionContent({
   section,
   t,
+  anchored = true,
 }: {
   section: SettingsSectionDef;
   t: Translate;
+  // Whether this body carries the `#<section.id>` deep-link/anchor DOM id.
+  // Desktop wraps the section title header + body in one anchored container so
+  // the section's accessible title lives inside `#<section.id>`, and passes
+  // `false` here to keep that id unique. Mobile/modal render the body alone and
+  // keep the anchor on it (default).
+  anchored?: boolean;
 }) {
   const Component = section.Component;
   const title = settingsSectionTitle(section, t);
   return (
-    <div id={section.id} className={section.bodyClassName}>
+    <div
+      id={anchored ? section.id : undefined}
+      className={section.bodyClassName}
+    >
       <ErrorBoundary
         key={section.id}
         fallback={(error, reset) => (
@@ -353,7 +363,12 @@ export function SettingsView({
                 className="mx-auto w-full max-w-[90rem] px-6 pb-10 pt-6 xl:px-8 xl:pt-8"
               >
                 {desktopSectionDef ? (
-                  <>
+                  // The `#<section.id>` anchor wraps the title header + body so
+                  // the section's accessible title (the h1) lives inside the
+                  // section's deep-link anchor, not as a detached sibling above
+                  // it. Header stays outside `bodyClassName` padding, so this is
+                  // structural only — no visual change.
+                  <div id={desktopSectionDef.id}>
                     <header className="mb-8 border-b border-border/60 pb-5">
                       <p className="text-xs font-medium text-muted">
                         {settingsTitle}
@@ -362,8 +377,12 @@ export function SettingsView({
                         {settingsSectionTitle(desktopSectionDef, t)}
                       </h1>
                     </header>
-                    <SettingsSectionContent section={desktopSectionDef} t={t} />
-                  </>
+                    <SettingsSectionContent
+                      section={desktopSectionDef}
+                      t={t}
+                      anchored={false}
+                    />
+                  </div>
                 ) : null}
               </main>
             ) : (

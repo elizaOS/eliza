@@ -51,8 +51,11 @@ function writeLcovAs(dir, name, sourcePath, found, hit) {
   return file;
 }
 
-function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
+function runGate({ changed, lcov, enforce = true, threshold = 50, excluded = "" }) {
   const changedArgument = changed
+    .replaceAll("\\", "\\\\")
+    .replaceAll("\n", "\\n");
+  const excludedArgument = excluded
     .replaceAll("\\", "\\\\")
     .replaceAll("\n", "\\n");
   const lcovArgs = Array.isArray(lcov) ? lcov : [lcov];
@@ -63,6 +66,8 @@ function runGate({ changed, lcov, enforce = true, threshold = 50 }) {
       `changed=${changedArgument}`,
       "-v",
       `threshold=${threshold}`,
+      "-v",
+      `excluded=${excludedArgument}`,
       "-f",
       awkScript,
       ...lcovArgs,
@@ -185,6 +190,54 @@ try {
         result.stdout,
         /BELOW: packages\/core\/src\/features\/documents\/service\.ts/,
       );
+    },
+  );
+  assertGate(
+    "excluded changed file absent from LCOV passes with a visible EXCLUDED line (#16409)",
+    () => {
+      // eliza.ts cannot be instrumented; only foo.ts appears in LCOV.
+      const lcov = writeLcov(dir, "packages/demo/src/foo.ts");
+      const result = runGate({
+        changed: "packages/demo/src/foo.ts\npackages/agent/src/runtime/eliza.ts",
+        lcov,
+        excluded: "packages/agent/src/runtime/eliza.ts",
+      });
+      assert.equal(result.status, 0, result.stdout);
+      assert.match(
+        result.stdout,
+        /EXCLUDED \(cannot appear in LCOV.*\): packages\/agent\/src\/runtime\/eliza\.ts/,
+      );
+      assert.doesNotMatch(result.stdout, /MISSING/);
+    },
+  );
+
+  assertGate(
+    "an excluded file that DOES appear in LCOV is gated normally (#16409 — the escape expires)",
+    () => {
+      // Collection got fixed: the file shows up at 25% — below the floor, so
+      // the manifest entry must NOT shield it.
+      const lcov = writeLcov(dir, "packages/agent/src/runtime/eliza.ts", 100, 25);
+      const result = runGate({
+        changed: "packages/agent/src/runtime/eliza.ts",
+        lcov,
+        excluded: "packages/agent/src/runtime/eliza.ts",
+      });
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stdout, /BELOW: packages\/agent\/src\/runtime\/eliza\.ts/);
+    },
+  );
+
+  assertGate(
+    "a non-excluded absent file still hard-fails as MISSING (#16409 — no blanket fail-open)",
+    () => {
+      const lcov = writeLcov(dir, "packages/demo/src/foo.ts");
+      const result = runGate({
+        changed: "packages/demo/src/bar.ts",
+        lcov,
+        excluded: "packages/agent/src/runtime/eliza.ts",
+      });
+      assert.equal(result.status, 1, result.stdout);
+      assert.match(result.stdout, /MISSING: packages\/demo\/src\/bar\.ts/);
     },
   );
 } finally {

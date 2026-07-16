@@ -209,6 +209,23 @@ export function isElizaCloudRuntimeLocked(): boolean {
   return mode === "cloud" || mode === "cloud-hybrid";
 }
 
+/**
+ * The mobile runtime modes that commit to the bundled on-device agent process:
+ * `local` (on-device inference + agent) and `cloud-hybrid` (cloud inference,
+ * but the on-device agent still owns chat, plugins, the voice bridge, and
+ * device control). Both persist the on-device active-server record and both
+ * expect the native service to bring the agent up on cold launch. The restore
+ * path therefore keeps their record and waits out the ~30s native boot rather
+ * than re-onboarding; `cloud`, `remote-mac`, and `tunnel-to-mobile` never run a
+ * bundled agent. Single source of that truth for
+ * `reconcileMobileRestoredActiveServer` and the existing-install probe gate.
+ */
+export function isCommittedOnDeviceMobileRuntimeMode(
+  mode: MobileRuntimeMode | null,
+): boolean {
+  return mode === "local" || mode === "cloud-hybrid";
+}
+
 async function persistNativeMobileRuntimeMode(
   mode: MobileRuntimeMode | null,
 ): Promise<void> {

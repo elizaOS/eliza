@@ -49,6 +49,7 @@ describe("monitorProvisioningWorkerHealth", () => {
     const { alerts, alert } = captureAlerts();
     const health: ProvisioningWorkerHealth = { ok: true, required: false };
     const result = await monitorProvisioningWorkerHealth({
+      writeDbHeartbeat: async () => {},
       check: async () => health,
       alert,
       now: () => NOW,
@@ -66,6 +67,7 @@ describe("monitorProvisioningWorkerHealth", () => {
       lastHeartbeatAt: new Date(NOW - 1_000).toISOString(),
     };
     const result = await monitorProvisioningWorkerHealth({
+      writeDbHeartbeat: async () => {},
       check: async () => health,
       alert,
       now: () => NOW,
@@ -85,6 +87,7 @@ describe("monitorProvisioningWorkerHealth", () => {
       error: "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
     };
     const result = await monitorProvisioningWorkerHealth({
+      writeDbHeartbeat: async () => {},
       check: async () => health,
       alert,
       now: () => NOW,
@@ -102,6 +105,7 @@ describe("monitorProvisioningWorkerHealth", () => {
       lastHeartbeatAt: new Date(NOW - HEARTBEAT_MAX_AGE_MS - 10_000).toISOString(),
     };
     const result = await monitorProvisioningWorkerHealth({
+      writeDbHeartbeat: async () => {},
       check: async () => health,
       alert,
       now: () => NOW,
@@ -110,5 +114,65 @@ describe("monitorProvisioningWorkerHealth", () => {
     expect(result.stale).toBe(true);
     expect(alerts).toHaveLength(1);
     expect(alerts[0].details.code).toBe("PROVISIONING_WORKER_STALE_HEARTBEAT");
+  });
+
+  // #16160: this per-minute monitor doubles as the cloud-api DB heartbeat
+  // writer the provisioning-worker daemon reads to tell idle from split — it
+  // must stamp the heartbeat on EVERY invocation, including the not-required
+  // early return (the daemon may be optional while the DB signal still matters).
+  it("stamps the DB heartbeat on every invocation, even when the daemon is not required", async () => {
+    let writes = 0;
+    const health: ProvisioningWorkerHealth = { ok: true, required: false };
+    await monitorProvisioningWorkerHealth({
+      writeDbHeartbeat: async () => {
+        writes += 1;
+      },
+      check: async () => health,
+      alert: async () => {},
+      now: () => NOW,
+    });
+    expect(writes).toBe(1);
+  });
+
+  it("sendProvisioningWorkerAlert posts to every configured channel and resolves without any", async () => {
+    const { sendProvisioningWorkerAlert } = await import("./provisioning-worker-health-monitor");
+    const prevSlack = process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
+    const prevPd = process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
+    const realFetch = globalThis.fetch;
+    const posted: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      posted.push(String(url));
+      return new Response("ok");
+    }) as typeof fetch;
+    try {
+      // No channels configured: structured log only, no fetch, no throw.
+      delete process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
+      delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
+      await sendProvisioningWorkerAlert({
+        title: "t",
+        message: "m",
+        details: { code: "TEST" },
+      });
+      expect(posted).toHaveLength(0);
+
+      // Both channels configured: one POST each (Slack webhook + PagerDuty).
+      process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = "https://hooks.slack.example/T/B/x";
+      process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = "pd-routing-key";
+      await sendProvisioningWorkerAlert({
+        title: "t",
+        message: "m",
+        details: { code: "TEST" },
+        dedupKey: "test-dedup",
+      });
+      expect(posted).toHaveLength(2);
+      expect(posted[0]).toBe("https://hooks.slack.example/T/B/x");
+      expect(posted[1]).toBe("https://events.pagerduty.com/v2/enqueue");
+    } finally {
+      globalThis.fetch = realFetch;
+      if (prevSlack === undefined) delete process.env.PROVISIONING_ALERT_SLACK_WEBHOOK;
+      else process.env.PROVISIONING_ALERT_SLACK_WEBHOOK = prevSlack;
+      if (prevPd === undefined) delete process.env.PROVISIONING_ALERT_PAGERDUTY_KEY;
+      else process.env.PROVISIONING_ALERT_PAGERDUTY_KEY = prevPd;
+    }
   });
 });

@@ -20,6 +20,7 @@ import type {
 } from "@elizaos/shared";
 import { useAgentElement } from "@elizaos/ui/agent-surface";
 import { client, isApiError } from "@elizaos/ui/api";
+import { shellLocalStorage } from "@elizaos/ui/bridge";
 import { Button } from "@elizaos/ui/components";
 import { type ActivityEvent, useActivityEvents } from "@elizaos/ui/hooks";
 import type { InventoryChainFilters } from "@elizaos/ui/state";
@@ -189,12 +190,20 @@ function readHiddenTokenIds(): Set<string> {
 
 function writeHiddenTokenIds(next: Set<string>): void {
   if (typeof window === "undefined") return;
+  // HIDDEN_TOKEN_IDS_KEY is under the shell-reserved `eliza:` namespace, so a
+  // raw localStorage write is denied by the surface-realm raw-global guard
+  // (SurfaceRealmDeniedError) while this view holds the foreground scope, and a
+  // local try/catch would swallow it into silent persistence loss. Route
+  // reserved-key writes through the shell-privileged channel — the sanctioned
+  // path for every reserved-key writer (surface-realm-broker.ts /
+  // scan-reserved-storage-writers.mjs).
   try {
-    window.localStorage.setItem(
-      HIDDEN_TOKEN_IDS_KEY,
-      JSON.stringify([...next]),
-    );
+    shellLocalStorage.setItem(HIDDEN_TOKEN_IDS_KEY, JSON.stringify([...next]));
   } catch {
+    // error-policy:J4 the hide-set is best-effort view preference; a genuine
+    // storage-unavailable environment (quota/private mode) degrades to an
+    // unpersisted hide for this session rather than throwing out of the click
+    // handler.
     return;
   }
 }

@@ -44,6 +44,7 @@ export interface CharacterSettings {
 	alwaysRespondSources?: string;
 	defaultTemperature?: number;
 	defaultMaxTokens?: number;
+	maxReplyTokens?: number;
 	defaultFrequencyPenalty?: number;
 	defaultPresencePenalty?: number;
 	disableBasicCapabilities?: boolean;

@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-// Drives repo automation check scenario workflow coverage with explicit CLI and CI behavior.
+/**
+ * Audits scenario-catalog ownership across deterministic, credentialed, and
+ * platform-gated lanes. Missing live prerequisites remain explicit deferrals
+ * so a retired workflow cannot make unexecuted scenarios look covered.
+ */
 
 import { spawnSync } from "node:child_process";
 import {
@@ -368,63 +372,6 @@ function matchesScenarioFileGlobs(file, fileGlobs) {
   return fileGlobs.some((fileGlob) => scenarioFileMatchesGlob(file, fileGlob));
 }
 
-function workflowScenarioGlobs() {
-  const workflowPath = path.join(
-    REPO_ROOT,
-    ".github",
-    "workflows",
-    "scenario-matrix.yml",
-  );
-  const text = readFileSync(workflowPath, "utf8");
-  const matches = text
-    .split(/\r?\n/)
-    .map((line) => {
-      const match = line.match(/^\s*globs:\s*(.+?)\s*$/);
-      if (!match) return "";
-      const value = match[1].trim();
-      const quote = value[0];
-      if (
-        (quote === '"' || quote === "'") &&
-        value.length > 1 &&
-        value.at(-1) === quote
-      ) {
-        return value.slice(1, -1);
-      }
-      return value;
-    })
-    .filter(Boolean);
-  return matches
-    .flatMap((value) =>
-      value
-        .split(/\s+/)
-        .map((item) => item.trim())
-        .filter(Boolean),
-    )
-    .filter((item) => item !== "**/*.scenario.ts");
-}
-
-function scenarioMatrixCoverage() {
-  const globs = workflowScenarioGlobs();
-  const enabled = process.env.ELIZA_SCENARIO_MATRIX_ENABLED === "true";
-  if (enabled) {
-    return {
-      enabled,
-      coveredGlobs: globs,
-      deferredGlobs: [],
-    };
-  }
-  return {
-    enabled,
-    coveredGlobs: [],
-    deferredGlobs: globs.map((glob) => ({
-      glob,
-      issue: "#14695",
-      reason:
-        "tracked in #14695; scenario-matrix.yml is disabled unless ELIZA_SCENARIO_MATRIX_ENABLED=true or a manual dispatch enables it",
-    })),
-  };
-}
-
 const KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE = [
   {
     glob: "packages/test/scenarios/activity/**/*.scenario.ts",
@@ -456,6 +403,7 @@ function readJsonIfPresent(filePath) {
   try {
     return JSON.parse(readFileSync(filePath, "utf8"));
   } catch {
+    // error-policy:J3 Optional run artifacts use null as an explicit invalid/absent signal.
     return null;
   }
 }
@@ -520,20 +468,27 @@ function summarizeScenarioMatrix(filePath) {
 
 function existingScenarioRunArtifacts(reportDir) {
   const scenariosRoot = path.resolve(reportDir, "..");
-  const artifacts = [];
-  let names = [];
-  try {
-    names = spawnSync("find", [scenariosRoot, "-maxdepth", "3", "-type", "f"], {
+  const discovered = spawnSync(
+    "find",
+    [scenariosRoot, "-maxdepth", "3", "-type", "f"],
+    {
       cwd: REPO_ROOT,
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .stdout.split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-  } catch {
-    return artifacts;
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  if (discovered.error) {
+    throw discovered.error;
   }
+  if (discovered.status !== 0) {
+    throw new Error(
+      `scenario artifact discovery failed: ${discovered.stderr.trim()}`,
+    );
+  }
+  const names = discovered.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
   const byRunDir = new Map();
   for (const filePath of names) {
     const normalized = path.resolve(filePath);
@@ -746,11 +701,11 @@ function renderMarkdown(summary, runArtifacts = []) {
     "## Corpus coverage split (#10757)",
     "",
     "Honest three-way split across the full scenario corpus, so deterministic PR",
-    "coverage, credentialed live-matrix coverage, and platform-gated coverage that",
+    "coverage, credentialed live-only coverage, and platform-gated coverage that",
     "is deferred (no runner yet) are counted separately rather than lumped together:",
     "",
     `- keyless PR-deterministic: ${summary.corpusLaneSplit.prDeterministicCount}`,
-    `- credentialed live-only (live matrix): ${summary.corpusLaneSplit.liveOnlyCount}`,
+    `- credentialed live-only: ${summary.corpusLaneSplit.liveOnlyCount}`,
     `- deferred platform-gated (no runner yet): ${summary.corpusLaneSplit.deferredPlatformCount}`,
     `- total corpus: ${summary.corpusLaneSplit.total}`,
     "",
@@ -821,8 +776,8 @@ function renderMarkdown(summary, runArtifacts = []) {
   return lines.join("\n");
 }
 
-function main() {
-  const options = parseArgs(process.argv.slice(2));
+export function main(argv = process.argv.slice(2)) {
+  const options = parseArgs(argv);
   ensureGeneratedKeywordData();
   mkdirSync(options.reportDir, { recursive: true });
 
@@ -891,9 +846,7 @@ function main() {
     .sort();
 
   const covered = new Set();
-  const matrixCoverage = scenarioMatrixCoverage();
   const coverageGlobs = [
-    ...matrixCoverage.coveredGlobs,
     "packages/test/scenarios/executive-assistant/*.scenario.ts",
     "packages/test/scenarios/connector-certification/*.scenario.ts",
   ];
@@ -902,10 +855,7 @@ function main() {
     .map((scenario) => scenario.id)
     .sort();
   const deferred = new Map();
-  const deferredCoverageGlobs = [
-    ...KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE,
-    ...matrixCoverage.deferredGlobs,
-  ];
+  const deferredCoverageGlobs = KNOWN_DEFERRED_DEFAULT_SCENARIO_COVERAGE;
   for (const scenario of defaultScenarios) {
     const match = deferredCoverageGlobs.find((entry) =>
       matchesScenarioFileGlobs(scenario.file, [entry.glob]),
@@ -914,7 +864,15 @@ function main() {
       deferred.set(
         scenario.id,
         match.reason ??
-          `tracked in ${match.issue}; not currently part of the PR/live matrix`,
+          `tracked in ${match.issue}; not currently owned by an active credentialed workflow`,
+      );
+    } else if (
+      scenario.lane === "live-only" &&
+      !matchesScenarioFileGlobs(scenario.file, coverageGlobs)
+    ) {
+      deferred.set(
+        scenario.id,
+        "tracked in #16448; scheduled root discovery exists, but exact-shard credentials and trustworthy all-shard evidence are not yet complete",
       );
     }
   }
@@ -980,9 +938,9 @@ function main() {
     pluginAgentOrchestratorCount: pluginAgentOrchestratorIds.length,
     scenarioRunnerCount: scenarioRunnerIds.length,
     allScenarioCount: allScenarioRows.length,
-    scenarioMatrixCoverageEnabled: matrixCoverage.enabled,
-    scenarioMatrixCoveredGlobCount: matrixCoverage.coveredGlobs.length,
-    scenarioMatrixDeferredGlobCount: matrixCoverage.deferredGlobs.length,
+    deferredLiveOnlyDefaultCount: defaultScenarios.filter(
+      (scenario) => scenario.lane === "live-only" && deferred.has(scenario.id),
+    ).length,
     prDeterministicDefaultCount: prDeterministicDefaultIds.length,
     prDeterministicDefaultIds,
     coveredDefaultCount: defaultIds.filter((id) => covered.has(id)).length,
@@ -1068,9 +1026,15 @@ function main() {
   return options.failOnMissing && hasFailures ? 1 : 0;
 }
 
-try {
-  process.exit(main());
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(2);
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  try {
+    process.exit(main());
+  } catch (error) {
+    // error-policy:J1 The CLI boundary translates failures into a stable nonzero exit.
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  }
 }

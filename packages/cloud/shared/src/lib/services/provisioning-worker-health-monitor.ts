@@ -16,6 +16,7 @@
  */
 
 import { logger } from "../utils/logger";
+import { writeCloudApiDbHeartbeat } from "./cloud-api-db-heartbeat";
 import {
   checkProvisioningWorkerHealth,
   PROVISIONING_WORKER_HEARTBEAT_TTL_S,
@@ -141,11 +142,17 @@ export async function monitorProvisioningWorkerHealth(
     check?: () => Promise<ProvisioningWorkerHealth>;
     alert?: (alert: DaemonHealthAlert) => void | Promise<void>;
     now?: () => number;
+    writeDbHeartbeat?: () => Promise<void>;
   } = {},
 ): Promise<{ healthy: boolean; stale: boolean; health: ProvisioningWorkerHealth }> {
   const check = deps.check ?? checkProvisioningWorkerHealth;
   const alert = deps.alert ?? sendProvisioningWorkerAlert;
   const nowMs = (deps.now ?? Date.now)();
+
+  // #16160: this cron fires every minute regardless of provisioning traffic —
+  // stamp the shared-DB heartbeat the daemon's DB-liveness check reads to tell
+  // an idle env apart from a DB split. Never throws (logged inside).
+  await (deps.writeDbHeartbeat ?? writeCloudApiDbHeartbeat)();
 
   const health = await check();
 

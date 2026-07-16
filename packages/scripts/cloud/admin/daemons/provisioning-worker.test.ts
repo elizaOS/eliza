@@ -5,6 +5,7 @@ import {
   assertProvisioningWorkerPreflight,
   closeOpenHandles,
   databaseHostForLogs,
+  evaluateDbLiveness,
   evaluateJobsTableLiveness,
   evaluateSelfRestart,
   formatErrorWithCause,
@@ -567,6 +568,92 @@ describe("evaluateJobsTableLiveness (#15160 — abandoned-database signal)", () 
     });
     expect(assessment.stale).toBe(true);
     expect(assessment.maxAgeHours).toBe(2);
+  });
+});
+
+describe("evaluateDbLiveness (#16160 — split vs idle discrimination)", () => {
+  const now = new Date("2026-07-06T12:00:00Z");
+  const staleJobs = evaluateJobsTableLiveness({
+    latestJobCreatedAt: new Date("2026-07-01T12:00:00Z"), // 120h > 24h
+    maxAgeHours: 24,
+    now,
+  });
+  const freshJobs = evaluateJobsTableLiveness({
+    latestJobCreatedAt: new Date("2026-07-06T11:00:00Z"),
+    maxAgeHours: 24,
+    now,
+  });
+
+  it("fresh jobs → healthy, regardless of the heartbeat", () => {
+    const assessment = evaluateDbLiveness({
+      jobs: freshJobs,
+      heartbeatAt: null,
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    expect(assessment.verdict).toBe("healthy");
+  });
+
+  it("stale jobs + fresh heartbeat → idle (the staging 288-errors/day false-alarm shape)", () => {
+    const assessment = evaluateDbLiveness({
+      jobs: staleJobs,
+      heartbeatAt: new Date("2026-07-06T11:58:00Z"), // 2min old
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    expect(assessment.verdict).toBe("idle");
+    expect(assessment.heartbeatAgeMinutes).toBeCloseTo(2, 5);
+  });
+
+  it("stale jobs + stale heartbeat → split (the #15160 shape: API writes elsewhere)", () => {
+    const assessment = evaluateDbLiveness({
+      jobs: staleJobs,
+      heartbeatAt: new Date("2026-07-06T10:00:00Z"), // 120min old
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    expect(assessment.verdict).toBe("split");
+    expect(assessment.heartbeatAgeMinutes).toBeCloseTo(120, 5);
+  });
+
+  it("stale jobs + no heartbeat ever written → stale-unknown (pre-rollout fallback stays loud)", () => {
+    const assessment = evaluateDbLiveness({
+      jobs: staleJobs,
+      heartbeatAt: null,
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    expect(assessment.verdict).toBe("stale-unknown");
+    expect(assessment.heartbeatAgeMinutes).toBeNull();
+  });
+
+  it("a heartbeat in the future (clock skew) is fresh → idle, not split", () => {
+    const assessment = evaluateDbLiveness({
+      jobs: staleJobs,
+      heartbeatAt: new Date("2026-07-06T12:05:00Z"),
+      heartbeatMaxAgeMinutes: 15,
+      now,
+    });
+    expect(assessment.verdict).toBe("idle");
+  });
+
+  it("exactly at the heartbeat threshold is still idle; past it is split", () => {
+    expect(
+      evaluateDbLiveness({
+        jobs: staleJobs,
+        heartbeatAt: new Date("2026-07-06T11:45:00Z"), // exactly 15min
+        heartbeatMaxAgeMinutes: 15,
+        now,
+      }).verdict,
+    ).toBe("idle");
+    expect(
+      evaluateDbLiveness({
+        jobs: staleJobs,
+        heartbeatAt: new Date("2026-07-06T11:44:00Z"), // 16min
+        heartbeatMaxAgeMinutes: 15,
+        now,
+      }).verdict,
+    ).toBe("split");
   });
 });
 
