@@ -602,9 +602,16 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             `WHERE c.relname = '${indexName}' AND NOT i.indisvalid`
         )
       );
-      // Both drivers (node-postgres QueryResult, PGlite Results) expose `rows`.
-      const invalidRows = (invalid as { rows?: unknown[] }).rows;
-      if (Array.isArray(invalidRows) && invalidRows.length > 0) {
+      const invalidRows = invalid.rows;
+      if (!Array.isArray(invalidRows)) {
+        // An invalid driver result must not make an INVALID index look absent,
+        // because IF NOT EXISTS would then preserve the broken index forever.
+        throw new ElizaError("Embedding index validity query returned malformed rows", {
+          code: "DB_QUERY_FAILED",
+          context: { table: "pg_index", indexName },
+        });
+      }
+      if (invalidRows.length > 0) {
         logger.warn(
           { src: "plugin:sql", agentId: this.agentId, indexName },
           "Dropping INVALID HNSW embeddings index left by a failed concurrent build; rebuilding"
