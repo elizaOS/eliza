@@ -1,24 +1,11 @@
 /**
  * Large ASCII headings for dev startup banners.
  *
- * Why figlet: quick visual separation when four processes print similar tables
+ * Why banners: quick visual separation when four processes print similar tables
  * in sequence — humans/agents spot which child is speaking without reading prefixes.
+ * This isomorphic copy always renders the plain boxed marker; the Node-only
+ * app-core copy loads figlet for the fancier block.
  */
-
-type FigletModule = {
-  textSync: (
-    text: string,
-    options?: {
-      font?: string;
-      width?: number;
-      whitespaceBreak?: boolean;
-    },
-  ) => string;
-};
-
-function loadFiglet(): FigletModule | null {
-  return null;
-}
 
 function renderFallbackHeading(text: string): string {
   const rule = "_".repeat(text.length + 2);
@@ -39,39 +26,18 @@ const SUBSYSTEM_FIGLET_TEXT: Record<DevSubsystemBannerKind, string> = {
   electrobun: "ELECTROBUN",
 };
 
-/**
- * Renders a figlet block (Standard font, fits ~80 cols) for the given subsystem.
- * On failure (missing font), falls back to a short plain marker.
- */
+/** Renders a plain boxed heading (short marker) for the given subsystem. */
 export function renderDevSubsystemFigletHeading(
   kind: DevSubsystemBannerKind,
-  options?: { maxWidth?: number; font?: string },
 ): string {
-  const maxWidth = options?.maxWidth ?? 80;
-  const font = options?.font ?? "Standard";
-  const text = SUBSYSTEM_FIGLET_TEXT[kind];
-  const figlet = loadFiglet();
-  if (!figlet) {
-    return renderFallbackHeading(text);
-  }
-  try {
-    const block = figlet.textSync(text, {
-      font,
-      width: maxWidth,
-      whitespaceBreak: true,
-    });
-    return block.replace(/\s+$/u, "");
-  } catch {
-    return renderFallbackHeading(text);
-  }
+  return renderFallbackHeading(SUBSYSTEM_FIGLET_TEXT[kind]);
 }
 
-/** Figlet block, blank line, then the settings table (and any trailing footer). */
+/** Heading block, blank line, then the settings table (and any trailing footer). */
 export function prependDevSubsystemFigletHeading(
   kind: DevSubsystemBannerKind,
   tableAndFooter: string,
-  options?: { maxWidth?: number; font?: string },
 ): string {
-  const head = renderDevSubsystemFigletHeading(kind, options);
+  const head = renderDevSubsystemFigletHeading(kind);
   return `${head}\n\n${tableAndFooter}`;
 }

@@ -5,8 +5,7 @@
  * (`ELIZA_BUILD_VARIANT=store`) are hardened — the candidate must carry an
  * expected basename and, after symlink resolution, still resolve inside a
  * trusted signed `.app` bundle (derived from `execPath` / `moduleDir`).
- * Rejections warn and fall through rather than throw;
- * `resolveFirstNativeLibraryCandidate` walks a list and returns the first pass.
+ * Rejections warn and fall through rather than throw.
  */
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
@@ -151,17 +150,6 @@ export function resolveNativeLibraryCandidate(
   }
 
   return candidateRealpath;
-}
-
-export function resolveFirstNativeLibraryCandidate(
-  candidates: NativeLibraryCandidate[],
-  opts: NativeLibraryPolicyOptions,
-): string | null {
-  for (const candidate of candidates) {
-    const resolved = resolveNativeLibraryCandidate(candidate, opts);
-    if (resolved) return resolved;
-  }
-  return null;
 }
 
 export const nativeLibraryPolicyInternalsForTest = {

@@ -24,6 +24,10 @@ import type {
   ServerResponse as HttpServerResponse,
 } from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
+import {
+  type AccountPoolBrokerSnapshot,
+  emptyAccountPoolBrokerSnapshot,
+} from "@elizaos/core";
 import type { resolveServiceRoutingInConfig } from "@elizaos/shared";
 import type { Vault } from "@elizaos/vault";
 
@@ -51,6 +55,7 @@ export interface AgentHostBridge {
   runVaultBootstrap(): Promise<{ migrated: number; failed: unknown[] }>;
   sharedVault(): Vault;
   getDefaultAccountPool(): unknown;
+  getAccountPoolBrokerSnapshot(): AccountPoolBrokerSnapshot;
   applyAccountPoolApiCredentials(
     options: AccountPoolCredentialsOptions,
   ): Promise<void> | void;
@@ -104,6 +109,7 @@ export const defaultAgentHostBridge: AgentHostBridge = {
   runVaultBootstrap: () => Promise.resolve({ migrated: 0, failed: [] }),
   sharedVault: () => noopVault,
   getDefaultAccountPool: () => null,
+  getAccountPoolBrokerSnapshot: emptyAccountPoolBrokerSnapshot,
   applyAccountPoolApiCredentials: () => undefined,
   startAccountPoolKeepAlive: () => undefined,
   getBuildVariant: defaultBuildVariant,

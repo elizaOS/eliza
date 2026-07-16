@@ -218,10 +218,4 @@ export function cacheProviderOptions(
 	return buildProviderCachePlan(args).providerOptions;
 }
 
-export function providerCachePlan(
-	args: ProviderCachePlanArgs,
-): ProviderCachePlan {
-	return buildProviderCachePlan(args);
-}
-
 export type { CacheableSection, ProviderCachePlan };

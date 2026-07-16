@@ -32,10 +32,9 @@ export function extractSessionContext(memory: Memory): {
 	sessionKey?: string;
 	entry?: SessionEntry;
 } | null {
-	// Direct properties on memory (for backwards compat — runtime may attach extra fields)
-	const memoryRecord = memory as Memory & Record<string, unknown>;
-	const directSessionId = memoryRecord.sessionId as string | undefined;
-	const directSessionKey = memoryRecord.sessionKey as string | undefined;
+	// Direct properties on memory (optional on Memory for backwards compat).
+	const directSessionId = memory.sessionId;
+	const directSessionKey = memory.sessionKey;
 
 	// Metadata-based session info
 	const metadata = memory.metadata as
