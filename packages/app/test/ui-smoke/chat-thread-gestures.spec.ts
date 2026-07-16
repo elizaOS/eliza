@@ -484,6 +484,15 @@ test("header controls: no header nav (search in composer + menu), maximize remov
     timeout: 10_000,
   });
 
+  // A long results list owns trackpad/touch scrolling. Before the scroll-region
+  // boundary was explicit, this wheel bubbled into the sheet detent controller
+  // and collapsed search instead of moving through the results.
+  const searchScroller = page.getByTestId("message-search-scroll");
+  await searchScroller.hover();
+  await page.mouse.wheel(0, -180);
+  await expect(sheet).toHaveAttribute("data-detent", "full");
+  await expect(page.getByTestId("chat-message-search")).toBeVisible();
+
   // Selecting an older result must use MessageScroller's coordinated jump.
   // That keeps the row inside the real viewport after the search layer closes
   // and makes the short white highlight visible instead of bottom-follow

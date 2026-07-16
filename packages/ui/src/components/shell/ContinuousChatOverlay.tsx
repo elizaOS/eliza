@@ -3443,7 +3443,10 @@ export function ContinuousChatOverlay({
   const wheelStepDecayRef = React.useRef<number | null>(null);
   const onSheetWheel = React.useCallback(
     (e: React.WheelEvent) => {
-      if (firstRunOpen || draggingRef.current) return;
+      // Search is a modal interaction inside the full-height sheet. Every wheel
+      // gesture belongs to its query/results surface, including gestures that
+      // begin over the pinned input rather than the scrolling result viewport.
+      if (firstRunOpen || draggingRef.current || searchOpen) return;
       if (
         e.target instanceof Element &&
         e.target.closest("#continuous-thread, [data-chat-sheet-scroll-region]")
@@ -3482,6 +3485,7 @@ export function ContinuousChatOverlay({
     },
     [
       firstRunOpen,
+      searchOpen,
       pilled,
       sheetOpen,
       expanded,
