@@ -31,6 +31,32 @@ describe("isKokoroShapedVoiceId", () => {
 });
 
 describe("selectTtsProvider", () => {
+  test("selects configured Cartesia for unpinned defaults before Kokoro", () => {
+    expect(
+      selectTtsProvider({
+        cartesiaConfigured: true,
+        kokoroConfigured: true,
+        voiceId: undefined,
+      }),
+    ).toEqual({
+      ok: true,
+      provider: "cartesia",
+      fallbackReason: "configured-default",
+    });
+
+    expect(
+      selectTtsProvider({
+        cartesiaConfigured: true,
+        kokoroConfigured: true,
+        voiceId: "EXAVITQu4vr4xnSDxMaL",
+      }),
+    ).toEqual({
+      ok: true,
+      provider: "cartesia",
+      fallbackReason: "configured-default-compat",
+    });
+  });
+
   test("selects configured Kokoro for omitted voice and known Kokoro ids", () => {
     expect(
       selectTtsProvider({ kokoroConfigured: true, voiceId: undefined }),
