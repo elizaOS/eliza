@@ -24,7 +24,6 @@ import {
 } from "@elizaos/shared";
 import {
   type ContextSignalKey,
-  getContextSignalTerms,
   resolveContextSignalSpec,
 } from "./context-signal-lexicon.ts";
 import {
@@ -90,22 +89,6 @@ function resolveContextSignalLocale(
   ].find(
     (candidate): candidate is string =>
       typeof candidate === "string" && candidate.trim().length > 0,
-  );
-}
-
-export function collectKeywordTermMatchesForKey(
-  texts: string[],
-  key: ContextSignalKey,
-  options?: {
-    includeAllLocales?: boolean;
-    locale?: unknown;
-    strength?: "strong" | "weak";
-  },
-): Set<string> {
-  const strength = options?.strength ?? "strong";
-  return collectKeywordTermMatches(
-    texts,
-    getContextSignalTerms(key, strength, options),
   );
 }
 
@@ -263,33 +246,4 @@ export async function hasContextSignal(
   }
 
   return false;
-}
-
-export async function hasContextSignalForKey(
-  runtime: Parameters<typeof collectRecentConversationTexts>[0]["runtime"],
-  message: Memory,
-  state: State | undefined,
-  key: ContextSignalKey,
-  options?: {
-    contextLimit?: number;
-    includeAllLocales?: boolean;
-    locale?: unknown;
-  },
-): Promise<boolean> {
-  const locale = resolveContextSignalLocale(
-    runtime as ContextSignalRuntimeLike,
-    state,
-    options?.locale,
-  );
-  const spec = resolveContextSignalSpec(key, locale, {
-    includeAllLocales: options?.includeAllLocales ?? true,
-  });
-  return hasContextSignal(
-    runtime,
-    message,
-    state,
-    spec.strongTerms,
-    spec.weakTerms,
-    options?.contextLimit ?? spec.contextLimit,
-  );
 }

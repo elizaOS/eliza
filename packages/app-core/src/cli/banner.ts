@@ -47,7 +47,6 @@ export function emitCliBanner(version: string, options: BannerOptions = {}) {
   if (argv.some((a) => a === "--version" || a === "-V" || a === "-v")) {
     return;
   }
-  const _rich = options.richTty ?? isRich();
   const line = formatCliBannerLine(version, options);
   process.stdout.write(`${line}\n\n`);
   bannerEmitted = true;

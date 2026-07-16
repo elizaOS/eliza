@@ -291,7 +291,7 @@ export async function preflightCodingDispatch(
 	const guidance: string[] = [];
 
 	const hasCreateTask = Boolean(
-		findAsyncCodingDelegationActionName(runtime.actions ?? []),
+		findAsyncCodingDelegationActionName(runtime.actions),
 	);
 	if (!hasCreateTask) {
 		guidance.push(

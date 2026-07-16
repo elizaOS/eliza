@@ -47,13 +47,6 @@ export const DEFAULT_CONNECTOR_CONTRIBUTIONS: ReadonlyArray<ConnectorContributio
   ];
 
 /**
- * Empty default — populating against a synthetic runtime would require
- * constructing `LifeOpsService` without a real runtime. Callers that want a
- * concrete list should call {@link registerDefaultConnectorPack}.
- */
-export const DEFAULT_CONNECTOR_PACK: readonly ConnectorContribution[] = [];
-
-/**
  * Register every connector in the default pack against the supplied registry.
  *
  * Each contribution is constructed lazily via its factory so the wrapper
