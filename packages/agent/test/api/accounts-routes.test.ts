@@ -486,7 +486,6 @@ describe("accounts routes provider-scoped account resolution", () => {
           observability: {
             activeLeaseCount: number;
             lastLeaseAt: number | null;
-            lastSelectedAt: number | null;
             servedLastRequest: boolean;
           };
         }>;
@@ -513,7 +512,6 @@ describe("accounts routes provider-scoped account resolution", () => {
         observability: {
           activeLeaseCount: 0,
           lastLeaseAt: null,
-          lastSelectedAt: null,
           servedLastRequest: false,
         },
       }),
@@ -522,7 +520,6 @@ describe("accounts routes provider-scoped account resolution", () => {
         observability: {
           activeLeaseCount: 2,
           lastLeaseAt: 1234,
-          lastSelectedAt: 1234,
           servedLastRequest: true,
         },
       }),

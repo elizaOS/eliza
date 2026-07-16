@@ -797,9 +797,6 @@ async function handleListAllAccounts(
           lastLeaseAt:
             broker.accounts[brokerAccountKey(providerId, cfg.id)]
               ?.lastLeaseAt ?? null,
-          lastSelectedAt:
-            broker.accounts[brokerAccountKey(providerId, cfg.id)]
-              ?.lastLeaseAt ?? null,
           servedLastRequest: lastSelection?.accountId === cfg.id,
         },
       })),

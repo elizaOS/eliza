@@ -450,20 +450,19 @@ export class AccountPoolBroker {
       return { ok: false, error: "expired_lease" };
     }
     const reportAt = this.now();
-    if (report.model) {
-      lease.model = report.model;
-      const state = this.ensureAccountObservability(
-        lease.providerId,
-        lease.accountId,
-      );
-      if (state.lastLease?.leaseId === lease.leaseId) {
-        state.lastLease = { ...state.lastLease, model: report.model };
-      }
-    }
     const observability = this.ensureAccountObservability(
       lease.providerId,
       lease.accountId,
     );
+    if (report.model) {
+      lease.model = report.model;
+      if (observability.lastLease?.leaseId === lease.leaseId) {
+        observability.lastLease = {
+          ...observability.lastLease,
+          model: report.model,
+        };
+      }
+    }
     const successPredatesFailure =
       report.ok &&
       observability.lastFailureAtMs !== null &&

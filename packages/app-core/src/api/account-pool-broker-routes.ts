@@ -4,6 +4,7 @@
  * presenting the broker bearer secret; the public chat/message routes never
  * pass through this handler.
  */
+import crypto from "node:crypto";
 import type http from "node:http";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
 import { isLoopbackRemoteAddress } from "@elizaos/shared";
@@ -52,13 +53,13 @@ function readBearer(req: http.IncomingMessage): string | null {
   return raw.slice(7).trim();
 }
 
+// Compare fixed-length SHA-256 digests so neither content nor secret length
+// leaks through timing.
 function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return diff === 0;
+  return crypto.timingSafeEqual(
+    crypto.createHash("sha256").update(a).digest(),
+    crypto.createHash("sha256").update(b).digest(),
+  );
 }
 
 function broker(): AccountPoolBroker {
