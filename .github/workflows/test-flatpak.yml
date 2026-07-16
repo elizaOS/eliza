@@ -78,9 +78,12 @@ jobs:
       - name: Install and test
         working-directory: packages/app-core/packaging/flatpak
         run: |
+          set -euo pipefail
           flatpak --user install -y elizaos-app.flatpak
-          flatpak run ai.elizaos.App --version || echo "Version check completed"
-          flatpak run ai.elizaos.App --help || echo "Help check completed"
+          EXPECTED_VERSION="$(node -p "require('../../../../package.json').version")"
+          node ../../../scripts/verify-packaged-cli.mjs \
+            --expected "$EXPECTED_VERSION" \
+            -- flatpak run ai.elizaos.App
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
