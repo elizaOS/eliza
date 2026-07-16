@@ -10,11 +10,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 from scripts.training import instrumentation
-from scripts.training.instrumentation import _hash_paths, log_environment
+from scripts.training.instrumentation import _git_head, _hash_paths, log_environment
 
 
 def _read_env(out_dir: Path) -> dict:
@@ -55,6 +59,118 @@ def test_log_environment_captures_git_head(tmp_path, monkeypatch):
         "head": "abc123def456",
         "dirty": False,
     }
+
+
+def test_git_head_preserves_commit_when_dirty_probe_times_out(monkeypatch):
+    calls = 0
+    status_command = None
+
+    def run(*args, **kwargs):
+        nonlocal calls, status_command
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(args[0], 0, stdout="abc123\n", stderr="")
+        status_command = args[0]
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout_seconds"])
+
+    monkeypatch.setattr(instrumentation.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(instrumentation, "_run_git", run)
+
+    assert _git_head() == {
+        "available": True,
+        "head": "abc123",
+        "dirty": None,
+        "dirty_reason": "git status timed out after 5 seconds",
+    }
+    assert status_command[:2] == ["git", "--no-optional-locks"]
+
+
+def test_git_head_reports_unavailable_when_head_probe_times_out(monkeypatch):
+    def run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout_seconds"])
+
+    monkeypatch.setattr(instrumentation.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(instrumentation, "_run_git", run)
+
+    assert _git_head() == {
+        "available": False,
+        "reason": "git rev-parse timed out after 5 seconds",
+    }
+
+
+def test_git_head_reports_nonzero_dirty_probe_without_fabricating_clean(monkeypatch):
+    calls = 0
+
+    def run(*args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(args[0], 0, stdout="abc123\n", stderr="")
+        return subprocess.CompletedProcess(
+            args[0], 128, stdout="", stderr="fatal: index is corrupt\n"
+        )
+
+    monkeypatch.setattr(instrumentation.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(instrumentation, "_run_git", run)
+
+    assert _git_head() == {
+        "available": True,
+        "head": "abc123",
+        "dirty": None,
+        "dirty_reason": "git status failed: fatal: index is corrupt",
+    }
+
+
+def test_git_head_preserves_head_when_real_status_subprocess_is_slow(
+    tmp_path, monkeypatch
+):
+    """Exercise the failing status process boundary, not a mocked run call."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    leaked_child_marker = tmp_path / "git-child-survived"
+    child = tmp_path / "git-child.py"
+    child.write_text(
+        (
+            "import pathlib\n"
+            "import sys\n"
+            "import time\n"
+            "time.sleep(1)\n"
+            "pathlib.Path(sys.argv[1]).write_text('leaked', encoding='utf-8')\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_git = bin_dir / "git"
+    fake_git.write_text(
+        (
+            f"#!{sys.executable}\n"
+            "import subprocess\n"
+            "import sys\n"
+            "import time\n"
+            "if 'rev-parse' in sys.argv:\n"
+            "    print('abc123')\n"
+            "else:\n"
+            f"    subprocess.Popen([{sys.executable!r}, {str(child)!r}, {str(leaked_child_marker)!r}])\n"
+            "    time.sleep(10)\n"
+        ),
+        encoding="utf-8",
+    )
+    fake_git.chmod(0o755)
+    monkeypatch.setenv("PATH", str(bin_dir))
+
+    started = time.monotonic()
+    result = _git_head(timeout_seconds=0.5)
+    elapsed = time.monotonic() - started
+
+    assert result == {
+        "available": True,
+        "head": "abc123",
+        "dirty": None,
+        "dirty_reason": "git status timed out after 0.5 seconds",
+    }
+    assert elapsed < 2, "slow provenance probe should be terminated at its deadline"
+    if os.name == "posix":
+        time.sleep(0.75)
+        assert not leaked_child_marker.exists(), "timed-out Git child survived"
 
 
 def test_log_environment_hashes_tokenizer_and_base_checkpoint(tmp_path, monkeypatch):
