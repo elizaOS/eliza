@@ -167,11 +167,15 @@ interface SeededNotification {
 }
 
 /**
- * Eight rows spanning the priority tiers. Each row uses a distinct producer so
- * all mode reveals eight flat cards; producer-stack behavior has its own browser
- * harness. Priority + recency fix the order exactly (urgent → high → normals
- * newest-first). No row carries a deep link, so tapping it acknowledges/removes
- * it without navigating.
+ * Eight rows spanning the priority tiers. Priority + recency fix the dashboard
+ * order exactly (urgent → high → normals newest-first); the two read rows are
+ * deliberately interleaved above unread ones to prove read state never affects
+ * sorting. No row carries a deep link, so tapping acknowledges/removes it
+ * without navigating.
+ *
+ * Each row uses a distinct producer so all mode reveals eight flat cards.
+ * Same-source rows collapse into a Z-stacked producer card, which has separate
+ * browser coverage and would hide rows this gesture matrix needs to exercise.
  */
 function seedInboxNotifications(): SeededNotification[] {
   const base = Date.now();
@@ -219,8 +223,9 @@ const OVERFLOW_ROWS = 24;
 
 /**
  * A deliberately tall inbox for the pan-scroll test. The component owns a
- * bounded max-height native scrollport, so distinct producers guarantee that
- * explicit all mode exceeds the cap and has real scroll travel to pan.
+ * bounded native scrollport, so explicit all mode must exceed its cap and have
+ * real scroll travel. Distinct producers keep all rows flat instead of
+ * collapsing the fixture into one Z-stacked producer card.
  */
 function seedOverflowInboxNotifications(): SeededNotification[] {
   const base = Date.now();
@@ -523,9 +528,9 @@ test.describe("real touch (hasTouch project)", () => {
     await installSeededInboxRoutes(page, seedOverflowInboxNotifications());
     await openHome(page);
 
-    // Use the explicit mode toggle and a tall inbox so the bounded notification
-    // list genuinely overflows. This makes native-scroll containment meaningful
-    // rather than vacuous.
+    // Use the explicit mode toggle and a tall inbox so the internal notification
+    // scroller genuinely overflows. The list must have real travel for the
+    // containment assertions below to be meaningful rather than vacuous.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
     await showAllNotifications(page);
@@ -539,7 +544,7 @@ test.describe("real touch (hasTouch project)", () => {
     );
     expect(
       listOverflows,
-      "bounded notification list must overflow so containment is not vacuous",
+      "seeded notification list must overflow so the contained pan has real scroll travel",
     ).toBe(true);
     const homeScreen = page.getByTestId("home-screen");
     const homeScrollBefore = await homeScreen.evaluate((el) => el.scrollTop);
@@ -547,15 +552,16 @@ test.describe("real touch (hasTouch project)", () => {
 
     // Genuine touch pan UP over the notification list (a slight horizontal
     // wobble, like a real finger). The list is `overscroll-y-contain`, so the pan
-    // is CONTAINED to the notification area: it must not be hijacked into the
-    // horizontal home↔launcher rail, must not chain into the (scrollable) home
-    // column beneath, and its touch release must not ghost-tap the row under the
-    // finger.
+    // is CONTAINED to the notification area: it scrolls the list IN PLACE, must
+    // not be hijacked into the horizontal home↔launcher rail, must not chain into
+    // the home column beneath, and its touch release must not ghost-tap the row
+    // under the finger.
     await cdpTouchDrag(page, list, 4, -160, 10);
     await page.waitForTimeout(400);
 
-    // Rail did not flip; the home column beneath did not scroll; the bounded
-    // list itself did scroll; every seeded row remains and the explicit toggle
+    // The pan was consumed by the list (it scrolled internally) — the positive
+    // proof it stayed contained there. The rail did not flip; the home column
+    // beneath did not scroll; every seeded row remains and the explicit toggle
     // still owns all mode. The chat overlay stayed closed.
     await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
       "data-page",
