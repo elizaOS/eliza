@@ -1,6 +1,8 @@
 // Handles v1 cloud API v1 eliza agents agentid api conversations conversationid messages stream route traffic with route-local auth expectations.
 import { Hono } from "hono";
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { InsufficientCreditsError } from "@/lib/api/errors";
+import { timingSafeEqualSecret } from "@/lib/auth/cron";
 import type { BridgeRequest } from "@/lib/services/eliza-sandbox";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
@@ -45,13 +47,29 @@ const STREAM_HEADERS = {
 
 const app = new Hono<AppEnv>();
 
+async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
+  const configured = c.env.VOICE_REALTIME_ELIZA_AUTHORIZATION;
+  const presented = c.req.header("authorization");
+  if (configured && presented && timingSafeEqualSecret(presented, configured)) {
+    const agentId = c.req.param("agentId") ?? "";
+    const orgId = c.req.header("X-Eliza-Organization-Id") ?? "";
+    const userId = c.req.header("X-Eliza-User-Id") ?? "";
+    const agent = orgId ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId) : undefined;
+    if (!agent || !userId || agent.user_id !== userId) {
+      return { error: "Agent not found", status: 404 as const };
+    }
+    return { agentId: agent.id, orgId, agentName: agent.agent_name ?? "Agent" };
+  }
+  return resolveSharedAgent(c);
+}
+
 app.options("/", (c) =>
   handleCorsOptions(CORS_METHODS, c.req.header("origin")),
 );
 
 app.post("/", async (c) => {
   const origin = c.req.header("origin");
-  const r = await resolveSharedAgent(c);
+  const r = await resolveAgentScope(c);
   if ("error" in r) {
     return applyCorsHeaders(
       Response.json({ success: false, error: r.error }, { status: r.status }),

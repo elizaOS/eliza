@@ -70,13 +70,18 @@ describe("eliza sse bridge", () => {
     expect(seenHeader).toBe("trace-XYZ");
   });
 
-  test("scopes the request to the minted agent + conversation (body + headers)", async () => {
-    let seenBody: { agentId?: string; conversationId?: string } | null = null;
+  test("uses the canonical persisted message route with minted agent + conversation identity", async () => {
+    let seenUrl = "";
+    let seenBody: { text?: string } | null = null;
     let seenHeaders: Headers | null = null;
-    const fetchImpl = (async (_url: string, init: RequestInit) => {
+    const fetchImpl = (async (url: string, init: RequestInit) => {
+      seenUrl = String(url);
       seenBody = JSON.parse(String(init.body));
       seenHeaders = new Headers(init.headers);
-      return sseResponse(["data: [DONE]\n\n"]);
+      return sseResponse([
+        `event: chunk\ndata: ${JSON.stringify({ chunk: "persisted reply" })}\n\n`,
+        `event: done\ndata: ${JSON.stringify({ text: "persisted reply" })}\n\n`,
+      ]);
     }) as unknown as typeof fetch;
     await streamElizaConversation(
       {
@@ -86,17 +91,47 @@ describe("eliza sse bridge", () => {
         transcript: "hi",
         agentId: "agent-XYZ",
         conversationId: "conv-ABC",
+        organizationId: "org-123",
+        userId: "user-456",
         traceId: "t",
         signal: new AbortController().signal,
         fetchImpl,
       },
-      () => {},
+      (delta) => expect(delta).toBe("persisted reply"),
     );
-    expect(seenBody?.agentId).toBe("agent-XYZ");
-    expect(seenBody?.conversationId).toBe("conv-ABC");
-    // Scope also travels in headers so schema-strict endpoints still route it.
+    expect(seenUrl).toBe(
+      "http://x/api/v1/eliza/agents/agent-XYZ/api/conversations/conv-ABC/messages/stream",
+    );
+    expect(seenBody).toEqual({ text: "hi" });
+    expect(seenHeaders?.get("Authorization")).toBe("Bearer s");
+    expect(seenHeaders?.get("X-Service-Key")).toBe("Bearer s");
     expect(seenHeaders?.get("X-Eliza-Agent-Id")).toBe("agent-XYZ");
     expect(seenHeaders?.get("X-Eliza-Conversation-Id")).toBe("conv-ABC");
+    expect(seenHeaders?.get("X-Eliza-Organization-Id")).toBe("org-123");
+    expect(seenHeaders?.get("X-Eliza-User-Id")).toBe("user-456");
+  });
+
+  test("surfaces canonical agent stream errors instead of completing an empty turn", async () => {
+    const fetchImpl = (async () =>
+      sseResponse([
+        `event: error\ndata: ${JSON.stringify({ message: "agent failed" })}\n\n`,
+      ])) as unknown as typeof fetch;
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "t",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        () => {},
+      ),
+    ).rejects.toMatchObject({ code: "upstream_error", message: expect.stringContaining("agent failed") });
   });
 
   test("reports aborted when the signal fires mid-stream", async () => {

@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
 
+import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { userCharactersRepository } from "@/db/repositories/characters";
 import { conversationsRepository } from "@/db/repositories/conversations";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -86,6 +87,18 @@ app.post("/", async (c) => {
   if (!agent || agent.user_id !== auth.id) {
     return c.json({ error: "agent not found", code: "agent_not_found" }, 404);
   }
+  // The public mint contract uses the selected character id, while canonical
+  // conversation routes use the backing agent_sandboxes id. Resolve it here,
+  // before signing, so the WS cannot later route a character UUID as an agent UUID.
+  const sandboxAgent = await agentSandboxesRepository.findLatestByCharacterId(body.agentId);
+  if (
+    !sandboxAgent ||
+    sandboxAgent.organization_id !== auth.organization_id ||
+    sandboxAgent.user_id !== auth.id
+  ) {
+    return c.json({ error: "agent runtime not found", code: "agent_not_found" }, 404);
+  }
+
   // A supplied conversationId that exists must belong to the caller (org AND
   // user). A not-yet-existent conversationId is allowed (a session may open a
   // new one).
@@ -116,7 +129,7 @@ app.post("/", async (c) => {
       sessionId,
       organizationId: auth.organization_id,
       userId: auth.id,
-      agentId: body.agentId,
+      agentId: sandboxAgent.id,
       conversationId: body.conversationId,
     });
 

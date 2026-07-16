@@ -439,7 +439,7 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # deploy/runtime opt-in; production remains explicitly off.
 VOICE_REALTIME_WS_ENABLED = "false"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
-VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai/api/v1/chat/completions"
+VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.elizacloud.ai"
 VOICE_REALTIME_ELIZA_MODEL = "gemma-4-31b"
 
 FORCE_REDIS_EVENTS = "false"

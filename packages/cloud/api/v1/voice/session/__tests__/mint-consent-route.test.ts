@@ -31,6 +31,19 @@ mock.module("@/db/repositories/characters", () => ({
         : undefined,
   },
 }));
+mock.module("@/db/repositories/agent-sandboxes", () => ({
+  agentSandboxesRepository: {
+    findLatestByCharacterId: async (characterId: string) =>
+      characterId === "11111111-1111-4111-8111-111111111111"
+        ? {
+            id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            character_id: characterId,
+            organization_id: "org-1",
+            user_id: "user-1",
+          }
+        : undefined,
+  },
+}));
 mock.module("@/db/repositories/conversations", () => ({
   conversationsRepository: {
     findById: async () => undefined,
@@ -54,6 +67,7 @@ mock.module("@/lib/voice-session/consent-nonce", () => ({
   },
 }));
 
+import { verifyVoiceSessionToken } from "../../../../../shared/src/lib/voice-session/jwt";
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 
 const { default: mintRoute } = await import("../route");
@@ -154,6 +168,9 @@ describe("voice-session mint route", () => {
       downlink: { codecs: string[] };
     };
     expect(body.token.split(".").length).toBe(3);
+    const verified = await verifyVoiceSessionToken(body.token);
+    expect(verified.claims.agentId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    expect(verified.claims.conversationId).toBe("22222222-2222-4222-8222-222222222222");
     expect(body.wsUrl).toContain("/api/v1/voice/session/ws");
     // Phase 1: pcm16 ONLY, opus must NOT be advertised.
     expect(body.uplink.codecs).toEqual(["pcm16"]);
