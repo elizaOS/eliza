@@ -113,6 +113,7 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("auth.pair", "POST", "/api/auth/pair"),
   publicExact("embed.auth", "POST", "/api/embed/auth"),
   publicExact("tts.elevenlabs-passthrough", "POST", "/api/tts/elevenlabs"),
+  publicExact("pool.status", "GET", "/api/pool/status"),
 
   sessionExact("runtime.mode", "GET", "/api/runtime/mode"),
   sessionExact("cloud.status", "GET", "/api/cloud/status"),
@@ -207,6 +208,7 @@ const COMPAT_MANAGED_PREFIXES = [
   "/api/local-inference/",
   "/api/voice/",
   "/api/plugins",
+  "/api/pool",
   "/api/runtime/",
   "/api/secrets/",
   "/api/sensitive-requests",

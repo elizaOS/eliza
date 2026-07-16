@@ -96,6 +96,12 @@ describe("compat route auth policy table", () => {
       id: "tts.elevenlabs-passthrough",
       tier: "public",
     });
+    expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/pool/status"),
+    ).toMatchObject({
+      id: "pool.status",
+      tier: "public",
+    });
   });
 
   it("fails closed for undeclared app-core-managed routes", async () => {
@@ -146,6 +152,22 @@ describe("compat route auth policy table", () => {
         STATE,
         "GET",
         "/api/i18n/locale",
+      ),
+    ).resolves.toBe("allowed");
+    expect(res.status()).toBe(200);
+  });
+
+  it("allows public account-pool status without a session", async () => {
+    const req = fakeReq({ method: "GET", pathname: "/api/pool/status" });
+    const res = fakeRes();
+
+    await expect(
+      enforceCompatRouteAuthPolicy(
+        req,
+        res.res,
+        STATE,
+        "GET",
+        "/api/pool/status",
       ),
     ).resolves.toBe("allowed");
     expect(res.status()).toBe(200);
