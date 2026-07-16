@@ -5478,7 +5478,7 @@ export function ContinuousChatOverlay({
                     // and inert, avoiding the opaque double-blur slab that a
                     // second backdrop produced. Only the inner results list
                     // scrolls, keeping the input pinned above the keyboard.
-                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-black/20 px-4 pb-3 pt-2"
+                    className="absolute inset-0 z-30 flex flex-col overflow-hidden px-4 pb-3 pt-2"
                   >
                     <MessageSearchPanel
                       search={runMessageSearch}
