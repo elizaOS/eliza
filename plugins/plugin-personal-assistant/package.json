@@ -5,7 +5,9 @@
   "description": "Personal-assistant orchestration plugin: BRIEF, PRIORITIZE, PERSONAL_ASSISTANT cross-domain orchestration, scheduled-task owner CRUD, and default-pack composition. Slimmed from the legacy plugin-lifeops; domain-specific surfaces have moved to plugin-inbox, plugin-goals, plugin-calendar, plugin-blocker, plugin-finances, plugin-relationships, etc.",
   "sideEffects": [
     "./src/api/client-lifeops.ts",
-    "./dist/api/client-lifeops.js"
+    "./dist/api/client-lifeops.js",
+    "./src/register.ts",
+    "./dist/register.js"
   ],
   "main": "./dist/index.js",
   "exports": {
@@ -126,6 +128,7 @@
     "pluginParameters": {}
   },
   "elizaos": {
+    "appRegister": "register",
     "app": {
       "heroImage": "assets/hero.png",
       "featured": true,
