@@ -326,6 +326,41 @@ if (risk.level === "low") {
     }),
   );
 }
+
+if (funding.fundingSourceType === "exchange") {
+  investorInsights.positive.push(
+    createInvestorInsight({
+      id: "exchange-linked-funding",
+
+      title:
+        INVESTOR_INSIGHT_TEMPLATES
+          .exchangeFunding.title,
+
+      finding:
+        "The wallet appears to have been funded from a centralized exchange.",
+
+      whyItMatters:
+        INVESTOR_INSIGHT_TEMPLATES
+          .exchangeFunding
+          .whyItMatters,
+
+      impact: "positive",
+
+      confidence:
+        funding.evidenceConfidence,
+
+      severity: "medium",
+
+      evidenceRecordIds: [
+        "funding-assessment",
+      ],
+
+      limitations: [
+        "Funding attribution reflects the currently analyzed transaction history.",
+      ],
+    }),
+  );
+}
   
   return {
     trustScore,
