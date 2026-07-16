@@ -143,7 +143,11 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
         return fail("invalid-field", "`text` must be a string", "text");
       if (typeof r.final !== "boolean")
         return fail("invalid-field", "`final` must be a boolean", "final");
-      if ("turnId" in r && r.turnId !== undefined && !isNonEmptyString(r.turnId))
+      if (
+        "turnId" in r &&
+        r.turnId !== undefined &&
+        !isNonEmptyString(r.turnId)
+      )
         return fail("invalid-field", "`turnId` must be a string", "turnId");
       return {
         ok: true,
@@ -168,9 +172,17 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
         r.phase !== "failed"
       )
         return fail("invalid-field", "`phase` is not a tool phase", "phase");
-      if ("detail" in r && r.detail !== undefined && typeof r.detail !== "string")
+      if (
+        "detail" in r &&
+        r.detail !== undefined &&
+        typeof r.detail !== "string"
+      )
         return fail("invalid-field", "`detail` must be a string", "detail");
-      if ("turnId" in r && r.turnId !== undefined && !isNonEmptyString(r.turnId))
+      if (
+        "turnId" in r &&
+        r.turnId !== undefined &&
+        !isNonEmptyString(r.turnId)
+      )
         return fail("invalid-field", "`turnId` must be a string", "turnId");
       return {
         ok: true,
@@ -187,7 +199,11 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
     }
     case "tts.audio": {
       if (!isNonEmptyString(r.utteranceId))
-        return fail("missing-field", "`utteranceId` is required", "utteranceId");
+        return fail(
+          "missing-field",
+          "`utteranceId` is required",
+          "utteranceId",
+        );
       if (r.phase !== "started" && r.phase !== "ended")
         return fail("invalid-field", "`phase` is not an audio phase", "phase");
       if (
@@ -195,7 +211,11 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
         r.messageId !== undefined &&
         !isNonEmptyString(r.messageId)
       )
-        return fail("invalid-field", "`messageId` must be a string", "messageId");
+        return fail(
+          "invalid-field",
+          "`messageId` must be a string",
+          "messageId",
+        );
       return {
         ok: true,
         event: {
@@ -212,7 +232,11 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
         return fail("invalid-field", "`scope` must be turn|all", "scope");
       if (r.scope === "turn" && !isNonEmptyString(r.turnId))
         return fail("missing-field", "turn cancel requires `turnId`", "turnId");
-      if ("reason" in r && r.reason !== undefined && typeof r.reason !== "string")
+      if (
+        "reason" in r &&
+        r.reason !== undefined &&
+        typeof r.reason !== "string"
+      )
         return fail("invalid-field", "`reason` must be a string", "reason");
       return {
         ok: true,
@@ -229,7 +253,11 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
       if (!isNonEmptyString(r.code))
         return fail("missing-field", "`code` is required", "code");
       if (typeof r.retryable !== "boolean")
-        return fail("invalid-field", "`retryable` must be a boolean", "retryable");
+        return fail(
+          "invalid-field",
+          "`retryable` must be a boolean",
+          "retryable",
+        );
       if (
         "message" in r &&
         r.message !== undefined &&
@@ -249,10 +277,25 @@ export function decodeTranscriptEvent(raw: unknown): TranscriptDecodeResult {
     }
     case "reconnect": {
       if (r.phase !== "lost" && r.phase !== "restored")
-        return fail("invalid-field", "`phase` is not a reconnect phase", "phase");
-      if (typeof r.attempt !== "number" || !Number.isInteger(r.attempt) || r.attempt < 0)
-        return fail("invalid-field", "`attempt` must be a non-negative integer", "attempt");
-      return { ok: true, event: { type, seq, phase: r.phase, attempt: r.attempt } };
+        return fail(
+          "invalid-field",
+          "`phase` is not a reconnect phase",
+          "phase",
+        );
+      if (
+        typeof r.attempt !== "number" ||
+        !Number.isInteger(r.attempt) ||
+        r.attempt < 0
+      )
+        return fail(
+          "invalid-field",
+          "`attempt` must be a non-negative integer",
+          "attempt",
+        );
+      return {
+        ok: true,
+        event: { type, seq, phase: r.phase, attempt: r.attempt },
+      };
     }
     default:
       return fail("unknown-type", `unknown event type: ${type}`, "type");

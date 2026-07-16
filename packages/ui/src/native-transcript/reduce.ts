@@ -161,7 +161,8 @@ export function applyTranscriptEvent(
         status: event.final ? "final" : "streaming",
         text: event.text,
         turnId:
-          event.turnId ?? (prev && prev.kind === "agent" ? prev.turnId : undefined),
+          event.turnId ??
+          (prev && prev.kind === "agent" ? prev.turnId : undefined),
       }));
       break;
 
@@ -177,9 +178,11 @@ export function applyTranscriptEvent(
               : "failed",
         name: event.name,
         detail:
-          event.detail ?? (prev && prev.kind === "tool" ? prev.detail : undefined),
+          event.detail ??
+          (prev && prev.kind === "tool" ? prev.detail : undefined),
         turnId:
-          event.turnId ?? (prev && prev.kind === "tool" ? prev.turnId : undefined),
+          event.turnId ??
+          (prev && prev.kind === "tool" ? prev.turnId : undefined),
       }));
       break;
 
@@ -201,7 +204,8 @@ export function applyTranscriptEvent(
       for (const [id, entry] of entries) {
         if (!isInFlight(entry.item)) continue;
         if (event.scope === "turn") {
-          if (!event.turnId || !belongsToTurn(entry.item, event.turnId)) continue;
+          if (!event.turnId || !belongsToTurn(entry.item, event.turnId))
+            continue;
         }
         if (entry.item.kind === "agent") cancelledMessageIds.add(entry.item.id);
         entries.set(id, {

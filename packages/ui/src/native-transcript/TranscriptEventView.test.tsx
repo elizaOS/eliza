@@ -15,10 +15,26 @@ describe("TranscriptEventView", () => {
   it("renders user/agent/tool rows with structural status attributes", () => {
     const events: TranscriptEvent[] = [
       { type: "stt.final", seq: 1, turnId: "t1", text: "hello world" },
-      { type: "agent.text", seq: 2, messageId: "m1", turnId: "t1", text: "Hi there!", final: true },
-      { type: "tool.state", seq: 3, callId: "c1", name: "search", phase: "succeeded", turnId: "t1" },
+      {
+        type: "agent.text",
+        seq: 2,
+        messageId: "m1",
+        turnId: "t1",
+        text: "Hi there!",
+        final: true,
+      },
+      {
+        type: "tool.state",
+        seq: 3,
+        callId: "c1",
+        name: "search",
+        phase: "succeeded",
+        turnId: "t1",
+      },
     ];
-    const { container, getByText } = render(<TranscriptEventView events={events} />);
+    const { container, getByText } = render(
+      <TranscriptEventView events={events} />,
+    );
 
     const user = container.querySelector('[data-role="user"]');
     expect(user?.getAttribute("data-status")).toBe("final");
@@ -26,10 +42,14 @@ describe("TranscriptEventView", () => {
     expect(getByText("hello world").getAttribute("dir")).toBe("auto");
 
     expect(
-      container.querySelector('[data-role="agent"]')?.getAttribute("data-status"),
+      container
+        .querySelector('[data-role="agent"]')
+        ?.getAttribute("data-status"),
     ).toBe("final");
     expect(
-      container.querySelector('[data-role="tool"]')?.getAttribute("data-status"),
+      container
+        .querySelector('[data-role="tool"]')
+        ?.getAttribute("data-status"),
     ).toBe("succeeded");
   });
 
@@ -50,9 +70,17 @@ describe("TranscriptEventView", () => {
 
   it("renders a permission-denied error as a distinct alert row", () => {
     const events: TranscriptEvent[] = [
-      { type: "error", seq: 1, code: "permission-denied", retryable: false, message: "Mic denied" },
+      {
+        type: "error",
+        seq: 1,
+        code: "permission-denied",
+        retryable: false,
+        message: "Mic denied",
+      },
     ];
-    const { container, getByRole } = render(<TranscriptEventView events={events} />);
+    const { container, getByRole } = render(
+      <TranscriptEventView events={events} />,
+    );
     const alert = getByRole("alert");
     expect(alert.getAttribute("data-code")).toBe("permission-denied");
     expect(alert.getAttribute("data-retryable")).toBe("false");
@@ -71,7 +99,13 @@ describe("TranscriptEventView", () => {
   it("exposes live speaking + connection state on the container", () => {
     const events: TranscriptEvent[] = [
       { type: "agent.text", seq: 1, messageId: "m1", text: "hi", final: true },
-      { type: "tts.audio", seq: 2, utteranceId: "u1", phase: "started", messageId: "m1" },
+      {
+        type: "tts.audio",
+        seq: 2,
+        utteranceId: "u1",
+        phase: "started",
+        messageId: "m1",
+      },
       { type: "reconnect", seq: 3, phase: "lost", attempt: 1 },
     ];
     const { container } = render(<TranscriptEventView events={events} />);
@@ -79,7 +113,9 @@ describe("TranscriptEventView", () => {
     expect(root?.getAttribute("data-speaking")).toBe("u1");
     expect(root?.getAttribute("data-connection")).toBe("lost");
     expect(
-      container.querySelector('[data-role="reconnect"]')?.getAttribute("data-phase"),
+      container
+        .querySelector('[data-role="reconnect"]')
+        ?.getAttribute("data-phase"),
     ).toBe("lost");
   });
 });
