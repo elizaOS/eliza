@@ -466,7 +466,10 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     );
     expect(response.status).toBe(200);
     expect(reserveCredits).toHaveBeenCalledTimes(1);
-    expect(reserveCredits.mock.calls[0]?.[0]).toMatchObject({
+    const keyedArgs = reserveCredits.mock.calls[0] as unknown as
+      | [Record<string, unknown>]
+      | undefined;
+    expect(keyedArgs?.[0]).toMatchObject({
       idempotencyKey: "utt-abc",
     });
   });
@@ -477,8 +480,10 @@ describe("POST /api/v1/voice/tts provider selection", () => {
       voiceId: "custom-elevenlabs-voice",
     });
     expect(response.status).toBe(200);
-    const params = reserveCredits.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect("idempotencyKey" in params).toBe(false);
+    const unkeyedArgs = reserveCredits.mock.calls[0] as unknown as
+      | [Record<string, unknown>]
+      | undefined;
+    expect("idempotencyKey" in (unkeyedArgs?.[0] ?? {})).toBe(false);
   });
 
   test("rejects an invalid body and an over-long text before any reservation", async () => {
