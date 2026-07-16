@@ -6,3 +6,5 @@ node_modules/
 # fixtures are required to run it and are committed on purpose (provenance in
 # fixtures/PROVENANCE.md). Re-include them here.
 !fixtures/*.wav
+# The fixtures/*.wav re-include must not admit macOS resource-fork sidecars (._*.wav).
+**/._*

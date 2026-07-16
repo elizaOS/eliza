@@ -97,7 +97,7 @@ export function EmptyWidgetState({
         <span className="text-muted/50">{icon}</span>
         <p className="text-2xs text-muted">{title}</p>
         {description ? (
-          <p className="text-3xs text-muted/70">{description}</p>
+          <p className="text-3xs text-muted">{description}</p>
         ) : null}
       </div>
       {children}

@@ -68,7 +68,7 @@ jobs:
           [ -n "$AWS_SECRET_ACCESS_KEY" ] || { echo "::error::missing repo secret R2_STATE_SECRET_ACCESS_KEY"; exit 1; }
           [ -n "$ADDRESS" ] || { echo "::error::address input is required"; exit 1; }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}

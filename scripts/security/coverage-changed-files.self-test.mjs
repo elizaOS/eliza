@@ -208,6 +208,11 @@ try {
   );
   write(
     dir,
+    "plugins/plugin-demo/vitest.harness.config.ts",
+    "export default { test: { include: ['__tests__/**/*.harness.test.ts'] } };\n",
+  );
+  write(
+    dir,
     "packages/demo/src/feature.test.ts",
     "import { test } from 'vitest';\ntest('f', () => {});\n",
   );
@@ -352,6 +357,12 @@ try {
     assert.ok(
       !out.files.includes("plugins/plugin-demo/vite.config.views.ts"),
       `Vite config leaked into changed source: ${out.files.join(",")}`,
+    );
+    // The harness-lane config convention run-changed-vitest-coverage.mjs
+    // defines (HARNESS_CONFIG_NAME) — a config file, never coverable source.
+    assert.ok(
+      !out.files.includes("plugins/plugin-demo/vitest.harness.config.ts"),
+      `vitest harness config leaked into changed source: ${out.files.join(",")}`,
     );
   });
 
