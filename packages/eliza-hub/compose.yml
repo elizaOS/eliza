@@ -1,0 +1,36 @@
+networks:
+  forgejo:
+    external: false
+
+services:
+  server:
+    image: codeberg.org/forgejo/forgejo:15
+    container_name: eliza-forgejo-local
+    environment:
+      USER_UID: "1000"
+      USER_GID: "1000"
+      FORGEJO____APP_NAME: "Eliza Hub"
+      FORGEJO__server__DOMAIN: "localhost"
+      FORGEJO__server__HTTP_PORT: "3000"
+      FORGEJO__server__ROOT_URL: "http://localhost:3000/"
+      FORGEJO__server__SSH_DOMAIN: "localhost"
+      FORGEJO__server__SSH_PORT: "2222"
+      FORGEJO__server__SSH_LISTEN_PORT: "22"
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__service__DISABLE_REGISTRATION: "false"
+      FORGEJO__service__REQUIRE_SIGNIN_VIEW: "false"
+      FORGEJO__actions__ENABLED: "true"
+      FORGEJO__actions__DEFAULT_ACTIONS_URL: "https://data.forgejo.org"
+      FORGEJO__ui__THEMES: "forgejo-auto,forgejo-light,forgejo-dark,eliza,eliza-light"
+      FORGEJO__ui__DEFAULT_THEME: "eliza"
+    restart: unless-stopped
+    networks:
+      - forgejo
+    volumes:
+      - ./forgejo:/data
+      - ./custom/public:/data/gitea/public:ro
+      - ./custom/templates:/data/gitea/templates:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:2222:22"

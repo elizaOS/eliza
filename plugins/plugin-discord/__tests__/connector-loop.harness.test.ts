@@ -80,6 +80,10 @@ async function driveDiscordTurn(options: {
 	inboundText: string;
 	fixtures?: LlmProxyFixture[];
 	channelKind?: "guild" | "dm";
+	// Extra user ids to include in `message.mentions.users` alongside the
+	// author — used to reproduce a co-mention (`@other @bot`) where the bot is
+	// not the first-mentioned user.
+	coMentionedUserIds?: string[];
 }): Promise<{ sent: SentMessage[]; channelId: string }> {
 	const channelKind = options.channelKind ?? "guild";
 	// Heuristic (non-strict) proxy: the reply turn makes several model calls;
@@ -195,7 +199,20 @@ async function driveDiscordTurn(options: {
 		embeds: [],
 		stickers: { size: 0 },
 		attachments: { size: 0 },
-		mentions: { users: new Map(), repliedUser: undefined },
+		mentions: {
+			// The bot is @mentioned but listed AFTER the co-mentioned users, so
+			// `isDiscordUserAddressed` (first-mention) is false — the case where
+			// the bot must still respond because it is explicitly tagged.
+			users: new Map<string, { id: string }>([
+				...(options.coMentionedUserIds ?? []).map(
+					(id) => [id, { id }] as const,
+				),
+				...(options.coMentionedUserIds?.length
+					? ([[botMemberId, { id: botMemberId }]] as const)
+					: []),
+			]),
+			repliedUser: undefined,
+		},
 		react: async () => undefined,
 		reactions: { resolve: () => null },
 	} as never;
@@ -246,6 +263,35 @@ async function driveDiscordTurn(options: {
 }
 
 describe("discord connector loop (keyless harness)", () => {
+	it("responds when explicitly @mentioned among other users (co-mention, bot not first)", async () => {
+		// Live 2026-07-16: `@ruby @osiris @remilio` in a multi-bot channel was
+		// dropped by the "targets another mentioned user" gate because the bot
+		// was not the FIRST mention. An explicit tag of the bot must still get a
+		// reply even when other users are co-mentioned.
+		const { sent, channelId } = await driveDiscordTurn({
+			inboundText: "<@2000000000000000001> <@bot> talk to them",
+			coMentionedUserIds: ["2000000000000000001"],
+			fixtures: [
+				{
+					name: "co-mention-reply",
+					match: { modelType: ModelType.RESPONSE_HANDLER },
+					response: {
+						contexts: ["simple"],
+						intents: [],
+						replyText: "On it.",
+						candidateActionNames: [],
+					},
+				},
+			],
+		});
+
+		expect(
+			sent.length,
+			"an explicit co-mention still delivers a reply",
+		).toBeGreaterThan(0);
+		expect(sent[0]?.channelId).toBe(channelId);
+	}, 120_000);
+
 	it("drives a synthetic Discord message through the mock LLM to a delivered reply", async () => {
 		const { sent, channelId } = await driveDiscordTurn({
 			inboundText: "Hello agent, please reply.",

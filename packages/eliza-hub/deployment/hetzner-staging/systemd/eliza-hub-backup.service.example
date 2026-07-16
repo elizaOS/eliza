@@ -1,0 +1,28 @@
+[Unit]
+Description=Eliza Hub encrypted off-site backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=eliza
+Group=eliza
+WorkingDirectory=/srv/eliza-hub/current
+Environment=ENV_FILE=/srv/eliza-hub/shared/eliza-hub.env
+Environment=BACKUP_ROOT=/srv/eliza-hub/shared/backups
+Environment=ELIZA_ARTIFACT_ROOT=/srv/eliza-hub/shared/artifacts
+Environment=ELIZA_CACHE_ROOT=/srv/eliza-hub/shared/cache
+ExecStart=/srv/eliza-hub/current/deployment/hetzner-staging/scripts/run-scheduled-backup.sh --apply
+UMask=0077
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadOnlyPaths=/srv/eliza-hub/current
+ReadWritePaths=/srv/eliza-hub/shared
+RestrictSUIDSGID=true
+
+TimeoutStartSec=4h
