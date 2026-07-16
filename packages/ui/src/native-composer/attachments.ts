@@ -165,6 +165,8 @@ export function normalizeComposerAttachment(
       try {
         parsed = new URL(source.url);
       } catch {
+        // error-policy:J3 untrusted-input sanitizing — an unparseable native URL
+        // is an explicit typed "invalid" result, not a fabricated attachment.
         return reject("invalid-input", `not a valid URL: ${source.url}`);
       }
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
