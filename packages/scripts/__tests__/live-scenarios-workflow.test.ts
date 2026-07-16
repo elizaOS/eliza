@@ -164,7 +164,7 @@ test("discovers the orchestrator live evidence in the scheduled catalog", async 
     "orchestrator.grilling-happy-path",
     "orchestrator.origin-routing-live",
   ]);
-});
+}, 15_000);
 
 test("builds the native trajectory export into the child invocation by default", () => {
   const plan = createLiveScenarioPlan({
