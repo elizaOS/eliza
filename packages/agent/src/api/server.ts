@@ -1558,6 +1558,7 @@ export {
 export { isWaifuChatAuthorized } from "./waifu-chat-role-resolver.ts";
 
 import { resolveHttpAccessContext } from "./http-access-context.ts";
+import { resolveInboxRequestAuthorization } from "./inbox-request-authorization.ts";
 
 const isAllowedHost = _isAllowedHost;
 const applyCors = _applyCors;
@@ -3011,11 +3012,12 @@ async function handleRequest(
   let inboxCallerAuthorization: AgentHttpRequestAuthorization | undefined;
   if (pathname.startsWith("/api/inbox")) {
     const hostAuthorization = await resolveHostSessionAuthorization();
-    const agentBoundaryRole = resolveBoundaryRole(req);
-    inboxCallerAuthorization =
-      agentBoundaryRole === "OWNER"
-        ? { ok: true, role: "OWNER" }
-        : hostAuthorization;
+    inboxCallerAuthorization = resolveInboxRequestAuthorization(
+      req,
+      method,
+      pathname,
+      hostAuthorization,
+    );
   }
   if (
     await handleInboxAndCloudRelayRouteGroup({

@@ -43,6 +43,8 @@ export interface AgentHttpRequestAuthorization {
   role: RoleGateRole;
   /** Present for a DB-backed browser or machine session. */
   identityId?: string;
+  /** Stable non-session principal supplied by a scoped host/token authority. */
+  principal?: string;
 }
 
 /**

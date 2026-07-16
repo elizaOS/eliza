@@ -177,6 +177,7 @@ export interface InboxRouteCallerAuthorization {
   ok: boolean;
   role: RoleGateRole;
   identityId?: string;
+  principal?: string;
 }
 
 /**
@@ -429,13 +430,16 @@ async function validateInboxAccount(
     );
   }
 
-  if (account.accessGate !== "owner_binding") {
-    return null;
-  }
-  if (roleRank(callerAuthorization.role) < roleRank("OWNER")) {
+  const ownerAuthorityRequired =
+    account.accessGate === "owner_binding" ||
+    account.role.trim().toUpperCase() === "OWNER";
+  if (
+    ownerAuthorityRequired &&
+    roleRank(callerAuthorization.role) < roleRank("OWNER")
+  ) {
     return accountRoutingFailure(
       "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED",
-      `Authenticated caller cannot use owner-bound connector account ${account.id}`,
+      `Authenticated caller cannot use owner connector account ${account.id}`,
       403,
       {
         accountId: account.id,
@@ -443,6 +447,10 @@ async function validateInboxAccount(
         reason: "OWNER authority is required",
       },
     );
+  }
+
+  if (account.accessGate !== "owner_binding") {
+    return null;
   }
   const evaluation = await manager.evaluatePolicy(
     {
@@ -488,10 +496,9 @@ async function validateInboxAccount(
     verifiedBinding?.identityId ??
     evaluation.account.ownerIdentityId ??
     account.ownerIdentityId;
-  if (
-    callerAuthorization.identityId &&
-    callerAuthorization.identityId !== boundIdentityId
-  ) {
+  const callerIdentity =
+    callerAuthorization.identityId ?? callerAuthorization.principal;
+  if (callerIdentity && callerIdentity !== boundIdentityId) {
     return accountRoutingFailure(
       "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED",
       `Authenticated caller cannot use connector account ${account.id}`,
@@ -809,12 +816,11 @@ function readRoomSource(room: Room | undefined): string | null {
 }
 
 function connectorSourcesMatch(left: string, right: string): boolean {
-  const exactLeft = normalizeAccountProvider(left);
-  const exactRight = normalizeAccountProvider(right);
-  return (
-    exactLeft === exactRight ||
-    normalizeConnectorSource(exactLeft) === normalizeConnectorSource(exactRight)
-  );
+  // Aliases group sources for inbox display/filtering, but they are not
+  // interchangeable transport authorities. Native iMessage and BlueBubbles,
+  // for example, share the `imessage` canonical family while owning distinct
+  // handlers and account stores.
+  return normalizeAccountProvider(left) === normalizeAccountProvider(right);
 }
 
 async function resolveTrustedRoomSource(

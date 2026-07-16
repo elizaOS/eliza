@@ -220,6 +220,22 @@ describe("POST /api/inbox/messages connector account routing", () => {
     });
   });
 
+  it("requires OWNER authority for an open account owned by the user", async () => {
+    const harness = await createHarness({
+      accounts: [account("slack-owner", { provider: "slack", role: "OWNER" })],
+      body: requestBody({ accountId: "slack-owner", source: "slack" }),
+      callerAuthorization: { ok: true, role: "USER", identityId: "machine-1" },
+      roomSource: "slack",
+      sendHandlers: new Map([["slack\u0000slack-owner", vi.fn()]]),
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 403,
+      body: { code: "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED" },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
+  });
+
   it("preserves legacy source-default dispatch when no accounts exist", async () => {
     const harness = await createHarness({ body: requestBody() });
 
@@ -378,6 +394,30 @@ describe("POST /api/inbox/messages connector account routing", () => {
       accountId: "bluebubbles-owner",
       source: "bluebubbles",
     });
+  });
+
+  it("does not treat native imessage and BlueBubbles as the same transport", async () => {
+    const harness = await createHarness({
+      accounts: [account("bluebubbles-owner", { provider: "bluebubbles" })],
+      body: requestBody({
+        accountId: "bluebubbles-owner",
+        source: "bluebubbles",
+      }),
+      roomSource: "imessage",
+      sendHandlers: new Map([
+        ["bluebubbles\u0000bluebubbles-owner", vi.fn()],
+        ["imessage\u0000native-owner", vi.fn()],
+      ]),
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 409,
+      body: {
+        code: "INBOX_ROOM_SOURCE_MISMATCH",
+        context: { requestedSource: "bluebubbles", roomSource: "imessage" },
+      },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
   });
 
   it.each([

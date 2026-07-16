@@ -54,6 +54,7 @@ export function installAgentHostBridge(): void {
           ok: true,
           role: resolved.role,
           ...(resolved.identityId ? { identityId: resolved.identityId } : {}),
+          ...(resolved.principal ? { principal: resolved.principal } : {}),
         }
       : { ok: false, role: "NONE" };
   };
