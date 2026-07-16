@@ -132,20 +132,25 @@ export async function fetchCodexUsage(
   const secondary = isRecord(rateLimit)
     ? rateLimit.secondary_window
     : undefined;
-  if (primary !== undefined && !isRecord(primary)) {
+  // OpenAI uses null for a window that does not apply to the account. Treat
+  // that the same as an omitted optional window, while retaining strict shape
+  // validation for every other present value.
+  if (primary !== undefined && primary !== null && !isRecord(primary)) {
     throw new ElizaError("Codex usage primary window was invalid", {
       code: "codex_usage.invalid_shape",
       severity: "fatal",
     });
   }
-  if (secondary !== undefined && !isRecord(secondary)) {
+  if (secondary !== undefined && secondary !== null && !isRecord(secondary)) {
     throw new ElizaError("Codex usage secondary window was invalid", {
       code: "codex_usage.invalid_shape",
       severity: "fatal",
     });
   }
 
-  const sessionPct = clampPct(isRecord(primary) ? primary.used_percent : undefined);
+  const sessionPct = clampPct(
+    isRecord(primary) ? primary.used_percent : undefined,
+  );
   const weeklyPct = clampPct(
     isRecord(secondary) ? secondary.used_percent : undefined,
   );

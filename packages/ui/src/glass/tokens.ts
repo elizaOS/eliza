@@ -56,9 +56,26 @@ export interface GlassRecipe {
   radius: string;
 }
 
-/** Fill used by the chat sheet: theme-aware card at 86%. */
+/**
+ * Fill for the chat sheet — the single source of truth for the frosted panel
+ * material `ContinuousChatOverlay` renders. A mostly-translucent theme-aware
+ * card at 62%: the live view behind reads as a soft, bright frost rather than
+ * the grayish near-opaque slab a high fill produced. Paired with
+ * {@link GLASS_SHEET_BACKDROP_FILTER}; the overlay imports both, so the chat
+ * sheet is a genuine liquid-glass SYSTEM surface instead of a hand-rolled
+ * recipe that drifts from the token.
+ */
 export const GLASS_SHEET_FILL =
-  "color-mix(in srgb, var(--card) 86%, transparent)";
+  "color-mix(in srgb, var(--card) 62%, transparent)";
+/**
+ * Backdrop filter for the chat sheet: a heavy neutral blur with NO saturate.
+ * The blur keeps text legible while letting the backdrop's color and light
+ * through; saturate is omitted because it muddies the warm/orange field to
+ * brown (measured, not taste — the whole liquid-glass system is neutral
+ * white/black only). No refraction: a panel this size would visibly warp the
+ * text behind it. Shared by the recipe and the overlay so the two never drift.
+ */
+export const GLASS_SHEET_BACKDROP_FILTER = "blur(30px)";
 /** Fill used by floating cards (notifications). */
 export const GLASS_CARD_FILL = "rgb(12 12 14 / 34%)";
 /** Darker menu fill so labels stay readable over any wallpaper. */
@@ -71,8 +88,7 @@ export const GLASS_PILL_FILL = "rgb(20 20 24 / 30%)";
 export const GLASS_RECIPES: Record<GlassVariant, GlassRecipe> = {
   sheet: {
     background: GLASS_SHEET_FILL,
-    // No saturate: over the orange-accented theme, saturate() muddies to brown.
-    backdropFilter: "blur(20px)",
+    backdropFilter: GLASS_SHEET_BACKDROP_FILTER,
     refraction: null,
     rim: false,
     edgeShadow: LIQUID_GLASS_EDGE_SHADOW,

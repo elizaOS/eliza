@@ -29,6 +29,7 @@ import logging
 import os
 import platform
 import shutil
+import signal
 import subprocess
 import time
 from collections.abc import Iterable, Mapping
@@ -167,7 +168,40 @@ def _hash_paths(paths: Iterable[Path | str] | None) -> dict[str, str]:
     return out
 
 
-def _git_head() -> dict[str, Any]:
+def _run_git(
+    args: list[str], *, timeout_seconds: float
+) -> subprocess.CompletedProcess[str]:
+    """Run a bounded Git probe and tear down its whole POSIX process group.
+
+    ``git status`` may start submodule/fsmonitor children. ``subprocess.run``
+    kills only the direct process on timeout, leaving those descendants alive
+    with inherited pipes. Training runs are Linux-based, so start a fresh
+    session there and terminate the group before re-raising the timeout. Other
+    platforms retain the direct-process fallback.
+    """
+    process = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=os.name == "posix",
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        process.communicate()
+        raise
+    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
+
+
+def _git_head(*, timeout_seconds: float = 5) -> dict[str, Any]:
     """Capture the training commit for the reproducibility manifest.
 
     Best-effort: outside a git checkout (or with git absent) the head is
@@ -175,21 +209,67 @@ def _git_head() -> dict[str, Any]:
     """
     if not shutil.which("git"):
         return {"available": False, "reason": "git not on PATH"}
-    out = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        check=False, capture_output=True, text=True, timeout=5,
-    )
+    timeout_label = f"{timeout_seconds:g} seconds"
+    try:
+        out = _run_git(
+            ["git", "rev-parse", "HEAD"],
+            timeout_seconds=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "available": False,
+            "reason": f"git rev-parse timed out after {timeout_label}",
+        }
+    except OSError as error:
+        return {
+            "available": False,
+            "reason": f"git rev-parse failed to start: {error}",
+        }
     if out.returncode != 0:
-        return {"available": False, "reason": out.stderr.strip() or f"exit={out.returncode}"}
+        detail = out.stderr.strip() or f"exit={out.returncode}"
+        return {"available": False, "reason": f"git rev-parse failed: {detail}"}
     head = out.stdout.strip()
-    dirty = subprocess.run(
-        ["git", "status", "--porcelain"],
-        check=False, capture_output=True, text=True, timeout=5,
-    )
+    try:
+        dirty = _run_git(
+            [
+                "git",
+                # A hard timeout must not strand .git/index.lock.
+                "--no-optional-locks",
+                # This is best-effort metadata. Do not invoke a configured
+                # fsmonitor hook/daemon that could outlive a timed-out probe.
+                "-c",
+                "core.fsmonitor=false",
+                "status",
+                "--porcelain",
+            ],
+            timeout_seconds=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "available": True,
+            "head": head,
+            "dirty": None,
+            "dirty_reason": f"git status timed out after {timeout_label}",
+        }
+    except OSError as error:
+        return {
+            "available": True,
+            "head": head,
+            "dirty": None,
+            "dirty_reason": f"git status failed to start: {error}",
+        }
+    if dirty.returncode != 0:
+        detail = dirty.stderr.strip() or f"exit={dirty.returncode}"
+        return {
+            "available": True,
+            "head": head,
+            "dirty": None,
+            "dirty_reason": f"git status failed: {detail}",
+        }
     return {
         "available": True,
         "head": head,
-        "dirty": bool(dirty.stdout.strip()) if dirty.returncode == 0 else None,
+        "dirty": bool(dirty.stdout.strip()),
     }
 
 

@@ -233,7 +233,7 @@ export function shouldIncludeByContext(
 	}
 
 	const normalizedActive = new Set(
-		(activeContexts || []).map((context) => `${context}`.toLowerCase()),
+		activeContexts.map((context) => `${context}`.toLowerCase()),
 	);
 	return declaredContexts.some((context) =>
 		normalizedActive.has(`${context}`.toLowerCase()),

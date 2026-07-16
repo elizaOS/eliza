@@ -334,10 +334,6 @@ function createConnection(url: string): Database {
  */
 const dbCacheAls = new AsyncLocalStorage<Map<string, Database>>();
 
-export function runWithDbCache<T>(fn: () => T): T {
-  return dbCacheAls.run(new Map(), fn);
-}
-
 export async function runWithDbCacheAsync<T>(fn: () => Promise<T>): Promise<T> {
   return await dbCacheAls.run(new Map(), fn);
 }
@@ -512,20 +508,6 @@ export function getPgliteClientForTests(): import("@electric-sql/pglite").PGlite
     );
   }
   return pgliteClientForTests;
-}
-
-/**
- * Execute a read-intent query.
- */
-export async function withReadDb<T>(fn: (db: Database) => Promise<T>): Promise<T> {
-  return fn(connectionManager.getReadConnection());
-}
-
-/**
- * Execute a write query (uses primary)
- */
-export async function withWriteDb<T>(fn: (db: Database) => Promise<T>): Promise<T> {
-  return fn(connectionManager.getWriteConnection());
 }
 
 // ============================================================================

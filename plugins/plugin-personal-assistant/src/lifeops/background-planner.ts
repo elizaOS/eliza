@@ -529,13 +529,6 @@ export async function planJob(
   runtime: IAgentRuntime,
   jobContext: BackgroundJobContext,
 ): Promise<TypedJobPlan> {
-  if (typeof runtime.useModel !== "function") {
-    throw new BackgroundPlannerError(
-      jobContext.jobKind,
-      "runtime.useModel is unavailable; background job cannot run",
-    );
-  }
-
   const prompt = buildPrompt(jobContext);
   let result: unknown;
   try {

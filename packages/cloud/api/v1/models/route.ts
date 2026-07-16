@@ -23,6 +23,7 @@ app.get("/", async (c) => {
     await getCurrentUser(c).catch(() => null);
 
     if (!hasAnyAiProviderConfigured()) {
+      c.header("Cache-Control", "no-store");
       return c.json(
         {
           error: {
@@ -34,17 +35,19 @@ app.get("/", async (c) => {
       );
     }
 
+    const data = await getCachedMergedModelCatalog();
     c.header(
       "Cache-Control",
       "public, s-maxage=3600, stale-while-revalidate=7200",
     );
     return c.json({
       object: "list",
-      data: await getCachedMergedModelCatalog(),
+      data,
     });
   } catch (error) {
     // error-policy:J1 route boundary — every catch in v1/models/* translates a thrown error into a structured HTTP failure via failureResponse (never a fabricated 200/empty catalog).
     logger.error("Error fetching models:", error);
+    c.header("Cache-Control", "no-store");
     return failureResponse(c, error);
   }
 });
