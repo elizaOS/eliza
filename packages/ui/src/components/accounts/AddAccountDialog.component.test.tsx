@@ -111,6 +111,28 @@ describe("AddAccountDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  // Deslop (#16481): humanized helper copy, no file-mode jargon, and the
+  // simplified placeholder set.
+  it("shows humanized API-key copy without mode-0600 jargon", () => {
+    render(<AddAccountDialog open onClose={vi.fn()} onCreated={vi.fn()} />);
+    fireEvent.change(screen.getByPlaceholderText("Search providers"), {
+      target: { value: "OpenAI API" },
+    });
+    fireEvent.click(screen.getByRole("option", { name: /OpenAI API/ }));
+    expect(
+      screen.getByText(
+        "Paste your API key. It's stored locally and only used to call the provider.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/mode 0600/)).toBeNull();
+    expect(
+      (screen.getByLabelText("Account name") as HTMLInputElement).placeholder,
+    ).toBe("Personal or work");
+    expect(
+      (screen.getByLabelText("API key") as HTMLInputElement).placeholder,
+    ).toBe("sk-...");
+  });
+
   it("surfaces an API failure and supports retry", async () => {
     api.createApiKeyAccount.mockRejectedValueOnce(
       new Error("credential rejected"),

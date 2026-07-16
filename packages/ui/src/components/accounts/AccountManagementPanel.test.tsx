@@ -174,4 +174,25 @@ describe("AccountManagementPanel", () => {
     );
     expect(screen.getByRole("dialog").textContent).toContain("second");
   });
+
+  // Deslop (#16481): the available-providers disclosure renders a lucide
+  // ChevronRight svg glyph, not the old text "\u203a" character in a span.
+  it("renders a lucide chevron on the available-providers disclosure", () => {
+    render(
+      <AccountManagementPanel
+        activeSubscriptionId="openai-subscription"
+        onSelectChatProvider={vi.fn()}
+        onSelectSubscription={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: /More providers/ });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.querySelector("svg")).toBeTruthy();
+    expect(toggle.textContent).not.toContain("\u203a");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.querySelector("svg")?.getAttribute("class")).toContain(
+      "rotate-90",
+    );
+  });
 });
