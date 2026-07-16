@@ -875,4 +875,39 @@ describe("native tool dialects never recover as the user-facing answer", () => {
 		expect(result.messageToUser ?? "").not.toContain("GET_WEATHER");
 		expect(result.messageToUser ?? "").not.toContain("location");
 	});
+
+	it("does not deliver a call:NAME{...} invocation with non-JSON args (live 2026-07-16 leak)", async () => {
+		// gemma emitted this exact dialect as its whole reply — unquoted keys, so
+		// the JSON-object screen can never see it. It shipped to Discord verbatim,
+		// four turns in a row.
+		const result = await runWithModelText(
+			"call:WEB_SEARCH{numResults:6,query:best restaurants near 25 Nassau Ave Brooklyn NY 11222}",
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser ?? "").toBe("");
+	});
+
+	it("does not deliver a mid-text invocation of a tool the trajectory carries", async () => {
+		const result = await runWithModelText(
+			"Let me check that again. SHELL{cmd: df -h}",
+		);
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser ?? "").toBe("");
+	});
+
+	it("still recovers genuine prose after a successful tool result", async () => {
+		const result = await runWithModelText(
+			"You have 165G available on / and plenty of headroom on /home.",
+		);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("165G available");
+	});
+
+	it("still recovers prose that merely MENTIONS a trajectory tool without invoking it", async () => {
+		const result = await runWithModelText(
+			"I used SHELL to check the disk — you have 165G free, so no cleanup needed.",
+		);
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("165G free");
+	});
 });
