@@ -1,7 +1,7 @@
 /**
  * Pins the credentialed scenario authority's clean-checkout prerequisites,
- * source-export conditions, and honest catalog ownership after no-op workflow
- * entry points are retired.
+ * source-export conditions, honest catalog ownership, and default trajectory
+ * artifacts.
  */
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -10,6 +10,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { main as auditScenarioCoverage } from "../check-scenario-workflow-coverage.mjs";
 import { PLUGIN_ROUTE_COVERAGE } from "../e2e-coverage/manifest.ts";
+import { listScenarioMetadata } from "../../scenario-runner/src/loader.ts";
 
 const workflowPath = fileURLToPath(
   new URL("../../../.github/workflows/live-scenarios.yml", import.meta.url),
@@ -23,6 +24,12 @@ const coverageAuditPath = fileURLToPath(
 );
 const workflowReadmePath = fileURLToPath(
   new URL("../../../.github/workflows/README.md", import.meta.url),
+);
+const liveScenarioWrapperPath = fileURLToPath(
+  new URL("../run-live-scenarios.mjs", import.meta.url),
+);
+const defaultScenarioRoot = fileURLToPath(
+  new URL("../../test/scenarios/", import.meta.url),
 );
 
 test("builds the dist-exported runtime packages before the scenario CLI starts", () => {
@@ -103,3 +110,35 @@ test("reports uncovered live-only scenarios as explicit deferrals", () => {
     rmSync(tempRoot, { recursive: true, force: true });
   }
 }, 30_000);
+
+test("discovers the orchestrator live evidence in the scheduled catalog", async () => {
+  const metadata = await listScenarioMetadata(
+    defaultScenarioRoot,
+    undefined,
+    undefined,
+    false,
+    "live-only",
+  );
+  const orchestratorEvidence = metadata.filter((entry) =>
+    [
+      "orchestrator.grilling-happy-path",
+      "orchestrator.origin-routing-live",
+    ].includes(entry.id),
+  );
+
+  expect(orchestratorEvidence.map((entry) => entry.id).sort()).toEqual([
+    "orchestrator.grilling-happy-path",
+    "orchestrator.origin-routing-live",
+  ]);
+});
+
+test("exports native trajectories into the run directory by default", () => {
+  const wrapper = readFileSync(liveScenarioWrapperPath, "utf8");
+
+  expect(wrapper).toContain(
+    'process.env.EXPORT_NATIVE_PATH ?? path.join(runDir, "native.jsonl")',
+  );
+  expect(wrapper).toMatch(
+    /if \(exportNativePath\.length > 0\)[\s\S]*args\.push\("--export-native", exportNativePath\)/,
+  );
+});

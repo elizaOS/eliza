@@ -33,7 +33,8 @@
  *   - SKIP_REASON: required when any scenario is intentionally skipped.
  *   - REPORT_PATH: where to write the JSON report (default: artifacts/lifeops-scenario-report.json).
  *   - RUN_DIR: where to save trajectories, matrix.json, and viewer/ (default: artifacts/scenario-runs/live).
- *   - EXPORT_NATIVE_PATH: optional eliza_native_v1 JSONL export path.
+ *   - EXPORT_NATIVE_PATH: eliza_native_v1 JSONL export path (default:
+ *     <RUN_DIR>/native.jsonl; set to an empty string to disable).
  *
  * Usage:
  *   node packages/scripts/run-live-scenarios.mjs [--list] [--scenario id1,id2] [--report path]

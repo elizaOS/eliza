@@ -66,6 +66,7 @@ export default scenario({
           },
         ] as const;
 
+        let failure: string | undefined;
         for (const example of cases) {
           const decision = await decideInterruptionWithModel(observedRuntime, {
             text: example.text,
@@ -77,21 +78,25 @@ export default scenario({
               "Refactor authentication session refresh and add regression coverage",
           });
           if (decision.action !== example.expected) {
-            return `${JSON.stringify(example.text)} expected ${example.expected}, received ${decision.action}: ${decision.reason}`;
+            failure = `${JSON.stringify(example.text)} expected ${example.expected}, received ${decision.action}: ${decision.reason}`;
+            break;
           }
           if (!decision.reason.startsWith("model:")) {
-            return `${JSON.stringify(example.text)} used the fallback instead of the live model: ${decision.reason}`;
+            failure = `${JSON.stringify(example.text)} used the fallback instead of the live model: ${decision.reason}`;
+            break;
           }
         }
-        const runDir = process.env.RUN_DIR;
-        if (!runDir) return "RUN_DIR is required for live routing evidence";
+        const runDir = process.env.ELIZA_LIFEOPS_RUN_DIR?.trim();
+        if (!runDir) {
+          return "the scenario runner did not expose its run directory";
+        }
         await mkdir(runDir, { recursive: true });
         await writeFile(
           path.join(runDir, "orchestrator-routing-model-io.jsonl"),
           `${modelIo.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
           "utf8",
         );
-        return undefined;
+        return failure;
       },
     },
   ],
