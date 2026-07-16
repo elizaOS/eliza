@@ -182,8 +182,12 @@ jobs:
             echo "changed tests ran but no coverage/lcov.info files were produced"
             exit 1
           fi
+          # Files coverage collection cannot instrument (#16409): their LCOV
+          # absence is expected — the gate prints EXCLUDED instead of MISSING.
+          LCOV_EXCLUDED_FILES=$(grep -vE '^#|^$' scripts/security/coverage-lcov-excluded.txt || true)
           awk \
             -v changed="${{ steps.changed.outputs.files }}" \
             -v threshold=50 \
+            -v excluded="$LCOV_EXCLUDED_FILES" \
             -f scripts/security/coverage-gate.awk \
             "${lcov_files[@]}"

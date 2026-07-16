@@ -7,7 +7,15 @@
 #
 # Usage:
 #   awk -v changed="$CHANGED_FILES" -v threshold=70 \
+#       [-v excluded="$LCOV_EXCLUDED_FILES"] \
 #       -f scripts/security/coverage-gate.awk coverage/lcov.info
+#
+# `excluded` (newline-separated) lists files that CANNOT appear in an LCOV
+# report (coverage collection fails on them; see
+# scripts/security/coverage-lcov-excluded.txt, #16409). A changed file on that
+# list that is absent from LCOV prints a visible EXCLUDED line instead of the
+# fail-closed MISSING. If such a file DOES appear in LCOV (collection got
+# fixed), it is gated normally — the escape hatch expires by itself.
 
 BEGIN {
   if (threshold == "") threshold = 70
@@ -18,6 +26,16 @@ BEGIN {
     if (parts[i] != "") {
       gsub(/\\/, "/", parts[i])
       changed_map[parts[i]] = 1
+    }
+  }
+  # Files that can never appear in LCOV (#16409): absence is expected, not a
+  # gate failure. Presence still gates normally.
+  if (excluded == "") excluded = ""
+  n = split(excluded, parts, "\n")
+  for (i = 1; i <= n; i++) {
+    if (parts[i] != "") {
+      gsub(/\\/, "/", parts[i])
+      excluded_map[parts[i]] = 1
     }
   }
 }
@@ -88,6 +106,12 @@ END {
   changed_sum = 0
   for (f in changed_map) {
     if (!(f in file_pct)) {
+      if (f in excluded_map) {
+        # Fail-open but VISIBLE: the file is on the reviewed exclusion manifest
+        # because coverage collection cannot instrument it (#16409).
+        printf "  EXCLUDED (cannot appear in LCOV, see scripts/security/coverage-lcov-excluded.txt): %s\n", f
+        continue
+      }
       printf "  MISSING: %s\n", f
       missing_count++
     } else {
