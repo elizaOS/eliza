@@ -27,14 +27,20 @@ function runtimeSource(source) {
   return eraseTypeScriptSyntax(source).trim();
 }
 
+// Node's strip mode blanks type-only syntax to whitespace while preserving
+// every comment, which keeps comment anchors invariant to type-annotation
+// edits. Bun ships no comment-preserving type stripper (Bun.Transpiler drops
+// comments), so under Bun the raw source is the anchor basis: a type-length
+// edit can then shift a comment anchor and conservatively retain the module,
+// which only ever widens coverage enforcement. The gate itself runs on Node.
 function stripTypeScriptSyntaxPreservingComments(source) {
-  if (typeof nodeModule.stripTypeScriptTypes !== "function") {
-    throw new Error("comment-preserving TypeScript erasure is unavailable");
+  if (typeof nodeModule.stripTypeScriptTypes === "function") {
+    return nodeModule.stripTypeScriptTypes(source, {
+      mode: "strip",
+      sourceMap: false,
+    });
   }
-  return nodeModule.stripTypeScriptTypes(source, {
-    mode: "strip",
-    sourceMap: false,
-  });
+  return source;
 }
 
 /**
