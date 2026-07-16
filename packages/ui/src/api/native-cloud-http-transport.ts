@@ -64,6 +64,14 @@ function isNativeCloudAgentSubdomain(url: string): boolean {
   return !NON_AGENT_CLOUD_HOSTS.has(host) && host.endsWith(CLOUD_HOST_SUFFIX);
 }
 
+function isNativeCloudHttpsUrl(url: string): boolean {
+  const parsed = parseUrl(url);
+  if (!parsed || !Capacitor.isNativePlatform()) return false;
+  if (parsed.protocol !== "https:") return false;
+  const host = parsed.hostname.toLowerCase();
+  return host === "elizacloud.ai" || host.endsWith(CLOUD_HOST_SUFFIX);
+}
+
 type NativeWebFetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -87,6 +95,17 @@ function responseBody(data: unknown): string {
   return JSON.stringify(data);
 }
 
+/** CapacitorHttp returns arraybuffer responses as base64 across the native bridge. */
+function responseBytes(data: unknown): ArrayBuffer {
+  if (typeof data !== "string" || data.length === 0) return new ArrayBuffer(0);
+  const binary = globalThis.atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer as ArrayBuffer;
+}
+
 const nativeCloudHttpTransport: AgentRequestTransport = {
   async request(url, init, context) {
     // SSE chat streams to a dedicated agent subdomain must bypass CapacitorHttp
@@ -108,7 +127,10 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
     // Non-streaming requests to a dedicated agent subdomain (or any non-direct
     // cloud URL) keep their existing path — the patched global fetch — so this
     // change only affects the SSE streaming case above.
-    if (!isNativeDirectCloudApiUrl(url)) {
+    const wantsBinary = context?.responseType === "arraybuffer";
+    const isDirectApi = isNativeDirectCloudApiUrl(url);
+    const isCloudHost = isNativeCloudHttpsUrl(url);
+    if (!isDirectApi && !(wantsBinary && isCloudHost)) {
       return fetchAgentTransport.request(url, init, context);
     }
 
@@ -124,7 +146,7 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
       method,
       headers: headersToRecord(init.headers),
       ...(methodAllowsBody(method) && data !== undefined ? { data } : {}),
-      responseType: "text",
+      responseType: wantsBinary ? "arraybuffer" : "text",
       // Don't auto-follow 3xx: this path forwards the user's cloud bearer to
       // the dedicated agent subdomain, and CapacitorHttp (unlike browser fetch)
       // would replay the Authorization header across a redirect. A 3xx here is a
@@ -140,21 +162,24 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
         : {}),
     });
 
-    return new Response(responseBody(result.data), {
-      status: result.status,
-      headers: result.headers,
-    });
+    return new Response(
+      wantsBinary ? responseBytes(result.data) : responseBody(result.data),
+      {
+        status: result.status,
+        headers: result.headers,
+      },
+    );
   },
 };
 
 export function nativeCloudHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {
-  // Claim direct cloud API calls (CapacitorHttp path) and dedicated agent
-  // subdomains (so an SSE stream there can take the CapacitorWebFetch path).
-  // Non-streaming agent-subdomain calls fall through to the patched global fetch
-  // inside `request`, preserving prior behavior.
+  // Claim Eliza Cloud HTTPS hosts so binary requests can use CapacitorHttp.
+  // Text requests preserve the existing host policy inside `request`: direct API
+  // calls use CapacitorHttp, dedicated-agent SSE can use CapacitorWebFetch, and
+  // all other requests fall through to the patched global fetch.
   if (isNativeDirectCloudApiUrl(url)) return nativeCloudHttpTransport;
-  if (isNativeCloudAgentSubdomain(url)) return nativeCloudHttpTransport;
+  if (isNativeCloudHttpsUrl(url)) return nativeCloudHttpTransport;
   return null;
 }
