@@ -59,6 +59,8 @@ describe("agent host bridge (downward injection seam)", () => {
       runVaultBootstrap: () => Promise.resolve({ migrated: 3, failed: [] }),
       sharedVault: defaultAgentHostBridge.sharedVault,
       getDefaultAccountPool: () => pool,
+      getAccountPoolBrokerSnapshot:
+        defaultAgentHostBridge.getAccountPoolBrokerSnapshot,
       applyAccountPoolApiCredentials: () => undefined,
       startAccountPoolKeepAlive: () => {
         keepAliveStarted = true;

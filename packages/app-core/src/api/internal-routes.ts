@@ -20,6 +20,7 @@ import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { resolveStateDir, type Service, ServiceType } from "@elizaos/core";
+import { handleAccountPoolBrokerRoute } from "./account-pool-broker-routes";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson } from "./response";
@@ -208,6 +209,8 @@ export async function handleInternalWakeRoute(
   res: http.ServerResponse,
   state: CompatRuntimeState,
 ): Promise<boolean> {
+  if (await handleAccountPoolBrokerRoute(req, res)) return true;
+
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");
 
