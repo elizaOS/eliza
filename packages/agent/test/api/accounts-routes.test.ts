@@ -529,6 +529,61 @@ describe("accounts routes provider-scoped account resolution", () => {
     expect(JSON.stringify(codex)).not.toContain("accessToken");
   });
 
+  it("returns explicit empty observability when the broker has no state", async () => {
+    const personal = linkedAccount("openai-codex", {
+      id: "personal",
+      label: "Personal",
+    });
+    poolMock.list.mockImplementation((providerId?: string) =>
+      providerId === "openai-codex" ? [personal] : [],
+    );
+    poolMock.selectionState.mockReturnValue(undefined);
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      getDefaultAccountPool: () => poolMock,
+      getAccountPoolBrokerSnapshot: () => ({ accounts: {}, providers: {} }),
+    });
+    _resetAccountsRoutesPoolCache();
+    const ctx = createContext({ method: "GET", pathname: "/api/accounts" });
+
+    expect(await handleAccountsRoutes(ctx)).toBe(true);
+
+    const response = ctx.body as {
+      providers: Array<{
+        providerId: string;
+        observability: {
+          lastSelection: unknown;
+          recentFailovers: unknown[];
+        };
+        accounts: Array<{
+          id: string;
+          observability: {
+            activeLeaseCount: number;
+            lastLeaseAt: number | null;
+            servedLastRequest: boolean;
+          };
+        }>;
+      }>;
+    };
+    const codex = response.providers.find(
+      (entry) => entry.providerId === "openai-codex",
+    );
+    expect(codex?.observability).toEqual({
+      lastSelection: null,
+      recentFailovers: [],
+    });
+    expect(codex?.accounts).toEqual([
+      expect.objectContaining({
+        id: "personal",
+        observability: {
+          activeLeaseCount: 0,
+          lastLeaseAt: null,
+          servedLastRequest: false,
+        },
+      }),
+    ]);
+  });
+
   it("rejects malformed OAuth code and cancellation requests", async () => {
     const submit = createContext({
       method: "POST",
