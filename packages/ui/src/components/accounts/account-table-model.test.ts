@@ -9,6 +9,7 @@ import type { AccountWithCredentialFlag } from "../../api/client-agent";
 import {
   DEFAULT_ACCOUNT_SORT,
   describeHealth,
+  fableWeeklyBucket,
   hasLeaseObservability,
   needsCredentialRepair,
   peakUsagePct,
@@ -206,24 +207,36 @@ describe("hasLeaseObservability (feature-detection)", () => {
   });
 });
 
-describe("rowResetAt", () => {
-  it("prefers the rate-limit until over the usage resetsAt", () => {
+describe("weekly usage semantics", () => {
+  it("never presents a session cooldown as the weekly reset", () => {
     const until = Date.now() + 10_000;
-    const resetsAt = Date.now() + 999_000;
+    expect(rowResetAt(account({ healthDetail: { until } }))).toBeUndefined();
+  });
+
+  it("uses the all-model weekly reset when supplied", () => {
+    const resetsAt = Date.now() + 20_000;
     expect(
       rowResetAt(
         account({
-          healthDetail: { until },
-          usage: { sessionPct: 1, resetsAt, refreshedAt: 0 },
+          usage: {
+            sessionPct: 1,
+            resetsAt,
+            refreshedAt: 0,
+            weeklyModelBuckets: {},
+          } as AccountWithCredentialFlag["usage"],
         }),
       ),
-    ).toBe(until);
+    ).toBe(resetsAt);
   });
 
-  it("falls back to the usage resetsAt when no rate-limit is active", () => {
-    const resetsAt = Date.now() + 20_000;
-    expect(
-      rowResetAt(account({ usage: { sessionPct: 1, resetsAt, refreshedAt: 0 } })),
-    ).toBe(resetsAt);
+  it("finds the Fable model bucket case-insensitively", () => {
+    const withBuckets = account({
+      usage: {
+        sessionPct: 1,
+        refreshedAt: 0,
+        weeklyModelBuckets: { FABLE: { pct: 7, resetsAt: 123 } },
+      } as AccountWithCredentialFlag["usage"],
+    });
+    expect(fableWeeklyBucket(withBuckets)).toEqual({ pct: 7, resetsAt: 123 });
   });
 });

@@ -291,6 +291,83 @@ describe("AccountCommandTable", () => {
     expect(usageHeaderCell.getAttribute("aria-sort")).toBe("none");
   });
 
+  it("renders loading, error, and empty states distinctly", () => {
+    const { rerender } = renderTable([], { loading: true });
+    expect(screen.getByText("Loading accounts…")).toBeTruthy();
+    expect(screen.queryByText("No accounts in this pool yet.")).toBeNull();
+
+    rerender(
+      <AccountCommandTable
+        providerId="anthropic-subscription"
+        accounts={[]}
+        error="Usage service unavailable"
+        saving={new Set<string>()}
+        onPatch={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Usage service unavailable",
+    );
+
+    rerender(
+      <AccountCommandTable
+        providerId="anthropic-subscription"
+        accounts={[]}
+        saving={new Set<string>()}
+        onPatch={noop}
+        onDelete={noop}
+      />,
+    );
+    expect(screen.getByText("No accounts in this pool yet.")).toBeTruthy();
+  });
+
+  it("treats API percentages as percentage points and shows distinct buckets", () => {
+    renderTable([
+      account({
+        id: "usage",
+        usage: {
+          sessionPct: 1,
+          weeklyPct: 42,
+          refreshedAt: 0,
+          weeklyModelBuckets: { Fable: { pct: 7 } },
+        } as AccountWithCredentialFlag["usage"],
+      }),
+    ]);
+    const row = screen.getByTestId("account-row-usage");
+    expect(within(row).getByTitle("5h: 1%")).toBeTruthy();
+    expect(within(row).getByTitle("7d: 42%")).toBeTruthy();
+    expect(within(row).getByTitle("Fable: 7%")).toBeTruthy();
+  });
+
+  it("does not invent weekly windows for providers without quota-window data", () => {
+    renderTable([account({ id: "direct", providerId: "openai-api" })], {
+      providerId: "openai-api",
+    });
+    const row = screen.getByTestId("account-row-direct");
+    expect(within(row).getAllByText("Not reported")).toHaveLength(2);
+    expect(within(row).queryByText("7d")).toBeNull();
+    expect(within(row).queryByText("Fable")).toBeNull();
+  });
+
+  it("shows unknown weekly resets without borrowing the session cooldown", () => {
+    renderTable([
+      account({
+        id: "unknown-reset",
+        health: "rate-limited",
+        healthDetail: { until: Date.now() + 3_600_000 },
+        usage: { sessionPct: 12, weeklyPct: 24, refreshedAt: 0 },
+      }),
+    ]);
+    const row = screen.getByTestId("account-row-unknown-reset");
+    expect(
+      within(row).getByTitle("All-model weekly reset").textContent,
+    ).toContain("Unknown");
+    expect(within(row).getByTitle("Fable weekly reset").textContent).toContain(
+      "Unknown",
+    );
+  });
+
   it("marks the active account row and shows an empty state for no accounts", () => {
     const { rerender } = renderTable(
       [account({ id: "active" }), account({ id: "idle", priority: 2 })],

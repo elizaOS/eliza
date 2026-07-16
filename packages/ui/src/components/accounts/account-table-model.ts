@@ -9,7 +9,7 @@
  */
 
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
-import { accountResetAt } from "./reset-time";
+import { weeklyResetAt } from "./reset-time";
 
 export type AccountHealthTone = "success" | "warning" | "danger" | "muted";
 
@@ -193,13 +193,32 @@ export function hasLeaseObservability(
 }
 
 /**
- * The governing reset instant for a row's countdown: prefer a live
- * rate-limit `until`, else the usage snapshot's weekly `resetsAt`. Mirrors
- * `accountResetAt` but favors the rate-limit window when present so the
- * countdown matches the health badge.
+ * The governing WEEKLY reset instant for a row. Session/rate-limit cooldowns
+ * remain in the health cell and must never be relabelled as weekly resets.
  */
 export function rowResetAt(
   account: AccountWithCredentialFlag,
 ): number | undefined {
-  return account.healthDetail?.until ?? accountResetAt(account);
+  return weeklyResetAt(account);
+}
+
+export interface WeeklyModelBucket {
+  pct: number;
+  resetsAt?: number;
+}
+
+/** Consume the parser's model buckets while degrading on older hosts. */
+export function fableWeeklyBucket(
+  account: AccountWithCredentialFlag,
+): WeeklyModelBucket | undefined {
+  const usage = account.usage as
+    | (NonNullable<typeof account.usage> & {
+        weeklyModelBuckets?: Record<string, WeeklyModelBucket>;
+      })
+    | undefined;
+  const buckets = usage?.weeklyModelBuckets;
+  if (!buckets) return undefined;
+  return Object.entries(buckets).find(([name]) =>
+    name.toLocaleLowerCase().includes("fable"),
+  )?.[1];
 }

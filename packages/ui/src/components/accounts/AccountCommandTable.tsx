@@ -52,6 +52,7 @@ import {
   type AccountSortKey,
   DEFAULT_ACCOUNT_SORT,
   describeHealth,
+  fableWeeklyBucket,
   hasLeaseObservability,
   needsCredentialRepair,
   rowResetAt,
@@ -67,6 +68,9 @@ type Translate = (
 export interface AccountCommandTableProps {
   providerId: LinkedAccountProviderId;
   accounts: readonly AccountWithCredentialFlag[];
+  /** Explicit async states for standalone/table-level consumers. */
+  loading?: boolean;
+  error?: string | null;
   /** id of the account the pool will serve next (spine highlight). */
   activeAccountId?: string | null;
   saving: Set<string>;
@@ -113,9 +117,12 @@ function UsageBar({ label, pct }: UsageBarProps) {
           ? "bg-warn"
           : "bg-ok";
   return (
-    <div className="flex items-center gap-1.5" title={`${label}: ${
-      clamped == null ? "—" : `${Math.round(clamped)}%`
-    }`}>
+    <div
+      className="flex items-center gap-1.5"
+      title={`${label}: ${
+        clamped == null ? "Unknown" : `${Math.round(clamped)}%`
+      }`}
+    >
       <span className="w-6 shrink-0 text-[10px] font-medium uppercase tracking-wider text-muted">
         {label}
       </span>
@@ -126,7 +133,7 @@ function UsageBar({ label, pct }: UsageBarProps) {
         />
       </div>
       <span className="w-8 shrink-0 text-right text-[10px] tabular-nums text-muted">
-        {clamped == null ? "—" : `${Math.round(clamped)}%`}
+        {clamped == null ? "Unknown" : `${Math.round(clamped)}%`}
       </span>
     </div>
   );
@@ -215,8 +222,10 @@ function HealthCell({ account, t }: HealthCellProps) {
 }
 
 export function AccountCommandTable({
-  providerId: _providerId,
+  providerId,
   accounts,
+  loading = false,
+  error = null,
   activeAccountId = null,
   saving,
   onPatch,
@@ -246,6 +255,8 @@ export function AccountCommandTable({
   );
 
   const rows = useMemo(() => sortAccounts(accounts, sort), [accounts, sort]);
+  const hasWindowUsage =
+    providerId === "anthropic-subscription" || providerId === "openai-codex";
 
   const handleSort = useCallback((key: AccountSortKey) => {
     setSort((prev) =>
@@ -255,8 +266,7 @@ export function AccountCommandTable({
             key,
             // Sensible initial direction per column: worst-health and
             // highest-usage first; most-recent last-used first.
-            direction:
-              key === "health" || key === "priority" ? "asc" : "desc",
+            direction: key === "health" || key === "priority" ? "asc" : "desc",
           },
     );
   }, []);
@@ -380,7 +390,31 @@ export function AccountCommandTable({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 ? (
+          {loading ? (
+            <tr>
+              <td
+                colSpan={columnCount}
+                className="px-3 py-6 text-center text-xs text-muted"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Spinner className="h-3.5 w-3.5" />
+                  {t("accounts.table.loading", {
+                    defaultValue: "Loading accounts…",
+                  })}
+                </span>
+              </td>
+            </tr>
+          ) : error ? (
+            <tr>
+              <td
+                colSpan={columnCount}
+                className="px-3 py-6 text-center text-xs text-destructive"
+                role="alert"
+              >
+                {error}
+              </td>
+            </tr>
+          ) : rows.length === 0 ? (
             <tr>
               <td
                 colSpan={columnCount}
@@ -397,6 +431,10 @@ export function AccountCommandTable({
               const isActive = account.id === activeAccountId;
               const reset = rowResetAt(account);
               const resetIn = reset ? formatResetIn(reset) : null;
+              const fable = fableWeeklyBucket(account);
+              const fableResetIn = fable?.resetsAt
+                ? formatResetIn(fable.resetsAt)
+                : null;
               const repair = needsCredentialRepair(account);
               const lease = account.observability;
               return (
@@ -442,35 +480,49 @@ export function AccountCommandTable({
                     <HealthCell account={account} t={t} />
                   </td>
                   <td className="px-3 py-2.5 align-middle">
-                    {account.usage ? (
+                    {hasWindowUsage ? (
                       <div className="flex flex-col gap-1">
                         <UsageBar
                           label={t("accounts.table.usage.session", {
                             defaultValue: "5h",
                           })}
-                          pct={account.usage.sessionPct}
+                          pct={account.usage?.sessionPct}
                         />
-                        {typeof account.usage.weeklyPct === "number" ? (
-                          <UsageBar
-                            label={t("accounts.table.usage.weekly", {
-                              defaultValue: "7d",
-                            })}
-                            pct={account.usage.weeklyPct}
-                          />
+                        <UsageBar
+                          label={t("accounts.table.usage.weekly", {
+                            defaultValue: "7d",
+                          })}
+                          pct={account.usage?.weeklyPct}
+                        />
+                        {providerId === "anthropic-subscription" ? (
+                          <UsageBar label="Fable" pct={fable?.pct} />
                         ) : null}
                       </div>
                     ) : (
                       <span className="text-[10px] text-muted">
-                        {t("accounts.table.usage.none", {
-                          defaultValue: "—",
+                        {t("accounts.table.usage.notApplicable", {
+                          defaultValue: "Not reported",
                         })}
                       </span>
                     )}
                   </td>
                   <td className="px-3 py-2.5 align-middle">
-                    <span className="text-[11px] tabular-nums text-muted">
-                      {resetIn ?? "—"}
-                    </span>
+                    {hasWindowUsage ? (
+                      <div className="flex flex-col gap-0.5 text-[10px] tabular-nums text-muted">
+                        <span title="All-model weekly reset">
+                          7d: {resetIn ?? "Unknown"}
+                        </span>
+                        {providerId === "anthropic-subscription" ? (
+                          <span title="Fable weekly reset">
+                            Fable: {fableResetIn ?? "Unknown"}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-[10px] text-muted">
+                        Not reported
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 align-middle">
                     <span
@@ -539,13 +591,14 @@ export function AccountCommandTable({
                             variant="ghost"
                             size="sm"
                             disabled={
-                              rowSaving ||
-                              priorityOrder[0]?.id === account.id
+                              rowSaving || priorityOrder[0]?.id === account.id
                             }
                             onClick={() =>
-                              void onMove(priorityOrder, account.id, "up").catch(
-                                () => {},
-                              )
+                              void onMove(
+                                priorityOrder,
+                                account.id,
+                                "up",
+                              ).catch(() => {})
                             }
                             aria-label={t("accounts.table.moveUp", {
                               defaultValue: `Raise priority of ${account.label}`,

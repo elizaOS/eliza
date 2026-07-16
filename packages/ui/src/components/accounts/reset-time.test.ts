@@ -5,7 +5,12 @@
 
 import { describe, expect, it } from "vitest";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
-import { accountResetAt, bySoonestReset, formatResetIn } from "./reset-time";
+import {
+  accountResetAt,
+  bySoonestReset,
+  formatResetIn,
+  weeklyResetAt,
+} from "./reset-time";
 
 const NOW = Date.now();
 
@@ -48,13 +53,52 @@ describe("accountResetAt", () => {
   it("prefers usage.resetsAt", () => {
     const at = NOW + 10_000;
     expect(
-      accountResetAt(acct({ usage: { resetsAt: at, refreshedAt: NOW } })),
+      accountResetAt(
+        acct({
+          usage: {
+            resetsAt: at,
+            refreshedAt: NOW,
+            weeklyModelBuckets: {},
+          } as AccountWithCredentialFlag["usage"],
+        }),
+      ),
     ).toBe(at);
   });
 
-  it("falls back to healthDetail.until", () => {
+  it("keeps the neutral healthDetail.until fallback for legacy drain order", () => {
     const at = NOW + 20_000;
     expect(accountResetAt(acct({ healthDetail: { until: at } }))).toBe(at);
+  });
+});
+
+describe("weeklyResetAt", () => {
+  it("does not treat an unmarked legacy resetsAt as weekly", () => {
+    const at = NOW + 15_000;
+    expect(
+      weeklyResetAt(acct({ usage: { resetsAt: at, refreshedAt: NOW } })),
+    ).toBeUndefined();
+  });
+
+  it("does not mislabel healthDetail.until as a weekly reset", () => {
+    const at = NOW + 20_000;
+    expect(
+      weeklyResetAt(acct({ healthDetail: { until: at } })),
+    ).toBeUndefined();
+  });
+
+  it("accepts resetsAt when corrected parser model buckets mark weekly semantics", () => {
+    const at = NOW + 30_000;
+    expect(
+      weeklyResetAt(
+        acct({
+          usage: {
+            resetsAt: at,
+            refreshedAt: NOW,
+            weeklyModelBuckets: {},
+          } as AccountWithCredentialFlag["usage"],
+        }),
+      ),
+    ).toBe(at);
   });
 });
 
@@ -62,11 +106,19 @@ describe("bySoonestReset", () => {
   it("orders the sooner reset first", () => {
     const soon = acct({
       id: "soon",
-      usage: { resetsAt: NOW + 3_600_000, refreshedAt: NOW },
+      usage: {
+        resetsAt: NOW + 3_600_000,
+        refreshedAt: NOW,
+        weeklyModelBuckets: {},
+      } as AccountWithCredentialFlag["usage"],
     });
     const later = acct({
       id: "later",
-      usage: { resetsAt: NOW + 10 * 3_600_000, refreshedAt: NOW },
+      usage: {
+        resetsAt: NOW + 10 * 3_600_000,
+        refreshedAt: NOW,
+        weeklyModelBuckets: {},
+      } as AccountWithCredentialFlag["usage"],
     });
     expect([later, soon].sort(bySoonestReset)[0]?.id).toBe("soon");
   });
@@ -74,7 +126,11 @@ describe("bySoonestReset", () => {
   it("sorts known-reset accounts ahead of unknown-reset ones", () => {
     const known = acct({
       id: "known",
-      usage: { resetsAt: NOW + 5 * 3_600_000, refreshedAt: NOW },
+      usage: {
+        resetsAt: NOW + 5 * 3_600_000,
+        refreshedAt: NOW,
+        weeklyModelBuckets: {},
+      } as AccountWithCredentialFlag["usage"],
     });
     const unknown = acct({ id: "unknown" });
     expect([unknown, known].sort(bySoonestReset)[0]?.id).toBe("known");
