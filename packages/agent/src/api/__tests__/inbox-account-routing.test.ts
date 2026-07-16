@@ -15,7 +15,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { handleInboxRoute, type InboxRouteState } from "../inbox-routes";
+import {
+  handleInboxRoute,
+  type InboxRouteCallerAuthorization,
+  type InboxRouteState,
+} from "../inbox-routes";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000a1" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-0000000000b1" as UUID;
@@ -48,6 +52,9 @@ async function createHarness(options: {
   configureStorage?: (
     storage: InMemoryConnectorAccountStorage,
   ) => void | Promise<void>;
+  callerAuthorization?: InboxRouteCallerAuthorization;
+  omitCallerAuthorization?: boolean;
+  roomSource?: string;
   sendHandlers?: Map<string, unknown>;
 }) {
   const sendMessageToTarget = vi.fn(
@@ -67,7 +74,11 @@ async function createHarness(options: {
             id: ROOM_ID,
             channelId: "channel-1",
             serverId: "server-1",
-            source: "discord",
+            source:
+              options.roomSource ??
+              (typeof options.body.source === "string"
+                ? options.body.source
+                : "discord"),
           }
         : null,
     ),
@@ -103,12 +114,23 @@ async function createHarness(options: {
     readJsonBody: async <T extends object>() => options.body as T,
   };
 
+  const routeState: InboxRouteState = {
+    runtime,
+    ...(!options.omitCallerAuthorization
+      ? {
+          callerAuthorization: options.callerAuthorization ?? {
+            ok: true,
+            role: "OWNER",
+          },
+        }
+      : {}),
+  };
   const handled = await handleInboxRoute(
     { url: "/api/inbox/messages" } as http.IncomingMessage,
     {} as http.ServerResponse,
     "/api/inbox/messages",
     "POST",
-    { runtime } as InboxRouteState,
+    routeState,
     helpers,
   );
   if (!response) {
@@ -127,6 +149,34 @@ function requestBody(overrides: Record<string, unknown> = {}) {
 }
 
 describe("POST /api/inbox/messages connector account routing", () => {
+  it("rejects a request with no resolved caller authority", async () => {
+    const harness = await createHarness({
+      accounts: [account("work")],
+      body: requestBody({ accountId: "work" }),
+      omitCallerAuthorization: true,
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 403,
+      body: { code: "INBOX_CALLER_UNAUTHORIZED" },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
+  });
+
+  it("rejects a caller below the authenticated USER tier", async () => {
+    const harness = await createHarness({
+      accounts: [account("work")],
+      body: requestBody({ accountId: "work" }),
+      callerAuthorization: { ok: true, role: "NONE" },
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 403,
+      body: { code: "INBOX_CALLER_UNAUTHORIZED" },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
+  });
+
   it("stamps an explicitly validated account only onto TargetInfo", async () => {
     const harness = await createHarness({
       accounts: [account("work")],
@@ -157,6 +207,19 @@ describe("POST /api/inbox/messages connector account routing", () => {
     );
   });
 
+  it("allows an authenticated USER to send through an open agent account", async () => {
+    const harness = await createHarness({
+      accounts: [account("agent-work")],
+      body: requestBody({ accountId: "agent-work" }),
+      callerAuthorization: { ok: true, role: "USER", identityId: "machine-1" },
+    });
+
+    expect(harness.response.status).toBe(200);
+    expect(harness.sendMessageToTarget.mock.calls[0]?.[0]).toMatchObject({
+      accountId: "agent-work",
+    });
+  });
+
   it("preserves legacy source-default dispatch when no accounts exist", async () => {
     const harness = await createHarness({ body: requestBody() });
 
@@ -165,6 +228,19 @@ describe("POST /api/inbox/messages connector account routing", () => {
     expect(harness.sendMessageToTarget.mock.calls[0]?.[0]).not.toHaveProperty(
       "accountId",
     );
+  });
+
+  it("requires a manager account for an account-scoped-only handler", async () => {
+    const harness = await createHarness({
+      body: requestBody(),
+      sendHandlers: new Map([["discord\u0000unregistered", vi.fn()]]),
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 409,
+      body: { code: "INBOX_CONNECTOR_ACCOUNT_REQUIRED" },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
   });
 
   it("selects the sole usable account deterministically", async () => {
@@ -268,6 +344,24 @@ describe("POST /api/inbox/messages connector account routing", () => {
     expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
   });
 
+  it("rejects a requested transport that does not match the room", async () => {
+    const harness = await createHarness({
+      accounts: [account("slack-work", { provider: "slack" })],
+      body: requestBody({ accountId: "slack-work", source: "slack" }),
+      roomSource: "discord",
+      sendHandlers: new Map([["slack\u0000slack-work", vi.fn()]]),
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 409,
+      body: {
+        code: "INBOX_ROOM_SOURCE_MISMATCH",
+        context: { requestedSource: "slack", roomSource: "discord" },
+      },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
+  });
+
   it("keeps BlueBubbles' exact provider key instead of its imessage alias", async () => {
     const harness = await createHarness({
       accounts: [account("bluebubbles-owner", { provider: "bluebubbles" })],
@@ -290,6 +384,7 @@ describe("POST /api/inbox/messages connector account routing", () => {
     account("disabled-status", { status: "disabled" }),
     account("disabled-metadata", { metadata: { disabled: true } }),
     account("not-messaging", { purpose: ["reading"] }),
+    account("manual-approval", { accessGate: "manual_approval" }),
   ])("rejects unavailable account $id", async (unavailableAccount) => {
     const harness = await createHarness({
       accounts: [unavailableAccount],
@@ -332,6 +427,11 @@ describe("POST /api/inbox/messages connector account routing", () => {
         }),
       ],
       body: requestBody({ accountId: "owner" }),
+      callerAuthorization: {
+        ok: true,
+        role: "OWNER",
+        identityId: "identity-1",
+      },
       configureStorage: (storage) => {
         storage.upsertOwnerBindingForTest({
           id: "binding-1",
@@ -349,6 +449,102 @@ describe("POST /api/inbox/messages connector account routing", () => {
     expect(harness.sendMessageToTarget.mock.calls[0]?.[0]).toMatchObject({
       accountId: "owner",
     });
+  });
+
+  it("rejects an owner-bound account belonging to another identity", async () => {
+    const harness = await createHarness({
+      accounts: [
+        account("owner", {
+          accessGate: "owner_binding",
+          externalId: "owner-external",
+          role: "OWNER",
+        }),
+      ],
+      body: requestBody({ accountId: "owner" }),
+      callerAuthorization: {
+        ok: true,
+        role: "OWNER",
+        identityId: "different-identity",
+      },
+      configureStorage: (storage) => {
+        storage.upsertOwnerBindingForTest({
+          id: "binding-1",
+          identityId: "identity-1",
+          connector: "discord",
+          externalId: "owner-external",
+          displayHandle: "owner",
+          instanceId: "",
+          verifiedAt: 1,
+        });
+      },
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 403,
+      body: { code: "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED" },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
+  });
+
+  it("allows an identityless full-authority OWNER with a verified binding", async () => {
+    const harness = await createHarness({
+      accounts: [
+        account("owner", {
+          accessGate: "owner_binding",
+          externalId: "owner-external",
+          role: "OWNER",
+        }),
+      ],
+      body: requestBody({ accountId: "owner" }),
+      callerAuthorization: { ok: true, role: "OWNER" },
+      configureStorage: (storage) => {
+        storage.upsertOwnerBindingForTest({
+          id: "binding-1",
+          identityId: "identity-1",
+          connector: "discord",
+          externalId: "owner-external",
+          displayHandle: "owner",
+          instanceId: "",
+          verifiedAt: 1,
+        });
+      },
+    });
+
+    expect(harness.response.status).toBe(200);
+    expect(harness.sendMessageToTarget.mock.calls[0]?.[0]).toMatchObject({
+      accountId: "owner",
+    });
+  });
+
+  it("requires OWNER authority for an owner-bound account", async () => {
+    const harness = await createHarness({
+      accounts: [
+        account("owner", {
+          accessGate: "owner_binding",
+          externalId: "owner-external",
+          role: "OWNER",
+        }),
+      ],
+      body: requestBody({ accountId: "owner" }),
+      callerAuthorization: { ok: true, role: "USER", identityId: "identity-1" },
+      configureStorage: (storage) => {
+        storage.upsertOwnerBindingForTest({
+          id: "binding-1",
+          identityId: "identity-1",
+          connector: "discord",
+          externalId: "owner-external",
+          displayHandle: "owner",
+          instanceId: "",
+          verifiedAt: 1,
+        });
+      },
+    });
+
+    expect(harness.response).toMatchObject({
+      status: 403,
+      body: { code: "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED" },
+    });
+    expect(harness.sendMessageToTarget).not.toHaveBeenCalled();
   });
 
   it("never treats Content.metadata as account routing authority", async () => {

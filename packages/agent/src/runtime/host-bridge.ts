@@ -23,7 +23,7 @@ import type {
   IncomingMessage as HttpIncomingMessage,
   ServerResponse as HttpServerResponse,
 } from "node:http";
-import type { AgentRuntime } from "@elizaos/core";
+import type { AgentRuntime, RoleGateRole } from "@elizaos/core";
 import {
   type AccountPoolBrokerSnapshot,
   emptyAccountPoolBrokerSnapshot,
@@ -36,6 +36,14 @@ export type AccountPoolCredentialsOptions = {
   accountStrategies?: Record<string, unknown> | undefined;
   serviceRouting?: ReturnType<typeof resolveServiceRoutingInConfig>;
 };
+
+/** Authenticated HTTP caller data resolved by the embedding host. */
+export interface AgentHttpRequestAuthorization {
+  ok: boolean;
+  role: RoleGateRole;
+  /** Present for a DB-backed browser or machine session. */
+  identityId?: string;
+}
 
 /**
  * Host capabilities the agent runtime consumes at boot / request time. Every
@@ -71,6 +79,14 @@ export interface AgentHostBridge {
     req: HttpIncomingMessage,
     runtime: AgentRuntime | null,
   ): Promise<boolean> | boolean;
+  /**
+   * Resolve the caller role/principal for routes that authorize a specific
+   * sensitive action after the server's coarse authenticated-request gate.
+   */
+  resolveHttpRequestAuthorization?(
+    req: HttpIncomingMessage,
+    runtime: AgentRuntime | null,
+  ): Promise<AgentHttpRequestAuthorization> | AgentHttpRequestAuthorization;
   /**
    * Cloud-SSO popup handoff (`GET /pair?token=…`). Owned by the host; a
    * local-only agent never legitimately serves it, so absence is a no-op that

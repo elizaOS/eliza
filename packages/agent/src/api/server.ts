@@ -313,7 +313,10 @@ import {
   type AgentEventServiceLike,
   getAgentEventService,
 } from "../runtime/agent-event-service.ts";
-import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+import {
+  type AgentHttpRequestAuthorization,
+  getAgentHostBridge,
+} from "../runtime/host-bridge.ts";
 import {
   resolvePreferredProviderId,
   resolvePrimaryModel,
@@ -1762,18 +1765,39 @@ async function handleRequest(
     method === "GET" &&
     (pathname === "/api/cloud/status" || pathname === "/api/cloud/credits");
   const isAuthProtectedPath = isAuthProtectedRoute(pathname);
-  let hostSessionAuthorized = false;
-  let hostSessionAuthorizationAttempted = false;
-  const isHostSessionAuthorized = async (): Promise<boolean> => {
-    if (hostSessionAuthorizationAttempted) return hostSessionAuthorized;
-    hostSessionAuthorizationAttempted = true;
-    const authorize = getAgentHostBridge().isHttpRequestAuthorized;
-    hostSessionAuthorized =
-      typeof authorize === "function"
-        ? await authorize(req, state.runtime)
-        : false;
-    return hostSessionAuthorized;
+  let hostSessionAuthorization: AgentHttpRequestAuthorization = {
+    ok: false,
+    role: "NONE",
   };
+  let hostSessionAuthorizationAttempted = false;
+  const resolveHostSessionAuthorization =
+    async (): Promise<AgentHttpRequestAuthorization> => {
+      if (hostSessionAuthorizationAttempted) return hostSessionAuthorization;
+      hostSessionAuthorizationAttempted = true;
+      const bridge = getAgentHostBridge();
+      const resolveAuthorization = bridge.resolveHttpRequestAuthorization;
+      if (typeof resolveAuthorization === "function") {
+        hostSessionAuthorization = await resolveAuthorization(
+          req,
+          state.runtime,
+        );
+        return hostSessionAuthorization;
+      }
+      const authorize = bridge.isHttpRequestAuthorized;
+      const authorized =
+        typeof authorize === "function"
+          ? await authorize(req, state.runtime)
+          : false;
+      // Legacy boolean-only hosts can still pass the coarse request gate, but
+      // cannot claim OWNER authority for a sensitive account-selection action.
+      hostSessionAuthorization = {
+        ok: authorized,
+        role: authorized ? "USER" : "NONE",
+      };
+      return hostSessionAuthorization;
+    };
+  const isHostSessionAuthorized = async (): Promise<boolean> =>
+    (await resolveHostSessionAuthorization()).ok;
 
   const canonicalizeRestartReason = (reason: string): string => {
     if (
@@ -2984,6 +3008,15 @@ async function handleRequest(
   // NotificationService (see api/notification-routes.ts). Inbox: a
   // cross-channel read-only feed that merges connector messages (imessage,
   // telegram, discord, whatsapp, etc.) into a single time-ordered view.
+  let inboxCallerAuthorization: AgentHttpRequestAuthorization | undefined;
+  if (pathname.startsWith("/api/inbox")) {
+    const hostAuthorization = await resolveHostSessionAuthorization();
+    const agentBoundaryRole = resolveBoundaryRole(req);
+    inboxCallerAuthorization =
+      agentBoundaryRole === "OWNER"
+        ? { ok: true, role: "OWNER" }
+        : hostAuthorization;
+  }
   if (
     await handleInboxAndCloudRelayRouteGroup({
       req,
@@ -2995,6 +3028,7 @@ async function handleRequest(
       json,
       error,
       readJsonBody,
+      inboxCallerAuthorization,
     })
   ) {
     return;
@@ -3514,7 +3548,7 @@ async function handleRequest(
       pathname,
       url,
       runtime: state.runtime,
-      isAuthorized: () => hostSessionAuthorized || isAuthorized(req),
+      isAuthorized: () => hostSessionAuthorization.ok || isAuthorized(req),
       hostContext: {
         config: state.config as Record<string, unknown>,
         saveConfig: (nextConfig) => {
@@ -3599,7 +3633,7 @@ async function handleRequest(
       // routes, so the dispatch-level re-check must accept it too — otherwise
       // resolver-authorized requests pass the outer gate and 401 in dispatch.
       isAuthorized: () =>
-        hostSessionAuthorized ||
+        hostSessionAuthorization.ok ||
         isAuthorized(req) ||
         isBoundaryRoleAuthorized(req, method, pathname),
       isTrustedLocal: () => isTrustedLocalRequest(req),
@@ -3608,7 +3642,7 @@ async function handleRequest(
       // unfiltered, unchanged); only resolver-recognized viewer tokens
       // (WaifuChat, artifact share-viewer) carry a principal into dispatch.
       accessContext: () =>
-        hostSessionAuthorized || isAuthorized(req)
+        hostSessionAuthorization.ok || isAuthorized(req)
           ? undefined
           : resolveHttpAccessContext(req),
     })

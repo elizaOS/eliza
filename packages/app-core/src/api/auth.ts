@@ -383,7 +383,7 @@ function ensureMinRole(
 }
 
 export type RouteRoleResolution =
-  | { ok: true; role: RoleGateRole }
+  | { ok: true; role: RoleGateRole; identityId?: string }
   | { ok: false; status: 401 | 403 | 429; reason: string };
 
 type AuthorizedRouteRoleOptions =
@@ -488,6 +488,7 @@ export async function resolveAuthorizedRouteRole(
       return {
         ok: true,
         role: await resolveSessionRole(store, session.identityId),
+        identityId: session.identityId,
       };
     }
   }
@@ -503,6 +504,7 @@ export async function resolveAuthorizedRouteRole(
       return {
         ok: true,
         role: await resolveSessionRole(store, sessionFromBearer.identityId),
+        identityId: sessionFromBearer.identityId,
       };
     }
 
