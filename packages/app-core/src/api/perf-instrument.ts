@@ -1,6 +1,6 @@
 /**
- * Opt-in server performance instrumentation (route latency + DB-query count +
- * cache hit/miss counters), gated entirely behind `ELIZA_PERF_INSTRUMENT=1`.
+ * Opt-in server performance instrumentation (route latency + cache hit/miss
+ * counters), gated entirely behind `ELIZA_PERF_INSTRUMENT=1`.
  *
  * Design contract: when the flag is OFF this module does ZERO work on the hot
  * path. `isPerfInstrumentEnabled()` is read once at module load (env is process
@@ -31,7 +31,6 @@ interface CacheCounters {
 
 const routeStats = new Map<string, RouteSamples>();
 const cacheStats = new Map<string, CacheCounters>();
-let dbQueryCount = 0;
 
 export function isPerfInstrumentEnabled(): boolean {
   return ENABLED;
@@ -68,11 +67,6 @@ export function recordRouteTiming(routeKey: string, durationMs: number): void {
     stat.samples[stat.cursor] = durationMs;
     stat.cursor = (stat.cursor + 1) % MAX_SAMPLES_PER_ROUTE;
   }
-}
-
-export function recordDbQuery(n = 1): void {
-  if (!ENABLED) return;
-  dbQueryCount += n;
 }
 
 export function recordCacheHit(cacheName: string): void {
@@ -119,7 +113,6 @@ export interface CacheCounterEntry {
 export interface PerfSnapshot {
   enabled: boolean;
   routes: RouteTimingEntry[];
-  dbQueries: number;
   caches: CacheCounterEntry[];
 }
 
@@ -149,13 +142,7 @@ export function getPerfSnapshot(): PerfSnapshot {
     });
   }
 
-  return { enabled: ENABLED, routes, dbQueries: dbQueryCount, caches };
-}
-
-export function resetPerfSnapshot(): void {
-  routeStats.clear();
-  cacheStats.clear();
-  dbQueryCount = 0;
+  return { enabled: ENABLED, routes, caches };
 }
 
 function round(value: number): number {

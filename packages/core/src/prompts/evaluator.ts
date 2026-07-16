@@ -2,7 +2,7 @@
  * Prompt template and output JSON schema for the planner-loop evaluator, which
  * judges the latest action result against the user goal and routes the next
  * step (FINISH / NEXT_RECOMMENDED / CONTINUE). Feeds the evaluator stage of the
- * message loop; the `v5Evaluator*` aliases preserve the earlier export names.
+ * message loop.
  */
 import type { JSONSchema } from "../types/model";
 
@@ -68,6 +68,3 @@ export const evaluatorSchema: JSONSchema = {
 	},
 	required: ["success", "decision", "thought"],
 };
-
-export const v5EvaluatorTemplate = evaluatorTemplate;
-export const v5EvaluatorSchema = evaluatorSchema;

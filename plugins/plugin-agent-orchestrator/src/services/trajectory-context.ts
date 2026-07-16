@@ -64,22 +64,6 @@ export function clearTrajectoryContext(runtime: RuntimeLike): void {
 }
 
 /**
- * Read the current orchestrator trajectory context (if any).
- * Used by the trajectory logger on the eliza side.
- */
-export function readTrajectoryContext(
-  runtime: unknown,
-): OrchestratorTrajectoryContext | undefined {
-  if (!runtime || typeof runtime !== "object") return undefined;
-  const ctx = (runtime as Record<string, unknown>)[CTX_KEY];
-  if (!ctx || typeof ctx !== "object") return undefined;
-  const candidate = ctx as Partial<OrchestratorTrajectoryContext>;
-  if (candidate.source !== "orchestrator" || !candidate.decisionType)
-    return undefined;
-  return candidate as OrchestratorTrajectoryContext;
-}
-
-/**
  * Wrap a `useModel()` call with trajectory context tagging.
  * Ensures the context is always cleared, even if the call throws.
  *
