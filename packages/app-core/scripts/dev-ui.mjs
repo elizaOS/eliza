@@ -30,6 +30,7 @@ import { getBunVersionAdvisory } from "./lib/bun-version-guard.mjs";
 import { capacitorPluginsBuildNeeded } from "./lib/capacitor-plugin-build-needed.mjs";
 import { coerceBoolean } from "./lib/dev-ui-onchain.mjs";
 import { buildVisionDepsFailureMessage } from "./lib/dev-ui-vision.mjs";
+import { resolveDevUiViteCommand } from "./lib/dev-ui-vite.mjs";
 import { signalSpawnedProcessTree } from "./lib/kill-process-tree.mjs";
 import { extendNodePathEnv } from "./lib/node-path-env.mjs";
 import { syncElizaEnvAliases } from "./lib/sync-eliza-env-aliases.mjs";
@@ -1010,27 +1011,15 @@ function startVite() {
   // Vite's WebSocket proxy depends on Node's HTTP upgrade semantics. Under
   // Bun, `/ws` remains pending even while ordinary HTTP proxying succeeds,
   // silently disconnecting live notifications and chat events in the UI.
-  const viteCmd = which("node");
-  if (!viteCmd) {
-    throw new Error("Node.js 24+ is required to run the Vite dev server.");
-  }
-  const viteCli = path.join(
-    cwd,
+  const viteForce = process.env.ELIZA_VITE_FORCE === "1";
+  const { command: viteCmd, args: viteArgs } = resolveDevUiViteCommand({
     appDir,
-    "node_modules",
-    "vite",
-    "bin",
-    "vite.js",
-  );
-  if (!existsSync(viteCli)) {
-    throw new Error(`Vite CLI not found at ${viteCli}. Run bun install first.`);
-  }
-  const viteForce =
-    process.env.ELIZA_VITE_FORCE === "1" ||
-    process.env.ELIZA_VITE_FORCE === "1";
-  const viteArgs = viteForce
-    ? [viteCli, "--force", "--port", String(UI_PORT)]
-    : [viteCli, "--port", String(UI_PORT)];
+    cwd,
+    exists: existsSync,
+    force: viteForce,
+    nodePath: which("node"),
+    uiPort: UI_PORT,
+  });
   if (viteForce) {
     console.log(
       `  ${green(logPrefix)} ${dim("Vite --force (ELIZA_VITE_FORCE=1): re-optimizing deps.")}`,
