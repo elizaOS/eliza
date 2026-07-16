@@ -293,6 +293,14 @@ export function HomeScreen({
 
           <div
             data-home-below-notifications=""
+            // Widget declarations resolve during the staged first-mount fade.
+            // Both children are still fully transparent when this box acquires
+            // its final height, but Chromium attributes that invisible resize
+            // as CLS. Scope the existing transient-motion marker to the same
+            // once-only entrance window; later widget changes remain measured.
+            data-eliza-layout-shift-intent={
+              enterClass ? "transient" : undefined
+            }
             className={hasNotifications ? undefined : "flex-1"}
           >
             <div
