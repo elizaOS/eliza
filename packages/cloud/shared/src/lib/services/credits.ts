@@ -112,6 +112,20 @@ export interface ReserveCreditsParams {
   estimatedOutputTokens?: number;
   /** Multiplies model-estimated reservations for caller-known markups. */
   estimatedCostMultiplier?: number;
+  /**
+   * Optional idempotency key for the LOGICAL operation — e.g. one TTS
+   * utterance whose client retries the same request over a fallback transport
+   * after an ambiguous network outcome (#16425). A reserve whose key already
+   * committed returns a handle bound to the ORIGINAL reservation (same
+   * transaction id, reservedAmount recovered from its metadata) instead of
+   * deducting a second time; settlement stays exactly-once per reservation via
+   * the reconcile dedupe (#10846). Namespaced per organization into
+   * `stripe_payment_intent_id` (`reserve:<orgId>:<key>`), whose unique index is
+   * the concurrency backstop — so a key replayed from another org can never
+   * attach to this org's reservation. Omit for the unchanged per-request
+   * behavior.
+   */
+  idempotencyKey?: string;
 }
 
 export interface ReservationSweepStats {
@@ -2103,22 +2117,44 @@ export class CreditsService {
       throw new Error("reserve() requires either `amount` or `model`");
     }
 
-    const result = await this.reserveAndDeductCredits({
-      organizationId,
-      amount: reservedAmount,
-      description: `${description} (reserved)`,
-      metadata: {
-        user_id: userId,
-        type: "reservation",
-        settlement_marker: RESERVATION_SETTLEMENT_MARKER,
-        estimated_cost: estimatedCost,
-        reserved_amount: reservedAmount,
-        ...(estimatedCostMultiplier !== 1 && {
-          estimated_cost_multiplier: estimatedCostMultiplier,
-        }),
-        ...(model && { model }),
-      },
-    });
+    // #16425: an idempotency key names the LOGICAL operation so a client retry
+    // (e.g. the forced-cloud TTS direct→proxy fallback after an ambiguous
+    // network outcome) replays the committed reservation instead of deducting
+    // again. Org-scoped so a key from another tenant can never attach here.
+    const idempotencyMarker = params.idempotencyKey
+      ? `reserve:${organizationId}:${params.idempotencyKey}`
+      : undefined;
+
+    const reserveOnce = () =>
+      this.reserveAndDeductCredits({
+        organizationId,
+        amount: reservedAmount,
+        description: `${description} (reserved)`,
+        ...(idempotencyMarker && { stripePaymentIntentId: idempotencyMarker }),
+        metadata: {
+          user_id: userId,
+          type: "reservation",
+          settlement_marker: RESERVATION_SETTLEMENT_MARKER,
+          estimated_cost: estimatedCost,
+          reserved_amount: reservedAmount,
+          ...(estimatedCostMultiplier !== 1 && {
+            estimated_cost_multiplier: estimatedCostMultiplier,
+          }),
+          ...(model && { model }),
+        },
+      });
+
+    let result: Awaited<ReturnType<typeof reserveOnce>>;
+    try {
+      result = await reserveOnce();
+    } catch (error) {
+      // Keyed concurrency backstop (#10846 pattern): a racing duplicate aborts
+      // the whole atomic statement on the stripe_payment_intent_id unique
+      // index. Retry once — the pre-committed-transaction check then resolves
+      // to the winner's reservation and this call replays it.
+      if (!idempotencyMarker) throw error;
+      result = await reserveOnce();
+    }
 
     if (!result.success) {
       logger.warn("[Credits] Insufficient credits for reservation", {
@@ -2134,10 +2170,25 @@ export class CreditsService {
     }
     const reservationTransactionId = result.transaction.id;
 
+    // On a keyed REPLAY the transaction is the original reservation, whose
+    // reserved amount may differ from this call's estimate (e.g. a retried
+    // utterance re-estimated after a pricing refresh). The handle must carry
+    // the ORIGINAL amount so reconcile's refund/overage math settles the row
+    // that was actually deducted.
+    if (idempotencyMarker) {
+      const originalReserved = Number(
+        (result.transaction.metadata as { reserved_amount?: unknown } | null)?.reserved_amount,
+      );
+      if (Number.isFinite(originalReserved) && originalReserved > 0) {
+        reservedAmount = originalReserved;
+      }
+    }
+
     logger.info("[Credits] Reserved", {
       organizationId,
       reservedAmount,
       ...(model && { model }),
+      ...(idempotencyMarker && { keyed: true }),
     });
 
     return {
