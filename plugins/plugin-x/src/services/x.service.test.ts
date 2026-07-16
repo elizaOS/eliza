@@ -1,6 +1,6 @@
 /** Unit tests for `XService` account-status reporting (config_missing, env capabilities, OAuth-scope mapping) without any network call; mocked runtime. */
 import type { IAgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { XService } from "./x.service";
 
 function asRuntime<T extends object>(runtime: T): IAgentRuntime & T {
@@ -25,6 +25,99 @@ function serviceWithRuntime(settings: Record<string, string>): XService {
 }
 
 describe("XService account status", () => {
+  it("declares that its unscoped message connector dispatches trusted account ids", () => {
+    const registerMessageConnector = vi.fn();
+    const runtime = asRuntime({
+      agentId: "agent-1",
+      getSetting: () => undefined,
+      registerMessageConnector,
+      registerPostConnector: vi.fn(),
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    });
+    const service = new XService(runtime);
+
+    XService.registerSendHandlers(runtime, service);
+
+    expect(registerMessageConnector).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "x",
+        accountRouting: "connector",
+      }),
+    );
+  });
+
+  it("declares that its unscoped post connector dispatches trusted account ids", () => {
+    const registerPostConnector = vi.fn();
+    const runtime = asRuntime({
+      agentId: "agent-1",
+      getSetting: () => undefined,
+      registerPostConnector,
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+    });
+    const service = new XService(runtime);
+
+    (
+      service as unknown as {
+        registerPostConnector(runtime: IAgentRuntime): void;
+      }
+    ).registerPostConnector(runtime);
+
+    expect(registerPostConnector).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "x",
+        accountRouting: "connector",
+      }),
+    );
+  });
+
+  it("routes connector user context through the trusted account id", async () => {
+    const runtime = runtimeWithSettings({});
+    const service = new XService(runtime);
+    const getScreenNameByUserId = vi.fn(async () => "secondary-user");
+    type ServiceInternals = {
+      getTwitterClientForAccount: (accountId: unknown) => Promise<{
+        client: {
+          twitterClient: {
+            getScreenNameByUserId: typeof getScreenNameByUserId;
+          };
+        };
+      }>;
+    };
+    const getClient = vi
+      .spyOn(
+        service as unknown as ServiceInternals,
+        "getTwitterClientForAccount",
+      )
+      .mockResolvedValue({
+        client: { twitterClient: { getScreenNameByUserId } },
+      });
+
+    const context = {
+      runtime,
+      source: "x",
+      accountId: "secondary",
+      target: { source: "x", accountId: "secondary" },
+    };
+    const result = await service.getConnectorUserContext("123456", context);
+
+    expect(getClient).toHaveBeenCalledWith("secondary");
+    expect(result).toMatchObject({
+      entityId: "123456",
+      label: "@secondary-user",
+      metadata: { accountId: "secondary" },
+    });
+  });
+
   it("reports config_missing when env auth credentials are absent", async () => {
     const service = serviceWithRuntime({ TWITTER_AUTH_MODE: "env" });
 

@@ -422,6 +422,7 @@ export async function buildMemoryFromMessage(
 		return messageChannelGuild?.id || message.guild?.id || undefined;
 	})();
 	const metadata = {
+		...(options?.extraMetadata ? options.extraMetadata : {}),
 		type: "message" as const,
 		source: "discord",
 		provider: "discord",
@@ -458,7 +459,6 @@ export async function buildMemoryFromMessage(
 		discordChannelId: message.channel.id,
 		discordServerId,
 		tags: [] as string[],
-		...(options?.extraMetadata ? options.extraMetadata : {}),
 	};
 
 	const memory: Memory = {
@@ -467,6 +467,7 @@ export async function buildMemoryFromMessage(
 		agentId: service.runtime.agentId,
 		roomId,
 		content: {
+			...(options?.extraContent ? options.extraContent : {}),
 			text: textContent || " ",
 			attachments,
 			source: "discord",
@@ -475,7 +476,6 @@ export async function buildMemoryFromMessage(
 			inReplyTo: message.reference?.messageId
 				? createUniqueUuid(service.runtime, message.reference.messageId)
 				: undefined,
-			...(options?.extraContent ? options.extraContent : {}),
 		},
 		metadata: metadata as Memory["metadata"],
 		createdAt: message.createdTimestamp ?? Date.now(),

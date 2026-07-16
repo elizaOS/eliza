@@ -96,6 +96,34 @@ describe("message and post connector registries", () => {
 		expect(runtime.unregisterMessageConnector("chat")).toBe(false);
 	});
 
+	it("preserves connector-managed account routing through registration", () => {
+		const runtime = makeRuntime();
+
+		runtime.registerMessageConnector({
+			source: "dispatching-chat",
+			accountRouting: "connector",
+			getUserContext: async (entityId) => ({ entityId }),
+		});
+		runtime.registerPostConnector({
+			source: "dispatching-feed",
+			accountRouting: "connector",
+			postHandler: async () => undefined,
+		});
+
+		expect(runtime.getMessageConnectors()).toEqual([
+			expect.objectContaining({
+				source: "dispatching-chat",
+				accountRouting: "connector",
+			}),
+		]);
+		expect(runtime.getPostConnectors()).toEqual([
+			expect.objectContaining({
+				source: "dispatching-feed",
+				accountRouting: "connector",
+			}),
+		]);
+	});
+
 	it("routes send handlers by source and accountId", async () => {
 		const runtime = makeRuntime();
 		const ownerHandler = vi.fn(async () => undefined);
@@ -152,6 +180,49 @@ describe("message and post connector registries", () => {
 		await runtime.sendMessageToTarget(target, content);
 
 		expect(legacyHandler).toHaveBeenCalledWith(runtime, target, content);
+	});
+
+	it("falls back to the sole account-scoped send handler for a legacy target", async () => {
+		const runtime = makeRuntime();
+		const scopedHandler = vi.fn(async () => undefined);
+		const target = makeTarget("chat");
+		const content: Content = { text: "legacy", source: "chat" };
+
+		runtime.registerMessageConnector({
+			source: "chat",
+			accountId: "only-account",
+			sendHandler: scopedHandler,
+		});
+
+		await runtime.sendMessageToTarget(target, content);
+
+		expect(scopedHandler).toHaveBeenCalledWith(runtime, target, content);
+	});
+
+	it("fails closed for a legacy target when multiple scoped handlers exist", async () => {
+		const runtime = makeRuntime();
+		const firstHandler = vi.fn(async () => undefined);
+		const secondHandler = vi.fn(async () => undefined);
+
+		runtime.registerMessageConnector({
+			source: "chat",
+			accountId: "first-account",
+			sendHandler: firstHandler,
+		});
+		runtime.registerMessageConnector({
+			source: "chat",
+			accountId: "second-account",
+			sendHandler: secondHandler,
+		});
+
+		await expect(
+			runtime.sendMessageToTarget(makeTarget("chat"), {
+				text: "ambiguous",
+				source: "chat",
+			}),
+		).rejects.toThrow("No send handler registered for source: chat");
+		expect(firstHandler).not.toHaveBeenCalled();
+		expect(secondHandler).not.toHaveBeenCalled();
 	});
 
 	it("does not route from untrusted content metadata accountId", async () => {

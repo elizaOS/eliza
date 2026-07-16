@@ -215,6 +215,422 @@ describe("platform context providers", () => {
 		});
 	});
 
+	it("routes context hooks only to the trusted inbound connector account", async () => {
+		const legacyChat = vi.fn(async (target) => ({ target, label: "#legacy" }));
+		const firstChat = vi.fn(async (target) => ({ target, label: "#first" }));
+		const secondChat = vi.fn(async (target) => ({ target, label: "#second" }));
+		const firstUser = vi.fn(async (entityId) => ({
+			entityId,
+			label: "First User",
+		}));
+		const secondUser = vi.fn(async (entityId) => ({
+			entityId,
+			label: "Second User",
+		}));
+		const runtime = makeRuntime([
+			makeConnector("discord", { getChatContext: legacyChat }),
+			makeConnector("discord", {
+				accountId: "acct-1",
+				getChatContext: firstChat,
+				getUserContext: firstUser,
+			}),
+			makeConnector("discord", {
+				accountId: "acct-2",
+				getChatContext: secondChat,
+				getUserContext: secondUser,
+			}),
+		]);
+		const message = makeMessage("discord");
+		message.metadata = {
+			type: "message",
+			source: "discord",
+			accountId: "acct-2",
+		};
+		// Content metadata is user-controlled and must not override the trusted
+		// account stamped on the Memory envelope.
+		message.content.metadata = { accountId: "acct-1" };
+
+		const chatResult = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+		const userResult = await platformUserContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(legacyChat).not.toHaveBeenCalled();
+		expect(firstChat).not.toHaveBeenCalled();
+		expect(firstUser).not.toHaveBeenCalled();
+		expect(secondChat).toHaveBeenCalledWith(
+			expect.objectContaining({ source: "discord", accountId: "acct-2" }),
+			expect.objectContaining({
+				source: "discord",
+				accountId: "acct-2",
+				target: expect.objectContaining({
+					source: "discord",
+					accountId: "acct-2",
+				}),
+				metadata: expect.objectContaining({ accountId: "acct-2" }),
+			}),
+		);
+		expect(secondUser).toHaveBeenCalledWith(
+			ENTITY_ID,
+			expect.objectContaining({
+				source: "discord",
+				accountId: "acct-2",
+				target: expect.objectContaining({ accountId: "acct-2" }),
+				metadata: expect.objectContaining({ accountId: "acct-2" }),
+			}),
+		);
+		// Query metadata is copied/rebound; the user payload is left untouched.
+		expect(message.content.metadata).toEqual({ accountId: "acct-1" });
+		expect(chatResult.data).toMatchObject({
+			accountId: "acct-2",
+			relevantConnectorCount: 1,
+			chatContextCount: 1,
+		});
+		expect(userResult.data).toMatchObject({
+			accountId: "acct-2",
+			relevantConnectorCount: 1,
+			userContextCount: 1,
+		});
+	});
+
+	it("passes a trusted account to an explicitly account-dispatching connector", async () => {
+		const dispatchingChat = vi.fn(async (target) => ({
+			target,
+			label: "X direct messages",
+		}));
+		const runtime = makeRuntime([
+			makeConnector("x", {
+				accountRouting: "connector",
+				getChatContext: dispatchingChat,
+			}),
+		]);
+		const message = makeMessage("untrusted-conflict");
+		message.metadata = {
+			type: "message",
+			source: "x",
+			accountId: "secondary",
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(dispatchingChat).toHaveBeenCalledWith(
+			expect.objectContaining({ source: "x", accountId: "secondary" }),
+			expect.objectContaining({ source: "x", accountId: "secondary" }),
+		);
+		expect(result.data).toMatchObject({
+			accountId: "secondary",
+			relevantConnectorCount: 1,
+			chatContextCount: 1,
+		});
+	});
+
+	it("prefers an exact scoped connector over an account-dispatching fallback", async () => {
+		const exactChat = vi.fn(async (target) => ({ target, label: "#exact" }));
+		const dispatchingChat = vi.fn(async (target) => ({
+			target,
+			label: "#dispatcher",
+		}));
+		const runtime = makeRuntime([
+			makeConnector("x", {
+				accountRouting: "connector",
+				getChatContext: dispatchingChat,
+			}),
+			makeConnector("x", {
+				accountId: "secondary",
+				getChatContext: exactChat,
+			}),
+		]);
+		const message = makeMessage();
+		message.metadata = {
+			type: "message",
+			source: "x",
+			accountId: "secondary",
+		};
+
+		await platformChatContextProvider.get(runtime, message, makeState());
+
+		expect(exactChat).toHaveBeenCalledOnce();
+		expect(dispatchingChat).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when account-dispatching connector selection is ambiguous", async () => {
+		const firstChat = vi.fn(async (target) => ({ target, label: "#first" }));
+		const secondChat = vi.fn(async (target) => ({ target, label: "#second" }));
+		const runtime = makeRuntime([
+			makeConnector("x", {
+				accountRouting: "connector",
+				getChatContext: firstChat,
+			}),
+			makeConnector("x", {
+				accountRouting: "connector",
+				getChatContext: secondChat,
+			}),
+		]);
+		const message = makeMessage();
+		message.metadata = {
+			type: "message",
+			source: "x",
+			accountId: "secondary",
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(firstChat).not.toHaveBeenCalled();
+		expect(secondChat).not.toHaveBeenCalled();
+		expect(result.data).toMatchObject({ relevantConnectorCount: 0 });
+	});
+
+	it("fails closed when a source has multiple scoped accounts but no trusted inbound account", async () => {
+		const legacyChat = vi.fn(async (target) => ({ target, label: "#legacy" }));
+		const firstChat = vi.fn(async (target) => ({ target, label: "#first" }));
+		const secondChat = vi.fn(async (target) => ({ target, label: "#second" }));
+		const firstUser = vi.fn(async (entityId) => ({
+			entityId,
+			label: "First User",
+		}));
+		const secondUser = vi.fn(async (entityId) => ({
+			entityId,
+			label: "Second User",
+		}));
+		const runtime = makeRuntime([
+			makeConnector("discord", { getChatContext: legacyChat }),
+			makeConnector("discord", {
+				accountId: "acct-1",
+				getChatContext: firstChat,
+				getUserContext: firstUser,
+			}),
+			makeConnector("discord", {
+				accountId: "acct-2",
+				getChatContext: secondChat,
+				getUserContext: secondUser,
+			}),
+		]);
+		const message = makeMessage("discord");
+
+		const chatResult = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+		const userResult = await platformUserContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(legacyChat).not.toHaveBeenCalled();
+		expect(firstChat).not.toHaveBeenCalled();
+		expect(secondChat).not.toHaveBeenCalled();
+		expect(firstUser).not.toHaveBeenCalled();
+		expect(secondUser).not.toHaveBeenCalled();
+		expect(chatResult.data).toMatchObject({
+			relevantConnectorCount: 0,
+			chatContextCount: 0,
+		});
+		expect(userResult.data).toMatchObject({
+			relevantConnectorCount: 0,
+			userContextCount: 0,
+		});
+	});
+
+	it("prefers the trusted envelope source over conflicting Content source", async () => {
+		const discordChat = vi.fn(async (target) => ({
+			target,
+			label: "#discord",
+		}));
+		const slackChat = vi.fn(async (target) => ({ target, label: "#slack" }));
+		const runtime = makeRuntime([
+			makeConnector("discord", {
+				accountId: "default",
+				getChatContext: discordChat,
+			}),
+			makeConnector("slack", {
+				accountId: "default",
+				getChatContext: slackChat,
+			}),
+		]);
+		const message = makeMessage("slack");
+		message.metadata = {
+			type: "message",
+			source: "discord",
+			accountId: "default",
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(discordChat).toHaveBeenCalledOnce();
+		expect(slackChat).not.toHaveBeenCalled();
+		expect(discordChat).toHaveBeenCalledWith(
+			expect.objectContaining({ source: "discord", accountId: "default" }),
+			expect.objectContaining({ source: "discord", accountId: "default" }),
+		);
+		expect(result.data).toMatchObject({
+			source: "discord",
+			accountId: "default",
+			chatContextCount: 1,
+		});
+	});
+
+	it("fails closed when an account-bearing Memory has no trusted envelope source", async () => {
+		const discordChat = vi.fn(async (target) => ({
+			target,
+			label: "#discord",
+		}));
+		const slackChat = vi.fn(async (target) => ({ target, label: "#slack" }));
+		const runtime = makeRuntime([
+			makeConnector("discord", {
+				accountId: "default",
+				getChatContext: discordChat,
+			}),
+			makeConnector("slack", {
+				accountId: "default",
+				getChatContext: slackChat,
+			}),
+		]);
+		// Neither this Content source nor the room's Slack source may be paired
+		// with an account id that came from the trusted Memory envelope.
+		const message = makeMessage("discord");
+		message.metadata = { type: "message", accountId: "default" };
+		message.content.metadata = {
+			[CONTEXT_ROUTING_METADATA_KEY]: { primaryContext: "connectors" },
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(discordChat).not.toHaveBeenCalled();
+		expect(slackChat).not.toHaveBeenCalled();
+		expect(result.data).toMatchObject({
+			connectorCount: 2,
+			relevantConnectorCount: 0,
+			chatContextCount: 0,
+		});
+	});
+
+	it("matches trusted account ids exactly after trimming whitespace", async () => {
+		const exactChat = vi.fn(async (target) => ({ target, label: "#exact" }));
+		const caseFoldedChat = vi.fn(async (target) => ({
+			target,
+			label: "#wrong",
+		}));
+		const runtime = makeRuntime([
+			makeConnector("discord", {
+				accountId: "Acct-2",
+				getChatContext: exactChat,
+			}),
+			makeConnector("discord", {
+				accountId: "acct-2",
+				getChatContext: caseFoldedChat,
+			}),
+		]);
+		const message = makeMessage("discord");
+		message.metadata = {
+			type: "message",
+			source: "discord",
+			accountId: "  Acct-2  ",
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(exactChat).toHaveBeenCalledOnce();
+		expect(caseFoldedChat).not.toHaveBeenCalled();
+		expect(result.data).toMatchObject({
+			accountId: "Acct-2",
+			relevantConnectorCount: 1,
+		});
+	});
+
+	it("does not treat Content metadata as an account routing constraint", async () => {
+		const getChatContext = vi.fn(async (target, context) => ({
+			target,
+			label: String(context.metadata?.marker),
+		}));
+		const runtime = makeRuntime([makeConnector("slack", { getChatContext })]);
+		const message = makeMessage("slack");
+		message.content.metadata = {
+			accountId: "user-supplied",
+			marker: "preserved",
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(getChatContext).toHaveBeenCalledWith(
+			expect.not.objectContaining({ accountId: expect.anything() }),
+			expect.objectContaining({
+				metadata: { marker: "preserved" },
+			}),
+		);
+		expect(result.data).toMatchObject({
+			relevantConnectorCount: 1,
+			chatContextCount: 1,
+		});
+		expect(message.content.metadata).toEqual({
+			accountId: "user-supplied",
+			marker: "preserved",
+		});
+	});
+
+	it("fails closed when the trusted inbound account has no connector", async () => {
+		const firstChat = vi.fn(async (target) => ({ target, label: "#first" }));
+		const legacyChat = vi.fn(async (target) => ({ target, label: "#legacy" }));
+		const runtime = makeRuntime([
+			makeConnector("discord", { getChatContext: legacyChat }),
+			makeConnector("discord", {
+				accountId: "acct-1",
+				getChatContext: firstChat,
+			}),
+		]);
+		const message = makeMessage("discord");
+		message.metadata = {
+			type: "message",
+			source: "discord",
+			accountId: "acct-missing",
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			makeState(),
+		);
+
+		expect(legacyChat).not.toHaveBeenCalled();
+		expect(firstChat).not.toHaveBeenCalled();
+		expect(result.data).toMatchObject({
+			connectorCount: 2,
+			relevantConnectorCount: 0,
+			chatContextCount: 0,
+		});
+	});
+
 	it("keeps an unscoped connector whose source has no account-scoped sibling", async () => {
 		const slackChat = vi.fn(async (target) => ({
 			target,

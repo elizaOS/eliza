@@ -336,6 +336,7 @@ function chatLabel(chat: BlueBubblesChat): string {
 
 function chatToTarget(
 	chat: BlueBubblesChat,
+	accountId: string,
 	score = 0.74,
 ): MessageConnectorTarget {
 	const label = chatLabel(chat) || chat.chatIdentifier || chat.guid;
@@ -347,6 +348,7 @@ function chatToTarget(
 		: "";
 	const target: ConnectorTargetInfo = {
 		source: "bluebubbles",
+		accountId,
 		channelId: isGroup ? chat.guid : directHandle || chat.guid,
 	};
 	if (!isGroup && directHandle) {
@@ -373,6 +375,7 @@ function chatToTarget(
 
 function directTarget(
 	value: string,
+	accountId: string,
 	score = 0.7,
 ): MessageConnectorTarget | null {
 	const normalized = normalizeBlueBubblesTarget(value);
@@ -380,6 +383,7 @@ function directTarget(
 	return {
 		target: {
 			source: "bluebubbles",
+			accountId,
 			channelId: normalized,
 			entityId: normalized as UUID,
 		},
@@ -691,9 +695,14 @@ export class BlueBubblesService extends Service {
 		runtime: IAgentRuntime,
 		service: BlueBubblesService,
 	): void {
+		const accountId =
+			typeof service.getAccountId === "function"
+				? service.getAccountId()
+				: BLUEBUBBLES_DEFAULT_ACCOUNT_ID;
 		const register = (source: "bluebubbles" | "imessage") => {
 			const registration = {
 				source,
+				accountId,
 				label: source === "imessage" ? "iMessage (BlueBubbles)" : "BlueBubbles",
 				capabilities: [
 					"send_message",
@@ -719,6 +728,7 @@ export class BlueBubblesService extends Service {
 							? ["imessage", "sms", "text", "messages", "bluebubbles"]
 							: ["bluebubbles", "imessage", "sms", "text"],
 					bridge: "bluebubbles",
+					accountId,
 					status: service.getIsRunning() ? "connected" : "not_connected",
 				},
 				sendHandler: async (
@@ -773,14 +783,16 @@ export class BlueBubblesService extends Service {
 						content: {
 							...content,
 							text,
-							source: "bluebubbles",
+							source,
 						},
 					}) as Memory;
 					memory.createdAt = result.dateCreated;
 					memory.metadata = {
 						...(memory.metadata ?? {}),
 						type: MemoryType.MESSAGE,
-						accountId: service.accountId,
+						source,
+						provider: "bluebubbles",
+						accountId,
 						bluebubblesChatGuid: chatGuid,
 						bluebubblesMessageGuid: result.guid,
 						messageIdFull: result.guid,
@@ -791,7 +803,7 @@ export class BlueBubblesService extends Service {
 				resolveTargets: async (query: string) => {
 					const candidates: MessageConnectorTarget[] = [];
 					for (const chat of await service.listChats()) {
-						const candidate = chatToTarget(chat, 0.78);
+						const candidate = chatToTarget(chat, accountId, 0.78);
 						if (
 							matchesQuery(
 								query,
@@ -804,14 +816,18 @@ export class BlueBubblesService extends Service {
 							candidates.push(candidate);
 						}
 					}
-					const direct = directTarget(query, 0.72);
+					const direct = directTarget(query, accountId, 0.72);
 					if (direct) candidates.push(direct);
 					return candidates;
 				},
 				listRecentTargets: async () =>
-					(await service.listChats()).map((chat) => chatToTarget(chat, 0.66)),
+					(await service.listChats()).map((chat) =>
+						chatToTarget(chat, accountId, 0.66),
+					),
 				listRooms: async () =>
-					(await service.listChats()).map((chat) => chatToTarget(chat, 0.7)),
+					(await service.listChats()).map((chat) =>
+						chatToTarget(chat, accountId, 0.7),
+					),
 				fetchMessages: async (context, params) => {
 					const limit = normalizeConnectorLimit(params?.limit);
 					const target = params?.target ?? context.target;
@@ -860,7 +876,7 @@ export class BlueBubblesService extends Service {
 					}
 					const targets = (await service.listChats())
 						.slice(0, 10)
-						.map((chat) => chatToTarget(chat, 0.66));
+						.map((chat) => chatToTarget(chat, accountId, 0.66));
 					const roomIds = Array.from(
 						new Set(
 							targets
@@ -1461,6 +1477,8 @@ export class BlueBubblesService extends Service {
 			responseMemory.metadata = {
 				...(responseMemory.metadata ?? {}),
 				type: MemoryType.MESSAGE,
+				source: "bluebubbles",
+				provider: "bluebubbles",
 				accountId: this.accountId,
 				bluebubblesChatGuid: chatGuid,
 				bluebubblesMessageGuid: sent.guid,

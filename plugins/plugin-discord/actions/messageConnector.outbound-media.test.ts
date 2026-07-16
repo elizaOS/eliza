@@ -41,6 +41,7 @@ function createRuntime() {
 			error: vi.fn(),
 		},
 		getRoom: vi.fn(),
+		getMemoryById: vi.fn().mockResolvedValue(null),
 		ensureConnection: vi.fn().mockResolvedValue(undefined),
 		createMemory: vi.fn().mockResolvedValue(undefined),
 	} as unknown as IAgentRuntime;
@@ -130,6 +131,31 @@ describe("Discord connector outbound media", () => {
 		const file = opts.files?.[0] as AttachmentBuilder;
 		expect(file.attachment).toBe("https://cdn.example.com/cat.png");
 		expect(file.name).toMatch(/\.png$/);
+	});
+
+	it("persists trusted connector identity after forwarding content metadata", async () => {
+		const { runtime, service } = setup();
+		const result = await service.handleSendMessage(runtime, TARGET as never, {
+			text: "hello",
+			metadata: {
+				transient: true,
+				source: "slack",
+				provider: "untrusted",
+				accountId: "other-account",
+			},
+		});
+
+		expect(result).toEqual(
+			expect.objectContaining({
+				content: expect.objectContaining({ source: "discord" }),
+				metadata: expect.objectContaining({
+					transient: true,
+					source: "discord",
+					provider: "discord",
+					accountId: DEFAULT_ACCOUNT_ID,
+				}),
+			}),
+		);
 	});
 
 	it("sends an attachment-only message (no text) as files with no content", async () => {

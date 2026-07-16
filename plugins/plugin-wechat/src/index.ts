@@ -11,6 +11,8 @@ import {
   getConnectorAccountManager,
   type IAgentRuntime,
   type Memory,
+  type MessageConnectorQueryContext,
+  type MessageConnectorRegistration,
   type MessageConnectorTarget,
   type Plugin,
   stringToUuid,
@@ -53,14 +55,9 @@ export function isWechatConnectorConfigured(
 let channel: WechatChannel | null = null;
 
 type RuntimeWithWechatConnector = {
-  registerMessageConnector?: (registration: Record<string, unknown>) => void;
-  getMessageConnectors?: () => Array<{
-    source?: string;
-    fetchMessages?: (
-      context: { runtime: IAgentRuntime; target?: TargetInfo },
-      params?: WechatConnectorReadParams,
-    ) => Promise<Memory[]>;
-  }>;
+  registerMessageConnector?: (
+    registration: MessageConnectorRegistration,
+  ) => void;
   registerSendHandler?: (
     source: string,
     handler: (
@@ -121,25 +118,53 @@ function getConfiguredAccountIds(config: WechatConfig): string[] {
   return config.apiKey ? ["default"] : [];
 }
 
+function normalizeWechatAccountId(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
 function resolveWechatAccountId(
   config: WechatConfig,
   target?: TargetInfo,
-): string {
-  const metadata = (
-    target as (TargetInfo & { metadata?: Record<string, unknown> }) | undefined
-  )?.metadata;
+  context?: MessageConnectorQueryContext,
+): string | undefined {
   const accountId =
-    typeof metadata?.accountId === "string" && metadata.accountId.trim()
-      ? metadata.accountId.trim()
-      : undefined;
-  if (accountId) {
-    return accountId;
-  }
-  return (
-    channel?.getAccountIds()[0] ??
-    getConfiguredAccountIds(config)[0] ??
-    "default"
+    normalizeWechatAccountId(context?.accountId) ??
+    normalizeWechatAccountId(target?.accountId) ??
+    normalizeWechatAccountId(context?.target?.accountId);
+  if (accountId) return accountId;
+  const knownAccountIds = getKnownWechatAccountIds(config);
+  return knownAccountIds.length === 1 ? knownAccountIds[0] : undefined;
+}
+
+function hasCanonicalAccountConflict(
+  context: MessageConnectorQueryContext,
+  target?: TargetInfo,
+): boolean {
+  const accountIds = new Set(
+    [context.accountId, context.target?.accountId, target?.accountId]
+      .map(normalizeWechatAccountId)
+      .filter((accountId): accountId is string => Boolean(accountId)),
   );
+  return accountIds.size > 1;
+}
+
+function getKnownWechatAccountIds(config: WechatConfig): string[] {
+  return Array.from(
+    new Set([
+      ...(channel?.getAccountIds() ?? []),
+      ...getConfiguredAccountIds(config),
+    ]),
+  );
+}
+
+function memoryMatchesWechatAccount(
+  memory: Memory,
+  accountId: string,
+  allowLegacyUnscoped: boolean,
+): boolean {
+  const metadata = memory.metadata as Record<string, unknown> | undefined;
+  const memoryAccountId = normalizeWechatAccountId(metadata?.accountId);
+  return memoryAccountId ? memoryAccountId === accountId : allowLegacyUnscoped;
 }
 
 function wechatTarget(
@@ -152,6 +177,7 @@ function wechatTarget(
   return {
     target: {
       source: "wechat",
+      accountId,
       channelId: wxid,
       roomId: stringToUuid(`wechat:room:${accountId}:${wxid}`) as UUID,
       metadata: { accountId },
@@ -166,33 +192,47 @@ function wechatTarget(
 
 async function listWechatTargets(
   config: WechatConfig,
+  accountId?: string,
 ): Promise<MessageConnectorTarget[]> {
   if (!channel) {
     return [];
   }
+  const knownAccountIds = getKnownWechatAccountIds(config);
+  const selectedAccountIds = accountId
+    ? knownAccountIds.includes(accountId)
+      ? [accountId]
+      : []
+    : channel.getAccountIds();
   const targets: MessageConnectorTarget[] = [];
-  for (const accountId of channel.getAccountIds()) {
-    const contacts = await channel.listContacts(accountId).catch(() => null);
+  for (const selectedAccountId of selectedAccountIds) {
+    const contacts = await channel
+      .listContacts(selectedAccountId)
+      .catch(() => null);
     if (!contacts) {
       continue;
     }
     targets.push(
       ...contacts.friends.map((friend) =>
-        wechatTarget(accountId, friend.wxid, friend.name, "user"),
+        wechatTarget(selectedAccountId, friend.wxid, friend.name, "user"),
       ),
       ...contacts.chatrooms.map((chatroom) =>
-        wechatTarget(accountId, chatroom.wxid, chatroom.name, "group"),
+        wechatTarget(selectedAccountId, chatroom.wxid, chatroom.name, "group"),
       ),
     );
   }
   if (targets.length > 0) {
     return targets;
   }
-  return getConfiguredAccountIds(config).map((accountId) =>
+  const fallbackAccountIds = accountId
+    ? knownAccountIds.includes(accountId)
+      ? [accountId]
+      : []
+    : getConfiguredAccountIds(config);
+  return fallbackAccountIds.map((fallbackAccountId) =>
     wechatTarget(
-      accountId,
-      accountId,
-      `WeChat account ${accountId}`,
+      fallbackAccountId,
+      fallbackAccountId,
+      `WeChat account ${fallbackAccountId}`,
       "user",
       0.25,
     ),
@@ -235,6 +275,9 @@ function registerWechatMessageConnector(
       return;
     }
     const accountId = resolveWechatAccountId(config, target);
+    if (!accountId || !getKnownWechatAccountIds(config).includes(accountId)) {
+      throw new Error("[wechat] target requires an unambiguous accountId");
+    }
     const to = String(target.channelId ?? target.entityId ?? "").trim();
     if (!to) {
       throw new Error("[wechat] target is missing channelId/entityId");
@@ -243,8 +286,59 @@ function registerWechatMessageConnector(
   };
 
   if (typeof connectorRuntime.registerMessageConnector === "function") {
-    connectorRuntime.registerMessageConnector({
+    const fetchMessages = async (
+      context: MessageConnectorQueryContext,
+      params?: WechatConnectorReadParams,
+    ): Promise<Memory[]> => {
+      const limit = normalizeConnectorLimit(params?.limit);
+      const target = params?.target ?? context.target;
+      if (hasCanonicalAccountConflict(context, target)) return [];
+
+      const accountId = resolveWechatAccountId(config, target, context);
+      const knownAccountIds = getKnownWechatAccountIds(config);
+      if (!accountId || !knownAccountIds.includes(accountId)) return [];
+      const allowLegacyUnscoped = knownAccountIds.length <= 1;
+
+      if (target?.roomId) {
+        const memories = await context.runtime.getMemories({
+          tableName: "messages",
+          roomId: target.roomId,
+          limit,
+          orderBy: "createdAt",
+          orderDirection: "desc",
+        });
+        return memories.filter((memory) =>
+          memoryMatchesWechatAccount(memory, accountId, allowLegacyUnscoped),
+        );
+      }
+
+      const targets = (await listWechatTargets(config, accountId)).slice(0, 10);
+      const chunks = await Promise.all(
+        targets
+          .map((candidate) => candidate.target.roomId)
+          .filter((roomId): roomId is UUID => Boolean(roomId))
+          .map((roomId) =>
+            context.runtime.getMemories({
+              tableName: "messages",
+              roomId,
+              limit,
+              orderBy: "createdAt",
+              orderDirection: "desc",
+            }),
+          ),
+      );
+      return chunks
+        .flat()
+        .filter((memory) =>
+          memoryMatchesWechatAccount(memory, accountId, allowLegacyUnscoped),
+        )
+        .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+        .slice(0, limit);
+    };
+
+    const registration: MessageConnectorRegistration = {
       source: "wechat",
+      accountRouting: "connector",
       label: "WeChat",
       description:
         "WeChat connector for sending and reading stored DM/group messages.",
@@ -256,9 +350,16 @@ function registerWechatMessageConnector(
       ],
       supportedTargetKinds: ["user", "group", "room"],
       contexts: ["social", "connectors"],
-      resolveTargets: async (query: string) => {
+      resolveTargets: async (query, context) => {
+        if (hasCanonicalAccountConflict(context, context.target)) return [];
+        const accountId = resolveWechatAccountId(
+          config,
+          context.target,
+          context,
+        );
+        if (!accountId) return [];
         const normalized = query.trim().toLowerCase();
-        return (await listWechatTargets(config))
+        return (await listWechatTargets(config, accountId))
           .map((target) => {
             const haystack =
               `${target.label ?? ""} ${target.target.channelId ?? ""}`.toLowerCase();
@@ -273,68 +374,41 @@ function registerWechatMessageConnector(
           .filter((target) => !normalized || (target.score ?? 0) >= 0.8)
           .slice(0, 25);
       },
-      listRecentTargets: async () =>
-        (await listWechatTargets(config)).slice(0, 10),
-      listRooms: async () => listWechatTargets(config),
-      fetchMessages: async (
-        context: { runtime: IAgentRuntime; target?: TargetInfo },
-        params?: WechatConnectorReadParams,
-      ) => {
-        const limit = normalizeConnectorLimit(params?.limit);
-        const target = params?.target ?? context.target;
-        if (target?.roomId) {
-          return context.runtime.getMemories({
-            tableName: "messages",
-            roomId: target.roomId,
-            limit,
-            orderBy: "createdAt",
-            orderDirection: "desc",
-          });
-        }
-        const targets = (await listWechatTargets(config)).slice(0, 10);
-        const chunks = await Promise.all(
-          targets
-            .map((candidate) => candidate.target.roomId)
-            .filter((roomId): roomId is UUID => Boolean(roomId))
-            .map((roomId) =>
-              context.runtime.getMemories({
-                tableName: "messages",
-                roomId,
-                limit,
-                orderBy: "createdAt",
-                orderDirection: "desc",
-              }),
-            ),
+      listRecentTargets: async (context) => {
+        if (hasCanonicalAccountConflict(context, context.target)) return [];
+        const accountId = resolveWechatAccountId(
+          config,
+          context.target,
+          context,
         );
-        return chunks
-          .flat()
-          .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
-          .slice(0, limit);
+        if (!accountId) return [];
+        return (await listWechatTargets(config, accountId)).slice(0, 10);
       },
+      listRooms: async (context) => {
+        if (hasCanonicalAccountConflict(context, context.target)) return [];
+        const accountId = resolveWechatAccountId(
+          config,
+          context.target,
+          context,
+        );
+        if (!accountId) return [];
+        return listWechatTargets(config, accountId);
+      },
+      fetchMessages,
       searchMessages: async (
-        context: { runtime: IAgentRuntime; target?: TargetInfo },
+        context,
         params: WechatConnectorReadParams & { query: string },
       ) => {
         const limit = normalizeConnectorLimit(params.limit);
-        const registration = connectorRuntime
-          .getMessageConnectors?.()
-          .find((connector) => connector.source === "wechat") as
-          | {
-              fetchMessages?: (
-                context: { runtime: IAgentRuntime; target?: TargetInfo },
-                params?: WechatConnectorReadParams,
-              ) => Promise<Memory[]>;
-            }
-          | undefined;
-        const messages =
-          (await registration?.fetchMessages?.(context, {
-            target: params.target ?? context.target,
-            limit: Math.max(limit, 100),
-          })) ?? [];
+        const messages = await fetchMessages(context, {
+          target: params.target ?? context.target,
+          limit: Math.max(limit, 100),
+        });
         return filterMemoriesByQuery(messages, params.query, limit);
       },
       sendHandler,
-    });
+    };
+    connectorRuntime.registerMessageConnector(registration);
     return;
   }
 

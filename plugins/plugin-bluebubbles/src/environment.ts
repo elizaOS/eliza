@@ -6,7 +6,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { z } from "zod";
+import * as z from "zod";
 import type { BlueBubblesConfig, DmPolicy, GroupPolicy } from "./types";
 
 const DmPolicySchema = z.enum(["open", "pairing", "allowlist", "disabled"]);

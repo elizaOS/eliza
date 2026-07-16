@@ -61,7 +61,11 @@ import { searchMessagesAction as searchInboxMessagesAction } from "../../messagi
 import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
 import { MANAGE_OPERATION_KINDS } from "../../messaging/triage/types.ts";
-import { refreshMessageConnectorActionDescription } from "./connectorActionUtils.ts";
+import {
+	refreshMessageConnectorActionDescription,
+	trustedConnectorAccountId,
+	trustedConnectorSource,
+} from "./connectorActionUtils.ts";
 
 // ---------------------------------------------------------------------------
 // Op taxonomy
@@ -409,14 +413,32 @@ function connectorAliases(connector: MessageConnector): string[] {
 	return aliases;
 }
 
-function connectorMatchesAccount(
-	connector: ConnectorWithHooks,
+function connectorAccountAliases(connector: MessageConnector): string[] {
+	return [
+		connector.accountId,
+		connector.account?.accountId,
+		connector.account?.label,
+		connector.account?.name,
+	].filter((alias): alias is string => Boolean(alias?.trim()));
+}
+
+function selectAccountConnectors(
+	connectors: ConnectorWithHooks[],
 	accountId: string | undefined,
-): boolean {
-	if (!accountId) return true;
+): ConnectorWithHooks[] {
+	if (!accountId) return connectors;
 	const normalized = normalizeComparable(accountId);
-	return connectorAliases(connector).some(
-		(alias) => normalizeComparable(alias) === normalized,
+	const exact = connectors.filter(
+		(connector) =>
+			connector.accountId &&
+			connectorAccountAliases(connector).some(
+				(alias) => normalizeComparable(alias) === normalized,
+			),
+	);
+	if (exact.length > 0) return exact;
+	return connectors.filter(
+		(connector) =>
+			!connector.accountId && connector.accountRouting === "connector",
 	);
 }
 
@@ -449,13 +471,23 @@ function buildQueryContext(
 	source: string | undefined,
 	target?: TargetInfo,
 	connector?: ConnectorWithHooks,
+	accountId?: string,
 ): MessageConnectorQueryContext {
+	const trustedSource = trustedConnectorSource(message);
+	const envelopeAccountId =
+		trustedSource &&
+		source &&
+		normalizeComparable(trustedSource) === normalizeComparable(source)
+			? trustedConnectorAccountId(message)
+			: undefined;
+	const routedAccountId =
+		target?.accountId ?? connector?.accountId ?? accountId ?? envelopeAccountId;
 	return {
 		runtime,
 		roomId: message.roomId,
 		entityId: message.entityId,
 		source,
-		accountId: connector?.accountId,
+		accountId: routedAccountId,
 		account: connector?.account,
 		target,
 		contexts: getActiveRoutingContextsForTurn(state, message),
@@ -479,18 +511,25 @@ function selectConnectorForOp(
 			),
 		};
 	}
-	const explicit = source
-		? connectors.find(
-				(connector) =>
-					connectorAliases(connector).some(
-						(alias) =>
-							normalizeComparable(alias) === normalizeComparable(source),
-					) && connectorMatchesAccount(connector, accountId),
+	const sourceMatches = source
+		? connectors.filter((connector) =>
+				connectorAliases(connector).some(
+					(alias) => normalizeComparable(alias) === normalizeComparable(source),
+				),
 			)
-		: undefined;
-	const sourceExists = source
-		? Boolean(findConnectorBySource(connectors, source))
-		: false;
+		: [];
+	const explicitMatches = selectAccountConnectors(sourceMatches, accountId);
+	if (source && explicitMatches.length > 1) {
+		return {
+			error: opFailure(
+				op,
+				"SOURCE_AMBIGUOUS",
+				`MESSAGE op=${op} needs a connector account for "${source}".`,
+			),
+		};
+	}
+	const explicit = explicitMatches[0];
+	const sourceExists = sourceMatches.length > 0;
 	if (source && !explicit) {
 		return {
 			error: opFailure(
@@ -505,17 +544,18 @@ function selectConnectorForOp(
 		};
 	}
 	if (explicit) return { connector: explicit };
-	const fallback = currentSource
-		? connectors.find(
-				(connector) =>
-					findConnectorBySource([connector], currentSource) &&
-					connectorMatchesAccount(connector, accountId),
+	const fallbackMatches = currentSource
+		? selectAccountConnectors(
+				connectors.filter((connector) =>
+					findConnectorBySource([connector], currentSource),
+				),
+				accountId,
 			)
-		: undefined;
+		: [];
+	const fallback =
+		fallbackMatches.length === 1 ? fallbackMatches[0] : undefined;
 	if (fallback) return { connector: fallback };
-	const accountScoped = connectors.filter((connector) =>
-		connectorMatchesAccount(connector, accountId),
-	);
+	const accountScoped = selectAccountConnectors(connectors, accountId);
 	if (accountId && accountScoped.length === 1) {
 		const sole = accountScoped[0];
 		if (sole) return { connector: sole };
@@ -623,8 +663,10 @@ async function resolveOptionalTarget(
 	params: ParamRecord,
 	op: MessageOperation,
 ): Promise<{ target?: TargetInfo; error?: ActionResult }> {
+	const accountId = accountIdFromParams(params, message);
 	const explicit = explicitTargetFromParams(connector.source, params);
-	if (explicit.target) explicit.target.accountId ??= connector.accountId;
+	if (explicit.target)
+		explicit.target.accountId ??= connector.accountId ?? accountId;
 	const context = buildQueryContext(
 		runtime,
 		message,
@@ -632,6 +674,7 @@ async function resolveOptionalTarget(
 		connector.source,
 		explicit.target,
 		connector,
+		accountId,
 	);
 
 	if (explicit.query && connector.resolveTargets) {
@@ -650,7 +693,7 @@ async function resolveOptionalTarget(
 				}
 				const target = {
 					...sole.target,
-					accountId: sole.target.accountId ?? connector.accountId,
+					accountId: sole.target.accountId ?? connector.accountId ?? accountId,
 				};
 				return { target };
 			}
@@ -663,7 +706,8 @@ async function resolveOptionalTarget(
 					return {
 						target: {
 							...top.target,
-							accountId: top.target.accountId ?? connector.accountId,
+							accountId:
+								top.target.accountId ?? connector.accountId ?? accountId,
 						},
 					};
 				}
@@ -930,50 +974,22 @@ function normalizeAttachments(value: unknown): Media[] | undefined {
 	return attachments.length > 0 ? attachments : undefined;
 }
 
-function recordValue(value: unknown): Record<string, unknown> | undefined {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: undefined;
-}
-
-function connectorSendAsMetadata(
-	message: Memory,
-): Record<string, unknown> | undefined {
-	const metadata = recordValue(message.content.metadata);
-	return (
-		recordValue(metadata?.connectorSendAs) ??
-		recordValue(metadata?.connectorAccount)
-	);
-}
-
 function accountIdFromParams(
 	raw: ParamRecord,
 	message: Memory,
 ): string | undefined {
-	const metadata = recordValue(message.content.metadata);
-	const sendAs = connectorSendAsMetadata(message);
 	return (
 		textParam(raw.accountId) ??
 		textParam(raw.connectorAccountId) ??
-		textParam(sendAs?.accountId) ??
-		textParam(metadata?.accountId)
+		trustedConnectorAccountId(message)
 	);
-}
-
-function sourceFromSendAs(message: Memory): string | undefined {
-	const sendAs = connectorSendAsMetadata(message);
-	return textParam(sendAs?.source);
 }
 
 function sourceFromParams(
 	raw: ParamRecord,
-	message: Memory,
+	_message: Memory,
 ): string | undefined {
-	return (
-		textParam(raw.source) ??
-		textParam(raw.platform) ??
-		sourceFromSendAs(message)
-	);
+	return textParam(raw.source) ?? textParam(raw.platform);
 }
 
 function normalizeSendParams(
@@ -1079,13 +1095,14 @@ function normalizeHookCandidate(
 	sourceWasExact: boolean,
 	baseScore: number,
 	reasons: string[],
+	accountId?: string,
 ): SendCandidate | null {
 	if (!kindsCompatible(targetKind, raw.kind)) return null;
 	if (!queryMatchesCandidate(query, raw)) return null;
 	const target = {
 		...raw.target,
 		source: raw.target.source || connector.source,
-		accountId: raw.target.accountId ?? connector.accountId,
+		accountId: raw.target.accountId ?? connector.accountId ?? accountId,
 	} as TargetInfo;
 	return {
 		connector,
@@ -1111,6 +1128,7 @@ async function collectHookTargets(
 	context: MessageConnectorQueryContext,
 	targetKind: MessageTargetKind | undefined,
 	sourceWasExact: boolean,
+	accountId?: string,
 ): Promise<SendCandidate[]> {
 	const candidates: SendCandidate[] = [];
 
@@ -1126,6 +1144,7 @@ async function collectHookTargets(
 					sourceWasExact,
 					0.74,
 					["resolveTargets"],
+					accountId,
 				);
 				if (candidate) candidates.push(candidate);
 			}
@@ -1148,6 +1167,7 @@ async function collectHookTargets(
 					sourceWasExact,
 					query ? 0.52 : 0.62,
 					["listRecentTargets"],
+					accountId,
 				);
 				if (candidate) candidates.push(candidate);
 			}
@@ -1176,6 +1196,7 @@ async function collectHookTargets(
 					sourceWasExact,
 					0.56,
 					["listRooms"],
+					accountId,
 				);
 				if (candidate) candidates.push(candidate);
 			}
@@ -1194,6 +1215,7 @@ function explicitSendTarget(
 	rawTarget: string,
 	targetKind: MessageTargetKind | undefined,
 	sourceWasExact: boolean,
+	accountId?: string,
 ): SendCandidate {
 	let kind = targetKind;
 	let value = rawTarget.trim();
@@ -1206,7 +1228,7 @@ function explicitSendTarget(
 	}
 	const target = {
 		source: connector.source,
-		accountId: connector.accountId,
+		accountId: connector.accountId ?? accountId,
 	} as TargetInfo;
 	const stripped = stripTargetPrefix(value);
 
@@ -1269,6 +1291,7 @@ async function collectEntityCandidates(
 	connectors: ConnectorWithHooks[],
 	targetKind: MessageTargetKind | undefined,
 	sourceWasExact: boolean,
+	accountId?: string,
 ): Promise<SendCandidate[]> {
 	if (
 		!query ||
@@ -1299,7 +1322,7 @@ async function collectEntityCandidates(
 			);
 			const target = {
 				source: connector.source,
-				accountId: connector.accountId,
+				accountId: connector.accountId ?? accountId,
 				entityId: entity.id as UUID,
 			} as TargetInfo;
 			if (matchingComponent) {
@@ -1341,17 +1364,20 @@ async function currentRoomCandidate(
 	state: State | undefined,
 	connector: ConnectorWithHooks,
 	sourceWasExact: boolean,
+	accountId?: string,
 ): Promise<SendCandidate> {
 	const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
 	const target = {
 		source: connector.source,
-		accountId: connector.accountId,
+		accountId: connector.accountId ?? accountId,
 		roomId: (room?.id ?? message.roomId) as UUID,
 	} as TargetInfo;
 	if (room?.channelId) target.channelId = room.channelId;
 	if (room?.serverId) target.serverId = room.serverId;
 	const roomSource =
-		typeof room?.source === "string" ? room.source : message.content.source;
+		typeof room?.source === "string"
+			? room.source
+			: trustedConnectorSource(message);
 	const sourceMatches =
 		normalizeComparable(roomSource) === normalizeComparable(connector.source);
 	return {
@@ -1369,7 +1395,7 @@ function dedupeCandidates(candidates: SendCandidate[]): SendCandidate[] {
 	for (const c of candidates) {
 		const key = [
 			c.connector.source,
-			c.connector.accountId,
+			c.target.accountId ?? c.connector.accountId,
 			c.target.roomId,
 			c.target.channelId,
 			c.target.serverId,
@@ -1413,7 +1439,7 @@ async function resolveAdminTarget(
 		connector,
 		target: {
 			source: connector.source,
-			accountId: connector.accountId,
+			accountId: connector.accountId ?? params.accountId,
 			entityId: ownerId as UUID,
 		} as TargetInfo,
 		label: params.target,
@@ -1455,9 +1481,7 @@ async function resolveSendTarget(
 			sourceResolution: "exact",
 		};
 	}
-	const accountScoped = sourceScoped.filter((connector) =>
-		connectorMatchesAccount(connector, params.accountId),
-	);
+	const accountScoped = selectAccountConnectors(sourceScoped, params.accountId);
 	if (params.accountId && accountScoped.length === 0) {
 		return {
 			status: "missing_connector",
@@ -1513,7 +1537,7 @@ async function resolveSendTarget(
 	}
 
 	if (!params.target && !params.source) {
-		const currentSource = textParam(message.content.source);
+		const currentSource = trustedConnectorSource(message);
 		const currentConnector = findConnectorBySource(considered, currentSource);
 		if (currentConnector) considered = [currentConnector];
 	}
@@ -1528,6 +1552,7 @@ async function resolveSendTarget(
 			connector.source,
 			undefined,
 			connector,
+			params.accountId,
 		);
 		candidates.push(
 			...(await collectHookTargets(
@@ -1536,6 +1561,7 @@ async function resolveSendTarget(
 				context,
 				params.targetKind,
 				sourceWasExact,
+				params.accountId,
 			)),
 		);
 	}
@@ -1548,6 +1574,7 @@ async function resolveSendTarget(
 			considered,
 			params.targetKind,
 			sourceWasExact,
+			params.accountId,
 		)),
 	);
 
@@ -1559,6 +1586,7 @@ async function resolveSendTarget(
 					params.target,
 					params.targetKind,
 					sourceWasExact,
+					params.accountId,
 				),
 			);
 		}
@@ -1572,6 +1600,7 @@ async function resolveSendTarget(
 					state,
 					soleConnector,
 					sourceWasExact,
+					params.accountId,
 				),
 			);
 		}
@@ -2213,7 +2242,7 @@ async function handleReadChannel(
 			? selectConnectorForOp(
 					hookConnectors,
 					source,
-					message.content.source,
+					trustedConnectorSource(message),
 					"read_channel",
 					accountId,
 				)
@@ -2243,6 +2272,7 @@ async function handleReadChannel(
 			selectedConnector.source,
 			resolved.target,
 			selectedConnector,
+			accountId,
 		);
 		try {
 			let memories: Memory[] = [];
@@ -2435,13 +2465,13 @@ function getRelationshipsServiceLike(
 
 async function handleReadWithContact(
 	runtime: IAgentRuntime,
-	message: Memory,
+	_message: Memory,
 	_state: State | undefined,
 	params: ParamRecord,
 ): Promise<ActionResult> {
 	const contact = textParam(params.contact);
 	const entityId = textParam(params.entityId);
-	const platform = textParam(params.platform) ?? sourceFromSendAs(message);
+	const platform = textParam(params.platform);
 	const limit = clampLimit(
 		numberParam(params.limit),
 		READ_WITH_CONTACT_DEFAULT_LIMIT,
@@ -2642,7 +2672,7 @@ async function handleSearch(
 		const selection = selectConnectorForOp(
 			connectors,
 			source,
-			message.content.source,
+			trustedConnectorSource(message),
 			"search",
 			accountIdFromParams(params, message),
 		);
@@ -2669,6 +2699,7 @@ async function handleSearch(
 				connector.source,
 				resolved.target,
 				connector,
+				accountIdFromParams(params, message),
 			);
 			try {
 				const searchMessages = connector.searchMessages;
@@ -2788,7 +2819,7 @@ async function handleListChannels(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content.source,
+		trustedConnectorSource(message),
 		"list_channels",
 		accountIdFromParams(params, message),
 	);
@@ -2801,6 +2832,7 @@ async function handleListChannels(
 		connector.source,
 		undefined,
 		connector,
+		accountIdFromParams(params, message),
 	);
 	try {
 		const listRooms = connector.listRooms;
@@ -2852,7 +2884,7 @@ async function handleListServers(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content.source,
+		trustedConnectorSource(message),
 		"list_servers",
 		accountIdFromParams(params, message),
 	);
@@ -2865,6 +2897,7 @@ async function handleListServers(
 		connector.source,
 		undefined,
 		connector,
+		accountIdFromParams(params, message),
 	);
 	try {
 		const listServers = connector.listServers;
@@ -3002,7 +3035,7 @@ async function handleJoinLeave(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content.source,
+		trustedConnectorSource(message),
 		op,
 		accountIdFromParams(params, message),
 	);
@@ -3089,7 +3122,7 @@ async function handleMessageMutation(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content.source,
+		trustedConnectorSource(message),
 		op,
 		accountIdFromParams(params, message),
 	);
@@ -3106,7 +3139,7 @@ async function handleMessageMutation(
 	if (resolved.error) return resolved.error;
 	const target = resolved.target ?? {
 		source: connector.source,
-		accountId: connector.accountId,
+		accountId: connector.accountId ?? accountIdFromParams(params, message),
 	};
 
 	try {
@@ -3218,7 +3251,7 @@ async function handleGetUser(
 	const selection = selectConnectorForOp(
 		connectors,
 		sourceFromParams(params, message),
-		message.content.source,
+		trustedConnectorSource(message),
 		"get_user",
 		accountIdFromParams(params, message),
 	);

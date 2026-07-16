@@ -298,7 +298,13 @@ describe("Matrix service hardening", () => {
     expect(runtime.ensureConnection).toHaveBeenCalledTimes(1);
     expect(runtime.createMemory).toHaveBeenCalledTimes(1);
     expect(runtime.createMemory).toHaveBeenCalledWith(
-      expect.objectContaining({ content: expect.objectContaining({ text: "hello bot" }) }),
+      expect.objectContaining({
+        content: expect.objectContaining({ text: "hello bot" }),
+        metadata: expect.objectContaining({
+          source: "matrix",
+          accountId: "work",
+        }),
+      }),
       "messages"
     );
     expect(runtime.messageService.handleMessage).not.toHaveBeenCalled();
@@ -324,6 +330,16 @@ describe("Matrix service hardening", () => {
     await callDispatch(service, state, createMatrixMessage(), createMatrixRoom());
 
     expect(runtime.messageService.handleMessage).toHaveBeenCalledTimes(1);
+    expect(runtime.messageService.handleMessage).toHaveBeenCalledWith(
+      runtime,
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          source: "matrix",
+          accountId: "work",
+        }),
+      }),
+      expect.any(Function)
+    );
     // Inbound is not separately persisted in the auto-reply path; only the agent's outbound is.
     expect(runtime.createMemory).not.toHaveBeenCalled();
 
@@ -447,6 +463,10 @@ describe("Matrix service hardening", () => {
     expect(result[1].content.text).toBe("older");
     expect(result[1].content.name).toBe("Alice");
     expect(result[0].content.source).toBe("matrix");
+    expect(result[0].metadata).toMatchObject({
+      source: "matrix",
+      accountId: "work",
+    });
 
     // Unknown room id -> empty.
     expect(await service.getRoomMessages("!missing:example", 50, "work")).toEqual([]);

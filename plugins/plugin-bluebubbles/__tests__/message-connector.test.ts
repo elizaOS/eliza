@@ -66,6 +66,7 @@ describe("BlueBubbles message connector registration", () => {
 		const registrations: MessageConnectorRegistration[] = [];
 		const runtime = makeRuntime(registrations);
 		const service = {
+			getAccountId: vi.fn(() => "work"),
 			getIsRunning: vi.fn(() => true),
 			listChats: vi.fn(async () => [makeDirectChat()]),
 			getChatState: vi.fn(async () => ({
@@ -86,6 +87,9 @@ describe("BlueBubbles message connector registration", () => {
 			"bluebubbles",
 			"imessage",
 		]);
+		expect(registrations.map((registration) => registration.accountId)).toEqual(
+			["work", "work"],
+		);
 
 		const connector = registrations.find(
 			(registration) => registration.source === "bluebubbles",
@@ -101,16 +105,36 @@ describe("BlueBubbles message connector registration", () => {
 				label: "Alice",
 				kind: "phone",
 				target: expect.objectContaining({
+					accountId: "work",
 					channelId: "+14155552671",
 				}),
 			}),
 		);
+		expect(
+			(await connector?.listRecentTargets?.({ runtime }))?.every(
+				(candidate) => candidate.target.accountId === "work",
+			),
+		).toBe(true);
+		expect(
+			(await connector?.listRooms?.({ runtime }))?.every(
+				(candidate) => candidate.target.accountId === "work",
+			),
+		).toBe(true);
+		const directTargets = await connector?.resolveTargets?.("+14155559999", {
+			runtime,
+		});
+		expect(directTargets?.at(-1)?.target).toMatchObject({
+			source: "bluebubbles",
+			accountId: "work",
+			channelId: "+14155559999",
+		});
 
-		await connector?.sendHandler(
+		const sentMemory = await connector?.sendHandler(
 			runtime,
 			{
 				source: "bluebubbles",
 				entityId: "+1 (415) 555-2671" as UUID,
+				roomId: "room-1" as UUID,
 			} as ConnectorTargetInfo,
 			{ text: "hello" } as ConnectorContent,
 		);
@@ -119,6 +143,16 @@ describe("BlueBubbles message connector registration", () => {
 			"+14155552671",
 			"hello",
 			undefined,
+		);
+		expect(sentMemory).toEqual(
+			expect.objectContaining({
+				content: expect.objectContaining({ source: "bluebubbles" }),
+				metadata: expect.objectContaining({
+					source: "bluebubbles",
+					provider: "bluebubbles",
+					accountId: "work",
+				}),
+			}),
 		);
 	});
 

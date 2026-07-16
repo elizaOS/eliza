@@ -76,6 +76,9 @@ export interface XAccountCapabilityStatus {
 type XMessageConnectorRegistration = Parameters<
   IAgentRuntime["registerMessageConnector"]
 >[0] & {
+  // Kept explicit while plugin-only typechecks may resolve a previously built
+  // core declaration that predates this typed dispatcher contract.
+  accountRouting?: "connector";
   fetchMessages?: (
     context: MessageConnectorQueryContext,
     params?: {
@@ -95,12 +98,14 @@ interface PostConnectorQueryContext {
   runtime: IAgentRuntime;
   roomId?: UUID;
   source?: string;
+  accountId?: string;
   target?: TargetInfo;
   metadata?: Record<string, unknown>;
 }
 
 interface PostConnectorRegistration {
   source: string;
+  accountRouting?: "connector";
   label?: string;
   description?: string;
   capabilities?: string[];
@@ -544,6 +549,7 @@ export class XService extends Service {
     if (typeof runtime.registerMessageConnector === "function") {
       const registration: XMessageConnectorRegistration = {
         source: "x",
+        accountRouting: "connector",
         label: "X DMs",
         description:
           "X/Twitter direct-message connector. Public tweets remain under X post actions.",
@@ -590,6 +596,7 @@ export class XService extends Service {
 
     withPostConnector.registerPostConnector({
       source: "x",
+      accountRouting: "connector",
       label: "X",
       description:
         "X/Twitter public feed connector for publishing tweets, reading the home/user feed, and searching recent public posts.",
@@ -738,6 +745,7 @@ export class XService extends Service {
     }
 
     const accountId = this.resolveAccountId(
+      context?.accountId,
       context?.target,
       context?.metadata,
       content,

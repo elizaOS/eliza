@@ -1950,6 +1950,7 @@ export class DiscordService extends Service implements IDiscordService {
 								roomId,
 								content: {
 									text: sentMsg.content || textContent || " ",
+									source: "discord",
 									url: sentMsg.url,
 									channelType,
 									...(outboundReplyToMessageId
@@ -1966,10 +1967,12 @@ export class DiscordService extends Service implements IDiscordService {
 									...(content.action ? { action: content.action } : {}),
 								},
 								metadata: {
+									...extractContentMetadata(content),
 									type: MemoryType.MESSAGE,
+									source: "discord",
+									provider: "discord",
 									accountId,
 									platformMessageId: sentMsg.id,
-									...extractContentMetadata(content),
 								},
 								createdAt: sentMsg.createdTimestamp || Date.now(),
 							};

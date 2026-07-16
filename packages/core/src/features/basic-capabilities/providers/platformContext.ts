@@ -130,7 +130,25 @@ function toProviderValue(value: unknown, depth = 0): ProviderValue {
 function getMemorySource(
 	message: Memory,
 	room: RoomLike | null,
+	accountId: string | undefined,
 ): string | undefined {
+	// The stored Memory envelope is connector-authored, so prefer its source
+	// over fields on Content when both are present. Content is the user-facing
+	// payload and may be accepted from API callers; it must not redirect an
+	// account-scoped lookup away from the connector that stamped the Memory.
+	const envelopeSource =
+		typeof message.metadata?.source === "string"
+			? message.metadata.source.trim()
+			: "";
+	if (envelopeSource) {
+		return envelopeSource;
+	}
+	// Never combine a trusted envelope account with a source from a less-trusted
+	// layer. Account ids such as "default" repeat across providers, so Content or
+	// room metadata could otherwise redirect the account to a different source.
+	if (accountId) {
+		return undefined;
+	}
 	const contentSource =
 		typeof message.content.source === "string"
 			? message.content.source.trim()
@@ -140,6 +158,45 @@ function getMemorySource(
 	}
 	const roomSource = typeof room?.source === "string" ? room.source.trim() : "";
 	return roomSource || undefined;
+}
+
+/**
+ * Connector account routing is trusted only from the stored Memory envelope.
+ * `content.metadata` may be supplied by an end user and must never select an
+ * account-scoped connector.
+ */
+function getMemoryAccountId(message: Memory): string | undefined {
+	const metadata = message.metadata;
+	const accountId =
+		metadata && "accountId" in metadata ? metadata.accountId : undefined;
+	return typeof accountId === "string" && accountId.trim()
+		? accountId.trim()
+		: undefined;
+}
+
+/**
+ * Preserve connector-specific query metadata without allowing Content to
+ * smuggle an account selector into a hook. The trusted envelope account is
+ * rebound into the metadata copy for older connectors that still read
+ * `context.metadata.accountId`; modern connectors use `context.accountId`.
+ * Never mutate the original Content object.
+ */
+function buildQueryMetadata(
+	message: Memory,
+	accountId: string | undefined,
+): Metadata | undefined {
+	const raw = message.content.metadata;
+	const metadata =
+		raw && typeof raw === "object" && !Array.isArray(raw)
+			? ({ ...raw } as Metadata)
+			: {};
+
+	delete metadata.accountId;
+	if (accountId) {
+		metadata.accountId = accountId;
+	}
+
+	return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
 function outputGuidanceForSource(
@@ -159,9 +216,11 @@ function buildCurrentTarget(
 	message: Memory,
 	room: RoomLike | null,
 	source: string | undefined,
+	accountId: string | undefined,
 ): TargetInfo {
 	return cleanRecord({
 		source,
+		accountId,
 		roomId: message.roomId,
 		entityId: message.entityId,
 		channelId: room?.channelId,
@@ -174,6 +233,8 @@ function buildQueryContext(
 	runtime: IAgentRuntime,
 	message: Memory,
 	source: string | undefined,
+	accountId: string | undefined,
+	target: TargetInfo,
 	activeContexts: AgentContext[],
 ): MessageConnectorQueryContext {
 	return cleanRecord({
@@ -181,8 +242,10 @@ function buildQueryContext(
 		roomId: message.roomId,
 		entityId: message.entityId,
 		source,
+		accountId,
+		target,
 		contexts: activeContexts,
-		metadata: message.content.metadata as Metadata | undefined,
+		metadata: buildQueryMetadata(message, accountId),
 	});
 }
 
@@ -214,19 +277,87 @@ function connectorMatchesExplicitContext(
 function filterContextRelevantConnectors(
 	connectors: MessageConnector[],
 	source: string | undefined,
+	accountId: string | undefined,
 	activeContexts: AgentContext[],
 ): MessageConnector[] {
-	const sourceMatches = dropShadowedLegacyConnectors(
-		connectors.filter((connector) => connectorMatchesSource(connector, source)),
-	);
-	if (source) {
-		return sourceMatches;
+	// Account ids are only unique within a connector source ("default" is a
+	// common id across Discord, Telegram, Slack, etc.). An account-bearing
+	// Memory without any resolvable source is therefore ambiguous and must not
+	// fan out across providers merely because their account strings match.
+	if (accountId && !source) {
+		return [];
 	}
 
-	return dropShadowedLegacyConnectors(
-		connectors.filter((connector) =>
-			connectorMatchesExplicitContext(connector, activeContexts),
-		),
+	const contextMatches = source
+		? connectors.filter((connector) =>
+				connectorMatchesSource(connector, source),
+			)
+		: connectors.filter((connector) =>
+				connectorMatchesExplicitContext(connector, activeContexts),
+			);
+
+	// A trusted inbound account id is an exact routing constraint. Falling back
+	// to an unscoped or differently scoped connector can leak context across two
+	// accounts on the same provider, so a missing match deliberately fails
+	// closed. Without an account id, retain the legacy source/context behavior.
+	const accountMatches = accountId
+		? selectTrustedAccountConnectors(contextMatches, accountId)
+		: dropAmbiguousAccountSources(contextMatches);
+	return dropShadowedLegacyConnectors(accountMatches);
+}
+
+/**
+ * Prefer registrations explicitly scoped to the trusted account. A connector
+ * may instead opt into internal account dispatch, but only a single unscoped
+ * dispatcher is safe; ordinary legacy unscoped connectors never match here.
+ */
+function selectTrustedAccountConnectors(
+	connectors: MessageConnector[],
+	accountId: string,
+): MessageConnector[] {
+	const exactMatches = connectors.filter(
+		(connector) => connector.accountId?.trim() === accountId,
+	);
+	if (exactMatches.length > 0) {
+		return exactMatches;
+	}
+
+	const dispatchers = connectors.filter(
+		(connector) =>
+			!connector.accountId && connector.accountRouting === "connector",
+	);
+	return dispatchers.length === 1 ? dispatchers : [];
+}
+
+/**
+ * Without a trusted inbound account, two distinct account-scoped connectors for
+ * the same source are ambiguous. Querying both would merge private account
+ * context into one model turn. Keep sources that are unscoped-only or have a
+ * single scoped account so existing single-account installations continue to
+ * work when older Memories do not carry `metadata.accountId`.
+ */
+function dropAmbiguousAccountSources(
+	connectors: MessageConnector[],
+): MessageConnector[] {
+	const accountIdsBySource = new Map<string, Set<string>>();
+	for (const connector of connectors) {
+		const accountId = connector.accountId?.trim();
+		if (!accountId) {
+			continue;
+		}
+		const source = connector.source.trim().toLowerCase();
+		const ids = accountIdsBySource.get(source) ?? new Set<string>();
+		ids.add(accountId);
+		accountIdsBySource.set(source, ids);
+	}
+
+	const ambiguousSources = new Set(
+		[...accountIdsBySource.entries()]
+			.filter(([, accountIds]) => accountIds.size > 1)
+			.map(([source]) => source),
+	);
+	return connectors.filter(
+		(connector) => !ambiguousSources.has(connector.source.trim().toLowerCase()),
 	);
 }
 
@@ -243,10 +374,12 @@ function dropShadowedLegacyConnectors(
 	const scopedSources = new Set(
 		connectors
 			.filter((connector) => connector.accountId)
-			.map((connector) => connector.source),
+			.map((connector) => connector.source.trim().toLowerCase()),
 	);
 	return connectors.filter(
-		(connector) => connector.accountId || !scopedSources.has(connector.source),
+		(connector) =>
+			connector.accountId ||
+			!scopedSources.has(connector.source.trim().toLowerCase()),
 	);
 }
 
@@ -338,11 +471,13 @@ export const platformChatContextProvider: Provider = {
 		}
 
 		const room = await getCurrentRoom(runtime, message, state);
-		const source = getMemorySource(message, room);
+		const accountId = getMemoryAccountId(message);
+		const source = getMemorySource(message, room, accountId);
 		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 		const relevantConnectors = filterContextRelevantConnectors(
 			connectors,
 			source,
+			accountId,
 			activeContexts,
 		).slice(0, MAX_CONNECTOR_CONTEXTS);
 		if (relevantConnectors.length === 0) {
@@ -353,13 +488,15 @@ export const platformChatContextProvider: Provider = {
 			});
 		}
 
+		const target = buildCurrentTarget(message, room, source, accountId);
 		const queryContext = buildQueryContext(
 			runtime,
 			message,
 			source,
+			accountId,
+			target,
 			activeContexts,
 		);
-		const target = buildCurrentTarget(message, room, source);
 		// Connector hooks run concurrently: each may do its own I/O, and this
 		// provider sits on the Stage-1 critical path — serializing them stacks
 		// every connector's round-trip into the turn floor.
@@ -400,6 +537,7 @@ export const platformChatContextProvider: Provider = {
 
 		const data = {
 			source,
+			accountId,
 			roomId: message.roomId,
 			entityId: message.entityId,
 			outputGuidance: outputGuidanceForSource(source),
@@ -452,11 +590,13 @@ export const platformUserContextProvider: Provider = {
 		}
 
 		const room = await getCurrentRoom(runtime, message, state);
-		const source = getMemorySource(message, room);
+		const accountId = getMemoryAccountId(message);
+		const source = getMemorySource(message, room, accountId);
 		const activeContexts = getActiveRoutingContextsForTurn(state, message);
 		const relevantConnectors = filterContextRelevantConnectors(
 			connectors,
 			source,
+			accountId,
 			activeContexts,
 		).slice(0, MAX_CONNECTOR_CONTEXTS);
 		if (relevantConnectors.length === 0) {
@@ -467,10 +607,13 @@ export const platformUserContextProvider: Provider = {
 			});
 		}
 
+		const target = buildCurrentTarget(message, room, source, accountId);
 		const queryContext = buildQueryContext(
 			runtime,
 			message,
 			source,
+			accountId,
+			target,
 			activeContexts,
 		);
 		// Concurrent for the same reason as the chat-context hooks above.
@@ -511,6 +654,7 @@ export const platformUserContextProvider: Provider = {
 
 		const data = {
 			source,
+			accountId,
 			roomId: message.roomId,
 			entityId: message.entityId,
 			connectorCount: connectors.length,

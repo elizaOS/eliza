@@ -262,11 +262,29 @@ describe("Discord message connector adapter", () => {
 				isGuildTextBasedChannel: vi.fn(),
 			},
 			message as Message,
-			{ processedContent: "hello from team" },
+			{
+				processedContent: "hello from team",
+				extraContent: { source: "slack", text: "spoofed" },
+				extraMetadata: {
+					type: "custom",
+					source: "slack",
+					provider: "untrusted",
+					accountId: "other-account",
+					marker: "preserved",
+				},
+			},
 		);
 
+		expect(memory?.content).toMatchObject({
+			text: "hello from team",
+			source: "discord",
+		});
 		expect(memory?.metadata).toMatchObject({
+			type: "message",
+			source: "discord",
+			provider: "discord",
 			accountId: "team",
+			marker: "preserved",
 			discord: {
 				accountId: "team",
 				channelId: "222222222222222222",

@@ -675,6 +675,41 @@ function connectorKeySource(key: string): string {
 	return key.split(CONNECTOR_ACCOUNT_KEY_SEPARATOR, 1)[0] ?? key;
 }
 
+/**
+ * Resolve the legacy source-only route to an account-scoped handler only when
+ * that source has exactly one such handler. Multiple scoped handlers are
+ * ambiguous and deliberately fail closed instead of guessing an account.
+ */
+function findSoleAccountScopedSendHandler(
+	handlers: ReadonlyMap<string, SendHandlerFunction>,
+	source: string,
+): SendHandlerFunction | undefined {
+	let soleHandler: SendHandlerFunction | undefined;
+	for (const [key, handler] of handlers) {
+		if (
+			!key.includes(CONNECTOR_ACCOUNT_KEY_SEPARATOR) ||
+			connectorKeySource(key) !== source
+		) {
+			continue;
+		}
+		if (soleHandler) {
+			return undefined;
+		}
+		soleHandler = handler;
+	}
+	return soleHandler;
+}
+
+function getUntrustedContentAccountId(content: Content): string | undefined {
+	const metadata = content.metadata;
+	if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+		return undefined;
+	}
+	return normalizeConnectorAccountId(
+		(metadata as Record<string, unknown>).accountId,
+	);
+}
+
 function cloneConnectorAccountRef(
 	account: ConnectorAccountRef,
 	source: string,
@@ -783,6 +818,9 @@ function normalizeMessageConnector(
 	};
 
 	if (metadata.description) connector.description = metadata.description;
+	if (metadata.accountRouting === "connector") {
+		connector.accountRouting = "connector";
+	}
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.resolveTargets)
 		connector.resolveTargets = metadata.resolveTargets;
@@ -839,6 +877,9 @@ function normalizePostConnector(
 	};
 
 	if (metadata.description) connector.description = metadata.description;
+	if (metadata.accountRouting === "connector") {
+		connector.accountRouting = "connector";
+	}
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.postHandler) connector.postHandler = metadata.postHandler;
 	if (metadata.fetchFeed) connector.fetchFeed = metadata.fetchFeed;
@@ -10536,9 +10577,13 @@ ${section_end}`;
 		const source =
 			typeof target.source === "string" ? target.source.trim() : "";
 		const accountId = normalizeConnectorAccountId(target.accountId);
+		const untrustedContentAccountId = getUntrustedContentAccountId(content);
 		const handler =
 			this.sendHandlers.get(connectorRouteKey(source, accountId)) ??
-			this.sendHandlers.get(connectorRouteKey(source));
+			this.sendHandlers.get(connectorRouteKey(source)) ??
+			(!accountId && !untrustedContentAccountId
+				? findSoleAccountScopedSendHandler(this.sendHandlers, source)
+				: undefined);
 		if (!handler) {
 			const errorMsg = accountId
 				? `No send handler registered for source: ${source} accountId: ${accountId}`

@@ -263,6 +263,10 @@ describe("Matrix connector read path (channelId-only targets)", () => {
     expect(result).toHaveLength(1);
     expect(result?.[0].content.text).toContain("end-to-end encrypted message");
     expect(result?.[0].content.name).toBe("Alice");
+    expect(result?.[0].metadata).toMatchObject({
+      source: "matrix",
+      accountId: "work",
+    });
   });
 });
 

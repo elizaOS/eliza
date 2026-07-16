@@ -4,7 +4,9 @@
  * text. Keyword routing (e.g. `/\b(search|find)\b/`) silently fails for every
  * non-English request, so op selection stays structured-only.
  */
-import { describe, expect, it } from "vitest";
+
+import { describe, expect, it, vi } from "vitest";
+import type { Content, IAgentRuntime, Memory } from "../../../types/index.ts";
 import { postAction, resolveOp } from "./post.ts";
 
 describe("post resolveOp is i18n-safe (#10471)", () => {
@@ -43,5 +45,71 @@ describe("POST routing hint (#12209)", () => {
 		expect(hint).toContain("MESSAGE");
 		expect(hint).toContain("REPLY");
 		expect(hint).toContain("ROOM");
+	});
+});
+
+describe("POST trusted connector account routing", () => {
+	it("passes the envelope account to an internal dispatcher and ignores Content spoofing", async () => {
+		let routedAccountId: string | undefined;
+		let sentContent: Content | undefined;
+		const upsertMemory = vi.fn(async () => undefined);
+		const runtime = {
+			agentId: "00000000-0000-0000-0000-000000000001",
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+			getPostConnectors: () => [
+				{
+					source: "x",
+					label: "X",
+					accountRouting: "connector",
+					capabilities: ["post"],
+					contexts: [],
+					postHandler: async (
+						_runtime: IAgentRuntime,
+						content: Content,
+						context?: { accountId?: string },
+					) => {
+						sentContent = content;
+						routedAccountId = context?.accountId;
+						return undefined;
+					},
+				},
+			],
+			upsertMemory,
+		} as unknown as IAgentRuntime;
+		const message = {
+			id: "00000000-0000-0000-0000-0000000000aa",
+			roomId: "00000000-0000-0000-0000-0000000000bb",
+			entityId: "00000000-0000-0000-0000-0000000000cc",
+			agentId: "00000000-0000-0000-0000-000000000001",
+			metadata: { type: "message", source: "x", accountId: "secondary" },
+			content: {
+				text: "publish this",
+				source: "untrusted-source",
+				metadata: { accountId: "primary" },
+			},
+			createdAt: 1,
+		} as Memory;
+
+		const result = await postAction.handler(
+			runtime,
+			message,
+			undefined,
+			{
+				parameters: {
+					action: "send",
+					text: "publish this",
+					persist: false,
+				},
+			},
+			undefined,
+			undefined,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(routedAccountId).toBe("secondary");
+		expect(sentContent?.source).toBe("x");
+		expect(sentContent?.metadata).toMatchObject({ accountId: "secondary" });
+		expect(message.content.metadata).toEqual({ accountId: "primary" });
+		expect(upsertMemory).toHaveBeenCalledOnce();
 	});
 });
