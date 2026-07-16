@@ -125,14 +125,6 @@ async function startCloudRuntime(page: Page): Promise<void> {
   await clickIfVisible(createNew, 2_000);
 }
 
-async function chooseNewCloudAgent(page: Page): Promise<void> {
-  const createNew = page
-    .getByTestId("onboarding-agent-create")
-    .or(page.getByRole("button", { name: /create a new agent/i }));
-  await createNew.waitFor({ state: "visible", timeout: 30_000 });
-  await createNew.click();
-}
-
 async function installCloudConnectionRoutes(
   page: Page,
   userId: string,
@@ -507,42 +499,13 @@ for (const viewport of VIEWPORTS) {
     await page.route("**/api/cloud/compat/agents", async (route) => {
       const request = route.request();
       if (request.method() === "GET") {
-        // Multiple existing agents keep the picker visible so this flow can
-        // explicitly exercise its "Create new" branch.
+        // This is the new-account provisioning path. An authoritative empty
+        // list lets onboarding create exactly one agent; existing accounts are
+        // intentionally reused by selectOrProvisionCloudAgent and are covered
+        // by the dedicated reuse tests.
         await fulfillJson(route, 200, {
           success: true,
-          data: [
-            {
-              agent_id: "existing-agent-1",
-              agent_name: "Existing Agent One",
-              status: "stopped",
-              bridge_url: null,
-              web_ui_url: null,
-              containerUrl: "",
-              webUiUrl: null,
-              database_status: "ready",
-              error_message: null,
-              agent_config: {},
-              created_at: "2026-01-01T00:00:00.000Z",
-              updated_at: "2026-01-01T00:00:00.000Z",
-              last_heartbeat_at: null,
-            },
-            {
-              agent_id: "existing-agent-2",
-              agent_name: "Existing Agent Two",
-              status: "stopped",
-              bridge_url: null,
-              web_ui_url: null,
-              containerUrl: "",
-              webUiUrl: null,
-              database_status: "ready",
-              error_message: null,
-              agent_config: {},
-              created_at: "2026-01-01T00:00:00.000Z",
-              updated_at: "2026-01-01T00:00:00.000Z",
-              last_heartbeat_at: null,
-            },
-          ],
+          data: [],
         });
         return;
       }
@@ -707,10 +670,9 @@ for (const viewport of VIEWPORTS) {
     await clickIfVisible(
       page.getByRole("button", { name: /sign in with eliza cloud/i }),
     );
-    await chooseNewCloudAgent(page);
 
-    // "Create new" in the picker provisions a fresh dedicated cloud agent via the
-    // local cloud proxy, then writes the first-run profile.
+    // An account with no agents provisions a fresh dedicated cloud agent via
+    // the local cloud proxy, then writes the first-run profile.
     await expect.poll(() => compatCreateRequests).toBe(1);
     await expect.poll(() => firstRunState.submissions.length).toBe(1);
 

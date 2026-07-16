@@ -1316,9 +1316,13 @@ test.describe("Smartglasses GUI interactions", () => {
     await expect(
       page.getByRole("heading", { name: "Smartglasses" }),
     ).toBeVisible({ timeout: 90_000 });
-    await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
+    const smartglassesSettings = page.getByTestId("desktop-settings-work-area");
+    const connectHeadset = smartglassesSettings.getByRole("button", {
+      name: "Connect",
+    });
+    await expect(connectHeadset).toBeVisible();
     await expect(page.getByText("Bridge", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Connect" }).click();
+    await connectHeadset.click();
     await expect(
       page.getByText("Whole headset connected", { exact: true }),
     ).toBeVisible();

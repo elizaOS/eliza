@@ -49,6 +49,37 @@ async function fulfillJson(
   });
 }
 
+async function installConnectedCloudRoutes(page: Page): Promise<void> {
+  await page.unroute("**/api/cloud/status").catch(() => {});
+  await page.route("**/api/cloud/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      connected: true,
+      enabled: true,
+      cloudVoiceProxyAvailable: true,
+      hasApiKey: true,
+      userId: "cloud-lifecycle-smoke-user",
+    });
+  });
+
+  await page.unroute("**/api/cloud/credits").catch(() => {});
+  await page.route("**/api/cloud/credits", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      balance: 100,
+      low: false,
+      critical: false,
+      authRejected: false,
+    });
+  });
+}
+
 /** Serialize one agent into the cloud's REST shape (snake_case + aliases). */
 function serializeAgent(
   agent: StoreAgent,
@@ -270,6 +301,7 @@ test("cloud agents: list, delete, then reprovision another from Settings", async
 
   await seedCloudActiveAgent(page, "agent-keep", apiBase);
   await installDefaultAppRoutes(page);
+  await installConnectedCloudRoutes(page);
   await installAgentStoreRoutes(page, store, apiBase);
 
   // Cloud agents are embedded in the Cloud Overview settings section.

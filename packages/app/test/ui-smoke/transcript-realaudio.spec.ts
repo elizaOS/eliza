@@ -188,6 +188,43 @@ async function installTranscriptBackendMocks(
   page: Page,
   probes: TranscriptProbes,
 ): Promise<void> {
+  // The web-shell default is intentionally Eliza Cloud ASR. This spec proves
+  // the local-ASR capture path, so make that user choice explicit instead of
+  // relying on a platform default that can legitimately change.
+  await page.unroute("**/api/config").catch(() => {});
+  await page.route("**/api/config", async (route) => {
+    if (!["GET", "PATCH", "PUT"].includes(route.request().method())) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        meta: { firstRunComplete: true },
+        agents: {
+          list: [
+            {
+              id: "ui-smoke-agent",
+              name: "Playwright Smoke",
+              status: "running",
+            },
+          ],
+          defaults: {
+            workspace: "ui-smoke-workspace",
+            adminEntityId: "owner-ui-smoke",
+          },
+        },
+        messages: {
+          tts: {
+            provider: "local-inference",
+            asr: { provider: "local-inference" },
+          },
+        },
+      }),
+    });
+  });
+
   await page.route("**/api/commands**", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
@@ -1063,7 +1100,7 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
     timeout: 60_000,
   });
 
-  // KNOWLEDGE: the mirrored document links back to the transcript. The
+  // KNOWLEDGE: the mirrored document renders the rich transcript inline. The
   // knowledge surface (DocumentsView) lives under the Character tab at
   // /character/documents (the /apps/documents path collides with a decomposed
   // PA view), rendered inside the CharacterEditor as <DocumentsView inModal />.
@@ -1071,8 +1108,7 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
   await expect(page.getByTestId("documents-view")).toBeVisible({
     timeout: 60_000,
   });
-  // Open the seeded knowledge document to show its detail, which renders the
-  // back-link when the DTO has a transcriptId. The row is a button labelled
+  // Open the seeded knowledge document to show its detail. The row is a button labelled
   // "Open {filename}" (full list) — fall back to any clickable element bearing
   // the filename text if the surface renders the compact chip variant.
   const docRow = page
@@ -1081,9 +1117,11 @@ test("VIEWER + LIVE MEETING + KNOWLEDGE: every transcript surface action works",
     .first();
   await expect(docRow).toBeVisible({ timeout: 30_000 });
   await docRow.click();
-  const knowledgeLink = page.getByTestId("document-open-transcript");
-  await expect(knowledgeLink).toBeVisible({ timeout: 15_000 });
-  await expect(knowledgeLink).toContainText(/View original transcript/i);
+  await expect(page.getByTestId("reader-media")).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("transcript-play")).toBeVisible();
+  await expect(page.getByText(TRANSCRIPT_TEXT, { exact: true })).toBeVisible();
 
   // ── 4-VIEWER: drive the REAL chat tile -> viewer and exercise EVERY action ──
   await captureTranscriptToAttachment(page, probes);

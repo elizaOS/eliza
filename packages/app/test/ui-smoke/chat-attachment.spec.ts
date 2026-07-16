@@ -197,7 +197,11 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
 
   // 2) The pending thumbnail renders in the composer (alt = file name).
   const pendingThumb = page.locator('img[alt="smoke.png"]');
+  const removePending = page.getByRole("button", {
+    name: "Remove smoke.png",
+  });
   await expect(pendingThumb).toBeVisible({ timeout: 10_000 });
+  await expect(removePending).toBeVisible();
 
   // 3) Add caption text + send. The send button swaps in once there is a draft
   //    or a pending image (chat-composer-action).
@@ -231,6 +235,8 @@ test("chat overlay: attaching an image renders a pending thumbnail and sends the
     }),
   );
 
-  // 6) Sending clears the pending strip — the thumbnail is gone post-send.
-  await expect(pendingThumb).toHaveCount(0, { timeout: 10_000 });
+  // 6) Sending clears the pending strip. The sent message can legitimately
+  // keep rendering the same image, so assert on the pending-only remove
+  // control rather than every image sharing the filename.
+  await expect(removePending).toHaveCount(0, { timeout: 10_000 });
 });
