@@ -478,6 +478,7 @@ import {
 } from "./wallet-rpc.ts";
 import {
   DEFAULT_REPLAY_LIMIT,
+  markReplayEvent,
   parseEventCursor,
   selectReplayEvents,
 } from "./ws-event-replay.ts";
@@ -4821,7 +4822,7 @@ export async function startApiServer(opts?: {
           DEFAULT_REPLAY_LIMIT,
         );
         for (const event of replay) {
-          ws.send(JSON.stringify(event));
+          ws.send(JSON.stringify(markReplayEvent(event)));
         }
       } catch (err) {
         logger.error(

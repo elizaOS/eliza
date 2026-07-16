@@ -81,6 +81,14 @@ export function hasSameOriginStewardLogin(): boolean {
  * a popup/tab the flow would immediately abandon.
  */
 export function preOpenCloudLoginWindow(): Window | null {
+  // The hosted login page may already be running inside the named window that
+  // onboarding pre-opened. Calling window.open("about:blank", sameName) from
+  // there replaces the login page before the async PKCE work can navigate it,
+  // stranding the flow on a blank tab. Reuse that window as the current-tab
+  // OAuth surface instead; returning null selects the safe same-tab branch.
+  if (typeof window !== "undefined" && window.name === CLOUD_LOGIN_POPUP_NAME) {
+    return null;
+  }
   if (
     isPlainWebPlatform() &&
     hasSameOriginStewardLogin() &&
@@ -89,6 +97,21 @@ export function preOpenCloudLoginWindow(): Window | null {
     return null;
   }
   return preOpenWindow(CLOUD_LOGIN_POPUP_NAME);
+}
+
+/**
+ * Device-login already owns a dedicated browser surface. Its cross-origin
+ * redirect applies COOP, which may clear both window.name and window.opener;
+ * the encoded return target is the durable signal that OAuth must reuse the
+ * current surface instead of opening a nested popup.
+ */
+export function shouldReuseCurrentCloudLoginWindow(
+  returnTo: string | null,
+): boolean {
+  return (
+    returnTo === "/auth/cli-login" ||
+    returnTo?.startsWith("/auth/cli-login?") === true
+  );
 }
 
 /**

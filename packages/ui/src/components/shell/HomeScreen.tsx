@@ -26,14 +26,44 @@ import { WALLPAPER_FLOAT_SHADOW, WALLPAPER_TEXT } from "./wallpaper-idiom";
 // A gentle staggered fade-up as the home settles in - iOS-style, calm, and
 // fully stilled under prefers-reduced-motion. Each block carries a small
 // animation-delay (set inline) so the cards/tiles cascade in.
-const HOME_ENTER_CSS = `
+const HOME_SCREEN_CSS = `
 @keyframes home-enter {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: none; }
 }
 .home-enter { animation: home-enter 460ms cubic-bezier(0.22,1,0.36,1) both; }
+
+/* Direct expansion previews and the committed shade own the full region below
+   the editorial header. Folding the secondary content through a grid track
+   lets the inbox grow to the live safe-bottom boundary without duplicating the
+   floating composer's clearance. A cancelled preview or committed close drops
+   these selectors at release so the same track reverses on the shade clock. */
+[data-home-below-notifications] {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-height: 0;
+  transition:
+    grid-template-rows var(--eliza-home-notification-settle-duration, 460ms) cubic-bezier(0.25,0.1,0.25,1),
+    opacity 220ms ease-out;
+}
+[data-home-below-notifications-inner] {
+  min-height: 0;
+  overflow: hidden;
+}
+[data-testid="home-content-column"]:has(
+  [data-testid="home-notification-list"][data-shade-preview="expanding"][data-shade-dragging]
+) [data-home-below-notifications],
+[data-testid="home-content-column"]:has(
+  [data-testid="home-notification-list"][data-shade-mode="expanded"]:not([data-shade-settling])
+) [data-home-below-notifications] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
 @media (prefers-reduced-motion: reduce) {
   .home-enter { animation: none; }
+  [data-home-below-notifications] { transition: none; }
 }
 `;
 
@@ -175,6 +205,7 @@ export function HomeScreen({
   // Dev/test-only: observe home layout shifts on the shared telemetry channel.
   useHomeLayoutShiftObserver();
   const homeScreenRef = useRef<HTMLDivElement>(null);
+  const homeContentColumnRef = useRef<HTMLDivElement>(null);
 
   // When the inbox has notifications it becomes the home's primary content and
   // grows to fill the column down to the chat; the ranked widget host then sits
@@ -216,7 +247,7 @@ export function HomeScreen({
           "pb-[calc(var(--eliza-mobile-nav-offset,0px)+max(var(--safe-area-bottom,0px),var(--android-gesture-inset-bottom,0px))+var(--eliza-continuous-chat-clearance,5.25rem)+1.5rem)]",
         )}
       >
-        <style>{HOME_ENTER_CSS}</style>
+        <style>{HOME_SCREEN_CSS}</style>
         {/* The content column owns the definite FULL height of the scroller
           (`h-full`) so flex children such as the notification inbox receive a
           bounded height and scroll internally instead of growing behind the
@@ -230,6 +261,7 @@ export function HomeScreen({
           as calm airiness rather than a broken gap; the AOSP tiles settle at
           the BOTTOM. */}
         <div
+          ref={homeContentColumnRef}
           data-testid="home-content-column"
           className="mx-auto flex h-full w-full max-w-2xl flex-col"
         >
@@ -249,79 +281,95 @@ export function HomeScreen({
             it fades in (Apple-style) on first appearance. */}
           <div
             className={cn(
-              enterClass,
               "mt-4",
               hasNotifications && "flex min-h-0 flex-1 flex-col",
             )}
-            style={{ animationDelay: "90ms" }}
           >
-            <NotificationsHomeCenter emptyGestureTargetRef={homeScreenRef} />
-          </div>
-
-          {/* The prioritized data widgets (#9143). With notifications present
-            they keep a modest height beneath the inbox, leaving a clear gesture
-            area above the chat instead of letting notifications consume every
-            remaining pixel. With
-            an EMPTY inbox this reclaims the `flex-1` breathing region and centres
-            its content, so a quiet home reads as calm airiness rather than a
-            broken gap. A little padding sets the stack apart as its own section. */}
-          <div
-            className={cn(
-              enterClass,
-              "flex min-h-32 flex-col py-6",
-              !hasNotifications && "flex-1 justify-center",
-            )}
-            style={{ animationDelay: "110ms" }}
-          >
-            <WidgetHost
-              slot="home"
-              layout="grid"
-              events={events}
-              clearEvents={clearEvents}
+            <NotificationsHomeCenter
+              emptyGestureTargetRef={homeScreenRef}
+              shadeLayoutTargetRef={homeContentColumnRef}
             />
           </div>
 
-          {tiles.length > 0 ? (
-            <nav
-              aria-label="Apps"
-              data-testid="home-tiles"
-              className={cn(enterClass, "pt-2")}
-              style={{ animationDelay: "150ms" }}
+          <div
+            data-home-below-notifications=""
+            // Widget declarations resolve during the staged first-mount fade.
+            // Both children are still fully transparent when this box acquires
+            // its final height, but Chromium attributes that invisible resize
+            // as CLS. Scope the existing transient-motion marker to the same
+            // once-only entrance window; later widget changes remain measured.
+            data-eliza-layout-shift-intent={
+              enterClass ? "transient" : undefined
+            }
+            className={hasNotifications ? undefined : "flex-1"}
+          >
+            <div
+              data-home-below-notifications-inner=""
+              className="flex min-h-0 flex-col overflow-hidden"
             >
-              <div className="grid grid-cols-4 gap-3">
-                {tiles.map((tile) => {
-                  const Icon = tile.icon;
-                  return (
-                    <Button
-                      key={tile.id}
-                      data-testid={`home-tile-${tile.id}`}
-                      onClick={() => onOpenTile(tile.target)}
-                      variant="ghost"
-                      className={cn(
-                        // Naked tile: icon + label sit directly on the ambient
-                        // orange field - no fill, no border.
-                        "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5",
-                        WALLPAPER_TEXT.base,
-                        WALLPAPER_FLOAT_SHADOW,
-                        // Tactile press: a quick scale-down on tap (stilled for
-                        // reduce-motion users), plus a faint white wash on hover.
-                        "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
-                        "hover:bg-white/8",
-                      )}
-                    >
-                      <Icon
-                        className="h-[22px] w-[22px] text-white"
-                        aria-hidden
-                      />
-                      <span className="max-w-full truncate text-[11px] font-medium text-white">
-                        {tile.label}
-                      </span>
-                    </Button>
-                  );
-                })}
+              {/* The prioritized data widgets (#9143) yield their region while
+                the notification shade is expanded. A quiet inbox instead lets
+                this block absorb the column's breathing room and centre its
+                content. */}
+              <div
+                className={cn(
+                  enterClass,
+                  "flex min-h-32 flex-col py-6",
+                  !hasNotifications && "flex-1 justify-center",
+                )}
+                style={{ animationDelay: "110ms" }}
+              >
+                <WidgetHost
+                  slot="home"
+                  layout="grid"
+                  events={events}
+                  clearEvents={clearEvents}
+                />
               </div>
-            </nav>
-          ) : null}
+
+              {tiles.length > 0 ? (
+                <nav
+                  aria-label="Apps"
+                  data-testid="home-tiles"
+                  className={cn(enterClass, "pt-2")}
+                  style={{ animationDelay: "150ms" }}
+                >
+                  <div className="grid grid-cols-4 gap-3">
+                    {tiles.map((tile) => {
+                      const Icon = tile.icon;
+                      return (
+                        <Button
+                          key={tile.id}
+                          data-testid={`home-tile-${tile.id}`}
+                          onClick={() => onOpenTile(tile.target)}
+                          variant="ghost"
+                          className={cn(
+                            // Naked tile: icon + label sit directly on the ambient
+                            // orange field - no fill, no border.
+                            "flex h-auto flex-col items-center gap-1.5 whitespace-normal rounded-2xl px-1 py-3.5",
+                            WALLPAPER_TEXT.base,
+                            WALLPAPER_FLOAT_SHADOW,
+                            // Tactile press: a quick scale-down on tap (stilled for
+                            // reduce-motion users), plus a faint white wash on hover.
+                            "transition-[transform,background-color] duration-150 active:scale-[0.96] motion-reduce:active:scale-100",
+                            "hover:bg-white/8",
+                          )}
+                        >
+                          <Icon
+                            className="h-[22px] w-[22px] text-white"
+                            aria-hidden
+                          />
+                          <span className="max-w-full truncate text-[11px] font-medium text-white">
+                            {tile.label}
+                          </span>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </nav>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
     </>

@@ -58,6 +58,8 @@ vi.mock("../../chat/report-composer-activity", () => ({
   reportComposerActivity: vi.fn(),
 }));
 
+import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
+import type { TranscriptSegment } from "@elizaos/shared/transcripts";
 import * as React from "react";
 import { client } from "../../api/client";
 import type {
@@ -84,6 +86,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
@@ -104,7 +107,6 @@ afterEach(() => {
   vi.mocked(reportComposerActivity).mockClear();
   vi.mocked(client.searchConversationMessages).mockReset();
   vi.mocked(Element.prototype.scrollIntoView).mockClear();
-  document.getElementById("chat-message-m-hit")?.remove();
   // Search-jump tests seed the AppContext store with spies; clear it so the
   // inert test-fallback proxy backs every other test again.
   __setAppValueForTests(null);
@@ -124,6 +126,7 @@ function makeController(
     responding: false,
     turnStatus: null,
     recording: false,
+    analyser: null,
     transcript: "",
     transcriptionMode: false,
     // Required ShellController surface the overlay reads unconditionally — the
@@ -137,8 +140,6 @@ function makeController(
     handsFree: false,
     toggleHandsFree: vi.fn(),
     toggleTranscriptionMode: vi.fn(),
-    // A mic tap while transcribing routes through this master voice control.
-    stopTranscriptionAndMic: vi.fn(),
     setDictationSink: vi.fn(),
     setTranscriptSessionSink: vi.fn(),
     setComposerHasDraft: vi.fn(),
@@ -577,6 +578,109 @@ describe("ContinuousChatOverlay", () => {
     }
   });
 
+  it("keeps the resting home clearance fixed while the chat sheet is dragged open", async () => {
+    const originalResizeObserver = globalThis.ResizeObserver;
+    let panelHeight = 76;
+    const resizeCallbacks: ResizeObserverCallback[] = [];
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect");
+    class TestResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallbacks.push(callback);
+      }
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+
+    try {
+      vi.stubGlobal("ResizeObserver", TestResizeObserver);
+      rectSpy.mockImplementation(function (this: HTMLElement) {
+        const height =
+          this.getAttribute("data-testid") === "chat-sheet" ? panelHeight : 0;
+        return {
+          width: 360,
+          height,
+          x: 0,
+          y: 0,
+          top: 0,
+          right: 360,
+          bottom: height,
+          left: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+      document.documentElement.style.removeProperty(
+        "--eliza-continuous-chat-clearance",
+      );
+
+      render(<ContinuousChatOverlay controller={makeController()} />);
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-continuous-chat-clearance",
+        ),
+      ).toBe("76px");
+
+      const grabber = screen.getByTestId("chat-sheet-grabber");
+      fireEvent.pointerDown(grabber, {
+        clientY: 420,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerMove(grabber, {
+        clientY: 380,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      // Live drag samples are coalesced to the display clock. Let that frame
+      // apply while the pointer remains held, then emulate the panel observer
+      // seeing the expanded preview height.
+      await act(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          }),
+      );
+      panelHeight = 180;
+      const notifyResize = resizeCallbacks[0];
+      if (!notifyResize) throw new Error("chat panel was not observed");
+      act(() => notifyResize([], {} as ResizeObserver));
+
+      expect(
+        document.documentElement.style.getPropertyValue(
+          "--eliza-continuous-chat-clearance",
+        ),
+      ).toBe("76px");
+
+      // Change the eventual resting footprint while the preview is frozen,
+      // then cancel the pointer so the sheet settles back to INPUT without a
+      // tap/open decision. The settle completion must perform a fresh
+      // measurement even though the observer's last live-drag delivery was
+      // intentionally ignored.
+      panelHeight = 92;
+      fireEvent.pointerCancel(grabber, {
+        clientY: 380,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      await waitFor(
+        () => {
+          expect(
+            document.documentElement.style.getPropertyValue(
+              "--eliza-continuous-chat-clearance",
+            ),
+          ).toBe("92px");
+        },
+        { timeout: 2_000 },
+      );
+    } finally {
+      rectSpy.mockRestore();
+      vi.stubGlobal("ResizeObserver", originalResizeObserver);
+      document.documentElement.style.removeProperty(
+        "--eliza-continuous-chat-clearance",
+      );
+    }
+  });
+
   it("recomputes the resting composer after portrait-landscape rotation", async () => {
     const originalInnerWidth = Object.getOwnPropertyDescriptor(
       window,
@@ -770,9 +874,8 @@ describe("ContinuousChatOverlay", () => {
     expect(grabber.className).toContain("before:bottom-0");
   });
 
-  // #14331: the waveform pulses whenever capture is hot, but only turns orange
-  // when its own conversation mode is active. Transcription belongs to the
-  // adjacent mic and must not recolor this separate control.
+  // #14331: the waveform reflects only spoken-conversation capture. Dedicated
+  // transcription replaces it with the neutral activity presentation below.
   describe("waveform + pill pulse while capture is hot (#14331)", () => {
     it("does not pulse the mic while idle (neutral resting, no motion)", () => {
       render(<ContinuousChatOverlay controller={makeController()} />);
@@ -791,13 +894,15 @@ describe("ContinuousChatOverlay", () => {
       expect(waveform.className).toContain("animate-pulse");
       expect(waveform.className).toContain("motion-reduce:animate-none");
       expect(waveform.className).toContain("text-accent");
+      expect(waveform.className).toContain("hover:text-accent");
     });
 
-    it.each([
-      ["recording", { recording: true }],
-      ["transcribing", { transcriptionMode: true }],
-    ] as const)("keeps the pulsing waveform neutral while %s", (_label, override) => {
-      render(<ContinuousChatOverlay controller={makeController(override)} />);
+    it("keeps the pulsing waveform neutral during push-to-talk recording", () => {
+      render(
+        <ContinuousChatOverlay
+          controller={makeController({ recording: true })}
+        />,
+      );
       const waveform = screen.getByTestId("chat-composer-mic");
       expect(waveform.className).toContain("animate-pulse");
       expect(waveform.className).not.toContain("text-accent");
@@ -1673,7 +1778,9 @@ describe("ContinuousChatOverlay", () => {
       .getByText("fix my typo")
       .closest('[data-testid="thread-line"]')
       ?.querySelector("div.select-text") as HTMLElement;
-    fireEvent.click(bubble);
+    const row = bubble.closest('[data-testid="thread-line"]');
+    if (!row) throw new Error("message row not found");
+    fireEvent.mouseEnter(row);
     fireEvent.click(screen.getByTestId("thread-line-edit"));
     const editInput = screen.getByTestId("thread-line-edit-input");
 
@@ -1743,10 +1850,89 @@ describe("ContinuousChatOverlay", () => {
     expect(log?.getAttribute("tabindex")).toBe("-1");
   });
 
-  it("shows the attach (+) control", () => {
+  it("keeps the chat-actions menu focused on search and upload", () => {
     render(<ContinuousChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-plus")).toBeTruthy();
+    const plus = screen.getByTestId("chat-composer-plus");
+    expect(plus).toBeTruthy();
     expect(screen.getByLabelText("chat actions")).toBeTruthy();
+
+    fireEvent.pointerDown(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(plus, {
+      button: 0,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(screen.getByText("Search chat…")).toBeTruthy();
+    expect(screen.getByText("Upload file")).toBeTruthy();
+    expect(screen.queryByText("Enable camera")).toBeNull();
+    expect(screen.queryByText("Transcribe")).toBeNull();
+    expect(screen.queryByText("Stop transcribing")).toBeNull();
+  });
+
+  it.each([
+    "half",
+    "full",
+  ] as const)("keeps the %s sheet open while the portaled Upload action opens the file picker", (detent) => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+
+    fireEvent.focus(input);
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    if (detent === "full") {
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 10 });
+      fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 10 });
+      fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 10 });
+      expect(sheet.getAttribute("data-detent")).toBe("full");
+    }
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const openPicker = vi
+      .spyOn(fileInput, "click")
+      .mockImplementation(() => {});
+    fireEvent.pointerDown(screen.getByTestId("chat-composer-plus"), {
+      button: 0,
+      pointerId: 11,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(screen.getByTestId("chat-composer-plus"), {
+      button: 0,
+      pointerId: 11,
+      pointerType: "mouse",
+    });
+    const upload = screen.getByText("Upload file").closest('[role="menuitem"]');
+    if (!(upload instanceof HTMLElement)) {
+      throw new Error("Upload menu item not found");
+    }
+
+    // Drive the complete pointer sequence: the regression lived in the
+    // document capture handlers and a synthetic click alone could not see it.
+    fireEvent.pointerDown(upload, {
+      button: 0,
+      clientX: 40,
+      clientY: 40,
+      pointerId: 12,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(upload, {
+      button: 0,
+      clientX: 40,
+      clientY: 40,
+      pointerId: 12,
+      pointerType: "mouse",
+    });
+    fireEvent.click(upload);
+
+    expect(openPicker).toHaveBeenCalledTimes(1);
+    expect(sheet.getAttribute("data-detent")).toBe(detent);
   });
 
   it("attaches an image and enables an image-only send", async () => {
@@ -1764,7 +1950,11 @@ describe("ContinuousChatOverlay", () => {
 
     // Once the read resolves, a thumbnail + send control appear.
     await screen.findByLabelText("send");
-    expect(screen.getByLabelText(/remove pic\.png/)).toBeTruthy();
+    expect(
+      document.querySelector('[data-slot="attachment-group"]'),
+    ).toBeTruthy();
+    expect(document.querySelector('[data-slot="attachment"]')).toBeTruthy();
+    expect(screen.getByLabelText(/remove pic\.png/i)).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("send"));
     expect(controller.send).toHaveBeenCalledWith(
@@ -1893,6 +2083,40 @@ describe("ContinuousChatOverlay", () => {
     expect(bar?.className).not.toContain("flex-wrap");
     expect(input.className).toContain("flex-1");
     expect(input.className).not.toContain("basis-full");
+  });
+
+  it("keeps long-draft scrolling inside the composer without stepping the sheet", () => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const input = screen.getByTestId("chat-composer-textarea");
+
+    fireEvent.focus(input);
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    expect(input.hasAttribute("data-chat-sheet-scroll-region")).toBe(true);
+    expect(input.className).toContain("chat-composer-scrollbar");
+    expect(input.className).toContain("overflow-y-auto");
+    expect(input.className).toContain("overscroll-contain");
+    expect(input.className).toContain("pr-3");
+    expect(input.className).not.toContain("scrollbar-hide");
+
+    fireEvent.wheel(input, { deltaY: 120 });
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+
+    Object.defineProperties(input, {
+      clientHeight: { configurable: true, value: 136 },
+      scrollHeight: { configurable: true, value: 500 },
+      scrollTop: { configurable: true, value: 0, writable: true },
+    });
+    fireEvent.scroll(input);
+    expect(input.getAttribute("data-scroll-fade")).toBe("bottom");
+
+    input.scrollTop = 100;
+    fireEvent.scroll(input);
+    expect(input.getAttribute("data-scroll-fade")).toBe("both");
+
+    input.scrollTop = 364;
+    fireEvent.scroll(input);
+    expect(input.getAttribute("data-scroll-fade")).toBe("top");
   });
 
   it("renders no prompt-suggestion chips while the strip is flagged off", () => {
@@ -2141,7 +2365,7 @@ describe("ContinuousChatOverlay", () => {
     expect(normal.closest('[data-failure="no_provider"]')).toBeNull();
   });
 
-  it("press-and-hold copies an assistant message and flashes confirmation", () => {
+  it("press-and-hold copies an assistant message without a popup", () => {
     vi.useFakeTimers();
     try {
       vi.mocked(copyTextToClipboard).mockClear();
@@ -2169,7 +2393,7 @@ describe("ContinuousChatOverlay", () => {
         vi.advanceTimersByTime(450); // past the hold threshold
       });
       expect(copyTextToClipboard).toHaveBeenCalledWith("the answer is 42");
-      expect(screen.getByTestId("thread-line-copied")).toBeTruthy();
+      expect(screen.queryByText("Copied")).toBeNull();
     } finally {
       vi.useRealTimers();
     }
@@ -2380,16 +2604,17 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.getByTestId("chat-composer-textarea")).toBeTruthy();
   });
 
-  it("shows the transcribe (mic-glyph) button beside the voice control at rest — ChatGPT arrangement", () => {
-    // Resting composer: BOTH controls are always available — the mic glyph
-    // starts a transcription/dictation session, the waveform glyph next to it
-    // is the spoken conversation. (Previously transcribe only appeared once a
-    // voice session was already live.)
+  it("keeps spoken conversation before the rightmost transcription mic at rest", () => {
+    // Resting composer: both controls stay available, with spoken conversation
+    // first and dictation rightmost so that mic can morph directly into Stop.
     render(<ContinuousChatOverlay controller={makeController()} />);
-    expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
+    const voice = screen.getByTestId("chat-composer-mic");
     const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
     expect(transcribe.getAttribute("aria-label")).toBe("start transcription");
+    expect(
+      voice.compareDocumentPosition(transcribe) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("resting transcribe tap starts a transcription session", () => {
@@ -2425,7 +2650,8 @@ describe("ContinuousChatOverlay", () => {
         } as unknown as Partial<ShellController>)}
       />,
     );
-    // Both controls present in voice mode; the mic stays the master control.
+    // Idle dictation and spoken-conversation controls remain independently
+    // available when neither mode owns capture.
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
     expect(
@@ -2433,95 +2659,215 @@ describe("ContinuousChatOverlay", () => {
     ).toBe("start transcription");
   });
 
-  it("shows the transcribe button (as stop) while transcribing, alongside the status badge (#10699)", () => {
+  it("gives active transcription the full lane plus one Stop control", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
           transcriptionMode: true,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.focus(screen.getByLabelText("message"));
-    expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
-    const transcribe = screen.getByTestId("chat-composer-transcribe");
-    expect(transcribe).toBeTruthy();
-    expect(transcribe.getAttribute("aria-label")).toBe("stop transcription");
-  });
-
-  it("clicking the transcribe button toggles transcription mode (#10699)", () => {
-    const toggleTranscriptionMode = vi.fn();
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          handsFree: true,
-          recording: true,
-          toggleTranscriptionMode,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-transcribe"));
-    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps the waveform pressed but visually neutral while the mic transcribes", () => {
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          toggleTranscriptionMode: vi.fn(),
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    const waveform = screen.getByTestId("chat-composer-mic");
-    expect(waveform.getAttribute("aria-pressed")).toBe("true");
-    expect(waveform.className).toContain("animate-pulse");
-    expect(waveform.className).toContain("text-muted-strong");
-    expect(waveform.className).not.toContain("text-accent");
-  });
-
-  it("a mic tap while transcribing ends transcription, never starts a conversation", () => {
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
-        } as unknown as Partial<ShellController>)}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    // The mic is the master voice control: a tap ends transcription AND the mic
-    // (stopTranscriptionAndMic → finished transcript drops into the composer);
-    // it must NOT open a hands-free conversation.
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
-  });
-
-  it("a mic tap ends transcription even while a reply is in flight (#9880 inline reply)", () => {
-    // A wake-word inline reply during transcription flips `responding` true
-    // while `handsFree` is false (the transcript layer paused it). The mic —
-    // labeled "stop transcription" — must still turn the session off; gating
-    // the OFF path on `responding` left a lit, dead mic button until the reply
-    // finished.
-    const stopTranscriptionAndMic = vi.fn();
-    const toggleHandsFree = vi.fn();
-    render(
-      <ContinuousChatOverlay
-        controller={makeController({
-          transcriptionMode: true,
-          recording: true,
           responding: true,
-          handsFree: false,
-          stopTranscriptionAndMic,
-          toggleHandsFree,
+          canSend: false,
         } as unknown as Partial<ShellController>)}
       />,
     );
-    fireEvent.click(screen.getByTestId("chat-composer-mic"));
-    expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    expect(toggleHandsFree).not.toHaveBeenCalled();
+
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    expect(screen.getByTestId("chat-transcribing-badge")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-plus")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-textarea")).toBeNull();
+    expect(screen.getByTestId("chat-composer-mic-activity")).toBeTruthy();
+    expect(screen.queryByTestId("chat-composer-mic")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-transcribe")).toBeNull();
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .querySelectorAll("span[style]").length,
+    ).toBe(15);
+
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    expect(stopTranscription.getAttribute("aria-label")).toBe(
+      "stop transcription",
+    );
+    // A stopped agent blocks delivery, not finalization back into the draft.
+    expect(stopTranscription.getAttribute("aria-disabled")).toBe("false");
+    expect(
+      screen
+        .getByTestId("chat-composer-trailing-controls")
+        .contains(stopTranscription),
+    ).toBe(true);
+    expect(screen.queryByTestId("chat-composer-transcribe-status")).toBeNull();
+  });
+
+  it("Stop drains a completed transcript into the existing draft without sending", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(async () => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 900,
+            text: "captured words",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        null,
+      );
+    });
+    const setTranscriptSessionSink = vi.fn((nextSink: typeof sink) => {
+      sink = nextSink;
+    });
+    const inactiveController = makeController({
+      send,
+      setTranscriptSessionSink,
+      toggleTranscriptionMode,
+    });
+    const { rerender } = render(
+      <ContinuousChatOverlay controller={inactiveController} />,
+    );
+    fireEvent.change(screen.getByLabelText("message"), {
+      target: { value: "notes so far" },
+    });
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          send,
+          transcriptionMode: true,
+          setTranscriptSessionSink,
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("chat-composer-transcription-stop"));
+    });
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+
+    rerender(<ContinuousChatOverlay controller={inactiveController} />);
+    expect(
+      (screen.getByLabelText("message") as HTMLTextAreaElement).value,
+    ).toBe("notes so far captured words");
+  });
+
+  it("Stop preserves the collapsed detent and does not focus the restored draft", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const toggleTranscriptionMode = vi.fn(async () => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 900,
+            text: "quietly restored",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        null,
+      );
+    });
+    const setTranscriptSessionSink = vi.fn((nextSink: typeof sink) => {
+      sink = nextSink;
+    });
+    const inactiveController = makeController({
+      setTranscriptSessionSink,
+      toggleTranscriptionMode,
+    });
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          setTranscriptSessionSink,
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("chat-composer-transcription-stop"));
+    });
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    rerender(<ContinuousChatOverlay controller={inactiveController} />);
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+    expect(input.value).toBe("quietly restored");
+    expect(sheet.getAttribute("data-detent")).toBe("collapsed");
+    expect(document.activeElement).not.toBe(input);
+  });
+
+  it("an empty finalization never sends and ignores a second in-flight tap", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    let releaseDrain: (() => void) | null = null;
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          sink?.([], 1_700_000_000_000, null);
+          releaseDrain = resolve;
+        }),
+    );
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          send,
+          setTranscriptSessionSink: (nextSink: typeof sink) => {
+            sink = nextSink;
+          },
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+    const stopTranscription = screen.getByTestId(
+      "chat-composer-transcription-stop",
+    );
+    fireEvent.click(stopTranscription);
+    fireEvent.click(stopTranscription);
+    expect(toggleTranscriptionMode).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      screen
+        .getByTestId("chat-composer-mic-activity")
+        .getAttribute("aria-label"),
+    ).toBe("Finishing transcription");
+    expect(
+      screen
+        .getByTestId("chat-composer-transcription-stop")
+        .getAttribute("aria-label"),
+    ).toBe("finishing transcription");
+    expect(screen.queryByTestId("chat-composer-action")).toBeNull();
+
+    await act(async () => {
+      releaseDrain?.();
+    });
   });
 
   it("the audio-unlock chip works while the sheet is open (not swallowed as an outside tap)", () => {
@@ -2553,36 +2899,6 @@ describe("ContinuousChatOverlay", () => {
     expect(unlockAudio).toHaveBeenCalledTimes(1);
     // The sheet must stay open — the chip tap is not an outside collapse.
     expect(sheet.getAttribute("data-variant")).toBe("open");
-  });
-
-  it("does not enter push-to-talk on a long press while transcribing", () => {
-    vi.useFakeTimers();
-    try {
-      const stopTranscriptionAndMic = vi.fn();
-      const startRecording = vi.fn();
-      render(
-        <ContinuousChatOverlay
-          controller={makeController({
-            transcriptionMode: true,
-            stopTranscriptionAndMic,
-            startRecording,
-          } as unknown as Partial<ShellController>)}
-        />,
-      );
-
-      const mic = screen.getByTestId("chat-composer-mic");
-      fireEvent.pointerDown(mic, { button: 0, pointerId: 1 });
-      act(() => {
-        vi.advanceTimersByTime(250);
-      });
-      fireEvent.pointerUp(mic, { button: 0, pointerId: 1 });
-      fireEvent.click(mic);
-
-      expect(startRecording).not.toHaveBeenCalled();
-      expect(stopTranscriptionAndMic).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("push-to-talk dictates into the composer on release; the label matches (never 'send')", () => {
@@ -2722,6 +3038,60 @@ describe("ContinuousChatOverlay", () => {
     expect(controller.send).not.toHaveBeenCalled();
   });
 
+  it("keeps the oversized-recording warning visible when Stop restores the transcript", async () => {
+    let sink:
+      | ((
+          segments: TranscriptSegment[],
+          startedAt: number,
+          audioWav: Uint8Array | null,
+        ) => void)
+      | null = null;
+    const oversizedAudio = new Uint8Array([82, 73, 70, 70]);
+    Object.defineProperty(oversizedAudio, "byteLength", {
+      value: MAX_CHAT_MEDIA_RAW_BYTES + 1,
+    });
+    const send = vi.fn();
+    const toggleTranscriptionMode = vi.fn(() => {
+      sink?.(
+        [
+          {
+            id: "s1",
+            startMs: 0,
+            endMs: 900,
+            text: "keep the transcript",
+            words: [],
+          },
+        ],
+        1_700_000_000_000,
+        oversizedAudio,
+      );
+    });
+
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          transcriptionMode: true,
+          send,
+          setTranscriptSessionSink: (nextSink) => {
+            sink = nextSink;
+          },
+          toggleTranscriptionMode,
+        })}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("chat-composer-transcription-stop"));
+    });
+
+    expect(send).not.toHaveBeenCalled();
+    expect(screen.queryByText(/^Recording .*\.wav$/)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Recording too large to attach",
+    );
+    expect(screen.getByRole("alert").textContent).toContain("transcript kept");
+  });
+
   // ── SheetGrabber inert-while-pilled (the symmetric half of the PillHandle
   // pilled-gating above; #8772). The grabber and the pill capsule occupy the
   // same bottom region; exactly ONE may own the gesture / a11y tree at a time.
@@ -2797,7 +3167,7 @@ describe("ContinuousChatOverlay", () => {
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
-    it("labels the thinking phase in the standalone status row", () => {
+    it("renders the thinking phase as a chromeless action-lane shimmer", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -2812,12 +3182,16 @@ describe("ContinuousChatOverlay", () => {
       expect(indicator.getAttribute("data-status-kind")).toBe("thinking");
       expect(indicator.getAttribute("role")).toBe("status");
       expect(indicator.getAttribute("aria-live")).toBe("polite");
-      // The standalone status row carries a word for every phase (including
-      // thinking) beside a spinner — the bare-dots variant is the in-bubble one.
-      expect(screen.getByTestId("turn-status-label").textContent).toContain(
-        "Thinking",
-      );
-      expect(screen.getByTestId("turn-status-spinner")).toBeTruthy();
+      const label = screen.getByTestId("turn-status-label");
+      expect(label.textContent).toContain("Thinking");
+      expect(label.className).toContain("shimmer");
+      expect(screen.queryByTestId("turn-status-spinner")).toBeNull();
+      const accessory = screen.getByTestId("turn-status-accessory");
+      expect(accessory.className).not.toContain("rounded");
+      expect(accessory.className).not.toContain("border");
+      expect(
+        accessory.closest('[data-testid="thread-line-actions"]'),
+      ).toBeTruthy();
     });
 
     it("humanizes the action name for a running_action phase", () => {
@@ -2836,7 +3210,7 @@ describe("ContinuousChatOverlay", () => {
       );
     });
 
-    it("shows one shimmering status marker inside the in-flight assistant row", () => {
+    it("keeps one action-lane shimmer while the empty assistant placeholder arrives", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -2852,10 +3226,17 @@ describe("ContinuousChatOverlay", () => {
         />,
       );
       fireEvent.focus(screen.getByLabelText("message"));
-      // Exactly one indicator (no double-up between the bubble + standalone row).
+      // The transport placeholder stays non-visual; status stays on the latest
+      // real message's action lane, so there is no bubble swap before token one.
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
       expect(indicators[0].getAttribute("data-status-kind")).toBe("waking");
+      expect(
+        screen.getByTestId("turn-status-accessory").contains(indicators[0]),
+      ).toBe(true);
+      expect(
+        indicators[0].closest('[data-testid="thread-line"]')?.textContent,
+      ).toContain("do it");
       const label = screen.getByTestId("turn-status-label");
       expect(label.textContent).toBe("Waking the agent");
       expect(label.className).toContain("shimmer");
@@ -3112,12 +3493,15 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
 
     // Panel is closed at rest.
     expect(screen.queryByTestId("chat-message-search")).toBeNull();
-    // "+" → "Search chat…" reveals the search panel over the transcript.
+    // "+" → "Search chat…" reveals search on the sheet's existing liquid-glass
+    // surface without stacking a second black backdrop blur over it.
     openSearchFromComposerMenu();
     const searchLayer = screen.getByTestId("chat-message-search");
-    expect(searchLayer.className).toContain("bg-black/20");
-    expect(searchLayer.className).not.toContain("bg-scrim");
+    expect(searchLayer.className).not.toContain("backdrop-blur");
+    expect(searchLayer.className).not.toContain("bg-black");
     expect(screen.getByTestId("message-search-panel")).toBeTruthy();
+    expect(thread().getAttribute("aria-hidden")).toBe("true");
+    expect(thread().tabIndex).toBe(-1);
   });
 
   it("drives the header search → query → jump path against the real search API shape (#14330)", async () => {
@@ -3126,12 +3510,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     // inert test-fallback proxy (noop for everything else the overlay reads via
     // other selectors) so only the jump collaborators are observable.
     const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
-    const aroundSpy = vi.fn(async () => {
-      const anchor = document.createElement("div");
-      anchor.id = "chat-message-m-hit";
-      document.body.appendChild(anchor);
-      return true;
-    });
+    const aroundSpy = vi.fn(async () => true);
     const noop = () => {};
     __setAppValueForTests(
       new Proxy({} as never, {
@@ -3151,8 +3530,8 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     // The panel renders exactly what the server route returns; use its real
     // response shape (ranked hits with snippet/role/createdAt).
     const hit: ConversationMessageSearchResult = {
-      messageId: "m-hit",
-      conversationId: "conv-42",
+      messageId: "a",
+      conversationId: "b",
       roomId: "room-1",
       role: "assistant",
       text: "the quarterly budget review is on friday",
@@ -3184,23 +3563,116 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
     expect(result.textContent).toContain("budget");
 
-    // Selecting the hit jumps to its conversation (the real jump plumbing) and
-    // then loads the centered around-window because this fixture starts with no
-    // DOM anchor for the hit.
+    // The rendered glass row itself owns the canonical anchor. This catches the
+    // production bug the old fixture hid by appending a fake body-level div.
+    const anchor = document.getElementById("chat-message-a");
+    expect(anchor?.getAttribute("data-slot")).toBe("message-scroller-item");
+    const bubble = anchor?.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
+    expect(bubble).toBeTruthy();
+
+    // Selecting the hit closes search and hands the jump to MessageScroller's
+    // coordinated state machine. The raw DOM fallback must stay unused for a
+    // flat registered row, or bottom-follow can overwrite the jump on resize.
     fireEvent.click(result);
-    expect(selectSpy).toHaveBeenCalledWith("conv-42");
+    expect(selectSpy).toHaveBeenCalledWith("b");
+    expect(aroundSpy).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(aroundSpy).toHaveBeenCalledWith("conv-42", "m-hit"),
+      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
     );
-    await waitFor(() =>
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-        block: "center",
-        behavior: "smooth",
-      }),
-    );
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    expect(bubble?.style.outline).toContain("rgba(255, 255, 255, 0.96)");
+    expect(bubble?.style.outlineOffset).toBe("-2px");
     await waitFor(() =>
       expect(screen.queryByTestId("chat-message-search")).toBeNull(),
     );
+  });
+
+  it("reveals an already-loaded windowed result before falling back to the network", async () => {
+    const targetId = "loaded-but-windowed";
+    const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
+    const aroundSpy = vi.fn(async () => false);
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_target, prop) {
+          if (prop === "handleSelectConversation") return selectSpy;
+          if (prop === "loadConversationMessagesAround") return aroundSpy;
+          if (prop === "t") return (key: string) => key;
+          if (prop === "uiLanguage") return "en";
+          if (prop === "navigation") {
+            return { scheduleAfterTabCommit: (fn: () => void) => fn() };
+          }
+          return noop;
+        },
+      }),
+    );
+
+    const loadedMessages: ShellMessage[] = Array.from(
+      { length: 81 },
+      (_, index) => ({
+        id: index === 0 ? targetId : `loaded-message-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        content:
+          index === 0
+            ? "This loaded result sits just outside the mounted window."
+            : `Loaded message ${index}`,
+        createdAt: index + 1,
+      }),
+    );
+    vi.mocked(client.searchConversationMessages).mockResolvedValue({
+      results: [
+        {
+          messageId: targetId,
+          conversationId: "b",
+          roomId: "room-b",
+          role: "user",
+          text: loadedMessages[0]?.content ?? "",
+          snippet: loadedMessages[0]?.content ?? "",
+          createdAt: 1,
+          score: 8,
+        },
+      ],
+      count: 1,
+    });
+
+    const conversationNav = buildConversationNav(CONVERSATIONS, "b", vi.fn());
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: loadedMessages,
+          conversationNav,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    openSheet();
+    expect(
+      document.getElementById(getChatMessageAnchorId(targetId)),
+    ).toBeNull();
+
+    openSearchFromComposerMenu();
+    fireEvent.change(screen.getByTestId("message-search-input"), {
+      target: { value: "outside mounted window" },
+    });
+    const result = await waitFor(() =>
+      screen.getByTestId("message-search-result"),
+    );
+    fireEvent.click(result);
+
+    const anchor = await waitFor(() => {
+      const element = document.getElementById(getChatMessageAnchorId(targetId));
+      expect(element).toBeTruthy();
+      return element as HTMLElement;
+    });
+    const bubble = anchor.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
+    await waitFor(() =>
+      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
+    );
+    expect(selectSpy).toHaveBeenCalledWith("b");
+    expect(aroundSpy).not.toHaveBeenCalled();
   });
 
   it("renders a distinguishable error state when the search API rejects (#14330)", async () => {
@@ -3689,8 +4161,8 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
   });
 });
 
-// Per-message click-to-reveal action row (#10713): assistant → Copy + Play,
-// user → Copy + Edit-and-resend, temp turns are not editable.
+// Per-message hover/touch action row (#10713): assistant → Copy + Play, user →
+// Copy + Edit-and-resend, and optimistic turns stay non-editable.
 describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
   function openThreadWith(overrides: Partial<ShellController>) {
     render(
@@ -3709,6 +4181,12 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ?.querySelector("div.select-text") as HTMLElement;
   }
 
+  function revealActionsFor(text: string): void {
+    const row = bubbleFor(text).closest('[data-testid="thread-line"]');
+    if (!row) throw new Error(`message row not found for: ${text}`);
+    fireEvent.mouseEnter(row);
+  }
+
   it("reveals Copy + Play on an assistant message and no top-menu copy button", () => {
     const speak = vi.fn();
     openThreadWith({
@@ -3718,10 +4196,14 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    // No row until the bubble is clicked.
-    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
-    fireEvent.click(bubbleFor("the answer"));
-    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    // The bare lane stays mounted in its reserved slot; inert keeps hidden
+    // controls out of interaction until the row is hovered or touch-revealed.
+    const actions = screen.getByTestId("thread-line-actions");
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
+    revealActionsFor("the answer");
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(actions.hasAttribute("inert")).toBe(false);
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.getByTestId("thread-line-speak")).toBeTruthy();
     // Assistant has no edit affordance.
@@ -3730,6 +4212,49 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(
       screen.queryByRole("button", { name: /copy conversation/i }),
     ).toBeNull();
+  });
+
+  it("reserves an animated reply lane without focusing and clears it when the sheet closes", async () => {
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: [
+            {
+              id: "reply-source",
+              role: "assistant",
+              content: "Reply without moving the sheet",
+              createdAt: 1,
+            },
+          ],
+        })}
+      />,
+    );
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 1 });
+    fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 1 });
+    fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 1 });
+    const input = screen.getByLabelText("message");
+    expect(document.activeElement).not.toBe(input);
+    const detentBeforeReply = sheet.getAttribute("data-detent");
+
+    revealActionsFor("Reply without moving the sheet");
+    fireEvent.click(screen.getByTestId("thread-line-reply"));
+
+    const replyPill = screen.getByTestId("chat-reply-pill");
+    expect(screen.getByTestId("chat-thread").contains(replyPill)).toBe(true);
+    const replyLane = screen.getByTestId("chat-reply-lane");
+    expect(replyLane.className).toContain("shrink-0");
+    expect(replyLane.className).toContain("overflow-hidden");
+    expect(replyLane.className).not.toContain("absolute");
+    expect(sheet.getAttribute("data-detent")).toBe(detentBeforeReply);
+    expect(document.activeElement).not.toBe(input);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(sheet.getAttribute("data-variant")).toBe("closed");
+    await waitFor(() => {
+      expect(screen.queryByTestId("chat-reply-pill")).toBeNull();
+    });
   });
 
   it("Play speaks the assistant message via the controller", () => {
@@ -3741,7 +4266,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       speak,
       speaking: false,
     });
-    fireEvent.click(bubbleFor("read me aloud"));
+    revealActionsFor("read me aloud");
     fireEvent.click(screen.getByTestId("thread-line-speak"));
     expect(speak).toHaveBeenCalledWith("read me aloud");
   });
@@ -3757,7 +4282,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       stopSpeaking,
       speaking: true,
     });
-    fireEvent.click(bubbleFor("now playing"));
+    revealActionsFor("now playing");
     const play = screen.getByTestId("thread-line-speak");
     // The agent is globally speaking, but nothing has been Played from THIS
     // bubble, so it still offers Play (not a spurious Stop — the old bug).
@@ -3785,8 +4310,8 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     });
     // Reveal both action rows. With the global `speaking` flag set but nothing
     // Played yet, NEITHER bubble claims Stop (the old bug lit every bubble).
-    fireEvent.click(bubbleFor("first answer"));
-    fireEvent.click(bubbleFor("second answer"));
+    revealActionsFor("first answer");
+    revealActionsFor("second answer");
     expect(
       screen
         .getAllByTestId("thread-line-speak")
@@ -3803,6 +4328,59 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     ).toEqual(["Stop", "Play audio"]);
   });
 
+  it("keeps the Speaking status on the older message that started playback", () => {
+    const speak = vi.fn();
+    const messages: ShellMessage[] = [
+      {
+        id: "older-assistant",
+        role: "assistant",
+        content: "older answer",
+        createdAt: 1,
+      },
+      {
+        id: "newer-assistant",
+        role: "assistant",
+        content: "newer answer",
+        createdAt: 2,
+      },
+    ];
+    const { rerender } = render(
+      <ContinuousChatOverlay
+        controller={makeController({ messages, speak, speaking: false })}
+      />,
+    );
+    fireEvent.focus(screen.getByLabelText("message"));
+    revealActionsFor("older answer");
+    const olderRow = screen
+      .getByText("older answer")
+      .closest('[data-testid="thread-line"]');
+    if (!olderRow) throw new Error("older message row not found");
+    fireEvent.click(
+      olderRow.querySelector(
+        '[data-testid="thread-line-speak"]',
+      ) as HTMLElement,
+    );
+
+    rerender(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages,
+          speak,
+          speaking: true,
+          responding: true,
+          turnStatus: { kind: "speaking" },
+        })}
+      />,
+    );
+
+    const statusRow = screen
+      .getByTestId("turn-status-accessory")
+      .closest('[data-testid="thread-line"]');
+    expect(statusRow).toBe(olderRow);
+    expect(statusRow?.textContent).toContain("Speaking");
+    expect(statusRow?.textContent).not.toContain("newer answer");
+  });
+
   it("row Copy writes the message text to the clipboard", () => {
     vi.mocked(copyTextToClipboard).mockClear();
     openThreadWith({
@@ -3811,31 +4389,52 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ],
       speak: vi.fn(),
     });
-    fireEvent.click(bubbleFor("copy this text"));
+    revealActionsFor("copy this text");
     fireEvent.click(screen.getByTestId("thread-line-copy"));
     expect(copyTextToClipboard).toHaveBeenCalledWith("copy this text");
   });
 
-  it("reveals Copy + Edit on a user message and resends the edited text", () => {
+  it("edits a user message in place without creating a duplicate turn", async () => {
     const send = vi.fn();
+    const stopSpeaking = vi.fn();
+    const handleChatEdit = vi.fn().mockResolvedValue(true);
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_target, prop) {
+          if (prop === "handleChatEdit") return handleChatEdit;
+          return noop;
+        },
+      }),
+    );
     openThreadWith({
       messages: [{ id: "u", role: "user", content: "helo wrld", createdAt: 1 }],
       send,
+      stopSpeaking,
     });
-    fireEvent.click(bubbleFor("helo wrld"));
+    revealActionsFor("helo wrld");
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.getByTestId("thread-line-edit")).toBeTruthy();
     // User turns have no play control.
     expect(screen.queryByTestId("thread-line-speak")).toBeNull();
 
     fireEvent.click(screen.getByTestId("thread-line-edit"));
+    expect(
+      screen.getByTestId("thread-line-actions").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(screen.getByTestId("thread-line-edit-controls")).toBeTruthy();
+    expect(screen.queryByTestId("thread-line-action-surface")).toBeNull();
     const input = screen.getByTestId(
       "thread-line-edit-input",
     ) as HTMLTextAreaElement;
     expect(input.value).toBe("helo wrld");
     fireEvent.change(input, { target: { value: "hello world" } });
     fireEvent.click(screen.getByTestId("thread-line-edit-save"));
-    expect(send).toHaveBeenCalledWith("hello world");
+    await waitFor(() => {
+      expect(handleChatEdit).toHaveBeenCalledWith("u", "hello world");
+    });
+    expect(stopSpeaking).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
   });
 
   it("does not offer Edit on an optimistic temp- user turn", () => {
@@ -3845,7 +4444,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ],
       send: vi.fn(),
     });
-    fireEvent.click(bubbleFor("pending turn"));
+    revealActionsFor("pending turn");
     expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
     expect(screen.queryByTestId("thread-line-edit")).toBeNull();
   });
@@ -3857,10 +4456,12 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       ],
       speak: vi.fn(),
     });
-    fireEvent.click(bubbleFor("tap away"));
-    expect(screen.getByTestId("thread-line-actions")).toBeTruthy();
+    revealActionsFor("tap away");
+    const actions = screen.getByTestId("thread-line-actions");
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
     fireEvent.pointerDown(document.body);
-    expect(screen.queryByTestId("thread-line-actions")).toBeNull();
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.hasAttribute("inert")).toBe(true);
   });
 
   it("Escape cancels the inline editor without resending", () => {
@@ -3869,13 +4470,35 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
       messages: [{ id: "u", role: "user", content: "keep me", createdAt: 1 }],
       send,
     });
-    fireEvent.click(bubbleFor("keep me"));
+    revealActionsFor("keep me");
     fireEvent.click(screen.getByTestId("thread-line-edit"));
     const input = screen.getByTestId("thread-line-edit-input");
     fireEvent.change(input, { target: { value: "changed" } });
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
+    expect(
+      screen.getByTestId("thread-line-actions").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-edit")).toBeTruthy();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it("returns to the three message actions when Cancel closes an edit", () => {
+    openThreadWith({
+      messages: [{ id: "u", role: "user", content: "keep me", createdAt: 1 }],
+      send: vi.fn(),
+    });
+    revealActionsFor("keep me");
+    fireEvent.click(screen.getByTestId("thread-line-edit"));
+    fireEvent.click(screen.getByTestId("thread-line-edit-cancel"));
+
+    expect(screen.queryByTestId("thread-line-edit-input")).toBeNull();
+    expect(
+      screen.getByTestId("thread-line-actions").getAttribute("aria-hidden"),
+    ).toBe("false");
+    expect(screen.getByTestId("thread-line-copy")).toBeTruthy();
+    expect(screen.getByTestId("thread-line-edit")).toBeTruthy();
   });
 });
 

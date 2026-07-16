@@ -244,6 +244,7 @@ function ingest(
 }
 
 interface WsAgentEvent {
+  replayed?: boolean;
   stream?: string;
   payload?: unknown;
 }
@@ -330,6 +331,10 @@ function validateWsNotification(value: unknown): AgentNotification | null {
 
 function handleWsAgentEvent(data: Record<string, unknown>): void {
   const event = data as WsAgentEvent;
+  // HTTP hydration/reconciliation is the canonical inbox snapshot. Buffered
+  // socket history exists for idempotent stream consumers and must never be
+  // mistaken for a fresh arrival that replays banners or stale unread state.
+  if (event.replayed === true) return;
   if (event.stream !== "notification") return;
   const payload =
     event.payload && typeof event.payload === "object"
@@ -399,14 +404,21 @@ function hydrationErrorMessage(error: unknown): string {
     : "Notification inbox hydration failed";
 }
 
-async function runHydrationAttempt(generation: number): Promise<void> {
-  const attempt = state.hydrationAttempts + 1;
+async function runHydrationAttempt(
+  generation: number,
+  preserveReadyState = false,
+): Promise<void> {
+  const backgroundReconciliation =
+    preserveReadyState && state.hydrated && state.hydrationStatus === "ready";
+  const attempt = backgroundReconciliation ? 1 : state.hydrationAttempts + 1;
   const liveRevisionAtStart = liveEventRevision;
-  setState({
-    hydrated: false,
-    hydrationStatus: attempt === 1 ? "loading" : "retrying",
-    hydrationAttempts: attempt,
-  });
+  if (!backgroundReconciliation) {
+    setState({
+      hydrated: false,
+      hydrationStatus: attempt === 1 ? "loading" : "retrying",
+      hydrationAttempts: attempt,
+    });
+  }
   try {
     const res = await client.listNotifications({ limit: 100 });
     if (generation !== hydrationGeneration) return;
@@ -414,7 +426,10 @@ async function runHydrationAttempt(generation: number): Promise<void> {
       clearTimeout(hydrationRetryTimer);
       hydrationRetryTimer = null;
     }
-    const notifications = mergeHydratedNotifications(res.notifications);
+    const notifications =
+      liveEventRevision === liveRevisionAtStart
+        ? res.notifications
+        : mergeHydratedNotifications(res.notifications);
     const hydrationStatus =
       res.serviceStatus === "disabled" ? "disabled" : "ready";
     setState({
@@ -437,6 +452,13 @@ async function runHydrationAttempt(generation: number): Promise<void> {
     // error-policy:J1 transport boundary — bounded background retries keep the
     // live subscription active while surfacing terminal failure in store state.
     if (generation !== hydrationGeneration) return;
+    if (backgroundReconciliation && isRetryableHydrationError(err)) {
+      logger.warn(
+        { err },
+        "[notification-store] inbox reconciliation failed; preserving hydrated state",
+      );
+      return;
+    }
     const message = hydrationErrorMessage(err);
     const retryable =
       isRetryableHydrationError(err) && attempt < HYDRATION_MAX_ATTEMPTS;
@@ -469,7 +491,9 @@ async function runHydrationAttempt(generation: number): Promise<void> {
   }
 }
 
-function requestHydration(): Promise<void> {
+function requestHydration(
+  options: { preserveReadyState?: boolean } = {},
+): Promise<void> {
   if (!notificationProbesEnabled()) {
     // No session yet on the shared Cloud app — skip the protected fetch (it
     // would 401 and Chromium logs the console error) and re-arm once, so the
@@ -487,7 +511,10 @@ function requestHydration(): Promise<void> {
   if (hydrationInFlight) return hydrationInFlight;
   if (state.hydrationStatus === "failed") return Promise.resolve();
   const generation = hydrationGeneration;
-  const run = runHydrationAttempt(generation);
+  const run = runHydrationAttempt(
+    generation,
+    options.preserveReadyState ?? false,
+  );
   let tracked: Promise<void>;
   tracked = run.finally(() => {
     if (hydrationInFlight === tracked) hydrationInFlight = null;
@@ -508,6 +535,20 @@ export function retryNotificationHydration(): Promise<void> {
   return requestHydration();
 }
 
+/** Reconcile lifecycle gaps without blanking a successfully-hydrated inbox. */
+function reconcileNotificationHydration(): Promise<void> {
+  if (state.hydrationStatus === "failed") {
+    return retryNotificationHydration();
+  }
+  if (
+    state.hydrationStatus === "loading" ||
+    state.hydrationStatus === "retrying"
+  ) {
+    return hydrationInFlight ?? Promise.resolve();
+  }
+  return requestHydration({ preserveReadyState: true });
+}
+
 /** Idempotent boot: hydrate the inbox and subscribe to live notifications. */
 export function initNotifications(): void {
   if (initialized) return;
@@ -515,56 +556,28 @@ export function initNotifications(): void {
   notificationCleanups.push(
     client.onWsEvent("agent_event", handleWsAgentEvent),
     client.onWsEvent("ws-reconnected", () => {
-      void retryNotificationHydration();
+      void reconcileNotificationHydration();
     }),
   );
   if (typeof window !== "undefined") {
-    const retryOnline = () => void retryNotificationHydration();
+    const retryOnline = () => void reconcileNotificationHydration();
     window.addEventListener("online", retryOnline);
     notificationCleanups.push(() =>
       window.removeEventListener("online", retryOnline),
     );
   }
   if (typeof document !== "undefined") {
-    const retryOnResume = () => void retryNotificationHydration();
+    const retryOnResume = () => void reconcileNotificationHydration();
     document.addEventListener(APP_RESUME_EVENT, retryOnResume);
     notificationCleanups.push(() =>
       document.removeEventListener(APP_RESUME_EVENT, retryOnResume),
     );
   }
+  // This store owns a realtime dependency even when first-run startup never
+  // reaches the broader shell hydration phase. Subscribing before connect
+  // ensures the first notification frame cannot race past the inbox handler.
+  client.connectWs();
   void requestHydration();
-}
-
-let devSeedAttempted = false;
-
-/**
- * Dev-only: populate the demo spread when the inbox is empty so the home
- * notification surface is visible by default while developing. The boot wiring
- * calls this only in dev builds (`import.meta.env.DEV`); the server's
- * `/dev/seed` route is itself non-production (404s in prod), so this stays a
- * no-op outside dev. Runs at most once per session and never seeds over a real
- * inbox — production is strictly data-driven.
- */
-export async function seedDevNotificationsIfEmpty(): Promise<void> {
-  if (devSeedAttempted) return;
-  devSeedAttempted = true;
-  // Hydrate first so we only seed a genuinely-empty inbox, never over real rows.
-  if (!state.hydrated) await requestHydration();
-  if (state.hydrationStatus !== "ready" || state.hydrationError !== null) {
-    return;
-  }
-  if (state.notifications.length > 0) return;
-  try {
-    const res = await client.seedDevNotifications();
-    setState({
-      notifications: res.notifications,
-      unreadCount: countUnread(res.notifications),
-      hydrated: true,
-    });
-  } catch {
-    // Prod 404s the seed route (or it is otherwise unavailable) — stay
-    // data-driven; a dev seed failure must never break boot.
-  }
 }
 
 // ── Mutations (optimistic; backed by the HTTP API) ──────────────────────────
@@ -696,7 +709,6 @@ export function __resetNotificationStoreForTests(): void {
     hydrationError: null,
   };
   initialized = false;
-  devSeedAttempted = false;
   ephemeralNotificationIds.clear();
   listeners.clear();
 }

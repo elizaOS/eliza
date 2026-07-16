@@ -189,8 +189,31 @@ describe("brand surfaces", () => {
   it("keeps the branded preboot status visible until React takes over", () => {
     const html = read("index.html");
     expect(html).toContain('class="eliza-preboot-shell__mark"');
+    expect(html).toContain(
+      '<span class="eliza-preboot-shell__name">__APP_NAME__</span>',
+    );
     expect(html).toContain('class="eliza-preboot-shell__status"');
-    expect(html).toContain("Booting up&hellip;");
+    expect(html).toContain(
+      '<p class="eliza-preboot-shell__status">Booting up</p>',
+    );
+    expect(html).toContain(
+      "animation: eliza-preboot-status-shimmer 1.8s linear infinite",
+    );
+    expect(html).toMatch(
+      /\.eliza-preboot-shell\s*\{[^}]*font-family:\s*Arial, system-ui, sans-serif/s,
+    );
+    expect(html).toContain("font-size: 1rem");
+    expect(html).toContain("color: rgba(255, 255, 255, 0.6)");
+    expect(html).toContain("-webkit-text-fill-color: transparent");
+    expect(html).not.toMatch(
+      /\.eliza-preboot-shell__(?:content|brand|mark|name)\s*\{[^}]*\b(?:animation|transition)\s*:/s,
+    );
+    expect(html).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.eliza-preboot-shell__status\s*\{[\s\S]*?animation: none/,
+    );
+    expect(read("src/main.tsx")).toContain(
+      '<StartupLoading phase="loading-ui" status="Booting up" />',
+    );
   });
 
   it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {

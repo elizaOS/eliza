@@ -12,6 +12,10 @@ import { ContinuousChatOverlay } from "../ContinuousChatOverlay";
 import type { ShellMessage } from "../shell-state";
 import type { CaptureIntent, ShellController } from "../useShellController";
 
+type TranscriptSessionSink = NonNullable<
+  Parameters<ShellController["setTranscriptSessionSink"]>[0]
+>;
+
 declare global {
   interface Window {
     __appendAssistant?: (content: string) => void;
@@ -24,55 +28,86 @@ declare global {
 
 let nextId = 100;
 const uid = () => `m${nextId++}`;
+const FIXTURE_NOW = Date.now();
 
 const SEED: ShellMessage[] = [
-  { id: "m1", role: "user", content: "what's the plan for today?", createdAt: 1 },
+  {
+    id: "m1",
+    role: "user",
+    content: "what's the plan for today?",
+    createdAt: FIXTURE_NOW - 12 * 60_000,
+  },
   {
     id: "m2",
     role: "assistant",
     content:
       "Three things: ship the chat-sheet redesign, review the screenshots, then wire the drag e2e. Want me to start on the first?",
-    createdAt: 2,
+    createdAt: FIXTURE_NOW - 11 * 60_000,
   },
-  { id: "m3", role: "user", content: "yes, and keep the input fixed", createdAt: 3 },
+  {
+    id: "m3",
+    role: "user",
+    content: "yes, and keep the input fixed",
+    createdAt: FIXTURE_NOW - 10 * 60_000,
+  },
   {
     id: "m4",
     role: "assistant",
     content:
       "Done — the composer stays pinned at the bottom; the history pulls up over it and you pull the grabber back down to close.",
-    createdAt: 4,
+    createdAt: FIXTURE_NOW - 9 * 60_000,
   },
-  { id: "m5", role: "user", content: "nice. show me the open state", createdAt: 5 },
+  {
+    id: "m5",
+    role: "user",
+    content: "nice. show me the open state",
+    createdAt: FIXTURE_NOW - 8 * 60_000,
+  },
   {
     id: "m6",
     role: "assistant",
     content:
       "Pull up anywhere on the sheet (or just start typing) and it springs open into the full transcript.",
-    createdAt: 6,
+    createdAt: FIXTURE_NOW - 7 * 60_000,
   },
-  { id: "m7", role: "user", content: "what closes it?", createdAt: 7 },
+  {
+    id: "m7",
+    role: "user",
+    content: "what closes it?",
+    createdAt: FIXTURE_NOW - 6 * 60_000,
+  },
   {
     id: "m8",
     role: "assistant",
     content:
       "Drag the grabber at the top back down, or press Escape. Clicking the view behind does nothing — it stays open until you pull it down.",
-    createdAt: 8,
+    createdAt: FIXTURE_NOW - 5 * 60_000,
   },
-  { id: "m9", role: "user", content: "and the input?", createdAt: 9 },
+  {
+    id: "m9",
+    role: "user",
+    content: "and the input?",
+    createdAt: FIXTURE_NOW - 4 * 60_000,
+  },
   {
     id: "m10",
     role: "assistant",
     content:
       "The composer is pinned at the very bottom and never moves; the history slides up over it. The latest line always sits just above the input.",
-    createdAt: 10,
+    createdAt: FIXTURE_NOW - 3 * 60_000,
   },
-  { id: "m11", role: "user", content: "great, this scrolls now right?", createdAt: 11 },
+  {
+    id: "m11",
+    role: "user",
+    content: "great, this scrolls now right?",
+    createdAt: FIXTURE_NOW - 2 * 60_000,
+  },
   {
     id: "m12",
     role: "assistant",
     content:
       "Yes — once the transcript is taller than the open sheet it scrolls, and the newest line stays pinned at the bottom. This thread is intentionally long so the open state has history to scroll through.",
-    createdAt: 12,
+    createdAt: FIXTURE_NOW - 60_000,
   },
 ];
 
@@ -106,8 +141,8 @@ const MANY_SEED: ShellMessage[] = Array.from({ length: 40 }, (_, i) => {
     content:
       role === "user"
         ? `message number ${i + 1} — a question that takes a full line to read`
-        : `reply ${i + 1}: here is a deliberately long answer so the transcript grows well past the tallest sheet detent and the scroll container has real overflow to scroll through on every viewport.`,
-    createdAt: i + 1,
+        : `reply ${i + 1}: here is a deliberately long answer so the transcript grows well past the tallest sheet detent and the scroll container has real overflow to scroll through on every viewport. The extra detail ensures a full render window still exercises scrolling at the tallest mobile detent.`,
+    createdAt: FIXTURE_NOW - (40 - i) * 60_000,
   } as ShellMessage;
 });
 const FEW_SEED: ShellMessage[] = [
@@ -321,8 +356,14 @@ function Harness(): React.JSX.Element {
   // Capture intent of the active mic session — mirrors the real controller:
   // PTT press → "dictate" (transcript fills the composer draft, no send);
   // hands-free tap → "converse" (final transcript sends a VOICE_DM).
-  const captureIntentRef = React.useRef<CaptureIntent>("converse");
+  const captureIntentRef = React.useRef<CaptureIntent>(
+    initialTranscribing ? "transcription" : "converse",
+  );
   const dictationSinkRef = React.useRef<((text: string) => void) | null>(null);
+  const transcriptSessionSinkRef = React.useRef<TranscriptSessionSink | null>(
+    null,
+  );
+  const transcriptFinalsRef = React.useRef<string[]>([]);
 
   const startRecording = React.useCallback(
     (intent: CaptureIntent = "converse") => {
@@ -373,7 +414,12 @@ function Harness(): React.JSX.Element {
     },
     [],
   );
-  const setTranscriptSessionSink = React.useCallback(() => {}, []);
+  const setTranscriptSessionSink = React.useCallback(
+    (sink: TranscriptSessionSink | null) => {
+      transcriptSessionSinkRef.current = sink;
+    },
+    [],
+  );
   // Test hooks for BIDIRECTIONAL voice (asserted by the e2e): a final transcript
   // either fills the composer draft (dictate) or sends a VOICE_DM (converse),
   // routed by the active capture intent — exactly the two real directions.
@@ -382,13 +428,16 @@ function Harness(): React.JSX.Element {
     window.__emitVoiceFinal = (t) => {
       if (captureIntentRef.current === "dictate") {
         dictationSinkRef.current?.(t);
+        setRecording(false);
+        setPhase("summoned");
       } else if (captureIntentRef.current === "transcription") {
+        transcriptFinalsRef.current.push(t);
         setTranscript(t);
       } else {
         send(t, { channelType: "VOICE_DM" });
+        setRecording(false);
+        setPhase("summoned");
       }
-      setRecording(false);
-      setPhase("summoned");
     };
     return () => {
       window.__emitDictation = undefined;
@@ -401,6 +450,45 @@ function Harness(): React.JSX.Element {
       return !m;
     });
   }, []);
+
+  const toggleTranscriptionMode = React.useCallback(() => {
+    const next = !transcriptionMode;
+    console.log(`[fixture] toggleTranscriptionMode -> ${next}`);
+    setTranscriptionMode(next);
+    setRecording(next);
+    setPhase(next ? "listening" : "summoned");
+    if (next) {
+      captureIntentRef.current = "transcription";
+      transcriptFinalsRef.current = [];
+      setTranscript("");
+    } else {
+      const finals =
+        transcriptFinalsRef.current.length > 0
+          ? transcriptFinalsRef.current
+          : transcript.trim()
+            ? [transcript.trim()]
+            : [];
+      transcriptFinalsRef.current = [];
+      if (finals.length > 0) {
+        console.log(
+          `[fixture] finalizeTranscriptSession segments=${finals.length}`,
+        );
+        transcriptSessionSinkRef.current?.(
+          finals.map((text, index) => ({
+            id: `fixture-transcript-${index}`,
+            startMs: index * 1_000,
+            endMs: (index + 1) * 1_000,
+            text,
+            words: [],
+          })),
+          Date.now(),
+          null,
+        );
+      }
+      captureIntentRef.current = "converse";
+      setTranscript("");
+    }
+  }, [transcript, transcriptionMode]);
 
   const controller: ShellController = {
     phase,
@@ -442,20 +530,7 @@ function Harness(): React.JSX.Element {
     agentVoiceMuted,
     needsAudioUnlock,
     transcriptionMode,
-    toggleTranscriptionMode: () => {
-      setTranscriptionMode((t) => {
-        console.log(`[fixture] toggleTranscriptionMode -> ${!t}`);
-        return !t;
-      });
-    },
-    // Mic tap while transcribing: master voice control — everything off.
-    stopTranscriptionAndMic: () => {
-      console.log("[fixture] stopTranscriptionAndMic");
-      setTranscriptionMode(false);
-      setRecording(false);
-      setTranscript("");
-      setPhase("summoned");
-    },
+    toggleTranscriptionMode,
     // The overlay reads `modelStatus.kind` unconditionally; "ready" keeps the
     // local-model status strip dormant in the fixture.
     modelStatus: {

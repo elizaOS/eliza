@@ -531,18 +531,21 @@ export function ConversationsSidebar({
         await handleSelectConversation(result.conversationId);
         let el = await waitForAnchor(anchorId, 20);
         if (!el) {
-          // The hit is older than the loaded recent window (#9955): load the
-          // window CENTERED on it, then reveal the transcript's full loaded set
-          // so the centered pivot is not sliced out of the render window
-          // (#15281) — without the reveal, a windowed ChatView/overlay drops the
-          // anchor and the jump silently no-ops. waitForAnchor's 20-frame budget
-          // covers the reveal re-render.
+          // The transcript deliberately mounts only its newest window. Reveal
+          // already-loaded history before fetching so a merely windowed-out hit
+          // stays local and cannot fail with the network.
+          emitViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT);
+          el = await waitForAnchor(anchorId, 2);
+        }
+        if (!el) {
+          // The target genuinely predates loaded state. The reveal flag above
+          // follows the centered window's renderable count when the fetch lands,
+          // so no second event or extra layout transition is needed.
           const loaded = await loadConversationMessagesAround(
             result.conversationId,
             result.messageId,
           );
           if (loaded) {
-            emitViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT);
             el = await waitForAnchor(anchorId, 20);
           }
         }

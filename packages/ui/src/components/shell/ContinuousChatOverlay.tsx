@@ -7,13 +7,8 @@ import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   AudioLines,
-  Camera,
-  Captions,
-  FileText,
-  Film,
   Loader2,
   Mic,
-  Music,
   Paperclip,
   Search,
   SendHorizontal,
@@ -109,6 +104,7 @@ import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { AgentProvisioningWidget } from "../chat/widgets/agent-provisioning";
+import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import {
   buildReplyTargetFromMessage,
   ChatMessage,
@@ -543,7 +539,9 @@ function SoftButton({
         // 2.5.5) is preserved by the invisible `before` overlay that pads the
         // pointer zone back out past the visible box.
         "relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent [&_svg]:size-5",
-        active ? "text-accent" : "text-muted-strong hover:text-txt",
+        active
+          ? "text-accent hover:text-accent"
+          : "text-muted-strong hover:text-txt",
         // Pulse the accent glyph while capture is hot; reduced-motion falls back
         // to the static accent without adding background or border chrome.
         pulse && "animate-pulse motion-reduce:animate-none",
@@ -563,6 +561,114 @@ function SoftButton({
         <Glyph d={glyph} className="size-5" />
       ) : null}
     </Button>
+  );
+}
+
+const COMPOSER_MIC_BARS = [
+  { id: "outer-left", height: 10 },
+  { id: "far-left", height: 13 },
+  { id: "mid-far-left", height: 17 },
+  { id: "mid-left", height: 16 },
+  { id: "near-left", height: 21 },
+  { id: "inner-left", height: 22 },
+  { id: "center-left", height: 26 },
+  { id: "center", height: 28 },
+  { id: "center-right", height: 26 },
+  { id: "inner-right", height: 22 },
+  { id: "near-right", height: 21 },
+  { id: "mid-right", height: 16 },
+  { id: "mid-far-right", height: 17 },
+  { id: "far-right", height: 13 },
+  { id: "outer-right", height: 10 },
+] as const;
+
+// Audio-frame writes stay imperative so live microphone activity never
+// rerenders the chat tree while transcription owns the composer's text lane.
+function ComposerMicActivity({
+  analyser,
+  finishing,
+  reduceMotion,
+  transcript,
+}: {
+  analyser: AnalyserNode | null;
+  finishing: boolean;
+  reduceMotion: boolean;
+  transcript: string;
+}): React.JSX.Element {
+  const barsRef = React.useRef<Array<HTMLSpanElement | null>>([]);
+
+  React.useEffect(() => {
+    if (!analyser || finishing || reduceMotion) return;
+    const samples = new Uint8Array(analyser.fftSize);
+    let frame = 0;
+    const renderFrame = () => {
+      analyser.getByteTimeDomainData(samples);
+      barsRef.current.forEach((bar, index) => {
+        if (!bar) return;
+        const segmentStart = Math.floor(
+          (index * samples.length) / COMPOSER_MIC_BARS.length,
+        );
+        const segmentEnd = Math.max(
+          segmentStart + 1,
+          Math.floor(((index + 1) * samples.length) / COMPOSER_MIC_BARS.length),
+        );
+        let energy = 0;
+        for (
+          let sampleIndex = segmentStart;
+          sampleIndex < segmentEnd;
+          sampleIndex += 1
+        ) {
+          const normalized = ((samples[sampleIndex] ?? 128) - 128) / 128;
+          energy += normalized * normalized;
+        }
+        const rms = Math.sqrt(energy / (segmentEnd - segmentStart));
+        const activity = Math.min(1, Math.max(0.16, rms * 5.5));
+        const center = (COMPOSER_MIC_BARS.length - 1) / 2;
+        const centerWeight = 1 - Math.abs(index - center) * 0.035;
+        bar.style.transform = `scaleY(${Math.max(0.18, activity * centerWeight)})`;
+      });
+      frame = window.requestAnimationFrame(renderFrame);
+    };
+    frame = window.requestAnimationFrame(renderFrame);
+    return () => window.cancelAnimationFrame(frame);
+  }, [analyser, finishing, reduceMotion]);
+
+  return (
+    <div
+      role="status"
+      aria-label={
+        finishing ? "Finishing transcription" : "Live microphone activity"
+      }
+      data-testid="chat-composer-mic-activity"
+      className="relative flex min-h-10 min-w-0 flex-1 items-center justify-between gap-1 px-2 text-white/85"
+    >
+      <span className="sr-only" aria-live="polite">
+        {finishing
+          ? "Finishing transcription"
+          : transcript.trim() || "Listening"}
+      </span>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-x-2 top-1/2 h-px -translate-y-1/2 bg-gradient-to-r from-transparent via-white/15 to-transparent"
+      />
+      {COMPOSER_MIC_BARS.map(({ id, height }, index) => (
+        <span
+          // Stable bar ids keep imperative analyser writes independent of React.
+          key={id}
+          ref={(node) => {
+            barsRef.current[index] = node;
+          }}
+          aria-hidden="true"
+          className={cn(
+            "relative z-10 w-0.5 origin-center rounded-full bg-current shadow-[0_0_9px_rgba(255,255,255,0.4)] transition-transform duration-75 sm:w-1",
+            !finishing &&
+              !analyser &&
+              "animate-pulse motion-reduce:animate-none",
+          )}
+          style={{ height, transform: "scaleY(0.32)" }}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -764,10 +870,34 @@ function MessageScrollerSendFollow({ request }: { request: number }) {
   return null;
 }
 
+type ScrollToTranscriptMessage = ReturnType<
+  typeof useMessageScroller
+>["scrollToMessage"];
+
+/** Exposes the scroller's coordinated jump API to search result handling. */
+function MessageScrollerSearchBridge({
+  scrollToMessageRef,
+}: {
+  scrollToMessageRef: React.MutableRefObject<ScrollToTranscriptMessage | null>;
+}) {
+  const { scrollToMessage } = useMessageScroller();
+
+  React.useLayoutEffect(() => {
+    scrollToMessageRef.current = scrollToMessage;
+    return () => {
+      if (scrollToMessageRef.current === scrollToMessage) {
+        scrollToMessageRef.current = null;
+      }
+    };
+  }, [scrollToMessage, scrollToMessageRef]);
+
+  return null;
+}
+
 /**
- * The rich, phase-aware status row shown while the assistant works (#8813),
- * replacing the bare typing dots in the pre-placeholder gap. Wraps the
- * canonical TurnStatus in its own glass bubble + fade so it reads as a turn.
+ * The phase-aware status accessory shown while the assistant works (#8813).
+ * It stays chromeless inside the latest message's action lane so temporary
+ * lifecycle state cannot be mistaken for another transcript row.
  */
 function TurnStatusIndicator({
   status,
@@ -776,29 +906,18 @@ function TurnStatusIndicator({
   status: ChatTurnStatus | null;
   reduce?: boolean;
 }): React.JSX.Element {
-  const speaking = status?.kind === "speaking";
   return (
     <motion.div
-      className="mb-2.5 flex w-full justify-start"
-      // Fade in/out so the row dissolves with the reply rather than popping.
+      className="flex min-w-0 shrink-0 items-center whitespace-nowrap"
+      data-testid="turn-status-accessory"
+      // A pure opacity dissolve avoids adding another moving surface while the
+      // real assistant turn mounts and begins streaming beneath it.
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
     >
-      <div
-        className={cn(
-          "rounded-2xl rounded-bl-md border px-3.5 py-2",
-          WALLPAPER_FLOAT_SHADOW,
-          // Orange (the accent) ONLY for spoken replies; every other phase is
-          // neutral white glass. No blue anywhere.
-          // #10698: no own scrim — the shared panel glass carries the contrast;
-          // keep only the tone border (orange when speaking) + WALLPAPER_FLOAT_SHADOW.
-          speaking ? "border-accent/45" : "border-border",
-        )}
-      >
-        <TurnStatus status={status} />
-      </div>
+      <TurnStatus status={status} showLabel={false} />
     </motion.div>
   );
 }
@@ -825,12 +944,14 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
 
 /**
  * The overlay's message BODY — everything rendered inside the canonical
- * ChatMessage glass row: the no-provider recovery gate, the in-flight breathing
- * dots (TurnStatus), a user turn's slash-bolded text, and a settled assistant
- * turn's inline widgets + attachments + secret request + reasoning. Kept
- * structurally identical to the ChatView (MessageContent) paths for the
- * affordances the render-parity contract pins; the row chrome (bubble,
- * tap-reveal actions, copy-hold, retry, suggestion) lives in ChatMessage.
+ * ChatMessage glass row: the no-provider recovery gate, a user turn's
+ * slash-bolded text, and a settled assistant turn's inline widgets + attachments
+ * + secret request + reasoning. Transient work state lives in one stable row
+ * after the transcript, so an empty transport placeholder never paints a second
+ * status surface. Its settled content stays structurally identical to ChatView's
+ * MessageContent paths for the affordances the render-parity contract pins; row
+ * chrome (bubble, tap-reveal actions, copy-hold, retry, suggestion) lives in
+ * ChatMessage.
  * `onOpenSettings` reaches only the no-provider gate.
  */
 function renderOverlayMessageBody(
@@ -875,15 +996,7 @@ function renderOverlayMessageBody(
   }
 
   if (!isUser && !message.text.trim() && !message.attachments?.length) {
-    // The in-flight assistant turn: dots INSIDE the bubble, anchored where the
-    // streamed text fills in — then the text replaces them. Labels stay in the
-    // standalone status row so the bubble never flashes "Running …" text.
-    return (
-      <>
-        <TurnStatus status={ctx?.turnStatus ?? null} showLabel={false} />
-        {attachmentsNode}
-      </>
-    );
+    return null;
   }
 
   if (isUser) {
@@ -939,6 +1052,7 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     id: m.id,
     role: m.role,
     text: m.content,
+    timestamp: m.createdAt,
     ...(m.source ? { source: m.source } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
     ...(m.reasoning ? { reasoning: m.reasoning } : {}),
@@ -1074,13 +1188,14 @@ export function ContinuousChatOverlay({
     send,
     canSend,
     recording,
+    analyser,
+    transcript,
     startRecording,
     stopRecording,
     handsFree,
     toggleHandsFree,
     transcriptionMode,
     toggleTranscriptionMode,
-    stopTranscriptionAndMic,
     setDictationSink,
     setTranscriptSessionSink,
     setComposerHasDraft,
@@ -1101,18 +1216,16 @@ export function ContinuousChatOverlay({
   // cancel/switch controls; the placeholder tells the user they can keep typing.
   const modelStatus = controller.modelStatus;
   const modelBlocksSend = modelStatus?.blocksSend ?? false;
-  // App-level chat handlers shared with the desktop chat surface. The first-run
-  // transcript's CHOICE widgets still use the action funnel inside their own
-  // renderer; this overlay-level selection only needs message-management
-  // handlers.
+  // Search-jump needs the app-level conversation selectors; turn controls stay
+  // local to this overlay or flow through the controller.
   const {
-    handleChatDelete,
+    handleChatEdit,
     handleSelectConversation,
     loadConversationMessagesAround,
   } = useAppSelectorShallow((s) => ({
-    // Persistent per-message delete (#13533): server DELETE + optimistic
-    // removal with rollback. Inert no-op in stories/tests with no AppContext.
-    handleChatDelete: s.handleChatDelete,
+    // Editing a persisted turn must truncate and replace the original branch;
+    // sending the corrected text as a fresh turn leaves the typo in history.
+    handleChatEdit: s.handleChatEdit,
     // Search-jump (#14279): select the hit's conversation, then (if the hit is
     // older than the loaded recent window) load a window centered on it before
     // scrolling. Inert no-ops in stories/tests with no AppContext.
@@ -1178,33 +1291,21 @@ export function ContinuousChatOverlay({
     [speaking, playingMessageId, speak, stopSpeaking],
   );
 
-  // Save an edited user message and resend it as a new turn (#10713) — the same
-  // send path a typed turn uses, so the agent sees the corrected text. Adapts
-  // the row's (id, text) → bool save contract onto the overlay's text-only
-  // send; returning true tells the row the edit committed.
-  const handleEditResend = React.useCallback(
-    (_id: string, text: string): boolean => {
-      send(text);
-      return true;
+  // Editing rewinds the persisted branch at the selected user turn, replaces
+  // its text, and resends through the canonical AppContext transaction. Stop
+  // playback first so stale audio never continues over the corrected branch.
+  const handleEditMessage = React.useCallback(
+    async (id: string, text: string): Promise<boolean> => {
+      stopSpeaking?.();
+      setPlayingMessageId(null);
+      return handleChatEdit(id, text);
     },
-    [send],
-  );
-
-  // Persistent per-message delete from the glass row (#13533). Routes through
-  // the app-level handler so the server DELETE + optimistic removal + rollback
-  // are identical to the panel (ChatView) surface; the shell transcript mirrors
-  // conversationMessages, so the row disappears optimistically and re-appears
-  // if the DELETE fails.
-  const handleDeleteMessage = React.useCallback(
-    (id: string) => {
-      void handleChatDelete?.(id);
-    },
-    [handleChatDelete],
+    [handleChatEdit, stopSpeaking],
   );
 
   // Retry a failed/interrupted assistant turn by re-sending its preceding user
-  // turn — the SAME send() path the edit-resend action uses. (The ShellController
-  // exposes no handleChatRetry, so the overlay owns the walk-back locally; a
+  // turn. The ShellController exposes no handleChatRetry, so the overlay owns
+  // the walk-back locally; a
   // truncating in-place retry would require a controller method we don't have.)
   // Reads the live message list through a ref so the callback keeps a stable
   // identity and the memoized ThreadLine isn't re-rendered on every tick.
@@ -1231,8 +1332,8 @@ export function ContinuousChatOverlay({
   // Proactive suggestions (#8792) — same semantics as the composite ChatView:
   // dismiss removes the bubble from the live transcript only (the server-side
   // per-surface cooldown keeps the same offer from immediately re-appearing);
-  // accept ("Do it") sends the implied action as a real turn through the SAME
-  // send() path an edit-resend uses, then clears the bubble.
+  // accept ("Do it") sends the implied action as a real turn through the normal
+  // composer path, then clears the bubble.
   const {
     removeConversationMessage,
     conversationMessages,
@@ -1283,6 +1384,15 @@ export function ContinuousChatOverlay({
   // without subscribing (dictation append), same pattern as messagesRef above.
   const draftRef = React.useRef(draft);
   draftRef.current = draft;
+  const pendingImagesRef = React.useRef(pendingImages);
+  pendingImagesRef.current = pendingImages;
+  // Finalization drains the capture asynchronously. An immediate ref closes
+  // the same-frame double-tap gap before React can paint the disabled controls.
+  const transcriptionFinishingRef = React.useRef(false);
+  const [transcriptionFinishing, setTranscriptionFinishing] =
+    React.useState(false);
+  const transcriptionComposerActive =
+    transcriptionMode || transcriptionFinishing;
   // Live handle to the active conversation id for the send path's draft clear,
   // so submitText keeps its stable identity.
   const activeConversationIdRef = React.useRef(activeConversationId);
@@ -1330,6 +1440,16 @@ export function ContinuousChatOverlay({
   const pilled = effectiveMode === "pill";
   const sheetOpen = effectiveMode === "half" || effectiveMode === "full";
   const expanded = effectiveMode === "full";
+  const previousSheetOpenRef = React.useRef(sheetOpen);
+  React.useLayoutEffect(() => {
+    const wasOpen = previousSheetOpenRef.current;
+    previousSheetOpenRef.current = sheetOpen;
+    // A reply belongs to the visible thread it references. Clear it on the
+    // shared open → closed edge so every dismissal path has identical behavior.
+    if (wasOpen && !sheetOpen && chatReplyTarget) {
+      setChatReplyTarget(null);
+    }
+  }, [chatReplyTarget, setChatReplyTarget, sheetOpen]);
   // Free-drag rest height (px): when set, the sheet rests exactly where the user
   // released a deliberate drag instead of snapping to a detent. Cleared whenever
   // a detent is taken (tap/flick/focus/collapse) so the detents stay the
@@ -1579,6 +1699,27 @@ export function ContinuousChatOverlay({
   const [pttHolding, setPttHolding] = React.useState(false);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const [composerScrollFade, setComposerScrollFade] = React.useState<
+    "none" | "top" | "bottom" | "both"
+  >("none");
+  const updateComposerScrollFade = React.useCallback(
+    (target: HTMLTextAreaElement) => {
+      const hasOverflow = target.scrollHeight - target.clientHeight > 1;
+      const hasContentAbove = hasOverflow && target.scrollTop > 1;
+      const hasContentBelow =
+        hasOverflow &&
+        target.scrollTop + target.clientHeight < target.scrollHeight - 1;
+      const next = hasContentAbove
+        ? hasContentBelow
+          ? "both"
+          : "top"
+        : hasContentBelow
+          ? "bottom"
+          : "none";
+      setComposerScrollFade((current) => (current === next ? current : next));
+    },
+    [],
+  );
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const overlayRef = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLFieldSetElement>(null);
@@ -1634,8 +1775,10 @@ export function ContinuousChatOverlay({
   // space the collapsed composer occupies. Without this the var was never set —
   // every surface rode the 5.25rem fallback, which a multi-line draft or pending
   // attachments overgrow, letting the composer cover content. Only measured
-  // while collapsed: an expanded/full sheet covers the screen, so its height
-  // must NOT become the reserved clearance.
+  // while collapsed and settled: an expanded/full sheet covers the screen, and
+  // a direct pull grows this same panel before the open mode commits. Neither
+  // transient height may become reserved clearance or the home content behind
+  // the sheet will reflow under the user's finger.
   React.useEffect(() => {
     if (
       typeof window === "undefined" ||
@@ -1645,9 +1788,17 @@ export function ContinuousChatOverlay({
     }
     const panel = getPanelElement();
     const root = document.documentElement;
-    if (sheetOpen) return; // Keep the last resting value while the sheet is open.
+    // Re-entering this effect when the release spring clears `isDragging`
+    // guarantees one final measurement even when ResizeObserver delivered its
+    // last size notification while the transient-height guard was still armed.
+    if (sheetOpen || isDragging) return;
     if (!panel) return;
     const publish = () => {
+      // `draggingRef` owns direct manipulation; `isDraggingRef` stays armed
+      // through the release spring. Freeze the last resting footprint for both
+      // phases so opening chat never feeds its live panel height back into the
+      // home layout that sits behind it.
+      if (draggingRef.current || isDraggingRef.current) return;
       const h = panel.getBoundingClientRect().height;
       // Cap it: a mid-collapse frame can report the open panel height, and
       // reserving that in the home/launcher layout clips the top apps off-screen.
@@ -1661,7 +1812,7 @@ export function ContinuousChatOverlay({
     const ro = new ResizeObserver(publish);
     ro.observe(panel);
     return () => ro.disconnect();
-  }, [sheetOpen, getPanelElement]);
+  }, [sheetOpen, isDragging, getPanelElement]);
   // The composer content (textarea + thread). Held so we can imperatively clear
   // its `inert` (set while pilled) the instant the pill is tapped open, before
   // React re-renders — iOS only raises the keyboard for a focus() that lands on
@@ -1750,6 +1901,26 @@ export function ContinuousChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
+  const turnStatusAnchorId = React.useMemo(() => {
+    if (!responding) return null;
+    // Manual playback belongs to the message that started it. Automatic voice
+    // replies have no source id and continue to use the latest visible turn.
+    if (speaking && playingMessageId) return playingMessageId;
+    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
+      const candidate = visibleMessages[index];
+      if (!candidate) continue;
+      const isEmptyAssistantPlaceholder =
+        candidate.role === "assistant" &&
+        !candidate.content.trim() &&
+        !candidate.attachments?.length &&
+        !candidate.failureKind &&
+        !candidate.reasoning?.trim() &&
+        !candidate.secretRequest &&
+        !candidate.toolEvents?.length;
+      if (!isEmptyAssistantPlaceholder) return candidate.id;
+    }
+    return null;
+  }, [playingMessageId, responding, speaking, visibleMessages]);
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The thread body is mounted while the sheet is open OR during an upward
@@ -1882,21 +2053,77 @@ export function ContinuousChatOverlay({
       }),
     [],
   );
-  const scrollAndFlashSearchAnchor = React.useCallback((el: HTMLElement) => {
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    el.style.transition = "outline-color 0.5s ease-out";
-    el.style.outline = "2px solid var(--primary)";
-    el.style.outlineOffset = "2px";
-    el.style.borderRadius = "8px";
-    window.setTimeout(() => {
-      el.style.outline = "2px solid transparent";
-    }, 1200);
-    window.setTimeout(() => {
-      el.style.removeProperty("outline");
-      el.style.removeProperty("outline-offset");
-      el.style.removeProperty("transition");
-    }, 1800);
+  const activeSearchHighlightRef = React.useRef<{
+    element: HTMLElement;
+    fadeTimer: number;
+    cleanupTimer: number;
+    outline: string;
+    outlineOffset: string;
+    transition: string;
+  } | null>(null);
+  const clearSearchHighlight = React.useCallback(() => {
+    const active = activeSearchHighlightRef.current;
+    if (!active) return;
+    window.clearTimeout(active.fadeTimer);
+    window.clearTimeout(active.cleanupTimer);
+    active.element.style.outline = active.outline;
+    active.element.style.outlineOffset = active.outlineOffset;
+    active.element.style.transition = active.transition;
+    active.element.removeAttribute("data-chat-search-highlight");
+    activeSearchHighlightRef.current = null;
   }, []);
+  React.useEffect(() => clearSearchHighlight, [clearSearchHighlight]);
+  const searchScrollToMessageRef =
+    React.useRef<ScrollToTranscriptMessage | null>(null);
+  const scrollAndFlashSearchAnchor = React.useCallback(
+    (el: HTMLElement, messageId: string) => {
+      clearSearchHighlight();
+      // MessageScroller owns bottom-follow and resize reconciliation. Using its
+      // jump API moves that state machine into settling-jump mode so closing the
+      // search panel cannot immediately pull the transcript back to the end.
+      const scrolled = searchScrollToMessageRef.current?.(messageId, {
+        align: "center",
+        // Land before painting the short highlight. A smooth scroll can spend
+        // the highlight's entire lifetime outside the viewport on long threads.
+        behavior: "auto",
+      });
+      // Topic-group rows register a group id rather than each nested message;
+      // retain a DOM fallback for those anchors only.
+      if (!scrolled) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+      // Message-scroller rows use paint containment for long-thread performance,
+      // so an outward row outline is clipped. Paint the flash inside the actual
+      // bubble instead; this stays visible without disturbing its liquid-glass
+      // shadow or layout.
+      const bubble =
+        el.querySelector<HTMLElement>('[data-chat-message-bubble="true"]') ??
+        el;
+      const previous = {
+        outline: bubble.style.outline,
+        outlineOffset: bubble.style.outlineOffset,
+        transition: bubble.style.transition,
+      };
+      bubble.setAttribute("data-chat-search-highlight", "true");
+      bubble.style.outline = "2px solid rgba(255, 255, 255, 0.96)";
+      bubble.style.outlineOffset = "-2px";
+      bubble.style.transition =
+        "outline-color 650ms cubic-bezier(0.22, 1, 0.36, 1)";
+      const fadeTimer = window.setTimeout(() => {
+        bubble.style.outline = "2px solid transparent";
+      }, 1050);
+      const cleanupTimer = window.setTimeout(() => {
+        clearSearchHighlight();
+      }, 1750);
+      activeSearchHighlightRef.current = {
+        element: bubble,
+        fadeTimer,
+        cleanupTimer,
+        ...previous,
+      };
+    },
+    [clearSearchHighlight],
+  );
   const handleSearchJump = React.useCallback(
     (result: ConversationMessageSearchResult) => {
       const anchorId = getChatMessageAnchorId(result.messageId);
@@ -1906,20 +2133,27 @@ export function ContinuousChatOverlay({
         await handleSelectConversation(result.conversationId);
         let el = await waitForSearchAnchor(anchorId, 20);
         if (!el) {
-          // The hit predates the loaded recent window: load a window CENTERED on
-          // it, then reveal the full loaded set so the centered pivot is not
-          // sliced out of the render window (#15281) — without the reveal a
-          // windowed transcript drops the anchor and the jump silently no-ops.
+          // An absent DOM anchor does not prove the message is absent from
+          // state: the transcript deliberately mounts only its newest window.
+          // Reveal loaded history before touching the network so a windowed-out
+          // hit remains a local, immediate jump.
+          renderWindow.revealFullWindow();
+          el = await waitForSearchAnchor(anchorId, 2);
+        }
+        if (!el) {
+          // The hit genuinely predates the loaded history. Fetch a window
+          // centered on it; the reveal flag above tracks the new renderable
+          // count when that state lands, so the pivot mounts without a second
+          // state transition.
           const loaded = await loadConversationMessagesAround(
             result.conversationId,
             result.messageId,
           );
           if (loaded) {
-            renderWindow.revealFullWindow();
             el = await waitForSearchAnchor(anchorId, 20);
           }
         }
-        if (el) scrollAndFlashSearchAnchor(el);
+        if (el) scrollAndFlashSearchAnchor(el, result.messageId);
       })();
     },
     [
@@ -1966,7 +2200,7 @@ export function ContinuousChatOverlay({
   }, []);
   // The single, stable body renderer handed to every row (see
   // renderOverlayMessageBody). Stable identity keeps ChatMessage's memo intact;
-  // per-row volatile values (turnStatus/suppressReasoning) flow via renderContext.
+  // per-row reasoning suppression flows through renderContext.
   const renderRowBody = React.useCallback(
     (m: ChatMessageData, ctx: ChatMessageRenderContext | undefined) =>
       renderOverlayMessageBody(m, ctx, openSettings),
@@ -1974,13 +2208,13 @@ export function ContinuousChatOverlay({
   );
   // Reply arms the shared composer reply target so the next send() stamps
   // replyToMessageId (attached at the sendChatText chokepoint → REPLY_CONTEXT)
-  // and the pill renders above the input. Opens the sheet so the reply is typed
-  // against the visible thread, not the bare collapsed bar.
+  // and the pill renders above the input. Arming a reply must not focus the
+  // composer: on touch devices that would raise the keyboard and move the
+  // entire sheet before the user has chosen to type.
   const handleReplyMessage = React.useCallback(
     (message: ChatMessageData) => {
       setChatReplyTarget(buildReplyTargetFromMessage(message, agentName));
       setMode((m) => (m === "half" || m === "full" ? m : "half"));
-      inputRef.current?.focus();
     },
     [setChatReplyTarget, agentName],
   );
@@ -1991,29 +2225,49 @@ export function ContinuousChatOverlay({
     (m: ShellMessage, index: number) => {
       const isLastAssistant =
         index === visibleMessages.length - 1 && m.role === "assistant";
-      const isInFlight = isLastAssistant && !m.content.trim();
-      // Only the last assistant turn reads volatile status; every settled row
-      // gets no renderContext so its memo identity is unchanged.
+      const message = shellToChatMessageData(m);
+      const isInFlight =
+        isLastAssistant &&
+        !message.text.trim() &&
+        !message.attachments?.length &&
+        !message.failureKind &&
+        !message.reasoning?.trim() &&
+        !message.secretRequest &&
+        !message.toolEvents?.length;
+      // The server's empty assistant placeholder is deliberately not a visual
+      // turn. The status remains attached to the latest real message's action
+      // lane, preventing a Thinking/Replying bubble swap before the first token.
+      if (isInFlight) return null;
+      // Only the last assistant turn reads volatile reasoning suppression;
+      // every settled row gets no renderContext so its memo identity is stable.
       const renderContext: ChatMessageRenderContext | undefined =
         isLastAssistant
           ? {
-              turnStatus: isInFlight ? turnStatus : null,
               suppressReasoning: responding,
             }
           : undefined;
       return (
-        <MessageScrollerItem key={m.id} messageId={m.id} className="w-full">
+        <MessageScrollerItem
+          key={m.id}
+          id={getChatMessageAnchorId(m.id)}
+          messageId={m.id}
+          className="w-full"
+        >
           <ChatMessage
+            actionAccessory={
+              responding && m.id === turnStatusAnchorId ? (
+                <TurnStatusIndicator status={turnStatus} reduce={reduce} />
+              ) : undefined
+            }
             appearance="glass"
             enterOnMount={m.id.startsWith("temp-")}
             agentName={agentName}
-            message={shellToChatMessageData(m)}
+            message={message}
             reduceMotion={reduce}
             onCopy={handleCopyMessage}
             onLongPressCopy={handleLongPressCopy}
             onSpeak={handleSpeakMessage}
-            onEdit={handleEditResend}
-            onDelete={handleDeleteMessage}
+            onEdit={handleEditMessage}
             onReply={handleReplyMessage}
             onRetry={handleRetry}
             playing={speaking && playingMessageId === m.id}
@@ -2027,19 +2281,19 @@ export function ContinuousChatOverlay({
     },
     [
       visibleMessages.length,
+      turnStatusAnchorId,
+      turnStatus,
       agentName,
       reduce,
       handleCopyMessage,
       handleLongPressCopy,
       handleSpeakMessage,
-      handleEditResend,
-      handleDeleteMessage,
+      handleEditMessage,
       handleReplyMessage,
       handleRetry,
       speaking,
       playingMessageId,
       responding,
-      turnStatus,
       renderRowBody,
       handleAcceptSuggestion,
       handleDismissSuggestion,
@@ -2174,6 +2428,18 @@ export function ContinuousChatOverlay({
     [canSend, firstRunOpen, send, setDraft, setPendingImages, viewChatBinding],
   );
 
+  const finishTranscription = React.useCallback(async () => {
+    if (transcriptionFinishingRef.current) return;
+    transcriptionFinishingRef.current = true;
+    setTranscriptionFinishing(true);
+    try {
+      await toggleTranscriptionMode();
+    } finally {
+      transcriptionFinishingRef.current = false;
+      setTranscriptionFinishing(false);
+    }
+  }, [toggleTranscriptionMode]);
+
   const addImageFiles = React.useCallback(
     (files: FileList | File[]) => {
       void intakeAttachmentFiles(files)
@@ -2252,20 +2518,6 @@ export function ContinuousChatOverlay({
       voiceCaptureDebug("mic:noop", { reason: "suppress-click" });
       return;
     }
-    // While transcribing, the mic is the master voice control: a tap turns the
-    // mic OFF, which also ends transcription (mic = parent — turning off the mic
-    // turns off transcript). This is distinct from the transcript button, which
-    // turns transcript off but LEAVES THE MIC ON. The finished transcript still
-    // drops into the composer as an attachment. This OFF path is checked FIRST
-    // — never gated on `responding`: a wake-word inline reply (#9880) flips
-    // `responding` true while `handsFree` stays false mid-transcription, and
-    // gating it left a lit, dead "stop transcription" mic until the reply
-    // finished.
-    if (transcriptionMode) {
-      voiceCaptureDebug("mic:branch", { action: "stop-transcription" });
-      stopTranscriptionAndMic();
-      return;
-    }
     // Voice can't be turned ON while a reply is in flight (it's gated until the
     // turn finishes), but an active hands-free session can always be turned OFF.
     if (responding && !handsFree) {
@@ -2281,7 +2533,6 @@ export function ContinuousChatOverlay({
     handsFree,
     toggleHandsFree,
     transcriptionMode,
-    stopTranscriptionAndMic,
     shouldSuppressClick,
   ]);
 
@@ -3181,8 +3432,8 @@ export function ContinuousChatOverlay({
   // the pointer drag. Wheel events accumulate with a short decay and step once
   // per threshold with a cooldown, so a single physical swipe moves ONE detent
   // (no accidental multi-jumps). Scoped to the sheet chrome: events that
-  // originate inside the transcript scroller belong to transcript scrolling
-  // and are ignored here, so reading history never resizes the sheet.
+  // originate inside an owned scroll region belong to that region and are
+  // ignored here, so reading history or a long draft never resizes the sheet.
   const wheelStepAccRef = React.useRef(0);
   const wheelStepCooldownRef = React.useRef(0);
   const wheelStepDecayRef = React.useRef<number | null>(null);
@@ -3191,7 +3442,7 @@ export function ContinuousChatOverlay({
       if (firstRunOpen || draggingRef.current) return;
       if (
         e.target instanceof Element &&
-        e.target.closest("#continuous-thread")
+        e.target.closest("#continuous-thread, [data-chat-sheet-scroll-region]")
       ) {
         return;
       }
@@ -3511,14 +3762,9 @@ export function ContinuousChatOverlay({
     return () => setDictationSink(null);
   }, [setDictationSink, setDraft, expand]);
 
-  // A completed transcription SESSION works like ChatGPT dictation: the full
-  // transcript is INSERTED AS TEXT at the end of the composer draft — never
-  // auto-sent, never a document chip the user has to open. The captured audio
-  // becomes a pending AUDIO ATTACHMENT (the sharable artifact: sending it
-  // routes the WAV through the content-addressed media store, so the thread
-  // carries a playable, downloadable /api/media/<sha256>.wav recording). The
-  // session is also archived (Transcript record + audio) for the Transcripts
-  // view, best-effort and silent.
+  // A completed transcription session has one drain path: it restores text and
+  // optional audio to the editable composer without changing the sheet detent.
+  // The user explicitly chooses when to focus, review, or send the result.
   React.useEffect(() => {
     setTranscriptSessionSink((segments, startedAtMs, audioWav) => {
       if (segments.length === 0) return;
@@ -3527,14 +3773,15 @@ export function ContinuousChatOverlay({
         .toISOString()
         .slice(0, 16)
         .replace("T", " ");
-      if (text) {
-        // Append at the END of whatever is already typed (through the live
-        // ref — the shared context setter takes a plain string), mirroring the
-        // push-to-talk dictation sink above.
-        const current = draftRef.current;
-        setDraft(current ? `${current} ${text}` : text);
-      }
+      const currentDraft = draftRef.current;
+      const combinedText = text
+        ? currentDraft
+          ? `${currentDraft} ${text}`
+          : text
+        : currentDraft;
       const hasAudio = Boolean(audioWav && audioWav.byteLength > 0);
+      let recordingAttachment: ImageAttachment | null = null;
+      let recordingError: string | null = null;
       if (audioWav && hasAudio) {
         // Enforce the SAME per-file media size cap the attach/paste/drop paths
         // go through (intakeAttachmentFiles → perFileByteCap): a several-minute
@@ -3543,26 +3790,26 @@ export function ContinuousChatOverlay({
         // cap, drop just the audio artifact — the transcript TEXT inserted above
         // is the primary output and always lands — and say so inline.
         if (audioWav.byteLength > MAX_CHAT_MEDIA_RAW_BYTES) {
-          setImageError(
-            `Recording too large to attach (max ${bytesToMb(
-              MAX_CHAT_MEDIA_RAW_BYTES,
-            )}MB) — transcript kept.`,
-          );
+          recordingError = `Recording too large to attach (max ${bytesToMb(
+            MAX_CHAT_MEDIA_RAW_BYTES,
+          )}MB) — transcript kept.`;
         } else {
-          const recording: ImageAttachment = {
+          recordingAttachment = {
             data: wavBytesToBase64(audioWav),
             mimeType: "audio/wav",
             name: `Recording ${stamp}.wav`,
           };
-          setPendingImages((prev) =>
-            [...prev, recording].slice(0, MAX_CHAT_IMAGES),
-          );
         }
       }
-      if (text || hasAudio) {
-        expand();
-        inputRef.current?.focus();
-      }
+      const combinedImages = recordingAttachment
+        ? [...pendingImagesRef.current, recordingAttachment].slice(
+            0,
+            MAX_CHAT_IMAGES,
+          )
+        : pendingImagesRef.current;
+      if (text) setDraft(combinedText);
+      if (recordingAttachment) setPendingImages(combinedImages);
+      if (recordingError) setImageError(recordingError);
       void client
         .createTranscript({
           segments,
@@ -3574,12 +3821,17 @@ export function ContinuousChatOverlay({
               }
             : {}),
         })
-        .catch(() => {
-          /* archival is best-effort; a failed save just skips the record */
+        .catch((err: unknown) => {
+          // error-policy:J7 transcript archival must not break composer delivery;
+          // the failed diagnostic artifact remains observable to developers.
+          logger.warn(
+            { err },
+            "[ContinuousChatOverlay] transcript archive failed",
+          );
         });
     });
     return () => setTranscriptSessionSink(null);
-  }, [setTranscriptSessionSink, setDraft, setPendingImages, expand]);
+  }, [setTranscriptSessionSink, setDraft, setPendingImages]);
 
   // Tell the controller whether a draft is pending so the hands-free always-on
   // loop pauses while the user is typing (or editing a PTT dictation) and
@@ -3753,6 +4005,12 @@ export function ContinuousChatOverlay({
   // stays OUTSIDE.
   const isOverlayControlTarget = React.useCallback(
     (target: EventTarget | null): boolean => {
+      if (
+        target instanceof Element &&
+        target.closest("[data-chat-overlay-control]")
+      ) {
+        return true;
+      }
       if (!(target instanceof Node) || !overlayRef.current?.contains(target)) {
         return false;
       }
@@ -3978,13 +4236,14 @@ export function ContinuousChatOverlay({
   // Auto-grow the composer with multi-line input: snap to the content height
   // (capped by `max-h` in CSS, which then scrolls). Runs on every draft change
   // so it also springs back to one line after a send clears the draft.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: draft is the trigger; the body reads the textarea ref
+  // biome-ignore lint/correctness/useExhaustiveDependencies: draft is the trigger; the body reads and measures the textarea ref
   React.useLayoutEffect(() => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [draft]);
+    updateComposerScrollFade(el);
+  }, [draft, updateComposerScrollFade]);
 
   // Open the input back out of the collapsed pill (tap or keyboard-activate).
   // A tap routes through the gesture's `onDrag(0)` first, which sets
@@ -5184,10 +5443,11 @@ export function ContinuousChatOverlay({
             {/* Sheet header — shown at the HALF detent and up (not just FULL).
               One infinite thread (#13531): no maximize/minimize (that's a
               vertical pull now) and no clear/new-chat (the thread never resets).
-              It carries NO buttons — search/upload/camera/transcribe moved to the
-              composer "+" menu and Home lives in the launcher — so the chat stops
-              acting like a second app nav bar. The bar remains only to reserve
-              the safe-area top inset at full-bleed and host the transcribe badge. */}
+              It carries NO buttons — thread search and upload live in the
+              composer "+" menu and Home lives in the launcher — so the chat
+              stops acting like a second app nav bar. The bar remains only to
+              reserve the safe-area top inset at full-bleed and host the
+              transcribe badge. */}
             {threadPresented ? (
               <motion.div
                 data-testid="chat-sheet-header"
@@ -5225,17 +5485,18 @@ export function ContinuousChatOverlay({
                   "mx-auto w-full max-w-3xl",
                 )}
               >
-                {/* The header carries no nav/search buttons — Search, Upload,
-                    Enable camera, and Transcribe all live in the composer "+"
-                    menu now, and Home lives in the launcher. This bar exists
-                    only to reserve the safe-area top inset at full-bleed and to
-                    host the transcription status badge. */}
-                {transcriptionMode ? (
+                {/* The header carries no nav/search buttons — thread Search and
+                    Upload live in the composer "+" menu, while Home lives in
+                    the launcher. This bar exists only to reserve the safe-area
+                    top inset at full-bleed and host the transcription badge. */}
+                {transcriptionComposerActive ? (
                   <div
                     data-testid="chat-transcribing-badge"
-                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-accent/15 px-2.5 py-0.5 text-[11px] font-medium text-accent"
+                    className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-full bg-white/10 px-2.5 py-0.5 text-[11px] font-medium text-white/75"
                   >
-                    Transcribing — say “exit transcription mode” to stop
+                    {transcriptionFinishing
+                      ? "Finishing transcription…"
+                      : "Transcribing — say “exit transcription mode” to stop"}
                   </div>
                 ) : null}
               </motion.div>
@@ -5300,17 +5561,12 @@ export function ContinuousChatOverlay({
                   <div
                     data-testid="chat-message-search"
                     data-keyboard-open={keyboardLiftActive ? "true" : undefined}
-                    // Bottom-anchored, NON-scrolling flex column. The panel
-                    // itself owns scrolling in its results region and pins its
-                    // search input to the bottom (`keyboard-anchored` layout),
-                    // so the input the user types into always sits right above
-                    // a raised soft keyboard — the whole overlay is already
-                    // lifted by `effectiveKeyboardInset`, so the panel bottom IS
-                    // the top of the keyboard. Making THIS wrapper scroll (the
-                    // old `overflow-y-auto`) let the input scroll away under the
-                    // keyboard on iOS; keep it `overflow-hidden` and let the
-                    // inner results list be the only scroll region.
-                    className="absolute inset-0 z-30 flex flex-col overflow-hidden bg-black/20 px-4 pb-3 pt-2 backdrop-blur-md"
+                    // The sheet already owns the glass surface. Search reuses
+                    // that single layer while the transcript beneath is hidden
+                    // and inert, avoiding the opaque double-blur slab that a
+                    // second backdrop produced. Only the inner results list
+                    // scrolls, keeping the input pinned above the keyboard.
+                    className="absolute inset-0 z-30 flex flex-col overflow-hidden px-4 pb-3 pt-2"
                   >
                     <MessageSearchPanel
                       search={runMessageSearch}
@@ -5326,10 +5582,13 @@ export function ContinuousChatOverlay({
                   defaultScrollPosition={firstRunOpen ? "start" : "end"}
                 >
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
+                  <MessageScrollerSearchBridge
+                    scrollToMessageRef={searchScrollToMessageRef}
+                  />
                   <MessageScroller>
                     <motion.div
-                      className="flex size-full min-h-0 flex-col"
-                      style={{ opacity: threadContentOpacity }}
+                      className="flex min-h-0 w-full flex-1 flex-col"
+                      style={{ opacity: searchOpen ? 0 : threadContentOpacity }}
                     >
                       <MessageScrollerViewport
                         id="continuous-thread"
@@ -5337,8 +5596,10 @@ export function ContinuousChatOverlay({
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
                         aria-label="conversation history"
-                        aria-hidden={!sheetOpen ? true : undefined}
-                        tabIndex={sheetOpen ? 0 : -1}
+                        aria-hidden={
+                          !sheetOpen || searchOpen ? true : undefined
+                        }
+                        tabIndex={sheetOpen && !searchOpen ? 0 : -1}
                         onKeyDown={(e) => {
                           if (e.key === "Escape") {
                             e.preventDefault();
@@ -5445,43 +5706,48 @@ export function ContinuousChatOverlay({
                                   );
                                 });
                               })()
-                            : // Flat transcript (no topic tags) — unchanged behavior.
-                              // Only the LAST, content-less assistant turn (the
-                              // in-flight one) reads turnStatus — every settled bubble
-                              // gets undefined so its memo identity is unchanged.
+                            : // Flat transcript (no topic tags) renders below.
                               null}
                           {hasTopics
                             ? null
                             : visibleMessages.map((m, i) =>
                                 renderThreadLine(m, i),
                               )}
-                          <AnimatePresence>
-                            {/* Rich status row (#8813): what the agent is doing —
-                          thinking / running an action / waking / speaking — for
-                          the brief window where we're responding but the assistant
-                          placeholder turn isn't in the thread yet. Once the
-                          in-flight assistant bubble exists it carries the same
-                          status row inline (anchored where the reply fills in),
-                          so don't double up. */}
-                            {responding &&
-                            !(
-                              visibleMessages.at(-1)?.role === "assistant" &&
-                              !visibleMessages.at(-1)?.content.trim()
-                            ) ? (
-                              <MessageScrollerItem
-                                key="turn-status"
-                                className="w-full"
-                              >
-                                <TurnStatusIndicator
-                                  status={turnStatus}
-                                  reduce={reduce}
-                                />
-                              </MessageScrollerItem>
-                            ) : null}
-                          </AnimatePresence>
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>
+                    {/* Reply gets a dedicated lane below the viewport. Its measured
+                        height eases into the fixed scroller, so the latest message
+                        and its actions glide clear instead of being covered or
+                        making the bottom-anchored sheet itself jump. */}
+                    <AnimatePresence initial={false}>
+                      {chatReplyTarget ? (
+                        <motion.div
+                          key="chat-reply-target"
+                          data-testid="chat-reply-lane"
+                          initial={
+                            reduce ? false : { height: 0, opacity: 0, y: 5 }
+                          }
+                          animate={{ height: "auto", opacity: 1, y: 0 }}
+                          exit={
+                            reduce ? undefined : { height: 0, opacity: 0, y: 5 }
+                          }
+                          transition={{
+                            duration: reduce ? 0 : 0.32,
+                            ease: OVERLAY_EASE,
+                          }}
+                          className="z-10 shrink-0 overflow-hidden"
+                        >
+                          <div className="px-3 pb-2 pt-1">
+                            <ChatReplyPill
+                              appearance="glass"
+                              target={chatReplyTarget}
+                              onCancel={() => setChatReplyTarget(null)}
+                            />
+                          </div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
                   </MessageScroller>
                 </MessageScrollerProvider>
               </motion.div>
@@ -5493,74 +5759,21 @@ export function ContinuousChatOverlay({
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
             <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
-            {/* Reply target pill, just above the input (glass chrome). */}
-            {chatReplyTarget ? (
-              <div className="relative z-10 shrink-0 px-3 pt-2">
-                <ChatReplyPill
-                  appearance="glass"
-                  target={chatReplyTarget}
-                  onCancel={() => setChatReplyTarget(null)}
-                />
-              </div>
-            ) : null}
             {/* Pending image attachments + any read error, just above the input. */}
             {hasImages || imageError ? (
               <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
                 {hasImages ? (
-                  <div className="flex flex-wrap gap-2">
-                    {pendingImages.map((img, i) => {
-                      const kind = chatUploadKind(img.mimeType);
-                      const removeButton = (
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`remove ${img.name}`}
-                          onClick={() => removeImage(i)}
-                          // Small visual disc, but a 44px-class hit zone via the
-                          // invisible `before` overlay so it's thumb-tappable
-                          // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
-                        >
-                          ×
-                        </Button>
-                      );
-                      const tileKey = `${img.name}-${img.mimeType}-${img.data.length}`;
-                      if (kind === "image") {
-                        return (
-                          <div
-                            key={tileKey}
-                            className="group relative h-14 w-14 shrink-0"
-                          >
-                            <img
-                              src={`data:${img.mimeType};base64,${img.data}`}
-                              alt={img.name}
-                              className="h-14 w-14 rounded-lg border border-border-strong object-cover"
-                            />
-                            {removeButton}
-                          </div>
-                        );
-                      }
-                      const KindIcon =
-                        kind === "audio"
-                          ? Music
-                          : kind === "video"
-                            ? Film
-                            : FileText;
-                      return (
-                        <div
-                          key={tileKey}
-                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-border-strong bg-surface px-2.5 text-txt"
-                          title={img.name}
-                        >
-                          <KindIcon className="h-5 w-5 shrink-0 text-muted-strong" />
-                          <span className="min-w-0 truncate text-xs-tight leading-tight">
-                            {img.name}
-                          </span>
-                          {removeButton}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <ChatAttachmentStrip
+                    items={pendingImages.map((img, index) => ({
+                      id: `${img.name}-${img.mimeType}-${img.data.length}-${index}`,
+                      alt: img.name,
+                      name: img.name,
+                      src: `data:${img.mimeType};base64,${img.data}`,
+                      kind: chatUploadKind(img.mimeType),
+                    }))}
+                    removeLabel={(item) => `Remove ${item.name}`}
+                    onRemove={(_id, index) => removeImage(index)}
+                  />
                 ) : null}
                 {imageError ? (
                   <p
@@ -5644,7 +5857,7 @@ export function ContinuousChatOverlay({
               ) : null}
               {/* Inline slash-command autocomplete, floating just above the
                     input row. */}
-              {slashProp && !slashDismissed ? (
+              {!transcriptionComposerActive && slashProp && !slashDismissed ? (
                 <SlashCommandMenu
                   state={slashMenu}
                   loading={isSlashDraft && slash.loading}
@@ -5652,289 +5865,255 @@ export function ContinuousChatOverlay({
                   onPick={pickSlashItem}
                 />
               ) : null}
-              {/* The "+" opens the chat-actions menu. Every item acts on THIS
-                  in-app conversation only — they are surface-local affordances
-                  (search this thread, attach to this turn, point the agent's
-                  camera/transcription at this chat), never connector actions on a
-                  Discord/Telegram room. Search + Transcribe + camera are things
-                  the agent can also drive; Upload is a pure client affordance. */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon-lg"
-                    aria-label="chat actions"
-                    disabled={firstRunOpen}
-                    data-testid="chat-composer-plus"
-                    // Same 40px box / 20px mark / padded-back-to-44px hit zone
-                    // as the SoftButton controls, so the row reads as one family.
-                    className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
+              {/* The "+" opens surface-local Search and Upload actions for this
+                  in-app conversation, never connector actions on a
+                  Discord/Telegram room. Search is agent-driveable; Upload is a
+                  pure client affordance. */}
+              {!transcriptionComposerActive ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-lg"
+                      aria-label="chat actions"
+                      disabled={firstRunOpen}
+                      data-testid="chat-composer-plus"
+                      // Same 40px box / 20px mark / padded-back-to-44px hit zone
+                      // as the SoftButton controls, so the row reads as one family.
+                      className="relative grid h-10 w-10 shrink-0 place-items-center bg-transparent p-0 text-muted-strong transition-colors before:absolute before:-inset-0.5 before:content-[''] hover:bg-transparent hover:text-txt data-[state=open]:text-txt [&_svg]:size-5"
+                    >
+                      <Glyph d={PLUS_GLYPH} className="size-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    data-chat-overlay-control
+                    side="top"
+                    align="start"
+                    sideOffset={10}
+                    // Above the shell overlay (z 9000); mirrors the config-select
+                    // floating layer so the menu never hides behind the glass.
+                    style={{ zIndex: 12000 }}
+                    // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
+                    // variant) instead of the flat opaque card.
+                    glass
+                    className="min-w-[13rem]"
                   >
-                    <Glyph d={PLUS_GLYPH} className="size-5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  side="top"
-                  align="start"
-                  sideOffset={10}
-                  // Above the shell overlay (z 9000); mirrors the config-select
-                  // floating layer so the menu never hides behind the glass.
-                  style={{ zIndex: 12000 }}
-                  // Unified liquid-glass menu chrome (glass/tokens.ts `menu`
-                  // variant) instead of the flat opaque card.
-                  glass
-                  className="min-w-[13rem]"
-                >
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    onSelect={() => openSearch()}
-                  >
-                    <Search
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Search chat…
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    disabled={pendingImages.length >= MAX_CHAT_IMAGES}
-                    onSelect={() => fileInputRef.current?.click()}
-                  >
-                    <Paperclip
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Upload file
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    onSelect={() => send("Turn on the camera so you can see.")}
-                  >
-                    <Camera
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    Enable camera
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
-                    onSelect={() => toggleTranscriptionMode()}
-                  >
-                    <Captions
-                      className="h-4 w-4 shrink-0 text-muted"
-                      aria-hidden
-                    />
-                    {transcriptionMode ? "Stop transcribing" : "Transcribe"}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <Textarea
-                ref={inputRef}
-                rows={1}
-                value={draft}
-                // Onboarding is sign-in-first: lock the composer until the user
-                // signs in, so they can't type into a chat that isn't ready yet.
-                disabled={firstRunOpen}
-                onChange={(e) => {
-                  const nextDraft = e.target.value;
-                  if (
-                    draft.trim().length > 0 &&
-                    nextDraft.trim().length === 0
-                  ) {
-                    reportComposerActivity({
-                      activity: "draft_abandoned",
-                      surface: COMPOSER_ACTIVITY_SURFACE,
-                      conversationId: activeConversationIdRef.current,
-                      draftLength: 0,
-                      reason: "cleared",
-                    });
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      onSelect={() => openSearch()}
+                    >
+                      <Search
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Search chat…
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2.5 data-[highlighted]:bg-bg-hover"
+                      disabled={pendingImages.length >= MAX_CHAT_IMAGES}
+                      onSelect={() => fileInputRef.current?.click()}
+                    >
+                      <Paperclip
+                        className="h-4 w-4 shrink-0 text-muted"
+                        aria-hidden
+                      />
+                      Upload file
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+              {transcriptionComposerActive ? (
+                <ComposerMicActivity
+                  analyser={analyser}
+                  finishing={transcriptionFinishing}
+                  reduceMotion={reduce}
+                  transcript={transcript}
+                />
+              ) : (
+                <Textarea
+                  ref={inputRef}
+                  rows={1}
+                  value={draft}
+                  // Onboarding is sign-in-first: lock the composer until the user
+                  // signs in, so they can't type into a chat that isn't ready yet.
+                  disabled={firstRunOpen}
+                  onChange={(e) => {
+                    const nextDraft = e.target.value;
+                    if (
+                      draft.trim().length > 0 &&
+                      nextDraft.trim().length === 0
+                    ) {
+                      reportComposerActivity({
+                        activity: "draft_abandoned",
+                        surface: COMPOSER_ACTIVITY_SURFACE,
+                        conversationId: activeConversationIdRef.current,
+                        draftLength: 0,
+                        reason: "cleared",
+                      });
+                    }
+                    setDraft(nextDraft);
+                    // Mirror the live draft to the active view (Help search etc.).
+                    viewChatBinding?.onQuery?.(nextDraft);
+                    if (nextDraft.trim().length > 0) expand();
+                  }}
+                  onFocus={() => {
+                    // Widen out of the short-landscape compact affordance (#14173)
+                    // on focus, before the first keystroke.
+                    setComposerFocused(true);
+                    // A pill-open focus only raises the keyboard; it must not
+                    // expand a history thread (see suppressExpandOnFocusRef).
+                    if (suppressExpandOnFocusRef.current) {
+                      suppressExpandOnFocusRef.current = false;
+                    } else {
+                      expand();
+                    }
+                  }}
+                  onBlur={() => setComposerFocused(false)}
+                  onPaste={handleComposerPaste}
+                  onKeyDown={handleComposerKeyDown}
+                  // The composer is LOCKED during onboarding: first-run is
+                  // sign-in-first, so the input is disabled (see `disabled` above)
+                  // until the user signs in.
+                  // (This surface's strings are plain literals by design — see
+                  // the imageError note above.)
+                  placeholder={
+                    compactLanding
+                      ? "Ask"
+                      : firstRunOpen
+                        ? "Sign in to start chatting"
+                        : noProviderConfigured
+                          ? "Connect a model provider in Settings to chat"
+                          : modelBlocksSend
+                            ? modelStatus?.kind === "downloading"
+                              ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                              : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                            : booting
+                              ? `Ask ${agentName} — waking up…`
+                              : (viewChatBinding?.placeholder ??
+                                `Ask ${agentName}`)
                   }
-                  setDraft(nextDraft);
-                  // Mirror the live draft to the active view (Help search etc.).
-                  viewChatBinding?.onQuery?.(nextDraft);
-                  if (nextDraft.trim().length > 0) expand();
-                }}
-                onFocus={() => {
-                  // Widen out of the short-landscape compact affordance (#14173)
-                  // on focus, before the first keystroke.
-                  setComposerFocused(true);
-                  // A pill-open focus only raises the keyboard; it must not
-                  // expand a history thread (see suppressExpandOnFocusRef).
-                  if (suppressExpandOnFocusRef.current) {
-                    suppressExpandOnFocusRef.current = false;
-                  } else {
-                    expand();
+                  aria-label="message"
+                  data-testid="chat-composer-textarea"
+                  data-chat-sheet-scroll-region
+                  data-scroll-fade={composerScrollFade}
+                  onScroll={(event) =>
+                    updateComposerScrollFade(event.currentTarget)
                   }
-                }}
-                onBlur={() => setComposerFocused(false)}
-                onPaste={handleComposerPaste}
-                onKeyDown={handleComposerKeyDown}
-                // The composer is LOCKED during onboarding: first-run is
-                // sign-in-first, so the input is disabled (see `disabled` above)
-                // until the user signs in.
-                // (This surface's strings are plain literals by design — see
-                // the imageError note above.)
-                placeholder={
-                  compactLanding
-                    ? "Ask"
-                    : firstRunOpen
-                      ? "Sign in to start chatting"
-                      : noProviderConfigured
-                        ? "Connect a model provider in Settings to chat"
-                        : modelBlocksSend
-                          ? modelStatus?.kind === "downloading"
-                            ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                            : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                          : booting
-                            ? `Ask ${agentName} — waking up…`
-                            : (viewChatBinding?.placeholder ??
-                              `Ask ${agentName}`)
-                }
-                aria-label="message"
-                data-testid="chat-composer-textarea"
-                aria-describedby={
-                  booting && !noProviderConfigured && !firstRunOpen
-                    ? "cc-booting-hint"
-                    : undefined
-                }
-                // Combobox semantics (role + aria-*) are applied as one spread,
-                // and only when a slash catalog is wired in — a plain message
-                // box otherwise.
-                {...comboboxAria}
-                // The floating composer is the primary chat affordance on the
-                // ambient home surface, so its placeholder must stay readable
-                // even when the glass pill sits over dark wallpaper. During
-                // onboarding `disabled:opacity-100` prevents the browser from
-                // dimming the locked cue.
-                className="scrollbar-hide max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center border-none bg-transparent px-1.5 py-1 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
-              />
-              {booting && !noProviderConfigured && !firstRunOpen ? (
+                  aria-describedby={
+                    booting && !noProviderConfigured && !firstRunOpen
+                      ? "cc-booting-hint"
+                      : undefined
+                  }
+                  // Combobox semantics (role + aria-*) are applied as one spread,
+                  // and only when a slash catalog is wired in — a plain message
+                  // box otherwise.
+                  {...comboboxAria}
+                  // The floating composer is the primary chat affordance on the
+                  // ambient home surface, so its placeholder must stay readable
+                  // even when the glass pill sits over dark wallpaper. During
+                  // onboarding `disabled:opacity-100` prevents the browser from
+                  // dimming the locked cue.
+                  className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center overflow-y-auto overscroll-contain border-none bg-transparent py-1 pr-3 pl-1.5 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
+                />
+              )}
+              {!transcriptionComposerActive &&
+              booting &&
+              !noProviderConfigured &&
+              !firstRunOpen ? (
                 <span id="cc-booting-hint" className="sr-only">
                   {agentName} is waking up — you can type now; your message
                   sends and the reply arrives in a moment.
                 </span>
               ) : null}
               {/* Trailing controls. */}
-              <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
-                {/* Transcription start/stop — ChatGPT-style dictation, always
-                sitting next to the voice control (mic glyph = "transcribe my
-                speech into the box"; the waveform next door is the spoken
-                conversation). Tap to start; tap again (or say "exit
-                transcription mode") to stop — the full transcript lands at the
-                END of the draft and the recording attaches as a sharable audio
-                artifact (see the transcript-session sink). The voice button
-                stays the master control (a tap there ends transcription AND the
-                mic); this one LEAVES THE MIC ON, matching
-                toggleTranscriptionMode's off-path (#10699). Hidden when a
-                send/stop control is showing (a draft or a streaming reply). */}
-                {!((hasDraft || hasImages) && !recording) &&
-                !(!recording && responding) ? (
+              <div
+                data-testid="chat-composer-trailing-controls"
+                className="flex shrink-0 items-center gap-1.5 sm:gap-2"
+              >
+                {transcriptionComposerActive ? (
+                  /* The rightmost transcription mic becomes Stop. Activity owns
+                     every other composer pixel until capture finishes. */
                   <SoftButton
-                    icon={Mic}
+                    glyph={STOP_GLYPH}
                     label={
-                      transcriptionMode
-                        ? "stop transcription"
-                        : "start transcription"
+                      transcriptionFinishing
+                        ? "finishing transcription"
+                        : "stop transcription"
                     }
-                    disabled={firstRunOpen}
-                    active={transcriptionMode}
-                    pulse={transcriptionMode}
-                    onPointerDown={(e) => e.preventDefault()}
-                    onClick={toggleTranscriptionMode}
-                    testId="chat-composer-transcribe"
+                    disabled={firstRunOpen || transcriptionFinishing}
+                    onPointerDown={(event) => event.preventDefault()}
+                    onClick={() => void finishTranscription()}
+                    testId="chat-composer-transcription-stop"
                   />
-                ) : null}
-                {/* One trailing control, ChatGPT-style: mic when there's nothing
-                to send (or while recording, to stop), swapping to send once the
-                user starts typing or attaches an image. It morphs IN PLACE (one
-                persistent <div>, no `key`): React reconciles the SoftButton's
-                glyph/label/handlers without a remount, so there's no scale/fade
-                pop on every keystroke that crosses the draft boundary. */}
-                <div className="shrink-0">
-                  {(hasDraft || hasImages) && !recording ? (
-                    <SoftButton
-                      icon={SendHorizontal}
-                      label={
-                        !canSend
-                          ? "send (agent stopped)"
-                          : responding
-                            ? "send another"
-                            : "send"
-                      }
-                      // Onboarding is sign-in-first; if a synthetic draft exists
-                      // anyway, send stays locked with the rest of the composer.
-                      disabled={firstRunOpen || !canSend}
-                      // Keep focus in the textarea on tap: without this the
-                      // button steals focus, the textarea blurs, the keyboard
-                      // retracts and the composer relayouts between pointerdown
-                      // and click — so the first tap only dismissed the keyboard
-                      // and a second tap was needed to actually send. Chromium
-                      // still dispatches click after a preventDefaulted
-                      // pointerdown, so onClick fires on the first tap and the
-                      // keyboard stays up for the next message.
-                      onPointerDown={(e) => e.preventDefault()}
-                      onClick={submit}
-                      testId="chat-composer-action"
-                    />
-                  ) : !recording && responding ? (
-                    // While a reply is streaming and nothing is typed, the mic becomes a
-                    // stop control so the user can interrupt a runaway generation.
-                    <SoftButton
-                      glyph={STOP_GLYPH}
-                      label="stop generating"
-                      onClick={() => stop()}
-                      testId="chat-composer-stop"
-                    />
-                  ) : (
-                    // VOICE — the spoken-conversation control (waveform glyph;
-                    // the mic glyph lives on the transcribe/dictate button
-                    // beside it). Tap = hands-free conversation; hold =
-                    // push-to-talk dictation; while transcribing a tap is the
-                    // master off (ends transcription AND the mic).
-                    <SoftButton
-                      icon={AudioLines}
-                      label={
-                        pttHolding
-                          ? // Press-and-hold dictates into the composer draft; a
-                            // release drops the transcript into the text box and
-                            // does NOT send (usePushToTalk onHoldEnd). Label the
-                            // real behavior.
-                            "release to insert"
-                          : transcriptionMode
-                            ? // Distinct from the transcribe button's "stop
-                              // transcription" (which leaves the mic on): the
-                              // voice control is the MASTER off — a tap ends
-                              // transcription AND the mic — so a screen reader
-                              // can tell the two adjacent controls apart.
-                              "stop transcription and mic"
-                            : handsFree
-                              ? "end conversation"
-                              : recording
-                                ? "stop listening"
-                                : "talk"
-                      }
-                      // Voice input is free text too — locked with the rest of
-                      // the composer while onboarding is choice-driven.
-                      disabled={firstRunOpen}
-                      // The adjacent mic owns transcription. Keep this waveform
-                      // neutral when that separate control starts recording;
-                      // orange active state belongs only to conversation mode
-                      // initiated by this waveform (or its push-to-talk hold).
-                      active={handsFree || pttHolding}
-                      // Recording can also be owned by the adjacent transcription
-                      // control. Report the live voice state without coloring this
-                      // separate waveform control as active.
-                      pressed={recording || handsFree || transcriptionMode}
-                      pulse={recording || handsFree || transcriptionMode}
-                      onClick={handleMicClick}
-                      onPointerDown={micHoldHandlers.onPointerDown}
-                      onPointerUp={micHoldHandlers.onPointerUp}
-                      onPointerCancel={micHoldHandlers.onPointerCancel}
-                      onPointerLeave={micHoldHandlers.onPointerLeave}
-                      testId="chat-composer-mic"
-                    />
-                  )}
-                </div>
+                ) : (
+                  <>
+                    {/* The left trailing slot morphs across send, generation stop,
+                    and spoken conversation without reshuffling the row. */}
+                    <div className="shrink-0">
+                      {(hasDraft || hasImages) && !recording ? (
+                        <SoftButton
+                          icon={SendHorizontal}
+                          label={
+                            !canSend
+                              ? "send (agent stopped)"
+                              : responding
+                                ? "send another"
+                                : "send"
+                          }
+                          disabled={firstRunOpen || !canSend}
+                          onPointerDown={(event) => event.preventDefault()}
+                          onClick={submit}
+                          testId="chat-composer-action"
+                        />
+                      ) : !recording && responding ? (
+                        <SoftButton
+                          glyph={STOP_GLYPH}
+                          label="stop generating"
+                          onClick={() => stop()}
+                          testId="chat-composer-stop"
+                        />
+                      ) : (
+                        // Tap starts hands-free conversation; hold inserts
+                        // push-to-talk dictation into the editable draft.
+                        <SoftButton
+                          icon={AudioLines}
+                          label={
+                            pttHolding
+                              ? "release to insert"
+                              : handsFree
+                                ? "end conversation"
+                                : recording
+                                  ? "stop listening"
+                                  : "talk"
+                          }
+                          disabled={firstRunOpen}
+                          active={handsFree || pttHolding}
+                          pressed={recording || handsFree}
+                          pulse={recording || handsFree}
+                          onClick={handleMicClick}
+                          onPointerDown={micHoldHandlers.onPointerDown}
+                          onPointerUp={micHoldHandlers.onPointerUp}
+                          onPointerCancel={micHoldHandlers.onPointerCancel}
+                          onPointerLeave={micHoldHandlers.onPointerLeave}
+                          testId="chat-composer-mic"
+                        />
+                      )}
+                    </div>
+                    {/* Dictation stays rightmost so starting it can morph this mic
+                    directly into the active Stop control. */}
+                    {!((hasDraft || hasImages) && !recording) &&
+                    !(!recording && responding) ? (
+                      <SoftButton
+                        icon={Mic}
+                        label="start transcription"
+                        disabled={firstRunOpen}
+                        onPointerDown={(event) => event.preventDefault()}
+                        onClick={toggleTranscriptionMode}
+                        testId="chat-composer-transcribe"
+                      />
+                    ) : null}
+                  </>
+                )}
               </div>
             </motion.div>
           </motion.div>

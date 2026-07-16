@@ -7,7 +7,6 @@
 
 import type {
   ChatFailureKind,
-  ChatTurnStatus,
   ConversationSecretRequest,
   MessageAttachment,
 } from "../../../api/client-types-chat";
@@ -112,6 +111,8 @@ export interface ChatMessageData {
   role: string;
   source?: string;
   text: string;
+  /** Message creation time as epoch milliseconds, when the transport supplies it. */
+  timestamp?: number;
   /** Voice speaker attribution when this message arrived via voice (R10 §4.1). */
   voiceSpeaker?: ChatVoiceSpeaker;
   /**
@@ -139,8 +140,6 @@ export interface ChatMessageData {
  * re-render EVERY row; these fields are compared per-row by the memo instead).
  */
 export interface ChatMessageRenderContext {
-  /** Live phase status for the one in-flight (empty assistant) turn. */
-  turnStatus?: ChatTurnStatus | null;
   /** Hide reasoning while this turn is still streaming. */
   suppressReasoning?: boolean;
 }

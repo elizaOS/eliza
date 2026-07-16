@@ -14,8 +14,8 @@ const markNotificationReadApi = vi.fn();
 const markAllNotificationsReadApi = vi.fn();
 const removeNotificationApi = vi.fn();
 const clearNotificationsApi = vi.fn();
-const seedDevNotificationsApi = vi.fn();
 const onWsEvent = vi.fn();
+const connectWs = vi.fn();
 
 vi.mock("../../api/client", () => ({
   client: {
@@ -26,9 +26,8 @@ vi.mock("../../api/client", () => ({
       markAllNotificationsReadApi(...args),
     removeNotification: (...args: unknown[]) => removeNotificationApi(...args),
     clearNotifications: (...args: unknown[]) => clearNotificationsApi(...args),
-    seedDevNotifications: (...args: unknown[]) =>
-      seedDevNotificationsApi(...args),
     onWsEvent: (...args: unknown[]) => onWsEvent(...args),
+    connectWs: () => connectWs(),
   },
 }));
 
@@ -67,7 +66,6 @@ import {
   markNotificationRead,
   removeNotification,
   removeNotifications,
-  seedDevNotificationsIfEmpty,
 } from "./notification-store";
 
 function makeNotification(
@@ -106,11 +104,8 @@ describe("notification-store", () => {
     markAllNotificationsReadApi.mockReset().mockResolvedValue({ changed: 0 });
     removeNotificationApi.mockReset().mockResolvedValue({ ok: true });
     clearNotificationsApi.mockReset().mockResolvedValue({ ok: true });
-    seedDevNotificationsApi.mockReset().mockResolvedValue({
-      count: 0,
-      notifications: [],
-    });
     onWsEvent.mockReset().mockReturnValue(() => {});
+    connectWs.mockReset();
     // Defaults model the plain web platform: no desktop bridge (null), no
     // Capacitor channel ("none"), web Notification unavailable (false).
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
@@ -269,6 +264,7 @@ describe("notification-store", () => {
     expect(onWsEvent).toHaveBeenCalledTimes(2);
     expect(onWsEvent.mock.calls[0][0]).toBe("agent_event");
     expect(onWsEvent.mock.calls[1][0]).toBe("ws-reconnected");
+    expect(connectWs).toHaveBeenCalledTimes(1);
     expect(listNotifications).toHaveBeenCalledTimes(1);
     await Promise.resolve();
   });
@@ -373,6 +369,135 @@ describe("notification-store", () => {
     });
   });
 
+  it("reconciles a ready empty inbox after the WebSocket reconnects", async () => {
+    const restored = makeNotification({
+      id: "restored-after-reconnect",
+      title: "Take the tour",
+    });
+    listNotifications
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 })
+      .mockResolvedValueOnce({ notifications: [restored], unreadCount: 1 });
+
+    initNotifications();
+    await flushDelivery();
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [],
+      hydrated: true,
+      hydrationStatus: "ready",
+    });
+
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+
+    expect(listNotifications).toHaveBeenCalledTimes(2);
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [restored],
+      unreadCount: 1,
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationError: null,
+    });
+  });
+
+  it("removes locally stale rows when the reconnect snapshot no longer contains them", async () => {
+    const stale = makeNotification({ id: "removed-on-server" });
+    listNotifications
+      .mockResolvedValueOnce({ notifications: [stale], unreadCount: 1 })
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 });
+
+    initNotifications();
+    await flushDelivery();
+    expect(__getStateForTests().notifications).toEqual([stale]);
+
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+
+    expect(__getStateForTests()).toMatchObject({
+      notifications: [],
+      unreadCount: 0,
+      hydrated: true,
+      hydrationStatus: "ready",
+    });
+  });
+
+  it("preserves a live arrival while a reconnect snapshot is in flight", async () => {
+    const persisted = makeNotification({
+      id: "persisted-during-reconnect",
+      createdAt: 10,
+    });
+    const live = makeNotification({
+      id: "live-during-reconnect",
+      createdAt: 20,
+    });
+    let resolveReconnect!: (value: {
+      notifications: AgentNotification[];
+      unreadCount: number;
+    }) => void;
+    const reconnectResponse = new Promise<{
+      notifications: AgentNotification[];
+      unreadCount: number;
+    }>((resolve) => {
+      resolveReconnect = resolve;
+    });
+    listNotifications
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 })
+      .mockReturnValueOnce(reconnectResponse);
+
+    initNotifications();
+    await flushDelivery();
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+
+    const notificationHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "agent_event",
+    )?.[1] as (data: Record<string, unknown>) => void;
+    notificationHandler({
+      stream: "notification",
+      payload: { notification: live, unreadCount: 1 },
+    });
+    resolveReconnect({ notifications: [persisted], unreadCount: 2 });
+    await flushDelivery();
+
+    expect(
+      __getStateForTests().notifications.map((notification) => notification.id),
+    ).toEqual([live.id, persisted.id]);
+    expect(__getStateForTests().unreadCount).toBe(1);
+  });
+
+  it("does not start a parallel hydrate while a retry timer is armed", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+    listNotifications
+      .mockRejectedValueOnce(new Error("temporarily unavailable"))
+      .mockResolvedValueOnce({ notifications: [], unreadCount: 0 });
+
+    initNotifications();
+    await flushDelivery();
+    expect(__getStateForTests().hydrationStatus).toBe("retrying");
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+
+    const reconnectHandler = onWsEvent.mock.calls.find(
+      ([event]) => event === "ws-reconnected",
+    )?.[1] as () => void;
+    reconnectHandler();
+    await flushDelivery();
+    expect(listNotifications).toHaveBeenCalledTimes(1);
+
+    await vi.runOnlyPendingTimersAsync();
+    await flushDelivery();
+    expect(listNotifications).toHaveBeenCalledTimes(2);
+    expect(__getStateForTests().hydrationStatus).toBe("ready");
+  });
+
   it("WS handler ignores non-notification streams", async () => {
     initNotifications();
     const handler = onWsEvent.mock.calls[0][1] as (
@@ -399,6 +524,28 @@ describe("notification-store", () => {
     await flushDelivery();
     expect(pushNotificationBanner).toHaveBeenCalledTimes(1);
     expect(pushNotificationBanner.mock.calls[0][0].title).toBe("From WS");
+  });
+
+  it("ignores replayed notification history and leaves hydration authoritative", async () => {
+    initNotifications();
+    await flushDelivery();
+    const handler = onWsEvent.mock.calls[0][1] as (
+      d: Record<string, unknown>,
+    ) => void;
+    handler({
+      replayed: true,
+      stream: "notification",
+      payload: {
+        type: "notification",
+        notification: makeNotification({ title: "Historical" }),
+        unreadCount: 99,
+      },
+    });
+    await flushDelivery();
+    expect(__getStateForTests().notifications).toHaveLength(0);
+    expect(__getStateForTests().unreadCount).toBe(0);
+    expect(pushNotificationBanner).not.toHaveBeenCalled();
+    expect(showNativeNotification).not.toHaveBeenCalled();
   });
 
   it("WS handler drops a payload missing id or title (validated, not cast)", async () => {
@@ -674,47 +821,6 @@ describe("notification-store", () => {
     expect(__getStateForTests().notifications.every((n) => !n.readAt)).toBe(
       true,
     );
-  });
-
-  describe("seedDevNotificationsIfEmpty (dev default-active)", () => {
-    it("seeds the demo spread when the inbox hydrates empty", async () => {
-      const seeded = [
-        makeNotification({ id: "s1", priority: "urgent" }),
-        makeNotification({ id: "s2", priority: "normal", readAt: Date.now() }),
-      ];
-      seedDevNotificationsApi.mockResolvedValueOnce({
-        count: 2,
-        notifications: seeded,
-      });
-      await seedDevNotificationsIfEmpty();
-      expect(seedDevNotificationsApi).toHaveBeenCalledTimes(1);
-      expect(__getStateForTests().notifications).toHaveLength(2);
-      // Unread count is derived from the seeded rows (one is pre-read).
-      expect(__getStateForTests().unreadCount).toBe(1);
-    });
-
-    it("never seeds over a real inbox", async () => {
-      listNotifications.mockResolvedValueOnce({
-        notifications: [makeNotification({ id: "real" })],
-        unreadCount: 1,
-      });
-      await seedDevNotificationsIfEmpty();
-      expect(seedDevNotificationsApi).not.toHaveBeenCalled();
-      expect(__getStateForTests().notifications).toHaveLength(1);
-      expect(__getStateForTests().notifications[0]?.id).toBe("real");
-    });
-
-    it("runs at most once per session", async () => {
-      await seedDevNotificationsIfEmpty();
-      await seedDevNotificationsIfEmpty();
-      expect(seedDevNotificationsApi).toHaveBeenCalledTimes(1);
-    });
-
-    it("stays data-driven when the seed route 404s (no throw)", async () => {
-      seedDevNotificationsApi.mockRejectedValueOnce(new Error("404"));
-      await expect(seedDevNotificationsIfEmpty()).resolves.toBeUndefined();
-      expect(__getStateForTests().notifications).toHaveLength(0);
-    });
   });
 });
 

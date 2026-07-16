@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 // Touch tap-vs-scroll discrimination for the composite ChatMessage's
-// tap-to-reveal action rail (copy/edit/play/delete). On non-hover devices the
+// tap-to-reveal action rail (reply/copy/edit/play). On non-hover devices the
 // whole <article> toggles the rail on touchend; without move-slop tracking a
 // flick-scroll over the transcript toggled the rail on whichever message the
 // finger started on. The fix mirrors the shell ThreadLine: finger travel past
@@ -71,6 +71,37 @@ function touchPoint(clientX: number, clientY: number) {
 }
 
 describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
+  it("toggles the overlay's reserved action lane on touch-style taps", () => {
+    render(
+      <ChatMessage
+        appearance="glass"
+        message={makeMessage()}
+        onCopy={vi.fn()}
+        onReply={vi.fn()}
+      />,
+    );
+
+    const actions = screen.getByTestId("thread-line-actions");
+    const bubble = screen.getByRole("button", {
+      name: "Show message actions",
+    });
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+    expect(actions.className).toContain("absolute");
+    expect(actions.parentElement?.className).toContain("pointer-coarse:pb-9");
+    expect(actions.className).toContain("pointer-coarse:-bottom-1");
+
+    fireEvent.click(bubble);
+    expect(actions.getAttribute("aria-hidden")).toBe("false");
+    expect(
+      screen.getByRole("button", { name: "Hide message actions" }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide message actions" }),
+    );
+    expect(actions.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("a clean tap toggles the action rail on and off", () => {
     render(<ChatMessage message={makeMessage()} onCopy={vi.fn()} />);
     const article = getArticle();

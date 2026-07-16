@@ -431,6 +431,81 @@ body.pwa-standalone textarea {
   background: transparent;
 }
 
+.chat-composer-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-mid) transparent;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar-thumb {
+  border: 1px solid transparent;
+  background: var(--scrollbar-thumb-mid);
+  background-clip: padding-box;
+  border-radius: 9999px;
+  box-shadow: none;
+}
+
+.chat-composer-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover-mid);
+  background-clip: padding-box;
+}
+
+.chat-composer-scrollbar[data-scroll-fade="top"] {
+  -webkit-mask-image:
+    linear-gradient(to bottom, transparent 0, black 16px, black 100%),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+  mask-image:
+    linear-gradient(to bottom, transparent 0, black 16px, black 100%),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+}
+
+.chat-composer-scrollbar[data-scroll-fade="bottom"] {
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      black 0,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+  mask-image:
+    linear-gradient(
+      to bottom,
+      black 0,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+}
+
+.chat-composer-scrollbar[data-scroll-fade="both"] {
+  -webkit-mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0,
+      black 16px,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+  mask-image:
+    linear-gradient(
+      to bottom,
+      transparent 0,
+      black 16px,
+      black calc(100% - 16px),
+      transparent 100%
+    ),
+    linear-gradient(to right, transparent calc(100% - 8px), black 0);
+}
+
 /* Keyboard shortcuts styling */
 kbd {
   font-family: var(--mono);

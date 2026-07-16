@@ -216,9 +216,8 @@ export function formatElapsed(seconds: number): string {
 /**
  * The Codex-style working indicator — a spinner glyph, the debounced phase label
  * (a word for every phase, including `thinking`), and a live elapsed-seconds
- * clock — WITHOUT a bubble/motion wrapper; the overlay wraps it in its own glass
- * chrome. When `showLabel` is false (the in-flight assistant bubble) it degrades
- * to the bare breathing dots so the streamed text fills in where the dots were.
+ * clock — without a bubble/motion wrapper. The compact `showLabel={false}` form
+ * is a text-only shimmer used by the continuous overlay's stable work-status row.
  *
  * Mirrors ChatVoiceStatusBar's a11y (`role="status"` + `aria-live="polite"`).
  * Honors reduced motion (no spin/pulse). Degrades to plain dots when no status

@@ -3,10 +3,12 @@
  * `panel` — avatar/name grouping, theme-token bubble, hover action rail,
  * touch tap-reveal (ChatView + detached windows via ChatTranscript) — and
  * `glass` — the continuous overlay's floating dark-glass row: motion
- * entrance/exit, press-and-hold copy, click-to-reveal action row beneath the
- * bubble, Retry pill on recoverable failures, and the suggestion affordance in
- * glass trim. Reveal/edit/copy state, eligibility rules, and the suggestion
- * detection are shared; only the chrome branches.
+ * entrance/exit, press-and-hold copy, hover/focus or touch-revealed bare
+ * actions, Retry on recoverable failures, and the suggestion affordance in
+ * glass trim.
+ * Reveal/edit/copy state, eligibility rules, and the suggestion detection are
+ * shared; only the chrome branches. Editing replaces the message text in place
+ * and pins the bubble's measured width so the transcript does not reflow.
  *
  * Memoized with a custom equality check so streamed-token re-renders stay
  * cheap; volatile per-row values (turn status, reasoning suppression) flow
@@ -15,8 +17,8 @@
  * deliberately excluded from that check (see `enterOnMount`).
  * Presentation only — actions are delegated to callbacks.
  */
-import { RotateCcw, Sparkles, X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
+import { motion } from "motion/react";
 import type * as React from "react";
 import {
   type KeyboardEvent,
@@ -38,6 +40,7 @@ import { cn } from "../../../lib/utils";
 import { findChoiceRegions } from "../../chat/message-choice-parser";
 import { findFollowupsRegions } from "../../chat/message-followups-parser";
 import { findFormRegions } from "../../chat/message-form-parser";
+import { RelativeTime } from "../../shell/RelativeTime";
 import { Button } from "../../ui/button";
 import {
   Message as MessageRow,
@@ -46,7 +49,10 @@ import {
 } from "../../ui/message";
 import { Textarea } from "../../ui/textarea";
 import { ChatBubble, GLASS_EASE } from "./chat-bubble";
-import { ChatMessageActions } from "./chat-message-actions";
+import {
+  ChatMessageActionSurface,
+  ChatMessageActions,
+} from "./chat-message-actions";
 import { ChatVoiceSpeakerBadge } from "./chat-source";
 import {
   normalizeChatSourceKey,
@@ -65,6 +71,12 @@ export type ChatMessageAppearance = "panel" | "glass";
 const MotionMessageRow = motion.create(MessageRow);
 
 export interface ChatMessageProps {
+  /**
+   * Live, non-message state that shares the glass action lane. The continuous
+   * overlay uses this for the active turn label so status never consumes a
+   * second transcript row.
+   */
+  actionAccessory?: React.ReactNode;
   agentName?: string;
   /** Chrome: theme-token `panel` (default) or the overlay's floating `glass`. */
   appearance?: ChatMessageAppearance;
@@ -80,7 +92,6 @@ export interface ChatMessageProps {
   labels?: ChatMessageLabels;
   message: ChatMessageData;
   onCopy?: (text: string) => void;
-  onDelete?: (messageId: string) => void;
   onEdit?: (messageId: string, text: string) => Promise<boolean> | boolean;
   onSpeak?: (messageId: string, text: string) => void;
   /**
@@ -101,9 +112,8 @@ export interface ChatMessageProps {
   /** Collapse glass motion to quick fades (OS reduce-motion). */
   reduceMotion?: boolean;
   /**
-   * Dismiss a proactive suggestion (#8792). Distinct from `onDelete` so the
-   * suggestion's one-tap dismiss works without enabling delete on every
-   * ordinary message. Only rendered on suggestion bubbles.
+   * Dismiss a proactive suggestion (#8792). This is intentionally separate
+   * from ordinary message actions and only renders on suggestion bubbles.
    */
   onDismissSuggestion?: (messageId: string) => void;
   /** Accept ("Do it") a proactive suggestion (#8792) — sends the implied action. */
@@ -125,6 +135,12 @@ export interface ChatMessageProps {
 }
 
 const HOVER_MEDIA_QUERY = "(hover: hover) and (pointer: fine)";
+const ACTION_REVEAL_MOTION =
+  "transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-opacity motion-reduce:duration-100";
+const ACTION_REVEAL_VISIBLE =
+  "pointer-events-auto translate-y-0 scale-100 opacity-100";
+const ACTION_REVEAL_HIDDEN =
+  "pointer-events-none translate-y-1 scale-[0.98] opacity-0";
 // Tap-to-reveal move slop (the shared TOUCH_TAP_MOVE_SLOP): finger travel past
 // this between touchstart and touchend means the gesture was a transcript
 // scroll, not a tap, so it must not toggle the action rail.
@@ -394,13 +410,13 @@ function arePropsEqual(
 ): boolean {
   const sharedEqual =
     prev.isGrouped === next.isGrouped &&
+    prev.actionAccessory === next.actionAccessory &&
     prev.agentName === next.agentName &&
     prev.appearance === next.appearance &&
     prev.reduceMotion === next.reduceMotion &&
     prev.playing === next.playing &&
     prev.labels === next.labels &&
     prev.onCopy === next.onCopy &&
-    prev.onDelete === next.onDelete &&
     prev.onDismissSuggestion === next.onDismissSuggestion &&
     prev.onAcceptSuggestion === next.onAcceptSuggestion &&
     prev.onEdit === next.onEdit &&
@@ -412,7 +428,6 @@ function arePropsEqual(
     prev.renderContent === next.renderContent &&
     // renderContext is rebuilt per parent render; compare its fields so only
     // the row whose volatile values changed re-renders.
-    prev.renderContext?.turnStatus === next.renderContext?.turnStatus &&
     prev.renderContext?.suppressReasoning ===
       next.renderContext?.suppressReasoning &&
     prev.userMessagesOnRight === next.userMessagesOnRight &&
@@ -431,6 +446,7 @@ function arePropsEqual(
     a.id === b.id &&
     a.role === b.role &&
     a.text === b.text &&
+    a.timestamp === b.timestamp &&
     a.source === b.source &&
     a.interrupted === b.interrupted &&
     a.from === b.from &&
@@ -457,6 +473,7 @@ function arePropsEqual(
 
 export const ChatMessage = memo(function ChatMessage({
   message,
+  actionAccessory,
   appearance = "panel",
   isGrouped = false,
   agentName = "Agent",
@@ -466,7 +483,6 @@ export const ChatMessage = memo(function ChatMessage({
   onCopy,
   onSpeak,
   onEdit,
-  onDelete,
   onDismissSuggestion,
   onAcceptSuggestion,
   onLongPressCopy,
@@ -481,17 +497,16 @@ export const ChatMessage = memo(function ChatMessage({
 }: ChatMessageProps) {
   const glass = appearance === "glass";
   const [copied, flashCopied] = useCopiedFlash(glass ? 1100 : 2000);
-  // The press-and-hold "Copied" chip (glass) — separate from the action-row
-  // copy state so a hold-flash never lights the row button and vice versa.
-  const [holdCopied, flashHoldCopied] = useCopiedFlash(1100);
   const [showActions, setShowActions] = useState(false);
   const supportsHover = useSupportsHover();
   const [isEditing, setIsEditing] = useState(false);
+  const [editBubbleWidth, setEditBubbleWidth] = useState<number | null>(null);
   const [draftText, setDraftText] = useState(message.text);
   const [savingEdit, setSavingEdit] = useState(false);
   const articleRef = useRef<HTMLElement | null>(null);
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const tapStartRef = useRef<{ x: number; y: number } | null>(null);
+  const accessoryModeRef = useRef<"actions" | "edit">("actions");
   const isUser = message.role === "user";
   const isAssistant = message.role === "assistant";
   const isRightAligned = isUser ? userMessagesOnRight : !userMessagesOnRight;
@@ -499,8 +514,8 @@ export const ChatMessage = memo(function ChatMessage({
   // First-run onboarding turns render chromeless: agent prose floats as plain
   // wallpaper text with its CTA button directly beneath. Computed up here (not
   // at first use) so the message-action capabilities below can suppress the
-  // hover/tap rail — replying to / copying / deleting the seeded greeting is
-  // meaningless, and the rail contradicts the chromeless intent.
+  // hover/tap rail — replying to or copying the seeded greeting is meaningless,
+  // and the rail contradicts the chromeless intent.
   const isFirstRun = !isUser && message.source === "first_run";
   const canEdit =
     isUser &&
@@ -512,14 +527,6 @@ export const ChatMessage = memo(function ChatMessage({
   const canPlay = Boolean(
     !isUser && !isFirstRun && typeof onSpeak === "function" && trimmedText,
   );
-  // Persistent delete (#13533): available on any real turn when the surface
-  // wires onDelete. An optimistic (temp-) turn has no persisted row to delete;
-  // a proactive suggestion uses its own dismiss affordance (below), not delete;
-  // a first-run greeting is chromeless (no rail at all).
-  const canDelete =
-    typeof onDelete === "function" &&
-    !message.id.startsWith("temp-") &&
-    !isFirstRun;
   const normalizedSource = normalizeChatSourceKey(message.source) ?? undefined;
   // Reply targets the persisted message by id, so an optimistic (temp-) turn,
   // which has no server row yet, has nothing to reply to. A proactive
@@ -571,14 +578,14 @@ export const ChatMessage = memo(function ChatMessage({
 
   const handleReply = useCallback(() => {
     onReply?.(message);
-    // Collapse the tap-revealed rail (touch/glass) after arming the reply so the
-    // focus returns to the composer, not a lingering action row.
+    // Collapse the tap-revealed rail after arming the reply so touch users see
+    // the new context lane instead of a stale action row.
     if (glass || !supportsHover) setShowActions(false);
   }, [message, onReply, glass, supportsHover]);
 
   // Press-and-hold to copy an assistant answer (glass) — the only extraction
-  // affordance on touch. A still hold past COPY_HOLD_MS copies + flashes
-  // "Copied"; real finger travel cancels (shared usePointerPressAndHold).
+  // affordance on touch. A still hold past COPY_HOLD_MS copies silently; real
+  // finger travel cancels (shared usePointerPressAndHold).
   const canHoldCopy =
     glass && isAssistant && !!onLongPressCopy && trimmedText.length > 0;
   const holdBinding = usePointerPressAndHold<HTMLDivElement>({
@@ -587,23 +594,29 @@ export const ChatMessage = memo(function ChatMessage({
     canBegin: (e) => !isNestedInteractiveTarget(e.currentTarget, e.target),
     onHold: () => {
       onLongPressCopy?.(message.text);
-      flashHoldCopied();
     },
   });
   const holdHandlers = canHoldCopy ? holdBinding : null;
 
   const handleStartEditing = useCallback(() => {
     if (!canEdit || savingEdit) return;
+    const bubble = articleRef.current?.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
+    const measuredWidth = bubble?.getBoundingClientRect().width ?? 0;
+    setEditBubbleWidth(measuredWidth > 0 ? measuredWidth : null);
     setDraftText(message.text);
+    setShowActions(false);
     setIsEditing(true);
   }, [canEdit, message.text, savingEdit]);
 
   const handleCancelEditing = useCallback(() => {
     if (savingEdit) return;
     setDraftText(message.text);
+    setEditBubbleWidth(null);
     setIsEditing(false);
-    if (glass) setShowActions(false);
-  }, [message.text, savingEdit, glass]);
+    setShowActions(glass);
+  }, [glass, message.text, savingEdit]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!onEdit) return;
@@ -611,8 +624,9 @@ export const ChatMessage = memo(function ChatMessage({
     if (!nextText) return;
     if (nextText === message.text.trim()) {
       setDraftText(message.text);
+      setEditBubbleWidth(null);
       setIsEditing(false);
-      if (glass) setShowActions(false);
+      setShowActions(false);
       return;
     }
 
@@ -620,13 +634,14 @@ export const ChatMessage = memo(function ChatMessage({
     try {
       const saved = await onEdit(message.id, nextText);
       if (saved !== false) {
+        setEditBubbleWidth(null);
         setIsEditing(false);
-        if (glass) setShowActions(false);
+        setShowActions(false);
       }
     } finally {
       setSavingEdit(false);
     }
-  }, [draftText, message.id, message.text, onEdit, glass]);
+  }, [draftText, message.id, message.text, onEdit]);
 
   const handleTapStart = useCallback((event: TouchEvent<HTMLElement>) => {
     const touch = event.touches[0];
@@ -711,7 +726,10 @@ export const ChatMessage = memo(function ChatMessage({
       }
       if (!articleRef.current?.contains(target)) {
         setShowActions(false);
-        if (glass) setIsEditing(false);
+        if (glass) {
+          setEditBubbleWidth(null);
+          setIsEditing(false);
+        }
       }
     };
 
@@ -732,6 +750,119 @@ export const ChatMessage = memo(function ChatMessage({
       target.scrollIntoView({ behavior: "smooth", block: "center" });
     },
     [replyTargetId],
+  );
+
+  const editSaveDisabled =
+    savingEdit || !draftText.trim() || draftText.trim() === message.text.trim();
+  const inlineEditControls = (
+    <ChatMessageActionSurface
+      bare={glass}
+      data-testid={
+        glass ? "thread-line-edit-controls" : "chat-message-edit-controls"
+      }
+      className={cn(
+        glass ? "gap-0.5" : "gap-0 px-1.5 py-0.5",
+        !glass && "absolute right-0 top-full z-30 mt-1",
+      )}
+    >
+      {glass ? (
+        <>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={labels.cancel ?? "Cancel"}
+            title={labels.cancel ?? "Cancel"}
+            data-testid="thread-line-edit-cancel"
+            onClick={(event) => {
+              event.stopPropagation();
+              handleCancelEditing();
+            }}
+            disabled={savingEdit}
+            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55 disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={
+              savingEdit
+                ? (labels.saving ?? "Saving...")
+                : (labels.send ?? "Send")
+            }
+            title={savingEdit ? undefined : (labels.send ?? "Send")}
+            data-testid="thread-line-edit-save"
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleSaveEdit();
+            }}
+            disabled={editSaveDisabled}
+            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55 disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+          >
+            {savingEdit ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+              />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
+          </Button>
+        </>
+      ) : (
+        <>
+          <Button
+            unstyled
+            onClick={handleCancelEditing}
+            disabled={savingEdit}
+            className="min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+          >
+            {labels.cancel ?? "Cancel"}
+          </Button>
+          <span aria-hidden className="mx-0.5 h-3.5 w-px bg-white/15" />
+          <Button
+            unstyled
+            onClick={() => void handleSaveEdit()}
+            disabled={editSaveDisabled}
+            className="min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+          >
+            {savingEdit
+              ? (labels.saving ?? "Saving...")
+              : (labels.saveAndResend ?? "Save and resend")}
+          </Button>
+        </>
+      )}
+    </ChatMessageActionSurface>
+  );
+
+  const inlineEditor = (
+    <div
+      data-testid={
+        glass ? "thread-line-inline-editor" : "chat-message-inline-editor"
+      }
+      className="relative min-w-0"
+    >
+      <Textarea
+        ref={editTextareaRef}
+        aria-label={labels.edit ?? "Edit message"}
+        data-testid={
+          glass ? "thread-line-edit-input" : "chat-message-edit-input"
+        }
+        value={draftText}
+        onChange={(event) => setDraftText(event.target.value)}
+        onKeyDown={handleEditKeyDown}
+        rows={Math.min(6, Math.max(1, draftText.split("\n").length))}
+        className={cn(
+          "field-sizing-content min-h-0 max-h-40 w-full resize-none overflow-y-auto rounded-none border-0 bg-transparent p-0 shadow-none outline-none transition-opacity duration-200 disabled:cursor-default",
+          glass
+            ? "text-[14px] leading-relaxed text-white caret-white"
+            : "text-[15px] leading-[1.7] text-txt-strong caret-txt-strong",
+        )}
+        style={{ fontFamily: "var(--font-chat)" }}
+        disabled={savingEdit}
+      />
+      {glass ? null : inlineEditControls}
+    </div>
   );
 
   // ── Glass chrome (the continuous overlay's floating row) ──────────────────
@@ -767,13 +898,35 @@ export const ChatMessage = memo(function ChatMessage({
     }
 
     const canRowCopy = !isFirstRun && !!onCopy && trimmedText.length > 0;
-    // Suggestions carry their own dismiss affordance, not the delete control.
-    const canRowDelete = canDelete && !isSuggestion;
     // A first-run greeting is chromeless — no rail, no tap-to-reveal. Every
     // capability above already excludes it, so hasActions is false and the
     // bubble stays a plain, non-interactive container.
-    const hasActions =
-      canRowCopy || canPlay || canEdit || canRowDelete || canReply;
+    const hasActions = canRowCopy || canPlay || canEdit || canReply;
+    const hasActionLane = hasActions || Boolean(actionAccessory);
+    const accessoryVisible =
+      actionsVisible || isEditing || Boolean(actionAccessory);
+    const timestampAccessory =
+      typeof message.timestamp === "number" &&
+      Number.isFinite(message.timestamp) ? (
+        <RelativeTime
+          ts={message.timestamp}
+          short
+          data-testid="thread-line-timestamp"
+          className="inline-block min-w-[3ch] whitespace-nowrap text-left text-[11px] tabular-nums text-white/45"
+        />
+      ) : null;
+    const trailingAccessory =
+      timestampAccessory || actionAccessory ? (
+        <div className="flex min-w-0 items-center gap-1.5">
+          {actionAccessory}
+          {timestampAccessory}
+        </div>
+      ) : undefined;
+    if (isEditing) accessoryModeRef.current = "edit";
+    else if (actionsVisible) accessoryModeRef.current = "actions";
+    // Retain the last visible contents while the shared slot collapses so its
+    // exit never flashes the other control set on the final frame.
+    const accessoryMode = accessoryModeRef.current;
     // An assistant turn carrying an inline choice/form/followups widget must
     // stay a plain container — see messageHasInteractiveWidget.
     const hasInteractiveWidget =
@@ -798,6 +951,7 @@ export const ChatMessage = memo(function ChatMessage({
     };
     const handleBubbleClick = (e: MouseEvent<HTMLDivElement>) => {
       if (!bubbleInteractive) return;
+      if (supportsHover) return;
       if (isNestedInteractiveTarget(e.currentTarget, e.target)) return;
       toggleRevealed();
     };
@@ -810,40 +964,7 @@ export const ChatMessage = memo(function ChatMessage({
 
     const bubbleContent =
       isUser && isEditing ? (
-        <div className="flex flex-col gap-2">
-          <Textarea
-            ref={editTextareaRef}
-            aria-label="Edit message"
-            data-testid="thread-line-edit-input"
-            value={draftText}
-            onChange={(e) => setDraftText(e.target.value)}
-            onKeyDown={handleEditKeyDown}
-            rows={Math.min(6, Math.max(1, draftText.split("\n").length))}
-            className="min-h-0 w-full resize-none rounded-lg border-0 bg-white/10 px-2.5 py-1.5 text-[14px] text-white outline-none [overflow-wrap:anywhere]"
-            disabled={savingEdit}
-          />
-          <div className="flex items-center justify-end gap-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="thread-line-edit-cancel"
-              onClick={handleCancelEditing}
-              className="h-auto rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              variant="default"
-              size="sm"
-              data-testid="thread-line-edit-save"
-              onClick={() => void handleSaveEdit()}
-              className="h-auto rounded-full bg-[rgb(255,88,0)] px-3 py-1 text-[13px] font-medium text-white transition-colors hover:bg-[rgb(214,74,0)]"
-            >
-              Send
-            </Button>
-          </div>
-        </div>
+        inlineEditor
       ) : (
         <>
           {isSuggestion ? (
@@ -902,21 +1023,6 @@ export const ChatMessage = memo(function ChatMessage({
               children ??
               message.text}
           </div>
-          <AnimatePresence>
-            {holdCopied ? (
-              <motion.span
-                key="copied"
-                data-testid="thread-line-copied"
-                initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: reduceMotion ? 0 : 0.18 }}
-                className="pointer-events-none absolute -top-2 right-2 rounded-full bg-white/90 px-2 py-0.5 text-[11px] font-medium text-black"
-              >
-                Copied
-              </motion.span>
-            ) : null}
-          </AnimatePresence>
         </>
       );
 
@@ -931,6 +1037,9 @@ export const ChatMessage = memo(function ChatMessage({
         "w-fit max-w-full rounded-2xl rounded-bl-md border border-white/20 bg-black/35 px-4 py-3.5 backdrop-blur-md sm:px-5 sm:py-4",
       // Ordinary assistant replies use shadcn's full-width ghost treatment.
       isFlatAssistant && "w-full px-0 py-1",
+      // Measure the overlay's rhythm from the text edge: the user bubble's 1px
+      // border plus 3px padding equals the flat assistant's 4px padding.
+      isUser && "py-[3px]",
       // Suggestion treatment (#8792): dashed accent edge + faint accent tint so
       // a proactive offer reads as a suggestion, not a normal reply. Placed
       // last so it wins over the glass hairline.
@@ -949,13 +1058,34 @@ export const ChatMessage = memo(function ChatMessage({
         initial={initial}
         animate={reduceMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
         transition={transition}
-        className="mb-1.5"
+        className="mb-0"
+        onMouseEnter={
+          supportsHover && hasActions ? () => setShowActions(true) : undefined
+        }
+        onMouseLeave={
+          supportsHover && hasActions ? () => setShowActions(false) : undefined
+        }
+        onFocusCapture={
+          supportsHover && hasActions ? () => setShowActions(true) : undefined
+        }
+        onBlurCapture={
+          supportsHover && hasActions
+            ? (event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) {
+                  setShowActions(false);
+                }
+              }
+            : undefined
+        }
       >
-        {/* Bubble + its click-to-reveal action row stack vertically, aligned to
-            the turn's side (#10713). */}
         <MessageRowContent
           className={cn(
-            "flex flex-col gap-1",
+            "relative flex flex-col",
+            // Fine pointers reserve the exact 20px rail height, so revealing
+            // actions never reflows the transcript. Coarse pointers retain
+            // 44px hit targets but overlap four pixels at each edge of a 36px
+            // lane, keeping touch access generous without opening a large gap.
+            hasActionLane && "pb-5 pointer-coarse:pb-9",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -978,6 +1108,12 @@ export const ChatMessage = memo(function ChatMessage({
               onClick={handleBubbleClick}
               onKeyDown={handleBubbleKeyDown}
               className={bubbleExtraClassName}
+              style={
+                isEditing && editBubbleWidth
+                  ? { width: editBubbleWidth, maxWidth: "100%" }
+                  : undefined
+              }
+              data-chat-message-bubble="true"
               data-proactive-suggestion={isSuggestion ? "true" : undefined}
             >
               {bubbleContent}
@@ -989,35 +1125,74 @@ export const ChatMessage = memo(function ChatMessage({
               tone={isUser ? "user" : "assistant"}
               {...(holdHandlers ?? {})}
               className={bubbleExtraClassName}
+              style={
+                isEditing && editBubbleWidth
+                  ? { width: editBubbleWidth, maxWidth: "100%" }
+                  : undefined
+              }
+              data-chat-message-bubble="true"
               data-proactive-suggestion={isSuggestion ? "true" : undefined}
             >
               {bubbleContent}
             </ChatBubble>
           )}
-          {actionsVisible && !isEditing && hasActions ? (
-            <MessageRowFooter
+          {hasActionLane ? (
+            <motion.div
               data-testid="thread-line-actions"
+              aria-hidden={!accessoryVisible}
+              inert={!accessoryVisible}
+              initial={false}
+              animate={
+                accessoryVisible
+                  ? { opacity: 1, y: 0, scale: 1 }
+                  : {
+                      opacity: 0,
+                      y: reduceMotion ? 0 : 4,
+                      scale: reduceMotion ? 1 : 0.98,
+                    }
+              }
+              transition={{
+                duration: reduceMotion ? 0.1 : 0.2,
+                ease: GLASS_EASE,
+              }}
               className={cn(
-                "flex items-center gap-1.5 px-0 text-white/70",
-                isUser ? "pr-1" : "pl-1",
+                "absolute z-10 min-w-0",
+                isUser
+                  ? "-bottom-1 right-0 origin-top-right pointer-coarse:-bottom-2"
+                  : "bottom-0 left-0 origin-top-left pointer-coarse:-bottom-1",
               )}
             >
-              <ChatMessageActions
-                appearance="glass-row"
-                canDelete={canRowDelete}
-                canEdit={canEdit}
-                canPlay={canPlay}
-                canReply={canReply}
-                copied={copied}
-                labels={labels}
-                onCopy={canRowCopy ? handleCopy : undefined}
-                onDelete={() => onDelete?.(message.id)}
-                onEdit={handleStartEditing}
-                onPlay={() => onSpeak?.(message.id, message.text)}
-                onReply={handleReply}
-                playing={playing}
-              />
-            </MessageRowFooter>
+              <MessageRowFooter className="flex items-center p-0 text-white/70">
+                <motion.div
+                  key={accessoryMode}
+                  initial={reduceMotion ? false : { opacity: 0, y: 2 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: reduceMotion ? 0.08 : 0.14,
+                    ease: GLASS_EASE,
+                  }}
+                >
+                  {accessoryMode === "edit" ? (
+                    inlineEditControls
+                  ) : (
+                    <ChatMessageActions
+                      appearance="glass-row"
+                      canEdit={canEdit}
+                      canPlay={canPlay}
+                      canReply={canReply}
+                      copied={copied}
+                      labels={labels}
+                      onCopy={canRowCopy ? handleCopy : undefined}
+                      onEdit={handleStartEditing}
+                      onPlay={() => onSpeak?.(message.id, message.text)}
+                      onReply={handleReply}
+                      playing={playing}
+                      trailingAccessory={trailingAccessory}
+                    />
+                  )}
+                </motion.div>
+              </MessageRowFooter>
+            </motion.div>
           ) : null}
           {/* Retry a recoverable failure by re-sending the preceding user turn.
               Always visible on the failed turn (not gated behind the reveal
@@ -1032,7 +1207,7 @@ export const ChatMessage = memo(function ChatMessage({
                 e.stopPropagation();
                 onRetry?.(message.id);
               }}
-              className="h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
+              className="mt-1 h-auto gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] font-medium text-white/80 transition-colors hover:bg-white/20"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden />
               Retry
@@ -1144,7 +1319,13 @@ export const ChatMessage = memo(function ChatMessage({
             isSuggestion &&
               "border border-dashed border-accent/45 bg-accent/[0.06]",
           )}
-          style={{ fontFamily: "var(--font-chat)" }}
+          style={{
+            fontFamily: "var(--font-chat)",
+            ...(isEditing && editBubbleWidth
+              ? { width: editBubbleWidth, maxWidth: "100%" }
+              : {}),
+          }}
+          data-chat-message-bubble="true"
           data-proactive-suggestion={isSuggestion ? "true" : undefined}
         >
           {isSuggestion && !isEditing ? (
@@ -1190,50 +1371,11 @@ export const ChatMessage = memo(function ChatMessage({
               {replyReferenceLabel}
             </a>
           ) : null}
-          {isEditing ? (
-            <div className="space-y-3">
-              <Textarea
-                ref={editTextareaRef}
-                value={draftText}
-                onChange={(event) => setDraftText(event.target.value)}
-                onKeyDown={handleEditKeyDown}
-                className="min-h-[110px] w-full rounded-sm border border-border bg-card px-3 py-2.5 text-[15px] leading-[1.7] text-txt outline-none   "
-                style={{ fontFamily: "var(--font-chat)" }}
-                aria-label={labels.edit ?? "Edit message"}
-                disabled={savingEdit}
-              />
-              <div className="flex items-center justify-end gap-2">
-                <Button
-                  variant="surface"
-                  size="sm"
-                  onClick={handleCancelEditing}
-                  disabled={savingEdit}
-                  className="h-8 rounded-sm px-3 text-xs"
-                >
-                  {labels.cancel ?? "Cancel"}
-                </Button>
-                <Button
-                  variant="surfaceAccent"
-                  size="sm"
-                  onClick={() => void handleSaveEdit()}
-                  disabled={
-                    savingEdit ||
-                    !draftText.trim() ||
-                    draftText.trim() === message.text.trim()
-                  }
-                  className="h-8 rounded-sm px-3 text-xs disabled:border-border/20 disabled:bg-bg-accent disabled:text-muted-strong"
-                >
-                  {savingEdit
-                    ? (labels.saving ?? "Saving...")
-                    : (labels.saveAndResend ?? "Save and resend")}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            (renderContent?.(message, renderContext) ??
-            children ??
-            message.text)
-          )}
+          {isEditing
+            ? inlineEditor
+            : (renderContent?.(message, renderContext) ??
+              children ??
+              message.text)}
 
           {!isUser && message.interrupted ? (
             <div className="mt-2 border-t border-danger/30 pt-2">
@@ -1243,11 +1385,14 @@ export const ChatMessage = memo(function ChatMessage({
             </div>
           ) : null}
 
-          {!isEditing && !isFirstRun ? (
+          {!isFirstRun ? (
             <div
               data-testid="chat-message-action-rail"
+              aria-hidden={!actionsVisible || isEditing}
+              inert={!actionsVisible || isEditing}
               className={cn(
-                "absolute top-0 flex items-center gap-1 transition-opacity duration-200",
+                "absolute top-0 z-20 flex items-center",
+                ACTION_REVEAL_MOTION,
                 // Below the `sm` breakpoint (narrow phones) anchor the
                 // action rail to the bubble's top-right corner so it can
                 // never overflow the viewport. From `sm` up the rail
@@ -1255,22 +1400,20 @@ export const ChatMessage = memo(function ChatMessage({
                 // bubbles, right of left-aligned bot bubbles) where there
                 // is enough horizontal room.
                 isRightAligned
-                  ? "right-1 sm:right-auto sm:left-0 sm:-translate-x-full"
-                  : "right-1 sm:right-0 sm:translate-x-full",
-                actionsVisible
-                  ? "opacity-100"
-                  : "pointer-events-none opacity-0",
+                  ? "right-1 origin-top-right sm:right-auto sm:left-0 sm:-translate-x-full"
+                  : "right-1 origin-top-right sm:right-0 sm:translate-x-full sm:origin-top-left",
+                actionsVisible && !isEditing
+                  ? ACTION_REVEAL_VISIBLE
+                  : ACTION_REVEAL_HIDDEN,
               )}
             >
               <ChatMessageActions
-                canDelete={canDelete}
                 canEdit={canEdit}
                 canPlay={canPlay}
                 canReply={canReply}
                 copied={copied}
                 labels={labels}
                 onCopy={handleCopy}
-                onDelete={() => onDelete?.(message.id)}
                 onEdit={handleStartEditing}
                 onPlay={() => onSpeak?.(message.id, message.text)}
                 onReply={handleReply}

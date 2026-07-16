@@ -1,16 +1,16 @@
 // @vitest-environment jsdom
 //
-// StartupShell's view gating (loading vs failure vs pairing vs bootstrap) and
-// its splash-delay + first-paint telemetry mark. Child surfaces are stubbed so
-// only the shell's own gating runs; the telemetry module is real.
+// StartupShell's view gating (loading vs failure vs pairing vs bootstrap),
+// stable loading lockup, and first-paint telemetry mark. Child surfaces are
+// stubbed so only the shell's own gating runs; the telemetry module is real.
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetStartupTraceForTests,
   hasStartupMark,
 } from "../../state/startup-telemetry";
-import { STARTUP_SPLASH_DELAY_MS, StartupShell } from "./StartupShell";
+import { StartupShell } from "./StartupShell";
 import type { StartupShellView } from "./startup-shell-types";
 
 // The child surfaces pull in heavy trees (branding, platform, bootstrap flow);
@@ -44,92 +44,70 @@ function queryLoading() {
   return screen.queryByTestId("startup-shell-loading");
 }
 
-// Timer callbacks call setState; flush them through act() so React commits the
-// re-render before the assertion reads the DOM.
-function advance(ms: number) {
-  act(() => {
-    vi.advanceTimersByTime(ms);
-  });
-}
-
 beforeEach(() => {
-  vi.useFakeTimers();
   __resetStartupTraceForTests();
 });
 
 afterEach(() => {
   cleanup();
-  vi.runOnlyPendingTimers();
-  vi.useRealTimers();
 });
 
-describe("StartupShell — delayed loading splash", () => {
-  it("does NOT render the splash before the delay threshold elapses", () => {
+describe("StartupShell — stable loading splash", () => {
+  it("renders immediately with a static lockup and shimmer-only status", () => {
     render(<StartupShell view={loadingView} onRetry={vi.fn()} />);
-
-    // Immediately after mount: nothing painted, no first-paint mark.
-    expect(queryLoading()).toBeNull();
-    expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(false);
-
-    // Advance to just before the threshold — still hidden.
-    advance(STARTUP_SPLASH_DELAY_MS - 1);
-    expect(queryLoading()).toBeNull();
-    expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(false);
-  });
-
-  it("renders the splash once the delay threshold is crossed", () => {
-    render(<StartupShell view={loadingView} onRetry={vi.fn()} />);
-
-    advance(STARTUP_SPLASH_DELAY_MS);
 
     const splash = queryLoading();
     expect(splash).not.toBeNull();
     // Visual contract preserved: phase + role attributes still present.
     expect(splash?.getAttribute("data-startup-phase")).toBe("starting-backend");
     expect(splash?.getAttribute("role")).toBe("status");
-    // first-paint telemetry fires only when the splash actually paints.
+    expect(splash?.style.fontFamily).toBe("Arial, system-ui, sans-serif");
+    const lockup = screen.getByTestId("startup-brand-lockup");
+    expect(lockup.className).not.toMatch(/(?:animate-|transition)/);
+    const brandName = screen.getByText("elizaOS");
+    expect(brandName.className).not.toMatch(/(?:shimmer|animate-|transition)/);
+    const status = screen.getByText("Starting");
+    expect(status.classList.contains("shimmer")).toBe(true);
+    expect(status.classList.contains("text-base")).toBe(true);
+    expect(status.classList.contains("font-medium")).toBe(true);
+    expect(status.classList.contains("text-white/60")).toBe(true);
+    expect(status.className).toContain("[--shimmer-color:rgba(255,255,255,1)]");
+    expect(status.className).toContain("[--shimmer-duration:1.8s]");
+    expect(status.classList.contains("motion-reduce:shimmer-none")).toBe(true);
+    expect(status.classList.contains("motion-reduce:animate-none")).toBe(true);
+    expect(status.classList.contains("opacity-80")).toBe(false);
+    expect(status.classList.contains("animate-pulse")).toBe(false);
+    // First-paint telemetry fires with the first visible React lockup.
     expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(true);
   });
 
-  it("NEVER renders the splash when the view becomes ready before the threshold (fast cached boot)", () => {
+  it("hands an already-visible loading lockup directly to the ready app", () => {
     const { rerender } = render(
       <StartupShell view={loadingView} onRetry={vi.fn()} />,
     );
 
-    // App becomes ready well before the delay elapses.
-    advance(STARTUP_SPLASH_DELAY_MS - 50);
+    expect(queryLoading()).not.toBeNull();
     rerender(<StartupShell view={{ kind: "none" }} onRetry={vi.fn()} />);
 
-    // Even after the original timer would have fired, no flash.
-    advance(500);
     expect(queryLoading()).toBeNull();
-    // The startup shell never painted, so no first-paint mark was recorded.
-    expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(false);
+    expect(hasStartupMark(FIRST_PAINT_MARK)).toBe(true);
   });
 
-  it("still shows the splash if a fast flicker returns to loading and then persists", () => {
+  it("does not introduce a blank interval when loading resumes", () => {
     const onRetry = vi.fn();
     const { rerender } = render(
       <StartupShell view={loadingView} onRetry={onRetry} />,
     );
 
-    // Brief flip to ready then back to loading — the delay timer restarts.
-    advance(STARTUP_SPLASH_DELAY_MS - 20);
     rerender(<StartupShell view={{ kind: "none" }} onRetry={onRetry} />);
     expect(queryLoading()).toBeNull();
 
     rerender(<StartupShell view={loadingView} onRetry={onRetry} />);
-    // Only 100ms of continuous loading — still hidden (timer restarted).
-    advance(100);
-    expect(queryLoading()).toBeNull();
-
-    // Cross the full threshold from the restart — now it paints.
-    advance(STARTUP_SPLASH_DELAY_MS);
     expect(queryLoading()).not.toBeNull();
   });
 });
 
-describe("StartupShell — non-loading views render immediately (no delay)", () => {
+describe("StartupShell — non-loading views", () => {
   it("renders the error view immediately and marks first-paint", () => {
     render(
       <StartupShell
