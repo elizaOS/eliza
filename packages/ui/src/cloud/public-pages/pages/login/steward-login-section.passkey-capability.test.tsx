@@ -300,6 +300,7 @@ describe("StewardLoginSection passkey capability gating", () => {
 
     expect(await screen.findByText("Magic link sent to")).toBeTruthy();
     expect(screen.getByText("person@example.com")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Google/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /Back to login/i }));
     expect(await screen.findByPlaceholderText("you@example.com")).toBeTruthy();

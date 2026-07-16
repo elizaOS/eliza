@@ -36,6 +36,16 @@ function makeToolEvent(callId: string): NativeToolCallEvent {
 }
 
 describe("ChatTranscript memoization", () => {
+  it("does not expose a delete action for user messages", () => {
+    render(
+      <ChatTranscript
+        messages={[makeMessage("msg-1", "user", "keep this message")]}
+      />,
+    );
+
+    expect(screen.queryByLabelText(/delete message/i)).toBeNull();
+  });
+
   it("does not re-render unchanged historical rows during streamed updates", () => {
     const first = makeMessage("msg-1", "user", "hello");
     const second = makeMessage("msg-2", "assistant", "thinking");

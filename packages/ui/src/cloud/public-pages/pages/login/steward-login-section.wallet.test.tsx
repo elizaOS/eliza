@@ -32,6 +32,7 @@ const oauthLaunch = vi.hoisted(() => ({
 vi.mock("../../../../state/cloud-login-launch", () => ({
   preOpenCloudLoginWindow: () => oauthLaunch.popup,
   canNavigateSameTabForBlockedPopup: () => oauthLaunch.sameTabAllowed,
+  shouldReuseCurrentCloudLoginWindow: () => false,
 }));
 
 vi.mock("../../../../utils/openExternalUrl", () => ({

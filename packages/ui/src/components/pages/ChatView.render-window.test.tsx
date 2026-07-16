@@ -11,7 +11,7 @@
 // useLoadOlderOnScroll self-bails — scroll-driven growth is covered by the hook
 // unit tests + the real-Chromium e2e; this asserts the mount + reveal contract.
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ConversationMessage } from "../../api/client-types-chat";
@@ -41,11 +41,18 @@ function seedMessages(count: number): ConversationMessage[] {
 
 const seeded = seedMessages(THREAD_LENGTH);
 
+const clientMock = vi.hoisted(() => ({
+  getInboxMessages: vi.fn(async () => ({
+    messages: [] as ConversationMessage[],
+  })),
+  sendInboxMessage: vi.fn(async () => ({ message: null })),
+}));
+
 const appState = {
   agentStatus: { state: "running", canRespond: true },
   activeConversationId: "conv-1",
-  activeInboxChat: null,
-  activeTerminalSessionId: null,
+  activeInboxChat: null as Record<string, unknown> | null,
+  activeTerminalSessionId: null as string | null,
   characterData: { name: "Eliza" },
   chatFirstTokenReceived: false,
   companionMessageCutoffTs: null,
@@ -102,7 +109,29 @@ vi.mock("../../state/PtySessionsContext.hooks", () => ({
   usePtySessions: () => ({ ptySessions: [] }),
 }));
 
-vi.mock("../../api/client", () => ({ client: {} }));
+vi.mock("../../api/client", () => ({ client: clientMock }));
+
+vi.mock("../../hooks/useConnectorSendAsAccount", () => ({
+  useConnectorSendAsAccount: () => ({
+    accountRequired: false,
+    accountRequiredReason: null,
+    accounts: [],
+    connectAccount: vi.fn(async () => {}),
+    context: null,
+    loading: false,
+    reconnectAccount: vi.fn(async () => {}),
+    saving: new Set<string>(),
+    selectAccount: vi.fn(),
+    selectedAccount: null,
+    sendAsMetadata: {},
+    showPicker: false,
+  }),
+}));
+
+vi.mock("../../hooks/useDocumentVisibility", () => ({
+  useDocumentVisibility: () => true,
+  useIntervalWhenDocumentVisible: () => {},
+}));
 
 vi.mock("../../hooks/useChatAvatarVoiceBridge", () => ({
   useChatAvatarVoiceBridge: () => {},
@@ -160,6 +189,14 @@ afterEach(cleanup);
 describe("ChatView transcript render window (#15281)", () => {
   beforeEach(() => {
     appState.activeConversationId = "conv-1";
+    appState.activeInboxChat = null;
+    appState.activeTerminalSessionId = null;
+    clientMock.getInboxMessages.mockReset();
+    clientMock.getInboxMessages.mockResolvedValue({ messages: [] });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   it("mounts at most MAX_RENDERED_SHELL_MESSAGES rows for a long thread, with the top sentinel present", () => {
@@ -185,5 +222,39 @@ describe("ChatView transcript render window (#15281)", () => {
     expect(threadRowCount(container)).toBe(
       Math.min(THREAD_LENGTH, MAX_LOADED_SHELL_WINDOW),
     );
+  });
+
+  it("normalizes a selected connector room and renders its loaded messages", async () => {
+    appState.activeInboxChat = {
+      id: "discord-room-1",
+      title: "Design room",
+      source: "discord",
+      transportSource: "discord",
+      canSend: false,
+      worldId: "server-1",
+      worldLabel: "Eliza team",
+    };
+    clientMock.getInboxMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "inbox-1",
+          role: "assistant",
+          text: "Inbox history loaded",
+          timestamp: 1,
+          source: "discord",
+        },
+      ],
+    });
+
+    render(<ChatView hideComposer />);
+
+    expect(await screen.findByText("Design room")).toBeTruthy();
+    expect(await screen.findByText("Inbox history loaded")).toBeTruthy();
+    expect(clientMock.getInboxMessages).toHaveBeenCalledWith({
+      limit: 200,
+      roomId: "discord-room-1",
+      roomSource: "discord",
+    });
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });
