@@ -281,11 +281,9 @@ export function HomeScreen({
             it fades in (Apple-style) on first appearance. */}
           <div
             className={cn(
-              enterClass,
               "mt-4",
               hasNotifications && "flex min-h-0 flex-1 flex-col",
             )}
-            style={{ animationDelay: "90ms" }}
           >
             <NotificationsHomeCenter
               emptyGestureTargetRef={homeScreenRef}
