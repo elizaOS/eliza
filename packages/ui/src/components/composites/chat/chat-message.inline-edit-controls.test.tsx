@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
-
 /**
+ * @vitest-environment jsdom
+ *
  * Glass-message inline editing keeps the overlay's action lane visually bare
  * while preserving labelled touch targets, cancel restoration, and save wiring.
  */
