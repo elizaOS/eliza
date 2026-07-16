@@ -4,6 +4,7 @@
  * runners enforce access, routing, lifecycle, and session-event invariants.
  */
 
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import type {
   Action,
@@ -30,6 +31,11 @@ import {
 } from "../services/acceptance-criteria.js";
 import { augmentTaskWithDeployGuidance } from "../services/app-deploy-guidance.js";
 import { resolveCodingBackendLogged } from "../services/coding-backend-routing.js";
+import {
+  collisionProviderFromWorkspaceService,
+  LanePlannerService,
+  shouldUseLanePlanner,
+} from "../services/lane-planner.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
 import { OrchestratorTaskService } from "../services/orchestrator-task-service.js";
 import type { OrchestratorTaskStatus } from "../services/orchestrator-task-types.js";
@@ -730,7 +736,7 @@ async function runPromptAndClose(
   }
 }
 
-async function runCreate(
+async function runCreateLegacy(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
@@ -1006,6 +1012,14 @@ async function runCreate(
           : {}),
         ...(taskRoomId ? { taskRoomId } : {}),
         acceptanceCriteria,
+        ...(objectValue(extraMetadata.lane)
+          ? {
+              metadata: {
+                waveId: extraMetadata.waveId,
+                lane: extraMetadata.lane,
+              },
+            }
+          : {}),
       });
       threadId = detail?.id ?? null;
     }
@@ -1078,6 +1092,136 @@ async function runCreate(
   };
 }
 
+async function runCreate(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  if (!shouldUseLanePlanner(runtime)) {
+    return runCreateLegacy(runtime, message, state, params, content, callback);
+  }
+
+  let plan: Awaited<ReturnType<LanePlannerService["plan"]>>;
+  try {
+    const text = messageText(message);
+    const tasks = taskParts(params, content, text);
+    const waveId = randomUUID();
+    const explicitWorkdir = pickString(params, content, "workdir");
+    const planner = new LanePlannerService(
+      runtime,
+      collisionProviderFromWorkspaceService(getCodingWorkspaceService(runtime)),
+    );
+    plan = await planner.plan({
+      task: pickString(params, content, "task") ?? text,
+      tasks,
+      title: pickString(params, content, "title"),
+      goal: pickString(params, content, "goal"),
+      acceptanceCriteria: pickStringArrayFromInputs(
+        params,
+        content,
+        "acceptanceCriteria",
+      ),
+      difficultyTag: pickString(params, content, "taskComplexity"),
+      waveId,
+      workdir: explicitWorkdir,
+    });
+  } catch (error) {
+    logger(runtime).warn(
+      `[TASKS:create] lane planner failed, falling back to legacy single-task behavior: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return runCreateLegacy(runtime, message, state, params, content, callback);
+  }
+
+  if (plan.lanes.length <= 1) {
+    const lane = plan.lanes[0];
+    if (!lane || lane.scopePaths.length === 0) {
+      return runCreateLegacy(
+        runtime,
+        message,
+        state,
+        params,
+        content,
+        callback,
+      );
+    }
+    return runCreateLegacy(
+      runtime,
+      message,
+      state,
+      {
+        ...params,
+        task: lane.initialPrompt,
+        agents: undefined,
+        title: lane.title,
+        goal: lane.initialPrompt,
+        taskComplexity: lane.difficultyTag,
+        acceptanceCriteria: lane.acceptanceCriteria,
+        metadata: {
+          ...(objectValue(params.metadata) ?? {}),
+          ...laneMetadata(plan, lane),
+        },
+      },
+      laneExecutionContent(content),
+      callback,
+    );
+  }
+
+  const laneRuns = plan.lanes.map((lane) =>
+    runCreateLegacy(
+      runtime,
+      message,
+      state,
+      {
+        ...params,
+        task: lane.initialPrompt,
+        agents: undefined,
+        title: lane.title,
+        goal: lane.initialPrompt,
+        taskComplexity: lane.difficultyTag,
+        acceptanceCriteria: lane.acceptanceCriteria,
+        metadata: {
+          ...(objectValue(params.metadata) ?? {}),
+          ...laneMetadata(plan, lane),
+        },
+      },
+      laneExecutionContent(content),
+      callback,
+    ),
+  );
+  const laneResults = await Promise.allSettled(laneRuns);
+  const successfulResults: ActionResult[] = [];
+  for (const result of laneResults) {
+    if (result.status === "rejected") {
+      throw result.reason;
+    }
+    successfulResults.push(result.value);
+  }
+  for (const result of successfulResults) {
+    if (!result.success) return result;
+  }
+  return {
+    success: true,
+    text: `Created ${successfulResults.length} task-agent lanes.`,
+    data: {
+      waveId: plan.waveId,
+      lanes: plan.lanes.map((lane, index) => ({
+        id: lane.id,
+        title: lane.title,
+        taskId: successfulResults[index]?.data?.taskId,
+        scopePaths: lane.scopePaths,
+        forbiddenPaths: lane.forbiddenPaths,
+        collisions: lane.collisions,
+      })),
+      suppressActionResultClipboard: true,
+    },
+  };
+}
+
 function pickStringArrayFromInputs(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
@@ -1089,6 +1233,38 @@ function pickStringArrayFromInputs(
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+}
+
+function laneExecutionContent(
+  content: Record<string, unknown>,
+): Record<string, unknown> {
+  const rest = { ...content };
+  delete rest.agents;
+  return rest;
+}
+
+function laneMetadata(
+  plan: { waveId: string },
+  lane: {
+    id: string;
+    title: string;
+    scopePaths: string[];
+    forbiddenPaths: string[];
+    collisions: unknown[];
+    difficultyTag: string;
+  },
+): Record<string, unknown> {
+  return {
+    waveId: plan.waveId,
+    lane: {
+      id: lane.id,
+      title: lane.title,
+      scopePaths: lane.scopePaths,
+      forbiddenPaths: lane.forbiddenPaths,
+      collisions: lane.collisions,
+      difficultyTag: lane.difficultyTag,
+    },
+  };
 }
 
 // ── action: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────
