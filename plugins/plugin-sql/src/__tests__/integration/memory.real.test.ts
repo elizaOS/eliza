@@ -715,12 +715,140 @@ describe("Memory Integration Tests", () => {
       });
       expect(thresholded.map((m) => m.id)).toEqual([nearId]);
 
-      // Type filtering applies after the KNN candidate fetch.
+      // Type filtering is part of the ordered scan itself.
       const otherTable = await adapter.searchMemoriesByEmbedding(query, {
         tableName: "some-other-table",
         count: 10,
       });
       expect(otherTable.length).toBe(0);
+    });
+
+    // Eligibility must be part of the KNN scan, not applied to a global
+    // top-K sample: a filtered search is "top K among eligible memories",
+    // and any two-stage global-candidate form silently starves a scope
+    // whenever closer out-of-scope vectors outnumber the candidate pool.
+    // Each case plants MORE nearer out-of-scope vectors (300) than the old
+    // candidate-pool floor (256) so the starvation regression cannot pass.
+    describe("filtered search under out-of-scope crowding", () => {
+      const dims = 384;
+      const query = Array.from({ length: dims }, (_, i) => (i === 0 ? 1 : 0));
+      // cosine ~= 0.707 to the query — clearly eligible, never the global nearest.
+      const target = Array.from({ length: dims }, (_, i) =>
+        i === 0 || i === 1 ? Math.SQRT1_2 : 0
+      );
+      const DISTRACTORS = 300;
+
+      const plantDistractors = async (
+        overrides: Partial<Memory>,
+        tableName: string
+      ): Promise<void> => {
+        for (let i = 0; i < DISTRACTORS; i++) {
+          await adapter.createMemory(
+            {
+              id: v4() as UUID,
+              content: { text: `distractor ${i}` },
+              createdAt: Date.now(),
+              // Exact query vector: cosine 1.0, always nearer than the target.
+              embedding: [...query],
+              agentId: testAgentId,
+              roomId: testRoomId,
+              entityId: testEntityId,
+              unique: false,
+              ...overrides,
+            } as Memory,
+            tableName
+          );
+        }
+      };
+
+      it("finds the eligible memory when 300 nearer vectors live in another table", async () => {
+        const targetId = v4() as UUID;
+        await adapter.createMemory(
+          {
+            id: targetId,
+            content: { text: "the one eligible memory" },
+            createdAt: Date.now(),
+            embedding: [...target],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+            unique: false,
+          } as Memory,
+          "starve-target-type"
+        );
+        await plantDistractors({}, "starve-distractor-type");
+
+        const results = await adapter.searchMemoriesByEmbedding(query, {
+          tableName: "starve-target-type",
+          count: 1,
+        });
+        expect(results.map((m) => m.id)).toEqual([targetId]);
+        expect(results[0]?.similarity ?? 0).toBeGreaterThan(0.7);
+      });
+
+      it("finds the eligible memory when 300 nearer vectors live in another room", async () => {
+        const otherRoomId = v4() as UUID;
+        await adapter.createRooms([
+          {
+            id: otherRoomId,
+            agentId: testAgentId,
+            source: "test",
+            type: ChannelType.GROUP,
+          } as Parameters<typeof adapter.createRooms>[0][0],
+        ]);
+        const targetId = v4() as UUID;
+        await adapter.createMemory(
+          {
+            id: targetId,
+            content: { text: "eligible in this room" },
+            createdAt: Date.now(),
+            embedding: [...target],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+            unique: false,
+          } as Memory,
+          "starve-room-scope"
+        );
+        await plantDistractors({ roomId: otherRoomId }, "starve-room-scope");
+
+        const results = await adapter.searchMemoriesByEmbedding(query, {
+          tableName: "starve-room-scope",
+          roomId: testRoomId,
+          count: 1,
+        });
+        expect(results.map((m) => m.id)).toEqual([targetId]);
+      });
+
+      it("finds the eligible memory when 300 nearer vectors belong to another agent", async () => {
+        const otherAgentId = v4() as UUID;
+        await adapter.createAgent({
+          id: otherAgentId,
+          name: `crowding-agent-${otherAgentId.slice(0, 8)}`,
+          bio: "starvation-test agent",
+        } as Parameters<typeof adapter.createAgent>[0]);
+        const targetId = v4() as UUID;
+        await adapter.createMemory(
+          {
+            id: targetId,
+            content: { text: "eligible for this agent" },
+            createdAt: Date.now(),
+            embedding: [...target],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+            unique: false,
+          } as Memory,
+          "starve-agent-scope"
+        );
+        await plantDistractors({ agentId: otherAgentId }, "starve-agent-scope");
+
+        const results = await adapter.searchMemoriesByEmbedding(query, {
+          tableName: "starve-agent-scope",
+          count: 1,
+        });
+        expect(results.map((m) => m.id)).toEqual([targetId]);
+      });
     });
   });
 
