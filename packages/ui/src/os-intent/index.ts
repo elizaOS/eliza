@@ -8,6 +8,11 @@
  */
 
 export {
+  applyOsIntentCommand,
+  applyOsIntentCommands,
+  type IntentControllerTarget,
+} from "./apply-command";
+export {
   AUTO_START_INTENT_TYPES,
   type ContinueConversationIntent,
   INTENT_PREREQUISITES,
@@ -22,9 +27,9 @@ export {
   type IntentPrerequisite,
   type IntentSource,
   type IntentTarget,
+  type OpenChatIntent,
   OS_INTENT_SCHEMA,
   OS_INTENT_TYPES,
-  type OpenChatIntent,
   type OsIntent,
   type OsIntentSchema,
   type OsIntentType,
@@ -51,11 +56,6 @@ export {
   type AuthState,
   intentTarget,
   type MicPermissionState,
-  routeIntent,
   type RoutingContext,
+  routeIntent,
 } from "./router";
-export {
-  applyOsIntentCommand,
-  applyOsIntentCommands,
-  type IntentControllerTarget,
-} from "./apply-command";

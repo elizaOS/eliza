@@ -54,14 +54,19 @@ export function applyOsIntentCommand(
       // running, so a redelivered start-transcription command can never toggle a
       // live session OFF. The intent dedupe store prevents most redelivery; this
       // guards the residual race where two windows apply before the snapshot syncs.
-      if (!controller.transcriptionMode) void controller.toggleTranscriptionMode();
+      if (!controller.transcriptionMode)
+        void controller.toggleTranscriptionMode();
       return;
     case "stopTranscriptionAndMic":
       void controller.stopTranscriptionAndMic();
       return;
     default: {
       const _exhaustive: never = command;
-      return _exhaustive;
+      // Unreachable: the union is exhausted above, so a new command kind is a
+      // compile error at the assignment. Fail fast if one slips through at runtime.
+      throw new Error(
+        `[applyOsIntentCommand] unhandled command: ${JSON.stringify(_exhaustive)}`,
+      );
     }
   }
 }

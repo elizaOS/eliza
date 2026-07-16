@@ -82,7 +82,12 @@ export function routeIntent(
     const ageMs = context.now - intent.issuedAt;
     // Only positive age is stale; a future `issuedAt` (clock skew) is not.
     if (ageMs > context.maxIntentAgeMs) {
-      return { status: "stale", intentId, ageMs, maxAgeMs: context.maxIntentAgeMs };
+      return {
+        status: "stale",
+        intentId,
+        ageMs,
+        maxAgeMs: context.maxIntentAgeMs,
+      };
     }
   }
 
@@ -101,7 +106,10 @@ export function routeIntent(
     return { status: "blocked", intentId, intentType, reason, missing };
   }
 
-  if (AUTO_START_INTENT_TYPES.has(intentType) && !hasAutoStartConsent(intentType, context)) {
+  if (
+    AUTO_START_INTENT_TYPES.has(intentType) &&
+    !hasAutoStartConsent(intentType, context)
+  ) {
     return { status: "consent-required", intentId, intentType, target };
   }
 
@@ -144,7 +152,8 @@ function evaluatePrerequisites(
       case "session":
         if (context.auth !== "authenticated") {
           missing.push(prerequisite);
-          reason ??= context.auth === "expired" ? "auth-expired" : "unauthenticated";
+          reason ??=
+            context.auth === "expired" ? "auth-expired" : "unauthenticated";
         }
         break;
       case "unlocked":
@@ -182,7 +191,8 @@ function hasAutoStartConsent(
   context: RoutingContext,
 ): boolean {
   if (intentType === "start-voice") return context.consent.autoStartVoice;
-  if (intentType === "start-transcription") return context.consent.autoStartTranscription;
+  if (intentType === "start-transcription")
+    return context.consent.autoStartTranscription;
   return true;
 }
 
@@ -207,7 +217,10 @@ function commandsForIntent(intent: OsIntent): IntentControllerCommand[] {
         },
       ];
     case "start-voice":
-      return [{ kind: "open" }, { kind: "startRecording", intent: intent.mode }];
+      return [
+        { kind: "open" },
+        { kind: "startRecording", intent: intent.mode },
+      ];
     case "stop-voice":
       return [{ kind: "stopRecording" }];
     case "start-transcription":

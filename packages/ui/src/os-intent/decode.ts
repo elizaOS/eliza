@@ -16,13 +16,13 @@
  * having it forced into this vocabulary.
  */
 import {
-  type AssistantLaunchPayload,
   ASSISTANT_LAUNCH_TEXT_KEYS,
+  type AssistantLaunchPayload,
 } from "../platform/assistant-launch-payload";
 import {
   INTENT_SOURCES,
-  OS_INTENT_TYPES,
   type IntentSource,
+  OS_INTENT_TYPES,
   type OsIntent,
   type OsIntentType,
 } from "./contract";
@@ -89,17 +89,32 @@ export function decodeOsIntent(raw: unknown): IntentDecodeResult {
     return fail("missing-field", "`intentId` is required", "intentId");
   }
   if (!isIntentSource(record.source)) {
-    return fail("unknown-source", `unknown intent source: ${String(record.source)}`, "source");
+    return fail(
+      "unknown-source",
+      `unknown intent source: ${String(record.source)}`,
+      "source",
+    );
   }
   let issuedAt: number | undefined;
   if ("issuedAt" in record && record.issuedAt !== undefined) {
-    if (typeof record.issuedAt !== "number" || !Number.isFinite(record.issuedAt)) {
-      return fail("invalid-field", "`issuedAt` must be a finite number", "issuedAt");
+    if (
+      typeof record.issuedAt !== "number" ||
+      !Number.isFinite(record.issuedAt)
+    ) {
+      return fail(
+        "invalid-field",
+        "`issuedAt` must be a finite number",
+        "issuedAt",
+      );
     }
     issuedAt = record.issuedAt;
   }
 
-  const base = { intentId: record.intentId, source: record.source, ...(issuedAt !== undefined ? { issuedAt } : {}) };
+  const base = {
+    intentId: record.intentId,
+    source: record.source,
+    ...(issuedAt !== undefined ? { issuedAt } : {}),
+  };
   const intentType = type as OsIntentType;
 
   switch (intentType) {
@@ -108,7 +123,11 @@ export function decodeOsIntent(raw: unknown): IntentDecodeResult {
         return fail("invalid-field", "`text` must be a string", "text");
       }
       if (record.text.length === 0) {
-        return fail("missing-field", "`send` requires non-empty `text`", "text");
+        return fail(
+          "missing-field",
+          "`send` requires non-empty `text`",
+          "text",
+        );
       }
       if (
         "channelType" in record &&
@@ -116,7 +135,11 @@ export function decodeOsIntent(raw: unknown): IntentDecodeResult {
         record.channelType !== "DM" &&
         record.channelType !== "VOICE_DM"
       ) {
-        return fail("invalid-field", "`channelType` must be DM|VOICE_DM", "channelType");
+        return fail(
+          "invalid-field",
+          "`channelType` must be DM|VOICE_DM",
+          "channelType",
+        );
       }
       return {
         ok: true,
@@ -134,7 +157,10 @@ export function decodeOsIntent(raw: unknown): IntentDecodeResult {
       if (record.mode !== "converse" && record.mode !== "dictate") {
         return fail("invalid-field", "`mode` must be converse|dictate", "mode");
       }
-      return { ok: true, intent: { type: "start-voice", ...base, mode: record.mode } };
+      return {
+        ok: true,
+        intent: { type: "start-voice", ...base, mode: record.mode },
+      };
     }
     case "open-chat":
     case "stop-voice":
@@ -162,7 +188,11 @@ function resolveLaunchIntentType(
   hasText: boolean,
 ): OsIntentType | null {
   if (voiceFlag || action === "voice" || host === "voice") return "start-voice";
-  if (action === "transcribe" || action === "transcription" || host === "transcribe") {
+  if (
+    action === "transcribe" ||
+    action === "transcription" ||
+    host === "transcribe"
+  ) {
     return "start-transcription";
   }
   if (action === "continue" || action === "resume" || host === "continue") {
@@ -228,7 +258,11 @@ export function decodeDeepLinkIntent(url: string): IntentDecodeResult {
   const params = parsed.searchParams;
   const source = params.get("source")?.trim() ?? "";
   if (!isIntentSource(source)) {
-    return fail("unknown-source", `unknown or missing launch source: ${source || "(none)"}`, "source");
+    return fail(
+      "unknown-source",
+      `unknown or missing launch source: ${source || "(none)"}`,
+      "source",
+    );
   }
 
   const host = parsed.host.toLowerCase();
@@ -236,15 +270,27 @@ export function decodeDeepLinkIntent(url: string): IntentDecodeResult {
   const voiceFlag = params.get("voice")?.trim() === "1";
   const text = readLaunchText(params);
 
-  const intentType = resolveLaunchIntentType(host, action, voiceFlag, text.length > 0);
+  const intentType = resolveLaunchIntentType(
+    host,
+    action,
+    voiceFlag,
+    text.length > 0,
+  );
   if (!intentType) {
-    return fail("unrecognized-launch", `deep link is not a chat/voice/transcription launch: ${url}`);
+    return fail(
+      "unrecognized-launch",
+      `deep link is not a chat/voice/transcription launch: ${url}`,
+    );
   }
 
   const intentId =
-    params.get("assistant.launchId")?.trim() || `${source}:${host}:${action}:${text}`;
+    params.get("assistant.launchId")?.trim() ||
+    `${source}:${host}:${action}:${text}`;
 
-  return { ok: true, intent: buildLaunchIntent(intentType, source, intentId, text) };
+  return {
+    ok: true,
+    intent: buildLaunchIntent(intentType, source, intentId, text),
+  };
 }
 
 /**
@@ -257,18 +303,35 @@ export function fromAssistantLaunchPayload(
   payload: AssistantLaunchPayload,
 ): IntentDecodeResult {
   if (!isIntentSource(payload.source)) {
-    return fail("unknown-source", `unknown launch source: ${payload.source}`, "source");
+    return fail(
+      "unknown-source",
+      `unknown launch source: ${payload.source}`,
+      "source",
+    );
   }
   const host = payload.route.toLowerCase();
   const action = (payload.action ?? "").toLowerCase();
   const text = payload.text.trim();
 
-  const intentType = resolveLaunchIntentType(host, action, false, text.length > 0);
+  const intentType = resolveLaunchIntentType(
+    host,
+    action,
+    false,
+    text.length > 0,
+  );
   if (!intentType) {
-    return fail("unrecognized-launch", `launch payload is not a chat/voice/transcription intent`);
+    return fail(
+      "unrecognized-launch",
+      `launch payload is not a chat/voice/transcription intent`,
+    );
   }
   return {
     ok: true,
-    intent: buildLaunchIntent(intentType, payload.source, payload.launchId, text),
+    intent: buildLaunchIntent(
+      intentType,
+      payload.source,
+      payload.launchId,
+      text,
+    ),
   };
 }

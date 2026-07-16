@@ -209,9 +209,20 @@ export const INTENT_PREREQUISITES: Record<
 > = {
   "open-chat": ["session"],
   send: ["session"],
-  "start-voice": ["session", "unlocked", "foreground", "microphone", "voice-capture"],
+  "start-voice": [
+    "session",
+    "unlocked",
+    "foreground",
+    "microphone",
+    "voice-capture",
+  ],
   "stop-voice": [],
-  "start-transcription": ["unlocked", "foreground", "microphone", "voice-capture"],
+  "start-transcription": [
+    "unlocked",
+    "foreground",
+    "microphone",
+    "voice-capture",
+  ],
   "stop-transcription": [],
   "continue-conversation": ["session"],
 };
