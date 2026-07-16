@@ -20,6 +20,8 @@ const originalEnv = { ...process.env };
 
 const MODEL_ENV_KEYS = [
   "CEREBRAS_MODEL",
+  "CEREBRAS_SMALL_MODEL",
+  "CEREBRAS_LARGE_MODEL",
   "GROQ_SMALL_MODEL",
   "GROQ_LARGE_MODEL",
   "OPENAI_SMALL_MODEL",
@@ -44,6 +46,8 @@ describe("provider model-env seeding", () => {
     applyProviderModelEnvDefaults();
 
     expect(process.env.CEREBRAS_MODEL).toBe("gemma-4-31b");
+    expect(process.env.CEREBRAS_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(process.env.CEREBRAS_LARGE_MODEL).toBe("zai-glm-4.7");
   });
 
   it("falls back to the approved Cerebras default when the shared small model is OpenAI-only", () => {
@@ -62,6 +66,8 @@ describe("provider model-env seeding", () => {
     applyProviderModelEnvDefaults();
 
     expect(process.env.CEREBRAS_MODEL).toBe("qwen-3-235b");
+    expect(process.env.CEREBRAS_SMALL_MODEL).toBeUndefined();
+    expect(process.env.CEREBRAS_LARGE_MODEL).toBeUndefined();
   });
 
   it("keeps the Groq tiers seeded from their own shared models", () => {
