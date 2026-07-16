@@ -1889,6 +1889,67 @@ describe("ContinuousChatOverlay", () => {
     expect(screen.queryByText("Stop transcribing")).toBeNull();
   });
 
+  it.each([
+    "half",
+    "full",
+  ] as const)("keeps the %s sheet open while the portaled Upload action opens the file picker", (detent) => {
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const sheet = screen.getByTestId("chat-sheet");
+    const grabber = screen.getByTestId("chat-sheet-grabber");
+    const input = screen.getByLabelText("message") as HTMLTextAreaElement;
+
+    fireEvent.focus(input);
+    expect(sheet.getAttribute("data-detent")).toBe("half");
+    if (detent === "full") {
+      fireEvent.pointerDown(grabber, { clientY: 420, pointerId: 10 });
+      fireEvent.pointerMove(grabber, { clientY: 280, pointerId: 10 });
+      fireEvent.pointerUp(grabber, { clientY: 280, pointerId: 10 });
+      expect(sheet.getAttribute("data-detent")).toBe("full");
+    }
+
+    const fileInput = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const openPicker = vi
+      .spyOn(fileInput, "click")
+      .mockImplementation(() => {});
+    fireEvent.pointerDown(screen.getByTestId("chat-composer-plus"), {
+      button: 0,
+      pointerId: 11,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(screen.getByTestId("chat-composer-plus"), {
+      button: 0,
+      pointerId: 11,
+      pointerType: "mouse",
+    });
+    const upload = screen.getByText("Upload file").closest('[role="menuitem"]');
+    if (!(upload instanceof HTMLElement)) {
+      throw new Error("Upload menu item not found");
+    }
+
+    // Drive the complete pointer sequence: the regression lived in the
+    // document capture handlers and a synthetic click alone could not see it.
+    fireEvent.pointerDown(upload, {
+      button: 0,
+      clientX: 40,
+      clientY: 40,
+      pointerId: 12,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(upload, {
+      button: 0,
+      clientX: 40,
+      clientY: 40,
+      pointerId: 12,
+      pointerType: "mouse",
+    });
+    fireEvent.click(upload);
+
+    expect(openPicker).toHaveBeenCalledTimes(1);
+    expect(sheet.getAttribute("data-detent")).toBe(detent);
+  });
+
   it("attaches an image and enables an image-only send", async () => {
     const controller = makeController({ messages: [] });
     render(<ContinuousChatOverlay controller={controller} />);
