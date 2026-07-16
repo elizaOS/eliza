@@ -69,7 +69,7 @@ describe("WEB_FETCH action", () => {
     }
   });
 
-  it("returns the fetched text snippet and fires the callback", async () => {
+  it("returns the fetched value in the result WITHOUT a user-facing callback", async () => {
     __setPinnedFetchImplForTests(
       async () => new Response("hello world", { status: 200 }),
     );
@@ -78,12 +78,15 @@ describe("WEB_FETCH action", () => {
 
     expect(result.success).toBe(true);
     expect(result.text).toBe("hello world");
-    expect(captured.text).toBe("hello world");
     expect(result.data).toMatchObject({
       actionName: "WEB_FETCH",
       url: TEST_URL,
       value: "hello world",
     });
+    // Data-gathering action: the value flows to the reply via the ActionResult,
+    // not a standalone user message. No success callback fires (which would be a
+    // spurious raw-value message before the synthesized answer).
+    expect(captured.text).toBeUndefined();
   });
 
   it("caps an oversized response body (streaming read, not full buffer)", async () => {

@@ -201,11 +201,19 @@ export function frameTextSystemPrompt(system: string | undefined): string {
  * cancels any pending tool instruction and demands the finished answer is what
  * reliably stops the narration leak (proven: with it, 4/4 correct + 0 narration +
  * 0 empty across the live-shaped probe; without it, 2/4 + intermittent empties).
+ *
+ * The FORMAT CONTRACT clause leads because this directive serves two call
+ * shapes: the post-tool synthesis reply (prose) AND structured calls like the
+ * Stage-1 routing envelope (JSON with contexts/candidates/ack fields).
+ * Without it, a flat demand for "the finished response" makes a plain-prose
+ * decline the only compliant output for a pre-tool live-info ask — observed
+ * live as the bot declining "whats xrp at" in prose instead of emitting the
+ * envelope that routes it to a fetch.
  */
 export const TEXT_COMPLETION_DIRECTIVE = `
 
 ---
-You are now writing the FINAL reply. Any tool calls shown above have ALREADY executed and their results are the authoritative source of truth — read the actual values out of those tool results and use them verbatim; do NOT invent, estimate, or guess a value when the tool result already contains it. Any earlier "do not answer from prior tool output / call a tool" policy applied only to the planning step, which is now COMPLETE — it no longer applies; there are NO tools left to call. Output ONLY the finished response now, in the agent's voice and the requested format. No preamble, no meta-commentary, no "I can't verify / let me pull a live quote", no description of what you are doing or about to do.`;
+You are now writing the FINAL output for the instructions above. The FORMAT CONTRACT WINS: when those instructions demand a structured output (a JSON object or envelope with named fields), emit EXACTLY that structure with every required field and nothing else — fill its fields as those instructions direct, including routing/context fields and brief-ack reply fields when they call for one. Otherwise output only the finished prose reply in the agent's voice. In either case: tool calls shown above have ALREADY executed and their results are the authoritative source of truth — read the actual values out of those tool results and use them verbatim; do NOT invent, estimate, or guess a value when a tool result already contains it. Any earlier "do not answer from prior tool output / call a tool" policy applied only to the planning step, which is now complete — there are no tools for YOU to call here. Never narrate what you are doing or about to do ("let me pull a live quote", "I'll check") in place of the requested output.`;
 
 /** Append the text-completion directive to a TEXT-mode body. */
 export function appendTextDirective(body: string): string {
@@ -223,6 +231,34 @@ export function appendTextDirective(body: string): string {
  * transcript, persona — rides in the body) because the SDK freezes `systemPrompt`
  * at session start, so a constant system keeps ONE warm process per model.
  */
+/**
+ * STABLE system prompt for the Stage-1 ENVELOPE session (warm Agent SDK,
+ * ENVELOPE mode). The model is given exactly ONE tool — `handle_response` —
+ * and must call it once per turn with the routing envelope the per-turn
+ * instructions (riding in the body) define. Kept CONSTANT for the same reason
+ * as ROUTER_SYSTEM_PROMPT below: the SDK freezes `systemPrompt` at session
+ * start, so a constant system keeps ONE warm process serving every Stage-1
+ * turn. All the real routing rules (simple vs planning, live-info, field
+ * docs) come from the framework's own Stage-1 template in the body — this
+ * prompt only pins the OUTPUT CHANNEL to the tool call.
+ */
+export const STAGE1_ENVELOPE_SYSTEM_PROMPT = `You are the Stage-1 message router for an Eliza AI agent. The user message contains the full routing instructions, the agent persona, and the conversation. Follow those instructions exactly, then submit your decision by calling the handle_response tool EXACTLY ONCE with every field those instructions define — never answer in plain text, never skip the tool call.`;
+
+/**
+ * Build the per-turn ENVELOPE-mode body: the flattened Stage-1 prompt (the
+ * framework template + persona + conversation + field docs), closed with the
+ * tool-call directive. Pairs with {@link STAGE1_ENVELOPE_SYSTEM_PROMPT} (the
+ * constant system slot) exactly as buildRouterBody pairs with
+ * ROUTER_SYSTEM_PROMPT.
+ */
+export function buildEnvelopeBody(system: string | undefined, body: string): string {
+  const instructions = system?.trim() ? `${system.trim()}\n\n` : "";
+  return `${instructions}${body}
+
+---
+Now call handle_response exactly once with the completed envelope fields.`;
+}
+
 export const ROUTER_SYSTEM_PROMPT = `You are the action router for an Eliza AI agent. For EVERY user message, call the route_action tool EXACTLY ONCE with the single best next action and its params, then stop — produce no plain-text answer.
 
 How to choose:
