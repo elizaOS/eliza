@@ -56,9 +56,6 @@ export interface TaskAgentFrameworkAvailability {
   installed: boolean;
   authReady: boolean;
   subscriptionReady: boolean;
-  temporarilyDisabled: boolean;
-  temporarilyDisabledUntil?: number;
-  temporarilyDisabledReason?: string;
   recommended: boolean;
   reason: string;
   installCommand?: string;
@@ -317,10 +314,6 @@ const frameworkStateCache = new Map<
 const frameworkStateInflight = new Map<
   FrameworkDiscoveryCacheKey,
   Promise<FrameworkInventory>
->();
-const frameworkCooldowns = new Map<
-  SupportedTaskAgentAdapter,
-  { until: number; reason: string }
 >();
 
 function frameworkDiscoveryCacheKey(
@@ -647,18 +640,6 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
   }
 }
 
-function getFrameworkCooldown(
-  id: SupportedTaskAgentAdapter,
-): { until: number; reason: string } | undefined {
-  const cooldown = frameworkCooldowns.get(id);
-  if (!cooldown) return undefined;
-  if (cooldown.until <= Date.now()) {
-    frameworkCooldowns.delete(id);
-    return undefined;
-  }
-  return cooldown;
-}
-
 async function computeTaskAgentFrameworkState(
   runtime: IAgentRuntime,
   probe?: TaskAgentFrameworkProbe,
@@ -686,9 +667,10 @@ async function computeTaskAgentFrameworkState(
           preflightByAdapter.set(adapterId, result);
         }
       }
-    } catch {
+    } catch (error) {
       // error-policy:J4 ACP preflight probe failed transiently; discovery degrades
       // to static filesystem/env detection so status surfaces stay alive.
+      runtime.reportError("task-agent-frameworks.preflight", error);
     }
   }
 
@@ -745,7 +727,6 @@ async function computeTaskAgentFrameworkState(
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
       const preflight = preflightByAdapter.get(id);
-      const cooldown = getFrameworkCooldown(id);
       const nativeExplicit =
         (id === "elizaos" || id === "pi-agent") && explicitDefault === id;
       const installed =
@@ -790,13 +771,8 @@ async function computeTaskAgentFrameworkState(
         installed,
         authReady,
         subscriptionReady,
-        temporarilyDisabled: Boolean(cooldown),
-        temporarilyDisabledUntil: cooldown?.until,
-        temporarilyDisabledReason: cooldown?.reason,
         recommended: false,
-        reason: cooldown
-          ? `${reason}; temporarily disabled after a provider failure: ${cooldown.reason}`
-          : reason,
+        reason,
         installCommand:
           preflight?.installCommand ??
           (id === "elizaos"
@@ -819,21 +795,11 @@ async function computeTaskAgentFrameworkState(
   }));
   const metrics = probe?.getAgentMetrics?.() ?? {};
   const profile = buildTaskAgentTaskProfile(profileInput);
-  const selectable = frameworks.filter(
-    (framework) => framework.installed && !framework.temporarilyDisabled,
-  );
-  const candidates =
-    selectable.length > 0
-      ? selectable
-      : frameworks.filter((framework) => framework.installed);
+  const candidates = frameworks.filter((framework) => framework.installed);
 
   const scoredCandidates = candidates.map((framework) => {
     const explicitOverride =
-      explicitDefault === framework.id
-        ? framework.installed && !framework.temporarilyDisabled
-          ? 40
-          : 0
-        : 0;
+      explicitDefault === framework.id && framework.installed ? 40 : 0;
     const providerPreference =
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
@@ -855,8 +821,7 @@ async function computeTaskAgentFrameworkState(
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
-      (framework.subscriptionReady ? 8 : 0) +
-      (framework.temporarilyDisabled ? -80 : 0);
+      (framework.subscriptionReady ? 8 : 0);
     const profileScore = computeProfileFitScore(framework.id, profile);
     const metricsScore = computeMetricsScore(
       metrics[framework.id],
@@ -1054,21 +1019,10 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
-  const candidates =
-    frameworks.filter(
-      (framework) => framework.installed && !framework.temporarilyDisabled,
-    ).length > 0
-      ? frameworks.filter(
-          (framework) => framework.installed && !framework.temporarilyDisabled,
-        )
-      : frameworks.filter((framework) => framework.installed);
+  const candidates = frameworks.filter((framework) => framework.installed);
   const scoredCandidates = candidates.map((framework) => {
     const explicitOverride =
-      explicitDefault === framework.id
-        ? framework.installed && !framework.temporarilyDisabled
-          ? 40
-          : 0
-        : 0;
+      explicitDefault === framework.id && framework.installed ? 40 : 0;
     const providerPreference =
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
@@ -1090,8 +1044,7 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
-      (framework.subscriptionReady ? 8 : 0) +
-      (framework.temporarilyDisabled ? -80 : 0);
+      (framework.subscriptionReady ? 8 : 0);
     const profileScore = computeProfileFitScore(framework.id, profile);
     const metricsScore = computeMetricsScore(
       metrics[framework.id],
@@ -1328,9 +1281,6 @@ export function formatTaskAgentFrameworkLine(
   ];
   if (framework.subscriptionReady) {
     parts.push("uses the user's subscription");
-  }
-  if (framework.temporarilyDisabled) {
-    parts.push("temporarily disabled");
   }
   if (framework.recommended) {
     parts.push("recommended");
