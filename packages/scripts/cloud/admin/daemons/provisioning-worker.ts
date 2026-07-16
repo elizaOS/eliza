@@ -138,6 +138,16 @@ export interface ProvisioningWorkerConfig {
    * Tunable via `CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS` (default 24).
    */
   dbLivenessMaxAgeHours: number;
+  /**
+   * Freshness window (minutes) for the cloud-api DB heartbeat (#16160): the
+   * per-minute provisioning-worker-health cron stamps a `provider_health` row
+   * on the same database it writes jobs to. A fresh stamp proves this daemon
+   * reads the database the API writes, so old jobs mean an idle env — not a
+   * split. Tunable via `CONTAINERS_DB_HEARTBEAT_MAX_AGE_MINUTES` (default 15:
+   * tolerates cron hiccups while catching a split orders of magnitude faster
+   * than the 24h jobs-age threshold).
+   */
+  dbHeartbeatMaxAgeMinutes: number;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
@@ -164,6 +174,10 @@ const DEFAULT_WATCHDOG_CONSECUTIVE_TICKS = 2;
  * instead of the 3 weeks it took to notice #15160.
  */
 const DEFAULT_DB_LIVENESS_MAX_AGE_HOURS = 24;
+// Mirrors DEFAULT_CLOUD_API_DB_HEARTBEAT_MAX_AGE_MINUTES in
+// cloud-shared/lib/services/cloud-api-db-heartbeat (kept local: config parsing
+// is synchronous, the shared module is loaded lazily).
+const DEFAULT_DB_HEARTBEAT_MAX_AGE_MINUTES = 15;
 const workerStartedAt = new Date();
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -210,6 +224,10 @@ export function readWorkerConfig(
     dbLivenessMaxAgeHours: parsePositiveInt(
       env.CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS,
       DEFAULT_DB_LIVENESS_MAX_AGE_HOURS,
+    ),
+    dbHeartbeatMaxAgeMinutes: parsePositiveInt(
+      env.CONTAINERS_DB_HEARTBEAT_MAX_AGE_MINUTES,
+      DEFAULT_DB_HEARTBEAT_MAX_AGE_MINUTES,
     ),
   };
 }
@@ -500,6 +518,68 @@ export function evaluateJobsTableLiveness(deps: {
   };
 }
 
+export type DbLivenessVerdict = "healthy" | "idle" | "split" | "stale-unknown";
+
+export interface DbLivenessAssessment extends JobsTableLivenessAssessment {
+  verdict: DbLivenessVerdict;
+  heartbeatAt: Date | null;
+  heartbeatAgeMinutes: number | null;
+  heartbeatMaxAgeMinutes: number;
+}
+
+/**
+ * Split-vs-idle discrimination (#16160). Jobs-row age alone cannot tell a DB
+ * split (#15160: the daemon polls a database the API stopped writing to) from
+ * an idle env (correct database, no provisioning traffic) — both present as
+ * "the newest jobs row is old". The cloud-api's per-minute cron stamps a DB
+ * heartbeat on the database it writes; combining the two separates the cases:
+ *
+ * - jobs fresh                        → `healthy` (no signal needed)
+ * - jobs stale + heartbeat fresh      → `idle` (same DB the API writes: quiet env)
+ * - jobs stale + heartbeat stale      → `split` (or the API is down) — warn loudly
+ * - jobs stale + heartbeat NEVER seen → `stale-unknown` (pre-rollout / heartbeat
+ *   not deployed): fall back to today's loud jobs-age warning so the check
+ *   never goes blind during rollout.
+ *
+ * Pure and exported for unit testing, mirroring `evaluateJobsTableLiveness`.
+ * A heartbeat in the future (clock skew) counts as fresh, like jobs rows.
+ */
+export function evaluateDbLiveness(deps: {
+  jobs: JobsTableLivenessAssessment;
+  heartbeatAt: Date | null;
+  heartbeatMaxAgeMinutes: number;
+  now?: Date;
+}): DbLivenessAssessment {
+  const { jobs, heartbeatAt, heartbeatMaxAgeMinutes } = deps;
+  if (!jobs.stale) {
+    return {
+      ...jobs,
+      verdict: "healthy",
+      heartbeatAt,
+      heartbeatAgeMinutes: null,
+      heartbeatMaxAgeMinutes,
+    };
+  }
+  if (!heartbeatAt) {
+    return {
+      ...jobs,
+      verdict: "stale-unknown",
+      heartbeatAt: null,
+      heartbeatAgeMinutes: null,
+      heartbeatMaxAgeMinutes,
+    };
+  }
+  const now = deps.now ?? new Date();
+  const heartbeatAgeMinutes = (now.getTime() - heartbeatAt.getTime()) / 60_000;
+  return {
+    ...jobs,
+    verdict: heartbeatAgeMinutes > heartbeatMaxAgeMinutes ? "split" : "idle",
+    heartbeatAt,
+    heartbeatAgeMinutes,
+    heartbeatMaxAgeMinutes,
+  };
+}
+
 /**
  * Host portion of a database URL for log messages — never the credentials.
  * `new URL` drops user:pass with `.host`; pglite:// URLs have no host, so
@@ -518,46 +598,90 @@ export function databaseHostForLogs(databaseUrl: string | undefined): string {
 /** Query side of the DB liveness check: newest jobs row → threshold decision. */
 async function processDbLivenessCheckCycle(
   config: ProvisioningWorkerConfig,
-): Promise<JobsTableLivenessAssessment> {
+): Promise<DbLivenessAssessment> {
   const { jobsRepository } = await loadDeps();
   const latestJobCreatedAt = await jobsRepository.findLatestCreatedAt();
-  return evaluateJobsTableLiveness({
+  const jobs = evaluateJobsTableLiveness({
     latestJobCreatedAt,
     maxAgeHours: config.dbLivenessMaxAgeHours,
+  });
+  // The cloud-api's per-minute heartbeat (#16160). Read defensively: a read
+  // failure behaves like an absent row (`stale-unknown` → today's loud
+  // fallback), so this extra signal can only improve the verdict, never blind
+  // the check.
+  let heartbeatAt: Date | null = null;
+  try {
+    const heartbeat = await import(
+      "@elizaos/cloud-shared/lib/services/cloud-api-db-heartbeat"
+    );
+    heartbeatAt = await heartbeat.readCloudApiDbHeartbeatAt();
+  } catch {
+    heartbeatAt = null;
+  }
+  return evaluateDbLiveness({
+    jobs,
+    heartbeatAt,
+    heartbeatMaxAgeMinutes: config.dbHeartbeatMaxAgeMinutes,
   });
 }
 
 /**
- * WARN LOUDLY — level error, DB host named — when the jobs table looks
- * abandoned, but never crash: an idle env legitimately has old jobs, so this
- * is a signal for a human, not a fail-stop. Re-emitted on every infra
- * maintenance sweep so the signal is unmissable in the logs, not a one-shot
- * scrolled away at boot.
+ * Verdict-aware liveness logging (#16160). WARN LOUDLY — level error, DB host
+ * named — only on a REAL problem: `split` (jobs stale AND the cloud-api
+ * heartbeat is stale on this database) or `stale-unknown` (no heartbeat ever
+ * seen — pre-rollout fallback, behaves like the original check). An `idle`
+ * verdict (jobs stale but the heartbeat is fresh ⇒ same DB the API writes,
+ * simply no traffic) logs a single info line instead of the former
+ * ~288 errors/day false alarm that trained operators to ignore the signal.
+ * Re-emitted every infra maintenance sweep so a real split stays unmissable.
  */
 function logJobsTableLiveness(
   logger: WorkerLogger,
-  assessment: JobsTableLivenessAssessment,
+  assessment: DbLivenessAssessment,
 ): void {
-  if (!assessment.stale) return;
+  if (assessment.verdict === "healthy") return;
   const databaseHost = databaseHostForLogs(process.env.DATABASE_URL);
   const newestRow =
     assessment.ageHours === null
       ? "the table is EMPTY"
       : `the newest row is ${assessment.ageHours.toFixed(1)}h old`;
+  const context = {
+    event: `worker.db_liveness_${assessment.verdict === "idle" ? "idle" : "stale"}`,
+    verdict: assessment.verdict,
+    databaseHost,
+    latestJobCreatedAt: assessment.latestJobCreatedAt?.toISOString() ?? null,
+    ageHours: assessment.ageHours,
+    maxAgeHours: assessment.maxAgeHours,
+    heartbeatAt: assessment.heartbeatAt?.toISOString() ?? null,
+    heartbeatAgeMinutes: assessment.heartbeatAgeMinutes,
+    heartbeatMaxAgeMinutes: assessment.heartbeatMaxAgeMinutes,
+  };
+
+  if (assessment.verdict === "idle") {
+    logger.info(
+      `[provisioning-worker] DB liveness: jobs table quiet (${newestRow}) but the ` +
+        `cloud-api heartbeat on ${databaseHost} is ` +
+        `${assessment.heartbeatAgeMinutes?.toFixed(1)}min fresh — idle env, not a split.`,
+      context,
+    );
+    return;
+  }
+
+  const heartbeatDetail =
+    assessment.verdict === "split"
+      ? `The cloud-api DB heartbeat on this database is ${assessment.heartbeatAgeMinutes?.toFixed(1)}min old ` +
+        `(threshold ${assessment.heartbeatMaxAgeMinutes}min, CONTAINERS_DB_HEARTBEAT_MAX_AGE_MINUTES) — ` +
+        "the API is not writing here (split) or is down. "
+      : "No cloud-api DB heartbeat has ever been written to this database " +
+        "(pre-heartbeat deploy, or the wrong database entirely). ";
   logger.error(
     `[provisioning-worker] DB LIVENESS: the jobs table on ${databaseHost} looks abandoned — ` +
       `${newestRow}, threshold ${assessment.maxAgeHours}h (CONTAINERS_DB_LIVENESS_MAX_AGE_HOURS). ` +
+      heartbeatDetail +
       "Check that this daemon's DATABASE_URL points at the SAME database the cloud-api " +
       "writes jobs to: a split pair polls an eternally empty queue with zero errors while " +
-      "every provision hangs pending forever (#15160). If this env is intentionally idle, " +
-      "raise the threshold.",
-    {
-      event: "worker.db_liveness_stale",
-      databaseHost,
-      latestJobCreatedAt: assessment.latestJobCreatedAt?.toISOString() ?? null,
-      ageHours: assessment.ageHours,
-      maxAgeHours: assessment.maxAgeHours,
-    },
+      "every provision hangs pending forever (#15160).",
+    context,
   );
 }
 
