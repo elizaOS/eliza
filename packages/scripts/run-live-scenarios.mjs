@@ -1,42 +1,8 @@
 #!/usr/bin/env node
 /**
- * Wrapper around the `/scenario-runner` CLI.
- *
- * Responsibilities:
- *   1. Ensure SKIP_REASON gating: when scenarios are filtered/skipped via
- *      SCENARIO_SKIP, an explicit SKIP_REASON env var must be set or this
- *      wrapper exits non-zero.
- *   2. Forward to the scenario CLI at
- *      `packages/scenario-runner/src/cli.ts`.
- *   3. Fail loudly if the CLI reports failure.
- *
- * Required env:
- *   - ELIZA_LIVE_TEST=1 (asserted)
- *   - At least one LLM provider key (OPENAI_API_KEY, OPENROUTER_API_KEY, etc.)
- *
- * Optional env:
- *   - LIFEOPS_JUDGE_THRESHOLD: minimum LLM judge score (default 0.8). Forwarded
- *     to the CLI via LIFEOPS_LIVE_JUDGE_MIN_SCORE.
- *   - CEREBRAS_API_KEY / EVAL_CEREBRAS_API_KEY: independent LLM-judge
- *     credentials. Without them the judge falls back to the runtime's own
- *     TEXT_LARGE model — the model under test grades itself. Such scenarios
- *     are stamped judgeSelfGraded:true in the report (#9310).
- *   - SCENARIO_JUDGE_REQUIRE_INDEPENDENT=1: fail any scenario whose judge
- *     self-graded instead of silently accepting the self-assigned score. Set
- *     in the nightly live-scenarios workflow.
- *   - SCENARIO_FILTER: comma-separated scenario IDs (forwards as --scenario).
- *   - SCENARIO_ROOT: scenario directory, relative to repo root or absolute
- *     (default: packages/test/scenarios).
- *   - SCENARIO_INCLUDE_PENDING=1: include scenarios marked status="pending".
- *   - SCENARIO_ENFORCE_GATE=0: keep the workflow green while still writing
- *     the report when scenario assertions fail.
- *   - SKIP_REASON: required when any scenario is intentionally skipped.
- *   - REPORT_PATH: where to write the JSON report (default: artifacts/lifeops-scenario-report.json).
- *   - RUN_DIR: where to save trajectories, matrix.json, and viewer/ (default: artifacts/scenario-runs/live).
- *   - EXPORT_NATIVE_PATH: optional eliza_native_v1 JSONL export path.
- *
- * Usage:
- *   node packages/scripts/run-live-scenarios.mjs [--list] [--scenario id1,id2] [--report path]
+ * Runs credentialed scenario catalogs through the shared runner with enforced
+ * live-test, skip, and judge gates. It standardizes report and trajectory paths
+ * and emits native JSONL evidence by default.
  */
 
 import { spawn } from "node:child_process";
@@ -49,129 +15,189 @@ const REPO_ROOT = path.resolve(
   "..",
   "..",
 );
-const SCENARIO_CLI = path.join(
-  REPO_ROOT,
-  "packages",
-  "scenario-runner",
-  "src",
-  "cli.ts",
-);
-const DEFAULT_SCENARIO_ROOT = path.join(
-  REPO_ROOT,
-  "packages",
-  "test",
-  "scenarios",
-);
-const scenarioRootInput = (process.env.SCENARIO_ROOT ?? "").trim();
-const scenarioRoot =
-  scenarioRootInput.length > 0
-    ? path.resolve(REPO_ROOT, scenarioRootInput)
-    : DEFAULT_SCENARIO_ROOT;
 
-if (!existsSync(SCENARIO_CLI)) {
-  console.error(
-    `[run-live-scenarios] scenario-runner CLI missing at ${SCENARIO_CLI}.`,
-  );
-  process.exit(2);
-}
-
-if (process.env.ELIZA_LIVE_TEST !== "1") {
-  console.error(
-    "[run-live-scenarios] refusing to run: ELIZA_LIVE_TEST=1 is required.",
-  );
-  process.exit(2);
-}
-
-const skipFilter = (process.env.SCENARIO_SKIP ?? "").trim();
-const skipReason = (process.env.SKIP_REASON ?? "").trim();
-if (skipFilter.length > 0 && skipReason.length === 0) {
-  console.error(
-    `[run-live-scenarios] SCENARIO_SKIP="${skipFilter}" requires SKIP_REASON to document why. ` +
-      `Set SKIP_REASON="<concrete reason>" to acknowledge.`,
-  );
-  process.exit(2);
-}
-if (skipReason.length > 0) {
-  console.warn(
-    `[run-live-scenarios] SKIP_REASON acknowledged: "${skipReason}" (filter="${skipFilter}")`,
-  );
-}
-
-const reportPath =
-  process.env.REPORT_PATH ??
-  path.join(REPO_ROOT, "artifacts", "lifeops-scenario-report.json");
-mkdirSync(path.dirname(reportPath), { recursive: true });
-const runDir =
-  process.env.RUN_DIR ??
-  path.join(REPO_ROOT, "artifacts", "scenario-runs", "live");
-mkdirSync(runDir, { recursive: true });
-
-const args = [
-  "--import",
-  "tsx",
-  SCENARIO_CLI,
-  "run",
-  scenarioRoot,
-  "--report",
-  reportPath,
-  "--run-dir",
-  runDir,
-];
-const exportNativePath = (process.env.EXPORT_NATIVE_PATH ?? "").trim();
-if (exportNativePath.length > 0) {
-  mkdirSync(path.dirname(path.resolve(REPO_ROOT, exportNativePath)), {
-    recursive: true,
-  });
-  args.push("--export-native", exportNativePath);
-}
-args.push(...process.argv.slice(2));
-const filter = (process.env.SCENARIO_FILTER ?? "").trim();
-if (filter.length > 0) {
-  args.push("--scenario", filter);
-}
-
-const judgeThreshold = process.env.LIFEOPS_JUDGE_THRESHOLD ?? "0.8";
-const enforceGateValue = (process.env.SCENARIO_ENFORCE_GATE ?? "1")
-  .trim()
-  .toLowerCase();
-const enforceGate = !["0", "false", "no", "off"].includes(enforceGateValue);
-const env = {
-  ...process.env,
-  ELIZA_LIVE_TEST: "1",
-  LIFEOPS_LIVE_JUDGE_MIN_SCORE: judgeThreshold,
-};
-
-const independentJudge = Boolean(
-  (process.env.CEREBRAS_API_KEY ?? "").trim() ||
-    (process.env.EVAL_CEREBRAS_API_KEY ?? "").trim(),
-);
-const requireIndependentJudge =
-  (process.env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT ?? "").trim() === "1";
-console.log(
-  `[run-live-scenarios] threshold=${judgeThreshold} enforce=${enforceGate ? "yes" : "no"} pending=${env.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} judge=${independentJudge ? "independent (cerebras)" : "SELF-GRADED (model under test — set CEREBRAS_API_KEY)"} requireIndependentJudge=${requireIndependentJudge ? "yes" : "no"} report=${reportPath} runDir=${runDir} args=${args.slice(2).join(" ")}`,
-);
-if (!independentJudge && !requireIndependentJudge) {
-  console.warn(
-    "[run-live-scenarios] WARNING: no independent judge credentials — every judgeRubric/responseJudge score will be self-graded by the model under test (#9310).",
-  );
-}
-
-const child = spawn(process.execPath, args, {
-  cwd: REPO_ROOT,
-  env,
-  stdio: "inherit",
-});
-child.on("exit", (code, signal) => {
-  if (signal) {
-    console.error(`[run-live-scenarios] killed by signal ${signal}`);
-    process.exit(1);
+/** A caller configuration error that maps to the wrapper's stable exit code. */
+export class LiveScenarioConfigurationError extends Error {
+  constructor(message, exitCode = 2) {
+    super(message);
+    this.name = "LiveScenarioConfigurationError";
+    this.exitCode = exitCode;
   }
-  const exitCode = code ?? 1;
-  if (exitCode !== 0 && !enforceGate) {
-    console.warn(
-      `[run-live-scenarios] scenario gate exited ${exitCode}; SCENARIO_ENFORCE_GATE=0 so the report is non-blocking.`,
+}
+
+/**
+ * Resolve the child invocation without spawning it. Dependency injection keeps
+ * the workflow contract executable in unit coverage without credentialed model
+ * calls or writes outside a temporary directory.
+ */
+export function createLiveScenarioPlan(options = {}) {
+  const repoRoot = options.repoRoot ?? REPO_ROOT;
+  const env = options.env ?? process.env;
+  const argv = options.argv ?? process.argv.slice(2);
+  const pathExists = options.existsSync ?? existsSync;
+  const makeDirectory = options.mkdirSync ?? mkdirSync;
+  const scenarioCli = path.join(
+    repoRoot,
+    "packages",
+    "scenario-runner",
+    "src",
+    "cli.ts",
+  );
+
+  if (!pathExists(scenarioCli)) {
+    throw new LiveScenarioConfigurationError(
+      `[run-live-scenarios] scenario-runner CLI missing at ${scenarioCli}.`,
     );
-    process.exit(0);
   }
-  process.exit(exitCode);
-});
+  if (env.ELIZA_LIVE_TEST !== "1") {
+    throw new LiveScenarioConfigurationError(
+      "[run-live-scenarios] refusing to run: ELIZA_LIVE_TEST=1 is required.",
+    );
+  }
+
+  const skipFilter = (env.SCENARIO_SKIP ?? "").trim();
+  const skipReason = (env.SKIP_REASON ?? "").trim();
+  if (skipFilter.length > 0 && skipReason.length === 0) {
+    throw new LiveScenarioConfigurationError(
+      `[run-live-scenarios] SCENARIO_SKIP="${skipFilter}" requires SKIP_REASON to document why. Set SKIP_REASON="<concrete reason>" to acknowledge.`,
+    );
+  }
+
+  const scenarioRootInput = (env.SCENARIO_ROOT ?? "").trim();
+  const scenarioRoot =
+    scenarioRootInput.length > 0
+      ? path.resolve(repoRoot, scenarioRootInput)
+      : path.join(repoRoot, "packages", "test", "scenarios");
+  const reportPath =
+    env.REPORT_PATH ??
+    path.join(repoRoot, "artifacts", "lifeops-scenario-report.json");
+  makeDirectory(path.dirname(reportPath), { recursive: true });
+  const runDir =
+    env.RUN_DIR ?? path.join(repoRoot, "artifacts", "scenario-runs", "live");
+  makeDirectory(runDir, { recursive: true });
+
+  const args = [
+    "--import",
+    "tsx",
+    scenarioCli,
+    "run",
+    scenarioRoot,
+    "--report",
+    reportPath,
+    "--run-dir",
+    runDir,
+  ];
+  const exportNativePath = (
+    env.EXPORT_NATIVE_PATH ?? path.join(runDir, "native.jsonl")
+  ).trim();
+  if (exportNativePath.length > 0) {
+    makeDirectory(path.dirname(path.resolve(repoRoot, exportNativePath)), {
+      recursive: true,
+    });
+    args.push("--export-native", exportNativePath);
+  }
+  args.push(...argv);
+  const filter = (env.SCENARIO_FILTER ?? "").trim();
+  if (filter.length > 0) args.push("--scenario", filter);
+
+  const judgeThreshold = env.LIFEOPS_JUDGE_THRESHOLD ?? "0.8";
+  const enforceGateValue = (env.SCENARIO_ENFORCE_GATE ?? "1")
+    .trim()
+    .toLowerCase();
+  const enforceGate = !["0", "false", "no", "off"].includes(enforceGateValue);
+  const childEnv = {
+    ...env,
+    ELIZA_LIVE_TEST: "1",
+    LIFEOPS_LIVE_JUDGE_MIN_SCORE: judgeThreshold,
+  };
+  const independentJudge = Boolean(
+    (env.CEREBRAS_API_KEY ?? "").trim() ||
+      (env.EVAL_CEREBRAS_API_KEY ?? "").trim(),
+  );
+  const requireIndependentJudge =
+    (env.SCENARIO_JUDGE_REQUIRE_INDEPENDENT ?? "").trim() === "1";
+
+  return {
+    repoRoot,
+    args,
+    childEnv,
+    runDir,
+    reportPath,
+    skipFilter,
+    skipReason,
+    judgeThreshold,
+    enforceGate,
+    independentJudge,
+    requireIndependentJudge,
+  };
+}
+
+/** Spawn one resolved plan and translate the child boundary into an exit code. */
+export async function runLiveScenarioPlan(plan, options = {}) {
+  const spawnChild = options.spawnImpl ?? spawn;
+  const logger = options.logger ?? console;
+  const execPath = options.execPath ?? process.execPath;
+
+  if (plan.skipReason.length > 0) {
+    logger.warn(
+      `[run-live-scenarios] SKIP_REASON acknowledged: "${plan.skipReason}" (filter="${plan.skipFilter}")`,
+    );
+  }
+  logger.log(
+    `[run-live-scenarios] threshold=${plan.judgeThreshold} enforce=${plan.enforceGate ? "yes" : "no"} pending=${plan.childEnv.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} judge=${plan.independentJudge ? "independent (cerebras)" : "SELF-GRADED (model under test — set CEREBRAS_API_KEY)"} requireIndependentJudge=${plan.requireIndependentJudge ? "yes" : "no"} report=${plan.reportPath} runDir=${plan.runDir} args=${plan.args.slice(2).join(" ")}`,
+  );
+  if (!plan.independentJudge && !plan.requireIndependentJudge) {
+    logger.warn(
+      "[run-live-scenarios] WARNING: no independent judge credentials — every judgeRubric/responseJudge score will be self-graded by the model under test (#9310).",
+    );
+  }
+
+  return await new Promise((resolve, reject) => {
+    const child = spawnChild(execPath, plan.args, {
+      cwd: plan.repoRoot,
+      env: plan.childEnv,
+      stdio: "inherit",
+    });
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (signal) {
+        logger.error(`[run-live-scenarios] killed by signal ${signal}`);
+        resolve(1);
+        return;
+      }
+      const exitCode = code ?? 1;
+      if (exitCode !== 0 && !plan.enforceGate) {
+        logger.warn(
+          `[run-live-scenarios] scenario gate exited ${exitCode}; SCENARIO_ENFORCE_GATE=0 so the report is non-blocking.`,
+        );
+        resolve(0);
+        return;
+      }
+      resolve(exitCode);
+    });
+  });
+}
+
+/** Outermost process boundary used by the workflow and direct CLI callers. */
+export async function main(options = {}) {
+  const logger = options.logger ?? console;
+  try {
+    const plan = createLiveScenarioPlan(options);
+    return await runLiveScenarioPlan(plan, options);
+  } catch (error) {
+    // error-policy:J1 the executable boundary maps configuration/spawn failures
+    // to stable non-zero process results while preserving the diagnostic.
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(
+      error instanceof LiveScenarioConfigurationError
+        ? message
+        : `[run-live-scenarios] failed: ${message}`,
+    );
+    return error instanceof LiveScenarioConfigurationError ? error.exitCode : 1;
+  }
+}
+
+const isMain = process.argv[1]
+  ? path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+  : false;
+if (isMain) process.exitCode = await main();

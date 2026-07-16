@@ -569,19 +569,6 @@ function readLastChangeSet(
   return candidate as WorkspaceChangeSet;
 }
 
-/** Render an event's `data` payload to a bounded scannable string so the
- *  completion-evidence assembler can mine build/test lines out of it. */
-function stringifyEventData(data: Record<string, unknown>): string {
-  if (!data || Object.keys(data).length === 0) return "";
-  try {
-    return truncate(JSON.stringify(data), 1500);
-  } catch {
-    // error-policy:J3 arbitrary event data may be non-serializable (circular);
-    // empty means "no minable text from this event", not a masked failure.
-    return "";
-  }
-}
-
 const EVIDENCE_URL_RE = /https?:\/\/[^\s<>"'`)\]]+/g;
 
 /** Collect distinct http(s) URLs from a set of text bodies, for the verified-
@@ -1853,20 +1840,17 @@ export class OrchestratorTaskService extends Service {
       .map((message) => message.content.trim())
       .filter((content) => content.length > 0);
 
-    // Tool-output signals: prefer the structured `toolCall.output` recorded on
-    // `tool_running`/`tool_result` events, labelled by the tool command/title so
-    // the classifier can route the stdout to its test/build/lint bucket. Fall
-    // back to the full event/message bodies so a real run still surfaces even
-    // when the adapter folded its output into the assistant text.
+    // Only worker-originated text may become command evidence. The task event
+    // log also contains verifier verdicts and corrective prompts; mining those
+    // would feed a prior failed verdict back into the next attempt as if it were
+    // fresh failing test output. The final reply is already rendered verbatim by
+    // the bundle, while sub-agent stdout covers adapters that fold tool results
+    // into assistant messages instead of structured tool events.
     const toolSignals: EvidenceSignal[] = [
       ...this.extractToolSignals(sessionEvents),
-      ...sessionEvents.map((event) => ({
-        text: `${event.summary}\n${stringifyEventData(event.data)}`,
-        source: event.eventType,
-      })),
-      ...sessionMessages.map((message) => ({
-        text: message.content,
-        source: message.senderKind,
+      ...subAgentReplies.map((text) => ({
+        text,
+        source: "sub_agent",
       })),
     ];
     const toolOutput = classifyToolOutput(toolSignals);
