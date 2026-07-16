@@ -66,9 +66,13 @@ export class PostgresConnectionManager {
     // pool sessions do not share GUCs; best effort because the GUC only
     // exists once pgvector 0.8+ is installed.
     this.pool.on("connect", (client) => {
-      client.query("SET hnsw.iterative_scan = 'strict_order'").catch(() => {
+      client.query("SET hnsw.iterative_scan = 'strict_order'").catch((error) => {
         // error-policy:J4 designed degrade — older pgvector has no
         // iterative_scan GUC; search stays correct on non-index plans.
+        logger.debug(
+          { src: "plugin:sql", error: error instanceof Error ? error.message : String(error) },
+          "hnsw.iterative_scan unavailable on this connection; filtered vector search may use non-index plans"
+        );
       });
     });
 

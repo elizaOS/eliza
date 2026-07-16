@@ -620,9 +620,17 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     if (this.databaseBackend === "pglite") {
       try {
         await this.db.execute(sql.raw(`SET hnsw.iterative_scan = 'strict_order'`));
-      } catch {
+      } catch (error) {
         // error-policy:J4 designed degrade — older pgvector has no
         // iterative_scan GUC; search stays correct on non-index plans.
+        logger.debug(
+          {
+            src: "plugin:sql",
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "hnsw.iterative_scan unavailable; filtered vector search may use non-index plans"
+        );
       }
     }
   }
