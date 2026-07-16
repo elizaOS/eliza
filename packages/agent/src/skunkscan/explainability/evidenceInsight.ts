@@ -17,6 +17,12 @@ export type InvestorEvidenceInsight = {
     | "medium"
     | "high";
 
+  severity:
+  | "low"
+  | "medium"
+  | "high"
+  | "critical";
+
   evidenceRecordIds: string[];
 
   limitations: string[];
