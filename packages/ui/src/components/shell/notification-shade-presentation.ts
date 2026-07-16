@@ -71,12 +71,26 @@ export function notificationPullPresentation(
   const pullContentVisibility = shadeExpanded
     ? disposableContentVisibility
     : pullRevealProgress;
+  const pullOvershootOffset = notificationPullOvershootOffset(pullPx);
+  const countCloseOvershootProgress = Math.min(
+    1,
+    Math.max(
+      0,
+      (-pullOvershootOffset - PULL_MAX_OVERSHOOT_PX / 4) /
+        (PULL_MAX_OVERSHOOT_PX / 2),
+    ),
+  );
+  const countCloseBoundaryVisibility =
+    1 -
+    countCloseOvershootProgress ** 2 * (3 - 2 * countCloseOvershootProgress);
   // The count follows the same continuous travel as the cards but stays much
   // dimmer while their surfaces overlap. This reads as a fade beneath the
-  // stack without either a hard clipping edge or legible text through glass.
-  const notificationCountVisibility = shadeExpanded
-    ? shadeCloseProgress ** 3
-    : (1 - pullRevealProgress) ** 3;
+  // stack without either legible text through glass or a hard clipping edge.
+  // Once upward elastic travel carries it toward the scrollport boundary, a
+  // smooth end fade completes before the final quarter of resisted movement.
+  const notificationCountVisibility =
+    (shadeExpanded ? shadeCloseProgress ** 3 : (1 - pullRevealProgress) ** 3) *
+    countCloseBoundaryVisibility;
   const clearControlVisibility = shadeExpanded
     ? disposableContentVisibility
     : pullPx > 0
@@ -91,8 +105,6 @@ export function notificationPullPresentation(
     shadeExpanded,
     shadeClosing,
   );
-  const pullOvershootOffset = notificationPullOvershootOffset(pullPx);
-
   return {
     shadeCloseProgress,
     committedCloseProgress,
