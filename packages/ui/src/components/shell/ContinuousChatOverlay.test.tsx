@@ -3585,7 +3585,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     await waitFor(() =>
       expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
     );
-    expect(bubble?.style.outline).toContain("var(--accent)");
+    expect(bubble?.style.outline).toContain("rgba(255, 255, 255, 0.96)");
     expect(bubble?.style.outlineOffset).toBe("-2px");
     await waitFor(() =>
       expect(screen.queryByTestId("chat-message-search")).toBeNull(),
