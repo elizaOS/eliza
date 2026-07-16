@@ -15,11 +15,7 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
-import {
-  type Action,
-  type HandlerOptions,
-  type IAgentRuntime,
-} from "@elizaos/core";
+import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { resolveApiToken, resolveServerOnlyPort } from "@elizaos/shared";
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
 import type {
