@@ -775,31 +775,33 @@ async function handleListAllAccounts(
           atMs: providerBroker.lastSelection.atMs,
         }
       : null;
-    const recentFailovers = (providerBroker?.recentFailovers ?? []).map(
-      (failover) => ({
-        fromAccountId: failover.fromAccountId,
-        toAccountId: failover.toAccountId,
-        atMs: failover.atMs,
-        cause: failover.cause.reason,
-      }),
-    );
+    const recentFailovers = providerBroker
+      ? providerBroker.recentFailovers.map((failover) => ({
+          fromAccountId: failover.fromAccountId,
+          toAccountId: failover.toAccountId,
+          atMs: failover.atMs,
+          cause: failover.cause.reason,
+        }))
+      : [];
     return {
       providerId,
       strategy,
       runtimeEligibility: runtimeEligibilityForProvider(providerId),
-      accounts: linkedConfigs.map((cfg) => ({
-        ...cfg,
-        hasCredential: onDiskSet.has(cfg.id),
-        observability: {
-          activeLeaseCount:
-            broker.accounts[brokerAccountKey(providerId, cfg.id)]
-              ?.activeLeaseCount ?? 0,
-          lastLeaseAt:
-            broker.accounts[brokerAccountKey(providerId, cfg.id)]
-              ?.lastLeaseAt ?? null,
-          servedLastRequest: lastSelection?.accountId === cfg.id,
-        },
-      })),
+      accounts: linkedConfigs.map((cfg) => {
+        const brokerAccount =
+          broker.accounts[brokerAccountKey(providerId, cfg.id)];
+        return {
+          ...cfg,
+          hasCredential: onDiskSet.has(cfg.id),
+          observability: {
+            activeLeaseCount: brokerAccount
+              ? brokerAccount.activeLeaseCount
+              : 0,
+            lastLeaseAt: brokerAccount?.lastLeaseAt ?? null,
+            servedLastRequest: lastSelection?.accountId === cfg.id,
+          },
+        };
+      }),
       ...(selection ? { selection } : {}),
       observability: {
         lastSelection,
