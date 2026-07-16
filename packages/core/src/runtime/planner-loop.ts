@@ -326,6 +326,36 @@ export async function runPlannerLoop(
 	// finish with it instead of burning the remaining miss budget (which costs
 	// four cold CLI spawns on the text-planner lane, #15230).
 	let lastMissWidgetText: string | undefined;
+	// Rejected terminal ANSWER text from the IMMEDIATELY PREVIOUS
+	// required-tool miss (reassigned every miss, like lastMissWidgetText, so
+	// the identity check below demands CONSECUTIVE re-emission). Used only
+	// when the tool requirement stands on heuristic text inference
+	// (params.requiredToolEvidence === "inferred", i.e. Stage 1's model
+	// emitted no candidate of its own): a planner that re-commits to the
+	// IDENTICAL answer after one corrective retry is deterministically
+	// committed — accept it instead of burning the remaining budget on the
+	// heuristic's guess (observed live: 4 identical REPLYs, ~36s, for a
+	// pure-opinion ask force-planned by an inferred web candidate). Model-
+	// emitted requirements keep the full corrective budget.
+	let lastMissAnswerText: string | undefined;
+	const heuristicRequiredToolEvidence =
+		params.requiredToolEvidence === "inferred";
+	// Shared by both required-tool miss branches (no-tool-calls and
+	// terminal-only) so the accept-repeated-answer policy cannot drift between
+	// them. Returns the accepted answer when the identity check fires; always
+	// records the candidate for the next miss's comparison.
+	const acceptConsecutivelyRepeatedAnswer = (
+		candidate: string | undefined,
+	): string | undefined => {
+		const accepted =
+			heuristicRequiredToolEvidence &&
+			candidate !== undefined &&
+			candidate === lastMissAnswerText
+				? candidate
+				: undefined;
+		lastMissAnswerText = candidate;
+		return accepted;
+	};
 
 	// Coding/full-surface mode (set above from ELIZA_PLANNER_FULL_ACTION_SURFACE):
 	// when the model emits a batch of tool calls in a single response, execute
@@ -432,6 +462,17 @@ export async function runPlannerLoop(
 									lastPlannerExplicitMessageToUser,
 								)
 							: undefined;
+					const repeatedAnswer = acceptConsecutivelyRepeatedAnswer(
+						rejectedAnswerCandidate,
+					);
+					if (repeatedAnswer !== undefined) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: repeatedAnswer,
+						});
+					}
 					if (rejectedAnswerCandidate) {
 						lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
 					}
@@ -641,6 +682,17 @@ export async function runPlannerLoop(
 									terminalMessageFromToolCalls(plannerOutput.toolCalls),
 								)
 							: undefined;
+					const repeatedAnswer = acceptConsecutivelyRepeatedAnswer(
+						rejectedAnswerCandidate,
+					);
+					if (repeatedAnswer !== undefined) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: repeatedAnswer,
+						});
+					}
 					if (rejectedAnswerCandidate) {
 						lastRejectedTerminalAnswerText = rejectedAnswerCandidate;
 					}

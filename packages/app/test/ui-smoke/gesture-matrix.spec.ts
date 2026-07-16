@@ -173,6 +173,13 @@ interface SeededNotification {
  * digest" on recency) to prove read state never participates in the sort. No
  * row carries a deepLink, so a tap is exactly "mark read". (The pan-scroll test
  * needs an overflowing list and seeds its own taller fixture below.)
+ *
+ * Each row carries a DISTINCT `source` so the shade groups it as its own
+ * single-row producer stack — the realistic many-producer inbox. Same-source
+ * rows collapse into one Z-stacked producer card (1 visible row + peeks) that
+ * only fans on a tap, so a shared source would render one row where these
+ * gesture tests need every seeded row flat (`NotificationsHomeCenter.test.tsx`
+ * pins the stacking behaviour).
  */
 function seedInboxNotifications(): SeededNotification[] {
   const base = Date.now();
@@ -188,7 +195,7 @@ function seedInboxNotifications(): SeededNotification[] {
     body: `${title} — seeded by gesture-matrix`,
     category: "system",
     priority,
-    source: "ui-smoke",
+    source: `ui-smoke-${id}`,
     createdAt: base - ageMs,
     readAt,
   });
@@ -225,6 +232,12 @@ const OVERFLOW_ROWS = 24;
  * enough rows — one interrupt-tier so the rested shade arms its expand
  * affordance, the rest sub-interrupt — that the EXPANDED list always exceeds the
  * column and has real scroll travel to pan.
+ *
+ * Every row uses a DISTINCT `source` so each is its own single-row producer
+ * group: the expanded shade then renders all OVERFLOW_ROWS rows flat (a genuine
+ * multi-producer overflow) instead of one Z-stacked producer card. A shared
+ * source would collapse the whole fixture into a single tap-to-fan stack and the
+ * list would never overflow.
  */
 function seedOverflowInboxNotifications(): SeededNotification[] {
   const base = Date.now();
@@ -235,7 +248,7 @@ function seedOverflowInboxNotifications(): SeededNotification[] {
       body: "Payment failed — seeded by gesture-matrix",
       category: "system",
       priority: "urgent",
-      source: "ui-smoke",
+      source: "ui-smoke-n-urgent",
       createdAt: base - 10_000,
       readAt: null,
     },
@@ -247,7 +260,7 @@ function seedOverflowInboxNotifications(): SeededNotification[] {
       body: `Notice ${i} — seeded by gesture-matrix`,
       category: "system",
       priority: "normal",
-      source: "ui-smoke",
+      source: `ui-smoke-n-fill-${i}`,
       createdAt: base - 20_000 - i * 1_000,
       readAt: null,
     });
@@ -534,9 +547,13 @@ test.describe("real touch (hasTouch project)", () => {
     await installSeededInboxRoutes(page, seedOverflowInboxNotifications());
     await openHome(page);
 
-    // Fan the shade out and seed a tall inbox so the home-screen scroller
-    // genuinely overflows — the column CAN scroll, which makes the containment
-    // assertion below meaningful rather than vacuous.
+    // Fan the shade out and seed a tall inbox so the notification LIST — the
+    // internal scroller under the finger — genuinely overflows. The home column
+    // itself intentionally does NOT overflow: the inbox is `flex-1 min-h-0` and
+    // scrolls in place so it never grows behind the floating composer, so the
+    // definite-height column has no scroll travel. Overflowing the list is what
+    // gives the contained pan real travel and keeps the assertions below
+    // meaningful rather than vacuous.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
     await expandNotificationShade(page);
@@ -545,29 +562,33 @@ test.describe("real touch (hasTouch project)", () => {
       OVERFLOW_ROWS,
       { timeout: 15_000 },
     );
-    const homeScreen = page.getByTestId("home-screen");
-    const overflows = await homeScreen.evaluate(
+    const listOverflows = await list.evaluate(
       (el) => el.scrollHeight > el.clientHeight + 8,
     );
     expect(
-      overflows,
-      "seeded home column must overflow so containment is not vacuous",
+      listOverflows,
+      "seeded notification list must overflow so the contained pan has real scroll travel",
     ).toBe(true);
+    const homeScreen = page.getByTestId("home-screen");
     const homeScrollBefore = await homeScreen.evaluate((el) => el.scrollTop);
+    const listScrollBefore = await list.evaluate((el) => el.scrollTop);
 
     // Genuine touch pan UP over the notification list (a slight horizontal
     // wobble, like a real finger). The list is `overscroll-y-contain`, so the pan
-    // is CONTAINED to the notification area: it must not be hijacked into the
-    // horizontal home↔launcher rail, must not chain into the (scrollable) home
-    // column beneath, and its touch release must not ghost-tap the row under the
-    // finger.
+    // is CONTAINED to the notification area: it scrolls the list IN PLACE, must
+    // not be hijacked into the horizontal home↔launcher rail, must not chain into
+    // the home column beneath, and its touch release must not ghost-tap the row
+    // under the finger.
     await cdpTouchDrag(page, list, 4, -160, 10);
     await page.waitForTimeout(400);
 
-    // Rail did not flip; the home column beneath did not scroll (the pan was
-    // contained); every seeded row is still present and none expanded its option
-    // strip (a tap would expand `notification-row-options`); the chat overlay
-    // stayed closed.
+    // The pan was consumed by the list (it scrolled internally) — the positive
+    // proof it stayed contained there. The rail did not flip; the home column
+    // beneath did not scroll; every seeded row is still present and none expanded
+    // its option strip (a tap would expand `notification-row-options`); the chat
+    // overlay stayed closed.
+    const listScrollAfter = await list.evaluate((el) => el.scrollTop);
+    expect(listScrollAfter).toBeGreaterThan(listScrollBefore);
     await expect(page.getByTestId("home-launcher-surface")).toHaveAttribute(
       "data-page",
       "home",
@@ -600,8 +621,9 @@ test.describe("real touch (hasTouch project)", () => {
     // The inbox is inline on the home column — no shade to open.
     const center = page.getByTestId("home-notification-center");
     await expect(center).toBeVisible({ timeout: 15_000 });
-    // Fan the priority-triaged shade out so the sub-interrupt "Backup finished"
-    // row is present to swipe (rested it stays stacked behind the top card).
+    // Expand the priority-triaged shade so the sub-interrupt "Backup finished"
+    // row is present to swipe (rested, only interrupt-tier producers show, so
+    // this normal-priority producer stays hidden until the shade fans out).
     await expandNotificationShade(page);
     await expect(center.getByTestId("notification-row")).toHaveCount(8, {
       timeout: 15_000,

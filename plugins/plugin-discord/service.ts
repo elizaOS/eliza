@@ -2371,8 +2371,12 @@ export class DiscordService extends Service implements IDiscordService {
 			return null;
 		}
 
+		// The room read exists only to recover a channelId the caller did not
+		// resolve — skip the DB round-trip when the target already carries one.
 		const room =
-			target.roomId && typeof context.runtime.getRoom === "function"
+			!target.channelId &&
+			target.roomId &&
+			typeof context.runtime.getRoom === "function"
 				? await context.runtime.getRoom(target.roomId)
 				: null;
 		const channelId = target.channelId ?? room?.channelId;
@@ -2390,44 +2394,38 @@ export class DiscordService extends Service implements IDiscordService {
 			topic?: string | null;
 			guild?: Guild;
 			messages?: {
-				fetch: (options: {
-					limit: number;
-				}) => Promise<Collection<string, Message>>;
+				cache?: Collection<string, Message>;
 			};
 		};
+		// Recent history comes from the gateway-populated message cache, never a
+		// REST fetch: this hook runs on the Stage-1 critical path every turn, a
+		// GET /channels/{id}/messages costs 100ms-3s+ behind discord.js's
+		// rate-limit buckets, and the transcript in the prompt is owned by
+		// RECENT_MESSAGES anyway (the provider strips recentMessages before
+		// rendering — the fetched history was diagnostics-only). The cache holds
+		// the same gateway-delivered messages at zero cost; right after boot it
+		// is simply empty.
 		const recentMessages: MessageConnectorChatContext["recentMessages"] = [];
-		if (channelRecord.messages?.fetch) {
-			try {
-				const fetched = await channelRecord.messages.fetch({ limit: 10 });
-				for (const message of Array.from(fetched.values()).reverse()) {
-					if (!message.content.trim()) {
-						continue;
-					}
-					recentMessages.push({
-						entityId: this.resolveDiscordEntityId(message.author.id),
-						name:
-							message.member?.displayName ||
-							message.author.globalName ||
-							message.author.username,
-						text: message.content,
-						timestamp: message.createdTimestamp,
-						metadata: {
-							accountId,
-							discordMessageId: message.id,
-							discordUserId: message.author.id,
-						},
-					});
+		const cached = channelRecord.messages?.cache;
+		if (cached) {
+			for (const message of Array.from(cached.values()).slice(-10)) {
+				if (!message.content.trim()) {
+					continue;
 				}
-			} catch (error) {
-				this.runtime.logger.debug(
-					{
-						src: "plugin:discord",
-						agentId: this.runtime.agentId,
-						channelId,
-						error: error instanceof Error ? error.message : String(error),
+				recentMessages.push({
+					entityId: this.resolveDiscordEntityId(message.author.id),
+					name:
+						message.member?.displayName ||
+						message.author.globalName ||
+						message.author.username,
+					text: message.content,
+					timestamp: message.createdTimestamp,
+					metadata: {
+						accountId,
+						discordMessageId: message.id,
+						discordUserId: message.author.id,
 					},
-					"Discord connector chat context history fetch failed",
-				);
+				});
 			}
 		}
 

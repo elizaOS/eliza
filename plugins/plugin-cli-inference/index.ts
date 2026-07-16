@@ -1,19 +1,31 @@
 import { createHash } from "node:crypto";
-import type { GenerateTextParams, IAgentRuntime, Plugin } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime, Plugin, ToolDefinition } from "@elizaos/core";
+import {
+  HANDLE_RESPONSE_TOOL_NAME,
+  isTruthyEnvValue,
+  logger,
+  ModelType,
+  parseBooleanValue,
+} from "@elizaos/core";
 import {
   type RotationSubprocessEnv,
   rotationEnabled,
   withAccountRotation,
 } from "./src/account-rotation";
 import { ClaudeCli } from "./src/claude-cli";
-import { ClaudeSdkSession } from "./src/claude-sdk-session";
+import {
+  ClaudeSdkSession,
+  type EnvelopeFieldSchemas,
+  type SdkSessionMode,
+} from "./src/claude-sdk-session";
 import {
   appendTextDirective,
   buildCleanRoutingParams,
+  buildEnvelopeBody,
   buildRouterBody,
   frameTextSystemPrompt,
   ROUTER_SYSTEM_PROMPT,
+  STAGE1_ENVELOPE_SYSTEM_PROMPT,
 } from "./src/clean-routing-planner";
 import { CodexCli } from "./src/codex-cli-exec";
 import { CodexSdkSession } from "./src/codex-sdk-session";
@@ -72,9 +84,76 @@ const LARGE_TIER_MODEL_TYPES: readonly string[] = [
  */
 const PLANNER_MODEL_TYPES: readonly string[] = [ModelType.ACTION_PLANNER];
 
+/**
+ * High-frequency triage tiers — the should-respond gate, media-description, and
+ * the action-callback voice rewrite. NOT registered by default (they'd spend a
+ * subscription call on every inbound message, including ignored ones); serving
+ * them on the cheap configured provider bounds cost. Registered only in ALL-TIERS
+ * mode for operators who want a single-brain, no-fallthrough deployment — where
+ * leaving triage on a weak provider mangles action-result rewrites into
+ * "couldn't format" placeholder text.
+ */
+const SMALL_TIER_MODEL_TYPES: readonly string[] = [
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_MEDIUM,
+];
+
 /** True when the runtime is set for the XML text planner the free-text CLI can serve. */
 function textPlannerEnabled(): boolean {
   return readEnv("ELIZA_PLANNER_NATIVE_TOOLS")?.trim() === "0";
+}
+
+/**
+ * ALL-TIERS mode: also serve the high-frequency triage tiers on this route so
+ * the ENTIRE text brain (not just the heavy tiers) runs on the one Claude/Codex
+ * subscription — no cerebras/gemma fallthrough. Opt-in because triage volume is
+ * high; the triage model defaults to the cheaper large-tier model, not the
+ * planner tier, so the should-respond gate doesn't run on opus.
+ */
+function allTiersEnabled(): boolean {
+  return isTruthyEnvValue(readEnv("ELIZA_CLI_CLAUDE_ALL_TIERS"));
+}
+
+/**
+ * Stage-1 ENVELOPE mode (claude-sdk only): serve RESPONSE_HANDLER through the
+ * native `handle_response` MCP tool so the routing envelope is structurally
+ * captured instead of prompt-begged from free text. Default ON — it is the
+ * lane's parity fix with every other Stage-1 backend; ELIZA_CLI_CLAUDE_STAGE1_ENVELOPE=0
+ * reverts to the plain text session (core's tolerant parse chain).
+ */
+function stage1EnvelopeEnabled(): boolean {
+  return parseBooleanValue(readEnv("ELIZA_CLI_CLAUDE_STAGE1_ENVELOPE")) ?? true;
+}
+
+/**
+ * Locate core's Stage-1 HANDLE_RESPONSE tool on a RESPONSE_HANDLER call. Core
+ * attaches it (with toolChoice "required") to exactly the Stage-1 ROUTING
+ * call, and to no other — the post-tool evaluator and the failure-reply
+ * helper reuse the same model type WITHOUT the tool, and they expect plain
+ * JSON/text, so they must stay on the text session (observed live: routing
+ * the evaluator through envelope mode posted the raw envelope JSON to the
+ * channel as the reply). The returned tool's composed parameter schema is the
+ * authoritative per-turn envelope field set (core's field REGISTRY lets any
+ * plugin add fields, and the set varies by channel shape).
+ */
+export function findHandleResponseTool(
+  tools: GenerateTextParams["tools"]
+): ToolDefinition | undefined {
+  return (Array.isArray(tools) ? tools : []).find(
+    (tool) => tool.name?.trim().toUpperCase() === HANDLE_RESPONSE_TOOL_NAME
+  );
+}
+
+/** Declared field schemas from the composed HANDLE_RESPONSE tool parameters. */
+function envelopeFieldSchemas(tool: ToolDefinition): EnvelopeFieldSchemas {
+  const properties =
+    (tool.parameters as { properties?: Record<string, { type?: string }> })?.properties ?? {};
+  const fields: EnvelopeFieldSchemas = {};
+  for (const [name, schema] of Object.entries(properties)) {
+    fields[name] = { type: typeof schema?.type === "string" ? schema.type : undefined };
+  }
+  return fields;
 }
 
 // "claude"      → cold `claude --print` per call (TOS-clean, but ~5-15s/call).
@@ -128,9 +207,19 @@ const MAX_SDK_SESSIONS = 8;
 /** The Claude model for a given tier (planner/small can differ from large). */
 function resolveSdkModel(runtime: IAgentRuntime, modelType: string): string {
   const large = getSetting(runtime, "ELIZA_CLI_CLAUDE_MODEL");
-  const small = getSetting(runtime, "ELIZA_CLI_CLAUDE_PLANNER_MODEL");
-  const isSmallTier = modelType === ModelType.ACTION_PLANNER || modelType === ModelType.TEXT_SMALL;
-  return ((isSmallTier ? small : large) || large || "claude-opus-4-8").trim();
+  const planner = getSetting(runtime, "ELIZA_CLI_CLAUDE_PLANNER_MODEL");
+  const fallback = (large || "claude-opus-4-8").trim();
+  // The planner tier keeps its own (typically heavier) model.
+  if (modelType === ModelType.ACTION_PLANNER) {
+    return (planner || fallback).trim();
+  }
+  // ALL-TIERS triage: use the dedicated cheap model, else the large-tier model
+  // (NOT the planner tier) so the high-frequency should-respond gate doesn't
+  // run on opus.
+  if (SMALL_TIER_MODEL_TYPES.includes(modelType)) {
+    return (getSetting(runtime, "ELIZA_CLI_CLAUDE_SMALL_MODEL") || fallback).trim();
+  }
+  return fallback;
 }
 
 function shortHash(value: string): string {
@@ -139,24 +228,34 @@ function shortHash(value: string): string {
 
 /**
  * Lazily create + cache a warm SDK session for a (model, mode, systemPrompt).
- * `router=true` builds a native `route_action` MCP-tool session (the planner);
- * `router=false` builds a plain text-generation session (reply/large tiers).
+ * "route" builds the native `route_action` MCP-tool session (the planner);
+ * "envelope" builds the native `handle_response` session (Stage-1 routing);
+ * "text" builds a plain text-generation session (reply/large tiers).
  */
-function claudeSessionKey(model: string, systemPrompt: string, router: boolean): string {
-  return `${model}\u001f${router ? "route" : "text"}\u001f${shortHash(systemPrompt)}`;
+function claudeSessionKey(
+  model: string,
+  systemPrompt: string,
+  mode: SdkSessionMode,
+  envelopeFields?: EnvelopeFieldSchemas
+): string {
+  // Envelope sessions also freeze their tool schema at query() start, so the
+  // composed field set is part of the identity (direct vs group channel
+  // shapes compose different sets; registry plugins add more).
+  const fieldsPart = envelopeFields ? shortHash(Object.keys(envelopeFields).sort().join(",")) : "";
+  return `${model}\u001f${mode}\u001f${shortHash(systemPrompt)}\u001f${fieldsPart}`;
 }
 
 /**
  * Reasoning effort for a Claude SDK session, forwarded to the SDK's `effort`
- * option (== `claude --effort`). The planner (router) reads
+ * option (== `claude --effort`). The planner (route mode) reads
  * ELIZA_CLI_CLAUDE_PLANNER_EFFORT first so routing depth can be tuned
- * independently of reply depth; both fall back to ELIZA_CLI_CLAUDE_EFFORT, then
+ * independently of reply depth; everything else falls back to ELIZA_CLI_CLAUDE_EFFORT, then
  * to the SDK default (high) when unset. Validation lives in the session
  * (normalizeEffort) so an unknown value is dropped, never forwarded.
  */
-export function resolveSdkEffort(runtime: IAgentRuntime, router: boolean): string | undefined {
+export function resolveSdkEffort(runtime: IAgentRuntime, mode: SdkSessionMode): string | undefined {
   const shared = getSetting(runtime, "ELIZA_CLI_CLAUDE_EFFORT");
-  if (router) {
+  if (mode === "route") {
     return getSetting(runtime, "ELIZA_CLI_CLAUDE_PLANNER_EFFORT") ?? shared;
   }
   return shared;
@@ -179,10 +278,11 @@ function getSdkSession(
   runtime: IAgentRuntime,
   model: string,
   systemPrompt: string,
-  router: boolean,
-  subprocessEnv?: RotationSubprocessEnv
+  mode: SdkSessionMode,
+  subprocessEnv?: RotationSubprocessEnv,
+  envelopeFields?: EnvelopeFieldSchemas
 ): ClaudeSdkSession {
-  const key = claudeSessionKey(model, systemPrompt, router);
+  const key = claudeSessionKey(model, systemPrompt, mode, envelopeFields);
   const existing = sdkSessions.get(key);
   if (existing) {
     // Mark most-recently-used: delete + re-insert moves it to the Map's tail.
@@ -193,13 +293,14 @@ function getSdkSession(
   const session = new ClaudeSdkSession({
     model,
     systemPrompt,
-    router,
+    mode,
+    envelopeFields,
     claudeExecutablePath: getSetting(runtime, "ELIZA_CLI_CLAUDE_BIN"),
     restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
     turnTimeoutMs:
       parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
       parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
-    effort: resolveSdkEffort(runtime, router),
+    effort: resolveSdkEffort(runtime, mode),
     subprocessEnv,
   });
   sdkSessions.set(key, session);
@@ -330,6 +431,37 @@ async function generateViaCli(
     messages: params.messages,
   };
   logger.debug(`[cli-inference] ${modelType} via ${backend}`);
+  const handleResponseTool =
+    backend === "claude-sdk" && modelType === ModelType.RESPONSE_HANDLER && stage1EnvelopeEnabled()
+      ? findHandleResponseTool(params.tools)
+      : undefined;
+  if (backend === "claude-sdk" && handleResponseTool) {
+    // Stage-1 routing envelope via the native `handle_response` MCP tool.
+    // Every other Stage-1 lane structurally forces the envelope (anthropic
+    // native tool_use, cloud tool_choice:required, local GBNF); serving it as
+    // free text let the model answer live-info asks in prose, which core's
+    // tolerance accepted as a finished "simple reply" — no planner, no fetch
+    // (observed live: 49 of 54 live-info turns prose-shaped). The captured
+    // envelope returns as a JSON string core parses identically to a native
+    // tool call; off-contract prose falls back to the tolerant text chain.
+    const model = resolveSdkModel(runtime, modelType);
+    const fields = envelopeFieldSchemas(handleResponseTool);
+    const { system, body } = flattenPrompt(generateParams);
+    const envelopeBody = buildEnvelopeBody(system, body);
+    const key = claudeSessionKey(model, STAGE1_ENVELOPE_SYSTEM_PROMPT, "envelope", fields);
+    return withAccountRotation(
+      (env) =>
+        getSdkSession(runtime, model, STAGE1_ENVELOPE_SYSTEM_PROMPT, "envelope", env, fields).send(
+          envelopeBody
+        ),
+      {
+        backend,
+        getValue: (k) => getSetting(runtime, k),
+        sessionKey: `cli-inference:${key}`,
+        onRotate: () => evictSdkSession(key),
+      }
+    );
+  }
   if (backend === "claude-sdk") {
     // Warm, persistent Agent SDK session. The SDK freezes `systemPrompt` at start,
     // so we flatten system+messages here and hand the session a STABLE system
@@ -343,14 +475,14 @@ async function generateViaCli(
     // 2/4). Keying by the framed system keeps one warm process per tier.
     const framedSystem = frameTextSystemPrompt(system);
     const framedBody = appendTextDirective(body);
-    const key = claudeSessionKey(model, framedSystem, false);
+    const key = claudeSessionKey(model, framedSystem, "text");
     // Pool-first auth: the FIRST warm session already auths as a healthy pooled
     // Claude account when one exists (ambient ~/.claude is the fallback). On a
     // subscription limit, rotate to the next healthy pooled account (evicting
     // the warm session so it re-auths as the new account), then retry; fall
     // through to provider failover only when the pool is exhausted.
     return withAccountRotation(
-      (env) => getSdkSession(runtime, model, framedSystem, false, env).generate(framedBody),
+      (env) => getSdkSession(runtime, model, framedSystem, "text", env).send(framedBody),
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -408,9 +540,9 @@ async function planViaCli(runtime: IAgentRuntime, params: GenerateTextParams): P
   if (backend === "claude-sdk") {
     const model = resolveSdkModel(runtime, ModelType.ACTION_PLANNER);
     const routerBody = buildRouterBody(params);
-    const key = claudeSessionKey(model, ROUTER_SYSTEM_PROMPT, true);
+    const key = claudeSessionKey(model, ROUTER_SYSTEM_PROMPT, "route");
     return withAccountRotation(
-      (env) => getSdkSession(runtime, model, ROUTER_SYSTEM_PROMPT, true, env).route(routerBody),
+      (env) => getSdkSession(runtime, model, ROUTER_SYSTEM_PROMPT, "route", env).send(routerBody),
       {
         backend,
         getValue: (k) => getSetting(runtime, k),
@@ -454,7 +586,10 @@ export function buildModels(
     string,
     (runtime: IAgentRuntime, params: GenerateTextParams) => Promise<string>
   > = {};
-  for (const modelType of LARGE_TIER_MODEL_TYPES) {
+  const textTiers = allTiersEnabled()
+    ? [...LARGE_TIER_MODEL_TYPES, ...SMALL_TIER_MODEL_TYPES]
+    : LARGE_TIER_MODEL_TYPES;
+  for (const modelType of textTiers) {
     models[modelType] = (runtime, params) => generateViaCli(runtime, params, modelType);
   }
   if (textPlannerEnabled()) {
@@ -491,9 +626,15 @@ export function buildModelMetadata(
     ? readEnv("ELIZA_CLI_CODEX_PLANNER_MODEL")?.trim()
     : readEnv("ELIZA_CLI_CLAUDE_PLANNER_MODEL")?.trim();
   const planner = plannerRaw || large;
+  const small = isCodex ? large : readEnv("ELIZA_CLI_CLAUDE_SMALL_MODEL")?.trim() || large;
   const metadata: Record<string, { displayModel: string }> = {};
   for (const modelType of LARGE_TIER_MODEL_TYPES) {
     metadata[modelType] = { displayModel: large };
+  }
+  if (allTiersEnabled()) {
+    for (const modelType of SMALL_TIER_MODEL_TYPES) {
+      metadata[modelType] = { displayModel: small };
+    }
   }
   if (textPlannerEnabled()) {
     for (const modelType of PLANNER_MODEL_TYPES) {
@@ -573,15 +714,17 @@ export {
   withAccountRotation,
 } from "./src/account-rotation";
 export { ClaudeCli } from "./src/claude-cli";
-export { ClaudeSdkSession } from "./src/claude-sdk-session";
+export { ClaudeSdkSession, type SdkSessionMode } from "./src/claude-sdk-session";
 export {
   appendTextDirective,
   buildCleanRoutingBody,
   buildCleanRoutingParams,
   buildCleanRoutingSystemPrompt,
+  buildEnvelopeBody,
   buildRouterBody,
   frameTextSystemPrompt,
   ROUTER_SYSTEM_PROMPT,
+  STAGE1_ENVELOPE_SYSTEM_PROMPT,
   TEXT_COMPLETION_DIRECTIVE,
   TEXT_COMPLETION_FRAMING,
 } from "./src/clean-routing-planner";

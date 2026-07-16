@@ -11,6 +11,7 @@
 // Test hook to clear env cache in logger tests (kept internal)
 export const __loggerTestHooks = {
   clearEnvCacheForTests: () => {},
+  stripAnsi: (str: string): string => stripAnsi(str),
 };
 
 import adze, {
@@ -348,6 +349,11 @@ try {
  */
 let _fileLogState: "pending" | "active" | "disabled" = "pending";
 let _fileLogFd: number | null = null;
+// One-shot guard so a persistent file-write failure surfaces exactly once on
+// stderr instead of being swallowed forever by the catch in writeLogEntryToFile
+// (#16356: an invalid stripAnsi regex threw on every write and output.log
+// silently stayed empty for the sink's whole lifetime).
+let _fileLogWriteErrorWarned = false;
 let _promptLogFd: number | null = null;
 let _chatLogFd: number | null = null;
 let _promptLogCounter = 0;
@@ -373,7 +379,7 @@ function stripAnsi(str: string): string {
   const ESC = "\x1b";
   const BEL = "\x07";
   const re = new RegExp(
-    `${ESC}(?:\\[[\\x20-\\x3F]*[\\x40-\\x7E]|\\].*?(?:${BEL}|${ESC}\\\\|\\\\(B))`,
+    `${ESC}(?:\\[[\\x20-\\x3F]*[\\x40-\\x7E]|\\].*?(?:${BEL}|${ESC}\\\\|\\(B))`,
     "g",
   );
   return str.replace(re, "");
@@ -479,8 +485,18 @@ function writeLogEntryToFile(entry: LogEntry): void {
     const levelStr = LEVEL_TO_NAME[entry.level ?? 30] || "info";
     const line = `${timestamp} [${levelStr.toUpperCase().padEnd(8)}] ${stripAnsi(entry.msg)}\n`;
     fs.writeSync(fd, line);
-  } catch {
-    // Silent fail
+  } catch (error) {
+    // A persistent write failure (e.g. #16356's invalid regex, which threw on
+    // every call) must not stay invisible for the sink's whole lifetime — go
+    // straight to stderr once, bypassing the logger that is itself failing.
+    if (!_fileLogWriteErrorWarned) {
+      _fileLogWriteErrorWarned = true;
+      console.error(
+        `[logger] failed to write to the log file; further errors are suppressed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 }
 

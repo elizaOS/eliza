@@ -40,9 +40,29 @@ const appHooks = vi.hoisted(() => ({
   useApp: vi.fn(),
   activityEvents: { events: [] as Array<Record<string, unknown>> },
 }));
+// The view persists its hidden-token set under the shell-reserved
+// `eliza:wallet:` key, which the surface-realm raw-global guard denies for a
+// raw `window.localStorage.setItem` while the view is foreground. The mock
+// mirrors the real `shellLocalStorage` (a privileged pass-through to
+// window.localStorage) so the spy proves the write goes through the sanctioned
+// channel, and the existing persistence/reload assertions still observe the
+// value on the seeded localStorage.
+const bridgeMocks = vi.hoisted(() => ({
+  shellSetItem: vi.fn<(key: string, value: string) => void>((key, value) => {
+    globalThis.window.localStorage.setItem(key, value);
+  }),
+}));
 
+// The plugin vitest config collapses `@elizaos/ui/<subpath>` (incl. `/bridge`)
+// onto this single mock, so `shellLocalStorage` lives here alongside the rest of
+// the `@elizaos/ui` surface the view imports.
 vi.mock("@elizaos/ui", () => ({
   useAgentElement: () => ({ ref: { current: null }, agentProps: {} }),
+  shellLocalStorage: {
+    setItem: bridgeMocks.shellSetItem,
+    removeItem: (key: string) => globalThis.window.localStorage.removeItem(key),
+    clear: () => globalThis.window.localStorage.clear(),
+  },
   client: walletClient,
   // Mirrors the real guard's contract (an ApiError carries a numeric
   // `status`); tests reject fetches with Object.assign(new Error(body),
@@ -500,7 +520,12 @@ describe("InventoryView GUI — hide token", () => {
     expect(state.setActionNotice).toHaveBeenCalledWith(
       "USDC hidden from this wallet view.",
     );
-    // Persisted to the documented localStorage key with the token id.
+    // Persisted through the shell-privileged channel (not a raw reserved-key
+    // write the surface-realm guard would deny), under the documented key.
+    expect(bridgeMocks.shellSetItem).toHaveBeenCalledWith(
+      "eliza:wallet:hidden-token-ids:v1",
+      expect.stringContaining("0xusdc00000000000000000000000000000000000000"),
+    );
     const stored = window.localStorage.getItem(
       "eliza:wallet:hidden-token-ids:v1",
     );

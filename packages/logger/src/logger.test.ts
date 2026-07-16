@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  __loggerTestHooks,
   addLogListener,
   createLogger,
   type LogEntry,
@@ -101,5 +102,28 @@ describe("logger", () => {
     ).toContain(
       '[CHAT:OUT] #agent:Eliza room=room-123 action=reply len=4 "done" providers=test-provider',
     );
+  });
+});
+
+// #16356: the file-log path's stripAnsi built an invalid regex (an extra escape
+// level made `\\(B` an unterminated group), so `new RegExp` threw on every call
+// and output.log silently stayed empty. Guard the regex compiles and strips.
+describe("stripAnsi", () => {
+  const { stripAnsi } = __loggerTestHooks;
+
+  it("compiles a valid regex and never throws", () => {
+    expect(() => stripAnsi("plain text")).not.toThrow();
+  });
+
+  it("strips SGR color sequences", () => {
+    expect(stripAnsi("\x1b[36mInfo\x1b[39m hi")).toBe("Info hi");
+  });
+
+  it("strips an OSC sequence terminated by BEL", () => {
+    expect(stripAnsi("\x1b]0;window title\x07rest")).toBe("rest");
+  });
+
+  it("leaves text with no escape sequences unchanged", () => {
+    expect(stripAnsi("no ansi here")).toBe("no ansi here");
   });
 });

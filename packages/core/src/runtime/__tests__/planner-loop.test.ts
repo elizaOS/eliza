@@ -1942,6 +1942,107 @@ describe("v5 planner loop skeleton", () => {
 		expect(runtime.useModel).toHaveBeenCalledTimes(2);
 	});
 
+	// Heuristic-evidence early accept: when the tool requirement stands on
+	// deterministic text inference alone (requiredToolEvidence: "inferred"),
+	// a planner that re-commits to the IDENTICAL terminal answer after one
+	// corrective retry is accepted — the same determinism contract as the
+	// widget-identity escape (#15230). Observed live: an opinion ask
+	// force-planned by an inferred web candidate burned 4 planner calls (~36s)
+	// re-emitting the same REPLY before the exhaustion hatch shipped it.
+	it("accepts an identical re-committed REPLY answer early under heuristic-only tool evidence", async () => {
+		const answer = "Pure gut read: grinds up long-term, coinflip short-term.";
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{ id: "reply-1", name: "REPLY", arguments: { text: answer } },
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+			requireNonTerminalToolCall: true,
+			requiredToolEvidence: "inferred",
+			config: { maxRequiredToolMisses: 3 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(answer);
+		// One corrective retry, then the identical re-commitment finishes —
+		// not maxRequiredToolMisses+1 planner calls.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("keeps the full corrective budget for the same shape without heuristic evidence", async () => {
+		const answer = "Pure gut read: grinds up long-term, coinflip short-term.";
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{ id: "reply-1", name: "REPLY", arguments: { text: answer } },
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 3 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		// Model-emitted (or unknown) evidence: every corrective retry runs
+		// before the exhaustion hatch ships the captured answer.
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(answer);
+		expect(runtime.useModel).toHaveBeenCalledTimes(4);
+	});
+
+	it("does not early-accept under heuristic evidence when the answers differ", async () => {
+		const answers = ["Take one.", "Take two.", "Take three.", "Take four."];
+		let call = 0;
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [
+					{
+						id: `reply-${call}`,
+						name: "REPLY",
+						arguments: { text: answers[Math.min(call++, 3)] },
+					},
+				],
+			})),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [{ name: "WEB_FETCH", description: "Fetch a URL." }],
+			requireNonTerminalToolCall: true,
+			requiredToolEvidence: "inferred",
+			config: { maxRequiredToolMisses: 3 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		// A planner still wandering between answers is not committed — the
+		// corrective retries keep their chance to convert it to a tool call.
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Take four.");
+		expect(runtime.useModel).toHaveBeenCalledTimes(4);
+	});
+
 	it("retries planner calls to tools that are not exposed this turn", async () => {
 		const runtime = {
 			useModel: vi
