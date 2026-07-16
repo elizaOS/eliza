@@ -185,6 +185,47 @@ if (
   );
 }
 
+if (
+  activity.activityLevel === "high" ||
+  activity.activityLevel === "medium" ||
+  activity.activityLevel === "low"
+) {
+  investorInsights.positive.push(
+    createInvestorInsight({
+      id: "recent-wallet-activity",
+
+      title: "Recent Wallet Activity",
+
+      finding:
+        activity.activityLevel === "high"
+          ? "The wallet shows a high level of recent blockchain activity."
+          : activity.activityLevel === "medium"
+            ? "The wallet shows a moderate level of recent blockchain activity."
+            : "The wallet shows some recent blockchain activity.",
+
+      whyItMatters:
+        "Recent activity provides current evidence about how the wallet is being used and reduces reliance on historical data alone.",
+
+      impact: "positive",
+
+      confidence: "high",
+
+      severity:
+        activity.activityLevel === "high"
+          ? "medium"
+          : "low",
+
+      evidenceRecordIds: [
+        "activity-summary",
+      ],
+
+      limitations: [
+        "The activity classification is based on the analyzed transaction sample and may not represent the wallet's complete transaction history.",
+      ],
+    }),
+  );
+}
+  
 if (exposure.exposureLevel === "none") {
   investorInsights.positive.push(
     createInvestorInsight({
