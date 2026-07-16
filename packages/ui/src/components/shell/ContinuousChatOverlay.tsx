@@ -874,6 +874,30 @@ function MessageScrollerSendFollow({ request }: { request: number }) {
   return null;
 }
 
+type ScrollToTranscriptMessage = ReturnType<
+  typeof useMessageScroller
+>["scrollToMessage"];
+
+/** Exposes the scroller's coordinated jump API to search result handling. */
+function MessageScrollerSearchBridge({
+  scrollToMessageRef,
+}: {
+  scrollToMessageRef: React.MutableRefObject<ScrollToTranscriptMessage | null>;
+}) {
+  const { scrollToMessage } = useMessageScroller();
+
+  React.useLayoutEffect(() => {
+    scrollToMessageRef.current = scrollToMessage;
+    return () => {
+      if (scrollToMessageRef.current === scrollToMessage) {
+        scrollToMessageRef.current = null;
+      }
+    };
+  }, [scrollToMessage, scrollToMessageRef]);
+
+  return null;
+}
+
 /**
  * The phase-aware status accessory shown while the assistant works (#8813).
  * It stays chromeless inside the latest message's action lane so temporary
@@ -2053,10 +2077,25 @@ export function ContinuousChatOverlay({
     activeSearchHighlightRef.current = null;
   }, []);
   React.useEffect(() => clearSearchHighlight, [clearSearchHighlight]);
+  const searchScrollToMessageRef =
+    React.useRef<ScrollToTranscriptMessage | null>(null);
   const scrollAndFlashSearchAnchor = React.useCallback(
-    (el: HTMLElement) => {
+    (el: HTMLElement, messageId: string) => {
       clearSearchHighlight();
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      // MessageScroller owns bottom-follow and resize reconciliation. Using its
+      // jump API moves that state machine into settling-jump mode so closing the
+      // search panel cannot immediately pull the transcript back to the end.
+      const scrolled = searchScrollToMessageRef.current?.(messageId, {
+        align: "center",
+        // Land before painting the short highlight. A smooth scroll can spend
+        // the highlight's entire lifetime outside the viewport on long threads.
+        behavior: "auto",
+      });
+      // Topic-group rows register a group id rather than each nested message;
+      // retain a DOM fallback for those anchors only.
+      if (!scrolled) {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
       // Message-scroller rows use paint containment for long-thread performance,
       // so an outward row outline is clipped. Paint the flash inside the actual
       // bubble instead; this stays visible without disturbing its liquid-glass
@@ -2098,20 +2137,27 @@ export function ContinuousChatOverlay({
         await handleSelectConversation(result.conversationId);
         let el = await waitForSearchAnchor(anchorId, 20);
         if (!el) {
-          // The hit predates the loaded recent window: load a window CENTERED on
-          // it, then reveal the full loaded set so the centered pivot is not
-          // sliced out of the render window (#15281) — without the reveal a
-          // windowed transcript drops the anchor and the jump silently no-ops.
+          // An absent DOM anchor does not prove the message is absent from
+          // state: the transcript deliberately mounts only its newest window.
+          // Reveal loaded history before touching the network so a windowed-out
+          // hit remains a local, immediate jump.
+          renderWindow.revealFullWindow();
+          el = await waitForSearchAnchor(anchorId, 2);
+        }
+        if (!el) {
+          // The hit genuinely predates the loaded history. Fetch a window
+          // centered on it; the reveal flag above tracks the new renderable
+          // count when that state lands, so the pivot mounts without a second
+          // state transition.
           const loaded = await loadConversationMessagesAround(
             result.conversationId,
             result.messageId,
           );
           if (loaded) {
-            renderWindow.revealFullWindow();
             el = await waitForSearchAnchor(anchorId, 20);
           }
         }
-        if (el) scrollAndFlashSearchAnchor(el);
+        if (el) scrollAndFlashSearchAnchor(el, result.messageId);
       })();
     },
     [
@@ -5544,6 +5590,9 @@ export function ContinuousChatOverlay({
                   defaultScrollPosition={firstRunOpen ? "start" : "end"}
                 >
                   <MessageScrollerSendFollow request={scrollToEndRequest} />
+                  <MessageScrollerSearchBridge
+                    scrollToMessageRef={searchScrollToMessageRef}
+                  />
                   <MessageScroller>
                     <motion.div
                       className="flex min-h-0 w-full flex-1 flex-col"
