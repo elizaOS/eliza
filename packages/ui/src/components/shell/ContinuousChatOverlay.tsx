@@ -2035,21 +2035,62 @@ export function ContinuousChatOverlay({
       }),
     [],
   );
-  const scrollAndFlashSearchAnchor = React.useCallback((el: HTMLElement) => {
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    el.style.transition = "outline-color 0.5s ease-out";
-    el.style.outline = "2px solid var(--primary)";
-    el.style.outlineOffset = "2px";
-    el.style.borderRadius = "8px";
-    window.setTimeout(() => {
-      el.style.outline = "2px solid transparent";
-    }, 1200);
-    window.setTimeout(() => {
-      el.style.removeProperty("outline");
-      el.style.removeProperty("outline-offset");
-      el.style.removeProperty("transition");
-    }, 1800);
+  const activeSearchHighlightRef = React.useRef<{
+    element: HTMLElement;
+    fadeTimer: number;
+    cleanupTimer: number;
+    outline: string;
+    outlineOffset: string;
+    transition: string;
+  } | null>(null);
+  const clearSearchHighlight = React.useCallback(() => {
+    const active = activeSearchHighlightRef.current;
+    if (!active) return;
+    window.clearTimeout(active.fadeTimer);
+    window.clearTimeout(active.cleanupTimer);
+    active.element.style.outline = active.outline;
+    active.element.style.outlineOffset = active.outlineOffset;
+    active.element.style.transition = active.transition;
+    active.element.removeAttribute("data-chat-search-highlight");
+    activeSearchHighlightRef.current = null;
   }, []);
+  React.useEffect(() => clearSearchHighlight, [clearSearchHighlight]);
+  const scrollAndFlashSearchAnchor = React.useCallback(
+    (el: HTMLElement) => {
+      clearSearchHighlight();
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      // Message-scroller rows use paint containment for long-thread performance,
+      // so an outward row outline is clipped. Paint the accent inside the actual
+      // bubble instead; this stays visible without disturbing its liquid-glass
+      // shadow or layout.
+      const bubble =
+        el.querySelector<HTMLElement>('[data-chat-message-bubble="true"]') ??
+        el;
+      const previous = {
+        outline: bubble.style.outline,
+        outlineOffset: bubble.style.outlineOffset,
+        transition: bubble.style.transition,
+      };
+      bubble.setAttribute("data-chat-search-highlight", "true");
+      bubble.style.outline = "2px solid var(--accent)";
+      bubble.style.outlineOffset = "-2px";
+      bubble.style.transition =
+        "outline-color 650ms cubic-bezier(0.22, 1, 0.36, 1)";
+      const fadeTimer = window.setTimeout(() => {
+        bubble.style.outline = "2px solid transparent";
+      }, 1050);
+      const cleanupTimer = window.setTimeout(() => {
+        clearSearchHighlight();
+      }, 1750);
+      activeSearchHighlightRef.current = {
+        element: bubble,
+        fadeTimer,
+        cleanupTimer,
+        ...previous,
+      };
+    },
+    [clearSearchHighlight],
+  );
   const handleSearchJump = React.useCallback(
     (result: ConversationMessageSearchResult) => {
       const anchorId = getChatMessageAnchorId(result.messageId);
@@ -2166,7 +2207,12 @@ export function ContinuousChatOverlay({
             }
           : undefined;
       return (
-        <MessageScrollerItem key={m.id} messageId={m.id} className="w-full">
+        <MessageScrollerItem
+          key={m.id}
+          id={getChatMessageAnchorId(m.id)}
+          messageId={m.id}
+          className="w-full"
+        >
           <ChatMessage
             actionAccessory={
               responding && m.id === turnStatusAnchorId ? (
@@ -5505,7 +5551,9 @@ export function ContinuousChatOverlay({
                         ref={threadRef}
                         preserveScrollOnPrepend={false}
                         aria-label="conversation history"
-                        aria-hidden={!sheetOpen || searchOpen ? true : undefined}
+                        aria-hidden={
+                          !sheetOpen || searchOpen ? true : undefined
+                        }
                         tabIndex={sheetOpen && !searchOpen ? 0 : -1}
                         onKeyDown={(e) => {
                           if (e.key === "Escape") {

@@ -110,7 +110,6 @@ afterEach(() => {
   vi.mocked(reportComposerActivity).mockClear();
   vi.mocked(client.searchConversationMessages).mockReset();
   vi.mocked(Element.prototype.scrollIntoView).mockClear();
-  document.getElementById("chat-message-m-hit")?.remove();
   // Search-jump tests seed the AppContext store with spies; clear it so the
   // inert test-fallback proxy backs every other test again.
   __setAppValueForTests(null);
@@ -3461,12 +3460,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     // inert test-fallback proxy (noop for everything else the overlay reads via
     // other selectors) so only the jump collaborators are observable.
     const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
-    const aroundSpy = vi.fn(async () => {
-      const anchor = document.createElement("div");
-      anchor.id = "chat-message-m-hit";
-      document.body.appendChild(anchor);
-      return true;
-    });
+    const aroundSpy = vi.fn(async () => true);
     const noop = () => {};
     __setAppValueForTests(
       new Proxy({} as never, {
@@ -3486,8 +3480,8 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     // The panel renders exactly what the server route returns; use its real
     // response shape (ranked hits with snippet/role/createdAt).
     const hit: ConversationMessageSearchResult = {
-      messageId: "m-hit",
-      conversationId: "conv-42",
+      messageId: "a",
+      conversationId: "b",
       roomId: "room-1",
       role: "assistant",
       text: "the quarterly budget review is on friday",
@@ -3519,20 +3513,31 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
     expect(result.textContent).toContain("budget");
 
-    // Selecting the hit jumps to its conversation (the real jump plumbing) and
-    // then loads the centered around-window because this fixture starts with no
-    // DOM anchor for the hit.
-    fireEvent.click(result);
-    expect(selectSpy).toHaveBeenCalledWith("conv-42");
-    await waitFor(() =>
-      expect(aroundSpy).toHaveBeenCalledWith("conv-42", "m-hit"),
+    // The rendered glass row itself owns the canonical anchor. This catches the
+    // production bug the old fixture hid by appending a fake body-level div.
+    const anchor = document.getElementById("chat-message-a");
+    expect(anchor?.getAttribute("data-slot")).toBe("message-scroller-item");
+    const bubble = anchor?.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
     );
+    expect(bubble).toBeTruthy();
+
+    // Selecting the hit closes search, jumps to the real row, and highlights
+    // inside the bubble so message-scroller paint containment cannot clip it.
+    fireEvent.click(result);
+    expect(selectSpy).toHaveBeenCalledWith("b");
+    expect(aroundSpy).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
         block: "center",
         behavior: "smooth",
       }),
     );
+    await waitFor(() =>
+      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
+    );
+    expect(bubble?.style.outline).toContain("var(--accent)");
+    expect(bubble?.style.outlineOffset).toBe("-2px");
     await waitFor(() =>
       expect(screen.queryByTestId("chat-message-search")).toBeNull(),
     );
