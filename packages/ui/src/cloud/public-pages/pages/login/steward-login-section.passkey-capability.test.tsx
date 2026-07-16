@@ -330,6 +330,7 @@ describe("StewardLoginSection passkey capability gating", () => {
     expect(codeInput.getAttribute("inputmode")).toBe("numeric");
     expect(codeInput.getAttribute("autocomplete")).toBe("one-time-code");
     expect(codeInput.getAttribute("maxlength")).toBe("6");
+    expect(screen.queryByRole("button", { name: /Google/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /Back to login/i }));
     expect(await screen.findByPlaceholderText("you@example.com")).toBeTruthy();

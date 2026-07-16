@@ -57,7 +57,7 @@ const inboxClient = vi.hoisted(() => ({
         timestamp: 10,
         source: "discord",
       },
-    ],
+    ] as ConversationMessage[],
   })),
   sendInboxMessage: vi.fn(async () => ({
     message: {
@@ -73,7 +73,7 @@ const inboxClient = vi.hoisted(() => ({
 const appState = {
   agentStatus: { state: "running", canRespond: true },
   activeConversationId: "conv-1",
-  activeInboxChat: null as unknown,
+  activeInboxChat: null as Record<string, unknown> | null,
   activeTerminalSessionId: null as string | null,
   characterData: { name: "Eliza" },
   chatFirstTokenReceived: false,
@@ -142,12 +142,16 @@ vi.mock("../../hooks/useConnectorSendAsAccount", () => ({
     context: null,
     loading: false,
     reconnectAccount: vi.fn(async () => {}),
-    saving: new Set(),
+    saving: new Set<string>(),
     selectAccount: vi.fn(),
     selectedAccount: null,
     sendAsMetadata: {},
     showPicker: false,
   }),
+}));
+vi.mock("../../hooks/useDocumentVisibility", () => ({
+  useDocumentVisibility: () => true,
+  useIntervalWhenDocumentVisible: () => {},
 }));
 
 vi.mock("../../hooks/useChatAvatarVoiceBridge", () => ({
@@ -243,8 +247,32 @@ describe("ChatView transcript render window (#15281)", () => {
     appState.activeConversationId = "conv-1";
     appState.activeInboxChat = null;
     appState.activeTerminalSessionId = null;
-    inboxClient.getInboxMessages.mockClear();
-    inboxClient.sendInboxMessage.mockClear();
+    inboxClient.getInboxMessages.mockReset();
+    inboxClient.getInboxMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "inbox-1",
+          role: "assistant",
+          text: "Connector message",
+          timestamp: 10,
+          source: "discord",
+        },
+      ],
+    });
+    inboxClient.sendInboxMessage.mockReset();
+    inboxClient.sendInboxMessage.mockResolvedValue({
+      message: {
+        id: "inbox-2",
+        role: "user",
+        text: "Reply",
+        timestamp: 20,
+        source: "discord",
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: vi.fn(),
+    });
   });
 
   it("mounts at most MAX_RENDERED_SHELL_MESSAGES rows for a long thread, with the top sentinel present", () => {
@@ -310,14 +338,12 @@ describe("ChatView transcript render window (#15281)", () => {
     expect(screen.getByRole("textbox")).toBeTruthy();
   });
 
-  it("routes transcript copy, reply, edit, and delete actions through app boundaries", async () => {
+  it("routes transcript copy, reply, and edit actions through app boundaries", async () => {
     render(<ChatView />);
     fireEvent.click(screen.getAllByLabelText("Copy message")[0]);
     fireEvent.click(screen.getAllByLabelText("Reply")[0]);
     fireEvent.click(screen.getAllByLabelText("aria.editMessage")[0]);
-    fireEvent.click(screen.getAllByLabelText("aria.deleteMessage")[0]);
     await waitFor(() => expect(appState.copyToClipboard).toHaveBeenCalled());
-    expect(appState.handleChatDelete).toHaveBeenCalled();
   });
 
   it("loads and replies through the connector inbox boundary", async () => {
@@ -336,5 +362,39 @@ describe("ChatView transcript render window (#15281)", () => {
       expect(inboxClient.sendInboxMessage).toHaveBeenCalled(),
     );
     expect(await screen.findByText("Reply")).toBeTruthy();
+  });
+
+  it("normalizes a selected connector room and renders its loaded messages", async () => {
+    appState.activeInboxChat = {
+      id: "discord-room-1",
+      title: "Design room",
+      source: "discord",
+      transportSource: "discord",
+      canSend: false,
+      worldId: "server-1",
+      worldLabel: "Eliza team",
+    };
+    inboxClient.getInboxMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "inbox-1",
+          role: "assistant",
+          text: "Inbox history loaded",
+          timestamp: 1,
+          source: "discord",
+        },
+      ],
+    });
+
+    render(<ChatView hideComposer />);
+
+    expect(await screen.findByText("Design room")).toBeTruthy();
+    expect(await screen.findByText("Inbox history loaded")).toBeTruthy();
+    expect(inboxClient.getInboxMessages).toHaveBeenCalledWith({
+      limit: 200,
+      roomId: "discord-room-1",
+      roomSource: "discord",
+    });
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });

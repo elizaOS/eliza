@@ -42,6 +42,10 @@ vi.mock("../../hooks/useDocumentVisibility", () => ({
 const clientMock = vi.hoisted(() => ({
   getInboxChats: vi.fn(async () => ({ chats: [] })),
   getConversationMessages: vi.fn(async () => ({ messages: [] })),
+  searchConversationMessages: vi.fn(async () => ({
+    results: [],
+    count: 0,
+  })),
   spawnShellSession: vi.fn(async () => ({ sessionId: "term-1" })),
 }));
 
@@ -120,6 +124,17 @@ describe("ConversationsSidebar", () => {
     render(<ConversationsSidebar />);
     expect(await screen.findByText("Alpha thread")).toBeTruthy();
     expect(screen.getByText("Beta thread")).toBeTruthy();
+  });
+
+  it("opens message search without changing the active conversation", async () => {
+    const handleSelectConversation = vi.fn(async () => {});
+    appMock.value = makeAppState({ handleSelectConversation });
+    render(<ConversationsSidebar />);
+
+    fireEvent.click(await screen.findByTestId("conversations-search-messages"));
+
+    expect(await screen.findByTestId("message-search-input")).toBeTruthy();
+    expect(handleSelectConversation).not.toHaveBeenCalled();
   });
 
   it("starts a new conversation from the Messages section add button", async () => {

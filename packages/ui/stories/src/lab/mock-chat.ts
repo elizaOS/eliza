@@ -7,9 +7,9 @@
  * behaviours can be exercised by hand without an agent.
  */
 
-import type { ShellMessage } from "@ui-src/components/shell/shell-state";
-import type { ShellController } from "@ui-src/components/shell/useShellController";
 import * as React from "react";
+import type { ShellMessage } from "../../../src/components/shell/shell-state";
+import type { ShellController } from "../../../src/components/shell/useShellController";
 
 let nextId = 1000;
 const uid = () => `lab-${nextId++}`;
