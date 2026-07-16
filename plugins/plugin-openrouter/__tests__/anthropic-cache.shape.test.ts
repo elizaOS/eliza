@@ -4,11 +4,12 @@
  * options (Fix 3a), segmented-user-content breakpoints with validated shapes and capping
  * (Fix 3b/3c), the cacheSystem:false opt-out, verbatim survival of caller-supplied
  * providerOptions (openrouter + arbitrary keys) alongside injected cacheControl and
- * multi-breakpoint stamping (#15825), and the explicit boundary failure when a
- * caller-supplied cacheControl is malformed (#15825, no silent drop). AI SDK and provider
- * are mocked — no network calls, deterministic string fixtures.
+ * multi-breakpoint stamping (#15825), and strict provider-scoped validation of
+ * caller-supplied cache controls and breakpoint plans (#15825/#15966). Malformed
+ * consumed options fail before the provider request; non-Anthropic routes leave the
+ * unused namespace untouched. AI SDK and provider are mocked — no network calls.
  */
-import type { IAgentRuntime } from "@elizaos/core";
+import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createRuntime(settings: Record<string, string> = {}) {
@@ -119,6 +120,7 @@ describe("Anthropic cache injection — internal field stripping", () => {
 
     await handleTextLarge(createRuntime(), {
       prompt: "hello",
+      promptSegments: [{ content: "hello", stable: true }],
       providerOptions: {
         anthropic: {
           cacheControl: { type: "ephemeral" },
@@ -192,38 +194,31 @@ describe("Anthropic cache injection — segmented user content", () => {
     expect(content[1]?.providerOptions).toBeUndefined();
   });
 
-  it("filters out cacheBreakpoints with invalid shapes without crashing", async () => {
+  it("stamps a validated 5m TTL breakpoint onto its segment", async () => {
     const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
     await handleTextLarge(createRuntime(), {
-      prompt: "text",
-      promptSegments: [{ content: "text", stable: true }],
+      prompt: "s0s1",
+      promptSegments: [
+        { content: "s0", stable: true },
+        { content: "s1", stable: false },
+      ],
       providerOptions: {
         anthropic: {
-          cacheBreakpoints: [
-            {
-              segmentIndex: "not-a-number",
-              cacheControl: { type: "ephemeral" },
-            },
-            { segmentIndex: 0, cacheControl: { type: "invalid" } },
-            null,
-            42,
-          ],
+          cacheBreakpoints: [{ segmentIndex: 0, cacheControl: { type: "ephemeral", ttl: "5m" } }],
         },
       },
     } as never);
 
     const call = generateText.mock.calls[0][0] as Record<string, unknown>;
     const messages = call.messages as Array<Record<string, unknown>>;
-    // No valid breakpoints after filtering → user content blocks carry no cacheControl
-    const userMsg = messages?.[1];
-    if (userMsg) {
-      const content = userMsg.content as Array<Record<string, unknown>>;
-      for (const block of content) {
-        expect(block.providerOptions).toBeUndefined();
-      }
-    }
+    const content = messages?.[1]?.content as Array<Record<string, unknown>>;
+    const cc0 = (content[0]?.providerOptions as Record<string, unknown>)?.anthropic as
+      | Record<string, unknown>
+      | undefined;
+    expect(cc0?.cacheControl).toEqual({ type: "ephemeral", ttl: "5m" });
+    expect(content[1]?.providerOptions).toBeUndefined();
   });
 
   it("caps applied breakpoints at maxBreakpoints", async () => {
@@ -339,8 +334,8 @@ describe("Anthropic cache injection — caller providerOptions survive verbatim"
 });
 
 describe("Anthropic cache injection — malformed cacheControl fails loudly", () => {
-  it("throws when caller-supplied cacheControl has an unsupported type", async () => {
-    mockModules();
+  it("throws a typed error and sends no request for an unsupported type", async () => {
+    const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
     await expect(
@@ -350,11 +345,16 @@ describe("Anthropic cache injection — malformed cacheControl fails loudly", ()
           anthropic: { cacheControl: { type: "persistent" } },
         },
       } as never)
-    ).rejects.toThrow(/cacheControl/);
+    ).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "OPENROUTER_INVALID_CACHE_CONTROL",
+      message: expect.stringMatching(/cacheControl/),
+    });
+    expect(generateText).not.toHaveBeenCalled();
   });
 
-  it("throws when cacheControl is present but not an object", async () => {
-    mockModules();
+  it("throws and sends no request when cacheControl is not an object", async () => {
+    const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
     await expect(
@@ -363,10 +363,11 @@ describe("Anthropic cache injection — malformed cacheControl fails loudly", ()
         providerOptions: { anthropic: { cacheControl: "ephemeral" } },
       } as never)
     ).rejects.toThrow(/cacheControl/);
+    expect(generateText).not.toHaveBeenCalled();
   });
 
-  it("throws when cacheControl.ttl is an unsupported value", async () => {
-    mockModules();
+  it("throws and sends no request for an unsupported cacheControl TTL", async () => {
+    const { generateText } = mockModules();
     const { handleTextLarge } = await import("../models/text");
 
     await expect(
@@ -377,6 +378,220 @@ describe("Anthropic cache injection — malformed cacheControl fails loudly", ()
         },
       } as never)
     ).rejects.toThrow(/ttl/);
+    expect(generateText).not.toHaveBeenCalled();
+  });
+});
+
+describe("Anthropic cache breakpoints — malformed plans fail loudly", () => {
+  function segmentedParams(anthropic: Record<string, unknown>): GenerateTextParams {
+    return {
+      prompt: "s0s1s2s3",
+      promptSegments: [
+        { content: "s0", stable: true },
+        { content: "s1", stable: false },
+        { content: "s2", stable: true },
+        { content: "s3", stable: false },
+      ],
+      providerOptions: { anthropic },
+    } as never;
+  }
+
+  async function expectBreakpointRejection(params: GenerateTextParams, pattern: RegExp) {
+    vi.resetModules();
+    const { generateText } = mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await expect(handleTextLarge(createRuntime(), params)).rejects.toMatchObject({
+      name: "ElizaError",
+      code: "OPENROUTER_INVALID_CACHE_BREAKPOINT",
+      message: expect.stringMatching(pattern),
+    });
+    expect(generateText).not.toHaveBeenCalled();
+  }
+
+  it("rejects a non-array cacheBreakpoints value", async () => {
+    await expectBreakpointRejection(
+      segmentedParams({ cacheBreakpoints: "not-an-array" }),
+      /expected an array/
+    );
+  });
+
+  const malformedBreakpointCases: Array<[string, unknown, RegExp]> = [
+    ["null entry", [null], /cacheBreakpoints\[0\]/],
+    ["primitive entry", [42], /cacheBreakpoints\[0\]/],
+    [
+      "string segment index",
+      [{ segmentIndex: "0", cacheControl: { type: "ephemeral" } }],
+      /segmentIndex/,
+    ],
+    [
+      "negative segment index",
+      [{ segmentIndex: -1, cacheControl: { type: "ephemeral" } }],
+      /segmentIndex/,
+    ],
+    [
+      "fractional segment index",
+      [{ segmentIndex: 0.5, cacheControl: { type: "ephemeral" } }],
+      /segmentIndex/,
+    ],
+    ["missing cacheControl", [{ segmentIndex: 0 }], /cacheControl/],
+    [
+      "unsupported cacheControl type",
+      [{ segmentIndex: 0, cacheControl: { type: "persistent" } }],
+      /cacheControl/,
+    ],
+    [
+      "unsupported TTL",
+      [{ segmentIndex: 0, cacheControl: { type: "ephemeral", ttl: "2h" } }],
+      /ttl/,
+    ],
+    ["numeric TTL", [{ segmentIndex: 0, cacheControl: { type: "ephemeral", ttl: 300 } }], /ttl/],
+  ];
+
+  it.each(malformedBreakpointCases)("rejects a %s", async (_label, cacheBreakpoints, pattern) => {
+    await expectBreakpointRejection(segmentedParams({ cacheBreakpoints }), pattern);
+  });
+
+  it("rejects a mixed plan instead of applying only its valid entries", async () => {
+    await expectBreakpointRejection(
+      segmentedParams({
+        cacheBreakpoints: [
+          { segmentIndex: 0, cacheControl: { type: "ephemeral" } },
+          { segmentIndex: 1, cacheControl: { type: "ephemeral", ttl: "30s" } },
+        ],
+      }),
+      /cacheBreakpoints\[1\]/
+    );
+  });
+
+  it("validates entries beyond the applied cap", async () => {
+    await expectBreakpointRejection(
+      segmentedParams({
+        maxBreakpoints: 1,
+        cacheBreakpoints: [
+          { segmentIndex: 0, cacheControl: { type: "ephemeral" } },
+          { segmentIndex: 1, cacheControl: { type: "broken" } },
+        ],
+      }),
+      /cacheBreakpoints\[1\]/
+    );
+  });
+
+  it("rejects duplicate segment indices before Map materialization", async () => {
+    await expectBreakpointRejection(
+      segmentedParams({
+        cacheBreakpoints: [
+          { segmentIndex: 0, cacheControl: { type: "ephemeral" } },
+          { segmentIndex: 0, cacheControl: { type: "ephemeral", ttl: "1h" } },
+        ],
+      }),
+      /duplicate index/
+    );
+  });
+
+  it("rejects a segment index outside promptSegments", async () => {
+    await expectBreakpointRejection(
+      segmentedParams({
+        cacheBreakpoints: [{ segmentIndex: 4, cacheControl: { type: "ephemeral" } }],
+      }),
+      /outside promptSegments/
+    );
+  });
+
+  const malformedMaxBreakpointCases: Array<[string, unknown]> = [
+    ["negative", -1],
+    ["fractional", 1.5],
+    ["over the provider cap", 5],
+    ["non-numeric", "3"],
+  ];
+
+  it.each(
+    malformedMaxBreakpointCases
+  )("rejects a %s maxBreakpoints value", async (_label, maxBreakpoints) => {
+    await expectBreakpointRejection(
+      segmentedParams({
+        maxBreakpoints,
+        cacheBreakpoints: [{ segmentIndex: 0, cacheControl: { type: "ephemeral" } }],
+      }),
+      /maxBreakpoints/
+    );
+  });
+
+  it("accepts the core planner's four-block cap while applying at most three user markers", async () => {
+    const { generateText } = mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await handleTextLarge(
+      createRuntime(),
+      segmentedParams({
+        maxBreakpoints: 4,
+        cacheBreakpoints: [
+          { segmentIndex: 0, cacheControl: { type: "ephemeral" } },
+          { segmentIndex: 1, cacheControl: { type: "ephemeral" } },
+          { segmentIndex: 2, cacheControl: { type: "ephemeral" } },
+          { segmentIndex: 3, cacheControl: { type: "ephemeral" } },
+        ],
+      })
+    );
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    const messages = call.messages as Array<Record<string, unknown>>;
+    const content = messages[1]?.content as Array<Record<string, unknown>>;
+    expect(content.filter((part) => part.providerOptions)).toHaveLength(3);
+  });
+
+  it("rejects breakpoints without promptSegments on prompt and messages inputs", async () => {
+    const cacheBreakpoints = [{ segmentIndex: 0, cacheControl: { type: "ephemeral" } }];
+    await expectBreakpointRejection(
+      {
+        prompt: "flat prompt",
+        providerOptions: { anthropic: { cacheBreakpoints } },
+      } as never,
+      /promptSegments are required/
+    );
+    await expectBreakpointRejection(
+      {
+        messages: [{ role: "user", content: "flat message" }],
+        providerOptions: { anthropic: { cacheBreakpoints } },
+      } as never,
+      /promptSegments are required/
+    );
+  });
+
+  it("validates malformed breakpoints on the messages plus promptSegments path", async () => {
+    await expectBreakpointRejection(
+      {
+        messages: [{ role: "user", content: "s0" }],
+        promptSegments: [{ content: "s0", stable: true }],
+        providerOptions: {
+          anthropic: {
+            cacheBreakpoints: [{ segmentIndex: 0, cacheControl: { type: "ephemeral", ttl: "2h" } }],
+          },
+        },
+      } as never,
+      /ttl/
+    );
+  });
+});
+
+describe("Non-Anthropic routes skip Anthropic cache validation", () => {
+  it("sends the request without parsing the unused malformed namespace", async () => {
+    const { generateText } = mockModules();
+    const { handleTextLarge } = await import("../models/text");
+    const anthropic = {
+      cacheControl: { type: "persistent", ttl: "2h" },
+      cacheBreakpoints: "not-an-array",
+      maxBreakpoints: "unbounded",
+    };
+
+    await handleTextLarge(createRuntime({ OPENROUTER_LARGE_MODEL: "google/gemini-2.5-flash" }), {
+      prompt: "hello",
+      providerOptions: { anthropic },
+    } as never);
+
+    expect(generateText).toHaveBeenCalledTimes(1);
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect((call.providerOptions as Record<string, unknown>).anthropic).toEqual(anthropic);
   });
 });
 
@@ -405,6 +620,37 @@ describe("Anthropic cache injection — cacheSystem:false opt-out", () => {
         expect(msg?.providerOptions).toBeUndefined();
       }
     }
+  });
+
+  it("still applies valid user breakpoints and strips local fields", async () => {
+    const { generateText } = mockModules();
+    const { handleTextLarge } = await import("../models/text");
+
+    await handleTextLarge(createRuntime(), {
+      prompt: "s0s1",
+      promptSegments: [
+        { content: "s0", stable: true },
+        { content: "s1", stable: false },
+      ],
+      providerOptions: {
+        anthropic: {
+          cacheSystem: false,
+          maxBreakpoints: 1,
+          cacheBreakpoints: [{ segmentIndex: 0, cacheControl: { type: "ephemeral", ttl: "1h" } }],
+        },
+      },
+    } as never);
+
+    const call = generateText.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.system).toBe("system prompt");
+    const messages = call.messages as Array<Record<string, unknown>>;
+    const content = messages[0]?.content as Array<Record<string, unknown>>;
+    expect(content[0]?.providerOptions).toEqual({
+      anthropic: { cacheControl: { type: "ephemeral", ttl: "1h" } },
+    });
+    expect(JSON.stringify(call.providerOptions ?? {})).not.toContain("cacheSystem");
+    expect(JSON.stringify(call.providerOptions ?? {})).not.toContain("cacheBreakpoints");
+    expect(JSON.stringify(call.providerOptions ?? {})).not.toContain("maxBreakpoints");
   });
 });
 
