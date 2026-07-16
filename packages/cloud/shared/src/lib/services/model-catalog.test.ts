@@ -1,83 +1,224 @@
 /**
- * Model-catalog SWR resilience (#16162 class): a transient OpenRouter failure
- * must NOT overwrite the cached catalog with an empty one. The fetcher now
- * throws on failure so getWithSWR keeps serving the last-good stale catalog
- * instead of caching `[]` for the whole TTL.
+ * Verifies production model-catalog wiring over the real CacheClient memory
+ * adapter, including typed provider errors and preservation of an actually
+ * stale last-good catalog.
  */
-import { describe, expect, mock, test } from "bun:test";
-import * as cacheClientActual from "../cache/client";
+
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { ElizaError } from "@elizaos/core";
+import { CacheKeys, CacheStaleTTL, CacheTTL } from "../cache/keys";
+import type { CatalogModel } from "../models";
 import * as providersActual from "../providers";
 
-let listModelsImpl: () => Promise<{
-  json: () => Promise<unknown>;
-}> = async () => ({
+const previousCacheBackend = process.env.CACHE_BACKEND;
+const previousCacheEnabled = process.env.CACHE_ENABLED;
+process.env.CACHE_BACKEND = "memory";
+process.env.CACHE_ENABLED = "true";
+
+let openRouterConfigured = true;
+let groqConfigured = false;
+let listModelsCalls = 0;
+let listModelsImpl: () => Promise<{ json: () => Promise<unknown> }> = async () => ({
   json: async () => ({ data: [] }),
 });
 
 mock.module("../providers", () => ({
   ...providersActual,
-  hasOpenRouterProviderConfigured: () => true,
-  getOpenRouterProvider: () => ({ listModels: () => listModelsImpl() }),
-}));
-
-const STALE_CATALOG = [{ id: "stale-model" }];
-mock.module("../cache/client", () => ({
-  ...cacheClientActual,
-  // Mirror the real getWithSWR contract: a fetcher THROW keeps the last-good
-  // stale value; a return caches it. So a failing fetch that throws (the fix)
-  // preserves the catalog, whereas the old fetcher returning `[]` would replace
-  // it with empty.
-  cache: {
-    getWithSWR: async (_key: string, _staleTTL: number, revalidate: () => Promise<unknown>) => {
-      try {
-        return await revalidate();
-      } catch {
-        return STALE_CATALOG;
-      }
+  getOpenRouterProvider: () => ({
+    listModels: () => {
+      listModelsCalls += 1;
+      return listModelsImpl();
     },
-  },
+  }),
+  hasGroqProviderConfigured: () => groqConfigured,
+  hasOpenRouterProviderConfigured: () => openRouterConfigured,
 }));
 
-const { getCachedBitRouterModelCatalog, getCachedMergedModelCatalog, getCachedBitRouterModelById } =
-  await import("./model-catalog");
+const { cache } = await import("../cache/client");
+const {
+  __clearBitRouterCatalogRefreshStateForTests,
+  __clearGatewayModelMemo,
+  getCachedBitRouterModelById,
+  getCachedBitRouterModelCatalog,
+  getCachedMergedModelCatalog,
+  refreshBitRouterModelCatalog,
+} = await import("./model-catalog");
 
-describe("model catalog SWR resilience", () => {
-  test("a failed catalog fetch preserves the last-good stale catalog, not empty", async () => {
-    listModelsImpl = async () => {
-      throw new Error("OpenRouter 503");
-    };
-    expect(await getCachedBitRouterModelCatalog()).toEqual(STALE_CATALOG);
+const CACHE_KEY = CacheKeys.models.bitrouterCatalog();
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+interface SWRCacheEntry<T> {
+  data: T;
+  cachedAt: number;
+  staleAt: number;
+}
+
+function catalogModel(id: string): CatalogModel {
+  return {
+    id,
+    object: "model",
+    created: 0,
+    owned_by: "test",
+  };
+}
+
+async function waitFor(
+  condition: () => boolean | Promise<boolean>,
+  message: string,
+  timeoutMs = 1_000,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!(await condition())) {
+    if (Date.now() >= deadline) throw new Error(message);
+    await sleep(5);
+  }
+}
+
+beforeEach(async () => {
+  process.env.CACHE_BACKEND = "memory";
+  process.env.CACHE_ENABLED = "true";
+  openRouterConfigured = true;
+  groqConfigured = false;
+  listModelsCalls = 0;
+  listModelsImpl = async () => ({ json: async () => ({ data: [] }) });
+  __clearBitRouterCatalogRefreshStateForTests();
+  __clearGatewayModelMemo();
+  await cache.del(CACHE_KEY);
+  expect(cache.getBackendKind()).toBe("memory");
+});
+
+afterAll(() => {
+  if (previousCacheBackend === undefined) delete process.env.CACHE_BACKEND;
+  else process.env.CACHE_BACKEND = previousCacheBackend;
+  if (previousCacheEnabled === undefined) delete process.env.CACHE_ENABLED;
+  else process.env.CACHE_ENABLED = previousCacheEnabled;
+});
+
+describe("model catalog cache wiring", () => {
+  test("caches a valid catalog with 15-minute freshness and seven-day retention", async () => {
+    const fresh = [catalogModel("fresh-model")];
+    listModelsImpl = async () => ({ json: async () => ({ data: fresh }) });
+
+    expect(await getCachedBitRouterModelCatalog()).toEqual(fresh);
+    expect(listModelsCalls).toBe(1);
+    const entry = await cache.get<SWRCacheEntry<CatalogModel[]>>(CACHE_KEY);
+    expect(entry).toMatchObject({ data: fresh });
+    expect(
+      (entry as SWRCacheEntry<CatalogModel[]>).staleAt -
+        (entry as SWRCacheEntry<CatalogModel[]>).cachedAt,
+    ).toBe(CacheStaleTTL.models.catalog * 1000);
+    const ttl = await cache.pttl(CACHE_KEY);
+    expect(ttl).not.toBeNull();
+    expect(ttl as number).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
+    expect(ttl as number).toBeLessThanOrEqual(CacheTTL.models.catalog * 1000);
   });
 
-  test("an invalid catalog shape is treated as a failure (preserves stale)", async () => {
+  test("rejects a configured-provider cold failure with its original cause", async () => {
+    const providerCause = new Error("OpenRouter 503");
+    listModelsImpl = async () => {
+      throw providerCause;
+    };
+
+    const read = getCachedBitRouterModelCatalog();
+    await expect(read).rejects.toBeInstanceOf(ElizaError);
+    await expect(read).rejects.toMatchObject({
+      code: "MODEL_CATALOG_PROVIDER_FETCH_FAILED",
+      context: { provider: "openrouter" },
+      cause: providerCause,
+    });
+    expect(listModelsCalls).toBe(1);
+    expect(await cache.get(CACHE_KEY)).toBeNull();
+  });
+
+  test("rejects an invalid provider response as a typed error without writing cache", async () => {
     listModelsImpl = async () => ({
       json: async () => ({ data: "not-an-array" }),
     });
-    expect(await getCachedBitRouterModelCatalog()).toEqual(STALE_CATALOG);
+
+    const refresh = refreshBitRouterModelCatalog();
+    await expect(refresh).rejects.toBeInstanceOf(ElizaError);
+    await expect(refresh).rejects.toMatchObject({
+      code: "MODEL_CATALOG_PROVIDER_RESPONSE_INVALID",
+      context: {
+        provider: "openrouter",
+        field: "data",
+        receivedKind: "string",
+      },
+      cause: expect.any(TypeError),
+    });
+    expect(listModelsCalls).toBe(1);
+    expect(await cache.get(CACHE_KEY)).toBeNull();
   });
 
-  test("a valid catalog fetch returns the fresh models", async () => {
-    listModelsImpl = async () => ({
-      json: async () => ({ data: [{ id: "fresh-model" }] }),
-    });
-    expect(await getCachedBitRouterModelCatalog()).toEqual([{ id: "fresh-model" }]);
+  test("caches an empty catalog when no provider is configured", async () => {
+    openRouterConfigured = false;
+
+    expect(await getCachedBitRouterModelCatalog()).toEqual([]);
+    expect(listModelsCalls).toBe(0);
+    expect(await cache.get<SWRCacheEntry<CatalogModel[]>>(CACHE_KEY)).toMatchObject({ data: [] });
+    expect(await getCachedBitRouterModelCatalog()).toEqual([]);
+    expect(listModelsCalls).toBe(0);
   });
 
-  test("the merged catalog includes the fresh bitrouter models", async () => {
-    listModelsImpl = async () => ({
-      json: async () => ({ data: [{ id: "fresh-model" }] }),
+  test("a failed background refresh does not overwrite stale data and a later hit retries", async () => {
+    const lastGood = [catalogModel("last-good")];
+    const originalEntry: SWRCacheEntry<CatalogModel[]> = {
+      data: lastGood,
+      cachedAt: Date.now() - 60_000,
+      staleAt: Date.now() - 1,
+    };
+    await cache.set(CACHE_KEY, originalEntry, CacheTTL.models.catalog);
+    listModelsImpl = async () => {
+      throw new Error("OpenRouter 503");
+    };
+
+    expect(await getCachedBitRouterModelCatalog()).toEqual(lastGood);
+    await waitFor(() => listModelsCalls === 1, "stale catalog did not start background refresh");
+    await sleep(5);
+    expect(await cache.get(CACHE_KEY)).toEqual(originalEntry);
+
+    // The production backoff is intentionally long. Clearing only its test
+    // clock state simulates the later, post-cooldown hit while retaining the
+    // real CacheClient queue and stale entry.
+    __clearBitRouterCatalogRefreshStateForTests();
+    const recovered = [catalogModel("recovered")];
+    listModelsImpl = async () => ({ json: async () => ({ data: recovered }) });
+    expect(await getCachedBitRouterModelCatalog()).toEqual(lastGood);
+    await waitFor(async () => {
+      const entry = await cache.get<SWRCacheEntry<CatalogModel[]>>(CACHE_KEY);
+      return entry?.data[0]?.id === "recovered";
+    }, "production catalog cache did not retry after the failed background refresh");
+    expect(listModelsCalls).toBe(2);
+    expect(await cache.get<SWRCacheEntry<CatalogModel[]>>(CACHE_KEY)).toMatchObject({
+      data: recovered,
     });
+  });
+
+  test("an explicit refresh failure leaves the last-good cache entry untouched", async () => {
+    const lastGood = [catalogModel("last-good")];
+    listModelsImpl = async () => ({ json: async () => ({ data: lastGood }) });
+    await getCachedBitRouterModelCatalog();
+    const lastGoodEntry = await cache.get(CACHE_KEY);
+
+    listModelsImpl = async () => {
+      throw new Error("OpenRouter 503");
+    };
+    await expect(refreshBitRouterModelCatalog()).rejects.toMatchObject({
+      code: "MODEL_CATALOG_PROVIDER_FETCH_FAILED",
+    });
+
+    expect(await cache.get(CACHE_KEY)).toEqual(lastGoodEntry);
+    expect(listModelsCalls).toBe(2);
+  });
+
+  test("merged and by-id lookups include fresh BitRouter models", async () => {
+    const fresh = [catalogModel("fresh-model")];
+    listModelsImpl = async () => ({ json: async () => ({ data: fresh }) });
+
     const merged = await getCachedMergedModelCatalog();
     expect(merged.some((model) => model.id === "fresh-model")).toBe(true);
-  });
-
-  test("getCachedBitRouterModelById finds a present model and null otherwise", async () => {
-    listModelsImpl = async () => ({
-      json: async () => ({ data: [{ id: "fresh-model" }] }),
-    });
-    expect(await getCachedBitRouterModelById("fresh-model")).toEqual({
-      id: "fresh-model",
-    });
+    expect(await getCachedBitRouterModelById("fresh-model")).toEqual(fresh[0]);
     expect(await getCachedBitRouterModelById("does-not-exist")).toBeNull();
+    expect(listModelsCalls).toBe(1);
   });
 });
