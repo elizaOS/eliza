@@ -109,8 +109,24 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<Set<string>>(() => new Set<string>());
   const mountedRef = useRef(true);
+  // Failed probes can mutate server-side health before rejecting. Track each
+  // account independently so stale responses cannot overwrite a newer change
+  // to the same account without dropping unrelated concurrent refreshes.
+  const accountVersionRef = useRef(new Map<string, number>());
+  const stateVersionRef = useRef(0);
+  const listRequestIdRef = useRef(0);
   const dataRef = useRef(data);
   dataRef.current = data;
+
+  const nextAccountVersion = useCallback(
+    (providerId: LinkedAccountProviderId, accountId: string) => {
+      const key = `${providerId}:${accountId}`;
+      const version = (accountVersionRef.current.get(key) ?? 0) + 1;
+      accountVersionRef.current.set(key, version);
+      return { key, version };
+    },
+    [],
+  );
 
   const notify = useCallback(
     (prefix: string, err: unknown) => {
@@ -120,13 +136,25 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
   );
 
   const refresh = useCallback(async () => {
+    const requestId = ++listRequestIdRef.current;
+    const stateVersion = stateVersionRef.current;
     try {
       const next = await client.listAccounts();
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        listRequestIdRef.current !== requestId ||
+        stateVersionRef.current !== stateVersion
+      )
+        return;
       setData(next);
       setError(null);
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        listRequestIdRef.current !== requestId ||
+        stateVersionRef.current !== stateVersion
+      )
+        return;
       setError(describeError("Failed to load accounts", err));
       notify("Failed to load accounts", err);
     } finally {
@@ -145,6 +173,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
 
   const createApiKey = useCallback<UseAccountsResult["createApiKey"]>(
     async (providerId, body) => {
+      stateVersionRef.current += 1;
       const key = `create:${providerId}`;
       markSaving(key, true);
       try {
@@ -175,6 +204,8 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
 
   const patch = useCallback<UseAccountsResult["patch"]>(
     async (providerId, accountId, body) => {
+      stateVersionRef.current += 1;
+      const request = nextAccountVersion(providerId, accountId);
       markSaving(accountId, true);
       const previous = dataRef.current;
       // Optimistic update for safe fields.
@@ -194,23 +225,32 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       });
       try {
         const updated = await client.patchAccount(providerId, accountId, body);
-        setData((prev) => replaceAccount(prev, providerId, updated));
+        if (accountVersionRef.current.get(request.key) === request.version) {
+          stateVersionRef.current += 1;
+          setData((prev) => replaceAccount(prev, providerId, updated));
+        }
       } catch (err) {
-        setData(previous);
+        if (accountVersionRef.current.get(request.key) === request.version) {
+          stateVersionRef.current += 1;
+          setData(previous);
+        }
         notify("Failed to update account", err);
         throw err;
       } finally {
         markSaving(accountId, false);
       }
     },
-    [markSaving, notify],
+    [markSaving, nextAccountVersion, notify],
   );
 
   const remove = useCallback<UseAccountsResult["remove"]>(
     async (providerId, accountId) => {
+      stateVersionRef.current += 1;
+      nextAccountVersion(providerId, accountId);
       markSaving(accountId, true);
       try {
         await client.deleteAccount(providerId, accountId);
+        stateVersionRef.current += 1;
         setData((prev) => {
           if (!prev) return prev;
           return {
@@ -231,7 +271,7 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
         markSaving(accountId, false);
       }
     },
-    [markSaving, notify],
+    [markSaving, nextAccountVersion, notify],
   );
 
   const test = useCallback<UseAccountsResult["test"]>(
@@ -269,23 +309,52 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
 
   const refreshUsage = useCallback<UseAccountsResult["refreshUsage"]>(
     async (providerId, accountId) => {
+      stateVersionRef.current += 1;
+      const request = nextAccountVersion(providerId, accountId);
       markSaving(`usage:${accountId}`, true);
       try {
         const result: AccountRefreshUsageResult =
           await client.refreshAccountUsage(providerId, accountId);
-        setData((prev) => replaceAccount(prev, providerId, result.account));
+        if (accountVersionRef.current.get(request.key) === request.version) {
+          stateVersionRef.current += 1;
+          setData((prev) => replaceAccount(prev, providerId, result.account));
+        }
       } catch (err) {
         notify("Failed to refresh usage", err);
+        try {
+          const reconciled = await client.listAccounts();
+          const authoritative = reconciled.providers
+            .find((provider) => provider.providerId === providerId)
+            ?.accounts.find((account) => account.id === accountId);
+          if (
+            mountedRef.current &&
+            authoritative &&
+            accountVersionRef.current.get(request.key) === request.version
+          ) {
+            stateVersionRef.current += 1;
+            setData((prev) => replaceAccount(prev, providerId, authoritative));
+            setError(null);
+          }
+        } catch (reconcileError) {
+          // error-policy:J7 diagnostics-must-not-kill-the-loop. Preserve and
+          // rethrow the primary usage failure; the regular list poll retries
+          // reconciliation without replacing the actionable probe notice.
+          console.warn(
+            "[useAccounts] post-probe reconciliation failed",
+            reconcileError,
+          );
+        }
         throw err;
       } finally {
         markSaving(`usage:${accountId}`, false);
       }
     },
-    [markSaving, notify],
+    [markSaving, nextAccountVersion, notify],
   );
 
   const setStrategy = useCallback<UseAccountsResult["setStrategy"]>(
     async (providerId, strategy) => {
+      stateVersionRef.current += 1;
       const key = `strategy:${providerId}`;
       markSaving(key, true);
       const previous = dataRef.current;
@@ -299,7 +368,9 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
       });
       try {
         await client.patchProviderStrategy(providerId, { strategy });
+        stateVersionRef.current += 1;
       } catch (err) {
+        stateVersionRef.current += 1;
         setData(previous);
         notify("Failed to update rotation strategy", err);
         throw err;
