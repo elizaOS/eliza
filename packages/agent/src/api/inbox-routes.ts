@@ -45,6 +45,7 @@ import type {
   ConnectorAccount,
   ConnectorAccountManager,
   Memory,
+  RoleGateRole,
   Room,
   RouteHelpers,
   UUID,
@@ -54,6 +55,7 @@ import {
   createUniqueUuid,
   getConnectorAccountManager,
   resolveEffectiveMuteState,
+  roleRank,
   setRoomMuteUntil,
   setWorldMuteState,
 } from "@elizaos/core";
@@ -168,6 +170,13 @@ const PER_ROOM_OVERFETCH_MULTIPLIER = 3;
 
 export interface InboxRouteState {
   runtime: AgentRuntime | null;
+  callerAuthorization?: InboxRouteCallerAuthorization;
+}
+
+export interface InboxRouteCallerAuthorization {
+  ok: boolean;
+  role: RoleGateRole;
+  identityId?: string;
 }
 
 /**
@@ -277,6 +286,25 @@ function runtimeHasAnySendHandler(
   );
 }
 
+function runtimeHasUnscopedSendHandler(
+  runtime: AgentRuntime,
+  source: string,
+): boolean {
+  return getRuntimeSendHandlers(runtime)?.has(source) ?? false;
+}
+
+function runtimeHasAccountScopedSendHandler(
+  runtime: AgentRuntime,
+  source: string,
+): boolean {
+  const handlers = getRuntimeSendHandlers(runtime);
+  if (!handlers) return false;
+  const accountPrefix = `${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}`;
+  return Array.from(handlers.keys()).some((key) =>
+    key.startsWith(accountPrefix),
+  );
+}
+
 /** Mirrors AgentRuntime.sendMessageToTarget's account-aware route lookup. */
 function runtimeHasSendHandler(
   runtime: AgentRuntime,
@@ -306,9 +334,11 @@ function runtimeHasSendHandler(
 
 type InboxAccountRoutingErrorCode =
   | "INBOX_CONNECTOR_ACCOUNT_AMBIGUOUS"
+  | "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED"
   | "INBOX_CONNECTOR_ACCOUNT_LOOKUP_FAILED"
   | "INBOX_CONNECTOR_ACCOUNT_NOT_FOUND"
   | "INBOX_CONNECTOR_ACCOUNT_OWNER_BINDING_REQUIRED"
+  | "INBOX_CONNECTOR_ACCOUNT_REQUIRED"
   | "INBOX_CONNECTOR_ACCOUNT_SOURCE_MISMATCH"
   | "INBOX_CONNECTOR_ACCOUNT_UNAVAILABLE";
 
@@ -358,6 +388,9 @@ function accountUnavailableReason(account: ConnectorAccount): string | null {
   if (!account.purpose.includes("messaging")) {
     return "account does not allow messaging";
   }
+  if (account.accessGate !== "open" && account.accessGate !== "owner_binding") {
+    return `access gate ${account.accessGate} does not allow direct messaging`;
+  }
   return null;
 }
 
@@ -365,6 +398,7 @@ async function validateInboxAccount(
   manager: ConnectorAccountManager,
   source: string,
   account: ConnectorAccount,
+  callerAuthorization: InboxRouteCallerAuthorization,
 ): Promise<InboxAccountRoutingFailure | null> {
   const provider = normalizeAccountProvider(source);
   const accountProvider = normalizeAccountProvider(account.provider);
@@ -398,6 +432,18 @@ async function validateInboxAccount(
   if (account.accessGate !== "owner_binding") {
     return null;
   }
+  if (roleRank(callerAuthorization.role) < roleRank("OWNER")) {
+    return accountRoutingFailure(
+      "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED",
+      `Authenticated caller cannot use owner-bound connector account ${account.id}`,
+      403,
+      {
+        accountId: account.id,
+        source: provider,
+        reason: "OWNER authority is required",
+      },
+    );
+  }
   const evaluation = await manager.evaluatePolicy(
     {
       provider,
@@ -409,22 +455,55 @@ async function validateInboxAccount(
     { accountId: account.id, purpose: "messaging" },
   );
   if (
-    evaluation.allowed &&
-    evaluation.account?.id === account.id &&
-    normalizeAccountProvider(evaluation.account.provider) === provider
+    !evaluation.allowed ||
+    evaluation.account?.id !== account.id ||
+    normalizeAccountProvider(evaluation.account.provider) !== provider
   ) {
-    return null;
+    return accountRoutingFailure(
+      "INBOX_CONNECTOR_ACCOUNT_OWNER_BINDING_REQUIRED",
+      `Connector account ${account.id} requires a verified owner binding`,
+      403,
+      {
+        accountId: account.id,
+        source: provider,
+        reason: evaluation.reason ?? "owner binding has not been verified",
+      },
+    );
   }
-  return accountRoutingFailure(
-    "INBOX_CONNECTOR_ACCOUNT_OWNER_BINDING_REQUIRED",
-    `Connector account ${account.id} requires a verified owner binding`,
-    403,
-    {
-      accountId: account.id,
-      source: provider,
-      reason: evaluation.reason ?? "owner binding has not been verified",
-    },
-  );
+
+  const instanceId =
+    typeof account.metadata?.instanceId === "string"
+      ? account.metadata.instanceId
+      : undefined;
+  const storage = manager.getStorage();
+  const verifiedBinding =
+    account.externalId && storage.findOwnerBinding
+      ? await storage.findOwnerBinding({
+          connector: account.provider,
+          externalId: account.externalId,
+          instanceId,
+        })
+      : null;
+  const boundIdentityId =
+    verifiedBinding?.identityId ??
+    evaluation.account.ownerIdentityId ??
+    account.ownerIdentityId;
+  if (
+    callerAuthorization.identityId &&
+    callerAuthorization.identityId !== boundIdentityId
+  ) {
+    return accountRoutingFailure(
+      "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED",
+      `Authenticated caller cannot use connector account ${account.id}`,
+      403,
+      {
+        accountId: account.id,
+        source: provider,
+        reason: "owner binding belongs to a different identity",
+      },
+    );
+  }
+  return null;
 }
 
 async function findAccountSourceByExactId(
@@ -460,6 +539,7 @@ async function findAccountSourceByExactId(
 async function resolveInboxAccountRouting(
   runtime: AgentRuntime,
   source: string,
+  callerAuthorization: InboxRouteCallerAuthorization,
   requestedAccountId?: string,
 ): Promise<InboxAccountRoutingResolution> {
   // Connector-source aliases describe transport/UI grouping, while account
@@ -496,7 +576,12 @@ async function resolveInboxAccountRouting(
         { accountId: requestedAccountId, source: provider },
       );
     }
-    const failure = await validateInboxAccount(manager, provider, account);
+    const failure = await validateInboxAccount(
+      manager,
+      provider,
+      account,
+      callerAuthorization,
+    );
     return (
       failure ?? {
         ok: true,
@@ -510,13 +595,29 @@ async function resolveInboxAccountRouting(
     a.id.localeCompare(b.id),
   );
   if (accounts.length === 0) {
+    if (
+      !runtimeHasUnscopedSendHandler(runtime, provider) &&
+      runtimeHasAccountScopedSendHandler(runtime, provider)
+    ) {
+      return accountRoutingFailure(
+        "INBOX_CONNECTOR_ACCOUNT_REQUIRED",
+        `A registered connector account is required for ${provider}`,
+        409,
+        { source: provider },
+      );
+    }
     return { ok: true, mode: "legacy-source-default" };
   }
 
   const usable: ConnectorAccount[] = [];
   const failures: InboxAccountRoutingFailure[] = [];
   for (const account of accounts) {
-    const failure = await validateInboxAccount(manager, provider, account);
+    const failure = await validateInboxAccount(
+      manager,
+      provider,
+      account,
+      callerAuthorization,
+    );
     if (failure) {
       failures.push(failure);
     } else {
@@ -705,6 +806,25 @@ function asLooseRecord(value: unknown): Record<string, unknown> | undefined {
 
 function readRoomSource(room: Room | undefined): string | null {
   return readLooseStringValue(asLooseRecord(room), ["source"]);
+}
+
+function connectorSourcesMatch(left: string, right: string): boolean {
+  const exactLeft = normalizeAccountProvider(left);
+  const exactRight = normalizeAccountProvider(right);
+  return (
+    exactLeft === exactRight ||
+    normalizeConnectorSource(exactLeft) === normalizeConnectorSource(exactRight)
+  );
+}
+
+async function resolveTrustedRoomSource(
+  runtime: AgentRuntime,
+  room: Room,
+): Promise<string | null> {
+  const storedSource = readRoomSource(room);
+  if (storedSource) return storedSource;
+  const latestMemory = await loadLatestRoomMemory(runtime, room.id);
+  return latestMemory ? extractSource(latestMemory) : null;
 }
 
 function readRoomWorldId(room: Room | undefined): string | undefined {
@@ -2483,6 +2603,30 @@ export async function handleInboxRoute(
       return true;
     }
 
+    const callerAuthorization = state.callerAuthorization;
+    if (
+      !callerAuthorization?.ok ||
+      roleRank(callerAuthorization.role) < roleRank("USER")
+    ) {
+      runtime.logger.warn(
+        {
+          src: "inbox-routes",
+          role: callerAuthorization?.role ?? "NONE",
+        },
+        "[InboxRoutes] unauthorised connector send rejected",
+      );
+      helpers.json(
+        res,
+        {
+          error:
+            "Authenticated caller is not allowed to send connector messages",
+          code: "INBOX_CALLER_UNAUTHORIZED",
+        },
+        403,
+      );
+      return true;
+    }
+
     const rawBody = await helpers.readJsonBody<Record<string, unknown>>(
       req,
       res,
@@ -2510,15 +2654,48 @@ export async function handleInboxRoute(
       return true;
     }
 
-    // The host's central API gate authenticates every non-public /api/inbox
-    // request before this handler runs. This boundary therefore authorizes the
-    // narrow top-level selector against server-owned account records; it never
-    // promotes client-controlled Content.metadata into connector routing state.
+    const trustedRoomSource = await resolveTrustedRoomSource(runtime, room);
+    if (
+      !trustedRoomSource ||
+      !connectorSourcesMatch(source, trustedRoomSource)
+    ) {
+      runtime.logger.warn(
+        {
+          src: "inbox-routes",
+          requestedSource: source,
+          roomId,
+          roomSource: trustedRoomSource,
+        },
+        "[InboxRoutes] room source validation rejected",
+      );
+      helpers.json(
+        res,
+        {
+          error: trustedRoomSource
+            ? `Inbox room belongs to ${trustedRoomSource}, not ${source}`
+            : "Inbox room has no trusted connector source",
+          code: "INBOX_ROOM_SOURCE_MISMATCH",
+          context: {
+            requestedSource: source,
+            roomId,
+            roomSource: trustedRoomSource,
+          },
+        },
+        409,
+      );
+      return true;
+    }
+
+    // The server threads its already-resolved caller authority into this
+    // handler. This boundary authorizes the narrow top-level selector against
+    // server-owned room/account records; client-controlled Content.metadata is
+    // never promoted into connector routing state.
     let accountRouting: InboxAccountRoutingResolution;
     try {
       accountRouting = await resolveInboxAccountRouting(
         runtime,
         source,
+        callerAuthorization,
         accountId,
       );
     } catch (error) {
