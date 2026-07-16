@@ -36,7 +36,7 @@ export default defineConfig({
         replacement: require.resolve("react-dom/client"),
       },
       {
-        find: /^@elizaos\/ui\/(agent-surface|api|components(?:\/.*)?|hooks|layouts|state|utils)$/,
+        find: /^@elizaos\/ui\/(agent-surface|api|bridge|components(?:\/.*)?|hooks|layouts|state|utils)$/,
         replacement: "@elizaos/ui",
       },
       {
