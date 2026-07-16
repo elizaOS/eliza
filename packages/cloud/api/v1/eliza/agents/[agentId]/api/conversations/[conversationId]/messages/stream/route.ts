@@ -48,13 +48,15 @@ const STREAM_HEADERS = {
 const app = new Hono<AppEnv>();
 
 async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
-  const configured = c.env.VOICE_REALTIME_ELIZA_AUTHORIZATION;
+  const configured = c.env?.VOICE_REALTIME_ELIZA_AUTHORIZATION;
   const presented = c.req.header("authorization");
   if (configured && presented && timingSafeEqualSecret(presented, configured)) {
     const agentId = c.req.param("agentId") ?? "";
     const orgId = c.req.header("X-Eliza-Organization-Id") ?? "";
     const userId = c.req.header("X-Eliza-User-Id") ?? "";
-    const agent = orgId ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId) : undefined;
+    const agent = orgId
+      ? await agentSandboxesRepository.findByIdAndOrg(agentId, orgId)
+      : undefined;
     if (!agent || !userId || agent.user_id !== userId) {
       return { error: "Agent not found", status: 404 as const };
     }

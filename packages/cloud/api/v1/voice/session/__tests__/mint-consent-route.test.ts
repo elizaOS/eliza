@@ -169,8 +169,12 @@ describe("voice-session mint route", () => {
     };
     expect(body.token.split(".").length).toBe(3);
     const verified = await verifyVoiceSessionToken(body.token);
-    expect(verified.claims.agentId).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    expect(verified.claims.conversationId).toBe("22222222-2222-4222-8222-222222222222");
+    expect(verified.claims.agentId).toBe(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+    expect(verified.claims.conversationId).toBe(
+      "22222222-2222-4222-8222-222222222222",
+    );
     expect(body.wsUrl).toContain("/api/v1/voice/session/ws");
     // Phase 1: pcm16 ONLY, opus must NOT be advertised.
     expect(body.uplink.codecs).toEqual(["pcm16"]);

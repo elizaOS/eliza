@@ -90,13 +90,18 @@ app.post("/", async (c) => {
   // The public mint contract uses the selected character id, while canonical
   // conversation routes use the backing agent_sandboxes id. Resolve it here,
   // before signing, so the WS cannot later route a character UUID as an agent UUID.
-  const sandboxAgent = await agentSandboxesRepository.findLatestByCharacterId(body.agentId);
+  const sandboxAgent = await agentSandboxesRepository.findLatestByCharacterId(
+    body.agentId,
+  );
   if (
     !sandboxAgent ||
     sandboxAgent.organization_id !== auth.organization_id ||
     sandboxAgent.user_id !== auth.id
   ) {
-    return c.json({ error: "agent runtime not found", code: "agent_not_found" }, 404);
+    return c.json(
+      { error: "agent runtime not found", code: "agent_not_found" },
+      404,
+    );
   }
 
   // A supplied conversationId that exists must belong to the caller (org AND
