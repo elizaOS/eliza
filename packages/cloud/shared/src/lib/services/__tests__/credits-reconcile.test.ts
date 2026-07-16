@@ -642,6 +642,135 @@ describe("CreditsService.reconcile idempotency (#10846)", () => {
   );
 });
 
+describe("CreditsService.reserve idempotency key (#16425)", () => {
+  const ORG_B = "00000000-0000-0000-0000-0000000000c3";
+
+  test(
+    "the same key replays the committed reservation — deducted exactly once",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+
+      const first = await creditsService.reserve({
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        amount: 0.5,
+        description: "tts utterance",
+        idempotencyKey: "utt-1",
+      });
+      // The client's fallback transport re-POSTs the same logical utterance.
+      const replay = await creditsService.reserve({
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        amount: 0.5,
+        description: "tts utterance",
+        idempotencyKey: "utt-1",
+      });
+
+      expect(replay.reservationTransactionId).toBe(first.reservationTransactionId);
+      // One upfront deduction, not two: balance = 10 - 0.5, one transaction row.
+      expect(await getBalance()).toBeCloseTo(9.5, 6);
+      expect(await countTransactions()).toBe(1);
+
+      // Whichever request settles, settlement stays exactly-once (#10846).
+      await first.reconcile(0.2);
+      await replay.reconcile(0.2);
+      expect(await getBalance()).toBeCloseTo(9.8, 6);
+      expect(await countByType("refund")).toBe(1);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a replay carries the ORIGINAL reserved amount so reconcile math settles the deducted row",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+
+      const first = await creditsService.reserve({
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        amount: 0.4,
+        description: "tts utterance",
+        idempotencyKey: "utt-2",
+      });
+      // The retry re-estimated higher — the handle must still be the 0.4 row.
+      const replay = await creditsService.reserve({
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        amount: 0.9,
+        description: "tts utterance",
+        idempotencyKey: "utt-2",
+      });
+
+      expect(replay.reservationTransactionId).toBe(first.reservationTransactionId);
+      expect(replay.reservedAmount).toBeCloseTo(0.4, 6);
+      expect(await getBalance()).toBeCloseTo(9.6, 6);
+
+      // Settling via the REPLAY handle refunds against the original 0.4.
+      await replay.reconcile(0.1);
+      expect(await getBalance()).toBeCloseTo(9.9, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "keys are org-scoped — the same key in another org reserves independently",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      await dbWrite.execute(`DELETE FROM credit_transactions WHERE organization_id = '${ORG_B}';`);
+      await dbWrite.execute(`DELETE FROM organizations WHERE id = '${ORG_B}';`);
+      await dbWrite.execute(
+        `INSERT INTO organizations (id, credit_balance) VALUES ('${ORG_B}', '10');`,
+      );
+
+      const a = await creditsService.reserve({
+        organizationId: ORG_ID,
+        amount: 0.5,
+        description: "tts utterance",
+        idempotencyKey: "utt-3",
+      });
+      const b = await creditsService.reserve({
+        organizationId: ORG_B,
+        amount: 0.5,
+        description: "tts utterance",
+        idempotencyKey: "utt-3",
+      });
+
+      // Two DIFFERENT reservations: a cross-tenant key can never attach to
+      // another org's reservation.
+      expect(b.reservationTransactionId).not.toBe(a.reservationTransactionId);
+      expect(await getBalance()).toBeCloseTo(9.5, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "without a key, repeated reserves stay independent (behavior unchanged)",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+
+      const a = await creditsService.reserve({
+        organizationId: ORG_ID,
+        amount: 0.5,
+        description: "tts utterance",
+      });
+      const b = await creditsService.reserve({
+        organizationId: ORG_ID,
+        amount: 0.5,
+        description: "tts utterance",
+      });
+
+      expect(b.reservationTransactionId).not.toBe(a.reservationTransactionId);
+      expect(await getBalance()).toBeCloseTo(9.0, 6);
+      expect(await countTransactions()).toBe(2);
+    },
+    PGLITE_TIMEOUT,
+  );
+});
+
 describe("CreditsService reservation settlement marker (#11169)", () => {
   test(
     "real reservation rows are claimed and refunded once",
