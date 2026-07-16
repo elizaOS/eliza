@@ -221,11 +221,15 @@ afterAll(() => {
   globalThis.fetch = realFetch;
 });
 
-function postTts(body: unknown, env: Record<string, unknown> = {}) {
+function postTts(
+  body: unknown,
+  env: Record<string, unknown> = {},
+  headers: Record<string, string> = {},
+) {
   return route.default.fetch(
     new Request("http://test.local/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
     }),
     env,
@@ -448,5 +452,45 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     expect(reserveCredits).toHaveBeenCalledTimes(1);
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  // #16425: the client mints one Idempotency-Key per logical utterance (sent
+  // on both the direct request and the proxy fallback); the paid path must
+  // thread it into the credit reservation so a fallback retry REPLAYS the
+  // committed reservation instead of charging the utterance twice.
+  test("threads the Idempotency-Key header into the credit reservation", async () => {
+    const response = await postTts(
+      { text: "Bill me once.", voiceId: "custom-elevenlabs-voice" },
+      {},
+      { "Idempotency-Key": "utt-abc" },
+    );
+    expect(response.status).toBe(200);
+    expect(reserveCredits).toHaveBeenCalledTimes(1);
+    expect(reserveCredits.mock.calls[0]?.[0]).toMatchObject({
+      idempotencyKey: "utt-abc",
+    });
+  });
+
+  test("without the header the reservation stays unkeyed (behavior unchanged)", async () => {
+    const response = await postTts({
+      text: "Hi.",
+      voiceId: "custom-elevenlabs-voice",
+    });
+    expect(response.status).toBe(200);
+    const params = reserveCredits.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect("idempotencyKey" in params).toBe(false);
+  });
+
+  test("rejects an invalid body and an over-long text before any reservation", async () => {
+    const bad = await postTts({ voiceId: "custom-elevenlabs-voice" });
+    expect(bad.status).toBe(400);
+
+    const tooLong = await postTts({
+      text: "x".repeat(5001),
+      voiceId: "custom-elevenlabs-voice",
+    });
+    expect(tooLong.status).toBe(400);
+
+    expect(reserveCredits).not.toHaveBeenCalled();
   });
 });
