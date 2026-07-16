@@ -41,6 +41,7 @@ import { Input } from "../../../../components/ui/input";
 import {
   canNavigateSameTabForBlockedPopup,
   preOpenCloudLoginWindow,
+  shouldReuseCurrentCloudLoginWindow,
 } from "../../../../state/cloud-login-launch";
 import { navigatePreOpenedWindow } from "../../../../utils/openExternalUrl";
 import { useCloudT } from "../../../shell/CloudI18nProvider";
@@ -592,7 +593,11 @@ export default function StewardLoginSection() {
     // PKCE challenge is asynchronous, so opening after it resolves is blocked
     // by browsers. Touch-primary browsers intentionally return null here and
     // continue in the current tab.
-    const authWindow = preOpenCloudLoginWindow();
+    const authWindow = shouldReuseCurrentCloudLoginWindow(
+      searchParams.get("returnTo"),
+    )
+      ? null
+      : preOpenCloudLoginWindow();
     setLoading(provider);
     setError(null);
     const host = window.location.hostname.toLowerCase();
