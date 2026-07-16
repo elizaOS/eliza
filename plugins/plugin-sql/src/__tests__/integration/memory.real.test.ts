@@ -674,6 +674,78 @@ describe("Memory Integration Tests", () => {
       expect(names.length).toBe(1);
     });
 
+    it("short-circuits via IF NOT EXISTS when a valid index already exists (no rebuild)", async () => {
+      const db = (
+        adapter as unknown as {
+          db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> };
+        }
+      ).db;
+      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_dim_384_hnsw_cosine'`;
+
+      await adapter.ensureEmbeddingDimension(384);
+      const first = await db.execute(oidQuery);
+      const firstOid = ((first.rows ?? first) as Array<{ oid: unknown }>)[0]?.oid;
+      expect(firstOid).toBeDefined();
+
+      await adapter.ensureEmbeddingDimension(384);
+      const second = await db.execute(oidQuery);
+      const secondOid = ((second.rows ?? second) as Array<{ oid: unknown }>)[0]?.oid;
+      // Same relation OID: the second ensure hit IF NOT EXISTS and did not
+      // drop/recreate the index.
+      expect(String(secondOid)).toBe(String(firstOid));
+    });
+
+    it("drops and rebuilds an INVALID index left by a failed concurrent build", async () => {
+      const db = (
+        adapter as unknown as {
+          db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> };
+        }
+      ).db;
+      await adapter.ensureEmbeddingDimension(384);
+      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_dim_384_hnsw_cosine'`;
+      const before = await db.execute(oidQuery);
+      const beforeRow = ((before.rows ?? before) as Array<{ oid: unknown }>)[0];
+      expect(beforeRow).toBeDefined();
+
+      // Simulate the aftermath of a crashed CREATE INDEX CONCURRENTLY: the
+      // catalog row exists but indisvalid = false (superuser catalog update —
+      // the same state a failed concurrent build leaves behind).
+      await db.execute(
+        sql`UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'idx_embeddings_dim_384_hnsw_cosine'::regclass`
+      );
+
+      await adapter.ensureEmbeddingDimension(384);
+      const after = await db.execute(oidQuery);
+      const afterRows = (after.rows ?? after) as Array<{ oid: unknown; indisvalid: boolean }>;
+      expect(afterRows.length).toBe(1);
+      expect(afterRows[0].indisvalid).toBe(true);
+      // A different relation OID proves the invalid index was dropped and
+      // rebuilt, not just left in place behind IF NOT EXISTS.
+      expect(String(afterRows[0].oid)).not.toBe(String(beforeRow.oid));
+    });
+
+    it("degrades without throwing when the index cannot be created", async () => {
+      const db = (
+        adapter as unknown as {
+          db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> };
+        }
+      ).db;
+      // Make CREATE INDEX fail for real by hiding the embeddings table; the
+      // ensure path must warn and resolve (search degrades to a sequential
+      // scan) rather than fail closed over a missing optimization.
+      await db.execute(sql`ALTER TABLE "embeddings" RENAME TO "embeddings_hidden"`);
+      try {
+        await expect(adapter.ensureEmbeddingDimension(768)).resolves.toBeUndefined();
+        const rows = await db.execute(
+          sql`SELECT indexname FROM pg_indexes WHERE indexname = 'idx_embeddings_dim_768_hnsw_cosine'`
+        );
+        expect(((rows.rows ?? rows) as unknown[]).length).toBe(0);
+      } finally {
+        await db.execute(sql`ALTER TABLE "embeddings_hidden" RENAME TO "embeddings"`);
+        await adapter.ensureEmbeddingDimension(384);
+      }
+    });
+
     it("ranks by similarity, honors the threshold, and filters through the KNN pool", async () => {
       // Orthogonal-ish vectors with known cosine ordering against the query.
       const dims = 384;

@@ -586,14 +586,34 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   private async ensureEmbeddingVectorIndex(dimension: number): Promise<void> {
     const columnName = `dim_${dimension}`;
+    const indexName = `idx_embeddings_${columnName}_hnsw_cosine`;
     // CONCURRENTLY cannot run inside a transaction block; this executes as a
     // standalone autocommit statement. PGlite is a single connection with
     // nothing to lock out (and no CONCURRENTLY support).
     const concurrently = this.databaseBackend === "postgres" ? "CONCURRENTLY " : "";
     try {
+      // A failed CREATE INDEX CONCURRENTLY (crash, lock timeout, OOM mid-build)
+      // leaves an INVALID index behind, and IF NOT EXISTS would then treat it
+      // as present forever — pinning every vector search to sequential scans.
+      // Detect that leftover and drop it so the create below rebuilds it.
+      const invalid = await this.db.execute(
+        sql.raw(
+          `SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid ` +
+            `WHERE c.relname = '${indexName}' AND NOT i.indisvalid`
+        )
+      );
+      // Both drivers (node-postgres QueryResult, PGlite Results) expose `rows`.
+      const invalidRows = (invalid as { rows?: unknown[] }).rows;
+      if (Array.isArray(invalidRows) && invalidRows.length > 0) {
+        logger.warn(
+          { src: "plugin:sql", agentId: this.agentId, indexName },
+          "Dropping INVALID HNSW embeddings index left by a failed concurrent build; rebuilding"
+        );
+        await this.db.execute(sql.raw(`DROP INDEX IF EXISTS "${indexName}"`));
+      }
       await this.db.execute(
         sql.raw(
-          `CREATE INDEX ${concurrently}IF NOT EXISTS "idx_embeddings_${columnName}_hnsw_cosine" ` +
+          `CREATE INDEX ${concurrently}IF NOT EXISTS "${indexName}" ` +
             `ON "embeddings" USING hnsw ("${columnName}" vector_cosine_ops)`
         )
       );
