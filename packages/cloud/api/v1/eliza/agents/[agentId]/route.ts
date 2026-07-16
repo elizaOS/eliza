@@ -1,11 +1,7 @@
 /**
- * /api/v1/eliza/agents/:agentId
- *
- * GET    — agent detail (with admin slice when caller is org admin).
- * PATCH  — { action: "shutdown" | "suspend" } lifecycle action, OR
- *          { agentName?, agentConfig? } to edit the agent in place (rename /
- *          system-prompt edit). A body without `action` is treated as an edit.
- * DELETE — delete sandbox + cleanup linked character.
+ * Organization-scoped agent details, profile edits, and lifecycle operations.
+ * Container work is delegated to the provisioning daemon because the Worker
+ * runtime cannot load the SSH transport used by Docker-backed agents.
  */
 
 import { eq } from "drizzle-orm";
@@ -388,7 +384,10 @@ app.delete("/", async (c) => {
       );
     }
 
-    if (existing.execution_tier === "shared") {
+    // Workerd aliases ssh2 to a throwing stub. A row that still owns a sandbox
+    // must therefore be handed to the Node provisioning daemon, while a pure
+    // database-backed shared row remains safe to remove in the request.
+    if (existing.execution_tier === "shared" && !existing.sandbox_id) {
       const result = await elizaSandboxService.deleteAgent(
         agentId,
         user.organization_id,
@@ -437,22 +436,23 @@ app.delete("/", async (c) => {
       }
     }
 
-    // Async delete via the same job-queue path agent_provision uses. This
-    // moves the SSH stop, Neon deletion, and per-agent key revoke off the
-    // request thread so a slow / unreachable Hetzner core can no longer
-    // make the API hang or silently return 200 while the container lives
-    // on. Idempotent: a second DELETE while a job is in flight reuses
-    // the existing one.
+    // The daemon owns every sandbox-backed teardown. Enqueue also covers
+    // dedicated agents and the retry boundary for a database-only shared
+    // delete that failed; a repeated request reuses the in-flight job.
     const enqueueResult = await provisioningJobService.enqueueAgentDeleteOnce({
       agentId,
       organizationId: user.organization_id,
       userId: user.id,
     });
 
-    // Best-effort wake of the worker so the user does not wait for the
-    // next cron tick. Same pattern as the provision path.
-    void provisioningJobService.triggerImmediate(c.env).catch(() => {
-      // Logged inside the service; nothing actionable here.
+    void provisioningJobService.triggerImmediate(c.env).catch((error) => {
+      // error-policy:J5 The queued job remains observable to the scheduled
+      // worker; this warning observes an unexpected failure in the eager wake.
+      logger.warn("[agent-api] Immediate delete worker trigger rejected", {
+        agentId,
+        orgId: user.organization_id,
+        error,
+      });
     });
 
     logger.info("[agent-api] Agent delete enqueued", {
