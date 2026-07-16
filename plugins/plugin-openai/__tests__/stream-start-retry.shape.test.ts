@@ -59,6 +59,7 @@ function successResult(tokens: string[]) {
 /** An attempt whose provider error surfaces via onError with an empty stream. */
 function emptyErroredResult(onError: (arg: { error: unknown }) => void, error: unknown) {
   return {
+    // biome-ignore lint/correctness/useYield: error-only stream fixture — the provider error surfaces via onError, no tokens.
     textStream: (async function* textStream() {
       onError({ error });
     })(),
@@ -109,6 +110,7 @@ describe("live-stream start retry", () => {
       call++;
       if (call === 1) {
         return Promise.resolve({
+          // biome-ignore lint/correctness/useYield: throw-only stream fixture — fails on the first pull.
           textStream: (async function* textStream() {
             throw TRANSIENT;
           })(),
@@ -160,6 +162,7 @@ describe("live-stream start retry", () => {
         // must surface on THAT pull.
         return Promise.resolve({
           textStream: (async function* textStream() {})(),
+          // biome-ignore lint/correctness/useYield: error-only stream fixture — the provider error surfaces via onError, no tokens.
           fullStream: (async function* fullStream() {
             args.onError({ error: TRANSIENT });
           })(),
@@ -246,6 +249,7 @@ describe("live-stream start retry", () => {
           call++;
           if (call === 1) {
             return {
+              // biome-ignore lint/correctness/useYield: error-only stream fixture — the provider error surfaces via onError, no tokens.
               textStream: (async function* textStream() {
                 args.onError({ error: TRANSIENT });
               })(),
