@@ -16,7 +16,12 @@ export {
   OMI_AUDIO_SERVICE_UUID,
   OMI_CODEC,
   type OmiCodecId,
+  type OmiFrameDiagnostic,
+  type OmiFrameDiagnosticCode,
+  type OmiFrameMetricsSnapshot,
   OmiFrameReassembler,
+  type OmiFrameReassemblerResult,
+  type OmiWireMode,
   type ReassembledFrame,
 } from "./omi-protocol";
 export {
