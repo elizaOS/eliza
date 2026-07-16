@@ -361,6 +361,39 @@ if (funding.fundingSourceType === "exchange") {
     }),
   );
 }
+
+if (funding.fundingSourceType === "wallet") {
+  investorInsights.positive.push(
+    createInvestorInsight({
+      id: "identifiable-funding-wallet",
+
+      title: "Identifiable Funding Wallet",
+
+      finding:
+        funding.fundingWallet
+          ? `The wallet appears to have received its initial funding from ${funding.fundingWallet}.`
+          : "The wallet appears to have been funded by another identifiable blockchain wallet.",
+
+      whyItMatters:
+        "Identifying a funding wallet provides additional context about the wallet's origin and creates a traceable relationship for further analysis.",
+
+      impact: "positive",
+
+      confidence:
+        funding.evidenceConfidence,
+
+      severity: "medium",
+
+      evidenceRecordIds: [
+        "funding-assessment",
+      ],
+
+      limitations: [
+        "The identified funding relationship does not by itself establish ownership, control, or intent.",
+      ],
+    }),
+  );
+}
   
   return {
     trustScore,
