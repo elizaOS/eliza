@@ -23,6 +23,7 @@ const GATE_WORKFLOWS = [
   "test.yml",
   "coverage-gate.yml",
   "cloud-cf-deploy.yml",
+  "app-aesthetic-audit.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
   "benchmark-tests.yml",
