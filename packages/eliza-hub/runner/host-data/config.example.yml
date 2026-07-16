@@ -1,0 +1,27 @@
+log:
+  level: info
+  job_level: info
+
+runner:
+  file: .runner
+  capacity: 1
+  envs: {}
+  env_file: ""
+  timeout: 30m
+  shutdown_timeout: 1m
+  insecure: false
+  fetch_timeout: 30s
+  fetch_interval: 2s
+  report_interval: 1s
+  labels:
+    - ubuntu-latest:host
+    - self-hosted:host
+
+cache:
+  enabled: false
+
+container:
+  docker_host: "-"
+
+host:
+  workdir_parent: ./runner/host-work
