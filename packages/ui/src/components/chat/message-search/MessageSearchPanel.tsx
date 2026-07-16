@@ -180,7 +180,14 @@ export function MessageSearchPanel({
 
   const resultsListEl =
     results.length > 0 ? (
-      <ul data-testid="message-search-results" className="flex flex-col gap-1">
+      <ul
+        data-testid="message-search-results"
+        className={
+          keyboardAnchored
+            ? "mt-auto flex flex-col gap-1"
+            : "flex flex-col gap-1"
+        }
+      >
         {results.map((result) => (
           <li key={result.messageId}>
             <Button
@@ -223,7 +230,8 @@ export function MessageSearchPanel({
       >
         <div
           data-testid="message-search-scroll"
-          className="scroll-fade flex min-h-0 flex-1 flex-col justify-end gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
+          data-chat-sheet-scroll-region
+          className="scroll-fade flex min-h-0 flex-1 touch-pan-y flex-col gap-1 overflow-y-auto overscroll-contain [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:hidden"
         >
           {resultsListEl}
         </div>
