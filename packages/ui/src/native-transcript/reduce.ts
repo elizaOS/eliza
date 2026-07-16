@@ -126,18 +126,23 @@ export function applyTranscriptEvent(
   };
 
   switch (event.type) {
-    case "stt.partial":
-      upsert(event.turnId, (prev) => ({
+    case "stt.partial": {
+      // A final/cancelled turn is terminal: a stray later partial is ignored
+      // outright (not even its text is applied), so a committed utterance never
+      // reverts to an interim hypothesis.
+      const prev = entries.get(event.turnId);
+      if (prev && prev.item.kind === "user" && prev.item.status !== "partial") {
+        break;
+      }
+      upsert(event.turnId, (existing) => ({
         kind: "user",
         id: event.turnId,
-        // A partial never downgrades an already-final/cancelled row.
-        status: prev && prev.kind === "user" && prev.status !== "partial"
-          ? prev.status
-          : "partial",
+        status: "partial",
         text: event.text,
-        words: prev && prev.kind === "user" ? prev.words : [],
+        words: existing && existing.kind === "user" ? existing.words : [],
       }));
       break;
+    }
 
     case "stt.final":
       upsert(event.turnId, () => ({
