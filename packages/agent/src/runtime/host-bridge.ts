@@ -30,7 +30,6 @@ import type { Vault } from "@elizaos/vault";
 export type AccountPoolCredentialsOptions = {
   activeBackend?: string | undefined;
   accountStrategies?: Record<string, unknown> | undefined;
-  accountStrategySettings?: Record<string, unknown> | undefined;
   serviceRouting?: ReturnType<typeof resolveServiceRoutingInConfig>;
 };
 

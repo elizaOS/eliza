@@ -113,7 +113,6 @@ interface AccountPoolSelectionRoute {
 
 interface AccountPoolSelectionConfig {
   accountStrategies?: Partial<Record<PoolProviderId, unknown>>;
-  accountStrategySettings?: Partial<Record<PoolProviderId, unknown>>;
   serviceRouting?: {
     llmText?: AccountPoolSelectionRoute;
   } | null;
@@ -528,7 +527,12 @@ export class AccountPool {
   }
 
   async upsert(account: LinkedAccountConfig): Promise<void> {
-    await this.deps.writeAccount(account);
+    const prior = this.get(account.id, account.providerId);
+    await this.deps.writeAccount({
+      ...account,
+      prioritySource:
+        account.prioritySource ?? prior?.prioritySource ?? "generated",
+    });
   }
 
   async deleteMetadata(
@@ -1159,7 +1163,6 @@ export function configureDefaultAccountPoolSelection(
 ): void {
   defaultSelectionConfig = {
     accountStrategies: config.accountStrategies ?? {},
-    accountStrategySettings: config.accountStrategySettings ?? {},
     serviceRouting: config.serviceRouting ?? null,
   };
 }
@@ -1187,13 +1190,11 @@ export async function applyAccountPoolApiCredentials(
   opts: {
     activeBackend?: string | null;
     accountStrategies?: AccountPoolSelectionConfig["accountStrategies"];
-    accountStrategySettings?: AccountPoolSelectionConfig["accountStrategySettings"];
     serviceRouting?: AccountPoolSelectionConfig["serviceRouting"];
   } = {},
 ): Promise<void> {
   configureDefaultAccountPoolSelection({
     accountStrategies: opts.accountStrategies,
-    accountStrategySettings: opts.accountStrategySettings,
     serviceRouting: opts.serviceRouting,
   });
   const pool = getDefaultAccountPool();

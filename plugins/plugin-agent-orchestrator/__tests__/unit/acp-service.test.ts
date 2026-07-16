@@ -378,6 +378,7 @@ describe("AcpService", () => {
     const promise = service.spawnSession({
       name: "s1",
       agentType: "codex",
+      model: "gpt-5.5",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(reg);
@@ -391,6 +392,7 @@ describe("AcpService", () => {
     const result = await promise;
 
     expect(result.name).toBe("s1");
+    expect(result.model).toBe("gpt-5.5");
     expect(result.status).toBe("ready");
     expect(await service.listSessions()).toHaveLength(1);
     expect(events.some(([, event]) => event === "ready")).toBe(true);

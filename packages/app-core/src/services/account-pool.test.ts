@@ -53,6 +53,33 @@ describe("AccountPool provider-scoped account resolution", () => {
     expect(deleteAccount).toHaveBeenCalledWith("openai-codex", "shared-id");
   });
 
+  it("preserves explicit priority provenance and defaults new accounts to generated", async () => {
+    const writes: LinkedAccountConfig[] = [];
+    const existing = account("anthropic-subscription", {
+      id: "existing",
+      priority: 7,
+      prioritySource: "explicit",
+    });
+    const pool = new AccountPool({
+      readAccounts: () => ({ "anthropic-subscription:existing": existing }),
+      writeAccount: async (next) => {
+        writes.push(next);
+      },
+    });
+
+    await pool.upsert({
+      ...existing,
+      label: "Relinked",
+      prioritySource: undefined,
+    });
+    await pool.upsert(
+      account("anthropic-subscription", { id: "new", priority: 8 }),
+    );
+
+    expect(writes[0]?.prioritySource).toBe("explicit");
+    expect(writes[1]?.prioritySource).toBe("generated");
+  });
+
   it("gets the matching provider account when ids collide", () => {
     const accounts = {
       "openai-codex:shared-id": account("openai-codex"),
@@ -868,21 +895,18 @@ describe("AccountPool drain-soonest-reset selection", () => {
     vi.useFakeTimers();
     vi.setSystemTime(fixedNow);
     const accounts = {
-      "anthropic-subscription:fable-window": account(
-        "anthropic-subscription",
-        {
-          id: "fable-window",
-          usage: {
-            sessionPct: 1,
-            weeklyPct: 5,
-            resetsAt: fixedNow + 20 * hour,
-            weeklyModelBuckets: {
-              Fable: { pct: 12, resetsAt: fixedNow + hour },
-            },
-            refreshedAt: fixedNow,
+      "anthropic-subscription:fable-window": account("anthropic-subscription", {
+        id: "fable-window",
+        usage: {
+          sessionPct: 1,
+          weeklyPct: 5,
+          resetsAt: fixedNow + 20 * hour,
+          weeklyModelBuckets: {
+            Fable: { pct: 12, resetsAt: fixedNow + hour },
           },
+          refreshedAt: fixedNow,
         },
-      ),
+      }),
       "anthropic-subscription:blended-window": account(
         "anthropic-subscription",
         {
@@ -921,18 +945,15 @@ describe("AccountPool drain-soonest-reset selection", () => {
           },
         },
       ),
-      "anthropic-subscription:known-reset": account(
-        "anthropic-subscription",
-        {
-          id: "known-reset",
-          usage: {
-            sessionPct: 1,
-            weeklyPct: 99,
-            resetsAt: fixedNow + 10 * hour,
-            refreshedAt: fixedNow,
-          },
+      "anthropic-subscription:known-reset": account("anthropic-subscription", {
+        id: "known-reset",
+        usage: {
+          sessionPct: 1,
+          weeklyPct: 99,
+          resetsAt: fixedNow + 10 * hour,
+          refreshedAt: fixedNow,
         },
-      ),
+      }),
     };
 
     await expect(
