@@ -15,6 +15,7 @@ import {
   extractEvidenceRows,
   findRetiredRepoEvidenceFiles,
   hasArtifactReference,
+  hasEvidenceFileReference,
   hasNaWithReason,
   hasOcrEvidenceReference,
   hasVisualArtifactReference,
@@ -25,6 +26,7 @@ import {
   REQUIRED_EVIDENCE_ROWS,
   requiresSurfaceArtifacts,
   requiresSurfaceArtifactsFromFiles,
+  runSelfTest,
   SURFACE_ARTIFACT_ROW_IDS,
 } from "./check-pr-evidence.mjs";
 
@@ -381,9 +383,7 @@ describe("check-pr-evidence row primitives", () => {
       true,
     );
     assert.equal(
-      requiresSurfaceArtifactsFromFiles([
-        String.raw`apps\app\src\Panel.tsx`,
-      ]),
+      requiresSurfaceArtifactsFromFiles([String.raw`apps\app\src\Panel.tsx`]),
       true,
     );
     // Tests, stories, and server code render nothing a user sees.
@@ -482,7 +482,10 @@ describe("check-pr-evidence row primitives", () => {
     // But a rendered-UI file still forces artifacts regardless of labels.
     const forced = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
       labels: "",
-      changedFiles: ["packages/ui/src/navigation/index.ts", "packages/ui/src/components/Foo.tsx"],
+      changedFiles: [
+        "packages/ui/src/navigation/index.ts",
+        "packages/ui/src/components/Foo.tsx",
+      ],
     });
     assert.equal(forced.ok, false);
   });
@@ -522,6 +525,99 @@ describe("check-pr-evidence row primitives", () => {
     );
   });
 });
+
+describe("check-pr-evidence pr-evidence release family", () => {
+  const dl = (tag, name) =>
+    `https://github.com/elizaOS/eliza/releases/download/${tag}/${name}`;
+
+  it("accepts an overflow-release screenshot on a visual row exactly like the primary release", () => {
+    // The unblock: once `pr-evidence` fills, pr-evidence.mjs emits pr-evidence-N
+    // URLs; a media asset there must satisfy the visual rows identically.
+    assert.equal(
+      hasVisualArtifactReference(dl("pr-evidence", "15171-after-desktop.jpg")),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference(
+        dl("pr-evidence-2", "16367-after-desktop.jpg"),
+      ),
+      true,
+    );
+    assert.equal(
+      hasVisualArtifactReference(dl("pr-evidence-3", "16367-walkthrough.mp4")),
+      true,
+    );
+  });
+
+  it("recognizes any pr-evidence-family asset as an evidence file, even a non-whitelisted extension", () => {
+    // A `.jsonl` is not in EVIDENCE_FILE_RE, so acceptance here comes from the
+    // release-family host matcher — the generalized rule, applied to overflow
+    // releases too.
+    assert.equal(
+      EVIDENCE_FILE_RE_MATCHES(".jsonl"),
+      false,
+      "guard: .jsonl must not be a whitelisted evidence extension",
+    );
+    assert.equal(
+      hasEvidenceFileReference(dl("pr-evidence", "15171-ocr-readout.txt")),
+      true,
+    );
+    assert.equal(
+      hasEvidenceFileReference(dl("pr-evidence-3", "16367-ocr-readout.jsonl")),
+      true,
+    );
+  });
+
+  it("does NOT accept a link to the release PAGE (no /download/ asset path)", () => {
+    // Strictness: the tag page is not an asset. A page link never counts as a
+    // screenshot, and never as an evidence file.
+    const pageLink =
+      "https://github.com/elizaOS/eliza/releases/tag/pr-evidence-2";
+    assert.equal(hasVisualArtifactReference(pageLink), false);
+    assert.equal(hasEvidenceFileReference(pageLink), false);
+  });
+
+  it("passes a UI-file surface PR whose screenshots live on an overflow release", () => {
+    const body = buildBody({
+      "before-screenshots": `- [x] ![before](${dl("pr-evidence-2", "16367-before-desktop.jpg")})`,
+      "after-screenshots": `- [x] ![after](${dl("pr-evidence-2", "16367-after-desktop.jpg")})`,
+      "walkthrough-video": `- [x] ${dl("pr-evidence-2", "16367-walkthrough.mp4")}`,
+      "domain-artifacts": `- [ ] OCR text readout: ${dl("pr-evidence-2", "16367-ocr.txt")}`,
+    });
+    const changedFiles = ["packages/ui/src/components/Foo.tsx"];
+    const { ok } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles,
+    });
+    assert.equal(ok, true);
+  });
+
+  it("still FAILS a UI-file surface PR with no real media, even citing the release page", () => {
+    // Invariant: the storage location changed, the strictness did not.
+    const body = buildBody({
+      "before-screenshots":
+        "- [ ] Before screenshots: https://github.com/elizaOS/eliza/releases/tag/pr-evidence-2",
+      "after-screenshots": "- [ ] After screenshots `N/A - nothing to show`.",
+      "walkthrough-video": "- [ ] Walkthrough video `N/A - nothing to show`.",
+    });
+    const { ok, findings } = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: ["packages/ui/src/components/Foo.tsx"],
+    });
+    assert.equal(ok, false);
+    for (const id of SURFACE_ARTIFACT_ROW_IDS) {
+      assert.equal(
+        findings.find((finding) => finding.id === id).status,
+        "artifact-required",
+      );
+    }
+  });
+});
+
+// Mirror of check-pr-evidence's internal EVIDENCE_FILE_RE, used only to prove
+// the release-family matcher (not the extension whitelist) is what accepts a
+// pr-evidence `.jsonl` asset above.
+function EVIDENCE_FILE_RE_MATCHES(ext) {
+  return /\.(json|txt|log|csv|md)(\?\S*)?(\s|$|\)|"|')/i.test(`file${ext} `);
+}
 
 describe("check-pr-evidence marker extraction", () => {
   it("captures the checkbox line plus indented continuation lines", () => {
@@ -580,5 +676,157 @@ describe("check-pr-evidence against the real PR template", () => {
     const { ok, findings } = evaluatePrEvidence(template);
     assert.equal(ok, false);
     assert.ok(findings.every((finding) => finding.status === "blank"));
+  });
+});
+
+describe("evaluatePrEvidence verdicts", () => {
+  it("passes a fully evidenced backend-only body with no surface trigger", () => {
+    const { ok, findings } = evaluatePrEvidence(buildBody());
+    assert.equal(ok, true);
+    assert.ok(findings.every((finding) => finding.status === "ok"));
+  });
+
+  it("reports a missing marker as missing and a blank row as blank", () => {
+    const body = buildBody({ "backend-logs": "" });
+    const { ok, findings } = evaluatePrEvidence(body);
+    assert.equal(ok, false);
+    assert.equal(
+      findings.find((finding) => finding.id === "backend-logs")?.status,
+      "blank",
+    );
+    const withoutMarker = buildBody();
+    const truncated = withoutMarker.replace(
+      /<!-- evidence-row:llm-trajectory -->[\s\S]*?(?=\n\n<!-- evidence-row:|$)/,
+      "",
+    );
+    const missing = evaluatePrEvidence(truncated).findings.find(
+      (finding) => finding.id === "llm-trajectory",
+    );
+    assert.equal(missing?.status, "missing");
+  });
+
+  it("path detection overrides labels: a UI .tsx diff forces real media on visual rows", () => {
+    const { ok, findings } = evaluatePrEvidence(
+      buildBody(),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/app/src/views/Home.tsx"] },
+    );
+    assert.equal(ok, false);
+    for (const id of ["before-screenshots", "after-screenshots"]) {
+      assert.equal(
+        findings.find((finding) => finding.id === id)?.status,
+        "artifact-required",
+        `${id} should demand media on a surface diff`,
+      );
+    }
+    // buildBody's domain-artifacts row carries OCR proof, so no ocr-required
+    // finding is appended here; the label-only case below covers that path.
+  });
+
+  it("a non-visual diff under a UI package does NOT force surface artifacts even with a ui label", () => {
+    const { ok } = evaluatePrEvidence(buildBody(), REQUIRED_EVIDENCE_ROWS, {
+      labels: "ui",
+      changedFiles: ["packages/ui/src/state/useThing.ts"],
+    });
+    assert.equal(ok, true);
+  });
+
+  it("label-only invocation still triggers the surface requirement", () => {
+    const { findings } = evaluatePrEvidence(
+      buildBody(),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        labels: "native",
+      },
+    );
+    assert.equal(
+      findings.find((finding) => finding.id === "before-screenshots")?.status,
+      "artifact-required",
+    );
+    // Without any OCR-referencing row, the surface trigger also appends the
+    // ocr-review requirement.
+    const noOcr = evaluatePrEvidence(
+      buildBody({ "domain-artifacts": "- [ ] `N/A - no domain artifacts`." }),
+      REQUIRED_EVIDENCE_ROWS,
+      { labels: "native" },
+    );
+    assert.equal(
+      noOcr.findings.find((finding) => finding.id === "ocr-review")?.status,
+      "ocr-required",
+    );
+  });
+
+  it("allows N/A before-screenshots when every touched UI file was added", () => {
+    const surface = ["packages/ui/src/components/New.tsx"];
+    const body = buildBody({
+      "before-screenshots":
+        "- [ ] Before screenshots `N/A - brand-new surface, no before state`.",
+      "after-screenshots":
+        "- [x] ![after](https://github.com/elizaOS/eliza/releases/download/pr-evidence/1-a.jpg)",
+      "walkthrough-video":
+        "- [x] https://github.com/elizaOS/eliza/releases/download/pr-evidence/1-w.mp4",
+      "domain-artifacts":
+        "- [x] OCR text readout: https://github.com/elizaOS/eliza/releases/download/pr-evidence/1-ocr.json",
+    });
+    const allNew = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: surface,
+      addedFiles: surface,
+    });
+    assert.equal(allNew.ok, true);
+    const modified = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: surface,
+      addedFiles: [],
+    });
+    assert.equal(
+      modified.findings.find((finding) => finding.id === "before-screenshots")
+        ?.status,
+      "artifact-required",
+    );
+  });
+
+  it("accepts overflow-release (pr-evidence-N) media on a surface PR", () => {
+    const dl = (tag, name) =>
+      `https://github.com/elizaOS/eliza/releases/download/${tag}/${name}`;
+    const { ok } = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots": `- [x] ![before](${dl("pr-evidence-2", "9-b.jpg")})`,
+        "after-screenshots": `- [x] ![after](${dl("pr-evidence-2", "9-a.jpg")})`,
+        "walkthrough-video": `- [x] ${dl("pr-evidence-3", "9-w.mp4")}`,
+        "domain-artifacts": `- [x] OCR readout ${dl("pr-evidence-3", "9-ocr.jsonl")}`,
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/ui/src/components/Foo.tsx"] },
+    );
+    assert.equal(ok, true);
+  });
+
+  it("rejects a release-page link standing in for a screenshot", () => {
+    const { findings } = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots":
+          "- [ ] https://github.com/elizaOS/eliza/releases/tag/pr-evidence-2",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/ui/src/components/Foo.tsx"] },
+    );
+    assert.equal(
+      findings.find((finding) => finding.id === "before-screenshots")?.status,
+      "artifact-required",
+    );
+  });
+
+  it("empty body reports every required row missing", () => {
+    const { ok, findings } = evaluatePrEvidence("");
+    assert.equal(ok, false);
+    assert.equal(findings.length, REQUIRED_EVIDENCE_ROWS.length);
+    assert.ok(findings.every((finding) => finding.status === "missing"));
+  });
+});
+
+describe("planted-fixture self-test", () => {
+  it("passes against the current gate rules", () => {
+    // runSelfTest exercises the same fixtures CI's --self-test flag does and
+    // process.exit(1)s on any regression; completing without exit is the pass.
+    runSelfTest();
   });
 });

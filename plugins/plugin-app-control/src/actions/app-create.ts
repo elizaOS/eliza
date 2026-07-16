@@ -392,9 +392,7 @@ async function dispatchCodingAgent({
 	originRoomId,
 	callback,
 }: DispatchInput): Promise<DispatchResult> {
-	const createTaskName = findAsyncCodingDelegationActionName(
-		runtime.actions ?? [],
-	);
+	const createTaskName = findAsyncCodingDelegationActionName(runtime.actions);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {
 		return {

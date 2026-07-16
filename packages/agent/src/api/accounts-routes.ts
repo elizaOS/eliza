@@ -60,6 +60,7 @@ import {
   isUnavailableSubscriptionProvider,
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
+import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
@@ -160,6 +161,20 @@ async function getPool(): Promise<PoolFacade> {
     cachedPool = getAgentHostBridge().getDefaultAccountPool() as PoolFacade;
   }
   return cachedPool;
+}
+
+function brokerAccountKey(
+  providerId: LinkedAccountProviderId,
+  accountId: string,
+): string {
+  return `${providerId}:${accountId}`;
+}
+
+function brokerSnapshot(): AccountPoolBrokerSnapshot {
+  const getter = getAgentHostBridge().getAccountPoolBrokerSnapshot;
+  return typeof getter === "function"
+    ? getter()
+    : { accounts: {}, providers: {} };
 }
 
 /** Test-only: drop the cached pool reference between tests. */
@@ -738,6 +753,7 @@ async function handleListAllAccounts(
 ): Promise<boolean> {
   const { res, json } = ctx;
   const pool = await getPool();
+  const broker = brokerSnapshot();
   const providers = SUPPORTED_PROVIDER_IDS.map((providerId) => {
     const linkedConfigs = pool
       .list(providerId)
@@ -752,6 +768,21 @@ async function handleListAllAccounts(
     // so the UI can label the active row without re-deriving policy. Guarded
     // because older host bridges may not implement selectionState.
     const selection = pool.selectionState?.(providerId, strategy);
+    const providerBroker = broker.providers[providerId];
+    const lastSelection = providerBroker?.lastSelection
+      ? {
+          accountId: providerBroker.lastSelection.accountId,
+          atMs: providerBroker.lastSelection.atMs,
+        }
+      : null;
+    const recentFailovers = (providerBroker?.recentFailovers ?? []).map(
+      (failover) => ({
+        fromAccountId: failover.fromAccountId,
+        toAccountId: failover.toAccountId,
+        atMs: failover.atMs,
+        cause: failover.cause.reason,
+      }),
+    );
     return {
       providerId,
       strategy,
@@ -759,8 +790,21 @@ async function handleListAllAccounts(
       accounts: linkedConfigs.map((cfg) => ({
         ...cfg,
         hasCredential: onDiskSet.has(cfg.id),
+        observability: {
+          activeLeaseCount:
+            broker.accounts[brokerAccountKey(providerId, cfg.id)]
+              ?.activeLeaseCount ?? 0,
+          lastLeaseAt:
+            broker.accounts[brokerAccountKey(providerId, cfg.id)]
+              ?.lastLeaseAt ?? null,
+          servedLastRequest: lastSelection?.accountId === cfg.id,
+        },
       })),
       ...(selection ? { selection } : {}),
+      observability: {
+        lastSelection,
+        recentFailovers,
+      },
     };
   });
   json(res, { providers });

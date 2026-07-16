@@ -52,8 +52,8 @@
     "nonNullAssertion": 488,
     "nullishEmptyString": 579,
     "nullishEmptyArray": 580,
-    "nullishEmptyObject": 375,
-    "nullishZero": 369
+    "nullishEmptyObject": 374,
+    "nullishZero": 368
   },
   "filesScanned": 10495
 }

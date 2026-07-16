@@ -30,6 +30,7 @@ import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
+  isCommittedOnDeviceMobileRuntimeMode,
   isMobileLocalAgentUrl,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
@@ -53,7 +54,10 @@ import {
   isElizaCloudControlPlaneAgentlessBase,
 } from "../utils/cloud-agent-base";
 import { getElizaApiBase } from "../utils/eliza-globals";
-import { detectExistingFirstRunConnection } from "./first-run-bootstrap";
+import {
+  detectExistingFirstRunConnection,
+  type ExistingFirstRunProbeResult,
+} from "./first-run-bootstrap";
 import {
   clearPersistedActiveServer,
   hydratePersistedFirstRunCompleteFromNativeStore,
@@ -265,7 +269,16 @@ export function reconcileMobileRestoredActiveServer(args: {
 }): PersistedActiveServer | null | undefined {
   const { server, mobileRuntimeMode, platform } = args;
   const mobileLocal = isMobileLocalActiveServer(server);
-  if (mobileLocal && mobileRuntimeMode !== "local") {
+  // The on-device agent is the chat target for BOTH committed on-device modes
+  // — `local` (on-device inference) and `cloud-hybrid` (cloud inference, but
+  // the on-device agent still owns chat, plugins, the voice bridge, and device
+  // control) — and first-run-finish persists the on-device active-server record
+  // for either. Only reject the record when the persisted mode does NOT run a
+  // bundled agent (`cloud`/`remote-mac`/`tunnel-to-mobile`): rejecting it for
+  // `cloud-hybrid` cleared the record + reset first-run on every cold launch,
+  // bouncing a returning hybrid user into onboarding while the ~30s-booting
+  // agent was still unreachable.
+  if (mobileLocal && !isCommittedOnDeviceMobileRuntimeMode(mobileRuntimeMode)) {
     return null;
   }
 
@@ -690,15 +703,47 @@ export async function runRestoringSession(
   // Probe the API when there is evidence of a prior install, or when no
   // persisted server exists (covers headless/VPS setups where config was
   // set via files without going through UI firstRun).
-  const probed =
-    !forceFreshFirstRun && !persistedActiveServer && !isDevUiPort()
-      ? await detectExistingFirstRunConnection({
-          client,
-          timeoutMs: isDesktop
-            ? Math.min(getBackendStartupTimeoutMs(), 30_000)
+  //
+  // A committed mobile on-device runtime (`local`/`cloud-hybrid`) means the
+  // native service is bringing the bundled agent up right now; its ~30s cold
+  // boot on a low-power phone outlasts the 3.5s single-shot probe, so wait for
+  // it (up to 45s) instead of dropping the returning user back into first-run
+  // every cold launch. A fresh install (no committed mode) keeps the fast
+  // single-shot.
+  const committedMobileOnDeviceMode =
+    (isAndroid || isIOS) &&
+    isCommittedOnDeviceMobileRuntimeMode(readPersistedMobileRuntimeMode());
+  const shouldProbeExistingInstall =
+    !forceFreshFirstRun && !persistedActiveServer && !isDevUiPort();
+  let probed: ExistingFirstRunProbeResult | null = null;
+  if (shouldProbeExistingInstall) {
+    try {
+      probed = await detectExistingFirstRunConnection({
+        client,
+        timeoutMs: isDesktop
+          ? Math.min(getBackendStartupTimeoutMs(), 30_000)
+          : committedMobileOnDeviceMode
+            ? Math.min(getBackendStartupTimeoutMs(), 45_000)
             : Math.min(getBackendStartupTimeoutMs(), 3_500),
-        })
-      : null;
+        waitForBootingAgent: committedMobileOnDeviceMode,
+      });
+    } catch (err) {
+      // error-policy:J1 existing-install probe boundary. The probe only throws
+      // in wait-for-boot mode, and only for a GENUINE fault — the committed
+      // on-device agent answered with auth/5xx/malformed, not a still-booting
+      // heartbeat. The install exists, so re-onboarding would both lose the
+      // user's setup and mask the fault: instead route to restore as a detected
+      // install and let the polling-backend phase surface the real error
+      // through its designed timeout/error states.
+      logger.error(
+        `[startup-phase-restore] existing-install probe failed for a committed on-device runtime: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      probed = {
+        activeServer: mobileLocalActiveServer(isAndroid ? "android" : "ios"),
+        detectedExistingInstall: true,
+      };
+    }
+  }
   if (cancelled.current) return;
 
   let restoredActiveServer =

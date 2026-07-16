@@ -394,38 +394,3 @@ export async function queryPastExperience(
     return [];
   }
 }
-
-// ─── Formatting ───
-
-/**
- * Format past experience entries as a markdown section suitable for
- * injection into ACP agent context.
- *
- * Returns empty string if no relevant experience is found.
- */
-export function formatPastExperience(experiences: PastExperience[]): string {
-  if (experiences.length === 0) return "";
-
-  const lines = experiences.map((e) => {
-    const age = formatAge(e.timestamp);
-    const label = e.taskLabel ? ` [${e.taskLabel}]` : "";
-    return `- ${e.insight}${label} (${age})`;
-  });
-
-  return (
-    `# Past Experience\n\n` +
-    `The following decisions and insights were captured from recent agent sessions. ` +
-    `Use them to avoid repeating mistakes and to stay consistent with established patterns.\n\n` +
-    `${lines.join("\n")}\n`
-  );
-}
-
-/** Format a timestamp as a human-readable relative age (e.g. "2h ago", "1d ago"). */
-function formatAge(timestamp: number): string {
-  const diffMs = Date.now() - timestamp;
-  const hours = Math.floor(diffMs / (1000 * 60 * 60));
-  if (hours < 1) return "just now";
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}

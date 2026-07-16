@@ -374,6 +374,39 @@ describe("getDeviceSecret", () => {
     }
   });
 
+  it("delegates account-pool broker routes before wake handling", async () => {
+    const previousEnabled = process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED;
+    const previousSecret = process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET;
+    process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED = "1";
+    process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET =
+      "test-broker-secret-at-least-thirty-two-chars";
+    try {
+      const response = fakeRes();
+      const handled = await handleInternalWakeRoute(
+        fakeReq("/internal/account-pool/v1/health", {
+          method: "GET",
+          auth: "Bearer test-broker-secret-at-least-thirty-two-chars",
+        }),
+        response.res,
+        {
+          current: null,
+          pendingAgentName: null,
+          pendingRestartReasons: [],
+        },
+      );
+      expect(handled).toBe(true);
+      expect(response.status()).toBe(200);
+      expect(response.body()).toMatchObject({ ok: true });
+    } finally {
+      if (previousEnabled === undefined)
+        delete process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED;
+      else process.env.ELIZA_ACCOUNT_POOL_BROKER_ENABLED = previousEnabled;
+      if (previousSecret === undefined)
+        delete process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET;
+      else process.env.ELIZA_ACCOUNT_POOL_BROKER_SECRET = previousSecret;
+    }
+  });
+
   it("persists generated secrets across cache resets", () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-device-secret-"));
     const filePath = path.join(dir, "state", "internal", "device-secret");

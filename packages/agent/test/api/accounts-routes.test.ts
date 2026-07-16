@@ -26,6 +26,7 @@ const poolMock = {
   upsert: vi.fn(),
   deleteMetadata: vi.fn(),
   refreshUsage: vi.fn(),
+  selectionState: vi.fn(),
 };
 
 vi.mock("@elizaos/auth/account-storage", () => ({
@@ -403,6 +404,147 @@ describe("accounts routes provider-scoped account resolution", () => {
     expect(openai?.accounts.every((account) => account.hasCredential)).toBe(
       true,
     );
+  });
+
+  it("adds sanitized broker observability to the accounts response", async () => {
+    const personal = linkedAccount("openai-codex", {
+      id: "personal",
+      label: "Personal",
+      priority: 0,
+    });
+    const work = linkedAccount("openai-codex", {
+      id: "work",
+      label: "Work",
+      priority: 1,
+    });
+    poolMock.list.mockImplementation((providerId?: string) => {
+      return providerId === "openai-codex" ? [personal, work] : [];
+    });
+    poolMock.selectionState.mockReturnValue({
+      activeAccountId: "work",
+      reason: "least-used",
+    });
+    setAgentHostBridge({
+      ...defaultAgentHostBridge,
+      getDefaultAccountPool: () => poolMock,
+      getAccountPoolBrokerSnapshot: () => ({
+        accounts: {
+          "openai-codex:work": {
+            activeLeaseCount: 2,
+            lastLeaseAt: 1234,
+            lastLease: {
+              leaseId: "opaque-lease",
+              atMs: 1234,
+              sessionKeyHash: "fixture-session-hash",
+              model: "gpt-5.6-terra",
+            },
+            lastReportedStatus: {
+              atMs: 1250,
+              ok: false,
+              category: "rate_limit",
+              reason: "http_429",
+              httpStatus: 429,
+            },
+          },
+        },
+        providers: {
+          "openai-codex": {
+            lastSelection: {
+              accountId: "work",
+              atMs: 1234,
+              reason: "least-used",
+            },
+            recentFailovers: [
+              {
+                atMs: 1234,
+                providerId: "openai-codex",
+                sessionKeyHash: "fixture-session-hash",
+                fromAccountId: "personal",
+                toAccountId: "work",
+                cause: { category: "rate_limit", reason: "http_429" },
+              },
+            ],
+          },
+        },
+      }),
+    });
+    _resetAccountsRoutesPoolCache();
+    const ctx = createContext({ method: "GET", pathname: "/api/accounts" });
+
+    const handled = await handleAccountsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    const response = ctx.body as {
+      providers: Array<{
+        providerId: string;
+        observability: {
+          lastSelection: { accountId: string; atMs: number } | null;
+          recentFailovers: unknown[];
+        };
+        accounts: Array<{
+          id: string;
+          observability: {
+            activeLeaseCount: number;
+            lastLeaseAt: number | null;
+            servedLastRequest: boolean;
+          };
+        }>;
+      }>;
+    };
+    const codex = response.providers.find(
+      (entry) => entry.providerId === "openai-codex",
+    );
+    expect(codex?.observability.lastSelection).toEqual({
+      accountId: "work",
+      atMs: 1234,
+    });
+    expect(codex?.observability.recentFailovers).toEqual([
+      {
+        fromAccountId: "personal",
+        toAccountId: "work",
+        atMs: 1234,
+        cause: "http_429",
+      },
+    ]);
+    expect(codex?.accounts).toEqual([
+      expect.objectContaining({
+        id: "personal",
+        observability: {
+          activeLeaseCount: 0,
+          lastLeaseAt: null,
+          servedLastRequest: false,
+        },
+      }),
+      expect.objectContaining({
+        id: "work",
+        observability: {
+          activeLeaseCount: 2,
+          lastLeaseAt: 1234,
+          servedLastRequest: true,
+        },
+      }),
+    ]);
+    expect(JSON.stringify(codex)).not.toContain("raw-session");
+    expect(JSON.stringify(codex)).not.toContain("refresh");
+    expect(JSON.stringify(codex)).not.toContain("accessToken");
+  });
+
+  it("rejects malformed OAuth code and cancellation requests", async () => {
+    const submit = createContext({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription/oauth/submit-code",
+      body: {},
+    });
+    expect(await handleAccountsRoutes(submit)).toBe(true);
+    expect(submit.status).toBe(400);
+
+    const cancel = createContext({
+      method: "POST",
+      pathname: "/api/accounts/anthropic-subscription/oauth/cancel",
+      body: {},
+    });
+    expect(await handleAccountsRoutes(cancel)).toBe(true);
+    expect(cancel.status).toBe(400);
   });
 
   it("rejects external or unavailable subscription providers as imported API keys", async () => {
