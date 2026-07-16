@@ -417,7 +417,7 @@ function buildFixtureBody(overrides = {}) {
   ).join("\n\n");
 }
 
-function runSelfTest() {
+export function runSelfTest() {
   const failures = [];
 
   {

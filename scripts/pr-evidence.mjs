@@ -137,9 +137,9 @@ export function selectPrEvidenceTarget(releases, neededSlots) {
   return { tag: prEvidenceTagForIndex(maxIndex + 1), create: true };
 }
 
-/** Every pr-evidence-family release with its assets (one NDJSON object per release from the paginated releases API). */
-function fetchPrEvidenceReleases() {
-  const out = gh([
+/** Every pr-evidence-family release with its assets (one NDJSON object per release from the paginated releases API). `run` is the `gh` invoker — injectable so the fetch/roll-over pipeline is unit-testable without the network. */
+export function fetchPrEvidenceReleases(run = gh) {
+  const out = run([
     "api",
     "repos/{owner}/{repo}/releases",
     "--paginate",
@@ -181,7 +181,7 @@ function errText(err) {
 // tokens rather than a full sentence. A name-collision 422 (a different message)
 // deliberately does NOT match — that is a real surprise the author should see,
 // not something to paper over by rolling to another release.
-function isReleaseFullError(text) {
+export function isReleaseFullError(text) {
   return (
     /HTTP 422/i.test(text) &&
     /file_count|number of (files|assets)|asset (count|limit)|too many (files|assets)|maximum.*(files|assets)/i.test(
@@ -191,11 +191,11 @@ function isReleaseFullError(text) {
 }
 
 /** Create the next overflow release, tolerating a concurrent lane that beat us to it (the created release is the desired end state either way). */
-function createOverflowReleaseIfAbsent(tag) {
+export function createOverflowReleaseIfAbsent(tag, run = gh) {
   const index = prEvidenceReleaseIndex(tag);
   const notes = `Overflow continuation of the '${PRIMARY_RELEASE_TAG}' evidence asset store. GitHub caps a release at ${MAX_ASSETS_PER_RELEASE} assets, so headless-agent evidence uploads (scripts/pr-evidence.mjs) roll into '${tag}' once '${prEvidenceTagForIndex(index - 1)}' fills. Files are named '<pr>-<artifact>'; embed the asset download URLs in the PR evidence rows. Never delete assets referenced by an open PR.`;
   try {
-    gh(
+    run(
       [
         "release",
         "create",
@@ -225,9 +225,9 @@ function createOverflowReleaseIfAbsent(tag) {
  * next release when the chosen one is full — capacity is read up front, and a
  * 422 `file_count` failure (concurrent-fill race) triggers a rollover retry.
  * `stagedByName` is name → local path. Returns name → download URL on whichever
- * release accepted the batch.
+ * release accepted the batch. `run` is the `gh` invoker (injectable for tests).
  */
-function uploadAssets(stagedByName, releases) {
+export function uploadAssets(stagedByName, releases, run = gh) {
   const names = [...stagedByName.keys()];
   const paths = names.map((name) => stagedByName.get(name));
   const counts = releaseCounts(releases);
@@ -239,13 +239,13 @@ function uploadAssets(stagedByName, releases) {
     );
     const { tag, create } = selectPrEvidenceTarget(visible, names.length);
     if (create) {
-      createOverflowReleaseIfAbsent(tag);
+      createOverflowReleaseIfAbsent(tag, run);
       if (!counts.some((entry) => entry.tag === tag)) {
         counts.push({ tag, count: 0 });
       }
     }
     try {
-      gh(["release", "upload", tag, ...paths], {
+      run(["release", "upload", tag, ...paths], {
         stdio: ["ignore", "inherit", "pipe"],
       });
       const base = releaseDownloadBase(tag);
@@ -272,9 +272,9 @@ function uploadAssets(stagedByName, releases) {
  * PRs are immutable by policy) and keeps its original release URL; only genuinely
  * new assets are uploaded, into the current release with capacity.
  */
-function attach(pr, files) {
+export function attach(pr, files, run = gh) {
   if (files.length === 0) fail("attach needs at least one file");
-  const releases = fetchPrEvidenceReleases();
+  const releases = fetchPrEvidenceReleases(run);
   const index = assetIndex(releases);
   const urls = new Map();
   const stagedByName = new Map();
@@ -303,7 +303,7 @@ function attach(pr, files) {
     }
   }
   if (stagedByName.size > 0) {
-    const uploaded = uploadAssets(stagedByName, releases);
+    const uploaded = uploadAssets(stagedByName, releases, run);
     for (const [name, url] of uploaded) urls.set(name, url);
   }
   for (const name of order) console.log(`  ${urls.get(name)}`);
@@ -315,7 +315,7 @@ function isMediaName(name) {
 }
 
 /** Render the replacement row line for an id + resolved value. */
-function renderRow(id, value) {
+export function renderRow(id, value) {
   if (/^N\/?A\s*[-:]/i.test(value)) return `- [ ] ${value}`;
   if (isMediaName(value) && /^https?:/i.test(value)) {
     // Embed images inline; videos/GIFs render from the bare URL on GitHub.
@@ -330,7 +330,7 @@ function renderRow(id, value) {
 }
 
 /** Replace the block after `<!-- evidence-row:<id> -->` with `line`. */
-function patchRow(body, id, line) {
+export function patchRow(body, id, line) {
   const marker = `<!-- evidence-row:${id} -->`;
   const at = body.indexOf(marker);
   if (at === -1) {

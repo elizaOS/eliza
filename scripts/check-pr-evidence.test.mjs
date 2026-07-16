@@ -26,6 +26,7 @@ import {
   REQUIRED_EVIDENCE_ROWS,
   requiresSurfaceArtifacts,
   requiresSurfaceArtifactsFromFiles,
+  runSelfTest,
   SURFACE_ARTIFACT_ROW_IDS,
 } from "./check-pr-evidence.mjs";
 
@@ -675,5 +676,157 @@ describe("check-pr-evidence against the real PR template", () => {
     const { ok, findings } = evaluatePrEvidence(template);
     assert.equal(ok, false);
     assert.ok(findings.every((finding) => finding.status === "blank"));
+  });
+});
+
+describe("evaluatePrEvidence verdicts", () => {
+  it("passes a fully evidenced backend-only body with no surface trigger", () => {
+    const { ok, findings } = evaluatePrEvidence(buildBody());
+    assert.equal(ok, true);
+    assert.ok(findings.every((finding) => finding.status === "ok"));
+  });
+
+  it("reports a missing marker as missing and a blank row as blank", () => {
+    const body = buildBody({ "backend-logs": "" });
+    const { ok, findings } = evaluatePrEvidence(body);
+    assert.equal(ok, false);
+    assert.equal(
+      findings.find((finding) => finding.id === "backend-logs")?.status,
+      "blank",
+    );
+    const withoutMarker = buildBody();
+    const truncated = withoutMarker.replace(
+      /<!-- evidence-row:llm-trajectory -->[\s\S]*?(?=\n\n<!-- evidence-row:|$)/,
+      "",
+    );
+    const missing = evaluatePrEvidence(truncated).findings.find(
+      (finding) => finding.id === "llm-trajectory",
+    );
+    assert.equal(missing?.status, "missing");
+  });
+
+  it("path detection overrides labels: a UI .tsx diff forces real media on visual rows", () => {
+    const { ok, findings } = evaluatePrEvidence(
+      buildBody(),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/app/src/views/Home.tsx"] },
+    );
+    assert.equal(ok, false);
+    for (const id of ["before-screenshots", "after-screenshots"]) {
+      assert.equal(
+        findings.find((finding) => finding.id === id)?.status,
+        "artifact-required",
+        `${id} should demand media on a surface diff`,
+      );
+    }
+    // buildBody's domain-artifacts row carries OCR proof, so no ocr-required
+    // finding is appended here; the label-only case below covers that path.
+  });
+
+  it("a non-visual diff under a UI package does NOT force surface artifacts even with a ui label", () => {
+    const { ok } = evaluatePrEvidence(buildBody(), REQUIRED_EVIDENCE_ROWS, {
+      labels: "ui",
+      changedFiles: ["packages/ui/src/state/useThing.ts"],
+    });
+    assert.equal(ok, true);
+  });
+
+  it("label-only invocation still triggers the surface requirement", () => {
+    const { findings } = evaluatePrEvidence(
+      buildBody(),
+      REQUIRED_EVIDENCE_ROWS,
+      {
+        labels: "native",
+      },
+    );
+    assert.equal(
+      findings.find((finding) => finding.id === "before-screenshots")?.status,
+      "artifact-required",
+    );
+    // Without any OCR-referencing row, the surface trigger also appends the
+    // ocr-review requirement.
+    const noOcr = evaluatePrEvidence(
+      buildBody({ "domain-artifacts": "- [ ] `N/A - no domain artifacts`." }),
+      REQUIRED_EVIDENCE_ROWS,
+      { labels: "native" },
+    );
+    assert.equal(
+      noOcr.findings.find((finding) => finding.id === "ocr-review")?.status,
+      "ocr-required",
+    );
+  });
+
+  it("allows N/A before-screenshots when every touched UI file was added", () => {
+    const surface = ["packages/ui/src/components/New.tsx"];
+    const body = buildBody({
+      "before-screenshots":
+        "- [ ] Before screenshots `N/A - brand-new surface, no before state`.",
+      "after-screenshots":
+        "- [x] ![after](https://github.com/elizaOS/eliza/releases/download/pr-evidence/1-a.jpg)",
+      "walkthrough-video":
+        "- [x] https://github.com/elizaOS/eliza/releases/download/pr-evidence/1-w.mp4",
+      "domain-artifacts":
+        "- [x] OCR text readout: https://github.com/elizaOS/eliza/releases/download/pr-evidence/1-ocr.json",
+    });
+    const allNew = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: surface,
+      addedFiles: surface,
+    });
+    assert.equal(allNew.ok, true);
+    const modified = evaluatePrEvidence(body, REQUIRED_EVIDENCE_ROWS, {
+      changedFiles: surface,
+      addedFiles: [],
+    });
+    assert.equal(
+      modified.findings.find((finding) => finding.id === "before-screenshots")
+        ?.status,
+      "artifact-required",
+    );
+  });
+
+  it("accepts overflow-release (pr-evidence-N) media on a surface PR", () => {
+    const dl = (tag, name) =>
+      `https://github.com/elizaOS/eliza/releases/download/${tag}/${name}`;
+    const { ok } = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots": `- [x] ![before](${dl("pr-evidence-2", "9-b.jpg")})`,
+        "after-screenshots": `- [x] ![after](${dl("pr-evidence-2", "9-a.jpg")})`,
+        "walkthrough-video": `- [x] ${dl("pr-evidence-3", "9-w.mp4")}`,
+        "domain-artifacts": `- [x] OCR readout ${dl("pr-evidence-3", "9-ocr.jsonl")}`,
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/ui/src/components/Foo.tsx"] },
+    );
+    assert.equal(ok, true);
+  });
+
+  it("rejects a release-page link standing in for a screenshot", () => {
+    const { findings } = evaluatePrEvidence(
+      buildBody({
+        "before-screenshots":
+          "- [ ] https://github.com/elizaOS/eliza/releases/tag/pr-evidence-2",
+      }),
+      REQUIRED_EVIDENCE_ROWS,
+      { changedFiles: ["packages/ui/src/components/Foo.tsx"] },
+    );
+    assert.equal(
+      findings.find((finding) => finding.id === "before-screenshots")?.status,
+      "artifact-required",
+    );
+  });
+
+  it("empty body reports every required row missing", () => {
+    const { ok, findings } = evaluatePrEvidence("");
+    assert.equal(ok, false);
+    assert.equal(findings.length, REQUIRED_EVIDENCE_ROWS.length);
+    assert.ok(findings.every((finding) => finding.status === "missing"));
+  });
+});
+
+describe("planted-fixture self-test", () => {
+  it("passes against the current gate rules", () => {
+    // runSelfTest exercises the same fixtures CI's --self-test flag does and
+    // process.exit(1)s on any regression; completing without exit is the pass.
+    runSelfTest();
   });
 });
