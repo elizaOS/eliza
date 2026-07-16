@@ -3961,6 +3961,12 @@ export function ContinuousChatOverlay({
   // stays OUTSIDE.
   const isOverlayControlTarget = React.useCallback(
     (target: EventTarget | null): boolean => {
+      if (
+        target instanceof Element &&
+        target.closest("[data-chat-overlay-control]")
+      ) {
+        return true;
+      }
       if (!(target instanceof Node) || !overlayRef.current?.contains(target)) {
         return false;
       }
@@ -5876,6 +5882,7 @@ export function ContinuousChatOverlay({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
+                    data-chat-overlay-control
                     side="top"
                     align="start"
                     sideOffset={10}
