@@ -300,23 +300,6 @@ export interface AcpJsonRpcBase {
   jsonrpc?: "2.0" | string;
 }
 
-export interface AcpJsonRpcRequest extends AcpJsonRpcBase {
-  id: string | number;
-  method: string;
-  params?: unknown;
-}
-
-export interface AcpJsonRpcNotification extends AcpJsonRpcBase {
-  method: string;
-  params?: unknown;
-}
-
-export interface AcpJsonRpcResponse extends AcpJsonRpcBase {
-  id: string | number;
-  result?: unknown;
-  error?: { code?: number; message?: string; data?: unknown };
-}
-
 export interface AcpJsonRpcAnyMessage extends AcpJsonRpcBase {
   id?: string | number;
   method?: string;

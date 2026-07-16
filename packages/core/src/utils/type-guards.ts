@@ -5,31 +5,6 @@
  * instances; `isObjectRecord` is the looser any-non-null-non-array-object check;
  * `asRecord` / `asRecordOrUndefined` narrow-or-nullify for safe property access.
  */
-const NON_PLAIN_CONSTRUCTORS = new Set([
-	Array,
-	Date,
-	RegExp,
-	Map,
-	Set,
-	WeakMap,
-	WeakSet,
-	Error,
-	Promise,
-	ArrayBuffer,
-	DataView,
-	Int8Array,
-	Uint8Array,
-	Uint8ClampedArray,
-	Int16Array,
-	Uint16Array,
-	Int32Array,
-	Uint32Array,
-	Float32Array,
-	Float64Array,
-	BigInt64Array,
-	BigUint64Array,
-]);
-
 export function isPlainObject(
 	value: unknown,
 ): value is Record<string, unknown> {
@@ -47,12 +22,7 @@ export function isPlainObject(
 		return true;
 	}
 
-	// Explicitly exclude known built-in types
-	if (NON_PLAIN_CONSTRUCTORS.has(proto.constructor)) {
-		return false;
-	}
-
-	// Anything else (custom class instances, Buffer, etc.) is not a plain object.
+	// Anything else (built-ins, custom class instances, Buffer, …) is not a plain object.
 	return false;
 }
 
