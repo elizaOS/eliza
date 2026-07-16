@@ -21,6 +21,8 @@ const CANONICAL = "1.3.14";
 const GATE_WORKFLOWS = [
   "ci.yaml",
   "test.yml",
+  "coverage-gate.yml",
+  "cloud-cf-deploy.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
   "benchmark-tests.yml",

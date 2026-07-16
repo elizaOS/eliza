@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * Contract for the pinned CI Bun version (#13402 item 2 + item 5). Keeps the
- * frozen-lockfile install path on ONE concrete Bun version so a stale bump or a
- * regression back to floating `canary`/`latest` cannot slip through unnoticed.
+ * deterministic CI install paths on ONE concrete Bun version so a stale bump or
+ * a regression back to floating `canary`/`latest` cannot slip through unnoticed.
  *
  * Background: `bun install --frozen-lockfile` fails when Bun reserializes
  * bun.lock to lockfileVersion 2, which floating `canary`/`latest` do on their
@@ -21,11 +21,11 @@
  *      expression and not floating `canary`/`latest`) must equal the canonical
  *      version. This catches a second concrete pin drifting away from the rest.
  *
- *   2. The frozen-lockfile gate workflows stay pinned. Each workflow in
- *      GATE_WORKFLOWS — the required/scheduled lanes that run a frozen install —
- *      must wire the canonical pin (as a `BUN_VERSION`/`bun-version` literal) and
- *      must NOT wire floating `canary`/`latest`. This catches a regression that
- *      unpins a gate back onto the moving channel.
+ *   2. Deterministic gate and deploy workflows stay pinned. Each workflow in
+ *      GATE_WORKFLOWS must wire the canonical pin (as a
+ *      `BUN_VERSION`/`bun-version` literal) and must NOT wire floating
+ *      `canary`/`latest`. This catches a regression that makes required checks
+ *      or deploys depend on tag discovery before the job can run.
  *
  * Intentionally silent about non-gate workflows that track `canary`/`latest` on
  * purpose (benchmarks, some release/build lanes). Narrowing those is a separate
@@ -45,12 +45,14 @@ const DEFAULT_REPO_ROOT = resolve(
 const VERSION_FILE = ".github/ci-bun-version.json";
 const WORKFLOW_DIR = ".github/workflows";
 
-// The frozen-lockfile install lanes that must stay on the concrete pin. Each
-// documents the `--frozen-lockfile` rationale inline; the required `ci-ok`
-// aggregate (test.yml) and the main gate (ci.yaml) are the load-bearing two.
+// Required, scheduled, and deploy-critical install lanes that must stay on the
+// concrete pin. The required `ci-ok` aggregate (test.yml), main gate (ci.yaml),
+// changed-file coverage, and canonical cloud deploy are the load-bearing paths.
 const GATE_WORKFLOWS = [
   "ci.yaml",
   "test.yml",
+  "coverage-gate.yml",
+  "cloud-cf-deploy.yml",
   "develop-exhaustive.yml",
   "ci-full-matrix-proof.yml",
   "benchmark-tests.yml",
@@ -132,7 +134,7 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     }
   }
 
-  // --- Invariant 2: the frozen-install gate lanes stay pinned. ---
+  // --- Invariant 2: deterministic gate/deploy lanes stay pinned. ---
   for (const name of GATE_WORKFLOWS) {
     const rel = join(WORKFLOW_DIR, name);
     const text = read(rel);
@@ -143,14 +145,14 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     );
     assert(
       floats === undefined,
-      `${rel}: is a frozen-lockfile gate but wires floating Bun "${floats?.raw}". ` +
-        `It must stay pinned to ${canonical} (${VERSION_FILE}) so --frozen-lockfile does not break.`,
+      `${rel}: is a deterministic CI lane but wires floating Bun "${floats?.raw}". ` +
+        `It must stay pinned to ${canonical} (${VERSION_FILE}) so setup is reproducible and does not require tag discovery.`,
     );
 
     const pinsCanonical = values.some((v) => v.raw === canonical);
     assert(
       pinsCanonical,
-      `${rel}: is a frozen-lockfile gate but does not wire the canonical Bun pin ${canonical} ` +
+      `${rel}: is a deterministic CI lane but does not wire the canonical Bun pin ${canonical} ` +
         `(${VERSION_FILE}). Expected a BUN_VERSION/bun-version: "${canonical}" literal.`,
     );
   }
