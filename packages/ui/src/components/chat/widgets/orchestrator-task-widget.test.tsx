@@ -152,9 +152,14 @@ describe("OrchestratorTaskWidget", () => {
     mocks.getWidgets.mockRejectedValue(new Error("task store unavailable"));
     render(<OrchestratorTaskWidget {...props} />);
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "task store unavailable",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("task store unavailable");
+    // #10708 (chromeless widgets): the error state is a danger-tinted strip —
+    // a radius + translucent fill, never the glass-card triad. It must NOT
+    // reintroduce a `border border-*` on the container.
+    const alertClass = alert.getAttribute("class") ?? "";
+    expect(alertClass).not.toMatch(/\bborder\s+border-/);
+    expect(alertClass).toMatch(/bg-danger/);
     expect(screen.queryByText("No orchestration tasks yet")).toBeNull();
 
     mocks.getWidgets.mockResolvedValue(populated);
@@ -163,6 +168,25 @@ describe("OrchestratorTaskWidget", () => {
     );
     expect(await screen.findByText("Ship the orchestration rail")).toBeTruthy();
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("keeps task metadata and the empty hint at accessible contrast", async () => {
+    // The 9px metadata line and empty-state hint render `text-muted` at full
+    // strength; the previous `/70` opacity was 3.54:1, below WCAG AA 4.5:1.
+    mocks.getWidgets.mockResolvedValue(populated);
+    const view = render(<OrchestratorTaskWidget {...props} />);
+    const meta = (await screen.findByText("1 child")).parentElement;
+    expect(meta?.className).toContain("text-muted");
+    expect(meta?.className).not.toContain("text-muted/70");
+    view.unmount();
+
+    mocks.getWidgets.mockResolvedValue({ ...populated, tasks: [] });
+    render(<OrchestratorTaskWidget {...props} />);
+    const hint = await screen.findByText(
+      "New coding tasks will appear here as they run.",
+    );
+    expect(hint.className).toContain("text-muted");
+    expect(hint.className).not.toContain("text-muted/70");
   });
 
   it("closes the SSE subscription when the widget unmounts", () => {

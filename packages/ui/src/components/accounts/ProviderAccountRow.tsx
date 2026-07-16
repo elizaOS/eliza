@@ -229,7 +229,7 @@ export function ProviderAccountRow({
           disabled={!connected}
           aria-expanded={connected ? expanded : undefined}
           className={cn(
-            "flex min-w-0 flex-1 items-center gap-3 rounded-md text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/50",
+            "flex min-w-0 flex-1 items-center gap-3 rounded-md text-left",
             connected ? "cursor-pointer" : "cursor-default",
           )}
         >
