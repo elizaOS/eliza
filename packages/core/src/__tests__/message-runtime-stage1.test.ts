@@ -14,6 +14,7 @@ import type { CandidateActionBackstopRule } from "../runtime/candidate-action-ba
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
 	PseudonymSession,
@@ -364,9 +365,17 @@ describe("runV5MessageRuntimeStage1", () => {
 				finishReason: "tool_calls",
 			},
 		]);
-		(runtime.character as { settings?: Record<string, unknown> }).settings = {
-			maxReplyTokens: 200,
-		};
+		// Round-trip through the character schema: maxReplyTokens must survive
+		// validation as a known top-level settings key (not be relocated into
+		// settings.extra, which would silently strip the budget).
+		const validated = validateCharacter({
+			name: runtime.character.name ?? "Test",
+			settings: { maxReplyTokens: 200 },
+		});
+		expect(validated.success).toBe(true);
+		if (!validated.success) return;
+		expect(validated.data.settings?.maxReplyTokens).toBe(200);
+		runtime.character.settings = validated.data.settings;
 
 		await runV5MessageRuntimeStage1({
 			runtime,

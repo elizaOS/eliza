@@ -178,6 +178,7 @@ import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
+import type { CharacterSettings } from "../types/agent";
 import type {
 	Action,
 	ActionResult,
@@ -324,25 +325,22 @@ export {
 
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 
-/** `character.settings` key for the per-agent Stage-1 reply-length budget. */
-const MAX_REPLY_TOKENS_SETTINGS_KEY = "maxReplyTokens";
-
 /**
  * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
  * ceiling applied to the Stage-1/synthesis call so operators can pin terse
  * replies (e.g. group-chat turns) without rewriting the persona, and have it
- * enforced by the provider rather than requested politely in `system`. Absent
- * or invalid → undefined, i.e. the unchanged channel default applies.
+ * enforced by the provider rather than requested politely in `system`.
+ * `characterSchema` validates the field (`z.number().int().positive()`); the
+ * integer guard here only covers characters constructed without validation.
+ * Unset or invalid → undefined, i.e. the unchanged channel default applies.
  */
-function parseMaxReplyTokensFromCharacterSettings(
-	settings: Record<string, unknown> | null | undefined,
+function resolveMaxReplyTokens(
+	settings: CharacterSettings | undefined,
 ): number | undefined {
-	if (!settings || typeof settings !== "object") return undefined;
-	const raw = settings[MAX_REPLY_TOKENS_SETTINGS_KEY];
-	if (typeof raw !== "number" || !Number.isInteger(raw) || raw <= 0) {
-		return undefined;
-	}
-	return raw;
+	const raw = settings?.maxReplyTokens;
+	return typeof raw === "number" && Number.isInteger(raw) && raw > 0
+		? raw
+		: undefined;
 }
 
 const STAGE1_TRUNCATION_REPLY =
@@ -6643,7 +6641,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		// Per-agent reply-length budget (#16395): when set it caps every channel
 		// (including DMs) with a real max_tokens; otherwise the existing per-channel
 		// default applies unchanged.
-		const maxReplyTokens = parseMaxReplyTokensFromCharacterSettings(
+		const maxReplyTokens = resolveMaxReplyTokens(
 			args.runtime.character.settings,
 		);
 		const stage1ModelParams = {
