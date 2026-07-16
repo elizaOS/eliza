@@ -74,7 +74,9 @@ test("browser back and forward restore hash and query driven route views", async
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+    page.getByRole("heading", {
+      name: /^The OS for sovereign agent devices\.$/,
+    }),
   ).toBeVisible();
 
   await page

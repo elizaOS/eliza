@@ -2,7 +2,6 @@
  * Playwright coverage for marketing download CTAs and cloud/app link targets.
  */
 
-import { EXTERNAL_URLS } from "@elizaos/shared/brand";
 import {
   type APIRequestContext,
   expect,
@@ -10,26 +9,10 @@ import {
   test,
 } from "playwright/test";
 import { releaseData } from "../../src/generated/release-data";
+import { selectEffectiveRelease } from "../../src/lib/release-selection";
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-async function expectCloudPath(locator: Locator) {
-  const href = await locator.getAttribute("href");
-  expect(href).toBeTruthy();
-  const url = new URL(href ?? "", EXTERNAL_URLS.cloud);
-  expect(url.origin).toBe(EXTERNAL_URLS.cloud);
-  expect(url.pathname).toMatch(/^\/login\/?$/);
-  expect(url.searchParams.get("intent")).toBe("launch");
-}
-
-async function expectWebAppPath(locator: Locator) {
-  const href = await locator.getAttribute("href");
-  expect(href).toBeTruthy();
-  const url = new URL(href ?? "", EXTERNAL_URLS.app);
-  expect(url.origin).toBe(EXTERNAL_URLS.app);
-  expect(url.pathname).toMatch(/^\/?$/);
 }
 
 async function _expectExternalOrLocal(
@@ -58,7 +41,7 @@ async function expectReachableHead(
   ).toBeLessThan(400);
 }
 
-test("homepage centers Eliza App downloads and product CTAs", async ({
+test("homepage ports the sovereign OG surface and preserves downloads", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -74,30 +57,51 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     )
     .toBe(0);
 
-  await expect(page).toHaveTitle("Eliza — your agent, everywhere");
+  await expect(page).toHaveTitle("elizaOS: the OS for sovereign agent devices");
   await expect(
-    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+    page.getByRole("heading", {
+      name: /^The OS for sovereign agent devices\.$/,
+    }),
+  ).toBeVisible();
+  await expect(page.getByText("Open source").first()).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      name: /Everyone built a gadget\. We build the layer underneath\./,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /^The Linux of agent devices\.$/ }),
   ).toBeVisible();
 
-  const productNav = page.getByRole("navigation", {
-    name: "Eliza products",
-  });
-  await expectWebAppPath(productNav.getByRole("link", { name: /^Web app$/ }));
   await expect(
-    productNav.getByRole("link", { name: /^Download$/ }),
-  ).toHaveAttribute("href", "#download");
-  await expectCloudPath(productNav.getByRole("link", { name: /^Cloud$/ }));
-
+    page.getByRole("link", { name: /^The deal ↓$/ }),
+  ).toHaveAttribute("href", "#deal");
+  await expect(
+    page.getByRole("link", { name: /^How it works$/ }),
+  ).toHaveAttribute("href", "#stack");
   await expect(
     page.getByRole("link", { name: /^Download$/ }).first(),
   ).toHaveAttribute("href", "#download");
-  await expectWebAppPath(
-    page.getByRole("link", { name: /^Open web app$/ }).first(),
-  );
-  await expectCloudPath(
-    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).first(),
-  );
 
+  await expect(
+    page.getByRole("link", { name: /^Read the Orange Paper →$/ }),
+  ).toHaveAttribute("href", "/orange-paper");
+  await expect(
+    page.getByRole("link", { name: /^github\.com\/elizaOS$/ }).first(),
+  ).toHaveAttribute("href", "https://github.com/elizaOS/eliza");
+
+  await page.goto("/orange-paper", { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("heading", { name: /^Own your intelligence\.$/ }),
+  ).toBeVisible();
+  await expect(page).toHaveTitle("elizaOS: the Orange Paper");
+
+  await page.goto("/plan", { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("heading", { name: /^Own your intelligence\.$/ }),
+  ).toBeVisible();
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   await page
     .getByRole("link", { name: /^Download$/ })
     .first()
@@ -117,10 +121,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(page.getByRole("link", { name: /^Linux/i })).toBeVisible();
   await expect(page.getByRole("link", { name: /^Android APK/i })).toBeVisible();
 
-  const effectiveRelease =
-    releaseData.release.downloads.length > 0
-      ? releaseData.release
-      : (releaseData.canaryRelease ?? releaseData.release);
+  const effectiveRelease = selectEffectiveRelease(releaseData);
   const effectiveDownloads = effectiveRelease.downloads;
 
   await expect(
@@ -130,7 +131,9 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   ).toHaveCount(effectiveDownloads.length);
 
   if (effectiveDownloads.length === 0) {
-    const primaryDownloadCards = page.locator(".app-download-grid a");
+    const primaryDownloadCards = page.locator(
+      '[data-testid="download-grid"] a',
+    );
     await expect(page.getByText("Opens release page")).toHaveCount(
       await primaryDownloadCards.count(),
     );
@@ -144,28 +147,28 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     );
   }
 
-  // The primary app-download-grid must not contain disabled cards. The
-  // separate osArtifact grid may contain pending entries (rendered with
-  // aria-disabled="true") for distributions still in build.
   await expect(
-    page.locator('.app-download-grid [aria-disabled="true"]'),
+    page.locator('[data-testid="download-grid"] [aria-disabled="true"]'),
   ).toHaveCount(0);
 
-  await expect(
-    page.getByRole("heading", { name: /^Install elizaOS\.$/ }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: /^Install elizaOS$/ }).first(),
-  ).toHaveAttribute("href", EXTERNAL_URLS.os);
-  await expect(
-    page.getByRole("heading", { name: /^Run in Cloud\.$/ }),
-  ).toBeVisible();
-  await expectCloudPath(
-    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).last(),
+  const availableOsArtifacts = releaseData.osArtifacts.filter(
+    (artifact) => artifact.downloadUrl,
   );
+  const osArtifactLinks = page.locator(
+    '[data-testid="os-artifact-list"] a[data-os-artifact-id]',
+  );
+  await expect(osArtifactLinks).toHaveCount(availableOsArtifacts.length);
+  for (const artifact of availableOsArtifacts) {
+    await expect(
+      page.locator(`[data-os-artifact-id="${artifact.id}"]`),
+    ).toHaveAttribute("href", artifact.downloadUrl ?? "");
+  }
 
-  await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");
-  await expect(page.locator(".brand-section").first()).toHaveCSS(
+  await expect(page.locator(".sovereign-page")).toHaveCSS(
+    "font-family",
+    /Poppins/,
+  );
+  await expect(page.locator(".sovereign-section").first()).toHaveCSS(
     "border-radius",
     "0px",
   );
@@ -177,7 +180,9 @@ test("homepage live marketing links resolve for cloud, os, release, and download
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+    page.getByRole("heading", {
+      name: /^The OS for sovereign agent devices\.$/,
+    }),
   ).toBeVisible();
 
   const links = page.locator("main a, header a, footer a");
@@ -202,54 +207,39 @@ test("homepage live marketing links resolve for cloud, os, release, and download
     uniqueHrefs.set(url.toString(), link.label);
   }
 
-  const appLinks = [...uniqueHrefs.keys()].filter((href) => {
-    const url = new URL(href);
-    return url.origin === EXTERNAL_URLS.app;
-  });
-  expect(appLinks).toEqual([`${EXTERNAL_URLS.app}/`]);
-
-  const cloudLinks = [...uniqueHrefs.keys()].filter((href) => {
-    const url = new URL(href);
-    return url.origin === EXTERNAL_URLS.cloud;
-  });
-  expect(cloudLinks).toHaveLength(1);
-  expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
-  expect(new URL(cloudLinks[0]).searchParams.get("intent")).toBe("launch");
-
-  const effectiveRelease =
-    releaseData.release.downloads.length > 0
-      ? releaseData.release
-      : (releaseData.canaryRelease ?? releaseData.release);
+  const effectiveRelease = selectEffectiveRelease(releaseData);
   const downloadTargets =
     effectiveRelease.downloads.length > 0
       ? effectiveRelease.downloads.map((download) => download.url)
       : ["https://github.com/elizaOS/eliza/releases"];
-  // osArtifacts with a downloadUrl render as anchor tags too, so include them.
-  const osArtifactUrls = releaseData.osArtifacts
+  const osArtifactDownloadTargets = releaseData.osArtifacts
     .map((artifact) => artifact.downloadUrl)
-    .filter((url): url is string => Boolean(url));
-
+    .filter((href): href is string => Boolean(href));
+  const osArtifactSupplementalTargets = releaseData.osArtifacts
+    .flatMap((artifact) => [artifact.checksumUrl, artifact.releaseNotesUrl])
+    .filter((href): href is string => Boolean(href));
   const expectedNonCloudTargets = Array.from(
     new Set(
       [
-        `${EXTERNAL_URLS.os}/`,
-        releaseData.release.url,
-        releaseData.release.checksum?.url,
+        "https://github.com/elizaOS/eliza",
+        effectiveRelease.url,
+        effectiveRelease.checksum?.url,
         ...downloadTargets,
-        ...osArtifactUrls,
+        ...osArtifactDownloadTargets,
+        ...osArtifactSupplementalTargets,
       ].filter((href): href is string => Boolean(href)),
     ),
   );
 
-  const nonCloudHrefs = [...uniqueHrefs.keys()].filter(
-    (href) =>
-      !["app.elizacloud.ai", "elizacloud.ai", "www.elizacloud.ai"].includes(
-        new URL(href).hostname,
-      ),
+  expect([...uniqueHrefs.keys()].sort()).toEqual(
+    expectedNonCloudTargets.sort(),
   );
-  expect(nonCloudHrefs.sort()).toEqual(expectedNonCloudTargets.sort());
 
   for (const [href, label] of uniqueHrefs) {
     await expectReachableHead(request, label, href);
+  }
+
+  for (const href of osArtifactDownloadTargets) {
+    await expectReachableHead(request, "OS artifact", href);
   }
 });

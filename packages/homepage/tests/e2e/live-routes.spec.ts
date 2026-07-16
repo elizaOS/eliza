@@ -6,7 +6,9 @@ import { expect, type Page, test } from "playwright/test";
 import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
-  { path: "/", heading: /Your Eliza, everywhere/i },
+  { path: "/", heading: /The OS for sovereign agent devices/i },
+  { path: "/orange-paper", heading: /Own your intelligence/i },
+  { path: "/plan", heading: /Own your intelligence/i },
   { path: "/leaderboard", landmark: ".theme-app" },
   { path: "/login", url: /\/get-started$/ },
   { path: "/get-started", heading: /Anywhere you want her to be/i },

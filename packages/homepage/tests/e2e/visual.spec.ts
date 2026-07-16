@@ -12,6 +12,8 @@ import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
   { path: "/", name: "landing" },
+  { path: "/orange-paper", name: "orange-paper" },
+  { path: "/plan", name: "plan" },
   { path: "/login", name: "login" },
   { path: "/connected", name: "connected" },
   { path: "/get-started", name: "get-started" },
@@ -19,7 +21,8 @@ const ROUTES = [
 ] as const;
 
 const VIEWPORTS = [
-  { name: "desktop", width: 1280, height: 720 },
+  { name: "desktop", width: 1440, height: 1000 },
+  { name: "tablet", width: 768, height: 1024 },
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 

@@ -163,7 +163,7 @@ function ProvisioningChatStep({
       })
     : containerStatus === "error"
       ? t("homepage_eliza.getStarted.statusFailed", {
-          defaultValue: "Setup failed — please refresh.",
+          defaultValue: "Setup failed, please refresh.",
         })
       : t("homepage_eliza.getStarted.statusSettingUp", {
           defaultValue: "Setting up your AI space...",
@@ -1492,7 +1492,7 @@ export default function GetStartedPage() {
                           defaultValue: "Setting up...",
                         })
                       : t("homepage_eliza.getStarted.skipAddLater", {
-                          defaultValue: "Skip — I’ll add it later",
+                          defaultValue: "Skip, I’ll add it later",
                         })}
                   </button>
 

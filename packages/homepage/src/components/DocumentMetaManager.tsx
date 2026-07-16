@@ -13,20 +13,21 @@ export function DocumentMetaManager(): null {
   useEffect(() => {
     if (typeof document === "undefined") return;
     const title = t("homepage_eliza.meta.title", {
-      defaultValue: "Eliza — your agent, everywhere",
+      defaultValue: "elizaOS: the OS for sovereign agent devices",
     });
     const description = t("homepage_eliza.meta.description", {
       defaultValue:
-        "Eliza — your agent, everywhere. Desktop, mobile, and cloud, all running the same Eliza.",
+        "One open agent operating system. No telemetry. No attention economy. Starting with a private phone built for government and enterprise.",
     });
     const ogTitle = t("homepage_eliza.meta.ogTitle", {
-      defaultValue: "Eliza — your agent, everywhere",
+      defaultValue: "elizaOS: the OS for sovereign agent devices",
     });
     const ogDescription = t("homepage_eliza.meta.ogDescription", {
-      defaultValue: "Desktop, mobile, and cloud, all running the same Eliza.",
+      defaultValue:
+        "One open agent operating system. No telemetry. No attention economy. Starting with a private phone built for government and enterprise.",
     });
     const ogImageAlt = t("homepage_eliza.meta.ogImageAlt", {
-      defaultValue: "Eliza",
+      defaultValue: "elizaOS",
     });
 
     document.title = title;

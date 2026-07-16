@@ -49,33 +49,13 @@ const MESSAGES: Record<UiLanguage, MessageDict> = {
 
 const loaders: Record<Exclude<UiLanguage, "en">, () => Promise<MessageDict>> = {
   "zh-CN": () =>
-    import("../i18n/locales/zh-CN.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  ko: () =>
-    import("../i18n/locales/ko.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  es: () =>
-    import("../i18n/locales/es.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  pt: () =>
-    import("../i18n/locales/pt.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  vi: () =>
-    import("../i18n/locales/vi.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  tl: () =>
-    import("../i18n/locales/tl.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
-  ja: () =>
-    import("../i18n/locales/ja.json")
-      .then((m) => m.default as MessageDict)
-      .catch(() => ({})),
+    import("../i18n/locales/zh-CN.json").then((m) => m.default as MessageDict),
+  ko: () => import("../i18n/locales/ko.json").then((m) => m.default),
+  es: () => import("../i18n/locales/es.json").then((m) => m.default),
+  pt: () => import("../i18n/locales/pt.json").then((m) => m.default),
+  vi: () => import("../i18n/locales/vi.json").then((m) => m.default),
+  tl: () => import("../i18n/locales/tl.json").then((m) => m.default),
+  ja: () => import("../i18n/locales/ja.json").then((m) => m.default),
 };
 
 const inflight = new Map<UiLanguage, Promise<void>>();
@@ -181,7 +161,9 @@ export function I18nProvider({
   );
 
   useEffect(() => {
-    void ensureLanguageLoaded(lang);
+    void ensureLanguageLoaded(lang).catch(() => {
+      MESSAGES[lang] = {};
+    });
   }, [lang]);
 
   useEffect(() => {
@@ -199,7 +181,9 @@ export function I18nProvider({
         // storage disabled — keep in-memory state
       }
       setLangState(normalized);
-      void ensureLanguageLoaded(normalized);
+      void ensureLanguageLoaded(normalized).catch(() => {
+        MESSAGES[normalized] = {};
+      });
     };
     return {
       lang,

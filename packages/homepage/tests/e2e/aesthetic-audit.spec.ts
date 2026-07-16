@@ -18,6 +18,8 @@ const TEST_TOKEN = "homepage-aesthetic-audit-token";
 
 const ROUTES = [
   { path: "/", name: "landing", authed: false },
+  { path: "/orange-paper", name: "orange-paper", authed: false },
+  { path: "/plan", name: "plan", authed: false },
   { path: "/leaderboard", name: "leaderboard", authed: false },
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },
@@ -25,7 +27,8 @@ const ROUTES = [
 ] as const;
 
 const VIEWPORTS = [
-  { name: "desktop", width: 1440, height: 900 },
+  { name: "desktop", width: 1440, height: 1000 },
+  { name: "tablet", width: 768, height: 1024 },
   { name: "mobile", width: 390, height: 844 },
 ] as const;
 
