@@ -149,7 +149,10 @@ describe("WEB_SEARCH action", () => {
     const { result, captured } = await runHandler({ query: "ramen" });
     expect(result.success).toBe(true);
     expect(result.text).toContain("Tabelog");
-    expect(captured.text).toContain("Tabelog");
+    // Data-gathering action: results flow to the reply via the ActionResult,
+    // not a standalone user message — delivering them dumped raw search JSON
+    // into the chat ahead of the synthesized reply. No success callback.
+    expect(captured.text).toBeUndefined();
     expect(result.data).toMatchObject({
       actionName: "WEB_SEARCH",
       provider: "parallel",
