@@ -100,6 +100,21 @@ export function preOpenCloudLoginWindow(): Window | null {
 }
 
 /**
+ * Device-login already owns a dedicated browser surface. Its cross-origin
+ * redirect applies COOP, which may clear both window.name and window.opener;
+ * the encoded return target is the durable signal that OAuth must reuse the
+ * current surface instead of opening a nested popup.
+ */
+export function shouldReuseCurrentCloudLoginWindow(
+  returnTo: string | null,
+): boolean {
+  return (
+    returnTo === "/auth/cli-login" ||
+    returnTo?.startsWith("/auth/cli-login?") === true
+  );
+}
+
+/**
  * Whether the cloud sign-in should navigate THIS tab to the same-origin
  * `/login` page instead of driving the popup device-code flow. True on plain
  * web with a same-origin Steward login when the popup handle is dead (blocked
