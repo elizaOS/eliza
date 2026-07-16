@@ -261,6 +261,46 @@ if (exposure.exposureLevel === "none") {
   );
 }
 
+if (
+  exposure.exposureLevel === "medium" ||
+  exposure.exposureLevel === "high"
+) {
+  investorInsights.negative.push(
+    createInvestorInsight({
+      id: "known-exposure-indicators",
+
+      title: "Known Exposure Indicators",
+
+      finding:
+        exposure.exposureLevel === "high"
+          ? "High exposure indicators were identified in the currently connected intelligence sources."
+          : "Meaningful exposure indicators were identified in the currently connected intelligence sources.",
+
+      whyItMatters:
+        "Exposure to known scam, rug-pull, suspicious, sanctioned, or adverse-media addresses can materially affect how the wallet should be understood.",
+
+      impact: "negative",
+
+      confidence:
+        exposure.evidenceConfidence,
+
+      severity:
+        exposure.exposureLevel === "high"
+          ? "critical"
+          : "high",
+
+      evidenceRecordIds: [
+        "exposure-summary",
+      ],
+
+      limitations: [
+        "An exposure match does not by itself prove ownership, intent, wrongdoing, or direct participation.",
+        "The result is limited to the intelligence sources currently connected to SkunkScanAI.",
+      ],
+    }),
+  );
+}
+  
 if (risk.level === "low") {
   investorInsights.positive.push(
     createInvestorInsight({
