@@ -1441,7 +1441,7 @@ export function buildBunRpcHandlers({
     // ---- Shell chat/voice controller cross-window relay (#16442) ----
     // Fan a renderer's shell-sync publish out to every registered window. The
     // renderer coordinator filters its own echo, so this stays a dumb pipe.
-    shellControllerRelay: (params: { envelope: unknown }) => {
+    shellControllerRelay: async (params: { envelope: unknown }) => {
       broadcastShellSyncEnvelope(params?.envelope);
       return { ok: true };
     },
