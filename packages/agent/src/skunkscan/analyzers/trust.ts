@@ -254,6 +254,37 @@ if (risk.level === "low") {
     }),
   );
 }
+
+  if (funding.fundingSourceType === "unknown") {
+  investorInsights.neutral.push(
+    createInvestorInsight({
+      id: "funding-source-unknown",
+
+      title: "Funding Source Could Not Be Confirmed",
+
+      finding:
+        "The wallet's original funding source could not be confidently identified from the available blockchain evidence.",
+
+      whyItMatters:
+        "Knowing how a wallet was initially funded can provide useful context about its origin and relationships.",
+
+      impact: "neutral",
+
+      confidence:
+        funding.evidenceConfidence,
+
+      severity: "medium",
+
+      evidenceRecordIds: [
+        "funding-assessment",
+      ],
+
+      limitations: [
+        "The first known transaction may not contain the wallet's complete funding history.",
+      ],
+    }),
+  );
+}
   
   return {
     trustScore,
