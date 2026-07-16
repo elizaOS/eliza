@@ -559,11 +559,7 @@ async function startTranscriptionViaSlash(page: Page): Promise<void> {
   await expect(
     page.getByTestId("chat-composer-transcription-stop"),
   ).toHaveAttribute("aria-label", "stop transcription", { timeout: 15_000 });
-  await expect(page.getByTestId("chat-composer-action")).toHaveAttribute(
-    "aria-label",
-    "send transcription",
-    { timeout: 15_000 },
-  );
+  await expect(page.getByTestId("chat-composer-action")).toHaveCount(0);
 }
 
 async function finalizeTranscriptionViaComposerStop(page: Page): Promise<void> {
