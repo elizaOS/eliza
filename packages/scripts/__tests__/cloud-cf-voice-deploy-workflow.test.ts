@@ -260,4 +260,22 @@ describe("Cloud CF realtime voice deploy contract", () => {
       expect(flag).toContain("vars.VOICE_REALTIME_WS_ENABLED");
     }
   });
+
+  test("every GitHub expression in the deploy workflow has balanced parentheses", () => {
+    // A stray `)` inside `${{ ... }}` makes the whole workflow unparseable at
+    // the GitHub layer (instant run failure with zero jobs) while remaining
+    // invisible to the substring/regex assertions above. Balance-check every
+    // expression so the parse error fails HERE, in a reviewable unit test.
+    const expressions = workflowSource.match(/\$\{\{[\s\S]*?\}\}/g) ?? [];
+    expect(expressions.length).toBeGreaterThan(0);
+    for (const expression of expressions) {
+      let depth = 0;
+      for (const ch of expression) {
+        if (ch === "(") depth += 1;
+        if (ch === ")") depth -= 1;
+        expect(depth).toBeGreaterThanOrEqual(0);
+      }
+      expect(depth).toBe(0);
+    }
+  });
 });
