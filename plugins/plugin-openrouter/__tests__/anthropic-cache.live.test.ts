@@ -20,7 +20,7 @@ const stableSegment = [
   "This deterministic reference block exists to cross Anthropic's minimum cacheable prefix size.",
   ...Array.from({ length: 1_400 }, (_, index) => `amber-reference-fact-${index}.`),
 ].join(" ");
-const dynamicSegment = '\nReturn only a JSON object with the boolean field "ok" set to true.';
+const dynamicSegment = "\nReturn exactly OK.";
 const prompt = stableSegment + dynamicSegment;
 const stableSegmentSha256 = createHash("sha256").update(stableSegment).digest("hex");
 
@@ -88,13 +88,11 @@ function cacheParams() {
       { content: stableSegment, stable: true },
       { content: dynamicSegment, stable: false },
     ],
-    maxOutputTokens: 32,
-    responseSchema: {
-      type: "object",
-      properties: { ok: { type: "boolean" } },
-      required: ["ok"],
-      additionalProperties: false,
-    },
+    maxOutputTokens: 8,
+    // An empty tool set selects the adapter's native-result contract without
+    // changing the wire request, so the proof can inspect provider usage while
+    // remaining independent of structured-output behavior.
+    tools: [],
     providerOptions: {
       openrouter: { promptCacheKey: `eliza-15966-${runNonce}` },
       anthropic: {
