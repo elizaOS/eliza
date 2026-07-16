@@ -127,7 +127,7 @@ const fetchedUrls: string[] = [];
 const fetchedContexts: unknown[] = [];
 const decodedAudioInputs: Uint8Array[] = [];
 
-function bytesFromBase64(base64: string): Uint8Array {
+function bytesFromBase64(base64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
@@ -274,7 +274,7 @@ describe("useVoiceChat TTS playback across providers", () => {
       if (url.includes("/api/voice/playback-frames")) {
         return new Response(null, { status: 204 });
       }
-      return new Response(bytesFromBase64(encodedWav).buffer, {
+      return new Response(bytesFromBase64(encodedWav), {
         status: 200,
         headers: { "content-type": "audio/wav" },
       });
