@@ -259,6 +259,11 @@
       "import": "./dist/lib/utils.js",
       "default": "./dist/lib/utils.js"
     },
+    "./native-composer": {
+      "types": "./dist/native-composer/index.d.ts",
+      "import": "./dist/native-composer/index.js",
+      "default": "./dist/native-composer/index.js"
+    },
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
       "import": "./dist/navigation/index.js",
