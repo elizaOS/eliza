@@ -8,6 +8,7 @@ import {
   reservePortsForWorktree,
   updateRegistryEntry,
 } from "./dev-server-registry.mjs";
+import { buildSharedViteCommand } from "./lib/dev-vite-command.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(here, "..");
@@ -28,8 +29,8 @@ console.log(
     `[dev:shared] registry=${registryPath}`,
 );
 
-const viteCli = path.join(appDir, "node_modules", "vite", "bin", "vite.js");
-const child = spawn(process.execPath, [viteCli], {
+const viteCommand = buildSharedViteCommand(appDir);
+const child = spawn(viteCommand.command, viteCommand.args, {
   cwd: appDir,
   env,
   stdio: "inherit",
