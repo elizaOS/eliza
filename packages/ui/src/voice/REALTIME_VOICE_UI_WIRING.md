@@ -44,6 +44,24 @@ batch ASR path completely unchanged.
 Both must be on AND a dedicated cloud agent UUID must resolve for the realtime
 path to arm.
 
+- Debug: `VITE_VOICE_REALTIME_FORCE` = `1|true|yes|on` (default OFF). A
+  local-verification debug affordance only — it force-arms the realtime path
+  when normal resolution would not, so a developer can exercise the client
+  wiring without a fully configured cloud. Never set it in a deployed build.
+
+## Flag retirement
+
+These flags exist only while realtime voice is staged. When realtime voice
+graduates from staging to the default voice path:
+
+- The batch-vs-realtime branching in `chat-view-hooks.tsx` / `ChatView.tsx`
+  collapses to the realtime path, and the build-time
+  `VITE_VOICE_REALTIME_WS` flag is removed along with the batch branch.
+- `VITE_VOICE_REALTIME_FORCE` is removed together with the staging flag at
+  graduation — with no branch left to force, it has no purpose.
+- The server-side `VOICE_REALTIME_WS_ENABLED` gate flips to default-ON (or is
+  removed) as part of the same graduation change.
+
 ## Manual test — desktop Chrome
 
 1. Build the PWA with the flag on and pointed at a cloud API that has the server
