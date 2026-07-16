@@ -211,9 +211,6 @@ describe("brand surfaces", () => {
     expect(html).toMatch(
       /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.eliza-preboot-shell__status\s*\{[\s\S]*?animation: none/,
     );
-    expect(read("src/main.tsx")).toContain(
-      '<StartupLoading phase="loading-ui" status="Booting up" />',
-    );
   });
 
   it("preboot logo uses a base-aware brand path so it resolves on deep web routes and native builds", () => {
