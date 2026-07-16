@@ -9,6 +9,7 @@
  * `setActionNotice` so the parent settings panel can surface them.
  */
 
+import { logger } from "@elizaos/logger";
 import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
@@ -339,9 +340,9 @@ export function useAccounts(opts: UseAccountsOptions = {}): UseAccountsResult {
           // error-policy:J7 diagnostics-must-not-kill-the-loop. Preserve and
           // rethrow the primary usage failure; the regular list poll retries
           // reconciliation without replacing the actionable probe notice.
-          console.warn(
+          logger.warn(
+            { error: reconcileError, providerId, accountId },
             "[useAccounts] post-probe reconciliation failed",
-            reconcileError,
           );
         }
         throw err;

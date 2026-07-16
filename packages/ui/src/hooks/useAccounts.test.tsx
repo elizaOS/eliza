@@ -23,8 +23,12 @@ const client = vi.hoisted(() => ({
   refreshAccountUsage: vi.fn(),
   patchProviderStrategy: vi.fn(),
 }));
+const loggerWarn = vi.hoisted(() => vi.fn());
 
 vi.mock("../api", () => ({ client }));
+vi.mock("@elizaos/logger", () => ({
+  logger: { warn: loggerWarn },
+}));
 vi.mock("../state", () => ({
   useAppSelector: (
     selector: (state: {
@@ -266,6 +270,38 @@ describe("useAccounts", () => {
     expect(result.current.error).toBeNull();
     expect(notices).not.toHaveBeenCalledWith(
       "Failed to load accounts: transport down",
+      "error",
+      6000,
+    );
+  });
+
+  it("reports reconciliation failure while preserving the primary probe rejection", async () => {
+    const probeError = new Error("usage probe failed");
+    const reconcileError = new Error("account list unavailable");
+    client.listAccounts
+      .mockResolvedValueOnce(initial)
+      .mockRejectedValueOnce(reconcileError);
+    client.refreshAccountUsage.mockRejectedValueOnce(probeError);
+    const notices = vi.fn();
+    const { result } = renderHook(() =>
+      useAccounts({ pollMs: 0, setActionNotice: notices }),
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    await expect(
+      act(() => result.current.refreshUsage("openai-api", "primary")),
+    ).rejects.toBe(probeError);
+
+    expect(loggerWarn).toHaveBeenCalledWith(
+      {
+        error: reconcileError,
+        providerId: "openai-api",
+        accountId: "primary",
+      },
+      "[useAccounts] post-probe reconciliation failed",
+    );
+    expect(notices).toHaveBeenCalledWith(
+      "Failed to refresh usage: usage probe failed",
       "error",
       6000,
     );
