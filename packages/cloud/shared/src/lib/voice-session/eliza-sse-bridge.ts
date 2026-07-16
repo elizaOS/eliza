@@ -96,9 +96,7 @@ export async function streamElizaConversation(
         [VOICE_TRACE_HEADER]: request.traceId,
         [VOICE_AGENT_HEADER]: request.agentId,
         [VOICE_CONVERSATION_HEADER]: request.conversationId,
-        ...(request.organizationId
-          ? { [VOICE_ORGANIZATION_HEADER]: request.organizationId }
-          : {}),
+        ...(request.organizationId ? { [VOICE_ORGANIZATION_HEADER]: request.organizationId } : {}),
         ...(request.userId ? { [VOICE_USER_HEADER]: request.userId } : {}),
       },
       // This is the canonical message contract. Agent and conversation identity
@@ -195,7 +193,6 @@ export async function streamElizaConversation(
   if (request.signal.aborted) return { completed: false, aborted: true };
   return { completed: true, aborted: false };
 }
-
 
 function canonicalConversationStreamUrl(
   apiOrigin: string,

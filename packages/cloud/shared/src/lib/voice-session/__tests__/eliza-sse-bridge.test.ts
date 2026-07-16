@@ -131,7 +131,10 @@ describe("eliza sse bridge", () => {
         },
         () => {},
       ),
-    ).rejects.toMatchObject({ code: "upstream_error", message: expect.stringContaining("agent failed") });
+    ).rejects.toMatchObject({
+      code: "upstream_error",
+      message: expect.stringContaining("agent failed"),
+    });
   });
 
   test("reports aborted when the signal fires mid-stream", async () => {
