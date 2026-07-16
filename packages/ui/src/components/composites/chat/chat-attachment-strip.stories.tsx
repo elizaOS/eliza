@@ -61,6 +61,54 @@ export const CustomRemoveLabel: Story = {
   },
 };
 
+export const MixedMedia: Story = {
+  args: {
+    items: [
+      sampleItems[0],
+      {
+        id: "att-audio",
+        name: "interview-recording.wav",
+        alt: "Interview recording",
+        src: "data:audio/wav;base64,",
+        kind: "audio",
+      },
+      {
+        id: "att-video",
+        name: "walkthrough.mp4",
+        alt: "Product walkthrough",
+        src: "data:video/mp4;base64,",
+        kind: "video",
+      },
+      {
+        id: "att-document",
+        name: "project-brief.pdf",
+        alt: "Project brief",
+        src: "data:application/pdf;base64,",
+        kind: "document",
+      },
+    ],
+  },
+};
+
+export const Overflowing: Story = {
+  args: {
+    items: [
+      ...sampleItems,
+      ...sampleItems.map((item) => ({
+        ...item,
+        id: `${item.id}-copy`,
+      })),
+    ],
+  },
+  decorators: [
+    (Story) => (
+      <div className="w-64">
+        <Story />
+      </div>
+    ),
+  ],
+};
+
 export const Empty: Story = {
   args: { items: [] },
 };

@@ -1949,7 +1949,11 @@ describe("ContinuousChatOverlay", () => {
 
     // Once the read resolves, a thumbnail + send control appear.
     await screen.findByLabelText("send");
-    expect(screen.getByLabelText(/remove pic\.png/)).toBeTruthy();
+    expect(
+      document.querySelector('[data-slot="attachment-group"]'),
+    ).toBeTruthy();
+    expect(document.querySelector('[data-slot="attachment"]')).toBeTruthy();
+    expect(screen.getByLabelText(/remove pic\.png/i)).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText("send"));
     expect(controller.send).toHaveBeenCalledWith(

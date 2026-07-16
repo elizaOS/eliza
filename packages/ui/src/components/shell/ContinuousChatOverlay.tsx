@@ -7,11 +7,8 @@ import { MAX_CHAT_MEDIA_RAW_BYTES } from "@elizaos/shared";
 import { transcriptPlainText } from "@elizaos/shared/transcripts";
 import {
   AudioLines,
-  FileText,
-  Film,
   Loader2,
   Mic,
-  Music,
   Paperclip,
   Search,
   SendHorizontal,
@@ -107,6 +104,7 @@ import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
 import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { AgentProvisioningWidget } from "../chat/widgets/agent-provisioning";
+import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import {
   buildReplyTargetFromMessage,
   ChatMessage,
@@ -5716,60 +5714,17 @@ export function ContinuousChatOverlay({
             {hasImages || imageError ? (
               <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
                 {hasImages ? (
-                  <div className="flex flex-wrap gap-2">
-                    {pendingImages.map((img, i) => {
-                      const kind = chatUploadKind(img.mimeType);
-                      const removeButton = (
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label={`remove ${img.name}`}
-                          onClick={() => removeImage(i)}
-                          // Small visual disc, but a 44px-class hit zone via the
-                          // invisible `before` overlay so it's thumb-tappable
-                          // without crowding the tile.
-                          className="absolute -right-1.5 -top-1.5 z-30 grid h-5 w-5 place-items-center rounded-full border border-border-strong bg-scrim p-0 text-xs text-txt transition-colors before:absolute before:-inset-3 before:content-[''] hover:bg-bg"
-                        >
-                          ×
-                        </Button>
-                      );
-                      const tileKey = `${img.name}-${img.mimeType}-${img.data.length}`;
-                      if (kind === "image") {
-                        return (
-                          <div
-                            key={tileKey}
-                            className="group relative h-14 w-14 shrink-0"
-                          >
-                            <img
-                              src={`data:${img.mimeType};base64,${img.data}`}
-                              alt={img.name}
-                              className="h-14 w-14 rounded-lg border border-border-strong object-cover"
-                            />
-                            {removeButton}
-                          </div>
-                        );
-                      }
-                      const KindIcon =
-                        kind === "audio"
-                          ? Music
-                          : kind === "video"
-                            ? Film
-                            : FileText;
-                      return (
-                        <div
-                          key={tileKey}
-                          className="group relative flex h-14 min-w-[3.5rem] max-w-[10rem] shrink-0 items-center gap-2 rounded-lg border border-border-strong bg-surface px-2.5 text-txt"
-                          title={img.name}
-                        >
-                          <KindIcon className="h-5 w-5 shrink-0 text-muted-strong" />
-                          <span className="min-w-0 truncate text-xs-tight leading-tight">
-                            {img.name}
-                          </span>
-                          {removeButton}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <ChatAttachmentStrip
+                    items={pendingImages.map((img, index) => ({
+                      id: `${img.name}-${img.mimeType}-${img.data.length}-${index}`,
+                      alt: img.name,
+                      name: img.name,
+                      src: `data:${img.mimeType};base64,${img.data}`,
+                      kind: chatUploadKind(img.mimeType),
+                    }))}
+                    removeLabel={(item) => `Remove ${item.name}`}
+                    onRemove={(_id, index) => removeImage(index)}
+                  />
                 ) : null}
                 {imageError ? (
                   <p
