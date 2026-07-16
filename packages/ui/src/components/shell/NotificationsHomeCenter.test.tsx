@@ -62,6 +62,7 @@ import {
 import {
   notificationGroupContainerOffset,
   notificationPullOvershootOffset,
+  notificationPullPresentation,
   PULL_TRAVEL_PX,
 } from "./notification-shade-presentation";
 
@@ -631,6 +632,28 @@ describe("dampenPull", () => {
     expect(notificationPullOvershootOffset(PULL_TRAVEL_PX)).toBe(0);
     expect(notificationPullOvershootOffset(overpull)).toBeCloseTo(9.8, 1);
     expect(notificationPullOvershootOffset(-overpull)).toBeCloseTo(-9.8, 1);
+  });
+
+  it("fades the count before upward overpull reaches its clipping boundary", () => {
+    const atCloseDetent = notificationPullPresentation(
+      -PULL_TRAVEL_PX,
+      true,
+      false,
+    );
+    const midwayThroughBoundaryFade = notificationPullPresentation(
+      -(PULL_TRAVEL_PX + 16),
+      true,
+      false,
+    );
+    const pastBoundaryFade = notificationPullPresentation(
+      -(PULL_TRAVEL_PX + 24),
+      true,
+      false,
+    );
+
+    expect(atCloseDetent.notificationCountVisibility).toBe(1);
+    expect(midwayThroughBoundaryFade.notificationCountVisibility).toBe(0.5);
+    expect(pastBoundaryFade.notificationCountVisibility).toBe(0);
   });
 });
 
@@ -1803,7 +1826,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     });
 
     expect(screen.getByTestId("notification-row")).toBe(priorityRow);
-    expect(screen.getByTestId("notifications-count").style.opacity).toBe("1");
+    const overpullCountOpacity = Number.parseFloat(
+      screen.getByTestId("notifications-count").style.opacity,
+    );
+    expect(overpullCountOpacity).toBeGreaterThan(0);
+    expect(overpullCountOpacity).toBeLessThan(1);
     const peeks = screen.getAllByTestId("notification-stack-peek");
     expect(peeks[0].style.opacity).toBe("1");
     expect(peeks[1].style.opacity).toBe("1");
