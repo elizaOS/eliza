@@ -76,6 +76,7 @@ function makePopup(closed: boolean): Window {
 afterEach(() => {
   delete globalWithPlatform.Capacitor;
   delete windowWithElectrobun.__electrobunWindowId;
+  window.name = "";
   vi.restoreAllMocks();
   restoreDescriptor("location", originalLocationDescriptor);
   restoreDescriptor("matchMedia", originalMatchMediaDescriptor);
@@ -167,6 +168,14 @@ describe("buildSameTabCloudLoginPath", () => {
 });
 
 describe("preOpenCloudLoginWindow", () => {
+  it("reuses the existing cloud auth popup instead of blanking it", () => {
+    window.name = CLOUD_LOGIN_POPUP_NAME;
+    const openSpy = vi.spyOn(window, "open");
+
+    expect(preOpenCloudLoginWindow()).toBeNull();
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it("skips the popup attempt on touch-primary hosted web (redirect-first)", () => {
     stubMatchMedia(true);
     const openSpy = vi.spyOn(window, "open");
