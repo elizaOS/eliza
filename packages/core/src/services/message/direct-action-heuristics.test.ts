@@ -366,4 +366,105 @@ describe("inferDirectCurrentRequestCandidateInference kinds", () => {
 			inferDirectCurrentRequestCandidateInference([viewsAction], "hello"),
 		).toEqual({ names: [], kind: null });
 	});
+
+	// Directional words (left/right/top/bottom) are not layout operations on
+	// their own. When RIGHT counted as one, any live-info phrasing ending in
+	// the temporal adverb "right now" (RIGHT + NOW, a layout follow-up token)
+	// became a VIEWS candidate that fired BEFORE the web detector and narrowed
+	// WEB_FETCH out of the planner surface. These fence the live Discord
+	// failures routing to web, and the direction rule's own boundaries.
+	describe("directions alone are not layout operations", () => {
+		const webAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "WEB_FETCH",
+			similes: [],
+			tags: [],
+		};
+		const viewsAction: Pick<Action, "name" | "similes" | "tags"> = {
+			name: "VIEWS",
+			similes: ["VIEW", "SHOW_VIEW", "OPEN_VIEW", "OPEN_SETTINGS"],
+			tags: [
+				"views",
+				"ui",
+				"panel",
+				"view-capability",
+				"screen-time",
+				"settings",
+			],
+		};
+
+		it("routes live-info 'right now' questions to web, not VIEWS", () => {
+			for (const message of [
+				"whats btc at right now",
+				"whats the weather in tokyo right now?",
+				"what is the price of eth right now",
+			]) {
+				expect(
+					inferDirectCurrentRequestCandidateInference(
+						[viewsAction, webAction],
+						message,
+					),
+				).toEqual({ names: ["WEB_FETCH"], kind: "web" });
+			}
+		});
+
+		it("does not surface VIEWS for a non-question live-info ask with 'right now'", () => {
+			// GET is a read-group operation token, so while RIGHT counted as a
+			// layout op this satisfied the layout leg (RIGHT) + follow-up (NOW).
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, webAction],
+					"get me the btc price right now",
+				),
+			).toEqual({ names: ["WEB_FETCH"], kind: "web" });
+		});
+
+		it("keeps genuine layout requests with 'right now' on the views surface", () => {
+			// A real layout ask carries its own operation verb and surface noun.
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, webAction],
+					"arrange the windows right now",
+				),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		});
+
+		it("a direction plus an explicit surface noun still reads as a view ask", () => {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, webAction],
+					"move it to the left of the screen",
+				),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		});
+
+		it("a direction plus a capability token still reads as a view ask", () => {
+			// MOVE is in no operation group and "settings" is not a surface noun;
+			// the direction is the only operation evidence, and the concrete
+			// capability-token match keeps the detection anchored.
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, webAction],
+					"move my settings to the right",
+				),
+			).toEqual({ names: ["VIEWS"], kind: "view-capability" });
+		});
+
+		it("the layout follow-up leg still fires on strong layout verbs alone", () => {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, webAction],
+					"split them vertical again",
+				),
+			).toEqual({ names: ["VIEWS"], kind: "view-surface" });
+		});
+
+		it("a bare direction with no surface or operation stays quiet", () => {
+			expect(
+				inferDirectCurrentRequestCandidateInference(
+					[viewsAction, webAction],
+					"move it right now",
+				),
+			).toEqual({ names: [], kind: null });
+		});
+	});
 });
