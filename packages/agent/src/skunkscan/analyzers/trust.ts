@@ -216,6 +216,7 @@ if (
 
 investorInsights,
 };
+}
 
 function buildInvestorSummary(
   trustLevel: WalletTrustSummary["trustLevel"],
