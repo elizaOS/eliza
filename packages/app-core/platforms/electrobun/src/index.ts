@@ -123,6 +123,7 @@ import {
   readResolvedPreloadScript,
   resolveRendererAssetDir,
 } from "./runtime-layout";
+import { registerShellSyncEndpoint } from "./shell-sync-relay";
 import { mergeRuntimePermissionStates } from "./runtime-permissions";
 import { startScreenCaptureBridgeServer } from "./screen-capture-bridge-server";
 import { startScreenshotDevServer } from "./screenshot-dev-server";
@@ -1699,6 +1700,7 @@ const MAX_RPC_REQUEST_TIME_MS = 600_000;
 function createDesktopRpc(label: string): {
   rpc: ElizaDesktopRpc;
   sendToWebview: SendToWebview;
+  releaseShellSync: () => void;
 } {
   let rpc: ElizaDesktopRpc | undefined;
 
@@ -1729,6 +1731,13 @@ function createDesktopRpc(label: string): {
     >[0]["handlers"]
   >["requests"];
 
+  // Register this window as a shell-controller relay endpoint (#16442). Every
+  // window flows through this one factory, so registering here wires the relay
+  // uniformly for the main, surface, and tray-popover windows. The
+  // `shellControllerRelay` request handler (in buildBunRpcHandlers) fans a
+  // publish out to every registered endpoint.
+  const shellSyncEndpoint = registerShellSyncEndpoint(sendToWebview);
+
   rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({
     maxRequestTime: MAX_RPC_REQUEST_TIME_MS,
     handlers: {
@@ -1738,7 +1747,7 @@ function createDesktopRpc(label: string): {
     },
   });
 
-  return { rpc, sendToWebview };
+  return { rpc, sendToWebview, releaseShellSync: shellSyncEndpoint.release };
 }
 
 /**
@@ -2671,12 +2680,15 @@ async function main(): Promise<void> {
 
   surfaceWindowManager = new SurfaceWindowManager({
     createWindow: (options) => {
-      const { rpc } = createDesktopRpc("surface");
+      const { rpc, releaseShellSync } = createDesktopRpc("surface");
       const window = createElectrobunBrowserWindow({
         ...options,
         rpc,
       }) as BrowserWindow & ManagedWindowLike;
       surfaceRpcs.set(window, rpc);
+      // Drop this window's relay endpoint when it closes so a churned detached
+      // surface does not leak (#16442).
+      window.on("close", releaseShellSync);
       return window;
     },
     resolveRendererUrl,

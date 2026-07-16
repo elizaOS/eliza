@@ -2163,6 +2163,15 @@ export type ElizaDesktopRPCSchema = {
         params: undefined;
         response: StewardRpcStatus;
       };
+
+      // Shell chat/voice controller cross-window relay (#16442). A renderer
+      // publishes an opaque shell-sync envelope; the main process rebroadcasts
+      // it to every OTHER window as a `shellControllerSync` push. The renderer
+      // coordinator (@elizaos/ui) owns all semantics — this is a dumb pipe.
+      shellControllerRelay: {
+        params: { envelope: unknown };
+        response: { ok: boolean };
+      };
     };
     // biome-ignore lint/complexity/noBannedTypes: empty message schema placeholder for future audio streaming
     messages: {
@@ -2195,6 +2204,10 @@ export type ElizaDesktopRPCSchema = {
     };
     messages: {
       // Push events FROM bun TO webview
+
+      // Shell chat/voice controller cross-window relay (#16442): an opaque
+      // shell-sync envelope rebroadcast from another window's publish.
+      shellControllerSync: { envelope: unknown };
 
       // Gateway
       gatewayDiscovery: {
