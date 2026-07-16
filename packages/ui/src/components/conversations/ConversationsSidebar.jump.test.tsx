@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 
 /**
- * Jump-to-message coverage for the keyword-search panel (#9955). When a search
- * hit is OLDER than the loaded recent window, its anchor element is absent after
- * selecting the conversation; the sidebar must then load the window CENTERED on
- * the target (`loadConversationMessagesAround`) and only THEN scroll it into
- * view. These tests drive the real ConversationsSidebar → MessageSearchPanel →
- * jumpToMessage path with mocked app state + client.
+ * Jump-to-message coverage for the keyword-search panel (#9955). An absent DOM
+ * anchor can mean either a loaded message outside the bounded render window or
+ * an older message that needs a centered fetch, so the sidebar must reveal,
+ * recheck, and only then load around the target. These tests drive the real
+ * ConversationsSidebar → MessageSearchPanel → jumpToMessage path with mocked
+ * app state and client boundaries.
  */
 
 import {
@@ -152,17 +152,17 @@ describe("ConversationsSidebar jump-to-message (#9955)", () => {
     appMock.value = makeAppState();
   });
 
-  it("emits the render-window reveal after the around-load so a windowed transcript mounts the pivot", async () => {
-    // A windowed ChatView/overlay slices the centered around-load's pivot out of
-    // the render window unless it is told to reveal (#15281). The sidebar must
-    // fire CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT after a successful around-load.
+  it("reveals the loaded render window before falling back to an around-load", async () => {
+    // A missing DOM anchor can be a loaded turn outside the bounded render
+    // window. Reveal first; only a second miss earns a centered network fetch.
     const scroll = scrollSpy();
-    const revealEvents: number[] = [];
-    const off = onViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT, () =>
-      revealEvents.push(Date.now()),
-    );
+    const order: string[] = [];
+    const off = onViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT, () => {
+      order.push("reveal");
+    });
     const loadConversationMessagesAround = vi.fn(
       async (_conversationId: string, messageId: string) => {
+        order.push("around");
         const el = document.createElement("div");
         el.id = getChatMessageAnchorId(messageId);
         document.body.appendChild(el);
@@ -181,7 +181,27 @@ describe("ConversationsSidebar jump-to-message (#9955)", () => {
       TARGET_CONVERSATION_ID,
       OLD_MESSAGE_ID,
     );
-    expect(revealEvents).toHaveLength(1);
+    expect(order).toEqual(["reveal", "around"]);
+    off();
+  });
+
+  it("scrolls a windowed-out loaded hit without an around request", async () => {
+    const scroll = scrollSpy();
+    const loadConversationMessagesAround = vi.fn(async () => false);
+    const off = onViewEvent(CHAT_TRANSCRIPT_REVEAL_WINDOW_EVENT, () => {
+      const el = document.createElement("div");
+      el.id = getChatMessageAnchorId(OLD_MESSAGE_ID);
+      document.body.appendChild(el);
+    });
+    appMock.value = makeAppState({ loadConversationMessagesAround });
+
+    render(<ConversationsSidebar />);
+    await openSearchAndJump();
+
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1), {
+      timeout: 3000,
+    });
+    expect(loadConversationMessagesAround).not.toHaveBeenCalled();
     off();
   });
 
