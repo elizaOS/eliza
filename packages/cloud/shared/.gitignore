@@ -113,3 +113,6 @@ TRIAGE_NOTES.md
 .env.local.bak-*
 .wrangler
 .wrangler-dry-run
+
+# Log allowlists above must not re-include macOS resource-fork sidecars.
+**/._*
