@@ -220,6 +220,41 @@ if (exposure.exposureLevel === "none") {
   );
 }
 
+if (risk.level === "low") {
+  investorInsights.positive.push(
+    createInvestorInsight({
+      id: "low-risk-indicators",
+
+      title:
+        INVESTOR_INSIGHT_TEMPLATES
+          .lowRisk.title,
+
+      finding:
+        `The wallet currently has a low calculated risk level with an internal score of ${risk.score} out of 100.`,
+
+      whyItMatters:
+        INVESTOR_INSIGHT_TEMPLATES
+          .lowRisk
+          .whyItMatters,
+
+      impact: "positive",
+
+      confidence:
+        evidenceConfidence,
+
+      severity: "high",
+
+      evidenceRecordIds: [
+        "risk-assessment",
+      ],
+
+      limitations: [
+        "The risk assessment reflects the evidence and analytical rules available at the time of analysis.",
+      ],
+    }),
+  );
+}
+  
   return {
     trustScore,
 
