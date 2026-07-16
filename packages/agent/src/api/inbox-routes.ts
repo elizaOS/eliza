@@ -1,11 +1,11 @@
 /**
  * Inbox routes.
  *
- * Exposes a read-only, time-ordered view of messages from every channel
- * the agent participates in — dashboard web chat plus every connector
- * plugin (iMessage, Telegram, Discord, WhatsApp, WeChat, etc.) — merged
- * into a single feed so the UI can render an inbox without the
- * client having to know which rooms each source uses.
+ * Exposes a time-ordered view of messages from every channel the agent
+ * participates in and an authenticated reply boundary for connector chats.
+ * Dashboard web chat plus every connector plugin (iMessage, Telegram, Discord,
+ * WhatsApp, WeChat, etc.) are merged into a single feed so the UI can render an
+ * inbox without knowing which rooms each source uses.
  *
  * Why a separate endpoint instead of reusing /api/conversations/:id/messages:
  *
@@ -32,11 +32,18 @@
  *     Returns the distinct set of source tags the agent currently has
  *     memories for, so the UI can render a dynamic source filter chip
  *     list without hardcoding connector names.
+ *
+ *   POST /api/inbox/messages
+ *     Sends a reply through a validated connector account. The optional
+ *     top-level accountId is promoted into TargetInfo only after server-owned
+ *     account policy validation.
  */
 
 import type http from "node:http";
 import type {
   AgentRuntime,
+  ConnectorAccount,
+  ConnectorAccountManager,
   Memory,
   Room,
   RouteHelpers,
@@ -45,6 +52,7 @@ import type {
 } from "@elizaos/core";
 import {
   createUniqueUuid,
+  getConnectorAccountManager,
   resolveEffectiveMuteState,
   setRoomMuteUntil,
   setWorldMuteState,
@@ -254,8 +262,306 @@ function getRuntimeSendHandlers(
   return sendHandlers instanceof Map ? sendHandlers : null;
 }
 
-function runtimeHasSendHandler(runtime: AgentRuntime, source: string): boolean {
-  return getRuntimeSendHandlers(runtime)?.has(source) ?? false;
+const CONNECTOR_ACCOUNT_KEY_SEPARATOR = "\u0000";
+
+function runtimeHasAnySendHandler(
+  runtime: AgentRuntime,
+  source: string,
+): boolean {
+  const handlers = getRuntimeSendHandlers(runtime);
+  if (!handlers) return false;
+  if (handlers.has(source)) return true;
+  const accountPrefix = `${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}`;
+  return Array.from(handlers.keys()).some((key) =>
+    key.startsWith(accountPrefix),
+  );
+}
+
+/** Mirrors AgentRuntime.sendMessageToTarget's account-aware route lookup. */
+function runtimeHasSendHandler(
+  runtime: AgentRuntime,
+  source: string,
+  accountId?: string,
+): boolean {
+  const handlers = getRuntimeSendHandlers(runtime);
+  if (!handlers) return false;
+  if (
+    accountId &&
+    handlers.has(`${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}${accountId}`)
+  ) {
+    return true;
+  }
+  if (handlers.has(source)) return true;
+  if (accountId) return false;
+
+  const accountPrefix = `${source}${CONNECTOR_ACCOUNT_KEY_SEPARATOR}`;
+  let scopedHandlerCount = 0;
+  for (const key of handlers.keys()) {
+    if (!key.startsWith(accountPrefix)) continue;
+    scopedHandlerCount += 1;
+    if (scopedHandlerCount > 1) return false;
+  }
+  return scopedHandlerCount === 1;
+}
+
+type InboxAccountRoutingErrorCode =
+  | "INBOX_CONNECTOR_ACCOUNT_AMBIGUOUS"
+  | "INBOX_CONNECTOR_ACCOUNT_LOOKUP_FAILED"
+  | "INBOX_CONNECTOR_ACCOUNT_NOT_FOUND"
+  | "INBOX_CONNECTOR_ACCOUNT_OWNER_BINDING_REQUIRED"
+  | "INBOX_CONNECTOR_ACCOUNT_SOURCE_MISMATCH"
+  | "INBOX_CONNECTOR_ACCOUNT_UNAVAILABLE";
+
+interface InboxAccountRoutingFailure {
+  ok: false;
+  code: InboxAccountRoutingErrorCode;
+  error: string;
+  status: number;
+  context: Record<string, unknown>;
+}
+
+interface InboxAccountRoutingSuccess {
+  ok: true;
+  accountId?: string;
+  mode: "explicit" | "legacy-source-default" | "resolved-default" | "single";
+}
+
+type InboxAccountRoutingResolution =
+  | InboxAccountRoutingFailure
+  | InboxAccountRoutingSuccess;
+
+/** Match ConnectorAccountManager's provider-key normalization exactly. */
+function normalizeAccountProvider(provider: string): string {
+  return provider.trim().toLowerCase();
+}
+
+function accountRoutingFailure(
+  code: InboxAccountRoutingErrorCode,
+  error: string,
+  status: number,
+  context: Record<string, unknown>,
+): InboxAccountRoutingFailure {
+  return { ok: false, code, error, status, context };
+}
+
+function accountUnavailableReason(account: ConnectorAccount): string | null {
+  if (account.status !== "connected") {
+    return `status ${account.status} is not connected`;
+  }
+  if (
+    account.accessGate === "disabled" ||
+    account.metadata?.disabled === true ||
+    account.metadata?.enabled === false
+  ) {
+    return "account is disabled";
+  }
+  if (!account.purpose.includes("messaging")) {
+    return "account does not allow messaging";
+  }
+  return null;
+}
+
+async function validateInboxAccount(
+  manager: ConnectorAccountManager,
+  source: string,
+  account: ConnectorAccount,
+): Promise<InboxAccountRoutingFailure | null> {
+  const provider = normalizeAccountProvider(source);
+  const accountProvider = normalizeAccountProvider(account.provider);
+  if (accountProvider !== provider) {
+    return accountRoutingFailure(
+      "INBOX_CONNECTOR_ACCOUNT_SOURCE_MISMATCH",
+      `Connector account ${account.id} belongs to ${accountProvider}, not ${provider}`,
+      409,
+      {
+        accountId: account.id,
+        requestedSource: provider,
+        accountSource: accountProvider,
+      },
+    );
+  }
+
+  const unavailableReason = accountUnavailableReason(account);
+  if (unavailableReason) {
+    return accountRoutingFailure(
+      "INBOX_CONNECTOR_ACCOUNT_UNAVAILABLE",
+      `Connector account ${account.id} is unavailable: ${unavailableReason}`,
+      409,
+      {
+        accountId: account.id,
+        source: provider,
+        reason: unavailableReason,
+      },
+    );
+  }
+
+  if (account.accessGate !== "owner_binding") {
+    return null;
+  }
+  const evaluation = await manager.evaluatePolicy(
+    {
+      provider,
+      accessGates: ["owner_binding"],
+      purposes: ["messaging"],
+      statuses: ["connected"],
+      required: true,
+    },
+    { accountId: account.id, purpose: "messaging" },
+  );
+  if (
+    evaluation.allowed &&
+    evaluation.account?.id === account.id &&
+    normalizeAccountProvider(evaluation.account.provider) === provider
+  ) {
+    return null;
+  }
+  return accountRoutingFailure(
+    "INBOX_CONNECTOR_ACCOUNT_OWNER_BINDING_REQUIRED",
+    `Connector account ${account.id} requires a verified owner binding`,
+    403,
+    {
+      accountId: account.id,
+      source: provider,
+      reason: evaluation.reason ?? "owner binding has not been verified",
+    },
+  );
+}
+
+async function findAccountSourceByExactId(
+  manager: ConnectorAccountManager,
+  requestedSource: string,
+  accountId: string,
+): Promise<string | null> {
+  const source = normalizeAccountProvider(requestedSource);
+  const storedAccounts = await manager.getStorage().listAccounts();
+  const storedMatch = storedAccounts.find(
+    (account) =>
+      account.id === accountId &&
+      normalizeAccountProvider(account.provider) !== source,
+  );
+  if (storedMatch) {
+    return normalizeAccountProvider(storedMatch.provider);
+  }
+
+  const registeredSources = manager
+    .listProviders()
+    .map((provider) => normalizeAccountProvider(provider.provider))
+    .filter((provider) => provider && provider !== source)
+    .sort();
+  for (const provider of registeredSources) {
+    const account = await manager.getAccount(provider, accountId);
+    if (account?.id === accountId) {
+      return normalizeAccountProvider(account.provider);
+    }
+  }
+  return null;
+}
+
+async function resolveInboxAccountRouting(
+  runtime: AgentRuntime,
+  source: string,
+  requestedAccountId?: string,
+): Promise<InboxAccountRoutingResolution> {
+  // Connector-source aliases describe transport/UI grouping, while account
+  // providers are exact manager keys. For example, BlueBubbles is grouped
+  // under the canonical `imessage` source but registers provider
+  // `bluebubbles`; canonicalizing here would reject its valid account.
+  const provider = normalizeAccountProvider(source);
+  const manager = getConnectorAccountManager(runtime);
+
+  if (requestedAccountId) {
+    const account = await manager.getAccount(provider, requestedAccountId);
+    if (!account || account.id !== requestedAccountId) {
+      const actualSource = await findAccountSourceByExactId(
+        manager,
+        provider,
+        requestedAccountId,
+      );
+      if (actualSource) {
+        return accountRoutingFailure(
+          "INBOX_CONNECTOR_ACCOUNT_SOURCE_MISMATCH",
+          `Connector account ${requestedAccountId} belongs to ${actualSource}, not ${provider}`,
+          409,
+          {
+            accountId: requestedAccountId,
+            requestedSource: provider,
+            accountSource: actualSource,
+          },
+        );
+      }
+      return accountRoutingFailure(
+        "INBOX_CONNECTOR_ACCOUNT_NOT_FOUND",
+        `Connector account ${requestedAccountId} was not found for ${provider}`,
+        404,
+        { accountId: requestedAccountId, source: provider },
+      );
+    }
+    const failure = await validateInboxAccount(manager, provider, account);
+    return (
+      failure ?? {
+        ok: true,
+        accountId: account.id,
+        mode: "explicit",
+      }
+    );
+  }
+
+  const accounts = (await manager.listAccounts(provider)).sort((a, b) =>
+    a.id.localeCompare(b.id),
+  );
+  if (accounts.length === 0) {
+    return { ok: true, mode: "legacy-source-default" };
+  }
+
+  const usable: ConnectorAccount[] = [];
+  const failures: InboxAccountRoutingFailure[] = [];
+  for (const account of accounts) {
+    const failure = await validateInboxAccount(manager, provider, account);
+    if (failure) {
+      failures.push(failure);
+    } else {
+      usable.push(account);
+    }
+  }
+
+  if (usable.length === 0) {
+    if (accounts.length === 1 && failures[0]) {
+      return failures[0];
+    }
+    return accountRoutingFailure(
+      "INBOX_CONNECTOR_ACCOUNT_UNAVAILABLE",
+      `No usable messaging account is available for ${provider}`,
+      409,
+      {
+        source: provider,
+        accountIds: accounts.map((account) => account.id),
+      },
+    );
+  }
+  if (usable.length === 1) {
+    return { ok: true, accountId: usable[0].id, mode: "single" };
+  }
+
+  const defaults = usable.filter(
+    (account) => account.metadata?.isDefault === true,
+  );
+  if (defaults.length === 1) {
+    return {
+      ok: true,
+      accountId: defaults[0].id,
+      mode: "resolved-default",
+    };
+  }
+  return accountRoutingFailure(
+    "INBOX_CONNECTOR_ACCOUNT_AMBIGUOUS",
+    `Multiple usable messaging accounts are available for ${provider}; select an account explicitly`,
+    409,
+    {
+      source: provider,
+      accountIds: usable.map((account) => account.id),
+      defaultAccountIds: defaults.map((account) => account.id),
+    },
+  );
 }
 
 /**
@@ -2053,7 +2359,7 @@ async function loadInboxChats(
         entry.latestSenderAvatarUrl)
       : undefined;
     chats.push({
-      canSend: runtimeHasSendHandler(runtime, entry.source),
+      canSend: runtimeHasAnySendHandler(runtime, entry.source),
       id: roomIdKey,
       source: normalizeConnectorSource(entry.source),
       transportSource: entry.source,
@@ -2196,16 +2502,7 @@ export async function handleInboxRoute(
       );
       return true;
     }
-    const { roomId, source, text, replyToMessageId } = parsed.data;
-
-    if (!runtimeHasSendHandler(runtime, source)) {
-      helpers.error(
-        res,
-        `no send handler registered for inbox source: ${source}`,
-        409,
-      );
-      return true;
-    }
+    const { accountId, roomId, source, text, replyToMessageId } = parsed.data;
 
     const room = await runtime.getRoom(roomId as UUID);
     if (!room) {
@@ -2213,9 +2510,87 @@ export async function handleInboxRoute(
       return true;
     }
 
+    // The host's central API gate authenticates every non-public /api/inbox
+    // request before this handler runs. This boundary therefore authorizes the
+    // narrow top-level selector against server-owned account records; it never
+    // promotes client-controlled Content.metadata into connector routing state.
+    let accountRouting: InboxAccountRoutingResolution;
+    try {
+      accountRouting = await resolveInboxAccountRouting(
+        runtime,
+        source,
+        accountId,
+      );
+    } catch (error) {
+      // error-policy:J1 HTTP route boundary translates account-registry failures
+      // into an observable failure instead of dispatching with an unverified id.
+      runtime.logger.error(
+        {
+          src: "inbox-routes",
+          accountId,
+          source,
+          err: error instanceof Error ? error.message : String(error),
+        },
+        "[InboxRoutes] connector account lookup failed",
+      );
+      helpers.json(
+        res,
+        {
+          error: "Connector account validation failed",
+          code: "INBOX_CONNECTOR_ACCOUNT_LOOKUP_FAILED",
+          context: { accountId, source },
+        },
+        500,
+      );
+      return true;
+    }
+    if (!accountRouting.ok) {
+      runtime.logger.warn(
+        {
+          src: "inbox-routes",
+          code: accountRouting.code,
+          ...accountRouting.context,
+        },
+        "[InboxRoutes] connector account routing rejected",
+      );
+      helpers.json(
+        res,
+        {
+          error: accountRouting.error,
+          code: accountRouting.code,
+          context: accountRouting.context,
+        },
+        accountRouting.status,
+      );
+      return true;
+    }
+    runtime.logger.info(
+      {
+        src: "inbox-routes",
+        accountId: accountRouting.accountId,
+        mode: accountRouting.mode,
+        source,
+      },
+      "[InboxRoutes] connector account routing validated",
+    );
+
+    if (!runtimeHasSendHandler(runtime, source, accountRouting.accountId)) {
+      helpers.error(
+        res,
+        accountRouting.accountId
+          ? `no send handler registered for inbox source: ${source} accountId: ${accountRouting.accountId}`
+          : `no send handler registered for inbox source: ${source}`,
+        409,
+      );
+      return true;
+    }
+
     try {
       await runtime.sendMessageToTarget(
         {
+          ...(accountRouting.accountId
+            ? { accountId: accountRouting.accountId }
+            : {}),
           source,
           roomId: room.id,
           channelId: room.channelId ?? room.id,
