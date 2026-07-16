@@ -337,16 +337,21 @@ const NOTIF_SCROLL_CSS = `
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-.eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass:hover,
-.eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass:hover,
-.eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek:hover {
-  background-color: rgb(38 38 42);
-}
 /* Directional specular rim tracing every rounded corner (mask-composite ring)
    — replaces the old one-sided inset hairline that read as a vertical line. */
 ${liquidGlassRimCss(".eliza-notif-glass")}
-.eliza-notif-glass:hover {
-  background-color: rgb(38 38 42 / 42%);
+/* Touch browsers can leave :hover latched on the release target until React's
+   settled projection replaces it. Only precise pointers get a hover material,
+   so every physical card keeps one fill throughout a touch release. */
+@media (hover: hover) and (pointer: fine) {
+  .eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass:hover,
+  .eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass:hover,
+  .eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek:hover {
+    background-color: rgb(38 38 42);
+  }
+  .eliza-notif-glass:hover {
+    background-color: rgb(38 38 42 / 42%);
+  }
 }
 .eliza-notif-pull-reveal {
   transform-origin: top center;
