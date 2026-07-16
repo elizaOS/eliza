@@ -17,6 +17,7 @@ import {
   isTouchPrimaryWebBrowser,
   preOpenCloudLoginWindow,
   resolveCloudSignInPageUrl,
+  shouldReuseCurrentCloudLoginWindow,
   shouldUseSameTabCloudLogin,
 } from "./cloud-login-launch";
 
@@ -188,6 +189,27 @@ describe("preOpenCloudLoginWindow", () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue(popup);
     expect(preOpenCloudLoginWindow()).toBe(popup);
     expect(openSpy).toHaveBeenCalledWith("about:blank", CLOUD_LOGIN_POPUP_NAME);
+  });
+});
+
+describe("shouldReuseCurrentCloudLoginWindow", () => {
+  it("reuses the current surface for CLI device-login callbacks", () => {
+    expect(shouldReuseCurrentCloudLoginWindow("/auth/cli-login")).toBe(true);
+    expect(
+      shouldReuseCurrentCloudLoginWindow(
+        "/auth/cli-login?session=session-1&returnTo=http%3A%2F%2Flocalhost%3A2138",
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps direct login destinations on the normal popup path", () => {
+    expect(shouldReuseCurrentCloudLoginWindow("/dashboard")).toBe(false);
+    expect(
+      shouldReuseCurrentCloudLoginWindow(
+        "https://example.test/auth/cli-login?session=session-1",
+      ),
+    ).toBe(false);
+    expect(shouldReuseCurrentCloudLoginWindow(null)).toBe(false);
   });
 });
 

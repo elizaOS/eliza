@@ -18,12 +18,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const oauthState = vi.hoisted(() => ({
   popup: null as Window | null,
   pkceError: null as Error | null,
+  preOpenCalls: 0,
   storeVerifier: true,
 }));
 
 vi.mock("../../../../state/cloud-login-launch", () => ({
-  preOpenCloudLoginWindow: () => oauthState.popup,
   canNavigateSameTabForBlockedPopup: () => true,
+  preOpenCloudLoginWindow: () => {
+    oauthState.preOpenCalls += 1;
+    return oauthState.popup;
+  },
+  shouldReuseCurrentCloudLoginWindow: (returnTo: string | null) =>
+    returnTo === "/auth/cli-login" ||
+    returnTo?.startsWith("/auth/cli-login?") === true,
 }));
 
 vi.mock("@stwd/sdk", () => ({
@@ -102,9 +109,9 @@ vi.mock("../../lib/steward-oauth-url", async () => {
 
 import StewardLoginSection from "./steward-login-section";
 
-function renderSection() {
+function renderSection(initialEntry = "/login") {
   return render(
-    <MemoryRouter initialEntries={["/login"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <StewardLoginSection />
     </MemoryRouter>,
   );
@@ -123,6 +130,7 @@ describe("StewardLoginSection OAuth launch", () => {
   beforeEach(() => {
     oauthState.popup = makePopup();
     oauthState.pkceError = null;
+    oauthState.preOpenCalls = 0;
     oauthState.storeVerifier = true;
   });
 
@@ -142,6 +150,15 @@ describe("StewardLoginSection OAuth launch", () => {
       ),
     );
     expect(oauthState.popup?.opener).toBeNull();
+    expect(oauthState.preOpenCalls).toBe(1);
+  });
+
+  it("reuses the device-login surface instead of opening a nested popup", async () => {
+    renderSection("/login?returnTo=%2Fauth%2Fcli-login%3Fsession%3Dsession-1");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Google" }));
+
+    expect(oauthState.preOpenCalls).toBe(0);
   });
 
   it("closes the popup when browser storage cannot save the verifier", async () => {
