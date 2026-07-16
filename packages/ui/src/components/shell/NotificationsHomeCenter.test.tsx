@@ -395,7 +395,7 @@ describe("interrupt priority projection", () => {
       value: 240,
       writable: true,
     });
-    fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
 
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(list.scrollTop).toBe(0);
@@ -469,13 +469,13 @@ describe("interrupt priority projection", () => {
       touches: [{ clientX: 12, clientY: 40 }],
     });
     fireEvent.touchEnd(list, { touches: [] });
-    fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
     expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
     expect(__getStateForTests().notifications).toHaveLength(2);
 
-    fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
   });
@@ -1702,7 +1702,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   });
 
-  it("opens from the notification total without treating a pointer drag as a click", () => {
+  it("suppresses a drag release click without blocking keyboard activation", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
@@ -1733,9 +1733,32 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clientX: 10,
       clientY: 30,
     });
-    fireEvent.click(countButton);
+    fireEvent.click(countButton, { detail: 1 });
 
     expect(list.getAttribute("data-shade-mode")).toBe("rested");
+
+    fireEvent.pointerDown(countButton, {
+      pointerType: "mouse",
+      isPrimary: true,
+      pointerId: 83,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(countButton, {
+      pointerType: "mouse",
+      pointerId: 83,
+      clientX: 10,
+      clientY: 30,
+    });
+    fireEvent.pointerUp(countButton, {
+      pointerType: "mouse",
+      pointerId: 83,
+      clientX: 10,
+      clientY: 30,
+    });
+    fireEvent.click(countButton, { detail: 0 });
+
+    expect(list.getAttribute("data-shade-mode")).toBe("expanded");
   });
 
   it("animates groups that mount when the notification total opens the shade", () => {
@@ -2672,8 +2695,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
 
     // The list consumes the first post-drag synthetic click. The next click is
     // the intentional activation and must start on its own transition clock.
-    fireEvent.click(screen.getByTestId("notification-row"));
-    fireEvent.click(screen.getByTestId("notification-row"));
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
+    fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
     expect(center.hasAttribute("data-notification-shade-cancelling")).toBe(
       false,
     );
@@ -2728,7 +2751,9 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     expect(collapseFooter.style.transform).toBe("translateY(0px)");
 
-    fireEvent.click(screen.getByTestId("notifications-collapse"));
+    fireEvent.click(screen.getByTestId("notifications-collapse"), {
+      detail: 1,
+    });
     expect(list.hasAttribute("data-shade-settling")).toBe(false);
 
     act(() => vi.advanceTimersByTime(700));

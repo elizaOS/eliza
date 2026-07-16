@@ -2097,7 +2097,10 @@ export function NotificationsHomeCenter({
       ownsPull: boolean;
     } | null = null;
     const onClick = (event: MouseEvent) => {
-      if (suppressBackgroundClick.current) {
+      // Browser-synthesized release clicks carry pointer click detail. A
+      // keyboard activation has detail 0 and is a distinct user action, so a
+      // preceding drag must never make the shade temporarily keyboard-dead.
+      if (suppressBackgroundClick.current && event.detail !== 0) {
         suppressBackgroundClick.current = false;
         if (suppressBackgroundClickTimer.current !== null) {
           window.clearTimeout(suppressBackgroundClickTimer.current);
@@ -2515,7 +2518,7 @@ export function NotificationsHomeCenter({
     abortPointerPull();
   };
   const onListClickCapture = (e: React.MouseEvent) => {
-    if (!suppressNotificationClick.current) return;
+    if (!suppressNotificationClick.current || e.detail === 0) return;
     suppressNotificationClick.current = false;
     if (suppressNotificationClickTimer.current !== null) {
       window.clearTimeout(suppressNotificationClickTimer.current);

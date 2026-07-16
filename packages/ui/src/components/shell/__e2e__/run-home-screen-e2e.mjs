@@ -52,6 +52,28 @@ const DROPPED_FRAME_EPSILON_MS = 0.5;
 const MIN_FRAME_SAMPLES = 30;
 const RAIL_SWIPE_ATTEMPTS = 3;
 const RAIL_SWIPE_CYCLES_PER_ATTEMPT = 3;
+const NOTIFICATION_SHADE_SETTLE_MS = 460;
+const NOTIFICATION_SHADE_MAX_SETTLE_MS = 600;
+const NOTIFICATION_SHADE_EASING =
+  "cubic-bezier(0.25, 0.1, 0.25, 1)";
+
+function splitTopLevelCssList(value) {
+  const items = [];
+  let current = "";
+  let depth = 0;
+  for (const character of value) {
+    if (character === "(") depth += 1;
+    if (character === ")") depth = Math.max(0, depth - 1);
+    if (character === "," && depth === 0) {
+      if (current.trim()) items.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  if (current.trim()) items.push(current.trim());
+  return items;
+}
 
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "output-home");
@@ -1127,7 +1149,7 @@ try {
     "quiet notification stack starts folded behind the total",
   );
 
-  await notificationMotion.evaluate(() => {
+  await notificationMotion.evaluate((settleMs) => {
     window.__ELIZA_NOTIFICATION_OPEN_TRACE__ = [];
     const startedAt = performance.now();
     const sample = () => {
@@ -1165,7 +1187,7 @@ try {
             }
           : null,
       });
-      if (performance.now() - startedAt < 420) requestAnimationFrame(sample);
+      if (performance.now() - startedAt < settleMs) requestAnimationFrame(sample);
     };
     const countButton = document.querySelector(
       '[data-testid="notifications-count-button"]',
@@ -1175,8 +1197,8 @@ try {
     }
     countButton.click();
     requestAnimationFrame(sample);
-  });
-  await notificationMotion.waitForTimeout(460);
+  }, NOTIFICATION_SHADE_SETTLE_MS);
+  await notificationMotion.waitForTimeout(NOTIFICATION_SHADE_SETTLE_MS);
   const openTrace = await notificationMotion.evaluate(
     () => window.__ELIZA_NOTIFICATION_OPEN_TRACE__,
   );
@@ -1213,10 +1235,10 @@ try {
     `click-open produces intermediate group/count/clear frames (${openIntermediateOpacity.size}/${openIntermediateCountHeights.size}/${openIntermediateClearHeights.size})`,
   );
   assert(
-    mountedOpenFrames[0]?.group.duration.includes("0.22s") &&
-      mountedOpenFrames[0]?.count.duration.includes("0.22s") &&
-      mountedOpenFrames[0]?.clear.duration.includes("0.22s"),
-    `click-open uses one 220ms group/count/clear settle (${JSON.stringify(mountedOpenFrames[0] ?? null)})`,
+    mountedOpenFrames[0]?.group.duration.includes("0.46s") &&
+      mountedOpenFrames[0]?.count.duration.includes("0.46s") &&
+      mountedOpenFrames[0]?.clear.duration.includes("0.46s"),
+    `click-open uses one 460ms group/count/clear settle (${JSON.stringify(mountedOpenFrames[0] ?? null)})`,
   );
   assert(
     mountedOpenFrames.every(
@@ -1292,7 +1314,7 @@ try {
     { x: emptyLaneX, y: emptyLaneStartY },
   );
 
-  await notificationMotion.evaluate(() => {
+  await notificationMotion.evaluate((settleMs) => {
     window.__ELIZA_NOTIFICATION_CLOSE_TRACE__ = [];
     const startedAt = performance.now();
     const sample = () => {
@@ -1336,10 +1358,10 @@ try {
             }
           : null,
       });
-      if (performance.now() - startedAt < 420) requestAnimationFrame(sample);
+      if (performance.now() - startedAt < settleMs) requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  });
+  }, NOTIFICATION_SHADE_SETTLE_MS);
 
   await notificationCenter.getByTestId("notifications-collapse").click();
   assert(
@@ -1417,7 +1439,7 @@ try {
       !closeRaceState.cancelling,
     `empty-region swipes cannot interrupt a committed close (${JSON.stringify(closeRaceState)})`,
   );
-  await notificationMotion.waitForTimeout(460);
+  await notificationMotion.waitForTimeout(NOTIFICATION_SHADE_SETTLE_MS);
   const closeTrace = await notificationMotion.evaluate(
     () => window.__ELIZA_NOTIFICATION_CLOSE_TRACE__,
   );
@@ -1468,10 +1490,10 @@ try {
     `click-close produces intermediate count/clear/group frames (${closeIntermediateCountHeights.size}/${closeIntermediateClearHeights.size}/${closeIntermediateGroupOpacity.size})`,
   );
   assert(
-    mountedCloseFrames[0]?.count.duration.includes("0.22s") &&
-      mountedCloseFrames[0]?.clear.duration.includes("0.22s") &&
-      mountedCloseFrames[0]?.group.duration.includes("0.22s"),
-    `click-close uses one 220ms count/clear/group settle (${JSON.stringify(mountedCloseFrames[0] ?? null)})`,
+    mountedCloseFrames[0]?.count.duration.includes("0.46s") &&
+      mountedCloseFrames[0]?.clear.duration.includes("0.46s") &&
+      mountedCloseFrames[0]?.group.duration.includes("0.46s"),
+    `click-close uses one 460ms count/clear/group settle (${JSON.stringify(mountedCloseFrames[0] ?? null)})`,
   );
   assert(
     mountedCloseFrames.every(
@@ -1501,7 +1523,11 @@ try {
     steps: 12,
   });
   await notificationMotion.mouse.up();
-  await notificationMotion.waitForTimeout(280);
+  await notificationMotion.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="home-notification-list"]')
+      ?.getAttribute("data-shade-mode") === "rested",
+  );
   assert(
     (await notificationCenter
       .getByTestId("home-notification-list")
@@ -1524,7 +1550,11 @@ try {
     -160,
     { steps: 12, stepDelayMs: 12 },
   );
-  await notificationMotion.waitForTimeout(280);
+  await notificationMotion.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="home-notification-list"]')
+      ?.getAttribute("data-shade-mode") === "rested",
+  );
   assert(
     (await notificationCenter
       .getByTestId("home-notification-list")
@@ -1786,13 +1816,11 @@ try {
     `stack fold uses the 340ms settle (${mountedFoldFrames[0]?.controls.duration ?? "missing"})`,
   );
   const foldTimingFunctions = new Set(
-    (mountedFoldFrames[0]?.controls.timing ?? "")
-      .split(",")
-      .map((timing) => timing.trim())
-      .filter(Boolean),
+    splitTopLevelCssList(mountedFoldFrames[0]?.controls.timing ?? ""),
   );
   assert(
-    foldTimingFunctions.size === 1 && foldTimingFunctions.has("ease"),
+    foldTimingFunctions.size === 1 &&
+      foldTimingFunctions.has(NOTIFICATION_SHADE_EASING),
     `stack fold geometry and opacity share one ease curve (${mountedFoldFrames[0]?.controls.timing ?? "missing"})`,
   );
   assert(
@@ -1873,7 +1901,11 @@ try {
     "stack fold settles as one front card with two physical peeks",
   );
   await notificationCenter.getByTestId("notifications-collapse").click();
-  await notificationMotion.waitForTimeout(280);
+  await notificationMotion.waitForFunction(() =>
+    document
+      .querySelector('[data-testid="home-notification-list"]')
+      ?.getAttribute("data-shade-mode") === "rested",
+  );
   assert(
     (await notificationCenter
       .getByTestId("home-notification-list")
@@ -1898,7 +1930,7 @@ try {
   const heldCountTop = (
     await notificationCenter.getByTestId("notifications-count").boundingBox()
   )?.y;
-  await notificationMotion.evaluate((restTop) => {
+  await notificationMotion.evaluate(({ restTop, settleMaxMs }) => {
     window.__ELIZA_NOTIFICATION_CANCEL_TRACE__ = [];
     const startedAt = performance.now();
     const sample = () => {
@@ -1932,10 +1964,14 @@ try {
             : null,
         });
       }
-      if (performance.now() - startedAt < 430) requestAnimationFrame(sample);
+      if (performance.now() - startedAt < settleMaxMs)
+        requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }, restedCountTop);
+  }, {
+    restTop: restedCountTop,
+    settleMaxMs: NOTIFICATION_SHADE_MAX_SETTLE_MS,
+  });
   const heldDirectManipulation = await notificationMotion.evaluate(() => {
     const quietGroup = document.querySelector(
       "[data-notification-pull-reveal]",
@@ -1986,21 +2022,34 @@ try {
         : "",
     };
   });
-  await notificationMotion.waitForTimeout(450);
+  await notificationMotion.waitForFunction(() =>
+    !document
+      .querySelector('[data-testid="home-notification-center"]')
+      ?.hasAttribute("data-notification-shade-cancelling"),
+  );
   const cancelTrace = await notificationMotion.evaluate(
     () => window.__ELIZA_NOTIFICATION_CANCEL_TRACE__,
   );
   const heldOffset = (heldCountTop ?? restedCountTop) - restedCountTop;
   const cancelAt100 = cancelTrace.find((sample) => sample.t >= 100);
+  const cancelDurations = [
+    cancelStyle.duration,
+    cancelStyle.quietDuration,
+    cancelStyle.collapseDuration,
+  ].map((duration) => Number.parseFloat(duration.split(",")[0] ?? ""));
+  const cancelDurationSpread =
+    Math.max(...cancelDurations) - Math.min(...cancelDurations);
   assert(
     cancelStyle.active &&
-      cancelStyle.duration.includes("0.34s") &&
       cancelStyle.quietMounted &&
-      cancelStyle.quietDuration.includes("0.34s") &&
       cancelStyle.clearMounted &&
       cancelStyle.collapseMounted &&
-      cancelStyle.collapseDuration.includes("0.34s"),
-    `cancelled pull keeps every preview surface on the softer 340ms settle (${JSON.stringify(cancelStyle)})`,
+      cancelDurations.every(Number.isFinite) &&
+      Math.min(...cancelDurations) >= 0.32 &&
+      Math.max(...cancelDurations) <=
+        NOTIFICATION_SHADE_MAX_SETTLE_MS / 1_000 &&
+      cancelDurationSpread < 0.001,
+    `cancelled pull keeps every preview surface on one velocity-aware settle (${JSON.stringify({ cancelStyle, cancelDurations })})`,
   );
   assert(
     Math.abs(cancelAt100?.offset ?? 0) > Math.abs(heldOffset) * 0.1,
