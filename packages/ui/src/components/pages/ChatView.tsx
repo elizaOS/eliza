@@ -79,7 +79,6 @@ import {
   connectorAccountDisplayName,
   connectorWriteConfirmationKey,
   isLikelyAccountRequiredError,
-  mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
@@ -1347,7 +1346,6 @@ function InboxChatPanel({
     saving: sendAsSaving,
     selectAccount,
     selectedAccount: sendAsSelectedAccount,
-    sendAsMetadata,
     showPicker: showSendAsPicker,
   } = connectorSendAs;
   const [accountRequiredReason, setAccountRequiredReason] = useState<
@@ -1447,8 +1445,6 @@ function InboxChatPanel({
           ...(sendAsSelectedAccount?.id
             ? { accountId: sendAsSelectedAccount.id }
             : {}),
-          channel: activeInboxChat.id,
-          metadata: mergeConnectorSendAsMetadata(undefined, sendAsMetadata),
           roomId: activeInboxChat.id,
           source: transportSource,
           text,
@@ -1496,7 +1492,6 @@ function InboxChatPanel({
       activeInboxChat.id,
       blockingAccountReason,
       replyText,
-      sendAsMetadata,
       sendAsSelectedAccount,
       sending,
       showWriteConfirmation,
