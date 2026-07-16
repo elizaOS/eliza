@@ -178,6 +178,7 @@ import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
+import type { CharacterSettings } from "../types/agent";
 import type {
 	Action,
 	ActionResult,
@@ -323,6 +324,25 @@ export {
 };
 
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
+
+/**
+ * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
+ * ceiling applied to the Stage-1/synthesis call so operators can pin terse
+ * replies (e.g. group-chat turns) without rewriting the persona, and have it
+ * enforced by the provider rather than requested politely in `system`.
+ * `characterSchema` validates the field (`z.number().int().positive()`); the
+ * integer guard here only covers characters constructed without validation.
+ * Unset or invalid → undefined, i.e. the unchanged channel default applies.
+ */
+function resolveMaxReplyTokens(
+	settings: CharacterSettings | undefined,
+): number | undefined {
+	const raw = settings?.maxReplyTokens;
+	return typeof raw === "number" && Number.isInteger(raw) && raw > 0
+		? raw
+		: undefined;
+}
+
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
 const CODE_SNIPPET_VALIDITY_INSTRUCTION =
@@ -6618,6 +6638,12 @@ export async function runV5MessageRuntimeStage1(args: {
 				.eliza ?? {}),
 			thinking: "off",
 		};
+		// Per-agent reply-length budget (#16395): when set it caps every channel
+		// (including DMs) with a real max_tokens; otherwise the existing per-channel
+		// default applies unchanged.
+		const maxReplyTokens = resolveMaxReplyTokens(
+			args.runtime.character.settings,
+		);
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
@@ -6628,8 +6654,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
 			// to use provider/model-max output instead of the runtime default; group
 			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
-			maxTokens: directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS,
-			omitMaxTokens: directMessageChannel,
+			maxTokens:
+				maxReplyTokens ??
+				(directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS),
+			omitMaxTokens: maxReplyTokens == null && directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to
