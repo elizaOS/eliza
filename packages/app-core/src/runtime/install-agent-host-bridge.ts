@@ -18,6 +18,7 @@ import {
   setAgentHostBridge,
 } from "@elizaos/agent/runtime/host-bridge";
 import { getBuildVariant, isStoreBuild } from "@elizaos/core";
+import { getAccountPoolBrokerSnapshot } from "../api/account-pool-broker-routes";
 import { resolveAuthorizedRouteRole } from "../api/auth";
 import { handleCloudPairRoute } from "../api/cloud-pair-route";
 import {
@@ -41,6 +42,7 @@ export function installAgentHostBridge(): void {
     runVaultBootstrap,
     sharedVault,
     getDefaultAccountPool,
+    getAccountPoolBrokerSnapshot,
     applyAccountPoolApiCredentials: (options) =>
       applyAccountPoolApiCredentials(options),
     startAccountPoolKeepAlive: () => startAccountPoolKeepAlive(),

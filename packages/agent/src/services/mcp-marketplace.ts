@@ -85,10 +85,6 @@ export interface McpServerConfig {
   timeoutInMillis?: number;
 }
 
-export interface McpConfiguredServers {
-  servers: Record<string, McpServerConfig>;
-}
-
 export async function searchMcpMarketplace(
   query?: string,
   limit = 30,
@@ -243,85 +239,4 @@ export async function getMcpServerDetails(
   }
   detailsSpan.success({ statusCode: resp.status });
   return data.server;
-}
-
-export function generateMcpConfigFromRegistry(
-  server: McpMarketplaceSearchItem,
-): McpServerConfig | null {
-  if (server.connectionType === "remote" && server.connectionUrl) {
-    return {
-      type: "streamable-http",
-      url: server.connectionUrl,
-    };
-  } else if (server.connectionType === "stdio" && server.npmPackage) {
-    return {
-      type: "stdio",
-      command: "npx",
-      args: ["-y", server.npmPackage],
-    };
-  } else if (server.connectionType === "stdio" && server.dockerImage) {
-    return {
-      type: "stdio",
-      command: "docker",
-      args: ["run", "-i", "--rm", server.dockerImage],
-    };
-  }
-
-  return null;
-}
-
-export function generateMcpConfigFromServerDetails(
-  server: McpRegistryServer,
-  envValues?: Record<string, string>,
-  headerValues?: Record<string, string>,
-): McpServerConfig | null {
-  if (server.remotes && server.remotes.length > 0) {
-    const remote = server.remotes[0];
-    const config: McpServerConfig = {
-      type: (remote.type as McpServerConfig["type"]) || "streamable-http",
-      url: remote.url,
-    };
-    if (headerValues && Object.keys(headerValues).length > 0) {
-      config.headers = { ...headerValues };
-    }
-    return config;
-  }
-
-  if (server.packages && server.packages.length > 0) {
-    const pkg = server.packages[0];
-
-    if (pkg.registryType === "npm") {
-      const args = ["-y", pkg.identifier];
-      if (pkg.packageArguments) {
-        for (const arg of pkg.packageArguments) {
-          if (arg.default) {
-            args.push(arg.default);
-          }
-        }
-      }
-      const config: McpServerConfig = {
-        type: "stdio",
-        command: "npx",
-        args,
-      };
-      if (envValues && Object.keys(envValues).length > 0) {
-        config.env = { ...envValues };
-      }
-      return config;
-    }
-
-    if (pkg.registryType === "oci") {
-      const config: McpServerConfig = {
-        type: "stdio",
-        command: "docker",
-        args: ["run", "-i", "--rm", pkg.identifier],
-      };
-      if (envValues && Object.keys(envValues).length > 0) {
-        config.env = { ...envValues };
-      }
-      return config;
-    }
-  }
-
-  return null;
 }

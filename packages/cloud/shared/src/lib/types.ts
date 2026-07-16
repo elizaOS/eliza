@@ -50,7 +50,6 @@ export type { NewUser, User } from "../db/schemas/users";
 // Cache and stats types
 export type { AgentStats } from "./cache/agent-state-cache";
 // Shared event types
-export type { CreditUpdateEvent } from "./events/credit-events-redis";
 // Shared character types
 export type {
   CategoryId,

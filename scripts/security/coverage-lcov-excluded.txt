@@ -1,0 +1,18 @@
+# Files that CANNOT appear in an LCOV report, so the enforced changed-file
+# coverage gate must not hard-fail them as MISSING (#16409). The gate prints a
+# visible "EXCLUDED (cannot appear in LCOV)" line for these instead — fail-open
+# but auditable, and this manifest is code-reviewed like any source change.
+#
+# Every entry needs a reason and is meant to be DELETED: the real fix is making
+# coverage collection work on the file. If an entry's file starts appearing in
+# LCOV again, the gate automatically resumes gating it (presence always gates;
+# only absence is excused).
+#
+# Rolldown coverage instrumentation fails on these inline type-import files.
+# The vitest base config (packages/test/vitest/default.config.ts) carries
+# matching coverage.exclude entries — note those still use a stale `eliza/`
+# wrapper-repo path prefix, so the files' LCOV absence in practice comes from
+# the collection failure itself, not the config. Either way: structurally
+# absent until the Rolldown issue is fixed.
+packages/agent/src/api/server.ts
+packages/agent/src/runtime/eliza.ts

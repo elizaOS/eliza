@@ -1673,12 +1673,67 @@ async function generateTextByModelType(
     let capturedStreamError: unknown;
     let companionStreamError: unknown;
     let telemetryFinalized = false;
-    const result = await streamText({
-      ...generateParams,
-      onError: ({ error }: { error: unknown }) => {
-        capturedStreamError = error;
-      },
-    });
+    // Live streaming retries ONLY when the attempt dies before its first
+    // token: Cerebras's transient 500s surface through `onError` with an
+    // empty stream (or as a throw on the first pull), and at that point
+    // nothing has reached the user, so a fresh attempt is invisible. Once a
+    // token has been delivered a failure stays fatal — replaying a partial
+    // stream would double-deliver text. The first item is pre-pulled here and
+    // replayed by the generator below; abandoned attempts get their companion
+    // promises defused so an errored, unconsumed result cannot surface as an
+    // unhandled rejection.
+    let result!: Awaited<ReturnType<typeof streamText>>;
+    let streamIterator!: AsyncIterator<unknown>;
+    let firstItem: IteratorResult<unknown> | undefined;
+    for (let attempt = 0; ; attempt++) {
+      capturedStreamError = undefined;
+      result = await streamText({
+        ...generateParams,
+        onError: ({ error }: { error: unknown }) => {
+          capturedStreamError = error;
+        },
+      });
+      const source = params.streamStructured === true ? result.fullStream : result.textStream;
+      streamIterator = (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+      try {
+        firstItem = await streamIterator.next();
+      } catch (error) {
+        firstItem = undefined;
+        capturedStreamError ??= error;
+      }
+      const failedBeforeFirstToken =
+        capturedStreamError !== undefined && (firstItem === undefined || firstItem.done === true);
+      if (
+        !failedBeforeFirstToken ||
+        attempt >= 3 ||
+        !isTransientProviderError(capturedStreamError)
+      ) {
+        break;
+      }
+      for (const companion of [result.text, result.usage, result.finishReason, result.toolCalls]) {
+        void Promise.resolve(companion).catch(() => {
+          // error-policy:J5 suppression — this attempt is being abandoned and
+          // retried; its failure is observed via capturedStreamError.
+        });
+      }
+      const backoffMs = Math.min(3000, 300 * 2 ** attempt) + Math.floor(Math.random() * 200);
+      logger.warn(
+        `[OpenAI] transient stream-start error (attempt ${attempt + 1}/3), retrying in ${backoffMs}ms: ${
+          (capturedStreamError as { message?: string })?.message ?? String(capturedStreamError)
+        }`
+      );
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+    // Replays the pre-pulled first item, then continues the committed attempt.
+    const iterateStream = async function* (): AsyncGenerator<unknown> {
+      if (firstItem && !firstItem.done) yield firstItem.value;
+      if (firstItem?.done) return;
+      for (;;) {
+        const next = await streamIterator.next();
+        if (next.done) return;
+        yield next.value;
+      }
+    };
     let structuredTextSettled = false;
     let resolveStructuredText: (text: string) => void = () => {};
     let rejectStructuredText: (error: unknown) => void = () => {};
@@ -1764,7 +1819,7 @@ async function generateTextByModelType(
             // visible. The authoritative parse still comes from toolCalls.
             // Gated on streamStructured so planner/coding tool-call JSON never
             // leaks into a visible stream.
-            for await (const part of result.fullStream) {
+            for await (const part of iterateStream()) {
               // The AI SDK renamed these delta fields across v6 minors
               // (`tool-input-delta`: delta→inputTextDelta), and the workspace's
               // declared (^6.0.30) and hoisted (6.0.174) copies disagree — read
@@ -1785,10 +1840,10 @@ async function generateTextByModelType(
               yield chunk;
             }
           } else {
-            for await (const chunk of result.textStream) {
-              responseChunks.push(chunk);
-              params.onStreamChunk?.(chunk);
-              yield chunk;
+            for await (const chunk of iterateStream()) {
+              responseChunks.push(chunk as string);
+              params.onStreamChunk?.(chunk as string);
+              yield chunk as string;
             }
           }
         } catch (error) {

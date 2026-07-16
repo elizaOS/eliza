@@ -15,9 +15,6 @@ import type {
 } from "./workbench-context.ts";
 import { handleWorkbenchVfsRoutes } from "./workbench-vfs-routes.ts";
 
-export const WORKBENCH_BOOTSTRAP_TODO_NAME =
-  "Get the user's name and understand what they need help with";
-
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------

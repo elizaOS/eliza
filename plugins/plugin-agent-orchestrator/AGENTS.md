@@ -190,7 +190,6 @@ plugins/plugin-agent-orchestrator/
       trajectory-feedback.ts     Trajectory feedback processing
       parent-agent-broker.ts     Parent-agent context broker
       parent-agent-dispatch.ts   Dispatch helpers for parent-agent context
-      skill-lifeops-context-broker.ts LifeOps context broker for skills
       agent-name-assignment.ts   Agent name assignment helpers
       audit.ts                   Audit log utilities (TASK_AUDIT_EVENT)
       coding-account-selection.ts Account/credential selection for spawned agents
