@@ -306,6 +306,109 @@ describe("account-pool broker lease flow", () => {
   });
 });
 
+describe("account-pool broker consumer key management", () => {
+  it("returns structured no-store 400 for malformed consumer key ids", async () => {
+    const res = fakeRes();
+    await handleAccountPoolBrokerRoute(
+      fakeReq("/internal/account-pool/v1/consumer-keys/%E0%A4%A", {
+        method: "PATCH",
+        auth: `Bearer ${SECRET}`,
+        body: {
+          label: "broken",
+        },
+      }),
+      res.res,
+    );
+    expect(res.status()).toBe(400);
+    expect(res.header("Cache-Control")).toBe("no-store");
+    expect(res.body()).toEqual({
+      ok: false,
+      error: "invalid_consumer_key_id",
+    });
+  });
+
+  it("creates, lists, updates, and rotates consumer keys without listing plaintext", async () => {
+    const created = await postBroker("consumer-keys", {
+      label: "proxy",
+      dailyTokenQuota: 123,
+    });
+    expect(created.status()).toBe(201);
+    const createdBody = created.body() as Record<string, unknown>;
+    expect(createdBody.key).toEqual(expect.stringMatching(/^eliza_cp_/));
+    expect(createdBody.consumer).toMatchObject({
+      label: "proxy",
+      enabled: true,
+      dailyTokenQuota: 123,
+    });
+    const consumer = createdBody.consumer as Record<string, unknown>;
+    const id = String(consumer.id);
+
+    const listed = fakeRes();
+    await handleAccountPoolBrokerRoute(
+      fakeReq("/internal/account-pool/v1/consumer-keys", {
+        method: "GET",
+        auth: `Bearer ${SECRET}`,
+      }),
+      listed.res,
+    );
+    expect(listed.status()).toBe(200);
+    expect(JSON.stringify(listed.body())).not.toContain(
+      String(createdBody.key),
+    );
+    expect(listed.body()).toMatchObject({
+      ok: true,
+      keys: [
+        {
+          id,
+          label: "proxy",
+          enabled: true,
+          dailyTokenQuota: 123,
+        },
+      ],
+    });
+
+    const updated = fakeRes();
+    await handleAccountPoolBrokerRoute(
+      fakeReq(`/internal/account-pool/v1/consumer-keys/${id}`, {
+        method: "PATCH",
+        auth: `Bearer ${SECRET}`,
+        body: {
+          label: "proxy-renamed",
+          enabled: false,
+          dailyTokenQuota: null,
+        },
+      }),
+      updated.res,
+    );
+    expect(updated.status()).toBe(200);
+    expect(updated.body()).toMatchObject({
+      ok: true,
+      consumer: {
+        id,
+        label: "proxy-renamed",
+        enabled: false,
+        dailyTokenQuota: null,
+      },
+    });
+
+    const rotated = fakeRes();
+    await handleAccountPoolBrokerRoute(
+      fakeReq(`/internal/account-pool/v1/consumer-keys/${id}/rotate`, {
+        method: "POST",
+        auth: `Bearer ${SECRET}`,
+      }),
+      rotated.res,
+    );
+    expect(rotated.status()).toBe(200);
+    expect((rotated.body() as Record<string, unknown>).key).toEqual(
+      expect.stringMatching(/^eliza_cp_/),
+    );
+    expect((rotated.body() as Record<string, unknown>).key).not.toBe(
+      createdBody.key,
+    );
+  });
+});
+
 describe("account-pool broker report/release flow", () => {
   it("classifies success, rate-limit, auth failure, and transient failures", async () => {
     writeAccount("anthropic-subscription", "ok", "token-ok");
