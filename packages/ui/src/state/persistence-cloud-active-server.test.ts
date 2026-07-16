@@ -315,6 +315,69 @@ describe("Cloud active server persistence", () => {
     });
   });
 
+  it("keeps the on-device agent record under cloud-hybrid (#16065 LP3 re-onboarded every cold launch)", () => {
+    // cloud-hybrid = on-device agent chat + cloud inference, so the persisted
+    // on-device record is valid. Rejecting it here (returning null) cleared the
+    // record + reset first-run on every cold launch, bouncing a returning hybrid
+    // user into onboarding while the still-booting agent (~30s on the LP3) was
+    // unreachable. `undefined` = keep the record as-is.
+    const server = {
+      id: "local:android",
+      kind: "remote" as const,
+      label: "On-device agent",
+      apiBase: "eliza-local-agent://ipc",
+    };
+    expect(
+      reconcileMobileRestoredActiveServer({
+        platform: "android",
+        mobileRuntimeMode: "cloud-hybrid",
+        server,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("keeps the on-device agent record under local (the committed on-device sibling of cloud-hybrid)", () => {
+    const server = {
+      id: "local:mobile",
+      kind: "remote" as const,
+      label: "On-device agent",
+      apiBase: "eliza-local-agent://ipc",
+    };
+    expect(
+      reconcileMobileRestoredActiveServer({
+        platform: "ios",
+        mobileRuntimeMode: "local",
+        server,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("drops the on-device agent record for a non-agent mode (pure cloud never runs a bundled agent)", () => {
+    // A persisted on-device record with a mode that runs NO bundled agent
+    // (`cloud`, `remote-mac`, `tunnel-to-mobile`) is genuinely stale — return
+    // null so restore clears it and lets the user re-onboard to the chosen mode.
+    const server = {
+      id: "local:android",
+      kind: "remote" as const,
+      label: "On-device agent",
+      apiBase: "eliza-local-agent://ipc",
+    };
+    expect(
+      reconcileMobileRestoredActiveServer({
+        platform: "android",
+        mobileRuntimeMode: "cloud",
+        server,
+      }),
+    ).toBeNull();
+    expect(
+      reconcileMobileRestoredActiveServer({
+        platform: "android",
+        mobileRuntimeMode: "remote-mac",
+        server,
+      }),
+    ).toBeNull();
+  });
+
   it("logs a warning instead of silently swallowing a failed active-server persist", () => {
     const server = createPersistedActiveServer({
       id: "cloud:agent-warn",

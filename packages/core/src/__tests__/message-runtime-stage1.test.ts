@@ -14,6 +14,7 @@ import type { CandidateActionBackstopRule } from "../runtime/candidate-action-ba
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import { validateCharacter } from "../schemas/character";
 import {
 	GazetteerEntityRecognizer,
 	PseudonymSession,
@@ -336,6 +337,56 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe("Hello.");
 		}
+	});
+
+	// #16395: a per-agent maxReplyTokens setting caps Stage-1 with a real
+	// max_tokens, overriding the 2048 group default.
+	it("caps Stage-1 max_tokens at a per-agent maxReplyTokens setting", async () => {
+		const runtime = makeRuntime([
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "mh-1",
+						name: "HANDLE_RESPONSE",
+						arguments: {
+							shouldRespond: "RESPOND",
+							thought: "Direct answer.",
+							replyText: "Hi.",
+							contexts: ["simple"],
+							intents: [],
+							candidateActionNames: [],
+							facts: [],
+							relationships: [],
+							addressedTo: [],
+						},
+					},
+				],
+				finishReason: "tool_calls",
+			},
+		]);
+		// Round-trip through the character schema: maxReplyTokens must survive
+		// validation as a known top-level settings key (not be relocated into
+		// settings.extra, which would silently strip the budget).
+		const validated = validateCharacter({
+			name: runtime.character.name ?? "Test",
+			settings: { maxReplyTokens: 200 },
+		});
+		expect(validated.success).toBe(true);
+		if (!validated.success) return;
+		expect(validated.data.settings?.maxReplyTokens).toBe(200);
+		runtime.character.settings = validated.data.settings;
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000006" as UUID,
+		});
+
+		const params = useModelCalls(runtime)[0]?.[1] as { maxTokens?: number };
+		// Hard-capped at the per-agent budget, overriding the 2048 group default.
+		expect(params.maxTokens).toBe(200);
 	});
 
 	it("restores PII surrogates at the direct reply boundary only", async () => {
@@ -3576,6 +3627,56 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("planned_reply");
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe("Checked.");
+		}
+	});
+
+	it("does not hard-enforce a tool when Stage 1 names no candidate", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought:
+					"Planning may help, but no specific capability was identified.",
+				contexts: ["general"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "No exposed tool fits this request.",
+				toolCalls: [],
+				messageToUser: "I can answer without running a tool.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: vi.fn(),
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(plannerParams.tools?.map((tool) => tool.name)).toContain(
+			"CHECK_RUNTIME",
+		);
+		expect(JSON.stringify(plannerParams.messages)).not.toContain(
+			"prior_dialogue_policy",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I can answer without running a tool.",
+			);
 		}
 	});
 

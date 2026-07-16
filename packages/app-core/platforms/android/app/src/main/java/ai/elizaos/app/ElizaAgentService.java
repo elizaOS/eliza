@@ -3841,29 +3841,49 @@ public class ElizaAgentService extends Service {
     public static boolean shouldAutoStart(Context context) {
         String mode = readRuntimeMode(context);
         long totalMemBytes = readDeviceTotalMemBytes(context);
-        boolean deviceAllowsLocalAgent = DeviceRamTierPolicy.allowsLocalAgent(totalMemBytes);
         boolean start = shouldAutoStartForRuntimeMode(
-            isBrandedDevice(), mode, deviceAllowsLocalAgent);
+            isBrandedDevice(), mode, totalMemBytes);
         String trimmed = mode == null ? null : mode.trim();
-        if (!start && "local".equals(trimmed) && !deviceAllowsLocalAgent) {
-            // Fail loud (#14390): a persisted local choice on a device below the
-            // RAM floor is refused, not silently attempted-and-wedged. The
+        if (!start
+                && isOnDeviceAgentRuntimeMode(trimmed)
+                && !allowsAgentStartForRuntimeMode(trimmed, totalMemBytes)) {
+            // Fail loud (#14390, #15577): a persisted on-device runtime choice —
+            // "local" OR "cloud-hybrid" — on a device below its matching RAM
+            // floor is refused, not silently attempted-and-wedged. Refusing BOTH
+            // symmetrically is what keeps the renderer from waiting out the 45s
+            // existing-install probe for an agent this gate will never start; the
             // renderer heals the stale mode back to onboarding at boot
             // (device-ram-tier.ts enforceDeviceRamPolicyOnPersistedRuntimeMode).
-            Log.w(TAG, "refusing to auto-start the on-device agent: persisted local"
-                + " runtime mode on a device below the "
-                + DeviceRamTierPolicy.LOCAL_AGENT_MIN_MARKETED_RAM_GB
-                + " GB RAM floor (marketed "
+            int requiredRamGb = "cloud-hybrid".equals(trimmed)
+                ? DeviceRamTierPolicy.HYBRID_AGENT_MIN_MARKETED_RAM_GB
+                : DeviceRamTierPolicy.LOCAL_AGENT_MIN_MARKETED_RAM_GB;
+            Log.w(TAG, "refusing to auto-start the on-device agent: persisted "
+                + trimmed + " runtime mode on a device below the "
+                + requiredRamGb + " GB RAM floor (marketed "
                 + DeviceRamTierPolicy.marketedRamGb(totalMemBytes) + " GB)");
         }
         return start;
     }
 
     static boolean shouldAutoStartForRuntimeMode(
-            boolean brandedDevice, String mode, boolean deviceAllowsLocalAgent) {
+            boolean brandedDevice, String mode, long totalMemBytes) {
         if (brandedDevice) return true;
         String trimmed = mode == null ? null : mode.trim();
-        return "local".equals(trimmed) && deviceAllowsLocalAgent;
+        // A committed on-device runtime — "local" (on-device inference + agent)
+        // or "cloud-hybrid" (cloud inference, but the on-device agent still owns
+        // chat, plugins, the voice bridge, and device control) — auto-starts the
+        // bundled agent on cold launch once it clears its matching RAM floor: the
+        // 4 GB hybrid floor for cloud-hybrid, the 8 GB local floor otherwise
+        // (#15577). A fresh install (mode == null) and every external/pure-cloud
+        // choice never auto-start one — onboarding, then the renderer, own that.
+        return isOnDeviceAgentRuntimeMode(trimmed)
+            && allowsAgentStartForRuntimeMode(trimmed, totalMemBytes);
+    }
+
+    /** The persisted runtime modes that run the bundled on-device agent process. */
+    static boolean isOnDeviceAgentRuntimeMode(String mode) {
+        String trimmed = mode == null ? null : mode.trim();
+        return "local".equals(trimmed) || "cloud-hybrid".equals(trimmed);
     }
 
     /**
