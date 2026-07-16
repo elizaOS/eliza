@@ -1565,6 +1565,7 @@ waifu.fun/
 /packages/os/homepage/tests/visual.spec.ts-snapshots/hardware-usb-desktop-mobile-linux.png
 # Local linked worktrees created by developer and agent tooling.
 .worktrees/
+.audit-worktrees/
 .codex-agent-worktrees/
 .codex-pr-worktrees/
 .codex-worktrees/

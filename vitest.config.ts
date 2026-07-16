@@ -21,6 +21,7 @@ export default defineConfig({
       "**/dist/**",
       "**/.git/**",
       "**/.worktrees/**",
+      "**/.audit-worktrees/**",
       "**/.codex-worktrees/**",
       "**/.codex-pr-worktrees/**",
       "**/.codex-agent-worktrees/**",
