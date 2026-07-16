@@ -22,7 +22,13 @@ import codingToolsPlugin, {
   SessionCwdService,
 } from "../src/index.ts";
 
-const EXPECTED_ACTIONS = ["FILE", "SHELL", "WORKTREE"];
+const EXPECTED_ACTIONS = [
+  "FILE",
+  "SHELL",
+  "WEB_FETCH",
+  "WEB_SEARCH",
+  "WORKTREE",
+];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
   it("exports a Plugin with the expected name", () => {
@@ -46,7 +52,6 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
       "GREP",
       "GLOB",
       "LS",
-      "WEB_FETCH",
       "ASK_USER_QUESTION",
       "ENTER_WORKTREE",
       "EXIT_WORKTREE",

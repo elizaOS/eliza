@@ -1,6 +1,6 @@
 /**
  * AVAILABLE_CODING_TOOLS provider: injects the list of tool names the plugin
- * exposes (FILE, SHELL, WORKTREE) into agent state at position -10 so the model
+ * exposes into agent state at position -10 so the model
  * knows which coding actions it can call.
  */
 import type {
@@ -12,7 +12,13 @@ import type {
 } from "@elizaos/core";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
-const TOOL_NAMES = ["FILE", "SHELL", "WORKTREE"] as const;
+const TOOL_NAMES = [
+  "FILE",
+  "SHELL",
+  "WEB_FETCH",
+  "WEB_SEARCH",
+  "WORKTREE",
+] as const;
 
 /**
  * Surface the coding-tools toolkit to the planner. Mirrors the
@@ -21,7 +27,7 @@ const TOOL_NAMES = ["FILE", "SHELL", "WORKTREE"] as const;
  */
 export const availableToolsProvider: Provider = {
   name: "AVAILABLE_CODING_TOOLS",
-  description: "Lists FILE, SHELL, and WORKTREE coding tools.",
+  description: "Lists the native coding, web, and worktree tools.",
   position: -10,
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
@@ -35,7 +41,7 @@ export const availableToolsProvider: Provider = {
     const lines = [
       "# Native coding tools",
       "",
-      "FILE reads/writes/searches, SHELL runs commands, and WORKTREE manages git worktrees.",
+      "FILE reads/writes/searches, SHELL runs commands, WEB_FETCH reads public HTTPS pages, WEB_SEARCH researches the web, and WORKTREE manages git worktrees.",
       "Use absolute workspace paths unless a tool says it defaults to session cwd. Configured private/system paths are blocked.",
       "",
       ...TOOL_NAMES.map((n) => `- ${n}`),
