@@ -23,6 +23,7 @@ export default defineConfig({
       "**/.worktrees/**",
       "**/.codex-worktrees/**",
       "**/.codex-pr-worktrees/**",
+      "**/.codex-agent-worktrees/**",
       "**/.claude/**",
       "**/.eliza/**",
       "**/.tmp/**",
