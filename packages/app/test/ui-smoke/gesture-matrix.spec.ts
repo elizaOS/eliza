@@ -417,10 +417,15 @@ test("dashboard notification center: row tap marks read in place, hover-X dismis
   ).toHaveCount(0, { timeout: 10_000 });
   await expect(center.getByTestId("notification-row")).toHaveCount(7);
 
-  // (d) There is no bulk clear-all trash button any more — rows are dismissed
-  // one at a time. The right-click contextual menu is a second per-row path:
-  // open it on a remaining row and dismiss from it.
-  await expect(center.getByTestId("notifications-clear-all")).toHaveCount(0);
+  // (d) The bulk command keeps one stable DOM node so a pull can reveal it
+  // continuously, but its rested slot is fully collapsed and inert. The
+  // right-click contextual menu remains a second per-row dismissal path.
+  const clearAll = center.getByTestId("notifications-clear-all");
+  await expect(clearAll).toHaveCount(1);
+  await expect(clearAll.locator("..")).toHaveCSS("opacity", "0");
+  await expect(clearAll.locator("..")).toHaveCSS("height", "0px");
+  await expect(clearAll.locator("..")).toHaveAttribute("aria-hidden", "true");
+  await expect(clearAll.locator("..")).toHaveAttribute("inert", "");
   // Right-click the row button; the contextmenu bubbles to the row li, which
   // opens the menu.
   const menuTarget = center

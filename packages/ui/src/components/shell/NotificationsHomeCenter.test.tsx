@@ -59,6 +59,7 @@ import {
   PULL_COMMIT_PX,
   STACK_FOLD_SETTLE_MS,
 } from "./NotificationsHomeCenter";
+import { NOTIFICATION_ROW_SETTLE_MS } from "./notification-shade-content";
 import {
   notificationGroupContainerOffset,
   notificationPullOvershootOffset,
@@ -68,7 +69,6 @@ import {
 
 let seq = 0;
 let restoreMatchMediaForTest: (() => void) | null = null;
-const FINE_POINTER_QUERY = "(hover: hover) and (pointer: fine)";
 
 function staticMediaQuery(media: string, matches: boolean): MediaQueryList {
   return {
@@ -81,26 +81,6 @@ function staticMediaQuery(media: string, matches: boolean): MediaQueryList {
     removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
   } as unknown as MediaQueryList;
-}
-
-function installPointerCapability(finePointer: boolean): void {
-  const originalDescriptor = Object.getOwnPropertyDescriptor(
-    window,
-    "matchMedia",
-  );
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: (query: string) =>
-      staticMediaQuery(query, query === FINE_POINTER_QUERY && finePointer),
-  });
-  restoreMatchMediaForTest = () => {
-    if (originalDescriptor) {
-      Object.defineProperty(window, "matchMedia", originalDescriptor);
-    } else {
-      Reflect.deleteProperty(window, "matchMedia");
-    }
-    restoreMatchMediaForTest = null;
-  };
 }
 
 function installReducedMotionController(initialMatches = false): {
@@ -475,6 +455,7 @@ describe("interrupt priority projection", () => {
     expect(screen.queryByTestId("notification-stack-controls")).toBeNull();
     expect(__getStateForTests().notifications).toHaveLength(2);
 
+    act(() => vi.advanceTimersByTime(180));
     fireEvent.click(screen.getByTestId("notification-row"), { detail: 1 });
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");
     expect(screen.getByTestId("notification-stack-controls")).toBeTruthy();
@@ -641,12 +622,12 @@ describe("dampenPull", () => {
       false,
     );
     const midwayThroughBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 16),
+      -(PULL_TRAVEL_PX + 4),
       true,
       false,
     );
     const pastBoundaryFade = notificationPullPresentation(
-      -(PULL_TRAVEL_PX + 24),
+      -(PULL_TRAVEL_PX + 8),
       true,
       false,
     );
@@ -962,13 +943,18 @@ describe("NotificationsHomeCenter", () => {
     expect(screen.queryByText("Dismiss me")).toBeNull();
   });
 
-  it("shows the non-sticky clear command only at the top of the expanded shade", () => {
+  it("keeps the clear command mounted while its shade slot reveals", () => {
     __ingestNotificationForTests(makeNotification());
     __ingestNotificationForTests(makeNotification());
     render(<NotificationsHomeCenter />);
-    expect(screen.queryByTestId("notifications-clear-all")).toBeNull();
+    const restingClear = screen.getByTestId("notifications-clear-all");
+    expect(restingClear.closest("li")?.style.opacity).toBe("0");
+    expect(restingClear.closest("li")?.getAttribute("aria-hidden")).toBe(
+      "true",
+    );
     expandShade();
     const clear = screen.getByTestId("notifications-clear-all");
+    expect(clear).toBe(restingClear);
     expect(clear.parentElement?.className).not.toContain("sticky");
     expect(clear.parentElement?.className).toContain("px-2");
     expect(clear.parentElement).toBe(
@@ -1292,9 +1278,9 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getByTestId("notifications-collapse-footer")).toBe(
       collapseFooter,
     );
-    expect(collapseFooter.style.opacity).toBe("0");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
-    expect(collapseFooter.hasAttribute("inert")).toBe(true);
+    expect(collapseFooter.style.opacity).toBe("1");
+    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
+    expect(collapseFooter.hasAttribute("inert")).toBe(false);
     fireEvent.click(screen.getByTestId("notification-stack-collapse"), {
       detail: 0,
     });
@@ -1302,8 +1288,8 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       collapseFooter,
     );
     expect(collapseFooter.style.opacity).toBe("1");
-    expect(collapseFooter.getAttribute("aria-hidden")).toBe("true");
-    expect(collapseFooter.hasAttribute("inert")).toBe(true);
+    expect(collapseFooter.getAttribute("aria-hidden")).toBeNull();
+    expect(collapseFooter.hasAttribute("inert")).toBe(false);
     expect(screen.getAllByTestId("notification-row")).toHaveLength(3);
     expect(enteringControls.style.height).toBe("0px");
     expect(enteringControls.style.opacity).toBe("0");
@@ -1557,11 +1543,7 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
     expect(screen.getByText("Quiet")).toBeTruthy();
   });
 
-  it("SWIPE-dismissing the stack top promotes the next card WITHOUT its fling-out state (keyed remount)", () => {
-    // The single-child stacked top card must be keyed by id: on swipe-dismiss
-    // the promoted card would otherwise reconcile into the outgoing card's slot
-    // and inherit its `dismissing` transform (translateX 120%) — painting the
-    // arriving card invisible/off-screen.
+  it("reveals and smoothly promotes the next real card when swiping a stack top", () => {
     vi.useFakeTimers();
     try {
       __ingestNotificationForTests(
@@ -1573,8 +1555,12 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       render(<NotificationsHomeCenter />);
       expandShade();
       const swipe = screen.getByTestId("notification-row-swipe");
-      // Drag the top card right past SWIPE_DISMISS_PX (88) and release → the
-      // outgoing card gets `translateX(120%)`, then the store removes it (180ms).
+      const peek = screen.getByTestId("notification-stack-peek");
+      expect(
+        peek
+          .querySelector("[data-notification-stack-preview-title]")
+          ?.getAttribute("data-notification-stack-preview-title"),
+      ).toBe("Below");
       const step = (type: string, x: number) =>
         (
           fireEvent as unknown as Record<
@@ -1590,12 +1576,22 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       step("pointerDown", 20);
       step("pointerMove", 80);
       step("pointerMove", 150);
+      expect(swipe.style.transform).toContain("translateX(130px)");
+      expect(peek.style.transform).toContain("translateY(7px)");
       step("pointerUp", 150);
+      expect(swipe.style.transform).toContain("translateX(120%)");
+      expect(peek.getAttribute("data-swipe-promoting")).toBe("");
+      expect(peek.style.transform).toContain("translateY(0px) scale(1)");
+
       act(() => {
-        vi.advanceTimersByTime(200);
+        vi.advanceTimersByTime(NOTIFICATION_ROW_SETTLE_MS);
       });
-      // The promoted "Below" card is fully visible: no residual fling-out
-      // transform, full opacity — the key forced a fresh mount.
+      expect(screen.getByTestId("notification-row").textContent).toContain(
+        "On top",
+      );
+      act(() => {
+        vi.advanceTimersByTime(24);
+      });
       const promoted = screen.getByTestId("notification-row-swipe");
       expect(screen.getByTestId("notification-row").textContent).toContain(
         "Below",
@@ -1604,6 +1600,55 @@ describe("NotificationsHomeCenter (Z-stacked groups)", () => {
       expect(
         promoted.style.opacity === "" || promoted.style.opacity === "1",
       ).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("smoothly closes the vacated gap after dismissing a fanned stack row", () => {
+    vi.useFakeTimers();
+    try {
+      __ingestNotificationForTests(
+        makeNotification({ title: "Below", priority: "high" }),
+      );
+      __ingestNotificationForTests(
+        makeNotification({ title: "On top", priority: "urgent" }),
+      );
+      render(<NotificationsHomeCenter />);
+      expandShade();
+      fireEvent.click(screen.getByTestId("notification-row"));
+      const rows = screen.getAllByTestId("notification-row-swipe");
+      expect(rows).toHaveLength(2);
+      const outgoing = rows[0] as HTMLElement;
+      const item = outgoing.closest("li") as HTMLElement;
+      const step = (type: string, x: number) =>
+        (
+          fireEvent as unknown as Record<
+            string,
+            (element: Element, init: unknown) => void
+          >
+        )[type](outgoing, {
+          clientX: x,
+          clientY: 22,
+          pointerId: 4,
+          pointerType: "touch",
+        });
+
+      step("pointerDown", 150);
+      step("pointerMove", 30);
+      step("pointerUp", 30);
+      expect(outgoing.style.transform).toContain("translateX(-120%)");
+      expect(item.getAttribute("data-swipe-collapsing")).toBe("");
+      expect(item.style.gridTemplateRows).toBe("0fr");
+      expect(item.style.marginBottom).toBe("-6px");
+
+      act(() => {
+        vi.advanceTimersByTime(NOTIFICATION_ROW_SETTLE_MS + 24);
+      });
+      expect(screen.getAllByTestId("notification-row")).toHaveLength(1);
+      expect(screen.getByTestId("notification-row").textContent).toContain(
+        "Below",
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -1852,8 +1897,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     const overpullCountOpacity = Number.parseFloat(
       screen.getByTestId("notifications-count").style.opacity,
     );
-    expect(overpullCountOpacity).toBeGreaterThan(0);
-    expect(overpullCountOpacity).toBeLessThan(1);
+    expect(overpullCountOpacity).toBe(0);
     const peeks = screen.getAllByTestId("notification-stack-peek");
     expect(peeks[0].style.opacity).toBe("1");
     expect(peeks[1].style.opacity).toBe("1");
@@ -2082,8 +2126,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
   });
 
-  it("asks for an explicit second-click confirmation on fine pointers", () => {
-    installPointerCapability(true);
+  it("requires X, Clear all, and Confirm? clicks before bulk clearing", () => {
     seedTriage();
     render(<NotificationsHomeCenter />);
     expandShade();
@@ -2097,21 +2140,29 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       .closest("section")
       ?.querySelector("style")?.textContent;
     expect(clearCss).toContain(".eliza-notif-clear-all {");
-    expect(clearCss).not.toContain("@media (hover: none), (pointer: coarse)");
-    expect(clearCss).toContain("@media (hover: hover) and (pointer: fine)");
-    expect(clearCss).toContain(
-      ".eliza-notif-clear-all:not([data-confirming]):focus-visible",
+    expect(clearCss).not.toContain(
+      ".eliza-notif-clear-all:not([data-confirming]):hover",
     );
-    const restingLabel = clear.querySelector(
-      "[data-notification-clear-resting-label]",
-    );
-    expect(restingLabel?.textContent).toBe("Clear all");
-    expect(
-      clear.querySelector("[data-notification-clear-resting-icon]"),
-    ).toBeTruthy();
     expect(clear.dataset.confirming).toBeUndefined();
+    expect(clear.dataset.clearStage).toBe("0");
+
     fireEvent.click(clear);
+
     expect(clear.dataset.confirming).toBe("true");
+    expect(clear.dataset.clearStage).toBe("1");
+    expect(clear.getAttribute("aria-label")).toBe(
+      "Continue clearing all notifications",
+    );
+    expect(
+      clear.querySelector("[data-notification-clear-arming-label]")
+        ?.textContent,
+    ).toBe("Clear all");
+    expect(__getStateForTests().notifications).toHaveLength(3);
+
+    fireEvent.click(clear);
+
+    expect(clear.dataset.confirming).toBe("true");
+    expect(clear.dataset.clearStage).toBe("2");
     expect(clear.getAttribute("aria-label")).toBe(
       "Confirm clear all notifications",
     );
@@ -2119,30 +2170,6 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       clear.querySelector("[data-notification-clear-confirming-label]")
         ?.textContent,
     ).toBe("Confirm?");
-    expect(__getStateForTests().notifications).toHaveLength(3);
-    fireEvent.click(clear);
-    expect(__getStateForTests().notifications).toHaveLength(0);
-  });
-
-  it("keeps the coarse-pointer X then Clear all two-tap flow", () => {
-    installPointerCapability(false);
-    seedTriage();
-    render(<NotificationsHomeCenter />);
-    expandShade();
-    const clear = screen.getByTestId("notifications-clear-all");
-    expect(clear.dataset.confirming).toBeUndefined();
-    expect(clear.getAttribute("aria-label")).toBe("Clear all notifications");
-
-    fireEvent.click(clear);
-
-    expect(clear.dataset.confirming).toBe("true");
-    expect(clear.getAttribute("aria-label")).toBe(
-      "Confirm clear all notifications",
-    );
-    expect(
-      clear.querySelector("[data-notification-clear-confirming-label]")
-        ?.textContent,
-    ).toBe("Clear all");
     expect(__getStateForTests().notifications).toHaveLength(3);
 
     fireEvent.click(clear);
@@ -2484,6 +2511,8 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
     );
     render(<NotificationsHomeCenter />);
     const list = screen.getByTestId("home-notification-list");
+    const restingClear = screen.getByTestId("notifications-clear-all");
+    expect(restingClear.closest("li")?.style.opacity).toBe("0");
     fireEvent.pointerDown(list, {
       pointerType: "mouse",
       isPrimary: true,
@@ -2501,7 +2530,7 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       list.querySelectorAll<HTMLElement>("[data-notification-pull-reveal]"),
     );
     expect(previewGroups).toHaveLength(2);
-    expect(screen.getByTestId("notifications-clear-all")).toBeTruthy();
+    expect(screen.getByTestId("notifications-clear-all")).toBe(restingClear);
     expect(screen.getByTestId("notifications-collapse")).toBeTruthy();
     fireEvent.pointerUp(list, {
       pointerType: "mouse",
@@ -2548,7 +2577,11 @@ describe("NotificationsHomeCenter (pull to expand / collapse)", () => {
       false,
     );
     expect(previewGroups.every((group) => !group.isConnected)).toBe(true);
-    expect(screen.queryByTestId("notifications-clear-all")).toBeNull();
+    expect(screen.getByTestId("notifications-clear-all")).toBe(restingClear);
+    expect(restingClear.closest("li")?.style.opacity).toBe("0");
+    expect(restingClear.closest("li")?.getAttribute("aria-hidden")).toBe(
+      "true",
+    );
     expect(screen.queryByTestId("notifications-collapse")).toBeNull();
     expect(screen.queryAllByTestId("notification-row")).toHaveLength(1);
   });
