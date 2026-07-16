@@ -259,6 +259,11 @@
       "import": "./dist/lib/utils.js",
       "default": "./dist/lib/utils.js"
     },
+    "./native-transcript": {
+      "types": "./dist/native-transcript/index.d.ts",
+      "import": "./dist/native-transcript/index.js",
+      "default": "./dist/native-transcript/index.js"
+    },
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
       "import": "./dist/navigation/index.js",
