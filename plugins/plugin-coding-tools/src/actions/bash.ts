@@ -936,17 +936,40 @@ function memoryUserFacingText(stdout: string): string | undefined {
   const total = parts[1];
   const free = parts[3];
   const available = parts[6];
-  if (!total || !free) return undefined;
-  return `Free RAM: ${free} MB (${available ?? "unknown"} MB available) of ${total} MB total.`;
+  // `free -m` reports integer MB in these columns; a line that merely starts
+  // with "mem:" (a code comment, a log prefix) is not `free` output.
+  if (!total || !free || !/^\d+$/u.test(total) || !/^\d+$/u.test(free)) {
+    return undefined;
+  }
+  const availableText =
+    available && /^\d+$/u.test(available) ? available : "unknown";
+  return `Free RAM: ${free} MB (${availableText} MB available) of ${total} MB total.`;
 }
+
+// A df use-percent field is one to three digits then `%`.
+const DF_USE_PERCENT_RE = /^\d{1,3}%$/u;
+// A df size field is a number with an optional binary/decimal unit suffix
+// (`47G`, `100M`, `1.5T`, `512K`, or a bare byte count).
+const DF_SIZE_RE = /^\d+(?:[.,]\d+)?[KMGTPE]?i?B?$/u;
 
 function rootDiskSummary(stdout: string): string | undefined {
   for (const line of stdout.split(/\r?\n/u)) {
     const parts = line.trim().split(/\s+/u);
+    // A `df` mount row ends in `/` and carries Filesystem, Size, Used, Avail,
+    // and Use% columns. Position alone is not enough: an arbitrary line ending
+    // in `/` (e.g. a `cat`'d source file) matched the shape and produced
+    // "Root disk: records used, LinkedAccountConfig available." Validate the
+    // Avail and Use% columns actually look like df output so a non-df line
+    // never masquerades as a disk summary.
     if (parts.length < 6 || parts.at(-1) !== "/") continue;
     const available = parts[3];
     const usedPercent = parts[4];
-    if (available && usedPercent) {
+    if (
+      available &&
+      usedPercent &&
+      DF_SIZE_RE.test(available) &&
+      DF_USE_PERCENT_RE.test(usedPercent)
+    ) {
       return `Root disk: ${usedPercent} used, ${available} available.`;
     }
   }
@@ -1447,14 +1470,26 @@ export const shellAction: Action = {
       sandbox_backend: result.sandbox,
       signal,
     });
+    // The crypto / disk / memory / status projections are CHAT conveniences
+    // keyed on the *message text*, and the coding sub-agent's message text is
+    // its task brief plus the "you make real changes on disk" preamble — which
+    // false-matched disk+memory intent and stamped an exploratory `cat`'s output
+    // as "Root disk: records used, LinkedAccountConfig available.", which the
+    // orchestrator then relayed as the deliverable. The sub-agent synthesizes
+    // its own final answer, so these message-intent projections are skipped for
+    // it exactly like the command rewrites above. `safeSmallStdout` stays: it is
+    // command-shape based (bounded `ls`/`grep` output), which the sub-agent
+    // relies on for small verbatim results.
     const userFacingText =
-      cryptoSpotUserFacingText({
-        message,
-        command,
-        stdout: result.stdout,
-      }) ??
-      localResourceUserFacingText({ message, stdout: result.stdout }) ??
-      localStatusUserFacingText({ message, stdout: result.stdout }) ??
+      (codingSubAgentShell
+        ? undefined
+        : (cryptoSpotUserFacingText({
+            message,
+            command,
+            stdout: result.stdout,
+          }) ??
+          localResourceUserFacingText({ message, stdout: result.stdout }) ??
+          localStatusUserFacingText({ message, stdout: result.stdout }))) ??
       safeSmallStdoutUserFacingText({
         command,
         stdout: result.stdout,

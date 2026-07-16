@@ -1,0 +1,949 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eliza.local/schemas/merge-steward-production-evidence.schema.json",
+  "title": "Eliza Hub Production Evidence",
+  "description": "Structural schema for private evidence consumed by the Merge Steward production gate. This validates evidence shape; the production gate enforces pass/fail semantics.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "domain",
+    "sso",
+    "backups",
+    "database",
+    "imageProvenance",
+    "runner",
+    "repository",
+    "githubMigration",
+    "secrets",
+    "mail",
+    "storage",
+    "observability",
+    "steward",
+    "mergeQueueRollout",
+    "securityReview",
+    "deployment"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "forgejoRootUrl",
+        "forgejoDomain",
+        "probeEvidence",
+        "tlsVerified",
+        "rootUrlCanonical",
+        "reverseProxyReviewed"
+      ],
+      "properties": {
+        "forgejoRootUrl": { "type": "string", "format": "uri" },
+        "forgejoDomain": { "type": "string", "minLength": 1 },
+        "probeEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "checkedAt", "status", "checkCount"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "tlsVerified": { "type": "boolean" },
+        "rootUrlCanonical": { "type": "boolean" },
+        "reverseProxyReviewed": { "type": "boolean" }
+      }
+    },
+    "sso": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "issuerUrl",
+        "smokeEvidence",
+        "bootstrapEvidence",
+        "oidcProviderStaged",
+        "forgejoOidcSourceConfigured",
+        "smokeTested",
+        "humanIdentitySmokePassed",
+        "agentIdentitySmokePassed",
+        "serviceIdentitySmokePassed",
+        "publicRegistrationLocked",
+        "autoCreateRestrictedToIssuer",
+        "recoveryAdminVerified"
+      ],
+      "properties": {
+        "issuerUrl": { "type": "string", "format": "uri" },
+        "smokeEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "checkedAt"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" }
+          }
+        },
+        "bootstrapEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "checkedAt", "status", "checkCount"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "oidcProviderStaged": { "type": "boolean" },
+        "forgejoOidcSourceConfigured": { "type": "boolean" },
+        "smokeTested": { "type": "boolean" },
+        "humanIdentitySmokePassed": { "type": "boolean" },
+        "agentIdentitySmokePassed": { "type": "boolean" },
+        "serviceIdentitySmokePassed": { "type": "boolean" },
+        "publicRegistrationLocked": { "type": "boolean" },
+        "autoCreateRestrictedToIssuer": { "type": "boolean" },
+        "recoveryAdminVerified": { "type": "boolean" }
+      }
+    },
+    "backups": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scheduled",
+        "offHost",
+        "encrypted",
+        "backupEvidence",
+        "lastBackupAt",
+        "lastRestoreCheckAt",
+        "includes"
+      ],
+      "properties": {
+        "scheduled": { "type": "boolean" },
+        "offHost": { "type": "boolean" },
+        "encrypted": { "type": "boolean" },
+        "backupEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "backupCreatedAt",
+            "restoreCheckedAt",
+            "componentCount",
+            "checkCount",
+            "offsiteUploadReceipt",
+            "offsiteRestoreReceipt"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "backupCreatedAt": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "restoreCheckedAt": {
+              "type": ["string", "null"],
+              "format": "date-time"
+            },
+            "componentCount": { "type": "number", "minimum": 1 },
+            "checkCount": { "type": "number", "minimum": 1 },
+            "offsiteUploadReceipt": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": [
+                "source",
+                "sha256",
+                "checkedAt",
+                "status",
+                "backupName",
+                "backupCreatedAt",
+                "remoteArchive",
+                "remoteReceipt",
+                "ciphertextSha256",
+                "ciphertextBytes",
+                "encryptionFormat",
+                "recipientsFileSha256",
+                "verificationMethod",
+                "verified"
+              ],
+              "properties": {
+                "source": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "checkedAt": { "type": "string", "format": "date-time" },
+                "status": { "type": "string", "const": "verified" },
+                "backupName": { "type": "string", "minLength": 1 },
+                "backupCreatedAt": { "type": "string", "format": "date-time" },
+                "remoteArchive": { "type": "string", "minLength": 1 },
+                "remoteReceipt": { "type": "string", "minLength": 1 },
+                "ciphertextSha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "ciphertextBytes": { "type": "number", "minimum": 1 },
+                "encryptionFormat": { "type": "string", "const": "age" },
+                "recipientsFileSha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "verificationMethod": {
+                  "type": "string",
+                  "const": "download_sha256"
+                },
+                "verified": { "type": "boolean" }
+              }
+            },
+            "offsiteRestoreReceipt": {
+              "type": ["object", "null"],
+              "additionalProperties": false,
+              "required": [
+                "source",
+                "sha256",
+                "checkedAt",
+                "status",
+                "remoteArchive",
+                "remoteReceipt",
+                "uploadReceiptSha256",
+                "ciphertextSha256",
+                "ciphertextBytes",
+                "downloadVerified",
+                "decryptionVerified",
+                "archivePathsVerified",
+                "structuralRestoreCheckPassed",
+                "verified"
+              ],
+              "properties": {
+                "source": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+                "checkedAt": { "type": "string", "format": "date-time" },
+                "status": { "type": "string", "const": "verified" },
+                "remoteArchive": { "type": "string", "minLength": 1 },
+                "remoteReceipt": { "type": "string", "minLength": 1 },
+                "uploadReceiptSha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "ciphertextSha256": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "ciphertextBytes": { "type": "number", "minimum": 1 },
+                "downloadVerified": { "type": "boolean" },
+                "decryptionVerified": { "type": "boolean" },
+                "archivePathsVerified": { "type": "boolean" },
+                "structuralRestoreCheckPassed": { "type": "boolean" },
+                "verified": { "type": "boolean" }
+              }
+            }
+          }
+        },
+        "lastBackupAt": { "type": ["string", "null"], "format": "date-time" },
+        "lastRestoreCheckAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "includes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "repositories",
+              "database",
+              "attachments",
+              "packages",
+              "lfs",
+              "configuration"
+            ]
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "databaseEvidence",
+        "forgejoPostgres",
+        "stewardPostgres",
+        "migrationsApplied",
+        "emptyHostRestoreDrillPassed",
+        "checksumDriftClean"
+      ],
+      "properties": {
+        "databaseEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "migrationOutputSource",
+            "migrationOutputSha256",
+            "restoreDrillOutputSource",
+            "restoreDrillOutputSha256",
+            "checkCount",
+            "verifiedTableCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "migrationOutputSource": { "type": "string", "minLength": 1 },
+            "migrationOutputSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "restoreDrillOutputSource": { "type": "string", "minLength": 1 },
+            "restoreDrillOutputSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            },
+            "checkCount": { "type": "number", "minimum": 1 },
+            "verifiedTableCount": { "type": "number", "minimum": 6 }
+          }
+        },
+        "forgejoPostgres": { "type": "boolean" },
+        "stewardPostgres": { "type": "boolean" },
+        "migrationsApplied": { "type": "boolean" },
+        "emptyHostRestoreDrillPassed": { "type": "boolean" },
+        "checksumDriftClean": { "type": "boolean" }
+      }
+    },
+    "imageProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "forgejoImage",
+        "stewardImage",
+        "runnerImage",
+        "dindImage",
+        "provenanceEvidence",
+        "stewardImageBuiltByCi",
+        "stewardImageSignatureVerified",
+        "sbomGenerated",
+        "vulnerabilityScanClean"
+      ],
+      "properties": {
+        "forgejoImage": {
+          "type": ["string", "null"],
+          "pattern": "^[^\\s@]+@sha256:[a-fA-F0-9]{64}$"
+        },
+        "stewardImage": {
+          "type": ["string", "null"],
+          "pattern": "^[^\\s@]+@sha256:[a-fA-F0-9]{64}$"
+        },
+        "runnerImage": {
+          "type": ["string", "null"],
+          "pattern": "^[^\\s@]+@sha256:[a-fA-F0-9]{64}$"
+        },
+        "dindImage": {
+          "type": ["string", "null"],
+          "pattern": "^[^\\s@]+@sha256:[a-fA-F0-9]{64}$"
+        },
+        "provenanceEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "imageCount",
+            "checkCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "imageCount": { "type": "number", "minimum": 4 },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "stewardImageBuiltByCi": { "type": "boolean" },
+        "stewardImageSignatureVerified": { "type": "boolean" },
+        "sbomGenerated": { "type": "boolean" },
+        "vulnerabilityScanClean": { "type": "boolean" }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "smokeEvidence",
+        "auditEvidence",
+        "isolated",
+        "noHostDockerSocket",
+        "noHostLabels",
+        "registrationTested",
+        "trustedSmokeWorkflowPassed",
+        "egressReviewed",
+        "secretExposureReviewed"
+      ],
+      "properties": {
+        "smokeEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "repository",
+            "workflow",
+            "runId",
+            "workflowRunUrl"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "repository": { "type": "string", "minLength": 1 },
+            "workflow": { "type": "string", "minLength": 1 },
+            "runId": { "type": ["string", "number"] },
+            "workflowRunUrl": { "type": "string", "format": "uri" }
+          }
+        },
+        "auditEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "checkedAt", "status", "checkCount"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "isolated": { "type": "boolean" },
+        "noHostDockerSocket": { "type": "boolean" },
+        "noHostLabels": { "type": "boolean" },
+        "registrationTested": { "type": "boolean" },
+        "trustedSmokeWorkflowPassed": { "type": "boolean" },
+        "egressReviewed": { "type": "boolean" },
+        "secretExposureReviewed": { "type": "boolean" }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "protectedBranches",
+        "requiredChecks",
+        "forkPolicyReviewed",
+        "actionsPolicyReviewed",
+        "adminBypassReviewed",
+        "liveProtectionEvidence"
+      ],
+      "properties": {
+        "protectedBranches": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "requiredChecks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "forkPolicyReviewed": { "type": "boolean" },
+        "actionsPolicyReviewed": { "type": "boolean" },
+        "adminBypassReviewed": { "type": "boolean" },
+        "liveProtectionEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "liveAvailable",
+            "liveRequired",
+            "checkCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "liveAvailable": { "type": "boolean" },
+            "liveRequired": { "type": "boolean" },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "githubMigration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pilotBootstrapEvidence",
+        "pilotBootstrapPassed",
+        "mirrorVerified",
+        "defaultBranchVerified",
+        "webhookVerified",
+        "branchProtectionVerified",
+        "repoPolicyVerified",
+        "agentIdentitiesSynced",
+        "pilotSurfacesVerified",
+        "pullMirrorOnly"
+      ],
+      "properties": {
+        "pilotBootstrapEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "dryRun",
+            "repo",
+            "upstreamHost",
+            "stepCount",
+            "requiredCheckCount",
+            "trustedAgentCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "dryRun": { "type": "boolean" },
+            "repo": { "type": "string", "minLength": 1 },
+            "upstreamHost": { "type": "string", "minLength": 1 },
+            "stepCount": { "type": "number", "minimum": 1 },
+            "requiredCheckCount": { "type": "number", "minimum": 1 },
+            "trustedAgentCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "pilotBootstrapPassed": { "type": "boolean" },
+        "mirrorVerified": { "type": "boolean" },
+        "defaultBranchVerified": { "type": "boolean" },
+        "webhookVerified": { "type": "boolean" },
+        "branchProtectionVerified": { "type": "boolean" },
+        "repoPolicyVerified": { "type": "boolean" },
+        "agentIdentitiesSynced": { "type": "boolean" },
+        "pilotSurfacesVerified": { "type": "boolean" },
+        "pullMirrorOnly": { "type": "boolean" }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "secretEvidence",
+        "externalSecretStore",
+        "rotationPolicyDocumented",
+        "appIniSecretsIssued",
+        "runnerTokenIssued",
+        "oauthSecretsIssued",
+        "webhookSecretsIssued",
+        "noPlaintextSecretsCommitted"
+      ],
+      "properties": {
+        "secretEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "groupCount",
+            "checkCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "groupCount": { "type": "number", "minimum": 4 },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "externalSecretStore": { "type": "boolean" },
+        "rotationPolicyDocumented": { "type": "boolean" },
+        "appIniSecretsIssued": { "type": "boolean" },
+        "runnerTokenIssued": { "type": "boolean" },
+        "oauthSecretsIssued": { "type": "boolean" },
+        "webhookSecretsIssued": { "type": "boolean" },
+        "noPlaintextSecretsCommitted": { "type": "boolean" }
+      }
+    },
+    "mail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mailEvidence",
+        "smtpConfigured",
+        "inviteSmokePassed",
+        "passwordResetSmokePassed",
+        "notificationSmokePassed"
+      ],
+      "properties": {
+        "mailEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "checkCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "checkCount": { "type": "number", "minimum": 4 }
+          }
+        },
+        "smtpConfigured": { "type": "boolean" },
+        "inviteSmokePassed": { "type": "boolean" },
+        "passwordResetSmokePassed": { "type": "boolean" },
+        "notificationSmokePassed": { "type": "boolean" }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storageEvidence",
+        "sizingReviewed",
+        "artifactRetentionConfigured",
+        "packageRetentionConfigured",
+        "lfsCapacityReviewed",
+        "logRetentionConfigured"
+      ],
+      "properties": {
+        "storageEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "checkCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "checkCount": { "type": "number", "minimum": 5 }
+          }
+        },
+        "sizingReviewed": { "type": "boolean" },
+        "artifactRetentionConfigured": { "type": "boolean" },
+        "packageRetentionConfigured": { "type": "boolean" },
+        "lfsCapacityReviewed": { "type": "boolean" },
+        "logRetentionConfigured": { "type": "boolean" }
+      }
+    },
+    "observability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observabilityEvidence",
+        "prometheusScrapeOk",
+        "alertRulesLoaded",
+        "alertRoutingConfigured",
+        "logsCollected",
+        "logRetentionDays",
+        "noPageAlertsFiring"
+      ],
+      "properties": {
+        "observabilityEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "checkCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "checkCount": { "type": "number", "minimum": 6 }
+          }
+        },
+        "prometheusScrapeOk": { "type": "boolean" },
+        "alertRulesLoaded": { "type": "boolean" },
+        "alertRoutingConfigured": { "type": "boolean" },
+        "logsCollected": { "type": "boolean" },
+        "logRetentionDays": { "type": "number", "minimum": 0 },
+        "noPageAlertsFiring": { "type": "boolean" }
+      }
+    },
+    "steward": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preflight",
+        "doctor",
+        "preflightEvidence",
+        "doctorEvidence",
+        "readyProductionMode",
+        "labelMirroringTested",
+        "botTokenPermissionsReviewed",
+        "strictWorkReservationsEnforced",
+        "strictWorkItemsEnforced",
+        "strictAgentBranchNamespacesEnforced",
+        "verifiedAgentRunReceiptsEnforced",
+        "agentIdentityRegistryEnforced"
+      ],
+      "properties": {
+        "preflight": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["ok", "mode", "errors"],
+          "properties": {
+            "ok": { "type": "boolean" },
+            "mode": { "type": "string" },
+            "errors": { "type": "array" }
+          }
+        },
+        "doctor": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["ok"],
+          "properties": {
+            "ok": { "type": "boolean" }
+          }
+        },
+        "preflightEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "checkedAt", "mode", "errorCount"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "mode": { "type": "string", "minLength": 1 },
+            "errorCount": { "type": "number", "minimum": 0 }
+          }
+        },
+        "doctorEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "target", "checkedAt", "checkCount"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "target": { "type": "string", "minLength": 1 },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "readyProductionMode": { "type": "boolean" },
+        "labelMirroringTested": { "type": "boolean" },
+        "botTokenPermissionsReviewed": { "type": "boolean" },
+        "strictWorkReservationsEnforced": { "type": "boolean" },
+        "strictWorkItemsEnforced": { "type": "boolean" },
+        "strictAgentBranchNamespacesEnforced": { "type": "boolean" },
+        "verifiedAgentRunReceiptsEnforced": { "type": "boolean" },
+        "agentIdentityRegistryEnforced": { "type": "boolean" }
+      }
+    },
+    "mergeQueueRollout": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "dryRunPassed",
+        "stagedLiveDrillPassed",
+        "workerLeaseVerified",
+        "strictWorkReservationsEnforced",
+        "strictWorkItemsEnforced",
+        "strictAgentBranchNamespacesEnforced",
+        "verifiedAgentRunReceiptsEnforced",
+        "agentIdentityRegistryEnforced",
+        "stackDependencyOrderEnforced",
+        "rollbackDrillPassed",
+        "humanApprovalRecorded",
+        "dryRunEvidence",
+        "liveDrillEvidence"
+      ],
+      "properties": {
+        "dryRunPassed": { "type": "boolean" },
+        "stagedLiveDrillPassed": { "type": "boolean" },
+        "workerLeaseVerified": { "type": "boolean" },
+        "strictWorkReservationsEnforced": { "type": "boolean" },
+        "strictWorkItemsEnforced": { "type": "boolean" },
+        "strictAgentBranchNamespacesEnforced": { "type": "boolean" },
+        "verifiedAgentRunReceiptsEnforced": { "type": "boolean" },
+        "agentIdentityRegistryEnforced": { "type": "boolean" },
+        "stackDependencyOrderEnforced": { "type": "boolean" },
+        "rollbackDrillPassed": { "type": "boolean" },
+        "humanApprovalRecorded": { "type": "boolean" },
+        "dryRunEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "checkedAt", "checkCount"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "checkCount": { "type": "number", "minimum": 1 }
+          }
+        },
+        "liveDrillEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["source", "sha256", "checkedAt", "runId"],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "runId": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "securityReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "securityEvidence",
+        "authReviewed",
+        "tokensReviewed",
+        "runnerExecutionReviewed",
+        "repoPermissionsReviewed",
+        "approvedBy",
+        "approvedAt"
+      ],
+      "properties": {
+        "securityEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "productionReady",
+            "approvedBy",
+            "approvedAt",
+            "checkCount",
+            "reviewedSurfaceCount"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "productionReady": { "type": "boolean" },
+            "approvedBy": { "type": "string", "minLength": 1 },
+            "approvedAt": { "type": "string", "format": "date-time" },
+            "checkCount": { "type": "number", "minimum": 1 },
+            "reviewedSurfaceCount": { "type": "number", "minimum": 4 }
+          }
+        },
+        "authReviewed": { "type": "boolean" },
+        "tokensReviewed": { "type": "boolean" },
+        "runnerExecutionReviewed": { "type": "boolean" },
+        "repoPermissionsReviewed": { "type": "boolean" },
+        "approvedBy": { "type": ["string", "null"], "minLength": 1 },
+        "approvedAt": { "type": ["string", "null"], "format": "date-time" }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "deployEvidence",
+        "postDeployEvidence",
+        "mode",
+        "applied",
+        "postDeployVerified"
+      ],
+      "properties": {
+        "deployEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "mode",
+            "dryRun",
+            "stepCount",
+            "postDeployEvidenceSource",
+            "postDeployEvidenceSha256"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "mode": { "type": "string", "enum": ["first-boot", "rolling"] },
+            "dryRun": { "type": "boolean" },
+            "stepCount": { "type": "number", "minimum": 1 },
+            "postDeployEvidenceSource": { "type": "string", "minLength": 1 },
+            "postDeployEvidenceSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        },
+        "postDeployEvidence": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": [
+            "source",
+            "sha256",
+            "checkedAt",
+            "status",
+            "checkCount",
+            "failedCount",
+            "forgejoLocalUrl",
+            "stewardLocalUrl"
+          ],
+          "properties": {
+            "source": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "checkedAt": { "type": "string", "format": "date-time" },
+            "status": { "type": "string", "minLength": 1 },
+            "checkCount": { "type": "number", "minimum": 1 },
+            "failedCount": { "type": "number", "minimum": 0 },
+            "forgejoLocalUrl": { "type": "string", "minLength": 1 },
+            "stewardLocalUrl": { "type": "string", "minLength": 1 }
+          }
+        },
+        "mode": { "type": "string", "enum": ["first-boot", "rolling"] },
+        "applied": { "type": "boolean" },
+        "postDeployVerified": { "type": "boolean" }
+      }
+    }
+  }
+}
