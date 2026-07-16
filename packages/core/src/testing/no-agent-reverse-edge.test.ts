@@ -27,7 +27,6 @@ const packageRoot = path.resolve(testingDir, "../..");
 const HARNESS_FILES = ["real-runtime.ts", "pglite-runtime.ts"] as const;
 const CORE_PACKAGE_FILES = [
 	...HARNESS_FILES.map((file) => `src/testing/${file}`),
-	"test/helpers/pglite-runtime.ts",
 ] as const;
 
 function importSpecifiers(source: string): string[] {

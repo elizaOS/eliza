@@ -1,55 +1,7 @@
 /**
- * @module services/swarm-coordinator-service
- *
- * SWARM_COORDINATOR service: the discoverable runtime adapter that bridges the
- * orchestrator's `AcpService` session-event stream to the consumers that still
- * speak the legacy "swarm coordinator" interface.
- *
- * ## Why this exists
- *
- * The `plugin-acpx` + `plugin-agent-orchestrator` consolidation
- * (`dc1b89c2eb`) deleted `pty-service.ts` and `swarm-coordinator.ts`. The old
- * `PtyService.start()` constructed a `SwarmCoordinator`, started it, and
- * registered it on the runtime under `SWARM_COORDINATOR`. With those files
- * gone, NOTHING registers a `SWARM_COORDINATOR` service anymore — but three
- * consumers were never migrated and still discover it via
- * `runtime.getService("SWARM_COORDINATOR")` (or `PTY_SERVICE.coordinator`):
- *
- *   1. `packages/agent/src/api/coordinator-wiring.ts`
- *      (`wireCoordinatorBridgesWhenReady`) polls for the service for 90s and,
- *      when it never appears, logs
- *      `coordinator not available after 90s — coding agent features disabled`
- *      and leaves the chat / ws / event-routing / swarm-synthesis bridges
- *      unwired.
- *   2. `packages/agent/src/api/server-helpers-swarm.ts`
- *      (`getCoordinatorFromRuntime`, the `wireCodingAgent*Bridge` helpers)
- *      look up the same service and expect the
- *      `setChatCallback` / `setWsBroadcast` / `setAgentDecisionCallback` /
- *      `setSwarmCompleteCallback` / `getTaskThread` / `sourceRoomId` surface.
- *   3. `plugins/plugin-app-control/src/services/verification-room-bridge.ts`
- *      needs `subscribe(listener)` so it can post verification verdicts back
- *      into the originating chat room. Without it, it logs
- *      `SWARM_COORDINATOR service still has no subscribe() after 60 retries;
- *      bridge inactive.`
- *
- * This service restores the registration + the exact surface those consumers
- * depend on, implemented as a thin adapter over the post-consolidation
- * `AcpService` event bus (no resurrection of the deleted 2600-line coordinator
- * or its `TaskRegistry` / pty internals).
- *
- * ## Event mapping
- *
- * `AcpService.onSessionEvent(sessionId, eventName, data)` is re-shaped to the
- * legacy `SwarmEvent` (`{ type, sessionId, timestamp, data }`) and fanned out
- * to every `subscribe()` listener AND to the injected `setWsBroadcast`
- * callback. The chat / agent-decision / swarm-complete callbacks are stored and
- * invoked from the points where the orchestrator already has the matching data
- * (terminal session events trigger swarm-complete synthesis).
- *
- * The setters being present + returning a live coordinator is what makes
- * `wireChatBridge` / `wireWsBridge` / `wireEventRouting` / `wireSwarmSynthesis`
- * each return `true`, so `wireCoordinatorBridgesWhenReady` succeeds on boot
- * instead of timing out.
+ * Exposes ACP session events through the runtime's swarm-coordinator contract.
+ * API, chat, websocket, and verification consumers share this adapter so raw
+ * terminal events are withheld until routing and custom validation complete.
  */
 
 import type {
@@ -64,7 +16,12 @@ import type {
   SwarmEvent,
   SwarmEventListener,
 } from "@elizaos/core";
-import { logger, Service, SWARM_COORDINATOR_SERVICE_TYPE } from "@elizaos/core";
+import {
+  ElizaError,
+  logger,
+  Service,
+  SWARM_COORDINATOR_SERVICE_TYPE,
+} from "@elizaos/core";
 import { AcpService } from "./acp-service.js";
 import { OrchestratorTaskService } from "./orchestrator-task-service.js";
 import {
@@ -140,6 +97,55 @@ function readString(
   return typeof value === "string" && value.trim().length > 0
     ? value
     : undefined;
+}
+
+type StructuredCompletionProof = Record<string, unknown> & {
+  kind: "APP_CREATE_DONE" | "PLUGIN_CREATE_DONE";
+};
+
+function parseStructuredCompletionProof(
+  payload: string,
+  kind: StructuredCompletionProof["kind"],
+): StructuredCompletionProof | undefined {
+  try {
+    const parsed: unknown = JSON.parse(payload);
+    return isRecord(parsed) ? { ...parsed, kind } : undefined;
+  } catch {
+    // error-policy:J3 subprocess completion output is untrusted input;
+    // malformed schema echoes are an explicit invalid result so a later valid
+    // final claim in the same captured turn remains eligible for verification.
+    return undefined;
+  }
+}
+
+/**
+ * Completion claims are a line protocol so the verifier receives the agent's
+ * exact claim instead of inferring success from prose. ACP transports can echo
+ * one turn into both tool-output and final-response channels. The last valid
+ * claim is authoritative because it is the agent's final post-command state;
+ * the verifier still cross-checks every field against disk and command output.
+ */
+export function extractStructuredCompletionProof(
+  output: string | undefined,
+): StructuredCompletionProof | undefined {
+  if (!output) return undefined;
+  const proofs: StructuredCompletionProof[] = [];
+  for (const line of output.split(/\r?\n/gu)) {
+    const markerPattern = /(APP_CREATE_DONE|PLUGIN_CREATE_DONE)/gu;
+    for (const marker of line.matchAll(markerPattern)) {
+      const suffix = line.slice(marker.index).trim();
+      const match = suffix.match(
+        /^(APP_CREATE_DONE|PLUGIN_CREATE_DONE)\s+(\{.*\})$/u,
+      );
+      if (!match) continue;
+      const proof = parseStructuredCompletionProof(
+        match[2],
+        match[1] as StructuredCompletionProof["kind"],
+      );
+      if (proof) proofs.push(proof);
+    }
+  }
+  return proofs.at(-1);
 }
 
 // Same UUID shape the sub-agent-router's `pickUuid` gate accepts. Kept as a
@@ -594,7 +600,20 @@ export class SwarmCoordinatorService
       this.acpBindTimer = null;
     }
     this.unsubscribeAcp = acp.onSessionEvent((sessionId, event, data) => {
-      void this.handleAcpEvent(sessionId, String(event), data);
+      void this.handleAcpEvent(sessionId, String(event), data).catch((err) => {
+        // error-policy:J7 ACP event fan-out is asynchronous; report a rejected
+        // handler so it cannot become an unobserved rejection or silently stop
+        // verifier delivery.
+        logger.error(
+          `[SwarmCoordinator] ACP event handler failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        this.runtime.reportError("SwarmCoordinator.handleAcpEvent", err, {
+          sessionId,
+          event: String(event),
+        });
+      });
     });
     this.acpBindStatus = "bound";
     this.acpBindReason = null;
@@ -682,6 +701,17 @@ export class SwarmCoordinatorService
     event: string,
     data: unknown,
   ): Promise<void> {
+    // Snapshot router liveness NOW, before any await. AcpService fans events
+    // out synchronously to whoever is subscribed at emit time, and never
+    // replays: the router received this exact event iff it was bound at this
+    // instant. The cede decision in runSwarmComplete runs later (behind
+    // metadata awaits and the per-session terminal chain), and reading
+    // isActive() there raced the router's bind-retry window both ways —
+    // ceding to a router that bound AFTER the event (which therefore never
+    // received it → completion lost) or double-posting around a router
+    // teardown. The receipt-time snapshot makes the decision agree with what
+    // the router actually saw.
+    const routerActiveAtReceipt = this.isRouterActive();
     // A non-terminal event means the session resumed: a follow-up prompt turn
     // reuses the same session (task_complete fires at the end of every turn, then
     // the session returns to a non-terminal status and accepts more input). Cancel
@@ -724,7 +754,12 @@ export class SwarmCoordinatorService
     };
     this.updateLegacyTaskContext(sessionId, event, enrichedData);
     this.dispatchSwarmEvent(swarmEvent);
-    await this.maybeFireSwarmComplete(sessionId, event, enrichedData);
+    await this.maybeFireSwarmComplete(
+      sessionId,
+      event,
+      enrichedData,
+      routerActiveAtReceipt,
+    );
 
     if (event === "blocked" || event === "login_required") {
       void this.maybeRouteAgentDecision(sessionId, event, enrichedData);
@@ -815,6 +850,7 @@ export class SwarmCoordinatorService
     sessionId: string,
     event: string,
     data: unknown,
+    routerActiveAtReceipt: boolean,
   ): Promise<void> {
     const prior =
       this.terminalCompletionChains.get(sessionId) ?? Promise.resolve();
@@ -823,7 +859,9 @@ export class SwarmCoordinatorService
       // awaited it; this catch only keeps the per-session completion chain alive
       // so one failed completion cannot wedge later ones.
       .catch(() => {})
-      .then(() => this.runSwarmComplete(sessionId, event, data));
+      .then(() =>
+        this.runSwarmComplete(sessionId, event, data, routerActiveAtReceipt),
+      );
     this.terminalCompletionChains.set(sessionId, next);
     void next.finally(() => {
       if (this.terminalCompletionChains.get(sessionId) === next) {
@@ -837,6 +875,7 @@ export class SwarmCoordinatorService
     sessionId: string,
     event: string,
     data: unknown,
+    routerActiveAtReceipt: boolean,
   ): Promise<void> {
     const cb = this.swarmCompleteCallback;
     if (!cb) return;
@@ -956,7 +995,10 @@ export class SwarmCoordinatorService
       routerOwnedEvent: ROUTER_OWNED_TERMINAL_EVENTS.has(event),
       customValidator: isCustomValidatorResult(record),
       hasRouterOrigin: sessionHasRouterOrigin(meta),
-      routerActive: this.isRouterActive(),
+      // Receipt-time snapshot, NOT a live isActive() read: the router owns
+      // this terminal only if it was bound when the event fanned out (see
+      // handleAcpEvent). A live read here races the router's bind window.
+      routerActive: routerActiveAtReceipt,
     };
     logger.debug(
       `[SwarmCoordinatorService] cede decision (sessionId=${sessionId}, event=${event}, ` +
@@ -1294,7 +1336,44 @@ export class SwarmCoordinatorService
       validator.method === "verifyApp" || validator.method === "verifyPlugin"
         ? validator.method
         : null;
-    if (!method) return;
+    if (!method) {
+      const suppliedMethod =
+        typeof validator.method === "string"
+          ? validator.method
+          : typeof validator.method;
+      const error = new ElizaError(
+        `Unsupported app-verification validator method: ${suppliedMethod}`,
+        {
+          code: "APP_VERIFICATION_VALIDATOR_METHOD_INVALID",
+          context: { sessionId, suppliedMethod },
+          severity: "fatal",
+        },
+      );
+      logger.warn(`[SwarmCoordinator] ${error.message}`);
+      this.runtime.reportError(
+        "SwarmCoordinator.runCustomValidatorAndDispatch",
+        error,
+        { sessionId, suppliedMethod },
+      );
+      try {
+        await this.dispatchCustomValidatorResult(sessionId, "escalation", {
+          ...enrichedData,
+          summary: error.message,
+          verification: {
+            source: "custom-validator",
+            validator: {
+              service: "app-verification",
+              method: suppliedMethod,
+            },
+            params: isRecord(validator.params) ? validator.params : {},
+            verdict: "fail",
+          },
+        });
+      } finally {
+        await this.stopCustomValidatorSession(sessionId);
+      }
+      return;
+    }
     const verificationService = this.runtime.getService?.("app-verification") as
       | {
           verifyApp?: (
@@ -1319,24 +1398,49 @@ export class SwarmCoordinatorService
           verdict: "fail",
         },
       });
+      await this.stopCustomValidatorSession(sessionId);
       return;
     }
-    const params = {
+    let params: Record<string, unknown> = {
       ...(isRecord(validator.params) ? validator.params : {}),
       ...(typeof enrichedData.workdir === "string"
         ? { workdir: enrichedData.workdir }
         : {}),
     };
     try {
+      let structuredProof = extractStructuredCompletionProof(
+        readString(enrichedData, "response") ??
+          readString(enrichedData, "finalText"),
+      );
+      if (!structuredProof) {
+        const acp = this.acp();
+        const capturedOutput = acp
+          ? typeof acp.getSessionTurnOutput === "function"
+            ? await acp.getSessionTurnOutput(sessionId, 2_000)
+            : typeof acp.getSessionOutput === "function"
+              ? await acp.getSessionOutput(sessionId, 2_000)
+              : undefined
+          : undefined;
+        structuredProof = extractStructuredCompletionProof(capturedOutput);
+      }
+      params = {
+        ...params,
+        ...(structuredProof ? { structuredProof } : {}),
+      };
       const result = await verify.call(verificationService, params);
       const verdict = result.verdict === "pass" ? "pass" : "fail";
       const checks = Array.isArray(result.checks) ? result.checks : [];
       const failed = checks
         .filter(
           (check): check is Record<string, unknown> =>
-            isRecord(check) && check.ok === false,
+            isRecord(check) && (check.passed === false || check.ok === false),
         )
-        .map((check) => readString(check, "label") ?? readString(check, "name"))
+        .map(
+          (check) =>
+            readString(check, "label") ??
+            readString(check, "name") ??
+            readString(check, "kind"),
+        )
         .filter((value): value is string => Boolean(value));
       const summary =
         verdict === "pass"
@@ -1344,6 +1448,12 @@ export class SwarmCoordinatorService
           : failed.length > 0
             ? `App verification failed: ${failed.join(", ")}`
             : "App verification failed.";
+      if (
+        verdict === "fail" &&
+        (await this.retryCustomValidator(sessionId, enrichedData, result))
+      ) {
+        return;
+      }
       await this.dispatchCustomValidatorResult(
         sessionId,
         verdict === "pass" ? "task_complete" : "escalation",
@@ -1359,6 +1469,7 @@ export class SwarmCoordinatorService
           },
         },
       );
+      await this.stopCustomValidatorSession(sessionId);
     } catch (err) {
       // error-policy:J1 boundary — translates a validator fault into a structured escalation result (verdict fail) dispatched below.
       logger.warn(
@@ -1376,6 +1487,95 @@ export class SwarmCoordinatorService
           verdict: "fail",
         },
       });
+      await this.stopCustomValidatorSession(sessionId);
+    }
+  }
+
+  private async stopCustomValidatorSession(sessionId: string): Promise<void> {
+    const acp = this.acp();
+    if (!acp || typeof acp.stopSession !== "function") return;
+    try {
+      await acp.stopSession(sessionId);
+    } catch (err) {
+      // error-policy:J6 the verifier verdict is already dispatched; teardown
+      // failure must not replace that durable pass/fail result.
+      logger.warn(
+        `[SwarmCoordinator] custom validator session close failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  private async retryCustomValidator(
+    sessionId: string,
+    enrichedData: Record<string, unknown>,
+    result: Record<string, unknown>,
+  ): Promise<boolean> {
+    if (enrichedData.onVerificationFail !== "retry") return false;
+    const maxRetries =
+      typeof enrichedData.maxRetries === "number" &&
+      Number.isInteger(enrichedData.maxRetries) &&
+      enrichedData.maxRetries >= 0
+        ? enrichedData.maxRetries
+        : 0;
+    const retryCount =
+      typeof enrichedData.retryCount === "number" &&
+      Number.isInteger(enrichedData.retryCount) &&
+      enrichedData.retryCount >= 0
+        ? enrichedData.retryCount
+        : 0;
+    if (retryCount >= maxRetries) return false;
+
+    const acp = this.acp();
+    if (!acp || typeof acp.sendPrompt !== "function") return false;
+    const nextRetry = retryCount + 1;
+    const feedback = JSON.stringify(result, null, 2).slice(0, 12_000);
+    try {
+      if (typeof acp.updateSessionMetadata === "function") {
+        await acp.updateSessionMetadata(sessionId, { retryCount: nextRetry });
+        this.enrichmentMetadataCache.delete(sessionId);
+      }
+      const promptResult = await acp.sendPrompt(
+        sessionId,
+        [
+          `Verification failed (retry ${nextRetry}/${maxRetries}).`,
+          "Fix every reported issue in the existing workdir, rerun all requested verification commands, and emit exactly one fresh structured completion line only after they pass.",
+          "Verifier result:",
+          feedback,
+        ].join("\n\n"),
+      );
+      if (promptResult.error || promptResult.stopReason === "error") {
+        throw new ElizaError(
+          promptResult.error ??
+            "ACP verification retry ended with stopReason error",
+          {
+            code: "ACP_VERIFICATION_RETRY_FAILED",
+            context: {
+              sessionId,
+              retry: nextRetry,
+              maxRetries,
+              stopReason: promptResult.stopReason,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
+      return true;
+    } catch (err) {
+      // error-policy:J7 a retry transport failure must not hide the original
+      // verification failure; warn and let the caller dispatch escalation.
+      logger.warn(
+        `[SwarmCoordinator] custom validator retry failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      this.runtime.reportError("SwarmCoordinator.retryCustomValidator", err, {
+        sessionId,
+        retry: nextRetry,
+        maxRetries,
+      });
+      return false;
     }
   }
 
@@ -1391,7 +1591,14 @@ export class SwarmCoordinatorService
       timestamp: Date.now(),
       data,
     });
-    await this.maybeFireSwarmComplete(sessionId, event, data);
+    // Validator results are exempt from ceding (customValidator gate), so the
+    // router-activity snapshot is inert here; pass the live read for the log.
+    await this.maybeFireSwarmComplete(
+      sessionId,
+      event,
+      data,
+      this.isRouterActive(),
+    );
   }
 
   /**

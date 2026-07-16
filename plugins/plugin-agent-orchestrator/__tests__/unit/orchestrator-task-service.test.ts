@@ -541,14 +541,19 @@ describe("OrchestratorTaskService — lifecycle", () => {
     ).toBeNull();
   });
 
-  it("records default evidence for human approve/reject actions", async () => {
+  it("requires explicit evidence for human approve/reject and records it verbatim", async () => {
     const service = makeService();
     const approved = await service.createTask(createInput());
     await service.updateTask(approved.id, { status: "validating" });
+    // An override without evidence is an audit hole — rejected, never defaulted.
+    await expect(
+      service.validateTask(approved.id, { passed: true, humanOverride: true }),
+    ).rejects.toThrow(/evidence/i);
     const done = must(
       await service.validateTask(approved.id, {
         passed: true,
         humanOverride: true,
+        evidence: "Shaw verified the deploy by hand.",
       }),
       "done",
     );
@@ -556,10 +561,18 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(done.events.at(-1)).toMatchObject({
       eventType: "validation_passed",
       data: {
-        evidence: "Human approved in the orchestrator UI.",
+        evidence: "Shaw verified the deploy by hand.",
         humanOverride: true,
       },
     });
+    // done is terminal — a further override must be rejected, not re-written.
+    await expect(
+      service.validateTask(approved.id, {
+        passed: false,
+        humanOverride: true,
+        evidence: "changed my mind",
+      }),
+    ).rejects.toThrow(/terminal/i);
 
     const rejected = await service.createTask(createInput());
     await service.updateTask(rejected.id, { status: "validating" });
@@ -567,6 +580,7 @@ describe("OrchestratorTaskService — lifecycle", () => {
       await service.validateTask(rejected.id, {
         passed: false,
         humanOverride: true,
+        evidence: "Shaw rejected: the fix does not reproduce.",
       }),
       "active",
     );
@@ -574,7 +588,7 @@ describe("OrchestratorTaskService — lifecycle", () => {
     expect(active.events.at(-1)).toMatchObject({
       eventType: "validation_failed",
       data: {
-        evidence: "Human rejected in the orchestrator UI.",
+        evidence: "Shaw rejected: the fix does not reproduce.",
         humanOverride: true,
       },
     });

@@ -55,12 +55,16 @@ vi.mock("./StewardProviderRuntime", () => ({
   },
 }));
 
-import { StewardAuthProvider } from "./StewardProvider";
+import {
+  StewardAuthProvider,
+  shouldLoadStewardRuntime,
+} from "./StewardProvider";
 
 afterEach(() => {
   runtimeGate.release();
   cleanup();
   resolveBrowserStewardApiUrl.mockReturnValue("placeholder-steward-url");
+  window.localStorage.clear();
 });
 
 function renderAt(pathname: string) {
@@ -130,5 +134,60 @@ describe("StewardAuthProvider", () => {
     expect(await screen.findByTestId("steward-runtime")).toBeTruthy();
     expect(screen.getByTestId("protected-child")).toBeTruthy();
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  // Cookie-backed OAuth handoffs reach /join before local token persistence,
+  // so the runtime must mount there to resolve the session.
+  it("loads the Steward runtime on /join with no stored token so provisioning can redirect", async () => {
+    resolveBrowserStewardApiUrl.mockReturnValue(
+      "https://api.elizacloud.ai/steward",
+    );
+    window.localStorage.clear();
+
+    renderAt("/join");
+
+    expect(await screen.findByTestId("steward-runtime")).toBeTruthy();
+    expect(screen.getByTestId("protected-child")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("shouldLoadStewardRuntime", () => {
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("loads the runtime for /join (and its subpaths) even with no stored token", () => {
+    // The router has already removed the query before calling the gate.
+    window.localStorage.clear();
+    expect(shouldLoadStewardRuntime("/join")).toBe(true);
+    expect(shouldLoadStewardRuntime("/join/")).toBe(true);
+    expect(shouldLoadStewardRuntime("/join/next")).toBe(true);
+  });
+
+  it("keeps loading the runtime for the existing auth routes with no stored token", () => {
+    window.localStorage.clear();
+    for (const path of [
+      "/login",
+      "/app-auth/authorize",
+      "/auth/callback/email",
+      "/dashboard",
+      "/payment/abc",
+    ]) {
+      expect(shouldLoadStewardRuntime(path)).toBe(true);
+    }
+  });
+
+  it("does not load the runtime for a non-auth route with no stored token", () => {
+    window.localStorage.clear();
+    expect(shouldLoadStewardRuntime("/docs")).toBe(false);
+    // A route that merely CONTAINS 'join' as a segment substring must not match.
+    expect(shouldLoadStewardRuntime("/rejoinder")).toBe(false);
+  });
+
+  it("loads the runtime for any route once a token is stored", () => {
+    window.localStorage.setItem("steward_session_token", "tkn");
+    expect(shouldLoadStewardRuntime("/docs")).toBe(true);
+    expect(shouldLoadStewardRuntime("/anything")).toBe(true);
   });
 });

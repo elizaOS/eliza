@@ -26,6 +26,20 @@ test("changed Bun coverage tests use eliza-source workspace exports", () => {
   );
 });
 
+test("Bun suites with conflicting process-global module mocks run separately", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const isolatedSuites = [
+    "packages/cloud/api/__tests__/malformed-json-body-routes.test.ts",
+    "packages/cloud/shared/src/lib/auth-inference-api-key.test.ts",
+    "packages/cloud/shared/src/lib/services/inference-auth-context.test.ts",
+    "packages/cloud/shared/src/lib/services/inference-hot-path-benchmark.test.ts",
+  ];
+
+  for (const suite of isolatedSuites) {
+    expect(workflow).toContain(suite);
+  }
+});
+
 test("changed Vitest coverage tests use package-aware source configuration", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   expect(workflow).toMatch(

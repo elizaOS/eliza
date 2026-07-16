@@ -29,6 +29,14 @@ import type {
 	ParsedCommand,
 } from "../types";
 import {
+	parseAccountsArgs,
+	runAccountsRefreshViaRoute,
+	runAccountsReportViaRoute,
+	runAccountsStrategyViaRoute,
+	runAccountsToggleViaRoute,
+} from "./accounts";
+import { parseBackendArgs, runBackendShowViaRoute } from "./backend";
+import {
 	type CommandSettings,
 	clearCommandSettings,
 	getCommandSettings,
@@ -54,7 +62,6 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"reset",
 	"new",
 	"compact",
-	"models",
 	"usage",
 	"think",
 	"verbose",
@@ -63,6 +70,8 @@ export const DETERMINISTIC_COMMAND_KEYS: readonly string[] = [
 	"elevated",
 	"model",
 	"tts",
+	"accounts",
+	"backend",
 ];
 
 const DETERMINISTIC_KEYS: ReadonlySet<string> = new Set(
@@ -100,6 +109,18 @@ const OPTION_COMMANDS = {
 
 function reply(text: string): CommandResult {
 	return { handled: true, reply: text, shouldContinue: false };
+}
+
+/** Bare hostname of a base URL setting, or undefined when unset/unparsable. */
+function hostOf(value: unknown): string | undefined {
+	if (typeof value !== "string" || !value.trim()) return undefined;
+	try {
+		return new URL(value.trim()).hostname;
+	} catch {
+		// error-policy:J3 an unparsable operator-supplied URL degrades to "no
+		// endpoint shown" rather than a broken show line.
+		return undefined;
+	}
 }
 
 function authError(): CommandResult {
@@ -350,9 +371,6 @@ export async function runCommand(
 			return reply(lines.join("\n"));
 		}
 
-		case "models":
-			return reply(`Current model: ${resolveModelLabel(runtime)}`);
-
 		case "usage": {
 			const usage = await runtime.getCache<{
 				promptTokens?: number;
@@ -369,17 +387,25 @@ export async function runCommand(
 
 		case "model": {
 			// `/model show|small|large|coding …` drives the validated global
-			// model-config route. `show` reads config so authorization suffices; the
-			// write subcommands mutate config.env for every room (and restart the
-			// agent for chat targets), so they are owner-only. Gated here per
-			// subcommand rather than via definition-level flags, which would also
-			// gate (and hide from the GUI menu) the pre-existing per-room and
-			// local/cloud behaviors below.
+			// model-config route. The definition now carries requiresAuth (the
+			// whole command is operator-facing — connector pickers gate it), and
+			// the write subcommands are additionally owner-only here because they
+			// mutate config.env for every room (and restart the agent for chat
+			// targets).
 			const configCommand = parseModelConfigArgs(parsed);
 			if (configCommand) {
 				if (configCommand.kind === "show") {
 					if (!context.isAuthorized) return authError();
-					return runModelConfigShowViaRoute();
+					// Names what ACTUALLY serves each family, not just the config:
+					// the OPENAI_* family can point anywhere OpenAI-compatible
+					// (Cerebras, Eliza Cloud, ...) via OPENAI_BASE_URL.
+					return runModelConfigShowViaRoute({
+						openai:
+							hostOf(runtime.getSetting("OPENAI_BASE_URL")) ?? "api.openai.com",
+						anthropic:
+							hostOf(runtime.getSetting("ANTHROPIC_BASE_URL")) ??
+							"api.anthropic.com",
+					});
 				}
 				if (!context.isElevated) {
 					return reply("This command requires elevated permissions.");
@@ -401,6 +427,61 @@ export async function runCommand(
 				return runModelSwitchViaRoute(switchArgs.target, switchArgs.model);
 			}
 			return setOptionCommand(runtime, roomId, parsed, OPTION_COMMANDS.model);
+		}
+
+		case "accounts": {
+			// Bare `/accounts` is a read the definition-level requiresAuth gate
+			// already covers; every subcommand mutates the global account pool, so
+			// it carries the same owner-only gate as the /model config writes —
+			// including usage errors, so an unprivileged sender can't probe the
+			// grammar.
+			const accountsCommand = parseAccountsArgs(parsed);
+			if (accountsCommand.kind === "report") {
+				return runAccountsReportViaRoute();
+			}
+			if (!context.isElevated) {
+				return reply("This command requires elevated permissions.");
+			}
+			if (accountsCommand.kind === "usage") {
+				return reply(accountsCommand.error);
+			}
+			if (accountsCommand.kind === "strategy") {
+				return runAccountsStrategyViaRoute(
+					accountsCommand.provider,
+					accountsCommand.strategy,
+				);
+			}
+			if (accountsCommand.kind === "refresh") {
+				return runAccountsRefreshViaRoute(
+					accountsCommand.provider,
+					accountsCommand.account,
+				);
+			}
+			return runAccountsToggleViaRoute(
+				accountsCommand.kind,
+				accountsCommand.provider,
+				accountsCommand.account,
+			);
+		}
+
+		case "backend": {
+			const backendCommand = parseBackendArgs(parsed);
+			if (backendCommand.kind === "show") {
+				return runBackendShowViaRoute();
+			}
+			if (!context.isElevated) {
+				return reply("This command requires elevated permissions.");
+			}
+			if (backendCommand.kind === "usage") {
+				return reply(backendCommand.error);
+			}
+			// Persist through the config route (config.env + config.env.vars +
+			// process.env) — runtime.setSetting is in-memory only and would
+			// silently revert on restart.
+			return runModelConfigWriteViaRoute({
+				target: "coding",
+				defaultBackend: backendCommand.backend,
+			});
 		}
 
 		case "think":

@@ -238,6 +238,9 @@ export interface TokenUsage {
   /** Total tokens used */
   totalTokens: number;
 
+  /** Hidden reasoning tokens reported inside the completion budget. */
+  reasoningTokens?: number;
+
   /**
    * Prompt tokens read from cache.
    *

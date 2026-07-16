@@ -48,6 +48,17 @@ bunx vitest run plugins/plugin-computeruse/src/__tests__/cua-parity-input.real.t
   --config packages/test/vitest/real.config.ts
 ```
 
+The service-level lane captures the display and moves the pointer, then reads
+the OS cursor position back to prove the driver effect. Run it only on an
+isolated interactive desktop and acknowledge those effects explicitly. A direct
+invocation without the acknowledgment fails before the suite starts:
+
+```bash
+COMPUTER_USE_REAL_DESKTOP_TESTS=1 bunx vitest run \
+  plugins/plugin-computeruse/src/__tests__/service.real.test.ts \
+  --config packages/test/vitest/real.config.ts
+```
+
 `ELIZA_CI_REAL=1` additionally drops credential/upstream-gated reals
 (e.g. `computeruse.real.test.ts`, whose headless-browser path needs a display).
 

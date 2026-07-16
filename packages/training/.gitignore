@@ -2,7 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 data/*
-# Smoke corpus: tiny end-to-end-pipeline validator (~400 rows). Kept in
+# Smoke corpus: 20-row synthetic end-to-end-pipeline validator. Kept in
 # git so the e2e SFT pipeline can be smoke-tested from a fresh clone.
 !data/final-eliza1-smoke/
 !data/final-eliza1-smoke/**
@@ -44,9 +44,14 @@ local-corpora/
 wandb/
 *.parquet
 .vast_instance_id
+.vast_pipeline_type
+curriculum_state.json
+.pytest-cache/
 .preflight.ok
 .cloud_instance.json
 .DS_Store
 scripts/synth/scenarios/*.jsonl
 # DFlash drafter distillation job outputs (see scripts/dflash/jobs/).
 runs/
+# Dataset allowlists must not admit macOS resource-fork sidecars.
+**/._*

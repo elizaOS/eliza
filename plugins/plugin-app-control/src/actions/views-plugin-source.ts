@@ -1,13 +1,12 @@
 /**
- * @module plugin-app-control/actions/views-plugin-source
- *
- * Resolve a view's on-disk plugin source directory from its registry summary.
- * Shared by the create, edit, and icon sub-handlers so plugin-path resolution
- * lives in one place.
+ * Resolves a registered view's owning plugin to editable local source.
+ * Checkout and packaged-install locations share this path so create, edit, and
+ * icon operations agree on where a plugin lives.
  */
 
-import { promises as fs } from "node:fs";
+import { existsSync, promises as fs } from "node:fs";
 import path from "node:path";
+import { ElizaError, resolveStateDir } from "@elizaos/core";
 import type { ViewSummary } from "./views-client.js";
 
 /** Where plugin sources live relative to the repo root, in lookup order. */
@@ -23,15 +22,35 @@ export async function locatePluginSourceDir(
 	view: ViewSummary,
 ): Promise<string | null> {
 	const pluginBasename = view.pluginName.replace(/^@[^/]+\//, "").trim();
-	const candidates = [
-		...PLUGIN_SOURCE_DIR_CANDIDATES.map((dir) =>
-			path.join(repoRoot, dir, pluginBasename),
-		),
-		path.join(repoRoot, "eliza", "apps", pluginBasename),
+	if (
+		pluginBasename.length === 0 ||
+		pluginBasename === "." ||
+		pluginBasename === ".." ||
+		pluginBasename.includes("/") ||
+		pluginBasename.includes("\\") ||
+		pluginBasename.includes("\0")
+	) {
+		throw new ElizaError("View plugin name is not a safe directory name", {
+			code: "VIEW_PLUGIN_NAME_INVALID",
+			context: { pluginName: view.pluginName },
+		});
+	}
+	const directoryBasenames = [
+		pluginBasename,
+		pluginBasename.startsWith("plugin-")
+			? pluginBasename.slice("plugin-".length)
+			: `plugin-${pluginBasename}`,
 	];
+	const candidates = directoryBasenames.flatMap((basename) => [
+		...PLUGIN_SOURCE_DIR_CANDIDATES.map((dir) =>
+			path.join(repoRoot, dir, basename),
+		),
+		path.join(repoRoot, "eliza", "apps", basename),
+		path.join(resolveStateDir(), "plugins", basename),
+	]);
 	for (const candidate of candidates) {
-		const stat = await fs.stat(candidate).catch(() => null);
-		if (stat?.isDirectory()) return candidate;
+		if (!existsSync(candidate)) continue;
+		if ((await fs.stat(candidate)).isDirectory()) return candidate;
 	}
 	return null;
 }

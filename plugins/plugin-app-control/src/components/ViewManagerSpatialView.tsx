@@ -29,6 +29,7 @@ export interface ViewManagerSnapshot {
 	views: ViewEntry[];
 	loading?: boolean;
 	error?: string | null;
+	openingViewId?: string | null;
 }
 
 /** The surfaces this logical view can render on, ordered gui · xr · tui. */
@@ -79,11 +80,11 @@ export function ViewManagerSpatialView({
 			) : null}
 
 			<Divider label="views" />
-			{views.length === 0 ? (
+			{views.length === 0 && !snapshot.loading && !snapshot.error ? (
 				<Text tone="muted" align="center" style="caption">
 					None
 				</Text>
-			) : (
+			) : views.length > 0 ? (
 				<List gap={1}>
 					{views.slice(0, 12).map((view) => (
 						<HStack
@@ -126,14 +127,18 @@ export function ViewManagerSpatialView({
 								variant="ghost"
 								tone="default"
 								agent={`open:${view.id}`}
+								disabled={
+									snapshot.openingViewId !== null &&
+									snapshot.openingViewId !== undefined
+								}
 								onPress={() => onOpenView?.(view)}
 							>
-								Open
+								{snapshot.openingViewId === view.id ? "Opening…" : "Open"}
 							</Button>
 						</HStack>
 					))}
 				</List>
-			)}
+			) : null}
 		</Card>
 	);
 }

@@ -9,14 +9,7 @@ type FileTypeResult = { ext: string; mime: string } | undefined;
 type FileTypeFromBuffer = (
 	buffer: ArrayBuffer | Uint8Array,
 ) => Promise<FileTypeResult>;
-type FileTypeModule = {
-	fileTypeFromBuffer?: FileTypeFromBuffer;
-	fromBuffer?: FileTypeFromBuffer;
-	default?: {
-		fileTypeFromBuffer?: FileTypeFromBuffer;
-		fromBuffer?: FileTypeFromBuffer;
-	};
-};
+type FileTypeModule = { fileTypeFromBuffer?: FileTypeFromBuffer };
 
 let fileTypeModule: FileTypeModule | null | undefined;
 
@@ -28,13 +21,7 @@ async function getFileTypeFromBuffer(): Promise<FileTypeFromBuffer | null> {
 			fileTypeModule = null;
 		}
 	}
-	return (
-		fileTypeModule?.fileTypeFromBuffer ??
-		fileTypeModule?.fromBuffer ??
-		fileTypeModule?.default?.fileTypeFromBuffer ??
-		fileTypeModule?.default?.fromBuffer ??
-		null
-	);
+	return fileTypeModule?.fileTypeFromBuffer ?? null;
 }
 
 /** Media kind categories */

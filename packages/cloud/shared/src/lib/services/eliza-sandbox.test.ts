@@ -1,4 +1,7 @@
-// Exercises eliza sandbox behavior with deterministic cloud-shared lib fixtures.
+/**
+ * Covers sandbox lifecycle, state transfer, recovery, and upgrade invariants
+ * using deterministic repository and provider fixtures.
+ */
 import {
   afterAll,
   afterEach,
@@ -405,7 +408,7 @@ describe("ElizaSandboxService bridge status", () => {
     globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = fetchUrl(input);
       requests.push({ url, headers: fetchHeaders(init?.headers) });
-      if (url === `https://${sandbox.id}.elizacloud.ai/api/agents`) {
+      if (url === "https://eliza-production-1.elizacloud.ai/api/agents") {
         return new Response("{}", { status: 404 });
       }
       if (url === "https://eliza-production-1.elizacloud.ai/") {
@@ -441,18 +444,30 @@ describe("ElizaSandboxService bridge status", () => {
         },
       });
       expect(requests).toHaveLength(2);
-      expect(requests[0]?.url.startsWith(`https://${sandbox.id}.elizacloud.ai`)).toBe(true);
-      expect(requests[1]).toEqual({
-        url: "https://eliza-production-1.elizacloud.ai/",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer agent-token",
-          "X-Api-Key": "agent-token",
-          "X-Eliza-Token": "agent-token",
-          "x-forwarded-host": `${sandbox.id}.elizacloud.ai`,
-          "x-forwarded-proto": "https",
+      expect(requests).toEqual([
+        {
+          url: "https://eliza-production-1.elizacloud.ai/api/agents",
+          headers: {
+            authorization: "Bearer agent-token",
+            "content-type": "application/json",
+            "x-api-key": "agent-token",
+            "x-eliza-token": "agent-token",
+            "x-forwarded-host": `${sandbox.id}.elizacloud.ai`,
+            "x-forwarded-proto": "https",
+          },
         },
-      });
+        {
+          url: "https://eliza-production-1.elizacloud.ai/",
+          headers: {
+            authorization: "Bearer agent-token",
+            "content-type": "application/json",
+            "x-api-key": "agent-token",
+            "x-eliza-token": "agent-token",
+            "x-forwarded-host": `${sandbox.id}.elizacloud.ai`,
+            "x-forwarded-proto": "https",
+          },
+        },
+      ]);
     } finally {
       findRunningSandboxSpy.mockRestore();
     }

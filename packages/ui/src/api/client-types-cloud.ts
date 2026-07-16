@@ -957,6 +957,15 @@ export interface CodingAgentTaskThread {
    * detail (#13776). */
   projectId: string | null;
   latestActivityAt: number | null;
+  /** Model + account provenance of the latest session, surfaced on the summary
+   * so widgets can show which model/account a task runs under without fetching
+   * its detail (#16203). */
+  latestSessionModel: string | null;
+  latestAccountProviderId: string | null;
+  latestAccountId: string | null;
+  latestAccountLabel: string | null;
+  /** Fork lineage: the task this one was forked from (null = root task). */
+  parentTaskId: string | null;
   decisionCount: number;
   usage: CodingAgentTaskUsageSummary;
   createdAt: string;

@@ -117,6 +117,22 @@ android {
     ndkVersion "28.2.13676358"
 
     signingConfigs {
+        debug {
+            // A repository variable restores this public, non-production debug key in CI.
+            // Local developers install the same key at this path so debug APKs remain
+            // upgrade-compatible across machines and workflow runs.
+            def pinnedDebugKeystore = System.getenv("ELIZAOS_DEBUG_KEYSTORE_PATH")
+                ? file(System.getenv("ELIZAOS_DEBUG_KEYSTORE_PATH"))
+                : new File(System.getProperty("user.home"), ".android/eliza-debug.keystore")
+            if (pinnedDebugKeystore.isFile()) {
+                storeFile pinnedDebugKeystore
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            } else {
+                logger.warn("[debug-signing] pinned Eliza debug keystore not found at ${pinnedDebugKeystore}; using Gradle's machine-local debug identity. See platforms/android/README.md for upgrade-compatible setup.")
+            }
+        }
         release {
             // For Google Play App Signing: use an upload keystore.
             // CI provides these via environment variables; local builds fall back to debug signing.
@@ -130,6 +146,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled true
             shrinkResources true

@@ -88,7 +88,11 @@ interface GenerateTextParamsWithOpenAIOptions
   };
 }
 
-type NativeOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativeTextOutput = NonNullable<Parameters<typeof generateText<ToolSet>>[0]["output"]>;
+type NativeOutput =
+  | NativeTextOutput
+  | ReturnType<typeof Output.json>
+  | ReturnType<typeof Output.object>;
 type NativeGenerateTextParams = Parameters<typeof generateText<ToolSet, NativeOutput>>[0];
 type NativeStreamTextParams = Parameters<typeof streamText<ToolSet, NativeOutput>>[0];
 type NativePrompt =
@@ -225,6 +229,10 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
     usageWithCache.inputTokenDetails?.cacheWriteTokens,
     usageWithCache.input_tokens_details?.cache_creation_input_tokens
   );
+  const reasoningTokens = firstNumber(
+    usage.outputTokenDetails?.reasoningTokens,
+    usage.reasoningTokens
+  );
 
   return {
     promptTokens,
@@ -233,6 +241,7 @@ function convertUsage(usage: LanguageModelUsage | undefined): TokenUsage | undef
     cachedPromptTokens: cachedInput,
     cacheReadInputTokens: cachedInput,
     cacheCreationInputTokens: cacheCreationInput,
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
   };
 }
 
@@ -269,16 +278,13 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
  * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
  * left unset.
  *
- * In Cerebras mode the field defaults to `"low"` when unset, but ONLY for
- * reasoning-capable models (e.g. gpt-oss-* and deepseek-r1):
- * gpt-oss-120b emits a separate reasoning channel and, left unbounded, spends
- * the whole token budget reasoning — returning empty visible content, which
- * makes the agent fall back to "I don't have a reply for that". `"low"` keeps
- * reasoning short so a reply always materializes. Non-reasoning Cerebras models
- * (Llama, etc.) reject `reasoning_effort`, so they must never receive the
- * default. For all other models an unset/invalid value yields `undefined`, so
- * they pay no overhead and the wire stays clean. An explicit valid
- * `OPENAI_REASONING_EFFORT` always wins.
+ * In Cerebras mode the field defaults to `"low"` when unset only for the exact
+ * models whose current provider contract exposes reasoning controls:
+ * `gpt-oss-120b` and `zai-glm-4.7`. Both can spend a capped output budget on
+ * hidden reasoning and return empty visible content when left unbounded.
+ * Family-name lookalikes and models without the knob must not receive the
+ * field because compatible endpoints reject unsupported request properties.
+ * An explicit valid `OPENAI_REASONING_EFFORT` always wins.
  *
  * Valid values follow the OpenAI spec exactly: `minimal`, `low`,
  * `medium`, `high`. Anything else is logged and ignored.
@@ -288,23 +294,35 @@ type ReasoningEffort = "minimal" | "low" | "medium" | "high";
 const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ["minimal", "low", "medium", "high"];
 
 /**
- * Reasoning-capable model families that emit a separate reasoning channel and
- * honor `reasoning_effort`. Used to gate the Cerebras `"low"` default so
- * non-reasoning models (Llama, etc.) are never sent the field.
+ * Strips the provider prefixes accepted by the cloud gateway while retaining
+ * an exact model id. Cerebras documents reasoning controls per model, so family
+ * substrings must not opt an unknown or newly added model into a wire field it
+ * may reject.
  */
-function isReasoningModel(modelName: string | undefined): boolean {
+function normalizeCerebrasModelId(modelName: string): string {
+  return modelName
+    .trim()
+    .toLowerCase()
+    .replace(/^cerebras[:/]/, "")
+    .replace(/^openai\//, "")
+    .replace(/:(?!free$).+$/, "");
+}
+
+function isCerebrasReasoningModel(modelName: string | undefined): boolean {
   if (!modelName) return false;
-  const m = modelName.toLowerCase();
-  return (
-    m.includes("gpt-oss") ||
-    m.includes("o1") ||
-    m.includes("o3") ||
-    m.includes("o4") ||
-    m.includes("deepseek-r1") ||
-    m.includes("thinking") ||
-    m.includes("reasoning") ||
-    m.includes("qwq")
-  );
+  const id = normalizeCerebrasModelId(modelName);
+  return id === "gpt-oss-120b" || id === "zai-glm-4.7";
+}
+
+/** Maps thinking suppression only for the Cerebras models that document it. */
+function resolveCerebrasThinkingOffReasoningEffort(
+  modelName: string | undefined
+): "low" | "none" | undefined {
+  if (!modelName) return undefined;
+  const id = normalizeCerebrasModelId(modelName);
+  if (id === "gpt-oss-120b") return "low";
+  if (id === "zai-glm-4.7") return "none";
+  return undefined;
 }
 
 function resolveReasoningEffort(
@@ -321,12 +339,11 @@ function resolveReasoningEffort(
       `[OpenAI] OPENAI_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${VALID_REASONING_EFFORTS.join(", ")}.`
     );
   }
-  // gpt-oss-120b on Cerebras returns empty content when reasoning runs
-  // unbounded; default to "low" so a visible reply always fits — but only for
-  // reasoning-capable models. Non-reasoning Cerebras models (Llama, etc.)
-  // reject `reasoning_effort` and would break. An explicit valid value above
-  // wins over this default.
-  if (isCerebrasMode(runtime) && isReasoningModel(modelName)) {
+  // The exact provider contract gates this default: family lookalikes may
+  // reject the field, while both supported reasoning models need a bounded
+  // budget so visible content survives a capped response. An explicit valid
+  // value above wins over this default.
+  if (isCerebrasMode(runtime) && isCerebrasReasoningModel(modelName)) {
     return "low";
   }
   return undefined;
@@ -341,12 +358,23 @@ function resolveProviderOptions(
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
   const reasoningEffort = resolveReasoningEffort(runtime, modelName);
+  // Thinking-off suppression outranks the env pin and the Cerebras "low"
+  // default (matching plugin-elizacloud: Stage-1/planner calls stay cheap
+  // regardless of a user-pinned effort). An explicit caller
+  // `providerOptions.openai.reasoningEffort` still wins via the spread guard
+  // below. Scoped to Cerebras mode: OpenAI-direct rejects `"none"`.
+  const elizaThinking = (rawProviderOptions?.eliza as { thinking?: unknown } | undefined)?.thinking;
+  const thinkingOffEffort =
+    elizaThinking === "off" && isCerebrasMode(runtime)
+      ? resolveCerebrasThinkingOffReasoningEffort(modelName)
+      : undefined;
+  const effectiveReasoningEffort = thinkingOffEffort ?? reasoningEffort;
 
   if (
     !rawProviderOptions &&
     !promptCacheOptions.promptCacheKey &&
     !promptCacheOptions.promptCacheRetention &&
-    !reasoningEffort
+    !effectiveReasoningEffort
   ) {
     return undefined;
   }
@@ -379,10 +407,11 @@ function resolveProviderOptions(
       ? { promptCacheRetention: promptCacheOptions.promptCacheRetention }
       : {}),
     // The caller's explicit `reasoningEffort` wins over the resolved default
-    // (env var, or Cerebras "low") — same precedence pattern as promptCacheKey.
+    // (env var, thinking-off suppression, or Cerebras "low") — same precedence
+    // pattern as promptCacheKey.
     ...((sanitizedRawOpenAIOptions as { reasoningEffort?: unknown } | undefined)
-      ?.reasoningEffort === undefined && reasoningEffort
-      ? { reasoningEffort }
+      ?.reasoningEffort === undefined && effectiveReasoningEffort
+      ? { reasoningEffort: effectiveReasoningEffort }
       : {}),
   };
 
@@ -1534,14 +1563,10 @@ async function generateTextByModelType(
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
         : { prompt: promptText };
-  // elizaOS callers pass `responseFormat: { type: "json_object" | "text" }`
-  // (see `GenerateTextParams` in @elizaos/core). The AI SDK's equivalent
-  // is `responseFormat: { type: "json" }` (which translates to
-  // `response_format: { type: "json_object" }` at the OpenAI wire layer).
-  // Translate the shape so the param actually reaches the API call —
-  // before this, callers asking for json_object were silently ignored
-  // and Cerebras returned plain text, dropping us into the simple-reply
-  // fallback every turn.
+  // AI SDK v6 derives the provider-level response format from its `output`
+  // contract; a similarly named top-level setting is ignored by generateText.
+  // Cerebras accepts JSON mode but not the SDK's JSON Schema wire payload, so
+  // its unstructured JSON output deliberately carries no schema.
   const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
     .responseFormat;
   const responseFormatType =
@@ -1552,11 +1577,11 @@ async function generateTextByModelType(
           "type" in callerResponseFormat
         ? (callerResponseFormat as { type: string }).type
         : undefined;
-  const wireResponseFormat: { type: "json" } | { type: "text" } | undefined =
-    responseFormatType === "json_object"
-      ? { type: "json" }
-      : responseFormatType === "text"
-        ? { type: "text" }
+  const requestedOutput: NativeOutput | undefined =
+    paramsWithAttachments.responseSchema && !cerebrasMode
+      ? buildStructuredOutput(paramsWithAttachments.responseSchema)
+      : responseFormatType === "json_object"
+        ? Output.json()
         : undefined;
 
   const generateParams: NativeTextParams = {
@@ -1564,6 +1589,7 @@ async function generateTextByModelType(
     ...promptOrMessages,
     system: systemPrompt,
     allowSystemInMessages: true,
+    ...(params.signal ? { abortSignal: params.signal } : {}),
     // Omit the cap when the caller opted out (direct-channel Stage-1) so the
     // model's own max applies — a hardcoded value 400s when it exceeds the
     // model's limit. Other callers keep the 8192 default.
@@ -1571,15 +1597,7 @@ async function generateTextByModelType(
     experimental_telemetry: telemetryConfig,
     ...(normalizedTools ? { tools: normalizedTools } : {}),
     ...(normalizedToolChoice ? { toolChoice: normalizedToolChoice } : {}),
-    // Cerebras's OpenAI-compatible endpoint does not accept the
-    // `response_format: { type: "json_schema", ... }` payload that the AI SDK
-    // emits when `output: Output.object(...)` is set. Fall back to relying on
-    // `responseFormat: { type: "json_object" }` (already passed by callers)
-    // plus the schema embedded in the prompt body.
-    ...(paramsWithAttachments.responseSchema && !isCerebrasMode(runtime)
-      ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
-      : {}),
-    ...(wireResponseFormat ? { responseFormat: wireResponseFormat } : {}),
+    ...(requestedOutput ? { output: requestedOutput } : {}),
     ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),
   };
 
@@ -1655,12 +1673,67 @@ async function generateTextByModelType(
     let capturedStreamError: unknown;
     let companionStreamError: unknown;
     let telemetryFinalized = false;
-    const result = await streamText({
-      ...generateParams,
-      onError: ({ error }: { error: unknown }) => {
-        capturedStreamError = error;
-      },
-    });
+    // Live streaming retries ONLY when the attempt dies before its first
+    // token: Cerebras's transient 500s surface through `onError` with an
+    // empty stream (or as a throw on the first pull), and at that point
+    // nothing has reached the user, so a fresh attempt is invisible. Once a
+    // token has been delivered a failure stays fatal — replaying a partial
+    // stream would double-deliver text. The first item is pre-pulled here and
+    // replayed by the generator below; abandoned attempts get their companion
+    // promises defused so an errored, unconsumed result cannot surface as an
+    // unhandled rejection.
+    let result!: Awaited<ReturnType<typeof streamText>>;
+    let streamIterator!: AsyncIterator<unknown>;
+    let firstItem: IteratorResult<unknown> | undefined;
+    for (let attempt = 0; ; attempt++) {
+      capturedStreamError = undefined;
+      result = await streamText({
+        ...generateParams,
+        onError: ({ error }: { error: unknown }) => {
+          capturedStreamError = error;
+        },
+      });
+      const source = params.streamStructured === true ? result.fullStream : result.textStream;
+      streamIterator = (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+      try {
+        firstItem = await streamIterator.next();
+      } catch (error) {
+        firstItem = undefined;
+        capturedStreamError ??= error;
+      }
+      const failedBeforeFirstToken =
+        capturedStreamError !== undefined && (firstItem === undefined || firstItem.done === true);
+      if (
+        !failedBeforeFirstToken ||
+        attempt >= 3 ||
+        !isTransientProviderError(capturedStreamError)
+      ) {
+        break;
+      }
+      for (const companion of [result.text, result.usage, result.finishReason, result.toolCalls]) {
+        void Promise.resolve(companion).catch(() => {
+          // error-policy:J5 suppression — this attempt is being abandoned and
+          // retried; its failure is observed via capturedStreamError.
+        });
+      }
+      const backoffMs = Math.min(3000, 300 * 2 ** attempt) + Math.floor(Math.random() * 200);
+      logger.warn(
+        `[OpenAI] transient stream-start error (attempt ${attempt + 1}/3), retrying in ${backoffMs}ms: ${
+          (capturedStreamError as { message?: string })?.message ?? String(capturedStreamError)
+        }`
+      );
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+    // Replays the pre-pulled first item, then continues the committed attempt.
+    const iterateStream = async function* (): AsyncGenerator<unknown> {
+      if (firstItem && !firstItem.done) yield firstItem.value;
+      if (firstItem?.done) return;
+      for (;;) {
+        const next = await streamIterator.next();
+        if (next.done) return;
+        yield next.value;
+      }
+    };
     let structuredTextSettled = false;
     let resolveStructuredText: (text: string) => void = () => {};
     let rejectStructuredText: (error: unknown) => void = () => {};
@@ -1746,7 +1819,7 @@ async function generateTextByModelType(
             // visible. The authoritative parse still comes from toolCalls.
             // Gated on streamStructured so planner/coding tool-call JSON never
             // leaks into a visible stream.
-            for await (const part of result.fullStream) {
+            for await (const part of iterateStream()) {
               // The AI SDK renamed these delta fields across v6 minors
               // (`tool-input-delta`: delta→inputTextDelta), and the workspace's
               // declared (^6.0.30) and hoisted (6.0.174) copies disagree — read
@@ -1767,10 +1840,10 @@ async function generateTextByModelType(
               yield chunk;
             }
           } else {
-            for await (const chunk of result.textStream) {
-              responseChunks.push(chunk);
-              params.onStreamChunk?.(chunk);
-              yield chunk;
+            for await (const chunk of iterateStream()) {
+              responseChunks.push(chunk as string);
+              params.onStreamChunk?.(chunk as string);
+              yield chunk as string;
             }
           }
         } catch (error) {

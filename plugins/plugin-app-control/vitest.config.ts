@@ -74,6 +74,10 @@ export default defineConfig({
 				replacement: path.join(uiSrc, "agent-surface/useAgentElement.ts"),
 			},
 			{
+				find: "@elizaos/ui/api/csrf-client",
+				replacement: path.join(uiSrc, "api/csrf-client.ts"),
+			},
+			{
 				find: "@elizaos/ui/events",
 				replacement: path.join(uiSrc, "events/index.ts"),
 			},
@@ -122,6 +126,10 @@ export default defineConfig({
 			// Use workspace source for @elizaos/shared and @elizaos/core so
 			// recently-added exports resolve at test time without requiring
 			// a fresh dist build of either package.
+			{
+				find: "@elizaos/shared/steward-session-client",
+				replacement: path.join(sharedSrc, "steward-session-client/index.ts"),
+			},
 			{
 				find: /^@elizaos\/shared\/(.*)\.js$/,
 				replacement: path.join(sharedSrc, "$1.ts"),

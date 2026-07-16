@@ -21,10 +21,6 @@ export function getLocalPGliteDatabaseUrl(env: EnvLike = process.env): string {
   return `pglite://${absolute}`;
 }
 
-export const LOCAL_PGLITE_DATABASE_URL = getLocalPGliteDatabaseUrl({
-  PGLITE_DATA_DIR: DEFAULT_PGLITE_DATA_DIR,
-});
-
 function isLocalExecution(env: EnvLike): boolean {
   return env.NODE_ENV !== "production" && env.CI !== "true";
 }

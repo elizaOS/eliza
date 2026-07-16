@@ -43,6 +43,7 @@ on:
       - "packages/cloud/sdk/**"
       - "packages/scripts/cloud/**"
       - "packages/app/**"
+      - "packages/app-core/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   pull_request:
@@ -54,6 +55,7 @@ on:
       - "packages/cloud/sdk/**"
       - "packages/scripts/cloud/**"
       - "packages/app/**"
+      - "packages/app-core/**"
       - "packages/ui/**"
       - ".github/workflows/cloud-cf-deploy.yml"
   workflow_dispatch:
@@ -148,10 +150,8 @@ jobs:
     # migrate is a light `bun install` + `db:cloud:migrate`, not the heavy
     # working-tree materialization that motivated keeping deploys off-hosted.
     runs-on: ${{ fromJSON(vars.CLOUD_CF_MIGRATE_RUNNER_JSON || '["ubuntu-latest"]') }}
-    # Job-level concurrency groups are repo-wide, so this serializes against
-    # cloud-deploy-backend's migrate-db too: overlapping triggers (a develop
-    # push fires both workflows) can never run the migrator concurrently
-    # against the same database.
+    # Job-level concurrency groups are repo-wide, so this also serializes
+    # against an explicitly dispatched legacy cloud-deploy-backend migration.
     concurrency:
       group: cloud-db-migrate-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       cancel-in-progress: false
@@ -160,7 +160,7 @@ jobs:
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
@@ -1378,7 +1378,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           submodules: false
           show-progress: false

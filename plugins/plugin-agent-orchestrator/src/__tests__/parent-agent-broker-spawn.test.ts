@@ -7,6 +7,8 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { OrchestratorTaskService } from "../services/orchestrator-task-service";
+import { OrchestratorTaskStore } from "../services/orchestrator-task-store";
 import { runParentAgentBroker } from "../services/parent-agent-broker";
 
 type SpawnFn = (
@@ -105,19 +107,65 @@ describe("parent-agent broker — spawn-sub-agent (nesting)", () => {
     expect(spawnAgentForTask).not.toHaveBeenCalled();
   });
 
-  it("surfaces a spawn error (e.g. depth cap) as text, not a throw", async () => {
-    const spawnAgentForTask = vi.fn<SpawnFn>(async () => {
-      throw new Error("sub-agent nesting depth 4 exceeds the max of 3");
+  it("surfaces the REAL depth-cap error from OrchestratorTaskService as text, not a throw", async () => {
+    // Real service + real memory store: the depth cap lives in
+    // spawnAgentForTask (default ELIZA_ACP_MAX_NESTING_DEPTH = 3), so a parent
+    // at depth 3 spawning a child (depth 4) must trip the genuine guard — no
+    // fabricated error inside a mock.
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const detail = await store.createTask({
+      title: "nesting cap",
+      goal: "exercise the real nesting depth cap",
+      acceptanceCriteria: [],
+      priority: "normal",
+      roomId: "11111111-1111-4111-8111-111111111111",
     });
-    const res = await runParentAgentBroker(
-      makeRequest({
-        service: { spawnAgentForTask },
-        sessionMetadata: { taskId: "t", nestingDepth: 3 },
-        brokerArgs: { mode: "spawn-sub-agent", task: "x" },
-      }),
-    );
-    expect(res.success).toBe(false);
-    expect(res.text).toMatch(/exceeds the max/);
+    const serviceRuntime = {
+      agentId: "00000000-0000-4000-8000-000000000042",
+      character: { name: "DepthCap" },
+      databaseAdapter: undefined,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+      },
+      getSetting: () => undefined,
+      getService: () => undefined,
+      useModel: async () => "{}",
+    };
+    const service = new OrchestratorTaskService(serviceRuntime as never, {
+      store,
+    });
+    try {
+      // Over the cap: parent depth 3 → child depth 4 > max 3. The broker must
+      // surface the service's real cap error as text rather than throwing.
+      const capped = await runParentAgentBroker(
+        makeRequest({
+          service: service as never,
+          sessionMetadata: { taskId: detail.task.id, nestingDepth: 3 },
+          brokerArgs: { mode: "spawn-sub-agent", task: "x" },
+        }),
+      );
+      expect(capped.success).toBe(false);
+      expect(capped.text).toMatch(/nesting depth 4 exceeds the max of 3/);
+
+      // Boundary: parent depth 2 → child depth 3 = max 3 passes the cap and
+      // proceeds to the next real precondition (no ACP service in this
+      // harness), proving the guard doesn't fire below the limit.
+      const atLimit = await runParentAgentBroker(
+        makeRequest({
+          service: service as never,
+          sessionMetadata: { taskId: detail.task.id, nestingDepth: 2 },
+          brokerArgs: { mode: "spawn-sub-agent", task: "x" },
+        }),
+      );
+      expect(atLimit.success).toBe(false);
+      expect(atLimit.text).not.toMatch(/exceeds the max/);
+      expect(atLimit.text).toMatch(/ACP service unavailable/);
+    } finally {
+      await service.stop().catch(() => undefined);
+    }
   });
 
   it("errors when the orchestrator service is unavailable", async () => {

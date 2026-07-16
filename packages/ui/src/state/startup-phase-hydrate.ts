@@ -1,8 +1,7 @@
 /**
- * startup-phase-hydrate.ts
- *
- * Side-effect logic for the "hydrating" startup phase and the persistent
- * "ready" phase (WebSocket bindings, nav listener).
+ * Coordinates side effects for the hydrating and ready startup phases.
+ * It binds persistent transport, navigation, wallet, and recovery listeners
+ * after the shell can paint, then releases them when the phase is torn down.
  */
 
 import { MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
@@ -37,6 +36,7 @@ import {
   tabFromPath,
 } from "../navigation";
 import { isTransientOptionalFetchFailure } from "../utils";
+import { recoverMissedCurrentView } from "../view-action-handoff";
 import { emitViewEvent } from "../views/view-event-bus";
 import type { ActionTone } from "./action-notice";
 import {
@@ -388,6 +388,11 @@ export function bindReadyPhase(
       hydratePty();
       void depsRef.current?.loadWalletConfig();
       void depsRef.current?.pollCloudCredits();
+      void recoverMissedCurrentView().catch((error) => {
+        // error-policy:J5 the structured warning observes this fire-and-forget
+        // recovery rejection; the next lifecycle event retries it.
+        logger.warn({ error }, "[startup] current view recovery failed");
+      });
     }),
   );
   const unbindSysWarn = client.onWsEvent(

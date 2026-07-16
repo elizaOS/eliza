@@ -11,6 +11,7 @@
  */
 
 import { streamText } from "ai";
+import { BITROUTER_DEFAULT_TEXT_MODEL } from "../../models/catalog";
 import { calculateCost, estimateRequestCost, getProviderFromModel } from "../../pricing";
 import {
   mergeAnthropicCotProviderOptions,
@@ -81,7 +82,7 @@ export async function executeSkillChatCompletion(
   dataContent: Record<string, unknown>,
   ctx: A2AContext,
 ): Promise<ChatCompletionResult> {
-  const model = (dataContent.model as string) || "gpt-4o";
+  const model = (dataContent.model as string) || BITROUTER_DEFAULT_TEXT_MODEL;
   const messages = (dataContent.messages as Array<{
     role: string;
     content: string;
@@ -601,7 +602,7 @@ export async function executeSkillCreateConversation(
   ctx: A2AContext,
 ): Promise<CreateConversationResult> {
   const title = dataContent.title as string;
-  const model = (dataContent.model as string) || "gpt-4o";
+  const model = (dataContent.model as string) || BITROUTER_DEFAULT_TEXT_MODEL;
   const systemPrompt = dataContent.systemPrompt as string | undefined;
 
   if (!title) throw new Error("title required");

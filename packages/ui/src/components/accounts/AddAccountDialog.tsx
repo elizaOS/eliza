@@ -1,25 +1,8 @@
 /**
- * AddAccountDialog — modal that walks the user through adding a new
- * credential to a provider's account pool.
- *
- * Paths:
- *   - **OAuth** (subscription providers): start the server-side OAuth
- *     flow, open the auth URL in a real browser window via
- *     `preOpenWindow` + `navigatePreOpenedWindow` (preserves the user
- *     gesture so popup blockers don't fire), then subscribe to the
- *     SSE stream at `/api/accounts/:provider/oauth/status` for terminal
- *     state. On `success`, hand the new `LinkedAccountConfig` to the
- *     parent. On error / timeout / cancel, surface the message inline
- *     and let the user retry. If the dialog closes mid-flow we cancel
- *     the server-side listener so it doesn't leak.
- *   - **Coding-plan key**: simple label + key form for dedicated coding
- *     endpoints only. These credentials are not written to general API env vars.
- *   - **External CLI**: show the first-party CLI login instruction; no token import.
- *   - **Unavailable**: explain why the provider cannot be linked safely.
- *   - **API key**: simple label + key form, immediate POST.
- *
- * The dialog is provider-aware: subscription providers are intentionally
- * constrained to their first-party coding surfaces.
+ * Provider-aware account enrollment for API keys and first-party coding
+ * subscriptions. OAuth state persists across browser handoffs and is observed
+ * through the server status stream; subscription credentials remain confined
+ * to their supported coding surfaces.
  */
 
 import type {
@@ -51,6 +34,7 @@ import {
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Spinner } from "../ui/spinner";
+import { ProviderPicker } from "./ProviderPicker";
 import { subscriptionOAuthModeForHostname } from "./subscription-oauth-mode";
 import {
   clearSubscriptionOAuth,
@@ -60,12 +44,19 @@ import {
 
 interface AddAccountDialogProps {
   open: boolean;
-  providerId: LinkedAccountProviderId;
+  /** Optional initial provider. When omitted, the dialog starts with the consolidated provider picker. */
+  providerId?: LinkedAccountProviderId;
+  /** Unhealthy account whose credential is replaced in place after verification. */
+  credentialRepairAccount?: Pick<
+    LinkedAccountConfig,
+    "id" | "label" | "source" | "health"
+  > | null;
   onClose: () => void;
   onCreated: (account: LinkedAccountConfig) => void;
 }
 
 type DialogStep =
+  | "provider-select"
   | "choose"
   | "oauth-starting"
   | "oauth-waiting"
@@ -87,6 +78,16 @@ type SubscriptionAddMode =
   | "external-cli"
   | "unavailable"
   | "none";
+
+// The static provider catalog + its types now live in their own module so
+// presentational pieces can import them without a circular dependency on this
+// dialog. Re-exported here for backward compatibility.
+export {
+  ACCOUNT_PROVIDER_OPTIONS,
+  type AccountProviderCategory,
+  type AccountProviderOption,
+  getAccountProviderOption,
+} from "./account-provider-options";
 
 const SUBSCRIPTION_ADD_MODE_BY_PROVIDER: Partial<
   Record<LinkedAccountProviderId, SubscriptionAddMode>
@@ -115,11 +116,12 @@ function initialStepForProvider(
 }
 
 function defaultOAuthLabel(providerId: LinkedAccountProviderId): string {
-  return providerId === "anthropic-subscription"
-    ? "Claude account"
-    : providerId === "openai-codex"
-      ? "Codex account"
-      : "Subscription account";
+  if (providerId === "anthropic-subscription") return "Claude account";
+  if (providerId === "openai-codex") return "Codex account";
+  if (getSubscriptionAddMode(providerId) === "api-key") {
+    return "Coding plan account";
+  }
+  return "API account";
 }
 
 function providerDisplayName(
@@ -183,16 +185,28 @@ function providerDisplayName(
 export function AddAccountDialog({
   open,
   providerId,
+  credentialRepairAccount = null,
   onClose,
   onCreated,
 }: AddAccountDialogProps) {
   const t = useAppSelector((s) => s.t);
-  const subscriptionAddMode = getSubscriptionAddMode(providerId);
+  const [selectedProviderId, setSelectedProviderId] =
+    useState<LinkedAccountProviderId | null>(providerId ?? null);
+  const activeProviderId = selectedProviderId ?? providerId ?? null;
+  const subscriptionAddMode = activeProviderId
+    ? getSubscriptionAddMode(activeProviderId)
+    : "none";
 
   const [step, setStep] = useState<DialogStep>(
-    initialStepForProvider(providerId),
+    activeProviderId
+      ? initialStepForProvider(activeProviderId)
+      : "provider-select",
   );
-  const [label, setLabel] = useState(() => defaultOAuthLabel(providerId));
+  const [label, setLabel] = useState(
+    () =>
+      credentialRepairAccount?.label ??
+      (activeProviderId ? defaultOAuthLabel(activeProviderId) : ""),
+  );
   const [apiKey, setApiKey] = useState("");
   const [oauthCode, setOauthCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -218,22 +232,32 @@ export function AddAccountDialog({
   const cancelInflightFlow = useCallback(async () => {
     closeEventSource();
     const id = sessionIdRef.current;
-    if (id) {
+    if (id && activeProviderId) {
       sessionIdRef.current = null;
       try {
-        await client.cancelAccountOAuth(providerId, { sessionId: id });
+        await client.cancelAccountOAuth(activeProviderId, { sessionId: id });
       } catch {
-        // Best-effort cleanup — server times out flows on its own.
+        // error-policy:J6 The server independently expires abandoned OAuth flows.
       }
     }
-  }, [closeEventSource, providerId]);
+  }, [closeEventSource, activeProviderId]);
 
   const reset = useCallback(() => {
     closeEventSource();
     sessionIdRef.current = null;
     restoredSessionRef.current = null;
-    setStep(initialStepForProvider(providerId));
-    setLabel(defaultOAuthLabel(providerId));
+    setStep(
+      activeProviderId
+        ? initialStepForProvider(activeProviderId)
+        : "provider-select",
+    );
+    setLabel(
+      credentialRepairAccount?.id
+        ? credentialRepairAccount.label
+        : activeProviderId
+          ? defaultOAuthLabel(activeProviderId)
+          : "",
+    );
     setApiKey("");
     setOauthCode("");
     setErrorMessage(null);
@@ -241,13 +265,19 @@ export function AddAccountDialog({
     setDeviceCode(null);
     setDeviceCodeCopied(false);
     setOauthUrl(null);
-  }, [closeEventSource, providerId]);
+  }, [
+    closeEventSource,
+    activeProviderId,
+    credentialRepairAccount?.id,
+    credentialRepairAccount?.label,
+  ]);
 
   const copyDeviceCode = useCallback(async (code: string) => {
     try {
       await copyTextToClipboard(code);
       setDeviceCodeCopied(true);
     } catch {
+      // error-policy:J4 Clipboard denial is represented by the unchanged copy affordance.
       setDeviceCodeCopied(false);
     }
   }, []);
@@ -266,12 +296,13 @@ export function AddAccountDialog({
 
   const subscribeToFlow = useCallback(
     (newSessionId: string) => {
+      if (!activeProviderId) return;
       closeEventSource();
-      const url = `/api/accounts/${providerId}/oauth/status?sessionId=${encodeURIComponent(newSessionId)}`;
+      const url = `/api/accounts/${activeProviderId}/oauth/status?sessionId=${encodeURIComponent(newSessionId)}`;
       const source = openEventSource(url);
       eventSourceRef.current = source;
       if (!source) {
-        clearSubscriptionOAuth(providerId);
+        clearSubscriptionOAuth(activeProviderId);
         setErrorMessage(
           t("accounts.add.oauth.sseUnreachable", {
             defaultValue:
@@ -308,7 +339,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
-            clearSubscriptionOAuth(providerId);
+            clearSubscriptionOAuth(activeProviderId);
             onCreated(data.account);
             onClose();
           } else if (
@@ -319,7 +350,7 @@ export function AddAccountDialog({
             cancelPersistentErrorTimer();
             closeEventSource();
             sessionIdRef.current = null;
-            clearSubscriptionOAuth(providerId);
+            clearSubscriptionOAuth(activeProviderId);
             setErrorMessage(
               data.error ??
                 t(`accounts.add.oauth.${data.status}`, {
@@ -334,7 +365,7 @@ export function AddAccountDialog({
             setStep("error");
           }
         } catch {
-          // Malformed SSE event — ignore; the next valid one will progress.
+          // error-policy:J3 Invalid status events cannot advance the OAuth state machine.
         }
       };
 
@@ -363,25 +394,30 @@ export function AddAccountDialog({
         }, 5_000);
       };
     },
-    [closeEventSource, onClose, onCreated, providerId, t],
+    [closeEventSource, onClose, onCreated, activeProviderId, t],
   );
 
   useEffect(() => {
-    if (!open) return;
-    const pending = readSubscriptionOAuth(providerId);
+    if (!open || !activeProviderId) return;
+    const pending = readSubscriptionOAuth(activeProviderId);
     if (!pending || restoredSessionRef.current === pending.sessionId) return;
     restoredSessionRef.current = pending.sessionId;
     sessionIdRef.current = pending.sessionId;
     setSessionId(pending.sessionId);
     setDeviceCode(pending.deviceCode ?? null);
+    setOauthUrl(pending.oauthUrl ?? null);
     setStep(
       pending.phase === "need-code" ? "oauth-need-code" : "oauth-waiting",
     );
     subscribeToFlow(pending.sessionId);
-  }, [open, providerId, subscribeToFlow]);
+  }, [open, activeProviderId, subscribeToFlow]);
 
   const startOAuth = useCallback(
     async (mode: "localhost" | "device") => {
+      if (!activeProviderId) {
+        setStep("provider-select");
+        return;
+      }
       if (subscriptionAddMode !== "oauth") {
         setStep("unavailable");
         return;
@@ -395,12 +431,16 @@ export function AddAccountDialog({
       // console-callback paste — shows a copyable link instead of hijacking a
       // tab, so the user signs in wherever they want and enters/pastes the code.
       // (preOpenWindow must run synchronously in the click gesture.)
-      const opensWindow = mode === "localhost" && providerId === "openai-codex";
+      const opensWindow =
+        mode === "localhost" && activeProviderId === "openai-codex";
       const win = opensWindow ? preOpenWindow() : null;
       try {
-        const flow = await client.startAccountOAuth(providerId, {
+        const flow = await client.startAccountOAuth(activeProviderId, {
           label: label.trim(),
           mode,
+          ...(credentialRepairAccount
+            ? { replaceAccountId: credentialRepairAccount.id }
+            : {}),
         });
         sessionIdRef.current = flow.sessionId;
         restoredSessionRef.current = flow.sessionId;
@@ -409,11 +449,12 @@ export function AddAccountDialog({
         // Show the sign-in link for every non-auto-open flow.
         setOauthUrl(opensWindow ? null : (flow.authUrl ?? null));
         writeSubscriptionOAuth({
-          providerId,
+          providerId: activeProviderId,
           sessionId: flow.sessionId,
           mode,
           phase: flow.needsCodeSubmission ? "need-code" : "waiting",
           ...(flow.userCode ? { deviceCode: flow.userCode } : {}),
+          ...(!opensWindow && flow.authUrl ? { oauthUrl: flow.authUrl } : {}),
           startedAt: Date.now(),
         });
         if (flow.needsCodeSubmission) {
@@ -426,6 +467,7 @@ export function AddAccountDialog({
           navigatePreOpenedWindow(win, flow.authUrl);
         }
       } catch (err) {
+        // error-policy:J4 Enrollment failures remain visible and retryable in the dialog.
         setErrorMessage(
           err instanceof Error && err.message
             ? err.message
@@ -437,27 +479,40 @@ export function AddAccountDialog({
         try {
           win?.close();
         } catch {
-          // Cross-origin — ignore.
+          // error-policy:J6 A cross-origin popup closes with its own browsing context.
         }
       }
     },
-    [label, providerId, subscribeToFlow, subscriptionAddMode, t],
+    [
+      label,
+      activeProviderId,
+      credentialRepairAccount,
+      subscribeToFlow,
+      subscriptionAddMode,
+      t,
+    ],
   );
 
   const submitOAuthCode = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
+      if (!activeProviderId) return;
       const code = oauthCode.trim();
       const id = sessionIdRef.current;
       if (!code || !id) return;
       try {
-        await client.submitAccountOAuthCode(providerId, {
+        await client.submitAccountOAuthCode(activeProviderId, {
           sessionId: id,
           code,
         });
+        const pending = readSubscriptionOAuth(activeProviderId);
+        if (pending?.sessionId === id) {
+          writeSubscriptionOAuth({ ...pending, phase: "waiting" });
+        }
         setOauthCode("");
         setStep("oauth-waiting");
       } catch (err) {
+        // error-policy:J4 Code rejection remains visible and retryable in the dialog.
         setErrorMessage(
           err instanceof Error && err.message
             ? err.message
@@ -468,25 +523,30 @@ export function AddAccountDialog({
         setStep("error");
       }
     },
-    [oauthCode, providerId, t],
+    [oauthCode, activeProviderId, t],
   );
 
   const submitApiKey = useCallback(
     async (event: FormEvent) => {
       event.preventDefault();
+      if (!activeProviderId) return;
       const trimmedLabel = label.trim();
       const trimmedKey = apiKey.trim();
       if (!trimmedLabel || !trimmedKey) return;
       setErrorMessage(null);
       setStep("apikey-submitting");
       try {
-        const account = await client.createApiKeyAccount(providerId, {
+        const account = await client.createApiKeyAccount(activeProviderId, {
           label: trimmedLabel,
           apiKey: trimmedKey,
+          ...(credentialRepairAccount
+            ? { replaceAccountId: credentialRepairAccount.id }
+            : {}),
         });
         onCreated(account);
         onClose();
       } catch (err) {
+        // error-policy:J4 Credential rejection remains visible and retryable in the dialog.
         setErrorMessage(
           err instanceof Error && err.message
             ? err.message
@@ -497,41 +557,111 @@ export function AddAccountDialog({
         setStep("error");
       }
     },
-    [apiKey, label, onClose, onCreated, providerId, t],
+    [
+      apiKey,
+      label,
+      onClose,
+      onCreated,
+      activeProviderId,
+      credentialRepairAccount,
+      t,
+    ],
   );
 
   const handleClose = useCallback(() => {
-    clearSubscriptionOAuth(providerId);
+    if (activeProviderId) clearSubscriptionOAuth(activeProviderId);
     void cancelInflightFlow();
     reset();
     onClose();
-  }, [cancelInflightFlow, onClose, providerId, reset]);
+  }, [cancelInflightFlow, onClose, activeProviderId, reset]);
 
-  const dialogDescription =
-    subscriptionAddMode === "oauth"
-      ? t("accounts.add.subscriptionDescription", {
+  const chooseProvider = useCallback(
+    (nextProviderId: LinkedAccountProviderId) => {
+      setSelectedProviderId(nextProviderId);
+      setLabel(defaultOAuthLabel(nextProviderId));
+      setApiKey("");
+      setOauthCode("");
+      setErrorMessage(null);
+      setSessionId(null);
+      setDeviceCode(null);
+      setOauthUrl(null);
+      setStep(initialStepForProvider(nextProviderId));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedProviderId(providerId ?? null);
+    // An in-flight persisted OAuth session (user is mid-login, e.g. on the
+    // paste-code screen) is restored by the effect above. Resetting the step
+    // here would stomp that restore back to the provider's first screen
+    // whenever the surface remounts (tab switch, HMR), losing the user's
+    // place. Let the restore effect own step/label while a session persists.
+    if (providerId && readSubscriptionOAuth(providerId)) return;
+    setStep(
+      providerId ? initialStepForProvider(providerId) : "provider-select",
+    );
+    setLabel(
+      credentialRepairAccount?.id
+        ? credentialRepairAccount.label
+        : providerId
+          ? defaultOAuthLabel(providerId)
+          : "",
+    );
+    setApiKey("");
+    setOauthCode("");
+    setErrorMessage(null);
+    setSessionId(null);
+    setDeviceCode(null);
+    setDeviceCodeCopied(false);
+    setOauthUrl(null);
+  }, [
+    open,
+    providerId,
+    credentialRepairAccount?.id,
+    credentialRepairAccount?.label,
+  ]);
+
+  const dialogDescription = credentialRepairAccount
+    ? credentialRepairAccount.source === "oauth"
+      ? t("accounts.reauthenticate.description", {
           defaultValue:
-            "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
+            "Sign in again with the same provider. Your current credential stays active until the new sign-in succeeds, then this account is updated in place.",
         })
-      : subscriptionAddMode === "api-key"
-        ? t("accounts.add.codingPlanDescription", {
+      : t("accounts.replaceCredential.description", {
+          defaultValue:
+            "Enter a new credential for the same provider. The current credential stays unchanged until the replacement is verified and saved.",
+        })
+    : !activeProviderId
+      ? t("accounts.add.chooseDescription", {
+          defaultValue:
+            "Choose the provider you want to connect. Chat providers use API keys; coding subscriptions use first-party login or dedicated plan credentials.",
+        })
+      : subscriptionAddMode === "oauth"
+        ? t("accounts.add.subscriptionDescription", {
             defaultValue:
-              "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
+              "Sign in with the provider's first-party coding account flow to add another account to the rotation pool.",
           })
-        : subscriptionAddMode === "external-cli"
-          ? t("accounts.add.externalCliDescription", {
+        : subscriptionAddMode === "api-key"
+          ? t("accounts.add.codingPlanDescription", {
               defaultValue:
-                "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
+                "Paste a coding-plan credential for the provider's dedicated coding endpoint. It will not be used as a general API key.",
             })
-          : subscriptionAddMode === "unavailable"
-            ? t("accounts.add.unavailableDescription", {
+          : subscriptionAddMode === "external-cli"
+            ? t("accounts.add.externalCliDescription", {
                 defaultValue:
-                  "This provider does not expose a safe first-party coding subscription surface for linking here.",
+                  "This subscription is managed by the provider's CLI. The app does not import or replay CLI tokens.",
               })
-            : t("accounts.add.apiDescription", {
-                defaultValue:
-                  "Paste your API key. The key is stored locally with mode 0600.",
-              });
+            : subscriptionAddMode === "unavailable"
+              ? t("accounts.add.unavailableDescription", {
+                  defaultValue:
+                    "This provider does not expose a safe first-party coding subscription surface for linking here.",
+                })
+              : t("accounts.add.apiDescription", {
+                  defaultValue:
+                    "Paste your API key. The key is stored locally with mode 0600.",
+                });
 
   const apiKeyLabel =
     subscriptionAddMode === "api-key"
@@ -541,19 +671,19 @@ export function AddAccountDialog({
       : t("accounts.add.apiKey", { defaultValue: "API key" });
 
   const apiKeyPlaceholder =
-    providerId === "zai-coding"
+    activeProviderId === "zai-coding"
       ? "zai-..."
-      : providerId === "kimi-coding"
+      : activeProviderId === "kimi-coding"
         ? "sk-..."
         : "sk-...";
 
   const unavailableCopy =
-    providerId === "gemini-cli"
+    activeProviderId === "gemini-cli"
       ? t("accounts.add.geminiCliHint", {
           defaultValue:
             "Run gemini auth login in your terminal. Task agents will use the authenticated Gemini CLI directly; no Gemini subscription token is copied into API settings.",
         })
-      : providerId === "deepseek-coding"
+      : activeProviderId === "deepseek-coding"
         ? t("accounts.add.deepseekUnavailableHint", {
             defaultValue:
               "DeepSeek is unavailable here because there is no first-party coding subscription endpoint to integrate safely. Use the DeepSeek API-key provider only if you have direct API billing.",
@@ -590,24 +720,51 @@ export function AddAccountDialog({
         // is not a user cancellation: keep the controlled dialog and its code
         // entry state alive. The visible Cancel button remains the one explicit
         // operation that clears persisted state and cancels the server flow.
-        if (!next && step === "choose") handleClose();
+        if (
+          !next &&
+          step !== "oauth-starting" &&
+          step !== "oauth-waiting" &&
+          step !== "oauth-need-code"
+        ) {
+          handleClose();
+        }
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[min(720px,calc(100vh-2rem))] max-w-md overflow-hidden">
         <DialogHeader>
           <DialogTitle>
-            {t("accounts.add.title", {
-              defaultValue: `Add ${providerDisplayName(providerId, t)} account`,
-              provider: providerDisplayName(providerId, t),
-            })}
+            {activeProviderId
+              ? credentialRepairAccount
+                ? credentialRepairAccount.source === "oauth"
+                  ? t("accounts.reauthenticate.title", {
+                      defaultValue: `Reauthenticate ${credentialRepairAccount.label}`,
+                      account: credentialRepairAccount.label,
+                    })
+                  : t("accounts.replaceCredential.title", {
+                      defaultValue: `Replace credential for ${credentialRepairAccount.label}`,
+                      account: credentialRepairAccount.label,
+                    })
+                : t("accounts.add.title", {
+                    defaultValue: `Add ${providerDisplayName(activeProviderId, t)} account`,
+                    provider: providerDisplayName(activeProviderId, t),
+                  })
+              : t("accounts.add.chooseTitle", {
+                  defaultValue: "Add a provider account",
+                })}
           </DialogTitle>
           <DialogDescription>{dialogDescription}</DialogDescription>
         </DialogHeader>
 
+        {step === "provider-select" ? (
+          <ProviderPicker onPick={chooseProvider} />
+        ) : null}
+
         {step === "choose" ? (
           <div className="grid gap-3 py-2">
             <p className="text-xs text-muted">
-              The connected account's email address will be used as its name.
+              {credentialRepairAccount
+                ? `${credentialRepairAccount.label} keeps its name, priority, and position in the account pool.`
+                : "The connected account's email address will be used as its name."}
             </p>
             <Button
               type="button"
@@ -619,7 +776,7 @@ export function AddAccountDialog({
               }
               className="h-10"
             >
-              {providerId === "openai-codex"
+              {activeProviderId === "openai-codex"
                 ? subscriptionOAuthModeForHostname(window.location.hostname) ===
                   "localhost"
                   ? "Log in with localhost callback"
@@ -635,7 +792,7 @@ export function AddAccountDialog({
               flow (visit auth.openai.com/codex/device + enter a code) without
               needing to reach the app on a non-localhost address.
             */}
-            {providerId === "openai-codex" &&
+            {activeProviderId === "openai-codex" &&
             subscriptionOAuthModeForHostname(window.location.hostname) ===
               "localhost" ? (
               <Button
@@ -781,7 +938,14 @@ export function AddAccountDialog({
 
         {step === "apikey" || step === "apikey-submitting" ? (
           <form onSubmit={submitApiKey} className="grid gap-3 py-2">
-            {labelInput}
+            {credentialRepairAccount ? (
+              <div className="rounded-sm border border-border/50 bg-bg-accent/50 px-3 py-2 text-xs text-muted">
+                Replacing the credential for {credentialRepairAccount.label}.
+                The account name and pool position will not change.
+              </div>
+            ) : (
+              labelInput
+            )}
             <div className="grid gap-1.5">
               <Label htmlFor="add-account-apikey">{apiKeyLabel}</Label>
               <Input
@@ -804,6 +968,10 @@ export function AddAccountDialog({
             >
               {step === "apikey-submitting" ? (
                 <Spinner className="h-3 w-3" />
+              ) : credentialRepairAccount ? (
+                t("accounts.replaceCredential.save", {
+                  defaultValue: "Save replacement",
+                })
               ) : (
                 t("accounts.add.save", { defaultValue: "Add account" })
               )}
@@ -835,7 +1003,11 @@ export function AddAccountDialog({
               variant="ghost"
               onClick={() => {
                 setErrorMessage(null);
-                setStep(initialStepForProvider(providerId));
+                setStep(
+                  activeProviderId
+                    ? initialStepForProvider(activeProviderId)
+                    : "provider-select",
+                );
               }}
             >
               {t("accounts.add.tryAgain", { defaultValue: "Try again" })}

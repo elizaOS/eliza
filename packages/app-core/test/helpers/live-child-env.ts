@@ -6,14 +6,14 @@ import {
   LIVE_PROVIDER_ENV_KEYS,
 } from "./live-provider.ts";
 
-function hasHostsOverride(value: string | undefined): value is string {
+function hasNonWhitespaceValue(value: string | undefined): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
 function ensureSelfControlTestHostsPath(env: NodeJS.ProcessEnv): string | null {
   const configuredPath =
     env.WEBSITE_BLOCKER_HOSTS_FILE_PATH ?? env.SELFCONTROL_HOSTS_FILE_PATH;
-  if (hasHostsOverride(configuredPath)) {
+  if (hasNonWhitespaceValue(configuredPath)) {
     return configuredPath;
   }
 
@@ -33,6 +33,10 @@ function ensureSelfControlTestHostsPath(env: NodeJS.ProcessEnv): string | null {
 export function createLiveRuntimeChildEnv(
   overrides: Record<string, string | undefined>,
 ): NodeJS.ProcessEnv {
+  const ambientCloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
+  const preserveAmbientCloudApiKey =
+    process.env.ELIZA_UI_SMOKE_CLOUD_LIVE === "1" &&
+    hasNonWhitespaceValue(ambientCloudApiKey);
   const liveProviderOverrides = Object.fromEntries(
     Object.entries(overrides).filter(
       ([key, value]) => value !== undefined && LIVE_PROVIDER_ENV_KEYS.has(key),
@@ -44,6 +48,13 @@ export function createLiveRuntimeChildEnv(
           env: liveProviderOverrides as Record<string, string>,
         })
       : { ...process.env };
+
+  // Provider isolation deliberately blanks every unselected credential. The
+  // app Cloud-live lane is the sole exception: its onboarding runtime needs the
+  // workflow-validated Cloud bearer in addition to the selected model provider.
+  if (preserveAmbientCloudApiKey) {
+    env.ELIZAOS_CLOUD_API_KEY = ambientCloudApiKey;
+  }
 
   for (const key of Object.keys(env)) {
     if (key === "VITEST" || key.startsWith("VITEST_")) {

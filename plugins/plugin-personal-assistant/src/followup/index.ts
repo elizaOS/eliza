@@ -3,7 +3,6 @@ export { listOverdueFollowupsAction } from "./actions/listOverdueFollowups.js";
 export { markFollowupDoneAction } from "./actions/markFollowupDone.js";
 export { setFollowupThresholdAction } from "./actions/setFollowupThreshold.js";
 export {
-  __resetFollowupTrackerForTests,
   type ContactInfo,
   computeOverdueFollowups,
   ensureFollowupTrackerTask,

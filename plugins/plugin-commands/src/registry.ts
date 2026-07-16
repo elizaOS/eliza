@@ -29,6 +29,9 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "status",
 		acceptsArgs: false,
+		// In-app only: on chat connectors it duplicates /help in the native
+		// picker; the text alias still resolves everywhere.
+		surfaces: ["gui"],
 	},
 	{
 		key: "status",
@@ -48,6 +51,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "status",
 		acceptsArgs: true,
 		args: [{ name: "mode", description: "Output mode (list, detail, json)" }],
+		requiresAuth: true,
 	},
 	{
 		key: "whoami",
@@ -97,6 +101,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "session",
 		acceptsArgs: false,
+		requiresAuth: true,
 	},
 	{
 		key: "compact",
@@ -124,6 +129,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		args: [
 			{ name: "level", description: "off, minimal, low, medium, high, xhigh" },
 		],
+		requiresAuth: true,
 	},
 	{
 		key: "verbose",
@@ -134,6 +140,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "options",
 		acceptsArgs: true,
 		args: [{ name: "level", description: "off, on, full" }],
+		requiresAuth: true,
 	},
 	{
 		key: "reasoning",
@@ -144,6 +151,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "options",
 		acceptsArgs: true,
 		args: [{ name: "level", description: "off, on, stream" }],
+		requiresAuth: true,
 	},
 	{
 		key: "elevated",
@@ -175,7 +183,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 			{
 				name: "model",
 				description:
-					"model id — for coding, the backend (codex, claude, opencode, elizaos)",
+					"model id — for coding, the backend (codex, claude, eliza)",
 				dynamicChoices: "models",
 			},
 			{
@@ -189,15 +197,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 				dynamicChoices: "models",
 			},
 		],
-	},
-	{
-		key: "models",
-		nativeName: "models",
-		description: "List available models",
-		textAliases: ["/models"],
-		scope: "both",
-		category: "options",
-		acceptsArgs: false,
+		requiresAuth: true,
 	},
 	{
 		key: "usage",
@@ -207,6 +207,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		scope: "both",
 		category: "options",
 		acceptsArgs: false,
+		requiresAuth: true,
 	},
 	{
 		key: "queue",
@@ -222,6 +223,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 				description: "steer, followup, collect, interrupt, or options",
 			},
 		],
+		requiresAuth: true,
 	},
 
 	// Management commands
@@ -262,6 +264,75 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 		category: "management",
 		acceptsArgs: true,
 		args: [{ name: "action", description: "list, stop, log, info, send" }],
+		requiresAuth: true,
+	},
+	{
+		key: "accounts",
+		nativeName: "accounts",
+		description: "View provider accounts and usage, or manage them",
+		textAliases: ["/accounts"],
+		scope: "both",
+		category: "management",
+		acceptsArgs: true,
+		args: [
+			{
+				name: "action",
+				description:
+					"use, enable, disable, strategy, refresh — omit for the report",
+				choices: ["use", "enable", "disable", "strategy", "refresh"],
+			},
+			{
+				name: "provider",
+				description: "claude, codex, cerebras, or a full provider id",
+				choices: [
+					"claude",
+					"codex",
+					"cerebras",
+					"anthropic-subscription",
+					"openai-codex",
+					"gemini-cli",
+					"zai-coding",
+					"kimi-coding",
+					"deepseek-coding",
+					"anthropic-api",
+					"openai-api",
+					"deepseek-api",
+					"zai-api",
+					"moonshot-api",
+					"cerebras-api",
+				],
+			},
+			{
+				name: "value",
+				description:
+					"account by id, label, or email — or the strategy name for `strategy`",
+			},
+		],
+		// requiresAuth only, matching /model: reads are authorized-only, and the
+		// write subcommands (use/enable/disable/strategy) re-check isElevated in
+		// the handler. Definition-level requiresElevated would make connectors
+		// (which gate before runCommand) refuse the bare read to non-elevated
+		// authorized senders — the exact bug the handler exemption tried and
+		// failed to work around.
+		requiresAuth: true,
+	},
+	{
+		key: "backend",
+		nativeName: "backend",
+		description: "Show or set the default coding backend",
+		textAliases: ["/backend"],
+		scope: "both",
+		category: "management",
+		acceptsArgs: true,
+		args: [
+			{
+				name: "backend",
+				description: "default coding backend for new tasks",
+				choices: ["codex", "claude", "eliza"],
+			},
+		],
+		// requiresAuth only (see /accounts): the bare read is authorized-only,
+		// the write re-checks isElevated in the handler.
 		requiresAuth: true,
 	},
 	{
@@ -306,6 +377,7 @@ export const DEFAULT_COMMANDS: ReadonlyArray<CommandDefinition> = [
 				description: "on, off, status, provider, limit, audio",
 			},
 		],
+		requiresAuth: true,
 	},
 	{
 		key: "transcribe",

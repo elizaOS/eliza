@@ -74,7 +74,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           filter: blob:none
@@ -604,6 +604,12 @@ jobs:
           bun run --cwd packages/elizaos lint:bin-exports
           bun run --cwd packages/elizaos test:packaged
 
+      # Access is package metadata and must be finalized before workspace-ref
+      # journaling or any pack verification. Later mutation would invalidate the
+      # restoration journal and make the verified bytes differ from publication.
+      - name: Set public package access
+        run: node scripts/release-set-public-access.mjs
+
       # Replace workspace:* references with actual versions before publishing
       # This is required because Bun workspaces use workspace:* protocol
       # which npm doesn't understand when the packages are published
@@ -635,24 +641,16 @@ jobs:
 
           # Configure npm for authentication
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
-          # Ensure new scoped /* packages publish as public (lerna reads
-          # publishConfig.access per-package; the npmrc access key is ignored).
-          node scripts/release-set-public-access.mjs
 
           # Publish with appropriate dist-tag
           # Commit workspace reference changes so lerna doesn't complain about uncommitted files
           git add -A
           git diff --staged --quiet || git commit -m "chore: replace workspace references for publishing [skip ci]"
 
-          # --no-sort: the workspace contains a known dependency cycle
-          # (@elizaos/agent <-> @elizaos/plugin-capacitor-bridge) which trips a
-          # bug in lerna 9.0.7's topological queue. The cycle is reported as a
-          # warning ("ECYCLE Dependency cycles detected"), and lerna then
-          # aborts the pack/publish step partway through with the generic
-          # "Not all tasks were run. This is likely a bug in Lerna." error.
-          # Disabling the topological sort makes lerna iterate via p-map over
-          # the full publish set, bypassing the broken queue. Combined with
-          # --concurrency 1 this still produces a serial, deterministic order.
+          # --no-sort remains a compatibility flag for this legacy implicit
+          # Lerna cohort. The immutable candidate path computes hard-dependency
+          # order without treating peer-only SCCs as hard cycles; retiring this
+          # flag belongs with the broader workflow state-machine refactor.
           #
           # --concurrency 1 + --loglevel verbose: serialize publishes so a
           # single failure is not masked by parallel output.

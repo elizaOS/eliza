@@ -118,6 +118,7 @@ mock.module("@/lib/services/team-credential-pool", () => ({
 
 // Import the route AFTER the mocks so it binds to the stubs.
 const {
+  default: chatCompletionsRouter,
   __streamingCreditTestHooks,
   __passthroughStreamingTestHooks,
   __reasoningEffortTestHooks,
@@ -183,6 +184,33 @@ beforeEach(() => {
   process.env.CEREBRAS_API_KEY = "test-cerebras-key";
 });
 
+test("the route invokes its dedicated native limiter before provider work", async () => {
+  const keys: string[] = [];
+  const response = await chatCompletionsRouter.fetch(
+    new Request("https://api.example.test/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(QUALIFYING_REQUEST),
+    }),
+    {
+      NODE_ENV: "production",
+      CHAT_ROUTE_RATE_LIMITER: {
+        async limit({ key }: { key: string }) {
+          keys.push(key);
+          return { success: false };
+        },
+      },
+    } as never,
+  );
+
+  expect(response.status).toBe(429);
+  expect(keys).toEqual(["public"]);
+  expect(response.headers.get("X-RateLimit-Policy")).toBe("cloudflare-native");
+  expect(generateText).not.toHaveBeenCalled();
+  expect(streamText).not.toHaveBeenCalled();
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
 /** In-memory credit ledger, identical to the credit-leak suite's. */
 function makeLedgerReservation(startBalance: number, hold: number) {
   let balance = startBalance - hold;
@@ -229,6 +257,10 @@ function callStreaming(
     effectiveMaxTokens?: number;
     pooledCredential?: unknown;
     executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+    providerDispatchTelemetry?: {
+      capture(): void;
+      emit(): void;
+    };
   } = {},
 ) {
   return handleStreamingRequest(
@@ -254,10 +286,15 @@ function callStreaming(
     (options.pooledCredential ?? null) as never,
     false,
     options.executionCtx,
+    options.providerDispatchTelemetry,
   );
 }
 
-function callNonStreaming(model: string, reasoningEffort: "none" | "low") {
+function callNonStreaming(
+  model: string,
+  reasoningEffort: "none" | "low",
+  promptCacheKey?: string,
+) {
   return handleNonStreamingRequest(
     model,
     undefined,
@@ -266,6 +303,7 @@ function callNonStreaming(model: string, reasoningEffort: "none" | "low") {
       model,
       messages: [{ role: "user", content: "hello" }],
       reasoning_effort: reasoningEffort,
+      ...(promptCacheKey ? { prompt_cache_key: promptCacheKey } : {}),
     } as never,
     { id: USER, organization_id: ORG },
     null,
@@ -429,6 +467,23 @@ describe("passthrough streaming — qualification predicate", () => {
 });
 
 describe("passthrough streaming — qualifying request pipes bytes verbatim and bills from the usage frame", () => {
+  test("captures the preforward boundary immediately around the upstream fetch", async () => {
+    const events: string[] = [];
+    fetchImpl = async () => {
+      events.push("fetch");
+      return sseResponse(UPSTREAM_SSE);
+    };
+
+    const res = await callStreaming(async () => null, {
+      providerDispatchTelemetry: {
+        capture: () => events.push("capture"),
+        emit: () => events.push("emit"),
+      },
+    });
+    expect(events).toEqual(["capture", "fetch", "emit"]);
+    await res.text();
+  });
+
   test("bytes are piped verbatim, usage is billed, settle chain runs once", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);
@@ -615,9 +670,10 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
     expect(res.headers.get("X-Eliza-Inference-Path")).toBeNull();
   });
 
-  test("SDK streaming forwards reasoning_effort through OpenAI provider options", async () => {
+  test("SDK streaming preserves prompt_cache_key alongside reasoning_effort", async () => {
     sdkFaithfulStream();
     const model = "zai-glm-4.7";
+    const promptCacheKey = "v5:reasoning-prefix";
     const res = await callStreaming(async () => null, {
       model,
       request: {
@@ -626,6 +682,7 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
         stream: true,
         stream_options: { include_usage: true },
         reasoning_effort: "none",
+        prompt_cache_key: promptCacheKey,
         tools: [
           {
             type: "function",
@@ -641,11 +698,13 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
     expect(streamText).toHaveBeenCalledTimes(1);
     expect(streamText.mock.calls[0]?.[0]).toMatchObject({
       maxOutputTokens: 512,
-      providerOptions: { openai: { reasoningEffort: "none" } },
+      providerOptions: {
+        openai: { promptCacheKey, reasoningEffort: "none" },
+      },
     });
   });
 
-  test("SDK non-streaming forwards reasoning_effort through OpenAI provider options", async () => {
+  test("SDK non-streaming preserves prompt_cache_key alongside reasoning_effort", async () => {
     generateTextImpl = () => ({
       text: "Hello",
       toolCalls: [],
@@ -653,12 +712,15 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
       usage: { inputTokens: 72, outputTokens: 1, totalTokens: 73 },
     });
 
-    const res = await callNonStreaming("zai-glm-4.7", "none");
+    const promptCacheKey = "v5:reasoning-prefix";
+    const res = await callNonStreaming("zai-glm-4.7", "none", promptCacheKey);
     expect(res.status).toBe(200);
     expect(generateText).toHaveBeenCalledTimes(1);
     expect(generateText.mock.calls[0]?.[0]).toMatchObject({
       maxOutputTokens: 512,
-      providerOptions: { openai: { reasoningEffort: "none" } },
+      providerOptions: {
+        openai: { promptCacheKey, reasoningEffort: "none" },
+      },
     });
   });
 
@@ -675,6 +737,56 @@ describe("passthrough streaming — fallthrough to the SDK path", () => {
 });
 
 describe("passthrough streaming — client abort cancels upstream and settles the delivered portion", () => {
+  test("response cancellation stops the meter and completes deferred settlement", async () => {
+    const ledger = makeLedgerReservation(100, 0.9);
+    const settle = createCreditReservationSettler(ledger.reservation);
+    const deliveredText = "partial response before disconnect";
+    const waitUntilPromises: Promise<unknown>[] = [];
+    let upstreamCancelled = false;
+
+    fetchImpl = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: {"id":"c1","choices":[{"index":0,"delta":{"content":${JSON.stringify(deliveredText)}},"finish_reason":null}],"usage":null}\n\n`,
+              ),
+            );
+          },
+          cancel() {
+            upstreamCancelled = true;
+          },
+        }),
+        { status: 200 },
+      );
+
+    const res = await callStreaming(settle, {
+      estimatedInputTokens: 9,
+      executionCtx: {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+      },
+    });
+    const reader = res.body?.getReader();
+    if (!reader) throw new Error("expected passthrough response body");
+    const first = await reader.read();
+    expect(new TextDecoder().decode(first.value)).toContain(deliveredText);
+
+    await reader.cancel(new DOMException("client disconnected", "AbortError"));
+    await Promise.all(waitUntilPromises);
+
+    expect(upstreamCancelled).toBe(true);
+    expect(billUsage).toHaveBeenCalledTimes(1);
+    expect(billUsage.mock.calls[0][1]).toMatchObject({
+      inputTokens: 9,
+      outputTokens: estimateTokens(deliveredText),
+    });
+    expect(ledger.reconcileCalls).toBe(1);
+    expect(recordUsageAnalytics).toHaveBeenCalledTimes(1);
+  });
+
   test("abort mid-stream: upstream signal aborted, estimate-based partial settle", async () => {
     const ledger = makeLedgerReservation(100, 0.9);
     const settle = createCreditReservationSettler(ledger.reservation);
@@ -896,10 +1008,17 @@ describe("passthrough streaming — settlement runs OFF the response path via wa
     const body = await res.text();
     expect(body).toBe(UPSTREAM_SSE);
     expect(ledger.reconcileCalls).toBe(0);
-    expect(waitUntilPromises.length).toBe(1);
+    expect(waitUntilPromises).toHaveLength(1);
+    let deferredSettled = false;
+    void waitUntilPromises[0].finally(() => {
+      deferredSettled = true;
+    });
+    await Promise.resolve();
+    expect(deferredSettled).toBe(false);
 
     releaseBilling();
     await Promise.all(waitUntilPromises);
+    expect(deferredSettled).toBe(true);
 
     expect(billUsage).toHaveBeenCalledTimes(1);
     expect(ledger.reconcileCalls).toBe(1);

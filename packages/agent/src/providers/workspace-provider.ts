@@ -29,38 +29,6 @@ const DEFAULT_MAX_CHARS = 20_000;
 const MAX_TOTAL_WORKSPACE_CHARS = 100_000;
 const CACHE_TTL_MS = 60_000;
 
-interface CodingAgentContext {
-  taskDescription: string;
-  workingDirectory: string;
-  connector: {
-    type: string;
-    available: boolean;
-  };
-  interactionMode: string;
-  active: boolean;
-  iterations: Array<{
-    errors: Array<{
-      category: string;
-      message: string;
-      filePath?: string;
-      line?: number;
-    }>;
-    commandResults: Array<{
-      command: string;
-      success: boolean;
-      exitCode?: number | null;
-      stdout?: string;
-      stderr?: string;
-    }>;
-  }>;
-  allFeedback: Array<{
-    iterationRef?: number;
-    type?: string;
-    text?: string;
-    message?: string;
-  }>;
-}
-
 // Per-workspace cache so multi-agent doesn't thrash.
 const cache = new Map<string, { files: WorkspaceInitFile[]; at: number }>();
 /** Maximum number of workspace directories to cache simultaneously. */
@@ -121,70 +89,6 @@ export function buildContext(
   }
   if (sections.length === 0) return "";
   return `## Project Context (Workspace)\n\n${sections.join("\n\n---\n\n")}`;
-}
-
-/** @internal Exported for testing. Builds a summary of the task-agent session. */
-export function buildCodingAgentSummary(ctx: CodingAgentContext): string {
-  const lines: string[] = [];
-
-  lines.push("## Task Agent Session");
-  lines.push("");
-  lines.push(`**Task:** ${ctx.taskDescription}`);
-  lines.push(`**Working Directory:** ${ctx.workingDirectory}`);
-  lines.push(`**Connector:** ${ctx.connector.type}`);
-  lines.push(`**Mode:** ${ctx.interactionMode}`);
-  lines.push(`**Active:** ${ctx.active ? "yes" : "no"}`);
-
-  if (!ctx.connector.available) {
-    lines.push(`**Connector Status:** unavailable`);
-  }
-
-  // Errors from the last iteration
-  const lastIteration = ctx.iterations[ctx.iterations.length - 1];
-  if (lastIteration && lastIteration.errors.length > 0) {
-    lines.push("");
-    lines.push("### Errors to Resolve");
-    for (const err of lastIteration.errors) {
-      const loc = err.filePath
-        ? err.line
-          ? ` (${err.filePath}:${err.line})`
-          : ` (${err.filePath})`
-        : "";
-      lines.push(`- [${err.category}]${loc}: ${err.message}`);
-    }
-  }
-
-  // Human feedback
-  const pendingFeedback = ctx.allFeedback.filter(
-    (fb) =>
-      fb.iterationRef !== undefined &&
-      fb.iterationRef >= ctx.iterations.length - 1,
-  );
-  if (pendingFeedback.length > 0) {
-    lines.push("");
-    lines.push("### Human Feedback");
-    for (const fb of pendingFeedback) {
-      lines.push(`- [${fb.type}]: ${fb.text}`);
-    }
-  }
-
-  // Recent commands from the last iteration
-  if (lastIteration && lastIteration.commandResults.length > 0) {
-    lines.push("");
-    lines.push("### Recent Commands");
-    for (const cmd of lastIteration.commandResults.slice(-5)) {
-      const status = cmd.success ? "OK" : `FAIL(${cmd.exitCode})`;
-      lines.push(`- \`${cmd.command}\` → ${status}`);
-      if (cmd.stdout?.trim()) {
-        lines.push(`  stdout: ${truncate(cmd.stdout.trim(), 200)}`);
-      }
-      if (cmd.stderr?.trim()) {
-        lines.push(`  stderr: ${truncate(cmd.stderr.trim(), 200)}`);
-      }
-    }
-  }
-
-  return lines.join("\n");
 }
 
 export function createWorkspaceProvider(options?: {

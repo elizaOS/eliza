@@ -12,7 +12,6 @@ export {
   registerBuiltInCompletionChecks,
 } from "./completion-check-registry.js";
 export {
-  __anchorTestUtils,
   type AnchorRegistry,
   type ConsolidationRegistry,
   createAnchorRegistry,

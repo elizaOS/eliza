@@ -238,6 +238,57 @@ describe("POST /api/models/config chat writes", () => {
     expect(processEnv.ANTHROPIC_EFFORT_SMALL).toBe("high");
   });
 
+  it("writes ELIZAOS_CLOUD keys (model + shared effort) for elizacloud", async () => {
+    // Under cloud-proxy routing plugin-elizacloud owns chat and reads only the
+    // ELIZAOS_CLOUD_* family — an OPENAI_* write here would be silently inert.
+    const { ctx, config, processEnv } = makeHarness("POST", {
+      target: "large",
+      provider: "elizacloud",
+      model: "zai-glm-4.7",
+      effort: "high",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    > & { vars: Record<string, string> };
+    expect(env.ELIZAOS_CLOUD_LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(env.vars.ELIZAOS_CLOUD_LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(processEnv.ELIZAOS_CLOUD_LARGE_MODEL).toBe("zai-glm-4.7");
+    expect(env.ELIZAOS_CLOUD_REASONING_EFFORT).toBe("high");
+    expect(processEnv.ELIZAOS_CLOUD_REASONING_EFFORT).toBe("high");
+    expect(env.OPENAI_LARGE_MODEL).toBeUndefined();
+  });
+
+  it("resolves an ambiguous model to the ACTIVE chat provider", async () => {
+    // gpt-oss-120b is offered by both cerebras and elizacloud; with cloud-proxy
+    // routing live the bare write must land on the cloud family, not 400.
+    const { ctx, json, config } = makeHarness(
+      "POST",
+      { target: "large", model: "gpt-oss-120b" },
+      {
+        config: {
+          serviceRouting: {
+            llmText: {
+              backend: "elizacloud",
+              transport: "cloud-proxy",
+              accountId: "elizacloud",
+            },
+          },
+        } as never,
+      },
+    );
+    await handleModelConfigRoutes(ctx as never);
+    const { status } = responseOf(json);
+    expect(status).toBeUndefined();
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    >;
+    expect(env.ELIZAOS_CLOUD_LARGE_MODEL).toBe("gpt-oss-120b");
+    expect(env.OPENAI_LARGE_MODEL).toBeUndefined();
+  });
+
   it("returns 409 without writing when the runtime is busy", async () => {
     const managerStart = vi.fn(async () => ({
       kind: "rejected-busy",
@@ -294,8 +345,6 @@ describe("POST /api/models/config coding writes", () => {
         target: "coding",
         backend: "codex",
         model: "gpt-5.6-terra",
-        // xhigh is the ceiling the pinned codex-acp adapter can parse; ultra
-        // is rejected at the route (see the pin-gate suite below).
         effort: "xhigh",
       });
     await handleModelConfigRoutes(ctx as never);
@@ -358,6 +407,78 @@ describe("POST /api/models/config coding writes", () => {
   });
 });
 
+describe("POST /api/models/config defaultBackend-only writes", () => {
+  it("persists ELIZA_DEFAULT_AGENT_TYPE to all three seams without a restart", async () => {
+    const { ctx, json, saveElizaConfig, managerStart, config, processEnv } =
+      makeHarness("POST", { target: "coding", defaultBackend: "codex" });
+    await handleModelConfigRoutes(ctx as never);
+
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    > & { vars: Record<string, string> };
+    expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("codex");
+    expect(env.vars.ELIZA_DEFAULT_AGENT_TYPE).toBe("codex");
+    expect(processEnv.ELIZA_DEFAULT_AGENT_TYPE).toBe("codex");
+    expect(saveElizaConfig).toHaveBeenCalledWith(config);
+    expect(managerStart).not.toHaveBeenCalled();
+    const { body } = responseOf(json);
+    expect(body).toMatchObject({
+      applied: true,
+      restart: false,
+      keys: ["ELIZA_DEFAULT_AGENT_TYPE"],
+    });
+  });
+
+  it("maps a modelless eliza-code switch to the orchestrator's elizaos spelling", async () => {
+    const { ctx, config } = makeHarness("POST", {
+      target: "coding",
+      defaultBackend: "eliza-code",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const env = (config as Record<string, unknown>).env as Record<
+      string,
+      unknown
+    >;
+    expect(env.ELIZA_DEFAULT_AGENT_TYPE).toBe("elizaos");
+  });
+
+  it("rejects an unknown defaultBackend without writing", async () => {
+    const { ctx, json, saveElizaConfig } = makeHarness("POST", {
+      target: "coding",
+      defaultBackend: "vscode",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("Unknown defaultBackend");
+    expect(saveElizaConfig).not.toHaveBeenCalled();
+  });
+
+  it("rejects model-seam fields on a modelless write", async () => {
+    const { ctx, json } = makeHarness("POST", {
+      target: "coding",
+      backend: "codex",
+      defaultBackend: "codex",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("defaultBackend-only write");
+  });
+
+  it("still requires model for chat targets even with defaultBackend", async () => {
+    const { ctx, json } = makeHarness("POST", {
+      target: "large",
+      defaultBackend: "codex",
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body, status } = responseOf(json);
+    expect(status).toBe(400);
+    expect(String(body.error)).toContain("model must be a non-empty string");
+  });
+});
+
 describe("GET /api/models/config resolution order", () => {
   it("reports which source won per key: config.env > config.env.vars > process.env", async () => {
     const { ctx, json } = makeHarness("GET", null, {
@@ -396,7 +517,7 @@ describe("GET /api/models/config resolution order", () => {
     expect(targets.small?.ANTHROPIC_SMALL_MODEL).toBeNull();
   });
 
-  it("falls back to the user-approved codex coding default when unset", async () => {
+  it("falls back to the user-approved coding defaults when unset", async () => {
     const { ctx, json } = makeHarness("GET", null);
     await handleModelConfigRoutes(ctx as never);
     const { body } = responseOf(json);
@@ -405,9 +526,92 @@ describe("GET /api/models/config resolution order", () => {
       Record<string, { value: string; source: string } | null>
     >;
     expect(targets.coding?.ELIZA_CODEX_MODEL_POWERFUL).toEqual({
-      value: "gpt-5.6-terra",
+      value: "gpt-5.6-sol",
       source: "default",
     });
+    expect(targets.coding?.ELIZA_CLAUDE_MODEL_POWERFUL).toEqual({
+      value: "claude-opus-4-8",
+      source: "default",
+    });
+  });
+});
+
+describe("GET /api/models/config activeChat", () => {
+  const cloudRoutedConfig = {
+    serviceRouting: {
+      llmText: {
+        backend: "elizacloud",
+        transport: "cloud-proxy",
+        accountId: "elizacloud",
+      },
+    },
+  } as never;
+
+  it("names the cloud brain + its endpoint under cloud-proxy routing", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: cloudRoutedConfig,
+      processEnv: {
+        // Inert for chat under cloud-proxy — must NOT leak into the endpoint.
+        OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
+        ELIZAOS_CLOUD_BASE_URL: "https://elizacloud.ai/api/v1",
+      },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body } = responseOf(json);
+    expect(body.activeChat).toEqual({
+      provider: "elizacloud",
+      family: "ELIZAOS_CLOUD",
+      endpoint: "elizacloud.ai",
+    });
+    const targets = body.targets as Record<
+      string,
+      Record<string, { value: string; source: string } | null>
+    >;
+    // Unpinned cloud tiers report the plugin's code defaults so the operator
+    // sees what actually serves — small gemma, large GLM (genuinely larger).
+    expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toEqual({
+      value: "gemma-4-31b",
+      source: "default",
+    });
+    expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toEqual({
+      value: "zai-glm-4.7",
+      source: "default",
+    });
+  });
+
+  it("names the direct provider endpoint under cerebras routing and omits cloud defaults", async () => {
+    const { ctx, json } = makeHarness("GET", null, {
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "cerebras",
+            transport: "direct",
+            accountId: "cerebras",
+          },
+        },
+      } as never,
+      processEnv: { OPENAI_BASE_URL: "https://api.cerebras.ai/v1" },
+    });
+    await handleModelConfigRoutes(ctx as never);
+    const { body } = responseOf(json);
+    expect(body.activeChat).toEqual({
+      provider: "cerebras",
+      family: "OPENAI",
+      endpoint: "api.cerebras.ai",
+    });
+    const targets = body.targets as Record<
+      string,
+      Record<string, { value: string; source: string } | null>
+    >;
+    expect(targets.small?.ELIZAOS_CLOUD_SMALL_MODEL).toBeNull();
+    expect(targets.large?.ELIZAOS_CLOUD_LARGE_MODEL).toBeNull();
+  });
+
+  it("omits activeChat when no routing is configured", async () => {
+    const { ctx, json } = makeHarness("GET", null);
+    await handleModelConfigRoutes(ctx as never);
+    const { body } = responseOf(json);
+    expect(body.activeChat).toBeUndefined();
   });
 });
 
@@ -423,8 +627,8 @@ describe("route matching", () => {
   });
 });
 
-describe("codex-acp effort pin gate (review amendment)", () => {
-  it("rejects ultra on gpt-5.6-terra (model supports it; pinned acp cannot parse it)", async () => {
+describe("managed codex-acp effort contract", () => {
+  it("rejects ultra even when the selected model advertises it", async () => {
     const { ctx, json, saveElizaConfig } = makeHarness("POST", {
       target: "coding",
       backend: "codex",
@@ -434,7 +638,8 @@ describe("codex-acp effort pin gate (review amendment)", () => {
     await expect(handleModelConfigRoutes(ctx as never)).resolves.toBe(true);
     const { body, status } = responseOf(json);
     expect(status).toBe(400);
-    expect(String(body.error)).toContain("codex-acp");
+    expect(String(body.error)).toContain("managed codex-acp contract");
+    expect(String(body.error)).toContain("low, medium, high, xhigh");
     expect(saveElizaConfig).not.toHaveBeenCalled();
   });
 });

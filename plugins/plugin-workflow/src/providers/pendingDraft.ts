@@ -1,5 +1,14 @@
-// Provides pending workflow draft context for confirmation turns.
-import type { IAgentRuntime, Memory, Provider, State } from '@elizaos/core';
+/**
+ * Restores a conversation's pending workflow draft so confirmations,
+ * cancellations, and edits remain routed through the workflow action.
+ */
+import {
+  ElizaError,
+  type IAgentRuntime,
+  type Memory,
+  type Provider,
+  type State,
+} from '@elizaos/core';
 import type { WorkflowDraft } from '../types/index';
 
 const DRAFT_TTL_MS = 30 * 60 * 1000;
@@ -49,8 +58,15 @@ export const pendingDraftProvider: Provider = {
         },
         values: { hasPendingDraft: true },
       };
-    } catch {
-      return { text: '', data: {}, values: {} };
+    } catch (error) {
+      const wrapped = new ElizaError('Failed to load pending workflow draft', {
+        code: 'WORKFLOW_PROVIDER_DRAFT_LOAD_FAILED',
+        cause: error,
+        context: { entityId: message.entityId },
+        severity: 'ephemeral',
+      });
+      await runtime.reportError('WorkflowProvider.pendingDraft', wrapped);
+      throw wrapped;
     }
   },
 };

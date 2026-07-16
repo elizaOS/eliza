@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           filter: blob:none
@@ -36,7 +36,7 @@ jobs:
         # credit balance, rate limit, transient outage). Skipping a weekly
         # maintenance run is preferable to a perma-red scheduled workflow.
         continue-on-error: true
-        uses: anthropics/claude-code-action@ba0aafd4308cbba7165f9f2cdb0cfbed5a3c99ce
+        uses: anthropics/claude-code-action@12531344451323133b0493233c759991ac61da12
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true

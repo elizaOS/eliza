@@ -1,13 +1,13 @@
 /**
- * Behavior tests for the consolidated ViewManagerView wrapper.
- *
- * The wrapper owns GET /api/views fetching and open-to-navigate handoff while
- * rendering the shared ViewManagerSpatialView inside a SpatialSurface.
- *
+ * Exercises ViewManagerView's fetch, state, and navigation boundaries with browser-style responses.
  * @vitest-environment jsdom
  */
 
-import { emitViewEvent, VIEW_EVENTS } from "@elizaos/ui/events";
+import {
+	emitViewEvent,
+	NAVIGATE_VIEW_EVENT,
+	VIEW_EVENTS,
+} from "@elizaos/ui/events";
 import {
 	act,
 	cleanup,
@@ -100,7 +100,10 @@ describe("ViewManagerView GUI wrapper", () => {
 		expect(calls[0].url).not.toContain("?viewType");
 	});
 
-	it("opens a view via POST navigate with NO ?viewType query string (gui distinction)", async () => {
+	it("uses the CSRF-aware POST then dispatches local navigation without a server echo", async () => {
+		vi.spyOn(document, "cookie", "get").mockReturnValue(
+			"eliza_csrf=view-manager-token",
+		);
 		const { calls } = stubFetch(({ url }) => {
 			if (url === "/api/views") return jsonResponse(guiViews);
 			if (url === "/api/views/wallet/navigate")
@@ -108,6 +111,10 @@ describe("ViewManagerView GUI wrapper", () => {
 			throw new Error(`Unexpected request: ${url}`);
 		});
 
+		const navigateEvents: CustomEvent[] = [];
+		const onNavigate = (event: Event) =>
+			navigateEvents.push(event as CustomEvent);
+		window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
 		const { container } = render(<ViewManagerView />);
 		await screen.findByText("Wallet");
 
@@ -127,9 +134,52 @@ describe("ViewManagerView GUI wrapper", () => {
 		expect(navCall?.url).toBe("/api/views/wallet/navigate");
 		expect(navCall?.url).not.toContain("?viewType");
 		expect(navCall?.init?.method).toBe("POST");
-		expect(navCall?.init?.body).toBe(
-			JSON.stringify({ path: "/wallet", viewType: undefined }),
+		expect(navCall?.init?.credentials).toBe("include");
+		expect(new Headers(navCall?.init?.headers).get("x-eliza-csrf")).toBe(
+			"view-manager-token",
 		);
+		expect(navCall?.init?.body).toBe(
+			JSON.stringify({
+				path: "/wallet",
+				viewType: undefined,
+				source: "user",
+			}),
+		);
+		expect(navigateEvents).toHaveLength(1);
+		expect(navigateEvents[0]?.detail).toMatchObject({
+			viewId: "wallet",
+			viewPath: "/wallet",
+			viewLabel: "Wallet",
+			viewType: "gui",
+		});
+		window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+	});
+
+	it("surfaces a failed open and does not dispatch local navigation", async () => {
+		const { calls } = stubFetch(({ url }) => {
+			if (url === "/api/views") return jsonResponse(guiViews);
+			if (url === "/api/views/wallet/navigate") {
+				return jsonResponse({ error: "offline" }, { status: 503 });
+			}
+			throw new Error(`Unexpected request: ${url}`);
+		});
+		const navigateEvents: CustomEvent[] = [];
+		const onNavigate = (event: Event) =>
+			navigateEvents.push(event as CustomEvent);
+		window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
+
+		const { container } = render(<ViewManagerView />);
+		await screen.findByText("Wallet");
+		fireEvent.click(
+			container.querySelector<HTMLButtonElement>(
+				'[data-agent-id="open:wallet"]',
+			) as HTMLButtonElement,
+		);
+
+		await screen.findByText("Could not open view: HTTP 503");
+		expect(calls.some((call) => call.url.endsWith("/navigate"))).toBe(true);
+		expect(navigateEvents).toHaveLength(0);
+		window.removeEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
 	});
 
 	it("renders the empty state for an empty payload", async () => {
@@ -152,7 +202,20 @@ describe("ViewManagerView GUI wrapper", () => {
 		});
 
 		render(<ViewManagerView />);
-		await screen.findByText("HTTP 500");
+		await screen.findByText(/HTTP 500/);
+	});
+
+	it("renders malformed registry data as an error rather than a healthy empty state", async () => {
+		stubFetch(({ url }) => {
+			if (url === "/api/views") return jsonResponse({ status: "ready" });
+			throw new Error(`Unexpected request: ${url}`);
+		});
+
+		render(<ViewManagerView />);
+		await screen.findByText(
+			"GET /api/views response must contain a views array",
+		);
+		expect(screen.queryByText("None")).toBeNull();
 	});
 
 	it("shows 'loading' before the fetch resolves", async () => {

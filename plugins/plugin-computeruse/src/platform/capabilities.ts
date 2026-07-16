@@ -4,11 +4,13 @@
  * host OS and their parity classification. iOS/Android live in mobile/, not here.
  */
 import type { PlatformCapabilities } from "../types.js";
+import { type DriverName, selectedDriver } from "./driver.js";
 import type { PlatformOS } from "./helpers.js";
 
 export interface CapabilityDetectionOptions {
   osName: PlatformOS;
   commandExists: (command: string) => boolean;
+  driverName?: DriverName;
   isBrowserAvailable: () => boolean;
   shell?: string;
 }
@@ -168,6 +170,20 @@ export function detectPlatformCapabilities(
     caps.computerUse = { available: true, tool: "PowerShell user32.dll" };
     caps.windowList = { available: true, tool: "PowerShell Get-Process" };
     caps.clipboard = { available: true, tool: "PowerShell Get-Clipboard" };
+  }
+
+  // The service dispatches capture and input through the resolved driver. A
+  // nutjs installation must not be reported through unrelated legacy binaries,
+  // especially on Linux hosts where xdotool is intentionally absent.
+  if ((options.driverName ?? selectedDriver()) === "nutjs") {
+    caps.screenshot = {
+      available: true,
+      tool: "@nut-tree-fork/nut-js",
+    };
+    caps.computerUse = {
+      available: true,
+      tool: "@nut-tree-fork/nut-js",
+    };
   }
 
   caps.browser = options.isBrowserAvailable()

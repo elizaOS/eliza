@@ -1,0 +1,222 @@
+name: Managed Dedicated Staging Canary
+
+# Bounded, fail-closed proof of the managed Cloud dedicated-agent path. This
+# lane never talks to the Hetzner API directly: the deployed staging
+# provisioner owns capacity and the canary uses the same repository Cloud
+# credential as App Live. One fixed concurrency group plus the script's stale
+# canary guard ensures no second canary can be created while one exists.
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  workflow_dispatch:
+  # A maintainer-applied label lets the workflow prove a new harness before it
+  # reaches the default branch; the staging environment still owns secret and
+  # approval policy.
+  pull_request:
+    types: [labeled]
+
+concurrency:
+  group: managed-dedicated-staging-canary
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Provision + bridge + SSE + cleanup
+    if: ${{ github.event_name != 'pull_request' || github.event.label.name == 'run-managed-dedicated-canary' }}
+    runs-on: ubuntu-24.04
+    environment: staging
+    # The script's absolute worst-case request budgets stay below this cap and
+    # reserve its final cleanup window before Actions can terminate the job.
+    timeout-minutes: 45
+    env:
+      CLOUD_DEDICATED_CANARY_BASE_URL: https://api-staging.elizacloud.ai
+      CLOUD_DEDICATED_CANARY_EVIDENCE_PATH: reports/managed-dedicated-canary.json
+      # Keep this identical to App Live's accepted repository-secret contract.
+      ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+    steps:
+      - name: Require real Cloud credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          cloud_key_without_whitespace="${ELIZAOS_CLOUD_API_KEY:-}"
+          cloud_key_without_whitespace="${cloud_key_without_whitespace//[[:space:]]/}"
+          if [[ -z "$cloud_key_without_whitespace" ]]; then
+            echo "::error::Managed dedicated canary requires ELIZAOS_CLOUD_API_KEY or ELIZACLOUD_API_KEY; refusing green-by-skip."
+            exit 1
+          fi
+          unset cloud_key_without_whitespace
+
+      - name: Require exact staging target
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const expected = "https://api-staging.elizacloud.ai";
+          const raw = process.env.CLOUD_DEDICATED_CANARY_BASE_URL ?? "";
+          let url;
+          try {
+            url = new URL(raw);
+          } catch {
+            throw new Error("Managed dedicated canary target is not a valid URL");
+          }
+          if (
+            url.origin !== expected ||
+            url.username ||
+            url.password ||
+            (url.pathname !== "/" && url.pathname !== "") ||
+            url.search ||
+            url.hash
+          ) {
+            throw new Error(
+              "Managed dedicated canary is pinned to the exact staging origin without userinfo, path, query, or fragment",
+            );
+          }
+          NODE
+
+      - name: Checkout exact run commit
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: canary
+
+      - name: Validate canary and failure contracts
+        run: |
+          bun test \
+            packages/scripts/cloud/admin/bridge-reply-verdict.test.ts \
+            packages/scripts/cloud/admin/managed-dedicated-canary.test.ts
+
+      - name: Run bounded managed dedicated canary
+        id: live
+        shell: bash
+        run: |
+          set +e
+          mkdir -p reports
+          bun run packages/scripts/cloud/admin/managed-dedicated-canary.ts
+          status=$?
+          set -e
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      - name: Validate privacy-safe evidence artifact
+        id: privacy
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_path="$CLOUD_DEDICATED_CANARY_EVIDENCE_PATH"
+          if [[ ! -s "$evidence_path" ]]; then
+            echo "::error::Canary produced no evidence artifact to privacy-check."
+            exit 1
+          fi
+          bun -e '
+            import { readFileSync, renameSync, writeFileSync } from "node:fs";
+            import { canonicalizeManagedDedicatedCanaryArtifact } from "./packages/scripts/cloud/admin/managed-dedicated-canary.ts";
+            const evidencePath = process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH;
+            if (!evidencePath) {
+              console.error("::error::Canary evidence path is not configured.");
+              process.exit(1);
+            }
+            const { canonical, errors } = canonicalizeManagedDedicatedCanaryArtifact(
+              readFileSync(evidencePath, "utf8"),
+            );
+            if (errors.length > 0) {
+              console.error("::error::Canary evidence failed strict privacy validation: " + errors.join(","));
+              process.exit(1);
+            }
+            if (canonical === null) process.exit(1);
+            const canonicalPath = evidencePath + ".validated-" + process.pid;
+            writeFileSync(canonicalPath, canonical, { mode: 0o600 });
+            renameSync(canonicalPath, evidencePath);
+          '
+          echo "validated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload privacy-safe timing and path evidence
+        if: ${{ always() && steps.privacy.outputs.validated == 'true' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: managed-dedicated-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: reports/managed-dedicated-canary.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Enforce live proof, deployed SHA, and cleanup
+        if: ${{ always() }}
+        env:
+          LIVE_PROCESS_STATUS: ${{ steps.live.outputs.status }}
+          PRIVACY_VALIDATED: ${{ steps.privacy.outputs.validated }}
+          # Canonical staging rejects feature-ref deploys. A labeled PR therefore
+          # proves the exact harness at its checked-out head against the deployed
+          # base it proposes to extend; post-merge runs prove their own SHA.
+          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_path="$CLOUD_DEDICATED_CANARY_EVIDENCE_PATH"
+          if [[ ! -s "$evidence_path" ]]; then
+            echo "::error::Canary produced no evidence; zero-executed/skip outcomes are failures."
+            exit 1
+          fi
+          if [[ "${PRIVACY_VALIDATED:-missing}" != "true" ]]; then
+            echo "::error::Canary evidence did not pass the separate strict privacy validator."
+            exit 1
+          fi
+
+          deployed_commit="$(
+            bun -e '
+              import { readFileSync } from "node:fs";
+              import { validateManagedDedicatedCanaryEvidence } from "./packages/scripts/cloud/admin/managed-dedicated-canary.ts";
+              const evidence = JSON.parse(readFileSync(process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH, "utf8"));
+              const errors = validateManagedDedicatedCanaryEvidence(evidence);
+              if (errors.length > 0) {
+                console.error("::error::Canary evidence rejected: " + errors.join(","));
+                process.exit(1);
+              }
+              process.stdout.write(evidence.deployedCommit);
+            '
+          )"
+
+          if [[ "${LIVE_PROCESS_STATUS:-missing}" != "0" ]]; then
+            echo "::error::Live canary process exited ${LIVE_PROCESS_STATUS:-without status}."
+            exit 1
+          fi
+          if ! git cat-file -e "${deployed_commit}^{commit}" 2>/dev/null; then
+            echo "::error::Staging reported a deploy commit absent from this repository checkout."
+            exit 1
+          fi
+          expected_source_sha="${EXPECTED_SOURCE_SHA:-}"
+          if [[ -z "$expected_source_sha" ]] || ! git cat-file -e "${expected_source_sha}^{commit}" 2>/dev/null; then
+            echo "::error::Expected canary source commit is absent from this repository checkout."
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$expected_source_sha" "$deployed_commit"; then
+            echo "::error::Staging deploy does not contain this canary's expected source commit."
+            exit 1
+          fi
+
+          bun -e '
+            import { readFileSync } from "node:fs";
+            const evidence = JSON.parse(readFileSync(process.env.CLOUD_DEDICATED_CANARY_EVIDENCE_PATH, "utf8"));
+            const t = evidence.timingsMs;
+            console.log("### Managed dedicated staging canary");
+            console.log("");
+            console.log("- deployed commit: `" + evidence.deployedCommit + "`");
+            console.log("- tier: `" + evidence.path.observedTier + "`");
+            console.log("- paths: `" + evidence.path.successfulPaths + "/2`");
+            console.log("- bridge transport: `" + evidence.path.bridgeTransport + "`");
+            console.log("- chat requests: `" + evidence.capacity.chatRequests + "/" + evidence.capacity.maxChatRequests + "`");
+            console.log("- cleanup: `" + evidence.cleanup.status + "`");
+            console.log("");
+            console.log("| phase | ms |");
+            console.log("| --- | ---: |");
+            for (const phase of ["health", "capacityGuard", "create", "ready", "bridge", "sse", "cleanup", "total"]) {
+              if (Number.isFinite(t[phase])) console.log("| " + phase + " | " + t[phase] + " |");
+            }
+          ' >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Managed dedicated canary passed with exact cleanup."

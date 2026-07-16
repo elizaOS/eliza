@@ -19,6 +19,7 @@ in CI and by the live run recorded in ``packages/inference/reports/``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -499,8 +500,7 @@ def test_real_text_model_override_produces_real_score(tmp_path: Path, monkeypatc
 
 
 # ---------------------------------------------------------------------------
-# Held-out text corpus — wave2 T5 made this dataset-derived instead of the
-# 5-paragraph hand-typed fallback.
+# Held-out text corpus selection and provenance.
 # ---------------------------------------------------------------------------
 
 
@@ -574,12 +574,90 @@ def test_default_text_eval_corpus_prefers_dataset(monkeypatch, tmp_path: Path) -
     corpus = suite._default_text_eval_corpus()
     assert any("dataset-derived" in s for s in corpus)
 
+    bundle = _make_standin_bundle(tmp_path)
+    args = suite.argparse.Namespace(
+        bundle_dir=bundle,
+        tier="2b",
+        backend=None,
+        text_eval_model=None,
+        text_corpus=None,
+        threads=2,
+        timeout=30,
+    )
+    ctx = suite.build_context(args)
+    assert ctx.text_eval_corpus_path == fake_test.resolve()
+    assert (
+        ctx.text_eval_corpus_sha256
+        == hashlib.sha256(fake_test.read_bytes()).hexdigest()
+    )
 
-def test_default_text_eval_corpus_falls_back_when_dataset_missing(
+
+def test_default_text_eval_corpus_is_empty_when_dataset_missing(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """No dataset on disk → the hardcoded 5-paragraph fallback is used."""
+    """No held-out dataset must not turn a synthetic fallback into a score."""
     missing = tmp_path / "missing.jsonl"
     monkeypatch.setenv("ELIZA_EVAL_TEXT_CORPUS", str(missing))
     corpus = suite._default_text_eval_corpus()
-    assert corpus == suite._HARDCODED_TEXT_EVAL_CORPUS_FALLBACK
+    assert corpus == ()
+
+
+def test_default_text_eval_corpus_excludes_tracked_smoke_fixture(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("ELIZA_EVAL_TEXT_CORPUS", raising=False)
+    smoke = tmp_path / "data" / "final-eliza1-smoke" / "test.jsonl"
+    smoke.parent.mkdir(parents=True)
+    smoke.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user", "content": "synthetic"},
+                    {
+                        "role": "assistant",
+                        "content": "Synthetic pipeline fixture that cannot prove quality.",
+                    },
+                ]
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(suite, "_TRAINING_ROOT", tmp_path)
+
+    assert suite._dataset_test_jsonl() is None
+    assert suite._default_text_eval_corpus() == ()
+
+
+def test_explicit_empty_text_corpus_is_rejected(tmp_path: Path) -> None:
+    corpus = tmp_path / "empty.jsonl"
+    corpus.write_text("", encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="contains no eligible rows"):
+        suite._default_text_corpus(corpus)
+
+
+def test_text_eval_without_held_out_corpus_is_publish_blocking(tmp_path: Path) -> None:
+    ctx = suite.EvalContext(
+        bundle_dir=tmp_path,
+        tier="2b",
+        engine=None,
+        text_model=None,
+        text_eval_model=None,
+        voice_model=None,
+        voice_tokenizer=None,
+        asr_model=None,
+        vad_model=None,
+        drafter_model=None,
+        text_eval_corpus=(),
+        asr_corpus=None,
+        threads=2,
+        timeout_s=30,
+    )
+
+    result = suite.eval_text(ctx)
+
+    assert result["status"] == "not-run"
+    assert result["score"] is None
+    assert result["passed"] is None
+    assert result["corpusRecords"] == 0

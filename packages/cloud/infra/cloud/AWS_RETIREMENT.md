@@ -1,28 +1,34 @@
-# AWS retirement plan
+# AWS retirement — historical record
 
-Living audit of AWS dependencies in this repo, what they do, what they were
-migrated to (or kept and redirected), and what is still outstanding.
+Audit of the AWS dependencies this repo carried, what each was migrated to
+(or kept and redirected), and what is still outstanding. The retirement is
+**complete** except the two rows in the Outstanding table below: the KMS
+sunset (Stage 3) and deleting the stale `TERRAFORM_AWS_ROLE_ARN` /
+`GATEWAY_AWS_ROLE_ARN` variables from the GitHub environments (an org-admin
+console action; no code references them). Treat every other table here as a
+record of finished work, not a plan. Where a replacement itself moved on
+(the DB went AWS → Neon → Railway), the current home is what
+[`RAILWAY.md`](./RAILWAY.md) says — that file is the canonical topology map.
 
-Pair this with [`RAILWAY.md`](./RAILWAY.md) (where central services run today)
-and the storage notes in
+Pair this with the storage notes in
 [`../../shared/src/lib/storage/s3-compatible-client.ts`](../../shared/src/lib/storage/s3-compatible-client.ts)
 (how the S3 SDK is pointed at Cloudflare R2 / Supabase / generic S3
 endpoints).
 
 ## TL;DR
 
-We are retiring AWS as a primary backend. The replacements per surface:
+AWS is retired as a primary backend. Where each surface landed:
 
-| AWS service | Replacement |
+| AWS service | Replaced by (current state) |
 |---|---|
-| S3 | Cloudflare R2 (via `@aws-sdk/client-s3` against R2 endpoint) |
-| KMS | `LocalKMSProvider` (AES-256-GCM with `SECRETS_MASTER_KEY`) |
-| ECS / EKS containers | Hetzner via `container-control-plane` |
-| Lambda | Cloudflare Workers (`cloud-api`, `gateway-*`) |
-| RDS | Neon Postgres |
-| ElastiCache | Upstash Redis (managed) / `redis` package |
+| S3 | Cloudflare R2 (via `@aws-sdk/client-s3` against the R2 endpoint) |
+| KMS | `LocalKMSProvider` (AES-256-GCM with `SECRETS_MASTER_KEY`); `AWSKMSProvider` deprecated, pending removal (Stage 3) |
+| ECS / EKS containers | Hetzner data-plane containers (provisioning worker + `docker_nodes`); gateways on Railway |
+| Lambda | Cloudflare Worker (`eliza-cloud-api`); the `gateway-*` services run on Railway, not Workers |
+| RDS | Railway managed Postgres (interim Neon deployment retired — `wrangler.toml` marks `NEON_API_KEY` retired) |
+| ElastiCache | Railway managed Redis (TCP `REDIS_URL`); Upstash REST kept only as a legacy fallback |
 | CloudFront / Route53 | Cloudflare (Pages + DNS) |
-| SQS / SNS | Not currently used in core services |
+| SQS / SNS | Not used in core services (Stripe webhook fan-out runs on Redis; see `wrangler.toml`) |
 
 ## Classification
 

@@ -1,10 +1,11 @@
 /**
  * Group D — AI / inference / media routes.
  *
- * Covers five mounted routes from the Hono Worker:
+ * Covers mounted routes from the Hono Worker:
  *
  *   /api/elevenlabs/stt      — protected legacy alias for /api/v1/voice/stt.
  *   /api/elevenlabs/tts      — protected legacy alias for /api/v1/voice/tts.
+ *   /api/v1/voice/session/ws — public realtime voice WebSocket upgrade.
  *   /api/v1/responses        — protected Responses API compatibility route
  *                              backed by /api/v1/chat/completions.
  *   /api/v1/generate-image   — protected image generation route.
@@ -15,32 +16,36 @@
  *   /api/og                  — public; returns a Worker-native SVG image.
  *   /api/openapi.json        — public; returns the OpenAPI 3.1 spec as JSON.
  *
- * Each route gets:
- *   - Auth gate assertion (always runnable).
- *   - Happy-path reachability assertions avoid real provider calls by using
- *     inputs that validate auth and fail deterministically before upstream I/O.
- *   - Validation assertion for malformed bodies or unsupported methods.
+ * Authenticated HTTP routes get auth-gate coverage, and HTTP reachability
+ * checks avoid provider calls with inputs that fail deterministically before
+ * upstream I/O. The WebSocket check drives the complete upgrade and protocol
+ * close over a real local socket.
  *
- * Skip behavior: with REQUIRE_E2E_SERVER=0 and no reachable Worker (or no
- * bootstrapped TEST_API_KEY) every test in this file reports as a counted,
- * named `skip` — never a silent pass. The /api/v1/responses happy path is
- * split into a keyless-deterministic variant (503, never 501) and a
- * live-inference variant (200 + full response shape) keyed on provider-key
- * availability.
+ * Skip behavior: with REQUIRE_E2E_SERVER=0, protected route suites report
+ * counted, named skips when the Worker or bootstrapped TEST_API_KEY is absent.
+ * The public WebSocket suite requires a reachable local Worker with
+ * VOICE_REALTIME_WS_ENABLED=true. The /api/v1/responses happy path is split
+ * into a keyless-deterministic variant (503, never 501) and a live-inference
+ * variant (200 + full response shape) keyed on provider-key availability.
  */
 
 import { describe, expect, test } from "bun:test";
+import { createHash, randomBytes } from "node:crypto";
+import { connect as connectTcp } from "node:net";
+import { connect as connectTls } from "node:tls";
 
 import {
   api,
   bearerHeaders,
   getBaseUrl,
+  isLocalTarget,
   isServerReachable,
   url,
 } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
 const hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
+const voiceRealtimeWsEnabled = process.env.VOICE_REALTIME_WS_ENABLED === "true";
 if (!serverReachable) {
   console.warn(
     `[group-d-ai-media] ${getBaseUrl()} did not respond to /api/health. ` +
@@ -51,12 +56,15 @@ if (!serverReachable) {
 if (!hasTestApiKey) {
   console.warn(
     "[group-d-ai-media] TEST_API_KEY is not set; the preload could not " +
-      "bootstrap a test API key. Tests will SKIP.",
+      "bootstrap a test API key. Protected route tests will SKIP.",
   );
 }
 
 // Loud, counted skip instead of a silent pass when the Worker/key is absent.
 const describeE2E = describe.skipIf(!serverReachable || !hasTestApiKey);
+const describeLocalWorker = describe.skipIf(
+  !serverReachable || !isLocalTarget() || !voiceRealtimeWsEnabled,
+);
 
 // Live-inference split: the local lane shares this process env with wrangler
 // dev, so a provider key here means the Worker can really forward. A remote
@@ -70,6 +78,221 @@ const liveInferenceAvailable = Boolean(
 function bearerOnlyHeaders(): Record<string, string> {
   const { Authorization } = bearerHeaders();
   return { Authorization };
+}
+
+interface VoiceWebSocketProbe {
+  opened: boolean;
+  statusCode: number | undefined;
+  headers: Record<string, string>;
+  serverFrame: unknown;
+  closeCode: number;
+  closeReason: string;
+}
+
+const VOICE_WS_ORIGIN = "https://localhost";
+
+function maskedWebSocketFrame(opcode: number, payload: Uint8Array): Buffer {
+  if (payload.byteLength > 125) {
+    throw new Error("voice WebSocket probe only supports control-sized frames");
+  }
+  const mask = randomBytes(4);
+  const frame = Buffer.alloc(2 + mask.byteLength + payload.byteLength);
+  frame[0] = 0x80 | opcode;
+  frame[1] = 0x80 | payload.byteLength;
+  mask.copy(frame, 2);
+  for (let index = 0; index < payload.byteLength; index += 1) {
+    frame[6 + index] = payload[index] ^ mask[index % mask.byteLength];
+  }
+  return frame;
+}
+
+function probeBinaryFirstVoiceWebSocket(): Promise<VoiceWebSocketProbe> {
+  const endpoint = new URL("/api/v1/voice/session/ws", getBaseUrl());
+  endpoint.searchParams.set("sessionId", "e2e-status-101");
+  const websocketKey = randomBytes(16).toString("base64");
+  const expectedAccept = createHash("sha1")
+    .update(`${websocketKey}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+    .digest("base64");
+
+  return new Promise((resolve, reject) => {
+    const port = Number(
+      endpoint.port || (endpoint.protocol === "https:" ? 443 : 80),
+    );
+    const socket =
+      endpoint.protocol === "https:"
+        ? connectTls({
+            host: endpoint.hostname,
+            port,
+            rejectUnauthorized: false,
+          })
+        : connectTcp({ host: endpoint.hostname, port });
+    const connectEvent =
+      endpoint.protocol === "https:" ? "secureConnect" : "connect";
+    let opened = false;
+    let statusCode: number | undefined;
+    const headers: Record<string, string> = {};
+    let serverFrame: unknown;
+    let closeResult: VoiceWebSocketProbe | undefined;
+    let handshakeComplete = false;
+    let buffered = Buffer.alloc(0);
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      reject(new Error("voice WebSocket probe timed out"));
+    }, 30_000);
+
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      socket.destroy();
+      reject(error);
+    };
+
+    const readFrames = () => {
+      while (buffered.byteLength >= 2) {
+        const opcode = buffered[0] & 0x0f;
+        const masked = (buffered[1] & 0x80) !== 0;
+        let payloadLength = buffered[1] & 0x7f;
+        let offset = 2;
+        if (payloadLength === 126) {
+          if (buffered.byteLength < 4) return;
+          payloadLength = buffered.readUInt16BE(2);
+          offset = 4;
+        } else if (payloadLength === 127) {
+          if (buffered.byteLength < 10) return;
+          const extendedLength = buffered.readBigUInt64BE(2);
+          if (extendedLength > BigInt(Number.MAX_SAFE_INTEGER)) {
+            fail(new Error("voice WebSocket returned an oversized frame"));
+            return;
+          }
+          payloadLength = Number(extendedLength);
+          offset = 10;
+        }
+        if (masked) {
+          fail(new Error("voice WebSocket server returned a masked frame"));
+          return;
+        }
+        if (buffered.byteLength < offset + payloadLength) return;
+        const payload = buffered.subarray(offset, offset + payloadLength);
+        buffered = buffered.subarray(offset + payloadLength);
+
+        if (opcode === 0x1) {
+          try {
+            serverFrame = JSON.parse(payload.toString("utf8"));
+          } catch (error) {
+            fail(error instanceof Error ? error : new Error(String(error)));
+            return;
+          }
+        } else if (opcode === 0x2) {
+          fail(
+            new Error("voice WebSocket returned an unexpected binary frame"),
+          );
+          return;
+        } else if (opcode === 0x8) {
+          if (payload.byteLength < 2) {
+            fail(
+              new Error(
+                "voice WebSocket returned a close frame without a code",
+              ),
+            );
+            return;
+          }
+          if (closeResult) return;
+          closeResult = {
+            opened,
+            statusCode,
+            headers,
+            serverFrame,
+            closeCode: payload.readUInt16BE(0),
+            closeReason: payload.subarray(2).toString("utf8"),
+          };
+          socket.write(maskedWebSocketFrame(0x8, payload));
+          return;
+        }
+      }
+    };
+
+    // The wire handshake is intentional: Bun's WebSocket client does not expose
+    // upgrade response headers, which are the contract under regression here.
+    socket.once(connectEvent, () => {
+      socket.write(
+        `GET ${endpoint.pathname}${endpoint.search} HTTP/1.1\r\n` +
+          `Host: ${endpoint.host}\r\n` +
+          "Upgrade: websocket\r\n" +
+          "Connection: Upgrade\r\n" +
+          `Sec-WebSocket-Key: ${websocketKey}\r\n` +
+          "Sec-WebSocket-Version: 13\r\n" +
+          `Origin: ${VOICE_WS_ORIGIN}\r\n\r\n`,
+      );
+    });
+    socket.on("data", (chunk: Buffer) => {
+      buffered = Buffer.concat([buffered, chunk]);
+      if (!handshakeComplete) {
+        const boundary = buffered.indexOf("\r\n\r\n");
+        if (boundary === -1) return;
+        const handshake = buffered.subarray(0, boundary).toString("latin1");
+        buffered = buffered.subarray(boundary + 4);
+        const [statusLine, ...headerLines] = handshake.split("\r\n");
+        const statusMatch = /^HTTP\/1\.[01] (\d{3})(?: |$)/.exec(statusLine);
+        if (!statusMatch) {
+          fail(
+            new Error(
+              `voice WebSocket returned an invalid status line: ${statusLine}`,
+            ),
+          );
+          return;
+        }
+        statusCode = Number(statusMatch[1]);
+        for (const line of headerLines) {
+          const separator = line.indexOf(":");
+          if (separator <= 0) continue;
+          const name = line.slice(0, separator).trim().toLowerCase();
+          const value = line.slice(separator + 1).trim();
+          headers[name] = headers[name] ? `${headers[name]}, ${value}` : value;
+        }
+        if (statusCode !== 101) {
+          fail(
+            new Error(`voice WebSocket upgrade returned HTTP ${statusCode}`),
+          );
+          return;
+        }
+        const connectionTokens = headers.connection
+          ?.split(",")
+          .map((token) => token.trim().toLowerCase());
+        if (
+          headers.upgrade?.toLowerCase() !== "websocket" ||
+          !connectionTokens?.includes("upgrade") ||
+          headers["sec-websocket-accept"] !== expectedAccept
+        ) {
+          fail(
+            new Error("voice WebSocket returned an invalid RFC6455 handshake"),
+          );
+          return;
+        }
+        handshakeComplete = true;
+        opened = true;
+        socket.write(maskedWebSocketFrame(0x2, new Uint8Array([1])));
+      }
+      readFrames();
+    });
+    socket.once("error", fail);
+    socket.once("close", () => {
+      if (settled) return;
+      if (!closeResult) {
+        fail(
+          new Error("voice WebSocket transport closed without a close frame"),
+        );
+        return;
+      }
+      settled = true;
+      clearTimeout(timer);
+      resolve(closeResult);
+    });
+  });
 }
 
 describeE2E("Group D — /api/elevenlabs/stt", () => {
@@ -128,22 +351,78 @@ describeE2E("Group D — /api/elevenlabs/tts", () => {
   });
 });
 
-describeE2E("Group D — /api/v1/responses", () => {
-  test("auth gate: missing credentials → 401", async () => {
-    const res = await api.post("/api/v1/responses", {
-      model: "google/gemini-2.5-flash",
-      input: "hello",
+describeLocalWorker("Group D — /api/v1/voice/session/ws", () => {
+  test("pinned workerd preserves a connected 101 upgrade through the real middleware chain", async () => {
+    const probe = await probeBinaryFirstVoiceWebSocket();
+
+    expect(probe.opened).toBe(true);
+    expect(probe.statusCode).toBe(101);
+    expect(probe.headers["access-control-allow-origin"]).toBe(VOICE_WS_ORIGIN);
+    expect(probe.headers["access-control-allow-credentials"]).toBe("true");
+    expect(probe.headers["x-content-type-options"]).toBe("nosniff");
+    const requestId = probe.headers["x-request-id"];
+    if (typeof requestId !== "string") {
+      throw new Error("status-101 handshake omitted X-Request-Id");
+    }
+    expect(requestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+    );
+
+    expect(probe.headers["x-eliza-trace-id"]).toBeUndefined();
+    expect(probe.headers["server-timing"]).toBeUndefined();
+    expect(probe.headers["timing-allow-origin"]).toBeUndefined();
+    expect(probe.serverFrame).toEqual({
+      t: "error",
+      code: "hello_required",
+      retryable: false,
     });
+    expect(probe.closeCode).toBe(1008);
+    expect(probe.closeReason).toBe("first frame must be a JSON hello");
+  });
+});
+
+describeE2E("Group D — /api/v1/responses", () => {
+  const traceId = "16098110-0000-4000-8000-000000000110";
+
+  test("auth gate: missing credentials → 401", async () => {
+    const res = await api.post(
+      "/api/v1/responses",
+      {
+        model: "google/gemini-2.5-flash",
+        input: "hello",
+      },
+      {
+        headers: {
+          Origin: "https://www.elizacloud.ai",
+          "X-Eliza-Trace-Id": traceId,
+        },
+      },
+    );
     expect(res.status).toBe(401);
+    expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
+    expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=");
+    expect(res.headers.get("Timing-Allow-Origin")).toBe(
+      "https://www.elizacloud.ai",
+    );
+    expect(
+      res.headers.get("Access-Control-Expose-Headers")?.toLowerCase(),
+    ).toContain("server-timing");
   });
 
   test("validation: malformed body with auth returns 400", async () => {
     const res = await api.post(
       "/api/v1/responses",
       {},
-      { headers: bearerHeaders() },
+      {
+        headers: {
+          ...bearerHeaders(),
+          "X-Eliza-Trace-Id": traceId,
+        },
+      },
     );
     expect(res.status).toBe(400);
+    expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
+    expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=");
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe("missing_required_parameter");
   });
@@ -192,9 +471,21 @@ describeE2E("Group D — /api/v1/responses", () => {
           instructions: "Reply briefly.",
           input: [{ role: "user", content: "Say hello" }],
         },
-        { headers: bearerHeaders() },
+        {
+          headers: {
+            ...bearerHeaders(),
+            "X-Eliza-Trace-Id": traceId,
+          },
+        },
       );
       expect(res.status).toBe(200);
+      expect(res.headers.get("X-Eliza-Trace-Id")).toBe(traceId);
+      expect(res.headers.get("X-Eliza-Preforward-Ms")).toMatch(
+        /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+      );
+      expect(res.headers.get("Server-Timing")).toContain(
+        "gateway_preforward;dur=",
+      );
       const body = (await res.json()) as {
         object?: string;
         output_text?: string;

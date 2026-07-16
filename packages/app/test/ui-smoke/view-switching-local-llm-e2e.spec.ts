@@ -1,21 +1,10 @@
-// LOCAL-MODEL view-switching e2e + HTML report.
-//
-// For each user utterance this drives the REAL chat composer, asks the REAL
-// LOCAL model (eliza-1 via the eliza llama.cpp fork's llama-server, schema-
-// constrained planner output, thinking disabled) what to do, then delivers the
-// model's decision to the REAL renderer navigate pipeline and screenshots both
-// the chat (text going through) and the resulting view. A wrong model choice
-// renders the WRONG view — so the report shows successes AND failures visually.
-//
-// Requires a running llama-server with an eliza-1 GGUF loaded:
-//   BC=plugins/plugin-local-inference/native/llama.cpp/build-cuda
-//   LD_LIBRARY_PATH="$BC/bin" "$BC/bin/llama-server" \
-//     -m /home/shaw/models/eliza-1-2b-128k.gguf --host 127.0.0.1 --port 8080 -ngl 99 -c 8192 --jinja
-// Run (reusing an already-built app server is far faster):
-//   ELIZA_UI_SMOKE_REUSE_SERVER=1 LLAMACPP_URL=http://127.0.0.1:8080 LOCAL_LLM_LABEL=eliza-1-2b \
-//     bun run --cwd packages/app test:e2e test/ui-smoke/view-switching-local-llm-e2e.spec.ts
-//
-// Output: packages/app/test/ui-smoke/output/view-switching-local/report.html
+/**
+ * Drives local-model view decisions through the real chat composer and
+ * renderer navigation pipeline, then writes an HTML report with chat and view
+ * screenshots. It requires an eliza-1 GGUF served by llama-server; an
+ * unreachable model or incorrect view decision fails after the report is
+ * written so every attempted utterance remains inspectable.
+ */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -28,6 +17,7 @@ import {
 
 const LLAMACPP_URL = process.env.LLAMACPP_URL ?? "http://127.0.0.1:8080";
 const MODEL_LABEL = process.env.LOCAL_LLM_LABEL ?? "eliza-1 (local)";
+const LIVE_LOCAL_MODEL = process.env.ELIZA_UI_SMOKE_LOCAL_LLM_LIVE === "1";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(HERE, "output", "view-switching-local");
 
@@ -198,6 +188,11 @@ interface CaseResult {
   viewImg: string;
 }
 
+test.skip(
+  !LIVE_LOCAL_MODEL,
+  "requires ELIZA_UI_SMOKE_LOCAL_LLM_LIVE=1 and a real llama-server",
+);
+
 test("view switching driven by the local model — capture + report", async ({
   page,
 }) => {
@@ -285,10 +280,13 @@ test("view switching driven by the local model — capture + report", async ({
   console.log(
     `\n[local-vs] ${MODEL_LABEL}: ${passed}/${results.length} correct → ${path.join(OUT, "report.html")}`,
   );
-  // The report is the artifact; the test itself passes as long as it ran the
-  // full matrix and captured every case (failures are EXPECTED + shown).
   expect(results.length).toBe(CASES.length);
   expect(results.every((r) => r.chatImg && r.viewImg)).toBe(true);
+  const failures = results.filter((result) => !result.success);
+  expect(
+    failures,
+    `local-model view switching failed ${failures.length}/${results.length} cases; inspect ${path.join(OUT, "report.html")}`,
+  ).toEqual([]);
 });
 
 function esc(s: string): string {

@@ -20,6 +20,8 @@ import {
   rateLimitConfigVerdict,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
+import { resolveElizaTraceId } from "@/lib/observability/http-telemetry";
+import { httpTelemetryMiddleware } from "@/lib/observability/http-telemetry-hono";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { runWithRequestContext } from "@/lib/runtime/request-context";
 import { configureAppsDeprovisionTrigger } from "@/lib/services/app-db-deprovision-job-service";
@@ -195,6 +197,7 @@ export function createApp(): Hono<AppEnv> {
   });
 
   app.use("*", requestId());
+  app.use("*", httpTelemetryMiddleware());
   app.use("*", corsMiddleware);
 
   // Security response headers for every API response. The SPA already ships
@@ -247,10 +250,13 @@ export function createApp(): Hono<AppEnv> {
   });
   app.use("*", async (c, next) => {
     const requestId = c.get("requestId") ?? crypto.randomUUID();
+    const traceId = c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers);
     c.set("requestId", requestId);
+    c.set("traceId", traceId);
     return observeCloudRequest(
       {
         id: requestId,
+        traceId,
         method: c.req.method,
         path: new URL(c.req.url).pathname,
       },
@@ -315,18 +321,21 @@ export function createApp(): Hono<AppEnv> {
   // still enforce it; this only guarantees that a route which forgot to add one
   // is not completely unprotected against per-IP flooding. The ceiling is
   // deliberately generous (10 req/s sustained) so it sits above every per-route
-  // policy and never interferes with legitimate traffic. Enforced only when
-  // REDIS_RATE_LIMITING=true (falls open otherwise). Registered before
+  // policy and never interferes with legitimate traffic. Cloudflare's local
+  // protective counter avoids a network hop at ingress. Registered before
   // authMiddleware so unauthenticated routes are covered too.
   app.use(
     "*",
-    rateLimit({
-      windowMs: 60_000,
-      maxRequests: 600,
-      // Namespaced so this backstop counter never collides with a per-route
-      // IP-keyed limiter sharing the same `ip:<addr>` key.
-      keyGenerator: (c) => `global:${getIpKey(c)}`,
-    }),
+    rateLimit(
+      {
+        windowMs: 60_000,
+        maxRequests: 600,
+        // Namespaced so this backstop counter never collides with a per-route
+        // IP-keyed limiter sharing the same `ip:<addr>` key.
+        keyGenerator: (c) => `global:${getIpKey(c)}`,
+      },
+      { bindingName: "GLOBAL_RATE_LIMITER" },
+    ),
   );
 
   app.use("*", authMiddleware);

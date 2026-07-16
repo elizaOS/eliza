@@ -763,6 +763,54 @@ describe("generateChatResponse token streaming", () => {
     ]);
   });
 
+  it("returns direct shortcut action results without relying on planner cache", async () => {
+    const message = createChatMessage("open settings");
+    const getActionResults = vi.fn(() => [
+      {
+        success: true,
+        text: "Unrelated cached result.",
+        data: { actionName: "WORKFLOW" },
+      },
+    ]);
+    const runtime = createRuntime({
+      getActionResults: getActionResults as AgentRuntime["getActionResults"],
+      messageService: {
+        ...createStreamingMessageService(["Navigated to Settings."]),
+        async handleMessage() {
+          return {
+            didRespond: true,
+            responseContent: { text: "Navigated to Settings." },
+            responseMessages: [],
+            actionResults: [
+              {
+                success: true,
+                text: "Navigated to Settings.",
+                values: { mode: "show", viewId: "settings", viewType: "gui" },
+                data: { actionName: "VIEWS" },
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.actionResults).toEqual([
+      {
+        actionName: "VIEWS",
+        success: true,
+        text: "Navigated to Settings.",
+        values: { mode: "show", viewId: "settings", viewType: "gui" },
+      },
+    ]);
+  });
+
   it("streams cleaned snapshots from the Android local direct path", async () => {
     const chunks: string[] = [];
     const snapshots: string[] = [];

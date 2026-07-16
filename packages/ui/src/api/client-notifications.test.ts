@@ -1,13 +1,29 @@
 /**
- * Unit coverage for the notification client verbs — focused on the push-token
- * register/unregister calls that are the only client trigger for the server's
- * `/api/notifications/push-tokens` routes. Transport stubbed; no live agent.
+ * Unit coverage for notification client contracts, including the explicit
+ * disabled-inbox response and push-token verbs. Transport stubbed; no live
+ * agent.
  */
 import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client-base";
 import "./client-notifications";
 
 describe("ElizaClient push-token verbs", () => {
+  it("preserves the explicit disabled inbox status from the list response", async () => {
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    const response = {
+      notifications: [],
+      unreadCount: 0,
+      serviceStatus: "disabled" as const,
+    };
+    const fetch = vi.fn(async () => response);
+    client.fetch = fetch as typeof client.fetch;
+
+    await expect(client.listNotifications({ limit: 100 })).resolves.toEqual(
+      response,
+    );
+    expect(fetch).toHaveBeenCalledWith("/api/notifications?limit=100");
+  });
+
   it("POSTs the platform + token to /api/notifications/push-tokens", async () => {
     const client = new ElizaClient("http://agent.example:31337", "token");
     const fetch = vi.fn(async () => ({ ok: true }));

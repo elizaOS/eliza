@@ -26,9 +26,9 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import math
 import os
 import sys
-from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -101,14 +101,21 @@ def _triton_runtime_ok() -> bool:
 def load_jsonl(path: Path, *, max_n: int | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
             try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
+                record = json.loads(line)
+            except (
+                json.JSONDecodeError
+            ) as exc:  # error-policy:J3 Reject malformed corpus rows.
+                raise ValueError(
+                    f"{path}:{line_number}: invalid JSON: {exc.msg}"
+                ) from exc
+            if not isinstance(record, dict):
+                raise ValueError(f"{path}:{line_number}: corpus row must be an object")
+            out.append(record)
             if max_n and len(out) >= max_n:
                 break
     return out
@@ -135,6 +142,59 @@ def _record_shape(record: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _coerce_tools_for_template(tools: Any) -> list[dict[str, Any]] | None:
+    """Translate formatter tool maps to Transformers JSON-schema tools."""
+
+    if tools is None:
+        return None
+    if isinstance(tools, list):
+        return tools
+    if not isinstance(tools, dict):
+        raise TypeError("tools must be a list or name-keyed object")
+
+    schemas: list[dict[str, Any]] = []
+    for name, spec in tools.items():
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("tool names must be non-empty strings")
+        if not isinstance(spec, dict):
+            raise TypeError(f"tool {name!r} schema must be an object")
+        description = spec.get("description")
+        parameters = spec.get("parameters")
+        if not isinstance(description, str):
+            raise TypeError(f"tool {name!r} description must be a string")
+        if not isinstance(parameters, dict):
+            raise TypeError(f"tool {name!r} parameters must be an object")
+        schemas.append(
+            {
+                "type": "function",
+                "function": {**spec, "name": name},
+            }
+        )
+    return schemas
+
+
+def _format_records(
+    records: list[dict[str, Any]], *, split_name: str
+) -> list[dict[str, Any]]:
+    formatted: list[dict[str, Any]] = []
+    for row_index, record in enumerate(records, start=1):
+        row = format_record(record)
+        if row is None:
+            raise ValueError(
+                f"{split_name} row {row_index} ({_record_shape(record)}) is not "
+                "train_local-compatible"
+            )
+        formatted.append(row)
+    log.info("formatted %s %d/%d records", split_name, len(formatted), len(records))
+    if not formatted:
+        raise ValueError(
+            f"{split_name} split is empty. Accepted shapes: eliza_native_v1, trainable "
+            "eliza.eliza1_trajectory_record.v1/messages rows, and legacy "
+            "flat ElizaRecord rows."
+        )
+    return formatted
+
+
 def build_dataset(
     records: list[dict[str, Any]],
     tokenizer: Any,
@@ -142,37 +202,26 @@ def build_dataset(
     split_name: str,
     max_chars: int | None = None,
 ) -> Any:
-    formatted = []
-    skipped = Counter()
-    for record in records:
-        row = format_record(record)
-        if row:
-            formatted.append(row)
-        else:
-            skipped[_record_shape(record)] += 1
-    log.info("formatted %s %d/%d records", split_name, len(formatted), len(records))
-    if not formatted:
-        seen = ", ".join(f"{name}={count}" for name, count in sorted(skipped.items()))
-        raise ValueError(
-            f"{split_name} split has {len(records)} JSONL record(s), but none "
-            "are train_local-compatible after formatting"
-            + (f" (seen: {seen})" if seen else "")
-            + ". Accepted shapes: eliza_native_v1, trainable "
-            "eliza.eliza1_trajectory_record.v1/messages rows, and legacy "
-            "flat ElizaRecord rows. repair_eval/failed rows are rejected."
-        )
+    formatted = _format_records(records, split_name=split_name)
     from datasets import Dataset
 
     def _coerce_tool_call_arguments(messages):
-        # The Gemma 4 chat template iterates
-        # `tool_call.arguments | items`, which requires a mapping (dict).
-        # OpenAI-ChatML ToolCalls (what format_for_training.py emits, what
-        # eliza-1-sft-0_6b carries) store `arguments` as a JSON-encoded
-        # string. Convert string → dict at render time so the template
-        # renders cleanly. (2026-05-12 incident: SFT crashed at 76% of
-        # dataset Map() with `TypeError: Can only get item pairs from a
-        # mapping.` on a record whose arguments was a string.)
+        # Gemma's template iterates argument items, while the corpus uses the
+        # OpenAI wire shape whose arguments are JSON strings. Conversion stays
+        # at the tokenizer boundary so the tracked corpus retains its canonical
+        # interchange representation.
         import json as _json
+
+        def parse_arguments(value: Any) -> dict[str, Any]:
+            if isinstance(value, dict):
+                return value
+            if not isinstance(value, str):
+                raise TypeError("tool-call arguments must be a JSON object or string")
+            parsed = _json.loads(value)
+            if not isinstance(parsed, dict):
+                raise TypeError("tool-call arguments JSON must decode to an object")
+            return parsed
+
         out = []
         for m in messages:
             if isinstance(m, dict) and isinstance(m.get("tool_calls"), list):
@@ -183,17 +232,11 @@ def build_dataset(
                         continue
                     fc = dict(tc)
                     fn = fc.get("function")
-                    if isinstance(fn, dict) and isinstance(fn.get("arguments"), str):
-                        try:
-                            fn = {**fn, "arguments": _json.loads(fn["arguments"]) or {}}
-                        except (ValueError, TypeError):
-                            fn = {**fn, "arguments": {}}
+                    if isinstance(fn, dict) and "arguments" in fn:
+                        fn = {**fn, "arguments": parse_arguments(fn["arguments"])}
                         fc["function"] = fn
-                    if isinstance(fc.get("arguments"), str):
-                        try:
-                            fc["arguments"] = _json.loads(fc["arguments"]) or {}
-                        except (ValueError, TypeError):
-                            fc["arguments"] = {}
+                    if "arguments" in fc:
+                        fc["arguments"] = parse_arguments(fc["arguments"])
                     fixed_tool_calls.append(fc)
                 m = {**m, "tool_calls": fixed_tool_calls}
             out.append(m)
@@ -205,51 +248,26 @@ def build_dataset(
             "tokenize": False,
             "add_generation_prompt": False,
         }
-        if "tools" in example and example["tools"] is not None:
-            kwargs["tools"] = example["tools"]
-        try:
-            text = tokenizer.apply_chat_template(**kwargs)
-        except TypeError:
-            kwargs.pop("tools", None)
-            text = tokenizer.apply_chat_template(**kwargs)
+        tools = _coerce_tools_for_template(example.get("tools"))
+        if tools is not None:
+            kwargs["tools"] = tools
+        text = tokenizer.apply_chat_template(**kwargs)
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError("chat template rendered an empty training example")
         return {"text": text}
 
-    # pyarrow requires homogeneous column types across all rows. The smoke
-    # corpus mixes records with nested message shapes (Vercel-AI-SDK tool-call
-    # blocks vs OpenAI/ChatML tool_calls vs plain string content) which trips
-    # "cannot mix list and non-list, non-null values" in Dataset.from_list.
-    # Surfaced 2026-05-14 in the smoke v2 H200 run — 4/4 SFT tiers crashed
-    # immediately after `formatted train 314/314 records` with this error.
-    # Fix: pre-render to {"text": str} so the only column is a string column;
-    # arrow has no trouble with that. The render() call also surfaces rows
-    # whose content shape Gemma 4's chat template can't apply (e.g. assistant
-    # content as a list of tool-call blocks instead of string + tool_calls
-    # field) — we log + skip those rather than fail the whole split, since
-    # format_record's translation layer is the real long-term fix.
+    # PyArrow needs homogeneous column types, while native tool calls and plain
+    # messages have different nested shapes. Pre-rendering leaves one string
+    # column and also exercises the target tokenizer's chat template before
+    # Dataset construction.
     pre_rendered: list[dict[str, str]] = []
-    template_skipped: dict[str, int] = {}
-    for row in formatted:
+    for row_index, row in enumerate(formatted, start=1):
         try:
             pre_rendered.append(render(row))
-        except Exception as e:  # noqa: BLE001
-            key = type(e).__name__
-            template_skipped[key] = template_skipped.get(key, 0) + 1
-    if template_skipped:
-        log.warning(
-            "render-time skips on %s split: %d row(s) dropped (%s); accepted=%d/%d",
-            split_name,
-            sum(template_skipped.values()),
-            ", ".join(f"{k}={v}" for k, v in sorted(template_skipped.items())),
-            len(pre_rendered),
-            len(formatted),
-        )
-    if not pre_rendered:
-        raise ValueError(
-            f"{split_name} split had {len(formatted)} format_record-valid rows "
-            "but every row failed apply_chat_template — the corpus uses a "
-            "content shape the active chat template can't render. Inspect "
-            "format_for_training.format_record translation of tool_call blocks."
-        )
+        except Exception as exc:  # error-policy:J2 Name the rejected corpus row.
+            raise ValueError(
+                f"{split_name} row {row_index} failed apply_chat_template"
+            ) from exc
     ds = Dataset.from_list(pre_rendered)
     if max_chars:
         before = len(ds)
@@ -409,8 +427,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--low-vram-smoke", action="store_true",
-        help="Preset bundle for full-parameter SFT smoke runs on a 12 GB "
-             "consumer GPU (RTX 3060 / 4070 class). Overrides the registry "
+        help="Preset bundle targeting full-parameter SFT smoke runs under a "
+             "12 GB consumer-GPU budget. Overrides the registry "
              "defaults to seq_len=2048, batch=1, grad_accum=16, "
              "memory_budget_gb=11.5, and defaults --max-samples to 1000 "
              "and --epochs to 1 when the caller did not pass them. Liger "
@@ -476,20 +494,16 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
             args.max_grad_norm = entry.max_grad_norm
         if not user_passed["train_dtype"]:
             args.train_dtype = entry.train_dtype
-        log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB max_grad_norm=%.3g dtype=%s",
+        log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.1fGB max_grad_norm=%.3g dtype=%s",
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
                  args.max_seq_len, args.optimizer, args.memory_budget_gb or 0,
                  args.max_grad_norm, args.train_dtype)
 
-    # --low-vram-smoke overrides applied AFTER the registry merge so the
-    # preset wins regardless of which registry key was passed. The numbers
-    # target a 12 GB RTX 3060 / 4070-class GPU: seq_len=2048 keeps the fp32
-    # logits transient + activations inside ~7 GB at the 2B size with Liger
-    # fused chunked-CE on; grad_accum=16 holds the effective batch at 16 so
-    # the loss signal is comparable to the registry default; memory budget
-    # is 11.5 GB (1.5 GB headroom under the card's 12 GB). The preset is
-    # explicitly NOT for publishable runs — it is a path-validation smoke
-    # for the SFT entrypoint on commodity hardware.
+    # --low-vram-smoke overrides applied AFTER the registry merge. The smaller
+    # sequence bounds the fp32 logits transient and batch=1 + accum=16 retains
+    # the registry's effective batch. This is a budget target rather than a
+    # hardware-fit claim; only measured execution establishes that contract.
+    # The preset is for path validation, never a publishable run.
     if args.low_vram_smoke:
         if not user_passed["max_seq_len"]:
             args.max_seq_len = 2048
@@ -528,6 +542,39 @@ def apply_resolved_defaults(args: argparse.Namespace) -> None:
         )
 
 
+def _validate_training_controls(args: argparse.Namespace) -> None:
+    positive_controls = (
+        ("--batch-size", args.batch_size),
+        ("--grad-accum", args.grad_accum),
+        ("--max-seq-len", args.max_seq_len),
+        ("--epochs", args.epochs),
+        ("--lr", args.lr),
+        ("--apollo-rank", args.apollo_rank),
+        ("--apollo-scale", args.apollo_scale),
+        ("--apollo-update-proj-gap", args.apollo_update_proj_gap),
+    )
+    if args.memory_budget_gb is not None:
+        positive_controls += (("--memory-budget-gb", args.memory_budget_gb),)
+    invalid = [
+        name
+        for name, value in positive_controls
+        if not math.isfinite(value) or value <= 0
+    ]
+    nonnegative_controls = (
+        ("--max-samples", args.max_samples),
+        ("--max-steps", args.max_steps),
+        ("--max-chars", args.max_chars),
+        ("--max-grad-norm", args.max_grad_norm),
+    )
+    invalid.extend(
+        name
+        for name, value in nonnegative_controls
+        if not math.isfinite(value) or value < 0
+    )
+    if invalid:
+        raise ValueError("invalid training controls: " + ", ".join(invalid))
+
+
 def resolve_liger_arch_gate(
     *,
     use_liger: bool,
@@ -564,6 +611,11 @@ def resolve_liger_arch_gate(
 def main() -> int:
     args = build_parser().parse_args()
     apply_resolved_defaults(args)
+    try:
+        _validate_training_controls(args)
+    except ValueError as exc:  # error-policy:J1 CLI configuration failure.
+        log.error("%s", exc)
+        return 1
 
     train_recs = load_jsonl(
         Path(args.train_file),
@@ -578,18 +630,22 @@ def main() -> int:
         return 1
 
     if args.preflight_only:
-        train_ok = sum(1 for rec in train_recs if format_record(rec))
-        val_ok = sum(1 for rec in val_recs if format_record(rec))
-        if train_ok == 0:
-            log.error("preflight failed: training split formats to zero train-local rows")
-            return 1
-        if val_recs and val_ok == 0:
-            log.error("preflight failed: validation split formats to zero train-local rows")
+        try:
+            formatted_train = _format_records(train_recs, split_name="train")
+            formatted_val = (
+                _format_records(val_recs, split_name="validation") if val_recs else []
+            )
+        except ValueError as exc:  # error-policy:J1 CLI validation failure.
+            log.error("preflight failed: %s", exc)
             return 1
         log.info(
             "preflight ok: train=%d/%d validation=%d/%d optimizer=%s rank=%d",
-            train_ok, len(train_recs), val_ok, len(val_recs),
-            args.optimizer, args.apollo_rank,
+            len(formatted_train),
+            len(train_recs),
+            len(formatted_val),
+            len(val_recs),
+            args.optimizer,
+            args.apollo_rank,
         )
         log.info(
             "APOLLO/APOLLO-Mini is the only optimizer path; full-parameter fine-tuning is required."
@@ -681,7 +737,7 @@ def main() -> int:
             if val_recs
             else None
         )
-    except ValueError as exc:
+    except ValueError as exc:  # error-policy:J1 CLI corpus validation failure.
         log.error("%s", exc)
         return 1
 
@@ -1034,7 +1090,7 @@ def main() -> int:
             memory_budget_gb=float(args.memory_budget_gb),
             log_every_steps=sft_cfg.logging_steps,
         )))
-        log.info("instrumentation enabled, budget=%.0fGB", args.memory_budget_gb)
+        log.info("instrumentation enabled, budget=%.1fGB", args.memory_budget_gb)
 
     trainer.train(
         resume_from_checkpoint=args.resume_from_checkpoint

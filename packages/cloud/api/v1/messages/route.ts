@@ -31,6 +31,14 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
+  bindGatewayHandoffTelemetry,
+  type GatewayHandoffTelemetry,
+  type GatewayPreforwardTiming,
+  resolveElizaTraceId,
+  snapshotGatewayPreforwardTiming,
+  withGatewayPreforwardTelemetry,
+} from "@/lib/observability/http-telemetry";
+import {
   calculateCost,
   estimateTokens,
   getProviderFromModel,
@@ -525,6 +533,13 @@ app.use("*", rateLimit(RateLimitPresets.RELAXED));
 
 app.post("/", async (c) => {
   const startTime = Date.now();
+  const telemetryStartedAt = performance.now();
+  const traceId = c.get("traceId") ?? resolveElizaTraceId(c.req.raw.headers);
+  let preforwardTiming: GatewayPreforwardTiming | undefined;
+  const attachPreforwardTelemetry = (response: Response): Response =>
+    preforwardTiming
+      ? withGatewayPreforwardTelemetry(response, traceId, preforwardTiming)
+      : response;
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
   // Workers ExecutionContext for off-response-path billing (#8759 / #15414).
   // Hono's `executionCtx` getter THROWS outside a Worker (tests, node) — fall
@@ -577,7 +592,7 @@ app.post("/", async (c) => {
     const message = error instanceof Error ? error.message : String(error);
     return anthropicError("authentication_error", message, 401);
   }
-  const tAuth = Date.now();
+  const tAuth = performance.now();
 
   const requestedAppId = c.req.header("X-App-Id");
   let appId: string | null = null;
@@ -664,11 +679,27 @@ app.post("/", async (c) => {
   }
 
   const estimatedInputTokens = estimateInputTokens(estimateMessages);
-  const estimatedOutputTokens = request.max_tokens;
+  // Reserve against the SAME ceiling the provider is capped at below, not the
+  // raw request.max_tokens. `messagesEffectiveMaxTokens` raises a reasoning
+  // model's provider budget to fit hidden reasoning PLUS the answer (e.g. a
+  // requested 256 becomes the 4096 floor), so reserving the raw value lets the
+  // provider bill well above the reservation — the #16081 invariant, fixed for
+  // /v1/chat/completions but not here. The provider paths recompute the same
+  // deterministic value, so admission and enforcement stay identical.
+  const reservationCotBudget = resolveAnthropicThinkingBudgetTokens(
+    model,
+    process.env,
+  );
+  const estimatedOutputTokens =
+    messagesEffectiveMaxTokens(
+      request.max_tokens,
+      reservationCotBudget,
+      model,
+    ) ?? request.max_tokens;
   const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
   const billingSource: PricingBillingSource =
     resolveAiProviderSource(model) ?? "bitrouter";
-  const tBeforeReserve = Date.now();
+  const tBeforeReserve = performance.now();
 
   let reservation: CreditReservation;
 
@@ -741,21 +772,37 @@ app.post("/", async (c) => {
   }
 
   settleReservation = createCreditReservationSettler(reservation);
-  const tAfterReserve = Date.now();
+  const tAfterReserve = performance.now();
 
-  // Pre-forward latency breakdown — same instrumentation as
-  // [Chat Completions][preforward] (#9899) so the two inference routes are
-  // comparable. authMs = auth/org resolution; midReadsMs = app lookup + body
-  // parse + moderation + token estimate; reserveMs = the credit-reservation
-  // write; totalMs = everything before the model forward.
-  logger.info("[Messages API][preforward]", {
-    model,
-    authMs: tAuth - startTime,
-    midReadsMs: tBeforeReserve - tAuth,
-    reserveMs: tAfterReserve - tBeforeReserve,
-    totalMs: Date.now() - startTime,
-    stream: Boolean(request.stream),
-  });
+  // The outer AI SDK invocation is the last gateway-controlled boundary.
+  // Model doGenerate/doStream dispatch occurs later inside the SDK and is not
+  // represented as provider latency by this preforward snapshot.
+  let gatewayHandoffAt: number | undefined;
+  const gatewayHandoffTelemetry: GatewayHandoffTelemetry = {
+    capture: () => {
+      gatewayHandoffAt ??= performance.now();
+    },
+    emit: () => {
+      if (gatewayHandoffAt === undefined || preforwardTiming) return;
+      preforwardTiming = snapshotGatewayPreforwardTiming({
+        authMs: tAuth - telemetryStartedAt,
+        middleMs: tBeforeReserve - tAuth,
+        reserveMs: tAfterReserve - tBeforeReserve,
+        setupMs: gatewayHandoffAt - tAfterReserve,
+        totalMs: gatewayHandoffAt - telemetryStartedAt,
+      });
+      logger.info("[Messages API][preforward]", {
+        traceId,
+        model,
+        authMs: preforwardTiming.authMs,
+        midReadsMs: preforwardTiming.middleMs,
+        reserveMs: preforwardTiming.reserveMs,
+        setupMs: preforwardTiming.setupMs,
+        totalMs: preforwardTiming.totalMs,
+        stream: Boolean(request.stream),
+      });
+    },
+  };
 
   try {
     // Payload conversion is throwable (convertTools rejects a malformed-but-
@@ -804,6 +851,7 @@ app.post("/", async (c) => {
           billingSource,
           requestId,
           executionCtx,
+          gatewayHandoffTelemetry,
         )
       : await handleNonStream(
           model,
@@ -823,20 +871,12 @@ app.post("/", async (c) => {
           billingSource,
           requestId,
           executionCtx,
+          gatewayHandoffTelemetry,
         );
-    // Same debug header as chat/completions (#9899): per-step pre-forward
-    // timing, no behavior change.
-    try {
-      preforwardResponse.headers.set(
-        "X-Eliza-Preforward-Ms",
-        `total=${Date.now() - startTime};auth=${tAuth - startTime};mid=${tBeforeReserve - tAuth};reserve=${tAfterReserve - tBeforeReserve}`,
-      );
-    } catch {
-      // error-policy:J6 debug-only header; immutable Response headers must not
-      // fail an otherwise valid provider response.
-      // Some Response shapes have immutable headers — never fail a request for a debug header.
+    if (!preforwardTiming) {
+      throw new Error("[Messages API] gateway handoff timing was not captured");
     }
-    return preforwardResponse;
+    return attachPreforwardTelemetry(preforwardResponse);
   } catch (error) {
     await settleReservation?.(0);
     const message = error instanceof Error ? error.message : String(error);
@@ -848,14 +888,16 @@ app.post("/", async (c) => {
       logger.error("[Messages API] Provider configuration error", {
         error: message,
       });
-      return anthropicError(
-        "invalid_request_error",
-        modelNotAvailableMessage(model),
-        400,
+      return attachPreforwardTelemetry(
+        anthropicError(
+          "invalid_request_error",
+          modelNotAvailableMessage(model),
+          400,
+        ),
       );
     }
-    logger.error("[Messages API] Error", { error: message });
-    return anthropicError("api_error", message, 500);
+    logger.error("[Messages API] Error", { traceId, error: message });
+    return attachPreforwardTelemetry(anthropicError("api_error", message, 500));
   }
 });
 
@@ -905,6 +947,7 @@ async function handleNonStream(
   // affiliate earnings. Mirrors chat/completions (#11588).
   requestId: string,
   executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   const provider = getProviderFromModel(model);
 
@@ -920,8 +963,13 @@ async function handleNonStream(
   );
 
   try {
-    const result = await generateText({
-      model: getLanguageModel(model),
+    const languageModel = getLanguageModel(model);
+    const invokeGenerateText = bindGatewayHandoffTelemetry(
+      gatewayHandoffTelemetry,
+      (options: Parameters<typeof generateText>[0]) => generateText(options),
+    );
+    const result = await invokeGenerateText({
+      model: languageModel,
       system: systemPrompt,
       messages,
       maxOutputTokens: effectiveMaxTokens,
@@ -1270,6 +1318,7 @@ async function handleStream(
   // affiliate earnings. Mirrors chat/completions (#11588).
   requestId: string,
   executionCtx?: { waitUntil(promise: Promise<unknown>): void },
+  gatewayHandoffTelemetry?: GatewayHandoffTelemetry,
 ) {
   const provider = getProviderFromModel(model);
   const messageId = `msg_${crypto.randomUUID().replace(/-/g, "").slice(0, 24)}`;
@@ -1330,8 +1379,13 @@ async function handleStream(
     model,
   );
 
-  const result = streamText({
-    model: getLanguageModel(model),
+  const languageModel = getLanguageModel(model);
+  const invokeStreamText = bindGatewayHandoffTelemetry(
+    gatewayHandoffTelemetry,
+    (options: Parameters<typeof streamText>[0]) => streamText(options),
+  );
+  const result = invokeStreamText({
+    model: languageModel,
     system: systemPrompt,
     messages,
     maxOutputTokens: effectiveMaxTokens,

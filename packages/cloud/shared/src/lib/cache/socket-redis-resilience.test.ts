@@ -98,7 +98,7 @@ describe("SocketRedis connection resilience", () => {
     await expect(first).rejects.toThrow(/timed out|closed/i);
     expect(await second).toBeNull();
     // Stall bound (1s) + second op — nowhere near an unbounded hang.
-    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(Date.now() - started).toBeLessThan(2_500);
     expect(connections).toBe(2);
 
     await redis.quit();

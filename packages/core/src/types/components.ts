@@ -162,6 +162,16 @@ export interface MessageHandlerPlan {
 	 * the budget, never grow it.
 	 */
 	requiredToolMissBudget?: number;
+	/**
+	 * Set to "inferred" when the plan's candidate actions were injected by
+	 * the deterministic text heuristics and Stage 1's model emitted none of
+	 * its own; absent when the model named a tool itself. The planner loop
+	 * treats an inferred-only requirement as weaker evidence — a planner
+	 * that re-commits to the identical terminal answer on consecutive
+	 * misses is accepted early instead of burning the full required-tool
+	 * miss budget on a heuristic's guess.
+	 */
+	requiredToolEvidence?: "inferred";
 	deterministicToolCall?: MessageHandlerDeterministicToolCall;
 	[key: string]: JsonValue | MessageHandlerDeterministicToolCall | undefined;
 }

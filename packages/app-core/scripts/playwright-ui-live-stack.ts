@@ -765,54 +765,6 @@ async function waitForJsonPredicate<T>(
     : new Error(`Timed out waiting for ${url}`);
 }
 
-function createProcessLogSignal(matchText: string): {
-  observe: (chunk: Buffer | string) => void;
-  wait: (timeoutMs: number, label: string) => Promise<void>;
-} {
-  let matched = false;
-  let tail = "";
-  const waiters = new Set<() => void>();
-
-  return {
-    observe(chunk) {
-      if (matched) {
-        return;
-      }
-      const text = typeof chunk === "string" ? chunk : chunk.toString("utf8");
-      tail = `${tail}${text}`.slice(-Math.max(matchText.length * 2, 4096));
-      if (!tail.includes(matchText)) {
-        return;
-      }
-      matched = true;
-      tail = "";
-      for (const resolve of waiters) {
-        resolve();
-      }
-      waiters.clear();
-    },
-    async wait(timeoutMs, label) {
-      if (matched) {
-        return;
-      }
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          cleanup();
-          reject(new Error(`Timed out waiting for ${label}`));
-        }, timeoutMs);
-        const finish = () => {
-          cleanup();
-          resolve();
-        };
-        const cleanup = () => {
-          clearTimeout(timeout);
-          waiters.delete(finish);
-        };
-        waiters.add(finish);
-      });
-    },
-  };
-}
-
 async function ensureUiDistReady(): Promise<void> {
   const distIndex = path.join(APP_DIST_DIR, "index.html");
   let needsBuild = false;
@@ -1111,9 +1063,6 @@ async function startRealStack(): Promise<StartedStack> {
     await seedLiveStackConfig(stateDir);
     const uiDistDir = await snapshotUiDist(stateDir);
     const apiBase = `http://127.0.0.1:${API_PORT}`;
-    const deferredBootComplete = createProcessLogSignal(
-      "[eliza-boot] deferred:complete",
-    );
     apiChild = spawn(
       "node",
       [
@@ -1136,11 +1085,9 @@ async function startRealStack(): Promise<StartedStack> {
     );
 
     apiChild.stdout.on("data", (chunk) => {
-      deferredBootComplete.observe(chunk);
       process.stdout.write(`[ui-smoke][api] ${chunk}`);
     });
     apiChild.stderr.on("data", (chunk) => {
-      deferredBootComplete.observe(chunk);
       process.stdout.write(`[ui-smoke][api-err] ${chunk}`);
     });
 
@@ -1176,11 +1123,14 @@ async function startRealStack(): Promise<StartedStack> {
     );
     if (!skipAutoFirstRun) {
       // App-control and plugin views are deferred capabilities. Treat the live
-      // harness as ready only after those runtime plugins have had a chance to
-      // register; otherwise chat-driven view switching can race boot.
-      await deferredBootComplete.wait(
+      // harness as ready only after the runtime's structured boot state settles;
+      // logger filtering may legitimately suppress the human-readable marker.
+      await waitForJsonPredicate<{
+        deferredBoot?: { settled?: boolean };
+      }>(
+        `${apiBase}/api/health`,
+        (health) => health.deferredBoot?.settled === true,
         READY_TIMEOUT_MS,
-        "deferred runtime plugin registration",
       );
     }
 

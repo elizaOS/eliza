@@ -9,6 +9,10 @@ import type { Context } from "hono";
 import type { KvNamespaceLike } from "../lib/cache/adapters/kv-cache-adapter";
 import type { RuntimeR2Bucket } from "../lib/storage/r2-runtime-binding";
 
+export interface RuntimeRateLimitBinding {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Bindings {
   // ---- Deployment environment ----
   /**
@@ -34,6 +38,10 @@ export interface Bindings {
    * prefers it when bound. Read via getCloudBinding("CACHE_KV").
    */
   CACHE_KV?: KvNamespaceLike;
+
+  // ---- Cloudflare machine-local protective rate limits ----
+  GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
+  CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -346,6 +354,8 @@ export interface Variables {
   user: AuthedUser | null | undefined;
   authMethod?: "session" | "api_key" | "wallet_signature" | "anonymous";
   requestId: string;
+  /** Application-level correlation id forwarded across Worker/origin hops. */
+  traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
 }

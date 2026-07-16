@@ -124,3 +124,11 @@ The collection is Eliza-harness oriented. It does not use MMLU as the success
 metric; base and trained models are compared on Eliza action/eval artifacts and
 reported as percentage improvements, including Cerebras reference deltas when a
 reference benchmark is present.
+
+## Historical live optimization audit
+
+The immutable [LifeOps GEPA audit](docs/audit/9299-gepa-live/RESULTS.md) records
+the gpt-oss-120b before/after results delivered in [PR #9543](https://github.com/elizaOS/eliza/pull/9543).
+Its adjacent JSON prompt artifacts and raw run logs are the provenance for those
+published scores; routine optimizer output belongs in the configured state
+directory and is not committed.

@@ -117,8 +117,7 @@ function smokeViewObject({
     capabilities: [
       {
         id: "get-state",
-        label: "Get state",
-        inputSchema: { type: "object" },
+        description: "Read the mounted view state.",
       },
     ],
     _smokePluginDirName: pluginDirName,

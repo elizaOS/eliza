@@ -1,4 +1,5 @@
 {
+  "accounts-addaccountdialog--closed": "blank-render: single-color",
   "agentsurface-agentelementoverlay--no-surface": "blank-render: single-color",
   "backgrounds-backgroundhost--sky-fallback": "blank-render: single-color",
   "backgrounds-programmableshaderbackground--broken-source-falls-back": "blank-render: single-color",

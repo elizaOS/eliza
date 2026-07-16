@@ -89,6 +89,42 @@ def test_checkpoint_scan_passes_on_finite_torch_shard(tmp_path) -> None:
     assert result["tensors"] == 1
 
 
+def test_checkpoint_scan_ignores_hugging_face_runtime_metadata(tmp_path) -> None:
+    ckpt = tmp_path / "final"
+    ckpt.mkdir()
+    torch.save({"model.layers.0.weight": torch.ones(2, 3)}, ckpt / "pytorch_model.bin")
+    (ckpt / "training_args.bin").write_bytes(b"not model weights")
+
+    result = assert_finite_checkpoint(ckpt)
+
+    assert result["passed"] is True
+    assert result["tensor_files"] == 1
+    assert result["tensors"] == 1
+
+
+def test_checkpoint_scan_descends_into_nested_model_state(tmp_path) -> None:
+    ckpt = tmp_path / "final"
+    ckpt.mkdir()
+    torch.save(
+        {"state_dict": {"model": {"weight": torch.ones(2, 3)}}},
+        ckpt / "model_state.pt",
+    )
+
+    result = assert_finite_checkpoint(ckpt)
+
+    assert result["passed"] is True
+    assert result["tensors"] == 1
+
+
+def test_checkpoint_scan_rejects_shards_without_tensors(tmp_path) -> None:
+    ckpt = tmp_path / "final"
+    ckpt.mkdir()
+    torch.save({"metadata": {"epoch": 1}}, ckpt / "pytorch_model.bin")
+
+    with pytest.raises(RuntimeError, match="shard files but no tensors"):
+        assert_finite_checkpoint(ckpt)
+
+
 def test_checkpoint_scan_raises_on_non_finite_torch_shard(tmp_path) -> None:
     ckpt = tmp_path / "final"
     ckpt.mkdir()

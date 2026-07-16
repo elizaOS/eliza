@@ -1,9 +1,10 @@
 # Release secrets checklist
 
-This is the consolidated index of every credential the cross-platform release
-pipeline consumes, one row per secret, with the workflow that reads it and where
-the value originates. Use it as the pre-flight gate before cutting a release on
-a fresh repo, and as the audit list when rotating credentials.
+This is the consolidated index of every credential the release and channel
+workflows read, one row per secret, with the workflow that reads it and where
+the value originates. Use it as the pre-flight gate before running the relevant
+workflow on a fresh repo, and as the audit list when rotating credentials. An
+entry here does not imply that the retained coordinator currently calls it.
 
 Each channel has a dedicated maintainer playbook (credential generation → repo
 secret → sanity `workflow_dispatch` → rotation/revocation). This page is the
@@ -15,16 +16,33 @@ map; the playbooks are the procedure.
 | Apple (iOS App Store + Mac App Store) | [release-secrets-apple.md](./release-secrets-apple.md) |
 | Homebrew tap | [release-secrets-homebrew.md](./release-secrets-homebrew.md) |
 | Snap Store | [release-secrets-snap.md](./release-secrets-snap.md) |
-| Flathub | [release-secrets-flathub.md](./release-secrets-flathub.md) |
 | Windows Store + Authenticode signing | [release-secrets-windows.md](./release-secrets-windows.md) |
 | Debian apt repo | [admin-apt-repo-setup.md](./admin-apt-repo-setup.md) |
 
+Flatpak bundle creation is available through `publish-packages.yml`, but
+Flathub submission is unavailable until the canonical app repository exists.
+There is no Flathub submission credential consumer; do not interpret a built
+bundle as a successful store publication.
+
 ## How secrets reach the workflows
 
-All channel workflows are reusable (`workflow_call`) and are invoked by the
-orchestrators `release-all.yml` / `release-orchestrator.yml` with
-`secrets: inherit`. Each channel workflow also has a `workflow_dispatch` trigger
-so you can run it standalone for a sanity check.
+Channel workflows expose reusable (`workflow_call`) and manual
+(`workflow_dispatch`) entry points. Credentials reach a reusable workflow only
+through an explicit parent with `secrets: inherit`. `release-orchestrator.yml`
+currently calls `publish-packages.yml`, Android, Apple, Electrobun, Homebrew,
+and homepage distribution. `publish-packages.yml` directly owns its PyPI, Snap,
+APT-dispatch, and Flatpak-bundle steps; it does not call `snap-publish.yml`.
+`elizaos-os-full-release.yml` separately calls the Debian apt publisher. Windows
+Store and `snap-publish.yml` remain standalone entry points.
+
+The two Snap paths consume different credentials: orchestrated
+`publish-packages.yml` reads `SNAP_STORE_CREDENTIALS`, while standalone
+`snap-publish.yml` reads `SNAPCRAFT_STORE_CREDENTIALS`. Missing
+`SNAP_STORE_CREDENTIALS` or `APT_REPO_TOKEN` currently skips the corresponding
+store mutation while the containing build job can still succeed. That is a
+known fail-open completion defect in the retained coordinator, tracked in
+[#16279](https://github.com/elizaOS/eliza/issues/16279); a green build is not
+evidence that either store was updated.
 
 GitHub validates a reusable workflow's secret contract **before any job starts**.
 To stop a missing optional secret from aborting the whole pipeline at startup
@@ -91,6 +109,16 @@ Workflow: `update-homebrew.yml`
 | --- | --- | --- |
 | `HOMEBREW_TAP_TOKEN` | `repository-dispatch` token to trigger `elizaOS/homebrew-tap`; gates the dispatch | generate fresh (GitHub PAT with repo scope on `elizaOS/homebrew-tap`) |
 
+### Orchestrated package distribution
+
+Workflow: `publish-packages.yml`, called by `release-orchestrator.yml`
+
+| Secret | Consumed by | Origin |
+| --- | --- | --- |
+| `PYPI_API_TOKEN` | Fallback password for `pypa/gh-action-pypi-publish` when trusted publishing is unavailable | generate fresh (PyPI project token); prefer configured OIDC trusted publishing |
+| `SNAP_STORE_CREDENTIALS` | `snapcore/action-publish` in the orchestrated Snap job | generate fresh (Snap Store login exported for the action) |
+| `APT_REPO_TOKEN` | `gh api` repository dispatch to `elizaOS/apt` after the `.deb` is attached | generate fresh (GitHub token scoped to the apt repository dispatch) |
+
 ### Snap — [release-secrets-snap.md](./release-secrets-snap.md)
 
 Workflow: `snap-publish.yml`
@@ -98,14 +126,6 @@ Workflow: `snap-publish.yml`
 | Secret | Consumed by | Origin |
 | --- | --- | --- |
 | `SNAPCRAFT_STORE_CREDENTIALS` | `snapcraft upload`; gates the Store upload (build still runs) | generate fresh (`snapcraft export-login`) |
-
-### Flathub — [release-secrets-flathub.md](./release-secrets-flathub.md)
-
-Workflow: `flatpak-publish.yml`
-
-| Secret | Consumed by | Origin |
-| --- | --- | --- |
-| `FLATHUB_TOKEN` | `GH_TOKEN` for the fork checkout + Flathub PR (falls back to `GITHUB_TOKEN`, which may lack push perms to the fork) | generate fresh (GitHub fine-grained PAT scoped to the Flathub fork) |
 
 ### Windows — [release-secrets-windows.md](./release-secrets-windows.md)
 
@@ -150,8 +170,10 @@ desktop Authenticode path; the MSIX build defaults it when unset.
 
 A channel is ready to publish only when every secret in its row block is set.
 The half-configured failure mode is the dangerous one: a build that succeeds but
-silently skips the store upload, or an unsigned artifact. The per-channel "check
-credentials" steps surface this as a warning in the run log — read them.
+skips the store upload, or an unsigned artifact. The current checks surface some
+gaps as warnings, but the orchestrated Snap/APT build jobs can still report
+success after their store mutation skipped. Treat those runs as incomplete
+until #16279 makes enabled-channel completion fail closed.
 
 Run each channel's `workflow_dispatch` once (see the channel playbook) before
 trusting it inside the orchestrated release.

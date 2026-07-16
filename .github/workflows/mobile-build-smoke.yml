@@ -3,6 +3,12 @@ name: Mobile Build Smoke Test
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+    inputs:
+      concurrency_scope:
+        description: "Caller-owned concurrency namespace"
+        required: false
+        type: string
+        default: standalone
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, labeled]
@@ -19,8 +25,10 @@ on:
     # gates that nightly run instead of every pull request.
     - cron: "0 7 * * *"
 
+# A reusable caller's scope separates it from the standalone ref domain. PRs
+# still supersede obsolete work; scheduled and exhaustive work always completes.
 concurrency:
-  group: mobile-smoke-${{ github.ref }}
+  group: mobile-smoke-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -42,7 +50,7 @@ jobs:
       ios: ${{ steps.filter.outputs.ios }}
       android: ${{ steps.filter.outputs.android }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           submodules: false
@@ -75,7 +83,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           # This workflow validates the app-core mobile project wiring, not
           # native inference submodule health. Keep checkout source-clean and
@@ -336,7 +344,7 @@ jobs:
       IOS_FULL_BUN_SMOKE_MODEL_URL: "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/e2b/text/eliza-1-e2b-32k.gguf?download=true"
       IOS_FULL_BUN_SMOKE_MODEL_FILE: "eliza-1-e2b-32k.gguf"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           submodules: false
 
@@ -489,8 +497,9 @@ jobs:
   ios-cloud-mode:
     name: iOS Cloud Runtime-Mode Smoke
     # Nightly / on-demand only — never on the PR path. Provisioning a real Eliza
-    # Cloud agent (Hetzner-backed) is slow and costs org credit, so the cloud
-    # runtime mode gates the scheduled run alongside the full-Bun local lane.
+    # Cloud agent route smoke is kept off the PR path. The current programmatic
+    # create omits `alwaysOn`, so it covers the shared Cloud runtime and is NOT
+    # managed dedicated/Hetzner ingress evidence.
     # This closes the third row of the #13578 coverage matrix: remote mode is
     # PR-blocking and local (full-Bun) mode gates nightly, but cloud mode had no
     # unattended lane at all — the XCUITest cloud-onboarding path XCTSkips at the
@@ -515,7 +524,7 @@ jobs:
       # throwaway org; defaults to production Cloud otherwise.
       ELIZA_CLOUD_API_BASE: ${{ github.event.inputs.cloud_api_base || 'https://api.elizacloud.ai' }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           submodules: false
 
@@ -526,9 +535,9 @@ jobs:
 
       - name: Run iOS cloud runtime-mode provisioning smoke (#13578)
         # Gating check for the cloud runtime mode. With the seed present this is a
-        # HARD gate (no continue-on-error): a regression in cloud agent creation,
-        # Hetzner provisioning, or the provisioned runtime never answering fails
-        # the scheduled run. cloud-provisioning-e2e.mjs provisions a real agent,
+        # HARD gate (no continue-on-error): a regression in shared Cloud agent
+        # creation or the selected runtime never answering fails the scheduled
+        # run. cloud-provisioning-e2e.mjs resolves/creates a real shared agent,
         # waits for its runtime URL, and probes /api/status|health|me — the same
         # programmatic cloud path the iOS `ios-e2e.mjs --cloud` route calls. When
         # the secret is absent (forks without secret access) the lane records an
@@ -567,7 +576,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           # Android cloud-debug smoke sets ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1
           # below, so recursive native inference submodules are not part of this

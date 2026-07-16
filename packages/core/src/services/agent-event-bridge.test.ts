@@ -2,17 +2,18 @@
  * Exercises the `agent-event-bridge` functions that fan runtime lifecycle,
  * action, evaluator, and connector-message events into `AgentEventService`
  * streams and guarded inbox notifications, including the no-service no-op path.
- * Runs against a mock runtime backed by a real AgentEventService.
+ * Runs through a real AgentRuntime with registered event and notification services.
  */
-import { describe, expect, it } from "vitest";
-import { createMockRuntime } from "../testing/mock-runtime";
+import { afterEach, describe, expect, it } from "vitest";
+import { createCharacter } from "../character.ts";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter.ts";
+import { AgentRuntime } from "../runtime.ts";
 import type { AgentEventPayload } from "../types/agentEvent.ts";
 import type {
 	ActionEventPayload,
 	EvaluatorEventPayload,
 	MessagePayload,
 } from "../types/events.ts";
-import type { NotificationInput } from "../types/notification.ts";
 import type { IAgentRuntime } from "../types/runtime.ts";
 import { ServiceType } from "../types/service.ts";
 import {
@@ -27,49 +28,57 @@ import {
 	CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
 } from "./agent-event-bridge.ts";
 import { AgentEventService } from "./agentEvent.ts";
+import { NotificationService } from "./notification.ts";
 
 const RUN_ID = "11111111-1111-1111-1111-111111111111";
 const ROOM_ID = "22222222-2222-2222-2222-222222222222";
 const WORLD_ID = "33333333-3333-3333-3333-333333333333";
 
 async function createCtx(opts: { withService?: boolean } = {}): Promise<{
-	runtime: IAgentRuntime;
+	runtime: AgentRuntime;
+	runId: string;
 	events: AgentEventPayload[];
-	notifications: NotificationInput[];
+	notificationService: NotificationService | null;
 }> {
 	const withService = opts.withService ?? true;
 	const events: AgentEventPayload[] = [];
-	const notifications: NotificationInput[] = [];
-
-	const runtimeBase = createMockRuntime({
-		agentId: "00000000-0000-0000-0000-0000000000aa",
-		getCurrentRunId: () => RUN_ID,
+	const runtime = new AgentRuntime({
+		character: createCharacter({ name: "AgentEventBridgeIntegrationAgent" }),
+		adapter: new InMemoryDatabaseAdapter(),
+		logLevel: "fatal",
+		enableAutonomy: false,
 	});
-
-	let service: AgentEventService | null = null;
+	await runtime.initialize();
+	const runId = runtime.startRun();
+	let notificationService: NotificationService | null = null;
 	if (withService) {
-		service = (await AgentEventService.start(runtimeBase)) as AgentEventService;
+		await runtime.registerPlugin({
+			name: "agent-event-bridge-integration-test",
+			description: "Real services for event bridge integration coverage",
+			services: [AgentEventService, NotificationService],
+		});
+		const service = (await runtime.getServiceLoadPromise(
+			ServiceType.AGENT_EVENT,
+		)) as AgentEventService;
+		notificationService = (await runtime.getServiceLoadPromise(
+			ServiceType.NOTIFICATION,
+		)) as NotificationService;
 		service.subscribe((event) => events.push(event));
 	}
-
-	const runtime = createMockRuntime({
-		...runtimeBase,
-		getService: (type: string) => {
-			if (type === ServiceType.AGENT_EVENT) return service;
-			if (type === ServiceType.NOTIFICATION) {
-				return {
-					notify: async (input: NotificationInput) => {
-						notifications.push(input);
-						return input;
-					},
-				};
-			}
-			return null;
-		},
-	});
-
-	return { runtime, events, notifications };
+	activeRuntimes.push(runtime);
+	return { runtime, runId, events, notificationService };
 }
+
+const activeRuntimes: AgentRuntime[] = [];
+
+afterEach(async () => {
+	await Promise.all(
+		activeRuntimes.splice(0).map(async (runtime) => {
+			await runtime.stop();
+			await runtime.close();
+		}),
+	);
+});
 
 function actionPayload(
 	runtime: IAgentRuntime,
@@ -118,14 +127,14 @@ function messagePayload(
 
 describe("agent-event-bridge", () => {
 	it("populates the action + lifecycle streams on ACTION_STARTED", async () => {
-		const { runtime, events } = await createCtx();
+		const { runtime, runId, events } = await createCtx();
 		bridgeActionStartedToStreams(
 			actionPayload(runtime, "WEB_SEARCH", "executing"),
 		);
 
 		const action = events.find((e) => e.stream === "action");
 		expect(action).toBeDefined();
-		expect(action?.runId).toBe(RUN_ID);
+		expect(action?.runId).toBe(runId);
 		expect(action?.data).toMatchObject({
 			type: "start",
 			actionName: "WEB_SEARCH",
@@ -159,7 +168,7 @@ describe("agent-event-bridge", () => {
 	});
 
 	it("populates the message stream on MESSAGE_RECEIVED (connector inbound)", async () => {
-		const { runtime, events } = await createCtx();
+		const { runtime, runId, events } = await createCtx();
 		bridgeMessageReceivedToStreams({
 			runtime,
 			message: {
@@ -172,7 +181,7 @@ describe("agent-event-bridge", () => {
 
 		const message = events.find((e) => e.stream === "message");
 		expect(message).toBeDefined();
-		expect(message?.runId).toBe(RUN_ID);
+		expect(message?.runId).toBe(runId);
 		expect(message?.data).toMatchObject({
 			type: "received",
 			content: "hello from discord",
@@ -278,7 +287,7 @@ describe("agent-event-bridge", () => {
 	});
 
 	it("bridges MESSAGE_RECEIVED to activity plus a guarded connector notification", async () => {
-		const { runtime, events, notifications } = await createCtx();
+		const { runtime, events, notificationService } = await createCtx();
 		await bridgeMessageReceivedToStreams(messagePayload(runtime));
 
 		const messageEvent = events.find((e) => e.stream === "message");
@@ -293,6 +302,8 @@ describe("agent-event-bridge", () => {
 			hasAttachments: false,
 		});
 
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		const notifications = notificationService.list();
 		expect(notifications).toHaveLength(1);
 		expect(notifications[0]).toMatchObject({
 			title: "New discord message from alice",
@@ -306,7 +317,7 @@ describe("agent-event-bridge", () => {
 	});
 
 	it("does not create inbox notifications for local client chat or self messages", async () => {
-		const { runtime, events, notifications } = await createCtx();
+		const { runtime, events, notificationService } = await createCtx();
 		await bridgeMessageReceivedToStreams(
 			messagePayload(runtime, {
 				source: "client_chat",
@@ -326,7 +337,8 @@ describe("agent-event-bridge", () => {
 		);
 
 		expect(events.filter((e) => e.stream === "message")).toHaveLength(2);
-		expect(notifications).toHaveLength(0);
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		expect(notificationService.list()).toHaveLength(0);
 	});
 
 	it("bridges raw connector message events that lack canonical Memory payloads", async () => {
@@ -334,7 +346,7 @@ describe("agent-event-bridge", () => {
 			"TWITCH_MESSAGE_RECEIVED",
 		);
 
-		const { runtime, events, notifications } = await createCtx();
+		const { runtime, events, notificationService } = await createCtx();
 		await bridgeConnectorMessageReceivedToStreams("TWITCH_MESSAGE_RECEIVED", {
 			runtime,
 			accountId: "main",
@@ -365,6 +377,8 @@ describe("agent-event-bridge", () => {
 			},
 		});
 
+		if (!notificationService) throw new Error("NotificationService not loaded");
+		const notifications = notificationService.list();
 		expect(notifications).toHaveLength(1);
 		expect(notifications[0]).toMatchObject({
 			title: "New ops message from Alice",
@@ -394,9 +408,9 @@ describe("agent-event-bridge", () => {
 	});
 
 	it("falls back to the runtime current run id when the payload omits one", async () => {
-		const { runtime, events } = await createCtx();
+		const { runtime, runId, events } = await createCtx();
 		// payload content has no runId → bridge uses runtime.getCurrentRunId()
 		bridgeActionStartedToStreams(actionPayload(runtime, "REPLY", "executing"));
-		expect(events[0]?.runId).toBe(RUN_ID);
+		expect(events[0]?.runId).toBe(runId);
 	});
 });

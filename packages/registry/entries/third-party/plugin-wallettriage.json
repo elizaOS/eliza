@@ -1,0 +1,19 @@
+{
+  "package": "plugin-wallettriage",
+  "repository": "github:wallettriage/plugin-wallettriage",
+  "kind": "plugin",
+  "description": "Real-time wallet risk check for elizaOS agents — a CHECK_ADDRESS_RISK action that cross-references an address's active ERC20 approvals with a live exploit threat feed BEFORE the agent acts (risk score 0-100, revoke-first findings). Pay-per-query via x402 (~$0.01 USDC on Base); stateless, no API key. Built-in per-query spend cap.",
+  "homepage": "https://wallettriage.com",
+  "version": "0.1.0",
+  "tags": [
+    "security",
+    "wallet",
+    "risk",
+    "x402",
+    "base",
+    "usdc",
+    "approvals",
+    "exploit",
+    "micropayments"
+  ]
+}

@@ -274,9 +274,16 @@ describe("delegation contract repository", () => {
     const { runtime } = runtimeResult;
     await LifeOpsRepository.bootstrapSchema(runtime);
     const repo = new LifeOpsRepository(runtime);
+    // The provider queries the active window against wall-clock `new Date()`
+    // (delegation-contracts.ts), so the fixture must straddle the current
+    // instant rather than an absolute date that silently expires.
+    const nowMs = Date.now();
     await repo.upsertDelegationContract(
       createLifeOpsDelegationContractRecord({
-        ...vendorContract(),
+        ...vendorContract({
+          createdAt: new Date(nowMs - 60 * 60 * 1000).toISOString(),
+          expiresAt: new Date(nowMs + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        }),
         agentId: runtime.agentId,
         metadata: { sourceThread: "gmail:thread-vendor-1" },
       }),

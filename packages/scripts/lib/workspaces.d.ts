@@ -1,6 +1,8 @@
 export interface WorkspaceDiscoveryOptions {
   /** Repo root to resolve globs against. Defaults to this repo's root. */
   repoRoot?: string;
+  /** Explicit patterns instead of the root package.json workspace set. */
+  patterns?: string[];
 }
 
 export interface WorkspacePackage {
@@ -35,6 +37,15 @@ export declare function listWorkspaceDirs(
 export declare function listPackages(
   opts?: WorkspaceDiscoveryOptions,
 ): WorkspacePackage[];
+
+export declare function collectWorkspaceMaps(
+  repoRoot: string,
+  patterns: string[],
+): {
+  workspaceDirs: string[];
+  nameToDir: Map<string, string>;
+  nameToVersion: Map<string, string>;
+};
 
 export declare function listSubmodules(
   opts?: WorkspaceDiscoveryOptions,

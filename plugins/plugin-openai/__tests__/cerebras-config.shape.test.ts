@@ -244,7 +244,7 @@ describe("plugin-openai Cerebras config (pure)", () => {
     });
     expect(getBaseURL(runtime)).toBe("https://api.openai.com/v1");
     expect(getApiKey(runtime)).toBe("sk-openai-fake");
-    expect(getSmallModel(runtime)).toBe("gpt-5.4-mini");
+    expect(getSmallModel(runtime)).toBe("gpt-5.6-luna");
   });
 
   it("uses a deterministic local embedding fallback in Cerebras mode without an embedding endpoint", async () => {

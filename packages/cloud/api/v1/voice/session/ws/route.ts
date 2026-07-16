@@ -124,8 +124,12 @@ app.get("/", (c) => {
   const client = pair[0] as unknown;
   const server = pair[1] as unknown as {
     accept(): void;
+    binaryType: "blob" | "arraybuffer";
   } & ServerWebSocketLike;
 
+  // The shared handler is synchronous, so normalize Workerd's binary messages
+  // at the platform boundary instead of allowing Blob audio into JSON parsing.
+  server.binaryType = "arraybuffer";
   server.accept();
 
   const usageLimits = resolveVoiceUsageLimits(env);

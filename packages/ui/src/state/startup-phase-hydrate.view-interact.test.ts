@@ -129,6 +129,7 @@ describe("bindReadyPhase view interaction bridge", () => {
 
     cleanup();
     expect(clientMock.disconnectWs).toHaveBeenCalled();
+    expect(clientMock.handlers.has("view:interact")).toBe(false);
   }, 60_000);
 
   it("routes future headset view:interact websocket events through the view dispatcher", async () => {

@@ -21,10 +21,13 @@ type SocketLike = {
   close(): Promise<void>;
 };
 
-type ConnectFn = (
-  address: { hostname: string; port: number },
-  options?: { secureTransport?: "on" | "off" | "starttls"; allowHalfOpen?: boolean },
-) => SocketLike;
+type SocketAddress = { hostname: string; port: number };
+type SocketOptions = {
+  secureTransport?: "on" | "off" | "starttls";
+  allowHalfOpen?: boolean;
+};
+
+type ConnectFn = (address: SocketAddress, options?: SocketOptions) => SocketLike;
 
 let cachedConnect: ConnectFn | null = null;
 
@@ -137,6 +140,47 @@ const decoder = new TextDecoder("utf-8");
 // whole request wall-clock. With this bound a stall throws instead, and
 // CacheClient falls back to revalidate/DB — the cache degrades, never hangs.
 const SOCKET_OP_TIMEOUT_MS = 1000;
+const SOCKET_CLOSE_TIMEOUT_MS = 50;
+
+type SocketReader = Pick<ReadableStreamDefaultReader<Uint8Array>, "read" | "cancel">;
+type SocketWriter = Pick<WritableStreamDefaultWriter<Uint8Array>, "write" | "abort">;
+
+/**
+ * Narrow transport surface used by the test-only constructor. Production
+ * callers cannot inject it: the factory is runtime-gated to NODE_ENV=test and
+ * the constructor token stays private to this module.
+ */
+export interface SocketRedisTestTransport {
+  reader: SocketReader;
+  writer: SocketWriter;
+  close(): Promise<void>;
+}
+
+export interface SocketRedisTestHooks {
+  openTransport(address: SocketAddress, options: SocketOptions): Promise<SocketRedisTestTransport>;
+  operationTimeoutMs?: number;
+  closeTimeoutMs?: number;
+}
+
+interface ConnectionRuntime {
+  openTransport(address: SocketAddress, options: SocketOptions): Promise<SocketRedisTestTransport>;
+  operationTimeoutMs: number;
+  closeTimeoutMs: number;
+}
+
+const productionConnectionRuntime: ConnectionRuntime = {
+  async openTransport(address, options) {
+    const connect = await getConnect();
+    const socket = connect(address, options);
+    return {
+      reader: socket.readable.getReader(),
+      writer: socket.writable.getWriter(),
+      close: () => socket.close(),
+    };
+  },
+  operationTimeoutMs: SOCKET_OP_TIMEOUT_MS,
+  closeTimeoutMs: SOCKET_CLOSE_TIMEOUT_MS,
+};
 
 function encodeCommand(args: ReadonlyArray<string | number>): Uint8Array {
   let out = `*${args.length}${CRLF}`;
@@ -232,42 +276,83 @@ class RespParser {
   }
 }
 
-class Connection {
-  private socket: SocketLike | null = null;
-  private writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
-  private reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-  private parser = new RespParser();
-  private readonly opts: ParsedUrl;
-  private inflight: Promise<unknown> = Promise.resolve();
-  // Bumped on every fresh socket. Failure cleanup closes a connection only if
-  // it is still the one the failing op used — a queued caller may already be
-  // on a newer socket, and a late loser must not tear that one down.
-  private generation = 0;
+interface ConnectionState {
+  readonly transport: SocketRedisTestTransport;
+  readonly parser: RespParser;
+  authenticated: boolean;
+  ownerEpoch: number;
+  closePromise: Promise<void> | null;
+}
 
-  constructor(opts: ParsedUrl) {
-    this.opts = opts;
+class StaleConnectionOperationError extends Error {
+  constructor() {
+    super("SocketRedis operation no longer owns the connection");
+    this.name = "StaleConnectionOperationError";
+  }
+}
+
+class Connection {
+  private state: ConnectionState | null = null;
+  private inflight: Promise<unknown> = Promise.resolve();
+  private ownershipEpoch = 0;
+
+  constructor(
+    private readonly opts: ParsedUrl,
+    private readonly runtime: ConnectionRuntime,
+  ) {}
+
+  private claimOwnership(): number {
+    this.ownershipEpoch += 1;
+    return this.ownershipEpoch;
   }
 
-  private async ensureOpen(): Promise<void> {
-    if (this.socket) return;
-    const connect = await getConnect();
-    this.generation += 1;
-    this.socket = connect(
+  private owns(epoch: number): boolean {
+    return this.ownershipEpoch === epoch;
+  }
+
+  private retire(epoch: number): void {
+    if (this.owns(epoch)) this.ownershipEpoch += 1;
+  }
+
+  private takeCurrent(epoch: number): ConnectionState | null {
+    if (!this.owns(epoch)) throw new StaleConnectionOperationError();
+    if (!this.state) return null;
+    this.state.ownerEpoch = epoch;
+    return this.state;
+  }
+
+  /**
+   * Construct an unpublished state for this operation. The ownership epoch is
+   * checked after the asynchronous open, so a timed-out opener can only close
+   * its local transport; it cannot overwrite a successor's published state.
+   */
+  private async openCandidate(epoch: number): Promise<ConnectionState> {
+    const transport = await this.runtime.openTransport(
       { hostname: this.opts.hostname, port: this.opts.port },
       { secureTransport: this.opts.tls ? "on" : "off", allowHalfOpen: false },
     );
-    this.writer = this.socket.writable.getWriter();
-    this.reader = this.socket.readable.getReader();
+    const candidate: ConnectionState = {
+      transport,
+      parser: new RespParser(),
+      authenticated: !this.opts.password,
+      ownerEpoch: epoch,
+      closePromise: null,
+    };
 
-    if (this.opts.password) {
-      const args = this.opts.username
-        ? ["AUTH", this.opts.username, this.opts.password]
-        : ["AUTH", this.opts.password];
-      const result = await this.sendRaw([args]);
-      if (result[0] instanceof RespError) {
-        throw result[0];
-      }
+    if (!this.owns(epoch)) {
+      await this.closeState(candidate);
+      throw new StaleConnectionOperationError();
     }
+    return candidate;
+  }
+
+  private publishCandidate(epoch: number, candidate: ConnectionState): void {
+    if (!this.owns(epoch)) throw new StaleConnectionOperationError();
+    if (this.state && this.state !== candidate) {
+      throw new Error("SocketRedis connection state changed before publication");
+    }
+    candidate.ownerEpoch = epoch;
+    this.state = candidate;
   }
 
   /** Serialize one batch of commands at a time. */
@@ -290,31 +375,58 @@ class Connection {
       const queueWait = await Promise.race([
         previous.then(() => "released" as const),
         new Promise<"orphaned">((resolve) => {
-          queueTimer = setTimeout(() => resolve("orphaned"), SOCKET_OP_TIMEOUT_MS);
+          queueTimer = setTimeout(() => resolve("orphaned"), this.runtime.operationTimeoutMs);
         }),
       ]);
       if (queueTimer) clearTimeout(queueTimer);
+
+      // Claim only after the serialization wait. This invalidates any losing
+      // predecessor before a queue-orphan teardown or a fresh open can begin.
+      const epoch = this.claimOwnership();
       if (queueWait === "orphaned") {
-        // error-policy:J6 best-effort teardown of a poisoned socket; the reconnect below is the real path.
-        await this.close().catch(() => {});
+        await this.detachAndCloseCurrent();
       }
-      let opGeneration = -1;
+
+      let opState: ConnectionState | null = null;
       try {
         return await this.withTimeout(async () => {
-          await this.ensureOpen();
-          opGeneration = this.generation;
-          return await this.sendRaw(commands);
+          // Existing state is captured synchronously before the first await.
+          // A fresh state stays unpublished until it is assigned locally,
+          // authenticated, and ownership has been rechecked.
+          opState = this.takeCurrent(epoch);
+          const needsPublication = opState === null;
+          if (!opState) opState = await this.openCandidate(epoch);
+          if (!this.owns(epoch)) {
+            this.detach(opState);
+            await this.closeState(opState);
+            throw new StaleConnectionOperationError();
+          }
+
+          if (!opState.authenticated) {
+            const password = this.opts.password;
+            if (!password) throw new Error("SocketRedis authentication state is invalid");
+            const args = this.opts.username
+              ? ["AUTH", this.opts.username, password]
+              : ["AUTH", password];
+            const result = await this.sendRaw([args], opState);
+            if (result[0] instanceof RespError) throw result[0];
+            if (!this.owns(epoch)) throw new StaleConnectionOperationError();
+            opState.authenticated = true;
+          }
+
+          if (!this.owns(epoch)) throw new StaleConnectionOperationError();
+          if (needsPublication) this.publishCandidate(epoch, opState);
+          return await this.sendRaw(commands, opState);
         });
       } catch (error) {
-        // Any mid-op failure leaves the RESP stream in an unknown state — and
-        // a cross-request I/O error means the socket belongs to a dead
-        // context. Drop the connection so the next call reconnects instead of
-        // reusing a poisoned socket for the isolate's lifetime. Guard on the
-        // generation: if a queued caller already reconnected, this failure
-        // belongs to the previous socket and must not tear down the current one.
-        if (opGeneration === -1 || opGeneration === this.generation) {
-          // error-policy:J6 best-effort teardown of a poisoned socket; the original error is rethrown below.
-          await this.close().catch(() => {});
+        // Invalidate before teardown. The timed-out async loser may continue,
+        // but it owns only its captured ConnectionState and cannot publish or
+        // touch any state created by the next serialized caller.
+        this.retire(epoch);
+        const failedState = opState ?? (this.state?.ownerEpoch === epoch ? this.state : null);
+        if (failedState) {
+          this.detach(failedState);
+          await this.closeState(failedState);
         }
         throw error;
       }
@@ -324,11 +436,11 @@ class Connection {
   }
 
   /**
-   * Bound a single connect+command to {@link SOCKET_OP_TIMEOUT_MS}. On timeout
-   * the error propagates to the caller, which falls back to its non-cached
-   * path instead of hanging. Closing the (possibly half-open or stalled)
-   * connection is `send()`'s job — it generation-guards the close so a late
-   * timeout can't tear down a successor's fresh socket.
+   * Bound a single connect+command to the configured operation timeout. On
+   * timeout the error propagates to the caller, which falls back to its
+   * non-cached path instead of hanging. The losing operation keeps running,
+   * so connection-local state and the ownership epoch provide cancellation
+   * safety without relying on the underlying socket promise being abortable.
    */
   private async withTimeout<T>(fn: () => Promise<T>): Promise<T> {
     const op = fn();
@@ -339,8 +451,10 @@ class Connection {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        reject(new Error(`SocketRedis operation timed out after ${SOCKET_OP_TIMEOUT_MS}ms`));
-      }, SOCKET_OP_TIMEOUT_MS);
+        reject(
+          new Error(`SocketRedis operation timed out after ${this.runtime.operationTimeoutMs}ms`),
+        );
+      }, this.runtime.operationTimeoutMs);
     });
     try {
       return await Promise.race([op, timeout]);
@@ -351,9 +465,8 @@ class Connection {
 
   private async sendRaw(
     commands: ReadonlyArray<ReadonlyArray<string | number>>,
+    state: ConnectionState,
   ): Promise<RespValue[]> {
-    if (!this.writer || !this.reader) throw new Error("connection not open");
-
     let totalLen = 0;
     const chunks: Uint8Array[] = [];
     for (const cmd of commands) {
@@ -367,42 +480,66 @@ class Connection {
       merged.set(c, off);
       off += c.byteLength;
     }
-    await this.writer.write(merged);
+    await state.transport.writer.write(merged);
 
     const out: RespValue[] = [];
     while (out.length < commands.length) {
-      const next = this.parser.next();
+      const next = state.parser.next();
       if (next !== undefined) {
         out.push(next);
         continue;
       }
-      const { value, done } = await this.reader.read();
+      const { value, done } = await state.transport.reader.read();
       if (done) throw new Error("Redis connection closed mid-reply");
-      this.parser.push(value);
+      state.parser.push(value);
     }
     return out;
   }
 
+  private detach(state: ConnectionState): void {
+    if (this.state === state) this.state = null;
+  }
+
+  private async detachAndCloseCurrent(): Promise<void> {
+    const state = this.state;
+    if (!state) return;
+    this.state = null;
+    await this.closeState(state);
+  }
+
+  private closeState(state: ConnectionState): Promise<void> {
+    if (state.closePromise) return state.closePromise;
+
+    state.closePromise = (async () => {
+      // A timed-out Railway socket may never complete graceful teardown.
+      // Detach first, abort all three transport layers in parallel, and cap
+      // cleanup at 50ms in production. allSettled observes late failures.
+      const cleanup = Promise.allSettled([
+        Promise.resolve().then(async () => await state.transport.writer.abort()),
+        Promise.resolve().then(async () => await state.transport.reader.cancel()),
+        Promise.resolve().then(async () => await state.transport.close()),
+      ]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          cleanup,
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, this.runtime.closeTimeoutMs);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    })();
+
+    return state.closePromise;
+  }
+
   async close(): Promise<void> {
-    try {
-      await this.writer?.close();
-    } catch {
-      // ignore
-    }
-    try {
-      await this.reader?.cancel();
-    } catch {
-      // ignore
-    }
-    try {
-      await this.socket?.close();
-    } catch {
-      // ignore
-    }
-    this.socket = null;
-    this.writer = null;
-    this.reader = null;
-    this.parser = new RespParser();
+    // Prevent an openTransport() that is still awaiting from publishing after
+    // an explicit close, then detach the currently published state.
+    this.ownershipEpoch += 1;
+    await this.detachAndCloseCurrent();
   }
 }
 
@@ -456,6 +593,29 @@ interface ZAddMember {
   member: string;
 }
 
+const SOCKET_REDIS_TEST_CONSTRUCTOR = Symbol("SocketRedisTestConstructor");
+
+function testConnectionRuntime(hooks: SocketRedisTestHooks): ConnectionRuntime {
+  if (typeof process === "undefined" || process.env.NODE_ENV !== "test") {
+    throw new Error("SocketRedis test transport injection is disabled outside NODE_ENV=test");
+  }
+
+  const operationTimeoutMs = hooks.operationTimeoutMs ?? SOCKET_OP_TIMEOUT_MS;
+  const closeTimeoutMs = hooks.closeTimeoutMs ?? SOCKET_CLOSE_TIMEOUT_MS;
+  if (!Number.isFinite(operationTimeoutMs) || operationTimeoutMs <= 0) {
+    throw new Error("SocketRedis test operationTimeoutMs must be positive");
+  }
+  if (!Number.isFinite(closeTimeoutMs) || closeTimeoutMs <= 0) {
+    throw new Error("SocketRedis test closeTimeoutMs must be positive");
+  }
+
+  return {
+    openTransport: hooks.openTransport,
+    operationTimeoutMs,
+    closeTimeoutMs,
+  };
+}
+
 /**
  * Drop-in replacement for `@upstash/redis`'s `Redis` class — same method
  * shapes as the subset the codebase uses (rate limit, credit events, agent
@@ -467,9 +627,26 @@ interface ZAddMember {
 export class SocketRedis {
   private readonly conn: Connection;
 
-  constructor(opts: { url: string } | string) {
+  constructor(opts: { url: string } | string);
+  constructor(
+    opts: { url: string } | string,
+    testConstructor: typeof SOCKET_REDIS_TEST_CONSTRUCTOR,
+    testHooks: SocketRedisTestHooks,
+  );
+  constructor(
+    opts: { url: string } | string,
+    testConstructor?: typeof SOCKET_REDIS_TEST_CONSTRUCTOR,
+    testHooks?: SocketRedisTestHooks,
+  ) {
     const url = typeof opts === "string" ? opts : opts.url;
-    this.conn = new Connection(parseRedisUrl(url));
+    let runtime = productionConnectionRuntime;
+    if (testConstructor !== undefined || testHooks !== undefined) {
+      if (testConstructor !== SOCKET_REDIS_TEST_CONSTRUCTOR || !testHooks) {
+        throw new Error("Invalid SocketRedis test constructor token");
+      }
+      runtime = testConnectionRuntime(testHooks);
+    }
+    this.conn = new Connection(parseRedisUrl(url), runtime);
   }
 
   async get<T = string>(key: string): Promise<T | null> {
@@ -644,6 +821,18 @@ export class SocketRedis {
   }
 }
 
+/**
+ * Create a SocketRedis instance with deterministic transport controls for
+ * resilience tests. The unexported constructor token plus the NODE_ENV guard
+ * keep this seam unavailable to accidental production construction.
+ */
+export function createSocketRedisForTests(
+  opts: { url: string } | string,
+  hooks: SocketRedisTestHooks,
+): SocketRedis {
+  return new SocketRedis(opts, SOCKET_REDIS_TEST_CONSTRUCTOR, hooks);
+}
+
 function decodeMaybeJson<T>(s: string): T {
   try {
     return JSON.parse(s) as T;
@@ -724,6 +913,11 @@ export class Pipeline {
 
   incr(key: string): this {
     this.commands.push(["INCR", key]);
+    return this;
+  }
+
+  pttl(key: string): this {
+    this.commands.push(["PTTL", key]);
     return this;
   }
 

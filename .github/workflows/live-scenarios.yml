@@ -42,8 +42,9 @@
 # 1Password vault: this workflow's plain `*_API_KEY` secrets are sourced from the
 # `eliza-e2e` 1Password vault. The vault must exist in 1Password and the
 # corresponding GitHub Actions secrets must be configured on the
-# `elizaOS/eliza` repo before this workflow can run successfully. See
-# scenario-matrix.yml for the structured `ELIZA_E2E_*` connector secrets.
+# `elizaOS/eliza` repo before this workflow can run successfully. Structured
+# per-account `ELIZA_E2E_*` coverage is tracked in #16448; this authority
+# exposes only the canonical runtime credentials listed above.
 
 name: Live Scenarios
 
@@ -54,7 +55,7 @@ on:
   workflow_dispatch:
     inputs:
       scenario_filter:
-        description: "Comma-separated scenario ids (empty = all)"
+        description: "EA/connector scenario ids (empty = all suites)"
         required: false
         type: string
         default: ""
@@ -93,7 +94,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           fetch-depth: 0
           filter: blob:none
@@ -308,6 +309,7 @@ jobs:
 
       - name: Run plugin-health live scenarios
         id: run-health
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && !inputs.scenario_filter }}
         env:
           NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers
@@ -334,7 +336,7 @@ jobs:
 
       - name: Run app-control live scenarios
         id: run-app-control
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && !inputs.scenario_filter }}
         env:
           NODE_OPTIONS: "--conditions=eliza-source"
           # LLM providers

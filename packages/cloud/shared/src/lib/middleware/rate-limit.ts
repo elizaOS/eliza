@@ -9,6 +9,7 @@
  * @see ANALYTICS_PR_REVIEW_ANALYSIS.md - Issue #1 (Fixed)
  */
 
+import { createHash } from "node:crypto";
 import type { RouteParams } from "../api/hono-next-style-params";
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
@@ -38,6 +39,23 @@ interface RateLimitEntry {
 //
 // PRODUCTION: Always set REDIS_RATE_LIMITING=true
 const rateLimitStore = new Map<string, RateLimitEntry>();
+
+/**
+ * Background cleanup must not keep short-lived Node/Bun processes alive.
+ * Cloudflare Workers return a numeric timer handle, while Node-compatible
+ * runtimes return an object with `unref()`.
+ */
+function unrefNodeTimer(timer: ReturnType<typeof setInterval>): void {
+  const candidate: unknown = timer;
+  if (
+    typeof candidate === "object" &&
+    candidate !== null &&
+    "unref" in candidate &&
+    typeof candidate.unref === "function"
+  ) {
+    candidate.unref();
+  }
+}
 
 // Validate rate limiting configuration on startup
 let hasValidatedConfig = false;
@@ -79,7 +97,7 @@ function validateRateLimitConfig() {
 /**
  * Clean up expired entries periodically
  */
-setInterval(() => {
+const rateLimitCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of rateLimitStore.entries()) {
     if (entry.resetAt < now) {
@@ -87,6 +105,7 @@ setInterval(() => {
     }
   }
 }, 60000); // Clean every minute
+unrefNodeTimer(rateLimitCleanupTimer);
 
 /**
  * Mask sensitive keys for logging (never log full API keys)
@@ -117,6 +136,10 @@ function getIpKey(request: Request): string {
   return `ip:${ip}`;
 }
 
+function hashRateLimitIdentifier(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
 function getDefaultKey(request: Request): string {
   // Prefer stable, non-IP identifiers.
   //
@@ -136,14 +159,14 @@ function getDefaultKey(request: Request): string {
       return token.startsWith("eliza_") ? token : null;
     })();
 
-  if (apiKey) return `apikey:${apiKey}`;
+  if (apiKey) return `apikey:${hashRateLimitIdentifier(apiKey)}`;
 
   const anonSession =
     request.headers.get("x-anonymous-session") ||
     request.headers.get("X-Anonymous-Session") ||
     getRequestCookie(request, "eliza-anon-session") ||
     null;
-  if (anonSession) return `anon:${anonSession}`;
+  if (anonSession) return `anon:${hashRateLimitIdentifier(anonSession)}`;
 
   // If we truly can't identify the caller, use a shared bucket (still not IP-based).
   return "public";
@@ -663,7 +686,7 @@ export async function checkCostBasedRateLimit(
 /**
  * Clean up cost limit store periodically
  */
-setInterval(() => {
+const costLimitCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of costLimitStore.entries()) {
     if (entry.resetAt < now) {
@@ -671,3 +694,4 @@ setInterval(() => {
     }
   }
 }, 60000);
+unrefNodeTimer(costLimitCleanupTimer);

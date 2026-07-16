@@ -13,9 +13,9 @@ The exported `Plugin` object (`anthropicPlugin`) registers these model handlers:
 | ModelType | Handler | Default model |
 |---|---|---|
 | `TEXT_NANO` | `handleTextNano` | falls back to `ANTHROPIC_SMALL_MODEL` |
-| `TEXT_SMALL` | `handleTextSmall` | `claude-haiku-4-5-20251001` |
+| `TEXT_SMALL` | `handleTextSmall` | `claude-sonnet-5` |
 | `TEXT_MEDIUM` | `handleTextMedium` | falls back to `ANTHROPIC_SMALL_MODEL` |
-| `TEXT_LARGE` | `handleTextLarge` | `claude-opus-4-7` |
+| `TEXT_LARGE` | `handleTextLarge` | `claude-opus-4-8` |
 | `TEXT_MEGA` | `handleTextMega` | falls back to `ANTHROPIC_LARGE_MODEL` |
 | `TEXT_REASONING_SMALL` | `handleReasoningSmall` | falls back to `ANTHROPIC_SMALL_MODEL` |
 | `TEXT_REASONING_LARGE` | `handleReasoningLarge` | falls back to `ANTHROPIC_LARGE_MODEL` |
@@ -82,8 +82,8 @@ All settings are read via `runtime.getSetting(key)` first, then `process.env[key
 | `ANTHROPIC_API_KEY` | Yes (or `CLAUDE_API_KEY` or OAuth) | — | Anthropic API key |
 | `CLAUDE_API_KEY` | Alt to above | — | Alias accepted by auto-enable and `getApiKeyOptional` |
 | `ANTHROPIC_AUTH_MODE` | No | `apikey` | Set to `claude-cli` (CLI mode via `claude -p`) or `oauth` |
-| `ANTHROPIC_SMALL_MODEL` / `SMALL_MODEL` | No | `claude-haiku-4-5-20251001` | Model for TEXT_SMALL, RESPONSE_HANDLER, IMAGE_DESCRIPTION |
-| `ANTHROPIC_LARGE_MODEL` / `LARGE_MODEL` | No | `claude-opus-4-7` | Model for TEXT_LARGE, ACTION_PLANNER |
+| `ANTHROPIC_SMALL_MODEL` / `SMALL_MODEL` | No | `claude-sonnet-5` | Model for TEXT_SMALL, RESPONSE_HANDLER, IMAGE_DESCRIPTION |
+| `ANTHROPIC_LARGE_MODEL` / `LARGE_MODEL` | No | `claude-opus-4-8` | Model for TEXT_LARGE, ACTION_PLANNER |
 | `ANTHROPIC_NANO_MODEL` / `NANO_MODEL` | No | falls back to small | Model for TEXT_NANO |
 | `ANTHROPIC_MEDIUM_MODEL` / `MEDIUM_MODEL` | No | falls back to small | Model for TEXT_MEDIUM |
 | `ANTHROPIC_MEGA_MODEL` / `MEGA_MODEL` | No | falls back to large | Model for TEXT_MEGA |

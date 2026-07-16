@@ -299,7 +299,7 @@ describe("/model small|large|coding → POST /api/models/config", () => {
 		// resolveCommand defaults are fail-closed (unauthorized, unelevated).
 		const r = await resolveCommand(runtime, msg("/model large zai-glm-4.7"));
 		expect(r.handled).toBe(true);
-		expect(r.reply).toBe("This command requires elevated permissions.");
+		expect(r.reply).toMatch(/requires (authorization|elevated permissions)/);
 		expect(fetchMock).not.toHaveBeenCalled();
 
 		const authorizedOnly = await resolveCommand(
@@ -318,7 +318,7 @@ describe("/model small|large|coding → POST /api/models/config", () => {
 		vi.stubGlobal("fetch", fetchMock);
 
 		const r = await resolveCommand(runtime, msg("/model small"));
-		expect(r.reply).toBe("This command requires elevated permissions.");
+		expect(r.reply).toMatch(/requires (authorization|elevated permissions)/);
 
 		const usage = await resolveCommand(runtime, msg("/model small"), OWNER);
 		expect(usage.reply).toContain("Usage: /model small");
@@ -336,7 +336,7 @@ describe("/model show → GET /api/models/config", () => {
 		vi.unstubAllGlobals();
 	});
 
-	it("formats the effective config with values, sources, and unset keys", async () => {
+	it("formats the effective config as operator-readable slots, not raw env keys", async () => {
 		const fetchMock = vi.fn(async () =>
 			jsonResponse({
 				targets: {
@@ -369,13 +369,72 @@ describe("/model show → GET /api/models/config", () => {
 		const [url, init] = fetchMock.mock.calls[0];
 		expect(String(url)).toContain("/api/models/config");
 		expect((init as RequestInit).method).toBe("GET");
-		expect(r.reply).toContain("**small**");
-		expect(r.reply).toContain("OPENAI_SMALL_MODEL = gpt-oss-120b (config.env)");
-		expect(r.reply).toContain("ANTHROPIC_SMALL_MODEL unset");
-		expect(r.reply).toContain("OPENAI_LARGE_MODEL = zai-glm-4.7 (process.env)");
+		// Human slots with friendly source labels — the raw persistence keys
+		// (ELIZA_*_MODEL_POWERFUL, …) must never reach the operator.
 		expect(r.reply).toContain(
-			"ELIZA_CODEX_MODEL_POWERFUL = gpt-5.6-terra (default)",
+			"small: gpt-oss-120b (app config, via api.openai.com)",
 		);
+		expect(r.reply).toContain(
+			"large: zai-glm-4.7 (environment, via api.openai.com)",
+		);
+		expect(r.reply).toContain("codex: gpt-5.6-terra (default)");
+		expect(r.reply).toContain("eliza: uses the runtime's own chat models");
+		expect(r.reply).not.toContain("MODEL_POWERFUL");
+		expect(r.reply).not.toContain("unset");
+	});
+
+	it("prefers the ACTIVE family and its endpoint under cloud routing", async () => {
+		// A stale OPENAI_* pin from a previous cerebras stint must not shadow
+		// what actually serves: the route reports activeChat=elizacloud and the
+		// show renders the ELIZAOS_CLOUD values with the cloud endpoint.
+		const fetchMock = vi.fn(async () =>
+			jsonResponse({
+				activeChat: {
+					provider: "elizacloud",
+					family: "ELIZAOS_CLOUD",
+					endpoint: "elizacloud.ai",
+				},
+				targets: {
+					small: {
+						OPENAI_SMALL_MODEL: { value: "stale-pin", source: "config.env" },
+						ELIZAOS_CLOUD_SMALL_MODEL: {
+							value: "gemma-4-31b",
+							source: "default",
+						},
+						OPENAI_REASONING_EFFORT: { value: "low", source: "config.env" },
+					},
+					large: {
+						OPENAI_LARGE_MODEL: { value: "stale-pin", source: "config.env" },
+						ELIZAOS_CLOUD_LARGE_MODEL: {
+							value: "zai-glm-4.7",
+							source: "default",
+						},
+						ELIZAOS_CLOUD_REASONING_EFFORT: {
+							value: "high",
+							source: "config.env",
+						},
+					},
+					coding: {},
+				},
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const r = await resolveCommand(runtime, msg("/model show"), {
+			isAuthorized: true,
+			isElevated: false,
+		});
+		expect(r.handled).toBe(true);
+		expect(r.reply).toContain(
+			"small: gemma-4-31b (default, via elizacloud.ai)",
+		);
+		// Effort must come from the SAME family as the model it annotates: the
+		// stale OPENAI_REASONING_EFFORT=low may not decorate the cloud small.
+		expect(r.reply).not.toContain("gemma-4-31b — effort low");
+		expect(r.reply).toContain(
+			"large: zai-glm-4.7 — effort high (default, via elizacloud.ai)",
+		);
+		expect(r.reply).not.toContain("stale-pin");
 	});
 
 	it("requires authorization and never hits the route when unauthorized", async () => {
@@ -434,7 +493,7 @@ describe("regression — pre-existing /model behaviors are untouched", () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model claude-opus"));
+		const r = await resolveCommand(runtime, msg("/model claude-opus"), OWNER);
 		expect(r.handled).toBe(true);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(r.reply).toMatch(/Model set to/);
@@ -444,7 +503,7 @@ describe("regression — pre-existing /model behaviors are untouched", () => {
 		const fetchMock = vi.fn();
 		vi.stubGlobal("fetch", fetchMock);
 
-		const r = await resolveCommand(runtime, msg("/model"));
+		const r = await resolveCommand(runtime, msg("/model"), OWNER);
 		expect(r.handled).toBe(true);
 		expect(fetchMock).not.toHaveBeenCalled();
 		expect(r.reply).toMatch(/Model is/);

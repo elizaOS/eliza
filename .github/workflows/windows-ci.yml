@@ -9,21 +9,22 @@ name: Windows CI
 # and the helpers under `packages/scripts/`. iOS/macOS/RISC-V/cloud-e2e
 # paths run on their existing dedicated workflows.
 
-# CI fan-out fix: the PR-scoped concurrency from #14069 fell back to
-# github.run_id on push, so every develop push got a unique group and
-# nothing ever superseded. A 37-merge wave queued thousands of push runs
-# and starved the self-hosted fleet. Fall back to github.ref (all develop
-# pushes share a group) and cancel superseded runs on push too. PR behavior
-# is unchanged (pull_request.number still wins the key); merge_group and
-# schedule events are not in the cancel set, so the merge queue and nightly
-# runs always complete.
+# Standalone PR and push runs share stable keys so obsolete work is superseded.
+# Reusable callers pass a distinct scope, keeping exhaustive work outside those
+# domains; schedule and dispatch events never cancel an active run.
 concurrency:
-  group: windows-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: windows-ci-${{ inputs.concurrency_scope || 'standalone' }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 on:
   # Reusable entry for the scheduled exhaustive develop lane (#12342).
   workflow_call:
+    inputs:
+      concurrency_scope:
+        description: "Caller-owned concurrency namespace"
+        required: false
+        type: string
+        default: standalone
   push:
     branches: [main, develop]
     paths:
@@ -139,7 +140,7 @@ jobs:
           New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" `
             -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force | Out-Null
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install bun
         uses: oven-sh/setup-bun@v2

@@ -12,6 +12,7 @@
 import type { Plugin } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  bindPluginPackageDirectory,
   listViews,
   pluginPackageNameCandidates,
   registerPluginViews,
@@ -100,5 +101,35 @@ describe("registerPluginViews packageName override", () => {
     expect(entry).toBeDefined();
     const pluginDir = (entry?.pluginDir ?? "").split("\\").join("/");
     expect(pluginDir).toContain("plugins/plugin-elizacloud");
+  });
+});
+
+describe("registerPluginViews directory binding", () => {
+  const PLUGIN_NAME = "generated-view-resolution-fixture";
+
+  afterEach(() => {
+    unregisterPluginViews(PLUGIN_NAME);
+  });
+
+  it("uses the directory bound to an imported plugin object", async () => {
+    const plugin: Plugin = {
+      name: PLUGIN_NAME,
+      description: "directory-loaded plugin fixture",
+      views: [
+        {
+          id: "generated-view-resolution-fixture",
+          label: "Generated fixture",
+          bundlePath: "dist/views/bundle.js",
+        },
+      ],
+    } as Plugin;
+    bindPluginPackageDirectory(plugin, "/tmp/generated-plugin-fixture");
+
+    await registerPluginViews(plugin);
+
+    const entry = listViews({ includeAllKinds: true }).find(
+      (view) => view.id === "generated-view-resolution-fixture",
+    );
+    expect(entry?.pluginDir).toBe("/tmp/generated-plugin-fixture");
   });
 });

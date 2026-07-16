@@ -40,10 +40,12 @@ interface ActionHarness extends EmbeddedHarness {
 
 async function makeActionHarness(): Promise<ActionHarness> {
   const h = await makeEmbeddedHarness('workflow-action-run-agent');
-  // The REAL service the action resolves — started keylessly the same way the
-  // plugin's service lifecycle does; it adopts the registered embedded engine.
-  const service = await WorkflowService.start(h.runtime);
-  h.services.set(WORKFLOW_SERVICE_TYPE, [service]);
+  await h.runtime.registerPlugin({
+    name: 'workflow-action-integration-harness',
+    description: 'Real WorkflowService for action integration coverage',
+    services: [WorkflowService],
+  });
+  const service = (await h.runtime.getServiceLoadPromise(WORKFLOW_SERVICE_TYPE)) as WorkflowService;
   return { ...h, service };
 }
 
@@ -103,7 +105,6 @@ describe('WORKFLOW action run op e2e (real WorkflowService + embedded engine, ke
   });
 
   afterEach(async () => {
-    await h.service.stop();
     await h.close();
   });
 
@@ -194,7 +195,11 @@ describe('WORKFLOW action run op e2e (real WorkflowService + embedded engine, ke
   test('(e) validate() reflects real service registration', async () => {
     if (!workflowAction.validate) throw new Error('workflow action missing validate');
     expect(await workflowAction.validate(h.runtime, message, undefined)).toBe(true);
-    h.services.delete(WORKFLOW_SERVICE_TYPE);
-    expect(await workflowAction.validate(h.runtime, message, undefined)).toBe(false);
+    const unregistered = await makeEmbeddedHarness('workflow-action-unregistered-agent');
+    try {
+      expect(await workflowAction.validate(unregistered.runtime, message, undefined)).toBe(false);
+    } finally {
+      await unregistered.close();
+    }
   });
 });

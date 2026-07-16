@@ -14,8 +14,8 @@
  */
 
 import type { CustomActionDef } from "@elizaos/shared";
-import { renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   CommandSurface,
   SlashCommandCatalogItem,
@@ -53,6 +53,10 @@ vi.mock("../state", () => ({
     }),
 }));
 
+import {
+  __resetAuthStatusForTests,
+  __setAuthStatusForTests,
+} from "../hooks/useAuthStatus";
 import { useSlashCommandController } from "./useSlashCommandController";
 
 function cmd(
@@ -90,6 +94,14 @@ beforeEach(() => {
   listCustomActions.mockResolvedValue([]);
   window.localStorage.clear();
 });
+
+// Unmount the hook root after each test. The catalog effect setStates when its
+// (mocked) fetch resolves; the protected-probe test only awaits the fetch being
+// CALLED, so it returns with a React update still queued on setImmediate.
+// Without this unmount that task flushes after jsdom is torn down and React
+// dereferences `window`, surfacing as an "unhandled" ReferenceError that fails
+// the shard even though every assertion passed.
+afterEach(cleanup);
 
 describe("useSlashCommandController — catalog load (#11112)", () => {
   it("resolves commands whenever the catalog fetch resolves, hiding auth-gated commands under the fail-closed defaults (#12087 Item 20)", async () => {
@@ -268,5 +280,70 @@ describe("useSlashCommandController — catalog load (#11112)", () => {
     expect(result.current.commands).toEqual([]);
     expect(result.current.error).toBe(true);
     consoleError.mockRestore();
+  });
+});
+
+describe("useSlashCommandController — protected-probe gate (#16242)", () => {
+  const originalLocation = Object.getOwnPropertyDescriptor(window, "location");
+
+  function setOrigin(url: string): void {
+    const u = new URL(url);
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        href: u.href,
+        origin: u.origin,
+        protocol: u.protocol,
+        host: u.host,
+        hostname: u.hostname,
+        port: u.port,
+        pathname: u.pathname,
+        search: u.search,
+        hash: u.hash,
+        assign: () => {},
+        replace: () => {},
+        reload: () => {},
+        toString: () => u.href,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    listCommands.mockReset().mockResolvedValue([]);
+    listCustomActions.mockReset().mockResolvedValue([]);
+    __resetAuthStatusForTests();
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    __resetAuthStatusForTests();
+    if (originalLocation) {
+      Object.defineProperty(window, "location", originalLocation);
+    }
+  });
+
+  it("does not fetch commands/custom-actions on the unauthenticated Cloud origin, then fetches after sign-in", async () => {
+    setOrigin("https://app.elizacloud.ai/");
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(listCommands).not.toHaveBeenCalled();
+    expect(listCustomActions).not.toHaveBeenCalled();
+
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    await waitFor(() => {
+      expect(listCommands).toHaveBeenCalledWith(GUI);
+      expect(listCustomActions).toHaveBeenCalled();
+    });
   });
 });

@@ -12,12 +12,24 @@ import type {
 const escapeRegExp = (value: string) =>
 	value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/** A single leading Discord user mention; role and channel forms do not match. */
+const LEADING_RAW_MENTION = /^<@!?\d+>\s*/;
+
+/**
+ * Remove the connector-native bot prefix so strict-mention messages reach the
+ * deterministic command layer. Textual names require the separate known-name
+ * normalization, and inner mentions remain command arguments.
+ */
+export function stripLeadingBotMention(text: string): string {
+	return text.replace(LEADING_RAW_MENTION, "");
+}
+
 /**
  * Check if text contains a command
  */
 export function hasCommand(text: string): boolean {
 	if (!text) return false;
-	const trimmed = text.trim();
+	const trimmed = stripLeadingBotMention(text.trim()).trim();
 	if (!trimmed.startsWith("/") && !trimmed.startsWith("!")) return false;
 	return Boolean(startsWithCommand(trimmed));
 }
@@ -30,7 +42,7 @@ export function detectCommand(text: string): CommandDetectionResult {
 		return { isCommand: false };
 	}
 
-	const trimmed = text.trim();
+	const trimmed = stripLeadingBotMention(text.trim()).trim();
 
 	// Quick check for command prefix
 	if (!trimmed.startsWith("/") && !trimmed.startsWith("!")) {
@@ -189,7 +201,10 @@ export function normalizeCommandBody(
 ): string {
 	let normalized = text.trim();
 
-	// Remove bot mention prefix (e.g., "@bot /status" -> "/status")
+	// Raw connector IDs do not require a configured display name.
+	normalized = stripLeadingBotMention(normalized).trim();
+
+	// Remove textual bot mention prefix (e.g., "@bot /status" -> "/status")
 	if (botMention) {
 		const mentionPattern = new RegExp(`^@${escapeRegExp(botMention)}\\s*`, "i");
 		normalized = normalized.replace(mentionPattern, "");

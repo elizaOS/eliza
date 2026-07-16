@@ -15,16 +15,28 @@
  * credential store, real AccountPool, real bridge — no in-memory stubs.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { spawn } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { loadAccount, saveAccount } from "@elizaos/auth/account-storage";
 import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
 import type { AccountCredentialProvider } from "@elizaos/auth/types";
+import { logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDefaultAccountPoolForTests,
   getDefaultAccountPool,
+  startAccountPoolKeepAlive,
+  stopAccountPoolKeepAliveForTests,
+  sweepAccountPoolKeepAlive,
 } from "./account-pool.js";
 import {
   adoptRotatedCodexTokens,
@@ -84,6 +96,65 @@ function writeMaterializedCodexAuth(
     OPENAI_API_KEY: null,
     tokens,
     last_refresh: new Date(lastRefreshMs).toISOString(),
+  });
+}
+
+async function waitForFile(filePath: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!existsSync(filePath)) {
+    if (Date.now() >= deadline) {
+      throw new Error(`timed out waiting for external writer: ${filePath}`);
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function startExternalCodexFileRotation(
+  authPath: string,
+  signalPath: string,
+  payload: string,
+): Promise<void> {
+  const script = `
+const fs = require("node:fs");
+const authPath = process.argv[1];
+const signalPath = process.argv[2];
+const payload = process.argv[3];
+const midpoint = Math.floor(payload.length / 2);
+const fd = fs.openSync(authPath, "w", 0o600);
+fs.writeSync(fd, payload.slice(0, midpoint));
+fs.fsyncSync(fd);
+fs.writeFileSync(signalPath, "writer-open");
+setTimeout(() => {
+  fs.writeSync(fd, payload.slice(midpoint));
+  fs.fsyncSync(fd);
+  fs.closeSync(fd);
+}, 75);
+`;
+  const child = spawn(
+    process.execPath,
+    ["-e", script, authPath, signalPath, payload],
+    {
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
+  let stderr = "";
+  child.stderr.setEncoding("utf-8");
+  child.stderr.on("data", (chunk: string) => {
+    stderr += chunk;
+  });
+  return new Promise<void>((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", (code, signal) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(
+        new Error(
+          `external Codex writer exited code=${String(code)} signal=${String(signal)}: ${stderr}`,
+        ),
+      );
+    });
   });
 }
 
@@ -181,13 +252,170 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
     expect(record?.credentials.refresh).toBe("rt-fresh-login");
   });
 
-  it("no-ops when there is no materialized CODEX_HOME or it is corrupt", async () => {
+  it("no-ops when there is no materialized CODEX_HOME", async () => {
     writeAccount("openai-codex", "codex-work", {
       access: "a",
       refresh: "r",
       expires: Date.now() + HOUR_MS,
     });
     expect(await adoptRotatedCodexTokens("codex-work")).toBe(false);
+  });
+
+  it("fails closed before canonical refresh when the only Codex file generation is unreadable", async () => {
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("getAccessToken must not run after adoption failure");
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    writeAccount("openai-codex", "codex-work", {
+      access: "expired-access",
+      refresh: "rt-consumed",
+      expires: Date.now() - HOUR_MS,
+    });
+    const codexHome = path.join(home, "auth", "_codex-home", "codex-work");
+    mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(codexHome, "auth.json"), '{"tokens":');
+
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    await expect(bridge?.select("codex")).rejects.toMatchObject({
+      code: "CODEX_AUTH_FILE_UNSTABLE",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the background sweep from resolving a canonical token after adoption fails", async () => {
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("getAccessToken must not run after adoption failure");
+    });
+    vi.stubGlobal("fetch", fetchSpy);
+    writeAccount("openai-codex", "codex-work", {
+      access: "expired-access",
+      refresh: "rt-consumed",
+      expires: Date.now() - HOUR_MS,
+    });
+    const codexHome = path.join(home, "auth", "_codex-home", "codex-work");
+    mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(codexHome, "auth.json"), '{"tokens":');
+
+    await expect(sweepAccountPoolKeepAlive()).rejects.toMatchObject({
+      code: "CODEX_AUTH_FILE_UNSTABLE",
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not brick a healthy Codex credential when usage parsing fails", async () => {
+    const fetchSpy = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            rate_limit: {
+              primary_window: { used_percent: 10 },
+              secondary_window: "unexpected-provider-shape",
+            },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchSpy);
+    writeAccount(
+      "openai-codex",
+      "codex-work",
+      {
+        access: fakeJwt(Date.now() + HOUR_MS),
+        refresh: "rt-valid",
+        expires: Date.now() + HOUR_MS,
+      },
+      { organizationId: "org-work" },
+    );
+
+    const pool = getDefaultAccountPool();
+    expect(pool.get("codex-work", "openai-codex")?.health).toBe("ok");
+
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 1,
+    });
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(pool.get("codex-work", "openai-codex")?.health).toBe("ok");
+  });
+
+  it.each([
+    [401, "needs-reauth"],
+    [429, "rate-limited"],
+  ] as const)("classifies an HTTP %i usage rejection as %s", async (status, expectedHealth) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("rejected", { status })),
+    );
+    writeAccount(
+      "openai-codex",
+      "codex-work",
+      {
+        access: fakeJwt(Date.now() + HOUR_MS),
+        refresh: "rt-valid",
+        expires: Date.now() + HOUR_MS,
+      },
+      { organizationId: "org-work" },
+    );
+
+    const pool = getDefaultAccountPool();
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 1,
+    });
+    expect(pool.get("codex-work", "openai-codex")?.health).toBe(expectedHealth);
+  });
+
+  it("heals a flagged direct-API account after its stored credential resolves", async () => {
+    writeAccount("anthropic-api", "direct-work", {
+      access: "sk-ant-valid",
+      refresh: "",
+      expires: Number.MAX_SAFE_INTEGER,
+    });
+    const pool = getDefaultAccountPool();
+    await pool.markInvalid("direct-work", "earlier transient failure", {
+      providerId: "anthropic-api",
+    });
+    expect(pool.get("direct-work", "anthropic-api")?.health).toBe("invalid");
+
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 0,
+    });
+    expect(pool.get("direct-work", "anthropic-api")?.health).toBe("ok");
+  });
+
+  it("observes an adoption failure at the keep-alive timer boundary", async () => {
+    writeAccount("openai-codex", "codex-work", {
+      access: "expired-access",
+      refresh: "rt-consumed",
+      expires: Date.now() - HOUR_MS,
+    });
+    const codexHome = path.join(home, "auth", "_codex-home", "codex-work");
+    mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+    writeFileSync(path.join(codexHome, "auth.json"), '{"tokens":');
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
+
+    try {
+      startAccountPoolKeepAlive(60_000);
+      await vi.waitFor(
+        () => {
+          expect(errorSpy).toHaveBeenCalledWith(
+            expect.stringContaining("[AccountPool] keep-alive sweep failed:"),
+          );
+        },
+        { timeout: 3_000, interval: 10 },
+      );
+      expect(
+        getDefaultAccountPool().get("codex-work", "openai-codex")?.health,
+      ).not.toBe("needs-reauth");
+    } finally {
+      stopAccountPoolKeepAliveForTests();
+      errorSpy.mockRestore();
+    }
   });
 
   it("bridge.select heals the canonical record BEFORE resolving, so a CLI-rotated account still spawns", async () => {
@@ -238,6 +466,116 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
     expect(loadAccount("openai-codex", "codex-work")?.credentials.refresh).toBe(
       "rt-rotated",
     );
+  });
+
+  it("preserves and adopts a real external writer's rotated generation across concurrent selections", async () => {
+    writeAccount(
+      "openai-codex",
+      "codex-work",
+      {
+        access: fakeJwt(Date.now() + HOUR_MS),
+        refresh: "rt-initial",
+        expires: Date.now() + HOUR_MS,
+        idToken: "id-initial",
+      },
+      { organizationId: "acct_W" },
+    );
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    const initial = await bridge?.select("codex");
+    const selectedHome = initial?.envPatch.CODEX_HOME;
+    expect(selectedHome).toBeTruthy();
+    const canonicalBefore = loadAccount("openai-codex", "codex-work");
+    expect(canonicalBefore).toBeTruthy();
+    const rotationAt = new Date(
+      Math.max(Date.now(), canonicalBefore?.updatedAt ?? 0) + 1_000,
+    ).toISOString();
+    const rotatedAccess = fakeJwt(Date.now() + 3 * HOUR_MS);
+    const rotatedPayload = JSON.stringify({
+      auth_mode: "chatgpt",
+      OPENAI_API_KEY: null,
+      tokens: {
+        access_token: rotatedAccess,
+        refresh_token: "rt-external-rotated",
+        id_token: "id-external-rotated",
+        account_id: "acct_W",
+      },
+      last_refresh: rotationAt,
+    });
+    const authPath = path.join(selectedHome as string, "auth.json");
+    const signalPath = path.join(home, "external-writer-open");
+    const externalWriter = startExternalCodexFileRotation(
+      authPath,
+      signalPath,
+      rotatedPayload,
+    );
+    await waitForFile(signalPath);
+
+    const [first, second] = await Promise.all([
+      bridge?.select("codex"),
+      bridge?.select("codex"),
+    ]);
+    await externalWriter;
+
+    expect(first?.envPatch.CODEX_HOME).toBe(selectedHome);
+    expect(second?.envPatch.CODEX_HOME).toBe(selectedHome);
+    // The bridge never rewrites a published auth generation, so the exact
+    // external-process bytes and its real last_refresh survive materialization.
+    expect(readFileSync(authPath, "utf-8")).toBe(rotatedPayload);
+    const authAfter = JSON.parse(readFileSync(authPath, "utf-8")) as {
+      last_refresh?: string;
+      tokens?: { refresh_token?: string };
+    };
+    expect(authAfter.last_refresh).toBe(rotationAt);
+    expect(authAfter.tokens?.refresh_token).toBe("rt-external-rotated");
+    const canonicalAfter = loadAccount("openai-codex", "codex-work");
+    expect(canonicalAfter?.credentials.access).toBe(rotatedAccess);
+    expect(canonicalAfter?.credentials.refresh).toBe("rt-external-rotated");
+    expect(canonicalAfter?.credentials.idToken).toBe("id-external-rotated");
+  });
+
+  it("fails closed when the required file-store config cannot be replaced", async () => {
+    writeAccount("openai-codex", "codex-work", {
+      access: fakeJwt(Date.now() + HOUR_MS),
+      refresh: "rt-config",
+      expires: Date.now() + HOUR_MS,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    const initial = await bridge?.select("codex");
+    const selectedHome = initial?.envPatch.CODEX_HOME;
+    expect(selectedHome).toBeTruthy();
+    const configPath = path.join(selectedHome as string, "config.toml");
+    rmSync(configPath);
+    mkdirSync(configPath);
+
+    await expect(bridge?.select("codex")).rejects.toMatchObject({
+      code: "CODEX_CONFIG_MATERIALIZATION_FAILED",
+    });
+  });
+
+  it("fails closed when the active Codex home cannot be published", async () => {
+    writeAccount("openai-codex", "codex-work", {
+      access: fakeJwt(Date.now() + HOUR_MS),
+      refresh: "rt-pointer",
+      expires: Date.now() + HOUR_MS,
+    });
+    getDefaultAccountPool();
+    const bridge = getCodingAgentSelectorBridge();
+    await bridge?.select("codex");
+    const pointerPath = path.join(
+      home,
+      "auth",
+      "_codex-home",
+      "codex-work",
+      "active-home",
+    );
+    rmSync(pointerPath);
+    mkdirSync(pointerPath);
+
+    await expect(bridge?.select("codex")).rejects.toMatchObject({
+      code: "CODEX_ACTIVE_HOME_MATERIALIZATION_FAILED",
+    });
   });
 });
 

@@ -373,6 +373,37 @@ describe("emitProgress routing ladder + cadence", () => {
     await rt.dispose();
   });
 
+  it("targets the ORIGIN room, not the minted task room, when session metadata carries originRoomId", async () => {
+    // Default-on task rooms stamp meta.roomId with the minted task-room UUID,
+    // which maps to no live connector channel — posting there fails silently
+    // (demoted to debug after the first warn). The hook must resolve the emit
+    // target through the origin ladder so acks/narration reach the user.
+    process.env.ACPX_PROGRESS_MODE = "compact";
+    process.env.ACPX_PROGRESS_DELAY_MS = "0";
+    const TASK_ROOM = "99999999-8888-4777-8666-555555555555";
+    const rt = await buildHookedRuntime([{ source: SOURCE, capabilities: [] }]);
+    rt.sessions.set("s-origin", {
+      status: "running",
+      metadata: {
+        source: SOURCE,
+        roomId: TASK_ROOM,
+        originRoomId: ROOM,
+        label: "origin-task",
+      },
+    });
+
+    await fire(rt, "s-origin", "message", { text: "Building the parser." });
+    // Drain the narration silence-flush window so the buffered post fires.
+    await advanceTimersByTime(2_000);
+
+    expect(rt.sendMessageToTarget).toHaveBeenCalled();
+    for (const [target] of rt.sendMessageToTarget.mock.calls) {
+      expect((target as { roomId: string }).roomId).toBe(ROOM);
+    }
+
+    await rt.dispose();
+  });
+
   it("silent mode posts nothing for any event", async () => {
     process.env.ACPX_PROGRESS_MODE = "silent";
     const rt = await buildHookedRuntime([

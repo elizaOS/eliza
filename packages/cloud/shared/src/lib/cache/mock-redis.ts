@@ -585,6 +585,11 @@ export class MockPipeline {
     return this;
   }
 
+  pttl(key: string): this {
+    this.ops.push(() => this.client.pttl(key));
+    return this;
+  }
+
   async exec<T extends unknown[] = unknown[]>(): Promise<T> {
     const out: unknown[] = [];
     if (this.ops.length === 0) return out as T;

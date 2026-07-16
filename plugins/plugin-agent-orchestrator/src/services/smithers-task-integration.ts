@@ -5,10 +5,10 @@
  * path when Smithers is disabled.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type { AcpLike } from "./smithers-task-executor";
 import { SmithersTaskExecutor } from "./smithers-task-executor";
 import { runTaskWithSmithers } from "./smithers-task-runner";
-import type { TaskRunStatus } from "./smithers-task-types";
 
 type PromptOut = {
   stopReason?: string;
@@ -87,8 +87,8 @@ export async function runDurableTask(
   task: string,
   opts: { timeoutMs?: number; model?: string; maxTurns?: number } = {},
 ): Promise<{
-  status: TaskRunStatus;
-  lastResponse: string | undefined;
+  status: "completed";
+  lastResponse: string;
   turns: number;
 }> {
   const executor = new SmithersTaskExecutor(
@@ -109,9 +109,31 @@ export async function runDurableTask(
   // A single-turn loop can swallow a turn throw via onMaxReached='return-last';
   // surface it so the host reports the failure (matching the direct path).
   if (executor.lastError) throw executor.lastError;
+  if (result.status !== "completed") {
+    throw new ElizaError("Durable task did not reach completion", {
+      code: "SMITHERS_TASK_INCOMPLETE",
+      context: {
+        sessionId: session.sessionId,
+        status: result.status,
+        turns: result.turns,
+      },
+      severity: "ephemeral",
+    });
+  }
+  const lastResponse = executor.lastResponse;
+  if (typeof lastResponse !== "string" || lastResponse.trim().length === 0) {
+    throw new ElizaError("Durable task completed without a response", {
+      code: "SMITHERS_TASK_RESPONSE_MISSING",
+      context: {
+        sessionId: session.sessionId,
+        status: result.status,
+        turns: result.turns,
+      },
+    });
+  }
   return {
-    status: result.status,
-    lastResponse: executor.lastResponse,
+    status: "completed",
+    lastResponse,
     turns: result.turns,
   };
 }

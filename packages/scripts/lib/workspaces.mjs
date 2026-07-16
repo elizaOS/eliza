@@ -13,12 +13,7 @@
  * test can import it without pulling in the build graph.
  */
 
-import {
-  existsSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -31,12 +26,28 @@ function normalizePath(value) {
   return value.split(path.sep).join("/");
 }
 
+function compareText(left, right) {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function readJson(filePath) {
-  return JSON.parse(readFileSync(filePath, "utf8"));
+  const source = readFileSync(filePath, "utf8");
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    // error-policy:J2 identify the intended manifest that made discovery invalid
+    throw new Error(`Invalid JSON in ${filePath}`, { cause: error });
+  }
 }
 
 function resolveRepoRoot(opts) {
   return opts?.repoRoot ? path.resolve(opts.repoRoot) : DEFAULT_REPO_ROOT;
+}
+
+function isMissingPathError(error) {
+  return error?.code === "ENOENT" || error?.code === "ENOTDIR";
 }
 
 // Compile one workspace glob segment-pattern to a RegExp over the "/"-joined
@@ -121,8 +132,9 @@ function expandPositiveGlob(repoRoot, pattern) {
       const candidate = path.join(dir, part);
       try {
         if (statSync(candidate).isDirectory()) next.push(candidate);
-      } catch {
-        // error-policy:J3 path does not exist — this glob branch yields nothing
+      } catch (error) {
+        // error-policy:J3 an unmatched literal branch is valid glob input
+        if (!isMissingPathError(error)) throw error;
       }
     }
     dirs = next;
@@ -133,9 +145,10 @@ function expandPositiveGlob(repoRoot, pattern) {
 function readDirEntries(dir) {
   try {
     return readdirSync(dir, { withFileTypes: true });
-  } catch {
-    // error-policy:J3 unreadable dir contributes no members
-    return [];
+  } catch (error) {
+    // error-policy:J3 an absent optional glob base has no members
+    if (isMissingPathError(error)) return [];
+    throw error;
   }
 }
 
@@ -183,7 +196,7 @@ export function expandWorkspaceGlobs(patterns, opts) {
       dirs.add(relativeDir);
     }
   }
-  return [...dirs].sort((a, b) => a.localeCompare(b));
+  return [...dirs].sort(compareText);
 }
 
 /**
@@ -193,11 +206,37 @@ export function expandWorkspaceGlobs(patterns, opts) {
  */
 export function listWorkspaceDirs(opts) {
   const repoRoot = resolveRepoRoot(opts);
-  const rootPackage = readJson(path.join(repoRoot, "package.json"));
-  const patterns = rootPackage.workspaces ?? [];
-  return expandWorkspaceGlobs(patterns, { repoRoot }).filter((relativeDir) =>
-    existsSync(path.join(repoRoot, relativeDir, "package.json")),
-  );
+  const patterns =
+    opts?.patterns ??
+    (() => {
+      const rootPackage = readJson(path.join(repoRoot, "package.json"));
+      if (!Array.isArray(rootPackage.workspaces)) {
+        throw new Error(
+          `${path.join(repoRoot, "package.json")} must declare a workspaces array`,
+        );
+      }
+      return rootPackage.workspaces;
+    })();
+  if (
+    !Array.isArray(patterns) ||
+    patterns.some((pattern) => typeof pattern !== "string")
+  ) {
+    throw new TypeError("Workspace patterns must be an array of strings");
+  }
+  return expandWorkspaceGlobs(patterns, { repoRoot }).filter((relativeDir) => {
+    const manifestPath = path.join(repoRoot, relativeDir, "package.json");
+    try {
+      const manifest = statSync(manifestPath);
+      if (!manifest.isFile()) {
+        throw new Error(`Workspace manifest is not a file: ${manifestPath}`);
+      }
+      return true;
+    } catch (error) {
+      // error-policy:J3 a matched directory without a manifest is not a package
+      if (isMissingPathError(error)) return false;
+      throw error;
+    }
+  });
 }
 
 /**
@@ -207,10 +246,67 @@ export function listWorkspaceDirs(opts) {
  */
 export function listPackages(opts) {
   const repoRoot = resolveRepoRoot(opts);
-  return listWorkspaceDirs({ repoRoot }).map((dir) => {
+  const packages = listWorkspaceDirs({
+    repoRoot,
+    patterns: opts?.patterns,
+  }).map((dir) => {
     const packageJson = readJson(path.join(repoRoot, dir, "package.json"));
     return { name: packageJson.name, dir, packageJson };
   });
+  const names = new Map();
+  for (const workspacePackage of packages) {
+    if (
+      typeof workspacePackage.name !== "string" ||
+      workspacePackage.name.length === 0
+    )
+      continue;
+    const previousDir = names.get(workspacePackage.name);
+    if (previousDir) {
+      throw new Error(
+        `Duplicate workspace package name ${workspacePackage.name}: ${previousDir} and ${workspacePackage.dir}`,
+      );
+    }
+    names.set(workspacePackage.name, workspacePackage.dir);
+  }
+  return packages;
+}
+
+/**
+ * Resolve workspace directories and name maps from an explicit pattern set.
+ * Absolute paths preserve the historical app-core script contract while all
+ * discovery and manifest parsing stays centralized in this module.
+ */
+export function collectWorkspaceMaps(repoRoot, patterns) {
+  const root = path.resolve(repoRoot);
+  const workspacePackages = listPackages({ repoRoot: root, patterns });
+  const workspaceDirs = workspacePackages.map(({ dir }) =>
+    path.join(root, dir),
+  );
+  const rootManifestPath = path.join(root, "package.json");
+  const rootManifest = readJson(rootManifestPath);
+  workspaceDirs.push(root);
+  workspaceDirs.sort(compareText);
+
+  const nameToDir = new Map();
+  const nameToVersion = new Map();
+  for (const { name, dir, packageJson } of [
+    ...workspacePackages,
+    { name: rootManifest.name, dir: "", packageJson: rootManifest },
+  ]) {
+    if (typeof name !== "string" || name.length === 0) continue;
+    const absoluteDir = path.join(root, dir);
+    const previousDir = nameToDir.get(name);
+    if (previousDir && previousDir !== absoluteDir) {
+      throw new Error(
+        `Duplicate workspace package name ${name}: ${previousDir} and ${absoluteDir}`,
+      );
+    }
+    nameToDir.set(name, absoluteDir);
+    if (typeof packageJson.version === "string")
+      nameToVersion.set(name, packageJson.version);
+  }
+
+  return { workspaceDirs, nameToDir, nameToVersion };
 }
 
 // Minimal INI parser for .gitmodules: sections keyed by `[submodule "name"]`,
@@ -245,8 +341,15 @@ function parseGitmodules(text) {
 export function listSubmodules(opts) {
   const repoRoot = resolveRepoRoot(opts);
   const gitmodulesPath = path.join(repoRoot, ".gitmodules");
-  if (!existsSync(gitmodulesPath)) return [];
-  const sections = parseGitmodules(readFileSync(gitmodulesPath, "utf8"));
+  let source;
+  try {
+    source = readFileSync(gitmodulesPath, "utf8");
+  } catch (error) {
+    // error-policy:J3 repositories are not required to declare submodules
+    if (isMissingPathError(error)) return [];
+    throw error;
+  }
+  const sections = parseGitmodules(source);
   return sections
     .filter((section) => typeof section.path === "string")
     .map((section) => ({

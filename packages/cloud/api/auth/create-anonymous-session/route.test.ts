@@ -1,5 +1,8 @@
 // Exercises cloud API auth create anonymous session route.test behavior with deterministic Worker route fixtures.
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realRedisFactory from "@/lib/cache/redis-factory";
+
+const realRedisFactoryExports = { ...realRedisFactory };
 
 // Count how many anonymous users actually get minted (DB rows inserted).
 const createAnonymousUserAndSession = mock(async () => ({
@@ -12,28 +15,11 @@ mock.module("@/lib/services/anonymous-session-creator", () => ({
 }));
 
 // In-memory Redis stand-in so the REAL rateLimit middleware enforces (it falls
-// open without a backing store). Implements the subset checkUpstash() uses.
-const store = new Map<string, { count: number; expireAt: number }>();
-const fakeRedis = {
-  async incr(key: string) {
-    const entry = store.get(key) ?? {
-      count: 0,
-      expireAt: Date.now() + 300_000,
-    };
-    entry.count += 1;
-    store.set(key, entry);
-    return entry.count;
-  },
-  async pexpire(key: string, ms: number) {
-    const entry = store.get(key);
-    if (entry) entry.expireAt = Date.now() + ms;
-    return 1;
-  },
-  async pttl(key: string) {
-    const entry = store.get(key);
-    return entry ? Math.max(1, entry.expireAt - Date.now()) : -1;
-  },
-};
+// open without a backing store). checkRateLimitRedis drives a sliding-window
+// sorted set through client.pipeline(), so the stand-in must be MockSocketRedis
+// (matches the CompatibleRedis pipeline surface) rather than a token-bucket shim.
+const { MockSocketRedis } = await import("@/lib/cache/mock-redis");
+const fakeRedis = new MockSocketRedis();
 
 mock.module("@/lib/cache/redis-factory", () => ({
   buildRedisClient: () => fakeRedis,
@@ -55,7 +41,10 @@ function mint(ip: string) {
 describe("create-anonymous-session anti-sybil rate limit", () => {
   beforeEach(() => {
     createAnonymousUserAndSession.mockClear();
-    store.clear();
+  });
+
+  afterAll(() => {
+    mock.module("@/lib/cache/redis-factory", () => realRedisFactoryExports);
   });
 
   test("caps anonymous mints per IP and stops creating users after the cap", async () => {

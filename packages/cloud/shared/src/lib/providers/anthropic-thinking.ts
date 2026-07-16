@@ -42,6 +42,27 @@ export function supportsExtendedThinking(modelId: string): boolean {
   return EXTENDED_THINKING_MODEL_PATTERNS.some((pattern) => pattern.test(normalizedId));
 }
 
+/**
+ * Opus models that use ADAPTIVE extended thinking (`thinking: { type: "adaptive" }`,
+ * the provider chooses depth) rather than a manual `enabled + budgetTokens`.
+ * Sending a manual budget to these produces the provider 400 this fixes (#16149).
+ * Dot and hyphen aliases are accepted either bare or after a provider prefix;
+ * the leading boundary prevents unrelated lookalike model IDs from opting in.
+ */
+const ADAPTIVE_THINKING_MODEL_PATTERNS = [
+  /(?:^|\/)claude-opus-4[.-]7(?:$|-)/, // Claude Opus 4.7 and dated aliases
+  /(?:^|\/)claude-opus-4[.-]8(?:$|-)/, // Claude Opus 4.8 and dated aliases
+];
+
+/**
+ * Whether the model uses ADAPTIVE extended thinking (vs a manual token budget).
+ * Adaptive models are a subset of {@link supportsExtendedThinking}.
+ */
+export function usesAdaptiveThinking(modelId: string): boolean {
+  const normalizedId = modelId.toLowerCase();
+  return ADAPTIVE_THINKING_MODEL_PATTERNS.some((pattern) => pattern.test(normalizedId));
+}
+
 const ENV_KEY = "ANTHROPIC_COT_BUDGET";
 const ENV_MAX_KEY = "ANTHROPIC_COT_BUDGET_MAX";
 
@@ -173,6 +194,21 @@ const anthropicThinkingOptions = (budgetTokens: number): AnthropicProviderOption
   thinking: { type: "enabled", budgetTokens },
 });
 
+// Adaptive models let the provider choose thinking depth and reject a manual
+// `budgetTokens` (#16149). A configured numeric budget still gates thinking
+// on/off but is not forwarded as a token cap.
+const anthropicAdaptiveThinkingOptions = (): AnthropicProviderOptions => ({
+  thinking: { type: "adaptive" },
+});
+
+// The cloud resolver may serve an Anthropic model through OpenRouter's
+// OpenAI-compatible client. That client ignores the `anthropic` namespace, so
+// the equivalent normalized signal must travel in its own provider namespace.
+// OpenRouter maps `reasoning_effort` to adaptive thinking for Opus 4.7+.
+const openRouterAdaptiveThinkingOptions = (): CloudJsonObject => ({
+  reasoningEffort: "high",
+});
+
 /**
  * AI SDK provider options fragment when budget is active and model is Anthropic.
  *
@@ -188,10 +224,18 @@ export function anthropicThinkingProviderOptions(
   if (budget === null) {
     return {};
   }
-  const anthropic = anthropicThinkingOptions(budget) as CloudJsonObject;
+  // The resolved budget already gated thinking on/off (and 0 → off). Adaptive
+  // models (Opus 4.7/4.8) must NOT receive the manual `budgetTokens` — the
+  // provider 400s on it — so emit the adaptive shape; the numeric budget stays a
+  // gate, not a forwarded cap (#16149). Manual-budget models are unchanged.
+  const adaptive = usesAdaptiveThinking(modelId);
+  const anthropic = (
+    adaptive ? anthropicAdaptiveThinkingOptions() : anthropicThinkingOptions(budget)
+  ) as CloudJsonObject;
   return {
     providerOptions: {
       anthropic,
+      ...(adaptive ? { openai: openRouterAdaptiveThinkingOptions() } : {}),
     },
   };
 }

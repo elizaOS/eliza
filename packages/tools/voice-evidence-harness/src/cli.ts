@@ -9,7 +9,10 @@
  *   1. starts the reference §7 server wired to the REAL merged adapters + LIVE keys,
  *   2. drives a real WS voice turn with a real spoken WAV fixture,
  *   3. captures EVERY DoD artifact into
- *      ~/.moltbot/projects/eliza-fleet/evidence/voice-e2e/<timestamp>/<scenario>/,
+ *      ~/.moltbot/projects/eliza-fleet/evidence/voice-e2e/<timestamp>/<scenario>/
+ *      (evidence root and secrets dir are overridable via VOICE_EVIDENCE_ROOT /
+ *      VOICE_EVIDENCE_SECRETS_DIR — see paths.ts; tests use those to keep runs
+ *      out of the real user home, #16180),
  *   4. asserts post-interrupt frame count == 0 (barge-in),
  *   5. FAILS LOUDLY (non-zero exit) if any required stage/artifact is missing.
  */
@@ -20,6 +23,7 @@ import { join } from "node:path";
 import { type ClientRunResult, runClient } from "./client.ts";
 import { Evidence, type StageName } from "./evidence.ts";
 import { assembleMp4, ensureFfmpeg } from "./mp4.ts";
+import { evidenceRoot, secretPath } from "./paths.ts";
 import { startRealTarget } from "./real/real-target.ts";
 import {
   type DomainRow,
@@ -31,9 +35,6 @@ import { parseWav, writeWav } from "./wav.ts";
 type Target = "reference" | "real";
 
 const HARNESS_DIR = new URL("..", import.meta.url).pathname;
-function evidenceRoot(): string {
-  return join(homedir(), ".moltbot/projects/eliza-fleet/evidence/voice-e2e");
-}
 
 type Scenario = "baseline" | "bargein" | "error-auth";
 
@@ -53,14 +54,8 @@ function loadSecret(path: string, field: string): string {
 }
 
 function providerConfig(): ProviderConfig {
-  const deepgramApiKey = loadSecret(
-    join(homedir(), ".moltbot/secrets/deepgram.json"),
-    "api_key",
-  );
-  const cartesiaApiKey = loadSecret(
-    join(homedir(), ".moltbot/secrets/cartesia.json"),
-    "api_key",
-  );
+  const deepgramApiKey = loadSecret(secretPath("deepgram"), "api_key");
+  const cartesiaApiKey = loadSecret(secretPath("cartesia"), "api_key");
   const llmApiKey = process.env.OPENROUTER_API_KEY;
   if (!llmApiKey)
     throw new Error("OPENROUTER_API_KEY not set (harness LLM leg)");

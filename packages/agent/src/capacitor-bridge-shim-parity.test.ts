@@ -15,7 +15,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expectTypeOf, it } from "vitest";
 import type {
   AndroidCoreRouteDeps,
   AndroidDispatchRoute,
@@ -34,84 +34,48 @@ type RealAgentRuntime = typeof import("./runtime/index.ts");
 type RealLocalInferenceRuntime =
   typeof import("../../../plugins/plugin-local-inference/src/runtime/index.ts");
 
-/**
- * Compile-time-only assignability probe: instantiating it with a `_From` that
- * does not extend `To` is a type error. The exported aliases below are the
- * actual assertions; they carry no runtime cost.
- */
-type AssertAssignable<To, _From extends To> = never;
-
-// ── @elizaos/agent (root) — Android bridge contract ─────────────────────────
-// `loadAgentModule` in android/bridge.ts casts the dynamic root import to the
-// same member types the agent-root shim declares.
-export type StartElizaParity = AssertAssignable<
-  ShimAgentRoot["startEliza"],
-  RealAgentRoot["startEliza"]
->;
-export type RootDispatchRouteParity = AssertAssignable<
-  ShimAgentRoot["dispatchRoute"],
-  RealAgentRoot["dispatchRoute"]
->;
-export type ConfigFileExistsParity = AssertAssignable<
-  ShimAgentRoot["configFileExists"],
-  RealAgentRoot["configFileExists"]
->;
-export type LoadElizaConfigParity = AssertAssignable<
-  ShimAgentRoot["loadElizaConfig"],
-  RealAgentRoot["loadElizaConfig"]
->;
-export type SaveElizaConfigParity = AssertAssignable<
-  ShimAgentRoot["saveElizaConfig"],
-  RealAgentRoot["saveElizaConfig"]
->;
-export type HasPersistedFirstRunStateParity = AssertAssignable<
-  ShimAgentRoot["hasPersistedFirstRunState"],
-  RealAgentRoot["hasPersistedFirstRunState"]
->;
-
-// The Android dispatch/core-route types are the bridge's own vocabulary for
-// the same members; pin the real exports against them directly too so a drift
-// in either the shim or the bridge contract is caught.
-export type AndroidDispatchParity = AssertAssignable<
-  AndroidDispatchRoute,
-  RealAgentApi["dispatchRoute"]
->;
-export type AndroidCoreRouteDepsParity = AssertAssignable<
-  AndroidCoreRouteDeps,
-  Pick<
-    RealAgentRoot,
-    | "configFileExists"
-    | "loadElizaConfig"
-    | "saveElizaConfig"
-    | "hasPersistedFirstRunState"
-  >
->;
-
-// ── @elizaos/agent/api — shared dispatchRoute contract ───────────────────────
-export type ApiDispatchRouteParity = AssertAssignable<
-  ShimAgentApi["dispatchRoute"],
-  RealAgentApi["dispatchRoute"]
->;
-
-// ── @elizaos/agent/runtime — iOS bridge contract ────────────────────────────
-export type BootElizaRuntimeParity = AssertAssignable<
-  ShimAgentRuntime["bootElizaRuntime"],
-  RealAgentRuntime["bootElizaRuntime"]
->;
-
-// ── @elizaos/plugin-local-inference/runtime — router install contract ───────
-// The android bridge invokes `installRouterHandler(runtime, {})` with the
-// booted AgentRuntime; the real export must keep accepting exactly that call.
-export type InstallRouterHandlerParity = AssertAssignable<
-  (runtime: AgentRuntime, options: Record<string, never>) => void,
-  RealLocalInferenceRuntime["installRouterHandler"]
->;
-
 describe("capacitor-bridge shim parity (#15850)", () => {
-  it("is enforced at compile time — this file failing to typecheck IS the signal", () => {
-    // The type aliases above are the assertions; tsgo/tsc rejects this file
-    // (and the agent typecheck lane fails) the moment a real export drifts
-    // from the bridge's shim contract.
-    expect(true).toBe(true);
+  it("keeps real bridge exports assignable to their shim contracts", () => {
+    expectTypeOf<RealAgentRoot["startEliza"]>().toMatchTypeOf<
+      ShimAgentRoot["startEliza"]
+    >();
+    expectTypeOf<RealAgentRoot["dispatchRoute"]>().toMatchTypeOf<
+      ShimAgentRoot["dispatchRoute"]
+    >();
+    expectTypeOf<RealAgentRoot["configFileExists"]>().toMatchTypeOf<
+      ShimAgentRoot["configFileExists"]
+    >();
+    expectTypeOf<RealAgentRoot["loadElizaConfig"]>().toMatchTypeOf<
+      ShimAgentRoot["loadElizaConfig"]
+    >();
+    expectTypeOf<RealAgentRoot["saveElizaConfig"]>().toMatchTypeOf<
+      ShimAgentRoot["saveElizaConfig"]
+    >();
+    expectTypeOf<RealAgentRoot["hasPersistedFirstRunState"]>().toMatchTypeOf<
+      ShimAgentRoot["hasPersistedFirstRunState"]
+    >();
+    expectTypeOf<
+      RealAgentApi["dispatchRoute"]
+    >().toMatchTypeOf<AndroidDispatchRoute>();
+    expectTypeOf<
+      Pick<
+        RealAgentRoot,
+        | "configFileExists"
+        | "loadElizaConfig"
+        | "saveElizaConfig"
+        | "hasPersistedFirstRunState"
+      >
+    >().toMatchTypeOf<AndroidCoreRouteDeps>();
+    expectTypeOf<RealAgentApi["dispatchRoute"]>().toMatchTypeOf<
+      ShimAgentApi["dispatchRoute"]
+    >();
+    expectTypeOf<RealAgentRuntime["bootElizaRuntime"]>().toMatchTypeOf<
+      ShimAgentRuntime["bootElizaRuntime"]
+    >();
+    expectTypeOf<
+      RealLocalInferenceRuntime["installRouterHandler"]
+    >().toMatchTypeOf<
+      (runtime: AgentRuntime, options: Record<string, never>) => void
+    >();
   });
 });

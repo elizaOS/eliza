@@ -25,6 +25,28 @@ function fakeRedis(state: { count: number; ttl: number | null }) {
       calls.push("pttl");
       return state.ttl ?? -1;
     },
+    pipeline: () => {
+      const operations: Array<"incr" | "pttl"> = [];
+      const pipeline = {
+        incr: () => {
+          operations.push("incr");
+          return pipeline;
+        },
+        pttl: () => {
+          operations.push("pttl");
+          return pipeline;
+        },
+        exec: async () => {
+          calls.push("pipeline.exec");
+          const results: number[] = [];
+          for (const operation of operations) {
+            results.push(operation === "incr" ? await redis.incr() : await redis.pttl());
+          }
+          return results;
+        },
+      };
+      return pipeline;
+    },
   } as unknown as CompatibleRedis;
   return { redis, calls, state };
 }
@@ -64,5 +86,18 @@ describe("checkUpstash — orphaned-counter self-heal", () => {
     expect(result.allowed).toBe(false);
     expect(result.retryAfter).toBeGreaterThan(0);
     expect(result.retryAfter).toBeLessThanOrEqual(60);
+  });
+
+  it("flushes a full local lease in one pipeline exchange", async () => {
+    const { redis, calls, state } = fakeRedis({ count: 10, ttl: 30_000 });
+    const result = await checkUpstash(redis, "api-key", 60_000, 600, {
+      carriedCount: 40,
+    });
+
+    expect(result.allowed).toBe(true);
+    expect(state.count).toBe(51);
+    expect(calls.filter((call) => call === "pipeline.exec")).toHaveLength(1);
+    expect(calls.filter((call) => call === "pttl")).toHaveLength(1);
+    expect(calls.filter((call) => call === "incr")).toHaveLength(41);
   });
 });

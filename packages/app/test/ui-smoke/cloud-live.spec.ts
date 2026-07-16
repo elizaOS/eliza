@@ -18,6 +18,7 @@
 // only into the nightly/dispatch app-live-e2e.yml workflow.
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { seedCloudLiveBrowserAuth } from "../cloud-live-browser-auth";
 import { assertOnboardingLiveness } from "../liveness-contract";
 import { openAppPath, seedAppStorage } from "./helpers";
 
@@ -27,6 +28,11 @@ const CLOUD_LIVE_ENABLED =
 const HAS_CLOUD_KEY = Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
 
 const PROVISION_TIMEOUT_MS = 180_000;
+
+// This lane deliberately places a real Cloud bearer in browser storage. A
+// Playwright trace records init-script arguments and request headers, so never
+// retain a trace that could publish the credential in the uploaded artifact.
+test.use({ trace: "off" });
 
 async function clickIfVisible(
   locator: Locator,
@@ -80,6 +86,10 @@ test.describe("real cloud login + provisioning + chat", () => {
   test("provisions a real cloud agent from onboarding and chats with it", async ({
     page,
   }) => {
+    expect(
+      await seedCloudLiveBrowserAuth(page),
+      "Cloud-live mode must hand its validated workflow bearer to the browser",
+    ).toBe(true);
     await seedAppStorage(page, { "eliza:first-run-complete": "" });
     await page.goto("/", { waitUntil: "domcontentloaded" });
 

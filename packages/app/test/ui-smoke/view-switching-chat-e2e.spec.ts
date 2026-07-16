@@ -1,55 +1,10 @@
-// End-to-end coverage for AGENT-DRIVEN VIEW SWITCHING: a chat command (ACTIVE
-// navigation) or an intent-only message (PASSIVE routing) makes the renderer
-// switch the active view.
-//
-// WHY THIS SPEC EXISTS (the gap it closes):
-// The existing coverage proves the two halves of the view-switch seam in
-// isolation but never the whole pipe end to end:
-//   * scenario-runner (deterministic-view-switching) drives the REAL VIEWS
-//     action but stops at the loopback navigate POST — it never renders a UI.
-//   * The UI unit tests (app-navigate-view*, App.navigate-view-wiring,
-//     startup-phase-hydrate.navigate-frame) synthesize the WS frame / DOM event
-//     directly against a mocked App — they never run the real renderer shell.
-// This spec joins them: it drives the REAL composer/send surface, then exercises
-// the REAL renderer wiring — `client.onWsEvent("shell:navigate:view")` →
-// `eliza:navigate:view` DOM event (startup-phase-hydrate.ts:431) →
-// `createNavigateViewHandler` (app-navigate-view.ts) → `ViewRouter` +
-// `useNavigationPathSync` (App.tsx) — and asserts the active view actually
-// changed (URL + on-view marker).
-//
-// TWO TIERS (one always-on, one opt-in), so the spec is meaningful in CI and
-// becomes a true black-box agent test when a provider key is present:
-//
-//   1. DETERMINISTIC tier (default lane — the keyless stub):
-//      The stub returns a deterministic chat fixture but does NOT emit a
-//      `shell:navigate:view` WS frame (see playwright-ui-smoke-api-stub.mjs
-//      classifyAssistantAction — it only encodes the intended target as JSON
-//      text). So we (a) send the real command through the composer to prove the
-//      command surface, then (b) deterministically deliver the EXACT
-//      `eliza:navigate:view` payload the renderer's WS handler emits for that
-//      command — the precise normalized event from startup-phase-hydrate.ts:431
-//      — and assert the renderer switched. This drives the entire renderer-side
-//      navigate pipeline against the live app shell, not a mock.
-//
-//   2. LIVE tier (ELIZA_UI_SMOKE_LIVE_STACK=1 + provider key):
-//      No synthetic dispatch. The real agent runs the VIEWS action, the backend
-//      route broadcasts `shell:navigate:view` over the WS, and we assert the
-//      renderer switched. This proves the full black-box chat → agent → VIEWS →
-//      broadcast → renderer seam.
-//
-// NAVIGATION CONTRACT NOTES (verified against source, load-bearing for asserts):
-//   * `/inbox`, `/calendar` are registered plugin views: tabFromPath() returns
-//     "views" and ViewRouter mounts the dynamic bundle whose heading is the view
-//     label ("Inbox" / "Calendar"). (navigation/index.ts:495, App.tsx
-//     findRemoteViewForRoute)
-//   * `/character/documents` maps to the built-in documents/knowledge subtab,
-//     which embeds DocumentsView inside CharacterEditor.
-//   * `/wallet` maps to the `inventory` tab (TAB_PATHS.inventory === "/wallet").
-//   * `/settings` maps to the `settings` tab (settings-shell).
-//   * `/task-coordinator` is the coding view (resolveIntentView maps app/feature
-//     intent there). The PASSIVE coding case is asserted by URL — the
-//     cross-mode-stable signal navigatePath() sets — to keep the deterministic
-//     and live tiers identical.
+/**
+ * Drives chat commands through view resolution and asserts both the resulting
+ * route and a marker from the mounted view. The keyless tier injects the
+ * renderer's normalized event; the live tier uses the real agent and VIEWS.
+ * A websocket-withheld lane requires terminal action-result recovery over HTTP,
+ * so a backend switch cannot masquerade as a renderer switch.
+ */
 
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import {
@@ -59,6 +14,10 @@ import {
 } from "./helpers";
 
 const LIVE_STACK = process.env.ELIZA_UI_SMOKE_LIVE_STACK === "1";
+const BLOCK_WEBSOCKET = process.env.ELIZA_UI_SMOKE_BLOCK_WEBSOCKET === "1";
+const routedWebSocketCounts = new WeakMap<Page, number>();
+const blockedNavigateFrameCounts = new WeakMap<Page, number>();
+const currentViewReadCounts = new WeakMap<Page, number>();
 
 const CHAT_COMPOSER_SELECTOR =
   '[data-testid="chat-composer-textarea"], textarea[aria-label="message"]';
@@ -512,53 +471,111 @@ async function createAndActivateLiveConversationForCase(
   page: Page,
   testCase: ViewSwitchCase,
 ): Promise<void> {
-  if (!LIVE_STACK) return;
+  if (!LIVE_STACK) {
+    await openAppPath(page, "/chat");
+    return;
+  }
 
-  const response = await page.evaluate(
-    async (payload) => {
-      const createResponse = await fetch("/api/conversations", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      return {
-        ok: createResponse.ok,
-        status: createResponse.status,
-        text: await createResponse.text(),
-      };
-    },
-    {
-      title: `view-switch: ${testCase.view.id}`,
-    },
-  );
+  const response = await page.request.post("/api/conversations", {
+    data: { title: `view-switch: ${testCase.view.id}` },
+  });
+  const responseText = await response.text();
   expect(
-    response.ok,
-    `live runtime should create an isolated chat (status=${response.status}, body=${response.text.slice(0, 500)})`,
+    response.ok(),
+    `live runtime should create an isolated chat (status=${response.status()}, body=${responseText.slice(0, 500)})`,
   ).toBe(true);
-  const body = JSON.parse(response.text) as ApiConversationResponse;
+  const body = JSON.parse(responseText) as ApiConversationResponse;
   const conversationId = body.conversation?.id?.trim();
   expect(conversationId, "created live conversation id").toBeTruthy();
 
-  await page.evaluate((id) => {
-    localStorage.setItem("eliza:chat:activeConversationId", id);
-  }, conversationId);
+  // Seed before the first document load: the active-conversation key is shell
+  // state and the surface-realm guard correctly rejects raw writes after a view
+  // owns the host realm.
+  await seedAppStorage(page, {
+    "eliza:chat:activeConversationId": conversationId as string,
+  });
   await openAppPath(page, "/chat");
   await expect(chatComposer(page)).toBeVisible({ timeout: 60_000 });
+  // The global composer paints before conversation hydration finishes. Sending
+  // while its index is still -1 makes useChatSend create a different draft and
+  // turns this into a race against startup instead of a switching proof.
+  await expect(page.getByTestId("chat-sheet")).not.toHaveAttribute(
+    "data-conversation-index",
+    "-1",
+    { timeout: 60_000 },
+  );
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() =>
+          localStorage.getItem("eliza:chat:activeConversationId"),
+        ),
+      {
+        timeout: 60_000,
+        message: "the isolated live conversation should finish hydrating",
+      },
+    )
+    .toBe(conversationId);
 }
 
 test.beforeEach(async ({ page }) => {
   // Land on the chat surface in the full-shell mode so the composer is present
   // and the navigate handler runs against the real ViewRouter.
-  await seedAppStorage(page);
+  currentViewReadCounts.set(page, 0);
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname !== "/api/views/current") return;
+    const count = currentViewReadCounts.get(page);
+    if (count === undefined) {
+      throw new Error("Current-view request counter was not initialized");
+    }
+    currentViewReadCounts.set(page, count + 1);
+  });
+  if (BLOCK_WEBSOCKET) {
+    routedWebSocketCounts.set(page, 0);
+    blockedNavigateFrameCounts.set(page, 0);
+    await page.routeWebSocket(
+      (url) => url.pathname === "/ws",
+      (socket) => {
+        const count = routedWebSocketCounts.get(page);
+        if (count === undefined) {
+          throw new Error("Routed WebSocket counter was not initialized");
+        }
+        routedWebSocketCounts.set(page, count + 1);
+
+        const server = socket.connectToServer();
+        server.onMessage((message) => {
+          if (
+            typeof message === "string" &&
+            message.includes("shell:navigate:view")
+          ) {
+            const blockedCount = blockedNavigateFrameCounts.get(page);
+            if (blockedCount === undefined) {
+              throw new Error(
+                "Blocked navigate-frame counter was not initialized",
+              );
+            }
+            blockedNavigateFrameCounts.set(page, blockedCount + 1);
+            return;
+          }
+          // Preserve the rest of the socket lifecycle so this lane isolates the
+          // navigation handoff instead of changing unrelated shell readiness.
+          socket.send(message);
+        });
+      },
+    );
+  }
+  if (!LIVE_STACK) await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 });
 
 for (const testCase of VIEW_SWITCH_CASES) {
-  test(testCase.name, async ({ page }) => {
+  test(testCase.name, async ({ page }, testInfo) => {
     await ensureLiveViewRegisteredForCase(page, testCase);
-    await openAppPath(page, "/chat");
     await createAndActivateLiveConversationForCase(page, testCase);
+    const currentViewReadsBeforeCommand = currentViewReadCounts.get(page);
+    if (currentViewReadsBeforeCommand === undefined) {
+      throw new Error("Current-view request counter was not initialized");
+    }
 
     // 1) Drive the real command surface: type + send the user's message.
     await sendChatCommand(page, testCase.command, testCase.expectedPath);
@@ -581,6 +598,46 @@ for (const testCase of VIEW_SWITCH_CASES) {
 
     // 3) Assert the renderer actually switched the active view.
     await assertViewSwitched(page, testCase);
+
+    if (LIVE_STACK && BLOCK_WEBSOCKET) {
+      const routedSockets = routedWebSocketCounts.get(page) ?? 0;
+      const blockedNavigateFrames = blockedNavigateFrameCounts.get(page) ?? 0;
+      const currentViewReadsAfterCommand = currentViewReadCounts.get(page) ?? 0;
+      expect(
+        routedSockets,
+        "the browser socket must be routed through the frame interceptor",
+      ).toBeGreaterThan(0);
+      expect(
+        blockedNavigateFrames,
+        "the backend navigate frame must be observed and withheld from the page",
+      ).toBeGreaterThan(0);
+      expect(
+        currentViewReadsAfterCommand,
+        "the streamed VIEWS result must recover canonical navigation over HTTP",
+      ).toBeGreaterThan(currentViewReadsBeforeCommand);
+      await testInfo.attach("websocket-withheld-proof.json", {
+        contentType: "application/json",
+        body: Buffer.from(
+          JSON.stringify(
+            {
+              command: testCase.command,
+              expectedPath: testCase.expectedPath,
+              finalUrl: page.url(),
+              routedSockets,
+              blockedNavigateFrames,
+              currentViewReadsBeforeCommand,
+              currentViewReadsAfterCommand,
+            },
+            null,
+            2,
+          ),
+        ),
+      });
+      await testInfo.attach("inbox-after-http-recovery.png", {
+        contentType: "image/png",
+        body: await page.screenshot({ fullPage: true }),
+      });
+    }
   });
 }
 

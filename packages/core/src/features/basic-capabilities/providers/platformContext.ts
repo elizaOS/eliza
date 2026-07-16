@@ -216,15 +216,37 @@ function filterContextRelevantConnectors(
 	source: string | undefined,
 	activeContexts: AgentContext[],
 ): MessageConnector[] {
-	const sourceMatches = connectors.filter((connector) =>
-		connectorMatchesSource(connector, source),
+	const sourceMatches = dropShadowedLegacyConnectors(
+		connectors.filter((connector) => connectorMatchesSource(connector, source)),
 	);
 	if (source) {
 		return sourceMatches;
 	}
 
-	return connectors.filter((connector) =>
-		connectorMatchesExplicitContext(connector, activeContexts),
+	return dropShadowedLegacyConnectors(
+		connectors.filter((connector) =>
+			connectorMatchesExplicitContext(connector, activeContexts),
+		),
+	);
+}
+
+/**
+ * Drop an accountId-less connector when an account-scoped connector with the
+ * same source is present. Connector plugins register both a legacy unscoped
+ * entry and one entry per account; the pair answers every context hook with
+ * byte-identical work, so keeping both doubles the per-turn connector cost
+ * (observed live: two serial Discord history round-trips per turn).
+ */
+function dropShadowedLegacyConnectors(
+	connectors: MessageConnector[],
+): MessageConnector[] {
+	const scopedSources = new Set(
+		connectors
+			.filter((connector) => connector.accountId)
+			.map((connector) => connector.source),
+	);
+	return connectors.filter(
+		(connector) => connector.accountId || !scopedSources.has(connector.source),
 	);
 }
 
@@ -338,27 +360,35 @@ export const platformChatContextProvider: Provider = {
 			activeContexts,
 		);
 		const target = buildCurrentTarget(message, room, source);
-		const contexts: Record<string, ProviderValue>[] = [];
-
-		for (const connector of relevantConnectors) {
-			try {
-				const context = await connector.getChatContext?.(target, queryContext);
-				if (!context) {
-					continue;
-				}
-				contexts.push(normalizeChatContext(connector, context));
-			} catch (error) {
-				runtime.logger.debug(
-					{
-						src: "provider:platformChatContext",
-						agentId: runtime.agentId,
-						connector: connector.source,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Message connector chat context hook failed",
-				);
-			}
-		}
+		// Connector hooks run concurrently: each may do its own I/O, and this
+		// provider sits on the Stage-1 critical path — serializing them stacks
+		// every connector's round-trip into the turn floor.
+		const contexts: Record<string, ProviderValue>[] = (
+			await Promise.all(
+				relevantConnectors.map(async (connector) => {
+					try {
+						const context = await connector.getChatContext?.(
+							target,
+							queryContext,
+						);
+						return context ? normalizeChatContext(connector, context) : null;
+					} catch (error) {
+						runtime.logger.debug(
+							{
+								src: "provider:platformChatContext",
+								agentId: runtime.agentId,
+								connector: connector.source,
+								error: error instanceof Error ? error.message : String(error),
+							},
+							"Message connector chat context hook failed",
+						);
+						return null;
+					}
+				}),
+			)
+		).filter(
+			(context): context is Record<string, ProviderValue> => context !== null,
+		);
 
 		if (contexts.length === 0) {
 			return emptyResult({
@@ -443,30 +473,33 @@ export const platformUserContextProvider: Provider = {
 			source,
 			activeContexts,
 		);
-		const users: Record<string, ProviderValue>[] = [];
-
-		for (const connector of relevantConnectors) {
-			try {
-				const context = await connector.getUserContext?.(
-					message.entityId,
-					queryContext,
-				);
-				if (!context) {
-					continue;
-				}
-				users.push(normalizeUserContext(connector, context));
-			} catch (error) {
-				runtime.logger.debug(
-					{
-						src: "provider:platformUserContext",
-						agentId: runtime.agentId,
-						connector: connector.source,
-						error: error instanceof Error ? error.message : String(error),
-					},
-					"Message connector user context hook failed",
-				);
-			}
-		}
+		// Concurrent for the same reason as the chat-context hooks above.
+		const users: Record<string, ProviderValue>[] = (
+			await Promise.all(
+				relevantConnectors.map(async (connector) => {
+					try {
+						const context = await connector.getUserContext?.(
+							message.entityId,
+							queryContext,
+						);
+						return context ? normalizeUserContext(connector, context) : null;
+					} catch (error) {
+						runtime.logger.debug(
+							{
+								src: "provider:platformUserContext",
+								agentId: runtime.agentId,
+								connector: connector.source,
+								error: error instanceof Error ? error.message : String(error),
+							},
+							"Message connector user context hook failed",
+						);
+						return null;
+					}
+				}),
+			)
+		).filter(
+			(context): context is Record<string, ProviderValue> => context !== null,
+		);
 
 		if (users.length === 0) {
 			return emptyResult({

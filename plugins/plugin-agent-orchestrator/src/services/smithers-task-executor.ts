@@ -5,6 +5,7 @@
  * coupling the runner to AcpService internals.
  */
 
+import { ElizaError } from "@elizaos/core";
 import type {
   TaskApprovalResult,
   TaskProvisionResult,
@@ -65,6 +66,9 @@ export function detectTurnDone(result: {
   if (result.error) return false;
   const reason = (result.stopReason ?? "").toLowerCase();
   if (
+    reason === "error" ||
+    reason === "cancelled" ||
+    reason === "stopped" ||
     reason.includes("max") ||
     reason.includes("length") ||
     reason.includes("interrupt")
@@ -131,8 +135,30 @@ export class SmithersTaskExecutor implements TaskStepExecutor {
         : (this.opts.continuePrompt ??
           "Continue working on the task. Reply when complete.");
     const result = await this.acp.sendPrompt(sessionId, prompt);
-    if (result.error) {
-      this.lastError = new Error(result.error);
+    const stopReason = (result.stopReason ?? "").toLowerCase();
+    if (
+      result.error ||
+      stopReason === "error" ||
+      stopReason === "cancelled" ||
+      stopReason === "stopped"
+    ) {
+      const message =
+        result.error ??
+        (stopReason === "cancelled"
+          ? "ACP task prompt was cancelled"
+          : stopReason === "stopped"
+            ? "ACP task prompt was stopped"
+            : "ACP task prompt failed");
+      this.lastError = new ElizaError(message, {
+        code:
+          stopReason === "cancelled"
+            ? "ACP_TASK_PROMPT_CANCELLED"
+            : stopReason === "stopped"
+              ? "ACP_TASK_PROMPT_STOPPED"
+              : "ACP_TASK_PROMPT_FAILED",
+        context: { sessionId, stopReason: result.stopReason },
+        severity: "ephemeral",
+      });
       throw this.lastError;
     }
     this.lastResponse =

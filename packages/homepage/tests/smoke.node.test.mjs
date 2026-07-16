@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const marketingPath = resolve(__dirname, "../src/pages/marketing.tsx");
 const globalStylesPath = resolve(__dirname, "../src/index.css");
+const iphoneModelPath = resolve(__dirname, "../public/models/iphone.glb");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
@@ -24,6 +25,11 @@ test("marketing.tsx exports a default function component", () => {
     /export\s+default\s+function\s+\w+/,
     "expected `export default function ...` in marketing.tsx",
   );
+});
+
+test("leaderboard ships its iPhone GLB model", () => {
+  const model = readFileSync(iphoneModelPath);
+  assert.equal(model.subarray(0, 4).toString("ascii"), "glTF");
 });
 
 test("reduced-motion keeps functional loading indicators animated", () => {

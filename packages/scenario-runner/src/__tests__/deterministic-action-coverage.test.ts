@@ -79,12 +79,13 @@ const CORE_ACTION_SURFACE: Record<string, readonly string[]> = {
   ],
   "@elizaos/plugin-coding-tools": ["FILE", "SHELL", "WORKTREE"],
   "@elizaos/plugin-commands": [
+    "ACCOUNTS_COMMAND",
+    "BACKEND_COMMAND",
     "COMMANDS_COMMAND",
     "COMPACT_COMMAND",
     "CONTEXT_COMMAND",
     "ELEVATED_COMMAND",
     "HELP_COMMAND",
-    "MODELS_COMMAND",
     "MODEL_COMMAND",
     "NEW_COMMAND",
     "QUEUE_COMMAND",
@@ -230,16 +231,16 @@ const KNOWN_UNCOVERED: readonly string[] = [
   "SMARTGLASSES_DISPLAY_TEXT",
   "SMARTGLASSES_MICROPHONE",
   "SMARTGLASSES_STATUS",
-  // plugin-commands slash-command actions (/help, /status, /models, /reset,
-  // /compact, /think, /model, /tts, …) are dispatched through the command
-  // palette, not the keyless scenario pipeline, so they have no deterministic
-  // scenario yet.
+  // plugin-commands slash-command actions (/help, /status, /reset, /compact,
+  // /think, /model, /tts, …) are dispatched through the command palette, not
+  // the keyless scenario pipeline, so they have no deterministic scenario yet.
+  "ACCOUNTS_COMMAND",
+  "BACKEND_COMMAND",
   "COMMANDS_COMMAND",
   "COMPACT_COMMAND",
   "CONTEXT_COMMAND",
   "ELEVATED_COMMAND",
   "HELP_COMMAND",
-  "MODELS_COMMAND",
   "MODEL_COMMAND",
   "NEW_COMMAND",
   "QUEUE_COMMAND",

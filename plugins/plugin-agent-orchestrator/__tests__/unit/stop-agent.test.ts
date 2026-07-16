@@ -18,17 +18,19 @@ const stopOptions = { parameters: { action: "stop_agent" } };
 describe("TASKS:stop_agent", () => {
   it("stops a specific session", async () => {
     const svc = serviceMock();
-    expect(
-      (
-        await stopAgentAction.handler(
-          runtimeWith(svc),
-          memory({ sessionId: "abcdef123456" }),
-          state,
-          stopOptions,
-          callback(),
-        )
-      )?.data,
-    ).toMatchObject({ sessionId: "abcdef123456", agentType: "codex" });
+    const result = await stopAgentAction.handler(
+      runtimeWith(svc),
+      memory({ sessionId: "abcdef123456" }),
+      state,
+      stopOptions,
+      callback(),
+    );
+    expect(result?.success).toBe(true);
+    expect(result?.data).toMatchObject({
+      sessionId: "abcdef123456",
+      agentType: "codex",
+    });
+    expect(svc.stopSession).toHaveBeenCalledWith("abcdef123456");
   });
   it("stops all sessions when all=true", async () => {
     const svc = serviceMock();

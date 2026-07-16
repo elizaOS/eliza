@@ -72,8 +72,8 @@ describe("selectLiveProvider", () => {
   });
 
   it("accepts ELIZA_E2E_GROQ_API_KEY alias and propagates it under GROQ_API_KEY", async () => {
-    // CI-only scoped alias: scenario-matrix.yml sets ELIZA_E2E_GROQ_API_KEY
-    // but the runtime plugin reads GROQ_API_KEY.
+    // Credentialed CI lanes may expose the scoped alias while the runtime
+    // plugin consumes the canonical provider key.
     vi.stubEnv("GROQ_API_KEY", "");
     vi.stubEnv("ELIZA_E2E_GROQ_API_KEY", "gsk_test_valid_for_groq");
 

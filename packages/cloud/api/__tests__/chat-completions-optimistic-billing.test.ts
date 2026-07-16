@@ -91,13 +91,53 @@ const createCreditReservationSettler = mock(() => async () => null);
 
 // Auth: resolve straight to an authorized org user via the hot-path resolver so
 // the org-credits branch (not app-credits) is taken and moderation is skipped.
+type AuthResolveOptions = NonNullable<
+  Parameters<typeof inferenceAuthContextActual.resolveInferenceAuthContext>[1]
+>;
+const authResolveOptions: AuthResolveOptions[] = [];
+const resolveInferenceAuthContext = mock(
+  async (_request: Request, options: AuthResolveOptions = {}) => {
+    authResolveOptions.push(options);
+    options.onTelemetry?.({
+      v: 1,
+      traceId: "11111111-1111-4111-8111-111111111111",
+      authSource: "x_api_key",
+      controlledProbe: "off",
+      cacheAvailability: "available",
+      cacheBackend: "cloudflare_kv",
+      cacheRead: "hit",
+      authoritative: "not_run",
+      cacheWrite: "not_run",
+      result: "authorized_cache",
+      timings: {
+        extractMs: 0.1,
+        cacheAvailabilityMs: 0.1,
+        cacheReadMs: 1,
+        keyLookupMs: null,
+        userOrgLookupMs: null,
+        moderationMs: null,
+        cacheWriteMs: null,
+        totalMs: 1.2,
+      },
+    });
+    return {
+      kind: "authorized" as const,
+      source: "cache" as const,
+      ctx: {
+        v: 1 as const,
+        cachedAt: Date.now(),
+        userId: USER,
+        orgId: ORG,
+        apiKeyId: API_KEY_ID,
+        keyHash: "a".repeat(64),
+      },
+    };
+  },
+);
 mock.module("@/lib/services/inference-auth-context", () => ({
   ...inferenceAuthContextActual,
   isInferenceHotPathCacheEnabled: () => true,
-  resolveInferenceAuthContext: async () => ({
-    kind: "authorized",
-    ctx: { userId: USER, orgId: ORG, apiKeyId: API_KEY_ID },
-  }),
+  resolveInferenceAuthContext,
 }));
 
 // Provider config: pretend a provider is configured; the model object is unused
@@ -204,9 +244,11 @@ mock.module("ai", () => ({
 }));
 
 // Import the route AFTER the mocks so it binds to the stubs.
-const { handleChatCompletionsPOST } = await import(
-  "../v1/chat/completions/route"
-);
+const { default: chatCompletionsRouter, handleChatCompletionsPOST } =
+  await import("../v1/chat/completions/route");
+const { __responsesRouteTestHooks } = await import("../v1/responses/route");
+const { buildChatRequest, mapChatCompletionToResponse, toChatMessages } =
+  __responsesRouteTestHooks;
 
 afterAll(() => {
   mock.module("ai", () => aiActual);
@@ -241,12 +283,14 @@ afterAll(() => {
 function makeRequest(
   affiliateCode?: string,
   overrides: Record<string, unknown> = {},
+  url = "https://api.test/api/v1/chat/completions",
 ): Request {
-  return new Request("https://api.test/api/v1/chat/completions", {
+  return new Request(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-request-id": CLIENT_REQUEST_ID,
+      "x-eliza-trace-id": "11111111-1111-4111-8111-111111111111",
       ...(affiliateCode ? { "X-Affiliate-Code": affiliateCode } : {}),
     },
     body: JSON.stringify({
@@ -258,10 +302,10 @@ function makeRequest(
   });
 }
 
-async function drive(affiliateCode?: string): Promise<void> {
+async function drive(affiliateCode?: string): Promise<Response> {
   // The handler owns its try/catch and always returns a Response (the stubbed
   // model call makes it an error response); we only read the spies.
-  await handleChatCompletionsPOST(makeRequest(affiliateCode), {
+  return await handleChatCompletionsPOST(makeRequest(affiliateCode), {
     skipOrgRateLimit: true,
   });
 }
@@ -298,6 +342,8 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     createLedgerDebitSettler.mockClear();
     ledgerInnerSettler.mockClear();
     createCreditReservationSettler.mockClear();
+    authResolveOptions.length = 0;
+    resolveInferenceAuthContext.mockClear();
     generateText.mockClear();
     streamText.mockClear();
   });
@@ -319,6 +365,22 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     });
   });
 
+  test("provider errors preserve the exact frozen preforward boundary", async () => {
+    const response = await drive();
+
+    expect(response.status).toBeGreaterThanOrEqual(400);
+    expect(response.headers.get("X-Eliza-Trace-Id")).toBe(
+      "11111111-1111-4111-8111-111111111111",
+    );
+    const preforward = response.headers.get("X-Eliza-Preforward-Ms");
+    expect(preforward).toMatch(
+      /^total=\d+(?:\.\d+)?;auth=\d+(?:\.\d+)?;mid=\d+(?:\.\d+)?;reserve=\d+(?:\.\d+)?;setup=\d+(?:\.\d+)?$/,
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "gateway_preforward;dur=",
+    );
+  });
+
   test("eligible org takes the optimistic path: writes backstop, skips the synchronous reserve", async () => {
     await drive();
     // POSITIVE: the decision was reached and chose optimistic.
@@ -326,6 +388,49 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
     expect(createOptimisticDebitSettler).toHaveBeenCalledTimes(1);
     // The synchronous reserve write (the latency we are removing) is skipped.
     expect(reserveCredits).not.toHaveBeenCalled();
+  });
+
+  test("an allowed native route decision reaches the handler and preserves limiter headers", async () => {
+    const keys: string[] = [];
+    const waitUntilPromises: Promise<unknown>[] = [];
+    const response = await chatCompletionsRouter.fetch(
+      makeRequest(undefined, {}, "https://api.test/"),
+      {
+        NODE_ENV: "production",
+        CHAT_ROUTE_RATE_LIMITER: {
+          async limit({ key }: { key: string }) {
+            keys.push(key);
+            return { success: true };
+          },
+        },
+      } as never,
+      {
+        waitUntil(promise: Promise<unknown>) {
+          waitUntilPromises.push(promise);
+        },
+        passThroughOnException() {},
+        props: {},
+      } as never,
+    );
+
+    // The model stub throws after dispatch. A 500 here proves the native gate
+    // allowed the request into the same real route handler exercised below.
+    expect(response.status).toBe(500);
+    expect(keys).toEqual(["public"]);
+    expect(response.headers.get("X-RateLimit-Policy")).toBe(
+      "cloudflare-native",
+    );
+    expect(authResolveOptions).toHaveLength(1);
+    expect(authResolveOptions[0]?.executionCtx).toBeDefined();
+    expect(response.headers.get("X-Eliza-Auth-Trace")).toContain(
+      "result=authorized_cache",
+    );
+    expect(response.headers.get("Server-Timing")).toContain(
+      "auth_resolve;dur=1.2",
+    );
+    expect(generateText).toHaveBeenCalledTimes(1);
+    expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
+    await Promise.all(waitUntilPromises);
   });
 
   test("billing requestId is server-generated, not copied from x-request-id", async () => {
@@ -560,6 +665,100 @@ describe("chat/completions optimistic-billing route decision (#9899/#10066)", ()
       expect(captured).toHaveLength(0);
       expect(writePendingInferenceCharge).toHaveBeenCalledTimes(1);
       expect(reserveCredits).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe("responses compatibility transformations", () => {
+  test("converts instructions and mixed input parts into chat messages", () => {
+    expect(
+      toChatMessages({
+        instructions: " Be concise. ",
+        input: [
+          {
+            role: "assistant",
+            content: [
+              { type: "output_text", output_text: " Prior answer " },
+              { type: "input_text", input_text: "Additional context" },
+            ],
+          },
+          { role: undefined, content: " Follow up " },
+          { role: "tool", content: [] },
+        ],
+      }),
+    ).toEqual([
+      { role: "system", content: "Be concise." },
+      {
+        role: "assistant",
+        content: "Prior answer \nAdditional context",
+      },
+      { role: "user", content: "Follow up" },
+    ]);
+    expect(toChatMessages({ input: " Hello " })).toEqual([
+      { role: "user", content: "Hello" },
+    ]);
+    expect(toChatMessages({ input: undefined })).toEqual([]);
+  });
+
+  test("maps a chat completion without fabricating usage", () => {
+    const mapped = mapChatCompletionToResponse(
+      {
+        id: "resp_existing",
+        model: "provider/model",
+        choices: [{ message: { content: " Hello from the provider " } }],
+        usage: { prompt_tokens: 4, completion_tokens: 3 },
+      },
+      "requested/model",
+    );
+
+    expect(mapped).toMatchObject({
+      id: "resp_existing",
+      object: "response",
+      model: "provider/model",
+      status: "completed",
+      output_text: "Hello from the provider",
+      usage: { input_tokens: 4, output_tokens: 3, total_tokens: 7 },
+    });
+    expect(mapped.output[0]?.content[0]).toEqual({
+      type: "output_text",
+      text: "Hello from the provider",
+    });
+  });
+
+  test("builds a non-streaming compatibility request with caller headers", async () => {
+    const original = new Request("https://cloud.test/api/v1/responses", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer eliza_test_key",
+        "Content-Length": "999",
+        "X-Eliza-Trace-Id": "33333333-3333-4333-8333-333333333333",
+      },
+      body: "{}",
+    });
+    const request = buildChatRequest(
+      original,
+      {
+        model: "provider/model",
+        temperature: 0.2,
+        max_output_tokens: 64,
+        top_p: 0.9,
+      },
+      [{ role: "user", content: "hello" }],
+    );
+
+    expect(request.headers.get("Authorization")).toBe("Bearer eliza_test_key");
+    expect(request.headers.get("Content-Length")).toBeNull();
+    expect(request.headers.get("X-Eliza-Trace-Id")).toBe(
+      "33333333-3333-4333-8333-333333333333",
+    );
+    const chatBody = (await request.json()) as Record<string, unknown>;
+    expect(chatBody).toEqual({
+      model: "provider/model",
+      messages: [{ role: "user", content: "hello" }],
+      temperature: 0.2,
+      max_tokens: 64,
+      top_p: 0.9,
+      stream: false,
     });
   });
 });

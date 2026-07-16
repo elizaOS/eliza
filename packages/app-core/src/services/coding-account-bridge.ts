@@ -23,11 +23,22 @@
  * `applySubscriptionCredentialsLocal` does.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  type Stats,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { loadAccount } from "@elizaos/auth/account-storage";
-import { writeJsonAtomicSync } from "@elizaos/auth/atomic-json";
 import {
   type AccessTokenOutcome,
   getAccessToken,
@@ -44,6 +55,7 @@ import {
 import {
   type CodingAgentSelectorBridge,
   type CodingProviderAvailability,
+  ElizaError,
   logger,
   resolveStateDir,
   setCodingAgentSelectorBridge,
@@ -140,6 +152,17 @@ function codexHomeDir(accountId: string): string {
   );
 }
 
+function codexGenerationDir(accountId: string, refreshToken: string): string {
+  const generation = createHash("sha256")
+    .update(refreshToken)
+    .digest("hex")
+    .slice(0, 24);
+  return path.join(codexHomeDir(accountId), "generations", generation);
+}
+
+const CODEX_ACTIVE_HOME_FILE = "active-home";
+const CODEX_GENERATION_NAME_PATTERN = /^[a-f0-9]{24}$/;
+
 /** Decode the `exp` claim (epoch ms) from a JWT access token, or null. */
 function jwtExpiryMs(accessToken: string): number | null {
   const parts = accessToken.split(".");
@@ -158,14 +181,386 @@ function jwtExpiryMs(accessToken: string): number | null {
   }
 }
 
-/** Shape of the ChatGPT-mode `auth.json` a Codex CLI maintains in CODEX_HOME. */
+/** Credential fields read from a ChatGPT-mode Codex `auth.json`. */
 interface MaterializedCodexAuthJson {
-  tokens?: {
-    access_token?: string;
-    refresh_token?: string;
+  tokens: {
+    access_token: string;
+    refresh_token: string;
     id_token?: string;
+    account_id?: string;
   };
   last_refresh?: string;
+}
+
+interface MaterializedCodexAuthCandidate {
+  authPath: string;
+  homeDir: string;
+  auth: MaterializedCodexAuthJson;
+  lastRefreshMs: number | null;
+}
+
+type CodexAuthParseResult =
+  | { ok: true; value: MaterializedCodexAuthJson }
+  | { ok: false; error: Error };
+
+const CODEX_AUTH_STABLE_READ_ATTEMPTS = 20;
+const CODEX_AUTH_STABLE_READ_DELAY_MS = 10;
+
+function parseMaterializedCodexAuth(
+  raw: string,
+  authPath: string,
+): CodexAuthParseResult {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch (cause) {
+    // error-policy:J3 auth.json is maintained by an external process; malformed
+    // JSON is an explicit invalid read so the stable-reader can retry or fail.
+    return {
+      ok: false,
+      error: new ElizaError(`Codex auth file is malformed: ${authPath}`, {
+        code: "CODEX_AUTH_FILE_INVALID",
+        cause,
+        context: { authPath },
+        severity: "fatal",
+      }),
+    };
+  }
+  if (typeof value !== "object" || value === null) {
+    return {
+      ok: false,
+      error: new ElizaError(
+        `Codex auth file has the wrong shape: ${authPath}`,
+        {
+          code: "CODEX_AUTH_FILE_INVALID",
+          context: { authPath },
+          severity: "fatal",
+        },
+      ),
+    };
+  }
+  const tokens = Reflect.get(value, "tokens");
+  if (typeof tokens !== "object" || tokens === null) {
+    return {
+      ok: false,
+      error: new ElizaError(
+        `Codex auth file is missing its token pair: ${authPath}`,
+        {
+          code: "CODEX_AUTH_FILE_INVALID",
+          context: { authPath },
+          severity: "fatal",
+        },
+      ),
+    };
+  }
+  const accessToken = Reflect.get(tokens, "access_token");
+  const refreshToken = Reflect.get(tokens, "refresh_token");
+  const idToken = Reflect.get(tokens, "id_token");
+  const lastRefresh = Reflect.get(value, "last_refresh");
+  if (
+    typeof accessToken !== "string" ||
+    accessToken.length === 0 ||
+    typeof refreshToken !== "string" ||
+    refreshToken.length === 0 ||
+    (idToken !== undefined && typeof idToken !== "string") ||
+    (lastRefresh !== undefined && typeof lastRefresh !== "string")
+  ) {
+    return {
+      ok: false,
+      error: new ElizaError(
+        `Codex auth file contains an invalid token generation: ${authPath}`,
+        {
+          code: "CODEX_AUTH_FILE_INVALID",
+          context: { authPath },
+          severity: "fatal",
+        },
+      ),
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      tokens: {
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        ...(idToken ? { id_token: idToken } : {}),
+      },
+      ...(lastRefresh ? { last_refresh: lastRefresh } : {}),
+    },
+  };
+}
+
+function sameFileGeneration(left: Stats, right: Stats): boolean {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.size === right.size &&
+    left.mtimeMs === right.mtimeMs &&
+    left.ctimeMs === right.ctimeMs
+  );
+}
+
+async function readStableCodexAuth(
+  homeDir: string,
+): Promise<MaterializedCodexAuthCandidate> {
+  const authPath = path.join(homeDir, "auth.json");
+  let lastInvalid: Error | undefined;
+  for (let attempt = 0; attempt < CODEX_AUTH_STABLE_READ_ATTEMPTS; attempt++) {
+    const before = statSync(authPath);
+    const raw = readFileSync(authPath, "utf-8");
+    const after = statSync(authPath);
+    const parsed = parseMaterializedCodexAuth(raw, authPath);
+    if (sameFileGeneration(before, after) && parsed.ok) {
+      const rawLastRefresh = parsed.value.last_refresh;
+      const parsedLastRefresh = rawLastRefresh
+        ? Date.parse(rawLastRefresh)
+        : Number.NaN;
+      return {
+        authPath,
+        homeDir,
+        auth: parsed.value,
+        lastRefreshMs: Number.isFinite(parsedLastRefresh)
+          ? parsedLastRefresh
+          : null,
+      };
+    }
+    if (!parsed.ok) lastInvalid = parsed.error;
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, CODEX_AUTH_STABLE_READ_DELAY_MS),
+    );
+  }
+  throw new ElizaError(
+    `Codex auth file did not reach a valid stable generation: ${authPath}`,
+    {
+      code: "CODEX_AUTH_FILE_UNSTABLE",
+      ...(lastInvalid ? { cause: lastInvalid } : {}),
+      context: { authPath },
+      severity: "fatal",
+    },
+  );
+}
+
+function listCodexHomeCandidates(accountId: string): string[] {
+  const accountHome = codexHomeDir(accountId);
+  const homes: string[] = [];
+  if (existsSync(path.join(accountHome, "auth.json"))) homes.push(accountHome);
+  const generationsDir = path.join(accountHome, "generations");
+  if (!existsSync(generationsDir)) return homes;
+  for (const entry of readdirSync(generationsDir, { withFileTypes: true })) {
+    if (
+      entry.isDirectory() &&
+      CODEX_GENERATION_NAME_PATTERN.test(entry.name) &&
+      existsSync(path.join(generationsDir, entry.name, "auth.json"))
+    ) {
+      homes.push(path.join(generationsDir, entry.name));
+    }
+  }
+  return homes;
+}
+
+function publishJsonExclusive(filePath: string, value: unknown): void {
+  const tmpPath = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
+  try {
+    writeFileSync(tmpPath, JSON.stringify(value, null, 2), {
+      encoding: "utf-8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    // A hard-link is an atomic no-replace publish. Unlike rename(), it cannot
+    // overwrite a generation an external runtime has already handed to Codex.
+    linkSync(tmpPath, filePath);
+  } catch (cause) {
+    // error-policy:J2 the credential-file boundary adds the target path while
+    // preserving the filesystem failure; callers must fail the selection.
+    throw new ElizaError(
+      `Could not publish Codex auth generation: ${filePath}`,
+      {
+        code: "CODEX_AUTH_GENERATION_PUBLISH_FAILED",
+        cause,
+        context: { filePath },
+        severity: "fatal",
+      },
+    );
+  } finally {
+    rmSync(tmpPath, { force: true });
+  }
+}
+
+function canonicalCodexAuth(
+  accountId: string,
+  record: NonNullable<ReturnType<typeof loadAccount>>,
+): MaterializedCodexAuthJson & Record<string, unknown> {
+  const { access, refresh, idToken } = record.credentials;
+  if (!access || !refresh) {
+    throw new ElizaError(
+      `openai-codex account "${accountId}" is missing a complete token pair`,
+      {
+        code: "CODEX_CANONICAL_CREDENTIAL_MISSING",
+        context: { accountId },
+        severity: "fatal",
+      },
+    );
+  }
+  return {
+    auth_mode: "chatgpt",
+    OPENAI_API_KEY: null,
+    tokens: {
+      ...(idToken ? { id_token: idToken } : {}),
+      access_token: access,
+      refresh_token: refresh,
+      ...(record.organizationId ? { account_id: record.organizationId } : {}),
+    },
+    // This is the canonical record's observed write time, not materialization
+    // time. Re-materialization therefore cannot masquerade as a newer OAuth
+    // generation and eclipse a concurrent Codex rotation.
+    last_refresh: new Date(record.updatedAt).toISOString(),
+  };
+}
+
+async function createCanonicalCodexHome(
+  accountId: string,
+  record: NonNullable<ReturnType<typeof loadAccount>>,
+): Promise<MaterializedCodexAuthCandidate> {
+  const refreshToken = record.credentials.refresh;
+  if (!refreshToken) {
+    throw new ElizaError(
+      `openai-codex account "${accountId}" is missing a refresh token`,
+      {
+        code: "CODEX_CANONICAL_CREDENTIAL_MISSING",
+        context: { accountId },
+        severity: "fatal",
+      },
+    );
+  }
+  const homeDir = codexGenerationDir(accountId, refreshToken);
+  mkdirSync(homeDir, { recursive: true, mode: 0o700 });
+  const authPath = path.join(homeDir, "auth.json");
+  if (!existsSync(authPath)) {
+    publishJsonExclusive(authPath, canonicalCodexAuth(accountId, record));
+  }
+  const candidate = await readStableCodexAuth(homeDir);
+  if (candidate.auth.tokens.refresh_token !== refreshToken) {
+    throw new ElizaError(
+      `Codex auth generation does not match its canonical generation: ${authPath}`,
+      {
+        code: "CODEX_AUTH_GENERATION_MISMATCH",
+        context: { accountId, authPath },
+        severity: "fatal",
+      },
+    );
+  }
+  return candidate;
+}
+
+interface CodexReconciliation {
+  adopted: boolean;
+  candidate: MaterializedCodexAuthCandidate | null;
+  record: NonNullable<ReturnType<typeof loadAccount>>;
+}
+
+async function reconcileCodexTokensLocked(
+  accountId: string,
+): Promise<CodexReconciliation> {
+  const record = loadAccount("openai-codex", accountId);
+  if (!record) {
+    throw new ElizaError(`openai-codex account "${accountId}" is missing`, {
+      code: "CODEX_CANONICAL_CREDENTIAL_MISSING",
+      context: { accountId },
+      severity: "fatal",
+    });
+  }
+  const candidates: MaterializedCodexAuthCandidate[] = [];
+  for (const homeDir of listCodexHomeCandidates(accountId)) {
+    candidates.push(await readStableCodexAuth(homeDir));
+  }
+  const matching = candidates.filter(
+    (candidate) =>
+      candidate.auth.tokens.refresh_token === record.credentials.refresh,
+  );
+  const divergent = candidates.filter(
+    (candidate) =>
+      candidate.auth.tokens.refresh_token !== record.credentials.refresh,
+  );
+  for (const candidate of divergent) {
+    if (candidate.lastRefreshMs === null) {
+      throw new ElizaError(
+        `Codex auth generation cannot be ordered safely: ${candidate.authPath}`,
+        {
+          code: "CODEX_AUTH_GENERATION_AMBIGUOUS",
+          context: { accountId, authPath: candidate.authPath },
+          severity: "fatal",
+        },
+      );
+    }
+  }
+  const newer = divergent
+    .filter(
+      (candidate) =>
+        candidate.lastRefreshMs !== null &&
+        candidate.lastRefreshMs > record.updatedAt,
+    )
+    .sort(
+      (left, right) =>
+        (right.lastRefreshMs ?? Number.NEGATIVE_INFINITY) -
+        (left.lastRefreshMs ?? Number.NEGATIVE_INFINITY),
+    );
+  const newest = newer[0];
+  const equallyNew = newest
+    ? newer.find(
+        (candidate) =>
+          candidate !== newest &&
+          candidate.lastRefreshMs === newest.lastRefreshMs &&
+          candidate.auth.tokens.refresh_token !==
+            newest.auth.tokens.refresh_token,
+      )
+    : undefined;
+  if (newest && equallyNew) {
+    throw new ElizaError(
+      `Codex auth generations have an ambiguous refresh order for account "${accountId}"`,
+      {
+        code: "CODEX_AUTH_GENERATION_AMBIGUOUS",
+        context: {
+          accountId,
+          authPaths: [newest.authPath, equallyNew.authPath],
+        },
+        severity: "fatal",
+      },
+    );
+  }
+  if (newest) {
+    const tokens = newest.auth.tokens;
+    saveCredentials(
+      "openai-codex",
+      {
+        access: tokens.access_token,
+        refresh: tokens.refresh_token,
+        expires: jwtExpiryMs(tokens.access_token) ?? Date.now(),
+        ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
+      },
+      accountId,
+    );
+    const adoptedRecord = loadAccount("openai-codex", accountId);
+    if (!adoptedRecord) {
+      throw new ElizaError(
+        `Adopted Codex credentials could not be reloaded for account "${accountId}"`,
+        {
+          code: "CODEX_CANONICAL_CREDENTIAL_MISSING",
+          context: { accountId },
+          severity: "fatal",
+        },
+      );
+    }
+    logger.info(
+      `[coding-account-bridge] adopted rotated Codex tokens from CODEX_HOME for account "${accountId}" (CLI self-refresh)`,
+    );
+    return { adopted: true, candidate: newest, record: adoptedRecord };
+  }
+  const candidate = matching.sort(
+    (left, right) =>
+      (right.lastRefreshMs ?? Number.NEGATIVE_INFINITY) -
+      (left.lastRefreshMs ?? Number.NEGATIVE_INFINITY),
+  )[0];
+  return { adopted: false, candidate: candidate ?? null, record };
 }
 
 /**
@@ -187,56 +582,9 @@ interface MaterializedCodexAuthJson {
 export async function adoptRotatedCodexTokens(
   accountId: string,
 ): Promise<boolean> {
-  const authPath = path.join(codexHomeDir(accountId), "auth.json");
-  if (!existsSync(authPath)) return false;
   return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
-    let parsed: MaterializedCodexAuthJson;
-    try {
-      parsed = JSON.parse(
-        readFileSync(authPath, "utf-8"),
-      ) as MaterializedCodexAuthJson;
-    } catch {
-      // error-policy:J3 externally-maintained auth.json — an unreadable/malformed
-      // file means "no usable credential", handled as a false refresh result.
-      return false;
-    }
-    const tokens = parsed?.tokens;
-    if (!tokens?.access_token || !tokens.refresh_token) return false;
-    const record = loadAccount("openai-codex", accountId);
-    if (!record) return false;
-    // Same refresh token → the CLI never rotated; nothing to adopt.
-    if (tokens.refresh_token === record.credentials.refresh) return false;
-    // Only adopt when the CLI's copy is NEWER than the canonical record. An
-    // older materialized copy (e.g. the account was re-linked via OAuth after
-    // that session ran) would clobber a fresh login with dead tokens.
-    const materializedAt =
-      typeof parsed.last_refresh === "string"
-        ? Date.parse(parsed.last_refresh)
-        : Number.NaN;
-    if (
-      !Number.isFinite(materializedAt) ||
-      materializedAt <= record.updatedAt
-    ) {
-      return false;
-    }
-    // Prefer the access token's own exp claim; an undecodable token is saved
-    // as already-expired so the next getAccessToken refreshes it immediately
-    // (with the adopted, still-valid refresh token).
-    const expires = jwtExpiryMs(tokens.access_token) ?? Date.now();
-    saveCredentials(
-      "openai-codex",
-      {
-        access: tokens.access_token,
-        refresh: tokens.refresh_token,
-        expires,
-        ...(tokens.id_token ? { idToken: tokens.id_token } : {}),
-      },
-      accountId,
-    );
-    logger.info(
-      `[coding-account-bridge] adopted rotated Codex tokens from CODEX_HOME for account "${accountId}" (CLI self-refresh)`,
-    );
-    return true;
+    const reconciled = await reconcileCodexTokensLocked(accountId);
+    return reconciled.adopted;
   });
 }
 
@@ -255,142 +603,185 @@ const CODEX_EFFORT_VALUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * The effort subset the pinned codex-acp adapter can deserialize. Its bundled
- * codex core's `ReasoningEffort` enum is `minimal|low|medium|high|xhigh`
- * (verified against the @zed-industries/codex-acp@0.14.0 binary's serde
- * variant table); an unknown variant fails the WHOLE config.toml parse, which
- * would also discard the `model` pin ChatGPT-account auth requires — far worse
- * than running at the default effort. `max`/`ultra` are valid catalog values
- * on newer Codex builds but are withheld here until the adapter pin moves.
+ * Effort values guaranteed by the managed Codex ACP contract across linked
+ * account spawns. The catalog recognizes newer variants for other consumers,
+ * but this bridge withholds them until the managed adapter path supports them
+ * end to end so a generated CODEX_HOME never advertises an unhonored setting.
  */
-const PINNED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
+const MANAGED_CODEX_ACP_EFFORTS: ReadonlySet<string> = new Set([
   "low",
   "medium",
   "high",
   "xhigh",
 ]);
 
-/**
- * Materialize a per-account `CODEX_HOME` so Codex authenticates as the selected
- * account instead of the machine's single `~/.codex` login. Writes the
- * ChatGPT-login `auth.json` shape Codex reads; the account_id is the OAuth
- * account id baked into the credential record (`organizationId`).
- */
-function materializeCodexHome(accountId: string, accessToken: string): string {
-  const dir = codexHomeDir(accountId);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
-  const record = loadAccount("openai-codex", accountId);
-  const refreshToken = record?.credentials.refresh;
-  if (!refreshToken) {
-    throw new Error(
-      `openai-codex account "${accountId}" is missing a refresh token`,
-    );
-  }
-  const chatgptAccountId = record?.organizationId;
-  // Codex's chatgpt-mode auth loader requires `tokens.id_token`; omitting it
-  // fails with "Authentication required" even when access_token is valid (an
-  // expired id_token is tolerated — Codex refreshes — but it must be present).
-  const idToken = record?.credentials.idToken;
-  const authJson = {
-    auth_mode: "chatgpt",
-    OPENAI_API_KEY: null as string | null,
-    tokens: {
-      ...(idToken ? { id_token: idToken } : {}),
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      ...(chatgptAccountId ? { account_id: chatgptAccountId } : {}),
-    },
-    last_refresh: new Date().toISOString(),
-  };
-  writeJsonAtomicSync(path.join(dir, "auth.json"), authJson);
-
+function resolveCodexConfig(): string {
   // Codex reads its model from CODEX_HOME/config.toml; with none, codex-acp
   // falls back to a built-in default (e.g. gpt-5.3-codex) that ChatGPT-account
   // auth rejects ("model is not supported when using Codex with a ChatGPT
   // account"). Write a MINIMAL config.toml — the model plus an optional
   // validated reasoning effort — reusing the operator's working model
   // (extracted from ~/.codex/config.toml) but NOT the rest of their config,
-  // which can carry fields the pinned codex-acp rejects (e.g. newer
-  // reasoning-effort variants; see PINNED_CODEX_ACP_EFFORTS). Falls back to a
+  // which can carry unrelated interactive-only settings. Falls back to a
   // compatible default.
-  const targetConfig = path.join(dir, "config.toml");
-  try {
-    // Resolution order: explicit env pin > app-configured model (what
-    // POST /api/models/config writes for the codex coding target) > the
-    // operator's machine config > the compatible default. Without the
-    // POWERFUL read here, the app-configured model was a dead-end key — the
-    // machine ~/.codex/config.toml silently won on every spawn.
-    let model: string | undefined;
-    for (const key of ["ELIZA_CODEX_MODEL", "ELIZA_CODEX_MODEL_POWERFUL"]) {
-      const candidate = process.env[key]?.trim();
-      if (!candidate) continue;
-      // Validate the operator-supplied model: it is interpolated into TOML, so
-      // a stray quote/newline would break out of the string (corrupt config) —
-      // and a model name is a conservative token anyway. Reject anything else.
-      if (!/^[\w.:/-]+$/.test(candidate)) {
-        logger.warn(
-          `[coding-account-bridge] ignoring malformed ${key}=${JSON.stringify(candidate)}`,
-        );
-        continue;
-      }
-      model = candidate;
-      break;
-    }
-    if (!model) {
-      const machineConfig = path.join(os.homedir(), ".codex", "config.toml");
-      if (existsSync(machineConfig)) {
-        // Accept both double- and single-quoted TOML strings (both are valid +
-        // common); the captured value can't contain the quote char so it's
-        // safe to re-emit double-quoted.
-        const m = readFileSync(machineConfig, "utf-8").match(
-          /^\s*model\s*=\s*["']([^"']+)["']/m,
-        );
-        if (m?.[1]) model = m[1];
-      }
-    }
-    let effort = process.env.ELIZA_CODEX_EFFORT?.trim().toLowerCase();
-    if (effort && !CODEX_EFFORT_VALUES.has(effort)) {
-      // error-policy:J7 an invalid operator effort must not poison the spawn —
-      // warn and omit the line; the model pin below still ships.
+  // Resolution order: explicit env pin > app-configured model (what
+  // POST /api/models/config writes for the codex coding target) > the
+  // operator's machine config > the compatible default. Without the POWERFUL
+  // read here, the app-configured model is a dead-end key.
+  let model: string | undefined;
+  for (const key of ["ELIZA_CODEX_MODEL", "ELIZA_CODEX_MODEL_POWERFUL"]) {
+    const candidate = process.env[key]?.trim();
+    if (!candidate) continue;
+    // A model is interpolated into TOML, so reject characters that could break
+    // out of the string rather than trying to escape a broader grammar here.
+    if (!/^[\w.:/-]+$/.test(candidate)) {
       logger.warn(
-        `[coding-account-bridge] ignoring invalid ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} (expected low|medium|high|xhigh|max|ultra)`,
+        `[coding-account-bridge] ignoring malformed ${key}=${JSON.stringify(candidate)}`,
       );
-      effort = undefined;
-    } else if (effort && !PINNED_CODEX_ACP_EFFORTS.has(effort)) {
-      // error-policy:J7 see PINNED_CODEX_ACP_EFFORTS — writing max/ultra would
-      // fail the pinned adapter's whole config.toml parse and drop the model pin.
-      logger.warn(
-        `[coding-account-bridge] ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} is not parseable by the pinned codex-acp (supported: low|medium|high|xhigh); omitting model_reasoning_effort so config.toml stays loadable`,
-      );
-      effort = undefined;
+      continue;
     }
-    writeFileSync(
-      targetConfig,
-      `model = "${model || "gpt-5.6-terra"}"\n${
-        effort ? `model_reasoning_effort = "${effort}"\n` : ""
-      }`,
-      { mode: 0o600 },
-    );
-  } catch (err) {
-    logger.warn(
-      `[coding-account-bridge] could not materialize codex config.toml: ${String(err)}`,
-    );
+    model = candidate;
+    break;
   }
-  return dir;
+  if (!model) {
+    const machineConfig = path.join(os.homedir(), ".codex", "config.toml");
+    if (existsSync(machineConfig)) {
+      // Accept both double- and single-quoted TOML strings. The captured value
+      // cannot contain its delimiter, so re-emitting double-quoted is safe.
+      const match = readFileSync(machineConfig, "utf-8").match(
+        /^\s*model\s*=\s*["']([^"']+)["']/m,
+      );
+      if (match?.[1]) model = match[1];
+    }
+  }
+  let effort = process.env.ELIZA_CODEX_EFFORT?.trim().toLowerCase();
+  if (effort && !CODEX_EFFORT_VALUES.has(effort)) {
+    // error-policy:J7 invalid operator input is omitted so the required model
+    // and credential-store pins remain usable and the rejection is observable.
+    logger.warn(
+      `[coding-account-bridge] ignoring invalid ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} (expected low|medium|high|xhigh|max|ultra)`,
+    );
+    effort = undefined;
+  } else if (effort && !MANAGED_CODEX_ACP_EFFORTS.has(effort)) {
+    // error-policy:J7 see MANAGED_CODEX_ACP_EFFORTS — writing max/ultra would
+    // fail the adapter's whole config parse and discard both safety pins.
+    logger.warn(
+      `[coding-account-bridge] ELIZA_CODEX_EFFORT=${JSON.stringify(effort)} is not supported by the managed codex-acp contract (supported: low|medium|high|xhigh); omitting model_reasoning_effort so config.toml stays loadable`,
+    );
+    effort = undefined;
+  }
+  return `model = "${model || "gpt-5.6-sol"}"\ncli_auth_credentials_store = "file"\n${
+    effort ? `model_reasoning_effort = "${effort}"\n` : ""
+  }`;
+}
+
+function materializeRequiredTextFile(
+  targetPath: string,
+  contents: string,
+  errorCode:
+    | "CODEX_CONFIG_MATERIALIZATION_FAILED"
+    | "CODEX_ACTIVE_HOME_MATERIALIZATION_FAILED",
+  description: string,
+): void {
+  const tmpPath = `${targetPath}.tmp-${process.pid}-${randomUUID()}`;
+  try {
+    if (
+      existsSync(targetPath) &&
+      readFileSync(targetPath, "utf-8") === contents
+    ) {
+      return;
+    }
+    writeFileSync(tmpPath, contents, {
+      encoding: "utf-8",
+      mode: 0o600,
+      flag: "wx",
+    });
+    renameSync(tmpPath, targetPath);
+    if (readFileSync(targetPath, "utf-8") !== contents) {
+      throw new ElizaError(
+        `Codex ${description} verification failed after materialization: ${targetPath}`,
+        {
+          code: errorCode,
+          context: { targetPath },
+          severity: "fatal",
+        },
+      );
+    }
+  } catch (cause) {
+    // error-policy:J2 both config and active-home publication are part of the
+    // auth-safety boundary, so the spawn must not proceed on filesystem error.
+    throw new ElizaError(
+      `Could not materialize required Codex ${description}: ${targetPath}`,
+      {
+        code: errorCode,
+        cause,
+        context: { targetPath },
+        severity: "fatal",
+      },
+    );
+  } finally {
+    rmSync(tmpPath, { force: true });
+  }
+}
+
+function materializeRequiredCodexConfig(homeDir: string): void {
+  materializeRequiredTextFile(
+    path.join(homeDir, "config.toml"),
+    resolveCodexConfig(),
+    "CODEX_CONFIG_MATERIALIZATION_FAILED",
+    "config",
+  );
+}
+
+function publishActiveCodexHome(accountId: string, homeDir: string): void {
+  const accountHome = codexHomeDir(accountId);
+  const relativeHome = path.relative(accountHome, homeDir);
+  if (
+    relativeHome.startsWith(`..${path.sep}`) ||
+    relativeHome === ".." ||
+    path.isAbsolute(relativeHome)
+  ) {
+    throw new ElizaError(`Codex home is outside its account root: ${homeDir}`, {
+      code: "CODEX_ACTIVE_HOME_MATERIALIZATION_FAILED",
+      context: { accountId, homeDir },
+      severity: "fatal",
+    });
+  }
+  // The benchmark harness cannot infer which historical token generation is
+  // canonical without reading secrets, so publish a non-secret relative path.
+  materializeRequiredTextFile(
+    path.join(accountHome, CODEX_ACTIVE_HOME_FILE),
+    `${relativeHome || "."}\n`,
+    "CODEX_ACTIVE_HOME_MATERIALIZATION_FAILED",
+    "active-home pointer",
+  );
+}
+
+/**
+ * Reconcile a Codex-owned token generation and return a safe `CODEX_HOME`.
+ * Existing auth files are immutable from the bridge's perspective: Codex may
+ * be refreshing one in another process, so only Codex writes an already-
+ * published generation. A newer canonical login gets a new generation path.
+ */
+async function materializeCodexHome(accountId: string): Promise<string> {
+  return accountRefreshMutex.acquire(`openai-codex:${accountId}`, async () => {
+    const reconciled = await reconcileCodexTokensLocked(accountId);
+    const candidate =
+      reconciled.candidate ??
+      (await createCanonicalCodexHome(accountId, reconciled.record));
+    materializeRequiredCodexConfig(candidate.homeDir);
+    publishActiveCodexHome(accountId, candidate.homeDir);
+    return candidate.homeDir;
+  });
 }
 
 async function buildEnvPatch(
   providerId: LinkedAccountProviderId,
-  accountId: string,
   accessToken: string,
 ): Promise<Record<string, string>> {
   switch (providerId) {
     case "anthropic-subscription":
       return { CLAUDE_CODE_OAUTH_TOKEN: accessToken };
-    case "openai-codex":
-      return { CODEX_HOME: materializeCodexHome(accountId, accessToken) };
     default: {
       // Direct API providers (e.g. cerebras-api → CEREBRAS_API_KEY for opencode)
       // inject under their canonical env key; run-main.ts normalizes aliases
@@ -455,80 +846,77 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
           ...(opts?.accountIds ? { accountIds: opts.accountIds } : {}),
         });
         if (!account) continue;
-        // A prior Codex session may have rotated the one-time refresh token
-        // inside its CODEX_HOME; heal the canonical record BEFORE resolving a
-        // token or the refresh below burns on the consumed token.
+        let envPatch: Record<string, string>;
         if (providerId === "openai-codex") {
-          await adoptRotatedCodexTokens(account.id).catch(() => false);
-        }
-        // Claude coding spawns get a BARE `CLAUDE_CODE_OAUTH_TOKEN` the
-        // third-party claude-agent-acp adapter reads ONCE and cannot refresh, so a
-        // long run outlives a short-TTL token (recon gap #3). Proactively widen
-        // the refresh window for anthropic-subscription so the injected token
-        // survives the expected run duration. Codex self-refreshes into its
-        // CODEX_HOME, so it keeps the default buffer.
-        const resolveOpts =
-          providerId === "anthropic-subscription"
-            ? {
-                minRemainingMs: claudeMinRemainingMs(
-                  resolveClaudeExpectedRunMs((key) => process.env[key]),
-                ),
-              }
-            : undefined;
-        let accessToken: string | null = null;
-        let resolveOutcome: AccessTokenOutcome | undefined;
-        let resolveError: unknown;
-        try {
-          resolveOutcome = await getAccessToken(providerId, account.id, {
-            ...resolveOpts,
-            outcome: true,
-          });
-          accessToken = resolveOutcome.ok ? resolveOutcome.accessToken : null;
-          // A widened Claude resolve is only a freshness preference. The
-          // default-buffer retry preserves a still-valid token when refresh is
-          // transiently unavailable or the vendor minted a shorter-lived token.
-          if (
-            accessToken === null &&
-            resolveOpts &&
-            resolveOutcome &&
-            !resolveOutcome.ok &&
-            resolveOutcome.kind !== "auth"
-          ) {
-            const stillValid = await getAccessToken(providerId, account.id, {
+          // CODEX_HOME is the refresh authority for a running Codex process.
+          // Reconcile and select its immutable generation before any canonical
+          // refresh can present an already-consumed one-time token.
+          envPatch = { CODEX_HOME: await materializeCodexHome(account.id) };
+        } else {
+          // Claude coding spawns get a bare token the third-party adapter reads
+          // once and cannot refresh, so widen the freshness window to the
+          // expected run duration before injecting it.
+          const resolveOpts =
+            providerId === "anthropic-subscription"
+              ? {
+                  minRemainingMs: claudeMinRemainingMs(
+                    resolveClaudeExpectedRunMs((key) => process.env[key]),
+                  ),
+                }
+              : undefined;
+          let accessToken: string | null = null;
+          let resolveOutcome: AccessTokenOutcome | undefined;
+          let resolveError: unknown;
+          try {
+            resolveOutcome = await getAccessToken(providerId, account.id, {
+              ...resolveOpts,
               outcome: true,
             });
-            resolveOutcome = stillValid;
-            if (stillValid.ok) {
-              logger.info(
-                `[coding-account-bridge] proactive refresh for ${providerId}/${account.id} did not yield a fresh token; using the still-valid shorter-TTL token (a long run may hit the typed expiry signal)`,
-              );
-              accessToken = stillValid.accessToken;
+            accessToken = resolveOutcome.ok ? resolveOutcome.accessToken : null;
+            // A widened Claude resolve is only a freshness preference. The
+            // default-buffer retry preserves a still-valid shorter-lived token
+            // when proactive refresh is transiently unavailable.
+            if (
+              accessToken === null &&
+              resolveOpts &&
+              resolveOutcome &&
+              !resolveOutcome.ok &&
+              resolveOutcome.kind !== "auth"
+            ) {
+              const stillValid = await getAccessToken(providerId, account.id, {
+                outcome: true,
+              });
+              resolveOutcome = stillValid;
+              if (stillValid.ok) {
+                logger.info(
+                  `[coding-account-bridge] proactive refresh for ${providerId}/${account.id} did not yield a fresh token; using the still-valid shorter-TTL token (a long run may hit the typed expiry signal)`,
+                );
+                accessToken = stillValid.accessToken;
+              }
             }
-          }
-        } catch (err) {
-          resolveError = err;
-          logger.warn(
-            `[coding-account-bridge] token resolve failed for ${providerId}/${account.id}: ${String(err)}`,
-          );
-        }
-        if (!accessToken) {
-          // Only flag for re-auth on a genuine auth failure; a transient
-          // network/5xx blip must not pull a healthy account out of rotation.
-          if (accessTokenFailureIsAuth(resolveOutcome, resolveError)) {
-            await pool.markNeedsReauth(
-              account.id,
-              "No valid credential / token refresh failed",
-              { providerId },
+          } catch (err) {
+            resolveError = err;
+            logger.warn(
+              `[coding-account-bridge] token resolve failed for ${providerId}/${account.id}: ${String(err)}`,
             );
           }
-          continue;
+          if (!accessToken) {
+            // Only flag for re-auth on a genuine auth failure; a transient
+            // network/5xx blip must not pull a healthy account out of rotation.
+            if (accessTokenFailureIsAuth(resolveOutcome, resolveError)) {
+              await pool.markNeedsReauth(
+                account.id,
+                "No valid credential / token refresh failed",
+                { providerId },
+              );
+            }
+            continue;
+          }
+          envPatch = await buildEnvPatch(providerId, accessToken);
+          if (Object.keys(envPatch).length === 0) {
+            continue;
+          }
         }
-        const envPatch = await buildEnvPatch(
-          providerId,
-          account.id,
-          accessToken,
-        );
-        if (Object.keys(envPatch).length === 0) continue;
         const source: "oauth" | "api-key" = isSubscriptionProvider(providerId)
           ? "oauth"
           : "api-key";
@@ -564,7 +952,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       // Session-level auth failures can come from an injected token aging out.
       // Verify the stored credential before evicting the account from rotation.
       if (providerId === "openai-codex") {
-        await adoptRotatedCodexTokens(accountId).catch(() => false);
+        await adoptRotatedCodexTokens(accountId);
       }
       try {
         const tokenOutcome = await getAccessToken(providerId, accountId, {
@@ -626,7 +1014,7 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       // mid-run — heal the canonical record before the next sweep refreshes
       // against the consumed one.
       if (providerId === "openai-codex") {
-        await adoptRotatedCodexTokens(accountId).catch(() => false);
+        await adoptRotatedCodexTokens(accountId);
       }
       return pool.recordCall(accountId, result, { providerId });
     },

@@ -27,6 +27,10 @@ export class CacheInvalidation {
       cache.del(CacheKeys.org.dashboard(organizationId)),
       // Invalidate Eliza org balance cache on credit changes
       cache.del(CacheKeys.eliza.orgBalance(organizationId)),
+      // Best-effort early eviction after a top-up, refund, or non-inference
+      // debit. The admission hint's short TTL and safety margin remain the
+      // correctness backstop when KV propagation or deletion is delayed.
+      cache.del(CacheKeys.inference.orgBalance(organizationId)),
     ]);
   }
 

@@ -467,7 +467,7 @@ function writeLiveAcpTrajectory(input: {
                 : endedAt - input.startedAt,
             model: {
               modelType: "external_acp_child",
-              modelName: "@zed-industries/codex-acp@0.14.0",
+              modelName: "@agentclientprotocol/codex-acp@1.1.2",
               provider: "openai-codex",
               messages: [
                 {

@@ -55,6 +55,7 @@ import {
 	resolveSettingsSection,
 } from "@elizaos/plugin-commands";
 import type { ChatInputCommandInteraction } from "discord.js";
+import { PermissionFlagsBits } from "discord.js";
 import { safeInteractionCall } from "./native-commands";
 import {
 	addCommand,
@@ -420,10 +421,21 @@ function mapOption(
 /** Map one catalog command onto an in-process `SlashCommand`. */
 export function mapCatalogCommand(command: ConnectorCommand): SlashCommand {
 	const options = command.options.map(mapOption);
+	// Gate the NATIVE picker on the catalog's auth flags (the #16154 deferral):
+	// elevated commands register admin-only, auth-required ones ManageGuild.
+	// Discord's default_member_permissions only hides them in guild pickers —
+	// server-side trust still re-checks on every execution (runCommand), and
+	// paired DM users are unaffected (member permissions are guild-scoped).
+	const requiredPermissions = command.requiresElevated
+		? PermissionFlagsBits.Administrator
+		: command.requiresAuth
+			? PermissionFlagsBits.ManageGuild
+			: undefined;
 	return {
 		name: command.name,
 		description: command.description,
 		...(options.length > 0 ? { options } : {}),
+		...(requiredPermissions !== undefined ? { requiredPermissions } : {}),
 		execute: buildExecute(command),
 	};
 }

@@ -42,6 +42,21 @@ paths = [
   '''test-results/evidence/10469-live-model/.*''',
 ]
 
+# The inference-auth controlled-probe test uses a fixed discriminator with a
+# 32-character lowercase-hex suffix so the trusted bypass path is exercised
+# without accepting a production credential. Scope both the file and exact
+# synthetic value shape so every other token in the test remains scanned.
+[[allowlists]]
+description = "Inference-auth controlled-probe unit-test discriminator"
+condition = "AND"
+paths = [
+  '''(^|/)packages/cloud/shared/src/lib/services/inference-auth-context\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''unit-probe-token:[0-9a-f]{32}''',
+]
+
 [[allowlists]]
 description = "Headscale DEPLOY.md CLI examples (`headscale apikeys create` — not a credential)"
 paths = [

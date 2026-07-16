@@ -218,6 +218,31 @@ export function useIsAuthenticated(): boolean {
 }
 
 /**
+ * Non-hook read of the shared auth snapshot's authenticated state, for module
+ * seams (stores/services) that gate on auth without a React context — e.g. the
+ * notification store holding its protected hydrate until a session exists
+ * (#16242). Mirrors {@link useIsAuthenticated} without subscribing.
+ */
+export function isAuthenticatedNow(): boolean {
+  return authStatusSnapshot.phase === "authenticated";
+}
+
+/**
+ * Subscribe to auth-status changes outside React (companion to
+ * {@link isAuthenticatedNow}). The listener fires on every publish with the new
+ * snapshot; returns an unsubscribe. Lets a module seam re-arm work it deferred
+ * while unauthenticated the moment a session lands.
+ */
+export function subscribeAuthStatus(
+  listener: (state: AuthStatusState) => void,
+): () => void {
+  authStatusSubscribers.add(listener);
+  return () => {
+    authStatusSubscribers.delete(listener);
+  };
+}
+
+/**
  * Test/story seam for the #11084 auth gate: publish a synthetic status into the
  * shared snapshot (and to subscribers) so `useIsAuthenticated`-gated loaders
  * run without a live `/api/auth/me` probe. Harness-only — the jsdom story

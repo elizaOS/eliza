@@ -26,7 +26,7 @@ import { handleCommandsRoutes } from "../../../agent/src/api/commands-routes.ts"
  *     source of truth (every command present, none invented),
  *   - each `target.kind` carries the correct effect (agent → message pipeline,
  *     navigate → a concrete in-app route, client → a known local-client behavior), and
- *   - chat connectors (Discord) drop GUI-only client commands but keep navigation.
+ *   - chat connectors (Discord) drop GUI-only navigation/client commands but keep agent commands.
  */
 
 type ScenarioRoute = {
@@ -192,7 +192,7 @@ function expectGuiCatalog(status: number, body: unknown): string | undefined {
   return undefined;
 }
 
-/** Chat connectors drop GUI-only client commands but keep navigation + agent. */
+/** Chat connectors drop GUI-only navigation/client commands but keep agent commands. */
 function expectDiscordCatalog(
   status: number,
   body: unknown,
@@ -202,12 +202,14 @@ function expectDiscordCatalog(
   if (payload.surface !== "discord") {
     return `expected surface=discord, saw ${JSON.stringify(payload.surface)}`;
   }
-  const keys = new Set(payload.commands.map((c) => c.key));
-  if (keys.has("clear") || keys.has("fullscreen")) {
-    return "GUI-only client commands leaked onto the Discord surface";
+  const nonAgentCommand = payload.commands.find(
+    (command) => command.target.kind !== "agent",
+  );
+  if (nonAgentCommand) {
+    return `GUI-only ${nonAgentCommand.target.kind} command ${nonAgentCommand.key} leaked onto the Discord surface`;
   }
-  if (!keys.has("settings") || !keys.has("think")) {
-    return "navigation/agent commands missing from the Discord surface";
+  if (commandByKey(payload, "think")?.target.kind !== "agent") {
+    return "agent command /think is missing from the Discord surface";
   }
   return undefined;
 }

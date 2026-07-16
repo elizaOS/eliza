@@ -20,13 +20,21 @@ let authChainCalls = 0;
 let moderationCalls = 0;
 let usageCalls = 0;
 
-mock.module("../auth", () => ({
-  requireAuthOrApiKeyWithOrg: async () => {
+mock.module("./inference-api-key-auth", () => ({
+  requireInferenceApiKeyWithOrg: async () => {
     authChainCalls++;
     return {
       user: { id: "user-bench", organization_id: "org-bench" },
       apiKey: { id: "key-bench" },
     };
+  },
+}));
+mock.module("./admin", () => ({
+  adminService: {
+    shouldBlockUser: async () => {
+      moderationCalls++;
+      return false;
+    },
   },
 }));
 mock.module("./content-moderation", () => ({
@@ -81,8 +89,8 @@ describe("inference hot-path benchmark", () => {
   test("WARM hit = exactly 1 cache read, 0 writes, 0 auth, 0 moderation", async () => {
     await resolveInferenceAuthContext(req()); // populate (cold)
 
-    const getSpy = spyOn(cache, "get");
-    const setSpy = spyOn(cache, "set");
+    const getSpy = spyOn(cache, "getWithOutcome");
+    const setSpy = spyOn(cache, "setWithOutcome");
     const delSpy = spyOn(cache, "del");
     authChainCalls = 0;
     moderationCalls = 0;
@@ -107,7 +115,7 @@ describe("inference hot-path benchmark", () => {
   test("N warm hits stay O(1) cache reads each (no per-request DB growth)", async () => {
     await resolveInferenceAuthContext(req()); // populate
 
-    const getSpy = spyOn(cache, "get");
+    const getSpy = spyOn(cache, "getWithOutcome");
     authChainCalls = 0;
     moderationCalls = 0;
 

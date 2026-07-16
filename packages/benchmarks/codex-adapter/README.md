@@ -21,14 +21,19 @@ single `~/.codex` login. The layout (written by
 
 ```
 <stateDir>/auth/_codex-home/<accountId>/
-    auth.json      # chatgpt-mode tokens
-    config.toml    # pinned model (gpt-5.5)
+    active-home                         # relative, non-secret pointer
+    generations/<refresh-token-hash>/
+        auth.json                       # chatgpt-mode tokens
+        config.toml                     # pinned model (gpt-5.5)
 ```
 
 where `<stateDir>` is `$ELIZA_HOME` (or the resolved per-user state dir,
 default `~/.local/state/eliza`). This adapter's `codex_adapter.accounts`
-enumerates those homes and round-robins turns across the selected set — it does
-**no** OAuth and no network; materializing the homes is the TS runtime's job.
+enumerates account roots, validates each atomically-published `active-home`, and
+round-robins turns across the selected set. It does **no** OAuth and no network;
+materializing the generations is the TS runtime's job. Account roots created
+before generation isolation remain discoverable when the pointer is absent or
+contains `.`.
 
 ## `--accounts` semantics
 

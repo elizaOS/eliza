@@ -234,6 +234,7 @@ export {
 // ---------------------------------------------------------------------------
 
 import "./client-agent";
+import "./client-accounts";
 import "./client-approvals";
 import "./client-automations";
 import "./client-background";

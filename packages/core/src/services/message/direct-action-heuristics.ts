@@ -569,20 +569,31 @@ const VIEW_REQUEST_OPERATION_GROUPS = {
 	delete: ["DELETE", "REMOVE"],
 	open: ["GO", "NAVIGATE", "OPEN", "SWITCH"],
 	close: ["CLOSE", "DISMISS", "HIDE"],
-	layout: [
-		"ARRANGE",
-		"BOTTOM",
-		"HORIZONTAL",
-		"LEFT",
-		"LAYOUT",
-		"RIGHT",
-		"SPLIT",
-		"TILE",
-		"TOP",
-		"VERTICAL",
-	],
+	layout: ["ARRANGE", "HORIZONTAL", "LAYOUT", "SPLIT", "TILE", "VERTICAL"],
 	pin: ["DOCK", "PIN"],
 } as const;
+
+// Directional words qualify a layout operation ("split it right") but are not
+// operations on their own: in ordinary speech they are overwhelmingly
+// non-spatial ("right now", "left the meeting", "top of my head"), so counting
+// them as layout evidence hijacked live-info asks like "whats btc at right
+// now" (RIGHT read as a layout op, NOW as a layout follow-up) into a VIEWS
+// candidate that demoted WEB_FETCH off the planner surface. A direction still
+// counts as operation evidence when the message names an explicit UI surface
+// ("move it to the left of the screen").
+const VIEW_LAYOUT_DIRECTION_TOKENS: ReadonlySet<string> = new Set<string>([
+	"BOTTOM",
+	"LEFT",
+	"RIGHT",
+	"TOP",
+]);
+
+/** True when any token is a bare direction (singular-normalized on the way in). */
+function hasLayoutDirectionToken(tokens: readonly string[]): boolean {
+	return tokens.some((token) =>
+		VIEW_LAYOUT_DIRECTION_TOKENS.has(normalizeSingularToken(token)),
+	);
+}
 
 const VIEW_REQUEST_OPERATION_TOKENS: ReadonlySet<string> = new Set<string>(
 	Object.values(VIEW_REQUEST_OPERATION_GROUPS).flat(),
@@ -764,12 +775,23 @@ function findViewShellActionName(
 		normalizeSingularToken,
 	);
 	const messageOperationGroups = operationGroupsForTokens(messageTokens);
-	if (messageOperationGroups.size === 0) return undefined;
-
 	const tokenSet = new Set(messageTokens);
+	if (
+		messageOperationGroups.size === 0 &&
+		!hasLayoutDirectionToken(messageTokens)
+	) {
+		return undefined;
+	}
+
+	// Surface-noun leg: an explicit UI surface plus any operation OR
+	// directional evidence ("move it to the left of the screen").
 	for (const token of VIEW_REQUEST_SURFACE_TOKENS) {
 		if (tokenSet.has(token)) return viewActionName;
 	}
+
+	// The remaining legs have no surface anchor, so they need a real
+	// operation — a bare direction is not enough.
+	if (messageOperationGroups.size === 0) return undefined;
 	if (
 		(tokenSet.has("PLUGIN") || tokenSet.has("PLUGINS")) &&
 		messageTokens.some((token) => VIEW_PLUGIN_SURFACE_TOKENS.has(token))
@@ -798,7 +820,15 @@ function findViewCapabilityActionName(
 	const messageTokens = tokenizeActionMetadata(messageText);
 	const messageTokenSet = new Set(messageTokens.map(normalizeSingularToken));
 	const messageOperationGroups = operationGroupsForTokens(messageTokens);
-	if (messageOperationGroups.size === 0) return undefined;
+	// A direction counts as operation evidence here just as in the view-shell
+	// detector ("move the calendar to the right" — MOVE is in no group), since
+	// this detector still demands a concrete capability-token match below.
+	if (
+		messageOperationGroups.size === 0 &&
+		!hasLayoutDirectionToken(messageTokens)
+	) {
+		return undefined;
+	}
 
 	for (const viewAction of viewActions) {
 		for (const alias of [
@@ -832,6 +862,10 @@ function findViewCapabilityActionName(
 }
 
 function looksLikeInstructionalViewQuestion(messageText: string): boolean {
+	// Deliberately does NOT match the colloquial "whats": genuine view-data asks
+	// ("whats my screen time") lean on that spelling slipping through so they
+	// keep promoting to the views surface (fenced in
+	// message-routing-live-regression.test.ts).
 	return /^\s*(?:explain|describe|teach|what\s+(?:is|are)|how\s+(?:do|can|to)\b)/iu.test(
 		messageText,
 	);

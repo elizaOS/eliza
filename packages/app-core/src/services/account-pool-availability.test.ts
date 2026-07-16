@@ -12,7 +12,9 @@
  *     it `healthy: 0` makes the SubAgentRouter refuse a failover respawn that
  *     the pool would happily serve.
  *
- * The pool is driven through injected readAccounts/writeAccount; only
+ * Together with the strategy suite, this keeps the production pool's broader
+ * eligibility surface in the changed-file coverage lane. The pool is driven
+ * through injected readAccounts/writeAccount; only
  * `recordCall`'s JSONL usage counter touches disk (a throwaway state dir).
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -21,7 +23,12 @@ import path from "node:path";
 import { getCodingAgentSelectorBridge } from "@elizaos/core";
 import type { LinkedAccountConfig } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AccountPool, isAccountSelectableNow } from "./account-pool";
+import {
+  AccountPool,
+  configureDefaultAccountPoolSelection,
+  isAccountSelectableNow,
+  selectionForProvider,
+} from "./account-pool";
 import { installCodingAgentSelectorBridge } from "./coding-account-bridge";
 
 let stateDir: string;
@@ -150,6 +157,15 @@ describe("describe() healthy count agrees with select() eligibility", () => {
       isAccountSelectableNow(
         account("x", {
           health: "rate-limited",
+          healthDetail: { until: now },
+        }),
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      isAccountSelectableNow(
+        account("x", {
+          health: "rate-limited",
           healthDetail: { until: now - 1 },
         }),
         now,
@@ -174,5 +190,148 @@ describe("describe() healthy count agrees with select() eligibility", () => {
     expect(
       isAccountSelectableNow(account("x", { health: "needs-reauth" }), now),
     ).toBe(false);
+  });
+});
+
+describe("account health mutation lifecycle", () => {
+  it("persists explicit failure states, recovery, metadata, and reprobe readiness", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "anthropic-subscription:a": account("a", {
+        usage: { refreshedAt: 1, resetsAt: Date.now() + 120_000 },
+      }),
+      "anthropic-subscription:b": account("b", {
+        health: "rate-limited",
+        healthDetail: { until: Date.now() - 1 },
+      }),
+      "anthropic-subscription:c": account("c", {
+        health: "rate-limited",
+        healthDetail: { until: Date.now() + 120_000 },
+      }),
+    };
+    const deleted: string[] = [];
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        accounts[`${next.providerId}:${next.id}`] = next;
+      },
+      deleteAccount: async (providerId, accountId) => {
+        deleted.push(`${providerId}:${accountId}`);
+      },
+    });
+
+    await pool.markRateLimited("a", Date.now() + 1_000, "provider quota", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.healthDetail).toMatchObject({
+      lastError: "provider quota",
+      until: expect.any(Number),
+    });
+
+    await pool.markNeedsReauth("a", "expired", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.health).toBe("needs-reauth");
+    await pool.markNeedsReauth("a", "refresh token revoked", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.healthDetail?.lastError).toBe(
+      "refresh token revoked",
+    );
+
+    await pool.markInvalid("a", "revoked", {
+      providerId: "anthropic-subscription",
+    });
+    expect(accounts["anthropic-subscription:a"]?.health).toBe("invalid");
+
+    await pool.markHealthy("a", { providerId: "anthropic-subscription" });
+    expect(accounts["anthropic-subscription:a"]?.health).toBe("ok");
+    expect(accounts["anthropic-subscription:a"]?.healthDetail).toBeUndefined();
+
+    const inserted = account("inserted", { priority: 4 });
+    await pool.upsert(inserted);
+    expect(pool.get("inserted", "anthropic-subscription")).toEqual(inserted);
+    expect(pool.list("anthropic-subscription")).toHaveLength(4);
+
+    await pool.deleteMetadata("anthropic-subscription", "inserted");
+    expect(deleted).toEqual(["anthropic-subscription:inserted"]);
+    expect(await pool.reprobeFlagged()).toContain("b");
+    expect(await pool.reprobeFlagged()).not.toContain("c");
+  });
+
+  it("leaves persistence untouched for missing accounts and unsupported probes", async () => {
+    const accounts: Record<string, LinkedAccountConfig> = {
+      "openai-api:direct": {
+        ...account("direct"),
+        providerId: "openai-api",
+        source: "api-key",
+      },
+    };
+    const writes: LinkedAccountConfig[] = [];
+    const pool = new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        writes.push(next);
+      },
+    });
+
+    await pool.recordCall("missing", { ok: false });
+    await pool.refreshUsage("missing", "token");
+    await pool.markRateLimited("missing", Date.now());
+    await pool.markNeedsReauth("missing");
+    await pool.markInvalid("missing");
+    await pool.markHealthy("missing");
+    await pool.refreshUsage("direct", "token", { providerId: "openai-api" });
+    await pool.markHealthy("direct", { providerId: "openai-api" });
+    await pool.deleteMetadata("openai-api", "direct");
+
+    expect(writes).toEqual([]);
+    expect(pool.list()).toEqual([accounts["openai-api:direct"]]);
+    expect(pool.list("anthropic-subscription")).toEqual([]);
+    expect(pool.get("missing")).toBeNull();
+  });
+});
+
+describe("configured provider selection", () => {
+  it("normalizes provider strategies and route-scoped account pins", () => {
+    configureDefaultAccountPoolSelection({
+      accountStrategies: {
+        "anthropic-api": "reset-soonest",
+        "openai-api": "invalid",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "anthropic",
+          strategy: "quota-aware",
+          accountIds: [" primary ", "", "fallback"],
+        },
+      },
+    });
+
+    expect(selectionForProvider("anthropic-api")).toEqual({
+      strategy: "quota-aware",
+      accountIds: ["primary", "fallback"],
+    });
+    expect(selectionForProvider("anthropic-subscription")).toEqual({
+      strategy: "quota-aware",
+      accountIds: ["primary", "fallback"],
+    });
+    expect(selectionForProvider("openai-api")).toEqual({
+      strategy: undefined,
+      accountIds: undefined,
+    });
+
+    configureDefaultAccountPoolSelection({
+      serviceRouting: {
+        llmText: {
+          backend: "openai",
+          accountId: " codex-primary ",
+          strategy: "round-robin",
+        },
+      },
+    });
+    expect(selectionForProvider("openai-codex")).toEqual({
+      strategy: "round-robin",
+      accountIds: ["codex-primary"],
+    });
   });
 });

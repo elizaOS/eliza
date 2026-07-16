@@ -57,6 +57,20 @@ function viewRegistryKey(id: string, viewType: ViewType): string {
 /** Module-level registry storage. Keyed by view type + view id. */
 const registry = new Map<string, ViewRegistryEntry>();
 
+// Directory-loaded plugins are real module objects but are not installed npm
+// packages, so name-based resolution cannot recover their bundle root. Binding
+// the imported object keeps the directory attached through every lifecycle
+// wrapper without widening the shared Plugin or runtime method contracts.
+const boundPluginPackageDirectories = new WeakMap<Plugin, string>();
+
+/** Bind an imported plugin object to the package root that supplied it. */
+export function bindPluginPackageDirectory(
+  plugin: Plugin,
+  pluginDir: string,
+): void {
+  boundPluginPackageDirectories.set(plugin, path.resolve(pluginDir));
+}
+
 /** View ids already warned about for oversized bundles — warn once per process. */
 const warnedLargeBundles = new Set<string>();
 
@@ -295,6 +309,7 @@ export async function registerPluginViews(
   // the real package instead of failing on name-derived candidates.
   const resolvedDir =
     pluginDir ??
+    boundPluginPackageDirectories.get(plugin) ??
     (await resolvePluginPackageDir(plugin.packageName ?? plugin.name));
 
   const registered: ViewRegistryEntry[] = [];

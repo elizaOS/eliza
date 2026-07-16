@@ -11,6 +11,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
+import { setHttpTelemetryHeaders } from "../observability/http-telemetry";
 import { corsMiddleware, isFirstPartyOrigin, isPublicTokenApiPath } from "./cloud-api-hono-cors";
 
 function appWithCors() {
@@ -20,7 +21,29 @@ function appWithCors() {
   app.post("/ping", (c) => c.json({ ok: true }));
   app.post("/api/auth/pair", (c) => c.json({ ok: true }));
   app.get("/api/v1/models", (c) => c.json({ ok: true }));
-  app.post("/api/v1/chat/completions", (c) => c.json({ ok: true }));
+  app.post("/api/v1/chat/completions", (c) => {
+    c.header("Access-Control-Expose-Headers", "PAYMENT-REQUIRED, Payment-Required");
+    return c.json({ ok: true });
+  });
+  return app;
+}
+
+function appWithOuterTelemetry() {
+  const app = new Hono();
+  app.onError((_error, c) => c.json({ error: "internal" }, 500));
+  app.use("*", async (c, next) => {
+    await next();
+    setHttpTelemetryHeaders(
+      c.res.headers,
+      "trace-hono-12345678",
+      [{ name: "cloud_worker", durationMs: 1 }],
+      c.res.headers.get("Access-Control-Allow-Origin") ?? undefined,
+    );
+  });
+  app.use("*", corsMiddleware);
+  app.get("/explode", () => {
+    throw new Error("route failure");
+  });
   return app;
 }
 
@@ -91,6 +114,24 @@ describe("corsMiddleware — first-party origins (credentialed)", () => {
     const res = await req("GET", "https://www.elizacloud.ai");
     expect(res.headers.get("access-control-allow-origin")).toBe("https://www.elizacloud.ai");
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
+    const exposed = (res.headers.get("access-control-expose-headers") || "").toLowerCase();
+    expect(exposed).toContain("server-timing");
+    expect(exposed).toContain("x-eliza-trace-id");
+    expect(exposed).toContain("x-eliza-preforward-ms");
+    expect(exposed).toContain("x-eliza-auth-trace");
+  });
+
+  test("outer telemetry survives the Hono error and CORS unwind path", async () => {
+    const res = await appWithOuterTelemetry().request("/explode", {
+      headers: { Origin: "https://www.elizacloud.ai" },
+    });
+    expect(res.status).toBe(500);
+    expect(res.headers.get("X-Eliza-Trace-Id")).toBe("trace-hono-12345678");
+    expect(res.headers.get("Server-Timing")).toContain("cloud_worker;dur=1");
+    expect(res.headers.get("Timing-Allow-Origin")).toBe("https://www.elizacloud.ai");
+    expect(res.headers.get("Access-Control-Expose-Headers")?.toLowerCase()).toContain(
+      "server-timing",
+    );
   });
 });
 
@@ -128,6 +169,8 @@ describe("corsMiddleware — Eliza app WebView origin (credentialed SSE)", () =>
     expect(allowHeaders).toContain("x-elizaos-client-id");
     expect(allowHeaders).toContain("x-elizaos-ui-language");
     expect(allowHeaders).toContain("x-eliza-client-id");
+    expect(allowHeaders).toContain("traceparent");
+    expect(allowHeaders).toContain("x-eliza-trace-id");
   });
 });
 
@@ -147,6 +190,14 @@ describe("corsMiddleware — third-party app origins (open, NO credentials)", ()
     expect((res.headers.get("access-control-allow-headers") || "").toLowerCase()).toContain(
       "x-app-id",
     );
+  });
+
+  test("appends telemetry headers without dropping route-specific payment headers", async () => {
+    const res = await req("POST", "https://supakan.nubs.site", false, "/api/v1/chat/completions");
+    const exposed = (res.headers.get("access-control-expose-headers") || "").toLowerCase();
+    expect(exposed).toContain("payment-required");
+    expect(exposed).toContain("server-timing");
+    expect(exposed).toContain("x-eliza-trace-id");
   });
 
   test("any third-party origin is allowed (open API)", async () => {

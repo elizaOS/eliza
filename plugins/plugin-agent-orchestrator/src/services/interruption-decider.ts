@@ -40,6 +40,16 @@ export interface InterruptionInput {
   shouldRespond?: "RESPOND" | "IGNORE" | "STOP";
   /** True when the room has participants beyond the user + this sub-agent. */
   multiParty?: boolean;
+  /**
+   * True when the message arrived via the session's ORIGIN connector channel
+   * (originRoomId/sourceRoomId) rather than a room dedicated to this task
+   * (task room / thread). The origin channel is shared with the orchestrator
+   * planner: most messages there are planner commands ("set a reminder",
+   * "cancel that"), not follow-ups for this coding task — blanket delivery
+   * would inject them into the sub-agent while the planner also processes
+   * them.
+   */
+  sharedChannel?: boolean;
   /** What the sub-agent is working on (task/goal), for the model classifier's
    *  relevance judgement. Ignored by the pure-regex {@link decideInterruption}. */
   taskContext?: string;
@@ -166,7 +176,15 @@ function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
     : "IDLE (between turns)";
   const room = input.multiParty
     ? "multiple participants — a message may be directed at someone else, not this agent"
-    : "just the user and this agent";
+    : input.sharedChannel
+      ? "the user's MAIN channel, SHARED with the orchestrator planner agent — most messages here are commands for the planner (reminders, unrelated requests, other tasks), NOT for this coding sub-agent"
+      : "just the user and this agent";
+  const sharedChannelRule = input.sharedChannel
+    ? [
+        "",
+        'This channel is shared with the orchestrator planner. Choose "deliver"/"queue" ONLY when the message is a follow-up or instruction for THIS coding task (references the work, the code, the repo, or addresses the agent). Anything else — new unrelated requests, reminders, planner commands, general chat — is planner-owned: choose "ignore".',
+      ]
+    : [];
   return [
     "You are the interruption controller for an autonomous coding sub-agent in a shared chat room.",
     "A human just posted a message. Decide what to do with it relative to the sub-agent's IN-PROGRESS work.",
@@ -184,6 +202,7 @@ function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
     '- "ignore": chatter not meant for this agent — acknowledgements ("nice", "thanks", "lgtm"), or (in a crowded room) messages addressed to someone else or unrelated to the task.',
     "",
     'Bias: a working sub-agent keeps working. Prefer "queue" over "interrupt" unless the message is a genuine halt or a direction-invalidating redirect. Never choose "interrupt" merely because the text contains the word "stop" — judge intent.',
+    ...sharedChannelRule,
     "",
     'Respond with ONLY a JSON object: {"action":"interrupt|queue|deliver|ignore","reason":"<short>"}',
   ].join("\n");
@@ -225,10 +244,16 @@ export async function decideInterruptionWithModel(
 ): Promise<InterruptionDecision> {
   const baseline = decideInterruption(input);
   if (!input.text.trim()) return baseline;
-  // Only a mid-turn agent (interrupt-vs-queue matters) or a crowded room
-  // (directed-vs-ambient matters) warrants a model call. An idle agent in a
-  // solo room simply receives the message.
-  if (!input.sessionBusy && !input.multiParty) return baseline;
+  // A mid-turn agent (interrupt-vs-queue matters), a crowded room
+  // (directed-vs-ambient matters), or a planner-shared channel
+  // (task-follow-up-vs-planner-command matters) warrants a model call. Only an
+  // idle agent in a solo DEDICATED room simply receives the message: on a
+  // shared channel the idle+solo fast-path would blanket-deliver every
+  // planner-directed message into the sub-agent (cross-task prompt injection),
+  // so the classifier must always run there.
+  if (!input.sessionBusy && !input.multiParty && !input.sharedChannel) {
+    return baseline;
+  }
   try {
     const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: buildInterruptionClassifierPrompt(input),
@@ -239,7 +264,12 @@ export async function decideInterruptionWithModel(
     );
     return verdict ?? baseline;
   } catch {
-    // error-policy:J4 model unavailable/unparseable → deterministic regex baseline; never regresses pure path
+    // error-policy:J4 model unavailable/unparseable → deterministic regex
+    // baseline (deliver when idle), INCLUDING on shared channels. Fail-open is
+    // deliberate: fail-closed would silently resurrect the dropped-follow-ups
+    // bug the origin-room binding exists to fix on every model-less runtime,
+    // while the planner double-processing that fail-open risks is bounded and
+    // visible (the planner's own reply shows what it did).
     return baseline;
   }
 }
