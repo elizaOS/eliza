@@ -155,6 +155,7 @@ import {
   composeSubscriptionStatusSnapshot,
   readSubscriptionStatusViaHttp,
 } from "./subscription-rpc";
+import { broadcastShellSyncEnvelope } from "./shell-sync-relay";
 import { createTraceHostForRuntime, getTraceService } from "./trace";
 import type { SendToWebview } from "./types.js";
 import {
@@ -1436,6 +1437,14 @@ export function buildBunRpcHandlers({
     fileWatcherList: async () => ({ watches: fileWatcher.listWatches() }),
     fileWatcherGetStatus: async (params: { watchId: string }) =>
       fileWatcher.getWatch(params.watchId),
+
+    // ---- Shell chat/voice controller cross-window relay (#16442) ----
+    // Fan a renderer's shell-sync publish out to every registered window. The
+    // renderer coordinator filters its own echo, so this stays a dumb pipe.
+    shellControllerRelay: (params: { envelope: unknown }) => {
+      broadcastShellSyncEnvelope(params?.envelope);
+      return { ok: true };
+    },
   };
 }
 
