@@ -185,6 +185,41 @@ if (
   );
 }
 
+if (exposure.exposureLevel === "none") {
+  investorInsights.positive.push(
+    createInvestorInsight({
+      id: "no-known-exposure",
+
+      title:
+        INVESTOR_INSIGHT_TEMPLATES
+          .noKnownExposure.title,
+
+      finding:
+        "No known scam, rug-pull, sanctioned, adverse-media, or suspicious exposure was identified in the currently connected intelligence sources.",
+
+      whyItMatters:
+        INVESTOR_INSIGHT_TEMPLATES
+          .noKnownExposure
+          .whyItMatters,
+
+      impact: "positive",
+
+      confidence:
+        exposure.evidenceConfidence,
+
+      severity: "high",
+
+      evidenceRecordIds: [
+        "exposure-summary",
+      ],
+
+      limitations: [
+        "This finding is limited to the exposure sources currently connected to SkunkScanAI.",
+      ],
+    }),
+  );
+}
+
   return {
     trustScore,
 
