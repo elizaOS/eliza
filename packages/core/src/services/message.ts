@@ -7322,9 +7322,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		};
 		const stageOneNamedAToolForThisTurn =
 			messageHandler.plan.requiresTool === true &&
-			(messageHandler.plan.candidateActions ?? []).some((name) =>
+			messageHandler.plan.candidateActions?.some((name) =>
 				candidateResolvesToPlannerTool(String(name)),
-			);
+			) === true;
 		const stageOneNamedOwnerLifeManagementTool =
 			stageOneNamedAToolForThisTurn &&
 			Array.isArray(messageHandler.plan.candidateActions) &&
