@@ -6,9 +6,9 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { NATIVE_COMPOSER_SCHEMA } from "./contract";
-import type { ComposerEvent } from "./contract";
 import { createComposerBridgeClient } from "./client";
+import type { ComposerEvent } from "./contract";
+import { NATIVE_COMPOSER_SCHEMA } from "./contract";
 
 describe("createComposerBridgeClient — boundary + events", () => {
   it("degrades malformed raw input to invalid-input, never throws", () => {
@@ -25,8 +25,16 @@ describe("createComposerBridgeClient — boundary + events", () => {
     const client = createComposerBridgeClient();
     const events: ComposerEvent[] = [];
     client.subscribe((e) => events.push(e));
-    client.dispatchRaw({ type: "focus.set", opId: "f", focused: true, keyboard: "shown" });
-    expect(events.map((e) => e.type)).toEqual(["draft.changed", "focus.changed"]);
+    client.dispatchRaw({
+      type: "focus.set",
+      opId: "f",
+      focused: true,
+      keyboard: "shown",
+    });
+    expect(events.map((e) => e.type)).toEqual([
+      "draft.changed",
+      "focus.changed",
+    ]);
   });
 
   it("emits voice.state for a voice op and send.result on completion", () => {
@@ -56,7 +64,11 @@ describe("createComposerBridgeClient — reload durability", () => {
     // Simulate a window reload: new client hydrated from the snapshot.
     const after = createComposerBridgeClient({ snapshot });
     expect(after.getDraft().text).toBe("x");
-    const replay = after.dispatchRaw({ type: "text.insert", opId: "dup", text: "x" });
+    const replay = after.dispatchRaw({
+      type: "text.insert",
+      opId: "dup",
+      text: "x",
+    });
     expect(replay.status).toBe("duplicate");
     expect(after.getDraft().text).toBe("x"); // not doubled
   });
@@ -86,7 +98,11 @@ describe("createComposerBridgeClient — batch replay", () => {
         { type: "text.insert", opId: "2", text: "b" },
       ],
     });
-    expect(results.map((r) => r.status)).toEqual(["applied", "rejected", "applied"]);
+    expect(results.map((r) => r.status)).toEqual([
+      "applied",
+      "rejected",
+      "applied",
+    ]);
     expect(client.getDraft().text).toBe("ab");
   });
 

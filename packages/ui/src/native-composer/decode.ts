@@ -78,7 +78,9 @@ function optionalStringInvalid(
   record: Record<string, unknown>,
   key: string,
 ): boolean {
-  return key in record && record[key] !== undefined && !isNonEmptyString(record[key]);
+  return (
+    key in record && record[key] !== undefined && !isNonEmptyString(record[key])
+  );
 }
 
 /**
@@ -109,7 +111,11 @@ export function decodeComposerAttachmentSource(
       if (!isNonEmptyString(raw.mimeType))
         return fail("missing-field", "`mimeType` is required", "mimeType");
       if (!isNonEmptyString(raw.bytesBase64))
-        return fail("missing-field", "`bytesBase64` is required", "bytesBase64");
+        return fail(
+          "missing-field",
+          "`bytesBase64` is required",
+          "bytesBase64",
+        );
       return {
         ok: true,
         attachment: {
@@ -179,9 +185,15 @@ function decodeReplyContext(
   raw: unknown,
 ): { ok: true; reply: ComposerReplyContext } | { ok: false; field: string } {
   if (!isRecord(raw)) return { ok: false, field: "reply" };
-  if (!isNonEmptyString(raw.messageId)) return { ok: false, field: "reply.messageId" };
-  if (optionalStringInvalid(raw, "authorId")) return { ok: false, field: "reply.authorId" };
-  if ("preview" in raw && raw.preview !== undefined && typeof raw.preview !== "string")
+  if (!isNonEmptyString(raw.messageId))
+    return { ok: false, field: "reply.messageId" };
+  if (optionalStringInvalid(raw, "authorId"))
+    return { ok: false, field: "reply.authorId" };
+  if (
+    "preview" in raw &&
+    raw.preview !== undefined &&
+    typeof raw.preview !== "string"
+  )
     return { ok: false, field: "reply.preview" };
   return {
     ok: true,
@@ -198,7 +210,8 @@ function decodeMention(
 ): { ok: true; mention: ComposerMention } | { ok: false; field: string } {
   if (!isRecord(raw)) return { ok: false, field: "mention" };
   if (!isNonEmptyString(raw.id)) return { ok: false, field: "mention.id" };
-  if (typeof raw.label !== "string") return { ok: false, field: "mention.label" };
+  if (typeof raw.label !== "string")
+    return { ok: false, field: "mention.label" };
   if (
     "kind" in raw &&
     raw.kind !== undefined &&
@@ -232,10 +245,18 @@ export function decodeComposerOperation(
   }
   const type = raw.type;
   if (typeof type !== "string") {
-    return fail("missing-field", "operation is missing a string `type`", "type");
+    return fail(
+      "missing-field",
+      "operation is missing a string `type`",
+      "type",
+    );
   }
   if (!isNonEmptyString(raw.opId)) {
-    return fail("missing-field", "`opId` is required (idempotency key)", "opId");
+    return fail(
+      "missing-field",
+      "`opId` is required (idempotency key)",
+      "opId",
+    );
   }
   if (optionalTimestampInvalid(raw)) {
     return fail("invalid-field", "`at` must be a finite number", "at");
@@ -252,7 +273,11 @@ export function decodeComposerOperation(
     }
     case "attachment.add": {
       if (!isNonEmptyString(raw.attachmentId))
-        return fail("missing-field", "`attachmentId` is required", "attachmentId");
+        return fail(
+          "missing-field",
+          "`attachmentId` is required",
+          "attachmentId",
+        );
       const decoded = decodeComposerAttachmentSource(raw.attachment);
       if (!decoded.ok) return decoded;
       return {
@@ -268,7 +293,11 @@ export function decodeComposerOperation(
     }
     case "attachment.remove": {
       if (!isNonEmptyString(raw.attachmentId))
-        return fail("missing-field", "`attachmentId` is required", "attachmentId");
+        return fail(
+          "missing-field",
+          "`attachmentId` is required",
+          "attachmentId",
+        );
       return {
         ok: true,
         operation: { type, opId, attachmentId: raw.attachmentId, ...at },
@@ -278,7 +307,10 @@ export function decodeComposerOperation(
       const decoded = decodeReplyContext(raw.reply);
       if (!decoded.ok)
         return fail("invalid-field", "`reply` is malformed", decoded.field);
-      return { ok: true, operation: { type, opId, reply: decoded.reply, ...at } };
+      return {
+        ok: true,
+        operation: { type, opId, reply: decoded.reply, ...at },
+      };
     }
     case "reply.clear": {
       return { ok: true, operation: { type, opId, ...at } };
@@ -309,7 +341,11 @@ export function decodeComposerOperation(
         raw.keyboard !== "shown" &&
         raw.keyboard !== "hidden"
       )
-        return fail("invalid-field", "`keyboard` must be shown|hidden", "keyboard");
+        return fail(
+          "invalid-field",
+          "`keyboard` must be shown|hidden",
+          "keyboard",
+        );
       return {
         ok: true,
         operation: {
@@ -324,7 +360,11 @@ export function decodeComposerOperation(
       };
     }
     case "voice.handoff": {
-      if (raw.phase !== "start" && raw.phase !== "commit" && raw.phase !== "cancel")
+      if (
+        raw.phase !== "start" &&
+        raw.phase !== "commit" &&
+        raw.phase !== "cancel"
+      )
         return fail(
           "invalid-field",
           "`phase` must be start|commit|cancel",
@@ -335,7 +375,11 @@ export function decodeComposerOperation(
         raw.transcript !== undefined &&
         typeof raw.transcript !== "string"
       )
-        return fail("invalid-field", "`transcript` must be a string", "transcript");
+        return fail(
+          "invalid-field",
+          "`transcript` must be a string",
+          "transcript",
+        );
       return {
         ok: true,
         operation: {

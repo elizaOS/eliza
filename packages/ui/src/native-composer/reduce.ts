@@ -121,15 +121,11 @@ function markProcessed(
 }
 
 /** Next draft with `patch` applied and `revision` bumped (an applied mutation). */
-function bumpDraft(draft: ComposerDraft, patch: Partial<ComposerDraft>): ComposerDraft {
+function bumpDraft(
+  draft: ComposerDraft,
+  patch: Partial<ComposerDraft>,
+): ComposerDraft {
   return { ...draft, ...patch, revision: draft.revision + 1 };
-}
-
-function applied(state: ComposerBridgeState, opId: string): {
-  state: ComposerBridgeState;
-  result: DispatchResult;
-} {
-  return { state, result: { status: "applied", opId, draft: state.draft } };
 }
 
 function rejected(
@@ -176,7 +172,12 @@ export function applyComposerOperation(
       const text = state.draft.text + op.text;
       if (text.length > limits.maxTextLength)
         return rejected(state, op.opId, "oversized", "text exceeds max length");
-      return commitApplied(state, op.opId, limits, bumpDraft(state.draft, { text }));
+      return commitApplied(
+        state,
+        op.opId,
+        limits,
+        bumpDraft(state.draft, { text }),
+      );
     }
     case "text.set": {
       if (op.text.length > limits.maxTextLength)
@@ -190,15 +191,27 @@ export function applyComposerOperation(
     }
     case "attachment.add": {
       if (!capabilities.attach)
-        return rejected(state, op.opId, "permission-denied", "attach not permitted");
+        return rejected(
+          state,
+          op.opId,
+          "permission-denied",
+          "attach not permitted",
+        );
       const existingIdx = state.draft.attachments.findIndex(
         (a) => a.id === op.attachmentId,
       );
-      if (existingIdx < 0 && state.draft.attachments.length >= limits.maxAttachments)
+      if (
+        existingIdx < 0 &&
+        state.draft.attachments.length >= limits.maxAttachments
+      )
         return rejected(state, op.opId, "oversized", "too many attachments");
-      const normalized = normalizeComposerAttachment(op.attachmentId, op.attachment, {
-        maxBytes: limits.maxAttachmentBytes,
-      });
+      const normalized = normalizeComposerAttachment(
+        op.attachmentId,
+        op.attachment,
+        {
+          maxBytes: limits.maxAttachmentBytes,
+        },
+      );
       if (!normalized.ok)
         return rejected(state, op.opId, normalized.reason, normalized.message);
       const attachments = [...state.draft.attachments];
@@ -263,12 +276,27 @@ export function applyComposerOperation(
     }
     case "voice.handoff": {
       if (!capabilities.voice)
-        return rejected(state, op.opId, "permission-denied", "voice not permitted");
+        return rejected(
+          state,
+          op.opId,
+          "permission-denied",
+          "voice not permitted",
+        );
       if (op.phase === "commit" && op.transcript) {
         const text = state.draft.text + op.transcript;
         if (text.length > limits.maxTextLength)
-          return rejected(state, op.opId, "oversized", "text exceeds max length");
-        return commitApplied(state, op.opId, limits, bumpDraft(state.draft, { text }));
+          return rejected(
+            state,
+            op.opId,
+            "oversized",
+            "text exceeds max length",
+          );
+        return commitApplied(
+          state,
+          op.opId,
+          limits,
+          bumpDraft(state.draft, { text }),
+        );
       }
       // start/cancel carry no draft mutation; still recorded so a replay no-ops.
       return commitApplied(state, op.opId, limits, state.draft);
@@ -276,7 +304,9 @@ export function applyComposerOperation(
     case "cancel": {
       if (op.scope === "send") {
         // Aborting a send is idempotent even with nothing in flight.
-        return commitApplied(state, op.opId, limits, state.draft, { sending: null });
+        return commitApplied(state, op.opId, limits, state.draft, {
+          sending: null,
+        });
       }
       // scope === "draft": clear the body, keep focus/keyboard so the input stays live.
       const cleared: ComposerDraft = {
@@ -291,7 +321,12 @@ export function applyComposerOperation(
       if (isDraftEmpty(state.draft))
         return rejected(state, op.opId, "empty-send", "nothing to send");
       if (state.sending)
-        return rejected(state, op.opId, "send-in-flight", "a send is already in flight");
+        return rejected(
+          state,
+          op.opId,
+          "send-in-flight",
+          "a send is already in flight",
+        );
       if (!online) {
         // Queue for replay on reconnect; not marked processed until it applies.
         return {

@@ -20,6 +20,15 @@
  */
 
 import {
+  type ComposerDraft,
+  type ComposerEvent,
+  type ComposerOperation,
+  type DispatchResult,
+  NATIVE_COMPOSER_SCHEMA,
+  type NativeComposerSchema,
+  type SendOutcome,
+} from "./contract";
+import {
   decodeComposerOperation,
   decodeComposerOperationStream,
 } from "./decode";
@@ -35,15 +44,6 @@ import {
   initialComposerState,
   resolveSend,
 } from "./reduce";
-import {
-  type ComposerDraft,
-  type ComposerEvent,
-  type ComposerOperation,
-  type DispatchResult,
-  NATIVE_COMPOSER_SCHEMA,
-  type NativeComposerSchema,
-  type SendOutcome,
-} from "./contract";
 
 /** Plain-JSON snapshot persisted across reload; excludes the transient send. */
 export interface ComposerBridgeSnapshot {

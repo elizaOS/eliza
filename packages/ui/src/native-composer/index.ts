@@ -7,6 +7,18 @@
  */
 
 export {
+  DEFAULT_MAX_ATTACHMENT_BYTES,
+  type NormalizeAttachmentOptions,
+  type NormalizeAttachmentResult,
+  normalizeComposerAttachment,
+} from "./attachments";
+export {
+  type ComposerBridgeClient,
+  type ComposerBridgeClientOptions,
+  type ComposerBridgeSnapshot,
+  createComposerBridgeClient,
+} from "./client";
+export {
   type AttachmentAddOperation,
   type AttachmentRemoveOperation,
   type CancelOperation,
@@ -55,12 +67,6 @@ export {
   decodeComposerOperationStream,
 } from "./decode";
 export {
-  DEFAULT_MAX_ATTACHMENT_BYTES,
-  type NormalizeAttachmentOptions,
-  type NormalizeAttachmentResult,
-  normalizeComposerAttachment,
-} from "./attachments";
-export {
   applyComposerOperation,
   type ComposerApplyContext,
   type ComposerBridgeState,
@@ -73,9 +79,3 @@ export {
   initialComposerState,
   resolveSend,
 } from "./reduce";
-export {
-  type ComposerBridgeClient,
-  type ComposerBridgeClientOptions,
-  type ComposerBridgeSnapshot,
-  createComposerBridgeClient,
-} from "./client";

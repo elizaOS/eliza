@@ -119,7 +119,10 @@ export function normalizeComposerAttachment(
       if (bytes === 0)
         return reject("invalid-input", "attachment has no bytes");
       if (bytes > maxBytes)
-        return reject("oversized", `attachment ${bytes}B exceeds cap ${maxBytes}B`);
+        return reject(
+          "oversized",
+          `attachment ${bytes}B exceeds cap ${maxBytes}B`,
+        );
       return {
         ok: true,
         attachment: {
@@ -141,7 +144,10 @@ export function normalizeComposerAttachment(
         return reject("invalid-input", "data URL payload is malformed");
       if (bytes === 0) return reject("invalid-input", "data URL has no bytes");
       if (bytes > maxBytes)
-        return reject("oversized", `attachment ${bytes}B exceeds cap ${maxBytes}B`);
+        return reject(
+          "oversized",
+          `attachment ${bytes}B exceeds cap ${maxBytes}B`,
+        );
       return {
         ok: true,
         attachment: {
@@ -164,7 +170,10 @@ export function normalizeComposerAttachment(
       if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
         return reject("unsupported", `unsupported scheme: ${parsed.protocol}`);
       if (isObviouslyPrivateHost(parsed.hostname))
-        return reject("permission-denied", `blocked private host: ${parsed.hostname}`);
+        return reject(
+          "permission-denied",
+          `blocked private host: ${parsed.hostname}`,
+        );
       return {
         ok: true,
         attachment: {
@@ -183,10 +192,7 @@ export function normalizeComposerAttachment(
         ? source.url.slice(STORED_MEDIA_PREFIX.length).split(/[?#]/)[0]
         : "";
       if (!name || !STORED_MEDIA_NAME.test(name))
-        return reject(
-          "invalid-input",
-          `not a stored media URL: ${source.url}`,
-        );
+        return reject("invalid-input", `not a stored media URL: ${source.url}`);
       return {
         ok: true,
         attachment: {

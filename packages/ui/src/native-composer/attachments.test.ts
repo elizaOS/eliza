@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { ComposerAttachmentSource } from "./contract";
 import { normalizeComposerAttachment } from "./attachments";
+import type { ComposerAttachmentSource } from "./contract";
 
 const HASH = "a".repeat(64);
 
@@ -108,7 +108,10 @@ describe("normalizeComposerAttachment — rejections", () => {
       "http://internal/x.png",
     ];
     for (const url of hosts) {
-      const r = normalizeComposerAttachment("att1", { source: "remote", url } as ComposerAttachmentSource);
+      const r = normalizeComposerAttachment("att1", {
+        source: "remote",
+        url,
+      } as ComposerAttachmentSource);
       expect(r.ok, url).toBe(false);
       if (!r.ok) expect(r.reason).toBe("permission-denied");
     }

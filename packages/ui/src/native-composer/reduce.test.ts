@@ -47,7 +47,11 @@ describe("text + mentions + reply", () => {
 
   it("mention.add inserts a token and records the mention", () => {
     const { state } = run([
-      { type: "mention.add", opId: "1", mention: { id: "u1", label: "alice", kind: "user" } },
+      {
+        type: "mention.add",
+        opId: "1",
+        mention: { id: "u1", label: "alice", kind: "user" },
+      },
     ]);
     expect(state.draft.text).toBe("@alice ");
     expect(state.draft.mentions).toHaveLength(1);
@@ -55,7 +59,11 @@ describe("text + mentions + reply", () => {
 
   it("reply.set then reply.clear round-trips", () => {
     const { state } = run([
-      { type: "reply.set", opId: "1", reply: { messageId: "m1", preview: "hi" } },
+      {
+        type: "reply.set",
+        opId: "1",
+        reply: { messageId: "m1", preview: "hi" },
+      },
       { type: "reply.clear", opId: "2" },
     ]);
     expect(state.draft.reply).toBeNull();
@@ -71,7 +79,8 @@ describe("text + mentions + reply", () => {
       small,
     );
     expect(results[0].status).toBe("rejected");
-    if (results[0].status === "rejected") expect(results[0].reason).toBe("oversized");
+    if (results[0].status === "rejected")
+      expect(results[0].reason).toBe("oversized");
     expect(state.draft.text).toBe("");
     expect(state.draft.revision).toBe(0);
   });
@@ -100,7 +109,8 @@ describe("attachments", () => {
     };
     const { results } = run([stored], noAttach);
     expect(results[0].status).toBe("rejected");
-    if (results[0].status === "rejected") expect(results[0].reason).toBe("permission-denied");
+    if (results[0].status === "rejected")
+      expect(results[0].reason).toBe("permission-denied");
   });
 
   it("oversized when over the attachment count cap", () => {
@@ -115,13 +125,17 @@ describe("attachments", () => {
           type: "attachment.add",
           opId: "a2",
           attachmentId: "att2",
-          attachment: { source: "stored", url: `/api/media/${"b".repeat(64)}.png` },
+          attachment: {
+            source: "stored",
+            url: `/api/media/${"b".repeat(64)}.png`,
+          },
         },
       ],
       capped,
     );
     expect(results[1].status).toBe("rejected");
-    if (results[1].status === "rejected") expect(results[1].reason).toBe("oversized");
+    if (results[1].status === "rejected")
+      expect(results[1].reason).toBe("oversized");
   });
 
   it("rejects a malformed attachment source with invalid-input", () => {
@@ -134,14 +148,19 @@ describe("attachments", () => {
       },
     ]);
     expect(results[0].status).toBe("rejected");
-    if (results[0].status === "rejected") expect(results[0].reason).toBe("invalid-input");
+    if (results[0].status === "rejected")
+      expect(results[0].reason).toBe("invalid-input");
   });
 });
 
 describe("idempotency — duplicate native callbacks", () => {
   it("a repeated opId is a no-op reported as duplicate", () => {
     let state = initialComposerState();
-    const op: ComposerOperation = { type: "text.insert", opId: "dup", text: "x" };
+    const op: ComposerOperation = {
+      type: "text.insert",
+      opId: "dup",
+      text: "x",
+    };
     const first = applyComposerOperation(state, op, ctx);
     state = first.state;
     const second = applyComposerOperation(state, op, ctx);
@@ -166,7 +185,8 @@ describe("send", () => {
   it("rejects an empty send", () => {
     const { results } = run([{ type: "send", opId: "s" }]);
     expect(results[0].status).toBe("rejected");
-    if (results[0].status === "rejected") expect(results[0].reason).toBe("empty-send");
+    if (results[0].status === "rejected")
+      expect(results[0].reason).toBe("empty-send");
   });
 
   it("accepts a send and marks it in flight", () => {
@@ -176,13 +196,18 @@ describe("send", () => {
   });
 
   it("rejects a second send while one is in flight (concurrency)", () => {
-    const { results } = run([seed, { type: "send", opId: "s1" }, { type: "send", opId: "s2" }]);
+    const { results } = run([
+      seed,
+      { type: "send", opId: "s1" },
+      { type: "send", opId: "s2" },
+    ]);
     expect(results[2].status).toBe("rejected");
-    if (results[2].status === "rejected") expect(results[2].reason).toBe("send-in-flight");
+    if (results[2].status === "rejected")
+      expect(results[2].reason).toBe("send-in-flight");
   });
 
   it("defers a send while offline, then replays it on reconnect", () => {
-    let { state } = run([seed, { type: "send", opId: "s" }], offline);
+    const { state } = run([seed, { type: "send", opId: "s" }], offline);
     expect(state.deferred).toHaveLength(1);
     expect(state.sending).toBeNull();
     const flushed = flushDeferredOperations(state, ctx);
@@ -198,7 +223,11 @@ describe("send", () => {
     expect(ok.sending).toBeNull();
 
     const { state: state2 } = run([seed, { type: "send", opId: "s" }]);
-    const fail = resolveSend(state2, "s", { ok: false, reason: "invalid-input", message: "x" });
+    const fail = resolveSend(state2, "s", {
+      ok: false,
+      reason: "invalid-input",
+      message: "x",
+    });
     expect(fail.draft.text).toBe("hi");
     expect(fail.sending).toBeNull();
   });
@@ -231,7 +260,12 @@ describe("voice handoff + focus", () => {
   it("commit appends the transcript; permission-denied without voice capability", () => {
     const { state } = run([
       { type: "voice.handoff", opId: "v1", phase: "start" },
-      { type: "voice.handoff", opId: "v2", phase: "commit", transcript: "spoken words" },
+      {
+        type: "voice.handoff",
+        opId: "v2",
+        phase: "commit",
+        transcript: "spoken words",
+      },
     ]);
     expect(state.draft.text).toBe("spoken words");
 
@@ -239,9 +273,13 @@ describe("voice handoff + focus", () => {
       ...ctx,
       capabilities: { attach: true, voice: false },
     };
-    const { results } = run([{ type: "voice.handoff", opId: "v1", phase: "start" }], noVoice);
+    const { results } = run(
+      [{ type: "voice.handoff", opId: "v1", phase: "start" }],
+      noVoice,
+    );
     expect(results[0].status).toBe("rejected");
-    if (results[0].status === "rejected") expect(results[0].reason).toBe("permission-denied");
+    if (results[0].status === "rejected")
+      expect(results[0].reason).toBe("permission-denied");
   });
 
   it("focus.set updates focus + keyboard", () => {
