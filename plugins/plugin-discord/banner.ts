@@ -522,7 +522,7 @@ export function printDiscordBanner(runtime: IAgentRuntime): void {
 			{
 				name: "DISCORD_SHOULD_IGNORE_BOT_MESSAGES",
 				value: ignoreBots,
-				defaultValue: "true",
+				defaultValue: "false",
 			},
 			{
 				name: "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES",
@@ -532,7 +532,7 @@ export function printDiscordBanner(runtime: IAgentRuntime): void {
 			{
 				name: "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS",
 				value: onlyMentions,
-				defaultValue: "true",
+				defaultValue: "false",
 			},
 		],
 		runtime,
