@@ -10,6 +10,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import {
+  type ActionResult,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
@@ -30,8 +31,16 @@ import { describe, expect, it, vi } from "vitest";
 // the suite on Windows and trust the equivalent Linux/macOS runs.
 const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
-import { SandboxService, SessionCwdService } from "../services/index.js";
-import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
+import {
+  BackgroundShellService,
+  SandboxService,
+  SessionCwdService,
+} from "../services/index.js";
+import {
+  BACKGROUND_SHELL_SERVICE,
+  SANDBOX_SERVICE,
+  SESSION_CWD_SERVICE,
+} from "../types.js";
 import {
   type CommandPlatform,
   localResourceUserFacingText,
@@ -51,12 +60,14 @@ interface RuntimeOptions {
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
   capabilityRouter?: ElizaCapabilityRouter;
+  backgroundBufferChars?: number;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   runtime: IAgentRuntime;
   sandbox: SandboxService;
   session: SessionCwdService;
+  backgroundShell: BackgroundShellService;
   shellHistoryService?: {
     clearCommandHistory: ReturnType<typeof vi.fn>;
     getCommandHistory: ReturnType<typeof vi.fn>;
@@ -67,6 +78,10 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
   if (opts.shellTimeoutMs !== undefined)
     settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
+  if (opts.backgroundBufferChars !== undefined) {
+    settings.CODING_TOOLS_BACKGROUND_SHELL_BUFFER_CHARS =
+      opts.backgroundBufferChars;
+  }
 
   const services = new Map<string, unknown>();
   const runtime = {
@@ -77,8 +92,10 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
 
   const sandbox = await SandboxService.start(runtime);
   const session = await SessionCwdService.start(runtime);
+  const backgroundShell = await BackgroundShellService.start(runtime);
   services.set(SANDBOX_SERVICE, sandbox);
   services.set(SESSION_CWD_SERVICE, session);
+  services.set(BACKGROUND_SHELL_SERVICE, backgroundShell);
   const shellHistoryService =
     opts.withShellHistoryService || opts.shellHistoryCommands
       ? {
@@ -97,7 +114,47 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
     services.set(CAPABILITY_ROUTER_SERVICE_TYPE, opts.capabilityRouter);
   }
 
-  return { runtime, sandbox, session, shellHistoryService };
+  return { runtime, sandbox, session, backgroundShell, shellHistoryService };
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollUntil(
+  runtime: IAgentRuntime,
+  message: Memory,
+  handle: string,
+  predicate: (data: Record<string, unknown>, text: string) => boolean,
+): Promise<ActionResult> {
+  let last: ActionResult | undefined;
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const result = await shellAction.handler?.(runtime, message, undefined, {
+      action: "poll_background",
+      handle,
+    });
+    if (!result) throw new Error("SHELL handler missing");
+    last = result;
+    if (
+      predicate(
+        (result.data as Record<string, unknown> | undefined) ?? {},
+        result.text ?? "",
+      )
+    ) {
+      return result;
+    }
+    await delay(50);
+  }
+  throw new Error(`condition not met; last=${last?.text ?? "(none)"}`);
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
 }
 
 function unavailableCapability(
@@ -221,6 +278,163 @@ describeIfPosix("shellAction", () => {
     expect(result.text).toContain("[exit 0]");
     expect(result.text).toContain("--- stdout ---\n(empty)");
     expect(result.text).toContain("--- stderr ---\n(empty)");
+  });
+
+  it("starts, polls, writes to, lists, and kills a background shell session", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command:
+        "printf 'ready\\n'; while IFS= read -r line; do printf 'got:%s\\n' \"$line\"; done",
+    });
+
+    expect(start?.success).toBe(true);
+    const startData = start?.data as Record<string, unknown>;
+    const handle = startData.handle as string;
+    const session = startData.session as Record<string, unknown>;
+    const pid = session.pid as number;
+    expect(handle).toMatch(/^bgsh_/);
+    expect(isProcessAlive(pid)).toBe(true);
+
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("ready"),
+    );
+
+    const write = await shellAction.handler?.(runtime, message, undefined, {
+      action: "write_background",
+      handle,
+      stdin: "alpha\n",
+    });
+    expect(write?.success).toBe(true);
+
+    await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("got:alpha"),
+    );
+
+    const list = await shellAction.handler?.(runtime, message, undefined, {
+      action: "list_background",
+    });
+    expect(list?.success).toBe(true);
+    expect(list?.text).toContain(handle);
+
+    const killed = await shellAction.handler?.(runtime, message, undefined, {
+      action: "kill_background",
+      handle,
+    });
+    expect(killed?.success).toBe(true);
+    expect(killed?.text).toContain("status=killed");
+    expect(isProcessAlive(pid)).toBe(false);
+  });
+
+  it("returns incremental background output using stream offsets", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command:
+        "for i in 0 1 2; do printf 'tick-%s\\n' \"$i\"; sleep 0.06; done",
+    });
+    const handle = (start?.data as Record<string, unknown>).handle as string;
+
+    const first = await pollUntil(runtime, message, handle, (_data, text) =>
+      text.includes("tick-0"),
+    );
+    const firstData = first.data as Record<string, unknown>;
+    const stdout = firstData.stdout as Record<string, unknown>;
+    const nextOffset = stdout.endOffset as number;
+
+    const second = await pollUntil(
+      runtime,
+      message,
+      handle,
+      (_data, text) => text.includes("tick-1") || text.includes("tick-2"),
+    );
+    expect(second.text).toContain("tick-");
+
+    const incremental = await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        action: "poll_background",
+        handle,
+        stdout_offset: nextOffset,
+      },
+    );
+    expect(incremental?.success).toBe(true);
+    expect(incremental?.text).not.toContain("tick-0");
+
+    await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+  });
+
+  it("reports buffer truncation when background output exceeds the cap", async () => {
+    const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command: "printf 'abcdefghijklmnopqrstuvwxyz'",
+    });
+    const handle = (start?.data as Record<string, unknown>).handle as string;
+
+    const poll = await pollUntil(runtime, message, handle, (data) => {
+      const stdout = data.stdout as Record<string, unknown> | undefined;
+      return (
+        data.status === "exited" &&
+        typeof stdout?.truncatedBefore === "number" &&
+        stdout.truncatedBefore > 0
+      );
+    });
+    const data = poll.data as Record<string, unknown>;
+    const stdout = data.stdout as Record<string, unknown>;
+    expect(stdout.text).toBe("ghijklmnopqrstuvwxyz");
+    expect(stdout.startOffset).toBe(6);
+    expect(stdout.endOffset).toBe(26);
+    expect(stdout.truncatedBefore).toBe(6);
+  });
+
+  it("reaps background sessions during service teardown", async () => {
+    const { runtime, backgroundShell } = await makeRuntime();
+    const message = makeMessage();
+    const start = await shellAction.handler?.(runtime, message, undefined, {
+      action: "start_background",
+      command: "sleep 30",
+    });
+    const session = (start?.data as Record<string, unknown>).session as Record<
+      string,
+      unknown
+    >;
+    const pid = session.pid as number;
+    expect(isProcessAlive(pid)).toBe(true);
+
+    await backgroundShell.stop();
+    expect(isProcessAlive(pid)).toBe(false);
+  });
+
+  it("fails honestly instead of host-spawning background sessions through capability router", async () => {
+    const router = makeShellRouter(async () => ({
+      output: "foreground only\n",
+      exitCode: 0,
+      timedOut: false,
+    }));
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        action: "start_background",
+        command: "sleep 30",
+      },
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.text).toContain("capability-router");
   });
 
   it("rejects a cwd under the blocklist", async () => {
