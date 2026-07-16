@@ -2058,7 +2058,7 @@ export function ContinuousChatOverlay({
       clearSearchHighlight();
       el.scrollIntoView({ block: "center", behavior: "smooth" });
       // Message-scroller rows use paint containment for long-thread performance,
-      // so an outward row outline is clipped. Paint the accent inside the actual
+      // so an outward row outline is clipped. Paint the flash inside the actual
       // bubble instead; this stays visible without disturbing its liquid-glass
       // shadow or layout.
       const bubble =
@@ -2070,7 +2070,7 @@ export function ContinuousChatOverlay({
         transition: bubble.style.transition,
       };
       bubble.setAttribute("data-chat-search-highlight", "true");
-      bubble.style.outline = "2px solid var(--accent)";
+      bubble.style.outline = "2px solid rgba(255, 255, 255, 0.96)";
       bubble.style.outlineOffset = "-2px";
       bubble.style.transition =
         "outline-color 650ms cubic-bezier(0.22, 1, 0.36, 1)";
