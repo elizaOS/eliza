@@ -62,6 +62,10 @@ import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
+import {
+  GLASS_SHEET_BACKDROP_FILTER,
+  GLASS_SHEET_FILL,
+} from "../../glass/tokens";
 import { useConversationRenderWindow } from "../../hooks/useConversationRenderWindow";
 import {
   LAYOUT_SHIFT_INTENT_ATTR,
@@ -5014,27 +5018,31 @@ export function ContinuousChatOverlay({
               // sheet radius squares off as it maximizes and rounds back as it
               // de-maximizes, in lockstep with the side/bottom insets.
               borderRadius: morphRadius,
-              // REAL frosted glass on the inset sheet: a mostly-translucent dark
-              // fill over a strong backdrop blur, so the live view behind reads
-              // as a soft, bright frost — not the grayish near-opaque slab a high
-              // fill produced. The heavy blur (30px) + light saturate is what
-              // keeps text readable while letting the backdrop's color and light
-              // through: nothing sharp bleeds, but the panel is unmistakably
-              // glass, not a gray card. `--card` / `--bg` are scoped by
-              // CHAT_PANEL_THEME on the fieldset, not the orange app theme behind.
-              // Full-bleed stays fully opaque (it covers the whole screen — there
-              // is nothing to see through, and the blur would be wasted battery).
+              // REAL frosted glass on the inset sheet, sourced from the glass
+              // token system (`glass/tokens.ts`) so the chat sheet is a genuine
+              // liquid-glass SYSTEM surface, not a hand-rolled recipe that drifts
+              // from the token: `GLASS_SHEET_FILL` is a mostly-translucent dark
+              // card fill so the live view behind reads as a soft, bright frost
+              // (not a gray near-opaque slab), and `GLASS_SHEET_BACKDROP_FILTER`
+              // is a heavy neutral blur with NO saturate — the blur keeps text
+              // readable while letting the backdrop's color and light through,
+              // and saturate is omitted because it muddies the warm field to
+              // brown (the whole liquid-glass system is neutral white/black
+              // only). `--card` / `--bg` are scoped by CHAT_PANEL_THEME on the
+              // fieldset, not the orange app theme behind. Full-bleed stays fully
+              // opaque (it covers the whole screen — there is nothing to see
+              // through, and the blur would be wasted battery).
               backgroundColor: firstRunOpen
                 ? "transparent"
                 : fullBleed
                   ? "var(--bg)"
-                  : "color-mix(in srgb, var(--card) 62%, transparent)",
+                  : GLASS_SHEET_FILL,
               backdropFilter: fullBleed
                 ? undefined
-                : "blur(30px) saturate(1.4)",
+                : GLASS_SHEET_BACKDROP_FILTER,
               WebkitBackdropFilter: fullBleed
                 ? undefined
-                : "blur(30px) saturate(1.4)",
+                : GLASS_SHEET_BACKDROP_FILTER,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to

@@ -17,6 +17,7 @@ export {
   GLASS_MENU_FILL,
   GLASS_PILL_FILL,
   GLASS_RECIPES,
+  GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
   type GlassRecipe,
   type GlassVariant,
