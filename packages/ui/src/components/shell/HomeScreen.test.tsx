@@ -417,7 +417,7 @@ describe("HomeScreen", () => {
     fireEvent.pointerDown(tile, { ...pointer, clientY: 620 });
     fireEvent.pointerMove(tile, { ...pointer, clientY: 760 });
     fireEvent.pointerUp(tile, { ...pointer, clientY: 760 });
-    fireEvent.click(tile);
+    fireEvent.click(tile, { detail: 1 });
 
     expect(onOpenTile).not.toHaveBeenCalled();
     expect(list.getAttribute("data-shade-mode")).toBe("expanded");

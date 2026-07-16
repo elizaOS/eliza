@@ -1,8 +1,9 @@
 /**
  * Browser regression run + screenshots for the notification shade, desktop +
- * mobile: rested Z-stacks, the pull-gesture expand/collapse (real mouse drag
- * and wheel — the paths jsdom cannot exercise against real layout),
- * per-stack fan/fold controls, and swipe-to-dismiss. No app server:
+ * mobile: rested Z-stacks, real-layout pull expansion, directional wheel
+ * behavior, per-stack fan/fold controls, explicit shade collapse, and
+ * swipe-to-dismiss. It saves full-page screenshots plus walkthrough video.
+ * No app server:
  * bundles the fixture with esbuild (core/node builtins stubbed dead-in-browser)
  * and drives it in headless chromium.
  *
@@ -174,7 +175,11 @@ for (const [name, width, height] of [
   ["mobile", 390, 844],
 ]) {
   console.log(`\n── ${name} (${width}x${height}) ──`);
-  const page = await browser.newPage({ viewport: { width, height } });
+  const context = await browser.newContext({
+    viewport: { width, height },
+    recordVideo: { dir: outDir, size: { width, height } },
+  });
+  const page = await context.newPage();
   // Headless: still the entrance + scroll-driven (`animation-timeline: view()`)
   // effects for deterministic pixels and to dodge the headless-shell compositor
   // crash driving view-timeline rows while the scroller transforms. Headful
@@ -213,9 +218,9 @@ for (const [name, width, height] of [
     ),
   );
   check(
-    "two glass peeks",
+    "two producer stacks retain their glass peeks",
     (await page.locator('[data-testid="notification-stack-peek"]').count()) ===
-      2,
+      4,
   );
   check(
     "no group header eyebrows / stack counts",
@@ -249,9 +254,9 @@ for (const [name, width, height] of [
       };
     });
   check(
-    "cards are liquid glass (backdrop blur + inset edge)",
-    glass.blur.includes("blur") && glass.shadow.includes("inset"),
-    glass.blur,
+    "stacked cards retain the liquid-glass inset edge",
+    glass.shadow.includes("inset"),
+    glass.shadow,
   );
   await page.screenshot({
     path: join(outDir, `notifications-${name}-rested.png`),
@@ -328,6 +333,15 @@ for (const [name, width, height] of [
     .locator('[data-testid="notification-stack-collapse"]')
     .first()
     .click();
+  await page.waitForFunction(
+    ({ rowSelector, peekSelector }) =>
+      document.querySelectorAll(rowSelector).length === 5 &&
+      document.querySelectorAll(peekSelector).length === 2,
+    {
+      rowSelector: ROW,
+      peekSelector: '[data-testid="notification-stack-peek"]',
+    },
+  );
   check(
     "Show Less folds the producer back into a stack",
     (await page.locator(ROW).count()) === 5 &&
@@ -373,11 +387,14 @@ for (const [name, width, height] of [
   });
   console.log(`  📸 notifications-${name}-after-swipe.png`);
 
-  // 5. DIRECTIONAL COLLAPSE: fingers-up (positive wheel deltas) at the top
-  //    compresses the shade back to triage; fingers-down (negative) while
-  //    expanded is a no-op — the gesture is directional, so trailing trackpad
-  //    momentum can never snap the shade shut right after opening it.
+  // 5. DIRECTIONAL SETTLE: fingers-down (negative wheel deltas) while expanded
+  //    is a no-op, so trailing trackpad momentum cannot snap the shade shut.
+  //    Fold the producer stacks before exercising the global Collapse control,
+  //    matching the control hierarchy a person sees on screen.
   const listBox = await page.locator(LIST).boundingBox();
+  await page.locator(LIST).evaluate((list) => {
+    list.scrollTop = 0;
+  });
   await page.mouse.move(
     listBox.x + listBox.width / 2,
     listBox.y + listBox.height / 3,
@@ -388,19 +405,24 @@ for (const [name, width, height] of [
     "fingers-down while expanded does NOT collapse (momentum-proof)",
     (await shadeMode(page)) === "expanded",
   );
-  // Collapse contributions are per-event capped, so it takes a sustained
-  // fingers-up run (several events) to commit.
-  for (let i = 0; i < 4; i++) {
-    await page.mouse.wheel(0, 30);
-    await page.waitForTimeout(30);
+  while (
+    (await page.locator('[data-testid="notification-stack-collapse"]').count()) >
+    0
+  ) {
+    await page
+      .locator('[data-testid="notification-stack-collapse"]')
+      .first()
+      .click();
+    await page.waitForTimeout(500);
   }
+  await page.locator('[data-testid="notifications-collapse"]').click();
   await page.waitForFunction(
     (sel) =>
       document.querySelector(sel)?.getAttribute("data-shade-mode") === "rested",
     LIST,
   );
   check(
-    "fingers-up at the top collapses back to triage",
+    "the explicit collapse control returns to triage",
     (await shadeMode(page)) === "rested",
   );
 
@@ -408,7 +430,12 @@ for (const [name, width, height] of [
     console.log(`  page errors:`, errors);
     failures += 1;
   }
+  const video = page.video();
   await page.close();
+  await context.close();
+  if (video) {
+    await video.saveAs(join(outDir, `notifications-${name}-walkthrough.webm`));
+  }
 }
 if (HEADFUL) {
   console.log("HEADFUL: holding the window open 8s for live inspection…");

@@ -1,8 +1,8 @@
 /**
  * Fixture for the notification-shade browser regression run: seeds the store
  * with a spread that exercises every shade surface — a multi-row interrupt
- * group (renders as the rested Z-stack), a solo interrupt row, and
- * sub-interrupt rows (hidden at rest until a pull, including the
+ * producer and a mixed-priority system producer (both render as rested
+ * Z-stacks), plus sub-interrupt rows hidden at rest until a pull, including the
  * onboarding "Take the tour" row the capture asserts appears after the pull
  * gesture expands the shade).
  */
@@ -38,7 +38,8 @@ const SEED_SET: Array<Partial<AgentNotification>> = [
     priority: "high",
     source: "github",
   },
-  // A solo interrupt row in its own group → renders flat next to the stack.
+  // The system producer mixes one interrupt row with quieter rows; its rested
+  // stack count still communicates the full producer backlog.
   {
     title: "Disk almost full",
     body: "The agent workspace volume is at 94% capacity.",
