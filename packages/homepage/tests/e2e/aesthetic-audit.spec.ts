@@ -18,6 +18,8 @@ const TEST_TOKEN = "homepage-aesthetic-audit-token";
 
 const ROUTES = [
   { path: "/", name: "landing", authed: false },
+  { path: "/orange-paper", name: "orange-paper", authed: false },
+  { path: "/plan", name: "plan", authed: false },
   { path: "/leaderboard", name: "leaderboard", authed: false },
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },
@@ -230,18 +232,21 @@ for (const viewport of VIEWPORTS) {
               cs.backgroundColor !== "transparent";
             const hasBorder = parseFloat(cs.borderTopWidth) > 0;
             if (!hasBg && !hasBorder) continue;
-            const radii = [
+            const radiusValues = [
               cs.borderTopLeftRadius,
               cs.borderTopRightRadius,
               cs.borderBottomRightRadius,
               cs.borderBottomLeftRadius,
-            ].map((v) => parseFloat(v) || 0);
+            ];
+            const radii = radiusValues.map((v) => parseFloat(v) || 0);
             const minDim = Math.min(rect.width, rect.height);
             const half = minDim / 2;
-            for (const r of radii) {
+            for (const [index, r] of radii.entries()) {
               const isZero = r < 0.5;
               const isXs = r >= 2 && r <= 4; // 3px ± 1
-              const isFullyRounded = r >= half - 0.5;
+              const isPercentCircle =
+                radiusValues[index]?.includes("%") && r >= 50;
+              const isFullyRounded = isPercentCircle || r >= half - 0.5;
               if (!(isZero || isXs || isFullyRounded)) {
                 const id = el.id ? `#${el.id}` : "";
                 const cls =

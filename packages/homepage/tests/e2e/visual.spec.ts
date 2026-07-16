@@ -12,6 +12,8 @@ import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
   { path: "/", name: "landing" },
+  { path: "/orange-paper", name: "orange-paper" },
+  { path: "/plan", name: "plan" },
   { path: "/login", name: "login" },
   { path: "/connected", name: "connected" },
   { path: "/get-started", name: "get-started" },

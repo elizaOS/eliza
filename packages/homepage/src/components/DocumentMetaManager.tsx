@@ -12,21 +12,40 @@ export function DocumentMetaManager(): null {
 
   useEffect(() => {
     if (typeof document === "undefined") return;
-    const title = t("homepage_eliza.meta.title", {
-      defaultValue: "Eliza — your agent, everywhere",
-    });
-    const description = t("homepage_eliza.meta.description", {
+    const routePath = window.location.pathname.replace(/\/+$/, "") || "/";
+    const isOrangePaper = ["/orange-paper", "/plan"].includes(routePath);
+    const orangePaperTitle = `${t("homepage_eliza.orangePaper.title", {
+      defaultValue: "Own your intelligence.",
+    })} | elizaOS`;
+    const orangePaperDescription = t("homepage_eliza.orangePaper.dek", {
       defaultValue:
-        "Eliza — your agent, everywhere. Desktop, mobile, and cloud, all running the same Eliza.",
+        "Bitcoin gave you sovereign money. elizaOS gives you a sovereign mind.",
     });
-    const ogTitle = t("homepage_eliza.meta.ogTitle", {
-      defaultValue: "Eliza — your agent, everywhere",
-    });
-    const ogDescription = t("homepage_eliza.meta.ogDescription", {
-      defaultValue: "Desktop, mobile, and cloud, all running the same Eliza.",
-    });
-    const ogImageAlt = t("homepage_eliza.meta.ogImageAlt", {
-      defaultValue: "Eliza",
+    const title = isOrangePaper
+      ? orangePaperTitle
+      : t("homepage_eliza.meta.sovereignTitle", {
+          defaultValue: "elizaOS | Sovereign intelligence",
+        });
+    const description = isOrangePaper
+      ? orangePaperDescription
+      : t("homepage_eliza.meta.sovereignDescription", {
+          defaultValue:
+            "The open OS for private, persistent agents. One agent, every surface, on infrastructure you control.",
+        });
+    const ogTitle = isOrangePaper
+      ? orangePaperTitle
+      : t("homepage_eliza.meta.sovereignOgTitle", {
+          defaultValue:
+            "Bitcoin gave you sovereign money. elizaOS gives you a sovereign mind.",
+        });
+    const ogDescription = isOrangePaper
+      ? description
+      : t("homepage_eliza.meta.sovereignOgDescription", {
+          defaultValue:
+            "One open agent operating system. Private, persistent, and portable.",
+        });
+    const ogImageAlt = t("homepage_eliza.meta.sovereignOgImageAlt", {
+      defaultValue: "elizaOS",
     });
 
     document.title = title;

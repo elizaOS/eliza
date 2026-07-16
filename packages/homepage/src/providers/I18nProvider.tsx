@@ -179,9 +179,16 @@ export function I18nProvider({
   const [lang, setLangState] = useState<UiLanguage>(
     initialLang ?? resolveInitialLang(),
   );
+  const [messagesVersion, setMessagesVersion] = useState(0);
 
   useEffect(() => {
-    void ensureLanguageLoaded(lang);
+    let active = true;
+    void ensureLanguageLoaded(lang).then(() => {
+      if (active) setMessagesVersion((version) => version + 1);
+    });
+    return () => {
+      active = false;
+    };
   }, [lang]);
 
   useEffect(() => {
@@ -191,6 +198,8 @@ export function I18nProvider({
   }, [lang]);
 
   const value = useMemo<I18nContextValue>(() => {
+    // Recreate the translator after a lazy locale dictionary arrives.
+    void messagesVersion;
     const next = (input: UiLanguage | string) => {
       const normalized = normalizeLanguage(input);
       try {
@@ -206,7 +215,7 @@ export function I18nProvider({
       setLang: next,
       t: createTranslator(lang),
     };
-  }, [lang]);
+  }, [lang, messagesVersion]);
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
 }

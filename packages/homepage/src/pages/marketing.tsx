@@ -1,24 +1,11 @@
 /**
- * Public homepage download and launch surface for elizaOS apps.
+ * Public elizaOS homepage. A short product thesis with live release downloads.
  */
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
-import {
-  ArrowRight,
-  BadgeCheck,
-  Cloud,
-  Download,
-  ExternalLink,
-  MonitorDown,
-  Package,
-  Smartphone,
-  Store,
-} from "lucide-react";
 import { releaseData } from "@/generated/release-data";
 import { useT } from "@/providers/I18nProvider";
 
-const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
 const webAppUrl = EXTERNAL_URLS.app;
-const osUrl = EXTERNAL_URLS.os;
 const releaseFallbackUrl = `${EXTERNAL_URLS.github}/releases`;
 
 const primaryDownloadIds = [
@@ -32,16 +19,16 @@ const primaryDownloadIds = [
 
 type DownloadId = (typeof primaryDownloadIds)[number];
 
-const platformIcon: Record<DownloadId, typeof Package> = {
-  "macos-arm64": MonitorDown,
-  "macos-x64": MonitorDown,
-  "windows-x64": MonitorDown,
-  "linux-x64": Package,
-  "linux-deb": Package,
-  "android-apk": Smartphone,
+const fallbackLabels: Record<DownloadId, string> = {
+  "macos-arm64": "macOS · Apple Silicon",
+  "macos-x64": "macOS · Intel",
+  "windows-x64": "Windows · x64",
+  "linux-x64": "Linux · x64",
+  "linux-deb": "Ubuntu / Debian",
+  "android-apk": "Android · APK",
 };
 
-const FALLBACK_LABEL_KEYS: Record<DownloadId, string> = {
+const fallbackLabelKeys: Record<DownloadId, string> = {
   "macos-arm64": "homepage_eliza.marketing.fallbackMacosArm64",
   "macos-x64": "homepage_eliza.marketing.fallbackMacosX64",
   "windows-x64": "homepage_eliza.marketing.fallbackWindowsX64",
@@ -50,35 +37,65 @@ const FALLBACK_LABEL_KEYS: Record<DownloadId, string> = {
   "android-apk": "homepage_eliza.marketing.fallbackAndroidApk",
 };
 
-const FALLBACK_LABEL_DEFAULTS: Record<DownloadId, string> = {
-  "macos-arm64": "macOS (Apple Silicon)",
-  "macos-x64": "macOS (Intel)",
-  "windows-x64": "Windows",
-  "linux-x64": "Linux",
-  "linux-deb": "Ubuntu / Debian",
-  "android-apk": "Android APK",
-};
-
-const PLATFORM_DESCRIPTION_KEYS: Record<DownloadId, string> = {
-  "macos-arm64": "homepage_eliza.marketing.descMacosArm64",
-  "macos-x64": "homepage_eliza.marketing.descMacosX64",
-  "windows-x64": "homepage_eliza.marketing.descWindowsX64",
-  "linux-x64": "homepage_eliza.marketing.descLinuxX64",
-  "linux-deb": "homepage_eliza.marketing.descLinuxDeb",
-  "android-apk": "homepage_eliza.marketing.descAndroidApk",
-};
-
-const PLATFORM_DESCRIPTION_DEFAULTS: Record<DownloadId, string> = {
-  "macos-arm64": "For M1, M2, M3, and newer Apple Silicon Macs.",
-  "macos-x64": "For Intel Macs.",
-  "windows-x64": "For 64-bit Windows PCs.",
-  "linux-x64": "For 64-bit Linux desktops.",
-  "linux-deb": "Ubuntu, Debian, Pop_OS, and derivatives — apt-installable.",
-  "android-apk": "Direct APK sideload while Play Store review is pending.",
-};
-
 export default function MarketingPage() {
   const t = useT();
+  const sovereign = (name: string, defaultValue: string) =>
+    t(`homepage_eliza.sovereign.${name}`, { defaultValue });
+  const copy = {
+    navSystem: sovereign("navSystem", "System"),
+    navPaper: sovereign("navPaper", "Orange Paper"),
+    eyebrow: sovereign("eyebrow", "Open agent operating system · MIT licensed"),
+    heroMoney: sovereign("heroMoney", "Bitcoin gave you sovereign money."),
+    heroMind: sovereign("heroMind", "elizaOS gives you a sovereign mind."),
+    heroLede: sovereign(
+      "heroLede",
+      "The open OS for private, persistent agents. One agent, every surface, on infrastructure you control.",
+    ),
+    download: sovereign("download", "Download Eliza"),
+    webApp: sovereign("webApp", "Open web app"),
+    systemKicker: sovereign("systemKicker", "The system"),
+    control: sovereign("control", "Control is architecture."),
+    source: sovereign("source", "Source"),
+    openInspectable: sovereign("openInspectable", "Open and inspectable"),
+    state: sovereign("state", "State"),
+    privatePersistent: sovereign("privatePersistent", "Private and persistent"),
+    runtime: sovereign("runtime", "Runtime"),
+    oneEverySurface: sovereign("oneEverySurface", "One agent, every surface"),
+    cloud: sovereign("cloud", "Cloud"),
+    availableNotRequired: sovereign(
+      "availableNotRequired",
+      "Available, not required",
+    ),
+    yours: sovereign("yours", "yours"),
+    portable: sovereign("portable", "portable"),
+    optional: sovereign("optional", "optional"),
+    proofKicker: sovereign("proofKicker", "One agent · every surface"),
+    surfaces: sovereign(
+      "surfaces",
+      "The interface changes. The agent does not.",
+    ),
+    proofBody: sovereign(
+      "proofBody",
+      "Identity, memory, and permissions stay attached to the runtime, from desktop to phone to messaging and edge hardware.",
+    ),
+    desktop: sovereign("desktop", "Desktop"),
+    phone: sovereign("phone", "Phone"),
+    messages: sovereign("messages", "Messages"),
+    edge: sovereign("edge", "Edge"),
+    distributions: sovereign("distributions", "elizaOS distributions"),
+    installers: sovereign("installers", "device images and installers"),
+    closingKicker: sovereign(
+      "closingKicker",
+      "Open source · private by architecture",
+    ),
+    closing: sovereign("closing", "Your agent should answer to you."),
+    readPaper: sovereign("readPaper", "Read the Orange Paper"),
+    footerTagline: sovereign(
+      "footerTagline",
+      "elizaOS · open agent operating system",
+    ),
+    backTop: sovereign("backTop", "Back to top"),
+  };
   const stableDownloads = releaseData.release.downloads;
   const canaryDownloads = releaseData.canaryRelease?.downloads ?? [];
   const effectiveDownloads =
@@ -87,16 +104,17 @@ export default function MarketingPage() {
     const releaseDownload = effectiveDownloads.find(
       (download) => download.id === id,
     );
-    const Icon = platformIcon[id];
-
     return {
       id,
       label:
         releaseDownload?.label ??
-        t(FALLBACK_LABEL_KEYS[id], {
-          defaultValue: FALLBACK_LABEL_DEFAULTS[id],
-        }),
+        t(fallbackLabelKeys[id], { defaultValue: fallbackLabels[id] }),
       href: releaseDownload?.url ?? releaseFallbackUrl,
+      fileName:
+        releaseDownload?.fileName ??
+        t("homepage_eliza.marketing.releaseFallbackFile", {
+          defaultValue: "Latest release",
+        }),
       detail: releaseDownload
         ? t("homepage_eliza.marketing.releaseDetail", {
             defaultValue: "{{note}} · {{sizeLabel}}",
@@ -106,446 +124,310 @@ export default function MarketingPage() {
         : t("homepage_eliza.marketing.releaseFallbackDetail", {
             defaultValue: "Release page",
           }),
-      meta: releaseDownload
-        ? t("homepage_eliza.marketing.releaseFromMeta", {
-            defaultValue: "From {{tag}}",
-            tag: releaseDownload.releaseTagName,
-          })
-        : t("homepage_eliza.marketing.releaseFallbackMeta", {
-            defaultValue: "Opens release page",
-          }),
-      fileName:
-        releaseDownload?.fileName ??
-        t("homepage_eliza.marketing.releaseFallbackFile", {
-          defaultValue: "Latest release",
-        }),
-      description: t(PLATFORM_DESCRIPTION_KEYS[id], {
-        defaultValue: PLATFORM_DESCRIPTION_DEFAULTS[id],
-      }),
-      icon: Icon,
     };
   });
 
   return (
-    <div className="theme-app app-shell">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[var(--brand-orange)]"
-      >
+    <div className="sovereign-site">
+      <a className="sovereign-skip" href="#main">
         {t("homepage_eliza.common.skipToContent", {
           defaultValue: "Skip to content",
         })}
       </a>
-      <header className="app-header">
-        <a
-          href="/"
-          aria-label={t("homepage_eliza.common.brandHomeAria", {
-            defaultValue: "Eliza home",
-          })}
-          className="app-brand"
-        >
+
+      <header className="sovereign-nav">
+        <a className="sovereign-brand" href="/" aria-label="elizaOS home">
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupBlack}`}
-            alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
-            draggable={false}
-            className="app-brand-mark"
+            className="sovereign-brand-mark"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.markOrangeNoBg}`}
+            alt=""
+          />
+          <img
+            className="sovereign-brand-word"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
+            alt="elizaOS"
           />
         </a>
-        <nav
-          className="app-nav"
-          aria-label={t("homepage_eliza.marketing.navProducts", {
-            defaultValue: "Eliza products",
-          })}
-        >
-          <a href={webAppUrl}>
-            {t("homepage_eliza.marketing.navWebApp", {
-              defaultValue: "Web app",
-            })}
-          </a>
-          <a href="#download">
-            {t("homepage_eliza.marketing.navDownloads", {
-              defaultValue: "Downloads",
-            })}
-          </a>
-          <a href={cloudUrl}>
-            {t("homepage_eliza.marketing.navCloud", { defaultValue: "Cloud" })}
-          </a>
-          <a href={osUrl}>
-            {t("homepage_eliza.marketing.navOs", { defaultValue: "OS" })}
-          </a>
-          <a href="#download" className="app-nav-download">
-            {t("homepage_eliza.marketing.navDownload", {
-              defaultValue: "Download",
-            })}
-          </a>
+        <nav aria-label="Primary navigation">
+          <a href="#system">{copy.navSystem}</a>
+          <a href="/orange-paper">{copy.navPaper}</a>
+          <a href={EXTERNAL_URLS.github}>GitHub</a>
         </nav>
       </header>
 
       <main id="main">
-        <section className="brand-section brand-section--cloud app-hero">
-          <div className="app-cloud-scrim" />
-          <div className="app-band-inner app-hero-grid app-hero-copy--cloud">
-            <div className="app-hero-copy">
-              <p className="app-kicker">
-                {t("homepage_eliza.marketing.heroKicker", {
-                  defaultValue: "Eliza App",
-                })}
-              </p>
-              <h1 className="app-display">
-                {t("homepage_eliza.marketing.heroTitle", {
-                  defaultValue: "Your Eliza, everywhere.",
-                })}
-              </h1>
-              <p className="app-lede">
-                {t("homepage_eliza.marketing.heroLede", {
-                  defaultValue:
-                    "Download the desktop and mobile app, connect one agent across your devices, and keep Cloud and elizaOS one click away.",
-                })}
-              </p>
-              <div className="app-cta-row">
-                <a href={webAppUrl} className="app-cta app-cta--black">
-                  <ExternalLink className="app-icon" aria-hidden="true" />
-                  {t("homepage_eliza.marketing.ctaOpenWebApp", {
-                    defaultValue: "Open web app",
-                  })}
-                </a>
-                <a href="#download" className="app-cta app-cta--glass">
-                  <Download className="app-icon" aria-hidden="true" />
-                  {t("homepage_eliza.marketing.ctaDownload", {
-                    defaultValue: "Download the app",
-                  })}
-                </a>
-                <a href={cloudUrl} className="app-cta app-cta--glass">
-                  <Cloud className="app-icon" aria-hidden="true" />
-                  {t("homepage_eliza.marketing.ctaTryCloud", {
-                    defaultValue: "Try Eliza Cloud",
-                  })}
-                </a>
-                <a href={osUrl} className="app-cta app-cta--ghost">
-                  {t("homepage_eliza.marketing.ctaInstallOs", {
-                    defaultValue: "Install elizaOS",
-                  })}
-                  <ArrowRight className="app-icon" aria-hidden="true" />
-                </a>
+        <section className="sovereign-hero" aria-labelledby="hero-title">
+          <div className="sovereign-hero-copy">
+            <p className="sovereign-eyebrow">{copy.eyebrow}</p>
+            <h1 id="hero-title">
+              {copy.heroMoney}
+              <span>{copy.heroMind}</span>
+            </h1>
+            <p className="sovereign-lede">{copy.heroLede}</p>
+            <div className="sovereign-actions">
+              <a className="sovereign-primary" href="#download">
+                <span>{copy.download}</span>
+                <span aria-hidden="true">↓</span>
+              </a>
+              <a className="sovereign-secondary" href={webAppUrl}>
+                {copy.webApp} <span aria-hidden="true">↗</span>
+              </a>
+            </div>
+          </div>
+
+          <aside
+            className="sovereign-plate"
+            aria-label="One agent across every surface"
+          >
+            <div className="sovereign-plate-head">
+              <span>ONE RUNTIME</span>
+              <span>ELZ / 01</span>
+            </div>
+            <div className="sovereign-orbit" aria-hidden="true">
+              <div className="sovereign-axis sovereign-axis-x" />
+              <div className="sovereign-axis sovereign-axis-y" />
+              <span className="sovereign-node sovereign-node-phone">
+                {copy.phone}
+              </span>
+              <span className="sovereign-node sovereign-node-desktop">
+                {copy.desktop}
+              </span>
+              <span className="sovereign-node sovereign-node-messages">
+                {copy.messages}
+              </span>
+              <span className="sovereign-node sovereign-node-edge">
+                {copy.edge}
+              </span>
+              <div className="sovereign-core">
+                <img
+                  src={`${BRAND_PATHS.logos}/${LOGO_FILES.markOrangeNoBg}`}
+                  alt=""
+                />
               </div>
             </div>
-            <section
-              className="app-release-panel"
-              aria-label={t("homepage_eliza.marketing.releaseLabel", {
-                defaultValue: "Current release",
-              })}
-            >
-              <div>
-                <span className="app-pill">
-                  {t("homepage_eliza.marketing.releasePill", {
-                    defaultValue: "Latest release",
-                  })}
-                </span>
-                <h2>{releaseData.release.tagName}</h2>
-                <p>{releaseData.release.publishedAtLabel}</p>
-              </div>
-              <a href={releaseData.release.url} className="app-release-link">
-                {t("homepage_eliza.marketing.releaseNotes", {
-                  defaultValue: "Release notes",
-                })}
-                <ExternalLink className="app-icon" aria-hidden="true" />
-              </a>
-            </section>
-          </div>
+            <div className="sovereign-plate-foot">
+              <span>
+                <i /> RUNTIME READY
+              </span>
+              <span>LOCAL · PRIVATE · PORTABLE</span>
+            </div>
+          </aside>
         </section>
 
-        <section id="download" className="brand-section brand-section--white">
-          <div className="app-band-inner app-download-band">
-            <div className="app-section-heading">
-              <p className="app-kicker">
-                {t("homepage_eliza.marketing.downloadsKicker", {
-                  defaultValue: "Downloads",
-                })}
-              </p>
-              <h2 className="app-h2">
-                {t("homepage_eliza.marketing.downloadsH2", {
-                  defaultValue: "Install the app.",
-                })}
-              </h2>
-              <p className="app-section-copy">
-                {t("homepage_eliza.marketing.downloadsCopy", {
-                  defaultValue:
-                    "Release cards link directly to the published GitHub assets. Store distribution is listed separately and stays disabled until review is complete.",
-                })}
-              </p>
+        <section
+          id="system"
+          className="sovereign-claim"
+          aria-labelledby="system-title"
+        >
+          <div>
+            <p className="sovereign-eyebrow sovereign-eyebrow-dark">
+              {copy.systemKicker}
+            </p>
+            <h2 id="system-title">{copy.control}</h2>
+          </div>
+          <dl className="sovereign-ledger">
+            <div>
+              <dt>{copy.source}</dt>
+              <dd>{copy.openInspectable}</dd>
+              <small>MIT</small>
             </div>
-            <div className="app-download-grid">
-              {downloads.map((download) => {
-                const Icon = download.icon;
-                return (
-                  <DownloadLink key={download.id} {...download} icon={Icon} />
-                );
-              })}
+            <div>
+              <dt>{copy.state}</dt>
+              <dd>{copy.privatePersistent}</dd>
+              <small>{copy.yours}</small>
             </div>
+            <div>
+              <dt>{copy.runtime}</dt>
+              <dd>{copy.oneEverySurface}</dd>
+              <small>{copy.portable}</small>
+            </div>
+            <div>
+              <dt>{copy.cloud}</dt>
+              <dd>{copy.availableNotRequired}</dd>
+              <small>{copy.optional}</small>
+            </div>
+          </dl>
+        </section>
 
-            <ul
-              className="app-store-grid"
-              aria-label={t("homepage_eliza.marketing.storeGridAria", {
-                defaultValue: "App store status",
+        <section className="sovereign-proof" aria-labelledby="proof-title">
+          <div className="sovereign-proof-title">
+            <p className="sovereign-eyebrow">{copy.proofKicker}</p>
+            <h2 id="proof-title">{copy.surfaces}</h2>
+          </div>
+          <p>{copy.proofBody}</p>
+          <ul
+            className="sovereign-surface-line"
+            aria-label="Supported surfaces"
+          >
+            <li>{copy.desktop}</li>
+            <i aria-hidden="true" />
+            <li>{copy.phone}</li>
+            <i aria-hidden="true" />
+            <li>{copy.messages}</li>
+            <i aria-hidden="true" />
+            <li>{copy.edge}</li>
+          </ul>
+        </section>
+
+        <section
+          id="download"
+          className="sovereign-download"
+          aria-labelledby="download-title"
+        >
+          <div className="sovereign-download-intro">
+            <p className="sovereign-eyebrow sovereign-eyebrow-dark">
+              {t("homepage_eliza.marketing.releaseLabel", {
+                defaultValue: "Current release",
               })}
-            >
-              {releaseData.storeTargets.map((target) => (
-                <li className="app-store-card" key={target.platform}>
-                  <Store className="app-icon" aria-hidden="true" />
-                  <div>
-                    <strong>{target.label}</strong>
-                    <span>
+            </p>
+            <h2 id="download-title">{copy.download}.</h2>
+            <p>
+              {releaseData.release.tagName} ·{" "}
+              {releaseData.release.publishedAtLabel}
+            </p>
+            <a href={releaseData.release.url}>
+              {t("homepage_eliza.marketing.releaseNotes", {
+                defaultValue: "Release notes",
+              })}{" "}
+              ↗
+            </a>
+          </div>
+
+          <ul className="sovereign-download-list app-download-grid">
+            {downloads.map((download) => (
+              <li key={download.id}>
+                <a href={download.href}>
+                  <span>
+                    <strong>{download.label}</strong>
+                    <small>{download.fileName}</small>
+                  </span>
+                  <span>{download.detail}</span>
+                  <b aria-hidden="true">↓</b>
+                </a>
+              </li>
+            ))}
+          </ul>
+
+          <div className="sovereign-download-foot">
+            {releaseData.release.checksum ? (
+              <a href={releaseData.release.checksum.url}>
+                {t("homepage_eliza.marketing.verifyWith", {
+                  defaultValue: "Verify with {{file}}",
+                  file: releaseData.release.checksum.fileName,
+                })}
+              </a>
+            ) : (
+              <span>
+                {t("homepage_eliza.marketing.checksumPending", {
+                  defaultValue: "Checksums publish with release assets.",
+                })}
+              </span>
+            )}
+            <a href={releaseData.release.url}>
+              {t("homepage_eliza.marketing.viewAllAssets", {
+                defaultValue: "View all assets",
+              })}{" "}
+              ↗
+            </a>
+          </div>
+
+          <ul
+            className="sovereign-store-links"
+            aria-label="App store availability"
+          >
+            {releaseData.storeTargets.map((target) => (
+              <li key={target.platform}>
+                {target.url ? (
+                  <a href={target.url}>
+                    <span>{target.label}</span>
+                    <small>{target.rolloutChannel}</small>
+                  </a>
+                ) : (
+                  <span aria-disabled="true">
+                    <span>{target.label}</span>
+                    <small>
                       {t("homepage_eliza.marketing.storeComingSoon", {
                         defaultValue: "Coming soon · {{channel}}",
                         channel: target.rolloutChannel,
                       })}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
+                    </small>
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
 
-            <section
-              className="app-os-downloads"
-              aria-label={t("homepage_eliza.marketing.osDownloadsAria", {
-                defaultValue: "elizaOS distributions",
-              })}
-            >
-              <h3 className="app-h3">
-                {t("homepage_eliza.marketing.osDownloadsH3", {
-                  defaultValue: "elizaOS — full operating system",
-                })}
-              </h3>
-              <p className="app-section-copy">
-                {t("homepage_eliza.marketing.osDownloadsCopy", {
-                  defaultValue:
-                    "Every elizaOS distribution is listed here. Cards with a working link download the published artifact; the rest are still in build and will activate as soon as a release is published.",
-                })}
-              </p>
-              <ul className="app-os-grid" data-testid="os-artifact-grid">
-                {releaseData.osArtifacts.map((artifact) => {
-                  const available = Boolean(artifact.downloadUrl);
-                  const statusLabel = available
-                    ? artifact.channel === "stable"
-                      ? t("homepage_eliza.marketing.osStatusAvailable", {
-                          defaultValue: "Available",
-                        })
-                      : artifact.channel === "beta"
-                        ? t("homepage_eliza.marketing.osStatusBeta", {
-                            defaultValue: "Beta",
-                          })
-                        : t("homepage_eliza.marketing.osStatusNightly", {
-                            defaultValue: "Nightly",
-                          })
-                    : t("homepage_eliza.marketing.osStatusComingSoon", {
-                        defaultValue: "Coming soon",
-                      });
-                  const sizeLabel =
-                    artifact.sizeBytes != null
-                      ? ` · ${(artifact.sizeBytes / 1_048_576).toFixed(1)} MB`
-                      : "";
-                  const Tag = available ? "a" : "div";
-                  return (
-                    <li key={artifact.id}>
-                      <Tag
-                        className="app-os-card"
-                        data-status={available ? "available" : "pending"}
-                        data-artifact-id={artifact.id}
-                        {...(available
-                          ? {
-                              href: artifact.downloadUrl as string,
-                              rel: "noopener",
-                            }
-                          : { "aria-disabled": "true" })}
-                      >
-                        <div className="app-os-card-head">
-                          <strong>{artifact.label}</strong>
-                          <span className="app-os-status">
-                            {statusLabel}
-                            {sizeLabel}
-                          </span>
-                        </div>
-                        <p>{artifact.description}</p>
+          <details className="sovereign-os-distributions">
+            <summary>
+              {copy.distributions} <span>{copy.installers}</span>
+            </summary>
+            <ul data-testid="os-artifact-grid">
+              {releaseData.osArtifacts.map((artifact) => {
+                const available = Boolean(artifact.downloadUrl);
+                const Tag = available ? "a" : "div";
+                return (
+                  <li key={artifact.id}>
+                    <Tag
+                      data-artifact-id={artifact.id}
+                      data-status={available ? "available" : "pending"}
+                      {...(available
+                        ? {
+                            href: artifact.downloadUrl as string,
+                            rel: "noopener",
+                          }
+                        : { "aria-disabled": "true" })}
+                    >
+                      <span>
+                        <strong>{artifact.label}</strong>
                         <small>
-                          {artifact.platform} · {artifact.kind} ·{" "}
-                          {artifact.version}
-                          {artifact.requiresHardware
-                            ? ` · ${artifact.requiresHardware}`
-                            : ""}
+                          {artifact.platform} · {artifact.kind}
                         </small>
-                      </Tag>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-
-            <div className="app-checksum-row">
-              {releaseData.release.checksum ? (
-                <a href={releaseData.release.checksum.url}>
-                  <BadgeCheck className="app-icon" aria-hidden="true" />
-                  {t("homepage_eliza.marketing.verifyWith", {
-                    defaultValue: "Verify with {{file}}",
-                    file: releaseData.release.checksum.fileName,
-                  })}
-                </a>
-              ) : (
-                <span>
-                  {t("homepage_eliza.marketing.checksumPending", {
-                    defaultValue: "Checksums publish with release assets.",
-                  })}
-                </span>
-              )}
-              <a href={releaseData.release.url}>
-                {t("homepage_eliza.marketing.viewAllAssets", {
-                  defaultValue: "View all assets",
-                })}
-                <ExternalLink className="app-icon" aria-hidden="true" />
-              </a>
-            </div>
-          </div>
+                      </span>
+                      <span>
+                        {available
+                          ? artifact.channel
+                          : t("homepage_eliza.marketing.osStatusComingSoon", {
+                              defaultValue: "Coming soon",
+                            })}
+                      </span>
+                    </Tag>
+                  </li>
+                );
+              })}
+            </ul>
+          </details>
         </section>
 
-        <section className="brand-section brand-section--black">
-          <div className="app-band-inner app-action-grid">
-            <ProductCta
-              title={t("homepage_eliza.marketing.actionRunCloudTitle", {
-                defaultValue: "Run in Cloud.",
-              })}
-              body={t("homepage_eliza.marketing.actionRunCloudBody", {
-                defaultValue:
-                  "Launch your agent runtime and account dashboard in Eliza Cloud.",
-              })}
-              href={cloudUrl}
-              label={t("homepage_eliza.marketing.ctaTryCloud", {
-                defaultValue: "Try Eliza Cloud",
-              })}
-              icon={Cloud}
-            />
-            <ProductCta
-              title={t("homepage_eliza.marketing.actionInstallOsTitle", {
-                defaultValue: "Install elizaOS.",
-              })}
-              body={t("homepage_eliza.marketing.actionInstallOsBody", {
-                defaultValue:
-                  "Use the full operating system when you want device-level control.",
-              })}
-              href={osUrl}
-              label={t("homepage_eliza.marketing.ctaInstallOs", {
-                defaultValue: "Install elizaOS",
-              })}
-              icon={MonitorDown}
-            />
+        <section className="sovereign-close" aria-labelledby="close-title">
+          <img
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.markOrangeNoBg}`}
+            alt=""
+          />
+          <div>
+            <p className="sovereign-eyebrow">{copy.closingKicker}</p>
+            <h2 id="close-title">{copy.closing}</h2>
           </div>
+          <a href="/orange-paper">
+            {copy.readPaper} <span aria-hidden="true">→</span>
+          </a>
         </section>
       </main>
 
-      <footer className="app-footer">
-        <div className="app-footer-inner">
-          <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaWhite}`}
-            alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
-            className="app-footer-logo"
-            draggable={false}
-          />
-          <nav
-            className="app-footer-nav"
-            aria-label={t("homepage_eliza.marketing.footerNavAria", {
-              defaultValue: "Footer",
-            })}
-          >
-            <a href={webAppUrl}>
-              {t("homepage_eliza.marketing.footerWebApp", {
-                defaultValue: "Web app",
-              })}
-            </a>
-            <a href="#download">
-              {t("homepage_eliza.marketing.navDownloads", {
-                defaultValue: "Downloads",
-              })}
-            </a>
-            <a href={cloudUrl}>
-              {t("homepage_eliza.marketing.footerCloud", {
-                defaultValue: "Eliza Cloud",
-              })}
-            </a>
-            <a href={osUrl}>
-              {t("homepage_eliza.marketing.footerOs", {
-                defaultValue: "ElizaOS",
-              })}
-            </a>
-            <a href={releaseData.release.url}>
-              {t("homepage_eliza.marketing.footerReleases", {
-                defaultValue: "GitHub Releases",
-              })}
-            </a>
-          </nav>
-        </div>
+      <footer className="sovereign-footer">
+        <span>{copy.footerTagline}</span>
+        <nav
+          aria-label={t("homepage_eliza.marketing.footerNavAria", {
+            defaultValue: "Footer",
+          })}
+        >
+          <a href={EXTERNAL_URLS.github}>GitHub</a>
+          <a href={EXTERNAL_URLS.docs}>Docs</a>
+          <a href={EXTERNAL_URLS.cloud}>Cloud</a>
+          <a href={EXTERNAL_URLS.os}>elizaOS</a>
+          <a href={EXTERNAL_URLS.discord}>Discord</a>
+          <a href="#main">{copy.backTop}</a>
+        </nav>
       </footer>
     </div>
-  );
-}
-
-function DownloadLink({
-  label,
-  href,
-  detail,
-  meta,
-  fileName,
-  description,
-  icon: Icon,
-}: {
-  label: string;
-  href: string;
-  detail: string;
-  meta: string;
-  fileName: string;
-  description: string;
-  icon: typeof Package;
-}) {
-  return (
-    <a className="app-download-card" href={href}>
-      <span className="app-card-icon">
-        <Icon className="app-icon" aria-hidden="true" />
-      </span>
-      <span className="app-download-card-copy">
-        <strong>{label}</strong>
-        <span>{description}</span>
-        <small>{fileName}</small>
-      </span>
-      <span className="app-download-card-meta">
-        <span>{detail}</span>
-        <span>{meta}</span>
-      </span>
-      <ArrowRight className="app-icon app-card-arrow" aria-hidden="true" />
-    </a>
-  );
-}
-
-function ProductCta({
-  title,
-  body,
-  href,
-  label,
-  icon: Icon,
-}: {
-  title: string;
-  body: string;
-  href: string;
-  label: string;
-  icon: typeof Package;
-}) {
-  return (
-    <article className="app-product-cta">
-      <div>
-        <Icon className="app-product-icon" aria-hidden="true" />
-        <h2>{title}</h2>
-        <p>{body}</p>
-      </div>
-      <a href={href} className="app-cta app-cta--white">
-        {label}
-        <ArrowRight className="app-icon" aria-hidden="true" />
-      </a>
-    </article>
   );
 }

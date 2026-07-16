@@ -13,18 +13,26 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const marketingPath = resolve(__dirname, "../src/pages/marketing.tsx");
+const orangePaperPath = resolve(__dirname, "../src/pages/orange-paper.tsx");
+const appPath = resolve(__dirname, "../src/App.tsx");
 const globalStylesPath = resolve(__dirname, "../src/index.css");
 const iphoneModelPath = resolve(__dirname, "../public/models/iphone.glb");
 const viteConfigPath = resolve(__dirname, "../vite.config.ts");
 const tsconfigPath = resolve(__dirname, "../tsconfig.app.json");
 
-test("marketing.tsx exports a default function component", () => {
-  const src = readFileSync(marketingPath, "utf8");
-  assert.match(
-    src,
-    /export\s+default\s+function\s+\w+/,
-    "expected `export default function ...` in marketing.tsx",
-  );
+test("public sovereign pages export and route without prohibited copy", () => {
+  const marketing = readFileSync(marketingPath, "utf8");
+  const orangePaper = readFileSync(orangePaperPath, "utf8");
+  const app = readFileSync(appPath, "utf8");
+
+  assert.match(marketing, /export\s+default\s+function\s+\w+/);
+  assert.match(orangePaper, /export\s+default\s+function\s+\w+/);
+  assert.match(app, /path="\/orange-paper"/);
+  assert.match(app, /path="\/plan"/);
+  assert.match(marketing, /Bitcoin gave you sovereign money/);
+  assert.match(orangePaper, /Every surface, the same agent/);
+  assert.doesNotMatch(`${marketing}${orangePaper}`, /—/);
+  assert.doesNotMatch(`${marketing}${orangePaper}`, /Strata|cap table/i);
 });
 
 test("leaderboard ships its iPhone GLB model", () => {
