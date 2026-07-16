@@ -304,9 +304,12 @@ function readSnapshots(): StatusSnapshot[] {
                 : null,
           })),
       });
-    } catch {
+    } catch (error) {
       // error-policy:J3 persisted snapshots are local diagnostic input; a bad
       // line is invalid history, not a reason to fail the public status route.
+      logger.warn(
+        `[account-pool-status] skipping invalid snapshot line: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
   return snapshots;
