@@ -10,10 +10,8 @@
 #
 # Rolldown coverage instrumentation fails on these inline type-import files.
 # The vitest base config (packages/test/vitest/default.config.ts) carries
-# matching coverage.exclude entries — note those still use a stale `eliza/`
-# wrapper-repo path prefix, so the files' LCOV absence in practice comes from
-# the collection failure itself, not the config. Either way: structurally
-# absent until the Rolldown issue is fixed.
+# matching coverage.exclude entries, so these files remain structurally absent
+# until the Rolldown issue is fixed.
 packages/agent/src/api/server.ts
 packages/agent/src/runtime/eliza.ts
 

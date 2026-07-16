@@ -555,8 +555,8 @@ export default defineConfig({
         "src/cli/**",
         "src/hooks/**",
         // Rolldown coverage still struggles with these inline type-import files.
-        "eliza/packages/agent/src/api/server.ts",
-        "eliza/packages/agent/src/runtime/eliza.ts",
+        "packages/agent/src/api/server.ts",
+        "packages/agent/src/runtime/eliza.ts",
       ],
     },
     server: {
