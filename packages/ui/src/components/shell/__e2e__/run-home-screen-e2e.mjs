@@ -745,10 +745,24 @@ try {
       (await countButton.textContent())?.includes("1 Notification"),
       "the rested count control reflects the seeded notification",
     );
+    const restedClearState = await center
+      .getByTestId("notifications-clear-all")
+      .evaluate((button) => {
+        const slot = button.closest("[data-notification-clear-slot]");
+        return {
+          opacity: slot ? getComputedStyle(slot).opacity : null,
+          height: slot ? getComputedStyle(slot).height : null,
+          ariaHidden: slot?.getAttribute("aria-hidden"),
+          inert: slot?.hasAttribute("inert"),
+        };
+      });
     assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 0 &&
+      restedClearState.opacity === "0" &&
+        restedClearState.height === "0px" &&
+        restedClearState.ariaHidden === "true" &&
+        restedClearState.inert === true &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
-      "expanded-only controls stay hidden at rest",
+      "expanded controls remain mounted but fully inert and hidden at rest",
     );
 
     const countSlot = center.getByTestId("notifications-count");
@@ -823,10 +837,24 @@ try {
         '[data-testid="home-notification-list"][data-shade-mode="rested"]',
       )
       .waitFor({ state: "visible", timeout: 5000 });
+    const collapsedClearState = await center
+      .getByTestId("notifications-clear-all")
+      .evaluate((button) => {
+        const slot = button.closest("[data-notification-clear-slot]");
+        return {
+          opacity: slot ? getComputedStyle(slot).opacity : null,
+          height: slot ? getComputedStyle(slot).height : null,
+          ariaHidden: slot?.getAttribute("aria-hidden"),
+          inert: slot?.hasAttribute("inert"),
+        };
+      });
     assert(
-      (await center.getByTestId("notifications-clear-all").count()) === 0 &&
+      collapsedClearState.opacity === "0" &&
+        collapsedClearState.height === "0px" &&
+        collapsedClearState.ariaHidden === "true" &&
+        collapsedClearState.inert === true &&
         (await center.getByTestId("notifications-collapse").count()) === 0,
-      "collapse returns the notification center to its rested controls",
+      "collapse restores the mounted clear control to its inert rested state",
     );
   }
   // No general quick-access tiles anymore - Launcher is the adjacent
@@ -2069,9 +2097,10 @@ try {
   );
   assert(
     cancelTrace.at(-1)?.quietOpacity === null &&
-      cancelTrace.at(-1)?.clearMounted === false &&
+      cancelTrace.at(-1)?.clearMounted === true &&
+      cancelTrace.at(-1)?.clearOpacity === 0 &&
       cancelTrace.at(-1)?.collapseMounted === false,
-    "cancelled pull unmounts preview-only surfaces only after the settle completes",
+    "cancelled pull hides its stable clear slot and unmounts preview-only surfaces after settling",
   );
 
   await notificationMotion.emulateMedia({ reducedMotion: "reduce" });
@@ -2288,6 +2317,20 @@ try {
     clearControls: document.querySelectorAll(
       '[data-testid="notifications-clear-all"]',
     ).length,
+    clearOpacity: (() => {
+      const slot = document.querySelector("[data-notification-clear-slot]");
+      return slot ? getComputedStyle(slot).opacity : null;
+    })(),
+    clearHeight: (() => {
+      const slot = document.querySelector("[data-notification-clear-slot]");
+      return slot ? getComputedStyle(slot).height : null;
+    })(),
+    clearHidden: document
+      .querySelector("[data-notification-clear-slot]")
+      ?.getAttribute("aria-hidden"),
+    clearInert: document
+      .querySelector("[data-notification-clear-slot]")
+      ?.hasAttribute("inert"),
     collapseControls: document.querySelectorAll(
       '[data-testid="notifications-collapse"]',
     ).length,
@@ -2296,7 +2339,11 @@ try {
     reducedCancel.mode === "rested" &&
       reducedCancel.cancelling === false &&
       reducedCancel.previewGroups === 0 &&
-      reducedCancel.clearControls === 0 &&
+      reducedCancel.clearControls === 1 &&
+      reducedCancel.clearOpacity === "0" &&
+      reducedCancel.clearHeight === "0px" &&
+      reducedCancel.clearHidden === "true" &&
+      reducedCancel.clearInert === true &&
       reducedCancel.collapseControls === 0,
     `reduced-motion short pull resets preview DOM immediately (${JSON.stringify(reducedCancel)})`,
   );
@@ -2636,8 +2683,8 @@ try {
       const clear = document.querySelector(
         '[data-testid="notifications-clear-all"]',
       );
-      const clearLabel = clear?.querySelector(
-        "[data-notification-clear-resting-label]",
+      const clearArmingLabel = clear?.querySelector(
+        "[data-notification-clear-arming-label]",
       );
       const clearConfirmingLabel = clear?.querySelector(
         "[data-notification-clear-confirming-label]",
@@ -2650,7 +2697,7 @@ try {
         !(list instanceof HTMLElement) ||
         !(secondary instanceof HTMLElement) ||
         !(clear instanceof HTMLElement) ||
-        !(clearLabel instanceof HTMLElement) ||
+        !(clearArmingLabel instanceof HTMLElement) ||
         !(clearConfirmingLabel instanceof HTMLElement) ||
         !(clearIcon instanceof SVGElement)
       ) {
@@ -2686,12 +2733,14 @@ try {
         clear: {
           ...rect(clear),
           confirming: clear.hasAttribute("data-confirming"),
+          stage: clear.getAttribute("data-clear-stage"),
+          armingLabel: clearArmingLabel.textContent,
+          armingLabelOpacity: Number.parseFloat(
+            getComputedStyle(clearArmingLabel).opacity,
+          ),
           confirmingLabel: clearConfirmingLabel.textContent,
           confirmingLabelOpacity: Number.parseFloat(
             getComputedStyle(clearConfirmingLabel).opacity,
-          ),
-          labelOpacity: Number.parseFloat(
-            getComputedStyle(clearLabel).opacity,
           ),
           iconOpacity: Number.parseFloat(getComputedStyle(clearIcon).opacity),
         },
@@ -2731,9 +2780,11 @@ try {
     );
     assert(
       initialExpandedGeometry.clear.width <= 33 &&
-        initialExpandedGeometry.clear.labelOpacity <= 0.01 &&
+        initialExpandedGeometry.clear.armingLabelOpacity <= 0.01 &&
+        initialExpandedGeometry.clear.confirmingLabelOpacity <= 0.01 &&
         initialExpandedGeometry.clear.iconOpacity >= 0.99 &&
-        !initialExpandedGeometry.clear.confirming,
+        !initialExpandedGeometry.clear.confirming &&
+        initialExpandedGeometry.clear.stage === "0",
       `coarse-pointer clear control rests as a compact X (${JSON.stringify(initialExpandedGeometry.clear)})`,
     );
   }
@@ -2746,10 +2797,23 @@ try {
   const armedCoarseClearGeometry = await readExpandedGeometry();
   assert(
     armedCoarseClearGeometry?.clear.confirming === true &&
-      armedCoarseClearGeometry.clear.confirmingLabel === "Clear all" &&
-      armedCoarseClearGeometry.clear.confirmingLabelOpacity >= 0.99 &&
+      armedCoarseClearGeometry.clear.stage === "1" &&
+      armedCoarseClearGeometry.clear.armingLabel === "Clear all" &&
+      armedCoarseClearGeometry.clear.armingLabelOpacity >= 0.99 &&
       armedCoarseClearGeometry.clear.width >= 63,
-    `coarse-pointer first tap reveals “Clear all” without adding a third step (${JSON.stringify(armedCoarseClearGeometry?.clear)})`,
+    `coarse-pointer first tap reveals Clear all (${JSON.stringify(armedCoarseClearGeometry?.clear)})`,
+  );
+  await touchTap(
+    notificationGeometry,
+    '[data-testid="notifications-clear-all"]',
+  );
+  await notificationGeometry.waitForTimeout(220);
+  const confirmingCoarseClearGeometry = await readExpandedGeometry();
+  assert(
+    confirmingCoarseClearGeometry?.clear.stage === "2" &&
+      confirmingCoarseClearGeometry.clear.confirmingLabel === "Confirm?" &&
+      confirmingCoarseClearGeometry.clear.confirmingLabelOpacity >= 0.99,
+    `coarse-pointer second tap advances to Confirm? (${JSON.stringify(confirmingCoarseClearGeometry?.clear)})`,
   );
   await notificationGeometry.evaluate(() => {
     document.body.dispatchEvent(
@@ -2965,24 +3029,13 @@ try {
     );
     await desktop.waitForTimeout(520);
     const clear = center.getByTestId("notifications-clear-all");
-    const readClearGeometry = () =>
+    const readClearState = () =>
       clear.evaluate((button) => {
-        const label = button.querySelector(
-          "[data-notification-clear-resting-label]",
-        );
-        const icon = button.querySelector(
-          "[data-notification-clear-resting-icon]",
-        );
         const slot = button.closest("[data-notification-clear-slot]");
         const row = document.querySelector(
           '[data-testid="notification-row"]',
         );
-        if (
-          !(label instanceof HTMLElement) ||
-          !(icon instanceof SVGElement) ||
-          !(slot instanceof HTMLElement) ||
-          !(row instanceof HTMLElement)
-        ) {
+        if (!(slot instanceof HTMLElement) || !(row instanceof HTMLElement)) {
           return null;
         }
         const rect = (element) => {
@@ -2998,40 +3051,40 @@ try {
           button: rect(button),
           slot: rect(slot),
           row: rect(row),
-          labelOpacity: Number.parseFloat(getComputedStyle(label).opacity),
-          iconOpacity: Number.parseFloat(getComputedStyle(icon).opacity),
+          stage: button.getAttribute("data-clear-stage"),
         };
       });
-    const clearRest = await readClearGeometry();
+    const clearRest = await readClearState();
     await clear.hover();
     await desktop.waitForTimeout(220);
-    const clearHover = await readClearGeometry();
+    const clearHover = await readClearState();
     await desktop.mouse.move(0, 0);
     await desktop.waitForTimeout(220);
-    const clearReturned = await readClearGeometry();
+    const clearReturned = await readClearState();
     assert(
       clearRest !== null &&
         clearHover !== null &&
         clearReturned !== null &&
         clearRest.button.width <= 33 &&
-        clearHover.button.width >= 55 &&
-        clearHover.labelOpacity >= 0.99 &&
-        clearHover.iconOpacity <= 0.01 &&
+        clearHover.button.width <= 33 &&
         Math.abs(clearRest.button.right - clearHover.button.right) <= 1 &&
         Math.abs(clearRest.slot.width - clearHover.slot.width) <= 1 &&
         Math.abs(clearRest.row.top - clearHover.row.top) <= 1 &&
-        clearReturned.button.width <= 33,
-      `desktop clear reveals leftward without shifting its slot or cards (${JSON.stringify({ clearRest, clearHover, clearReturned })})`,
+        clearReturned.button.width <= 33 &&
+        clearRest.stage === "0" &&
+        clearHover.stage === "0",
+      `desktop clear stays an X on hover without shifting its slot or cards (${JSON.stringify({ clearRest, clearHover, clearReturned })})`,
     );
     await clear.click();
     await desktop.waitForTimeout(220);
-    const desktopConfirmation = await clear.evaluate((button) => {
+    const desktopArming = await clear.evaluate((button) => {
       const label = button.querySelector(
-        "[data-notification-clear-confirming-label]",
+        "[data-notification-clear-arming-label]",
       );
       return {
         ariaLabel: button.getAttribute("aria-label"),
         confirming: button.hasAttribute("data-confirming"),
+        stage: button.getAttribute("data-clear-stage"),
         label: label?.textContent,
         labelOpacity:
           label instanceof HTMLElement
@@ -3040,12 +3093,28 @@ try {
       };
     });
     assert(
-      desktopConfirmation.confirming &&
+      desktopArming.confirming &&
+        desktopArming.stage === "1" &&
+        desktopArming.label === "Clear all" &&
+        desktopArming.labelOpacity >= 0.99 &&
+        desktopArming.ariaLabel === "Continue clearing all notifications",
+      `desktop first click changes X to Clear all (${JSON.stringify(desktopArming)})`,
+    );
+    await clear.click();
+    await desktop.waitForTimeout(220);
+    const desktopConfirmation = await clear.evaluate((button) => ({
+      ariaLabel: button.getAttribute("aria-label"),
+      stage: button.getAttribute("data-clear-stage"),
+      label: button.querySelector(
+        "[data-notification-clear-confirming-label]",
+      )?.textContent,
+    }));
+    assert(
+      desktopConfirmation.stage === "2" &&
         desktopConfirmation.label === "Confirm?" &&
-        desktopConfirmation.labelOpacity >= 0.99 &&
         desktopConfirmation.ariaLabel ===
           "Confirm clear all notifications",
-      `desktop first click changes Clear all to an explicit Confirm? step (${JSON.stringify(desktopConfirmation)})`,
+      `desktop second click advances Clear all to Confirm? (${JSON.stringify(desktopConfirmation)})`,
     );
     await desktop.evaluate(() => {
       document.body.dispatchEvent(

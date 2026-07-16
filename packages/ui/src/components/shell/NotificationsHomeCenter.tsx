@@ -66,7 +66,6 @@ import {
   shouldCommitMomentumDetent,
   useRafCoalescer,
 } from "../../gestures";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import {
   isSafeDeepLink,
@@ -83,6 +82,7 @@ import {
   ClearConfirmationContent,
   groupDashboardNotifications,
   isInterruptPriority,
+  NOTIFICATION_ROW_SETTLE_MS,
   NotificationRow,
   orderDashboardNotifications,
 } from "./notification-shade-content";
@@ -216,7 +216,7 @@ const STACK_PEEK_OFFSET_PX = 7;
 const STACK_BOTTOM_CLEARANCE_PX = 2;
 
 const CLEAR_CONFIRM_TIMEOUT_MS = 5_000;
-const FINE_POINTER_CLEAR_CONFIRM_QUERY = "(hover: hover) and (pointer: fine)";
+const POST_DRAG_CLICK_SUPPRESSION_MS = 180;
 const SHADE_SETTLE_MS = 460;
 const SHADE_MIN_SETTLE_MS = 320;
 const SHADE_MAX_SETTLE_MS = 600;
@@ -232,7 +232,6 @@ const SHADE_MIN_VELOCITY_SAMPLE_MS = 16;
 // geometry must settle on one clock or a cancelled pull overshoots before the
 // slower slot catches up, making the count reverse direction at the edge.
 const NOTIFICATION_COUNT_RESTORE_MS = SHADE_SETTLE_MS;
-const NOTIFICATION_ROW_SETTLE_MS = 220;
 /** The stack fan has enough travel to read clearly without feeling delayed. */
 export const STACK_FAN_SETTLE_MS = 300;
 const STACK_FAN_LAYOUT_TRANSITION = {
@@ -338,6 +337,11 @@ const NOTIF_SCROLL_CSS = `
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
+.eliza-notif-scroll [data-notification-stack-material] .eliza-notif-glass:hover,
+.eliza-notif-scroll [data-notification-stacked] .eliza-notif-glass:hover,
+.eliza-notif-scroll .eliza-notif-glass.eliza-notif-stack-peek:hover {
+  background-color: rgb(38 38 42);
+}
 /* Directional specular rim tracing every rounded corner (mask-composite ring)
    — replaces the old one-sided inset hairline that read as a vertical line. */
 ${liquidGlassRimCss(".eliza-notif-glass")}
@@ -397,30 +401,6 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 }
 .eliza-notif-clear-all[data-confirming] {
   width: 4rem;
-}
-.eliza-notif-clear-all:not([data-confirming]):focus-visible {
-  width: 3.5rem;
-}
-.eliza-notif-clear-all:not([data-confirming]):focus-visible [data-notification-clear-resting-label] {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
-.eliza-notif-clear-all:not([data-confirming]):focus-visible [data-notification-clear-resting-icon] {
-  opacity: 0;
-  transform: scale(0.75);
-}
-@media (hover: hover) and (pointer: fine) {
-  .eliza-notif-clear-all:not([data-confirming]):hover {
-    width: 3.5rem;
-  }
-  .eliza-notif-clear-all:not([data-confirming]):hover [data-notification-clear-resting-label] {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-  .eliza-notif-clear-all:not([data-confirming]):hover [data-notification-clear-resting-icon] {
-    opacity: 0;
-    transform: scale(0.75);
-  }
 }
 /* A view-timeline animation reattaches from its entry keyframe when a transient
    drag marker disappears. Preview groups retain their own marker through a
@@ -494,6 +474,33 @@ ${liquidGlassRimCss(".eliza-notif-glass")}
 }
 .eliza-notif-row-inner[data-swipe-dragging] {
   transition: none;
+}
+.eliza-notif-row[data-swipe-collapsing] {
+  overflow: hidden;
+  transition:
+    grid-template-rows ${NOTIFICATION_ROW_SETTLE_MS}ms cubic-bezier(0.22,1,0.36,1),
+    margin-bottom ${NOTIFICATION_ROW_SETTLE_MS}ms cubic-bezier(0.22,1,0.36,1);
+}
+/* Folded cards keep real notification faces under the front card. Generated
+   labels make that content visible during a swipe without introducing a
+   second copy into the accessibility tree or message-search surface. */
+[data-notification-stack-preview-title]::before {
+  content: attr(data-notification-stack-preview-title);
+}
+[data-notification-stack-preview-body]::before {
+  content: attr(data-notification-stack-preview-body);
+}
+[data-notification-stack-preview-time]::before {
+  content: attr(data-notification-stack-preview-time);
+}
+[data-notification-stack-preview-source-initial]::before {
+  content: attr(data-notification-stack-preview-source-initial);
+}
+[data-notification-stack-preview-count]::before {
+  content: attr(data-notification-stack-preview-count);
+}
+.eliza-notif-stack-peek[data-swipe-promoting] {
+  --eliza-notif-geometry-duration: ${NOTIFICATION_ROW_SETTLE_MS}ms;
 }
 @supports (animation-timeline: view()) {
   @media (prefers-reduced-motion: no-preference) {
@@ -594,7 +601,6 @@ export function NotificationsHomeCenter({
   const { notifications, hydrated, hydrationStatus } = useNotifications();
   const inboxEmpty = notifications.length === 0;
   const reduceMotion = usePrefersReducedMotion();
-  const finePointer = useMediaQuery(FINE_POINTER_CLEAR_CONFIRM_QUERY);
   // Shade mode: rested (interrupt-tier triage) vs expanded (full inbox).
   // Producer groups stay stacked until individually fanned out.
   const [shadeExpanded, setShadeExpanded] = useState(false);
@@ -631,7 +637,7 @@ export function NotificationsHomeCenter({
   const [confirmingGroupKey, setConfirmingGroupKey] = useState<string | null>(
     null,
   );
-  const [confirmingClearAll, setConfirmingClearAll] = useState(false);
+  const [clearAllStage, setClearAllStage] = useState<0 | 1 | 2>(0);
   const [shadeClosing, setShadeClosing] = useState(false);
   const [pullCancellingDirection, setPullCancellingDirection] = useState<
     "expand" | "collapse" | null
@@ -718,7 +724,7 @@ export function NotificationsHomeCenter({
         return next;
       });
       setConfirmingGroupKey(null);
-      setConfirmingClearAll(false);
+      setClearAllStage(0);
       setShadeExpanded(true);
     },
     [cancelPullCancellation, cancelStackFold, reduceMotion, shadeExpanded],
@@ -741,7 +747,7 @@ export function NotificationsHomeCenter({
         return next;
       });
       setConfirmingGroupKey((current) => (current === key ? null : current));
-      setConfirmingClearAll(false);
+      setClearAllStage(0);
     },
     [cancelPullCancellation, cancelStackFold],
   );
@@ -1032,7 +1038,7 @@ export function NotificationsHomeCenter({
     suppressNotificationClickTimer.current = window.setTimeout(() => {
       suppressNotificationClick.current = false;
       suppressNotificationClickTimer.current = null;
-    }, 500);
+    }, POST_DRAG_CLICK_SUPPRESSION_MS);
   }, []);
 
   const armBackgroundClickSuppression = useCallback(() => {
@@ -1043,7 +1049,7 @@ export function NotificationsHomeCenter({
     suppressBackgroundClickTimer.current = window.setTimeout(() => {
       suppressBackgroundClick.current = false;
       suppressBackgroundClickTimer.current = null;
-    }, 500);
+    }, POST_DRAG_CLICK_SUPPRESSION_MS);
   }, []);
 
   const setPullPx = useCallback(
@@ -1124,7 +1130,7 @@ export function NotificationsHomeCenter({
   }, []);
 
   const cancelClearConfirmation = useCallback(() => {
-    setConfirmingClearAll(false);
+    setClearAllStage(0);
     setConfirmingGroupKey(null);
   }, []);
 
@@ -1155,7 +1161,7 @@ export function NotificationsHomeCenter({
       cancelPullCancellation();
       setShadeClosing(false);
       setShadeExpanded(expanded);
-      setConfirmingClearAll(false);
+      setClearAllStage(0);
       setConfirmingGroupKey(null);
       setShadeOpenedByStack(false);
       if (expanded) {
@@ -1352,7 +1358,7 @@ export function NotificationsHomeCenter({
         return next;
       });
       setConfirmingGroupKey((current) => (current === key ? null : current));
-      setConfirmingClearAll(false);
+      setClearAllStage(0);
       // A stack that opened the shade also closes it, but both layers share
       // this fold clock. Sequencing the shade afterward creates a visible
       // second tail even when the stack itself has already reached rest.
@@ -1387,8 +1393,7 @@ export function NotificationsHomeCenter({
     for (const key of closingStacks) completeStackFold(key);
   }, [closingStacks, completeStackFold, reduceMotion]);
 
-  const hasClearConfirmation =
-    confirmingClearAll || confirmingGroupKey !== null;
+  const hasClearConfirmation = clearAllStage > 0 || confirmingGroupKey !== null;
   useEffect(() => {
     if (!hasClearConfirmation) return;
     const timeout = window.setTimeout(
@@ -2262,7 +2267,7 @@ export function NotificationsHomeCenter({
   const clearProducer = useCallback(
     (key: string, ids: readonly string[]) => {
       if (confirmingGroupKey !== key) {
-        setConfirmingClearAll(false);
+        setClearAllStage(0);
         setConfirmingGroupKey(key);
         return;
       }
@@ -2273,18 +2278,22 @@ export function NotificationsHomeCenter({
     [confirmingGroupKey, foldStack],
   );
   const clearAll = useCallback(() => {
-    if (!confirmingClearAll) {
+    if (clearAllStage === 0) {
       setConfirmingGroupKey(null);
-      setConfirmingClearAll(true);
+      setClearAllStage(1);
       return;
     }
-    setConfirmingClearAll(false);
+    if (clearAllStage === 1) {
+      setClearAllStage(2);
+      return;
+    }
+    setClearAllStage(0);
     setConfirmingGroupKey(null);
     cancelAllStackFolds();
     setOpeningStacks(new Set());
     setExpandedStacks(new Set());
     void clearNotifications();
-  }, [cancelAllStackFolds, confirmingClearAll]);
+  }, [cancelAllStackFolds, clearAllStage]);
 
   // An emptied-out inbox resets the shade so the next arrival starts rested.
   // `pullPx` is cleared too: if the inbox empties mid-pull the touch effect
@@ -2298,7 +2307,7 @@ export function NotificationsHomeCenter({
       setOpeningStacks(new Set());
       setExpandedStacks(new Set());
       setConfirmingGroupKey(null);
-      setConfirmingClearAll(false);
+      setClearAllStage(0);
       cancelPullCancellation();
       setPullPx(0);
     }
@@ -2423,26 +2432,15 @@ export function NotificationsHomeCenter({
     expandedStacks.size > 0 && closingStacks.size === 0
       ? STACK_FAN_LAYOUT_TRANSITION
       : STACK_FOLD_LAYOUT_TRANSITION;
-  const allExpandedStacksAreClosing =
-    expandedStacks.size > 0 &&
-    expandedStacks.size === closingStacks.size &&
-    Array.from(expandedStacks).every((key) => closingStacks.has(key));
-  // The footer stays in flow while a stack fans so its text can crossfade
-  // instead of changing both the list geometry and DOM ownership in one frame.
-  const stackCollapseControlVisibility =
-    expandedStacks.size === 0 || allExpandedStacksAreClosing ? 1 : 0;
   const collapseControlPresentationVisibility =
-    collapseControlVisibility *
-    shadeOpenProgress *
-    stackCollapseControlVisibility;
+    collapseControlVisibility * shadeOpenProgress;
   const collapseControlInteractive =
     shadeExpanded &&
     !shadeClosing &&
     !isPulling &&
     !pullReleaseSettling &&
     pullCancellingDirection === null &&
-    collapseControlPresentationVisibility === 1 &&
-    expandedStacks.size === 0;
+    collapseControlPresentationVisibility === 1;
   const showCollapseControl =
     (shadeExpanded || previewingExpansion) && hasNotifications;
   const onListPointerDown = (e: React.PointerEvent) => {
@@ -2638,30 +2636,32 @@ export function NotificationsHomeCenter({
             }}
             className="eliza-notif-shade-transition flex shrink-0 justify-end overflow-hidden px-2"
           >
-            {shadeExpanded || previewingExpansion ? (
-              <button
-                type="button"
-                data-testid="notifications-clear-all"
-                data-confirming={confirmingClearAll ? "true" : undefined}
-                data-notif-control=""
-                aria-label={
-                  confirmingClearAll
-                    ? "Confirm clear all notifications"
+            <button
+              type="button"
+              data-testid="notifications-clear-all"
+              data-confirming={clearAllStage > 0 ? "true" : undefined}
+              data-clear-stage={clearAllStage}
+              data-notif-control=""
+              aria-label={
+                clearAllStage === 2
+                  ? "Confirm clear all notifications"
+                  : clearAllStage === 1
+                    ? "Continue clearing all notifications"
                     : "Clear all notifications"
-                }
-                onClick={clearAll}
-                className={cn(
-                  "eliza-notif-clear-all eliza-notif-control-transition h-8 shrink-0 overflow-hidden whitespace-nowrap text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90 focus-visible:text-white/90",
-                  confirmingClearAll && "text-white",
-                )}
-              >
-                <ClearConfirmationContent
-                  confirmingLabel={finePointer ? "Confirm?" : "Clear all"}
-                  confirming={confirmingClearAll}
-                  restingLabel="Clear all"
-                />
-              </button>
-            ) : null}
+              }
+              onClick={clearAll}
+              className={cn(
+                "eliza-notif-clear-all eliza-notif-control-transition h-8 shrink-0 overflow-hidden whitespace-nowrap text-xs font-medium text-white/60 transition-[width,color] duration-200 ease-out hover:text-white/90 focus-visible:text-white/90",
+                clearAllStage > 0 && "text-white",
+              )}
+            >
+              <ClearConfirmationContent
+                armingLabel="Clear all"
+                confirmingLabel="Confirm?"
+                confirming={clearAllStage > 0}
+                stage={clearAllStage}
+              />
+            </button>
           </li>
         ) : null}
         {!hasNotifications ? (
@@ -2963,6 +2963,7 @@ export function NotificationsHomeCenter({
                               openOffsetsPx: stackPeekOpenOffsets.get(
                                 group.key,
                               ),
+                              previewRows: peeks,
                               testIdVisible: !fanned || shadeCloseProgress > 0,
                               totalCount: allGroupRows.length,
                               visibility: stackPeekVisibility,

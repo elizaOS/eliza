@@ -74,11 +74,7 @@ export function notificationPullPresentation(
   const pullOvershootOffset = notificationPullOvershootOffset(pullPx);
   const countCloseOvershootProgress = Math.min(
     1,
-    Math.max(
-      0,
-      (-pullOvershootOffset - PULL_MAX_OVERSHOOT_PX / 4) /
-        (PULL_MAX_OVERSHOOT_PX / 2),
-    ),
+    Math.max(0, -pullOvershootOffset / (PULL_MAX_OVERSHOOT_PX / 4)),
   );
   const countCloseBoundaryVisibility =
     1 -
