@@ -3449,7 +3449,7 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     openSearchFromComposerMenu();
     const searchLayer = screen.getByTestId("chat-message-search");
     expect(searchLayer.className).not.toContain("backdrop-blur");
-    expect(searchLayer.className).toContain("bg-black/20");
+    expect(searchLayer.className).not.toContain("bg-black");
     expect(screen.getByTestId("message-search-panel")).toBeTruthy();
     expect(thread().getAttribute("aria-hidden")).toBe("true");
     expect(thread().tabIndex).toBe(-1);
