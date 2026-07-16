@@ -12,7 +12,6 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `test.yml` | Push to develop, manual, schedule | Broader post-merge develop tests; live jobs are separate |
 | `quality.yml` | PR to main, push main/develop, manual | Extended format, type-safety, homepage, secret, UI-determinism, and lint checks |
 | `scenario-pr.yml` | PR to main, push develop, manual/schedule | Secret-free deterministic scenario/browser E2E gate |
-| `scenario-matrix.yml` | Develop/manual opt-in | Real-service scenario matrix; not a PR gate |
 | `pr.yaml` | PR opened/edited | PR title validation |
 | `release.yaml` | Beta tag, release created, manual | NPM publishing; transactional repair is tracked in [#16277](https://github.com/elizaOS/eliza/issues/16277) |
 | `release-orchestrator.yml` | Release published, reusable, manual | Cross-platform distribution; sole-coordinator repair is tracked in [#16279](https://github.com/elizaOS/eliza/issues/16279) |
@@ -156,6 +155,12 @@ files; those fixtures should stay covered by their owning tests.
 GPU / KVM / macOS jobs (labels `gpu-cuda-12.6`, `kvm`, `eliza-e2e-macos`) are a
 separate purpose-built fleet and are unaffected by this policy.
 
+The retired `gpu-bench-nightly.yml` scaffold never ran substantive work on its
+schedule: both jobs required an opt-in manual dispatch and invoked removed
+`packages/inference` paths. Real CUDA benchmark continuity belongs to the
+current local-inference and voice benchmark surfaces and is tracked in #16449;
+do not restore the scaffold as a green scheduled placeholder.
+
 ### PR Path Gates
 
 PR workflows use `packages/scripts/ci-path-gate.mjs` to keep expensive lanes
@@ -251,8 +256,9 @@ surface is owned by `develop-pr.yml` and aggregated by `develop-pr-gate.yml`;
 
 PR E2E does not require `CEREBRAS_API_KEY`, `OPENAI_API_KEY`, or any other paid
 provider key. Live/provider-key coverage belongs to the dedicated live jobs and
-workflows (`cloud-live-e2e`, `provider-live-e2e`, `live-scenarios.yml`,
-`scenario-matrix.yml`) where missing-key behavior is documented per lane.
+workflows (`cloud-live-e2e`, `provider-live-e2e`, `live-scenarios.yml`, and
+connector-specific live workflows) where missing-key behavior is documented per
+lane. Trustworthy all-shard credential coverage is tracked in #16448.
 
 ## Code Review Workflows
 
