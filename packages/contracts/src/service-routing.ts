@@ -80,7 +80,7 @@ export interface LinkedAccountHealthDetail {
 export interface LinkedAccountUsage {
 	/** 0–100, current 5h window (Anthropic) or primary window (Codex) */
 	sessionPct?: number;
-	/** 0–100, 7-day (Anthropic only) */
+	/** 0–100, seven-day or provider secondary window */
 	weeklyPct?: number;
 	/**
 	 * Per-model 7-day utilization buckets from provider usage APIs. Keys are
@@ -88,7 +88,10 @@ export interface LinkedAccountUsage {
 	 * lookup by the selector; values preserve the provider's reset timestamp.
 	 */
 	weeklyModelBuckets?: Record<string, { pct: number; resetsAt?: number }>;
-	/** epoch ms */
+	/**
+	 * epoch ms. Anthropic: all-model seven-day reset used for drain ordering.
+	 * Codex: primary five-hour reset. This is never a generic reset clock.
+	 */
 	resetsAt?: number;
 	/** epoch ms — when this snapshot was last refreshed */
 	refreshedAt: number;

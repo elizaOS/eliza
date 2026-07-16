@@ -199,7 +199,7 @@ describe("AccountPool provider-scoped account resolution", () => {
             String(url).includes("/profile")
               ? profileResponse()
               : new Response(
-                  JSON.stringify({ five_hour: { utilization: 0.5 } }),
+                  JSON.stringify({ five_hour: { utilization: 50 } }),
                   { status: 200 },
                 )) as unknown as typeof fetch,
         });
@@ -862,6 +862,85 @@ describe("AccountPool drain-soonest-reset selection", () => {
         model: "opus",
       }),
     ).resolves.toMatchObject({ id: "blended-soon" });
+  });
+
+  it("preserves a weekly-scoped Fable reset for drain ordering", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:fable-window": account(
+        "anthropic-subscription",
+        {
+          id: "fable-window",
+          usage: {
+            sessionPct: 1,
+            weeklyPct: 5,
+            resetsAt: fixedNow + 20 * hour,
+            weeklyModelBuckets: {
+              Fable: { pct: 12, resetsAt: fixedNow + hour },
+            },
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+      "anthropic-subscription:blended-window": account(
+        "anthropic-subscription",
+        {
+          id: "blended-window",
+          usage: {
+            sessionPct: 1,
+            weeklyPct: 1,
+            resetsAt: fixedNow + 2 * hour,
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+        model: "claude-fable-5",
+      }),
+    ).resolves.toMatchObject({ id: "fable-window" });
+  });
+
+  it("sorts a missing weekly reset after a known reset as a fail-safe", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:missing-reset": account(
+        "anthropic-subscription",
+        {
+          id: "missing-reset",
+          usage: {
+            sessionPct: 1,
+            weeklyPct: 0,
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+      "anthropic-subscription:known-reset": account(
+        "anthropic-subscription",
+        {
+          id: "known-reset",
+          usage: {
+            sessionPct: 1,
+            weeklyPct: 99,
+            resetsAt: fixedNow + 10 * hour,
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "known-reset" });
   });
 
   it("keeps 429 cooldown separate from weekly ranking after readmission", async () => {

@@ -3,8 +3,9 @@
  *
  * Gap (D): `account-usage.ts` shipped with no unit coverage. The probes parse
  * provider responses in two distinct shapes (legacy flat vs. new nested) and
- * funnel them through two internal normalizers — `utilizationToPct` (0..1 ->
- * percent, clamped to 0..100) and `normalizeResetTimestamp` (epoch seconds vs.
+ * funnel them through two internal normalizers — `utilizationToPct` (legacy
+ * flat fractions or current nested percentage points, clamped to 0..100) and
+ * `normalizeResetTimestamp` (epoch seconds vs.
  * milliseconds vs. ISO string). Those normalizers are NOT exported, so we
  * exercise them through the only public surface that touches them:
  * `pollAnthropicUsage` and `pollCodexUsage`. Both probes default their
@@ -13,7 +14,7 @@
  *
  * What these tests would catch as a regression:
  *  - dropping support for either the flat or nested Anthropic shape;
- *  - forgetting to multiply Anthropic utilization by 100 (it ships 0..1);
+ *  - treating current nested `1.0` as a fraction instead of one percent;
  *  - failing to clamp utilization into [0, 100];
  *  - mishandling NaN / non-number / missing utilization;
  *  - treating epoch-seconds reset timestamps as already-milliseconds (or vice
@@ -95,18 +96,18 @@ describe("pollAnthropicUsage", () => {
     expect(headers["anthropic-beta"]).toBe("oauth-2025-04-20");
   });
 
-  it("parses the NESTED response shape with the weekly reset timestamp", async () => {
+  it("treats nested 1.0 utilization as 1% and uses the weekly reset", async () => {
     stubFetch(
       jsonResponse({
         five_hour: { utilization: 1, resets_at: 1_700_000_000 },
-        seven_day: { utilization: 0.25, resets_at: 1_700_604_800 },
+        seven_day: { utilization: 1, resets_at: 1_700_604_800 },
       }),
     );
 
     const snap = await pollAnthropicUsage("nested-token");
 
     expect(snap.sessionPct).toBe(1);
-    expect(snap.weeklyPct).toBe(0.25);
+    expect(snap.weeklyPct).toBe(1);
     // resets_at given in epoch SECONDS -> normalized to ms (* 1000).
     expect(snap.resetsAt).toBe(1_700_604_800 * 1000);
   });
@@ -114,9 +115,9 @@ describe("pollAnthropicUsage", () => {
   it("parses the current weekly_scoped limits shape into per-model buckets", async () => {
     stubFetch(
       jsonResponse({
-        five_hour: { utilization: 0.2, resets_at: 1_700_000_000 },
+        five_hour: { utilization: 20, resets_at: 1_700_000_000 },
         seven_day: {
-          utilization: 0.5,
+          utilization: 50,
           resets_at: "2026-06-28T12:00:00.000Z",
         },
         limits: [
@@ -152,17 +153,17 @@ describe("pollAnthropicUsage", () => {
   it("prefers the nested utilization over the flat field when both are present", async () => {
     stubFetch(
       jsonResponse({
-        five_hour: { utilization: 0.9 },
+        five_hour: { utilization: 9 },
         five_hour_utilization: 0.1,
-        seven_day: { utilization: 0.8 },
+        seven_day: { utilization: 8 },
         seven_day_utilization: 0.2,
       }),
     );
 
     const snap = await pollAnthropicUsage("both-token");
 
-    expect(snap.sessionPct).toBe(0.9);
-    expect(snap.weeklyPct).toBe(0.8);
+    expect(snap.sessionPct).toBe(9);
+    expect(snap.weeklyPct).toBe(8);
   });
 
   it("preserves utilization already expressed as a 0..100 percentage", async () => {

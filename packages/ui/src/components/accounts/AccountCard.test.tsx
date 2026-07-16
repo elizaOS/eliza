@@ -90,6 +90,45 @@ describe("AccountCard health and repair actions", () => {
     expect(screen.queryByRole("button", { name: "Reauthenticate" })).toBeNull();
   });
 
+  it("labels the Anthropic weekly reset only on the 7d bar", () => {
+    renderAccount({
+      ...baseAccount,
+      providerId: "anthropic-subscription",
+      usage: {
+        sessionPct: 1,
+        weeklyPct: 6,
+        resetsAt: Date.now() + 2 * 86_400_000,
+        refreshedAt: Date.now(),
+      },
+    });
+
+    expect(
+      document.querySelector('[title^="5h: 1%"]')?.getAttribute("title"),
+    ).toBe("5h: 1%");
+    expect(
+      document.querySelector('[title^="7d: 6%"]')?.getAttribute("title"),
+    ).toMatch(/^7d: 6% · resets in /);
+  });
+
+  it("does not label the Codex primary reset as the weekly reset", () => {
+    renderAccount({
+      ...baseAccount,
+      usage: {
+        sessionPct: 1,
+        weeklyPct: 6,
+        resetsAt: Date.now() + 2 * 86_400_000,
+        refreshedAt: Date.now(),
+      },
+    });
+
+    expect(
+      document.querySelector('[title^="5h: 1%"]')?.getAttribute("title"),
+    ).toMatch(/^5h: 1% · resets in /);
+    expect(
+      document.querySelector('[title^="7d: 6%"]')?.getAttribute("title"),
+    ).toBe("7d: 6%");
+  });
+
   it("renders expired as a distinct non-reauth health state", () => {
     renderAccount({
       ...baseAccount,
