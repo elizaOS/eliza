@@ -113,13 +113,18 @@ export class ModelCatalogRefreshCoordinator<T> {
               retryAt: state.retryAt,
               consecutiveFailures: state.consecutiveFailures,
             });
-          } catch {
-            // Observability must never turn the coordinator's explicit
-            // failure result back into a rejected background promise.
+          } catch (observerError) {
+            // error-policy:J5 the observer exception is captured in the same
+            // explicit result returned to every waiter, so diagnostics cannot
+            // turn a handled refresh failure into an unhandled rejection.
+            state.lastError = new AggregateError(
+              [error, observerError],
+              "Model catalog refresh and failure observer both failed",
+            );
           }
           return {
             kind: "failed",
-            error,
+            error: state.lastError,
             retryAt: state.retryAt,
             consecutiveFailures: state.consecutiveFailures,
           };

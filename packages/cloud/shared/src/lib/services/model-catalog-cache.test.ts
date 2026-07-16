@@ -342,21 +342,25 @@ describe("ModelCatalogRefreshCoordinator", () => {
     expect(failures.map((failure) => failure.consecutiveFailures)).toEqual([1, 2, 3, 4]);
   });
 
-  test("keeps refresh failures explicit when the observability callback throws", async () => {
+  test("surfaces refresh and observability failures without rejecting", async () => {
+    const upstreamError = new Error("upstream unavailable");
+    const observerError = new Error("logger unavailable");
     const coordinator = new ModelCatalogRefreshCoordinator<number>({
       onFailure: () => {
-        throw new Error("logger unavailable");
+        throw observerError;
       },
     });
 
     const result = await coordinator.run("models:catalog", async () => {
-      throw new Error("upstream unavailable");
+      throw upstreamError;
     });
 
     expect(result).toMatchObject({
       kind: "failed",
-      error: expect.objectContaining({ message: "upstream unavailable" }),
       consecutiveFailures: 1,
     });
+    if (result.kind !== "failed") throw new Error("expected failed refresh result");
+    expect(result.error).toBeInstanceOf(AggregateError);
+    expect((result.error as AggregateError).errors).toEqual([upstreamError, observerError]);
   });
 });

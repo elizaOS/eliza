@@ -10,6 +10,10 @@ const appCoreSrc = path.join(fileDir, "src");
 const agentSrc = path.join(monorepoRoot, "packages/agent/src");
 const authSrc = path.join(monorepoRoot, "packages/auth/src");
 const uiDir = path.join(monorepoRoot, "packages/ui");
+const importConversationsSrc = path.join(
+  monorepoRoot,
+  "packages/import-conversations/src",
+);
 const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const vaultSrc = path.join(monorepoRoot, "packages/vault/src");
@@ -266,6 +270,10 @@ export default defineConfig({
         replacement: path.join(uiDir, "src/api/index.ts"),
       },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: path.join(uiDir, "src/$1") },
+      {
+        find: /^@elizaos\/import-conversations\/browser$/,
+        replacement: path.join(importConversationsSrc, "browser.ts"),
+      },
       {
         find: /^@elizaos\/shared$/,
         replacement: path.join(sharedSrc, "index.ts"),

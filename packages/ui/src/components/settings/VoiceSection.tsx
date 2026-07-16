@@ -5,6 +5,10 @@
  *
  * Per-modality local-vs-cloud routing is owned by the RoutingMatrix control
  * (per-slot policy rows), not by this section.
+ *
+ * Pendant capture remains wired into the realtime voice bridge, while its
+ * hardware setup controls live in PeripheralsSection. Keeping that controller
+ * in one settings subtree prevents duplicate Bluetooth connection state.
  */
 
 import { Database, Mic, Sliders, Timer } from "lucide-react";
