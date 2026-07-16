@@ -176,6 +176,8 @@ if (
 
       confidence: "high",
 
+      severity: "medium",
+
       evidenceRecordIds: [],
 
       limitations: [],
