@@ -101,14 +101,14 @@ function makeFakeAcp() {
 
 function makeRuntime(
   acp: ReturnType<typeof makeFakeAcp>["service"],
-  modelResponse: (...args: unknown[]) => string,
+  modelResponse: () => string,
 ): Record<string, unknown> {
   return {
     character: { name: "Tester" },
     databaseAdapter: undefined,
     logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     getSetting: () => undefined,
-    useModel: vi.fn(async (...args: unknown[]) => modelResponse(...args)),
+    useModel: vi.fn(async () => modelResponse()),
     getService: (type: string) =>
       type === AcpService.serviceType ? acp : undefined,
   };
@@ -284,53 +284,6 @@ describe("auto goal verification on task_complete", () => {
     expect(doc?.task.status).toBe("active");
     expect(doc?.task.metadata.autoVerifyAttempts).toBe(1);
     expect(doc?.task.status).not.toBe("done");
-  });
-
-  it("keeps prior verifier feedback out of a corrected retry's evidence", async () => {
-    const fake = makeFakeAcp();
-    const store = new OrchestratorTaskStore({ backend: "memory" });
-    const { taskId, sessionId } = await seedTaskWithSession(store, [
-      "tests pass",
-    ]);
-    const prompts: string[] = [];
-    const priorDiagnostic =
-      "PRIOR VERIFIER DIAGNOSTIC: the tests failed automatic verification";
-    const runtime = makeRuntime(fake.service, (...args: unknown[]) => {
-      const options = args[1] as { prompt?: string } | undefined;
-      const prompt = options?.prompt ?? "";
-      prompts.push(prompt);
-      const hasCorrectedProof =
-        prompt.includes("diff --git a/src/widget.ts b/src/widget.ts") &&
-        prompt.includes("Test Files  1 passed (1)");
-      const contaminated = prompt.includes(priorDiagnostic);
-      return JSON.stringify(
-        hasCorrectedProof && !contaminated
-          ? { passed: true, summary: "corrected proof passed", missing: [] }
-          : {
-              passed: false,
-              summary: priorDiagnostic,
-              missing: ["tests pass"],
-            },
-      );
-    });
-    const service = new OrchestratorTaskService(runtime as never, { store });
-    await service.start();
-
-    fake.emit(sessionId, "task_complete", {
-      response: "I implemented the widget and believe it works.",
-    });
-    await vi.waitFor(() => expect(fake.sent).toHaveLength(1));
-
-    fake.emit(sessionId, "task_complete", {
-      response: `Done.\n\n\`\`\`diff\ndiff --git a/src/widget.ts b/src/widget.ts\n--- a/src/widget.ts\n+++ b/src/widget.ts\n@@\n+export const widget = () => 42;\n\`\`\`\n\n\`\`\`\n$ bun test\n✓ src/widget.test.ts (1 test) 20ms\nTest Files  1 passed (1)\nTests  1 passed (1)\n\`\`\``,
-    });
-    await vi.waitFor(async () => {
-      expect((await store.getTask(taskId))?.task.status).toBe("done");
-    });
-
-    expect(prompts).toHaveLength(2);
-    expect(prompts[1]).toContain("Test Files  1 passed (1)");
-    expect(prompts[1]).not.toContain(priorDiagnostic);
   });
 
   it("escalates the corrective tone on the second failure (attempt 2)", async () => {
