@@ -74,6 +74,38 @@ describe("CacheClient getWithSWR over the memory backend", () => {
     });
   });
 
+  test("a cold-miss with a throwing fetcher propagates the rejection after a single fetch", async () => {
+    const { CacheClient } = await import("./client");
+    const cache = new CacheClient();
+
+    let calls = 0;
+    let fail = true;
+    const load = async () => {
+      calls += 1;
+      if (fail) throw new Error("upstream 503");
+      return { v: "good" };
+    };
+
+    // Cold miss + rejecting fetcher: the upstream error reaches the caller
+    // directly. Pre-fix it fell into the backend-error catch, which recorded a
+    // cache-circuit-breaker failure and re-invoked the failing fetcher a
+    // second time.
+    await expect(cache.getWithSWR("swr:coldmiss", 60, load, 120)).rejects.toThrow("upstream 503");
+    expect(calls).toBe(1);
+
+    // Nothing was cached from the failure; a recovered fetcher populates the
+    // entry normally on the next call.
+    fail = false;
+    expect(await cache.getWithSWR("swr:coldmiss", 60, load, 120)).toEqual({
+      v: "good",
+    });
+    expect(calls).toBe(2);
+    expect(await cache.getWithSWR("swr:coldmiss", 60, load, 120)).toEqual({
+      v: "good",
+    });
+    expect(calls).toBe(2);
+  });
+
   test("a FAILING background revalidation keeps the last-good value and does not unhandled-reject", async () => {
     const { CacheClient } = await import("./client");
     const cache = new CacheClient();

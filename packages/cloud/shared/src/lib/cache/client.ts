@@ -578,94 +578,86 @@ export class CacheClient {
       return await revalidate();
     }
 
+    // Cold-miss detection happens inside the backend try/catch, but the
+    // cold-miss fetch itself runs after it: a rejecting revalidate() on a miss
+    // is an upstream failure, not a cache-backend failure — it must propagate
+    // to the caller without recordFailure() (circuit breaker) or a second
+    // revalidate() from the backend-error fallback.
     try {
       const start = Date.now();
       const value = await redis.get(this.pk(key));
       const duration = Date.now() - start;
 
-      if (value === null || value === undefined) {
-        this.logMetric(key, "miss", duration);
-        const fresh = await revalidate();
-        if (fresh !== null) {
-          await this.set(
-            key,
-            {
-              data: fresh,
-              cachedAt: Date.now(),
-              staleAt: Date.now() + staleTTL * 1000,
-            } as CachedValue<T>,
-            effectiveTTL,
-          );
-        }
-        return fresh;
-      }
+      if (value !== null && value !== undefined) {
+        const raw = typeof value === "string" ? JSON.parse(value) : value;
+        const parsed = raw as CachedValue<T>;
 
-      const raw = typeof value === "string" ? JSON.parse(value) : value;
-      const parsed = raw as CachedValue<T>;
+        const now = Date.now();
+        const isStale = now > parsed.staleAt;
 
-      const now = Date.now();
-      const isStale = now > parsed.staleAt;
+        if (isStale) {
+          this.logMetric(key, "stale", duration);
 
-      if (isStale) {
-        this.logMetric(key, "stale", duration);
+          // Return stale data immediately
+          const staleData = parsed.data;
 
-        // Return stale data immediately
-        const staleData = parsed.data;
+          if (this.revalidationQueue.size >= this.MAX_REVALIDATION_QUEUE_SIZE) {
+            logger.warn(
+              `[Cache] Revalidation queue full (${this.revalidationQueue.size}/${this.MAX_REVALIDATION_QUEUE_SIZE}). ` +
+                `Skipping background revalidation for key: ${key}`,
+            );
+            return staleData;
+          }
 
-        if (this.revalidationQueue.size >= this.MAX_REVALIDATION_QUEUE_SIZE) {
-          logger.warn(
-            `[Cache] Revalidation queue full (${this.revalidationQueue.size}/${this.MAX_REVALIDATION_QUEUE_SIZE}). ` +
-              `Skipping background revalidation for key: ${key}`,
-          );
+          // Revalidate in background (deduplicated)
+          if (!this.revalidationQueue.has(key)) {
+            const timeoutPromise = new Promise<T | null>((_, reject) => {
+              setTimeout(
+                () => reject(new Error("Revalidation timeout")),
+                this.REVALIDATION_TIMEOUT_MS,
+              );
+            });
+
+            const revalidationPromise = Promise.race([revalidate(), timeoutPromise])
+              .then((fresh) => {
+                if (fresh !== null) {
+                  return this.set(
+                    key,
+                    {
+                      data: fresh,
+                      cachedAt: Date.now(),
+                      staleAt: Date.now() + staleTTL * 1000,
+                    } as CachedValue<T>,
+                    effectiveTTL,
+                  );
+                }
+              })
+              .catch((error) => {
+                // Fire-and-forget: without this catch every failed/timed-out
+                // background revalidation became an unhandled rejection (nobody
+                // awaits the queued promise). The stale value already served
+                // stays in place; the next stale hit retries.
+                logger.warn("[Cache] Background revalidation failed", {
+                  key,
+                  error: error instanceof Error ? error.message : String(error),
+                });
+              })
+              .finally(() => {
+                this.revalidationQueue.delete(key);
+              });
+
+            this.revalidationQueue.set(key, revalidationPromise);
+          }
+
           return staleData;
         }
 
-        // Revalidate in background (deduplicated)
-        if (!this.revalidationQueue.has(key)) {
-          const timeoutPromise = new Promise<T | null>((_, reject) => {
-            setTimeout(
-              () => reject(new Error("Revalidation timeout")),
-              this.REVALIDATION_TIMEOUT_MS,
-            );
-          });
-
-          const revalidationPromise = Promise.race([revalidate(), timeoutPromise])
-            .then((fresh) => {
-              if (fresh !== null) {
-                return this.set(
-                  key,
-                  {
-                    data: fresh,
-                    cachedAt: Date.now(),
-                    staleAt: Date.now() + staleTTL * 1000,
-                  } as CachedValue<T>,
-                  effectiveTTL,
-                );
-              }
-            })
-            .catch((error) => {
-              // Fire-and-forget: without this catch every failed/timed-out
-              // background revalidation became an unhandled rejection (nobody
-              // awaits the queued promise). The stale value already served
-              // stays in place; the next stale hit retries.
-              logger.warn("[Cache] Background revalidation failed", {
-                key,
-                error: error instanceof Error ? error.message : String(error),
-              });
-            })
-            .finally(() => {
-              this.revalidationQueue.delete(key);
-            });
-
-          this.revalidationQueue.set(key, revalidationPromise);
-        }
-
-        return staleData;
+        this.logMetric(key, "hit", duration);
+        this.resetFailures();
+        return parsed.data;
       }
 
-      this.logMetric(key, "hit", duration);
-      this.resetFailures();
-      return parsed.data;
+      this.logMetric(key, "miss", duration);
     } catch (error) {
       this.recordFailure();
       logger.warn("[Cache] GET-with-SWR failed, falling back to revalidate", {
@@ -674,6 +666,22 @@ export class CacheClient {
       });
       return await revalidate();
     }
+
+    // Cold miss: fetch fresh data outside the backend try/catch so a fetcher
+    // rejection propagates to the caller untouched.
+    const fresh = await revalidate();
+    if (fresh !== null) {
+      await this.set(
+        key,
+        {
+          data: fresh,
+          cachedAt: Date.now(),
+          staleAt: Date.now() + staleTTL * 1000,
+        } as CachedValue<T>,
+        effectiveTTL,
+      );
+    }
+    return fresh;
   }
 
   /**

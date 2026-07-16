@@ -67,6 +67,7 @@ export async function getCachedBitRouterModelCatalog(): Promise<CatalogModel[]> 
 
     return cached ?? [];
   } catch (error) {
+    // error-policy:J4 cold-miss only; stale hits already served last-good; failure logged
     // Cold-miss fetch failure only: there is no stale catalog to serve, so
     // degrade to empty rather than throwing into the hot path. On a stale hit
     // getWithSWR already returned the last-good catalog and swallowed this.
