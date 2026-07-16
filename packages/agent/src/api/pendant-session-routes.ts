@@ -11,9 +11,14 @@ import type http from "node:http";
 import {
   type AgentRuntime,
   type JsonValue,
+  type LegacyRouteHandler,
   logger,
   type Memory,
   MemoryType,
+  readJsonBody as httpReadJsonBody,
+  resolveCanonicalOwnerId,
+  type Route,
+  sendJson as httpSendJson,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -39,7 +44,8 @@ import {
   UpsertPendantSegmentRequestSchema,
 } from "@elizaos/shared/contracts";
 import z from "zod";
-import type { ServerState } from "./server-types.ts";
+import { loadElizaConfig } from "../config/config.ts";
+import { getViewsBroadcastWs } from "./views-routes.ts";
 
 const PREFIX = "/api/pendant/sessions";
 const TABLE_NAME = "pendant_sessions";
@@ -63,7 +69,11 @@ export interface PendantSessionRouteContext {
   method: string;
   pathname: string;
   url: URL;
-  state: Pick<ServerState, "runtime" | "adminEntityId" | "broadcastWs">;
+  state: {
+    runtime: AgentRuntime | null;
+    adminEntityId: UUID | null;
+    broadcastWs?: (payload: object) => void;
+  };
   readJsonBody: ReadJsonBody;
   json: JsonHelper;
 }
@@ -972,3 +982,122 @@ export async function handlePendantSessionRoutes(
     return true;
   }
 }
+
+function json(res: http.ServerResponse, data: unknown, status = 200): void {
+  httpSendJson(res, data, status);
+}
+
+function requestBaseUrl(req: http.IncomingMessage): string {
+  const host =
+    typeof req.headers.host === "string" && req.headers.host.trim()
+      ? req.headers.host
+      : "localhost";
+  return `http://${host}`;
+}
+
+function requestUrl(req: http.IncomingMessage): URL {
+  const url = new URL(req.url ?? "/", requestBaseUrl(req));
+  const query = (req as http.IncomingMessage & {
+    query?: Record<string, string | string[]>;
+  }).query;
+  if (!query || url.search) return url;
+  for (const [key, value] of Object.entries(query)) {
+    for (const item of Array.isArray(value) ? value : [value]) {
+      url.searchParams.append(key, item);
+    }
+  }
+  return url;
+}
+
+async function readRouteJsonBody<T = Record<string, unknown>>(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<T | null> {
+  const augmented = req as http.IncomingMessage & { body?: unknown };
+  if (Object.prototype.hasOwnProperty.call(augmented, "body")) {
+    return (augmented.body ?? null) as T | null;
+  }
+  return httpReadJsonBody<T>(req, res);
+}
+
+function routeOwnerEntityId(runtime: AgentRuntime | null): UUID | null {
+  if (!runtime) return null;
+  const ownerId = resolveCanonicalOwnerId(runtime);
+  if (typeof ownerId === "string" && ownerId.trim()) return ownerId as UUID;
+
+  // ServerState resolves the same persisted setting and deterministic fallback.
+  // Recompute them here so runtime-plugin routing also works immediately after
+  // first-run writes config, before the runtime itself has been restarted.
+  const configured = loadElizaConfig().agents?.defaults?.adminEntityId?.trim();
+  if (configured && z.string().uuid().safeParse(configured).success) {
+    return configured as UUID;
+  }
+  const agentName = runtime.character?.name?.trim();
+  return agentName ? stringToUuid(`${agentName}-admin-entity`) : null;
+}
+
+export function buildPendantSessionRouteContext(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  runtime: AgentRuntime | null,
+): PendantSessionRouteContext {
+  const method = (req.method ?? "GET").toUpperCase();
+  const url = requestUrl(req);
+  return {
+    req,
+    res,
+    method,
+    pathname: url.pathname,
+    url,
+    state: {
+      runtime,
+      adminEntityId: routeOwnerEntityId(runtime),
+      broadcastWs: getViewsBroadcastWs() ?? undefined,
+    },
+    readJsonBody: readRouteJsonBody,
+    json,
+  };
+}
+
+const pendantSessionRouteHandler: LegacyRouteHandler = async (
+  req,
+  res,
+  runtime,
+) => {
+  await handlePendantSessionRoutes(
+    buildPendantSessionRouteContext(
+      req as http.IncomingMessage,
+      res as unknown as http.ServerResponse,
+      (runtime as AgentRuntime) ?? null,
+    ),
+  );
+};
+
+const PENDANT_SESSION_ROUTE_SPECS: ReadonlyArray<{
+  type: Exclude<Route["type"], "STATIC">;
+  path: string;
+}> = [
+  { type: "POST", path: "/api/pendant/sessions" },
+  { type: "GET", path: "/api/pendant/sessions/:sessionId" },
+  { type: "DELETE", path: "/api/pendant/sessions/:sessionId" },
+  { type: "GET", path: "/api/pendant/sessions/:sessionId/export" },
+  { type: "POST", path: "/api/pendant/sessions/:sessionId/lease" },
+  { type: "POST", path: "/api/pendant/sessions/:sessionId/segments" },
+  {
+    type: "PATCH",
+    path: "/api/pendant/sessions/:sessionId/segments/:segmentId",
+  },
+  { type: "POST", path: "/api/pendant/sessions/:sessionId/pause" },
+  { type: "POST", path: "/api/pendant/sessions/:sessionId/resume" },
+  { type: "POST", path: "/api/pendant/sessions/:sessionId/end" },
+  { type: "PUT", path: "/api/pendant/sessions/:sessionId/insight-refs" },
+];
+
+export const pendantSessionRoutes: Route[] = PENDANT_SESSION_ROUTE_SPECS.map(
+  (spec) => ({
+    type: spec.type,
+    path: spec.path,
+    rawPath: true,
+    handler: pendantSessionRouteHandler,
+  }),
+);

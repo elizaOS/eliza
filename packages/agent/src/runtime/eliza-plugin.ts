@@ -47,6 +47,7 @@ import {
   registerMediaGcTask,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
+import { pendantSessionRoutes } from "../api/pendant-session-routes.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -264,6 +265,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundGenerateImageRoute,
       backgroundUploadImageRoute,
       ...filesRoutes,
+      ...pendantSessionRoutes,
     ],
 
     actions: [

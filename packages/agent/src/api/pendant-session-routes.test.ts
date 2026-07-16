@@ -13,9 +13,21 @@ import { InMemoryDatabaseAdapter } from "../../../core/src/database/inMemoryAdap
 import type { Memory } from "../../../core/src/types/memory.ts";
 import type { UUID } from "../../../core/src/types/primitives.ts";
 
+vi.mock("../config/config.ts", () => ({
+  loadElizaConfig: () => ({}),
+}));
+
+vi.mock("./views-routes.ts", () => ({
+  getViewsBroadcastWs: () => null,
+}));
+
 vi.mock("@elizaos/core", () => ({
   logger: { error: vi.fn(), warn: vi.fn() },
   MemoryType: { CUSTOM: "custom" },
+  readJsonBody: vi.fn(),
+  resolveCanonicalOwnerId: (runtime: { getSetting?: (key: string) => unknown }) =>
+    runtime.getSetting?.("ELIZA_ADMIN_ENTITY_ID") ?? null,
+  sendJson: vi.fn(),
   stringToUuid: (value: string) => {
     let hash = 2166136261;
     for (const character of value) {
@@ -27,8 +39,11 @@ vi.mock("@elizaos/core", () => ({
   },
 }));
 
-const { handlePendantSessionRoutes, subscribePendantCommittedSegments } =
-  await import("./pendant-session-routes");
+const {
+  buildPendantSessionRouteContext,
+  handlePendantSessionRoutes,
+  subscribePendantCommittedSegments,
+} = await import("./pendant-session-routes");
 
 class TestRuntime {
   readonly agentId: UUID;
@@ -151,6 +166,33 @@ function segment(
 }
 
 describe("handlePendantSessionRoutes", () => {
+  it("preserves dispatcher query parameters and its pre-parsed request body", async () => {
+    const ownerId = uuid();
+    const body = { revision: 7 };
+    const req = {
+      method: "GET",
+      url: "/api/pendant/sessions/sess-query",
+      headers: { host: "127.0.0.1" },
+      query: { afterRevision: "7", tag: ["one", "two"] },
+      body,
+    } as unknown as http.IncomingMessage;
+    const runtime = {
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? ownerId : null,
+    } as never;
+
+    const context = buildPendantSessionRouteContext(
+      req,
+      {} as http.ServerResponse,
+      runtime,
+    );
+
+    expect(context.url.searchParams.get("afterRevision")).toBe("7");
+    expect(context.url.searchParams.getAll("tag")).toEqual(["one", "two"]);
+    expect(context.state.adminEntityId).toBe(ownerId);
+    await expect(context.readJsonBody(req, context.res)).resolves.toBe(body);
+  });
+
   it("supports capturer append observed by follower and follower pause observed by capturer", async () => {
     const h = makeHarness();
     const created = okBody<{ snapshot: { session: { id: string } } }>(

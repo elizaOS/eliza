@@ -59,7 +59,6 @@ export * from "./model-catalog.ts";
 export * from "./model-config-routes.ts";
 export * from "./models-routes.ts";
 export * from "./parse-action-block.ts";
-export * from "./pendant-session-routes.ts";
 export * from "./permission-request-prompt.ts";
 export * from "./permissions-routes.ts";
 export * from "./plugin-validation.ts";
