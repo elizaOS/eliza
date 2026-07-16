@@ -52,6 +52,8 @@ type WorkspaceServiceWithCloneOverride = {
   ) => Promise<void>;
 };
 
+import type { RemotePullRequest } from "./ground-truth-verifier.js";
+import type { ParsedPullRequestLink } from "./pull-request-link.js";
 import type { AuthPromptCallback } from "./workspace-github.js";
 import {
   type GitHubContext,
@@ -60,6 +62,7 @@ import {
   closeIssue as ghCloseIssue,
   createIssue as ghCreateIssue,
   getIssue as ghGetIssue,
+  getPullRequestGroundTruth as ghGetPullRequestGroundTruth,
   listComments as ghListComments,
   listIssues as ghListIssues,
   reopenIssue as ghReopenIssue,
@@ -938,6 +941,12 @@ export class CodingWorkspaceService {
     callback: (record: ScratchWorkspaceRecord) => Promise<void>,
   ): void {
     this.scratchDecisionCallback = callback;
+  }
+
+  async getPullRequestGroundTruth(
+    link: ParsedPullRequestLink,
+  ): Promise<RemotePullRequest | null> {
+    return ghGetPullRequestGroundTruth(this.getGitHubContext(), link);
   }
 
   async createIssue(

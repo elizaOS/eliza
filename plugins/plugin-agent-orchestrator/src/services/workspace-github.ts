@@ -16,6 +16,11 @@ import type {
   IssueInfo,
   IssueState,
 } from "git-workspace-service";
+import type {
+  RemoteCheck,
+  RemotePullRequest,
+} from "./ground-truth-verifier.js";
+import type { ParsedPullRequestLink } from "./pull-request-link.js";
 
 const { GitHubPatClient, OAuthDeviceFlow } = createRequire(import.meta.url)(
   "git-workspace-service",
@@ -53,12 +58,22 @@ export function parseOwnerRepo(repo: string): {
   owner: string;
   repo: string;
 } {
-  // Handle URLs like https://github.com/owner/repo or owner/repo
-  const match = repo.match(/(?:github\.com\/)?([^/]+)\/([^/.]+)/);
-  if (!match) {
+  // Handle URLs like https://github.com/owner/repo or owner/repo. GitHub
+  // repository names may contain dots, so do not use a dot as a delimiter.
+  const normalized = repo
+    .trim()
+    .replace(/^https?:\/\/github\.com\//i, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\.git$/, "");
+  const parts = normalized.split("/");
+  if (
+    parts.length !== 2 ||
+    !/^[a-zA-Z0-9_-]+$/.test(parts[0]) ||
+    !/^[a-zA-Z0-9_.-]+$/.test(parts[1])
+  ) {
     throw new Error(`Cannot parse owner/repo from: ${repo}`);
   }
-  return { owner: match[1], repo: match[2] };
+  return { owner: parts[0], repo: parts[1] };
 }
 
 // ── Auth ───────────────────────────────────────────────────────────
@@ -156,6 +171,190 @@ export async function performOAuthFlow(
   ctx.setGithubClient(client);
   ctx.log("GitHubPatClient initialized via OAuth device flow");
   return client;
+}
+
+// ── Pull-request ground truth ──────────────────────────────────────
+
+type OctokitResponse<T> = { data: T };
+type OctokitRequest = <T>(
+  route: string,
+  parameters: Record<string, unknown>,
+) => Promise<OctokitResponse<T>>;
+
+function octokitRequest(client: GitHubPatClientInstance): OctokitRequest {
+  // git-workspace-service intentionally exposes high-level issue/PR methods,
+  // but not the checks/files endpoints. Reuse its authenticated Octokit
+  // instance rather than constructing a second GitHub client.
+  const octokit = (
+    client as unknown as { octokit?: { request?: OctokitRequest } }
+  ).octokit;
+  if (!octokit || typeof octokit.request !== "function") {
+    throw new Error(
+      "Authenticated GitHub client does not expose an API request transport",
+    );
+  }
+  return octokit.request.bind(octokit);
+}
+
+async function pagedGitHubRequest<T>(
+  request: OctokitRequest,
+  route: string,
+  parameters: Record<string, unknown>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const response = await request<T[]>(route, {
+      ...parameters,
+      per_page: 100,
+      page,
+    });
+    rows.push(...response.data);
+    if (response.data.length < 100) return rows;
+  }
+}
+
+function githubErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : undefined;
+}
+
+/**
+ * Fetch the PR, exact changed-file list, head-SHA check rollup, and required
+ * status-check names using the CodingWorkspaceService's authenticated GitHub
+ * client. A 404 for the PR is a real "missing" result; all other API errors
+ * propagate so the verifier can record an inconclusive verdict.
+ */
+export async function getPullRequestGroundTruth(
+  ctx: GitHubContext,
+  link: ParsedPullRequestLink,
+): Promise<RemotePullRequest | null> {
+  const client = await ensureGitHubClient(ctx);
+  const request = octokitRequest(client);
+  const { owner, repo } = parseOwnerRepo(link.repo);
+
+  type PullResponse = {
+    html_url: string;
+    state: "open" | "closed";
+    merged_at: string | null;
+    head: { sha: string };
+    base: { ref: string };
+  };
+  let pull: PullResponse;
+  try {
+    pull = (
+      await request<PullResponse>(
+        "GET /repos/{owner}/{repo}/pulls/{pull_number}",
+        {
+          owner,
+          repo,
+          pull_number: link.number,
+        },
+      )
+    ).data;
+  } catch (error) {
+    if (githubErrorStatus(error) === 404) return null;
+    throw error;
+  }
+
+  const files = await pagedGitHubRequest<{ filename: string }>(
+    request,
+    "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
+    { owner, repo, pull_number: link.number },
+  );
+  type CheckRunResponse = {
+    check_runs: Array<{
+      name: string;
+      status: string;
+      conclusion: string | null;
+    }>;
+  };
+  const checkRuns: CheckRunResponse["check_runs"] = [];
+  for (let page = 1; ; page += 1) {
+    const response = (
+      await request<CheckRunResponse>(
+        "GET /repos/{owner}/{repo}/commits/{ref}/check-runs",
+        { owner, repo, ref: pull.head.sha, per_page: 100, page },
+      )
+    ).data.check_runs;
+    checkRuns.push(...response);
+    if (response.length < 100) break;
+  }
+  const combinedStatus = (
+    await request<{
+      statuses: Array<{ context: string; state: string }>;
+    }>("GET /repos/{owner}/{repo}/commits/{ref}/status", {
+      owner,
+      repo,
+      ref: pull.head.sha,
+      per_page: 100,
+    })
+  ).data;
+
+  let requiredNames = new Set<string>();
+  try {
+    const protection = (
+      await request<{
+        required_status_checks?: {
+          contexts?: string[];
+          checks?: Array<{ context: string }>;
+        } | null;
+      }>("GET /repos/{owner}/{repo}/branches/{branch}/protection", {
+        owner,
+        repo,
+        branch: pull.base.ref,
+      })
+    ).data;
+    requiredNames = new Set([
+      ...(protection.required_status_checks?.contexts ?? []),
+      ...(protection.required_status_checks?.checks ?? []).map(
+        (check) => check.context,
+      ),
+    ]);
+  } catch (error) {
+    // GitHub returns 404 for an unprotected branch. Any other failure means we
+    // cannot safely decide which red checks are required, so propagate it.
+    if (githubErrorStatus(error) !== 404) throw error;
+  }
+
+  const checks: RemoteCheck[] = [
+    ...checkRuns.map((check) => ({
+      name: check.name,
+      status: check.status,
+      conclusion: check.conclusion,
+      required: requiredNames.has(check.name),
+    })),
+    ...combinedStatus.statuses.map((status) => ({
+      name: status.context,
+      status: status.state === "pending" ? "in_progress" : "completed",
+      conclusion:
+        status.state === "success"
+          ? "success"
+          : status.state === "pending"
+            ? null
+            : "failure",
+      required: requiredNames.has(status.context),
+    })),
+  ];
+  const seenNames = new Set(checks.map((check) => check.name));
+  for (const required of requiredNames) {
+    if (!seenNames.has(required)) {
+      checks.push({
+        name: required,
+        status: "queued",
+        conclusion: null,
+        required: true,
+      });
+    }
+  }
+
+  return {
+    url: pull.html_url,
+    state: pull.merged_at ? "merged" : pull.state,
+    headSha: pull.head.sha,
+    changedFiles: files.map((file) => file.filename),
+    checks,
+  };
 }
 
 // ── Issue Management ───────────────────────────────────────────────
