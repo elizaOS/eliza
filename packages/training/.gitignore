@@ -53,6 +53,5 @@ curriculum_state.json
 scripts/synth/scenarios/*.jsonl
 # DFlash drafter distillation job outputs (see scripts/dflash/jobs/).
 runs/
-
-# Ignore macOS AppleDouble sidecars after the fixture allowlists above.
+# Dataset allowlists must not admit macOS AppleDouble sidecars.
 **/._*
