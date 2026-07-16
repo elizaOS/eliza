@@ -188,8 +188,43 @@ function killHostProcess(
   }
 }
 
+interface BunHostSubprocess {
+  pid: number;
+  stdout: unknown;
+  stderr: unknown;
+  stdin?: {
+    write(chunk: string): unknown;
+    end(): unknown;
+  };
+  exited: Promise<number>;
+  signalCode: NodeJS.Signals | null;
+  kill(signal?: NodeJS.Signals): void;
+}
+
+interface BunHostRuntime {
+  spawn(options: {
+    cmd: string[];
+    cwd: string;
+    env: Record<string, string | undefined>;
+    stdin: "ignore" | "pipe";
+    stdout: "pipe";
+    stderr: "pipe";
+    detached: boolean;
+    onExit: (
+      proc: BunHostSubprocess,
+      code: number,
+      signal: NodeJS.Signals | null,
+      error?: Error,
+    ) => void;
+  }): BunHostSubprocess;
+}
+
+function getBunRuntime(): BunHostRuntime | null {
+  return (globalThis as { Bun?: BunHostRuntime }).Bun ?? null;
+}
+
 function isBunRuntime(): boolean {
-  return typeof globalThis.Bun?.spawn === "function";
+  return typeof getBunRuntime()?.spawn === "function";
 }
 
 function startHostProcess(opts: {
@@ -237,7 +272,11 @@ function startBunHostProcess(opts: {
   const commandArgs = stdinFifo
     ? withShellStdinRedirect(opts.args, stdinFifo.path)
     : opts.args;
-  const proc = Bun.spawn({
+  const bun = getBunRuntime();
+  if (!bun) {
+    throw new Error("Bun runtime is unavailable");
+  }
+  const proc = bun.spawn({
     cmd: [opts.command, ...commandArgs],
     cwd: opts.cwd,
     env: opts.env as Record<string, string | undefined>,

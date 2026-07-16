@@ -243,9 +243,12 @@ export class BackgroundShellService extends Service {
     signalHostProcessGroup(session.process, "SIGTERM");
     try {
       session.process.stdin?.end();
-    } catch {
+    } catch (error) {
       // error-policy:J6 best-effort teardown; stdin may already be closed while
       // the process is exiting after SIGTERM.
+      coreLogger.debug(
+        `${CODING_TOOLS_LOG_PREFIX} background SHELL stdin close failed handle=${session.handle}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
     session.killTimer = setTimeout(() => {
       if (session.endedAt === null) {

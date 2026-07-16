@@ -31,6 +31,9 @@ import { describe, expect, it, vi } from "vitest";
 // the suite on Windows and trust the equivalent Linux/macOS runs.
 const describeIfPosix = process.platform === "win32" ? describe.skip : describe;
 
+import codingToolsPlugin from "../index.js";
+import { runShell } from "../lib/run-shell.js";
+import { availableToolsProvider } from "../providers/available-tools.js";
 import {
   BackgroundShellService,
   SandboxService,
@@ -218,6 +221,190 @@ function makeMessage(
 }
 
 describeIfPosix("shellAction", () => {
+  it("runs local-safe commands through the configured sandbox backend", async () => {
+    const exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "sandboxed\n",
+      stderr: "",
+      durationMs: 12,
+      executedInSandbox: true,
+    }));
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({
+        exec,
+        engine: { engineType: "docker" },
+      })),
+    } as unknown as IAgentRuntime;
+
+    const result = await runShell(runtime, {
+      command: "printf sandboxed",
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+    });
+
+    expect(exec).toHaveBeenCalledWith({
+      command: "printf sandboxed",
+      workdir: "/workspace",
+      timeoutMs: 1_000,
+    });
+    expect(result).toMatchObject({
+      exitCode: 0,
+      stdout: "sandboxed\n",
+      sandbox: "docker",
+      timedOut: false,
+    });
+  });
+
+  it("reports the apple-container sandbox backend", async () => {
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({
+        engine: { engineType: "apple-container" },
+        exec: async () => ({
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+          durationMs: 1,
+          executedInSandbox: true,
+        }),
+      })),
+    } as unknown as IAgentRuntime;
+
+    const result = await runShell(runtime, {
+      command: "true",
+      cwd: process.cwd(),
+      timeoutMs: 1_000,
+    });
+    expect(result.sandbox).toBe("apple-container");
+  });
+
+  it("maps nested local-safe paths and reports an unknown sandbox backend", async () => {
+    const exec = vi.fn(async () => ({
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      durationMs: 1,
+      executedInSandbox: true,
+    }));
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({ exec })),
+    } as unknown as IAgentRuntime;
+    const cwd = path.join(process.cwd(), "src");
+
+    const result = await runShell(runtime, {
+      command: "true",
+      cwd,
+      timeoutMs: 1_000,
+    });
+
+    expect(exec).toHaveBeenCalledWith({
+      command: "true",
+      workdir: "/workspace/src",
+      timeoutMs: 1_000,
+    });
+    expect(result.sandbox).toBe("none");
+  });
+
+  it("refuses local-safe execution without a sandbox manager", async () => {
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      runShell(runtime, {
+        command: "pwd",
+        cwd: process.cwd(),
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow("requires SandboxManager");
+  });
+
+  it("refuses local-safe execution outside the sandbox workspace", async () => {
+    const exec = vi.fn();
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "local-safe" : undefined,
+      ),
+      getService: vi.fn(() => null),
+      getSandboxManager: vi.fn(() => ({ exec })),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      runShell(runtime, {
+        command: "pwd",
+        cwd: os.tmpdir(),
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow("outside process workspace");
+    expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("refuses cloud shell execution before touching the host", async () => {
+    const runtime = {
+      getSetting: vi.fn((key: string) =>
+        key === "ELIZA_RUNTIME_MODE" ? "cloud" : undefined,
+      ),
+      getService: vi.fn(() => null),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      runShell(runtime, {
+        command: "pwd",
+        cwd: process.cwd(),
+        timeoutMs: 1_000,
+      }),
+    ).rejects.toThrow("disabled in cloud mode");
+  });
+
+  it("exposes coding tools through the provider and plugin auto-enable policy", async () => {
+    const providerResult = await availableToolsProvider.get(
+      {} as IAgentRuntime,
+      makeMessage(),
+      {} as State,
+    );
+    expect(providerResult.text).toContain("start_background");
+    expect(providerResult.data?.codingTools).toEqual([
+      "FILE",
+      "SHELL",
+      "WORKTREE",
+    ]);
+
+    const shouldEnable = codingToolsPlugin.autoEnable?.shouldEnable;
+    expect(shouldEnable).toBeTypeOf("function");
+    expect(
+      shouldEnable?.(
+        { ELIZA_RUNTIME_MODE: "local-yolo" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(true);
+    expect(
+      shouldEnable?.(
+        { ELIZA_BUILD_VARIANT: "store" },
+        { features: { codingTools: true } },
+      ),
+    ).toBe(false);
+    expect(
+      shouldEnable?.(
+        { ELIZA_PLATFORM: "ios" },
+        { features: { "coding-agent": true } },
+      ),
+    ).toBe(false);
+  });
+
   it("prefers capability router for command execution when available", async () => {
     const calls: Array<{ command: string; cwd?: string; timeoutMs?: number }> =
       [];
