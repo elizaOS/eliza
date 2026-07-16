@@ -3630,6 +3630,56 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("does not hard-enforce a tool when Stage 1 names no candidate", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought:
+					"Planning may help, but no specific capability was identified.",
+				contexts: ["general"],
+				extra: { requiresTool: true },
+			}),
+			JSON.stringify({
+				thought: "No exposed tool fits this request.",
+				toolCalls: [],
+				messageToUser: "I can answer without running a tool.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler: vi.fn(),
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			tools?: Array<{ name?: string }>;
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(plannerParams.tools?.map((tool) => tool.name)).toContain(
+			"CHECK_RUNTIME",
+		);
+		expect(JSON.stringify(plannerParams.messages)).not.toContain(
+			"prior_dialogue_policy",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I can answer without running a tool.",
+			);
+		}
+	});
+
 	it("keeps stale prior assistant tool answers out of tool-planner context", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
