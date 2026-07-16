@@ -496,9 +496,13 @@ async function validateInboxAccount(
     verifiedBinding?.identityId ??
     evaluation.account.ownerIdentityId ??
     account.ownerIdentityId;
-  const callerIdentity =
-    callerAuthorization.identityId ?? callerAuthorization.principal;
-  if (callerIdentity && callerIdentity !== boundIdentityId) {
+  // `principal` is intentionally opaque (wallet, entity id, etc.) and is not
+  // in the auth_identity namespace used by owner bindings. Only a host that
+  // resolved a verified DB identity may request exact binding equality.
+  if (
+    callerAuthorization.identityId &&
+    callerAuthorization.identityId !== boundIdentityId
+  ) {
     return accountRoutingFailure(
       "INBOX_CONNECTOR_ACCOUNT_CALLER_UNAUTHORIZED",
       `Authenticated caller cannot use connector account ${account.id}`,
