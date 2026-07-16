@@ -104,6 +104,8 @@ export interface LinkedAccountConfig {
 	createdAt: number;
 	/** epoch ms */
 	lastUsedAt?: number;
+	/** epoch ms: last subscription usage priming probe attempt */
+	lastPrimedAt?: number;
 	health: LinkedAccountHealth;
 	healthDetail?: LinkedAccountHealthDetail;
 	usage?: LinkedAccountUsage;

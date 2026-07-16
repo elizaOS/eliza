@@ -63,11 +63,7 @@ import {
 } from "./coding-account-bridge.js";
 
 export type Strategy =
-  | "priority"
-  | "round-robin"
-  | "least-used"
-  | "quota-aware"
-  | "reset-soonest";
+  "priority" | "round-robin" | "least-used" | "quota-aware" | "reset-soonest";
 
 export type PoolProviderId = LinkedAccountProviderId;
 
@@ -117,6 +113,10 @@ interface AccountPoolSelectionConfig {
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
+const USAGE_PRIMING_DEBOUNCE_MS = 6 * 60 * 60_000;
+const USAGE_PRIMING_RETRY_DELAY_MS = 30_000;
+const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_USAGE_PRIMING_MODEL = "claude-haiku-4-5-20251001";
 const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   Record<string, DirectAccountProvider>
 > = {
@@ -608,6 +608,23 @@ export class AccountPool {
     });
   }
 
+  async markUsagePrimed(
+    accountId: string,
+    lastPrimedAt: number = Date.now(),
+    opts?: { providerId?: PoolProviderId },
+  ): Promise<void> {
+    const account = findAccountById(
+      this.deps.readAccounts(),
+      accountId,
+      opts?.providerId,
+    );
+    if (!account) return;
+    await this.deps.writeAccount({
+      ...account,
+      lastPrimedAt,
+    });
+  }
+
   /**
    * Re-probe accounts whose `health` is non-OK and whose `healthDetail.until`
    * has passed (or is absent). Used by background sweepers to recover
@@ -721,6 +738,9 @@ interface PoolMetaFields {
    * dashboard and the least-used age tiebreak (the credential record's own
    * lastUsedAt is only bumped by touchAccount, not by usage recording). */
   lastUsedAt?: number;
+  /** Last low-cost provider probe attempt used to wake delayed usage visibility
+   * for subscription accounts whose reset window is missing or due. */
+  lastPrimedAt?: number;
   /** Account email. New OAuth links persist it on the credential record, but
    * Anthropic's token is opaque, so accounts linked earlier (or imported from a
    * CLI login) get it backfilled by refreshUsage's profile probe and persisted
@@ -788,6 +808,9 @@ function recordToLinked(
     // record's (bumped only by touchAccount); fall back to the record's.
     ...((meta?.lastUsedAt ?? record.lastUsedAt) !== undefined
       ? { lastUsedAt: meta?.lastUsedAt ?? record.lastUsedAt }
+      : {}),
+    ...(meta?.lastPrimedAt !== undefined
+      ? { lastPrimedAt: meta.lastPrimedAt }
       : {}),
     ...(meta?.healthDetail ? { healthDetail: meta.healthDetail } : {}),
     ...(meta?.usage ? { usage: meta.usage } : {}),
@@ -863,6 +886,9 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     ...(account.usage ? { usage: account.usage } : {}),
     ...(account.lastUsedAt !== undefined
       ? { lastUsedAt: account.lastUsedAt }
+      : {}),
+    ...(account.lastPrimedAt !== undefined
+      ? { lastPrimedAt: account.lastPrimedAt }
       : {}),
     ...(account.email ? { email: account.email } : {}),
   };
@@ -1057,8 +1083,132 @@ export interface AccountPoolKeepAliveResult {
   failed: number;
 }
 
-export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveResult> {
+export interface AccountPoolKeepAliveDeps {
+  fetch?: typeof fetch;
+  sleep?: (ms: number) => Promise<void>;
+  now?: () => number;
+  usagePrimingRetryDelayMs?: number;
+}
+
+function accountPoolUsagePrimingEnabled(): boolean {
+  const value =
+    process.env.ELIZA_ACCOUNT_POOL_USAGE_PRIMING?.trim().toLowerCase();
+  return value !== "0" && value !== "false" && value !== "no" && value !== "off";
+}
+
+function accountNeedsUsagePriming(
+  account: LinkedAccountConfig | null,
+  now: number,
+): boolean {
+  if (!account?.enabled) return false;
+  const resetsAt = account.usage?.resetsAt;
+  const lastPrimedAt = account.lastPrimedAt;
+  if (typeof resetsAt === "number" && resetsAt <= now) {
+    // One attempt per crossed reset boundary, even inside the normal debounce.
+    return typeof lastPrimedAt !== "number" || lastPrimedAt < resetsAt;
+  }
+  if (typeof resetsAt === "number") return false;
+  return (
+    typeof lastPrimedAt !== "number" ||
+    lastPrimedAt + USAGE_PRIMING_DEBOUNCE_MS <= now
+  );
+}
+
+async function probeAnthropicUsagePriming(
+  accessToken: string,
+  fetchImpl: typeof fetch,
+): Promise<void> {
+  const response = await fetchImpl(ANTHROPIC_MESSAGES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "anthropic-beta": "oauth-2025-04-20",
+      "anthropic-version": "2023-06-01",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_USAGE_PRIMING_MODEL,
+      max_tokens: 1,
+      messages: [{ role: "user", content: "hi" }],
+    }),
+  });
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(
+      `Anthropic usage priming probe failed: HTTP ${response.status}`,
+    );
+  }
+  await response.body?.cancel();
+}
+
+async function primeAnthropicUsageThenRefresh(
+  pool: AccountPool,
+  record: AccountCredentialRecord,
+  token: string,
+  deps: Required<AccountPoolKeepAliveDeps>,
+): Promise<void> {
+  // Persist the attempt before probing so a soft provider failure cannot cause
+  // a probe storm on every keep-alive sweep.
+  await pool.markUsagePrimed(record.id, deps.now(), {
+    providerId: "anthropic-subscription",
+  });
+  try {
+    await probeAnthropicUsagePriming(token, deps.fetch);
+  } catch {
+    // error-policy:J7 diagnostics-must-not-kill-the-loop — priming is an
+    // observability wake-up call, not credential proof. Keep health untouched
+    // and never include provider error text because OAuth failures may echo
+    // request metadata.
+    logger.warn(
+      `[AccountPool] Anthropic usage priming failed for account ${record.id}; usage refresh will continue.`,
+    );
+  }
+
+  await pool.refreshUsage(record.id, token, {
+    providerId: "anthropic-subscription",
+    fetch: deps.fetch,
+  });
+  const refreshedReset = pool.get(
+    record.id,
+    "anthropic-subscription",
+  )?.usage?.resetsAt;
+  if (refreshedReset !== undefined && refreshedReset > deps.now()) {
+    return;
+  }
+  await deps.sleep(deps.usagePrimingRetryDelayMs);
+  await pool.refreshUsage(record.id, token, {
+    providerId: "anthropic-subscription",
+    fetch: deps.fetch,
+  });
+}
+
+function resolveKeepAliveDeps(
+  deps: AccountPoolKeepAliveDeps = {},
+): Required<AccountPoolKeepAliveDeps> {
+  const envDelay = Number.parseInt(
+    process.env.ELIZA_ACCOUNT_POOL_USAGE_PRIMING_RETRY_DELAY_MS ?? "",
+    10,
+  );
+  const usagePrimingRetryDelayMs =
+    deps.usagePrimingRetryDelayMs ??
+    (Number.isFinite(envDelay) && envDelay >= 0
+      ? envDelay
+      : USAGE_PRIMING_RETRY_DELAY_MS);
+  return {
+    fetch: deps.fetch ?? fetch,
+    sleep:
+      deps.sleep ??
+      ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))),
+    now: deps.now ?? (() => Date.now()),
+    usagePrimingRetryDelayMs,
+  };
+}
+
+export async function sweepAccountPoolKeepAlive(
+  deps: AccountPoolKeepAliveDeps = {},
+): Promise<AccountPoolKeepAliveResult> {
   const pool = getDefaultAccountPool();
+  const keepAliveDeps = resolveKeepAliveDeps(deps);
   const result: AccountPoolKeepAliveResult = {
     checked: 0,
     refreshed: 0,
@@ -1096,12 +1246,29 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
       }
 
       try {
-        await pool.refreshUsage(record.id, token, {
-          providerId,
-          ...(record.organizationId
-            ? { codexAccountId: record.organizationId }
-            : {}),
-        });
+        if (
+          providerId === "anthropic-subscription" &&
+          accountPoolUsagePrimingEnabled() &&
+          accountNeedsUsagePriming(
+            pool.get(record.id, "anthropic-subscription"),
+            keepAliveDeps.now(),
+          )
+        ) {
+          await primeAnthropicUsageThenRefresh(
+            pool,
+            record,
+            token,
+            keepAliveDeps,
+          );
+        } else {
+          await pool.refreshUsage(record.id, token, {
+            providerId,
+            fetch: keepAliveDeps.fetch,
+            ...(record.organizationId
+              ? { codexAccountId: record.organizationId }
+              : {}),
+          });
+        }
         result.refreshed += 1;
       } catch (err) {
         result.failed += 1;
