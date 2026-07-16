@@ -262,7 +262,26 @@ export async function decideInterruptionWithModel(
     const verdict = parseInterruptionVerdict(
       typeof raw === "string" ? raw : String(raw),
     );
-    return verdict ?? baseline;
+    if (!verdict) return baseline;
+
+    // The model decides relevance and interruption intent, while the observed
+    // ACP state is authoritative for when a relevant message can be sent. The
+    // forwarding boundary already applies this invariant; canonicalizing its
+    // timing labels here keeps decision logs and direct callers truthful when
+    // a model returns the right relevance with the wrong idle/busy verb.
+    if (!input.sessionBusy && verdict.action === "queue") {
+      return {
+        action: "deliver",
+        reason: `${verdict.reason}; queue normalized for idle session`,
+      };
+    }
+    if (input.sessionBusy && verdict.action === "deliver") {
+      return {
+        action: "queue",
+        reason: `${verdict.reason}; delivery normalized for busy session`,
+      };
+    }
+    return verdict;
   } catch {
     // error-policy:J4 model unavailable/unparseable → deterministic regex
     // baseline (deliver when idle), INCLUDING on shared channels. Fail-open is

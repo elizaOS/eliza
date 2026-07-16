@@ -9,6 +9,7 @@
  *    fork / validate / messages),
  *  - the session→task status state machine (including the guards that stop a
  *    weak `active` signal from stomping `blocked`/`validating`/terminal/paused),
+ *  - completion-evidence isolation across automatic-verification retries,
  *  - usage telemetry roll-up and per-turn dedup,
  *  - cross-task status aggregation and bulk pause/resume.
  */
@@ -1219,6 +1220,75 @@ describe("OrchestratorTaskService — event bridge session status", () => {
     expect(session.taskDelivered).toBe(true);
     expect(session.completionSummary).toBe("shipped it");
     expect(session.stoppedAt).toBeTruthy();
+  });
+
+  it("keeps verifier feedback out of the corrected retry's evidence", async () => {
+    const acp = new FakeAcp();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const prompts: string[] = [];
+    const priorDiagnostic =
+      "PRIOR VERIFIER DIAGNOSTIC: the tests failed automatic verification";
+    const baseRuntime = runtime(acp);
+    const service = new OrchestratorTaskService(
+      {
+        ...baseRuntime,
+        useModel: vi.fn(async (...args: unknown[]) => {
+          const options = args[1] as { prompt?: string } | undefined;
+          const prompt = options?.prompt ?? "";
+          prompts.push(prompt);
+          const hasCorrectedProof =
+            prompt.includes("diff --git a/src/widget.ts b/src/widget.ts") &&
+            prompt.includes("Test Files  1 passed (1)");
+          const contaminated = prompt.includes(priorDiagnostic);
+          return JSON.stringify(
+            hasCorrectedProof && !contaminated
+              ? {
+                  passed: true,
+                  summary: "corrected proof passed",
+                  missing: [],
+                }
+              : {
+                  passed: false,
+                  summary: priorDiagnostic,
+                  missing: ["tests pass"],
+                },
+          );
+        }),
+      } as never,
+      { store },
+    );
+    await service.start();
+    try {
+      const task = await store.createTask({
+        title: "Verify corrected retry",
+        goal: "Implement the widget and prove the tests pass",
+        acceptanceCriteria: ["tests pass"],
+      });
+      const taskId = task.task.id;
+      const sessionId = await addStoredSession(
+        store,
+        taskId,
+        "retry-evidence-session",
+      );
+
+      acp.emit(sessionId, "task_complete", {
+        response: "I implemented the widget and believe it works.",
+      });
+      await vi.waitFor(() => expect(acp.sent).toHaveLength(1));
+
+      acp.emit(sessionId, "task_complete", {
+        response: `Done.\n\n\`\`\`diff\ndiff --git a/src/widget.ts b/src/widget.ts\n--- a/src/widget.ts\n+++ b/src/widget.ts\n@@\n+export const widget = () => 42;\n\`\`\`\n\n\`\`\`\n$ bun test\n✓ src/widget.test.ts (1 test) 20ms\nTest Files  1 passed (1)\nTests  1 passed (1)\n\`\`\``,
+      });
+      await vi.waitFor(async () => {
+        expect((await store.getTask(taskId))?.task.status).toBe("done");
+      });
+
+      expect(prompts).toHaveLength(2);
+      expect(prompts[1]).toContain("Test Files  1 passed (1)");
+      expect(prompts[1]).not.toContain(priorDiagnostic);
+    } finally {
+      await service.stop();
+    }
   });
 
   it("rejects malformed live change-set metadata and mirrors a real workspace diff", async () => {

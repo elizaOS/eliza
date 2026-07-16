@@ -1054,6 +1054,49 @@ describeIfPosix("shellAction", () => {
     }
   });
 
+  it("does not project a message-intent resource summary for a coding sub-agent", async () => {
+    // The sub-agent's message text is its brief + the coding preamble ("make
+    // real changes on disk"), which false-matched disk+memory intent. A `cat`
+    // of a df-shaped source line must NOT surface as the tool's userFacingText
+    // on the sub-agent path — the sub-agent synthesizes its own deliverable.
+    const previousMode = process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "shell-subagent-resource-"),
+    );
+    // A real df-shaped mount line, so only the sub-agent exemption (not the
+    // field-shape validation) can suppress the projection here.
+    await fs.writeFile(
+      path.join(tempDir, "notes.txt"),
+      "/dev/root 95G 48G 47G 51% /\n",
+      "utf8",
+    );
+    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "true";
+
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-616161616161",
+          "You are Eliza Code, you make real changes on disk; memory available: add multiple claude subscriptions with round robin, check disk space and free RAM",
+        ),
+        undefined,
+        { command: "cat notes.txt", cwd: tempDir },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.userFacingText ?? "").not.toContain("Root disk:");
+      expect(result.userFacingText ?? "").not.toContain("Free RAM:");
+    } finally {
+      if (previousMode === undefined) {
+        delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+      } else {
+        process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = previousMode;
+      }
+      await fs.rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("does not treat later output section markers as cleanup candidates", () => {
     const stdout = [
       "Filesystem      Size  Used Avail Use% Mounted on",
@@ -1079,6 +1122,44 @@ describeIfPosix("shellAction", () => {
     );
     expect(result).not.toContain("Biggest cleanup candidate:");
     expect(result).not.toContain("memory ---");
+  });
+
+  it("does not project a `cat`'d source file as a disk summary (live 2026-07-16 leak)", () => {
+    // A sub-agent investigating the account pool `cat`'d a source file whose
+    // lines ended in `/` with ≥6 whitespace tokens; the old positional match
+    // read arbitrary tokens as df columns and produced
+    // "Root disk: records used, `LinkedAccountConfig` available.", which the
+    // orchestrator then relayed as the deliverable. The message text matches
+    // both disk+memory intent (the coding-agent preamble says "on disk"), so
+    // the gate is not what protects here — the field-shape validation is.
+    const stdout = [
+      "// Users link multiple accounts; the LinkedAccountConfig store",
+      "// tracks how many records used LinkedAccountConfig available /",
+      "export const strategies = ['round-robin', 'priority'] // rotation /",
+      "Mem: the in-memory cache holds tokens per accountId /",
+    ].join("\n");
+
+    const result = localResourceUserFacingText({
+      message: makeMessage(
+        "11111111-aaaa-bbbb-cccc-595959595959",
+        "You are Eliza Code. You make real changes on disk. Memory available for the task: add multiple claude subscriptions with round robin mode",
+      ),
+      stdout,
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it("ignores an ls-style line ending in / even when disk intent is present", () => {
+    const result = localResourceUserFacingText({
+      message: makeMessage(
+        "11111111-aaaa-bbbb-cccc-606060606060",
+        "check disk space and free RAM on this server, cleanup candidates and memory availability",
+      ),
+      stdout:
+        "drwxr-xr-x  5 user group 4096 records LinkedAccountConfig available /",
+    });
+    expect(result).toBeUndefined();
   });
 
   it("returns command_failed when the command exits non-zero", async () => {
