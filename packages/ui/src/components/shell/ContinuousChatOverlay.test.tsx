@@ -90,6 +90,7 @@ import {
 } from "../../state/useStreamingText";
 import { setViewChatBinding } from "../../state/view-chat-binding";
 import { copyTextToClipboard } from "../../utils/clipboard";
+import { getChatMessageAnchorId } from "../composites/chat/chat-message";
 import { ContinuousChatOverlay } from "./ContinuousChatOverlay";
 import type { ShellMessage } from "./shell-state";
 import {
@@ -3587,25 +3588,107 @@ describe("ContinuousChatOverlay single-thread (no chat swipe, #13531)", () => {
     );
     expect(bubble).toBeTruthy();
 
-    // Selecting the hit closes search, jumps to the real row, and highlights
-    // inside the bubble so message-scroller paint containment cannot clip it.
+    // Selecting the hit closes search and hands the jump to MessageScroller's
+    // coordinated state machine. The raw DOM fallback must stay unused for a
+    // flat registered row, or bottom-follow can overwrite the jump on resize.
     fireEvent.click(result);
     expect(selectSpy).toHaveBeenCalledWith("b");
     expect(aroundSpy).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
-        block: "center",
-        behavior: "smooth",
-      }),
-    );
-    await waitFor(() =>
       expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
     );
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
     expect(bubble?.style.outline).toContain("rgba(255, 255, 255, 0.96)");
     expect(bubble?.style.outlineOffset).toBe("-2px");
     await waitFor(() =>
       expect(screen.queryByTestId("chat-message-search")).toBeNull(),
     );
+  });
+
+  it("reveals an already-loaded windowed result before falling back to the network", async () => {
+    const targetId = "loaded-but-windowed";
+    const selectSpy = vi.fn<(id: string) => Promise<void>>(async () => {});
+    const aroundSpy = vi.fn(async () => false);
+    const noop = () => {};
+    __setAppValueForTests(
+      new Proxy({} as never, {
+        get(_target, prop) {
+          if (prop === "handleSelectConversation") return selectSpy;
+          if (prop === "loadConversationMessagesAround") return aroundSpy;
+          if (prop === "t") return (key: string) => key;
+          if (prop === "uiLanguage") return "en";
+          if (prop === "navigation") {
+            return { scheduleAfterTabCommit: (fn: () => void) => fn() };
+          }
+          return noop;
+        },
+      }),
+    );
+
+    const loadedMessages: ShellMessage[] = Array.from(
+      { length: 81 },
+      (_, index) => ({
+        id: index === 0 ? targetId : `loaded-message-${index}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        content:
+          index === 0
+            ? "This loaded result sits just outside the mounted window."
+            : `Loaded message ${index}`,
+        createdAt: index + 1,
+      }),
+    );
+    vi.mocked(client.searchConversationMessages).mockResolvedValue({
+      results: [
+        {
+          messageId: targetId,
+          conversationId: "b",
+          roomId: "room-b",
+          role: "user",
+          text: loadedMessages[0]?.content ?? "",
+          snippet: loadedMessages[0]?.content ?? "",
+          createdAt: 1,
+          score: 8,
+        },
+      ],
+      count: 1,
+    });
+
+    const conversationNav = buildConversationNav(CONVERSATIONS, "b", vi.fn());
+    render(
+      <ContinuousChatOverlay
+        controller={makeController({
+          messages: loadedMessages,
+          conversationNav,
+        } as unknown as Partial<ShellController>)}
+      />,
+    );
+    openSheet();
+    expect(
+      document.getElementById(getChatMessageAnchorId(targetId)),
+    ).toBeNull();
+
+    openSearchFromComposerMenu();
+    fireEvent.change(screen.getByTestId("message-search-input"), {
+      target: { value: "outside mounted window" },
+    });
+    const result = await waitFor(() =>
+      screen.getByTestId("message-search-result"),
+    );
+    fireEvent.click(result);
+
+    const anchor = await waitFor(() => {
+      const element = document.getElementById(getChatMessageAnchorId(targetId));
+      expect(element).toBeTruthy();
+      return element as HTMLElement;
+    });
+    const bubble = anchor.querySelector<HTMLElement>(
+      '[data-chat-message-bubble="true"]',
+    );
+    await waitFor(() =>
+      expect(bubble?.getAttribute("data-chat-search-highlight")).toBe("true"),
+    );
+    expect(selectSpy).toHaveBeenCalledWith("b");
+    expect(aroundSpy).not.toHaveBeenCalled();
   });
 
   it("renders a distinguishable error state when the search API rejects (#14330)", async () => {

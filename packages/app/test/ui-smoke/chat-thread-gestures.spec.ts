@@ -113,6 +113,29 @@ async function installConversationRoutes(page: Page): Promise<void> {
     },
   );
 
+  await page.route("**/api/conversations/messages/search**", async (route) => {
+    const query = new URL(route.request().url()).searchParams.get("q") ?? "";
+    const results = query.toLowerCase().includes("oldest")
+      ? [
+          {
+            messageId: "g-first",
+            conversationId: CONVERSATION_ID,
+            roomId: ROOM_ID,
+            role: "assistant",
+            text: FIRST_TEXT,
+            snippet: FIRST_TEXT,
+            createdAt: NOW - 40_000,
+            score: 10,
+          },
+        ]
+      : [];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results, count: results.length }),
+    });
+  });
+
   await page.route(
     `**/api/conversations/${CONVERSATION_ID}/greeting**`,
     async (route) => {
@@ -460,5 +483,18 @@ test("header controls: no header nav (search in composer + menu), maximize remov
   await expect(page.getByTestId("chat-message-search")).toBeVisible({
     timeout: 10_000,
   });
+
+  // Selecting an older result must use MessageScroller's coordinated jump.
+  // That keeps the row inside the real viewport after the search layer closes
+  // and makes the short white highlight visible instead of bottom-follow
+  // immediately reclaiming the scroll position.
+  await page.getByTestId("message-search-input").fill("oldest visible turn");
+  await page.getByTestId("message-search-result").click();
+  await expect(page.getByTestId("chat-message-search")).toHaveCount(0);
+  const target = page.locator("#chat-message-g-first");
+  await expect(target).toBeInViewport();
+  await expect(
+    target.locator('[data-chat-search-highlight="true"]'),
+  ).toBeVisible();
   await expectNoPageDiagnostics(page, testInfo.title);
 });
