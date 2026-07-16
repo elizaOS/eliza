@@ -5,7 +5,14 @@
  */
 import { FileText, Film, Music } from "lucide-react";
 import type * as React from "react";
-import { Button } from "../../ui/button";
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from "../../ui/attachment";
 import type { ChatAttachmentItem, ChatVariant } from "./chat-types";
 
 export interface ChatAttachmentStripProps {
@@ -23,12 +30,15 @@ function NonImageTile({
   const Icon =
     item.kind === "audio" ? Music : item.kind === "video" ? Film : FileText;
   return (
-    <div className="flex h-16 w-16 flex-col items-center justify-center gap-1 rounded-sm border border-border bg-bg/40 px-1 text-center">
-      <Icon className="h-5 w-5 text-muted" />
-      <span className="w-full truncate text-2xs text-muted" title={item.name}>
+    <AttachmentMedia className="h-16 w-16 flex-col gap-1 rounded-sm border border-border bg-bg/40 px-1 text-center">
+      <Icon className="size-5 text-muted" />
+      <AttachmentTitle
+        className="w-full text-2xs font-normal text-muted"
+        title={item.name}
+      >
         {item.name}
-      </span>
-    </div>
+      </AttachmentTitle>
+    </AttachmentMedia>
   );
 }
 
@@ -43,38 +53,46 @@ export function ChatAttachmentStrip({
   }
 
   return (
-    <div
-      className={`relative flex flex-wrap gap-2 py-1 ${
+    <AttachmentGroup
+      className={`relative w-full gap-2 px-1.5 py-1.5 [--scroll-fade-size:1.5rem] ${
         variant === "game-modal" ? "pointer-events-auto" : ""
       }`}
       data-no-camera-drag={variant === "game-modal" || undefined}
+      data-scroll-cert-scroller
       style={{ zIndex: 1 }}
     >
       {items.map((item, index) => (
-        <div key={item.id} className="relative h-16 w-16 shrink-0 group">
+        <Attachment
+          key={item.id}
+          size="xs"
+          className="group h-16 w-16 min-w-16 overflow-visible rounded-sm border-0 bg-transparent p-0 has-data-[slot=attachment-media]:p-0"
+        >
           {!item.kind || item.kind === "image" ? (
-            <img
-              src={item.src}
-              alt={item.alt}
-              className="h-16 w-16 rounded-sm border border-border object-cover"
-            />
+            <AttachmentMedia
+              variant="image"
+              className="h-16 w-16 rounded-sm border border-border bg-bg/40"
+            >
+              <img src={item.src} alt={item.alt} />
+            </AttachmentMedia>
           ) : (
             <NonImageTile item={item} />
           )}
-          <Button
-            variant={
-              variant === "game-modal" ? "surfaceDestructive" : "destructive"
-            }
-            size="icon"
-            title={removeLabel(item)}
-            aria-label={removeLabel(item)}
-            onClick={() => onRemove(item.id, index)}
-            className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-sm text-2xs opacity-100 transition-opacity  sm:opacity-0 sm:group-hover:opacity-100"
-          >
-            ×
-          </Button>
-        </div>
+          <AttachmentActions className="absolute -right-1.5 -top-1.5">
+            <AttachmentAction
+              variant={
+                variant === "game-modal" ? "surfaceDestructive" : "destructive"
+              }
+              size="icon"
+              title={removeLabel(item)}
+              aria-label={removeLabel(item)}
+              onClick={() => onRemove(item.id, index)}
+              className="h-4 w-4 rounded-sm text-2xs opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+            >
+              ×
+            </AttachmentAction>
+          </AttachmentActions>
+        </Attachment>
       ))}
-    </div>
+    </AttachmentGroup>
   );
 }
