@@ -97,6 +97,7 @@ import {
   type AcpToolCall,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
+import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";
 
@@ -138,6 +139,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
         serviceClass(CodingWorkspaceService),
         serviceClass(TaskSupervisorService),
         serviceClass(TaskWatchdogService),
+        serviceClass(WaveSupervisor),
         // Discoverable SWARM_COORDINATOR adapter. server.ts's
         // wireCoordinatorBridgesWhenReady + plugin-app-control's
         // verification-room-bridge both look this up by serviceType; without
@@ -347,6 +349,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TaskSupervisorService.serviceType,
         // Eager-start the stalled-agent watchdog loop too (#8901).
         TaskWatchdogService.serviceType,
+        // Registered unconditionally but behavior-neutral unless its explicit
+        // default-OFF setting is enabled.
+        WaveSupervisor.serviceType,
         // Eager-start the coordinator adapter so it subscribes to the ACP
         // event stream at boot (rather than waiting for a getService() that
         // only the server's bridge-wiring poll issues). This makes
@@ -2464,6 +2469,27 @@ export type {
   SpawnOptions,
   SpawnResult,
 } from "./services/types.js";
+export {
+  type ActiveLaneScope,
+  detectWaveCollisions,
+  isSalvageEligible,
+  NoopWaveRefillPlanner,
+  type OpenPullRequestScope,
+  type OpenPullRequestSource,
+  readWaveId,
+  shouldRefillWave,
+  WAVE_ID_METADATA_KEY,
+  WAVE_REFILL_PLANNER_SERVICE_TYPE,
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WAVE_SUPERVISOR_SETTING,
+  type WaveCollision,
+  WaveConcurrencyCapError,
+  type WaveRefillPlanner,
+  type WaveRefillRequest,
+  type WaveReplacementSpec,
+  type WaveStatus,
+  WaveSupervisor,
+} from "./services/wave-supervisor.js";
 export type {
   AuthPromptCallback,
   CodingWorkspaceConfig,

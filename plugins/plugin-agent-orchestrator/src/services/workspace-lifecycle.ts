@@ -7,6 +7,32 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { WorkspaceRegistry } from "./workspace-registry.js";
+
+/**
+ * Preserve a lifecycle-owned workspace for salvage without copying it. The
+ * registry remains the ownership authority: unregistered/caller-owned paths are
+ * never adopted or made reclaimable here. Re-registering the existing record
+ * marks it live again, which prevents terminal-workspace LRU reclaim while the
+ * replacement lane inspects it.
+ */
+export function preserveRegisteredWorkspace(
+  dirPath: string,
+  registry: WorkspaceRegistry,
+  log: (msg: string) => void,
+): boolean {
+  const resolved = path.resolve(dirPath);
+  const record = registry.list().find((entry) => entry.path === resolved);
+  if (!record) {
+    log(
+      `Salvage workspace is caller-owned/unregistered; leaving it untouched: ${resolved}`,
+    );
+    return false;
+  }
+  registry.register(record.kind, record.path, record.ownerId);
+  log(`Preserved workspace for salvage: ${resolved}`);
+  return true;
+}
 
 /** Remove a scratch directory safely — only if under baseDir or one of allowedDirs. */
 export async function removeScratchDir(
