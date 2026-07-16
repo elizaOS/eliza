@@ -100,8 +100,10 @@ export function MessageSearchPanel({
 
   const handleJump = useCallback(
     (result: ConversationMessageSearchResult) => {
-      onJump(result);
+      // Remove the keyboard-anchored search layer before the destination row
+      // scrolls, so focus restoration cannot move the sheet during the jump.
       onClose();
+      onJump(result);
     },
     [onJump, onClose],
   );
