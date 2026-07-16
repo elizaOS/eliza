@@ -11,10 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import subprocess
 from pathlib import Path
 
 from scripts.training import instrumentation
-from scripts.training.instrumentation import _hash_paths, log_environment
+from scripts.training.instrumentation import _git_head, _hash_paths, log_environment
 
 
 def _read_env(out_dir: Path) -> dict:
@@ -54,6 +55,40 @@ def test_log_environment_captures_git_head(tmp_path, monkeypatch):
         "available": True,
         "head": "abc123def456",
         "dirty": False,
+    }
+
+
+def test_git_head_preserves_commit_when_dirty_probe_times_out(monkeypatch):
+    calls = 0
+
+    def run(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return subprocess.CompletedProcess(args[0], 0, stdout="abc123\n", stderr="")
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(instrumentation.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(instrumentation.subprocess, "run", run)
+
+    assert _git_head() == {
+        "available": True,
+        "head": "abc123",
+        "dirty": None,
+        "dirty_reason": "git status timed out after 5 seconds",
+    }
+
+
+def test_git_head_reports_unavailable_when_head_probe_times_out(monkeypatch):
+    def run(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+    monkeypatch.setattr(instrumentation.shutil, "which", lambda _name: "/usr/bin/git")
+    monkeypatch.setattr(instrumentation.subprocess, "run", run)
+
+    assert _git_head() == {
+        "available": False,
+        "reason": "git rev-parse timed out after 5 seconds",
     }
 
 

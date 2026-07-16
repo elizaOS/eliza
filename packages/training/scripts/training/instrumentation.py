@@ -175,17 +175,34 @@ def _git_head() -> dict[str, Any]:
     """
     if not shutil.which("git"):
         return {"available": False, "reason": "git not on PATH"}
-    out = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        check=False, capture_output=True, text=True, timeout=5,
-    )
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return {"available": False, "reason": "git rev-parse timed out after 5 seconds"}
     if out.returncode != 0:
         return {"available": False, "reason": out.stderr.strip() or f"exit={out.returncode}"}
     head = out.stdout.strip()
-    dirty = subprocess.run(
-        ["git", "status", "--porcelain"],
-        check=False, capture_output=True, text=True, timeout=5,
-    )
+    try:
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "available": True,
+            "head": head,
+            "dirty": None,
+            "dirty_reason": "git status timed out after 5 seconds",
+        }
     return {
         "available": True,
         "head": head,
