@@ -29,7 +29,8 @@ import {
 import {
   type AccountPoolConsumerUsageBreakdown,
   type AccountPoolConsumerUsageTotals,
-  queryAccountPoolConsumerUsage,
+  getAccountPoolConsumerUsageSummary,
+  type queryAccountPoolConsumerUsage,
 } from "./account-pool-consumer-metering.js";
 
 type PublicAccountState = "serving" | "draining" | "exhausted";
@@ -774,7 +775,7 @@ export async function getPublicAccountPoolStatus(): Promise<PublicPoolStatus> {
       const history = readSnapshots();
       const pool = depsOverride.pool ?? getDefaultAccountPool();
       const usage = await (
-        depsOverride.queryConsumerUsage ?? queryAccountPoolConsumerUsage
+        depsOverride.queryConsumerUsage ?? getAccountPoolConsumerUsageSummary
       )();
       const status = buildStatus(pool, usage, history);
       cache = { at: nowMs(), status };

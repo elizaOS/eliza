@@ -1040,6 +1040,23 @@ export function createAnthropicSseUsageMeter(
   return Object.assign(stream, { finalizeUsage });
 }
 
+export async function getAccountPoolConsumerUsageSummary(): Promise<AccountPoolConsumerUsageBreakdown> {
+  const stored = readTotalsFile();
+  return {
+    totals: { ...stored.totals },
+    byDay: Object.fromEntries(
+      Object.entries(stored.byDay).map(([day, bucket]) => [day, { ...bucket }]),
+    ),
+    byConsumer: Object.fromEntries(
+      Object.entries(stored.byConsumer).map(([id, bucket]) => [
+        id,
+        { ...bucket },
+      ]),
+    ),
+    records: [],
+  };
+}
+
 export async function queryAccountPoolConsumerUsage(
   query: AccountPoolConsumerUsageQuery = {},
 ): Promise<AccountPoolConsumerUsageBreakdown> {

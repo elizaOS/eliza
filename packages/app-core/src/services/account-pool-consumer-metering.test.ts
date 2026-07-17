@@ -15,6 +15,7 @@ import {
   createAccountPoolConsumerKey,
   createAnthropicSseUsageMeter,
   extractAnthropicUsageFromJson,
+  getAccountPoolConsumerUsageSummary,
   queryAccountPoolConsumerUsage,
   recordAccountPoolConsumerUsage,
 } from "./account-pool-consumer-metering.js";
@@ -314,5 +315,13 @@ describe("quota and totals", () => {
     expect(usage.totals.requests).toBe(50);
     expect(usage.totals.tokens).toBe(150);
     expect(usage.records).toHaveLength(50);
+
+    const summary = await getAccountPoolConsumerUsageSummary();
+    expect(summary.totals).toMatchObject({ requests: 50, tokens: 150 });
+    expect(summary.byConsumer[created.consumer.id]).toMatchObject({
+      requests: 50,
+      tokens: 150,
+    });
+    expect(summary.records).toEqual([]);
   });
 });
