@@ -3,10 +3,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-	formatAppCandidates,
-	resolveInstalledApp,
-} from "./resolve.js";
+import { formatAppCandidates, resolveInstalledApp } from "./resolve.js";
 import type { InstalledAppInfo } from "./types.js";
 
 const app = (over: Partial<InstalledAppInfo>): InstalledAppInfo =>
