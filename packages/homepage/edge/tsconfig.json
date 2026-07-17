@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "resolveJsonModule": false,
+    "types": []
+  },
+  "include": ["apple-app-site-association.ts", "text-modules.d.ts"]
+}
