@@ -110,6 +110,83 @@ describe("compat route auth policy table", () => {
     });
   });
 
+  it("keeps config reads session-scoped and mutations owner-only", () => {
+    expect(resolveCompatRouteAuthPolicy("GET", "/api/config")).toMatchObject({
+      id: "config.read",
+      tier: "session",
+    });
+    expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/config/schema"),
+    ).toMatchObject({ id: "config.schema", tier: "session" });
+    expect(resolveCompatRouteAuthPolicy("PUT", "/api/config")).toMatchObject({
+      id: "config.write",
+      tier: "OWNER",
+    });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/config/reload"),
+    ).toMatchObject({ id: "config.reload", tier: "OWNER" });
+
+    expect(resolveCompatRouteAuthPolicy("POST", "/api/config")).toBeNull();
+    expect(
+      resolveCompatRouteAuthPolicy("GET", "/api/config/reload"),
+    ).toBeNull();
+  });
+
+  it("allows trusted-local owner config writes and denies anonymous remote writes", async () => {
+    const previousRequireLocalAuth = process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+    const previousCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED;
+    delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+    delete process.env.ELIZA_CLOUD_PROVISIONED;
+
+    try {
+      const localReq = fakeReq({
+        method: "PUT",
+        pathname: "/api/config",
+        headers: { host: "localhost:2138" },
+        remoteAddress: "127.0.0.1",
+      });
+      const localRes = fakeRes();
+      await expect(
+        enforceCompatRouteAuthPolicy(
+          localReq,
+          localRes.res,
+          STATE,
+          "PUT",
+          "/api/config",
+        ),
+      ).resolves.toBe("allowed");
+      expect(localRes.status()).toBe(200);
+
+      const remoteReq = fakeReq({
+        method: "PUT",
+        pathname: "/api/config",
+      });
+      const remoteRes = fakeRes();
+      await expect(
+        enforceCompatRouteAuthPolicy(
+          remoteReq,
+          remoteRes.res,
+          STATE,
+          "PUT",
+          "/api/config",
+        ),
+      ).resolves.toBe("denied");
+      expect(remoteRes.status()).toBe(401);
+      expect(remoteRes.json()).toEqual({ error: "Unauthorized" });
+    } finally {
+      if (previousRequireLocalAuth === undefined) {
+        delete process.env.ELIZA_REQUIRE_LOCAL_AUTH;
+      } else {
+        process.env.ELIZA_REQUIRE_LOCAL_AUTH = previousRequireLocalAuth;
+      }
+      if (previousCloudProvisioned === undefined) {
+        delete process.env.ELIZA_CLOUD_PROVISIONED;
+      } else {
+        process.env.ELIZA_CLOUD_PROVISIONED = previousCloudProvisioned;
+      }
+    }
+  });
+
   it("fails closed for undeclared app-core-managed routes", async () => {
     const req = fakeReq({ method: "GET", pathname: "/api/dev/not-declared" });
     const res = fakeRes();
