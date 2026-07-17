@@ -15,7 +15,11 @@ import type {
 	ViewCapability,
 	ViewType,
 } from "@elizaos/core";
-import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
+import {
+	hasOwnerAccess as defaultOwnerAccessFn,
+	getUserMessageText,
+	logger,
+} from "@elizaos/core";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import {
 	createViewsClient,
@@ -1862,7 +1866,7 @@ async function runViewsClose({
 	viewType?: ViewType;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const text = message.content.text ?? "";
+	const text = getUserMessageText(message);
 	if (isCloseAllRequest(text, options)) {
 		const result = await navigateViewWithShellAction(
 			"__all__",
@@ -1956,7 +1960,7 @@ async function runViewsLayout({
 	viewType?: ViewType;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const text = message.content.text ?? "";
+	const text = getUserMessageText(message);
 	const views = await client.listViews({ viewType });
 	const placement =
 		mode === "split" ? readPlacementValue(text, options) : undefined;
@@ -2448,7 +2452,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			_state?: State,
 			options?: Record<string, unknown>,
 		): Promise<boolean> => {
-			const text = message.content.text ?? "";
+			const text = getUserMessageText(message);
 			const actionOptions = normalizeActionOptions(options);
 			const roomId =
 				typeof message.roomId === "string" ? message.roomId : runtime.agentId;
@@ -2528,7 +2532,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			const run = async (): Promise<ActionResult> => {
 				const actionOptions = normalizeActionOptions(options);
 				const client = clientFactory();
-				const text = message.content.text ?? "";
+				const text = getUserMessageText(message);
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 

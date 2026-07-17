@@ -11,7 +11,11 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger, spawnWithTrajectoryLink } from "@elizaos/core";
+import {
+	getUserMessageText,
+	logger,
+	spawnWithTrajectoryLink,
+} from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { findAsyncCodingDelegationActionName } from "./scaffold-env.js";
 import { buildVerifiedPluginTaskParameters } from "./verified-plugin-task.js";
@@ -83,7 +87,7 @@ function extractEditTarget(
 		readStringOption(options, "viewId") ??
 		readStringOption(options, "id") ??
 		readStringOption(options, "name") ??
-		extractTargetFromText(message.content.text ?? "")
+		extractTargetFromText(getUserMessageText(message))
 	);
 }
 
@@ -337,9 +341,7 @@ export async function runViewsEdit({
 
 	const view = resolution.view;
 	const intent = (
-		readStringOption(options, "intent") ??
-		message.content.text ??
-		""
+		readStringOption(options, "intent") ?? getUserMessageText(message)
 	).trim();
 	if (!intent) {
 		const text = `What change should I make to ${view.label}?`;

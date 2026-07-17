@@ -20,7 +20,11 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
+import {
+	getUserMessageText,
+	logger,
+	resolveServerOnlyPort,
+} from "@elizaos/core";
 import {
 	DEFAULT_ELIGIBLE_MODEL_IDS,
 	DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -234,7 +238,7 @@ export function createModelSwitchAction(
 			message: Memory,
 		): Promise<boolean> => {
 			return (
-				inferModelSwitchRequest(message.content.text ?? "", undefined) !== null
+				inferModelSwitchRequest(getUserMessageText(message), undefined) !== null
 			);
 		},
 
@@ -246,7 +250,7 @@ export function createModelSwitchAction(
 			callback?: HandlerCallback,
 		): Promise<ActionResult> => {
 			const request = inferModelSwitchRequest(
-				message.content.text ?? "",
+				getUserMessageText(message),
 				options,
 			);
 			if (!request) {

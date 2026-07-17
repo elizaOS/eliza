@@ -19,6 +19,14 @@ function message(text: string, attachments?: Media[]): Memory {
 	return { content: { text, attachments } } as Memory;
 }
 
+function wrappedRequest(request: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth.",
+		"<contextual_documents>make the background orange</contextual_documents>",
+		`<user_request>${request}</user_request>`,
+	].join("\n");
+}
+
 describe("inferBackgroundPlan", () => {
 	it("resolves a named color to a shader plan", () => {
 		expect(inferBackgroundPlan("make the background teal", undefined)).toEqual({
@@ -417,6 +425,15 @@ describe("BACKGROUND action handler", () => {
 		expect(emitted).toEqual([{ op: "set", mode: "shader", color: "#2563eb" }]);
 		expect(result.success).toBe(true);
 		expect(replies[0]).toContain("blue");
+	});
+
+	it("validates and handles the command inside a document-augmented user_request", async () => {
+		const { action, emitted } = setup();
+		const wrapped = message(wrappedRequest("make the background teal"));
+		expect(await action.validate(runtime, wrapped)).toBe(true);
+		const result = await action.handler(runtime, wrapped);
+		expect(result.success).toBe(true);
+		expect(emitted).toEqual([{ op: "set", mode: "shader", color: "#0891b2" }]);
 	});
 
 	it("broadcasts a named shader preset and confirms", async () => {

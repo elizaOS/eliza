@@ -28,6 +28,14 @@ function message(text: string): Memory {
 	return { content: { text } } as Memory;
 }
 
+function wrappedRequest(request: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth.",
+		"<contextual_documents>use local inference</contextual_documents>",
+		`<user_request>${request}</user_request>`,
+	].join("\n");
+}
+
 function captureCallback(): {
 	callback: HandlerCallback;
 	texts: string[];
@@ -127,6 +135,20 @@ describe("MODEL_SWITCH handler", () => {
 			true,
 		);
 		expect(await a.validate(runtime, message("hi"))).toBe(false);
+	});
+
+	it("validates and handles the command inside a document-augmented user_request", async () => {
+		const { action: a, switchModel } = action({
+			ok: true,
+			target: "cloud",
+			model: DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+			status: "ready",
+		});
+		const wrapped = message(wrappedRequest("use eliza cloud"));
+		expect(await a.validate(runtime, wrapped)).toBe(true);
+		const result = await a.handler(runtime, wrapped);
+		expect(result?.success).toBe(true);
+		expect(switchModel).toHaveBeenCalledWith({ target: "cloud" });
 	});
 
 	it("declares an OWNER role gate and required target param", () => {

@@ -14,6 +14,13 @@ import {
 const msg = (text: string): Memory =>
 	({ content: { text } }) as unknown as Memory;
 
+const wrappedRequest = (request: string): string =>
+	[
+		"Answer the user request using the contextual documents below as the source of truth.",
+		"<contextual_documents>open inbox and close settings</contextual_documents>",
+		`<user_request>${request}</user_request>`,
+	].join("\n");
+
 describe("normalizeActionOptions", () => {
 	it("unwraps a nested parameters object, else returns options as-is", () => {
 		expect(normalizeActionOptions(undefined)).toBeUndefined();
@@ -59,6 +66,15 @@ describe("extractLaunchTarget", () => {
 		).toBe("wallet");
 	});
 
+	it("extracts the command from a document-augmented user_request", () => {
+		expect(
+			extractLaunchTarget(
+				msg(wrappedRequest("open the Calendar app")),
+				undefined,
+			),
+		).toBe("calendar");
+	});
+
 	it("returns null when no verb, no option, or only fillers follow", () => {
 		expect(extractLaunchTarget(msg("hello there"), undefined)).toBeNull();
 		expect(
@@ -87,5 +103,14 @@ describe("extractCloseTarget", () => {
 			runId: null,
 			appName: null,
 		});
+	});
+
+	it("ignores contextual document commands when closing an app", () => {
+		expect(
+			extractCloseTarget(
+				msg(wrappedRequest("close the Calendar app")),
+				undefined,
+			),
+		).toEqual({ runId: null, appName: "calendar" });
 	});
 });

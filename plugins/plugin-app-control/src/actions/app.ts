@@ -21,7 +21,11 @@ import type {
 	Memory,
 	State,
 } from "@elizaos/core";
-import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
+import {
+	hasOwnerAccess as defaultOwnerAccessFn,
+	getUserMessageText,
+	logger,
+} from "@elizaos/core";
 import {
 	type AppControlClient,
 	createAppControlClient,
@@ -285,7 +289,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			message: Memory,
 		): Promise<boolean> => {
 			if (!(await canManageApps(runtime, message))) return false;
-			const text = message.content.text ?? "";
+			const text = getUserMessageText(message);
 
 			// Multi-turn follow-up: short reply matches a pending intent task.
 			if (isChoiceReply(text)) {
@@ -312,7 +316,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			}
 
 			const client = clientFactory();
-			const text = message.content.text ?? "";
+			const text = getUserMessageText(message);
 
 			// Follow-up choice reply always routes to create.
 			if (isChoiceReply(text)) {

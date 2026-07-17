@@ -6,7 +6,7 @@
  * only needs to pick a single token after verbs like "launch" / "close".
  */
 
-import type { Memory } from "@elizaos/core";
+import { getUserMessageText, type Memory } from "@elizaos/core";
 
 const LAUNCH_VERBS = [
 	"launch",
@@ -101,7 +101,7 @@ export function extractLaunchTarget(
 	return (
 		readStringOption(options, "app") ??
 		readStringOption(options, "name") ??
-		extractAfterVerbs(message?.content?.text ?? "", LAUNCH_VERBS)
+		extractAfterVerbs(getUserMessageText(message), LAUNCH_VERBS)
 	);
 }
 
@@ -113,6 +113,6 @@ export function extractCloseTarget(
 	const appName =
 		readStringOption(options, "app") ??
 		readStringOption(options, "name") ??
-		extractAfterVerbs(message?.content?.text ?? "", CLOSE_VERBS);
+		extractAfterVerbs(getUserMessageText(message), CLOSE_VERBS);
 	return { runId, appName };
 }

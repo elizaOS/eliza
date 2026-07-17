@@ -15,7 +15,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getUserMessageText, logger } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import type { ViewSummary } from "./views-client.js";
 import { resolveTargetView } from "./views-edit.js";
@@ -75,7 +75,7 @@ export function extractIconTarget(
 		readStringOption(options, "target");
 	if (explicit) return explicit;
 
-	const text = message.content.text ?? "";
+	const text = getUserMessageText(message);
 	const stripped = text
 		.replace(ICON_NOUNS, " ")
 		.replace(ICON_VERBS, " ")

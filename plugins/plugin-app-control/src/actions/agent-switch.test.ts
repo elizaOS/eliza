@@ -20,6 +20,14 @@ function message(text: string): Memory {
 	return { content: { text } } as Memory;
 }
 
+function wrappedRequest(request: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth.",
+		"<contextual_documents>switch to the laptop runtime</contextual_documents>",
+		`<user_request>${request}</user_request>`,
+	].join("\n");
+}
+
 function captureCallback(): { callback: HandlerCallback; texts: string[] } {
 	const texts: string[] = [];
 	const callback = vi.fn(async (payload: { text?: string }) => {
@@ -79,6 +87,19 @@ describe("AGENT_SWITCH handler", () => {
 			true,
 		);
 		expect(await a.validate(runtime, message("good morning"))).toBe(false);
+	});
+
+	it("validates and handles the command inside a document-augmented user_request", async () => {
+		const { action: a, switchAgent } = action({
+			ok: true,
+			profileId: "p-cloud",
+			profileLabel: "My Cloud Agent",
+		});
+		const wrapped = message(wrappedRequest("switch to my cloud agent"));
+		expect(await a.validate(runtime, wrapped)).toBe(true);
+		const result = await a.handler(runtime, wrapped);
+		expect(result?.success).toBe(true);
+		expect(switchAgent).toHaveBeenCalledWith("cloud");
 	});
 
 	it("confirms a successful switch with the resolved label", async () => {

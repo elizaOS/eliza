@@ -22,6 +22,7 @@
 import {
 	type Action,
 	type ActionResult,
+	getUserMessageText,
 	type HandlerCallback,
 	type IAgentRuntime,
 	logger,
@@ -733,7 +734,7 @@ export function createBackgroundAction(
 		): Promise<boolean> => {
 			return (
 				inferBackgroundPlan(
-					message.content.text ?? "",
+					getUserMessageText(message),
 					message.content.attachments,
 				) !== null
 			);
@@ -748,7 +749,7 @@ export function createBackgroundAction(
 		): Promise<ActionResult> => {
 			const actionOptions = normalizeActionOptions(options);
 			const plan = inferBackgroundPlan(
-				message.content.text ?? "",
+				getUserMessageText(message),
 				message.content.attachments,
 				actionOptions,
 			);

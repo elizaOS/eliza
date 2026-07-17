@@ -14,7 +14,12 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
+import {
+	getUserMessageText,
+	logger,
+	ModelType,
+	spawnWithTrajectoryLink,
+} from "@elizaos/core";
 import {
 	type AppControlClient,
 	createAppControlClient,
@@ -848,7 +853,7 @@ export async function runCreate({
 }: AppCreateInput): Promise<ActionResult> {
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content.text ?? "").trim();
+	const userText = getUserMessageText(message);
 	const explicitChoice = readStringOption(options, "choice");
 	const explicitEditTarget = readStringOption(options, "editTarget");
 	const explicitIntent = readStringOption(options, "intent");

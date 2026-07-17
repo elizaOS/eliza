@@ -27,6 +27,7 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 	const actual = await importOriginal<typeof import("@elizaos/core")>();
 	return {
 		...coreMock,
+		getUserMessageText: actual.getUserMessageText,
 		resolveStateDir: actual.resolveStateDir,
 	};
 });
@@ -45,6 +46,14 @@ function message(text: string) {
 		agentId: "agent-1",
 		content: { text },
 	} as never;
+}
+
+function wrappedRequest(request: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth.",
+		"<contextual_documents>regenerate the inbox icon</contextual_documents>",
+		`<user_request>${request}</user_request>`,
+	].join("\n");
 }
 
 describe("isViewIconRequest", () => {
@@ -85,6 +94,15 @@ describe("extractIconTarget", () => {
 				undefined,
 			),
 		).toBe("social alpha");
+	});
+
+	it("extracts the icon target from a document-augmented user_request", () => {
+		expect(
+			extractIconTarget(
+				message(wrappedRequest("regenerate the calendar view icon")),
+				undefined,
+			),
+		).toBe("calendar");
 	});
 });
 
