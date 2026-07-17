@@ -16,6 +16,7 @@ import type {
 
 import {
   failureToActionResult,
+  fencePreformatted,
   readStringParam,
   successActionResult,
   userFacingSuccessResult,
@@ -246,7 +247,8 @@ async function deviceFileHandler(
 
   const entries = await bridge.list(path);
   const text = renderDeviceEntries(path, entries);
-  if (callback) await callback({ text, source: "coding-tools" });
+  if (callback)
+    await callback({ text: fencePreformatted(text), source: "coding-tools" });
   return successActionResult(text, {
     action: "FILE",
     target: "device",
