@@ -2,7 +2,6 @@ import {
   getSolanaOldestKnownSignature,
   getSolanaParsedTransactions,
   getSolanaRecentSignatures,
-  getSolanaTokenHoldings,
 } from "./helius";
 import { requireBlockchainConnector } from "./chains/registry";
 import { analyzeWalletActivity } from "./analyzers/activity";
@@ -120,8 +119,64 @@ const firstParsedTransaction =
     ? parsedTransactions[0]
     : null;
 
-const tokenHoldings = await getSolanaTokenHoldings(walletAddress);
+const tokenBalancesResult =
+  await connector.getTokenBalances(walletAddress);
 
+if (
+  tokenBalancesResult.status === "error" ||
+  tokenBalancesResult.status === "unsupported" ||
+  !tokenBalancesResult.data
+) {
+  throw new Error(
+    tokenBalancesResult.error?.message ??
+      "Unable to retrieve the wallet token balances.",
+  );
+}
+
+const tokenHoldings: WalletTokenHolding[] =
+  tokenBalancesResult.data.balances.map(
+    (tokenBalance) => {
+      const mint =
+        tokenBalance.asset.contractAddress;
+
+      const decimals =
+        tokenBalance.asset.decimals;
+
+      const amount = Number(
+        tokenBalance.decimalAmount ?? "0",
+      );
+
+      if (!mint) {
+        throw new Error(
+          "The Solana connector returned a token without a mint address.",
+        );
+      }
+
+      if (
+        typeof decimals !== "number" ||
+        !Number.isInteger(decimals) ||
+        decimals < 0
+      ) {
+        throw new Error(
+          `The Solana connector returned invalid decimals for token "${mint}".`,
+        );
+      }
+
+      if (!Number.isFinite(amount)) {
+        throw new Error(
+          `The Solana connector returned an invalid amount for token "${mint}".`,
+        );
+      }
+
+      return {
+        mint,
+        amount,
+        decimals,
+        rawAmount: tokenBalance.rawAmount,
+      };
+    },
+  );
+      
         const tokenPrices = await getSolanaTokenPrices(
   tokenHoldings.map((token) => token.mint),
 );
