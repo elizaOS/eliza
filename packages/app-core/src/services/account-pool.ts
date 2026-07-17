@@ -121,7 +121,7 @@ interface AccountPoolSelectionConfig {
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
-const SUBSCRIPTION_END_BOOST_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const SUBSCRIPTION_END_BOOST_WINDOW_MS = 48 * 60 * 60 * 1000;
 const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   Record<string, DirectAccountProvider>
 > = {
@@ -649,12 +649,30 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    // Provider-authoritative cooldown, per provider semantics of
+    // `usage.resetsAt` (see LinkedAccountUsage contract):
+    //  - Codex persists its PRIMARY FIVE-HOUR window reset there, which is
+    //    exactly the 429 cooldown clock. Using it re-admits the account the
+    //    moment the limit lifts; a 60s caller heuristic would ping-pong spawns
+    //    onto a still-limited ~5h window every minute (the documented Codex
+    //    429 regression).
+    //  - Anthropic persists the SEVEN-DAY weekly reset there for drain
+    //    ordering. Using it as a 429 cooldown would strand a session-limited
+    //    account for up to a week, so Anthropic keeps the caller heuristic
+    //    (60s probe default / provider retry-after when the caller has one).
+    const providerResetMs =
+      account.providerId === "openai-codex"
+        ? account.usage?.resetsAt
+        : undefined;
     const heuristicUntil =
       Number.isFinite(untilMs) && untilMs > Date.now()
         ? untilMs
         : Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS;
     const healthDetail: LinkedAccountHealthDetail = {
-      until: heuristicUntil,
+      until:
+        typeof providerResetMs === "number" && providerResetMs > Date.now()
+          ? providerResetMs
+          : heuristicUntil,
       lastChecked: Date.now(),
       ...(detail ? { lastError: detail } : {}),
     };
@@ -1054,7 +1072,7 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     label: account.label,
     enabled: account.enabled,
     priority: account.priority,
-    prioritySource: account.prioritySource ?? "explicit",
+    prioritySource: account.prioritySource ?? "generated",
     health: account.health,
     ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
     ...(account.usage ? { usage: account.usage } : {}),

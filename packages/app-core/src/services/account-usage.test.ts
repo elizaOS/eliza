@@ -150,6 +150,143 @@ describe("pollAnthropicUsage", () => {
     });
   });
 
+  it("parses the live 2026-07 payload: percentage-point units, weekly reset, fable bucket", async () => {
+    // Redacted from a real GET api.anthropic.com/api/oauth/usage response
+    // captured 2026-07-17 (account 300cc640…, receipt
+    // PR16398-FIX2-2026-07-16.md). The key unit fact: seven_day.utilization
+    // is 9.0 and the weekly_all limit reports percent: 9 — the same number in
+    // both places — proving the nested windows carry PERCENTAGE POINTS, not
+    // fractions. A fractional reading would have produced 900%.
+    stubFetch(
+      jsonResponse({
+        five_hour: {
+          utilization: 0.0,
+          resets_at: "2026-07-17T05:19:59.895388+00:00",
+          limit_dollars: null,
+          used_dollars: null,
+          remaining_dollars: null,
+        },
+        seven_day: {
+          utilization: 9.0,
+          resets_at: "2026-07-22T22:59:59.895413+00:00",
+          limit_dollars: null,
+          used_dollars: null,
+          remaining_dollars: null,
+        },
+        limits: [
+          {
+            kind: "session",
+            group: "session",
+            percent: 0,
+            severity: "normal",
+            resets_at: "2026-07-17T05:19:59.895388+00:00",
+            scope: null,
+            is_active: false,
+          },
+          {
+            kind: "weekly_all",
+            group: "weekly",
+            percent: 9,
+            severity: "normal",
+            resets_at: "2026-07-22T22:59:59.895413+00:00",
+            scope: null,
+            is_active: false,
+          },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 14,
+            severity: "normal",
+            resets_at: "2026-07-22T22:59:59.895736+00:00",
+            scope: {
+              model: { id: null, display_name: "Fable" },
+              surface: null,
+            },
+            is_active: true,
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("live-token");
+
+    // 9.0 means 9%, NOT 900% (fraction misread) and NOT 0.09% either way.
+    expect(snap.weeklyPct).toBe(9);
+    expect(snap.sessionPct).toBe(0);
+    // resetsAt is the SEVEN-DAY weekly clock, not the five-hour session clock.
+    expect(snap.resetsAt).toBe(Date.parse("2026-07-22T22:59:59.895413+00:00"));
+    expect(snap.resetsAt).not.toBe(
+      Date.parse("2026-07-17T05:19:59.895388+00:00"),
+    );
+    expect(snap.weeklyModelBuckets).toEqual({
+      Fable: {
+        pct: 14,
+        resetsAt: Date.parse("2026-07-22T22:59:59.895736+00:00"),
+      },
+    });
+  });
+
+  it("prefers the limits[].percent source over nested windows when both exist", async () => {
+    // limits[] is the least ambiguous source (the field is literally named
+    // `percent`), so it wins over the nested windows if they ever disagree.
+    stubFetch(
+      jsonResponse({
+        five_hour: { utilization: 33, resets_at: 1_700_000_000 },
+        seven_day: { utilization: 44, resets_at: 1_700_604_800 },
+        limits: [
+          {
+            kind: "session",
+            group: "session",
+            percent: 31,
+            resets_at: 1_700_000_000,
+          },
+          {
+            kind: "weekly_all",
+            group: "weekly",
+            percent: 41,
+            resets_at: 1_700_604_800,
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("limits-priority-token");
+
+    expect(snap.sessionPct).toBe(31);
+    expect(snap.weeklyPct).toBe(41);
+    expect(snap.resetsAt).toBe(1_700_604_800 * 1000);
+  });
+
+  it("null weekly_scoped resets_at (fresh window) omits the bucket reset", async () => {
+    // Live payloads report resets_at: null for a weekly_scoped bucket the
+    // account has not touched in the current window (shadow3 post-reset
+    // capture, 2026-07-17). The bucket keeps its pct but must not fabricate a
+    // reset timestamp.
+    stubFetch(
+      jsonResponse({
+        seven_day: { utilization: 0.0, resets_at: "2026-07-23T19:00:00Z" },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 0,
+            resets_at: null,
+            scope: {
+              model: { id: null, display_name: "Fable" },
+              surface: null,
+            },
+            is_active: false,
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("fresh-bucket-token");
+
+    expect(snap.weeklyModelBuckets).toEqual({ Fable: { pct: 0 } });
+    expect(snap.resetsAt).toBe(Date.parse("2026-07-23T19:00:00Z"));
+  });
+
   it("prefers the nested utilization over the flat field when both are present", async () => {
     stubFetch(
       jsonResponse({

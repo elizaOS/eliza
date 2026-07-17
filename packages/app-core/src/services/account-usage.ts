@@ -124,8 +124,27 @@ export async function pollAnthropicUsage(
   const sevenDay = payload.seven_day;
   const weeklyModelBuckets: NonNullable<UsageSnapshot["weeklyModelBuckets"]> =
     {};
+  // The `limits` array is the least ambiguous part of the payload: its field
+  // is literally named `percent` (0..100 percentage points). Prefer it as the
+  // primary source for session/weekly percentages, cross-checked against a
+  // live redacted payload (see account-usage.test.ts "parses the live 2026-07
+  // payload"): `seven_day.utilization: 9.0` matches `weekly_all.percent: 9`,
+  // confirming the nested windows also report percentage points, NOT
+  // fractions. Only the legacy flat fields were fractional.
+  let sessionLimitPct: number | undefined;
+  let weeklyLimitPct: number | undefined;
+  let weeklyLimitResetsAt: number | undefined;
   if (Array.isArray(payload.limits)) {
     for (const limit of payload.limits) {
+      if (limit.kind === "session" && limit.group === "session") {
+        sessionLimitPct ??= utilizationToPct(limit.percent, false);
+        continue;
+      }
+      if (limit.kind === "weekly_all" && limit.group === "weekly") {
+        weeklyLimitPct ??= utilizationToPct(limit.percent, false);
+        weeklyLimitResetsAt ??= normalizeResetTimestamp(limit.resets_at);
+        continue;
+      }
       if (limit.kind !== "weekly_scoped" || limit.group !== "weekly") {
         continue;
       }
@@ -143,12 +162,15 @@ export async function pollAnthropicUsage(
   }
 
   const sessionPct =
+    sessionLimitPct ??
     utilizationToPct(fiveHour?.utilization, false) ??
     utilizationToPct(payload.five_hour_utilization);
   const weeklyPct =
+    weeklyLimitPct ??
     utilizationToPct(sevenDay?.utilization, false) ??
     utilizationToPct(payload.seven_day_utilization);
   const resetsAt =
+    weeklyLimitResetsAt ??
     normalizeResetTimestamp(sevenDay?.resets_at) ??
     normalizeResetTimestamp(payload.seven_day_resets_at);
 

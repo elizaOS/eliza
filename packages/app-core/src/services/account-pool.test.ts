@@ -964,6 +964,71 @@ describe("AccountPool drain-soonest-reset selection", () => {
     ).resolves.toMatchObject({ id: "known-reset" });
   });
 
+  it("Codex 429 cooldown adopts the provider-authoritative 5h reset (no 60s ping-pong)", async () => {
+    // usage.resetsAt for openai-codex is the PRIMARY FIVE-HOUR window reset
+    // (see LinkedAccountUsage contract) — exactly the 429 cooldown clock. A
+    // caller passing no/short heuristic must not re-admit the account every
+    // 60s into a still-limited ~5h window (the documented ping-pong).
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const codexReset = fixedNow + 3 * hour;
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "openai-codex:cdx": account("openai-codex", {
+        id: "cdx",
+        usage: {
+          sessionPct: 100,
+          resetsAt: codexReset,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+    const pool = poolOf(accounts, writes);
+
+    // Caller has only the 60s probe default (passes a non-finite/elapsed until).
+    await pool.markRateLimited("cdx", Number.NaN, "HTTP 429", {
+      providerId: "openai-codex",
+    });
+
+    expect(writes[0]?.health).toBe("rate-limited");
+    expect(writes[0]?.healthDetail?.until).toBe(codexReset);
+  });
+
+  it("Anthropic 429 cooldown ignores the weekly resetsAt (would strand for days)", async () => {
+    // usage.resetsAt for anthropic-subscription is the SEVEN-DAY weekly reset
+    // used by drain ordering. Adopting it as a 429 cooldown would bench a
+    // session-limited account for up to a week; the caller heuristic must win.
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const weeklyReset = fixedNow + 6 * 24 * hour;
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "anthropic-subscription:ant": account("anthropic-subscription", {
+        id: "ant",
+        usage: {
+          weeklyPct: 40,
+          resetsAt: weeklyReset,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+    const pool = poolOf(accounts, writes);
+
+    // No usable caller until → falls back to the 60s heuristic, NOT the
+    // weekly clock.
+    await pool.markRateLimited("ant", Number.NaN, "HTTP 429", {
+      providerId: "anthropic-subscription",
+    });
+    expect(writes[0]?.healthDetail?.until).toBe(fixedNow + 60_000);
+    expect(writes[0]?.healthDetail?.until).not.toBe(weeklyReset);
+
+    // An explicit caller until (e.g. provider retry-after) is respected.
+    await pool.markRateLimited("ant", fixedNow + 15 * 60 * 1000, "HTTP 429", {
+      providerId: "anthropic-subscription",
+    });
+    expect(writes[1]?.healthDetail?.until).toBe(fixedNow + 15 * 60 * 1000);
+  });
+
   it("keeps 429 cooldown separate from weekly ranking after readmission", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(fixedNow);
