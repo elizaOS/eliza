@@ -236,6 +236,7 @@ describe("useVoiceChat forced-cloud TTS routing (#16116)", () => {
     expect(Object.keys(headers).sort()).toEqual([
       "Authorization",
       "Content-Type",
+      "Idempotency-Key",
     ]);
     // Body carries the same `{ text }` contract as the proxy path (the worker
     // treats an omitted voiceId as "unpinned", matching the proxy default).
@@ -323,6 +324,41 @@ describe("useVoiceChat forced-cloud TTS routing (#16116)", () => {
     // Warned once, naming the real direct target.
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(String(warnSpy.mock.calls[0]?.[0])).toContain(DIRECT_TTS_URL);
+  });
+
+  // #16425: the fallback re-POST is the SAME logical utterance — both legs
+  // must carry one identical Idempotency-Key so the cloud route replays the
+  // direct attempt's committed credit reservation instead of charging twice.
+  it("sends the SAME Idempotency-Key on the direct attempt and the proxy fallback", async () => {
+    localStorage.setItem("steward_session_token", CLOUD_JWT);
+    vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const directHeaderKeys: Array<string | undefined> = [];
+    directFetch.mockImplementation(
+      async (_input: unknown, init?: RequestInit) => {
+        directHeaderKeys.push(headersOf(init)["Idempotency-Key"]);
+        throw new TypeError("Failed to fetch");
+      },
+    );
+
+    const { result } = renderForcedCloud();
+    act(() => {
+      result.current.speak("bill me once");
+    });
+
+    await waitFor(() => {
+      expect(proxyUrls.some((url) => url.includes("/api/tts/cloud"))).toBe(
+        true,
+      );
+    });
+
+    const proxyCall = fetchWithCsrf.mock.calls.find(([url]) =>
+      String(url).includes("/api/tts/cloud"),
+    );
+    const proxyKey = headersOf(proxyCall?.[1] as RequestInit | undefined)[
+      "Idempotency-Key"
+    ];
+    expect(directHeaderKeys[0]).toBeTruthy();
+    expect(proxyKey).toBe(directHeaderKeys[0]);
   });
 
   it("falls back to the on-device proxy on a direct non-2xx and warns only once across segments", async () => {
