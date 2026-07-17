@@ -25,7 +25,6 @@ import {
   readFile,
   rm,
   stat,
-  writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -121,6 +120,7 @@ import {
   runIndependentVerification,
   shouldRunIndependentVerify,
 } from "./independent-verifier.js";
+import type { OrchestratorOwnedArtifact } from "./orchestrator-artifact-ownership.js";
 import {
   summarizeUsage,
   summarizeUsageRows,
@@ -170,17 +170,13 @@ import {
   TERMINAL_TASK_STATUSES,
   type UsageState,
 } from "./orchestrator-task-types.js";
-import {
-  isParentAgentBrokerWired,
-  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
-} from "./parent-agent-broker.js";
+import { isParentAgentBrokerWired } from "./parent-agent-broker.js";
 import {
   resolveBoundProjectCloudAppId,
   resolveTaskProjectId,
   resolveTaskSpawnWorkdir,
 } from "./project-binding.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
-import { buildSkillsManifest } from "./skill-manifest.js";
 import {
   configureSpendLedger,
   createTaskStoreSpendLedger,
@@ -652,6 +648,14 @@ function residualsRepoExpected(
     (session?.repo ?? "").trim().length > 0 ||
     (doc.task.boundRepo ?? "").trim().length > 0
   );
+}
+
+function residualsOrchestratorOwnedArtifacts(
+  acp: AcpService | undefined,
+  session: OrchestratorTaskSession | undefined,
+): OrchestratorOwnedArtifact[] {
+  if (!acp || !session) return [];
+  return acp.getOrchestratorOwnedArtifacts(session.sessionId);
 }
 
 /** Envelope-derived residuals legs from the VALID CompletionEnvelope stamped
@@ -2023,23 +2027,19 @@ export class OrchestratorTaskService extends Service {
     }
   }
 
-  /** The completion-evidence trajectory file path: a `completion-evidence.jsonl`
-   *  under the live session workdir's `.eliza/trajectories`, else a `~/.eliza`-
-   *  scoped per-task dir when no workspace is available. Deterministic so it can
-   *  be cited in the evidence before the file is actually written. */
+  /** The completion-evidence trajectory file path under the state dir. Keeping
+   *  the append-only artifact outside the workspace prevents evidence writes
+   *  from masking real dirty-tree residuals under `.eliza`. */
   private async resolveTrajectoryPath(
     taskId: string,
-    sessionId: string,
+    _sessionId: string,
   ): Promise<string> {
     let dir = join(homedir(), ".eliza", "trajectories", taskId);
     try {
-      const acp = this.acp();
-      const live = acp ? await acp.getSession(sessionId) : undefined;
-      const workdir = str(live?.workdir);
-      if (workdir) dir = join(workdir, ".eliza", "trajectories");
+      dir = join(resolveStateDir(), "trajectories", taskId);
     } catch {
-      // error-policy:J4 the ACP workdir lookup is optional enrichment; on failure
-      // fall back to the documented home-scoped trajectory dir.
+      // error-policy:J4 the configured state-dir lookup is optional enrichment;
+      // on failure fall back to the documented home-scoped trajectory dir.
     }
     return join(dir, "completion-evidence.jsonl");
   }
@@ -2842,10 +2842,15 @@ export class OrchestratorTaskService extends Service {
         : new Error("validation evidence is required");
     }
     const workspaceSession = latestWorkspaceSession(doc);
+    const acp = this.acp();
     let residuals = residualsGateEnabled()
       ? await collectCompletionResiduals({
           workdir: workspaceSession?.workdir,
           repoExpected: residualsRepoExpected(doc, workspaceSession),
+          orchestratorOwnedArtifacts: residualsOrchestratorOwnedArtifacts(
+            acp,
+            workspaceSession,
+          ),
           ...envelopeResidualLegs(doc.task.metadata),
         })
       : undefined;
@@ -3162,9 +3167,14 @@ export class OrchestratorTaskService extends Service {
         const reportingSession = doc.sessions.find(
           (session) => session.sessionId === sessionId,
         );
+        const acp = this.acp();
         const residuals = await collectCompletionResiduals({
           workdir: reportingSession?.workdir,
           repoExpected: residualsRepoExpected(doc, reportingSession),
+          orchestratorOwnedArtifacts: residualsOrchestratorOwnedArtifacts(
+            acp,
+            reportingSession,
+          ),
           ...(parse.present && parse.ok
             ? {
                 testResults: parse.envelope.testResults,
@@ -4358,30 +4368,6 @@ export class OrchestratorTaskService extends Service {
       ...(capabilityProfile ? { capabilityProfile } : {}),
       brokerWired,
     });
-
-    // Economics tasks drive the monetized-app loop through the parent-agent
-    // Cloud command broker. Write a SKILLS.md into the workdir that advertises
-    // the broker slug + its arg contract so the spawned agent knows how to call
-    // back (the dispatcher in SubAgentRouter executes those requests).
-    if (capabilityProfile === "economics" && workdir) {
-      try {
-        const manifest = await buildSkillsManifest(this.runtime, {
-          recommendedSlugs: ["build-monetized-app", "eliza-cloud"],
-          virtualSkills: [{ ...PARENT_AGENT_BROKER_MANIFEST_ENTRY }],
-          // Economics tasks may deploy Cloud views — teach the sub-agent the
-          // ViewKind contract so views are categorized correctly. (#8917)
-          includeViewKindContract: true,
-        });
-        await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
-      } catch (err) {
-        // error-policy:J7 SKILLS.md scaffolding is best-effort; a failed write is
-        // warned and the spawn proceeds without it.
-        this.runtime.logger?.warn?.(
-          { src: "orchestrator-task-service", taskId, workdir },
-          `failed to write SKILLS.md: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
 
     // Trace correlation (#13775): stamp the parent turn's traceId +
     // parent-step onto the sub-agent env so its self-recorded trajectories join

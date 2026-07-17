@@ -85,6 +85,10 @@ import {
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
 import {
+  createOwnedArtifactRecord,
+  type OrchestratorOwnedArtifact,
+} from "./orchestrator-artifact-ownership.js";
+import {
   isParentAgentBrokerWired,
   PARENT_AGENT_BROKER_MANIFEST_ENTRY,
 } from "./parent-agent-broker.js";
@@ -813,6 +817,12 @@ export class AcpService extends Service {
   // static ELIZA_MODEL_GATEWAY_TOKEN) is injected into the child env, and the
   // lease is revoked when the session reaches a terminal event.
   private readonly modelLeases = new Map<string, ModelGatewayLease>();
+  // Per-session files the orchestrator wrote into the workdir, fingerprinted at
+  // write time so only unchanged orchestrator-produced bytes are exempted.
+  private readonly orchestratorOwnedArtifactsBySession = new Map<
+    string,
+    OrchestratorOwnedArtifact[]
+  >();
   // Per-session set of file paths the agent wrote via edit/write tool calls.
   // The only signal that distinguishes a gitignored deploy target the agent
   // authored from gitignored install output git never sees. Accumulated live
@@ -1530,6 +1540,7 @@ export class AcpService extends Service {
       this.outputBuffers.delete(id);
       this.turnOutputBuffers.delete(id);
       this.changedPathsBySession.delete(id);
+      this.orchestratorOwnedArtifactsBySession.delete(id);
       this.nativeClients.delete(id);
       this.persistedStdoutSessions.delete(id);
       this.pendingStdoutWrites.delete(id);
@@ -1630,7 +1641,10 @@ export class AcpService extends Service {
       // Give the sub-agent its eliza-context + non-interactive operating manual on
       // disk (where every backend reads it) — only when the workspace is bare, so
       // a real repo's own AGENTS.md/CLAUDE.md is never clobbered.
-      await writeWorkspaceIdentity(workdir, { brokerWired });
+      this.recordOrchestratorOwnedArtifacts(
+        id,
+        await writeWorkspaceIdentity(workdir, { brokerWired }),
+      );
       // Write SKILLS.md into every spawn workspace so a child can discover (and
       // request, via the parent) the parent's installed skills — not just the
       // economics loop. The broker skill is advertised only when wired; the
@@ -1942,7 +1956,15 @@ export class AcpService extends Service {
         includeViewKindContract:
           opts.skillsManifest?.includeViewKindContract ?? false,
       });
-      await writeFile(join(workdir, "SKILLS.md"), manifest.markdown, "utf8");
+      const skillsPath = join(workdir, "SKILLS.md");
+      await writeFile(skillsPath, manifest.markdown, "utf8");
+      const record = createOwnedArtifactRecord(
+        workdir,
+        skillsPath,
+        manifest.markdown,
+        "skills-manifest",
+      );
+      if (record) this.recordOrchestratorOwnedArtifacts(sessionId, [record]);
     } catch (err) {
       // error-policy:J7 SKILLS.md scaffolding is best-effort; a failed write is
       // warned and the spawn proceeds without it — a missing manifest only
@@ -2214,6 +2236,7 @@ export class AcpService extends Service {
     this.outputBuffers.delete(sessionId);
     this.turnOutputBuffers.delete(sessionId);
     this.changedPathsBySession.delete(sessionId);
+    this.orchestratorOwnedArtifactsBySession.delete(sessionId);
     this.persistedStdoutSessions.delete(sessionId);
     this.pendingStdoutWrites.delete(sessionId);
   }
@@ -4270,6 +4293,29 @@ export class AcpService extends Service {
   /** File paths the agent wrote via edit/write tool calls this session. */
   getChangedPaths(sessionId: string): string[] {
     return [...(this.changedPathsBySession.get(sessionId) ?? [])];
+  }
+
+  private recordOrchestratorOwnedArtifacts(
+    sessionId: string,
+    artifacts: readonly OrchestratorOwnedArtifact[],
+  ): void {
+    if (artifacts.length === 0) return;
+    const existing =
+      this.orchestratorOwnedArtifactsBySession.get(sessionId) ?? [];
+    const byPath = new Map(
+      existing.map((artifact) => [artifact.path, artifact]),
+    );
+    for (const artifact of artifacts) byPath.set(artifact.path, artifact);
+    this.orchestratorOwnedArtifactsBySession.set(sessionId, [
+      ...byPath.values(),
+    ]);
+  }
+
+  /** Workspace artifacts the orchestrator wrote and fingerprinted. */
+  getOrchestratorOwnedArtifacts(
+    sessionId: string,
+  ): OrchestratorOwnedArtifact[] {
+    return [...(this.orchestratorOwnedArtifactsBySession.get(sessionId) ?? [])];
   }
 
   private setting(key: string): string | undefined {
