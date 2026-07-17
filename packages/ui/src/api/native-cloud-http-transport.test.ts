@@ -253,6 +253,47 @@ describe("binary cloud responses (#16106)", () => {
     expect(globalFetchMock).not.toHaveBeenCalled();
   });
 
+  it("preserves JSON error bodies when the binary request fails (CapacitorHttp returns a parsed object)", async () => {
+    // CapacitorHttp ignores responseType=arraybuffer for application/json and
+    // hands back a parsed object; the transport must surface that error text
+    // instead of blanking it through the base64 decoder.
+    capacitorHttpRequestMock.mockResolvedValueOnce({
+      status: 401,
+      headers: { "content-type": "application/json" },
+      data: { error: "invalid token" },
+    });
+    const url = "https://api.elizacloud.ai/api/v1/voice/tts";
+    const response = await nativeCloudHttpTransportForUrl(url)?.request(
+      url,
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer expired" },
+        body: JSON.stringify({ text: "hello" }),
+      },
+      { responseType: "arraybuffer" },
+    );
+
+    expect(response?.status).toBe(401);
+    expect(await (response as Response).text()).toContain("invalid token");
+  });
+
+  it("preserves string error bodies on non-2xx binary responses", async () => {
+    capacitorHttpRequestMock.mockResolvedValueOnce({
+      status: 400,
+      headers: { "content-type": "text/plain" },
+      data: "text is required",
+    });
+    const url = "https://api.elizacloud.ai/api/v1/voice/tts";
+    const response = await nativeCloudHttpTransportForUrl(url)?.request(
+      url,
+      { method: "POST", headers: {}, body: "{}" },
+      { responseType: "arraybuffer" },
+    );
+
+    expect(response?.status).toBe(400);
+    expect(await (response as Response).text()).toBe("text is required");
+  });
+
   it("surfaces a 302 without following or replaying its bearer", async () => {
     capacitorHttpRequestMock.mockResolvedValueOnce({
       status: 302,

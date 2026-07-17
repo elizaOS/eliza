@@ -162,8 +162,21 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
         : {}),
     });
 
+    // CapacitorHttp ignores the requested `arraybuffer` responseType for
+    // `application/json` responses and delivers a parsed object instead of
+    // base64. That happens exactly on the failure path (e.g. a 400/401/403
+    // JSON error from /api/v1/voice/tts), so routing it through
+    // `responseBytes()` would blank the body and hide the error text from
+    // callers. Only decode base64 for successful binary payloads; keep the
+    // text/JSON body path for errors and non-string data so `res.text()`
+    // still surfaces the server's message.
+    const useBinaryBody =
+      wantsBinary &&
+      result.status >= 200 &&
+      result.status < 300 &&
+      typeof result.data === "string";
     return new Response(
-      wantsBinary ? responseBytes(result.data) : responseBody(result.data),
+      useBinaryBody ? responseBytes(result.data) : responseBody(result.data),
       {
         status: result.status,
         headers: result.headers,
