@@ -60,6 +60,9 @@ describe("useVoiceChat local ASR", () => {
       useVoiceChat({
         onTranscript,
         onTranscriptPreview,
+        // Pinned: this suite asserts the LOCAL route; without a cloud session
+        // an unready local-inference must not degrade to cloud (#16524).
+        cloudConnected: false,
         voiceConfig: {
           provider: "local-inference",
           asr: { provider: "local-inference" },
