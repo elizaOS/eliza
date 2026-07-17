@@ -31,6 +31,12 @@ import {
 
 const THREAD_LENGTH = 450;
 
+interface InboxMessagesRequest {
+  limit?: number;
+  roomId?: string;
+  roomSource?: string;
+}
+
 function seedMessages(count: number): ConversationMessage[] {
   const now = Date.now();
   const msgs: ConversationMessage[] = [];
@@ -48,16 +54,8 @@ function seedMessages(count: number): ConversationMessage[] {
 
 const seeded = seedMessages(THREAD_LENGTH);
 const inboxClient = vi.hoisted(() => ({
-  getInboxMessages: vi.fn(async () => ({
-    messages: [
-      {
-        id: "inbox-1",
-        role: "assistant",
-        text: "Connector message",
-        timestamp: 10,
-        source: "discord",
-      },
-    ] as ConversationMessage[],
+  getInboxMessages: vi.fn(async (_request?: InboxMessagesRequest) => ({
+    messages: [] as ConversationMessage[],
   })),
   sendInboxMessage: vi.fn(async () => ({
     message: {
@@ -248,16 +246,30 @@ describe("ChatView transcript render window (#15281)", () => {
     appState.activeInboxChat = null;
     appState.activeTerminalSessionId = null;
     inboxClient.getInboxMessages.mockReset();
-    inboxClient.getInboxMessages.mockResolvedValue({
-      messages: [
-        {
-          id: "inbox-1",
-          role: "assistant",
-          text: "Connector message",
-          timestamp: 10,
-          source: "discord",
-        },
-      ],
+    inboxClient.getInboxMessages.mockImplementation(async (request) => {
+      if (
+        request?.limit !== 200 ||
+        request.roomSource !== "discord" ||
+        (request.roomId !== "discord-room" &&
+          request.roomId !== "room-1" &&
+          request.roomId !== "discord-room-1")
+      ) {
+        return { messages: [] };
+      }
+      return {
+        messages: [
+          {
+            id: "inbox-1",
+            role: "assistant",
+            text:
+              request.roomId === "discord-room-1"
+                ? "Inbox history loaded"
+                : "Connector message",
+            timestamp: 10,
+            source: "discord",
+          },
+        ],
+      };
     });
     inboxClient.sendInboxMessage.mockReset();
     inboxClient.sendInboxMessage.mockResolvedValue({
@@ -374,18 +386,6 @@ describe("ChatView transcript render window (#15281)", () => {
       worldId: "server-1",
       worldLabel: "Eliza team",
     };
-    inboxClient.getInboxMessages.mockResolvedValue({
-      messages: [
-        {
-          id: "inbox-1",
-          role: "assistant",
-          text: "Inbox history loaded",
-          timestamp: 1,
-          source: "discord",
-        },
-      ],
-    });
-
     render(<ChatView hideComposer />);
 
     expect(await screen.findByText("Design room")).toBeTruthy();

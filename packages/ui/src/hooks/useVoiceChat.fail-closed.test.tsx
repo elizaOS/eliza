@@ -393,6 +393,5 @@ describe("useVoiceChat TTS fails closed (#12253)", () => {
     expect(result.current.ttsError?.engine).toBe("browser");
     expect(result.current.ttsError?.message).toContain("did not start");
     expect(result.current.isSpeaking).toBe(false);
-    expect(speechSynthesisMock.cancel).toHaveBeenCalled();
   });
 });

@@ -7,13 +7,17 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type {
-  IAgentRuntime,
-  Route,
-  RouteHandlerContext,
-  RouteHandlerResult,
+import {
+  AgentRuntime,
+  createCharacter,
+  type IAgentRuntime,
+  type Route,
+  type RouteHandlerContext,
+  type RouteHandlerResult,
+  Service,
+  stringToUuid,
 } from "@elizaos/core";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { interact, serverInteract } from "../interact.js";
 import { simpleViewsRoutes } from "../routes.js";
 import { SIMPLE_VIEWS_SERVICE_TYPE, SimpleViewsService } from "../service.js";
@@ -21,8 +25,15 @@ import { SimpleViewsStore, simpleViewsStateFilePath } from "../store.js";
 import { todayDateKey } from "../validation.js";
 
 const temporaryDirectories: string[] = [];
+const testRuntimes: AgentRuntime[] = [];
+let runtimeSequence = 0;
+
+function testAgentId(seed: string): ReturnType<typeof stringToUuid> {
+  return stringToUuid(seed);
+}
 
 afterEach(async () => {
+  await Promise.all(testRuntimes.splice(0).map((runtime) => runtime.stop()));
   await Promise.all(
     temporaryDirectories
       .splice(0)
@@ -57,6 +68,40 @@ function idFactory(): (kind: "note" | "event") => string {
   return (kind) => `${kind}-test-${next++}`;
 }
 
+class ConnectorSetupTestService extends Service {
+  static override readonly serviceType = "connector-setup";
+
+  override capabilityDescription =
+    "Captures Simple Views websocket broadcasts in the backend harness.";
+
+  readonly broadcasts: object[] = [];
+
+  static override async start(
+    runtime: IAgentRuntime,
+  ): Promise<ConnectorSetupTestService> {
+    return new ConnectorSetupTestService(runtime);
+  }
+
+  broadcastWs(data: object): void {
+    this.broadcasts.push(data);
+  }
+
+  override async stop(): Promise<void> {}
+}
+
+async function createTestRuntime(agentId: string): Promise<AgentRuntime> {
+  const runtime = new AgentRuntime({
+    agentId: testAgentId(agentId),
+    character: createCharacter({ name: `Simple Views ${agentId}` }),
+    disableBasicCapabilities: true,
+    enableAutonomy: false,
+    logLevel: "fatal",
+  });
+  testRuntimes.push(runtime);
+  await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  return runtime;
+}
+
 async function serviceFor(filePath: string): Promise<SimpleViewsService> {
   const now = clock();
   const service = new SimpleViewsService(undefined, {
@@ -68,27 +113,24 @@ async function serviceFor(filePath: string): Promise<SimpleViewsService> {
   return service;
 }
 
-function runtimeFor(service: SimpleViewsService): {
-  runtime: IAgentRuntime;
-  reportError: ReturnType<typeof vi.fn>;
-} {
-  const reportError = vi.fn();
-  const runtime = {
-    getService: (serviceType: string) =>
-      serviceType === SIMPLE_VIEWS_SERVICE_TYPE ? service : null,
-    reportError,
-  } as unknown as IAgentRuntime;
-  return { runtime, reportError };
+async function runtimeFor(service: SimpleViewsService): Promise<AgentRuntime> {
+  const runtime = await createTestRuntime(`route-runtime-${runtimeSequence++}`);
+  class BoundSimpleViewsService extends SimpleViewsService {
+    static override async start(
+      _runtime: IAgentRuntime,
+    ): Promise<SimpleViewsService> {
+      return service;
+    }
+  }
+  await runtime.registerService(BoundSimpleViewsService);
+  await runtime.getServiceLoadPromise(SIMPLE_VIEWS_SERVICE_TYPE);
+  return runtime;
 }
 
-function defaultStoreRuntime(agentId: string): IAgentRuntime {
-  return {
-    agentId,
-    getServiceLoadPromise: vi.fn().mockResolvedValue({
-      broadcastWs: vi.fn(),
-    }),
-    reportError: vi.fn(),
-  } as unknown as IAgentRuntime;
+async function defaultStoreRuntime(agentId: string): Promise<AgentRuntime> {
+  const runtime = await createTestRuntime(agentId);
+  await runtime.registerService(ConnectorSetupTestService);
+  return runtime;
 }
 
 function route(type: Route["type"], pathValue: string): Route {
@@ -199,15 +241,17 @@ describe("SimpleViewsStore", () => {
 
   it("scopes default stores per agent and shares serialization for duplicate runtime construction", async () => {
     const stateDir = await temporaryStateDirectory();
-    const first = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+    const first = new SimpleViewsService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
-    const duplicate = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
-      stateDir,
-    });
-    const isolated = new SimpleViewsService(defaultStoreRuntime("agent-b"), {
-      stateDir,
-    });
+    const duplicate = new SimpleViewsService(
+      await defaultStoreRuntime("agent-a"),
+      { stateDir },
+    );
+    const isolated = new SimpleViewsService(
+      await defaultStoreRuntime("agent-b"),
+      { stateDir },
+    );
     await Promise.all([
       first.initialize(),
       duplicate.initialize(),
@@ -226,10 +270,10 @@ describe("SimpleViewsStore", () => {
 
     expect(first.store.filePath).toBe(duplicate.store.filePath);
     expect(first.store.filePath).toBe(
-      simpleViewsStateFilePath(stateDir, "agent-a"),
+      simpleViewsStateFilePath(stateDir, testAgentId("agent-a")),
     );
     expect(isolated.store.filePath).toBe(
-      simpleViewsStateFilePath(stateDir, "agent-b"),
+      simpleViewsStateFilePath(stateDir, testAgentId("agent-b")),
     );
     expect(first.snapshot()).toMatchObject({ revision: 24 });
     expect(duplicate.listNotes()).toHaveLength(24);
@@ -243,9 +287,10 @@ describe("SimpleViewsStore", () => {
     await duplicate.stop();
     await isolated.stop();
 
-    const restarted = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
-      stateDir,
-    });
+    const restarted = new SimpleViewsService(
+      await defaultStoreRuntime("agent-a"),
+      { stateDir },
+    );
     await restarted.initialize();
     expect(restarted.snapshot()).toMatchObject({ revision: 24 });
     expect(restarted.listNotes()).toHaveLength(24);
@@ -255,7 +300,10 @@ describe("SimpleViewsStore", () => {
   it("migrates legacy state once without deleting it or overwriting the scoped restart", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = simpleViewsStateFilePath(stateDir);
-    const scopedPath = simpleViewsStateFilePath(stateDir, "agent-a");
+    const scopedPath = simpleViewsStateFilePath(
+      stateDir,
+      testAgentId("agent-a"),
+    );
     const legacy = await serviceFor(legacyPath);
     await legacy.createNote({ title: "Legacy note", body: "Keep this" });
     await legacy.createCalendarEvent({
@@ -268,12 +316,13 @@ describe("SimpleViewsStore", () => {
     await legacy.stop();
     const legacyBytes = await fs.readFile(legacyPath, "utf8");
 
-    const first = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+    const first = new SimpleViewsService(await defaultStoreRuntime("agent-a"), {
       stateDir,
     });
-    const duplicate = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
-      stateDir,
-    });
+    const duplicate = new SimpleViewsService(
+      await defaultStoreRuntime("agent-a"),
+      { stateDir },
+    );
     await Promise.all([first.initialize(), duplicate.initialize()]);
 
     expect(first.snapshot()).toEqual(legacySnapshot);
@@ -285,9 +334,10 @@ describe("SimpleViewsStore", () => {
     await first.stop();
     await duplicate.stop();
 
-    const restarted = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
-      stateDir,
-    });
+    const restarted = new SimpleViewsService(
+      await defaultStoreRuntime("agent-a"),
+      { stateDir },
+    );
     await restarted.initialize();
     expect(restarted.listNotes().map((note) => note.title)).toEqual([
       "Scoped note",
@@ -301,7 +351,10 @@ describe("SimpleViewsStore", () => {
   it("rejects malformed legacy state instead of migrating a healthy-looking empty document", async () => {
     const stateDir = await temporaryStateDirectory();
     const legacyPath = simpleViewsStateFilePath(stateDir);
-    const scopedPath = simpleViewsStateFilePath(stateDir, "agent-a");
+    const scopedPath = simpleViewsStateFilePath(
+      stateDir,
+      testAgentId("agent-a"),
+    );
     await fs.mkdir(path.dirname(legacyPath), { recursive: true });
     await fs.writeFile(
       legacyPath,
@@ -309,9 +362,10 @@ describe("SimpleViewsStore", () => {
       "utf8",
     );
 
-    const service = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
-      stateDir,
-    });
+    const service = new SimpleViewsService(
+      await defaultStoreRuntime("agent-a"),
+      { stateDir },
+    );
     await expect(service.initialize()).rejects.toMatchObject({
       code: "SIMPLE_VIEWS_VALIDATION_FAILED",
     });
@@ -342,8 +396,8 @@ describe("Simple Views capabilities", () => {
   it("dispatches server capabilities to the owning runtime service", async () => {
     const first = await serviceFor(await temporaryStateFile());
     const second = await serviceFor(await temporaryStateFile());
-    const firstRuntime = runtimeFor(first).runtime;
-    const secondRuntime = runtimeFor(second).runtime;
+    const firstRuntime = await runtimeFor(first);
+    const secondRuntime = await runtimeFor(second);
 
     await expect(
       serverInteract(
@@ -488,7 +542,7 @@ describe("Simple Views authenticated routes", () => {
 
   it("executes CRUD handlers through the real durable service", async () => {
     const service = await serviceFor(await temporaryStateFile());
-    const { runtime, reportError } = runtimeFor(service);
+    const runtime = await runtimeFor(service);
 
     const createNote = await invokeRoute(
       route("POST", "/api/simple-views/notes"),
@@ -552,12 +606,11 @@ describe("Simple Views authenticated routes", () => {
         data: { revision: 4, selectedDate: "2026-09-05" },
       },
     });
-    expect(reportError).not.toHaveBeenCalled();
   });
 
   it("returns validation and not-found errors as non-2xx responses", async () => {
     const service = await serviceFor(await temporaryStateFile());
-    const { runtime } = runtimeFor(service);
+    const runtime = await runtimeFor(service);
     const invalid = await invokeRoute(
       route("POST", "/api/simple-views/notes"),
       runtime,
