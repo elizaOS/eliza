@@ -29,6 +29,10 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { resolvePlatform } from "@elizaos/shared/runtime-env";
+import {
+  createCodingAgentScheduleDispatcher,
+  PR_SHEPHERD_DISPATCH_CHANNEL,
+} from "../coding-agent-schedules.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import {
   type CompletionCheckRegistry,
@@ -351,6 +355,21 @@ function buildRunner(
 
   const consolidation = deps.consolidation ?? createConsolidationRegistry();
 
+  const dispatcher = createCodingAgentScheduleDispatcher(runtime, {
+    delegate: deps.dispatcher,
+  });
+  const hostChannelKeys = deps.channelKeys;
+  const channelKeys = hostChannelKeys
+    ? () => new Set([...hostChannelKeys(), PR_SHEPHERD_DISPATCH_CHANNEL])
+    : undefined;
+  const hostChannelAvailable = deps.channelAvailable;
+  const channelAvailable = hostChannelAvailable
+    ? (channelKey: string) =>
+        channelKey === PR_SHEPHERD_DISPATCH_CHANNEL
+          ? true
+          : hostChannelAvailable(channelKey)
+    : undefined;
+
   return createScheduledTaskRunner({
     agentId: opts.agentId,
     store: deps.store,
@@ -364,11 +383,9 @@ function buildRunner(
     globalPause: deps.globalPause,
     activity: deps.activity,
     subjectStore: deps.subjectStore,
-    dispatcher: deps.dispatcher,
-    ...(deps.channelKeys ? { channelKeys: deps.channelKeys } : {}),
-    ...(deps.channelAvailable
-      ? { channelAvailable: deps.channelAvailable }
-      : {}),
+    dispatcher,
+    ...(channelKeys ? { channelKeys } : {}),
+    ...(channelAvailable ? { channelAvailable } : {}),
     ...(deps.hostCapabilities
       ? { hostCapabilities: deps.hostCapabilities }
       : {}),
