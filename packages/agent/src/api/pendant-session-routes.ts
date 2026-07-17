@@ -39,6 +39,7 @@ import { loadElizaConfig } from "../config/config.ts";
 import {
   createPendantSessionRepository,
   type PendantSessionRepository,
+  PendantSessionRevisionConflictError,
   type StoredPendantSessionDocument,
 } from "../services/pendant-session/repository.ts";
 import { getViewsBroadcastWs } from "./views-routes.ts";
@@ -318,7 +319,12 @@ function commit(stored: StoredPendantSessionDocument): void {
 
 function validateInsightRefs(stored: StoredPendantSessionDocument): void {
   const segmentIds = new Set(stored.segments.map((segment) => segment.id));
+  const refIds = new Set<string>();
   for (const ref of stored.insightRefs) {
+    if (refIds.has(ref.id)) {
+      throw routeError("validation", `Duplicate insight ref id ${ref.id}`, 400);
+    }
+    refIds.add(ref.id);
     for (const segmentId of ref.segmentIds) {
       if (!segmentIds.has(segmentId)) {
         throw routeError(
@@ -393,6 +399,21 @@ function sendTypedError(ctx: PendantSessionRouteContext, err: unknown): void {
         },
       },
       err.status,
+    );
+    return;
+  }
+  if (err instanceof PendantSessionRevisionConflictError) {
+    ctx.json(
+      ctx.res,
+      {
+        ok: false,
+        error: {
+          code: "revision_conflict",
+          message: err.message,
+          currentRevision: err.currentRevision,
+        },
+      },
+      409,
     );
     return;
   }

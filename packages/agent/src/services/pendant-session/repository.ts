@@ -19,6 +19,7 @@ import {
 
 type RuntimeDb = {
   execute: (query: RawSqlQuery) => Promise<unknown>;
+  transaction?: <T>(work: (tx: RuntimeDb) => Promise<T>) => Promise<T>;
 };
 
 type RawSqlQuery = {
@@ -63,14 +64,26 @@ async function getSqlRaw(): Promise<(query: string) => RawSqlQuery> {
 async function executeRawSql(
   runtime: RuntimeWithDatabase,
   sqlText: string,
+  executor?: RuntimeDb,
 ): Promise<Array<Record<string, unknown>>> {
-  const db = runtime.adapter.db as RuntimeDb | undefined;
+  const db = executor ?? (runtime.adapter.db as RuntimeDb | undefined);
   if (!db || typeof db.execute !== "function") {
     throw new Error("runtime database adapter unavailable");
   }
   const raw = await getSqlRaw();
   const result = await db.execute(raw(sqlText));
   return extractRows(result);
+}
+
+async function runTransaction<T>(
+  runtime: RuntimeWithDatabase,
+  work: (db: RuntimeDb) => Promise<T>,
+): Promise<T> {
+  const db = runtime.adapter.db as RuntimeDb | undefined;
+  if (!db || typeof db.transaction !== "function") {
+    throw new Error("runtime database transaction adapter unavailable");
+  }
+  return db.transaction((tx) => work(tx));
 }
 
 function toText(value: unknown, fallback = ""): string {
@@ -155,6 +168,16 @@ export interface PendantSessionRepository {
   }): Promise<void>;
 }
 
+export class PendantSessionRevisionConflictError extends Error {
+  constructor(
+    readonly currentRevision: number,
+    message = "Pendant session revision does not match",
+  ) {
+    super(message);
+    this.name = "PendantSessionRevisionConflictError";
+  }
+}
+
 function rowSession(
   row: Record<string, unknown>,
 ): StoredPendantSessionDocument["session"] {
@@ -222,6 +245,60 @@ function rowInsightRef(row: Record<string, unknown>): PendantInsightRef {
 
 export class SqlPendantSessionRepository implements PendantSessionRepository {
   constructor(private readonly runtime: RuntimeWithDatabase) {}
+
+  private async currentRevision(
+    session: StoredPendantSessionDocument["session"],
+    executor: RuntimeDb,
+  ): Promise<number | null> {
+    const [row] = await executeRawSql(
+      this.runtime,
+      `SELECT revision
+         FROM app_lifeops.pendant_sessions
+        WHERE owner_id = ${sqlQuote(session.ownerId)}
+          AND agent_id = ${sqlQuote(session.agentId)}
+          AND id = ${sqlQuote(session.id)}
+        LIMIT 1`,
+      executor,
+    );
+    return row ? toNumber(row.revision, 0) : null;
+  }
+
+  private async saveSessionWithDb(
+    stored: StoredPendantSessionDocument,
+    executor: RuntimeDb,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const session = stored.session;
+    const lease = session.captureLease;
+    const expectedRevision = session.revision - 1;
+    if (expectedRevision < 0) {
+      throw new Error("session revision update requires a prior revision");
+    }
+    const rows = await executeRawSql(
+      this.runtime,
+      `UPDATE app_lifeops.pendant_sessions
+          SET ended_at = ${sqlText(session.endedAt)},
+              state = ${sqlQuote(session.state)},
+              processing_location = ${sqlQuote(session.processingLocation)},
+              revision = ${sqlInteger(session.revision)},
+              capture_lease_holder = ${sqlText(lease?.holder)},
+              capture_lease_expires_at = ${sqlText(lease?.expiresAt)},
+              capture_lease_token_digest = ${sqlText(lease?.tokenDigest)},
+              updated_at = ${sqlQuote(now)}
+        WHERE owner_id = ${sqlQuote(session.ownerId)}
+          AND agent_id = ${sqlQuote(session.agentId)}
+          AND id = ${sqlQuote(session.id)}
+          AND revision = ${sqlInteger(expectedRevision)}
+        RETURNING revision`,
+      executor,
+    );
+    if (rows.length === 1) return;
+    const currentRevision = await this.currentRevision(session, executor);
+    if (currentRevision !== null) {
+      throw new PendantSessionRevisionConflictError(currentRevision);
+    }
+    throw new Error("pendant session row disappeared during revision update");
+  }
 
   async load(params: {
     ownerId: string;
@@ -300,41 +377,11 @@ export class SqlPendantSessionRepository implements PendantSessionRepository {
   }
 
   async saveSession(stored: StoredPendantSessionDocument): Promise<void> {
-    const now = new Date().toISOString();
-    const session = stored.session;
-    const lease = session.captureLease;
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.pendant_sessions (
-         id, owner_id, agent_id, started_at, ended_at, state,
-         processing_location, revision, capture_lease_holder,
-         capture_lease_expires_at, capture_lease_token_digest,
-         created_at, updated_at
-       ) VALUES (
-         ${sqlQuote(session.id)},
-         ${sqlQuote(session.ownerId)},
-         ${sqlQuote(session.agentId)},
-         ${sqlQuote(session.startedAt)},
-         ${sqlText(session.endedAt)},
-         ${sqlQuote(session.state)},
-         ${sqlQuote(session.processingLocation)},
-         ${sqlInteger(session.revision)},
-         ${sqlText(lease?.holder)},
-         ${sqlText(lease?.expiresAt)},
-         ${sqlText(lease?.tokenDigest)},
-         ${sqlQuote(session.startedAt)},
-         ${sqlQuote(now)}
-       )
-       ON CONFLICT (owner_id, agent_id, id) DO UPDATE SET
-         ended_at = EXCLUDED.ended_at,
-         state = EXCLUDED.state,
-         processing_location = EXCLUDED.processing_location,
-         revision = EXCLUDED.revision,
-         capture_lease_holder = EXCLUDED.capture_lease_holder,
-         capture_lease_expires_at = EXCLUDED.capture_lease_expires_at,
-         capture_lease_token_digest = EXCLUDED.capture_lease_token_digest,
-         updated_at = EXCLUDED.updated_at`,
-    );
+    const db = this.runtime.adapter.db as RuntimeDb | undefined;
+    if (!db || typeof db.execute !== "function") {
+      throw new Error("runtime database adapter unavailable");
+    }
+    await this.saveSessionWithDb(stored, db);
   }
 
   async saveSegment(
@@ -342,78 +389,85 @@ export class SqlPendantSessionRepository implements PendantSessionRepository {
     segment: PendantSegment,
   ): Promise<void> {
     const session = stored.session;
-    await this.saveSession(stored);
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.pendant_session_segments (
-         id, session_id, owner_id, agent_id, ordinal, status, text, words_json,
-         speaker_cluster, speaker_alias, confidence, error, started_at,
-         ended_at, revision, created_at, updated_at
-       ) VALUES (
-         ${sqlQuote(segment.id)},
-         ${sqlQuote(session.id)},
-         ${sqlQuote(session.ownerId)},
-         ${sqlQuote(session.agentId)},
-         ${sqlInteger(segment.ordinal)},
-         ${sqlQuote(segment.status)},
-         ${sqlQuote(segment.text)},
-         ${sqlJson(segment.words)},
-         ${sqlText(segment.speakerCluster)},
-         ${sqlText(segment.speakerAlias)},
-         ${sqlNumber(segment.confidence)},
-         ${sqlText(segment.error)},
-         ${sqlQuote(segment.startedAt)},
-         ${sqlText(segment.endedAt)},
-         ${sqlInteger(segment.revision)},
-         ${sqlQuote(segment.createdAt)},
-         ${sqlQuote(segment.updatedAt)}
-       )
-       ON CONFLICT (owner_id, agent_id, session_id, id) DO UPDATE SET
-         ordinal = EXCLUDED.ordinal,
-         status = EXCLUDED.status,
-         text = EXCLUDED.text,
-         words_json = EXCLUDED.words_json,
-         speaker_cluster = EXCLUDED.speaker_cluster,
-         speaker_alias = EXCLUDED.speaker_alias,
-         confidence = EXCLUDED.confidence,
-         error = EXCLUDED.error,
-         started_at = EXCLUDED.started_at,
-         ended_at = EXCLUDED.ended_at,
-         revision = EXCLUDED.revision,
-         updated_at = EXCLUDED.updated_at`,
-    );
+    await runTransaction(this.runtime, async (tx) => {
+      await this.saveSessionWithDb(stored, tx);
+      await executeRawSql(
+        this.runtime,
+        `INSERT INTO app_lifeops.pendant_session_segments (
+           id, session_id, owner_id, agent_id, ordinal, status, text, words_json,
+           speaker_cluster, speaker_alias, confidence, error, started_at,
+           ended_at, revision, created_at, updated_at
+         ) VALUES (
+           ${sqlQuote(segment.id)},
+           ${sqlQuote(session.id)},
+           ${sqlQuote(session.ownerId)},
+           ${sqlQuote(session.agentId)},
+           ${sqlInteger(segment.ordinal)},
+           ${sqlQuote(segment.status)},
+           ${sqlQuote(segment.text)},
+           ${sqlJson(segment.words)},
+           ${sqlText(segment.speakerCluster)},
+           ${sqlText(segment.speakerAlias)},
+           ${sqlNumber(segment.confidence)},
+           ${sqlText(segment.error)},
+           ${sqlQuote(segment.startedAt)},
+           ${sqlText(segment.endedAt)},
+           ${sqlInteger(segment.revision)},
+           ${sqlQuote(segment.createdAt)},
+           ${sqlQuote(segment.updatedAt)}
+         )
+         ON CONFLICT (owner_id, agent_id, session_id, id) DO UPDATE SET
+           ordinal = EXCLUDED.ordinal,
+           status = EXCLUDED.status,
+           text = EXCLUDED.text,
+           words_json = EXCLUDED.words_json,
+           speaker_cluster = EXCLUDED.speaker_cluster,
+           speaker_alias = EXCLUDED.speaker_alias,
+           confidence = EXCLUDED.confidence,
+           error = EXCLUDED.error,
+           started_at = EXCLUDED.started_at,
+           ended_at = EXCLUDED.ended_at,
+           revision = EXCLUDED.revision,
+           updated_at = EXCLUDED.updated_at`,
+        tx,
+      );
+    });
   }
 
   async replaceInsightRefs(
     stored: StoredPendantSessionDocument,
   ): Promise<void> {
     const session = stored.session;
-    await this.saveSession(stored);
-    await executeRawSql(
-      this.runtime,
-      `DELETE FROM app_lifeops.pendant_session_insight_refs
-        WHERE owner_id = ${sqlQuote(session.ownerId)}
-          AND agent_id = ${sqlQuote(session.agentId)}
-          AND session_id = ${sqlQuote(session.id)}`,
-    );
-    for (const ref of stored.insightRefs) {
+    await runTransaction(this.runtime, async (tx) => {
+      await this.saveSessionWithDb(stored, tx);
       await executeRawSql(
         this.runtime,
-        `INSERT INTO app_lifeops.pendant_session_insight_refs (
-           id, session_id, owner_id, agent_id, segment_ids_json,
-           revision, created_at, updated_at
-         ) VALUES (
-           ${sqlQuote(ref.id)},
-           ${sqlQuote(session.id)},
-           ${sqlQuote(session.ownerId)},
-           ${sqlQuote(session.agentId)},
-           ${sqlJson(ref.segmentIds)},
-           ${sqlInteger(ref.revision)},
-           ${sqlQuote(ref.createdAt)},
-           ${sqlQuote(ref.updatedAt)}
-         )`,
+        `DELETE FROM app_lifeops.pendant_session_insight_refs
+          WHERE owner_id = ${sqlQuote(session.ownerId)}
+            AND agent_id = ${sqlQuote(session.agentId)}
+            AND session_id = ${sqlQuote(session.id)}`,
+        tx,
       );
-    }
+      for (const ref of stored.insightRefs) {
+        await executeRawSql(
+          this.runtime,
+          `INSERT INTO app_lifeops.pendant_session_insight_refs (
+             id, session_id, owner_id, agent_id, segment_ids_json,
+             revision, created_at, updated_at
+           ) VALUES (
+             ${sqlQuote(ref.id)},
+             ${sqlQuote(session.id)},
+             ${sqlQuote(session.ownerId)},
+             ${sqlQuote(session.agentId)},
+             ${sqlJson(ref.segmentIds)},
+             ${sqlInteger(ref.revision)},
+             ${sqlQuote(ref.createdAt)},
+             ${sqlQuote(ref.updatedAt)}
+           )`,
+          tx,
+        );
+      }
+    });
   }
 
   async delete(params: {

@@ -11,6 +11,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   InMemoryPendantSessionRepository,
   type PendantSessionRepository,
+  PendantSessionRevisionConflictError,
   type StoredPendantSessionDocument,
 } from "../services/pendant-session/repository.ts";
 
@@ -726,6 +727,40 @@ describe("handlePendantSessionRoutes", () => {
     ).toBe("store_unavailable");
   });
 
+  it("maps repository revision CAS conflicts to typed current-revision responses", async () => {
+    const delegate = new InMemoryPendantSessionRepository();
+    const repository: PendantSessionRepository = {
+      load: (params) => delegate.load(params),
+      create: (value) => delegate.create(value),
+      saveSession: vi.fn(async () => {
+        throw new PendantSessionRevisionConflictError(9);
+      }),
+      saveSegment: (storedValue, segmentValue) =>
+        delegate.saveSegment(storedValue, segmentValue),
+      replaceInsightRefs: (value) => delegate.replaceInsightRefs(value),
+      delete: (params) => delegate.delete(params),
+    };
+    const h = makeHarness(uuid(), repository);
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-cas-route",
+    });
+
+    const result = await h.request(
+      "POST",
+      "/api/pendant/sessions/sess-cas-route/lease",
+      { holder: "capturer" },
+    );
+
+    expect(result.status).toBe(409);
+    expect(result.body).toMatchObject({
+      ok: false,
+      error: {
+        code: "revision_conflict",
+        currentRevision: 9,
+      },
+    });
+  });
+
   it("exports portable sessions and rejects insight refs for unknown segments", async () => {
     const h = makeHarness();
     await h.request("POST", "/api/pendant/sessions", { sessionId: "sess-e" });
@@ -749,5 +784,66 @@ describe("handlePendantSessionRoutes", () => {
       await h.request("GET", "/api/pendant/sessions/sess-e/export"),
     );
     expect(exported.export.session.id).toBe("sess-e");
+  });
+
+  it("rejects duplicate insight ref IDs before changing the session revision", async () => {
+    const h = makeHarness();
+    await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-duplicate-ref",
+    });
+    const lease = okBody<{ leaseToken: string }>(
+      await h.request(
+        "POST",
+        "/api/pendant/sessions/sess-duplicate-ref/lease",
+        {
+          holder: "capturer",
+        },
+      ),
+    );
+    const before = okBody<{ snapshot: { session: { revision: number } } }>(
+      await h.request(
+        "POST",
+        "/api/pendant/sessions/sess-duplicate-ref/segments",
+        {
+          leaseToken: lease.leaseToken,
+          segment: segment("sess-duplicate-ref", 0),
+        },
+      ),
+    );
+
+    const duplicate = await h.request(
+      "PUT",
+      "/api/pendant/sessions/sess-duplicate-ref/insight-refs",
+      {
+        revision: before.snapshot.session.revision,
+        insightRefs: [
+          {
+            id: "insight-dup",
+            segmentIds: ["sess-duplicate-ref:segment:0"],
+            createdAt: "2026-07-09T00:00:00.000Z",
+            updatedAt: "2026-07-09T00:00:00.000Z",
+            revision: 0,
+          },
+          {
+            id: "insight-dup",
+            segmentIds: ["sess-duplicate-ref:segment:0"],
+            createdAt: "2026-07-09T00:00:01.000Z",
+            updatedAt: "2026-07-09T00:00:01.000Z",
+            revision: 0,
+          },
+        ],
+      },
+    );
+    const after = okBody<{ export: { session: { revision: number } } }>(
+      await h.request("GET", "/api/pendant/sessions/sess-duplicate-ref/export"),
+    );
+
+    expect(duplicate.status).toBe(400);
+    expect((duplicate.body as { error?: { code?: string } }).error?.code).toBe(
+      "validation",
+    );
+    expect(after.export.session.revision).toBe(
+      before.snapshot.session.revision,
+    );
   });
 });
