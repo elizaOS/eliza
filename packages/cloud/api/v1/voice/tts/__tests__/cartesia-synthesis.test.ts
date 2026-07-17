@@ -271,7 +271,7 @@ describe("synthesizeCartesiaBytes", () => {
     expect(result.modelId).toBe("sonic-3.5");
     expect(calls[0].method).toBe("POST");
     expect(calls[0].headers).toMatchObject({
-      Authorization: "Bearer cartesia-key",
+      "X-API-Key": "cartesia-key",
       "Cartesia-Version": "2025-04-16",
       "Content-Type": "application/json",
     });

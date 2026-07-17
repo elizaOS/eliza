@@ -255,7 +255,7 @@ describe("POST /api/v1/voice/tts provider selection", () => {
     );
     const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(init.headers).toMatchObject({
-      Authorization: "Bearer cartesia-key",
+      "X-API-Key": "cartesia-key",
       "Cartesia-Version": "2025-04-16",
       "Content-Type": "application/json",
     });

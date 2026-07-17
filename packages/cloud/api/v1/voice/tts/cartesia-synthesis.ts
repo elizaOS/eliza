@@ -59,7 +59,9 @@ export async function synthesizeCartesiaBytes(args: {
   const response = await fetchImpl(CARTESIA_BYTES_URL, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${args.apiKey}`,
+      // Cartesia authenticates REST requests with X-API-Key (same header the
+      // streaming sonic adapter uses), NOT an Authorization bearer.
+      "X-API-Key": args.apiKey,
       "Cartesia-Version": CARTESIA_REST_API_VERSION,
       "Content-Type": "application/json",
     },
