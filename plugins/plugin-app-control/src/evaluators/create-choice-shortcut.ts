@@ -11,6 +11,7 @@ import type {
 	ResponseHandlerEvaluator,
 	ResponseHandlerEvaluatorContext,
 } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import {
 	hasPendingIntent,
 	isChoiceReply as isAppCreateChoiceReply,
@@ -22,9 +23,7 @@ const VIEWS_ACTION_NAME = "VIEWS";
 const GENERAL_CONTEXT = "general";
 
 function messageText(context: ResponseHandlerEvaluatorContext): string {
-	return typeof context.message.content?.text === "string"
-		? context.message.content.text
-		: "";
+	return getUserMessageText(context.message);
 }
 
 function roomId(context: ResponseHandlerEvaluatorContext): string {

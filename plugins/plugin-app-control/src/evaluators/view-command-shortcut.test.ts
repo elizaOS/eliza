@@ -46,6 +46,18 @@ async function run(text: string, opts = {}) {
 	return viewCommandShortcutEvaluator.evaluate(c);
 }
 
+function augmented(userRequest: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+		"<contextual_documents>",
+		'<source title="source-1">Open the inbox to review messages.</source>',
+		"</contextual_documents>",
+		"<user_request>",
+		userRequest,
+		"</user_request>",
+	].join("\n");
+}
+
 describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", () => {
 	const commands: Array<[text: string, view: string]> = [
 		["open settings", "settings"],
@@ -87,6 +99,14 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			});
 		});
 	}
+
+	it("routes the actual user request instead of retrieved-document wrapper text", async () => {
+		const patch = await run(augmented("Open Notes"));
+		expect(patch?.deterministicToolCall).toEqual({
+			name: "VIEWS",
+			params: { action: "show", view: "notes" },
+		});
+	});
 
 	it("overrides an already-tool-marked explicit view command", async () => {
 		const patch = await run("open app builder", {

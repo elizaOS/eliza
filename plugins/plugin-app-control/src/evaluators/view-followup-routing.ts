@@ -7,6 +7,7 @@ import type {
 	ResponseHandlerEvaluatorContext,
 	ViewCapability,
 } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import {
 	createViewsClient,
 	type ViewSummary,
@@ -58,10 +59,6 @@ const CONTENT_MARKER_TOKENS = new Set([
 	"TEXT",
 	"TITLE",
 ]);
-
-function textOf(value: unknown): string {
-	return typeof value === "string" ? value : "";
-}
 
 function tokenize(text: string): string[] {
 	return text.toUpperCase().match(/[A-Z0-9]+/g) ?? [];
@@ -117,7 +114,7 @@ function shouldConsiderViewFollowup(
 	if (context.messageHandler.plan.requiresTool === true) return null;
 	if (!hasRegisteredViewsAction(context)) return null;
 
-	const tokens = tokenize(textOf(context.message.content?.text));
+	const tokens = tokenize(getUserMessageText(context.message));
 	const family = requestFamily(tokens);
 	if (!family) return null;
 	if (!hasAny(tokens, REFERENCE_TOKENS)) return null;

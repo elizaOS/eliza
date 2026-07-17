@@ -41,11 +41,29 @@ function makeCtx(
 	} as unknown as Ctx;
 }
 
+function augmented(userRequest: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+		"<contextual_documents>",
+		'<source title="source-1">Ordinary reference material.</source>',
+		"</contextual_documents>",
+		"<user_request>",
+		userRequest,
+		"</user_request>",
+	].join("\n");
+}
+
 describe("applyCurrentViewComposeHook (#8788)", () => {
 	afterEach(() => __resetViewSwitchSignal());
 
 	it("injects current_view on an imminent explicit command turn", () => {
 		const ctx = makeCtx({ text: "open my wallet" });
+		applyCurrentViewComposeHook(ctx);
+		expect(ctx.providers.current).toContain("current_view");
+	});
+
+	it("detects an imminent command inside the document-augmentation envelope", () => {
+		const ctx = makeCtx({ text: augmented("Open Notes") });
 		applyCurrentViewComposeHook(ctx);
 		expect(ctx.providers.current).toContain("current_view");
 	});

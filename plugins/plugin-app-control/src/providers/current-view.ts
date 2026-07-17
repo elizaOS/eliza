@@ -27,7 +27,7 @@ import type {
 	Provider,
 	ProviderResult,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getUserMessageText, logger } from "@elizaos/core";
 import { createViewsClient } from "../actions/views-client.js";
 import { resolveIntentView } from "../actions/views-show.js";
 
@@ -54,8 +54,7 @@ export const currentViewProvider: Provider = {
 		message: Memory,
 	): Promise<ProviderResult> => {
 		try {
-			const text =
-				typeof message?.content?.text === "string" ? message.content.text : "";
+			const text = getUserMessageText(message);
 			// Imminent explicit switch: the early shortcut will force VIEWS for this
 			// exact phrase, so the reply being generated now can acknowledge it.
 			const intentTargetId = resolveIntentView(text);

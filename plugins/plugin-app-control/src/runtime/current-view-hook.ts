@@ -7,7 +7,10 @@
  * Extracted from the plugin entry so the gating decision is unit-testable
  * without booting a runtime. See #8788.
  */
-import type { PipelineHookContextForPhase } from "@elizaos/core";
+import {
+	getUserMessageText,
+	type PipelineHookContextForPhase,
+} from "@elizaos/core";
 import { resolveIntentView } from "../actions/views-show.js";
 import { hasFreshViewSwitch } from "./view-switch-signal.js";
 
@@ -30,10 +33,7 @@ export function applyCurrentViewComposeHook(
 ): void {
 	if (!ctx.onlyInclude) return;
 	if (ctx.providers.current.includes("current_view")) return;
-	const text =
-		typeof ctx.message?.content?.text === "string"
-			? ctx.message.content.text
-			: "";
+	const text = getUserMessageText(ctx.message);
 	const imminent = resolveIntentView(text) != null;
 	const recent = hasFreshViewSwitch(ctx.message?.roomId);
 	if (imminent || recent) {

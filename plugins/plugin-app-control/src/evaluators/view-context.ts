@@ -4,6 +4,7 @@
 
 import type { Evaluator, EvaluatorProcessor } from "@elizaos/core";
 import {
+	getUserMessageText,
 	logger,
 	ModelType,
 	resolveOptimizedPromptForRuntime,
@@ -92,8 +93,7 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 				? output.viewId.trim().toLowerCase()
 				: "";
 		if (!viewId || viewId === NONE) return undefined;
-		const messageText =
-			typeof message?.content?.text === "string" ? message.content.text : "";
+		const messageText = getUserMessageText(message);
 		if (
 			viewId === "documents" &&
 			isStandaloneNotesSurfaceRequest(messageText)
@@ -174,8 +174,7 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 			(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
 		);
 		if (!hasViews) return false;
-		const text =
-			typeof message.content?.text === "string" ? message.content.text : "";
+		const text = getUserMessageText(message);
 		if (text.trim().length < 8) return false;
 		if (isStandaloneNotesSurfaceRequest(text)) return false;
 		// Direct nav commands belong to the VIEWS action — only infer contextually
@@ -185,8 +184,7 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		return ACTIVITY_HINT_RE.test(text);
 	},
 	prompt({ runtime, message }) {
-		const text =
-			typeof message.content?.text === "string" ? message.content.text : "";
+		const text = getUserMessageText(message);
 		// The instruction half is the GEPA-optimizable `view_context` prompt; the
 		// per-turn user message is appended after it.
 		const instruction = resolveOptimizedPromptForRuntime(

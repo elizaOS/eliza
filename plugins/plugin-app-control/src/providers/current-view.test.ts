@@ -23,6 +23,18 @@ function msg(text: string): Memory {
 	} as Memory;
 }
 
+function augmented(userRequest: string): string {
+	return [
+		"Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+		"<contextual_documents>",
+		'<source title="source-1">Open the inbox to review messages.</source>',
+		"</contextual_documents>",
+		"<user_request>",
+		userRequest,
+		"</user_request>",
+	].join("\n");
+}
+
 describe("current_view acknowledgement provider (#8788)", () => {
 	beforeEach(() => h.getCurrentView.mockReset());
 
@@ -43,6 +55,24 @@ describe("current_view acknowledgement provider (#8788)", () => {
 		expect(r.text).toContain("Wallet");
 		expect(r.values?.switchingToViewId).toBe("wallet");
 		expect(r.values?.viewJustSwitched).toBe(true);
+	});
+
+	it("acknowledges the user request rather than a surface named in retrieved context", async () => {
+		h.getCurrentView.mockResolvedValue({
+			viewId: "chat",
+			viewLabel: "Messages",
+			viewPath: "/chat",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+		const r = await currentViewProvider.get(
+			runtime,
+			msg(augmented("Open Notes")),
+			{ values: {}, data: {}, text: "" },
+		);
+		expect(r.text).toContain("Notes");
+		expect(r.text).not.toContain("Inbox");
+		expect(r.values?.switchingToViewId).toBe("notes");
 	});
 
 	it("acknowledges a switch the agent just executed (server justSwitched, source agent)", async () => {
