@@ -595,16 +595,24 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // error-policy:J1 boundary translation — the LLM/TTS turn is the async
       // boundary; provider failures become a structured client `error` frame.
       if (this.currentVoiceTurnId !== traceId) return;
+      const bridgeError =
+        error instanceof ElizaSseBridgeError ? error : undefined;
       this.send({
         t: "error",
         code:
-          error instanceof ElizaSseBridgeError && error.upstreamCode
-            ? error.upstreamCode
+          bridgeError?.upstreamCode
+            ? bridgeError.upstreamCode
             : error instanceof Error
               ? error.name
               : "llm_error",
-        retryable:
-          error instanceof ElizaSseBridgeError ? error.retryable : true,
+        retryable: bridgeError ? bridgeError.retryable : true,
+        ...(bridgeError?.status ? { upstreamStatus: bridgeError.status } : {}),
+        ...(bridgeError?.upstreamMessage
+          ? { upstreamMessage: bridgeError.upstreamMessage }
+          : {}),
+        ...(bridgeError?.upstreamSnippet
+          ? { upstreamSnippet: bridgeError.upstreamSnippet }
+          : {}),
       });
       this.finishTurn(traceId);
     }

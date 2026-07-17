@@ -61,6 +61,9 @@ const streamRoute = (
     "../v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route"
   )
 ).default;
+const { createInternalElizaConversationFetch } = await import(
+  "../v1/voice/session/lib/internal-eliza-conversation-fetch"
+);
 
 // Restore the real modules so this file's process-global mocks don't strand later
 // test files that use the full elizaSandboxService / resolveSharedAgent surface.
@@ -179,6 +182,55 @@ describe("shared agent messages/stream", () => {
       params: {
         text: "voice transcript",
         roomId: "conv-voice-service",
+      },
+    });
+  });
+
+  test("internal voice fetch adapter dispatches the canonical root path in-process", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "user-voice",
+      agent_name: "Voice Agent",
+    });
+    bridgeStream.mockResolvedValue(
+      new Response(
+        'event: chunk\ndata: {"chunk":"adapter ok"}\n\nevent: done\ndata: {}\n\n',
+        { headers: { "Content-Type": "text/event-stream" } },
+      ),
+    );
+
+    const fetchImpl = createInternalElizaConversationFetch(
+      {
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+      } as Parameters<typeof createInternalElizaConversationFetch>[0],
+      { agentId: AGENT, conversationId: VOICE_CONVERSATION },
+    );
+
+    const res = await fetchImpl(
+      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Service-Key": "Bearer voice-service",
+          "X-Eliza-Organization-Id": ORG,
+          "X-Eliza-User-Id": "user-voice",
+        },
+        body: JSON.stringify({ text: "adapter transcript" }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toContain("adapter ok");
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).toHaveBeenCalledWith(AGENT, ORG);
+    expect(bridgeStream.mock.calls[0][2]).toMatchObject({
+      method: "message.send",
+      params: {
+        text: "adapter transcript",
+        roomId: VOICE_CONVERSATION,
       },
     });
   });
