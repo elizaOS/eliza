@@ -181,7 +181,18 @@ function readRuntimeSetting(
   key: string,
 ): string | null {
   const raw = runtime.getSetting(key);
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readGitHubToken(runtime: IAgentRuntime): string | null {
+  // Keep this fallback local: plugin-scheduling cannot import app-core's
+  // local credential store, but the live coding stack accepts GH_PAT for the
+  // same GitHub bearer credential. GITHUB_TOKEN remains the explicit winner.
+  return (
+    readRuntimeSetting(runtime, "GITHUB_TOKEN") ??
+    readRuntimeSetting(runtime, "GH_PAT")
+  );
 }
 
 function parseRepoSpecifier(repo: string | undefined): {
@@ -558,7 +569,7 @@ function resolveGitHubService(args: {
   if (injected && typeof injected.listAssignedOpenPullRequests === "function") {
     return injected;
   }
-  const token = readRuntimeSetting(args.runtime, "GITHUB_TOKEN");
+  const token = readGitHubToken(args.runtime);
   if (!token) return null;
   return createDefaultGitHubPrShepherdService(args.runtime, token);
 }
@@ -625,7 +636,7 @@ async function runPrShepherd(args: {
   });
   if (!github) {
     throw new Error(
-      `[${args.githubServiceType}] GitHub PR shepherd service is not registered and GITHUB_TOKEN is not configured`,
+      `[${args.githubServiceType}] GitHub PR shepherd service is not registered and neither GITHUB_TOKEN nor GH_PAT is configured`,
     );
   }
   const orchestrator = runtime.getService(

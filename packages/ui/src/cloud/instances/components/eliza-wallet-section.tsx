@@ -119,7 +119,14 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
       if (!mountedRef.current) return;
 
       if (addrRes.status === "rejected" || balRes.status === "rejected") {
-        const reason = addrRes.reason ?? balRes.reason;
+        // Narrow per-branch: with only the disjunction guard, TS cannot prove
+        // either settled result is the rejected one, so .reason is invalid.
+        const reason =
+          addrRes.status === "rejected"
+            ? addrRes.reason
+            : balRes.status === "rejected"
+              ? balRes.reason
+              : undefined;
         setError(
           reason instanceof Error
             ? reason.message

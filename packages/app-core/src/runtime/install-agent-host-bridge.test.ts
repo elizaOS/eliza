@@ -33,6 +33,7 @@ describe("installAgentHostBridge", () => {
     expect(typeof bridge.sharedVault).toBe("function");
     expect(typeof bridge.getBuildVariant).toBe("function");
     expect(typeof bridge.handleCloudPairRoute).toBe("function");
+    expect(typeof bridge.resolveHttpRequestAuthorization).toBe("function");
 
     _resetAgentHostBridge();
   });
