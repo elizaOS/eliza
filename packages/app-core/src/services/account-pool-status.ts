@@ -558,9 +558,10 @@ function buildStatus(
     .filter((account) => account.enabled !== false)
     .filter(
       (account) => configuredIds === null || configuredIds.has(account.id),
-    );
+    )
+    .filter((account) => isAccountSelectableNow(account, now));
   if (accounts.length === 0) {
-    throw new Error("no enabled public pool accounts");
+    throw new Error("no selectable public pool accounts");
   }
   const selection = pool.selectionState(
     PROVIDER_ID,

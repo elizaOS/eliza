@@ -143,10 +143,16 @@ describe("public account-pool status", () => {
       ...unknownBase,
       id: "unknown-account-id",
     };
+    const unavailable: LinkedAccountConfig = {
+      ...fixtureAccount(now, 0),
+      id: "unavailable-account-id",
+      health: "needs-reauth",
+    };
     const pool = new AccountPool({
       readAccounts: () => ({
         "anthropic-subscription:private-account-id": known,
         "anthropic-subscription:unknown-account-id": unknown,
+        "anthropic-subscription:unavailable-account-id": unavailable,
       }),
       writeAccount: async () => {},
     });
