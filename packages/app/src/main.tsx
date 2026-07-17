@@ -2404,6 +2404,10 @@ function shouldMountWebShell(): boolean {
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
+  type ReactAppRoot = ReturnType<typeof createRoot>;
+  const hotData = import.meta.hot?.data as
+    | { reactRoot?: ReactAppRoot }
+    | undefined;
 
   const phoneCompanion = isPhoneCompanionMode();
   const detachedShell = isDetachedWindowShell(windowShellRoute);
@@ -2463,7 +2467,12 @@ function mountReactApp(): void {
     );
 
   markStartup("react-mount:start");
-  createRoot(rootEl).render(
+  // Vite can re-evaluate this composition root without replacing the document.
+  // Keeping the React root in HMR data prevents two renderers from owning the
+  // same container while leaving production's one-shot mount unchanged.
+  const reactRoot = hotData?.reactRoot ?? createRoot(rootEl);
+  if (hotData) hotData.reactRoot = reactRoot;
+  reactRoot.render(
     <ErrorBoundary>
       <StrictMode>
         <Suspense fallback={null}>

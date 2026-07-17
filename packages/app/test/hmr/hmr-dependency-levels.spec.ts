@@ -154,6 +154,8 @@ const LEVELS = [
 // Vite's client logs these to the page console when it processes a change.
 const VITE_UPDATE =
   /\[vite\].*(hot updated|hmr update|page reload|invalidate)/i;
+const REACT_ROOT_OWNERSHIP_ERROR =
+  /createRoot\(\).*already been passed to createRoot|removeChild.*not a child/i;
 
 function collectViteEvents(page: Page): string[] {
   const events: string[] = [];
@@ -220,6 +222,20 @@ test.describe("HMR propagation across package dependency levels", () => {
         const marker = `HMR_PROBE_${level.name.replace(/[^a-z0-9]/gi, "_")}_${Date.now()}`;
 
         const events = collectViteEvents(page);
+        const rootOwnershipErrors: string[] = [];
+        page.on("console", (message) => {
+          if (
+            message.type() === "error" &&
+            REACT_ROOT_OWNERSHIP_ERROR.test(message.text())
+          ) {
+            rootOwnershipErrors.push(message.text());
+          }
+        });
+        page.on("pageerror", (error) => {
+          if (REACT_ROOT_OWNERSHIP_ERROR.test(error.message)) {
+            rootOwnershipErrors.push(error.message);
+          }
+        });
         await page.goto("/");
         await waitForViteClient(page);
 
@@ -240,6 +256,9 @@ test.describe("HMR propagation across package dependency levels", () => {
               message: `Expected a Vite HMR/reload event in the browser after editing ${level.file}. Captured: ${JSON.stringify(events)}`,
             })
             .toBeGreaterThan(0);
+          await page.waitForTimeout(500);
+          expect(rootOwnershipErrors).toEqual([]);
+          await expect(page.locator("#root")).toBeVisible();
         } finally {
           fs.writeFileSync(abs, original);
         }
