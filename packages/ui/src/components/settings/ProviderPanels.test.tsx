@@ -101,7 +101,7 @@ describe("ProviderPanels", () => {
         onSelectSubscription={select}
       />,
     );
-    expect(screen.getByText(/remote routing is paused/)).toBeTruthy();
+    expect(screen.getByText(/remote routing is paused/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Use subscription" }));
     expect(select).toHaveBeenCalledWith("openai-subscription");
     expect(screen.getByText("accounts:openai-codex")).toBeTruthy();
@@ -123,7 +123,7 @@ describe("ProviderPanels", () => {
         loadPlugins={vi.fn()}
       />,
     );
-    expect(screen.getByText(/remote routing is paused/)).toBeTruthy();
+    expect(screen.getByText(/remote routing is paused/i)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Use provider" }));
     expect(select).toHaveBeenCalledWith("plugin-openai");
     expect(screen.getByText("api key config")).toBeTruthy();
