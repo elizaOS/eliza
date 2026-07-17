@@ -778,7 +778,7 @@ export const ChatMessage = memo(function ChatMessage({
               handleCancelEditing();
             }}
             disabled={savingEdit}
-            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55 disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -797,7 +797,7 @@ export const ChatMessage = memo(function ChatMessage({
               void handleSaveEdit();
             }}
             disabled={editSaveDisabled}
-            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent focus-visible:rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/55 disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
           >
             {savingEdit ? (
               <LoaderCircle
@@ -815,7 +815,7 @@ export const ChatMessage = memo(function ChatMessage({
             unstyled
             onClick={handleCancelEditing}
             disabled={savingEdit}
-            className="min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+            className="min-h-7 px-2 py-1 text-xs font-medium text-white/60 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
           >
             {labels.cancel ?? "Cancel"}
           </Button>
@@ -824,7 +824,7 @@ export const ChatMessage = memo(function ChatMessage({
             unstyled
             onClick={() => void handleSaveEdit()}
             disabled={editSaveDisabled}
-            className="min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white focus-visible:outline-none focus-visible:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
+            className="min-h-7 px-2 py-1 text-xs font-medium text-white/85 transition-colors duration-150 hover:text-white disabled:text-white/30 pointer-coarse:min-h-touch"
           >
             {savingEdit
               ? (labels.saving ?? "Saving...")

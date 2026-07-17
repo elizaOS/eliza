@@ -75,12 +75,12 @@ describe("ChatMessageActions copy", () => {
     expect(screen.queryByRole("button", { name: /delete/i })).toBeNull();
   });
 
-  it("keeps panel actions on the neutral glass surface", () => {
+  it("keeps panel actions on a legible neutral surface without backdrop blur", () => {
     render(<ChatMessageActions canReply onCopy={vi.fn()} onReply={vi.fn()} />);
     const surface = screen.getByTestId("chat-message-actions");
     expect(surface.className).toContain("bg-black/55");
     expect(surface.className).toContain("border-white/25");
     expect(surface.style.backgroundImage).toContain("radial-gradient");
-    expect(surface.style.backdropFilter).toContain("blur");
+    expect(surface.style.backdropFilter).toBe("");
   });
 });

@@ -1493,7 +1493,7 @@ describe("ContinuousChatOverlay", () => {
     expect(thread?.querySelector('[data-message-id^="temp-"]')).toBeNull();
   });
 
-  it("keeps the transcript busy while the composer owns the in-flight status", () => {
+  it("keeps the transcript busy while its trailing row owns the in-flight status", () => {
     render(
       <ContinuousChatOverlay
         controller={makeController({
@@ -1508,16 +1508,22 @@ describe("ContinuousChatOverlay", () => {
     const content = viewport.querySelector<HTMLElement>(
       '[data-slot="message-scroller-content"]',
     );
-    const composerStatus = screen.getByTestId("turn-status-composer");
+    const transcriptStatus = screen.getByTestId("turn-status-transcript");
     expect(viewport.getAttribute("aria-live")).toBeNull();
     expect(content?.getAttribute("role")).toBe("log");
     expect(content?.getAttribute("aria-busy")).toBe("true");
     expect(
-      composerStatus.closest('[data-slot="message-scroller-item"]'),
-    ).toBeNull();
+      transcriptStatus.closest('[data-slot="message-scroller-item"]'),
+    ).not.toBeNull();
     expect(
-      screen.getByTestId("chat-composer-row").contains(composerStatus),
+      screen.getByTestId("chat-thread-scroll").contains(transcriptStatus),
     ).toBe(true);
+    expect(
+      screen.getByTestId("chat-composer-row").contains(transcriptStatus),
+    ).toBe(false);
+    expect(screen.getByLabelText("message").getAttribute("placeholder")).toBe(
+      "Ask Eliza",
+    );
     expect(screen.queryByTestId("turn-status-accessory")).toBeNull();
   });
 
@@ -2369,7 +2375,7 @@ describe("ContinuousChatOverlay", () => {
     );
 
     expect(screen.queryByTestId("chat-composer-stop")).toBeNull();
-    expect(screen.queryByTestId("turn-status-composer")).toBeNull();
+    expect(screen.queryByTestId("turn-status-transcript")).toBeNull();
     expect(screen.getByTestId("chat-composer-mic")).toBeTruthy();
     expect(screen.getByTestId("chat-composer-transcribe")).toBeTruthy();
   });
@@ -3278,7 +3284,7 @@ describe("ContinuousChatOverlay", () => {
 
   // ── Rich turn-status indicator (#8813) ──────────────────────────────────
   describe("turn status indicator", () => {
-    it("renders the thinking phase as one chromeless composer shimmer", () => {
+    it("renders the thinking phase as one chromeless transcript shimmer", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -3297,19 +3303,19 @@ describe("ContinuousChatOverlay", () => {
       expect(label.textContent).toContain("Thinking");
       expect(label.className).toContain("shimmer");
       expect(screen.queryByTestId("turn-status-spinner")).toBeNull();
-      const composerStatus = screen.getByTestId("turn-status-composer");
-      expect(composerStatus.className).not.toContain("rounded");
-      expect(composerStatus.className).not.toContain("border");
+      const transcriptStatus = screen.getByTestId("turn-status-transcript");
+      expect(transcriptStatus.className).not.toContain("rounded");
+      expect(transcriptStatus.className).not.toContain("border");
       expect(
-        screen.getByTestId("chat-composer-row").contains(composerStatus),
+        screen.getByTestId("chat-thread-scroll").contains(transcriptStatus),
       ).toBe(true);
       expect(
-        composerStatus.closest('[data-testid="thread-line-actions"]'),
+        transcriptStatus.closest('[data-testid="thread-line-actions"]'),
       ).toBeNull();
       expect(screen.queryByTestId("turn-status-accessory")).toBeNull();
     });
 
-    it("humanizes a named running_action phase in the composer", () => {
+    it("humanizes a named running_action phase in the transcript row", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -3339,11 +3345,11 @@ describe("ContinuousChatOverlay", () => {
       expect(screen.getByTestId("turn-status-label").textContent).toBe(
         "Working",
       );
-      expect(screen.getByTestId("turn-status-composer")).toBeTruthy();
+      expect(screen.getByTestId("turn-status-transcript")).toBeTruthy();
       expect(screen.queryByTestId("turn-status-accessory")).toBeNull();
     });
 
-    it("keeps one composer shimmer while the empty assistant placeholder remains nonvisual", () => {
+    it("keeps one transcript shimmer while the empty assistant placeholder remains nonvisual", () => {
       render(
         <ContinuousChatOverlay
           controller={makeController({
@@ -3359,13 +3365,13 @@ describe("ContinuousChatOverlay", () => {
         />,
       );
       fireEvent.focus(screen.getByLabelText("message"));
-      // The transport placeholder stays non-visual while the composer owns the
-      // only generic turn status, so no message bubble appears before token one.
+      // The transport placeholder stays non-visual while the trailing transcript
+      // row owns the only generic turn status, so no assistant bubble appears.
       const indicators = screen.getAllByTestId("turn-status-indicator");
       expect(indicators).toHaveLength(1);
       expect(indicators[0].getAttribute("data-status-kind")).toBe("waking");
       expect(
-        screen.getByTestId("turn-status-composer").contains(indicators[0]),
+        screen.getByTestId("turn-status-transcript").contains(indicators[0]),
       ).toBe(true);
       expect(indicators[0].closest('[data-testid="thread-line"]')).toBeNull();
       expect(
@@ -4258,7 +4264,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
       />,
     );
     fireEvent.focus(screen.getByLabelText("message"));
-    const composerStatus = screen.getByTestId("turn-status-composer");
+    const transcriptStatus = screen.getByTestId("turn-status-transcript");
     expect(screen.queryByTestId("turn-status-accessory")).toBeNull();
     expect(
       document.getElementById(getChatMessageAnchorId("a-stream")),
@@ -4278,7 +4284,7 @@ describe("ContinuousChatOverlay — streaming + thinking render (#10712)", () =>
         } as unknown as Partial<ShellController>)}
       />,
     );
-    expect(screen.getByTestId("turn-status-composer")).toBe(composerStatus);
+    expect(screen.getByTestId("turn-status-transcript")).toBe(transcriptStatus);
     expect(screen.queryByTestId("turn-status-accessory")).toBeNull();
     expect(
       document.getElementById(getChatMessageAnchorId("a-stream")),
@@ -4574,7 +4580,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
     expect(statusRow).toBe(olderRow);
     expect(statusRow?.textContent).toContain("Speaking");
     expect(statusRow?.textContent).not.toContain("newer answer");
-    expect(screen.queryByTestId("turn-status-composer")).toBeNull();
+    expect(screen.queryByTestId("turn-status-transcript")).toBeNull();
     expect(screen.queryByLabelText("stop generating")).toBeNull();
     expect(screen.getByLabelText("start transcription")).toBeTruthy();
   });
@@ -4630,7 +4636,7 @@ describe("ContinuousChatOverlay — per-message action row (#10713)", () => {
         .getAllByTestId("thread-line-speak")
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual(["Play audio", "Play audio"]);
-    expect(screen.getByTestId("turn-status-composer").textContent).toContain(
+    expect(screen.getByTestId("turn-status-transcript").textContent).toContain(
       "Speaking",
     );
   });

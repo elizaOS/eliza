@@ -25,6 +25,10 @@ const ALLOWED = new Set<string>([
   // glass composites instead of repainting each frame (the installed-PWA
   // micro-stutter) — exactly the justified, non-permanent case.
   "components/shell/ContinuousChatOverlay.tsx",
+  // Notification rows promote only while a pointer drag, dismiss settle, or
+  // removal collapse is live. The inline hint is removed at rest, preserving
+  // smooth stacked-card motion without pinning every notification to a layer.
+  "components/shell/notification-shade-content.tsx",
   // The horizontal home pager rail: the same drag-scoped playbook (#14501) on
   // the horizontal axis — `will-change: transform` set on pointerdown, cleared
   // on settle — so the paged rail transform composites without repainting the

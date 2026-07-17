@@ -905,13 +905,13 @@ function MessageScrollerSearchBridge({
 
 /**
  * The phase-aware status shown while the assistant works (#8813). Generic turn
- * progress lives in the composer's text slot; manual playback may reuse the
- * same compact treatment beside the controls of the message being spoken.
+ * progress lives in one chromeless row after the transcript; manual playback
+ * reuses the same compact treatment beside the controls of the spoken message.
  */
 function TurnStatusIndicator({
   status,
   reduce,
-  testId = "turn-status-composer",
+  testId = "turn-status-transcript",
 }: {
   status: ChatTurnStatus | null;
   reduce?: boolean;
@@ -1278,7 +1278,7 @@ export function ContinuousChatOverlay({
   // "Stop" at once; scope the playing state to the actual source message.
   // Cleared whenever no playback is active. This also covers an engine that
   // fails before React observes a true speaking frame, so a stale optimistic id
-  // cannot suppress later composer status.
+  // cannot suppress later transcript status.
   const [playingMessageId, setPlayingMessageId] = React.useState<string | null>(
     null,
   );
@@ -2235,8 +2235,8 @@ export function ContinuousChatOverlay({
         !message.secretRequest &&
         !message.toolEvents?.length;
       // The server's empty assistant placeholder is deliberately not a visual
-      // turn. Generic lifecycle status has one stable owner in the composer,
-      // so token one never needs to swap a temporary transcript row.
+      // turn. Generic lifecycle status owns one stable trailing transcript row,
+      // so token one never needs to swap a temporary assistant bubble.
       if (isInFlight) return null;
       // Only the last assistant turn reads volatile reasoning suppression;
       // every settled row gets no renderContext so its memo identity is stable.
@@ -5756,6 +5756,25 @@ export function ContinuousChatOverlay({
                             : visibleMessages.map((m, i) =>
                                 renderThreadLine(m, i),
                               )}
+                          {/* Keep lifecycle state visually connected to the
+                              conversation without attaching it to a message or
+                              replacing the composer placeholder. The item stays
+                              mounted at zero height so AnimatePresence can run
+                              the status exit instead of cutting it off. */}
+                          <MessageScrollerItem
+                            className="w-full"
+                            data-testid="turn-status-row"
+                          >
+                            <AnimatePresence initial={false}>
+                              {turnStatus && !playingMessageId ? (
+                                <TurnStatusIndicator
+                                  key="transcript-turn-status"
+                                  status={turnStatus}
+                                  reduce={reduce}
+                                />
+                              ) : null}
+                            </AnimatePresence>
+                          </MessageScrollerItem>
                         </MessageScrollerContent>
                       </MessageScrollerViewport>
                     </motion.div>
@@ -6022,22 +6041,20 @@ export function ContinuousChatOverlay({
                     // (This surface's strings are plain literals by design — see
                     // the imageError note above.)
                     placeholder={
-                      turnStatus && !playingMessageId && !hasDraft
-                        ? ""
-                        : compactLanding
-                          ? "Ask"
-                          : firstRunOpen
-                            ? "Sign in to start chatting"
-                            : noProviderConfigured
-                              ? "Connect a model provider in Settings to chat"
-                              : modelBlocksSend
-                                ? modelStatus?.kind === "downloading"
-                                  ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                                  : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                                : booting
-                                  ? `Ask ${agentName} — waking up…`
-                                  : (viewChatBinding?.placeholder ??
-                                    `Ask ${agentName}`)
+                      compactLanding
+                        ? "Ask"
+                        : firstRunOpen
+                          ? "Sign in to start chatting"
+                          : noProviderConfigured
+                            ? "Connect a model provider in Settings to chat"
+                            : modelBlocksSend
+                              ? modelStatus?.kind === "downloading"
+                                ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                              : booting
+                                ? `Ask ${agentName} — waking up…`
+                                : (viewChatBinding?.placeholder ??
+                                  `Ask ${agentName}`)
                     }
                     aria-label="message"
                     data-testid="chat-composer-textarea"
@@ -6062,26 +6079,6 @@ export function ContinuousChatOverlay({
                     // dimming the locked cue.
                     className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 w-full resize-none overflow-y-auto overscroll-contain border-none bg-transparent py-1 pr-3 pl-1.5 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
                   />
-                  <AnimatePresence initial={false}>
-                    {turnStatus && !playingMessageId && !hasDraft ? (
-                      <motion.div
-                        key="composer-turn-status"
-                        className="pointer-events-none absolute inset-y-0 left-1.5 right-3 flex items-center"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{
-                          duration: reduce ? 0 : 0.36,
-                          ease: OVERLAY_EASE,
-                        }}
-                      >
-                        <TurnStatusIndicator
-                          status={turnStatus}
-                          reduce={reduce}
-                        />
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
                 </div>
               )}
               {!transcriptionComposerActive &&

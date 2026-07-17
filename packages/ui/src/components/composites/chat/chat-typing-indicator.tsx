@@ -217,8 +217,8 @@ export function formatElapsed(seconds: number): string {
  * The Codex-style working indicator — a spinner glyph, the debounced phase label
  * (a word for every phase, including `thinking`), and a live elapsed-seconds
  * clock — without a bubble/motion wrapper. The compact `showLabel={false}` form
- * is a text-only shimmer used in the continuous overlay's composer and manual
- * playback action lane.
+ * is a text-only shimmer used in the continuous overlay's trailing transcript
+ * row and manual playback action lane.
  *
  * Mirrors ChatVoiceStatusBar's a11y (`role="status"` + `aria-live="polite"`).
  * Honors reduced motion (no spin/pulse). Degrades to plain dots when no status
@@ -238,7 +238,7 @@ export function TurnStatus({
   const label = shown ? turnStatusLabel(shown) : "Thinking";
 
   if (!showLabel) {
-    // Compact variant: a shadcn Marker fits the composer's text slot or a
+    // Compact variant: a shadcn Marker fits the trailing transcript row or a
     // message action lane without introducing another bubble.
     return (
       <Marker
