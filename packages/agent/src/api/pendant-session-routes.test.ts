@@ -1,17 +1,20 @@
 /**
- * Route-level tests for pendant session sync using the real in-memory adapter.
+ * Route-level tests for pendant session sync using the repository contract.
  *
- * The runtime wrapper is intentionally narrow, but storage operations go through
- * InMemoryDatabaseAdapter rather than a fake map so create/update/delete memory
- * behavior matches the repository persistence contract.
+ * The runtime wrapper deliberately throws on Memory API access; pendant capture
+ * state belongs to normalized session/segment/insight tables instead.
  */
 
 import crypto from "node:crypto";
 import type http from "node:http";
 import { describe, expect, it, vi } from "vitest";
-import { InMemoryDatabaseAdapter } from "../../../core/src/database/inMemoryAdapter.ts";
-import type { Memory } from "../../../core/src/types/memory.ts";
-import type { UUID } from "../../../core/src/types/primitives.ts";
+import {
+  InMemoryPendantSessionRepository,
+  type PendantSessionRepository,
+  type StoredPendantSessionDocument,
+} from "../services/pendant-session/repository.ts";
+
+type UUID = `${string}-${string}-${string}-${string}-${string}`;
 
 vi.mock("../config/config.ts", () => ({
   loadElizaConfig: () => ({}),
@@ -23,10 +26,10 @@ vi.mock("./views-routes.ts", () => ({
 
 vi.mock("@elizaos/core", () => ({
   logger: { error: vi.fn(), warn: vi.fn() },
-  MemoryType: { CUSTOM: "custom" },
   readJsonBody: vi.fn(),
-  resolveCanonicalOwnerId: (runtime: { getSetting?: (key: string) => unknown }) =>
-    runtime.getSetting?.("ELIZA_ADMIN_ENTITY_ID") ?? null,
+  resolveCanonicalOwnerId: (runtime: {
+    getSetting?: (key: string) => unknown;
+  }) => runtime.getSetting?.("ELIZA_ADMIN_ENTITY_ID") ?? null,
   sendJson: vi.fn(),
   stringToUuid: (value: string) => {
     let hash = 2166136261;
@@ -47,43 +50,31 @@ const {
 
 class TestRuntime {
   readonly agentId: UUID;
-  readonly adapter: InMemoryDatabaseAdapter;
-  createMemoryThrows = false;
-  updateMemorySucceeds = true;
 
-  constructor(agentId: UUID, adapter = new InMemoryDatabaseAdapter()) {
+  constructor(agentId: UUID) {
     this.agentId = agentId;
-    this.adapter = adapter;
-    void this.adapter.init();
   }
 
-  async getMemoryById(id: UUID): Promise<Memory | null> {
-    const memories = await this.adapter.getMemoriesByIds([id]);
-    return memories[0] ?? null;
+  get adapter(): never {
+    throw new Error(
+      "Pendant session routes must not use runtime.adapter directly in tests",
+    );
   }
 
-  async createMemory(
-    memory: Memory,
-    tableName: string,
-    unique?: boolean,
-  ): Promise<UUID> {
-    if (this.createMemoryThrows) throw new Error("create failed");
-    const ids = await this.adapter.createMemories([
-      { memory, tableName, unique },
-    ]);
-    const id = ids[0];
-    if (!id) throw new Error("adapter did not return memory id");
-    return id;
+  async getMemoryById(): Promise<never> {
+    throw new Error("Pendant session routes must not read Memory records");
   }
 
-  async updateMemory(memory: Partial<Memory> & { id: UUID }): Promise<boolean> {
-    if (!this.updateMemorySucceeds) return false;
-    await this.adapter.updateMemories([memory]);
-    return true;
+  async createMemory(): Promise<never> {
+    throw new Error("Pendant session routes must not create Memory records");
   }
 
-  async deleteMemory(memoryId: UUID): Promise<void> {
-    await this.adapter.deleteMemories([memoryId]);
+  async updateMemory(): Promise<never> {
+    throw new Error("Pendant session routes must not update Memory records");
+  }
+
+  async deleteMemory(): Promise<never> {
+    throw new Error("Pendant session routes must not delete Memory records");
   }
 }
 
@@ -98,15 +89,16 @@ function uuid(): UUID {
 
 function makeHarness(
   ownerId = uuid(),
-  adapter?: InMemoryDatabaseAdapter,
+  repository: PendantSessionRepository = new InMemoryPendantSessionRepository(),
   agentId = uuid(),
 ) {
-  const runtime = new TestRuntime(agentId, adapter);
+  const runtime = new TestRuntime(agentId);
   const broadcastWs = vi.fn();
   const state = {
     runtime: runtime as never,
     adminEntityId: ownerId,
     broadcastWs,
+    pendantSessionRepository: repository,
   };
 
   async function request(
@@ -133,7 +125,7 @@ function makeHarness(
     return result;
   }
 
-  return { request, runtime, state, broadcastWs };
+  return { request, runtime, state, broadcastWs, repository };
 }
 
 function okBody<T>(result: RouteResult): T {
@@ -165,7 +157,100 @@ function segment(
   };
 }
 
+class FailingPendantSessionRepository implements PendantSessionRepository {
+  constructor(
+    private readonly delegate = new InMemoryPendantSessionRepository(),
+    private readonly fail: Partial<
+      Record<keyof PendantSessionRepository, boolean>
+    > = {},
+  ) {}
+
+  async load(
+    params: Parameters<PendantSessionRepository["load"]>[0],
+  ): ReturnType<PendantSessionRepository["load"]> {
+    if (this.fail.load) throw new Error("load failed");
+    return this.delegate.load(params);
+  }
+
+  async create(stored: StoredPendantSessionDocument): Promise<boolean> {
+    if (this.fail.create) throw new Error("create failed");
+    return this.delegate.create(stored);
+  }
+
+  async saveSession(stored: StoredPendantSessionDocument): Promise<void> {
+    if (this.fail.saveSession) throw new Error("save failed");
+    await this.delegate.saveSession(stored);
+  }
+
+  async saveSegment(
+    stored: StoredPendantSessionDocument,
+    segmentValue: Parameters<PendantSessionRepository["saveSegment"]>[1],
+  ): Promise<void> {
+    if (this.fail.saveSegment) throw new Error("segment save failed");
+    await this.delegate.saveSegment(stored, segmentValue);
+  }
+
+  async replaceInsightRefs(
+    stored: StoredPendantSessionDocument,
+  ): Promise<void> {
+    if (this.fail.replaceInsightRefs) throw new Error("refs save failed");
+    await this.delegate.replaceInsightRefs(stored);
+  }
+
+  async delete(
+    params: Parameters<PendantSessionRepository["delete"]>[0],
+  ): Promise<void> {
+    if (this.fail.delete) throw new Error("delete failed");
+    await this.delegate.delete(params);
+  }
+}
+
 describe("handlePendantSessionRoutes", () => {
+  it("reloads the canonical winner after a cross-process create conflict", async () => {
+    const ownerId = uuid();
+    const agentId = uuid();
+    const winner: StoredPendantSessionDocument = {
+      schemaVersion: 1,
+      session: {
+        id: "sess-race",
+        ownerId,
+        agentId,
+        startedAt: "2026-07-17T00:00:00.000Z",
+        endedAt: "2026-07-17T00:01:00.000Z",
+        state: "ended",
+        captureLease: null,
+        processingLocation: "cloud",
+        revision: 4,
+      },
+      segments: [],
+      insightRefs: [],
+    };
+    let loads = 0;
+    const repository: PendantSessionRepository = {
+      load: vi.fn(async () => (++loads === 1 ? null : winner)),
+      create: vi.fn(async () => false),
+      saveSession: vi.fn(async () => undefined),
+      saveSegment: vi.fn(async () => undefined),
+      replaceInsightRefs: vi.fn(async () => undefined),
+      delete: vi.fn(async () => undefined),
+    };
+    const h = makeHarness(ownerId, repository, agentId);
+
+    const result = await h.request("POST", "/api/pendant/sessions", {
+      sessionId: "sess-race",
+    });
+    const body = okBody<{
+      snapshot: { session: { state: string; revision: number } };
+    }>(result);
+
+    expect(body.snapshot.session).toMatchObject({
+      state: "ended",
+      revision: 4,
+    });
+    expect(repository.create).toHaveBeenCalledTimes(1);
+    expect(repository.load).toHaveBeenCalledTimes(2);
+  });
+
   it("preserves dispatcher query parameters and its pre-parsed request body", async () => {
     const ownerId = uuid();
     const body = { revision: 7 };
@@ -377,79 +462,73 @@ describe("handlePendantSessionRoutes", () => {
   });
 
   it("patches late ASR revisions in place, preserves id/createdAt, and advances updatedAt", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-07-09T00:00:00.000Z"));
     const h = makeHarness();
-    try {
-      await h.request("POST", "/api/pendant/sessions", { sessionId: "sess-f" });
-      const lease = okBody<{ leaseToken: string }>(
-        await h.request("POST", "/api/pendant/sessions/sess-f/lease", {
-          holder: "capturer",
-        }),
-      );
-      const appended = okBody<{
-        snapshot: {
-          segments: Array<{
-            id: string;
-            sessionId: string;
-            text: string;
-            createdAt: string;
-            updatedAt: string;
-          }>;
-        };
-      }>(
-        await h.request("POST", "/api/pendant/sessions/sess-f/segments", {
-          leaseToken: lease.leaseToken,
-          segment: { ...segment("sess-f", 0), status: "pending", text: "" },
-        }),
-      );
-      const original = appended.snapshot.segments[0];
-      expect(original?.id).toBe("sess-f:segment:0");
-      expect(original?.sessionId).toBe("sess-f");
-      vi.setSystemTime(new Date("2026-07-09T00:00:01.000Z"));
-      const patched = okBody<{
-        snapshot: {
-          segments: Array<{
-            id: string;
-            text: string;
-            createdAt: string;
-            updatedAt: string;
-          }>;
-        };
-      }>(
-        await h.request(
-          "PATCH",
-          "/api/pendant/sessions/sess-f/segments/sess-f%3Asegment%3A0",
-          {
-            leaseToken: lease.leaseToken,
-            revision: 1,
-            status: "resolved",
-            text: "resolved words",
-            speakerCluster: "speaker-1",
-          },
-        ),
-      );
-      expect(patched.snapshot.segments).toHaveLength(1);
-      expect(patched.snapshot.segments[0]?.id).toBe(original?.id);
-      expect(patched.snapshot.segments[0]?.createdAt).toBe(original?.createdAt);
-      expect(patched.snapshot.segments[0]?.updatedAt).not.toBe(
-        original?.updatedAt,
-      );
-      expect(patched.snapshot.segments[0]?.text).toBe("resolved words");
-
-      const patchReplay = await h.request(
+    await h.request("POST", "/api/pendant/sessions", { sessionId: "sess-f" });
+    const lease = okBody<{ leaseToken: string }>(
+      await h.request("POST", "/api/pendant/sessions/sess-f/lease", {
+        holder: "capturer",
+      }),
+    );
+    const appended = okBody<{
+      snapshot: {
+        segments: Array<{
+          id: string;
+          sessionId: string;
+          text: string;
+          createdAt: string;
+          updatedAt: string;
+        }>;
+      };
+    }>(
+      await h.request("POST", "/api/pendant/sessions/sess-f/segments", {
+        leaseToken: lease.leaseToken,
+        segment: { ...segment("sess-f", 0), status: "pending", text: "" },
+      }),
+    );
+    const original = appended.snapshot.segments[0];
+    expect(original?.id).toBe("sess-f:segment:0");
+    expect(original?.sessionId).toBe("sess-f");
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const patched = okBody<{
+      snapshot: {
+        segments: Array<{
+          id: string;
+          text: string;
+          createdAt: string;
+          updatedAt: string;
+        }>;
+      };
+    }>(
+      await h.request(
         "PATCH",
         "/api/pendant/sessions/sess-f/segments/sess-f%3Asegment%3A0",
         {
           leaseToken: lease.leaseToken,
           revision: 1,
-          text: "different words",
+          status: "resolved",
+          text: "resolved words",
+          speakerCluster: "speaker-1",
         },
-      );
-      expect(patchReplay.status).toBe(409);
-    } finally {
-      vi.useRealTimers();
-    }
+      ),
+    );
+    expect(patched.snapshot.segments).toHaveLength(1);
+    expect(patched.snapshot.segments[0]?.id).toBe(original?.id);
+    expect(patched.snapshot.segments[0]?.createdAt).toBe(original?.createdAt);
+    expect(patched.snapshot.segments[0]?.updatedAt).not.toBe(
+      original?.updatedAt,
+    );
+    expect(patched.snapshot.segments[0]?.text).toBe("resolved words");
+
+    const patchReplay = await h.request(
+      "PATCH",
+      "/api/pendant/sessions/sess-f/segments/sess-f%3Asegment%3A0",
+      {
+        leaseToken: lease.leaseToken,
+        revision: 1,
+        text: "different words",
+      },
+    );
+    expect(patchReplay.status).toBe(409);
   });
 
   it("makes ended sessions immutable", async () => {
@@ -562,7 +641,7 @@ describe("handlePendantSessionRoutes", () => {
     );
     expect(missing.status).toBe(404);
 
-    const differentAgent = makeHarness(owner, h.runtime.adapter);
+    const differentAgent = makeHarness(owner, h.repository);
     const agentMissing = await differentAgent.request(
       "GET",
       "/api/pendant/sessions/sess-d",
@@ -614,9 +693,11 @@ describe("handlePendantSessionRoutes", () => {
     );
   });
 
-  it("maps storage create and update failures to typed store_unavailable", async () => {
-    const createHarness = makeHarness();
-    createHarness.runtime.createMemoryThrows = true;
+  it("maps repository create and update failures to typed store_unavailable", async () => {
+    const createHarness = makeHarness(
+      uuid(),
+      new FailingPendantSessionRepository(undefined, { create: true }),
+    );
     const createFailed = await createHarness.request(
       "POST",
       "/api/pendant/sessions",
@@ -627,11 +708,13 @@ describe("handlePendantSessionRoutes", () => {
       (createFailed.body as { error?: { code?: string } }).error?.code,
     ).toBe("store_unavailable");
 
-    const updateHarness = makeHarness();
+    const updateHarness = makeHarness(
+      uuid(),
+      new FailingPendantSessionRepository(undefined, { saveSession: true }),
+    );
     await updateHarness.request("POST", "/api/pendant/sessions", {
       sessionId: "sess-store-update",
     });
-    updateHarness.runtime.updateMemorySucceeds = false;
     const updateFailed = await updateHarness.request(
       "POST",
       "/api/pendant/sessions/sess-store-update/lease",

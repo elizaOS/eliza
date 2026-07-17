@@ -1,24 +1,21 @@
 /**
- * Server-authoritative pendant session routes backed by runtime Memory records.
+ * Server-authoritative pendant session routes backed by runtime database rows.
  *
  * The route owns capture leases, segment ordering, revision convergence, and
- * owner/agent isolation. It deliberately persists through AgentRuntime's Memory
- * API only: one deterministic custom-table memory stores each session document.
+ * owner/agent isolation. Storage is normalized through pendant session tables:
+ * one session row, ordered segment rows, and insight-reference rows.
  */
 
 import crypto from "node:crypto";
 import type http from "node:http";
 import {
   type AgentRuntime,
-  type JsonValue,
+  readJsonBody as httpReadJsonBody,
+  sendJson as httpSendJson,
   type LegacyRouteHandler,
   logger,
-  type Memory,
-  MemoryType,
-  readJsonBody as httpReadJsonBody,
-  resolveCanonicalOwnerId,
   type Route,
-  sendJson as httpSendJson,
+  resolveCanonicalOwnerId,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -28,28 +25,25 @@ import {
   PatchPendantSegmentRequestSchema,
   PENDANT_SESSION_SYNC_SCHEMA_VERSION,
   PendantControlRequestSchema,
-  type PendantInsightRef,
-  PendantInsightRefSchema,
   PendantMutationResponseSchema,
-  PendantProcessingLocationSchema,
   type PendantSegment,
-  PendantSegmentSchema,
-  type PendantSession,
   type PendantSessionErrorCode,
   type PendantSessionSnapshot,
   PendantSessionSnapshotSchema,
-  PendantSessionStateSchema,
   pendantSegmentId,
   UpsertPendantInsightRefsRequestSchema,
   UpsertPendantSegmentRequestSchema,
-} from "@elizaos/shared/contracts";
+} from "@elizaos/shared/contracts/pendant-session-sync";
 import z from "zod";
 import { loadElizaConfig } from "../config/config.ts";
+import {
+  createPendantSessionRepository,
+  type PendantSessionRepository,
+  type StoredPendantSessionDocument,
+} from "../services/pendant-session/repository.ts";
 import { getViewsBroadcastWs } from "./views-routes.ts";
 
 const PREFIX = "/api/pendant/sessions";
-const TABLE_NAME = "pendant_sessions";
-const MEMORY_SOURCE = "pendant_session_sync";
 const MAX_SEGMENTS = 20_000;
 
 type JsonHelper = (
@@ -73,24 +67,10 @@ export interface PendantSessionRouteContext {
     runtime: AgentRuntime | null;
     adminEntityId: UUID | null;
     broadcastWs?: (payload: object) => void;
+    pendantSessionRepository?: PendantSessionRepository;
   };
   readJsonBody: ReadJsonBody;
   json: JsonHelper;
-}
-
-interface StoredCaptureLease {
-  holder: string;
-  expiresAt: string;
-  tokenDigest: string;
-}
-
-interface StoredPendantSessionDocument {
-  schemaVersion: 1;
-  session: Omit<PendantSession, "captureLease"> & {
-    captureLease: StoredCaptureLease | null;
-  };
-  segments: PendantSegment[];
-  insightRefs: PendantInsightRef[];
 }
 
 export interface PendantCommittedSegmentEvent {
@@ -104,34 +84,6 @@ export type PendantCommittedSegmentHook = (
 
 const committedSegmentHooks = new Set<PendantCommittedSegmentHook>();
 const sessionLocks = new Map<string, Promise<void>>();
-const StoredCaptureLeaseSchema = z
-  .object({
-    holder: z.string().min(1),
-    expiresAt: z.string().datetime(),
-    tokenDigest: z.string().min(1),
-  })
-  .strict();
-const StoredPendantSessionDocumentSchema = z
-  .object({
-    schemaVersion: z.literal(1),
-    session: z
-      .object({
-        id: z.string().min(1),
-        ownerId: z.string().min(1),
-        agentId: z.string().min(1),
-        startedAt: z.string().datetime(),
-        endedAt: z.string().datetime().nullable(),
-        state: PendantSessionStateSchema,
-        captureLease: StoredCaptureLeaseSchema.nullable(),
-        processingLocation: PendantProcessingLocationSchema,
-        revision: z.number().int().nonnegative(),
-      })
-      .strict(),
-    segments: z.array(PendantSegmentSchema),
-    insightRefs: z.array(PendantInsightRefSchema),
-  })
-  .strict();
-
 export function subscribePendantCommittedSegments(
   hook: PendantCommittedSegmentHook,
 ): () => void {
@@ -215,18 +167,6 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
-function sessionMemoryId(
-  ownerId: string,
-  agentId: string,
-  sessionId: string,
-): UUID {
-  return stringToUuid(`pendant-session:${ownerId}:${agentId}:${sessionId}`);
-}
-
-function sessionRoomId(ownerId: string, agentId: string): UUID {
-  return stringToUuid(`pendant-session-room:${ownerId}:${agentId}`);
-}
-
 function resolveIdentity(
   runtime: AgentRuntime | null,
   adminEntityId: UUID | null,
@@ -250,33 +190,16 @@ function resolveIdentity(
   return { runtime, ownerId, agentId };
 }
 
-function readStoredDocument(memory: Memory): StoredPendantSessionDocument {
-  const payload = (memory.content as { pendantSession?: unknown })
-    .pendantSession;
-  const parsed = StoredPendantSessionDocumentSchema.safeParse(payload);
-  if (!parsed.success) {
-    throw routeError(
-      "store_unavailable",
-      "Stored pendant session record is invalid",
-      503,
-    );
-  }
-  return parsed.data;
-}
-
 async function loadStored(params: {
-  runtime: AgentRuntime;
+  repository: PendantSessionRepository;
   ownerId: string;
   agentId: string;
   sessionId: string;
 }): Promise<StoredPendantSessionDocument> {
-  const memory = await params.runtime.getMemoryById(
-    sessionMemoryId(params.ownerId, params.agentId, params.sessionId),
-  );
-  if (!memory) {
+  const stored = await params.repository.load(params);
+  if (!stored) {
     throw routeError("not_found", "Pendant session was not found", 404);
   }
-  const stored = readStoredDocument(memory);
   if (
     stored.session.ownerId !== params.ownerId ||
     stored.session.agentId !== params.agentId
@@ -286,60 +209,11 @@ async function loadStored(params: {
   return stored;
 }
 
-async function persistStored(params: {
-  runtime: AgentRuntime;
-  ownerId: string;
-  agentId: string;
-  stored: StoredPendantSessionDocument;
-  create?: boolean;
-}): Promise<void> {
-  const id = sessionMemoryId(
-    params.ownerId,
-    params.agentId,
-    params.stored.session.id,
-  );
-  const memory: Memory = {
-    id,
-    entityId: params.ownerId as UUID,
-    agentId: params.agentId as UUID,
-    roomId: sessionRoomId(params.ownerId, params.agentId),
-    content: {
-      text: `Pendant session ${params.stored.session.id}`,
-      pendantSession: JSON.parse(JSON.stringify(params.stored)) as JsonValue,
-    },
-    metadata: {
-      type: MemoryType.CUSTOM,
-      source: MEMORY_SOURCE,
-      sourceId: params.stored.session.id,
-      scope: "owner-private",
-      tags: ["pendant", "session"],
-    },
-    createdAt: Date.parse(params.stored.session.startedAt),
-  };
-  if (params.create) {
-    try {
-      await params.runtime.createMemory(memory, TABLE_NAME, true);
-    } catch {
-      throw routeError(
-        "store_unavailable",
-        "Pendant session store is unavailable",
-        503,
-      );
-    }
-    return;
-  }
-  const updated = await params.runtime.updateMemory({
-    id,
-    content: memory.content,
-    metadata: memory.metadata,
-  });
-  if (!updated) {
-    throw routeError(
-      "store_unavailable",
-      "Pendant session store is unavailable",
-      503,
-    );
-  }
+async function persistSession(
+  repository: PendantSessionRepository,
+  stored: StoredPendantSessionDocument,
+): Promise<void> {
+  await repository.saveSession(stored);
 }
 
 function assertNotEnded(stored: StoredPendantSessionDocument): void {
@@ -553,6 +427,7 @@ function parseSessionPath(pathname: string): {
       tail: parts.map((part) => decodeURIComponent(part)),
     };
   } catch {
+    // error-policy:J3 malformed URL bytes are rejected as invalid input.
     throw routeError("validation", "Malformed URL encoding", 400);
   }
 }
@@ -577,6 +452,9 @@ export async function handlePendantSessionRoutes(
 
   try {
     const identity = resolveIdentity(state.runtime, state.adminEntityId);
+    const repository =
+      state.pendantSessionRepository ??
+      createPendantSessionRepository(identity.runtime);
 
     if (method === "POST" && pathname === PREFIX) {
       const raw = await readJsonBody(ctx.req, res);
@@ -608,12 +486,17 @@ export async function handlePendantSessionRoutes(
         `${identity.ownerId}:${identity.agentId}:${sessionId}`,
         async () => {
           try {
-            const existing = await loadStored({ ...identity, sessionId });
+            const existing = await loadStored({
+              repository,
+              ...identity,
+              sessionId,
+            });
             stored.session = existing.session;
             stored.segments = existing.segments;
             stored.insightRefs = existing.insightRefs;
             return;
           } catch (err) {
+            // error-policy:J1 create is idempotent; only the local not-found sentinel is consumed.
             if (
               !(err instanceof PendantSessionRouteError) ||
               err.code !== "not_found"
@@ -621,8 +504,20 @@ export async function handlePendantSessionRoutes(
               throw err;
             }
           }
-          await persistStored({ ...identity, stored, create: true });
-          created = true;
+          created = await repository.create(stored);
+          if (!created) {
+            // A different process may have won the atomic insert after our
+            // initial read. Return its canonical row rather than our empty
+            // candidate snapshot.
+            const winner = await loadStored({
+              repository,
+              ...identity,
+              sessionId,
+            });
+            stored.session = winner.session;
+            stored.segments = winner.segments;
+            stored.insightRefs = winner.insightRefs;
+          }
         },
       );
       const snapshot = snapshotFromStored(stored);
@@ -639,7 +534,7 @@ export async function handlePendantSessionRoutes(
     const lockKey = `${identity.ownerId}:${identity.agentId}:${sessionId}`;
 
     if (method === "GET" && tail.length === 0) {
-      const stored = await loadStored({ ...identity, sessionId });
+      const stored = await loadStored({ repository, ...identity, sessionId });
       const snapshot = snapshotFromStored(stored);
       const afterRevision = parseAfterRevision(
         url.searchParams.get("afterRevision"),
@@ -656,17 +551,19 @@ export async function handlePendantSessionRoutes(
     }
 
     if (method === "GET" && tail.length === 1 && tail[0] === "export") {
-      const stored = await loadStored({ ...identity, sessionId });
+      const stored = await loadStored({ repository, ...identity, sessionId });
       json(res, { ok: true, export: snapshotFromStored(stored) });
       return true;
     }
 
     if (method === "DELETE" && tail.length === 0) {
       await withSessionLock(lockKey, async () => {
-        await loadStored({ ...identity, sessionId });
-        await identity.runtime.deleteMemory(
-          sessionMemoryId(identity.ownerId, identity.agentId, sessionId),
-        );
+        await loadStored({ repository, ...identity, sessionId });
+        await repository.delete({
+          ownerId: identity.ownerId,
+          agentId: identity.agentId,
+          sessionId,
+        });
       });
       broadcastDelete(ctx, sessionId, identity.agentId);
       json(res, { ok: true, deleted: true });
@@ -681,7 +578,7 @@ export async function handlePendantSessionRoutes(
         throw routeError("validation", parsed.error.message, 400);
       }
       const result = await withSessionLock(lockKey, async () => {
-        const stored = await loadStored({ ...identity, sessionId });
+        const stored = await loadStored({ repository, ...identity, sessionId });
         assertNotEnded(stored);
         const existing = stored.session.captureLease;
         const existingActive =
@@ -712,7 +609,7 @@ export async function handlePendantSessionRoutes(
           tokenDigest: digestToken(leaseToken),
         };
         commit(stored);
-        await persistStored({ ...identity, stored });
+        await persistSession(repository, stored);
         return { snapshot: snapshotFromStored(stored), leaseToken };
       });
       broadcastMutation(ctx, result.snapshot);
@@ -732,7 +629,7 @@ export async function handlePendantSessionRoutes(
         throw routeError("validation", parsed.error.message, 400);
       }
       const event = await withSessionLock(lockKey, async () => {
-        const stored = await loadStored({ ...identity, sessionId });
+        const stored = await loadStored({ repository, ...identity, sessionId });
         assertCanAppend(stored);
         assertLease(stored, parsed.data.leaseToken);
         if (stored.segments.length >= MAX_SEGMENTS) {
@@ -784,7 +681,7 @@ export async function handlePendantSessionRoutes(
           };
           stored.segments[existingIndex] = next;
           commit(stored);
-          await persistStored({ ...identity, stored });
+          await repository.saveSegment(stored, next);
           return {
             snapshot: snapshotFromStored(stored),
             segment: next,
@@ -815,7 +712,7 @@ export async function handlePendantSessionRoutes(
         };
         stored.segments.push(incoming);
         commit(stored);
-        await persistStored({ ...identity, stored });
+        await repository.saveSegment(stored, incoming);
         return {
           snapshot: snapshotFromStored(stored),
           segment: incoming,
@@ -850,7 +747,7 @@ export async function handlePendantSessionRoutes(
       }
       const segmentId = tail[1];
       const event = await withSessionLock(lockKey, async () => {
-        const stored = await loadStored({ ...identity, sessionId });
+        const stored = await loadStored({ repository, ...identity, sessionId });
         // Pausing prevents new capture segments, but already-durable pending
         // segments must still accept late ASR/diarization revisions.
         assertNotEnded(stored);
@@ -895,7 +792,7 @@ export async function handlePendantSessionRoutes(
         };
         stored.segments[existingIndex] = next;
         commit(stored);
-        await persistStored({ ...identity, stored });
+        await repository.saveSegment(stored, next);
         return {
           snapshot: snapshotFromStored(stored),
           segment: next,
@@ -928,7 +825,7 @@ export async function handlePendantSessionRoutes(
         throw routeError("validation", parsed.error.message, 400);
       }
       const result = await withSessionLock(lockKey, async () => {
-        const stored = await loadStored({ ...identity, sessionId });
+        const stored = await loadStored({ repository, ...identity, sessionId });
         assertControlRevision(stored, parsed.data.revision);
         assertNotEnded(stored);
         const target =
@@ -946,7 +843,7 @@ export async function handlePendantSessionRoutes(
           stored.session.captureLease = null;
         }
         commit(stored);
-        await persistStored({ ...identity, stored });
+        await persistSession(repository, stored);
         return { snapshot: snapshotFromStored(stored), committed: true };
       });
       if (result.committed) broadcastMutation(ctx, result.snapshot);
@@ -962,13 +859,13 @@ export async function handlePendantSessionRoutes(
         throw routeError("validation", parsed.error.message, 400);
       }
       const snapshot = await withSessionLock(lockKey, async () => {
-        const stored = await loadStored({ ...identity, sessionId });
+        const stored = await loadStored({ repository, ...identity, sessionId });
         assertNotEnded(stored);
         assertControlRevision(stored, parsed.data.revision);
         stored.insightRefs = parsed.data.insightRefs;
         validateInsightRefs(stored);
         commit(stored);
-        await persistStored({ ...identity, stored });
+        await repository.replaceInsightRefs(stored);
         return snapshotFromStored(stored);
       });
       broadcastMutation(ctx, snapshot);
@@ -997,9 +894,11 @@ function requestBaseUrl(req: http.IncomingMessage): string {
 
 function requestUrl(req: http.IncomingMessage): URL {
   const url = new URL(req.url ?? "/", requestBaseUrl(req));
-  const query = (req as http.IncomingMessage & {
-    query?: Record<string, string | string[]>;
-  }).query;
+  const query = (
+    req as http.IncomingMessage & {
+      query?: Record<string, string | string[]>;
+    }
+  ).query;
   if (!query || url.search) return url;
   for (const [key, value] of Object.entries(query)) {
     for (const item of Array.isArray(value) ? value : [value]) {
@@ -1014,7 +913,7 @@ async function readRouteJsonBody<T = Record<string, unknown>>(
   res: http.ServerResponse,
 ): Promise<T | null> {
   const augmented = req as http.IncomingMessage & { body?: unknown };
-  if (Object.prototype.hasOwnProperty.call(augmented, "body")) {
+  if (Object.hasOwn(augmented, "body")) {
     return (augmented.body ?? null) as T | null;
   }
   return httpReadJsonBody<T>(req, res);

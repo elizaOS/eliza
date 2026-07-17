@@ -64,9 +64,9 @@ describe("default SETTINGS action composition", () => {
       "/api/pendant/sessions/:sessionId/segments",
       "/api/pendant/sessions/:sessionId/insight-refs",
     ]) {
-      expect(plugin.routes?.find((route) => route.path === path)?.public).not.toBe(
-        true,
-      );
+      expect(
+        plugin.routes?.find((route) => route.path === path)?.public,
+      ).not.toBe(true);
     }
   });
 
