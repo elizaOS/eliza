@@ -8,6 +8,7 @@ import {
 
 import {
   getSolanaBalance,
+  getSolanaOldestKnownSignature,
   getSolanaParsedTransactions,
   getSolanaRecentSignatures,
   getSolanaTokenHoldings,
@@ -22,6 +23,7 @@ import {
   ChainConnectorHealth,
   ChainOperationResult,
   NativeBalanceResult,
+  OldestTransactionResult,
   TokenBalancesResult,
   TransactionLookupResult,
   TransactionPageRequest,
@@ -589,6 +591,55 @@ export class SolanaBlockchainConnector
     }
   }
 
+    async getOldestTransaction(
+    address: string,
+  ): Promise<
+    ChainOperationResult<OldestTransactionResult>
+  > {
+    try {
+      const oldestSignature =
+        await getSolanaOldestKnownSignature(
+          address,
+        );
+
+      if (!oldestSignature) {
+        return createSuccessResult({
+          chainId: SOLANA_CHAIN_ID,
+          address: address.trim(),
+          transactionId: null,
+          transaction: null,
+          timestamp: null,
+          retrievedAt:
+            new Date().toISOString(),
+        });
+      }
+
+      const transactionResult =
+        await this.getTransaction(
+          oldestSignature.signature,
+        );
+
+      return createSuccessResult({
+        chainId: SOLANA_CHAIN_ID,
+        address: address.trim(),
+        transactionId:
+          oldestSignature.signature,
+        transaction:
+          transactionResult.data
+            ?.transaction ?? null,
+        timestamp:
+          oldestSignature.blockTime ?? null,
+        retrievedAt:
+          new Date().toISOString(),
+      });
+    } catch (error) {
+      return createErrorResult(
+        error,
+        "SOLANA_OLDEST_TRANSACTION_FAILED",
+      );
+    }
+  }
+  
   async getHealth(): Promise<ChainConnectorHealth> {
     const apiKeyAvailable =
       Boolean(
