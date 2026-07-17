@@ -567,7 +567,11 @@ export function collectPluginNames(
       "birdclaw (auto-on when the birdclaw CLI/data root is present; gate ELIZA_BIRDCLAW)",
     );
   }
-  if (!onMobile && simpleViewsRequested()) {
+  if (
+    !onMobile &&
+    deploymentTarget.runtime === "local" &&
+    simpleViewsRequested()
+  ) {
     pluginsToLoad.add("@elizaos/plugin-simple-views");
     track(
       "@elizaos/plugin-simple-views",
@@ -774,6 +778,16 @@ export function collectPluginNames(
     for (const pluginName of STORE_BUILD_LOCAL_EXECUTION_PLUGINS) {
       pluginsToLoad.delete(pluginName);
     }
+  }
+  // This QA workbench carries local state and must not be reintroduced by an
+  // additive allow-list, installed-plugin record, or feature gate in a remote
+  // controller/cloud runtime.
+  if (
+    onMobile ||
+    deploymentTarget.runtime !== "local" ||
+    !simpleViewsRequested()
+  ) {
+    pluginsToLoad.delete("@elizaos/plugin-simple-views");
   }
 
   for (const pluginName of Array.from(pluginsToLoad)) {

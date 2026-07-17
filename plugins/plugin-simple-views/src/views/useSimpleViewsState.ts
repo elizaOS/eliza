@@ -5,6 +5,7 @@
  * broken transport visually distinct from an empty notes/calendar collection.
  */
 
+import { client } from "@elizaos/ui/api";
 import { useViewEvent } from "@elizaos/ui/events";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SimpleViewsSnapshot } from "../types.js";
@@ -101,9 +102,14 @@ export function useSimpleViewsState(): SimpleViewsState {
       if (document.visibilityState === "visible") void refresh();
     };
 
+    const unsubscribeReconnect = client.onWsEvent(
+      "ws-reconnected",
+      refreshAfterReconnect,
+    );
     window.addEventListener("online", refreshAfterReconnect);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
+      unsubscribeReconnect();
       window.removeEventListener("online", refreshAfterReconnect);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };

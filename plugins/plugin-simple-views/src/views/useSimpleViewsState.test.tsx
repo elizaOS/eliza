@@ -11,6 +11,16 @@ const transport = vi.hoisted(() => ({
   fetchState: vi.fn(),
   interact: vi.fn(),
   viewEvents: new Map<string, () => void>(),
+  wsEvents: new Map<string, () => void>(),
+}));
+
+vi.mock("@elizaos/ui/api", () => ({
+  client: {
+    onWsEvent: (eventType: string, callback: () => void) => {
+      transport.wsEvents.set(eventType, callback);
+      return () => transport.wsEvents.delete(eventType);
+    },
+  },
 }));
 
 vi.mock("@elizaos/ui/events", () => ({
@@ -54,6 +64,7 @@ beforeEach(() => {
   transport.fetchState.mockReset();
   transport.interact.mockReset();
   transport.viewEvents.clear();
+  transport.wsEvents.clear();
   visibilityState = "visible";
   Object.defineProperty(document, "visibilityState", {
     configurable: true,
@@ -88,7 +99,19 @@ describe("useSimpleViewsState", () => {
     expect(result.current.error).toBe("Local agent is offline");
   });
 
-  it("refreshes after reconnect and only when a hidden document becomes visible", async () => {
+  it("recovers stale state from the client's websocket reconnect event", async () => {
+    transport.fetchState.mockResolvedValueOnce(snapshot(1));
+    const { result } = renderHook(() => useSimpleViewsState());
+    await waitFor(() => expect(result.current.snapshot?.revision).toBe(1));
+
+    transport.fetchState.mockResolvedValueOnce(snapshot(4));
+    act(() => transport.wsEvents.get("ws-reconnected")?.());
+
+    await waitFor(() => expect(result.current.snapshot?.revision).toBe(4));
+    expect(transport.fetchState).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes after browser connectivity returns and only when a hidden document becomes visible", async () => {
     transport.fetchState.mockResolvedValueOnce(snapshot(1));
     const { result } = renderHook(() => useSimpleViewsState());
     await waitFor(() => expect(result.current.snapshot?.revision).toBe(1));
@@ -121,7 +144,7 @@ describe("useSimpleViewsState", () => {
       .mockReturnValueOnce(reconnect.promise)
       .mockReturnValueOnce(visible.promise);
 
-    act(() => window.dispatchEvent(new Event("online")));
+    act(() => transport.wsEvents.get("ws-reconnected")?.());
     act(() => document.dispatchEvent(new Event("visibilitychange")));
 
     await act(async () => {

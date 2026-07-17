@@ -13,7 +13,8 @@ describe("simpleViewsPlugin", () => {
       expect(view.developerOnly).toBe(true);
       expect(view.viewKind).toBe("developer");
       expect(view.serverInteract).toBeTypeOf("function");
-      expect(view.surface?.capabilities).toContain("agent-surface");
+      expect(view.surface).toEqual({ header: "fullscreen" });
+      expect(view.surface?.capabilities).toBeUndefined();
     }
   });
 

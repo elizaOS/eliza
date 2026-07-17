@@ -17,7 +17,12 @@ import type { StickyColor } from "../types.js";
 
 export const VIEW_ROOT_STYLE: CSSProperties = {
   boxSizing: "border-box",
-  minHeight: "100%",
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+  overflowX: "hidden",
+  overflowY: "auto",
+  overscrollBehavior: "contain",
   padding: "clamp(12px, 2.4vw, 24px)",
   color: "var(--txt, #f5f5f5)",
   fontFamily: "inherit",

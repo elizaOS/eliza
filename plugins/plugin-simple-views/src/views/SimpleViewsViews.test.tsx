@@ -52,6 +52,18 @@ beforeEach(() => stateHook.mockReset());
 afterEach(cleanup);
 
 describe("Simple Views state labels", () => {
+  it("lets each view own scrolling inside the overflow-hidden host", () => {
+    stateHook.mockReturnValue(hookState({ snapshot: snapshot(1) }));
+    const notes = render(<NotesView />);
+    expect(notes.getByTestId("simple-notes-view").style.overflowY).toBe("auto");
+    notes.unmount();
+
+    const calendar = render(<SimpleCalendarView />);
+    expect(calendar.getByTestId("simple-calendar-view").style.overflowY).toBe(
+      "auto",
+    );
+  });
+
   it("does not report healthy zero counts before the first snapshot", () => {
     stateHook.mockReturnValue(hookState({ loading: true }));
     const notes = render(<NotesView />);

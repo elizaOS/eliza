@@ -41,6 +41,7 @@ function isBroadcastService(value: unknown): value is BroadcastService {
 
 export interface SimpleViewsServiceOptions {
   store?: SimpleViewsStore;
+  stateDir?: string;
   now?: () => Date;
   createId?: (kind: "note" | "event") => string;
 }
@@ -79,7 +80,12 @@ export class SimpleViewsService extends Service {
   ) {
     super(runtime);
     this.eventRuntime = runtime;
-    this.store = options.store ? options.store : new SimpleViewsStore();
+    this.store = options.store
+      ? options.store
+      : new SimpleViewsStore({
+          stateDir: options.stateDir,
+          agentId: runtime ? String(runtime.agentId) : undefined,
+        });
     this.now = options.now ? options.now : () => new Date();
     this.createId = options.createId
       ? options.createId

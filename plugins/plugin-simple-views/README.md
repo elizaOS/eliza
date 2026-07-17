@@ -29,10 +29,12 @@ Open `http://localhost:2138/notes` or
 4. Create an event for tomorrow.
 5. Split Notes and Simple Calendar side by side.
 
-State is stored atomically under `ELIZA_STATE_DIR/simple-views/state.json`.
-Both direct controls and agent capabilities use the same validation and
-mutation path, and mounted views converge through the normal runtime update
-event.
+State is stored atomically per agent under
+`ELIZA_STATE_DIR/simple-views/agents/<agentId>/state.json`. On first use, a
+validated legacy `ELIZA_STATE_DIR/simple-views/state.json` is copied without
+deleting the original or replacing existing scoped state. Both direct controls
+and agent capabilities use the same validation and mutation path, and mounted
+views converge through the normal runtime update event.
 
 ## Commands
 

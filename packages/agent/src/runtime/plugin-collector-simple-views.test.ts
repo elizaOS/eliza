@@ -38,4 +38,44 @@ describe("collectPluginNames Simple Views gate", () => {
     process.env.ELIZA_SIMPLE_VIEWS = "1";
     expect(collectPluginNames({} as ElizaConfig).has(SIMPLE_VIEWS)).toBe(false);
   });
+
+  it("cannot be enabled indirectly without the explicit developer gate", () => {
+    const config = {
+      plugins: {
+        allow: [SIMPLE_VIEWS],
+        installs: { [SIMPLE_VIEWS]: { source: "workspace" } },
+      },
+    } as ElizaConfig;
+
+    expect(collectPluginNames(config).has(SIMPLE_VIEWS)).toBe(false);
+  });
+
+  it.each([
+    {
+      label: "remote",
+      deploymentTarget: {
+        runtime: "remote",
+        provider: "remote",
+        remoteApiBase: "https://agent.example.test",
+      },
+    },
+    {
+      label: "cloud",
+      deploymentTarget: { runtime: "cloud", provider: "elizacloud" },
+    },
+  ])(
+    "stays unavailable in a $label runtime even through additive plugin config",
+    ({ deploymentTarget }) => {
+      process.env.ELIZA_SIMPLE_VIEWS = "1";
+      const config = {
+        deploymentTarget,
+        plugins: {
+          allow: [SIMPLE_VIEWS],
+          installs: { [SIMPLE_VIEWS]: { source: "workspace" } },
+        },
+      } as ElizaConfig;
+
+      expect(collectPluginNames(config).has(SIMPLE_VIEWS)).toBe(false);
+    },
+  );
 });

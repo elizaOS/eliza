@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, test } from "vitest";
+import simpleViewsPlugin from "../../../../../plugins/plugin-simple-views/src/plugin.ts";
 import { evaluateRouteModeGate } from "./route-mode-guard.ts";
 
 describe("evaluateRouteModeGate — fail-closed protected namespaces (#12633)", () => {
@@ -117,6 +118,35 @@ describe("evaluateRouteModeGate — fail-closed protected namespaces (#12633)", 
         }).hidden,
         `hidden in ${mode}`,
       ).toBe(false);
+    }
+  });
+
+  test("Simple Views routes are unprobeable from remote and cloud runtimes", () => {
+    const runtime = { routes: simpleViewsPlugin.routes };
+    for (const route of simpleViewsPlugin.routes ?? []) {
+      if (route.type === "STATIC") continue;
+      for (const mode of ["cloud", "remote"] as const) {
+        expect(
+          evaluateRouteModeGate({
+            pathname: route.path.replace(/:[^/]+/g, "fixture"),
+            method: route.type,
+            mode,
+            runtime,
+          }).hidden,
+          `${route.type} ${route.path} hidden in ${mode}`,
+        ).toBe(true);
+      }
+      for (const mode of ["local", "local-only"] as const) {
+        expect(
+          evaluateRouteModeGate({
+            pathname: route.path.replace(/:[^/]+/g, "fixture"),
+            method: route.type,
+            mode,
+            runtime,
+          }).hidden,
+          `${route.type} ${route.path} visible in ${mode}`,
+        ).toBe(false);
+      }
     }
   });
 });

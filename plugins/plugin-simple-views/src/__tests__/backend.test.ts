@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { interact, serverInteract } from "../interact.js";
 import { simpleViewsRoutes } from "../routes.js";
 import { SIMPLE_VIEWS_SERVICE_TYPE, SimpleViewsService } from "../service.js";
-import { SimpleViewsStore } from "../store.js";
+import { SimpleViewsStore, simpleViewsStateFilePath } from "../store.js";
 import { todayDateKey } from "../validation.js";
 
 const temporaryDirectories: string[] = [];
@@ -30,12 +30,20 @@ afterEach(async () => {
   );
 });
 
-async function temporaryStateFile(): Promise<string> {
+async function temporaryStateDirectory(): Promise<string> {
   const directory = await fs.mkdtemp(
     path.join(os.tmpdir(), "simple-views-backend-"),
   );
   temporaryDirectories.push(directory);
-  return path.join(directory, "simple-views", "state.json");
+  return directory;
+}
+
+async function temporaryStateFile(): Promise<string> {
+  return path.join(
+    await temporaryStateDirectory(),
+    "simple-views",
+    "state.json",
+  );
 }
 
 function clock(start = "2026-07-16T12:00:00.000Z"): () => Date {
@@ -71,6 +79,16 @@ function runtimeFor(service: SimpleViewsService): {
     reportError,
   } as unknown as IAgentRuntime;
   return { runtime, reportError };
+}
+
+function defaultStoreRuntime(agentId: string): IAgentRuntime {
+  return {
+    agentId,
+    getServiceLoadPromise: vi.fn().mockResolvedValue({
+      broadcastWs: vi.fn(),
+    }),
+    reportError: vi.fn(),
+  } as unknown as IAgentRuntime;
 }
 
 function route(type: Route["type"], pathValue: string): Route {
@@ -177,6 +195,130 @@ describe("SimpleViewsStore", () => {
     const restarted = await serviceFor(filePath);
     expect(restarted.listNotes()).toHaveLength(24);
     expect(new Set(restarted.listNotes().map((note) => note.id)).size).toBe(24);
+  });
+
+  it("scopes default stores per agent and shares serialization for duplicate runtime construction", async () => {
+    const stateDir = await temporaryStateDirectory();
+    const first = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    const duplicate = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    const isolated = new SimpleViewsService(defaultStoreRuntime("agent-b"), {
+      stateDir,
+    });
+    await Promise.all([
+      first.initialize(),
+      duplicate.initialize(),
+      isolated.initialize(),
+    ]);
+
+    await Promise.all([
+      ...Array.from({ length: 12 }, (_, index) =>
+        first.createNote({ title: `First ${index}` }),
+      ),
+      ...Array.from({ length: 12 }, (_, index) =>
+        duplicate.createNote({ title: `Duplicate ${index}` }),
+      ),
+      isolated.createNote({ title: "Other agent" }),
+    ]);
+
+    expect(first.store.filePath).toBe(duplicate.store.filePath);
+    expect(first.store.filePath).toBe(
+      simpleViewsStateFilePath(stateDir, "agent-a"),
+    );
+    expect(isolated.store.filePath).toBe(
+      simpleViewsStateFilePath(stateDir, "agent-b"),
+    );
+    expect(first.snapshot()).toMatchObject({ revision: 24 });
+    expect(duplicate.listNotes()).toHaveLength(24);
+    expect(isolated.snapshot()).toMatchObject({ revision: 1 });
+    expect(isolated.listNotes().map((note) => note.title)).toEqual([
+      "Other agent",
+    ]);
+
+    await first.stop();
+    expect(duplicate.listNotes()).toHaveLength(24);
+    await duplicate.stop();
+    await isolated.stop();
+
+    const restarted = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    await restarted.initialize();
+    expect(restarted.snapshot()).toMatchObject({ revision: 24 });
+    expect(restarted.listNotes()).toHaveLength(24);
+    await restarted.stop();
+  });
+
+  it("migrates legacy state once without deleting it or overwriting the scoped restart", async () => {
+    const stateDir = await temporaryStateDirectory();
+    const legacyPath = simpleViewsStateFilePath(stateDir);
+    const scopedPath = simpleViewsStateFilePath(stateDir, "agent-a");
+    const legacy = await serviceFor(legacyPath);
+    await legacy.createNote({ title: "Legacy note", body: "Keep this" });
+    await legacy.createCalendarEvent({
+      title: "Legacy event",
+      date: "2026-07-22",
+      time: "15:00",
+    });
+    await legacy.selectDate("2026-07-22");
+    const legacySnapshot = legacy.snapshot();
+    await legacy.stop();
+    const legacyBytes = await fs.readFile(legacyPath, "utf8");
+
+    const first = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    const duplicate = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    await Promise.all([first.initialize(), duplicate.initialize()]);
+
+    expect(first.snapshot()).toEqual(legacySnapshot);
+    expect(duplicate.snapshot()).toEqual(legacySnapshot);
+    expect(await fs.readFile(scopedPath, "utf8")).toBe(legacyBytes);
+    expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
+
+    await first.createNote({ title: "Scoped note" });
+    await first.stop();
+    await duplicate.stop();
+
+    const restarted = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    await restarted.initialize();
+    expect(restarted.listNotes().map((note) => note.title)).toEqual([
+      "Scoped note",
+      "Legacy note",
+    ]);
+    expect(restarted.snapshot()).toMatchObject({ revision: 4 });
+    expect(await fs.readFile(legacyPath, "utf8")).toBe(legacyBytes);
+    await restarted.stop();
+  });
+
+  it("rejects malformed legacy state instead of migrating a healthy-looking empty document", async () => {
+    const stateDir = await temporaryStateDirectory();
+    const legacyPath = simpleViewsStateFilePath(stateDir);
+    const scopedPath = simpleViewsStateFilePath(stateDir, "agent-a");
+    await fs.mkdir(path.dirname(legacyPath), { recursive: true });
+    await fs.writeFile(
+      legacyPath,
+      JSON.stringify({ schemaVersion: 1, revision: "not-a-number" }),
+      "utf8",
+    );
+
+    const service = new SimpleViewsService(defaultStoreRuntime("agent-a"), {
+      stateDir,
+    });
+    await expect(service.initialize()).rejects.toMatchObject({
+      code: "SIMPLE_VIEWS_VALIDATION_FAILED",
+    });
+    await expect(fs.access(scopedPath)).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    await service.stop();
   });
 
   it("surfaces corrupt persisted bytes as an error instead of healthy empty state", async () => {
@@ -340,6 +482,7 @@ describe("Simple Views authenticated routes", () => {
     for (const routeValue of simpleViewsRoutes) {
       expect(routeValue.public).not.toBe(true);
       expect(routeValue.rawPath).toBe(true);
+      expect(routeValue.modes).toEqual(["local", "local-only"]);
     }
   });
 

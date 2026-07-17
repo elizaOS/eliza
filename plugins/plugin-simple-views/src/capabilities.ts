@@ -1,7 +1,7 @@
 /**
  * Planner-visible server capabilities for the two developer workbench views.
- * Each declaration maps one-to-one to `interact.ts`; mounted UI controls may
- * use the separate agent-surface protocol without creating a second domain API.
+ * Each declaration maps one-to-one to `interact.ts`, which is the supported
+ * server-side control plane for both workbench views.
  */
 
 import type { ViewCapability } from "@elizaos/core";

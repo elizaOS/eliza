@@ -107,7 +107,7 @@ async function routeBoundary(
   }
 }
 
-export const simpleViewsRoutes: Route[] = [
+const simpleViewsRouteDefinitions: Route[] = [
   {
     type: "GET",
     name: "simple-views-state",
@@ -301,3 +301,14 @@ export const simpleViewsRoutes: Route[] = [
       }),
   },
 ];
+
+const SIMPLE_VIEWS_ROUTE_MODES = ["local", "local-only"] as const;
+
+export const simpleViewsRoutes: Route[] = simpleViewsRouteDefinitions.map(
+  (route) => ({
+    ...route,
+    modes: SIMPLE_VIEWS_ROUTE_MODES,
+    modeReason:
+      "developer workbench state is available only from a local agent runtime",
+  }),
+);

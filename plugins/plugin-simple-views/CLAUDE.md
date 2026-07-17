@@ -17,10 +17,11 @@ tile, pin, and placement behavior. Do not introduce another layout manager here.
 
 ## Data contract
 
-Both views consume one server-owned `SimpleViewsSnapshot`. The service persists
-that snapshot atomically beneath `ELIZA_STATE_DIR`; browser storage is never an
-authoritative data source. UI controls and agent capabilities call the same
-validated mutation path so chat-driven and direct interactions cannot diverge.
+Both views consume one server-owned `SimpleViewsSnapshot` per agent. The service
+persists that snapshot atomically beneath `ELIZA_STATE_DIR`; browser storage is
+never an authoritative data source. UI controls and agent capabilities call the
+same validated mutation path so chat-driven and direct interactions cannot
+diverge.
 
 ## Layout
 
