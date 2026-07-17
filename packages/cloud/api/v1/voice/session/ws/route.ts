@@ -210,6 +210,8 @@ app.get("/", (c) => {
           {
             agentId: claims.agentId,
             conversationId: claims.conversationId,
+            organizationId: claims.organizationId,
+            userId: claims.userId,
           },
         ),
         usageStore,
