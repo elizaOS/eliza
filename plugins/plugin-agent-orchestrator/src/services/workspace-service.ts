@@ -391,6 +391,10 @@ export class CodingWorkspaceService {
     return service;
   }
 
+  getWorkspaceRegistry(): WorkspaceRegistry {
+    return this.workspaceRegistry;
+  }
+
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
     const service = getCodingWorkspaceService(runtime);
     if (service) {

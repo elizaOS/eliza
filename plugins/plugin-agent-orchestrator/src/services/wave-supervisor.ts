@@ -15,17 +15,18 @@ import type {
   Service as ServiceType,
   UUID,
 } from "@elizaos/core";
-import { logger, Service } from "@elizaos/core";
+import { ElizaError, logger, Service } from "@elizaos/core";
 import type { TaskThreadDetailDto } from "./orchestrator-task-mapper.js";
 import type { CreateTaskInput } from "./orchestrator-task-types.js";
 import { parseOwnerRepo } from "./workspace-github.js";
 import { preserveRegisteredWorkspace } from "./workspace-lifecycle.js";
-import { getSharedWorkspaceRegistry } from "./workspace-registry.js";
+import type { WorkspaceRegistry } from "./workspace-registry.js";
 
 export const WAVE_SUPERVISOR_SERVICE_TYPE = "ORCHESTRATOR_WAVE_SUPERVISOR";
 export const WAVE_SUPERVISOR_SETTING = "ELIZA_ORCHESTRATOR_WAVE_SUPERVISOR";
 export const WAVE_ID_METADATA_KEY = "waveId";
 export const WAVE_REFILL_PLANNER_SERVICE_TYPE = "ORCHESTRATOR_LANE_PLANNER";
+export const WAVE_BUDGET_BREACH_CODE = "ORCHESTRATOR_WAVE_BUDGET_BREACH";
 
 export class WaveConcurrencyCapError extends Error {
   constructor(
@@ -34,6 +35,20 @@ export class WaveConcurrencyCapError extends Error {
   ) {
     super(`wave ${waveId} concurrency cap reached (${cap})`);
     this.name = "WaveConcurrencyCapError";
+  }
+}
+
+export class WaveBudgetBreachError extends ElizaError {
+  constructor(
+    readonly waveId: string,
+    readonly reason: string,
+    context: Record<string, unknown>,
+  ) {
+    super(`wave ${waveId} budget breached: ${reason}`, {
+      code: WAVE_BUDGET_BREACH_CODE,
+      context: { waveId, reason, ...context },
+      severity: "fatal",
+    });
   }
 }
 
@@ -111,7 +126,9 @@ export function isSalvageEligible(input: SalvageEligibilityInput): boolean {
 
 export interface ActiveLaneScope {
   laneId: string;
+  taskId?: string;
   waveId: string;
+  attemptId: string;
   paths: string[];
   repo?: string;
 }
@@ -127,6 +144,7 @@ export interface OpenPullRequestScope {
 export interface WaveCollision {
   key: string;
   waveId: string;
+  attemptId: string;
   leftId: string;
   rightId: string;
   paths: string[];
@@ -182,12 +200,18 @@ export function detectWaveCollisions(
     if (!left) continue;
     for (let j = i + 1; j < sorted.length; j++) {
       const right = sorted[j];
-      if (!right || left.waveId !== right.waveId) continue;
+      if (
+        !right ||
+        left.waveId !== right.waveId ||
+        left.attemptId !== right.attemptId
+      )
+        continue;
       const paths = overlappingPaths(left.paths, right.paths);
       if (paths.length === 0) continue;
       collisions.push({
-        key: `lane:${left.laneId}|lane:${right.laneId}`,
+        key: `wave:${left.waveId}|attempt:${left.attemptId}|lane:${left.laneId}|lane:${right.laneId}`,
         waveId: left.waveId,
+        attemptId: left.attemptId,
         leftId: left.laneId,
         rightId: right.laneId,
         paths,
@@ -205,8 +229,9 @@ export function detectWaveCollisions(
       const paths = overlappingPaths(lane.paths, pr.changedFiles);
       if (paths.length === 0) continue;
       collisions.push({
-        key: `lane:${lane.laneId}|pr:${pr.id}`,
+        key: `wave:${lane.waveId}|attempt:${lane.attemptId}|lane:${lane.laneId}|pr:${pr.id}`,
         waveId: lane.waveId,
+        attemptId: lane.attemptId,
         leftId: lane.laneId,
         rightId: pr.id,
         paths,
@@ -324,6 +349,14 @@ interface TaskServiceLike {
   getTaskOriginTarget(
     taskId: string,
   ): Promise<{ roomId: string; source: string; worldId?: string } | null>;
+  pauseTask?(taskId: string): Promise<TaskThreadDetailDto | null>;
+  resumeTask?(taskId: string): Promise<TaskThreadDetailDto | null>;
+  stopTaskAgent?(taskId: string, sessionId: string): Promise<boolean>;
+}
+
+interface WorkspaceServiceLike {
+  workspaceRegistry?: WorkspaceRegistry;
+  getWorkspaceRegistry?: () => WorkspaceRegistry;
 }
 
 type RuntimeWithSendTarget = IAgentRuntime & {
@@ -343,10 +376,14 @@ export interface WaveStatus {
   refillCount: number;
   salvageCount: number;
   collisionCount: number;
+  budgetState: "ok" | "paused";
+  budgetReason?: string;
 }
 
 function readScope(metadata: Record<string, unknown>): string[] {
-  const raw = metadata.laneScope ?? metadata.scope;
+  const lane = isRecord(metadata.lane) ? metadata.lane : undefined;
+  const raw =
+    lane?.scopePaths ?? lane?.scope ?? metadata.laneScope ?? metadata.scope;
   if (typeof raw === "string") return [raw].map(normalizePath).filter(Boolean);
   if (Array.isArray(raw)) {
     return raw
@@ -363,6 +400,83 @@ function readScope(metadata: Record<string, unknown>): string[] {
       .filter(Boolean);
   }
   return [];
+}
+
+export function readLaneId(
+  metadata: Record<string, unknown> | undefined,
+  fallbackTaskId: string,
+): string {
+  const lane = metadata && isRecord(metadata.lane) ? metadata.lane : undefined;
+  return (
+    nonEmptyString(lane?.id) ??
+    nonEmptyString(metadata?.laneId) ??
+    fallbackTaskId
+  );
+}
+
+export function readWaveAttemptId(
+  metadata: Record<string, unknown> | undefined,
+): string {
+  const wave = metadata && isRecord(metadata.wave) ? metadata.wave : undefined;
+  return (
+    nonEmptyString(metadata?.waveAttemptId) ??
+    nonEmptyString(wave?.attemptId) ??
+    nonEmptyString(metadata?.attemptId) ??
+    "default"
+  );
+}
+
+export function readLaneDependencies(
+  metadata: Record<string, unknown> | undefined,
+): string[] {
+  const lane = metadata && isRecord(metadata.lane) ? metadata.lane : undefined;
+  const raw = lane?.dependencies ?? metadata?.laneDependencies;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(nonEmptyString)
+    .filter((dependency): dependency is string => Boolean(dependency));
+}
+
+function readWaveGoal(
+  metadata: Record<string, unknown>,
+  fallback: string,
+): string {
+  const wave = isRecord(metadata.wave) ? metadata.wave : undefined;
+  return (
+    nonEmptyString(metadata.waveGoal) ?? nonEmptyString(wave?.goal) ?? fallback
+  );
+}
+
+function readWaveBudget(metadata: Record<string, unknown> | undefined): {
+  maxCostUsd?: number;
+  maxTokens?: number;
+} {
+  const wave = metadata && isRecord(metadata.wave) ? metadata.wave : undefined;
+  const budget = isRecord(metadata?.waveBudget)
+    ? metadata?.waveBudget
+    : isRecord(wave?.budget)
+      ? wave?.budget
+      : undefined;
+  const maxCostUsd =
+    typeof metadata?.waveBudgetMaxCostUsd === "number"
+      ? metadata.waveBudgetMaxCostUsd
+      : typeof budget?.maxCostUsd === "number"
+        ? budget.maxCostUsd
+        : undefined;
+  const maxTokens =
+    typeof metadata?.waveBudgetMaxTokens === "number"
+      ? metadata.waveBudgetMaxTokens
+      : typeof budget?.maxTokens === "number"
+        ? budget.maxTokens
+        : undefined;
+  return {
+    ...(maxCostUsd !== undefined && Number.isFinite(maxCostUsd)
+      ? { maxCostUsd }
+      : {}),
+    ...(maxTokens !== undefined && Number.isFinite(maxTokens)
+      ? { maxTokens }
+      : {}),
+  };
 }
 
 function captureUncommittedFiles(workdir: string | null): string[] {
@@ -397,6 +511,7 @@ function taskIsActive(task: TaskThreadDetailDto): boolean {
 
 export class WaveSupervisor extends Service {
   static serviceType = WAVE_SUPERVISOR_SERVICE_TYPE;
+  static dependencies = ["ORCHESTRATOR_TASK_SERVICE"];
   capabilityDescription =
     "Supervises wave-scoped lane refill, salvage, collision warnings, concurrency, and status.";
 
@@ -483,13 +598,30 @@ export class WaveSupervisor extends Service {
     return planner?.planReplacement ? planner : new NoopWaveRefillPlanner();
   }
 
+  private workspaceRegistry(): WorkspaceRegistry | undefined {
+    const service = this.runtime.getService<WorkspaceServiceLike & ServiceType>(
+      "CODING_WORKSPACE_SERVICE",
+    );
+    if (typeof service?.getWorkspaceRegistry === "function") {
+      return service.getWorkspaceRegistry();
+    }
+    return service?.workspaceRegistry;
+  }
+
   /** Admission-queue seam. Reservations close concurrent spawn races per wave. */
   async tryAcquire(taskId: string): Promise<boolean> {
     if (!this.enabled()) return true;
     const tasks = await this.loadWaveTasks();
     const task = tasks.find((candidate) => candidate.id === taskId);
     const waveId = task ? readWaveId(task.metadata) : undefined;
+    if (!task) return true;
     if (!waveId) return true;
+    const budget = this.evaluateBudget(tasks, waveId);
+    if (budget.breached) {
+      await this.pauseWaveForBudget(waveId, tasks, budget.reason);
+      return false;
+    }
+    if (!this.dependenciesSatisfied(task, tasks)) return false;
     if (this.reservations.get(taskId) === waveId) return true;
     this.releaseTerminalReservations(tasks);
     const active = tasks.filter(
@@ -532,15 +664,29 @@ export class WaveSupervisor extends Service {
     const activeScopes = tasks
       .filter(taskIsActive)
       .map((task) => ({
-        laneId: task.id,
+        laneId: readLaneId(task.metadata, task.id),
+        taskId: task.id,
         waveId: readWaveId(task.metadata) ?? "",
+        attemptId: readWaveAttemptId(task.metadata),
         paths: readScope(task.metadata),
         ...(task.latestRepo ? { repo: task.latestRepo } : {}),
       }))
       .filter((lane) => lane.waveId && lane.paths.length > 0);
-    const activeIds = new Set(activeScopes.map((lane) => lane.laneId));
+    for (const waveId of [
+      ...new Set(
+        tasks.map((task) => readWaveId(task.metadata)).filter(Boolean),
+      ),
+    ] as string[]) {
+      const budget = this.evaluateBudget(tasks, waveId);
+      if (budget.breached) {
+        await this.pauseWaveForBudget(waveId, tasks, budget.reason);
+      }
+    }
+    const activeTaskIds = new Set(
+      activeScopes.map((lane) => lane.taskId ?? lane.laneId),
+    );
     const repos = tasks
-      .filter((task) => activeIds.has(task.id))
+      .filter((task) => activeTaskIds.has(task.id))
       .map((task) => task.latestRepo)
       .filter((repo): repo is string => Boolean(repo));
     let pullRequests: OpenPullRequestScope[] = [];
@@ -580,6 +726,69 @@ export class WaveSupervisor extends Service {
     this.statuses = this.computeStatuses(refreshed, collisions);
     await this.persistStatuses(service, refreshed, this.statuses);
     return this.getWaveStatuses();
+  }
+
+  async approveBudgetIncrease(input: {
+    waveId: string;
+    approvedBy: string;
+    reason: string;
+    maxCostUsd?: number;
+    maxTokens?: number;
+  }): Promise<WaveStatus[]> {
+    const service = this.taskService();
+    if (!service) return [];
+    const tasks = await this.loadWaveTasks();
+    const waveTasks = tasks.filter(
+      (task) => readWaveId(task.metadata) === input.waveId,
+    );
+    const approvedAt = new Date().toISOString();
+    for (const task of waveTasks) {
+      const wave = isRecord(task.metadata.wave) ? task.metadata.wave : {};
+      const supervisor = isRecord(task.metadata.waveSupervisor)
+        ? task.metadata.waveSupervisor
+        : {};
+      const approvedBudget = {
+        ...readWaveBudget(task.metadata),
+        ...(input.maxCostUsd !== undefined
+          ? { maxCostUsd: input.maxCostUsd }
+          : {}),
+        ...(input.maxTokens !== undefined
+          ? { maxTokens: input.maxTokens }
+          : {}),
+      };
+      await service.updateTask(task.id, {
+        metadata: {
+          ...task.metadata,
+          waveBudget: approvedBudget,
+          ...(approvedBudget.maxCostUsd !== undefined
+            ? { waveBudgetMaxCostUsd: approvedBudget.maxCostUsd }
+            : {}),
+          ...(approvedBudget.maxTokens !== undefined
+            ? { waveBudgetMaxTokens: approvedBudget.maxTokens }
+            : {}),
+          wave: {
+            ...wave,
+            budget: approvedBudget,
+          },
+          waveSupervisor: {
+            ...supervisor,
+            budgetApproval: {
+              approvedAt,
+              approvedBy: input.approvedBy,
+              reason: input.reason,
+              ...(input.maxCostUsd !== undefined
+                ? { maxCostUsd: input.maxCostUsd }
+                : {}),
+              ...(input.maxTokens !== undefined
+                ? { maxTokens: input.maxTokens }
+                : {}),
+            },
+          },
+        },
+      });
+      if (task.paused) await service.resumeTask?.(task.id);
+    }
+    return this.runOnce();
   }
 
   private async loadWaveTasks(): Promise<TaskThreadDetailDto[]> {
@@ -641,11 +850,14 @@ export class WaveSupervisor extends Service {
     });
     let salvagePath: string | undefined;
     if (salvage && terminalLane.latestWorkdir) {
-      const preserved = preserveRegisteredWorkspace(
-        terminalLane.latestWorkdir,
-        getSharedWorkspaceRegistry(),
-        (message) => logger.info(`[WaveSupervisor] ${message}`),
-      );
+      const registry = this.workspaceRegistry();
+      const preserved = registry
+        ? preserveRegisteredWorkspace(
+            terminalLane.latestWorkdir,
+            registry,
+            (message) => logger.info(`[WaveSupervisor] ${message}`),
+          )
+        : false;
       // Caller-owned workdirs are already outside lifecycle deletion. Registered
       // workdirs are explicitly returned to live accounting by the helper.
       if (preserved || terminalLane.latestWorkdir) {
@@ -656,14 +868,7 @@ export class WaveSupervisor extends Service {
       (task) => readWaveId(task.metadata) === waveId,
     );
     const activeLanes = waveTasks.filter(taskIsActive);
-    const waveGoal =
-      nonEmptyString(terminalLane.metadata.waveGoal) ??
-      nonEmptyString(
-        isRecord(terminalLane.metadata.wave)
-          ? terminalLane.metadata.wave.goal
-          : undefined,
-      ) ??
-      terminalLane.goal;
+    const waveGoal = readWaveGoal(terminalLane.metadata, terminalLane.goal);
     const planner = this.planner();
     const spec = await planner.planReplacement({
       waveId,
@@ -725,7 +930,13 @@ export class WaveSupervisor extends Service {
       metadata: {
         ...spec.metadata,
         [WAVE_ID_METADATA_KEY]: waveId,
+        waveAttemptId: readWaveAttemptId(terminalLane.metadata),
         waveGoal,
+        lane: {
+          id: `${readLaneId(terminalLane.metadata, terminalLane.id)}-refill`,
+          dependencies: [],
+          scopePaths: spec.scope ?? [],
+        },
         laneScope: spec.scope ?? [],
         forbiddenPaths: spec.forbiddenPaths ?? [],
         difficultyTag: spec.difficultyTag,
@@ -753,7 +964,12 @@ export class WaveSupervisor extends Service {
   ): Promise<void> {
     const send = (this.runtime as RuntimeWithSendTarget).sendMessageToTarget;
     if (typeof send !== "function") return;
-    const byId = new Map(tasks.map((task) => [task.id, task]));
+    const byId = new Map(
+      tasks.flatMap((task) => [
+        [task.id, task] as const,
+        [readLaneId(task.metadata, task.id), task] as const,
+      ]),
+    );
     for (const collision of collisions) {
       if (this.warnedCollisions.has(collision.key)) continue;
       const originTask = byId.get(collision.leftId);
@@ -796,6 +1012,7 @@ export class WaveSupervisor extends Service {
       const supervisorStates = lanes
         .map((task) => task.metadata.waveSupervisor)
         .filter(isRecord);
+      const budget = this.evaluateBudget(tasks, waveId);
       return {
         waveId,
         totalLanes: lanes.length,
@@ -815,8 +1032,107 @@ export class WaveSupervisor extends Service {
         collisionCount: collisions.filter(
           (collision) => collision.waveId === waveId,
         ).length,
+        budgetState: budget.breached ? "paused" : "ok",
+        ...(budget.breached ? { budgetReason: budget.reason } : {}),
       };
     });
+  }
+
+  private dependenciesSatisfied(
+    task: TaskThreadDetailDto,
+    tasks: readonly TaskThreadDetailDto[],
+  ): boolean {
+    const dependencies = readLaneDependencies(task.metadata);
+    if (dependencies.length === 0) return true;
+    const waveId = readWaveId(task.metadata);
+    const attemptId = readWaveAttemptId(task.metadata);
+    const sameAttempt = tasks.filter(
+      (candidate) =>
+        readWaveId(candidate.metadata) === waveId &&
+        readWaveAttemptId(candidate.metadata) === attemptId,
+    );
+    const byLaneId = new Map(
+      sameAttempt.map((candidate) => [
+        readLaneId(candidate.metadata, candidate.id),
+        candidate,
+      ]),
+    );
+    return dependencies.every((dependency) => {
+      const dep = byLaneId.get(dependency);
+      return dep?.status === "done";
+    });
+  }
+
+  private evaluateBudget(
+    tasks: readonly TaskThreadDetailDto[],
+    waveId: string,
+  ): { breached: false } | { breached: true; reason: string } {
+    const lanes = tasks.filter((task) => readWaveId(task.metadata) === waveId);
+    const budget = lanes.reduce(
+      (found, task) => ({
+        maxCostUsd:
+          found.maxCostUsd ?? readWaveBudget(task.metadata).maxCostUsd,
+        maxTokens: found.maxTokens ?? readWaveBudget(task.metadata).maxTokens,
+      }),
+      {} as { maxCostUsd?: number; maxTokens?: number },
+    );
+    const costUsd = lanes.reduce((sum, task) => sum + task.usage.costUsd, 0);
+    const totalTokens = lanes.reduce(
+      (sum, task) => sum + task.usage.totalTokens,
+      0,
+    );
+    if (budget.maxCostUsd !== undefined && costUsd >= budget.maxCostUsd) {
+      return {
+        breached: true,
+        reason: `cost ${costUsd.toFixed(6)} >= ${budget.maxCostUsd.toFixed(6)} USD`,
+      };
+    }
+    if (budget.maxTokens !== undefined && totalTokens >= budget.maxTokens) {
+      return {
+        breached: true,
+        reason: `tokens ${totalTokens} >= ${budget.maxTokens}`,
+      };
+    }
+    return { breached: false };
+  }
+
+  private async pauseWaveForBudget(
+    waveId: string,
+    tasks: readonly TaskThreadDetailDto[],
+    reason: string,
+  ): Promise<void> {
+    const service = this.taskService();
+    if (!service) return;
+    const waveTasks = tasks.filter(
+      (task) => readWaveId(task.metadata) === waveId,
+    );
+    const stoppedAt = new Date().toISOString();
+    const error = new WaveBudgetBreachError(waveId, reason, {
+      taskIds: waveTasks.map((task) => task.id),
+    });
+    this.runtime.reportError?.("WaveSupervisor.budget", error, {
+      waveId,
+      reason,
+    });
+    for (const task of waveTasks) {
+      const state = isRecord(task.metadata.waveSupervisor)
+        ? task.metadata.waveSupervisor
+        : {};
+      await service.updateTask(task.id, {
+        metadata: {
+          ...task.metadata,
+          waveSupervisor: {
+            ...state,
+            pausedAt: stoppedAt,
+            pausedReason: reason,
+            pauseCode: WAVE_BUDGET_BREACH_CODE,
+          },
+        },
+      });
+      if (!task.paused && !TERMINAL_LANE_STATUSES.has(task.status)) {
+        await service.pauseTask?.(task.id);
+      }
+    }
   }
 
   private async persistStatuses(

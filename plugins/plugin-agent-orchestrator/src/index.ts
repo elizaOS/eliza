@@ -541,6 +541,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
         SwarmCoordinatorService.serviceType,
       );
       await coordinator?.stop();
+      const waveSupervisor = runtime.getService<WaveSupervisor>(
+        WaveSupervisor.serviceType,
+      );
+      await waveSupervisor?.stop();
       await CodingWorkspaceService.stopRuntime(runtime);
     },
   };
@@ -2476,12 +2480,17 @@ export {
   NoopWaveRefillPlanner,
   type OpenPullRequestScope,
   type OpenPullRequestSource,
+  readLaneDependencies,
+  readLaneId,
+  readWaveAttemptId,
   readWaveId,
   shouldRefillWave,
+  WAVE_BUDGET_BREACH_CODE,
   WAVE_ID_METADATA_KEY,
   WAVE_REFILL_PLANNER_SERVICE_TYPE,
   WAVE_SUPERVISOR_SERVICE_TYPE,
   WAVE_SUPERVISOR_SETTING,
+  WaveBudgetBreachError,
   type WaveCollision,
   WaveConcurrencyCapError,
   type WaveRefillPlanner,
