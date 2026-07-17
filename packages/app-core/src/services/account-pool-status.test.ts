@@ -85,7 +85,11 @@ describe("public account-pool status", () => {
       pool: { accounts: 1, capacityPct: 100, selectableAccounts: 1 },
       fable: { leftPct: 75, ofPct: 100, source: "all-model weekly fallback" },
       publicEdge: { today: { requests: 4, tokens: 120 } },
-      urgency: { burnRatePctPerHour: null, projectedDepletionIn: null },
+      urgency: {
+        burnRatePctPerHour: null,
+        projectedDepletionIn: null,
+        nextRefill: { account: "account-1", capacityAddedPct: 25 },
+      },
     });
     expect(status.perAccount[0]).toMatchObject({
       name: "account-1",

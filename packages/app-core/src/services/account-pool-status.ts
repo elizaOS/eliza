@@ -494,7 +494,9 @@ function applyUrgency(
         ? {
             account: next.name,
             in: durationText(next.weeklyResetAt - now) ?? "unknown",
-            capacityAddedPct: 100,
+            capacityAddedPct: round2(
+              next.fableUsedPct ?? next.weeklyUsedPct ?? 0,
+            ),
           }
         : null,
   };
