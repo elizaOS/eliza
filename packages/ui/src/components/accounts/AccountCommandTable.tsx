@@ -239,6 +239,8 @@ export function AccountCommandTable({
   const [sort, setSort] = useState<AccountSort>(DEFAULT_ACCOUNT_SORT);
   const deleteModal = useModalState();
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState("");
 
   const showLeaseColumn = useMemo(
     () => hasLeaseObservability(accounts),
@@ -287,6 +289,22 @@ export function AccountCommandTable({
     const id = pendingDeleteId;
     void deleteModal.submit(() => Promise.resolve(onDelete(id)));
   }, [deleteModal, onDelete, pendingDeleteId]);
+
+  const beginLabelEdit = useCallback((account: AccountWithCredentialFlag) => {
+    setEditingLabelId(account.id);
+    setLabelDraft(account.label);
+  }, []);
+
+  const finishLabelEdit = useCallback(
+    (account: AccountWithCredentialFlag, save: boolean) => {
+      const next = labelDraft.trim();
+      setEditingLabelId(null);
+      if (save && next && next !== account.label) {
+        void onPatch(account.id, { label: next });
+      }
+    },
+    [labelDraft, onPatch],
+  );
 
   // Column count for the empty/degenerate colspan. Base columns are:
   // account, health, usage, resets, priority, enabled, last-used, actions.
@@ -462,9 +480,42 @@ export function AccountCommandTable({
                         <span className="w-0.5 shrink-0" aria-hidden />
                       )}
                       <div className="flex min-w-0 flex-col">
-                        <span className="truncate text-xs font-medium text-txt-strong">
-                          {account.label}
-                        </span>
+                        {editingLabelId === account.id ? (
+                          <input
+                            value={labelDraft}
+                            disabled={rowSaving}
+                            onChange={(event) =>
+                              setLabelDraft(event.target.value)
+                            }
+                            onBlur={() => finishLabelEdit(account, true)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                finishLabelEdit(account, true);
+                              } else if (event.key === "Escape") {
+                                event.preventDefault();
+                                finishLabelEdit(account, false);
+                              }
+                            }}
+                            aria-label={t("accounts.table.renameInput", {
+                              defaultValue: `Rename ${account.label}`,
+                              label: account.label,
+                            })}
+                            className="h-6 min-w-0 rounded-sm border border-border/60 bg-bg px-1.5 text-xs font-medium text-txt-strong outline-none focus:border-accent"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={rowSaving}
+                            onClick={() => beginLabelEdit(account)}
+                            title={t("accounts.table.rename", {
+                              defaultValue: "Rename account",
+                            })}
+                            className="truncate text-left text-xs font-medium text-txt-strong hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                          >
+                            {account.label}
+                          </button>
+                        )}
                         {account.email && account.email !== account.label ? (
                           <span
                             className="truncate text-[10px] text-muted"

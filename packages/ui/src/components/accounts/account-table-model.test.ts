@@ -44,6 +44,10 @@ describe("describeHealth", () => {
       "danger",
     );
     expect(describeHealth(account({ health: "invalid" })).tone).toBe("danger");
+    expect(describeHealth(account({ health: "expired" })).tone).toBe("danger");
+    expect(describeHealth(account({ health: "expired" })).fallback).toBe(
+      "Expired",
+    );
     expect(describeHealth(account({ health: "unknown" })).tone).toBe("muted");
   });
 
@@ -74,6 +78,7 @@ describe("needsCredentialRepair", () => {
       true,
     );
     expect(needsCredentialRepair(account({ health: "invalid" }))).toBe(true);
+    expect(needsCredentialRepair(account({ health: "expired" }))).toBe(true);
     expect(needsCredentialRepair(account({ health: "ok" }))).toBe(false);
     expect(needsCredentialRepair(account({ health: "rate-limited" }))).toBe(
       false,

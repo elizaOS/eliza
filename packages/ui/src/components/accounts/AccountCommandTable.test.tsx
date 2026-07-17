@@ -84,6 +84,18 @@ describe("AccountCommandTable", () => {
     expect(rowOrder()).toEqual(["account-row-a", "account-row-b"]);
   });
 
+  it("preserves inline label editing in the desktop table", () => {
+    const onPatch = vi.fn().mockResolvedValue(undefined);
+    renderTable([account({ id: "rename-me", label: "Before" })], { onPatch });
+
+    fireEvent.click(screen.getByRole("button", { name: "Before" }));
+    const input = screen.getByRole("textbox", { name: "Rename Before" });
+    fireEvent.change(input, { target: { value: "After" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(onPatch).toHaveBeenCalledWith("rename-me", { label: "After" });
+  });
+
   it("defaults to worst-health-first ordering", () => {
     renderTable([
       account({ id: "ok", health: "ok", priority: 1 }),

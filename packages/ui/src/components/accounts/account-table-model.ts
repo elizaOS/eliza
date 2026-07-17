@@ -66,6 +66,13 @@ export function describeHealth(
         tone: "danger",
         detail,
       };
+    case "expired":
+      return {
+        key: "accounts.table.health.expired",
+        fallback: "Expired",
+        tone: "danger",
+        detail,
+      };
     default:
       return {
         key: "accounts.table.health.unknown",
@@ -80,7 +87,11 @@ export function describeHealth(
 export function needsCredentialRepair(
   account: AccountWithCredentialFlag,
 ): boolean {
-  return account.health === "needs-reauth" || account.health === "invalid";
+  return (
+    account.health === "needs-reauth" ||
+    account.health === "invalid" ||
+    account.health === "expired"
+  );
 }
 
 /**
@@ -89,10 +100,11 @@ export function needsCredentialRepair(
  */
 const HEALTH_RANK: Record<string, number> = {
   invalid: 0,
-  "needs-reauth": 1,
-  "rate-limited": 2,
-  unknown: 3,
-  ok: 4,
+  expired: 1,
+  "needs-reauth": 2,
+  "rate-limited": 3,
+  unknown: 4,
+  ok: 5,
 };
 
 function healthRank(account: AccountWithCredentialFlag): number {
