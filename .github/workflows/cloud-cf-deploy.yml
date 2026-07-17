@@ -514,8 +514,6 @@ jobs:
           ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
-          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
-          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
           DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
           VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
           # Keep this mirror locked to wrangler.toml's env.production value.
