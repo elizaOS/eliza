@@ -302,6 +302,15 @@ export function retrieveActions(
 				? []
 				: parentAliasesForCandidateAction(actionName),
 		),
+		// Stage-1 routinely hints an action by one of its similes — the canonical
+		// documented example is candidateActions=["BASH"] for the SHELL parent
+		// (message-handler.ts). Similes feed the fuzzy search text but carry no
+		// rank guarantee, so a simile hint can lose the surface cut to unrelated
+		// keyword matches and reach the planner as a dead hint (it then improvises
+		// with whatever tools did rank, or falsely reports missing tool access).
+		// Resolve simile hints to their catalog parent so they exact-score like
+		// any explicit parent hint.
+		...resolveSimileParentHints(input.catalog.parents, candidateActions),
 	]);
 	const recentConversationText = shouldUseRecentConversationForActionSearch(
 		input.messageText ?? "",
@@ -983,6 +992,39 @@ function hasOnlyOperationTokens(tokens: Set<string>): boolean {
 		if (!VIEW_OPERATION_TOKENS.has(token)) return false;
 	}
 	return true;
+}
+
+function resolveSimileParentHints(
+	parents: readonly ActionCatalogParent[],
+	candidateActions: readonly string[],
+): string[] {
+	if (candidateActions.length === 0) {
+		return [];
+	}
+	const parentNames = new Set(parents.map((parent) => parent.normalizedName));
+	const parentBySimile = new Map<string, string>();
+	for (const parent of parents) {
+		for (const simile of [
+			...parent.similes,
+			...parent.children.flatMap((child) => child.similes),
+		]) {
+			const normalized = normalizeActionName(simile);
+			// A simile that collides with a real parent name must not hijack it.
+			if (!normalized || parentNames.has(normalized)) {
+				continue;
+			}
+			if (!parentBySimile.has(normalized)) {
+				parentBySimile.set(normalized, parent.normalizedName);
+			}
+		}
+	}
+	return candidateActions.flatMap((actionName) => {
+		if (parentNames.has(actionName)) {
+			return [];
+		}
+		const parent = parentBySimile.get(actionName);
+		return parent ? [parent] : [];
+	});
 }
 
 export function candidateNamespaceParentExists(
