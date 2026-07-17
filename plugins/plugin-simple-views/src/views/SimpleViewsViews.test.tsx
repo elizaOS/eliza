@@ -82,11 +82,17 @@ describe("Simple Views state labels", () => {
     );
     const notes = render(<NotesView />);
     expect(screen.getByText("Sync unavailable · revision 4")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Agent disconnected",
+    );
     expect(screen.queryByText(/0 notes/)).toBeNull();
     notes.unmount();
 
     render(<SimpleCalendarView />);
     expect(screen.getByText("Sync unavailable · revision 4")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain(
+      "Agent disconnected",
+    );
     expect(screen.queryByText(/0 events/)).toBeNull();
   });
 

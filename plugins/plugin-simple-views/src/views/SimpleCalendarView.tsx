@@ -107,6 +107,10 @@ function formatTime(value: string): string {
   }).format(new Date(Date.UTC(2000, 0, 1, hour, minute)));
 }
 
+function handleRenderedMutationFailure(cause: unknown): void {
+  if (!(cause instanceof Error)) throw cause;
+}
+
 function eventsOnDate(
   events: SimpleCalendarEvent[],
   date: string,
@@ -423,8 +427,9 @@ export function SimpleCalendarView() {
       setDate(nextDate);
       try {
         await mutate("select-calendar-date", { date: nextDate });
-      } catch {
-        // error-policy:J4 useSimpleViewsState renders the mutation failure inline.
+      } catch (cause) {
+        // error-policy:J4 useSimpleViewsState records expected Error failures for this view's alert.
+        handleRenderedMutationFailure(cause);
       }
     },
     [busy, mutate],
@@ -468,8 +473,9 @@ export function SimpleCalendarView() {
         });
       }
       resetEditor(date);
-    } catch {
-      // error-policy:J4 useSimpleViewsState renders the mutation failure inline.
+    } catch (cause) {
+      // error-policy:J4 useSimpleViewsState records expected Error failures for this view's alert.
+      handleRenderedMutationFailure(cause);
     }
   }, [busy, color, date, editingId, mutate, notes, resetEditor, time, title]);
 
@@ -484,8 +490,9 @@ export function SimpleCalendarView() {
       try {
         await mutate("delete-calendar-event", { id: event.id });
         if (editingId === event.id) resetEditor();
-      } catch {
-        // error-policy:J4 useSimpleViewsState renders the mutation failure inline.
+      } catch (cause) {
+        // error-policy:J4 useSimpleViewsState records expected Error failures for this view's alert.
+        handleRenderedMutationFailure(cause);
       }
     },
     [busy, editingId, mutate, resetEditor],

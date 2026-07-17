@@ -52,6 +52,10 @@ function formatUpdatedAt(value: string): string {
   }).format(new Date(timestamp));
 }
 
+function handleRenderedMutationFailure(cause: unknown): void {
+  if (!(cause instanceof Error)) throw cause;
+}
+
 function NoteCard({
   note,
   editing,
@@ -227,8 +231,9 @@ export function NotesView() {
         });
       }
       resetComposer();
-    } catch {
-      // error-policy:J4 useSimpleViewsState renders the mutation failure inline.
+    } catch (cause) {
+      // error-policy:J4 useSimpleViewsState records expected Error failures for this view's alert.
+      handleRenderedMutationFailure(cause);
     }
   }, [body, busy, color, editingId, mutate, resetComposer, title]);
 
@@ -243,8 +248,9 @@ export function NotesView() {
       try {
         await mutate("delete-note", { id: note.id });
         if (editingId === note.id) resetComposer();
-      } catch {
-        // error-policy:J4 useSimpleViewsState renders the mutation failure inline.
+      } catch (cause) {
+        // error-policy:J4 useSimpleViewsState records expected Error failures for this view's alert.
+        handleRenderedMutationFailure(cause);
       }
     },
     [busy, editingId, mutate, resetComposer],
@@ -259,8 +265,9 @@ export function NotesView() {
       await mutate("clear-notes");
       resetComposer();
       setConfirmClear(false);
-    } catch {
-      // error-policy:J4 useSimpleViewsState renders the mutation failure inline.
+    } catch (cause) {
+      // error-policy:J4 useSimpleViewsState records expected Error failures for this view's alert.
+      handleRenderedMutationFailure(cause);
     }
   }, [confirmClear, mutate, resetComposer]);
 

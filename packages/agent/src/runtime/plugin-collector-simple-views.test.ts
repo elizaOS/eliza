@@ -43,7 +43,12 @@ describe("collectPluginNames Simple Views gate", () => {
     const config = {
       plugins: {
         allow: [SIMPLE_VIEWS],
-        installs: { [SIMPLE_VIEWS]: { source: "workspace" } },
+        installs: {
+          [SIMPLE_VIEWS]: {
+            source: "path",
+            sourcePath: "plugins/plugin-simple-views",
+          },
+        },
       },
     } as ElizaConfig;
 
@@ -63,19 +68,23 @@ describe("collectPluginNames Simple Views gate", () => {
       label: "cloud",
       deploymentTarget: { runtime: "cloud", provider: "elizacloud" },
     },
-  ])(
-    "stays unavailable in a $label runtime even through additive plugin config",
-    ({ deploymentTarget }) => {
-      process.env.ELIZA_SIMPLE_VIEWS = "1";
-      const config = {
-        deploymentTarget,
-        plugins: {
-          allow: [SIMPLE_VIEWS],
-          installs: { [SIMPLE_VIEWS]: { source: "workspace" } },
+  ])("stays unavailable in a $label runtime even through additive plugin config", ({
+    deploymentTarget,
+  }) => {
+    process.env.ELIZA_SIMPLE_VIEWS = "1";
+    const config = {
+      deploymentTarget,
+      plugins: {
+        allow: [SIMPLE_VIEWS],
+        installs: {
+          [SIMPLE_VIEWS]: {
+            source: "path",
+            sourcePath: "plugins/plugin-simple-views",
+          },
         },
-      } as ElizaConfig;
+      },
+    } as ElizaConfig;
 
-      expect(collectPluginNames(config).has(SIMPLE_VIEWS)).toBe(false);
-    },
-  );
+    expect(collectPluginNames(config).has(SIMPLE_VIEWS)).toBe(false);
+  });
 });
