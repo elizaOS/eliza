@@ -313,6 +313,23 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     expect(config.serviceRouting?.llmText?.transport).toBe("direct");
   });
 
+  it("preserves a legacy model override across both new tiers", async () => {
+    process.env.CEREBRAS_MODEL = "qwen-legacy-override";
+    const config: Partial<ElizaConfig> = {};
+
+    await applyFirstRunConnectionConfig(config, {
+      kind: "local-provider",
+      provider: "cerebras",
+      apiKey: "csk-test-legacy",
+    });
+
+    const vars = (config.env as { vars?: Record<string, string> } | undefined)
+      ?.vars;
+    expect(vars?.CEREBRAS_SMALL_MODEL).toBe("qwen-legacy-override");
+    expect(vars?.CEREBRAS_LARGE_MODEL).toBe("qwen-legacy-override");
+    expect(process.env.CEREBRAS_MODEL).toBe("qwen-legacy-override");
+  });
+
   it("clears persisted Cerebras credentials and all model tiers on a full reset", () => {
     process.env.CEREBRAS_API_KEY = "csk-stale";
     process.env.CEREBRAS_MODEL = "legacy-stale";

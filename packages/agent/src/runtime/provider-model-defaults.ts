@@ -100,5 +100,8 @@ export function applyProviderModelEnvDefaults(): void {
         : cerebrasSmallModel,
     );
   }
-  setEnvIfMissing("CEREBRAS_MODEL", cerebrasSmallModel);
+  setEnvIfMissing(
+    "CEREBRAS_MODEL",
+    process.env.CEREBRAS_SMALL_MODEL ?? cerebrasSmallModel,
+  );
 }

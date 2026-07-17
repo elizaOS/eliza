@@ -523,15 +523,24 @@ function applyDefaultModelNames(
     return;
   }
 
-  // Only set if not already configured — don't clobber user overrides.
+  // Only set if not already configured — don't clobber user overrides. The
+  // legacy Cerebras knob remains authoritative for both tiers when present.
+  const smallVal =
+    provider === "cerebras" && process.env.CEREBRAS_MODEL
+      ? process.env.CEREBRAS_MODEL
+      : defaults.smallVal;
+  const largeVal =
+    provider === "cerebras" && process.env.CEREBRAS_MODEL
+      ? process.env.CEREBRAS_MODEL
+      : defaults.largeVal;
   if (!process.env[defaults.smallKey]) {
-    setEnvValue(config, defaults.smallKey, defaults.smallVal);
+    setEnvValue(config, defaults.smallKey, smallVal);
   }
   if (!process.env[defaults.largeKey]) {
-    setEnvValue(config, defaults.largeKey, defaults.largeVal);
+    setEnvValue(config, defaults.largeKey, largeVal);
   }
   if (provider === "cerebras" && !process.env.CEREBRAS_MODEL) {
-    setEnvValue(config, "CEREBRAS_MODEL", defaults.smallVal);
+    setEnvValue(config, "CEREBRAS_MODEL", smallVal);
   }
 }
 

@@ -59,6 +59,15 @@ describe("provider model-env seeding", () => {
     expect(process.env.CEREBRAS_MODEL).toBe(DEFAULT_CEREBRAS_TEXT_MODEL);
   });
 
+  it("keeps the compatibility alias aligned with an explicit small tier", () => {
+    process.env.CEREBRAS_SMALL_MODEL = "qwen-small-explicit";
+
+    applyProviderModelEnvDefaults();
+
+    expect(process.env.CEREBRAS_MODEL).toBe("qwen-small-explicit");
+    expect(process.env.CEREBRAS_SMALL_MODEL).toBe("qwen-small-explicit");
+  });
+
   it("preserves an explicit CEREBRAS_MODEL override", () => {
     process.env.CEREBRAS_MODEL = "qwen-3-235b";
     process.env.OPENAI_SMALL_MODEL = "gemma-4-31b";
