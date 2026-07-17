@@ -200,7 +200,8 @@ const tokenHoldings: WalletTokenHolding[] =
   recentTransactionsResult.data.transactions.map(
     (transaction) => ({
       signature: transaction.transactionId,
-      slot: transaction.blockNumber,
+      slot:
+        transaction.blockHeight ?? undefined,
       blockTime:
         transaction.timestamp ?? undefined,
       status:
