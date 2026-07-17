@@ -130,6 +130,10 @@ describe("public account-pool status", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "eliza-pool-status-"));
     cleanup.push(dir);
     const known = fixtureAccount(now, 25);
+    known.usage = {
+      ...known.usage,
+      weeklyModelBuckets: { Fable: { pct: 25 } },
+    } as LinkedAccountConfig["usage"];
     const { usage: _usage, ...unknownBase } = fixtureAccount(now, 0);
     const unknown: LinkedAccountConfig = {
       ...unknownBase,
@@ -153,6 +157,7 @@ describe("public account-pool status", () => {
     expect(status.pool.accounts).toBe(2);
     expect(status.fable).toMatchObject({ leftPct: 75, ofPct: 100 });
     expect(status.allModels).toEqual({ leftPct: 75, ofPct: 100 });
+    expect(status.perAccount[0]?.weeklyResetIn).not.toBeNull();
   });
 
   it("persists snapshots and projects burn only after a same-window sample", async () => {
