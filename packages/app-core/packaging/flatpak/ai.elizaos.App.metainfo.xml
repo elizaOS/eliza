@@ -44,22 +44,22 @@
   <launchable type="desktop-id">ai.elizaos.App.desktop</launchable>
 
   <!--
-  Required for Flathub submission. URLs point at repository-hosted PNG assets
-  so `appstream-util validate-relax` can verify them without depending on a
-  marketing host.
+  Required for Flathub submission. URLs are pinned to a specific elizaOS/docs
+  commit so the assets are immutable — a moving-branch path already 404ed once
+  when the images were relocated (#16465) and silently broke validation.
   -->
   <screenshots>
     <screenshot type="default">
       <caption>elizaOS App agent chat dashboard</caption>
-      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/shakespeare-screenshot.jpeg</image>
+      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/docs/cd09c7e40cc2fba9d8492a6b2314c5990807afe9/images/shakespeare-screenshot.jpeg</image>
     </screenshot>
     <screenshot>
       <caption>Discord connector conversation</caption>
-      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/shakespeare-discord-screenshot.jpeg</image>
+      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/docs/cd09c7e40cc2fba9d8492a6b2314c5990807afe9/images/shakespeare-discord-screenshot.jpeg</image>
     </screenshot>
     <screenshot>
       <caption>Voice channel connection flow</caption>
-      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/eliza/develop/packages/docs/images/ask-to-join-vc.jpeg</image>
+      <image type="source" width="1920" height="1200">https://raw.githubusercontent.com/elizaOS/docs/cd09c7e40cc2fba9d8492a6b2314c5990807afe9/images/ask-to-join-vc.jpeg</image>
     </screenshot>
   </screenshots>
 
