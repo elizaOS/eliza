@@ -43,6 +43,9 @@ describe("DynamicViewLoader sandboxed iframe document contract", () => {
     expect(frame.getAttribute("sandbox")?.split(" ")).toContain(
       "allow-scripts",
     );
+    const readyView = screen.getByTestId("dynamic-view-loader");
+    expect(readyView.getAttribute("data-view-id")).toBe("sandboxed.view");
+    expect(readyView.getAttribute("data-view-state")).toBe("ready");
     expect(importBundle).not.toHaveBeenCalled();
   });
 

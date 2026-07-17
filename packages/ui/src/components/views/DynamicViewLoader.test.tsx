@@ -174,6 +174,10 @@ describe("DynamicViewLoader", () => {
     render(<DynamicViewLoader bundleUrl={bundleUrl} viewId="remote.panel" />);
 
     await screen.findByText("Remote capability panel loaded");
+    const readyView = screen.getByTestId("dynamic-view-loader");
+    expect(readyView.getAttribute("data-view-id")).toBe("remote.panel");
+    expect(readyView.getAttribute("data-view-type")).toBe("gui");
+    expect(readyView.getAttribute("data-view-state")).toBe("ready");
     expect(importBundle).toHaveBeenCalledWith(bundleUrl);
     expect(importBundle).not.toHaveBeenCalledWith(
       expect.stringContaining("/api/views/remote.panel/bundle.js"),

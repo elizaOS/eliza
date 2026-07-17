@@ -16,20 +16,13 @@ import { VIEW_CASES, type ViewCase } from "./plugin-view-cases";
 async function expectLoadedView(page: Page, view: ViewCase, phase: string) {
   const viewRoot = page.locator("main").first();
   await expect(viewRoot).toBeVisible({ timeout: 60_000 });
-  await expect
-    .poll(
-      async () => {
-        const text = await viewRoot.evaluate((root) =>
-          root.innerText.trim().replace(/\s+/g, " "),
-        );
-        return text.length > 0 && !/^Loading view\b/.test(text);
-      },
-      {
-        message: `${view.id} ${view.viewType} should load during ${phase}`,
-        timeout: 60_000,
-      },
-    )
-    .toBe(true);
+  const readyView = viewRoot.locator(
+    `[data-testid="dynamic-view-loader"][data-view-id="${view.id}"][data-view-type="${view.viewType}"][data-view-state="ready"]`,
+  );
+  await expect(
+    readyView,
+    `${view.id} ${view.viewType} should load during ${phase}`,
+  ).toBeVisible({ timeout: 60_000 });
   await expect(page.getByText(/Loading view/)).toHaveCount(0);
   await expect(page.getByText("Failed to load view")).toHaveCount(0);
   await expectNoRenderTelemetryErrors(
