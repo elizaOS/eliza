@@ -201,9 +201,12 @@ jobs:
           # Files coverage collection cannot instrument (#16409): their LCOV
           # absence is expected — the gate prints EXCLUDED instead of MISSING.
           LCOV_EXCLUDED_FILES=$(grep -vE '^#|^$' scripts/security/coverage-lcov-excluded.txt || true)
+          # Coverage runs against the checked-out synthetic merge commit. Diff
+          # against that same tree so LCOV DA line numbers cannot drift when the
+          # PR branch trails base and both sides touched the legacy file.
           DELTA_SPEC=$(node scripts/security/coverage-delta-spec.self-test.mjs \
             "${{ github.event.pull_request.base.sha }}" \
-            "${{ github.event.pull_request.head.sha }}" <<'EOF'
+            "$(git rev-parse HEAD)" <<'EOF'
           ${{ steps.changed.outputs.files }}
           EOF
           )
