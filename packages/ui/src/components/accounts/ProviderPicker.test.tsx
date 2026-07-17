@@ -90,7 +90,6 @@ describe("ProviderPicker", () => {
     expect(onPick).toHaveBeenCalledOnce();
   });
 
-  // Deslop (#16481): capability lines are sentences, not interpunct pill-speak.
   it("renders sentence-style capability copy with no interpunct separators", () => {
     renderPicker();
     expect(

@@ -111,8 +111,6 @@ describe("AddAccountDialog", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  // Deslop (#16481): humanized helper copy, no file-mode jargon, and the
-  // simplified placeholder set.
   it("shows humanized API-key copy without mode-0600 jargon", () => {
     render(<AddAccountDialog open onClose={vi.fn()} onCreated={vi.fn()} />);
     fireEvent.change(screen.getByPlaceholderText("Search providers"), {

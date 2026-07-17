@@ -175,8 +175,6 @@ describe("AccountManagementPanel", () => {
     expect(screen.getByRole("dialog").textContent).toContain("second");
   });
 
-  // Deslop (#16481): the available-providers disclosure renders a lucide
-  // ChevronRight svg glyph, not the old text "\u203a" character in a span.
   it("renders a lucide chevron on the available-providers disclosure", () => {
     render(
       <AccountManagementPanel
