@@ -523,6 +523,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           transcript,
           agentId: this.config.agentId,
           conversationId: this.config.conversationId,
+          organizationId: this.config.organizationId,
+          userId: this.config.userId,
           traceId,
           signal: abort.signal,
           fetchImpl: this.config.fetchImpl,

@@ -125,6 +125,28 @@ describe("getTaskAgentFrameworkState", () => {
     ).toBe(false);
   });
 
+  it("prefers eliza-code over OpenCode as the BYO default once eliza-code is installed", async () => {
+    // With a native ElizaOS ACP command configured, eliza-code is a real
+    // candidate. It shares OpenCode's BYO provider thumb (no Claude/Codex key is
+    // set), and its dominant capability-profile fit makes it the default over
+    // OpenCode — which stays the fallback for hosts without eliza-code.
+    setEnv({
+      ELIZA_ELIZAOS_ACP_COMMAND: "eliza-code-acp",
+      BENCHMARK_MODEL_PROVIDER: "cerebras",
+      CEREBRAS_API_KEY: "csk-test",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+
+    expect(state.preferred.id).toBe("elizaos");
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.installed,
+    ).toBe(true);
+    expect(
+      state.frameworks.find((item) => item.id === "opencode")?.installed,
+    ).toBe(true);
+  });
+
   it("honors ElizaOS as an explicit native task-agent default", async () => {
     setEnv({
       ELIZA_DEFAULT_AGENT_TYPE: "elizaos",

@@ -484,10 +484,45 @@ describe("provider websocket factories", () => {
 });
 
 describe("real target bridge", () => {
+  const realTargetEnvKeys = [
+    "OPENROUTER_API_KEY",
+    "VOICE_REALTIME_ELIZA_ENDPOINT",
+    "VOICE_REALTIME_ELIZA_AUTHORIZATION",
+    "HARNESS_AGENT_ID",
+    "HARNESS_CONVERSATION_ID",
+    "HARNESS_ORGANIZATION_ID",
+    "HARNESS_USER_ID",
+    "MOCK_REDIS",
+    "VOICE_REALTIME_WS_ENABLED",
+    "VOICE_REALTIME_CARTESIA_VOICE_ID",
+    "DEEPGRAM_API_KEY",
+    "CARTESIA_API_KEY",
+  ] as const;
+
+  function snapshotRealTargetEnv(): Record<string, string | undefined> {
+    return Object.fromEntries(
+      realTargetEnvKeys.map((key) => [key, process.env[key]]),
+    );
+  }
+
+  function restoreRealTargetEnv(snapshot: Record<string, string | undefined>) {
+    for (const key of realTargetEnvKeys) {
+      const value = snapshot[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+
   test("sets the production voice-session environment and delegates to the real-server seam", async () => {
     realServerCalls.length = 0;
-    const originalKey = process.env.OPENROUTER_API_KEY;
+    const originalEnv = snapshotRealTargetEnv();
     process.env.OPENROUTER_API_KEY = "openrouter";
+    process.env.VOICE_REALTIME_ELIZA_ENDPOINT = "https://api.eliza.test";
+    process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION = "Bearer voice-service";
+    process.env.HARNESS_AGENT_ID = "agent-real";
+    process.env.HARNESS_CONVERSATION_ID = "conversation-real";
+    process.env.HARNESS_ORGANIZATION_ID = "org-real";
+    process.env.HARNESS_USER_ID = "user-real";
     try {
       const handle = await realTarget.startRealTarget({
         providers: {
@@ -502,6 +537,7 @@ describe("real target bridge", () => {
       expect(handle.wsUrl).toBe("ws://real.test/session?sessionId=");
       expect(process.env.MOCK_REDIS).toBe("1");
       expect(process.env.VOICE_REALTIME_WS_ENABLED).toBe("true");
+      expect(process.env.VOICE_REALTIME_CARTESIA_VOICE_ID).toBe("voice");
       expect(process.env.DEEPGRAM_API_KEY).toBe("dg");
       expect(process.env.CARTESIA_API_KEY).toBe("cartesia");
       expect(realServerCalls[0]).toEqual({ type: "install-key" });
@@ -511,12 +547,75 @@ describe("real target bridge", () => {
           deepgramApiKey: "dg",
           cartesiaApiKey: "cartesia",
           cartesiaVoiceId: "voice",
+          elizaEndpoint: "https://api.eliza.test",
+          elizaAuthorization: "Bearer voice-service",
+          organizationId: "org-real",
+          userId: "user-real",
+          agentId: "agent-real",
+          conversationId: "conversation-real",
           faultInjection: "deepgram-auth-fail",
         },
       });
     } finally {
-      if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY;
-      else process.env.OPENROUTER_API_KEY = originalKey;
+      restoreRealTargetEnv(originalEnv);
+    }
+  });
+
+  test("fails before booting when the canonical persisted conversation target is not configured", async () => {
+    realServerCalls.length = 0;
+    const originalEnv = snapshotRealTargetEnv();
+    delete process.env.VOICE_REALTIME_ELIZA_ENDPOINT;
+    process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION = "Bearer voice-service";
+    process.env.HARNESS_AGENT_ID = "agent-real";
+    process.env.HARNESS_CONVERSATION_ID = "conversation-real";
+    process.env.HARNESS_ORGANIZATION_ID = "org-real";
+    process.env.HARNESS_USER_ID = "user-real";
+    try {
+      await expect(
+        realTarget.startRealTarget({
+          providers: {
+            deepgramApiKey: "dg",
+            cartesiaApiKey: "cartesia",
+            cartesiaVoiceId: "voice",
+            llm: { apiKey: "llm" },
+          },
+          hooks: { log: () => undefined },
+        }),
+      ).rejects.toThrow(
+        "VOICE_REALTIME_ELIZA_ENDPOINT API origin not set (real agent leg)",
+      );
+      expect(realServerCalls).toEqual([{ type: "install-key" }]);
+    } finally {
+      restoreRealTargetEnv(originalEnv);
+    }
+  });
+
+  test("fails before booting when the required agent conversation identity is incomplete", async () => {
+    realServerCalls.length = 0;
+    const originalEnv = snapshotRealTargetEnv();
+    process.env.VOICE_REALTIME_ELIZA_ENDPOINT = "https://api.eliza.test";
+    process.env.VOICE_REALTIME_ELIZA_AUTHORIZATION = "Bearer voice-service";
+    process.env.HARNESS_AGENT_ID = "agent-real";
+    delete process.env.HARNESS_CONVERSATION_ID;
+    process.env.HARNESS_ORGANIZATION_ID = "org-real";
+    process.env.HARNESS_USER_ID = "user-real";
+    try {
+      await expect(
+        realTarget.startRealTarget({
+          providers: {
+            deepgramApiKey: "dg",
+            cartesiaApiKey: "cartesia",
+            cartesiaVoiceId: "voice",
+            llm: { apiKey: "llm" },
+          },
+          hooks: { log: () => undefined },
+        }),
+      ).rejects.toThrow(
+        "HARNESS_AGENT_ID, HARNESS_CONVERSATION_ID, HARNESS_ORGANIZATION_ID, and HARNESS_USER_ID must match an existing authorized conversation",
+      );
+      expect(realServerCalls).toEqual([{ type: "install-key" }]);
+    } finally {
+      restoreRealTargetEnv(originalEnv);
     }
   });
 });

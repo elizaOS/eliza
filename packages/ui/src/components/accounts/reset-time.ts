@@ -27,8 +27,8 @@ export function formatResetIn(epochMs: number | undefined): string | null {
 }
 
 /**
- * The reset instant that governs an account's weekly budget. Prefers the
- * usage snapshot's `resetsAt`; falls back to a live rate-limit `until`.
+ * Best available neutral reset/cooldown instant. Used only for legacy drain
+ * ordering and neutral "resets in" copy, never as a weekly-window label.
  */
 export function accountResetAt(
   account: AccountWithCredentialFlag,
@@ -36,6 +36,28 @@ export function accountResetAt(
   return account.usage?.resetsAt ?? account.healthDetail?.until;
 }
 
+/**
+ * A reset explicitly known to govern the all-model weekly budget.
+ *
+ * `resetsAt` is provider-specific by contract: Anthropic stores its all-model
+ * seven-day reset there, while Codex stores its primary five-hour reset. An
+ * explicit future `weeklyResetsAt` wins; otherwise only Anthropic may use the
+ * canonical `resetsAt` value as weekly.
+ */
+export function weeklyResetAt(
+  account: AccountWithCredentialFlag,
+): number | undefined {
+  const usage = account.usage as
+    | (NonNullable<typeof account.usage> & {
+        weeklyResetsAt?: number;
+        weeklyModelBuckets?: Record<string, unknown>;
+      })
+    | undefined;
+  if (!usage) return undefined;
+  if (typeof usage.weeklyResetsAt === "number") return usage.weeklyResetsAt;
+  if (account.providerId === "anthropic-subscription") return usage.resetsAt;
+  return undefined;
+}
 /**
  * Order accounts by "reset soonest first". Accounts with a known reset
  * instant come before those without; unknowns fall back to least-recently

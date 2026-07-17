@@ -15,9 +15,12 @@ Connect your agent to Discord servers and DMs using the `@elizaos/plugin-discord
 | `DISCORD_APPLICATION_ID` | No | Application ID (auto-resolved from bot token if omitted) |
 | `CHANNEL_IDS` | No | Comma-separated list of channel IDs to restrict the bot to |
 | `DISCORD_LISTEN_CHANNEL_IDS` | No | Comma-separated list of channel IDs where the bot only listens (no responses) |
-| `DISCORD_SHOULD_IGNORE_BOT_MESSAGES` | No | If `true`, ignore messages from other bots |
-| `DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES` | No | If `true`, ignore direct messages |
-| `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | If `true`, only respond when explicitly @mentioned |
+| `DISCORD_SHOULD_IGNORE_BOT_MESSAGES` | No | If `true`, ignore messages from other bots (default `false` — the bot engages other bots) |
+| `DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES` | No | If `true`, ignore direct messages (default `true`) |
+| `DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS` | No | If `true`, only respond when explicitly @mentioned (default `false` — replies in-channel without a mention) |
+| `DISCORD_AUTO_REPLY` | No | If `false`, ingest messages into memory without generating replies (default `true`) |
+| `DISCORD_USER_INSTALL` | No | If `false`, register commands guild-only (default `true` — user-installable / group-DM capable; requires the app be configured as **User Install** in the developer portal) |
+| `DISCORD_STATUS_REACTIONS` | No | Acknowledgement-reaction scope: `all` / `group-mentions` / `none` (default `all`) |
 | `DISCORD_VOICE_CHANNEL_ID` | No | Voice channel ID for the bot to join |
 | `DISCORD_TEST_CHANNEL_ID` | No | Channel ID for test suite operations |
 

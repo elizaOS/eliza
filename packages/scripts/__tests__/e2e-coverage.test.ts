@@ -236,10 +236,12 @@ describe("e2e coverage ship-gate", () => {
   test("every exemption carries a written justification", () => {
     for (const [plugin, entry] of Object.entries(PLUGIN_ROUTE_COVERAGE)) {
       if (entry.status === "exempt") {
-        expect(
-          entry.reason.length,
-          `exemption for ${plugin} needs a written reason`,
-        ).toBeGreaterThan(20);
+        if (
+          typeof entry.reason !== "string" ||
+          entry.reason.trim().length <= 20
+        ) {
+          throw new Error(`exemption for ${plugin} needs a written reason`);
+        }
       }
     }
   });

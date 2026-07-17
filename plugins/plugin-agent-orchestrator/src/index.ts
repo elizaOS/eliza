@@ -34,6 +34,25 @@ import {
 // side-effect of evaluating that module. Without this the entire
 // `/api/coding-agents/*` surface 404s on the node bundle.
 export { codingAgentRouteRegistration } from "./register-routes.js";
+export {
+  cloneLanePlan,
+  collisionProviderFromWorkspaceService,
+  createDeterministicLanePlan,
+  type ExternalCollision,
+  extractScopePaths,
+  type LaneCollision,
+  type LaneCollisionProvider,
+  type LanePlan,
+  type LanePlannerInput,
+  LanePlannerService,
+  type LaneReadiness,
+  type LaneSpec,
+  laneReadiness,
+  sanitizeLaneBranchName,
+  scopeSetsOverlap,
+  shouldUseLanePlanner,
+  validateLaneDependencyGraph,
+} from "./services/lane-planner.js";
 // Shared relay sanitizer (issue elizaOS/eliza#11578). Re-exported from the
 // package root so packages/agent's swarm-synthesis path can strip captured
 // tool-output envelopes with the SAME implementation the sub-agent router uses.
@@ -78,6 +97,7 @@ import {
   type AcpToolCall,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
+import { WaveSupervisor } from "./services/wave-supervisor.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 import { codingAgentRoutePlugin } from "./setup-routes.js";
 
@@ -119,6 +139,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
         serviceClass(CodingWorkspaceService),
         serviceClass(TaskSupervisorService),
         serviceClass(TaskWatchdogService),
+        serviceClass(WaveSupervisor),
         // Discoverable SWARM_COORDINATOR adapter. server.ts's
         // wireCoordinatorBridgesWhenReady + plugin-app-control's
         // verification-room-bridge both look this up by serviceType; without
@@ -328,6 +349,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TaskSupervisorService.serviceType,
         // Eager-start the stalled-agent watchdog loop too (#8901).
         TaskWatchdogService.serviceType,
+        // Registered unconditionally but behavior-neutral unless its explicit
+        // default-OFF setting is enabled.
+        WaveSupervisor.serviceType,
         // Eager-start the coordinator adapter so it subscribes to the ACP
         // event stream at boot (rather than waiting for a getService() that
         // only the server's bridge-wiring poll issues). This makes
@@ -517,6 +541,10 @@ export function createAgentOrchestratorPlugin(): Plugin {
         SwarmCoordinatorService.serviceType,
       );
       await coordinator?.stop();
+      const waveSupervisor = runtime.getService<WaveSupervisor>(
+        WaveSupervisor.serviceType,
+      );
+      await waveSupervisor?.stop();
       await CodingWorkspaceService.stopRuntime(runtime);
     },
   };
@@ -2445,6 +2473,32 @@ export type {
   SpawnOptions,
   SpawnResult,
 } from "./services/types.js";
+export {
+  type ActiveLaneScope,
+  detectWaveCollisions,
+  isSalvageEligible,
+  NoopWaveRefillPlanner,
+  type OpenPullRequestScope,
+  type OpenPullRequestSource,
+  readLaneDependencies,
+  readLaneId,
+  readWaveAttemptId,
+  readWaveId,
+  shouldRefillWave,
+  WAVE_BUDGET_BREACH_CODE,
+  WAVE_ID_METADATA_KEY,
+  WAVE_REFILL_PLANNER_SERVICE_TYPE,
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WAVE_SUPERVISOR_SETTING,
+  WaveBudgetBreachError,
+  type WaveCollision,
+  WaveConcurrencyCapError,
+  type WaveRefillPlanner,
+  type WaveRefillRequest,
+  type WaveReplacementSpec,
+  type WaveStatus,
+  WaveSupervisor,
+} from "./services/wave-supervisor.js";
 export type {
   AuthPromptCallback,
   CodingWorkspaceConfig,

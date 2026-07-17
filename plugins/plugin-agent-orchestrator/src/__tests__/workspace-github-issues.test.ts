@@ -12,7 +12,7 @@ import { createServer, type Server } from "node:http";
 import { createRequire } from "node:module";
 import type { IAgentRuntime } from "@elizaos/core";
 import type { GitHubPatClient as GitHubPatClientInstance } from "git-workspace-service";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   addComment,
   addLabels,
@@ -20,6 +20,8 @@ import {
   createIssue,
   ensureGitHubClient,
   type GitHubContext,
+  type GitHubRequest,
+  getPullRequestGroundTruth,
   listIssues,
   parseOwnerRepo,
   updateIssue,
@@ -164,6 +166,7 @@ class FakeGitHub {
 function makeCtx(client: GitHubPatClientInstance | null): GitHubContext {
   const state = {
     client,
+    request: null as GitHubRequest | null,
     inProgress: null as GitHubContext["githubAuthInProgress"],
   };
   return {
@@ -176,6 +179,12 @@ function makeCtx(client: GitHubPatClientInstance | null): GitHubContext {
     setGithubClient: (c) => {
       state.client = c;
     },
+    get githubRequest() {
+      return state.request;
+    },
+    setGithubRequest: (request) => {
+      state.request = request;
+    },
     get githubAuthInProgress() {
       return state.inProgress;
     },
@@ -185,6 +194,12 @@ function makeCtx(client: GitHubPatClientInstance | null): GitHubContext {
     authPromptCallback: null,
     log: () => {},
   };
+}
+
+function makeRequestCtx(request: GitHubRequest): GitHubContext {
+  const ctx = makeCtx({} as GitHubPatClientInstance);
+  ctx.setGithubRequest(request);
+  return ctx;
 }
 
 describe("parseOwnerRepo", () => {
@@ -223,6 +238,231 @@ describe("ensureGitHubClient", () => {
     expect(client).toBeInstanceOf(GitHubPatClient);
     // The context caches the client for subsequent calls.
     expect(await ensureGitHubClient(ctx)).toBe(client);
+  });
+});
+
+describe("getPullRequestGroundTruth", () => {
+  const link = {
+    url: "https://github.com/elizaos/eliza/pull/16453",
+    repo: "elizaos/eliza",
+    number: 16453,
+  };
+
+  it("marks branch protection 403 as checks unavailable", async () => {
+    const request = vi.fn(async (route: string) => {
+      if (route.includes("/files")) {
+        return { data: [{ filename: "src/a.ts" }] };
+      }
+      if (route.includes("/pulls/{pull_number}")) {
+        return {
+          data: {
+            html_url: link.url,
+            state: "open",
+            merged_at: null,
+            head: { sha: "abc123" },
+            base: { ref: "develop" },
+          },
+        };
+      }
+      if (route.includes("/check-runs")) {
+        return { data: { check_runs: [] } };
+      }
+      if (route.includes("/status")) {
+        return { data: { statuses: [] } };
+      }
+      if (route.includes("/protection")) {
+        throw Object.assign(new Error("Forbidden"), { status: 403 });
+      }
+      if (route.includes("/rules/branches")) {
+        return { data: [] };
+      }
+      throw new Error(`unexpected route ${route}`);
+    }) as GitHubRequest;
+
+    const result = await getPullRequestGroundTruth(
+      makeRequestCtx(request),
+      link,
+    );
+    expect(result?.checksUnavailable).toBe(true);
+    expect(result?.checksUnavailableReason).toContain("403");
+  });
+
+  it("preserves app_id when matching required branch-protection checks", async () => {
+    const request = vi.fn(async (route: string) => {
+      if (route.includes("/files")) return { data: [] };
+      if (route.includes("/pulls/{pull_number}")) {
+        return {
+          data: {
+            html_url: link.url,
+            state: "open",
+            merged_at: null,
+            head: { sha: "abc123" },
+            base: { ref: "develop" },
+          },
+        };
+      }
+      if (route.includes("/check-runs")) {
+        return {
+          data: {
+            check_runs: [
+              {
+                name: "unit",
+                status: "completed",
+                conclusion: "success",
+                app: { id: 15368 },
+              },
+              {
+                name: "unit",
+                status: "completed",
+                conclusion: "success",
+                app: { id: 999 },
+              },
+            ],
+          },
+        };
+      }
+      if (route.includes("/status")) return { data: { statuses: [] } };
+      if (route.includes("/protection")) {
+        return {
+          data: {
+            required_status_checks: {
+              contexts: [],
+              checks: [{ context: "unit", app_id: 15368 }],
+            },
+          },
+        };
+      }
+      if (route.includes("/rules/branches")) return { data: [] };
+      throw new Error(`unexpected route ${route}`);
+    }) as GitHubRequest;
+
+    const result = await getPullRequestGroundTruth(
+      makeRequestCtx(request),
+      link,
+    );
+    expect(result?.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "unit", appId: 15368, required: true }),
+        expect.objectContaining({ name: "unit", appId: 999, required: false }),
+      ]),
+    );
+  });
+
+  it("uses ruleset required checks when classic branch protection is unavailable", async () => {
+    const request = vi.fn(async (route: string) => {
+      if (route.includes("/files")) return { data: [] };
+      if (route.includes("/pulls/{pull_number}")) {
+        return {
+          data: {
+            html_url: link.url,
+            state: "open",
+            merged_at: null,
+            head: { sha: "abc123" },
+            base: { ref: "develop" },
+          },
+        };
+      }
+      if (route.includes("/check-runs")) {
+        return {
+          data: {
+            check_runs: [
+              {
+                name: "ruleset-unit",
+                status: "completed",
+                conclusion: "success",
+                app: { id: 15368 },
+              },
+            ],
+          },
+        };
+      }
+      if (route.includes("/status")) return { data: { statuses: [] } };
+      if (route.includes("/protection")) {
+        throw Object.assign(new Error("Not Found"), { status: 404 });
+      }
+      if (route.includes("/rules/branches")) {
+        return {
+          data: [
+            {
+              type: "required_status_checks",
+              parameters: {
+                required_status_checks: [
+                  { context: "ruleset-unit", integration_id: 15368 },
+                ],
+              },
+            },
+          ],
+        };
+      }
+      throw new Error(`unexpected route ${route}`);
+    }) as GitHubRequest;
+
+    const result = await getPullRequestGroundTruth(
+      makeRequestCtx(request),
+      link,
+    );
+    expect(result?.checksUnavailable).not.toBe(true);
+    expect(result?.checks).toContainEqual(
+      expect.objectContaining({
+        name: "ruleset-unit",
+        appId: 15368,
+        required: true,
+      }),
+    );
+  });
+
+  it("retries when the PR head changes while fetching files and checks", async () => {
+    let pullReads = 0;
+    const request = vi.fn(async (route: string) => {
+      if (route.includes("/files")) return { data: [] };
+      if (route.includes("/pulls/{pull_number}")) {
+        pullReads += 1;
+        const sha = pullReads === 1 ? "old" : "new";
+        return {
+          data: {
+            html_url: link.url,
+            state: "open",
+            merged_at: null,
+            head: { sha },
+            base: { ref: "develop" },
+          },
+        };
+      }
+      if (route.includes("/check-runs")) {
+        return {
+          data: {
+            check_runs: [
+              {
+                name: "unit",
+                status: "completed",
+                conclusion: "success",
+                app: { id: 15368 },
+              },
+            ],
+          },
+        };
+      }
+      if (route.includes("/status")) return { data: { statuses: [] } };
+      if (route.includes("/protection")) {
+        return {
+          data: {
+            required_status_checks: {
+              contexts: [],
+              checks: [{ context: "unit", app_id: 15368 }],
+            },
+          },
+        };
+      }
+      if (route.includes("/rules/branches")) return { data: [] };
+      throw new Error(`unexpected route ${route}`);
+    }) as GitHubRequest;
+
+    const result = await getPullRequestGroundTruth(
+      makeRequestCtx(request),
+      link,
+    );
+    expect(result?.headSha).toBe("new");
+    expect(pullReads).toBeGreaterThanOrEqual(3);
   });
 });
 

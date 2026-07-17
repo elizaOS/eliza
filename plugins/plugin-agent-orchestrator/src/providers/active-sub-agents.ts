@@ -32,6 +32,19 @@ interface AdmissionSnapshotService {
 }
 
 const ORCHESTRATOR_TASK_SERVICE_TYPE = "ORCHESTRATOR_TASK_SERVICE";
+const WAVE_SUPERVISOR_SERVICE_TYPE = "ORCHESTRATOR_WAVE_SUPERVISOR";
+
+interface WaveStatusSnapshot {
+  waveId: string;
+  totalLanes: number;
+  activeLanes: number;
+  terminalLanes: number;
+  queuedLanes: number;
+  concurrencyCap: number;
+  refillCount: number;
+  salvageCount: number;
+  collisionCount: number;
+}
 
 type ApproachingCapKind = "round-trip" | "spend";
 
@@ -128,9 +141,10 @@ export const activeSubAgentsProvider: Provider = {
     "acpx",
   ],
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
+    const waves = readWaveStatuses(runtime);
     const service = getAcpService(runtime);
     if (!service || typeof service.listSessions !== "function") {
-      return emptyResult();
+      return emptyResult(null, null, waves);
     }
     let all: SessionInfo[] | undefined;
     try {
@@ -160,7 +174,7 @@ export const activeSubAgentsProvider: Provider = {
     const routed = (Array.isArray(all) ? all : [])
       .filter(hasOrigin)
       .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
-    if (routed.length === 0) return emptyResult(capacity, admission);
+    if (routed.length === 0) return emptyResult(capacity, admission, waves);
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -199,6 +213,7 @@ export const activeSubAgentsProvider: Provider = {
     ];
     const capacityLine = formatCapacityLine(capacity, admission);
     if (capacityLine) lines.push(capacityLine);
+    lines.push(...formatWaveLines(waves));
     for (const session of routed) {
       lines.push(
         formatLine(
@@ -229,6 +244,7 @@ export const activeSubAgentsProvider: Provider = {
             ?.userId,
         })),
         capacity: capacityData(capacity, admission),
+        waves,
       },
     };
   },
@@ -307,18 +323,45 @@ function formatCapacityLine(
   return nextTaskId ? `${base}; next queued: task ${nextTaskId}` : base;
 }
 
+function readWaveStatuses(runtime: IAgentRuntime): WaveStatusSnapshot[] {
+  const supervisor = runtime.getService<
+    Service & { getWaveStatuses?: () => WaveStatusSnapshot[] }
+  >(WAVE_SUPERVISOR_SERVICE_TYPE);
+  if (!supervisor || typeof supervisor.getWaveStatuses !== "function")
+    return [];
+  try {
+    return supervisor.getWaveStatuses();
+  } catch {
+    return [];
+  }
+}
+
+function formatWaveLines(waves: readonly WaveStatusSnapshot[]): string[] {
+  return waves.map(
+    (wave) =>
+      `wave ${wave.waveId}: ${wave.activeLanes}/${wave.concurrencyCap} active, ${wave.queuedLanes} queued, ${wave.terminalLanes}/${wave.totalLanes} terminal, ${wave.refillCount} refills, ${wave.salvageCount} salvages, ${wave.collisionCount} collisions`,
+  );
+}
+
 function emptyResult(
   capacity: AcpCapacity | null = null,
   admission: AdmissionSnapshot | null = null,
+  waves: WaveStatusSnapshot[] = [],
 ) {
-  const capacityLine = formatCapacityLine(capacity, admission);
-  const text = capacityLine
-    ? `## Active sub-agent sessions\n${capacityLine}`
-    : "";
+  const lines = [
+    formatCapacityLine(capacity, admission),
+    ...formatWaveLines(waves),
+  ].filter(Boolean);
+  const text =
+    lines.length > 0 ? `## Active sub-agent sessions\n${lines.join("\n")}` : "";
   return {
     text,
     values: { activeSubAgents: text },
-    data: { sessions: [], capacity: capacityData(capacity, admission) },
+    data: {
+      sessions: [],
+      capacity: capacityData(capacity, admission),
+      waves,
+    },
   };
 }
 

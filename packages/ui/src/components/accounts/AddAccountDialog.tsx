@@ -660,7 +660,7 @@ export function AddAccountDialog({
                 })
               : t("accounts.add.apiDescription", {
                   defaultValue:
-                    "Paste your API key. The key is stored locally with mode 0600.",
+                    "Paste your API key. It's stored locally and only used to call the provider.",
                 });
 
   const apiKeyLabel =
@@ -671,11 +671,7 @@ export function AddAccountDialog({
       : t("accounts.add.apiKey", { defaultValue: "API key" });
 
   const apiKeyPlaceholder =
-    activeProviderId === "zai-coding"
-      ? "zai-..."
-      : activeProviderId === "kimi-coding"
-        ? "sk-..."
-        : "sk-...";
+    activeProviderId === "zai-coding" ? "zai-..." : "sk-...";
 
   const unavailableCopy =
     activeProviderId === "gemini-cli"
@@ -703,7 +699,7 @@ export function AddAccountDialog({
         value={label}
         onChange={(e) => setLabel(e.target.value)}
         placeholder={t("accounts.add.labelPlaceholder", {
-          defaultValue: "e.g. Personal, Work",
+          defaultValue: "Personal or work",
         })}
         maxLength={120}
         autoFocus
@@ -779,7 +775,7 @@ export function AddAccountDialog({
               {activeProviderId === "openai-codex"
                 ? subscriptionOAuthModeForHostname(window.location.hostname) ===
                   "localhost"
-                  ? "Log in with localhost callback"
+                  ? "Log in with this browser"
                   : "Log in with device code"
                 : "Log in and paste a code"}
             </Button>
@@ -801,7 +797,7 @@ export function AddAccountDialog({
                 onClick={() => void startOAuth("device")}
                 className="h-8 text-xs text-muted hover:text-txt"
               >
-                Use a device code instead (for SSH tunnels / another browser)
+                Browser on a different machine? Use a device code instead
               </Button>
             ) : null}
             {/* API-key path is intentionally hidden for subscription providers. */}
@@ -853,13 +849,13 @@ export function AddAccountDialog({
                       className="mx-auto mt-2 h-7 text-xs"
                       onClick={() => void copyDeviceCode(deviceCode)}
                     >
-                      {deviceCodeCopied ? "Copied to clipboard" : "Copy code"}
+                      {deviceCodeCopied ? "Copied" : "Copy code"}
                     </Button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 text-xs text-muted">
                   <Spinner className="h-3.5 w-3.5" />
-                  <span>Waiting for you to approve in your browser…</span>
+                  <span>Waiting for approval in your browser…</span>
                 </div>
               </div>
             ) : (

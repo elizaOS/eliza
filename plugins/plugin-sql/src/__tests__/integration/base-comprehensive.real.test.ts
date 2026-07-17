@@ -401,8 +401,12 @@ describe("Base Adapter Comprehensive Tests", () => {
       const retrieved0Metadata = retrieved0?.metadata;
       expect(retrieved0Metadata?.participants).toHaveLength(2);
 
-      // Create participant
+      // Create participant — participants.entity_id carries a foreign key to
+      // entities, so the entity row must exist before room membership.
       const userId = uuidv4() as UUID;
+      await adapter.createEntities([
+        { id: userId, agentId: testAgentId, names: ["Participant User"] },
+      ]);
       await adapter.addParticipantsRoom([userId], roomId);
 
       // Get rooms for participant
