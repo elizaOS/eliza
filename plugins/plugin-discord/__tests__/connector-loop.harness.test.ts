@@ -99,7 +99,13 @@ async function driveDiscordTurn(options: {
 
 	const sent: SentMessage[] = [];
 
-	const channelId = "1253563208833433701";
+	// Discord channel snowflakes are globally unique. Keep the synthetic guild
+	// and DM turns distinct too: the connector's process-wide outbound dedupe
+	// correctly suppresses an identical account/channel/reply/text tuple inside
+	// two seconds, so reusing one impossible channel identity made this harness
+	// depend on whether the two tests happened to take longer than that window.
+	const channelId =
+		channelKind === "dm" ? "1253563208833433702" : "1253563208833433701";
 	const guildId = "1253563208833400000";
 	const botMemberId = "9999999999999999999";
 	const authorId = "555000111222333444";

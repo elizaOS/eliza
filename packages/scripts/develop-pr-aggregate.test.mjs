@@ -5,6 +5,6 @@
  */
 import { test } from "bun:test";
 
-test("develop PR aggregate contract", async () => {
+test("develop PR aggregate contract and transient API retries", async () => {
   await import("./develop-pr-aggregate.self-test.mjs");
 });

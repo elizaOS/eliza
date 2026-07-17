@@ -9,6 +9,7 @@ const workflowPath = fileURLToPath(
 
 type Outputs = {
   files: string;
+  subprocess_files: string;
   bun_tests: string;
   vitest_tests: string;
   node_tests: string;
@@ -136,6 +137,7 @@ const REQUIRE_TESTS = "Require changed tests for changed source";
 test("self-check: the expression evaluator handles the workflow subset", () => {
   const o = {
     files: "src.ts",
+    subprocess_files: "",
     bun_tests: "",
     vitest_tests: "v.test.ts",
     node_tests: "",
@@ -154,6 +156,7 @@ test("self-check: the expression evaluator handles the workflow subset", () => {
 test("test-only Bun PR executes the changed Bun tests and the gate (#15849)", () => {
   const testOnly: Outputs = {
     files: "",
+    subprocess_files: "",
     bun_tests: "packages/core/src/x.test.ts",
     vitest_tests: "",
     node_tests: "",
@@ -168,6 +171,7 @@ test("test-only Bun PR executes the changed Bun tests and the gate (#15849)", ()
 test("test-only Vitest PR executes the changed Vitest tests and the gate (#15849)", () => {
   const testOnly: Outputs = {
     files: "",
+    subprocess_files: "",
     bun_tests: "",
     vitest_tests: "packages/core/src/y.test.ts",
     node_tests: "",
@@ -180,6 +184,7 @@ test("test-only Vitest PR executes the changed Vitest tests and the gate (#15849
 test("test-only registered Node PR executes without Bun setup", () => {
   const testOnly: Outputs = {
     files: "",
+    subprocess_files: "",
     bun_tests: "",
     vitest_tests: "",
     node_tests: "scripts/security/coverage-gate.self-test.mjs",
@@ -193,6 +198,7 @@ test("test-only registered Node PR executes without Bun setup", () => {
 test("docs-only PR (no source, no tests) runs no execution steps", () => {
   const docsOnly: Outputs = {
     files: "",
+    subprocess_files: "",
     bun_tests: "",
     vitest_tests: "",
     node_tests: "",
@@ -208,6 +214,7 @@ test("docs-only PR (no source, no tests) runs no execution steps", () => {
 test("source-with-tests PR runs the matching lane and does not trip the require gate", () => {
   const withTests: Outputs = {
     files: "packages/core/src/a.ts",
+    subprocess_files: "",
     bun_tests: "packages/core/src/a.test.ts",
     vitest_tests: "",
     node_tests: "",
@@ -221,6 +228,7 @@ test("source-with-tests PR runs the matching lane and does not trip the require 
 test("source-only PR with no changed test still trips the require gate", () => {
   const sourceOnly: Outputs = {
     files: "packages/core/src/a.ts",
+    subprocess_files: "",
     bun_tests: "",
     vitest_tests: "",
     node_tests: "",
@@ -228,4 +236,31 @@ test("source-only PR with no changed test still trips the require gate", () => {
   expect(runs(REQUIRE_TESTS, sourceOnly)).toBe(true);
   expect(runs(RUN_BUN, sourceOnly)).toBe(false);
   expect(runs(RUN_VITEST, sourceOnly)).toBe(false);
+});
+
+test("registered subprocess source still requires a changed contract test", () => {
+  const sourceOnly: Outputs = {
+    files: "",
+    subprocess_files: "packages/scripts/example-process.mjs",
+    bun_tests: "",
+    vitest_tests: "",
+    node_tests: "",
+  };
+  expect(runs(REQUIRE_TESTS, sourceOnly)).toBe(true);
+  expect(runs(SETUP, sourceOnly)).toBe(false);
+  expect(runs(GATE, sourceOnly)).toBe(false);
+});
+
+test("registered subprocess source runs its changed contract test", () => {
+  const withTests: Outputs = {
+    files: "",
+    subprocess_files: "packages/scripts/example-process.mjs",
+    bun_tests: "packages/scripts/example-process.test.ts",
+    vitest_tests: "",
+    node_tests: "",
+  };
+  expect(runs(REQUIRE_TESTS, withTests)).toBe(false);
+  expect(runs(SETUP, withTests)).toBe(true);
+  expect(runs(RUN_BUN, withTests)).toBe(true);
+  expect(runs(GATE, withTests)).toBe(true);
 });
