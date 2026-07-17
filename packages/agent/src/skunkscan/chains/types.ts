@@ -92,6 +92,15 @@ export type TransactionLookupResult = {
   retrievedAt: string;
 };
 
+export type OldestTransactionResult = {
+  chainId: ChainIdentifier;
+  address: string;
+  transactionId: string | null;
+  transaction: UniversalTransaction | null;
+  timestamp: number | null;
+  retrievedAt: string;
+};
+
 export type ChainConnectorHealthStatus =
   | "healthy"
   | "degraded"
@@ -137,9 +146,13 @@ export interface BlockchainConnector {
     request?: TransactionPageRequest,
   ): Promise<ChainOperationResult<TransactionPageResult>>;
 
-  getTransaction(
+    getTransaction(
     transactionId: string,
   ): Promise<ChainOperationResult<TransactionLookupResult>>;
+
+  getOldestTransaction?(
+    address: string,
+  ): Promise<ChainOperationResult<OldestTransactionResult>>;
 
   getHealth(): Promise<ChainConnectorHealth>;
 }
