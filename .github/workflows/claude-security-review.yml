@@ -1,19 +1,11 @@
 name: Security Review
 
 on:
+  # Keep an advisory check available on every PR head. The conditional required
+  # gate only waits for it on security labels/paths, but labels and draft-ready
+  # transitions must be able to start a previously absent review.
   pull_request:
-    types: [opened, synchronize, reopened]
-    # Focus on code changes that could introduce vulnerabilities
-    paths:
-      - "**/*.ts"
-      - "**/*.tsx"
-      - "**/*.js"
-      - "**/*.jsx"
-      - "**/*.json"
-      - "**/*.yml"
-      - "**/*.yaml"
-      - "**/Dockerfile"
-      - "**/.env.example"
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
 
   # Allow manual security scans
   workflow_dispatch:
