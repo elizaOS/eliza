@@ -8,6 +8,8 @@ import {
   fetchWithSsrfGuard,
   type GuardedFetchOptions,
   type LookupFn,
+  nodeLookupFn,
+  nodePinnedFetch,
   type PinnedLookupFetchLike,
 } from "@elizaos/core";
 
@@ -124,6 +126,52 @@ async function readTextCapped(
   return { text, truncated };
 }
 
+/**
+ * Every hop (including redirect targets) must be HTTPS. The core guard allows
+ * plain HTTP, so a 30x hop to `http://...` would otherwise be REQUESTED before
+ * any post-hoc `finalUrl` check runs — leaking the request (and, on 307/308, a
+ * POST body such as a WEB_SEARCH query) over plaintext. This preflight rejects
+ * the plaintext hop before the transport ever connects.
+ */
+function rejectPlaintextHop(url: URL): void {
+  if (url.protocol !== "https:") {
+    throw new Error("Refusing HTTPS redirect downgrade to a non-HTTPS URL");
+  }
+}
+
+type ResolvedTransport = {
+  fetchImpl?: FetchLike;
+  lookupFn?: LookupFn;
+  pinnedFetchImpl?: PinnedLookupFetchLike;
+};
+
+/**
+ * Wire the SSRF-guard transport so the HTTPS-only preflight wraps EVERY path
+ * that can issue a request. In production the Node pinned transport is passed
+ * explicitly (instead of relying on the guard's internal defaults) so the
+ * wrapper cannot be bypassed; test overrides are wrapped the same way.
+ */
+function resolveHttpsOnlyTransport(): ResolvedTransport {
+  if (fetchImplOverride && !pinnedFetchImplOverride) {
+    // Plain-fetch test seam: literal-host checks only, every hop preflighted.
+    const base = fetchImplOverride;
+    return {
+      fetchImpl: (input, init) => {
+        rejectPlaintextHop(new URL(String(input)));
+        return base(input, init);
+      },
+      ...(lookupFnOverride ? { lookupFn: lookupFnOverride } : {}),
+    };
+  }
+  const basePinned = pinnedFetchImplOverride ?? nodePinnedFetch;
+  const lookupFn = lookupFnOverride ?? nodeLookupFn;
+  const pinned: PinnedLookupFetchLike = (params) => {
+    rejectPlaintextHop(params.url);
+    return basePinned(params);
+  };
+  return { lookupFn, pinnedFetchImpl: pinned };
+}
+
 export async function guardedTextHttpRequest(
   url: string,
   options: GuardedTextHttpOptions = {},
@@ -143,11 +191,10 @@ export async function guardedTextHttpRequest(
     headers.set(key, value);
   }
 
+  const transport = resolveHttpsOnlyTransport();
   const guarded = await fetchWithSsrfGuard({
     url,
-    fetchImpl: fetchImplOverride,
-    lookupFn: lookupFnOverride,
-    pinnedFetchImpl: pinnedFetchImplOverride,
+    ...transport,
     maxRedirects: DEFAULT_MAX_REDIRECTS,
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     init: {
@@ -164,6 +211,9 @@ export async function guardedTextHttpRequest(
     }
     const contentType = guarded.response.headers.get("content-type") ?? "";
     if (!isTextualContentType(contentType)) {
+      // Close the rejected body — an unconsumed large/streaming binary body
+      // would otherwise hold the socket open until the remote closes it.
+      void guarded.response.body?.cancel().catch(() => {});
       throw new Error(`Unsupported content type: ${contentType || "unknown"}`);
     }
     const { text, truncated } = await readTextCapped(

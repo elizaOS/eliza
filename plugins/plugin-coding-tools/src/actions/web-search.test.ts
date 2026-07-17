@@ -154,4 +154,41 @@ describe("coding-tools WEB_SEARCH", () => {
     expect(result.success).toBe(false);
     expect(result.text).toContain("query is required");
   });
+
+  it("honors the ELIZA_WEB_SEARCH master kill switch", async () => {
+    const previous = process.env.ELIZA_WEB_SEARCH;
+    process.env.ELIZA_WEB_SEARCH = "0";
+    try {
+      __setWebHttpPinnedFetchImplForTests(async () => {
+        throw new Error("search providers should not be called");
+      });
+
+      const valid = await webSearchAction.validate(
+        {} as IAgentRuntime,
+        {} as Memory,
+        {} as State,
+      );
+      expect(valid).toBe(false);
+
+      const result = await runSearch({ query: "blocked" });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("disabled");
+    } finally {
+      if (previous === undefined) delete process.env.ELIZA_WEB_SEARCH;
+      else process.env.ELIZA_WEB_SEARCH = previous;
+    }
+  });
+
+  it("honors ELIZA_INLINE_WEB_SEARCH=0 for the inline keyless surface", async () => {
+    const previous = process.env.ELIZA_INLINE_WEB_SEARCH;
+    process.env.ELIZA_INLINE_WEB_SEARCH = "off";
+    try {
+      const result = await runSearch({ query: "blocked inline" });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("disabled");
+    } finally {
+      if (previous === undefined) delete process.env.ELIZA_INLINE_WEB_SEARCH;
+      else process.env.ELIZA_INLINE_WEB_SEARCH = previous;
+    }
+  });
 });

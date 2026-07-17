@@ -102,22 +102,52 @@ describe("coding-tools WEB_FETCH", () => {
     expect(result.text).toContain("private");
   });
 
-  it("rejects redirects that downgrade HTTPS to plaintext HTTP", async () => {
-    usePinnedRoutes({
-      "https://public.example.test/start": new Response("", {
-        status: 302,
-        headers: { location: "http://public.example.test/plaintext" },
-      }),
-      "http://public.example.test/plaintext": new Response("unsafe", {
-        status: 200,
-        headers: { "content-type": "text/plain" },
-      }),
+  it("rejects redirects that downgrade HTTPS to plaintext HTTP without requesting the plaintext hop", async () => {
+    const requested: string[] = [];
+    __setWebHttpLookupFnForTests(async () => [
+      { address: PUBLIC_IP, family: 4 },
+    ]);
+    __setWebHttpPinnedFetchImplForTests(async ({ url }) => {
+      requested.push(url.toString());
+      if (url.toString() === "https://public.example.test/start") {
+        return new Response("", {
+          status: 302,
+          headers: { location: "http://public.example.test/plaintext" },
+        });
+      }
+      throw new Error(`unexpected request to ${url.toString()}`);
     });
 
     const result = await runFetch({ url: "https://public.example.test/start" });
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("redirect downgrade");
+    // The plaintext hop must be rejected BEFORE any request is issued to it.
+    expect(requested).toEqual(["https://public.example.test/start"]);
+  });
+
+  it("honors the ELIZA_WEB_FETCH kill switch at validate and handler entry", async () => {
+    const previous = process.env.ELIZA_WEB_FETCH;
+    process.env.ELIZA_WEB_FETCH = "0";
+    try {
+      __setWebHttpFetchImplForTests(async () => {
+        throw new Error("fetch should not run");
+      });
+
+      const valid = await webFetchAction.validate(
+        {} as IAgentRuntime,
+        {} as Memory,
+        {} as State,
+      );
+      expect(valid).toBe(false);
+
+      const result = await runFetch({ url: "https://public.example.test/x" });
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("disabled");
+    } finally {
+      if (previous === undefined) delete process.env.ELIZA_WEB_FETCH;
+      else process.env.ELIZA_WEB_FETCH = previous;
+    }
   });
 
   it("caps large text responses and marks metadata as truncated", async () => {
@@ -178,9 +208,18 @@ describe("coding-tools WEB_FETCH", () => {
     expect(result.data).toMatchObject({ kind: "html" });
   });
 
-  it("rejects declared binary content types", async () => {
+  it("rejects declared binary content types and cancels the rejected body", async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        cancelled = true;
+      },
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("binary bytes"));
+      },
+    });
     usePinnedRoutes({
-      "https://public.example.test/image": new Response("not really an image", {
+      "https://public.example.test/image": new Response(body, {
         status: 200,
         headers: { "content-type": "image/png" },
       }),
@@ -190,6 +229,7 @@ describe("coding-tools WEB_FETCH", () => {
 
     expect(result.success).toBe(false);
     expect(result.text).toContain("Unsupported content type");
+    expect(cancelled).toBe(true);
   });
 
   it("extracts a JSON path and returns stable metadata", async () => {

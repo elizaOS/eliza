@@ -26,6 +26,33 @@ const WEB_SEARCH_READ_BYTES = 256 * 1024;
 const WEB_SEARCH_RESULT_CHARS = 4_000;
 const DEFAULT_NUM_RESULTS = 6;
 
+function readBooleanEnv(name: string): boolean | undefined {
+  const raw = process.env[name]?.trim().toLowerCase();
+  if (raw === undefined || raw.length === 0) return undefined;
+  if (raw === "0" || raw === "false" || raw === "off" || raw === "no") {
+    return false;
+  }
+  if (raw === "1" || raw === "true" || raw === "on" || raw === "yes") {
+    return true;
+  }
+  return undefined;
+}
+
+/**
+ * Capability kill switches, mirroring the agent-runtime WEB_SEARCH gate:
+ * `ELIZA_WEB_SEARCH=0|false|off` is the master kill switch, and
+ * `ELIZA_INLINE_WEB_SEARCH` explicitly enables/disables the inline keyless
+ * surface. Checked at `validate` AND at handler entry so a disabled
+ * capability never calls the MCP providers through any invocation path.
+ */
+export function isCodingWebSearchEnabled(): boolean {
+  const master = readBooleanEnv("ELIZA_WEB_SEARCH");
+  if (master === false) return false;
+  const inline = readBooleanEnv("ELIZA_INLINE_WEB_SEARCH");
+  if (inline !== undefined) return inline;
+  return true;
+}
+
 function parseMcpResultText(body: string): string | undefined {
   const fromPayload = (payload: string): string | undefined => {
     const trimmed = payload.trim();
@@ -94,7 +121,7 @@ export const webSearchAction: Action = {
       schema: { type: "number" },
     },
   ],
-  validate: async () => true,
+  validate: async () => isCodingWebSearchEnabled(),
   handler: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -102,6 +129,13 @@ export const webSearchAction: Action = {
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    if (!isCodingWebSearchEnabled()) {
+      return failureToActionResult({
+        reason: "disabled",
+        message:
+          "WEB_SEARCH is disabled via ELIZA_WEB_SEARCH / ELIZA_INLINE_WEB_SEARCH",
+      });
+    }
     const query =
       readStringParam(options, "query") ??
       readStringParam(options, "q") ??

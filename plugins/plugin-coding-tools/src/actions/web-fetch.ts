@@ -22,6 +22,17 @@ import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
 const WEB_FETCH_RESULT_CHARS = 8_000;
 
+/**
+ * Capability kill switch, mirroring the agent-runtime WEB_FETCH action:
+ * `ELIZA_WEB_FETCH=0|false|off` disables outbound fetches. Checked at
+ * `validate` AND at handler entry so a disabled capability never runs even
+ * when the action was registered or invoked through another path.
+ */
+export function isCodingWebFetchEnabled(): boolean {
+  const raw = process.env.ELIZA_WEB_FETCH?.trim().toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "off");
+}
+
 function decodeHtmlEntity(entity: string): string {
   const named: Record<string, string> = {
     amp: "&",
@@ -140,7 +151,7 @@ export const webFetchAction: Action = {
       schema: { type: "string" },
     },
   ],
-  validate: async () => true,
+  validate: async () => isCodingWebFetchEnabled(),
   handler: async (
     _runtime: IAgentRuntime,
     _message: Memory,
@@ -148,6 +159,12 @@ export const webFetchAction: Action = {
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    if (!isCodingWebFetchEnabled()) {
+      return failureToActionResult({
+        reason: "disabled",
+        message: "WEB_FETCH is disabled via ELIZA_WEB_FETCH",
+      });
+    }
     const url = readStringParam(options, "url")?.trim();
     const extract = readStringParam(options, "extract")?.trim();
     if (!url) {
