@@ -107,4 +107,28 @@ describe("DesktopSettingsNavigation", () => {
     fireEvent.keyDown(appearance, { key: "Enter" });
     expect(onSelect).toHaveBeenCalledWith("appearance");
   });
+
+  // Product policy disables focus rings globally (styles.css), so nav items must
+  // not carry Tailwind focus/ring utilities — guards the no-focus-ring-gate at
+  // the component level.
+  it("renders nav items free of focus/ring utilities", () => {
+    render(
+      <DesktopSettingsNavigation
+        grouped={grouped as never}
+        activeId="identity"
+        onSelect={vi.fn()}
+        onBack={vi.fn()}
+        settingsLabel="Settings"
+        label={resolveLabel}
+      />,
+    );
+    for (const id of ["identity", "ai-model", "appearance"]) {
+      const cls =
+        screen
+          .getByTestId(`desktop-settings-item-${id}`)
+          .getAttribute("class") ?? "";
+      expect(cls).not.toMatch(/(?:^|\s)(?:focus|focus-visible|focus-within):/);
+      expect(cls).not.toMatch(/(?:^|\s)!?ring-/);
+    }
+  });
 });

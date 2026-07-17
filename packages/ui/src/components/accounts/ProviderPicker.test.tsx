@@ -64,4 +64,21 @@ describe("ProviderPicker", () => {
     fireEvent.click(screen.getByRole("option", { name: /Anthropic API/ }));
     expect(onPick).toHaveBeenCalledWith("anthropic-api");
   });
+
+  // Product policy disables focus rings globally (styles.css); the search input
+  // and option rows must not carry Tailwind focus/ring utilities — guards the
+  // no-focus-ring-gate at the component level.
+  it("renders the search input and options free of focus/ring utilities", () => {
+    renderPicker();
+    fireEvent.change(searchInput(), { target: { value: "Anthropic API" } });
+    const targets = [
+      searchInput(),
+      screen.getByRole("option", { name: /Anthropic API/ }),
+    ];
+    for (const el of targets) {
+      const cls = el.getAttribute("class") ?? "";
+      expect(cls).not.toMatch(/(?:^|\s)(?:focus|focus-visible|focus-within):/);
+      expect(cls).not.toMatch(/(?:^|\s)!?ring-/);
+    }
+  });
 });

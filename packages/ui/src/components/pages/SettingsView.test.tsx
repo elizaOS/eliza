@@ -11,6 +11,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { Settings } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -379,6 +380,50 @@ describe("SettingsView", () => {
       expect(
         screen.getByRole("button", { name: "Back to launcher" }),
       ).toBeTruthy();
+    } finally {
+      restore();
+    }
+  });
+
+  it("nests the section title h1 inside the #<section.id> deep-link anchor on desktop", () => {
+    // Regression guard (#16354): the persistent desktop rail moved the section
+    // title into a header sibling ABOVE the section body, dropping it out of the
+    // `#<section.id>` deep-link anchor. The title h1 + the body must share one
+    // anchored container so a deep-link/screen-reader landing on the section
+    // reaches its own title.
+    const restore = mockMatchMedia((query) => query.includes("min-width:"));
+    try {
+      const { container } = render(<SettingsView initialSection="runtime" />);
+      const anchor = container.querySelector<HTMLElement>("#runtime");
+      expect(anchor).not.toBeNull();
+      const scoped = within(anchor as HTMLElement);
+      expect(scoped.getByRole("heading", { level: 1 }).textContent).toBe(
+        "Runtime",
+      );
+      expect(scoped.getByTestId("stub-runtime")).toBeTruthy();
+      // Exactly one element carries the anchor id (the wrapper), never a
+      // duplicate on the inner body.
+      expect(container.querySelectorAll("#runtime")).toHaveLength(1);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps the section body as the deep-link anchor in the mobile subview", () => {
+    const restore = mockMatchMedia(() => false);
+    try {
+      const { container } = render(<SettingsView initialSection="runtime" />);
+      // Mobile keeps the shared ViewHeader title and anchors `#<id>` on the
+      // section body (the default) — the body still contains the section's
+      // rendered content.
+      const anchor = container.querySelector<HTMLElement>("#runtime");
+      expect(anchor).not.toBeNull();
+      expect(
+        within(anchor as HTMLElement).getByTestId("stub-runtime"),
+      ).toBeTruthy();
+      expect(screen.getByTestId("view-header").textContent).toContain(
+        "Runtime",
+      );
     } finally {
       restore();
     }

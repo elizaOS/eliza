@@ -130,6 +130,10 @@ function makeDiscordGraph() {
 		),
 		sendTyping: vi.fn().mockResolvedValue(undefined),
 		messages: {
+			// The chat-context hook reads the gateway-populated cache (never a
+			// REST fetch — see getConnectorChatContext); fetch remains for the
+			// message operations that do address single messages by id.
+			cache: new Collection(messages),
 			fetch: vi.fn(async (arg?: string | { limit?: number }) => {
 				if (typeof arg === "string") {
 					return messages.get(arg);
@@ -602,6 +606,45 @@ describe("DiscordService account-scoped primitives", () => {
 				},
 			]),
 		);
+	});
+
+	it("serves chat-context history from the gateway cache without a REST fetch or room read", async () => {
+		const { graph, runtime, service } = makeService();
+		const getRoom = vi.fn(async () => ({
+			id: "00000000-0000-0000-0000-000000000002",
+			channelId: graph.textChannel.id,
+		}));
+		const context = {
+			runtime: { ...runtime, getRoom },
+			target: {
+				source: "discord",
+				accountId: "default",
+				channelId: graph.textChannel.id,
+			},
+		};
+
+		// Target already carries a channelId: no DB room read, no history REST
+		// fetch — this hook runs on the Stage-1 critical path every turn.
+		const chatContext = await service.getConnectorChatContext(
+			{
+				source: "discord",
+				channelId: graph.textChannel.id,
+				roomId: "00000000-0000-0000-0000-000000000002",
+			},
+			context,
+		);
+		expect(chatContext?.recentMessages[0]?.text).toBe("hello from discord");
+		expect(getRoom).not.toHaveBeenCalled();
+		expect(graph.textChannel.messages.fetch).not.toHaveBeenCalled();
+
+		// Without a channelId the room read is the only way to recover one.
+		const viaRoom = await service.getConnectorChatContext(
+			{ source: "discord", roomId: "00000000-0000-0000-0000-000000000002" },
+			context,
+		);
+		expect(getRoom).toHaveBeenCalledOnce();
+		expect(viaRoom?.recentMessages[0]?.text).toBe("hello from discord");
+		expect(graph.textChannel.messages.fetch).not.toHaveBeenCalled();
 	});
 
 	it("stops account clients, clears retry state, and rejects pending ready waits", async () => {

@@ -1,0 +1,42 @@
+{
+  "name": "@elizaos/eliza-hub-merge-steward",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent-native merge queue policy engine for Eliza Hub.",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza/tree/develop/packages/eliza-hub/services/merge-steward",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/eliza-hub/services/merge-steward"
+  },
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./openapi.json": "./openapi.json",
+    "./production-evidence.schema.json": "./production-evidence.schema.json",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "eliza-merge-steward": "./src/cli.js"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "migrate": "node src/migrate.js",
+    "preflight": "node src/cli.js preflight",
+    "doctor": "node src/cli.js doctor",
+    "worker": "node src/cli.js worker",
+    "sync:openapi-schema": "node scripts/sync-openapi-production-evidence-schema.mjs",
+    "check:openapi-schema": "node scripts/sync-openapi-production-evidence-schema.mjs --check",
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/index.js && node --check src/policy.js && node --check src/comments.js && node --check src/agent-action-plan.js && node --check src/agent-bootstrap.js && node --check src/agent-capacity.js && node --check src/agent-claim-router.js && node --check src/agent-cockpit.js && node --check src/agent-insights.js && node --check src/agent-inbox.js && node --check src/agent-performance.js && node --check src/agent-routing.js && node --check src/agent-submission-gate.js && node --check src/agent-work-preflight.js && node --check src/ci-failure-analysis.js && node --check src/validation-plan.js && node --check src/pull-request-brief.js && node --check src/release-notes.js && node --check src/review-assignment.js && node --check src/repo-search.js && node --check src/patch-conflict-prediction.js && node --check src/coordination-summary.js && node --check src/fleet-coordination.js && node --check src/work-context.js && node --check src/project-board.js && node --check src/workflow-view.js && node --check src/work-dashboard.js && node --check src/work-intake.js && node --check src/work-progress.js && node --check src/merge-queue-summary.js && node --check src/merge-train-plan.js && node --check src/queue-item-action-plan.js && node --check src/queue-simulation.js && node --check src/stack-dependencies.js && node --check src/release-readiness.js && node --check src/repository-protection.js && node --check src/github-parity.js && node --check src/production-readiness.js && node --check src/production-evidence-template.js && node --check src/runner-isolation.js && node --check src/config.js && node --check src/runtime-paths.js && node --check src/discovery.js && node --check src/domain-evidence.js && node --check src/client.js && node --check src/production-evidence-schema.js && node --check src/production-gate.js && node --check src/production-artifact-sources.js && node --check src/production-evidence-freshness.js && node --check src/server.js && node --check src/migrate.js && node --check src/cli.js && node --check src/forgejo-client.js && node --check src/webhook.js && node --check src/store.js && node --check src/postgres-store.js && node --check src/oidc-auth.js && node --check src/steward.js && node --check src/feedback.js && node --check src/enrichment.js && node --check src/integration-plan.js && node --check src/integration-executor.js && node --check src/local-git-executor.js && node --check src/check-watcher.js && node --check src/agent-plan.js && node --check src/agent-run-receipt.js && node --check src/event-gate.js && node --check src/run-state.js && node --check src/worker.js && node --check src/metrics.js && node --check src/deployment-doctor.js && node scripts/sync-openapi-production-evidence-schema.mjs --check"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "jose": "^6.2.3",
+    "pg": "^8.22.0"
+  }
+}

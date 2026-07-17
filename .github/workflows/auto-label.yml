@@ -24,7 +24,7 @@ jobs:
     if: github.event_name == 'pull_request_target'
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
-      - uses: actions/labeler@f27b608878404679385c85cfa523b85ccb86e213
+      - uses: actions/labeler@b8dd2d9be0f68b860e7dae5dae7d772984eacd6d
         with:
           repo-token: "${{ secrets.GITHUB_TOKEN }}"
           pr-number: "${{ github.event.pull_request.number }}"

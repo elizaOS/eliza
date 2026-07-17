@@ -3,31 +3,14 @@
  * (`[node, script, ...args]`). Detects help/version flags, reads flag presence
  * and `--flag value` / `--flag=value` values while honoring the `--` terminator,
  * extracts the positional command path, and normalizes argv so a program name or
- * a `node`/`bun` executable prefix is handled uniformly. `shouldMigrateState` is
- * the gate that lets read-only subcommands (health, status, agent, memory
- * status) run without triggering state migration.
+ * a `node`/`bun` executable prefix is handled uniformly.
  */
-import { parsePositiveInteger } from "@elizaos/shared";
-
 const HELP_FLAGS = new Set(["-h", "--help"]);
 const VERSION_FLAGS = new Set(["-v", "-V", "--version"]);
 const FLAG_TERMINATOR = "--";
 
 export function hasHelpOrVersion(argv: string[]): boolean {
   return argv.some((arg) => HELP_FLAGS.has(arg) || VERSION_FLAGS.has(arg));
-}
-
-function isValueToken(arg: string | undefined): boolean {
-  if (!arg) {
-    return false;
-  }
-  if (arg === FLAG_TERMINATOR) {
-    return false;
-  }
-  if (!arg.startsWith("-")) {
-    return true;
-  }
-  return /^-\d+(?:\.\d+)?$/.test(arg);
 }
 
 export function hasFlag(argv: string[], name: string): boolean {
@@ -43,28 +26,6 @@ export function hasFlag(argv: string[], name: string): boolean {
   return false;
 }
 
-export function getFlagValue(
-  argv: string[],
-  name: string,
-): string | null | undefined {
-  const args = argv.slice(2);
-  for (let i = 0; i < args.length; i += 1) {
-    const arg = args[i];
-    if (arg === FLAG_TERMINATOR) {
-      break;
-    }
-    if (arg === name) {
-      const next = args[i + 1];
-      return isValueToken(next) ? next : null;
-    }
-    if (arg.startsWith(`${name}=`)) {
-      const value = arg.slice(name.length + 1);
-      return value ? value : null;
-    }
-  }
-  return undefined;
-}
-
 export function getVerboseFlag(
   argv: string[],
   options?: { includeDebug?: boolean },
@@ -76,17 +37,6 @@ export function getVerboseFlag(
     return true;
   }
   return false;
-}
-
-export function getPositiveIntFlagValue(
-  argv: string[],
-  name: string,
-): number | null | undefined {
-  const raw = getFlagValue(argv, name);
-  if (raw === null || raw === undefined) {
-    return raw;
-  }
-  return parsePositiveInteger(raw);
 }
 
 export function getCommandPath(argv: string[], depth = 2): string[] {
@@ -160,25 +110,4 @@ function isNodeExecutable(executable: string): boolean {
 
 function isBunExecutable(executable: string): boolean {
   return executable === "bun" || executable === "bun.exe";
-}
-
-export function shouldMigrateStateFromPath(path: string[]): boolean {
-  if (path.length === 0) {
-    return true;
-  }
-  const [primary, secondary] = path;
-  if (primary === "health" || primary === "status" || primary === "sessions") {
-    return false;
-  }
-  if (primary === "memory" && secondary === "status") {
-    return false;
-  }
-  if (primary === "agent") {
-    return false;
-  }
-  return true;
-}
-
-export function shouldMigrateState(argv: string[]): boolean {
-  return shouldMigrateStateFromPath(getCommandPath(argv, 2));
 }

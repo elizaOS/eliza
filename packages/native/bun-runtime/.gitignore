@@ -3,3 +3,5 @@ artifacts/*
 !artifacts/ElizaBunEngine.xcframework/**
 build/
 vendor/
+# The xcframework re-include admits every descendant; reject macOS resource-fork sidecars.
+**/._*

@@ -200,3 +200,61 @@ export function setCodingAgentSelectorBridge(
 		delete slot[CODING_AGENT_SELECTOR_BRIDGE_SYMBOL];
 	}
 }
+
+/* ---------------------- Account-pool broker snapshot --------------------- */
+
+export interface AccountPoolBrokerLastLease {
+	leaseId: string;
+	atMs: number;
+	sessionKeyHash: string;
+	model?: string;
+}
+
+export interface AccountPoolBrokerLastReportedStatus {
+	atMs: number;
+	ok: boolean;
+	category: "ok" | "auth" | "rate_limit" | "transient" | "other";
+	reason: string;
+	httpStatus?: number;
+	model?: string;
+}
+
+export interface AccountPoolBrokerAccountSnapshot {
+	activeLeaseCount: number;
+	lastLease: AccountPoolBrokerLastLease | null;
+	lastLeaseAt: number | null;
+	lastReportedStatus: AccountPoolBrokerLastReportedStatus | null;
+}
+
+export interface AccountPoolBrokerProviderLastSelection {
+	accountId: string;
+	atMs: number;
+	reason: string;
+}
+
+export interface AccountPoolBrokerFailoverSnapshot {
+	atMs: number;
+	providerId: string;
+	sessionKeyHash: string;
+	fromAccountId: string;
+	toAccountId: string;
+	cause: {
+		category: "auth" | "rate_limit" | "transient";
+		reason: string;
+	};
+	model?: string;
+}
+
+export interface AccountPoolBrokerProviderSnapshot {
+	lastSelection: AccountPoolBrokerProviderLastSelection | null;
+	recentFailovers: AccountPoolBrokerFailoverSnapshot[];
+}
+
+export interface AccountPoolBrokerSnapshot {
+	accounts: Record<string, AccountPoolBrokerAccountSnapshot>;
+	providers: Record<string, AccountPoolBrokerProviderSnapshot>;
+}
+
+export function emptyAccountPoolBrokerSnapshot(): AccountPoolBrokerSnapshot {
+	return { accounts: {}, providers: {} };
+}

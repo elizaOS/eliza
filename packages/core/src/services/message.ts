@@ -178,6 +178,7 @@ import {
 	getTrajectoryContext,
 	runWithTrajectoryContext,
 } from "../trajectory-context";
+import type { CharacterSettings } from "../types/agent";
 import type {
 	Action,
 	ActionResult,
@@ -323,6 +324,25 @@ export {
 };
 
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
+
+/**
+ * Per-agent reply-length budget (#16395): a positive-integer `max_tokens`
+ * ceiling applied to the Stage-1/synthesis call so operators can pin terse
+ * replies (e.g. group-chat turns) without rewriting the persona, and have it
+ * enforced by the provider rather than requested politely in `system`.
+ * `characterSchema` validates the field (`z.number().int().positive()`); the
+ * integer guard here only covers characters constructed without validation.
+ * Unset or invalid → undefined, i.e. the unchanged channel default applies.
+ */
+function resolveMaxReplyTokens(
+	settings: CharacterSettings | undefined,
+): number | undefined {
+	const raw = settings?.maxReplyTokens;
+	return typeof raw === "number" && Number.isInteger(raw) && raw > 0
+		? raw
+		: undefined;
+}
+
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
 const CODE_SNIPPET_VALIDITY_INSTRUCTION =
@@ -4153,6 +4173,21 @@ export function messageHandlerFromFieldResult(
 	) {
 		plan.candidateActions = planCandidateActions;
 	}
+	// The model emitted NO candidate of its own (rawCandidateActions is what
+	// Stage 1 actually named — an unregistered model candidate is still model
+	// evidence, deliberately force-planned so the planner delivers the honest
+	// capability decline), so the plan's candidates — and with them the
+	// required-tool enforcement — stand on deterministic text inference alone
+	// (coding backstop, ack inference, or direct inference). Record that so
+	// the planner loop can accept a firmly repeated terminal answer early
+	// instead of burning the full miss budget on a heuristic's guess.
+	if (
+		shouldPlan &&
+		planCandidateActions.length > 0 &&
+		rawCandidateActions.length === 0
+	) {
+		plan.requiredToolEvidence = "inferred";
+	}
 	// The escalation came ONLY from the text-derived view-surface inference on
 	// a turn Stage 1 already answered — cap the planner's miss budget so the
 	// answer-rescue fires after one rejected reply instead of four (see
@@ -4399,6 +4434,12 @@ export function applyDirectCurrentCandidateBackstopToMessageHandler(
 			candidateActions: runnableCandidateActions,
 			...(viewOverlapMissBudget !== undefined
 				? { requiredToolMissBudget: viewOverlapMissBudget }
+				: {}),
+			// Same provenance stamp as the structured path: when Stage 1's own
+			// candidate list was empty, this escalation stands on deterministic
+			// text inference alone.
+			...(getMessageHandlerCandidateActions(messageHandler).length === 0
+				? { requiredToolEvidence: "inferred" as const }
 				: {}),
 		},
 	};
@@ -6597,6 +6638,12 @@ export async function runV5MessageRuntimeStage1(args: {
 				.eliza ?? {}),
 			thinking: "off",
 		};
+		// Per-agent reply-length budget (#16395): when set it caps every channel
+		// (including DMs) with a real max_tokens; otherwise the existing per-channel
+		// default applies unchanged.
+		const maxReplyTokens = resolveMaxReplyTokens(
+			args.runtime.character.settings,
+		);
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
@@ -6607,8 +6654,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			// and truncates long single-turn replies. `omitMaxTokens` tells adapters
 			// to use provider/model-max output instead of the runtime default; group
 			// channels keep DEFAULT_STAGE1_MAX_TOKENS so they stay bounded.
-			maxTokens: directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS,
-			omitMaxTokens: directMessageChannel,
+			maxTokens:
+				maxReplyTokens ??
+				(directMessageChannel ? undefined : DEFAULT_STAGE1_MAX_TOKENS),
+			omitMaxTokens: maxReplyTokens == null && directMessageChannel,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to
@@ -7274,9 +7323,36 @@ export async function runV5MessageRuntimeStage1(args: {
 		// to satisfy the gate. When Stage 1 names no tool, plan with "auto" and
 		// trust the planner — it still calls a tool when one genuinely fits and
 		// answers directly when none does.
+		// The named candidate must also RESOLVE against the tools actually
+		// exposed to the planner this turn: an unresolvable hint (e.g. a
+		// web/fetch-style hint on a runtime with no web action) cannot be
+		// satisfied, so hard-enforcing it would only burn the required-tool
+		// miss budget re-rejecting the planner's honest answer before the
+		// exhaustion hatch ships it. The turn still plans — the planner
+		// delivers the capability decline in one iteration. Candidates are
+		// resolved through the runtime action lookup, not by name alone: Stage 1
+		// routinely names a SIMILE of an exposed action (SPAWN_AGENT for TASKS),
+		// and a name-only membership test would silently drop enforcement for a
+		// tool that IS exposed (the exposedActionMatches doc records the live
+		// ack-then-nothing regression that pattern causes).
+		const plannerToolNames = new Set(
+			plannerTools.map((tool) => normalizeActionIdentifier(tool.name)),
+		);
+		const stageOneActionLookup = buildRuntimeActionLookup(args.runtime);
+		const candidateResolvesToPlannerTool = (name: string): boolean => {
+			const normalized = normalizeActionIdentifier(name);
+			if (plannerToolNames.has(normalized)) return true;
+			const resolved = resolveRuntimeAction(stageOneActionLookup, name);
+			return (
+				resolved !== undefined &&
+				plannerToolNames.has(normalizeActionIdentifier(resolved.name))
+			);
+		};
 		const stageOneNamedAToolForThisTurn =
 			messageHandler.plan.requiresTool === true &&
-			(messageHandler.plan.candidateActions?.length ?? 0) > 0;
+			messageHandler.plan.candidateActions?.some((name) =>
+				candidateResolvesToPlannerTool(String(name)),
+			) === true;
 		const stageOneNamedOwnerLifeManagementTool =
 			stageOneNamedAToolForThisTurn &&
 			Array.isArray(messageHandler.plan.candidateActions) &&
@@ -7390,6 +7466,11 @@ export async function runV5MessageRuntimeStage1(args: {
 							requiredToolMissBudgetOverride:
 								messageHandler.plan.requiredToolMissBudget,
 						}
+					: {}),
+				// Provenance of the tool requirement: heuristic-inferred candidates
+				// let the loop accept a firmly repeated terminal answer early.
+				...(messageHandler.plan.requiredToolEvidence === "inferred"
+					? { requiredToolEvidence: "inferred" as const }
 					: {}),
 				evaluatorEffects,
 				recorder,

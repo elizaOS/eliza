@@ -21,7 +21,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     steps:
       - name: Checkout
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -37,7 +37,9 @@ jobs:
           evidence=packages/os/release/beta-2026-05-16/evidence/ci-evidence.json
 
           node --check packages/os/scripts/*.mjs
-          node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs
+          node --test \
+            packages/os/scripts/__tests__/os-release-scripts.test.mjs \
+            packages/os/scripts/__tests__/release-asset-inventory.test.mjs
           if [ -f "$manifest" ]; then
             node packages/os/scripts/validate-release-manifest.mjs \
               --manifest "$manifest"

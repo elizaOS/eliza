@@ -23,6 +23,7 @@ import "../runtime/__tests__/embedding-dimension.test";
 import "../runtime/__tests__/guarded-stream-use-model.test";
 import "../runtime/__tests__/model-provider-failover.test";
 import "../runtime/__tests__/model-registrations.test";
+import "../runtime/__tests__/model-span-window.test";
 import "../runtime/__tests__/model-stream-chunk-hooks.test";
 import "../runtime/__tests__/pii-swap-use-model.test";
 import "../runtime/__tests__/run-actions-by-mode.test";

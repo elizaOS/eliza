@@ -534,8 +534,18 @@ describe("NotificationsHomeCenter", () => {
     expect(unavailable.textContent).toContain("Notifications unavailable");
     expect(unavailable.textContent).not.toContain("private transport detail");
 
+    const retry = screen.getByRole("button", { name: "Retry" });
+    // Product policy disables focus rings globally (styles.css); the retry
+    // button must not carry Tailwind focus/ring utilities — guards the
+    // no-focus-ring-gate at the component level.
+    const retryClass = retry.getAttribute("class") ?? "";
+    expect(retryClass).not.toMatch(
+      /(?:^|\s)(?:focus|focus-visible|focus-within):/,
+    );
+    expect(retryClass).not.toMatch(/(?:^|\s)!?ring-/);
+
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+      fireEvent.click(retry);
       await Promise.resolve();
     });
 

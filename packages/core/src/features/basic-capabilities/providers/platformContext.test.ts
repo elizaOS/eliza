@@ -184,6 +184,149 @@ describe("platform context providers", () => {
 		});
 	});
 
+	it("drops the legacy unscoped connector when an account-scoped sibling shares its source", async () => {
+		const legacyChat = vi.fn(async (target) => ({
+			target,
+			label: "#legacy",
+		}));
+		const scopedChat = vi.fn(async (target) => ({
+			target,
+			label: "#scoped",
+		}));
+		const runtime = makeRuntime([
+			makeConnector("slack", { getChatContext: legacyChat }),
+			makeConnector("slack", {
+				accountId: "acct-1",
+				getChatContext: scopedChat,
+			}),
+		]);
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			makeMessage("slack"),
+			makeState(),
+		);
+
+		expect(legacyChat).not.toHaveBeenCalled();
+		expect(scopedChat).toHaveBeenCalledOnce();
+		expect(result.data).toMatchObject({
+			chatContextCount: 1,
+			relevantConnectorCount: 1,
+		});
+	});
+
+	it("keeps an unscoped connector whose source has no account-scoped sibling", async () => {
+		const slackChat = vi.fn(async (target) => ({
+			target,
+			label: "#general",
+		}));
+		const runtime = makeRuntime([
+			makeConnector("slack", { getChatContext: slackChat }),
+			makeConnector("discord", {
+				accountId: "acct-9",
+				getChatContext: vi.fn(async (target) => ({ target, label: "#d" })),
+			}),
+		]);
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			makeMessage("slack"),
+			makeState(),
+		);
+
+		expect(slackChat).toHaveBeenCalledOnce();
+		expect(result.data).toMatchObject({ chatContextCount: 1 });
+	});
+
+	it("runs chat-context hooks concurrently across connectors", async () => {
+		// The first connector's hook only resolves once the second connector's
+		// hook has STARTED — serial execution would leave it pending until the
+		// race below times it out and drops its context.
+		let secondStarted: () => void = () => {};
+		const secondStartedPromise = new Promise<void>((resolve) => {
+			secondStarted = resolve;
+		});
+		const firstChat = vi.fn(async (target) => {
+			await Promise.race([
+				secondStartedPromise,
+				new Promise((_resolve, reject) =>
+					setTimeout(() => reject(new Error("hooks ran serially")), 1000),
+				),
+			]);
+			return { target, label: "#first" };
+		});
+		const secondChat = vi.fn(async (target) => {
+			secondStarted();
+			return { target, label: "#second" };
+		});
+		const runtime = makeRuntime([
+			makeConnector("slack", { getChatContext: firstChat }),
+			makeConnector("discord", { getChatContext: secondChat }),
+		]);
+		const message = makeMessage();
+		message.content.metadata = {
+			[CONTEXT_ROUTING_METADATA_KEY]: { primaryContext: "connectors" },
+		};
+		const state = makeState();
+		state.data.room = {
+			id: ROOM_ID,
+			type: ChannelType.GROUP,
+			source: "",
+			channelId: "C999",
+		};
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			message,
+			state,
+		);
+
+		expect(result.data).toMatchObject({ chatContextCount: 2 });
+	});
+
+	it("runs user-context hooks concurrently across connectors", async () => {
+		let secondStarted: () => void = () => {};
+		const secondStartedPromise = new Promise<void>((resolve) => {
+			secondStarted = resolve;
+		});
+		const firstUser = vi.fn(async (entityId) => {
+			await Promise.race([
+				secondStartedPromise,
+				new Promise((_resolve, reject) =>
+					setTimeout(() => reject(new Error("hooks ran serially")), 1000),
+				),
+			]);
+			return { entityId, label: "First User" };
+		});
+		const secondUser = vi.fn(async (entityId) => {
+			secondStarted();
+			return { entityId, label: "Second User" };
+		});
+		const runtime = makeRuntime([
+			makeConnector("slack", { getUserContext: firstUser }),
+			makeConnector("discord", { getUserContext: secondUser }),
+		]);
+		const message = makeMessage();
+		message.content.metadata = {
+			[CONTEXT_ROUTING_METADATA_KEY]: { primaryContext: "connectors" },
+		};
+		const state = makeState();
+		state.data.room = {
+			id: ROOM_ID,
+			type: ChannelType.GROUP,
+			source: "",
+			channelId: "C999",
+		};
+
+		const result = await platformUserContextProvider.get(
+			runtime,
+			message,
+			state,
+		);
+
+		expect(result.data).toMatchObject({ userContextCount: 2 });
+	});
+
 	it("prefers the current platform source over other connector contexts", async () => {
 		const slackChat = vi.fn(async (target) => ({
 			target,

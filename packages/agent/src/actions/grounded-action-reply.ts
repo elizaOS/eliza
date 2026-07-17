@@ -4,7 +4,7 @@
  * recent action results, the active trajectory, and optional character voice —
  * and falls back to a canonical reply when the model errors or emits a structured
  * (non-prose) response. Also exports the State-mining helpers (action results,
- * recent messages, state data records) used to assemble that context.
+ * recent messages) used to assemble that context.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
@@ -12,7 +12,7 @@ import {
   ModelType,
   parseJSONObjectFromText,
 } from "@elizaos/core";
-import { asRecord, getRecentMessagesData } from "@elizaos/shared";
+import { asRecord } from "@elizaos/shared";
 import { loadTrajectoryByStepId } from "../runtime/trajectory-internals.ts";
 import { recentConversationTexts } from "./recent-conversation-texts.ts";
 
@@ -134,39 +134,6 @@ export function extractActionResultsFromState(
       return [entry as ActionResult];
     }),
   );
-}
-
-export function extractRecentMessageEntriesFromState(
-  state: State | undefined,
-): Memory[] {
-  return getRecentMessagesData(state);
-}
-
-export function extractStateDataRecords(
-  state: State | undefined,
-): Record<string, unknown>[] {
-  const records: Record<string, unknown>[] = [];
-
-  for (const result of extractActionResultsFromState(state)) {
-    const data = asRecord(result.data);
-    if (data) {
-      records.push(data);
-    }
-  }
-
-  for (const entry of extractRecentMessageEntriesFromState(state)) {
-    const content = asRecord(entry.content);
-    if (!content) {
-      continue;
-    }
-    const contentData = asRecord(content.data);
-    if (contentData) {
-      records.push(contentData);
-    }
-    records.push(content);
-  }
-
-  return records;
 }
 
 function summarizeActionResult(result: ActionResult): ActionHistoryItem | null {

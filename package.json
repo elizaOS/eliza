@@ -284,7 +284,7 @@
     "packages/feed/tools/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.3",
+    "@biomejs/biome": "2.5.4",
     "@capacitor/core": "8.4.0",
     "@elizaos-benchmarks/lib": "workspace:*",
     "@elizaos/agent": "workspace:*",
@@ -321,14 +321,14 @@
     "pure-rand": "^8.4.0",
     "react-test-renderer": "^19.0.0",
     "secp256k1": "^5.0.1",
-    "semver": "7.7.3",
+    "semver": "7.8.5",
     "tesseract.js": "^6.0.1",
     "tsx": "^4.21.0",
     "turbo": "^2.9.16",
     "typescript": "^6.0.3",
     "vite": "8.0.16",
     "vitest": "^4.0.17",
-    "verdaccio": "6.1.6"
+    "verdaccio": "6.8.0"
   },
   "resolutions": {
     "@elizaos/core": "workspace:*",
@@ -525,7 +525,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "abitype": "1.2.3",
+    "abitype": "1.2.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "elysia": "^1.4.21",

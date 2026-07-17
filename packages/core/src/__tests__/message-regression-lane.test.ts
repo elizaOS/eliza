@@ -19,4 +19,6 @@ import "../services/message.shortcut-gate.test";
 import "../services/message.voice-gate.test";
 import "./message-answer-clobber-rescue.test";
 import "./message-failure-reply.test";
+import "./message-routing-live-regression.test";
+import "./message-runtime-stage1.test";
 import "./planner-happy-path.test";

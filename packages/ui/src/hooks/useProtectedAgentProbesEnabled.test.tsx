@@ -16,7 +16,7 @@
  * so probes fire there exactly as before.
  */
 
-import { act, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api/runtime-mode-client", () => ({
@@ -140,6 +140,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // Unmount every probe root before jsdom tears down. The gated hooks fire a
+  // catalog fetch whose resolution setStates on a still-mounted root; a test
+  // that only awaits the fetch being CALLED returns before that update commits,
+  // leaving React work queued on setImmediate. Without this unmount the queued
+  // task flushes after the environment is gone and React reads `window` —
+  // surfacing as an "unhandled" ReferenceError that fails the whole shard.
+  cleanup();
   __resetAuthStatusForTests();
   __resetRuntimeModeCacheForTests();
   if (originalLocationDescriptor) {
