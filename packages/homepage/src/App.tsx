@@ -6,8 +6,10 @@ import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { DocumentMetaManager } from "@/components/DocumentMetaManager";
 
 const MarketingPage = lazy(() => import("@/pages/marketing"));
+const OrangePaperPage = lazy(() => import("@/pages/orange-paper"));
 const LeaderboardPage = lazy(() => import("@/pages/leaderboard"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const ConnectedPage = lazy(() => import("@/pages/connected"));
@@ -32,9 +34,12 @@ function RouteFallback() {
 export function App() {
   return (
     <BrowserRouter>
+      <DocumentMetaManager />
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<MarketingPage />} />
+          <Route path="/orange-paper" element={<OrangePaperPage />} />
+          <Route path="/plan" element={<OrangePaperPage />} />
           <Route path="/leaderboard" element={<LeaderboardPage />} />
           <Route element={<AuthedShell />}>
             <Route path="/login" element={<LoginPage />} />

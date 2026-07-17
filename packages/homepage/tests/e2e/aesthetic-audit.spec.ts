@@ -18,6 +18,8 @@ const TEST_TOKEN = "homepage-aesthetic-audit-token";
 
 const ROUTES = [
   { path: "/", name: "landing", authed: false },
+  { path: "/orange-paper", name: "orange-paper", authed: false },
+  { path: "/plan", name: "plan", authed: false },
   { path: "/leaderboard", name: "leaderboard", authed: false },
   { path: "/get-started", name: "get-started", authed: false },
   { path: "/login", name: "login", authed: true },

@@ -74,7 +74,9 @@ test("browser back and forward restore hash and query driven route views", async
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(
-    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+    page.getByRole("heading", {
+      name: /^The agent that runs your life should belong to you\.$/,
+    }),
   ).toBeVisible();
 
   await page
@@ -83,7 +85,7 @@ test("browser back and forward restore hash and query driven route views", async
     .click();
   await expect(page).toHaveURL(/#download$/);
   await expect(
-    page.getByRole("heading", { name: /^Install the app\.$/ }),
+    page.getByRole("heading", { name: /^Eliza goes where you go\.$/ }),
   ).toBeVisible();
 
   await page.goto("/get-started?method=imessage#ignored", {
@@ -96,7 +98,7 @@ test("browser back and forward restore hash and query driven route views", async
   await page.goBack({ waitUntil: "domcontentloaded" });
   await expect(page).toHaveURL(/\/#download$/);
   await expect(
-    page.getByRole("heading", { name: /^Install the app\.$/ }),
+    page.getByRole("heading", { name: /^Eliza goes where you go\.$/ }),
   ).toBeVisible();
 
   await page.goForward({ waitUntil: "domcontentloaded" });
