@@ -156,6 +156,12 @@ function birdclawRequested(config: ElizaConfig): boolean {
   return birdclawBinaryOnPath();
 }
 
+/** Developer view workbench stays absent unless a local lane explicitly opts in. */
+function simpleViewsRequested(): boolean {
+  const raw = process.env.ELIZA_SIMPLE_VIEWS?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 /**
  * The opt-in standalone Telegram polling bot (`@elizaos/plugin-telegram-standalone`)
  * only loads when LifeOps passive connectors are explicitly disabled AND
@@ -559,6 +565,13 @@ export function collectPluginNames(
     track(
       "@elizaos/plugin-birdclaw",
       "birdclaw (auto-on when the birdclaw CLI/data root is present; gate ELIZA_BIRDCLAW)",
+    );
+  }
+  if (!onMobile && simpleViewsRequested()) {
+    pluginsToLoad.add("@elizaos/plugin-simple-views");
+    track(
+      "@elizaos/plugin-simple-views",
+      "developer Notes + Simple Calendar workbench (gate ELIZA_SIMPLE_VIEWS)",
     );
   }
   // Opt-in standalone Telegram polling bot. Loaded only when passive connectors
