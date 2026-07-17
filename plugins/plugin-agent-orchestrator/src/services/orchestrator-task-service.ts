@@ -189,6 +189,11 @@ import {
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WaveConcurrencyCapError,
+  type WaveSupervisor,
+} from "./wave-supervisor.js";
+import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
@@ -4333,6 +4338,42 @@ export class OrchestratorTaskService extends Service {
       opts.framework ??
       policy.preferredFramework ??
       configuredDefaultAgentType(this.runtime);
+
+    // W3 wave cap layers on top of the existing global ACP admission queue.
+    // Default-OFF supervisor means this lookup is behavior-neutral. When the
+    // wave is full, top-level work parks in the SAME durable queue rather than
+    // creating a second queue/store; drain replay uses parkOnCap:false and gets
+    // a typed cap error so it can preserve the entry's original seniority.
+    const waveSupervisor = this.runtime.getService<WaveSupervisor>(
+      WAVE_SUPERVISOR_SERVICE_TYPE,
+    );
+    if (
+      waveSupervisor?.enabled() &&
+      !(await waveSupervisor.tryAcquire(taskId))
+    ) {
+      const wave = await waveSupervisor.concurrencyForTask(taskId);
+      if (
+        nestingDepth === 0 &&
+        opts.parkOnCap !== false &&
+        this.admissionQueueEnabled()
+      ) {
+        return this.enqueueAdmission(taskId, doc.task.priority, {
+          framework: opts.framework,
+          model: opts.model ?? policy.model,
+          workdir: opts.workdir,
+          repo: opts.repo,
+          label: opts.label,
+          task: opts.task,
+          approvalPreset: opts.approvalPreset,
+          providerSource: opts.providerSource ?? policy.providerSource,
+        });
+      }
+      throw new WaveConcurrencyCapError(
+        wave?.waveId ?? "unknown",
+        wave?.cap ?? 0,
+      );
+    }
+
     let result: SpawnResult;
     try {
       result = await acp.spawnSession({
@@ -4381,6 +4422,7 @@ export class OrchestratorTaskService extends Service {
         },
       });
     } catch (err) {
+      waveSupervisor?.release(taskId);
       // The worker cap is full. A TOP-LEVEL spawn parks in the admission queue
       // (task stays `open`, admission metadata persisted) and the caller gets a
       // truthful detail with the queued position instead of a hard failure. A
@@ -4492,8 +4534,10 @@ export class OrchestratorTaskService extends Service {
           doc.task.boundWorkdir !== result.workdir,
       });
       await this.advanceTaskStatus(taskId, "session_active");
+      waveSupervisor?.release(taskId);
       return this.getTask(taskId);
     } catch (err) {
+      waveSupervisor?.release(taskId);
       // error-policy:J4 the ACP spawn already succeeded (session is live); a
       // failed durable write degrades to a truthful live-session detail below,
       // never a false 500/404.
@@ -5269,7 +5313,21 @@ export class OrchestratorTaskService extends Service {
         Date.now(),
         this.admissionAgingMs(),
       );
-      const head = ordered[0];
+      const waveSupervisor = this.runtime.getService<WaveSupervisor>(
+        WAVE_SUPERVISOR_SERVICE_TYPE,
+      );
+      let head: QueueEntry | undefined;
+      for (const candidate of ordered) {
+        if (
+          !waveSupervisor?.enabled() ||
+          (await waveSupervisor.tryAcquire(candidate.taskId))
+        ) {
+          head = candidate;
+          break;
+        }
+      }
+      // Global capacity exists, but every queued task belongs to a wave already
+      // at its own cap. Leave their durable order untouched until a lane ends.
       if (!head) break;
       // Drop the head from the in-memory order up front; a re-park below will
       // re-add it. This keeps the loop from re-selecting the same head when the
@@ -5278,15 +5336,27 @@ export class OrchestratorTaskService extends Service {
       if (idx >= 0) this.admissionQueue.splice(idx, 1);
       const doc = await this.store.getTask(head.taskId);
       const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
-      if (!doc || !admission) continue;
+      if (!doc || !admission) {
+        waveSupervisor?.release(head.taskId);
+        continue;
+      }
       if (TERMINAL_TASK_STATUSES.has(doc.task.status)) {
+        waveSupervisor?.release(head.taskId);
         await this.writeAdmission(head.taskId, null);
         continue;
       }
       // A pause that raced this pass: drop the task from the dispatch order but
       // KEEP the durable record — pauseTask retained it so resume can replay
       // the original spawn (clearing it here would make resume a silent no-op).
-      if (doc.task.paused) continue;
+      if (doc.task.paused) {
+        waveSupervisor?.release(head.taskId);
+        continue;
+      }
+      // Selection reserved this candidate only long enough to avoid choosing a
+      // wave-blocked head. Release before replay; spawnAgentForTask performs the
+      // authoritative acquire and re-parks on a race, while every skip/error
+      // path above has now released its provisional reservation.
+      waveSupervisor?.release(head.taskId);
       await this.writeAdmission(head.taskId, null);
       try {
         await this.spawnAgentForTask(head.taskId, {
@@ -5300,13 +5370,24 @@ export class OrchestratorTaskService extends Service {
         });
       } catch (err) {
         if (err instanceof SessionCapError) {
-          // A concurrent spawn took the slot. Re-park at the head and stop —
-          // the next terminal event or reconcile tick drains again.
+          // A concurrent spawn took the global slot. Re-park at the head and
+          // stop; the next terminal event or reconcile tick drains again.
           await this.writeAdmission(head.taskId, admission);
           if (!this.admissionQueue.includes(head.taskId)) {
             this.admissionQueue.unshift(head.taskId);
           }
           break;
+        }
+        if (err instanceof WaveConcurrencyCapError) {
+          // This wave is full, but another wave may still use the free global
+          // slot. Keep the original durable enqueue timestamp (seniority), move
+          // the blocked id behind this pass, and continue within the bounded
+          // queue-length budget so no wave can head-of-line block the queue.
+          await this.writeAdmission(head.taskId, admission);
+          if (!this.admissionQueue.includes(head.taskId)) {
+            this.admissionQueue.push(head.taskId);
+          }
+          continue;
         }
         // error-policy:J7 the dispatch of a parked task failed for a non-cap
         // reason (bad workdir, transport error). Report it so the agent/owner
