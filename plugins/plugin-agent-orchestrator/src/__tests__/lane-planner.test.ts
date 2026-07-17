@@ -11,12 +11,20 @@ import type {
   State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("@octokit/rest", () => ({
+  Octokit: class Octokit {},
+}));
+
 import { tasksAction } from "../actions/tasks.ts";
 import {
   createDeterministicLanePlan,
   LanePlannerService,
+  laneReadiness,
+  sanitizeLaneBranchName,
   scopeSetsOverlap,
 } from "../services/lane-planner.ts";
+import { CodingWorkspaceService } from "../services/workspace-service.ts";
 
 const ROOM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const MSG = "11111111-1111-4111-8111-111111111111";
@@ -83,6 +91,8 @@ function makeTaskService() {
       return { id: `task-${seq}`, ...input };
     }),
     attachSession: vi.fn(async () => undefined),
+    getTask: vi.fn(async (): Promise<unknown> => null),
+    listTasks: vi.fn(async (): Promise<Array<{ id: string }>> => []),
   };
 }
 
@@ -98,6 +108,7 @@ function makeRuntime(
   settings: Record<string, string | undefined>,
   acp = makeAcp(),
   taskService = makeTaskService(),
+  extraServices: Record<string, unknown> = {},
 ): IAgentRuntime & {
   acp: ReturnType<typeof makeAcp>;
   taskService: ReturnType<typeof makeTaskService>;
@@ -113,6 +124,7 @@ function makeRuntime(
     },
     getSetting: (key: string) => settings[key],
     getService: (type: string) => {
+      if (type in extraServices) return extraServices[type];
       if (type === "ACP_SERVICE" || type === "ACP_SUBPROCESS_SERVICE") {
         return acp;
       }
@@ -193,6 +205,74 @@ describe("LanePlannerService deterministic planning", () => {
         ),
       }),
     ).toThrow(/at most 6 lanes; received 7/i);
+  });
+
+  it("rejects unknown dependency refs before planning", () => {
+    expect(() =>
+      createDeterministicLanePlan({
+        task: "parent",
+        tasks: [
+          "Update plugins/plugin-agent-orchestrator/src/services/a.ts",
+          "Update packages/core/src/runtime.ts",
+        ],
+        dependencies: { "lane-2": ["lane-9"] },
+      }),
+    ).toThrow(/unknown lane/i);
+  });
+
+  it("rejects dependency cycles before planning", () => {
+    expect(() =>
+      createDeterministicLanePlan({
+        task: "parent",
+        tasks: [
+          "Update plugins/plugin-agent-orchestrator/src/services/a.ts",
+          "Update packages/core/src/runtime.ts",
+        ],
+        dependencies: { "lane-1": ["lane-2"], "lane-2": ["lane-1"] },
+      }),
+    ).toThrow(/cycle/i);
+  });
+
+  it("sanitizes bounded non-colliding branch names for duplicate titles", () => {
+    const plan = createDeterministicLanePlan({
+      task: "parent",
+      tasks: [
+        "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+        "Update plugins/plugin-agent-orchestrator/src/actions/tasks.ts",
+      ],
+      title: "Fix: Lane Planner!!!",
+    });
+    const branches = plan.lanes.map((lane) => lane.branchName);
+    expect(branches[0]).toMatch(/^eliza\/lane\/fix-lane-planner/);
+    expect(branches[1]).toMatch(/-2$/);
+    expect(new Set(branches).size).toBe(2);
+    expect(branches.every((branch) => branch.length <= 80)).toBe(true);
+    expect(sanitizeLaneBranchName("../../bad; rm -rf /")).toMatch(
+      /^eliza\/lane\//,
+    );
+  });
+
+  it("uses semantic dependency blockers for readiness", () => {
+    const lane = {
+      id: "lane-2",
+      dependencies: ["lane-1", "lane-3"],
+    };
+
+    expect(
+      laneReadiness(
+        lane,
+        new Set(["lane-1"]),
+        new Set(),
+        new Map([["lane-3", "waiting_on_user"]]),
+      ),
+    ).toEqual({
+      ready: false,
+      blockers: ["lane-3: waiting_on_user"],
+    });
+    expect(laneReadiness(lane, new Set(["lane-1", "lane-3"]))).toEqual({
+      ready: true,
+      blockers: [],
+    });
   });
 
   it("annotates open PR collisions from an injected provider", async () => {
@@ -392,6 +472,235 @@ describe("TASKS create lane planner integration", () => {
     );
     expect(acp.spawnSession).toHaveBeenCalledTimes(2);
     expect(taskService.createTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps maxParallel backlog queued until earlier lanes finish", async () => {
+    const acp = makeAcp();
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+    const events: string[] = [];
+    acp.sendPrompt.mockImplementation(async (sessionId: string) => {
+      events.push(`${sessionId}:start`);
+      await Promise.resolve();
+      events.push(`${sessionId}:finish`);
+      return { stopReason: "end_turn", finalText: "done" };
+    });
+
+    await tasksAction.handler(
+      runtime,
+      makeMessage("split work"),
+      {} as State,
+      {
+        parameters: {
+          action: "create",
+          maxParallel: 1,
+          agents: [
+            "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+            "Update packages/core/src/runtime.ts",
+            "Update packages/shared/src/contracts/chat.ts",
+          ].join(" | "),
+        },
+      },
+      vi.fn(async () => []) as unknown as HandlerCallback,
+    );
+
+    expect(acp.spawnSession).toHaveBeenCalledTimes(3);
+    expect(events).toEqual([
+      "sess-1:start",
+      "sess-1:finish",
+      "sess-2:start",
+      "sess-2:finish",
+      "sess-3:start",
+      "sess-3:finish",
+    ]);
+  });
+
+  it("honors dependency order even when maxParallel has spare slots", async () => {
+    const acp = makeAcp();
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+    const events: string[] = [];
+    acp.sendPrompt.mockImplementation(async (sessionId: string) => {
+      events.push(`${sessionId}:start`);
+      await Promise.resolve();
+      events.push(`${sessionId}:finish`);
+      return { stopReason: "end_turn", finalText: "done" };
+    });
+
+    await tasksAction.handler(
+      runtime,
+      makeMessage("split work"),
+      {} as State,
+      {
+        parameters: {
+          action: "create",
+          maxParallel: 3,
+          dependencies: { "lane-2": ["lane-1"] },
+          agents: [
+            "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+            "Update packages/core/src/runtime.ts",
+            "Update packages/shared/src/contracts/chat.ts",
+          ].join(" | "),
+        },
+      },
+      vi.fn(async () => []) as unknown as HandlerCallback,
+    );
+
+    // Lane 3 is independent and may claim sess-2. Dependent lane 2 must wait
+    // for lane 1 and therefore claims sess-3 in this deterministic fixture.
+    expect(events.indexOf("sess-3:start")).toBeGreaterThan(
+      events.indexOf("sess-1:finish"),
+    );
+    expect(acp.spawnSession).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects invalid dependency graphs through the public TASKS create surface", async () => {
+    const acp = makeAcp();
+    const taskService = makeTaskService();
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+    );
+
+    const result = await tasksAction.handler(
+      runtime,
+      makeMessage("split work"),
+      {} as State,
+      {
+        parameters: {
+          action: "create",
+          dependencies: { "lane-1": ["lane-2"], "lane-2": ["lane-1"] },
+          agents: [
+            "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+            "Update packages/core/src/runtime.ts",
+          ].join(" | "),
+        },
+      },
+      vi.fn(async () => []) as unknown as HandlerCallback,
+    );
+
+    expect(result?.success).toBe(false);
+    expect(result?.error).toBe("LANE_DEPENDENCY_CYCLE");
+    expect(acp.spawnSession).not.toHaveBeenCalled();
+    expect(taskService.createTask).not.toHaveBeenCalled();
+  });
+
+  it("reuses the active session via CodingWorkspaceService.findActiveSessionForTask", async () => {
+    const acp = makeAcp();
+    const taskService = makeTaskService();
+    taskService.getTask.mockResolvedValue({
+      task: {
+        id: "task-existing",
+        title: "Existing",
+        goal: "Existing",
+        kind: "coding",
+        status: "active",
+        priority: "normal",
+        originalRequest: "Existing",
+        acceptanceCriteria: [],
+        paused: false,
+        archived: false,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+        lastActivityAt: 1,
+        metadata: {},
+      },
+      sessions: [
+        {
+          id: "row-1",
+          taskId: "task-existing",
+          sessionId: "sess-active",
+          framework: "codex",
+          label: "Agent",
+          originalTask: "Existing",
+          workdir: process.cwd(),
+          status: "ready",
+          decisionCount: 0,
+          autoResolvedCount: 0,
+          registeredAt: 1,
+          lastActivityAt: 10,
+          idleCheckCount: 0,
+          taskDelivered: false,
+          lastSeenDecisionIndex: 0,
+          spawnedAt: 1,
+          retryCount: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+          cacheTokens: 0,
+          costUsd: 0,
+          usageState: "unavailable",
+          metadata: {},
+          createdAt: new Date(0).toISOString(),
+          updatedAt: new Date(0).toISOString(),
+        },
+      ],
+      events: [],
+      messages: [],
+      usage: [],
+      artifacts: [],
+      decisions: [],
+      planRevisions: [],
+    });
+    const workspaceService = new CodingWorkspaceService({
+      getSetting: () => undefined,
+      getService: (type: string) =>
+        type === "ORCHESTRATOR_TASK_SERVICE" ? taskService : undefined,
+    } as unknown as IAgentRuntime);
+    const runtime = makeRuntime(
+      { ELIZA_ORCHESTRATOR_LANE_PLANNER: "1" },
+      acp,
+      taskService,
+      { CODING_WORKSPACE_SERVICE: workspaceService },
+    );
+
+    const result = await tasksAction.handler(
+      runtime,
+      makeMessage("split work"),
+      {} as State,
+      {
+        parameters: {
+          action: "create",
+          taskId: "task-existing",
+          agents:
+            "Update plugins/plugin-agent-orchestrator/src/services/lane-planner.ts",
+        },
+      },
+      vi.fn(async () => []) as unknown as HandlerCallback,
+    );
+
+    expect(result?.success).toBe(true);
+    expect(acp.spawnSession).not.toHaveBeenCalled();
+    const data = result?.data as
+      | { lanes?: Array<Record<string, unknown>> }
+      | undefined;
+    expect(data?.lanes?.[0]).toMatchObject({
+      taskId: "task-existing",
+      branchName: expect.any(String),
+    });
+  });
+
+  it("surfaces missing durable task service from the active-session reuse contract", async () => {
+    const runtime = {
+      getSetting: vi.fn(() => undefined),
+      getService: vi.fn(() => undefined),
+    } as unknown as IAgentRuntime;
+    const workspaceService = new CodingWorkspaceService(runtime);
+
+    await expect(
+      workspaceService.findActiveSessionForTask({ taskId: "task-missing" }),
+    ).rejects.toMatchObject({
+      code: "ORCHESTRATOR_TASK_SERVICE_UNAVAILABLE",
+    });
   });
 
   it("does not let content agents duplicate each planned lane", async () => {

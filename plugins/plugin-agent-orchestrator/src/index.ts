@@ -35,6 +35,7 @@ import {
 // `/api/coding-agents/*` surface 404s on the node bundle.
 export { codingAgentRouteRegistration } from "./register-routes.js";
 export {
+  cloneLanePlan,
   collisionProviderFromWorkspaceService,
   createDeterministicLanePlan,
   type ExternalCollision,
@@ -44,9 +45,13 @@ export {
   type LanePlan,
   type LanePlannerInput,
   LanePlannerService,
+  type LaneReadiness,
   type LaneSpec,
+  laneReadiness,
+  sanitizeLaneBranchName,
   scopeSetsOverlap,
   shouldUseLanePlanner,
+  validateLaneDependencyGraph,
 } from "./services/lane-planner.js";
 // Shared relay sanitizer (issue elizaOS/eliza#11578). Re-exported from the
 // package root so packages/agent's swarm-synthesis path can strip captured

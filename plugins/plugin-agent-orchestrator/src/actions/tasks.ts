@@ -34,6 +34,7 @@ import { resolveCodingBackendLogged } from "../services/coding-backend-routing.j
 import {
   collisionProviderFromWorkspaceService,
   LanePlannerService,
+  laneReadiness,
   shouldUseLanePlanner,
 } from "../services/lane-planner.js";
 import type { TaskThreadDto } from "../services/orchestrator-task-mapper.js";
@@ -1117,6 +1118,10 @@ async function runCreate(
     plan = await planner.plan({
       task: pickString(params, content, "task") ?? text,
       tasks,
+      dependencies: readLaneDependencies(params, content),
+      maxParallel: readPositiveInteger(
+        params.maxParallel ?? content.maxParallel,
+      ),
       title: pickString(params, content, "title"),
       goal: pickString(params, content, "goal"),
       acceptanceCriteria: pickStringArrayFromInputs(
@@ -1129,6 +1134,20 @@ async function runCreate(
       workdir: explicitWorkdir,
     });
   } catch (error) {
+    if (
+      error instanceof ElizaError &&
+      (String(error.code).startsWith("LANE_DEPENDENCY_") ||
+        error.code === "LANE_PLAN_DEADLOCK")
+    ) {
+      const msg = failureMessage(error);
+      await callbackText(callback, msg);
+      return {
+        success: false,
+        error: error.code,
+        text: msg,
+        continueChain: false,
+      };
+    }
     logger(runtime).warn(
       `[TASKS:create] lane planner failed, falling back to legacy single-task behavior: ${
         error instanceof Error ? error.message : String(error)
@@ -1149,61 +1168,19 @@ async function runCreate(
         callback,
       );
     }
-    return runCreateLegacy(
-      runtime,
-      message,
-      state,
-      {
-        ...params,
-        task: lane.initialPrompt,
-        agents: undefined,
-        title: lane.title,
-        goal: lane.initialPrompt,
-        taskComplexity: lane.difficultyTag,
-        acceptanceCriteria: lane.acceptanceCriteria,
-        metadata: {
-          ...(objectValue(params.metadata) ?? {}),
-          ...laneMetadata(plan, lane),
-        },
-      },
-      laneExecutionContent(content),
-      callback,
-    );
   }
 
-  const laneRuns = plan.lanes.map((lane) =>
-    runCreateLegacy(
-      runtime,
-      message,
-      state,
-      {
-        ...params,
-        task: lane.initialPrompt,
-        agents: undefined,
-        title: lane.title,
-        goal: lane.initialPrompt,
-        taskComplexity: lane.difficultyTag,
-        acceptanceCriteria: lane.acceptanceCriteria,
-        metadata: {
-          ...(objectValue(params.metadata) ?? {}),
-          ...laneMetadata(plan, lane),
-        },
-      },
-      laneExecutionContent(content),
-      callback,
-    ),
+  const laneOutcome = await runLanePlan(
+    runtime,
+    message,
+    state,
+    params,
+    content,
+    callback,
+    plan,
   );
-  const laneResults = await Promise.allSettled(laneRuns);
-  const successfulResults: ActionResult[] = [];
-  for (const result of laneResults) {
-    if (result.status === "rejected") {
-      throw result.reason;
-    }
-    successfulResults.push(result.value);
-  }
-  for (const result of successfulResults) {
-    if (!result.success) return result;
-  }
+  if (!laneOutcome.success) return laneOutcome.result;
+  const successfulResults = laneOutcome.results;
   return {
     success: true,
     text: `Created ${successfulResults.length} task-agent lanes.`,
@@ -1215,11 +1192,158 @@ async function runCreate(
         taskId: successfulResults[index]?.data?.taskId,
         scopePaths: lane.scopePaths,
         forbiddenPaths: lane.forbiddenPaths,
+        branchName: lane.branchName,
+        dependencies: lane.dependencies,
         collisions: lane.collisions,
       })),
       suppressActionResultClipboard: true,
     },
   };
+}
+
+/** Execute a lane plan with dependency-aware admission. maxParallel only gates
+ * currently running lanes; ready backlog stays queued until predecessors finish
+ * instead of being dropped when capacity is saturated. */
+async function runLanePlan(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+  callback: HandlerCallback | undefined,
+  plan: Awaited<ReturnType<LanePlannerService["plan"]>>,
+): Promise<
+  | { success: true; results: ActionResult[] }
+  | { success: false; result: ActionResult }
+> {
+  const pending = new Map(
+    plan.lanes.map((lane, index) => [lane.id, { lane, index }]),
+  );
+  const completed = new Set<string>();
+  const failed = new Set<string>();
+  const results = new Array<ActionResult>(plan.lanes.length);
+  const active = new Set<Promise<void>>();
+  let dependencyFailure: ActionResult | undefined;
+  const workspaceService = getCodingWorkspaceService(runtime);
+  const reuseTaskId =
+    pickString(params, content, "taskId") ??
+    pickString(params, content, "threadId");
+  const launch = (lane: (typeof plan.lanes)[number], index: number) => {
+    const run = (async () => {
+      if (workspaceService && reuseTaskId) {
+        const activeSession = await workspaceService.findActiveSessionForTask({
+          taskId: reuseTaskId,
+        });
+        if (activeSession) {
+          results[index] = {
+            success: true,
+            text: `Reused active task-agent session ${activeSession.sessionId}.`,
+            data: {
+              taskId: activeSession.taskId,
+              agents: [
+                {
+                  id: activeSession.sessionId,
+                  sessionId: activeSession.sessionId,
+                  agentType: activeSession.agentType,
+                  workdir: activeSession.workdir,
+                  status: activeSession.status,
+                  label: lane.title,
+                  reused: true,
+                },
+              ],
+              suppressActionResultClipboard: true,
+            },
+          };
+          completed.add(lane.id);
+          return;
+        }
+      }
+      results[index] = await runCreateLegacy(
+        runtime,
+        message,
+        state,
+        {
+          ...params,
+          task: lane.initialPrompt,
+          agents: undefined,
+          title: lane.title,
+          goal: lane.initialPrompt,
+          taskComplexity: lane.difficultyTag,
+          acceptanceCriteria: [...lane.acceptanceCriteria],
+          branchName: lane.branchName,
+          metadata: {
+            ...(objectValue(params.metadata) ?? {}),
+            ...laneMetadata(plan, lane),
+          },
+        },
+        laneExecutionContent(content),
+        callback,
+      );
+    })()
+      .then((result) => {
+        const actionResult = result ?? results[index];
+        if (!actionResult) {
+          throw new ElizaError("Lane did not produce an action result", {
+            code: "LANE_RESULT_MISSING",
+            context: { laneId: lane.id },
+            severity: "ephemeral",
+          });
+        }
+        if (actionResult.success) completed.add(lane.id);
+        else failed.add(lane.id);
+      })
+      .finally(() => {
+        active.delete(run);
+      });
+    active.add(run);
+  };
+
+  while (pending.size > 0 || active.size > 0) {
+    let launched = false;
+    for (const [id, entry] of [...pending]) {
+      if (active.size >= plan.maxParallel) break;
+      const readiness = laneReadiness(entry.lane, completed, failed);
+      const failedBlocker = readiness.blockers.find((blocker) =>
+        blocker.endsWith(": failed"),
+      );
+      if (failedBlocker) {
+        dependencyFailure = {
+          success: false,
+          error: "LANE_DEPENDENCY_FAILED",
+          text: `Lane ${entry.lane.id} blocked by ${failedBlocker}.`,
+        };
+        pending.clear();
+        break;
+      }
+      if (!readiness.ready) continue;
+      pending.delete(id);
+      launch(entry.lane, entry.index);
+      launched = true;
+    }
+    if (dependencyFailure) {
+      // Already-launched independent lanes remain owned by this action. Wait for
+      // them to settle so failures cannot escape as unobserved background work.
+      if (active.size > 0) await Promise.allSettled([...active]);
+      return { success: false, result: dependencyFailure };
+    }
+    if (active.size === 0 && !launched) {
+      const blocked = [...pending.values()].map(({ lane }) => ({
+        laneId: lane.id,
+        blockers: laneReadiness(lane, completed, failed).blockers,
+      }));
+      throw new ElizaError("No lane is ready to launch", {
+        code: "LANE_PLAN_DEADLOCK",
+        context: { blocked },
+        severity: "ephemeral",
+      });
+    }
+    if (active.size > 0) await Promise.race(active);
+  }
+
+  for (const result of results) {
+    if (!result.success) return { success: false, result };
+  }
+  return { success: true, results };
 }
 
 function pickStringArrayFromInputs(
@@ -1235,6 +1359,37 @@ function pickStringArrayFromInputs(
     .filter((item) => item.length > 0);
 }
 
+/** Read planner-supplied lane dependency edges from a strict object:
+ * `{ "lane-2": ["lane-1"] }`. Other shapes are ignored so natural-language
+ * content cannot accidentally invent graph edges. */
+function readLaneDependencies(
+  params: Record<string, unknown>,
+  content: Record<string, unknown>,
+): Record<string, string[]> | undefined {
+  const raw = objectValue(params.dependencies ?? content.dependencies);
+  if (!raw) return undefined;
+  const deps: Record<string, string[]> = {};
+  for (const [laneId, value] of Object.entries(raw)) {
+    if (!Array.isArray(value)) continue;
+    deps[laneId] = value.filter(
+      (item): item is string =>
+        typeof item === "string" && item.trim().length > 0,
+    );
+  }
+  return deps;
+}
+
+/** Parse numeric planner parameters only when they are explicit positive
+ * integers; malformed values fall back to the planner default. */
+function readPositiveInteger(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value !== "string") return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function laneExecutionContent(
   content: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -1248,6 +1403,8 @@ function laneMetadata(
   lane: {
     id: string;
     title: string;
+    branchName: string;
+    dependencies: string[];
     scopePaths: string[];
     forbiddenPaths: string[];
     collisions: unknown[];
@@ -1259,6 +1416,8 @@ function laneMetadata(
     lane: {
       id: lane.id,
       title: lane.title,
+      branchName: lane.branchName,
+      dependencies: [...lane.dependencies],
       scopePaths: lane.scopePaths,
       forbiddenPaths: lane.forbiddenPaths,
       collisions: lane.collisions,
@@ -3642,9 +3801,24 @@ export const tasksAction: Action & {
     },
     {
       name: "agents",
-      description: "Pipe-delimited multi-agent task list for action=create.",
+      description:
+        "Pipe-delimited multi-agent task list for action=create. When lane planner is enabled, each part becomes lane-N in order.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "dependencies",
+      description:
+        'Lane dependency graph for gated action=create, shaped as {"lane-2":["lane-1"]}. References must use generated lane ids.',
+      required: false,
+      schema: { type: "object" as const },
+    },
+    {
+      name: "maxParallel",
+      description:
+        "Maximum concurrently launched lanes for gated action=create; ready backlog remains queued until dependencies and capacity allow launch.",
+      required: false,
+      schema: { type: "integer" as const, minimum: 1 },
     },
     {
       name: "repo",

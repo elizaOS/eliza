@@ -6,13 +6,16 @@
  * failure.
  */
 
-import { type IAgentRuntime, ModelType } from "@elizaos/core";
+import { ElizaError, type IAgentRuntime, ModelType } from "@elizaos/core";
 import { staticAcceptanceCriteria } from "./acceptance-criteria.js";
 import { parseJsonObjectResponse } from "./json-model-output.js";
+import { assertSafeGitRef } from "./repo-input.js";
 
 export const LANE_PLANNER_SETTING = "ELIZA_ORCHESTRATOR_LANE_PLANNER";
 const LANE_PLANNER_REFINE_SETTING = "ELIZA_ORCHESTRATOR_LANE_PLANNER_REFINE";
 const MAX_LANES = 6;
+const DEFAULT_MAX_PARALLEL_LANES = 2;
+const MAX_BRANCH_NAME_CHARS = 80;
 
 export interface LaneCollision {
   source: "open-pr" | "sibling";
@@ -25,6 +28,8 @@ export interface LaneCollision {
 export interface LaneSpec {
   id: string;
   title: string;
+  branchName: string;
+  dependencies: string[];
   scopePaths: string[];
   forbiddenPaths: string[];
   collisions: LaneCollision[];
@@ -35,6 +40,7 @@ export interface LaneSpec {
 
 export interface LanePlan {
   waveId: string;
+  maxParallel: number;
   lanes: LaneSpec[];
 }
 
@@ -63,11 +69,18 @@ type WorkspaceCollisionReader = {
 export interface LanePlannerInput {
   task: string;
   tasks?: string[];
+  dependencies?: Record<string, string[]>;
+  maxParallel?: number;
   title?: string;
   goal?: string;
   acceptanceCriteria?: string[];
   difficultyTag?: string;
   waveId?: string;
+}
+
+export interface LaneReadiness {
+  ready: boolean;
+  blockers: string[];
 }
 
 function isEnabledValue(value: unknown): boolean {
@@ -114,6 +127,26 @@ function normalizePath(raw: string): string | undefined {
 
 function uniqueSorted(values: readonly string[]): string[] {
   return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+}
+
+/** Clone a plan for callers so exported planner data cannot be mutated through
+ * object references and later reused as if it were authoritative state. */
+export function cloneLanePlan(plan: LanePlan): LanePlan {
+  return {
+    waveId: plan.waveId,
+    maxParallel: plan.maxParallel,
+    lanes: plan.lanes.map((lane) => ({
+      ...lane,
+      dependencies: [...lane.dependencies],
+      scopePaths: [...lane.scopePaths],
+      forbiddenPaths: [...lane.forbiddenPaths],
+      collisions: lane.collisions.map((collision) => ({
+        ...collision,
+        paths: [...collision.paths],
+      })),
+      acceptanceCriteria: [...lane.acceptanceCriteria],
+    })),
+  };
 }
 
 export function extractScopePaths(text: string): string[] {
@@ -166,6 +199,137 @@ function difficultyFor(task: string, explicit: string | undefined): string {
   return "moderate";
 }
 
+/** Convert a lane title into a bounded git branch ref segment, leaving only the
+ * conservative character set accepted by the workspace git-ref validator. */
+export function sanitizeLaneBranchName(
+  title: string,
+  used: ReadonlySet<string> = new Set(),
+  prefix = "eliza/lane",
+): string {
+  const baseSlug =
+    title
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._/-]+/g, "-")
+      .replace(/\/{2,}/g, "/")
+      .replace(/^[^a-z0-9]+/g, "")
+      .replace(/[^a-z0-9]+$/g, "")
+      .slice(0, MAX_BRANCH_NAME_CHARS) || "task";
+  const cleanPrefix = prefix
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._/-]+/g, "-")
+    .replace(/\/{2,}/g, "/")
+    .replace(/^[^a-z0-9]+/g, "")
+    .replace(/[^a-z0-9]+$/g, "");
+  const root = `${cleanPrefix || "eliza/lane"}/${baseSlug}`;
+  let candidate = root.slice(0, MAX_BRANCH_NAME_CHARS);
+  let suffix = 2;
+  while (used.has(candidate)) {
+    const suffixText = `-${suffix}`;
+    candidate = `${root.slice(0, MAX_BRANCH_NAME_CHARS - suffixText.length)}${suffixText}`;
+    suffix += 1;
+  }
+  return assertSafeGitRef(candidate, "lane branchName");
+}
+
+/** Bound planner concurrency to the number of planned lanes, with a conservative
+ * default that still allows independent lanes to overlap. */
+function normalizeMaxParallel(
+  value: number | undefined,
+  laneCount: number,
+): number {
+  if (!Number.isFinite(value) || value === undefined) {
+    return Math.min(DEFAULT_MAX_PARALLEL_LANES, Math.max(1, laneCount));
+  }
+  return Math.max(1, Math.min(Math.floor(value), Math.max(1, laneCount)));
+}
+
+/** Normalize user/planner dependency input into stable lane-id edges before
+ * graph validation. */
+function normalizeDependencies(
+  raw: Record<string, string[]> | undefined,
+): Map<string, string[]> {
+  const normalized = new Map<string, string[]>();
+  if (!raw) return normalized;
+  for (const [id, deps] of Object.entries(raw)) {
+    normalized.set(
+      id.trim(),
+      uniqueSorted(
+        deps.map((dep) => dep.trim()).filter((dep) => dep.length > 0),
+      ),
+    );
+  }
+  return normalized;
+}
+
+/** Validate lane dependency edges as a graph before any sub-agent launches.
+ * Unknown references and cycles are rejected explicitly instead of being read
+ * later as "not ready" forever. */
+export function validateLaneDependencyGraph(
+  laneIds: readonly string[],
+  dependencies: ReadonlyMap<string, readonly string[]>,
+): void {
+  const known = new Set(laneIds);
+  for (const [id, deps] of dependencies) {
+    if (!known.has(id)) {
+      throw new ElizaError(`Lane dependency references unknown lane ${id}`, {
+        code: "LANE_DEPENDENCY_UNKNOWN_LANE",
+        context: { laneId: id },
+        severity: "ephemeral",
+      });
+    }
+    for (const dep of deps) {
+      if (!known.has(dep)) {
+        throw new ElizaError(`Lane ${id} depends on unknown lane ${dep}`, {
+          code: "LANE_DEPENDENCY_UNKNOWN_REF",
+          context: { laneId: id, dependencyId: dep },
+          severity: "ephemeral",
+        });
+      }
+    }
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (id: string, path: string[]): void => {
+    if (visited.has(id)) return;
+    if (visiting.has(id)) {
+      throw new ElizaError(
+        `Lane dependency cycle: ${[...path, id].join(" -> ")}`,
+        {
+          code: "LANE_DEPENDENCY_CYCLE",
+          context: { laneId: id, path: [...path, id] },
+          severity: "ephemeral",
+        },
+      );
+    }
+    visiting.add(id);
+    for (const dep of dependencies.get(id) ?? []) visit(dep, [...path, id]);
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const id of laneIds) visit(id, []);
+}
+
+/** Semantic readiness for a lane: dependencies must be completed, while
+ * externally blocked or failed dependencies surface as named blockers instead
+ * of being inferred from a coarse task status string. */
+export function laneReadiness(
+  lane: Pick<LaneSpec, "id" | "dependencies">,
+  completed: ReadonlySet<string>,
+  failed: ReadonlySet<string> = new Set(),
+  blocked: ReadonlyMap<string, string> = new Map(),
+): LaneReadiness {
+  const blockers: string[] = [];
+  for (const dep of lane.dependencies) {
+    const blockReason = blocked.get(dep);
+    if (blockReason) blockers.push(`${dep}: ${blockReason}`);
+    else if (failed.has(dep)) blockers.push(`${dep}: failed`);
+    else if (!completed.has(dep)) blockers.push(`${dep}: dependency pending`);
+  }
+  return { ready: blockers.length === 0, blockers };
+}
+
 function lanePrompt(args: {
   parentTask: string;
   laneTask: string;
@@ -173,9 +337,12 @@ function lanePrompt(args: {
   forbidden: string[];
   collisions: LaneCollision[];
   criteria: string[];
+  branchName: string;
 }): string {
   const lines = [
     args.laneTask,
+    "",
+    `Suggested branch: ${args.branchName}`,
     "",
     "Lane scope:",
     ...args.scopes.map((path) => `- ${path}`),
@@ -214,6 +381,8 @@ function buildLane(
   index: number,
   siblingScopes: readonly string[][],
   externalCollisions: readonly ExternalCollision[],
+  dependencies: readonly string[],
+  branchName: string,
 ): LaneSpec {
   const scopes = extractScopePaths(laneTask);
   const forbidden = uniqueSorted(
@@ -242,6 +411,8 @@ function buildLane(
   return {
     id: `lane-${index + 1}`,
     title: (input.title ?? laneTask).slice(0, 80),
+    branchName,
+    dependencies: [...dependencies],
     scopePaths: scopes,
     forbiddenPaths: forbidden,
     collisions,
@@ -254,6 +425,7 @@ function buildLane(
       forbidden,
       collisions,
       criteria,
+      branchName,
     }),
   };
 }
@@ -275,6 +447,9 @@ export function createDeterministicLanePlan(
   }
   const tasks = candidates.length > 0 ? candidates : [input.task];
   const scopeSets = tasks.map((task) => extractScopePaths(task));
+  const laneIds = tasks.map((_, index) => `lane-${index + 1}`);
+  const dependencies = normalizeDependencies(input.dependencies);
+  validateLaneDependencyGraph(laneIds, dependencies);
   if (tasks.length > 1) {
     if (scopeSets.some((scopes) => scopes.length === 0)) {
       throw new Error(
@@ -289,11 +464,26 @@ export function createDeterministicLanePlan(
       }
     }
   }
+  const usedBranches = new Set<string>();
   return {
     waveId: input.waveId ?? "wave",
-    lanes: tasks.map((task, index) =>
-      buildLane(input, task, index, scopeSets, externalCollisions),
-    ),
+    maxParallel: normalizeMaxParallel(input.maxParallel, tasks.length),
+    lanes: tasks.map((task, index) => {
+      const branchName = sanitizeLaneBranchName(
+        input.title ?? task,
+        usedBranches,
+      );
+      usedBranches.add(branchName);
+      return buildLane(
+        input,
+        task,
+        index,
+        scopeSets,
+        externalCollisions,
+        dependencies.get(laneIds[index] ?? "") ?? [],
+        branchName,
+      );
+    }),
   };
 }
 
@@ -314,7 +504,7 @@ function applyRefinement(plan: LanePlan, raw: string): LanePlan {
     const record = lane as Record<string, unknown>;
     if (typeof record.id === "string") byId.set(record.id, record);
   }
-  return {
+  return cloneLanePlan({
     ...plan,
     lanes: plan.lanes.map((lane) => {
       const refined = byId.get(lane.id);
@@ -340,7 +530,7 @@ function applyRefinement(plan: LanePlan, raw: string): LanePlan {
           criteria.length > 0 ? criteria : lane.acceptanceCriteria,
       };
     }),
-  };
+  });
 }
 
 export class LanePlannerService {
@@ -359,9 +549,23 @@ export class LanePlannerService {
           workdir: input.workdir,
           repo: input.repo,
         });
-      } catch {
+      } catch (error) {
         // error-policy:J4 optional collision annotation degrades to no external
-        // collisions; lane execution still carries sibling forbidden paths.
+        // collisions; lane execution still carries sibling forbidden paths. The
+        // remote input failure is still reported as an ElizaError at the
+        // boundary so operators can observe the degraded planner context.
+        this.runtime.reportError?.(
+          "LanePlannerService.collisionProvider",
+          new ElizaError("Lane collision provider failed", {
+            code: "LANE_COLLISION_PROVIDER_FAILED",
+            context: {
+              workdir: input.workdir,
+              repo: input.repo,
+            },
+            cause: error,
+            severity: "ephemeral",
+          }),
+        );
         collisions = [];
       }
     }
@@ -369,7 +573,7 @@ export class LanePlannerService {
     if (
       !isEnabledValue(readSetting(this.runtime, LANE_PLANNER_REFINE_SETTING))
     ) {
-      return deterministic;
+      return cloneLanePlan(deterministic);
     }
     try {
       if (typeof this.runtime.useModel !== "function") return deterministic;
@@ -377,11 +581,13 @@ export class LanePlannerService {
         prompt: refinePrompt(deterministic),
         stopSequences: [],
       });
-      return applyRefinement(deterministic, String(result ?? ""));
+      return cloneLanePlan(
+        applyRefinement(deterministic, String(result ?? "")),
+      );
     } catch {
       // error-policy:J4 optional TEXT_SMALL refinement is advisory only; the
       // deterministic plan is the designed fallback.
-      return deterministic;
+      return cloneLanePlan(deterministic);
     }
   }
 }

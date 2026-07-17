@@ -79,6 +79,10 @@ import {
   reviewDiff,
   summarizeDiffGate,
 } from "./diff-review-gate.js";
+import type {
+  OrchestratorTaskDocument,
+  OrchestratorTaskSession,
+} from "./orchestrator-task-types.js";
 import {
   assertSafeGitRef,
   assertSafeGitRemote,
@@ -124,6 +128,31 @@ import type {
 type WorkspaceEventCallback = (event: WorkspaceEvent) => void;
 type ScratchRetentionPolicy = "ephemeral" | "pending_decision" | "persistent";
 type ScratchTerminalEvent = "stopped" | "task_complete" | "error";
+type TaskReaderService = {
+  getTask?: (taskId: string) => Promise<OrchestratorTaskDocument | null>;
+  listTasks?: (filter?: {
+    search?: string;
+    includeArchived?: boolean;
+    limit?: number;
+  }) => Promise<Array<{ id: string }>>;
+};
+
+const TERMINAL_REUSE_SESSION_STATUSES: ReadonlySet<string> = new Set([
+  "stopped",
+  "completed",
+  "done",
+  "error",
+  "errored",
+  "cancelled",
+]);
+
+export interface ActiveTaskSessionReuse {
+  taskId: string;
+  sessionId: string;
+  agentType: string;
+  workdir: string;
+  status: string;
+}
 
 export interface ScratchWorkspaceRecord {
   sessionId: string;
@@ -134,6 +163,14 @@ export interface ScratchWorkspaceRecord {
   terminalAt: number;
   terminalEvent: ScratchTerminalEvent;
   expiresAt?: number;
+}
+
+function newestReusableSession(
+  sessions: readonly OrchestratorTaskSession[],
+): OrchestratorTaskSession | undefined {
+  return sessions
+    .filter((session) => !TERMINAL_REUSE_SESSION_STATUSES.has(session.status))
+    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
 }
 
 /**
@@ -359,6 +396,53 @@ export class CodingWorkspaceService {
     if (service) {
       await service.stop();
     }
+  }
+
+  /**
+   * Find the newest non-terminal session for a durable task so planner lanes
+   * can reuse an already-running worker instead of spawning a duplicate. The
+   * workspace service owns this lookup contract because callers already depend
+   * on it for workspace/session reuse, while the durable task service remains
+   * the source of truth for task documents.
+   */
+  async findActiveSessionForTask(input: {
+    taskId?: string;
+    title?: string;
+  }): Promise<ActiveTaskSessionReuse | null> {
+    const reader = this.runtime.getService?.("ORCHESTRATOR_TASK_SERVICE") as
+      | TaskReaderService
+      | null
+      | undefined;
+    if (!reader) {
+      throw new ElizaError("Orchestrator task service is unavailable", {
+        code: "ORCHESTRATOR_TASK_SERVICE_UNAVAILABLE",
+        context: input,
+        severity: "ephemeral",
+      });
+    }
+    const taskId =
+      input.taskId ??
+      (input.title && typeof reader.listTasks === "function"
+        ? (
+            await reader.listTasks({
+              search: input.title,
+              includeArchived: false,
+              limit: 1,
+            })
+          )[0]?.id
+        : undefined);
+    if (!taskId || typeof reader.getTask !== "function") return null;
+    const doc = await reader.getTask(taskId);
+    if (!doc) return null;
+    const session = newestReusableSession(doc.sessions);
+    if (!session) return null;
+    return {
+      taskId,
+      sessionId: session.sessionId,
+      agentType: session.framework,
+      workdir: session.workdir,
+      status: session.status,
+    };
   }
 
   private async initialize(): Promise<void> {
