@@ -223,7 +223,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     entry.category === "cloud"
       ? t("providerswitcher.cloudTileDescription", {
           defaultValue:
-            "Managed models through your Eliza Cloud account. Sign in and start using them.",
+            "Managed models through your Eliza Cloud account. No setup — sign in and it works.",
         })
       : t("providerswitcher.localTileDescription", {
           defaultValue:
@@ -338,7 +338,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
           }
           description={t("providerswitcher.voiceRowDescription", {
             defaultValue:
-              "Speech uses the bundled Kokoro voice. Choose a voice from your character settings.",
+              "Speech uses the bundled Kokoro voice — nothing to configure. Voice selection moves to your character.",
           })}
           control={
             <span className="text-xs text-accent">
@@ -435,7 +435,7 @@ export function ActiveProviderSummary({
         codingAgentsOnly
           ? t("providerswitcher.codingSubscriptionChatNote", {
               defaultValue:
-                "Powers coding agents and workflows only. Chat replies keep using your selected intelligence provider.",
+                "Powers coding agents & workflows only — chat replies keep using your selected Intelligence provider (Cloud or Local).",
             })
           : undefined
       }
