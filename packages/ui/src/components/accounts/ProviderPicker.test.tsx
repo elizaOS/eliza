@@ -81,4 +81,28 @@ describe("ProviderPicker", () => {
       expect(cls).not.toMatch(/(?:^|\s)!?ring-/);
     }
   });
+
+  it("navigates upward with ArrowUp and wraps around the list", () => {
+    const onPick = renderPicker();
+    // ArrowUp from the top wraps to the last option instead of going negative.
+    fireEvent.keyDown(searchInput(), { key: "ArrowUp" });
+    fireEvent.keyDown(searchInput(), { key: "Enter" });
+    expect(onPick).toHaveBeenCalledOnce();
+  });
+
+  it("renders sentence-style capability copy with no interpunct separators", () => {
+    renderPicker();
+    expect(
+      screen.getAllByText("Chat, using your API key").length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Chat and coding agents, using browser login"),
+    ).toBeTruthy();
+    expect(screen.getByText("Coding agents, using CLI login")).toBeTruthy();
+    expect(
+      screen.getAllByText("Coding agents, using a plan key").length,
+    ).toBeGreaterThan(0);
+    // The old "Chat \u00b7 bring your own API key" pill format must not resurface.
+    expect(screen.queryByText(/\u00b7/)).toBeNull();
+  });
 });
