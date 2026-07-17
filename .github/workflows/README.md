@@ -157,9 +157,26 @@ separate purpose-built fleet and are unaffected by this policy.
 
 The retired `gpu-bench-nightly.yml` scaffold never ran substantive work on its
 schedule: both jobs required an opt-in manual dispatch and invoked removed
-`packages/inference` paths. Real CUDA benchmark continuity belongs to the
-current local-inference and voice benchmark surfaces and is tracked in #16449;
-do not restore the scaffold as a green scheduled placeholder.
+`packages/inference` paths. Do not restore that scaffold as a green scheduled
+placeholder.
+
+`cuda-continuity.yml` is the candidate single authority for real local-inference
+CUDA proof. Its inventory (`scripts/cuda-continuity-inventory.json`) maps both
+retired contexts to the exact-head GPU probe, native CUDA fixtures, and a
+model-backed runtime graph smoke. The run fails closed on a missing GPU/toolkit,
+CPU fallback, skipped graph/kernels, OOM/corruption, incomplete artifacts, or an
+artifact upload error. Because the current native builder no longer exposes a
+Linux CUDA target, dispatch requires a prebuilt binary directory; its recorded
+fork commit must equal the exact workflow head's native-source gitlink or the run
+fails. The resulting manifest records device, driver/toolkit, model, build
+capabilities/provenance, native logs, hashes, and the dispatched commit.
+
+Migration is intentionally two-phase: keep the existing opt-in CUDA leg in
+`local-inference-matrix.yml` until a credentialed `cuda-continuity.yml` run at
+the exact candidate head passes and a maintainer manually reviews the downloaded
+artifacts. Only then may the old leg be retired and the inventory's
+`migrationState` changed. A code-only/non-GPU contract pass is not hardware
+proof and must not close #16449.
 
 ### PR Path Gates
 
