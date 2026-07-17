@@ -22,8 +22,8 @@
  *       scrollback remains stable without extra floating controls.
  *   - EVERY control/state via deterministic fixture loads + interactions:
  *       empty · peek/half/full · typing→send · attach image→thumbnail→remove ·
- *       mic press→recording · voice speaking→mute toggle · responding typing
- *       dots · booting (disabled) · reduced-motion.
+ *       mic press→recording · voice speaking→mute toggle · responding
+ *       transcript shimmer · booting (disabled) · reduced-motion.
  *   - Screenshots every state; captures the browser console and fails on any
  *     page error or error-level log.
  *
@@ -2538,7 +2538,7 @@ try {
     await p.waitForSelector('[data-testid="chat-sheet-grabber"]');
     await p.waitForTimeout(500);
     await p.getByTestId("chat-sheet-grabber").focus();
-    await p.keyboard.press("ArrowUp"); // open to half so the dots are visible
+    await p.keyboard.press("ArrowUp"); // open to half so the status row is visible
     await p.waitForTimeout(450);
     assert(await p.getByTestId("turn-status-indicator").isVisible(), "RESPONDING: turn status shown in the open sheet");
     await snap(p, "state-responding");
@@ -3654,7 +3654,7 @@ try {
     await p.close();
   }
 
-  // ── STREAMING: one approved shimmer shares the latest message's action lane
+  // ── STREAMING: one approved shimmer follows the transcript in its own row
   // while the empty assistant transport placeholder stays non-visual.
   {
     const p = await ctrl();
@@ -3665,33 +3665,40 @@ try {
     // Open the thread so the in-flight status is on screen.
     await gesture(p, 400, { pointer: "mouse", slow: false, steps: 1 });
     await p.waitForTimeout(SETTLE);
-    const inlineStatus = p
-      .getByTestId("turn-status-accessory")
+    const transcriptStatusRow = p.getByTestId("turn-status-row");
+    const transcriptStatus = transcriptStatusRow
+      .getByTestId("turn-status-transcript")
       .getByTestId("turn-status-indicator");
     assert(
-      (await inlineStatus.count()) === 1,
-      "STREAMING: exactly one action-lane status shimmer spans the active turn",
+      (await transcriptStatus.count()) === 1,
+      "STREAMING: exactly one transcript-row status shimmer spans the active turn",
     );
     assert(
-      await p
-        .getByTestId("turn-status-accessory")
-        .evaluate(
-          (element) =>
-            element.closest('[data-testid="thread-line-actions"]') !== null,
-        ),
-      "STREAMING: status stays on the same row as Copy and Reply",
+      await transcriptStatusRow.evaluate(
+        (element) =>
+          element.closest('[data-testid="chat-thread-scroll"]') !== null,
+      ),
+      "STREAMING: status stays inside the transcript scroller",
     );
     assert(
-      await inlineStatus
+      await transcriptStatusRow.evaluate(
+        (element) =>
+          element.closest('[data-testid="thread-line-actions"]') === null &&
+          element.closest('[data-testid="chat-composer-row"]') === null,
+      ),
+      "STREAMING: status stays outside message actions and the composer",
+    );
+    assert(
+      await transcriptStatus
         .getByTestId("turn-status-label")
         .evaluate((el) => el.className.includes("shimmer")),
-      "STREAMING: inline status uses the approved shimmer treatment",
+      "STREAMING: transcript status uses the approved shimmer treatment",
     );
     assert(
       (await p.getByTestId("typing-dots").count()) === 0,
       "STREAMING: legacy typing dots stay removed",
     );
-    await snap(p, "state-streaming-inline-status");
+    await snap(p, "state-streaming-transcript-status");
     await p.close();
   }
 

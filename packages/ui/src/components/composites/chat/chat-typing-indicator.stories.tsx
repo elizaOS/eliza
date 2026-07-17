@@ -38,12 +38,11 @@ export const GameModal: Story = {
   },
 };
 
-/** The overlay's Codex-style working indicator (spinner + label + elapsed clock)
- * on a dark glass substrate, as it renders in the continuous-chat overlay. */
+/** The compact neutral shimmer used by the overlay's trailing transcript row. */
 export const TurnStatusThinking: Story = {
   render: () => (
     <div className="rounded-2xl bg-black/70 p-4">
-      <TurnStatus status={{ kind: "thinking" }} />
+      <TurnStatus status={{ kind: "thinking" }} showLabel={false} />
     </div>
   ),
 };
@@ -53,6 +52,7 @@ export const TurnStatusWorking: Story = {
     <div className="rounded-2xl bg-black/70 p-4">
       <TurnStatus
         status={{ kind: "running_action", actionName: "SEND_MESSAGE" }}
+        showLabel={false}
       />
     </div>
   ),
@@ -61,7 +61,10 @@ export const TurnStatusWorking: Story = {
 export const TurnStatusRunningTool: Story = {
   render: () => (
     <div className="rounded-2xl bg-black/70 p-4">
-      <TurnStatus status={{ kind: "running_tool", toolName: "WEB_SEARCH" }} />
+      <TurnStatus
+        status={{ kind: "running_tool", toolName: "WEB_SEARCH" }}
+        showLabel={false}
+      />
     </div>
   ),
 };
@@ -69,7 +72,7 @@ export const TurnStatusRunningTool: Story = {
 export const TurnStatusSpeaking: Story = {
   render: () => (
     <div className="rounded-2xl bg-black/70 p-4">
-      <TurnStatus status={{ kind: "speaking" }} />
+      <TurnStatus status={{ kind: "speaking" }} showLabel={false} />
     </div>
   ),
 };

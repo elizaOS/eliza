@@ -194,9 +194,15 @@ export const VoiceModeTranscription: Story = {
   },
 };
 
-/** Responding — the breathing typing dots. */
+/** Responding — a neutral shimmer in the trailing transcript status row. */
 export const Responding: Story = {
-  args: { controller: makeController({ phase: "responding" }) },
+  args: {
+    controller: makeController({
+      phase: "responding",
+      responding: true,
+      turnStatus: { kind: "thinking" },
+    }),
+  },
 };
 
 /** Booting — "connecting…" placeholder, mic disabled. */

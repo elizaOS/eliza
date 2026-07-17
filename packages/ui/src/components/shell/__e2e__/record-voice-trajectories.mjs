@@ -140,7 +140,7 @@ if (await mic.count()) {
 // 3) Listening state with a live interim transcript (deterministic load).
 await load("?recording&transcript=hey%20eliza%2C%20what%27s%20on%20my%20calendar", "listening + interim transcript", "listening");
 
-// 4) Agent responding (thinking / streaming dots).
+// 4) Agent responding (thinking in the trailing transcript status row).
 await load("?streaming", "agent responding (thinking)", "responding");
 
 // 5) Agent speaking aloud + mute toggle.

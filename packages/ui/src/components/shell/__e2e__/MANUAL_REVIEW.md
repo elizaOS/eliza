@@ -42,7 +42,7 @@ Files prefixed `desktop-*` (real Playwright mouse, pointerType=mouse) and
   italic interim transcript.
 - `state-speaking` / `state-muted` — assistant-voice control appears and toggles
   label/icon (speaker ↔ speaker-muted).
-- `state-responding` — typing-dots inside the opened sheet.
+- `state-responding` — neutral shimmer in a trailing transcript status row.
 - `state-typing-send` — typing morphs mic→send and pulls the sheet open.
 - `state-image-attached` — a real PNG through the hidden file input renders a
   pending thumbnail + per-image remove (×); remove clears it.

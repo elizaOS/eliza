@@ -129,10 +129,10 @@ describe("ChatMessage glass timestamp", () => {
     expect(screen.queryByTestId("thread-line-timestamp")).toBeNull();
   });
 
-  it("keeps the live action accessory beside the timestamp", () => {
+  it("keeps manual playback status beside the timestamp", () => {
     render(
       <ChatMessage
-        actionAccessory={<span data-testid="live-status">Working</span>}
+        actionAccessory={<span data-testid="playback-status">Speaking</span>}
         appearance="glass"
         message={makeMessage("assistant", NOW.getTime() - 5 * MINUTE_MS)}
         onCopy={vi.fn()}
@@ -140,13 +140,13 @@ describe("ChatMessage glass timestamp", () => {
     );
 
     const accessory = screen.getByTestId("thread-line-action-accessory");
-    const liveStatus = screen.getByTestId("live-status");
+    const playbackStatus = screen.getByTestId("playback-status");
     const timestamp = screen.getByTestId("thread-line-timestamp");
     expect(
-      liveStatus.compareDocumentPosition(timestamp) &
+      playbackStatus.compareDocumentPosition(timestamp) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(accessory.contains(timestamp)).toBe(true);
-    expect(accessory.contains(liveStatus)).toBe(true);
+    expect(accessory.contains(playbackStatus)).toBe(true);
   });
 });

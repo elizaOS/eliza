@@ -11,10 +11,10 @@
  * and pins the bubble's measured width so the transcript does not reflow.
  *
  * Memoized with a custom equality check so streamed-token re-renders stay
- * cheap; volatile per-row values (turn status, reasoning suppression) flow
- * through `renderContext` — compared field-wise — so the `renderContent`
- * closure can stay referentially stable. The mount-time entrance animation is
- * deliberately excluded from that check (see `enterOnMount`).
+ * cheap; volatile reasoning suppression flows through `renderContext` —
+ * compared field-wise — so the `renderContent` closure can stay referentially
+ * stable. The mount-time entrance animation is deliberately excluded from that
+ * check (see `enterOnMount`).
  * Presentation only — actions are delegated to callbacks.
  */
 import { Check, LoaderCircle, RotateCcw, Sparkles, X } from "lucide-react";
@@ -72,9 +72,9 @@ const MotionMessageRow = motion.create(MessageRow);
 
 export interface ChatMessageProps {
   /**
-   * Live, non-message state that shares the glass action lane. The continuous
-   * overlay uses this for the active turn label so status never consumes a
-   * second transcript row.
+   * Live, message-bound state that shares the glass action lane. The continuous
+   * overlay uses this for manual playback so the status stays on the message
+   * that initiated audio.
    */
   actionAccessory?: React.ReactNode;
   agentName?: string;
