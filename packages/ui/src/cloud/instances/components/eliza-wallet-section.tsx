@@ -122,7 +122,11 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
         // Narrow per-branch: with only the disjunction guard, TS cannot prove
         // either settled result is the rejected one, so .reason is invalid.
         const reason =
-          addrRes.status === "rejected" ? addrRes.reason : balRes.reason;
+          addrRes.status === "rejected"
+            ? addrRes.reason
+            : balRes.status === "rejected"
+              ? balRes.reason
+              : undefined;
         setError(
           reason instanceof Error
             ? reason.message
