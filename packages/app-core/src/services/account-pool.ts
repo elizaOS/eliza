@@ -3,7 +3,8 @@
  *
  * Owns the runtime decision "which `LinkedAccountConfig` should serve this
  * request?" given a strategy (priority / round-robin / least-used /
- * quota-aware), session affinity, and per-account health state.
+ * quota-aware / drain-soonest-reset), session affinity, and per-account health
+ * state.
  *
  * The pool never reads OAuth credentials directly — callers resolve them
  * via `getAccessToken(providerId, accountId)` from `@elizaos/agent` once
@@ -67,7 +68,8 @@ export type Strategy =
   | "round-robin"
   | "least-used"
   | "quota-aware"
-  | "reset-soonest";
+  | "reset-soonest"
+  | "drain-soonest-reset";
 
 export type PoolProviderId = LinkedAccountProviderId;
 
@@ -93,6 +95,8 @@ export interface SelectInput {
   accountIds?: string[];
   /** Account IDs to skip (e.g. just-failed accounts). */
   exclude?: string[];
+  /** Requested model/display name for provider-specific weekly buckets. */
+  model?: string;
 }
 
 interface AffinityEntry {
@@ -117,6 +121,7 @@ interface AccountPoolSelectionConfig {
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 60_000;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
+const SUBSCRIPTION_END_BOOST_WINDOW_MS = 48 * 60 * 60 * 1000;
 const DIRECT_PROVIDER_BY_BACKEND: Readonly<
   Record<string, DirectAccountProvider>
 > = {
@@ -141,6 +146,46 @@ function accountSessionPct(account: LinkedAccountConfig): number {
     : 0;
 }
 
+function accountWeeklyPct(account: LinkedAccountConfig): number {
+  return typeof account.usage?.weeklyPct === "number"
+    ? account.usage.weeklyPct
+    : accountSessionPct(account);
+}
+
+function normalizeModelKey(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function modelKeysMatch(requested: string, bucket: string): boolean {
+  return (
+    requested === bucket ||
+    (bucket.length >= 4 && requested.includes(bucket)) ||
+    (requested.length >= 4 && bucket.includes(requested))
+  );
+}
+
+function accountWeeklyBucket(
+  account: LinkedAccountConfig,
+  requestedModel?: string,
+): { pct: number; resetsAt?: number } {
+  const key = requestedModel ? normalizeModelKey(requestedModel) : "";
+  const buckets = account.usage?.weeklyModelBuckets;
+  if (key && buckets) {
+    for (const [name, bucket] of Object.entries(buckets)) {
+      if (modelKeysMatch(key, normalizeModelKey(name))) return bucket;
+    }
+  }
+  return {
+    pct: accountWeeklyPct(account),
+    ...(account.usage?.resetsAt !== undefined
+      ? { resetsAt: account.usage.resetsAt }
+      : {}),
+  };
+}
+
 function accountLastUsedAt(account: LinkedAccountConfig): number {
   return typeof account.lastUsedAt === "number" ? account.lastUsedAt : 0;
 }
@@ -151,7 +196,7 @@ function accountLastUsedAt(account: LinkedAccountConfig): number {
  * when the provider hasn't reported a reset window yet.
  */
 function accountResetAt(account: LinkedAccountConfig): number | undefined {
-  return account.usage?.resetsAt ?? account.healthDetail?.until;
+  return account.usage?.resetsAt;
 }
 
 /**
@@ -180,6 +225,32 @@ function bySoonestReset(
   return a.priority - b.priority;
 }
 
+function subscriptionEndBoost(
+  account: LinkedAccountConfig,
+  now: number,
+): number {
+  if (
+    typeof account.subscriptionEndsAt !== "number" ||
+    account.subscriptionEndsAt <= now
+  ) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const remaining = account.subscriptionEndsAt - now;
+  return remaining <= SUBSCRIPTION_END_BOOST_WINDOW_MS
+    ? remaining
+    : Number.MAX_SAFE_INTEGER;
+}
+
+function isAccountExpired(
+  account: LinkedAccountConfig,
+  now: number = Date.now(),
+): boolean {
+  return (
+    typeof account.subscriptionEndsAt === "number" &&
+    account.subscriptionEndsAt <= now
+  );
+}
+
 // affinity is keyed by sessionKey, which is per-conversation/per-request, so the
 // map grows one entry per distinct session over the process lifetime. Cap it
 // (FIFO by Map insertion order) — an evicted session simply re-selects on its
@@ -206,6 +277,7 @@ export class AccountPool {
 
   async select(input: SelectInput): Promise<LinkedAccountConfig | null> {
     const all = this.deps.readAccounts();
+    await this.markExpiredAccounts(input.providerId, all);
     const eligible = this.filterEligible(all, input);
     if (eligible.length === 0) return null;
 
@@ -223,7 +295,9 @@ export class AccountPool {
     }
 
     const strategy: Strategy = input.strategy ?? "priority";
-    const picked = this.applyStrategy(strategy, eligible, input.providerId);
+    const picked = this.applyStrategy(strategy, eligible, input.providerId, {
+      model: input.model,
+    });
     if (!picked) return null;
     this.stampSelection(picked.id);
 
@@ -252,6 +326,7 @@ export class AccountPool {
   selectionState(
     providerId: PoolProviderId,
     strategy: Strategy = "priority",
+    opts?: { model?: string },
   ): { activeAccountId: string | null; reason: string | null } {
     const all = this.deps.readAccounts();
     const eligible = this.filterEligible(all, { providerId });
@@ -262,7 +337,7 @@ export class AccountPool {
         reason: "only-eligible",
       };
     }
-    const picked = this.applyStrategy(strategy, eligible, providerId);
+    const picked = this.applyStrategy(strategy, eligible, providerId, opts);
     if (!picked) return { activeAccountId: null, reason: null };
     let reason: string = strategy;
     if (strategy === "reset-soonest") {
@@ -271,8 +346,43 @@ export class AccountPool {
       reason = eligible.some((a) => accountResetAt(a) != null)
         ? "reset-soonest"
         : "least-recently-throttled";
+    } else if (strategy === "drain-soonest-reset") {
+      reason = "drain-soonest-reset";
     }
     return { activeAccountId: picked.id, reason };
+  }
+
+  async sweepExpired(providerId?: PoolProviderId): Promise<number> {
+    const all = this.deps.readAccounts();
+    return this.markExpiredAccounts(providerId, all);
+  }
+
+  private async markExpiredAccounts(
+    providerId: PoolProviderId | undefined,
+    all: Record<string, LinkedAccountConfig>,
+  ): Promise<number> {
+    const now = Date.now();
+    let changed = 0;
+    for (const account of Object.values(all)) {
+      if (providerId && account.providerId !== providerId) continue;
+      if (
+        typeof account.subscriptionEndsAt !== "number" ||
+        account.subscriptionEndsAt > now ||
+        account.health === "expired"
+      ) {
+        continue;
+      }
+      changed += 1;
+      logger.warn(
+        `[AccountPool] account expired providerId=${account.providerId} accountId=${account.id} subscriptionEndsAt=${account.subscriptionEndsAt}`,
+      );
+      await this.deps.writeAccount({
+        ...account,
+        health: "expired",
+        healthDetail: { lastChecked: now },
+      });
+    }
+    return changed;
   }
 
   private filterEligible(
@@ -299,6 +409,7 @@ export class AccountPool {
     strategy: Strategy,
     eligible: LinkedAccountConfig[],
     providerId: PoolProviderId,
+    opts: { model?: string } = {},
   ): LinkedAccountConfig | null {
     if (eligible.length === 0) return null;
     if (eligible.length === 1) return eligible[0] ?? null;
@@ -337,6 +448,19 @@ export class AccountPool {
         );
         const pool = underQuota.length > 0 ? underQuota : eligible;
         return [...pool].sort(bySoonestReset)[0] ?? null;
+      }
+      case "drain-soonest-reset": {
+        // A weekly window is the scarce budget, but a currently exhausted
+        // session cannot serve traffic. Cool it out without changing the
+        // relative weekly drain order used when it becomes eligible again.
+        const underSessionCap = eligible.filter(
+          (a) => accountSessionPct(a) < QUOTA_AWARE_SKIP_PCT,
+        );
+        const pool = underSessionCap.length > 0 ? underSessionCap : eligible;
+        return (
+          [...pool].sort((a, b) => byDrainSoonestReset(a, b, opts.model))[0] ??
+          null
+        );
       }
       default:
         return [...eligible].sort(byPriorityThenAge)[0] ?? null;
@@ -403,7 +527,12 @@ export class AccountPool {
   }
 
   async upsert(account: LinkedAccountConfig): Promise<void> {
-    await this.deps.writeAccount(account);
+    const prior = this.get(account.id, account.providerId);
+    await this.deps.writeAccount({
+      ...account,
+      prioritySource:
+        account.prioritySource ?? prior?.prioritySource ?? "generated",
+    });
   }
 
   async deleteMetadata(
@@ -456,6 +585,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
 
     let usage: LinkedAccountUsage;
     // Anthropic's OAuth token is opaque (no OIDC claims), so accounts linked
@@ -514,14 +649,21 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
-    // Callers pass a heuristic cool-off (60s probe default / 15min session
-    // default), but the provider's own usage window is authoritative when we
-    // have it: Anthropic and Codex both report the window's reset timestamp
-    // via the usage probes. Using it re-admits the account exactly when the
-    // limit lifts — a shorter heuristic ping-pongs spawns onto a still-limited
-    // account (a ~5h window retried every 60s), a longer one strands a
-    // recovered account out of rotation.
-    const providerResetMs = account.usage?.resetsAt;
+    // Provider-authoritative cooldown, per provider semantics of
+    // `usage.resetsAt` (see LinkedAccountUsage contract):
+    //  - Codex persists its PRIMARY FIVE-HOUR window reset there, which is
+    //    exactly the 429 cooldown clock. Using it re-admits the account the
+    //    moment the limit lifts; a 60s caller heuristic would ping-pong spawns
+    //    onto a still-limited ~5h window every minute (the documented Codex
+    //    429 regression).
+    //  - Anthropic persists the SEVEN-DAY weekly reset there for drain
+    //    ordering. Using it as a 429 cooldown would strand a session-limited
+    //    account for up to a week, so Anthropic keeps the caller heuristic
+    //    (60s probe default / provider retry-after when the caller has one).
+    const providerResetMs =
+      account.providerId === "openai-codex"
+        ? account.usage?.resetsAt
+        : undefined;
     const heuristicUntil =
       Number.isFinite(untilMs) && untilMs > Date.now()
         ? untilMs
@@ -552,6 +694,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
     // Repeated probes may report the same state; log only the transition while
     // still persisting the newest diagnostic detail on every call.
     if (account.health !== "needs-reauth") {
@@ -580,6 +728,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
     await this.deps.writeAccount({
       ...account,
       health: "invalid",
@@ -600,6 +754,12 @@ export class AccountPool {
       opts?.providerId,
     );
     if (!account) return;
+    if (isAccountExpired(account)) {
+      await this.markExpiredAccounts(account.providerId, {
+        [poolRecordKey(account.providerId, account.id)]: account,
+      });
+      return;
+    }
     if (account.health === "ok") return;
     await this.deps.writeAccount({
       ...account,
@@ -644,6 +804,7 @@ export function isAccountSelectableNow(
   account: LinkedAccountConfig,
   now: number = Date.now(),
 ): boolean {
+  if (isAccountExpired(account, now)) return false;
   if (account.health === "ok") return true;
   return (
     account.health === "rate-limited" &&
@@ -686,6 +847,46 @@ function byPriorityThenAge(
   return aLast - bLast; // older first
 }
 
+function byExplicitPriority(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+): number {
+  const aExplicit = a.prioritySource === "explicit";
+  const bExplicit = b.prioritySource === "explicit";
+  if (aExplicit && bExplicit && a.priority !== b.priority) {
+    return a.priority - b.priority;
+  }
+  if (aExplicit !== bExplicit) return aExplicit ? -1 : 1;
+  return 0;
+}
+
+function byDrainSoonestReset(
+  a: LinkedAccountConfig,
+  b: LinkedAccountConfig,
+  requestedModel?: string,
+): number {
+  const explicit = byExplicitPriority(a, b);
+  if (explicit !== 0) return explicit;
+  const aBucket = accountWeeklyBucket(a, requestedModel);
+  const bBucket = accountWeeklyBucket(b, requestedModel);
+  if (aBucket.resetsAt != null && bBucket.resetsAt != null) {
+    if (aBucket.resetsAt !== bBucket.resetsAt) {
+      return aBucket.resetsAt - bBucket.resetsAt;
+    }
+  } else if (aBucket.resetsAt != null) {
+    return -1;
+  } else if (bBucket.resetsAt != null) {
+    return 1;
+  }
+  if (aBucket.pct !== bBucket.pct) return aBucket.pct - bBucket.pct;
+  const now = Date.now();
+  const aBoost = subscriptionEndBoost(a, now);
+  const bBoost = subscriptionEndBoost(b, now);
+  if (aBoost !== bBoost) return aBoost - bBoost;
+  if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /** Mutation-free ordering for the round-robin ring: identity fields only
  * (priority, createdAt, id), so the cursor walks the same sequence no matter
  * how usage recording mutates `lastUsedAt` between selects. */
@@ -714,9 +915,11 @@ interface PoolMetaFields {
   label: string;
   enabled: boolean;
   priority: number;
+  prioritySource?: "explicit" | "generated";
   health: LinkedAccountHealth;
   healthDetail?: LinkedAccountHealthDetail;
   usage?: LinkedAccountUsage;
+  subscriptionEndsAt?: number;
   /** Persisted so recordCall's "last used" survives restarts and feeds both the
    * dashboard and the least-used age tiebreak (the credential record's own
    * lastUsedAt is only bumped by touchAccount, not by usage recording). */
@@ -782,6 +985,14 @@ function recordToLinked(
     source: record.source,
     enabled: meta?.enabled ?? true,
     priority: meta?.priority ?? defaultPriority,
+    // Legacy metadata persisted creation-order priorities for every account.
+    // Treat an unchanged creation-order value as generated, while preserving a
+    // hand-tuned legacy value as an explicit override.
+    prioritySource:
+      meta?.prioritySource ??
+      (typeof meta?.priority === "number" && meta.priority !== defaultPriority
+        ? "explicit"
+        : "generated"),
     createdAt: record.createdAt,
     health: meta?.health ?? "ok",
     // Prefer the pool-meta lastUsedAt (bumped by recordCall) over the credential
@@ -791,6 +1002,9 @@ function recordToLinked(
       : {}),
     ...(meta?.healthDetail ? { healthDetail: meta.healthDetail } : {}),
     ...(meta?.usage ? { usage: meta.usage } : {}),
+    ...(typeof meta?.subscriptionEndsAt === "number"
+      ? { subscriptionEndsAt: meta.subscriptionEndsAt }
+      : {}),
     ...(record.organizationId ? { organizationId: record.organizationId } : {}),
     ...(record.userId ? { userId: record.userId } : {}),
     ...(() => {
@@ -858,9 +1072,13 @@ async function persistAccount(account: LinkedAccountConfig): Promise<void> {
     label: account.label,
     enabled: account.enabled,
     priority: account.priority,
+    prioritySource: account.prioritySource ?? "generated",
     health: account.health,
     ...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
     ...(account.usage ? { usage: account.usage } : {}),
+    ...(typeof account.subscriptionEndsAt === "number"
+      ? { subscriptionEndsAt: account.subscriptionEndsAt }
+      : {}),
     ...(account.lastUsedAt !== undefined
       ? { lastUsedAt: account.lastUsedAt }
       : {}),
@@ -889,7 +1107,8 @@ function normalizeStrategy(value: unknown): Strategy | undefined {
     value === "round-robin" ||
     value === "least-used" ||
     value === "quota-aware" ||
-    value === "reset-soonest"
+    value === "reset-soonest" ||
+    value === "drain-soonest-reset"
     ? value
     : undefined;
 }
@@ -947,7 +1166,12 @@ export function selectionForProvider(providerId: PoolProviderId): {
   return {
     strategy:
       routeSelection.strategy ??
-      normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId]),
+      normalizeStrategy(
+        defaultSelectionConfig.accountStrategies?.[providerId],
+      ) ??
+      (providerId === "anthropic-subscription"
+        ? "drain-soonest-reset"
+        : undefined),
     accountIds: routeSelection.accountIds,
   };
 }
@@ -1066,8 +1290,10 @@ export async function sweepAccountPoolKeepAlive(): Promise<AccountPoolKeepAliveR
   };
 
   for (const providerId of ACCOUNT_CREDENTIAL_PROVIDER_IDS) {
+    await pool.sweepExpired(providerId);
     for (const record of listProviderAccounts(providerId)) {
       result.checked += 1;
+      if (pool.get(record.id, providerId)?.health === "expired") continue;
 
       // A Codex CLI may have rotated the one-time refresh token inside its
       // per-account CODEX_HOME mid-session; adopt it BEFORE resolving, or the

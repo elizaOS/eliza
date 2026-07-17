@@ -86,6 +86,7 @@ describe("shared service-routing contracts", () => {
       source: "api-key",
       enabled: true,
       priority: 2,
+      prioritySource: "explicit",
       createdAt: 10,
       lastUsedAt: 20,
       health: "rate-limited",
@@ -99,6 +100,9 @@ describe("shared service-routing contracts", () => {
         outputTokens: 200,
         totalTokens: 300,
         requestCount: 4,
+        weeklyModelBuckets: {
+          Fable: { pct: 12, resetsAt: 70 },
+        },
       },
       organizationId: " org ",
       userId: " user ",
@@ -108,8 +112,15 @@ describe("shared service-routing contracts", () => {
       id: "account-1",
       label: "Primary",
       health: "rate-limited",
+      prioritySource: "explicit",
       healthDetail: { until: 30, lastError: "retry" },
-      usage: { refreshedAt: 40, sessionPct: 25, weeklyPct: 50, resetsAt: 60 },
+      usage: {
+        refreshedAt: 40,
+        sessionPct: 25,
+        weeklyPct: 50,
+        resetsAt: 60,
+        weeklyModelBuckets: { Fable: { pct: 12, resetsAt: 70 } },
+      },
       email: "test@example.com",
     });
     expect(

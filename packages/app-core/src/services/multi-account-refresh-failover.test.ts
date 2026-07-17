@@ -579,8 +579,8 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
   });
 });
 
-describe("markRateLimited honors the provider's usage-window reset", () => {
-  it("uses usage.resetsAt (future) over the caller's heuristic cool-off", async () => {
+describe("markRateLimited keeps session cooldown separate from weekly resets", () => {
+  it("uses the caller's session cool-off instead of the weekly usage reset", async () => {
     writeAccount("anthropic-subscription", "claude-work", {
       access: "a",
       refresh: "r",
@@ -595,13 +595,14 @@ describe("markRateLimited honors the provider's usage-window reset", () => {
       usage: { refreshedAt: Date.now(), sessionPct: 100, resetsAt },
     });
 
-    await pool.markRateLimited("claude-work", Date.now() + 60_000, "429", {
+    const heuristic = Date.now() + 60_000;
+    await pool.markRateLimited("claude-work", heuristic, "429", {
       providerId: "anthropic-subscription",
     });
 
     const marked = pool.get("claude-work", "anthropic-subscription");
     expect(marked?.health).toBe("rate-limited");
-    expect(marked?.healthDetail?.until).toBe(resetsAt);
+    expect(marked?.healthDetail?.until).toBe(heuristic);
   });
 
   it("falls back to the caller's cool-off when resetsAt is missing or already past", async () => {

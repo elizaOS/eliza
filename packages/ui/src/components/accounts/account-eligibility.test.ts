@@ -91,11 +91,17 @@ describe("providerConnectionState (one signal per row)", () => {
     ).toBe("connected-healthy");
   });
 
-  it("flags attention when any account needs reauth or is invalid", () => {
+  it("flags attention when any account needs reauth, is invalid, or expired", () => {
     expect(
       providerConnectionState([
         { enabled: true, health: "ok" },
         { enabled: true, health: "needs-reauth" },
+      ]),
+    ).toBe("connected-attention");
+    expect(
+      providerConnectionState([
+        { enabled: true, health: "ok" },
+        { enabled: true, health: "expired" },
       ]),
     ).toBe("connected-attention");
   });

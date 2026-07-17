@@ -64,6 +64,7 @@ export const LINKED_ACCOUNT_HEALTH_STATES = [
 	'needs-reauth',
 	'invalid',
 	'unknown',
+	'expired',
 ] as const;
 
 export type LinkedAccountHealth = (typeof LINKED_ACCOUNT_HEALTH_STATES)[number];
@@ -79,9 +80,18 @@ export interface LinkedAccountHealthDetail {
 export interface LinkedAccountUsage {
 	/** 0–100, current 5h window (Anthropic) or primary window (Codex) */
 	sessionPct?: number;
-	/** 0–100, 7-day (Anthropic only) */
+	/** 0–100, seven-day or provider secondary window */
 	weeklyPct?: number;
-	/** epoch ms */
+	/**
+	 * Per-model 7-day utilization buckets from provider usage APIs. Keys are
+	 * provider display/model names normalized only enough for case-insensitive
+	 * lookup by the selector; values preserve the provider's reset timestamp.
+	 */
+	weeklyModelBuckets?: Record<string, { pct: number; resetsAt?: number }>;
+	/**
+	 * epoch ms. Anthropic: all-model seven-day reset used for drain ordering.
+	 * Codex: primary five-hour reset. This is never a generic reset clock.
+	 */
 	resetsAt?: number;
 	/** epoch ms — when this snapshot was last refreshed */
 	refreshedAt: number;
@@ -100,6 +110,8 @@ export interface LinkedAccountConfig {
 	enabled: boolean;
 	/** lower = higher priority */
 	priority: number;
+	/** Whether `priority` was hand-set by the operator or generated from creation order. */
+	prioritySource?: 'explicit' | 'generated';
 	/** epoch ms */
 	createdAt: number;
 	/** epoch ms */
@@ -107,6 +119,8 @@ export interface LinkedAccountConfig {
 	health: LinkedAccountHealth;
 	healthDetail?: LinkedAccountHealthDetail;
 	usage?: LinkedAccountUsage;
+	/** epoch ms — account subscription cutoff; expired when <= now */
+	subscriptionEndsAt?: number;
 	organizationId?: string;
 	userId?: string;
 	email?: string;
@@ -133,6 +147,10 @@ export const SERVICE_ROUTE_ACCOUNT_STRATEGIES = [
 	// (accounts that just reset are held in reserve). Falls back to
 	// least-recently-used when reset instants are unknown.
 	'reset-soonest',
+	// Weekly-drain strategy: explicit hand-set priorities win first, otherwise
+	// spend the account/model bucket whose weekly reset arrives soonest, then
+	// lower utilization, with subscription end as the final-days booster.
+	'drain-soonest-reset',
 ] as const;
 
 export type ServiceRouteAccountStrategy = (typeof SERVICE_ROUTE_ACCOUNT_STRATEGIES)[number];
