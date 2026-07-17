@@ -11,6 +11,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import * as pluginModule from "../src/index.ts";
 import codingToolsPlugin, {
   availableToolsProvider,
+  BackgroundShellService,
   CODING_TOOLS_CONTEXTS,
   FILE_STATE_SERVICE,
   FileStateService,
@@ -81,13 +82,14 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     expect(new Set(names).size).toBe(names.length);
   });
 
-  it("exports the 4 active services", () => {
+  it("exports the 5 active services", () => {
     const services = codingToolsPlugin.services ?? [];
+    expect(services).toContain(BackgroundShellService);
     expect(services).toContain(FileStateService);
     expect(services).toContain(SandboxService);
     expect(services).toContain(SessionCwdService);
     expect(services).toContain(RipgrepService);
-    expect(services.length).toBe(4);
+    expect(services.length).toBe(5);
   });
 
   it("does not export removed actions or service constants", () => {
