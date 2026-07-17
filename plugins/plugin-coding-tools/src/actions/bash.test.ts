@@ -380,6 +380,8 @@ describeIfPosix("shellAction", () => {
     expect(providerResult.data?.codingTools).toEqual([
       "FILE",
       "SHELL",
+      "WEB_FETCH",
+      "WEB_SEARCH",
       "WORKTREE",
     ]);
 
