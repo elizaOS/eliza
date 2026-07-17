@@ -139,7 +139,9 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  /** Deepgram Flux realtime STT key (server-held; NEVER returned to clients). */
+  /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
+  VOICE_BATCH_STT_PROVIDER?: string;
+  /** Deepgram realtime Flux and opt-in prerecorded STT key (server-held; NEVER returned to clients). */
   DEEPGRAM_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;
