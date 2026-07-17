@@ -9,7 +9,13 @@
  * the services and types for external consumers.
  */
 import type { Plugin } from "@elizaos/core";
-import { fileAction, shellAction, worktreeAction } from "./actions/index.js";
+import {
+  fileAction,
+  shellAction,
+  webFetchAction,
+  webSearchAction,
+  worktreeAction,
+} from "./actions/index.js";
 import { availableToolsProvider } from "./providers/available-tools.js";
 import {
   BackgroundShellService,
@@ -44,7 +50,7 @@ function terminalSupportedByEnv(
 export const codingToolsPlugin: Plugin = {
   name: "coding-tools",
   description:
-    "Native coding tools: FILE read/write/edit/grep/glob/ls, SHELL commands/history/background sessions, WORKTREE enter/exit. Absolute workspace paths unless an operation defaults to session cwd; private/system paths are blocked.",
+    "Native coding tools: FILE read/write/edit/grep/glob/ls, SHELL commands/history/background sessions, WEB_FETCH/WEB_SEARCH public-web research, WORKTREE enter/exit. Absolute workspace paths unless an operation defaults to session cwd; private/system paths and private-network web targets are blocked.",
   services: [
     BackgroundShellService,
     FileStateService,
@@ -53,7 +59,13 @@ export const codingToolsPlugin: Plugin = {
     RipgrepService,
   ],
   providers: [availableToolsProvider],
-  actions: [fileAction, shellAction, worktreeAction],
+  actions: [
+    fileAction,
+    shellAction,
+    worktreeAction,
+    webFetchAction,
+    webSearchAction,
+  ],
   async dispose(runtime) {
     await runtime
       .getService<BackgroundShellService>(BackgroundShellService.serviceType)
