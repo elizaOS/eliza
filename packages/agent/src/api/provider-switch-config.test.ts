@@ -267,6 +267,8 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
   const CEREBRAS_ENV = [
     "CEREBRAS_API_KEY",
     "CEREBRAS_MODEL",
+    "CEREBRAS_SMALL_MODEL",
+    "CEREBRAS_LARGE_MODEL",
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
     "OPENAI_SMALL_MODEL",
@@ -295,6 +297,8 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     // Without a valid Cerebras model the OpenAI plugin would fall back to
     // gpt-5* ids that 404 on api.cerebras.ai — this is the load-bearing default.
     expect(vars?.CEREBRAS_MODEL).toBe("gemma-4-31b");
+    expect(vars?.CEREBRAS_SMALL_MODEL).toBe("gemma-4-31b");
+    expect(vars?.CEREBRAS_LARGE_MODEL).toBe("gemma-4-31b");
     // Setting any OPENAI_* var here would knock the plugin out of Cerebras
     // mode (isCerebrasMode requires no OPENAI_API_KEY / OPENAI_BASE_URL).
     expect(vars?.OPENAI_API_KEY).toBeUndefined();
@@ -309,18 +313,34 @@ describe("applyFirstRunConnectionConfig (Cerebras local provider)", () => {
     expect(config.serviceRouting?.llmText?.transport).toBe("direct");
   });
 
-  it("clears the persisted Cerebras key on a full reset", () => {
+  it("clears persisted Cerebras credentials and all model tiers on a full reset", () => {
     process.env.CEREBRAS_API_KEY = "csk-stale";
+    process.env.CEREBRAS_MODEL = "legacy-stale";
+    process.env.CEREBRAS_SMALL_MODEL = "small-stale";
+    process.env.CEREBRAS_LARGE_MODEL = "large-stale";
     const config: Partial<ElizaConfig> = {
-      env: { vars: { CEREBRAS_API_KEY: "csk-stale" } },
+      env: {
+        vars: {
+          CEREBRAS_API_KEY: "csk-stale",
+          CEREBRAS_MODEL: "legacy-stale",
+          CEREBRAS_SMALL_MODEL: "small-stale",
+          CEREBRAS_LARGE_MODEL: "large-stale",
+        },
+      },
     } as Partial<ElizaConfig>;
 
     clearPersistedFirstRunConfig(config);
 
     expect(process.env.CEREBRAS_API_KEY).toBeUndefined();
+    expect(process.env.CEREBRAS_MODEL).toBeUndefined();
+    expect(process.env.CEREBRAS_SMALL_MODEL).toBeUndefined();
+    expect(process.env.CEREBRAS_LARGE_MODEL).toBeUndefined();
     const vars = (config.env as { vars?: Record<string, string> } | undefined)
       ?.vars;
     expect(vars?.CEREBRAS_API_KEY).toBeUndefined();
+    expect(vars?.CEREBRAS_MODEL).toBeUndefined();
+    expect(vars?.CEREBRAS_SMALL_MODEL).toBeUndefined();
+    expect(vars?.CEREBRAS_LARGE_MODEL).toBeUndefined();
   });
 });
 

@@ -415,7 +415,13 @@ function applyLocalProviderCapabilities(
  */
 const PROVIDER_DEFAULT_MODELS: Record<
   string,
-  { smallKey: string; smallVal: string; largeKey: string; largeVal: string }
+  {
+    smallKey: string;
+    smallVal: string;
+    largeKey: string;
+    largeVal: string;
+    cleanupKeys?: readonly string[];
+  }
 > = {
   anthropic: {
     smallKey: "ANTHROPIC_SMALL_MODEL",
@@ -441,15 +447,15 @@ const PROVIDER_DEFAULT_MODELS: Record<
     largeKey: "GROQ_LARGE_MODEL",
     largeVal: "openai/gpt-oss-120b",
   },
-  // Cerebras runs through the OpenAI plugin's Cerebras mode, which reads a
-  // single `CEREBRAS_MODEL` knob for every model role. Both default text tiers
-  // intentionally collapse to Gemma, so one default value covers small, large,
-  // mega, and planner while still letting an explicit CEREBRAS_MODEL win.
+  // Cerebras supports independent tiers while retaining CEREBRAS_MODEL as a
+  // compatibility fallback. Tracking all three keys here ensures first-run
+  // reset/provider switching cannot leave authoritative stale tier overrides.
   cerebras: {
-    smallKey: "CEREBRAS_MODEL",
+    smallKey: "CEREBRAS_SMALL_MODEL",
     smallVal: DEFAULT_CEREBRAS_TEXT_MODEL,
-    largeKey: "CEREBRAS_MODEL",
+    largeKey: "CEREBRAS_LARGE_MODEL",
     largeVal: DEFAULT_CEREBRAS_TEXT_MODEL,
+    cleanupKeys: ["CEREBRAS_MODEL"],
   },
   nearai: {
     smallKey: "NEARAI_SMALL_MODEL",
@@ -523,6 +529,9 @@ function applyDefaultModelNames(
   }
   if (!process.env[defaults.largeKey]) {
     setEnvValue(config, defaults.largeKey, defaults.largeVal);
+  }
+  if (provider === "cerebras" && !process.env.CEREBRAS_MODEL) {
+    setEnvValue(config, "CEREBRAS_MODEL", defaults.smallVal);
   }
 }
 
@@ -753,8 +762,14 @@ export function clearPersistedFirstRunConfig(config: MutableElizaConfig): void {
   // that applyDefaultModelNames stamps (ANTHROPIC_LARGE_MODEL, OPENAI_SMALL_MODEL,
   // CEREBRAS_MODEL, …); otherwise a stale model id from a prior provider survives
   // into the next fresh first-run.
-  for (const { smallKey, largeKey } of Object.values(PROVIDER_DEFAULT_MODELS)) {
-    for (const envKey of new Set([smallKey, largeKey])) {
+  for (const { smallKey, largeKey, cleanupKeys } of Object.values(
+    PROVIDER_DEFAULT_MODELS,
+  )) {
+    for (const envKey of new Set([
+      smallKey,
+      largeKey,
+      ...(cleanupKeys ?? []),
+    ])) {
       clearPersistedEnvValue(config, envKey);
       delete process.env[envKey];
     }
