@@ -62,6 +62,10 @@ export class ElizaSseBridgeError extends Error {
     message: string,
     readonly code: "upstream_error" | "no_body" | "protocol_error",
     readonly status?: number,
+    /** Canonical route error code, safe to forward to the voice client. */
+    readonly upstreamCode?: string,
+    /** Whether retrying the turn can succeed without user action. */
+    readonly retryable = true,
   ) {
     super(message);
     this.name = "ElizaSseBridgeError";
@@ -119,10 +123,15 @@ export async function streamElizaConversation(
   }
 
   if (!response.ok) {
+    const upstreamError = await readUpstreamError(response);
     throw new ElizaSseBridgeError(
-      `Eliza SSE upstream returned HTTP ${response.status}`,
+      upstreamError.message
+        ? `Eliza SSE upstream returned HTTP ${response.status}: ${upstreamError.message}`
+        : `Eliza SSE upstream returned HTTP ${response.status}`,
       "upstream_error",
       response.status,
+      upstreamError.code,
+      upstreamError.retryable,
     );
   }
   if (!response.body) {
@@ -204,6 +213,70 @@ function canonicalConversationStreamUrl(
   url.search = "";
   url.hash = "";
   return url.toString();
+}
+
+const MAX_UPSTREAM_ERROR_BYTES = 4096;
+const SAFE_UPSTREAM_CODE = /^[a-z0-9_]{1,64}$/;
+
+async function readUpstreamError(response: Response): Promise<{
+  code?: string;
+  message?: string;
+  retryable: boolean;
+}> {
+  const fallbackRetryable =
+    response.status === 408 || response.status === 429 || response.status >= 500;
+  if (!response.body) return { retryable: fallbackRetryable };
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let bytesRead = 0;
+  try {
+    while (bytesRead < MAX_UPSTREAM_ERROR_BYTES) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      const remaining = MAX_UPSTREAM_ERROR_BYTES - bytesRead;
+      const bytes = chunk.value.subarray(0, remaining);
+      bytesRead += bytes.byteLength;
+      text += decoder.decode(bytes, { stream: true });
+      if (chunk.value.byteLength > remaining) break;
+    }
+    text += decoder.decode();
+  } catch {
+    // error-policy:J3 untrusted upstream body: preserve the status-derived fallback.
+    return { retryable: fallbackRetryable };
+  } finally {
+    try {
+      await reader.cancel();
+    } catch (ignoredError) {
+      void ignoredError;
+      // error-policy:J6 best-effort response teardown must not mask the HTTP error.
+    }
+  }
+
+  try {
+    const parsed = JSON.parse(text) as {
+      code?: unknown;
+      error?: unknown;
+      message?: unknown;
+      retryable?: unknown;
+    };
+    const rawCode = typeof parsed.code === "string" ? parsed.code : "";
+    const rawMessage =
+      typeof parsed.error === "string"
+        ? parsed.error
+        : typeof parsed.message === "string"
+          ? parsed.message
+          : "";
+    return {
+      ...(SAFE_UPSTREAM_CODE.test(rawCode) ? { code: rawCode } : {}),
+      ...(rawMessage.trim() ? { message: rawMessage.trim().slice(0, 512) } : {}),
+      retryable: typeof parsed.retryable === "boolean" ? parsed.retryable : fallbackRetryable,
+    };
+  } catch {
+    // error-policy:J3 malformed/truncated upstream JSON: use status semantics.
+    return { retryable: fallbackRetryable };
+  }
 }
 
 function extractErrorMessage(payload: string): string {
