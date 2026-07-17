@@ -138,7 +138,7 @@ function SaveStatus({
           {restartCopy
             ? t("modelconfig.savedRestarted", { defaultValue: "Saved" })
             : t("modelconfig.savedNoRestart", {
-                defaultValue: "Saved — applies to the next coding task",
+                defaultValue: "Saved. Applies to the next coding task.",
               })}
         </span>
         {save.conflictKeys !== undefined && save.conflictKeys.length > 0 ? (
@@ -426,7 +426,7 @@ function CodingModelGroup({
           defaultValue: "Apply changes",
         })}
         description={t("modelconfig.codingSaveNote", {
-          defaultValue: "Applies to the next coding task — no restart.",
+          defaultValue: "Applies to the next coding task. No restart needed.",
         })}
         control={
           <span className="flex items-center gap-2">

@@ -51,16 +51,23 @@ function readSettingsPermissionRequest(payload: unknown): PermissionId | null {
 }
 
 /**
- * Loading placeholder for a lazily-loaded section body (#11351). Deliberately
- * minimal — a single muted, `aria-busy` line so the split is visually quiet and
- * never shifts the header while the chunk resolves.
+ * Loading placeholder for a lazily-loaded section body (#11351). The skeleton
+ * mirrors the title and settings-row rhythm while the accessible status names
+ * the section being loaded.
  */
-function SettingsSectionLoading() {
+function SettingsSectionLoading({ title }: { title: string }) {
   return (
     <div
       aria-busy="true"
-      className="flex min-h-[6rem] items-center text-sm text-muted"
-    />
+      aria-label={`Loading ${title}`}
+      className="min-h-24 space-y-3 py-1"
+      role="status"
+    >
+      <span className="sr-only">Loading {title}</span>
+      <div className="h-4 w-2/5 animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+      <div className="h-11 w-full animate-pulse rounded-sm bg-bg-muted motion-reduce:animate-none" />
+    </div>
   );
 }
 
@@ -103,8 +110,8 @@ function SettingsSectionContent({
         )}
       >
         {/* Section bodies are `React.lazy` (#11351); the boundary keeps the
-            split transparent with a minimal, unobtrusive loading state. */}
-        <Suspense fallback={<SettingsSectionLoading />}>
+            split stable with a section-shaped, accessible loading state. */}
+        <Suspense fallback={<SettingsSectionLoading title={title} />}>
           <Component />
         </Suspense>
       </ErrorBoundary>

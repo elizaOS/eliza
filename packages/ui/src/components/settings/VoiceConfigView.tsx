@@ -955,7 +955,8 @@ function AsrAdvancedSection({
       {currentAsrProvider === "local-inference" && localStatusBusy && (
         <p className="text-xs leading-5 text-warn">
           {t("voiceconfigview.AsrDownloading", {
-            defaultValue: "Downloading local model — using cloud until ready.",
+            defaultValue:
+              "Downloading the local model. Using cloud until it's ready.",
           })}
         </p>
       )}

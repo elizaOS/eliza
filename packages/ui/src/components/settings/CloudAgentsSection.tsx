@@ -563,7 +563,7 @@ export function CloudAgentsSection() {
             className="px-4 py-3 text-sm text-txt-muted"
             data-testid="cloud-agents-empty"
           >
-            No cloud agents yet — create your first one below.
+            No cloud agents yet. Create your first one below.
           </p>
         ) : (
           agents.map((agent) => {

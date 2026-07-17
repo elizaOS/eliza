@@ -53,7 +53,7 @@ function formatNative(wei?: string, symbol = "ETH"): string {
     if (val < 0.0001) return `<0.0001 ${symbol}`;
     return `${val.toFixed(4)} ${symbol}`;
   } catch {
-    return `— ${symbol}`;
+    return `Unavailable ${symbol}`;
   }
 }
 
@@ -105,8 +105,8 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
         fetch(`${base}/balances`).then((r) =>
           r.ok ? r.json() : Promise.reject(r.statusText),
         ),
-        // error-policy:J4 steward status is an optional panel section — the
-        // addresses result (allSettled) drives the primary error rendering.
+        // error-policy:J4 steward status is an optional panel section. The
+        // required address and balance results drive primary error rendering.
         fetch(`${base}/steward-status`)
           // error-policy:J4 steward status is an optional wallet sub-panel; a
           // failed/absent status degrades to null (the "no steward" render). The
@@ -117,6 +117,18 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
       ]);
 
       if (!mountedRef.current) return;
+
+      if (addrRes.status === "rejected" || balRes.status === "rejected") {
+        const reason = addrRes.reason ?? balRes.reason;
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : t("cloud.elizaWallet.loadFailed", {
+                defaultValue: "Couldn't load wallet details",
+              }),
+        );
+        return;
+      }
 
       setData({
         addresses: addrRes.status === "fulfilled" ? addrRes.value : null,
@@ -158,19 +170,32 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
   }
 
   if (error) {
+    const errorTitle = t("cloud.elizaWallet.loadFailed", {
+      defaultValue: "Couldn't load wallet details",
+    });
     return (
-      <div className="flex items-start gap-3 p-4 bg-destructive-subtle border border-destructive/20">
-        <span className="w-2 h-2 rounded-full bg-destructive shrink-0 mt-1" />
-        <div>
-          <p className="font-mono text-xs text-destructive">
-            {t("cloud.elizaWallet.loadFailed", {
-              defaultValue: "Failed to load wallet data",
-            })}
-          </p>
-          <p className="font-mono text-xs-tight text-destructive/60 mt-0.5">
-            {error}
-          </p>
+      <div
+        className="flex items-start justify-between gap-4 border border-destructive/20 bg-destructive-subtle p-4"
+        role="alert"
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-destructive">{errorTitle}</p>
+          {error !== errorTitle ? (
+            <p className="mt-1 break-words text-xs text-destructive/70">
+              {error}
+            </p>
+          ) : null}
         </div>
+        <button
+          type="button"
+          className="min-h-touch shrink-0 px-3 text-xs font-medium text-destructive underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={() => {
+            setLoading(true);
+            void fetchData();
+          }}
+        >
+          {t("cloud.elizaWallet.retry", { defaultValue: "Try again" })}
+        </button>
       </div>
     );
   }
@@ -180,10 +205,16 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
 
   if (!hasEvm && !hasSolana) {
     return (
-      <div className="p-8 text-center border border-border bg-card">
-        <p className="font-mono text-sm text-muted">
+      <div className="border border-border bg-card px-6 py-8 text-center">
+        <p className="text-sm font-medium text-txt-strong">
           {t("cloud.elizaWallet.noWallets", {
-            defaultValue: "No wallets configured for this agent",
+            defaultValue: "No wallet addresses yet",
+          })}
+        </p>
+        <p className="mx-auto mt-1 max-w-sm text-xs leading-relaxed text-muted">
+          {t("cloud.elizaWallet.noWalletsHint", {
+            defaultValue:
+              "Wallet addresses appear here after this agent finishes setting up.",
           })}
         </p>
       </div>
@@ -351,10 +382,15 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
       )}
 
       {/* Live indicator */}
-      <div className="flex items-center gap-2 pt-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-status-success animate-pulse motion-reduce:animate-none" />
-        <span className="font-mono text-2xs text-muted tracking-wide">
-          {t("cloud.elizaWallet.liveIndicator", { defaultValue: "LIVE · 30S" })}
+      <div className="flex items-center gap-2 pt-1" role="status">
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 animate-pulse rounded-full bg-status-success motion-reduce:animate-none"
+        />
+        <span className="text-xs text-muted">
+          {t("cloud.elizaWallet.liveIndicator", {
+            defaultValue: "Live balances, refreshed every 30 seconds",
+          })}
         </span>
       </div>
     </div>
