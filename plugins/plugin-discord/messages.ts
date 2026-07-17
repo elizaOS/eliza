@@ -834,14 +834,25 @@ export class MessageManager {
 			!!message.mentions.repliedUser?.id &&
 			message.mentions.repliedUser.id !== clientUser?.id &&
 			message.mentions.repliedUser.id !== message.author.id;
+		// `isBotAddressed` marks the PRIMARY addressee (first mention / reply-to)
+		// so the bot does not butt into a message aimed at someone else. But an
+		// explicit @mention of the bot — even alongside or after other mentions
+		// (`@ruby @osiris @remilio`) — is a deliberate call to THIS bot and must
+		// get a response. Treat any explicit platform mention as directly
+		// addressed for the respond/ignore decision, while leaving
+		// `isDiscordUserAddressed`'s first-mention semantics (and its tests)
+		// untouched.
+		const isBotDirectlyAddressed = isBotAddressed || isBotPlatformMentioned;
 		const isInThread = message.channel.isThread();
 		const isDM = message.channel.type === DiscordChannelType.DM;
 		const strictModeEnabled =
 			this.discordSettings.shouldRespondOnlyToMentions === true;
 		const replyToMode = normalizeReplyToMode(this.discordSettings.replyToMode);
 		const outboundReplyToMessageId =
-			!isDM && replyToMode !== "off" && isBotAddressed ? message.id : undefined;
-		const strictModeShouldProcess = isDM || isBotAddressed;
+			!isDM && replyToMode !== "off" && isBotDirectlyAddressed
+				? message.id
+				: undefined;
+		const strictModeShouldProcess = isDM || isBotDirectlyAddressed;
 
 		const userName = message.author.bot
 			? `${message.author.username}#${message.author.discriminator}`
@@ -920,7 +931,9 @@ export class MessageManager {
 			// same message. Only short-circuit these messages when the bot is not
 			// also clearly addressed.
 			const ignoresOtherTarget =
-				!isDM && !isBotAddressed && (mentionedOtherUsers || isReplyToOtherUser);
+				!isDM &&
+				!isBotDirectlyAddressed &&
+				(mentionedOtherUsers || isReplyToOtherUser);
 
 			// Use the service's buildMemoryFromMessage method with pre-processed content
 			const newMessage = await this.discordService.buildMemoryFromMessage(
@@ -931,17 +944,16 @@ export class MessageManager {
 					extraContent: {
 						currentMessageText,
 						mentionContext: {
-							isMention: isBotPlatformMentioned && isBotAddressed,
+							isMention: isBotPlatformMentioned,
 							isReply: isReplyToBot,
 							isThread: isInThread,
-							mentionType:
-								isBotPlatformMentioned && isBotAddressed
-									? "platform_mention"
-									: isReplyToBot
-										? "reply"
-										: isInThread
-											? "thread"
-											: "none",
+							mentionType: isBotPlatformMentioned
+								? "platform_mention"
+								: isReplyToBot
+									? "reply"
+									: isInThread
+										? "thread"
+										: "none",
 						},
 					},
 					extraMetadata: compactJsonObject(

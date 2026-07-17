@@ -351,35 +351,30 @@ describe("adoptRotatedCodexTokens (CLI self-refresh sync-back)", () => {
   it.each([
     [401, "needs-reauth"],
     [429, "rate-limited"],
-  ] as const)(
-    "classifies an HTTP %i usage rejection as %s",
-    async (status, expectedHealth) => {
-      vi.stubGlobal(
-        "fetch",
-        vi.fn(async () => new Response("rejected", { status })),
-      );
-      writeAccount(
-        "openai-codex",
-        "codex-work",
-        {
-          access: fakeJwt(Date.now() + HOUR_MS),
-          refresh: "rt-valid",
-          expires: Date.now() + HOUR_MS,
-        },
-        { organizationId: "org-work" },
-      );
+  ] as const)("classifies an HTTP %i usage rejection as %s", async (status, expectedHealth) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("rejected", { status })),
+    );
+    writeAccount(
+      "openai-codex",
+      "codex-work",
+      {
+        access: fakeJwt(Date.now() + HOUR_MS),
+        refresh: "rt-valid",
+        expires: Date.now() + HOUR_MS,
+      },
+      { organizationId: "org-work" },
+    );
 
-      const pool = getDefaultAccountPool();
-      await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
-        checked: 1,
-        refreshed: 0,
-        failed: 1,
-      });
-      expect(pool.get("codex-work", "openai-codex")?.health).toBe(
-        expectedHealth,
-      );
-    },
-  );
+    const pool = getDefaultAccountPool();
+    await expect(sweepAccountPoolKeepAlive()).resolves.toEqual({
+      checked: 1,
+      refreshed: 0,
+      failed: 1,
+    });
+    expect(pool.get("codex-work", "openai-codex")?.health).toBe(expectedHealth);
+  });
 
   it("heals a flagged direct-API account after its stored credential resolves", async () => {
     writeAccount("anthropic-api", "direct-work", {
@@ -856,8 +851,8 @@ describe("Anthropic subscription usage priming", () => {
   });
 });
 
-describe("markRateLimited honors the provider's usage-window reset", () => {
-  it("uses usage.resetsAt (future) over the caller's heuristic cool-off", async () => {
+describe("markRateLimited keeps session cooldown separate from weekly resets", () => {
+  it("uses the caller's session cool-off instead of the weekly usage reset", async () => {
     writeAccount("anthropic-subscription", "claude-work", {
       access: "a",
       refresh: "r",
@@ -872,13 +867,14 @@ describe("markRateLimited honors the provider's usage-window reset", () => {
       usage: { refreshedAt: Date.now(), sessionPct: 100, resetsAt },
     });
 
-    await pool.markRateLimited("claude-work", Date.now() + 60_000, "429", {
+    const heuristic = Date.now() + 60_000;
+    await pool.markRateLimited("claude-work", heuristic, "429", {
       providerId: "anthropic-subscription",
     });
 
     const marked = pool.get("claude-work", "anthropic-subscription");
     expect(marked?.health).toBe("rate-limited");
-    expect(marked?.healthDetail?.until).toBe(resetsAt);
+    expect(marked?.healthDetail?.until).toBe(heuristic);
   });
 
   it("falls back to the caller's cool-off when resetsAt is missing or already past", async () => {
