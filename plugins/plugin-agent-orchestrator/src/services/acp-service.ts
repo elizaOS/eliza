@@ -4680,11 +4680,15 @@ export function shouldForwardEnv(
     [
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
+      "ANTHROPIC_BASE_URL",
       "CEREBRAS_API_KEY",
       "CEREBRAS_BASE_URL",
       "CEREBRAS_MODEL",
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
+      "ANTHROPIC_SMALL_MODEL",
+      "ANTHROPIC_MEDIUM_MODEL",
+      "ANTHROPIC_LARGE_MODEL",
       "OPENCODE_MODEL",
       // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
       // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.

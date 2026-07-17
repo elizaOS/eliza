@@ -27,6 +27,10 @@ describe("shouldForwardEnv", () => {
 
   it("forwards the model/auth vars the backends need", () => {
     expect(shouldForwardEnv("ANTHROPIC_API_KEY")).toBe(true);
+    expect(shouldForwardEnv("ANTHROPIC_BASE_URL")).toBe(true);
+    expect(shouldForwardEnv("ANTHROPIC_SMALL_MODEL")).toBe(true);
+    expect(shouldForwardEnv("ANTHROPIC_MEDIUM_MODEL")).toBe(true);
+    expect(shouldForwardEnv("ANTHROPIC_LARGE_MODEL")).toBe(true);
     expect(shouldForwardEnv("OPENAI_API_KEY")).toBe(true);
     expect(shouldForwardEnv("CEREBRAS_BASE_URL")).toBe(true);
     expect(shouldForwardEnv("CLAUDE_CODE_EFFORT_LEVEL")).toBe(true);
@@ -136,6 +140,10 @@ describe("isEnvForwardableToSubAgent (deny-then-allow)", () => {
     expect(isEnvForwardableToSubAgent("PARALLAX_SESSION_ID")).toBe(true);
     expect(isEnvForwardableToSubAgent("ELIZA_HOOK_PORT")).toBe(true);
     expect(isEnvForwardableToSubAgent("ANTHROPIC_API_KEY")).toBe(true);
+    expect(isEnvForwardableToSubAgent("ANTHROPIC_BASE_URL")).toBe(true);
+    expect(isEnvForwardableToSubAgent("ANTHROPIC_SMALL_MODEL")).toBe(true);
+    expect(isEnvForwardableToSubAgent("ANTHROPIC_MEDIUM_MODEL")).toBe(true);
+    expect(isEnvForwardableToSubAgent("ANTHROPIC_LARGE_MODEL")).toBe(true);
     expect(isEnvForwardableToSubAgent("PATH")).toBe(true);
   });
 });
@@ -194,13 +202,23 @@ describe("forwardableSubAgentEnv", () => {
     const out = forwardableSubAgentEnv({
       ELIZA_HOOK_PORT: "2138",
       ANTHROPIC_API_KEY: "sk-x",
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:8787/v1",
+      ANTHROPIC_SMALL_MODEL: "proxy-small",
+      ANTHROPIC_MEDIUM_MODEL: "proxy-medium",
+      ANTHROPIC_LARGE_MODEL: "proxy-large",
       ELIZA_VAULT_PASSPHRASE: "secret", // allowlisted by ELIZA_ but deny-listed
+      ELIZA_TERMINAL_RUN_TOKEN: "host-shell-token", // allowlisted by ELIZA_ but deny-listed
       DISCORD_BOT_TOKEN: "nope", // not allowlisted
       MISSING: undefined, // non-string skipped
     });
     expect(out.ELIZA_HOOK_PORT).toBe("2138");
     expect(out.ANTHROPIC_API_KEY).toBe("sk-x");
+    expect(out.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:8787/v1");
+    expect(out.ANTHROPIC_SMALL_MODEL).toBe("proxy-small");
+    expect(out.ANTHROPIC_MEDIUM_MODEL).toBe("proxy-medium");
+    expect(out.ANTHROPIC_LARGE_MODEL).toBe("proxy-large");
     expect(out.ELIZA_VAULT_PASSPHRASE).toBeUndefined();
+    expect(out.ELIZA_TERMINAL_RUN_TOKEN).toBeUndefined();
     expect(out.DISCORD_BOT_TOKEN).toBeUndefined();
     expect("MISSING" in out).toBe(false);
   });
