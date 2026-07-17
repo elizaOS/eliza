@@ -261,6 +261,38 @@ if (exposure.exposureLevel === "none") {
   );
 }
 
+if (exposure.exposureLevel === "low") {
+  investorInsights.neutral.push(
+    createInvestorInsight({
+      id: "limited-exposure-indicators",
+
+      title: "Limited Exposure Indicators",
+
+      finding:
+        "Low-level exposure indicators were identified in the currently connected intelligence sources.",
+
+      whyItMatters:
+        "Limited exposure may provide useful context, but its significance depends on the nature, direction, frequency, and timing of the identified interactions.",
+
+      impact: "neutral",
+
+      confidence:
+        exposure.evidenceConfidence,
+
+      severity: "medium",
+
+      evidenceRecordIds: [
+        "exposure-summary",
+      ],
+
+      limitations: [
+        "A low-level exposure indicator does not by itself establish ownership, intent, wrongdoing, or meaningful participation.",
+        "The result is limited to the intelligence sources currently connected to SkunkScanAI.",
+      ],
+    }),
+  );
+}
+  
 if (
   exposure.exposureLevel === "medium" ||
   exposure.exposureLevel === "high"
