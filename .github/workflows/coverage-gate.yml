@@ -7,9 +7,12 @@ name: coverage-gate
 # classifier strips TypeScript-only syntax before excluding modules with no
 # runtime code; declarations and deleted files are not targets. LCOV LF:0 never
 # proves type-only status. Source covered only by e2e/live lanes still needs a
-# focused unit test in this gate. Docs-only PRs run only the dependency-free
-# classifier so this required context always reaches a terminal success without
-# spending workspace-install or test time.
+# focused unit test in this gate. For surgical edits to existing legacy files
+# over 1,000 lines that touch under 5% of lines, only instrumentable changed
+# lines are measured. New files, broad edits, and non-instrumentable changes keep
+# whole-file enforcement. Docs-only PRs run only the dependency-free classifier
+# so this required context always reaches a terminal success without spending
+# workspace-install or test time.
 # Standalone Node self-tests are excluded only when listed in the manifest that
 # the Develop PR Test Integrity job executes on every PR.
 # Exact process entrypoints may be listed in the subprocess manifest when their
@@ -198,9 +201,18 @@ jobs:
           # Files coverage collection cannot instrument (#16409): their LCOV
           # absence is expected — the gate prints EXCLUDED instead of MISSING.
           LCOV_EXCLUDED_FILES=$(grep -vE '^#|^$' scripts/security/coverage-lcov-excluded.txt || true)
+          DELTA_SPEC=$(node scripts/security/coverage-delta-spec.self-test.mjs \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}" <<'EOF'
+          ${{ steps.changed.outputs.files }}
+          EOF
+          )
           awk \
             -v changed="${{ steps.changed.outputs.files }}" \
+            -v delta="$DELTA_SPEC" \
             -v threshold=50 \
+            -v delta_min_lines="${{ vars.COVERAGE_DELTA_MIN_FILE_LINES || '1000' }}" \
+            -v delta_max_percent="${{ vars.COVERAGE_DELTA_MAX_PERCENT || '5' }}" \
             -v excluded="$LCOV_EXCLUDED_FILES" \
             -f scripts/security/coverage-gate.awk \
             "${lcov_files[@]}"

@@ -9,13 +9,18 @@ import { join } from "node:path";
 const root = new URL("../..", import.meta.url).pathname;
 const awkScript = join(root, "scripts/security/coverage-gate.awk");
 
-function writeLcov(dir, sourcePath, found = 2, hit = 2) {
+function writeLcov(dir, sourcePath, found = 2, hit = 2, lineHits = []) {
   const file = join(dir, "lcov.info");
   writeFileSync(
     file,
-    [`SF:${sourcePath}`, `LF:${found}`, `LH:${hit}`, "end_of_record", ""].join(
-      "\n",
-    ),
+    [
+      `SF:${sourcePath}`,
+      ...lineHits.map(([line, hits]) => `DA:${line},${hits}`),
+      `LF:${found}`,
+      `LH:${hit}`,
+      "end_of_record",
+      "",
+    ].join("\n"),
   );
   return file;
 }
@@ -51,7 +56,16 @@ function writeLcovAs(dir, name, sourcePath, found, hit) {
   return file;
 }
 
-function runGate({ changed, lcov, enforce = true, threshold = 50, excluded = "" }) {
+function runGate({
+  changed,
+  lcov,
+  enforce = true,
+  threshold = 50,
+  excluded = "",
+  delta = "",
+  deltaMinLines = 1000,
+  deltaMaxPercent = 5,
+}) {
   const changedArgument = changed
     .replaceAll("\\", "\\\\")
     .replaceAll("\n", "\\n");
@@ -68,6 +82,12 @@ function runGate({ changed, lcov, enforce = true, threshold = 50, excluded = "" 
       `threshold=${threshold}`,
       "-v",
       `excluded=${excludedArgument}`,
+      "-v",
+      `delta=${delta.replaceAll("\\", "\\\\").replaceAll("\n", "\\n")}`,
+      "-v",
+      `delta_min_lines=${deltaMinLines}`,
+      "-v",
+      `delta_max_percent=${deltaMaxPercent}`,
       "-f",
       awkScript,
       ...lcovArgs,
@@ -192,6 +212,58 @@ try {
       );
     },
   );
+  assertGate("uses changed-line coverage for a surgical legacy-file edit", () => {
+    const source = "packages/demo/src/legacy.ts";
+    // Whole-file coverage is 4%, but both changed instrumentable lines are hit.
+    const lcov = writeLcov(dir, source, 100, 4, [[200, 1], [201, 1]]);
+    const result = runGate({
+      changed: source,
+      lcov,
+      delta: `${source}\t5103\t0\t200,201`,
+    });
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /100\.00% .*changed-line mode/);
+  });
+
+  assertGate("new files retain whole-file enforcement", () => {
+    const source = "packages/demo/src/new-large.ts";
+    const lcov = writeLcov(dir, source, 100, 4, [[200, 1]]);
+    const result = runGate({
+      changed: source,
+      lcov,
+      delta: `${source}\t5103\t1\t200`,
+    });
+    assert.equal(result.status, 1, result.stdout);
+    assert.match(result.stdout, /new file/);
+    assert.match(result.stdout, /BELOW:/);
+  });
+
+  assertGate("non-instrumentable changed lines fall back to whole-file coverage", () => {
+    const source = "packages/demo/src/legacy-types.ts";
+    const lcov = writeLcov(dir, source, 100, 80, [[999, 1]]);
+    const result = runGate({
+      changed: source,
+      lcov,
+      delta: `${source}\t5103\t0\t200`,
+    });
+    assert.equal(result.status, 0, result.stdout);
+    assert.match(result.stdout, /non-instrumentable; whole-file fallback/);
+    assert.doesNotMatch(result.stdout, /changed-line mode/);
+  });
+
+  assertGate("broad edits retain whole-file enforcement", () => {
+    const source = "packages/demo/src/legacy-refactor.ts";
+    const changedLines = Array.from({ length: 60 }, (_, index) => index + 1).join(",");
+    const lcov = writeLcov(dir, source, 100, 20, [[1, 1]]);
+    const result = runGate({
+      changed: source,
+      lcov,
+      delta: `${source}\t1001\t0\t${changedLines}`,
+    });
+    assert.equal(result.status, 1, result.stdout);
+    assert.doesNotMatch(result.stdout, /changed-line mode/);
+  });
+
   assertGate(
     "excluded changed file absent from LCOV passes with a visible EXCLUDED line (#16409)",
     () => {

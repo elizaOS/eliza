@@ -3,4 +3,5 @@ packages/scripts/develop-pr-aggregate.self-test.mjs
 packages/scripts/test-cloud-run-flush.self-test.mjs
 packages/scripts/test-cloud-run-preflight.self-test.mjs
 scripts/security/coverage-changed-files.self-test.mjs
+scripts/security/coverage-delta-spec.self-test.mjs
 scripts/security/coverage-gate.self-test.mjs
