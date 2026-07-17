@@ -336,6 +336,45 @@ if (risk.level === "low") {
   );
 }
 
+  if (
+  risk.level === "medium" ||
+  risk.level === "high"
+) {
+  investorInsights.negative.push(
+    createInvestorInsight({
+      id: "elevated-risk-indicators",
+
+      title: "Elevated Risk Indicators",
+
+      finding:
+        risk.level === "high"
+          ? `The wallet currently has a high calculated risk level with a score of ${risk.score} out of 100.`
+          : `The wallet currently has a medium calculated risk level with a score of ${risk.score} out of 100.`,
+
+      whyItMatters:
+        "Higher risk levels indicate that the available blockchain evidence contains factors requiring additional caution during evaluation.",
+
+      impact: "negative",
+
+      confidence:
+        evidenceConfidence,
+
+      severity:
+        risk.level === "high"
+          ? "critical"
+          : "high",
+
+      evidenceRecordIds: [
+        "risk-assessment",
+      ],
+
+      limitations: [
+        "The calculated risk score reflects the analytical rules and blockchain evidence available at the time of investigation.",
+      ],
+    }),
+  );
+}
+  
   if (funding.fundingSourceType === "unknown") {
   investorInsights.neutral.push(
     createInvestorInsight({
