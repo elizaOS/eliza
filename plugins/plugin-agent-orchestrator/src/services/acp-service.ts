@@ -1669,6 +1669,7 @@ export class AcpService extends Service {
       const resolvedAccount = await selectCodingAccount(agentType, {
         sessionKey: id,
         ...(accountStrategy ? { strategy: accountStrategy } : {}),
+        ...(opts.model ? { model: opts.model } : {}),
       });
       const customCredentials = resolvedAccount
         ? {
