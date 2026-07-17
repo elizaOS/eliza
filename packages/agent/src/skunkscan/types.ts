@@ -605,8 +605,25 @@ export type WalletFundingSummary = {
 
 export type WalletRiskSummary = {
   score: number;
-  level: "low" | "medium" | "high";
+
+  level:
+    | "low"
+    | "medium"
+    | "high";
+
+  evidenceConfidence?: "low" | "medium" | "high";
+
+  confidenceAnalysis?: WalletConfidenceAnalysis;
+
+  confidence?: "low" | "medium" | "high";
+
   reasons: string[];
+
+  limitations?: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
 };
 
 export type WalletTransactionRiskSummary = {
