@@ -816,6 +816,9 @@ export async function recordAccountPoolConsumerUsage(
       }
       const file = usageLogPath(record.ts);
       const dir = path.dirname(file);
+      // These synchronous writes are intentionally bounded to one compact JSONL
+      // record plus small aggregate files. The async queue and cross-process lock
+      // serialize this low-volume local broker path and prevent ledger races.
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
       appendFileSync(file, `${JSON.stringify(record)}\n`, {
         flag: "a",
