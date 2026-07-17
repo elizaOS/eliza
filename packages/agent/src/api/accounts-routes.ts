@@ -103,10 +103,13 @@ const subscriptionCliInstallFailures = new Map<
   string,
   { error: ElizaError; retryAt: number }
 >();
+/** Coalesce simultaneous OAuth starts so only one npm process runs per CLI. */
+const subscriptionCliInstallsInFlight = new Map<string, Promise<void>>();
 
-/** Test hook: forget cached install failures between tests. */
+/** Test hook: forget cached install state between tests. */
 export function __clearSubscriptionCliInstallFailures(): void {
   subscriptionCliInstallFailures.clear();
+  subscriptionCliInstallsInFlight.clear();
 }
 
 /**
@@ -153,6 +156,19 @@ export async function ensureSubscriptionCli(
     throw cached.error;
   }
 
+  const inFlight = subscriptionCliInstallsInFlight.get(command);
+  if (inFlight) return inFlight;
+  let resolveInstall!: () => void;
+  let rejectInstall!: (error: unknown) => void;
+  const install = new Promise<void>((resolve, reject) => {
+    resolveInstall = resolve;
+    rejectInstall = reject;
+  });
+  // error-policy:J5 -- the leader throws this error directly and concurrent
+  // followers observe it through `install`; suppress only an unobserved copy.
+  void install.catch(() => undefined);
+  subscriptionCliInstallsInFlight.set(command, install);
+
   const packageName =
     providerId === "openai-codex"
       ? "@openai/codex"
@@ -196,6 +212,8 @@ export async function ensureSubscriptionCli(
       error,
       retryAt: now() + SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS,
     });
+    subscriptionCliInstallsInFlight.delete(command);
+    rejectInstall(error);
     throw error;
   }
   if (!(await isAvailable(command))) {
@@ -210,9 +228,13 @@ export async function ensureSubscriptionCli(
       error,
       retryAt: now() + SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS,
     });
+    subscriptionCliInstallsInFlight.delete(command);
+    rejectInstall(error);
     throw error;
   }
   subscriptionCliInstallFailures.delete(command);
+  subscriptionCliInstallsInFlight.delete(command);
+  resolveInstall();
 }
 
 function requestUsesLocalRoot(req: RouteRequestContext["req"]): boolean {

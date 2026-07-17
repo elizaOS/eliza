@@ -534,6 +534,9 @@ describe("accounts routes", () => {
       expect(started.errorCalls[0]?.message).toContain(
         "(SUBSCRIPTION_CLI_INSTALL_FAILED)",
       );
+      expect(started.errorCalls[0]?.message).not.toContain(
+        "/usr/lib/node_modules",
+      );
       expect(fakes.startFlow).not.toHaveBeenCalled();
     } finally {
       process.env.PATH = prevPath;
