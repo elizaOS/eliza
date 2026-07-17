@@ -38,6 +38,38 @@ export class EmbeddingGenerationService extends Service {
 
 	private static readonly EMBEDDING_DRAIN_TASK = "EMBEDDING_DRAIN";
 
+	private static async removeStaleDrainTasks(
+		runtime: IAgentRuntime,
+	): Promise<void> {
+		const tasks = await runtime.getTasksByName(
+			EmbeddingGenerationService.EMBEDDING_DRAIN_TASK,
+		);
+		const staleTasks = tasks.filter(
+			(task) =>
+				Boolean(task.id) &&
+				String(task.agentId) === String(runtime.agentId) &&
+				task.tags?.includes("queue") === true &&
+				task.tags.includes("repeat"),
+		);
+
+		for (const task of staleTasks) {
+			if (task.id) {
+				await runtime.deleteTask(task.id);
+			}
+		}
+
+		if (staleTasks.length > 0) {
+			runtime.logger.info(
+				{
+					src: "plugin:basic-capabilities:service:embedding",
+					agentId: runtime.agentId,
+					removedTaskCount: staleTasks.length,
+				},
+				"Removed disabled embedding drain tasks",
+			);
+		}
+	}
+
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		runtime.logger.info(
 			{
@@ -56,6 +88,10 @@ export class EmbeddingGenerationService extends Service {
 				},
 				"No TEXT_EMBEDDING model registered - service will not be initialized",
 			);
+			// A prior runtime may have persisted this service's repeat row while an
+			// embedding provider was available. With no worker in this runtime, that
+			// row is invalid and would otherwise fail every scheduler validation tick.
+			await EmbeddingGenerationService.removeStaleDrainTasks(runtime);
 			const noOpService = new EmbeddingGenerationService(runtime);
 			noOpService.isDisabled = true;
 			return noOpService;

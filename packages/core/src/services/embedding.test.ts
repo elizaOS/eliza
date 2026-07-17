@@ -2,11 +2,16 @@
  * Exercises `EmbeddingGenerationService`: drain configuration (batch vs per-item,
  * fast-shutdown) and the `processBatch` path — one batch call with per-id
  * write-back, empty-vector and count-mismatch failure handling, and isolated
- * per-item fallback. Runs against a mock runtime with stubbed embedding models.
+ * per-item fallback. Lifecycle cleanup runs against a real AgentRuntime and
+ * in-memory adapter; model execution uses focused stubs.
  */
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
+import { AgentRuntime } from "../runtime";
 import { ModelType } from "../types/model";
+import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
+import type { Task } from "../types/task";
 import { EmbeddingGenerationService } from "./embedding";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
@@ -122,6 +127,65 @@ describe("EmbeddingGenerationService drain config", () => {
 
 		expect(service.getQueueSize()).toBe(0);
 		expect(updateMemory).not.toHaveBeenCalled();
+	});
+});
+
+describe("EmbeddingGenerationService disabled lifecycle", () => {
+	test("removes only this agent's persisted repeat drain rows", async () => {
+		const otherAgentId = "00000000-0000-0000-0000-000000000002" as UUID;
+		const adapter = new InMemoryDatabaseAdapter();
+		await adapter.initialize();
+		const runtime = new AgentRuntime({
+			agentId: AGENT_ID as UUID,
+			adapter,
+			disableBasicCapabilities: true,
+			logLevel: "fatal",
+		});
+		const tasks: Task[] = [
+			{
+				id: "00000000-0000-0000-0000-000000000011" as UUID,
+				name: "EMBEDDING_DRAIN",
+				agentId: runtime.agentId,
+				tags: ["queue", "repeat"],
+				metadata: { updateInterval: 100 },
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000012" as UUID,
+				name: "EMBEDDING_DRAIN",
+				agentId: otherAgentId,
+				tags: ["queue", "repeat"],
+				metadata: { updateInterval: 100 },
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000013" as UUID,
+				name: "EMBEDDING_DRAIN",
+				agentId: runtime.agentId,
+				tags: ["queue"],
+			},
+			{
+				id: "00000000-0000-0000-0000-000000000014" as UUID,
+				name: "UNRELATED_DRAIN",
+				agentId: runtime.agentId,
+				tags: ["queue", "repeat"],
+				metadata: { updateInterval: 100 },
+			},
+		];
+		await adapter.createTasks(tasks);
+
+		const service = await EmbeddingGenerationService.start(runtime);
+		const remaining = await adapter.getTasks({
+			agentIds: [runtime.agentId, otherAgentId],
+		});
+
+		expect(remaining.map((task) => task.id).sort()).toEqual(
+			tasks
+				.slice(1)
+				.map((task) => task.id)
+				.sort(),
+		);
+
+		await service.stop();
+		await adapter.close();
 	});
 });
 
