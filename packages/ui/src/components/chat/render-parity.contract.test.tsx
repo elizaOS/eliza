@@ -7,8 +7,8 @@
 // (ChatTranscript → MessageContent). The PARSER layer is already deduped + pinned
 // (parser-parity.contract.test.ts, #9304) — both call the same `parseSegments`.
 // This contract guards the layer ABOVE the parser: that the two component trees
-// emit the SAME interactive-widget / code-block / reasoning / secret-request
-// STRUCTURE for a shared message corpus. If a future edit to either tree adds,
+// emit the SAME interactive-widget / code-block / secret-request STRUCTURE for
+// a shared message corpus. If a future edit to either tree adds,
 // drops, or diverges a structural affordance, this fails.
 //
 // It is structural, not pixel-level: the two surfaces legitimately differ in
@@ -209,24 +209,6 @@ const CORPUS: Array<{ name: string; message: ConversationMessage }> = [
     ),
   },
   {
-    name: "reasoning block (single text segment)",
-    message: assistant("You're free after 3pm.", {
-      reasoning: "I checked the calendar and the afternoon is open.",
-    }),
-  },
-  {
-    name: "reasoning block (multi-segment)",
-    message: assistant("The answer is:\n```txt\n42\n```", {
-      reasoning: "I considered several options and settled on 42.",
-    }),
-  },
-  {
-    name: "reasoning + code",
-    message: assistant("Use this:\n```py\nprint(42)\n```", {
-      reasoning: "Python is the simplest demonstration here.",
-    }),
-  },
-  {
     name: "secret request",
     message: assistant("I need a key to continue.", {
       secretRequest: SECRET_REQUEST,
@@ -283,22 +265,21 @@ describe("chat render parity (ThreadLine vs MessageContent) — #9954", () => {
       const fp = fingerprint(view.container);
       if (fp.hasChoiceWidget) seen.add("choice");
       if (fp.hasCodeBlock) seen.add("code");
-      if (fp.hasReasoning) seen.add("reasoning");
       if (fp.hasSecretRequest) seen.add("secret");
       if (fp.hasNoProviderGate) seen.add("no-provider");
       cleanup();
     }
     // If the corpus stopped covering an affordance the parity check would pass
-    // trivially — assert all five rich structures actually appear.
+    // trivially — assert all four shared rich structures actually appear.
     expect([...seen].sort()).toEqual(
-      ["choice", "code", "no-provider", "reasoning", "secret"].sort(),
+      ["choice", "code", "no-provider", "secret"].sort(),
     );
   });
 });
 
 // ── PINNED divergences ──────────────────────────────────────────────────────
 //
-// The two surfaces DO legitimately diverge in two structural ways today. These
+// The two surfaces DO legitimately diverge in three structural ways today. These
 // are pinned (not "fixed" here) so each is a CONSCIOUS contract: the only way to
 // reconcile a surface is to flip the assertion in this file, never a silent edit
 // to one switch statement. Mirrors how parser-parity.contract.test.ts pins the
@@ -329,7 +310,21 @@ describe("chat render parity — PINNED divergences (intended/tracked) — #9954
     expect(overlayPrint.hasInlineCode).toBe(false);
   });
 
-  // (2) Secret request with a rich body + reasoning. MessageContent early-returns
+  // (2) Internal reasoning remains available in ChatView's diagnostic surface,
+  //     while the consumer overlay intentionally renders only the assistant's
+  //     answer. This prevents chain-of-thought/debug chrome from entering the
+  //     liquid-glass conversation.
+  it("PIN: reasoning stays in ChatView diagnostics and out of the consumer overlay", () => {
+    const { viewPrint, overlayPrint } = renderBoth(
+      assistant("You're free after 3pm.", {
+        reasoning: "I checked the calendar and the afternoon is open.",
+      }),
+    );
+    expect(viewPrint.hasReasoning).toBe(true);
+    expect(overlayPrint.hasReasoning).toBe(false);
+  });
+
+  // (3) Secret request with a rich body + reasoning. MessageContent early-returns
   //     ONLY the SensitiveRequestBlock — body code/widgets and reasoning are
   //     suppressed. ThreadLine co-renders the body (so a fenced block still shows
   //     a code block), the secret block, AND reasoning. Both emit exactly one
@@ -349,7 +344,7 @@ describe("chat render parity — PINNED divergences (intended/tracked) — #9954
     expect(overlayPrint).toMatchObject({
       hasSecretRequest: true,
       hasCodeBlock: true,
-      hasReasoning: true,
+      hasReasoning: false,
     });
   });
 });

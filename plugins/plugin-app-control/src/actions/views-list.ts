@@ -5,7 +5,7 @@
  * and calling client.
  */
 
-import type { ActionResult, HandlerCallback, ViewType } from "@elizaos/core";
+import type { ActionResult, ViewType } from "@elizaos/core";
 import { subviewsForView } from "./settings-subviews.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 
@@ -46,17 +46,17 @@ function formatViewTable(
 export interface RunViewsListInput {
 	client: ViewsClient;
 	viewType?: ViewType;
-	callback?: HandlerCallback;
 }
 
 export async function runViewsList({
 	client,
 	viewType,
-	callback,
 }: RunViewsListInput): Promise<ActionResult> {
 	const views = await client.listViews({ viewType });
 	const text = formatViewTable(views, viewType);
-	await callback?.({ text });
+	// The inventory is planner/tool context, not assistant prose. Returning it in
+	// the ActionResult keeps it available to the planner and trajectory inspector;
+	// a handler callback would also stream and persist the table into user chat.
 	const viewsWithSubviews = views.map((view) => {
 		const subviews = subviewsForView(view.id);
 		return subviews ? { ...view, subviews } : view;

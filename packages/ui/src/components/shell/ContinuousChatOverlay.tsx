@@ -107,7 +107,6 @@ import {
 import { findChoiceRegions } from "../chat/message-choice-parser";
 import { parseFormSubmitDisplay } from "../chat/message-parser-helpers";
 import { MessageSearchPanel } from "../chat/message-search/MessageSearchPanel";
-import { ThinkingBlock } from "../chat/ThinkingBlock";
 import { AgentProvisioningWidget } from "../chat/widgets/agent-provisioning";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import {
@@ -116,12 +115,8 @@ import {
   getChatMessageAnchorId,
 } from "../composites/chat/chat-message";
 import { ChatReplyPill } from "../composites/chat/chat-reply-pill";
-import type {
-  ChatMessageData,
-  ChatMessageRenderContext,
-} from "../composites/chat/chat-types";
+import type { ChatMessageData } from "../composites/chat/chat-types";
 import { TurnStatus } from "../composites/chat/chat-typing-indicator";
-import { ToolCallEventLog } from "../tool-events/ToolCallEventLog";
 import { Button } from "../ui/button";
 import {
   DropdownMenu,
@@ -912,23 +907,46 @@ function TurnStatusIndicator({
   status,
   reduce,
   testId = "turn-status-transcript",
+  placement = "transcript",
 }: {
   status: ChatTurnStatus | null;
   reduce?: boolean;
   testId?: string;
+  placement?: "transcript" | "accessory";
 }): React.JSX.Element {
+  const transcript = placement === "transcript";
+  const initial = reduce
+    ? false
+    : transcript
+      ? { height: 0, opacity: 0, y: 3 }
+      : { opacity: 0 };
+  const animateState = transcript
+    ? { height: "auto", opacity: 1, y: 0 }
+    : { opacity: 1 };
+  const exit = transcript
+    ? { height: 0, opacity: 0, y: reduce ? 0 : 3 }
+    : { opacity: 0 };
+
   return (
     <motion.div
-      className="flex min-w-0 shrink-0 items-center whitespace-nowrap"
+      className={cn(
+        "min-w-0",
+        transcript ? "w-full overflow-hidden" : "shrink-0",
+      )}
       data-testid={testId}
-      // A pure opacity dissolve avoids adding another moving surface while the
-      // real assistant turn mounts and begins streaming beneath it.
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: reduce ? 0 : 0.45, ease: OVERLAY_EASE }}
+      initial={initial}
+      animate={animateState}
+      exit={exit}
+      transition={{ duration: reduce ? 0 : 0.38, ease: OVERLAY_EASE }}
     >
-      <TurnStatus status={status} showLabel={false} />
+      <div
+        className={cn(
+          "flex min-w-0 items-center whitespace-nowrap",
+          transcript ? "mb-2 w-full justify-start py-1" : "shrink-0",
+        )}
+      >
+        <TurnStatus status={status} showLabel={false} />
+      </div>
     </motion.div>
   );
 }
@@ -957,17 +975,15 @@ function ThreadLineText({ content }: { content: string }): React.ReactNode {
  * The overlay's message BODY — everything rendered inside the canonical
  * ChatMessage glass row: the no-provider recovery gate, a user turn's
  * slash-bolded text, and a settled assistant turn's inline widgets + attachments
- * + secret request + reasoning. Transient work state lives in one stable row
+ * + secret request. Transient work state lives in one stable row
  * after the transcript, so an empty transport placeholder never paints a second
- * status surface. Its settled content stays structurally identical to ChatView's
- * MessageContent paths for the affordances the render-parity contract pins; row
- * chrome (bubble, tap-reveal actions, copy-hold, retry, suggestion) lives in
- * ChatMessage.
+ * status surface. Internal reasoning and tool traces remain in state for
+ * diagnostics but never become consumer transcript chrome. Row chrome (bubble,
+ * tap-reveal actions, copy-hold, retry, suggestion) lives in ChatMessage.
  * `onOpenSettings` reaches only the no-provider gate.
  */
 function renderOverlayMessageBody(
   message: ChatMessageData,
-  ctx: ChatMessageRenderContext | undefined,
   onOpenSettings: (() => void) | undefined,
 ): React.ReactNode {
   const isUser = message.role === "user";
@@ -1022,9 +1038,8 @@ function renderOverlayMessageBody(
 
   // Settled assistant turn: render inline widgets (task/choice/form/followups)
   // instead of leaking raw markers as text (#8997); plain replies fall through
-  // the fast path unchanged. Attachments, the secret/OAuth request, and the
-  // reasoning block render alongside. The secret block is pointer-events-auto so
-  // it stays clickable inside the open thread's scroll surface.
+  // the fast path unchanged. The secret block is pointer-events-auto so it stays
+  // clickable inside the open thread's scroll surface.
   return (
     <>
       <InlineWidgetText content={message.text} />
@@ -1034,27 +1049,15 @@ function renderOverlayMessageBody(
           <SensitiveRequestBlock request={message.secretRequest} />
         </div>
       ) : null}
-      {message.toolEvents?.length ? (
-        <div className="pointer-events-auto mt-2 flex flex-col gap-1.5">
-          {message.toolEvents.map((event) => (
-            <ToolCallEventLog key={event.callId ?? event.id} event={event} />
-          ))}
-        </div>
-      ) : null}
-      {!ctx?.suppressReasoning && message.reasoning?.trim() ? (
-        <ThinkingBlock reasoning={message.reasoning} />
-      ) : null}
     </>
   );
 }
 
 /** Project a shell transcript turn onto the canonical row's data shape. The
- *  body renderer reads the passthrough fields (reasoning/secretRequest/
- *  attachments/failureKind) straight off it, so the row stays presentation-only.
- *  Cached per ShellMessage identity so a live drag (which re-renders the overlay
- *  every pointer-move frame) reuses the same object — keeping ChatMessage's memo
- *  on its `prev.message === next.message` fast path. Shell turns are immutable
- *  (a streamed update replaces the object), so a changed turn misses the cache. */
+ *  body renderer reads the consumer-visible fields straight off it, while
+ *  reasoning and tool traces remain upstream for developer diagnostics. Cached
+ *  per ShellMessage identity so a live drag reuses the same object and keeps
+ *  ChatMessage's memo on its identity fast path. */
 const shellMessageDataCache = new WeakMap<ShellMessage, ChatMessageData>();
 function shellToChatMessageData(m: ShellMessage): ChatMessageData {
   const cached = shellMessageDataCache.get(m);
@@ -1066,8 +1069,6 @@ function shellToChatMessageData(m: ShellMessage): ChatMessageData {
     timestamp: m.createdAt,
     ...(m.source ? { source: m.source } : {}),
     ...(m.failureKind ? { failureKind: m.failureKind } : {}),
-    ...(m.reasoning ? { reasoning: m.reasoning } : {}),
-    ...(m.toolEvents?.length ? { toolEvents: m.toolEvents } : {}),
     ...(m.attachments ? { attachments: m.attachments } : {}),
     ...(m.secretRequest ? { secretRequest: m.secretRequest } : {}),
   };
@@ -1157,7 +1158,7 @@ export function __renderThreadLineForParity(
       message={shellToChatMessageData(message)}
       onCopy={() => {}}
       onLongPressCopy={() => {}}
-      renderContent={(m, ctx) => renderOverlayMessageBody(m, ctx, () => {})}
+      renderContent={(m) => renderOverlayMessageBody(m, () => {})}
       onAcceptSuggestion={
         handlers?.onAcceptSuggestion
           ? () => handlers.onAcceptSuggestion?.(message)
@@ -2198,12 +2199,10 @@ export function ContinuousChatOverlay({
       el?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }, []);
-  // The single, stable body renderer handed to every row (see
-  // renderOverlayMessageBody). Stable identity keeps ChatMessage's memo intact;
-  // per-row reasoning suppression flows through renderContext.
+  // The single, stable body renderer handed to every row keeps ChatMessage's
+  // memo intact while the sheet moves during a drag.
   const renderRowBody = React.useCallback(
-    (m: ChatMessageData, ctx: ChatMessageRenderContext | undefined) =>
-      renderOverlayMessageBody(m, ctx, openSettings),
+    (m: ChatMessageData) => renderOverlayMessageBody(m, openSettings),
     [openSettings],
   );
   // Reply arms the shared composer reply target so the next send() stamps
@@ -2231,21 +2230,11 @@ export function ContinuousChatOverlay({
         !message.text.trim() &&
         !message.attachments?.length &&
         !message.failureKind &&
-        !message.reasoning?.trim() &&
-        !message.secretRequest &&
-        !message.toolEvents?.length;
+        !message.secretRequest;
       // The server's empty assistant placeholder is deliberately not a visual
       // turn. Generic lifecycle status owns one stable trailing transcript row,
       // so token one never needs to swap a temporary assistant bubble.
       if (isInFlight) return null;
-      // Only the last assistant turn reads volatile reasoning suppression;
-      // every settled row gets no renderContext so its memo identity is stable.
-      const renderContext: ChatMessageRenderContext | undefined =
-        isLastAssistant
-          ? {
-              suppressReasoning: responding,
-            }
-          : undefined;
       return (
         <MessageScrollerItem
           key={m.id}
@@ -2260,6 +2249,7 @@ export function ContinuousChatOverlay({
                   status={{ kind: "speaking" }}
                   reduce={reduce}
                   testId="turn-status-accessory"
+                  placement="accessory"
                 />
               ) : undefined
             }
@@ -2276,7 +2266,6 @@ export function ContinuousChatOverlay({
             onRetry={handleRetry}
             playing={speaking && playingMessageId === m.id}
             renderContent={renderRowBody}
-            renderContext={renderContext}
             onAcceptSuggestion={handleAcceptSuggestion}
             onDismissSuggestion={handleDismissSuggestion}
           />
@@ -2295,7 +2284,6 @@ export function ContinuousChatOverlay({
       handleRetry,
       speaking,
       playingMessageId,
-      responding,
       renderRowBody,
       handleAcceptSuggestion,
       handleDismissSuggestion,
@@ -5762,7 +5750,7 @@ export function ContinuousChatOverlay({
                               mounted at zero height so AnimatePresence can run
                               the status exit instead of cutting it off. */}
                           <MessageScrollerItem
-                            className="w-full"
+                            className="w-full [contain-intrinsic-size:auto_0px] [content-visibility:visible]"
                             data-testid="turn-status-row"
                           >
                             <AnimatePresence initial={false}>

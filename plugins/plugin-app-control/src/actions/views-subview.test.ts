@@ -214,8 +214,7 @@ describe("subviewsForView — addressable sub-sections (#9945)", () => {
 describe("VIEWS list — surfaces subviews for discoverable sections (#9945)", () => {
 	it("emits a subviews line for the settings view and attaches them to data", async () => {
 		const client = clientFor(REGISTRY);
-		const callback = vi.fn();
-		const result = await runViewsList({ client, callback });
+		const result = await runViewsList({ client });
 		expect(result.success).toBe(true);
 		expect(result.text).toContain("subviews[");
 		expect(result.text).toMatch(/voice:Voice/);

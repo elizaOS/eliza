@@ -36,27 +36,15 @@ import {
 import { appendGreetingOnce } from "./greeting-dedupe";
 import type { AppState, LifecycleAction } from "./internal";
 import {
+  filterRenderableConversationMessages,
   type LoadConversationMessagesResult,
   loadActiveConversationId,
+  shouldKeepConversationMessage,
 } from "./internal";
 import { deriveAgentReady } from "./types";
 
 import { useChatLifecycle } from "./useChatLifecycle";
 import { useChatSend } from "./useChatSend";
-
-// ── Helpers (file-local) ────────────────────────────────────────────
-
-function shouldKeepConversationMessage(message: ConversationMessage): boolean {
-  if (message.role !== "assistant") return true;
-  if (message.text.trim().length > 0) return true;
-  return Boolean(message.blocks?.length);
-}
-
-function filterRenderableConversationMessages(
-  messages: ConversationMessage[],
-): ConversationMessage[] {
-  return messages.filter((message) => shouldKeepConversationMessage(message));
-}
 
 function hasConversationBootstrapMessage(
   messages: ConversationMessage[],

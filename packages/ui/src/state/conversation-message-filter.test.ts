@@ -51,4 +51,59 @@ describe("shouldKeepConversationMessage", () => {
       ),
     ).toBe(true);
   });
+
+  it("drops an internal-only action callback memory restored as fallback text", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "available_views:\ncalendar\nnotes",
+          actionName: "VIEWS",
+          actionCallbackHistory: ["available_views:", "calendar", "notes"],
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("drops a persisted VIEWS inventory envelope that lacks action metadata", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: [
+            "available_views:",
+            "  type: gui",
+            "  count: 2",
+            "views[2]{id,label,type,path,available}:",
+            "  chat,Messages,gui,/chat,yes",
+            "  notes,Notes,gui,/notes,yes",
+          ].join("\n"),
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps a real reply even when it also carries action callbacks", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "Opening Notes now.",
+          actionName: "VIEWS",
+          actionCallbackHistory: ["available_views: calendar, notes"],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps callback-only text when the turn has user-visible media", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "generated image",
+          actionCallbackHistory: ["generated image"],
+          attachments: [
+            { id: "a", url: "/api/media/x.png", contentType: "image" },
+          ],
+        }),
+      ),
+    ).toBe(true);
+  });
 });
