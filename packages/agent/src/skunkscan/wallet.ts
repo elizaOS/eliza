@@ -1,10 +1,10 @@
 import {
-  getSolanaBalance,
   getSolanaOldestKnownSignature,
   getSolanaParsedTransactions,
   getSolanaRecentSignatures,
   getSolanaTokenHoldings,
 } from "./helius";
+import { requireBlockchainConnector } from "./chains/registry";
 import { analyzeWalletActivity } from "./analyzers/activity";
 import { analyzeWalletAge } from "./analyzers/walletAge";
 import { analyzeWalletFunding } from "./analyzers/funding";
@@ -60,7 +60,44 @@ export async function investigateWallet(
   switch (chain) {
     case "solana": {
       try {
-        const balance = await getSolanaBalance(walletAddress);
+        const connector = requireBlockchainConnector(chain);
+
+const nativeBalanceResult =
+  await connector.getNativeBalance(walletAddress);
+
+if (
+  nativeBalanceResult.status === "error" ||
+  nativeBalanceResult.status === "unsupported" ||
+  !nativeBalanceResult.data
+) {
+  throw new Error(
+    nativeBalanceResult.error?.message ??
+      "Unable to retrieve the wallet native balance.",
+  );
+}
+
+const rawLamports = Number(
+  nativeBalanceResult.data.rawAmount,
+);
+
+const solBalance = Number(
+  nativeBalanceResult.data.decimalAmount ?? "0",
+);
+
+if (
+  !Number.isFinite(rawLamports) ||
+  !Number.isFinite(solBalance)
+) {
+  throw new Error(
+    "The Solana connector returned an invalid balance.",
+  );
+}
+
+const balance = {
+  address: nativeBalanceResult.data.address,
+  lamports: rawLamports,
+  sol: solBalance,
+};
 
 const recentSignatures = await getSolanaRecentSignatures(
   walletAddress,
