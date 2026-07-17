@@ -559,9 +559,11 @@ function buildStatus(
     const weeklyResetAt =
       modelBuckets.available && modelBuckets.fable
         ? modelBuckets.fable.resetAt
-        : typeof usage.weeklyResetsAt === "number"
-          ? usage.weeklyResetsAt
-          : null;
+        : typeof usage.resetsAt === "number"
+          ? usage.resetsAt
+          : typeof usage.weeklyResetsAt === "number"
+            ? usage.weeklyResetsAt
+            : null;
     const exhausted = fableUsed !== null && fableUsed >= 100;
     const serving =
       selection.activeAccountId === account.id &&

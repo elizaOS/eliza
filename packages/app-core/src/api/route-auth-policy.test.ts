@@ -102,6 +102,12 @@ describe("compat route auth policy table", () => {
       id: "pool.status",
       tier: "public",
     });
+    expect(
+      resolveCompatRouteAuthPolicy("POST", "/api/pool/status"),
+    ).toMatchObject({
+      id: "pool.status",
+      tier: "public",
+    });
   });
 
   it("fails closed for undeclared app-core-managed routes", async () => {
@@ -157,19 +163,21 @@ describe("compat route auth policy table", () => {
     expect(res.status()).toBe(200);
   });
 
-  it("allows public account-pool status without a session", async () => {
-    const req = fakeReq({ method: "GET", pathname: "/api/pool/status" });
-    const res = fakeRes();
+  it("allows public account-pool status methods through to the route handler", async () => {
+    for (const method of ["GET", "POST"]) {
+      const req = fakeReq({ method, pathname: "/api/pool/status" });
+      const res = fakeRes();
 
-    await expect(
-      enforceCompatRouteAuthPolicy(
-        req,
-        res.res,
-        STATE,
-        "GET",
-        "/api/pool/status",
-      ),
-    ).resolves.toBe("allowed");
-    expect(res.status()).toBe(200);
+      await expect(
+        enforceCompatRouteAuthPolicy(
+          req,
+          res.res,
+          STATE,
+          method,
+          "/api/pool/status",
+        ),
+      ).resolves.toBe("allowed");
+      expect(res.status()).toBe(200);
+    }
   });
 });

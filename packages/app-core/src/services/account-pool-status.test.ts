@@ -49,7 +49,7 @@ function fixtureAccount(
       weeklyPct,
       refreshedAt: now,
       sessionResetsAt: now + 5 * 60 * 60_000,
-      weeklyResetsAt: resetAt,
+      resetsAt: resetAt,
     } as unknown as LinkedAccountConfig["usage"],
   };
 }
