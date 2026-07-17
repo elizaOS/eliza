@@ -17,6 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
+import { Octokit } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   CredentialService as CredentialServiceInstance,
@@ -54,7 +55,7 @@ type WorkspaceServiceWithCloneOverride = {
 
 import type { RemotePullRequest } from "./ground-truth-verifier.js";
 import type { ParsedPullRequestLink } from "./pull-request-link.js";
-import type { AuthPromptCallback } from "./workspace-github.js";
+import type { AuthPromptCallback, GitHubRequest } from "./workspace-github.js";
 import {
   type GitHubContext,
   addComment as ghAddComment,
@@ -312,6 +313,7 @@ export class CodingWorkspaceService {
   private workspaceService: WorkspaceServiceInstance | null = null;
   private credentialService: CredentialServiceInstance | null = null;
   private githubClient: GitHubPatClientInstance | null = null;
+  private githubRequest: GitHubRequest | null = null;
   private githubAuthInProgress: Promise<GitHubPatClientInstance> | null = null;
   private serviceConfig: CodingWorkspaceConfig;
   // Shared with every AcpService so one disk cap spans scratch + git workspaces
@@ -398,6 +400,7 @@ export class CodingWorkspaceService {
       | undefined;
     if (githubToken) {
       this.githubClient = new GitHubPatClient({ token: githubToken });
+      this.githubRequest = this.createGitHubRequest(githubToken);
       this.log("GitHubPatClient initialized with PAT");
     } else {
       this.log(
@@ -484,6 +487,7 @@ export class CodingWorkspaceService {
     this.workspaceService = null;
     this.credentialService = null;
     this.githubClient = null;
+    this.githubRequest = null;
     this.log("CodingWorkspaceService shutdown complete");
   }
 
@@ -913,11 +917,18 @@ export class CodingWorkspaceService {
   // === Delegated GitHub / Issue Management ===
 
   private getGitHubContext(): GitHubContext {
+    const service = this;
     return {
       runtime: this.runtime,
       githubClient: this.githubClient,
       setGithubClient: (client: GitHubPatClientInstance) => {
         this.githubClient = client;
+      },
+      get githubRequest() {
+        return service.githubRequest;
+      },
+      setGithubRequest: (request: GitHubRequest | null) => {
+        this.githubRequest = request;
       },
       githubAuthInProgress: this.githubAuthInProgress,
       setGithubAuthInProgress: (p: Promise<GitHubPatClientInstance> | null) => {
@@ -926,6 +937,11 @@ export class CodingWorkspaceService {
       authPromptCallback: this.authPromptCallback,
       log: (msg: string) => this.log(msg),
     };
+  }
+
+  private createGitHubRequest(token: string): GitHubRequest {
+    const octokit = new Octokit({ auth: token });
+    return octokit.request.bind(octokit) as GitHubRequest;
   }
 
   /** Set a callback to surface OAuth auth prompts to the user. */

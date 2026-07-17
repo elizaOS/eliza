@@ -1,3 +1,13 @@
+/**
+ * Deterministic GitHub ground-truth verifier for task completion claims.
+ *
+ * The orchestrator uses this before accepting a coding task as complete: the
+ * worker's claimed PR must exist, still be open, expose coherent files/checks
+ * for one head SHA, and have conclusive checks. This keeps public validation
+ * and automatic validation on the same remote facts instead of trusting prose.
+ */
+
+import { ElizaError } from "@elizaos/core";
 import type { ParsedPullRequestLink } from "./pull-request-link.js";
 import { extractPullRequestLink } from "./pull-request-link.js";
 
@@ -8,6 +18,7 @@ export interface RemoteCheck {
   status: string;
   conclusion?: string | null;
   required: boolean;
+  appId?: number | null;
 }
 
 export interface RemotePullRequest {
@@ -16,6 +27,8 @@ export interface RemotePullRequest {
   headSha: string;
   changedFiles: string[];
   checks: RemoteCheck[];
+  checksUnavailable?: boolean;
+  checksUnavailableReason?: string;
 }
 
 export interface GroundTruthCheckVerdict extends RemoteCheck {
@@ -55,6 +68,20 @@ export interface GroundTruthVerifierDeps {
     link: ParsedPullRequestLink,
   ) => Promise<RemotePullRequest | null>;
   now?: () => Date;
+}
+
+const MAX_REMOTE_NAME_LENGTH = 160;
+
+function sanitizeRemoteName(name: string): string {
+  const normalized = [...name]
+    .map((char) => {
+      const code = char.charCodeAt(0);
+      return code < 32 || code === 127 ? " " : char;
+    })
+    .join("")
+    .trim();
+  if (normalized.length <= MAX_REMOTE_NAME_LENGTH) return normalized;
+  return `${normalized.slice(0, MAX_REMOTE_NAME_LENGTH - 1)}…`;
 }
 
 function uniqueSorted(files: readonly string[]): string[] {
@@ -110,6 +137,7 @@ export function classifyCheckRollup(checks: readonly RemoteCheck[]): {
 } {
   const items = checks.map((check) => ({
     ...check,
+    name: sanitizeRemoteName(check.name),
     state: classifyCheck(check),
   }));
   const required = items.filter((check) => check.required);
@@ -120,6 +148,18 @@ export function classifyCheckRollup(checks: readonly RemoteCheck[]): {
       ? "pending"
       : "green";
   return { state, items };
+}
+
+export function groundTruthApplies(input: {
+  completion: string;
+  claimedFiles: readonly string[];
+  requirePullRequest: boolean;
+}): boolean {
+  return (
+    input.requirePullRequest ||
+    input.claimedFiles.length > 0 ||
+    extractPullRequestLink(input.completion) !== null
+  );
 }
 
 function emptyFiles(
@@ -169,6 +209,7 @@ export async function verifyGroundTruth(
 ): Promise<GroundTruthVerdict> {
   const checkedAt = (deps.now?.() ?? new Date()).toISOString();
   const link = extractPullRequestLink(input.completion);
+  const applies = groundTruthApplies(input);
   if (!link) {
     const hardFail = input.hardFailEnabled && input.requirePullRequest;
     return {
@@ -191,7 +232,15 @@ export async function verifyGroundTruth(
   try {
     remote = await deps.fetchPullRequest(link);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const wrapped =
+      error instanceof ElizaError
+        ? error
+        : new ElizaError("GitHub ground-truth verification failed", {
+            code: "GROUND_TRUTH_API_FAILURE",
+            cause: error,
+          });
+    const message = wrapped.message;
+    const hardFail = input.hardFailEnabled && applies;
     return {
       status: "inconclusive",
       checkedAt,
@@ -204,8 +253,12 @@ export async function verifyGroundTruth(
       },
       checks: { state: "unavailable", items: [] },
       files: emptyFiles(input.claimedFiles),
-      hardFail: false,
-      hardFailReasons: [],
+      hardFail,
+      hardFailReasons: hardFail
+        ? [
+            "GitHub verification was inconclusive because the API request failed.",
+          ]
+        : [],
       summary:
         "GitHub verification was inconclusive because the API request failed.",
       error: message,
@@ -213,7 +266,7 @@ export async function verifyGroundTruth(
   }
 
   if (!remote) {
-    const hardFail = input.hardFailEnabled;
+    const hardFail = input.hardFailEnabled && applies;
     return {
       status: "missing_pr",
       checkedAt,
@@ -242,17 +295,35 @@ export async function verifyGroundTruth(
   const redRequired = checks.items.filter(
     (check) => check.required && check.state === "red",
   );
-  const hardFail = input.hardFailEnabled && redRequired.length > 0;
-  const hardFailReasons = hardFail
-    ? [
-        `Required checks are red: ${redRequired.map((check) => check.name).join(", ")}.`,
-      ]
-    : [];
+  const hardFailReasons: string[] = [];
+  if (remote.state !== "open") {
+    hardFailReasons.push(
+      remote.state === "merged"
+        ? "The claimed pull request is already merged."
+        : "The claimed pull request is closed without being merged.",
+    );
+  }
+  if (remote.checksUnavailable) {
+    hardFailReasons.push(
+      `Pull request checks are unavailable: ${remote.checksUnavailableReason ?? "GitHub did not return check data"}.`,
+    );
+  } else if (checks.items.length === 0) {
+    hardFailReasons.push("The claimed pull request has no reported checks.");
+  } else if (checks.state === "pending") {
+    hardFailReasons.push("Pull request checks are still pending.");
+  }
+  if (redRequired.length > 0) {
+    hardFailReasons.push(
+      `Required checks are red: ${redRequired.map((check) => check.name).join(", ")}.`,
+    );
+  }
+  const hardFail =
+    input.hardFailEnabled && applies && hardFailReasons.length > 0;
   const status =
-    checks.state === "pending"
-      ? "inconclusive"
-      : mismatch || checks.state === "red"
-        ? "mismatch"
+    mismatch || checks.state === "red"
+      ? "mismatch"
+      : hardFailReasons.length > 0 || remote.checksUnavailable
+        ? "inconclusive"
         : "verified";
   return {
     status,
@@ -272,11 +343,13 @@ export async function verifyGroundTruth(
     hardFailReasons,
     summary: hardFail
       ? hardFailReasons[0]
-      : checks.state === "pending"
-        ? "Pull request checks are still pending; remote verification is not yet conclusive."
-        : mismatch
-          ? "Remote pull-request files do not exactly match the captured workspace change set."
-          : `Pull request exists (${remote.state}); CI is ${checks.state}; changed files match the captured claim.`,
+      : hardFailReasons.length > 0
+        ? hardFailReasons[0]
+        : checks.state === "pending"
+          ? "Pull request checks are still pending; remote verification is not yet conclusive."
+          : mismatch
+            ? "Remote pull-request files do not exactly match the captured workspace change set."
+            : `Pull request exists (${remote.state}); CI is ${checks.state}; changed files match the captured claim.`,
   };
 }
 
@@ -293,7 +366,9 @@ export function renderGroundTruthEvidence(verdict: GroundTruthVerdict): string {
   lines.push(`checkRollup: ${verdict.checks.state}`);
   for (const check of verdict.checks.items) {
     lines.push(
-      `- check ${check.name}: ${check.state}${check.required ? " (required)" : ""}`,
+      `- check ${check.name}: ${check.state}${check.required ? " (required)" : ""}${
+        typeof check.appId === "number" ? ` appId=${check.appId}` : ""
+      }`,
     );
   }
   lines.push(

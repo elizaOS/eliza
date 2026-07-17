@@ -104,6 +104,8 @@ import {
   type GoalFollowUpReason,
 } from "./goal-prompt.js";
 import {
+  type GroundTruthVerdict,
+  groundTruthApplies,
   groundTruthHardFailEnabled,
   groundTruthRequiresPullRequest,
   renderGroundTruthEvidence,
@@ -688,6 +690,26 @@ function priorCleanResidualsSnapshot(
   if (!Array.isArray(raw.residuals)) return undefined;
   if (typeof raw.checkedAt !== "number") return undefined;
   return raw as unknown as CompletionResidualsResult;
+}
+
+function _readGroundTruthVerdict(
+  metadata: Record<string, unknown>,
+): GroundTruthVerdict | undefined {
+  const raw = metadata.groundTruthVerdict;
+  if (!isRecord(raw)) return undefined;
+  if (
+    typeof raw.status !== "string" ||
+    typeof raw.checkedAt !== "string" ||
+    !isRecord(raw.pr) ||
+    !isRecord(raw.checks) ||
+    !isRecord(raw.files) ||
+    typeof raw.hardFail !== "boolean" ||
+    !Array.isArray(raw.hardFailReasons) ||
+    typeof raw.summary !== "string"
+  ) {
+    return undefined;
+  }
+  return raw as unknown as GroundTruthVerdict;
 }
 
 function eventExcerpt(
@@ -2862,6 +2884,42 @@ export class OrchestratorTaskService extends Service {
         },
       );
     }
+    const groundTruth =
+      result.passed && !result.humanOverride
+        ? await this.verifyGroundTruthForValidation(doc, evidence)
+        : undefined;
+    if (groundTruth?.hardFail) {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "validation_blocked_ground_truth",
+        summary: groundTruth.summary,
+        data: {
+          verifier: "ground-truth-verifier",
+          groundTruth,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...(doc.task.metadata ?? {}),
+          groundTruthVerdict: groundTruth,
+        },
+      });
+      this.emitChange(taskId);
+      throw new ElizaError(
+        `Ground-truth verification blocks validation: ${groundTruth.summary}`,
+        {
+          code: "TASK_GROUND_TRUTH_BLOCKED",
+          context: {
+            taskId,
+            status: groundTruth.status,
+            reasons: groundTruth.hardFailReasons,
+          },
+        },
+      );
+    }
     const trigger: TaskLifecycleTrigger = result.humanOverride
       ? result.passed
         ? "human_override_passed"
@@ -2917,6 +2975,63 @@ export class OrchestratorTaskService extends Service {
         : {}),
     });
     return this.getTask(taskId);
+  }
+
+  private async verifyGroundTruthForValidation(
+    doc: OrchestratorTaskDocument,
+    evidence: string,
+  ): Promise<GroundTruthVerdict | undefined> {
+    const workspaceSession = latestWorkspaceSession(doc);
+    const changeSet = workspaceSession
+      ? await this.resolveCompletionChangeSet(workspaceSession.sessionId, doc)
+      : undefined;
+    const claimedFiles = changeSet?.changedFiles ?? [];
+    const metadataPr = str(doc.task.metadata?.prUrl);
+    const completion = [evidence, metadataPr].filter(Boolean).join("\n");
+    const requirePullRequest = groundTruthRequiresPullRequest(
+      (key) => this.runtime.getSetting(key),
+      doc.task.metadata,
+    );
+    if (
+      !groundTruthApplies({
+        completion,
+        claimedFiles,
+        requirePullRequest,
+      })
+    ) {
+      return undefined;
+    }
+
+    const workspace = getCodingWorkspaceService(this.runtime);
+    const verdict = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles,
+        requirePullRequest,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async (link) => {
+          if (!workspace) {
+            throw new ElizaError(
+              "Coding workspace GitHub service is unavailable",
+              {
+                code: "GROUND_TRUTH_WORKSPACE_SERVICE_UNAVAILABLE",
+                context: { taskId: doc.task.id, repo: link.repo },
+              },
+            );
+          }
+          return workspace.getPullRequestGroundTruth(link);
+        },
+      },
+    );
+    await this.store.updateTask(doc.task.id, {
+      metadata: {
+        ...doc.task.metadata,
+        groundTruthVerdict: verdict,
+      },
+    });
+    return verdict;
   }
 
   /**

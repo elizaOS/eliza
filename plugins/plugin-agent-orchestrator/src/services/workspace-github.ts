@@ -1,14 +1,16 @@
 /**
- * GitHub integration for Coding Workspace Service
+ * GitHub integration for Coding Workspace Service.
  *
- * Extracted from workspace-service.ts — provides GitHub API access
- * via PAT or OAuth device flow, plus all issue management operations.
- *
- * @module services/workspace-github
+ * Provides PAT/OAuth-backed GitHub access for issue management and the
+ * pull-request ground-truth verifier. The verifier uses a typed request
+ * transport owned by this module so callers never reach into dependency-private
+ * Octokit fields.
  */
 
 import { createRequire } from "node:module";
 import type { IAgentRuntime } from "@elizaos/core";
+import { ElizaError } from "@elizaos/core";
+import { Octokit } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   GitHubPatClient as GitHubPatClientInstance,
@@ -46,6 +48,8 @@ export interface GitHubContext {
   runtime: IAgentRuntime;
   githubClient: GitHubPatClientInstance | null;
   setGithubClient: (client: GitHubPatClientInstance) => void;
+  githubRequest: GitHubRequest | null;
+  setGithubRequest: (request: GitHubRequest | null) => void;
   githubAuthInProgress: Promise<GitHubPatClientInstance> | null;
   setGithubAuthInProgress: (p: Promise<GitHubPatClientInstance> | null) => void;
   authPromptCallback: AuthPromptCallback | null;
@@ -68,12 +72,25 @@ export function parseOwnerRepo(repo: string): {
   const parts = normalized.split("/");
   if (
     parts.length !== 2 ||
+    parts[0].length > 100 ||
+    parts[1].length > 100 ||
     !/^[a-zA-Z0-9_-]+$/.test(parts[0]) ||
     !/^[a-zA-Z0-9_.-]+$/.test(parts[1])
   ) {
     throw new Error(`Cannot parse owner/repo from: ${repo}`);
   }
   return { owner: parts[0], repo: parts[1] };
+}
+
+type GitHubResponse<T> = { data: T };
+export type GitHubRequest = <T>(
+  route: string,
+  parameters: Record<string, unknown>,
+) => Promise<GitHubResponse<T>>;
+
+function createGitHubRequest(token: string): GitHubRequest {
+  const octokit = new Octokit({ auth: token });
+  return octokit.request.bind(octokit) as GitHubRequest;
 }
 
 // ── Auth ───────────────────────────────────────────────────────────
@@ -93,7 +110,9 @@ export async function ensureGitHubClient(
     | undefined;
   if (githubToken) {
     const client = new GitHubPatClient({ token: githubToken });
+    const request = createGitHubRequest(githubToken);
     ctx.setGithubClient(client);
+    ctx.setGithubRequest(request);
     ctx.log("GitHubPatClient initialized with PAT (late binding)");
     return client;
   }
@@ -168,36 +187,17 @@ export async function performOAuthFlow(
 
   // Step 4: Create client with the obtained token
   const client = new GitHubPatClient({ token: token.accessToken });
+  const request = createGitHubRequest(token.accessToken);
   ctx.setGithubClient(client);
+  ctx.setGithubRequest(request);
   ctx.log("GitHubPatClient initialized via OAuth device flow");
   return client;
 }
 
 // ── Pull-request ground truth ──────────────────────────────────────
 
-type OctokitResponse<T> = { data: T };
-type OctokitRequest = <T>(
-  route: string,
-  parameters: Record<string, unknown>,
-) => Promise<OctokitResponse<T>>;
-
-function octokitRequest(client: GitHubPatClientInstance): OctokitRequest {
-  // git-workspace-service intentionally exposes high-level issue/PR methods,
-  // but not the checks/files endpoints. Reuse its authenticated Octokit
-  // instance rather than constructing a second GitHub client.
-  const octokit = (
-    client as unknown as { octokit?: { request?: OctokitRequest } }
-  ).octokit;
-  if (!octokit || typeof octokit.request !== "function") {
-    throw new Error(
-      "Authenticated GitHub client does not expose an API request transport",
-    );
-  }
-  return octokit.request.bind(octokit);
-}
-
 async function pagedGitHubRequest<T>(
-  request: OctokitRequest,
+  request: GitHubRequest,
   route: string,
   parameters: Record<string, unknown>,
 ): Promise<T[]> {
@@ -208,6 +208,12 @@ async function pagedGitHubRequest<T>(
       per_page: 100,
       page,
     });
+    if (!Array.isArray(response.data)) {
+      throw new ElizaError("GitHub paged endpoint returned a non-array body", {
+        code: "GITHUB_PAGED_RESPONSE_INVALID",
+        context: { route, page },
+      });
+    }
     rows.push(...response.data);
     if (response.data.length < 100) return rows;
   }
@@ -217,6 +223,121 @@ function githubErrorStatus(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const status = (error as { status?: unknown }).status;
   return typeof status === "number" ? status : undefined;
+}
+
+function isUnavailableStatus(status: number | undefined): boolean {
+  return status === 401 || status === 403 || status === 404;
+}
+
+function unavailableError(
+  message: string,
+  context: Record<string, unknown>,
+): ElizaError {
+  return new ElizaError(message, {
+    code: "GITHUB_GROUND_TRUTH_UNAVAILABLE",
+    context,
+  });
+}
+
+interface RequiredStatusCheck {
+  context: string;
+  appId?: number | null;
+}
+
+function requiredKey(check: RequiredStatusCheck): string {
+  return `${check.context}\u0000${check.appId ?? "any"}`;
+}
+
+function isRequiredCheck(
+  check: { name: string; appId?: number | null },
+  required: readonly RequiredStatusCheck[],
+): boolean {
+  return required.some(
+    (item) =>
+      item.context === check.name &&
+      (item.appId === undefined ||
+        item.appId === null ||
+        item.appId === check.appId),
+  );
+}
+
+function dedupeRequired(
+  checks: readonly RequiredStatusCheck[],
+): RequiredStatusCheck[] {
+  const seen = new Set<string>();
+  const out: RequiredStatusCheck[] = [];
+  for (const check of checks) {
+    if (!check.context.trim()) continue;
+    const key = requiredKey(check);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(check);
+  }
+  return out;
+}
+
+async function fetchRequiredChecks(
+  request: GitHubRequest,
+  input: { owner: string; repo: string; branch: string },
+): Promise<{ checks: RequiredStatusCheck[]; unavailableReason?: string }> {
+  const checks: RequiredStatusCheck[] = [];
+  let unavailableReason: string | undefined;
+  try {
+    const protection = (
+      await request<{
+        required_status_checks?: {
+          contexts?: string[];
+          checks?: Array<{ context: string; app_id?: number | null }>;
+        } | null;
+      }>("GET /repos/{owner}/{repo}/branches/{branch}/protection", input)
+    ).data;
+    checks.push(
+      ...(protection.required_status_checks?.contexts ?? []).map((context) => ({
+        context,
+      })),
+      ...(protection.required_status_checks?.checks ?? []).map((check) => ({
+        context: check.context,
+        appId: check.app_id,
+      })),
+    );
+  } catch (error) {
+    const status = githubErrorStatus(error);
+    if (status === 401 || status === 403) {
+      unavailableReason = `branch protection unavailable (${status})`;
+    } else if (status !== 404) {
+      throw error;
+    }
+  }
+
+  try {
+    const rules = await pagedGitHubRequest<{
+      type?: string;
+      parameters?: {
+        required_status_checks?: Array<{
+          context: string;
+          integration_id?: number | null;
+        }>;
+      };
+    }>(request, "GET /repos/{owner}/{repo}/rules/branches/{branch}", input);
+    for (const rule of rules) {
+      if (rule.type !== "required_status_checks") continue;
+      for (const check of rule.parameters?.required_status_checks ?? []) {
+        checks.push({
+          context: check.context,
+          appId: check.integration_id,
+        });
+      }
+    }
+  } catch (error) {
+    const status = githubErrorStatus(error);
+    if (!isUnavailableStatus(status)) throw error;
+  }
+
+  const deduped = dedupeRequired(checks);
+  return {
+    checks: deduped,
+    ...(deduped.length === 0 && unavailableReason ? { unavailableReason } : {}),
+  };
 }
 
 /**
@@ -229,8 +350,14 @@ export async function getPullRequestGroundTruth(
   ctx: GitHubContext,
   link: ParsedPullRequestLink,
 ): Promise<RemotePullRequest | null> {
-  const client = await ensureGitHubClient(ctx);
-  const request = octokitRequest(client);
+  await ensureGitHubClient(ctx);
+  const request = ctx.githubRequest;
+  if (!request) {
+    throw unavailableError(
+      "GitHub ground-truth request transport is unavailable",
+      { repo: link.repo, pullNumber: link.number },
+    );
+  }
   const { owner, repo } = parseOwnerRepo(link.repo);
 
   type PullResponse = {
@@ -240,9 +367,92 @@ export async function getPullRequestGroundTruth(
     head: { sha: string };
     base: { ref: string };
   };
-  let pull: PullResponse;
-  try {
-    pull = (
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let pull: PullResponse;
+    try {
+      pull = (
+        await request<PullResponse>(
+          "GET /repos/{owner}/{repo}/pulls/{pull_number}",
+          {
+            owner,
+            repo,
+            pull_number: link.number,
+          },
+        )
+      ).data;
+    } catch (error) {
+      if (githubErrorStatus(error) === 404) return null;
+      throw error;
+    }
+
+    const files = await pagedGitHubRequest<{ filename: string }>(
+      request,
+      "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
+      { owner, repo, pull_number: link.number },
+    );
+    type CheckRunResponse = {
+      check_runs: Array<{
+        name: string;
+        status: string;
+        conclusion: string | null;
+        app?: { id?: number | null } | null;
+      }>;
+    };
+    const checkRuns: CheckRunResponse["check_runs"] = [];
+    let checksUnavailableReason: string | undefined;
+    try {
+      for (let page = 1; ; page += 1) {
+        const response = (
+          await request<CheckRunResponse>(
+            "GET /repos/{owner}/{repo}/commits/{ref}/check-runs",
+            { owner, repo, ref: pull.head.sha, per_page: 100, page },
+          )
+        ).data.check_runs;
+        checkRuns.push(...response);
+        if (response.length < 100) break;
+      }
+    } catch (error) {
+      const status = githubErrorStatus(error);
+      if (!isUnavailableStatus(status)) throw error;
+      checksUnavailableReason = `check runs unavailable (${status})`;
+    }
+    let combinedStatus: { statuses: Array<{ context: string; state: string }> };
+    try {
+      combinedStatus = (
+        await request<{
+          statuses: Array<{ context: string; state: string }>;
+        }>("GET /repos/{owner}/{repo}/commits/{ref}/status", {
+          owner,
+          repo,
+          ref: pull.head.sha,
+          per_page: 100,
+        })
+      ).data;
+    } catch (error) {
+      const status = githubErrorStatus(error);
+      if (!isUnavailableStatus(status)) throw error;
+      checksUnavailableReason = [
+        checksUnavailableReason,
+        `commit statuses unavailable (${status})`,
+      ]
+        .filter(Boolean)
+        .join("; ");
+      combinedStatus = { statuses: [] };
+    }
+
+    const required = await fetchRequiredChecks(request, {
+      owner,
+      repo,
+      branch: pull.base.ref,
+    });
+    checksUnavailableReason = [
+      checksUnavailableReason,
+      required.unavailableReason,
+    ]
+      .filter(Boolean)
+      .join("; ");
+
+    const freshPull = (
       await request<PullResponse>(
         "GET /repos/{owner}/{repo}/pulls/{pull_number}",
         {
@@ -252,109 +462,70 @@ export async function getPullRequestGroundTruth(
         },
       )
     ).data;
-  } catch (error) {
-    if (githubErrorStatus(error) === 404) return null;
-    throw error;
-  }
-
-  const files = await pagedGitHubRequest<{ filename: string }>(
-    request,
-    "GET /repos/{owner}/{repo}/pulls/{pull_number}/files",
-    { owner, repo, pull_number: link.number },
-  );
-  type CheckRunResponse = {
-    check_runs: Array<{
-      name: string;
-      status: string;
-      conclusion: string | null;
-    }>;
-  };
-  const checkRuns: CheckRunResponse["check_runs"] = [];
-  for (let page = 1; ; page += 1) {
-    const response = (
-      await request<CheckRunResponse>(
-        "GET /repos/{owner}/{repo}/commits/{ref}/check-runs",
-        { owner, repo, ref: pull.head.sha, per_page: 100, page },
-      )
-    ).data.check_runs;
-    checkRuns.push(...response);
-    if (response.length < 100) break;
-  }
-  const combinedStatus = (
-    await request<{
-      statuses: Array<{ context: string; state: string }>;
-    }>("GET /repos/{owner}/{repo}/commits/{ref}/status", {
-      owner,
-      repo,
-      ref: pull.head.sha,
-      per_page: 100,
-    })
-  ).data;
-
-  let requiredNames = new Set<string>();
-  try {
-    const protection = (
-      await request<{
-        required_status_checks?: {
-          contexts?: string[];
-          checks?: Array<{ context: string }>;
-        } | null;
-      }>("GET /repos/{owner}/{repo}/branches/{branch}/protection", {
-        owner,
-        repo,
-        branch: pull.base.ref,
-      })
-    ).data;
-    requiredNames = new Set([
-      ...(protection.required_status_checks?.contexts ?? []),
-      ...(protection.required_status_checks?.checks ?? []).map(
-        (check) => check.context,
-      ),
-    ]);
-  } catch (error) {
-    // GitHub returns 404 for an unprotected branch. Any other failure means we
-    // cannot safely decide which red checks are required, so propagate it.
-    if (githubErrorStatus(error) !== 404) throw error;
-  }
-
-  const checks: RemoteCheck[] = [
-    ...checkRuns.map((check) => ({
-      name: check.name,
-      status: check.status,
-      conclusion: check.conclusion,
-      required: requiredNames.has(check.name),
-    })),
-    ...combinedStatus.statuses.map((status) => ({
-      name: status.context,
-      status: status.state === "pending" ? "in_progress" : "completed",
-      conclusion:
-        status.state === "success"
-          ? "success"
-          : status.state === "pending"
-            ? null
-            : "failure",
-      required: requiredNames.has(status.context),
-    })),
-  ];
-  const seenNames = new Set(checks.map((check) => check.name));
-  for (const required of requiredNames) {
-    if (!seenNames.has(required)) {
-      checks.push({
-        name: required,
-        status: "queued",
-        conclusion: null,
-        required: true,
-      });
+    if (freshPull.head.sha !== pull.head.sha) {
+      if (attempt === 0) continue;
+      throw new ElizaError(
+        "Pull request head changed while collecting ground truth",
+        {
+          code: "GITHUB_GROUND_TRUTH_HEAD_CHANGED",
+          context: { owner, repo, pullNumber: link.number },
+        },
+      );
     }
+
+    const checks: RemoteCheck[] = [
+      ...checkRuns.map((check) => ({
+        name: check.name,
+        status: check.status,
+        conclusion: check.conclusion,
+        appId: check.app?.id ?? null,
+        required: isRequiredCheck(
+          { name: check.name, appId: check.app?.id ?? null },
+          required.checks,
+        ),
+      })),
+      ...combinedStatus.statuses.map((status) => ({
+        name: status.context,
+        status: status.state === "pending" ? "in_progress" : "completed",
+        conclusion:
+          status.state === "success"
+            ? "success"
+            : status.state === "pending"
+              ? null
+              : "failure",
+        required: isRequiredCheck({ name: status.context }, required.checks),
+      })),
+    ];
+    for (const item of required.checks) {
+      const satisfied = checks.some((check) =>
+        isRequiredCheck({ name: check.name, appId: check.appId }, [item]),
+      );
+      if (!satisfied) {
+        checks.push({
+          name: item.context,
+          appId: item.appId,
+          status: "queued",
+          conclusion: null,
+          required: true,
+        });
+      }
+    }
+
+    return {
+      url: freshPull.html_url,
+      state: freshPull.merged_at ? "merged" : freshPull.state,
+      headSha: freshPull.head.sha,
+      changedFiles: files.map((file) => file.filename),
+      checks,
+      checksUnavailable: Boolean(checksUnavailableReason),
+      ...(checksUnavailableReason ? { checksUnavailableReason } : {}),
+    };
   }
 
-  return {
-    url: pull.html_url,
-    state: pull.merged_at ? "merged" : pull.state,
-    headSha: pull.head.sha,
-    changedFiles: files.map((file) => file.filename),
-    checks,
-  };
+  throw unavailableError("Pull request head changed during verification", {
+    repo: link.repo,
+    pullNumber: link.number,
+  });
 }
 
 // ── Issue Management ───────────────────────────────────────────────

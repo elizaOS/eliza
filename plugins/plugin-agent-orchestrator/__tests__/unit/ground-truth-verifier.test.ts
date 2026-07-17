@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   classifyCheckRollup,
   compareClaimedFiles,
@@ -177,7 +177,142 @@ describe("verifyGroundTruth", () => {
     );
     expect(verdict.checks.state).toBe("pending");
     expect(verdict.status).toBe("inconclusive");
-    expect(verdict.hardFail).toBe(false);
+    expect(verdict.hardFail).toBe(true);
+    expect(verdict.hardFailReasons[0]).toContain("pending");
+  });
+
+  it("blocks API-inconclusive verification when the feature applies", async () => {
+    const verdict = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles: ["src/a.ts"],
+        requirePullRequest: true,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async () => {
+          throw new Error("branch protection unavailable");
+        },
+        now,
+      },
+    );
+    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.hardFail).toBe(true);
+    expect(verdict.hardFailReasons[0]).toContain("API request failed");
+  });
+
+  it("blocks closed-unmerged and merged PR states", async () => {
+    const closed = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles: ["src/a.ts"],
+        requirePullRequest: false,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async () =>
+          remote({
+            state: "closed",
+            checks: [
+              {
+                name: "unit",
+                status: "completed",
+                conclusion: "success",
+                required: true,
+              },
+            ],
+          }),
+        now,
+      },
+    );
+    expect(closed.hardFail).toBe(true);
+    expect(closed.summary).toContain("closed");
+
+    const merged = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles: ["src/a.ts"],
+        requirePullRequest: false,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async () =>
+          remote({
+            state: "merged",
+            checks: [
+              {
+                name: "unit",
+                status: "completed",
+                conclusion: "success",
+                required: true,
+              },
+            ],
+          }),
+        now,
+      },
+    );
+    expect(merged.hardFail).toBe(true);
+    expect(merged.summary).toContain("merged");
+  });
+
+  it("blocks empty and unavailable check states", async () => {
+    const empty = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles: ["src/a.ts"],
+        requirePullRequest: false,
+        hardFailEnabled: true,
+      },
+      { fetchPullRequest: async () => remote({ checks: [] }), now },
+    );
+    expect(empty.hardFail).toBe(true);
+    expect(empty.summary).toContain("no reported checks");
+
+    const unavailable = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles: ["src/a.ts"],
+        requirePullRequest: false,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async () =>
+          remote({
+            checksUnavailable: true,
+            checksUnavailableReason: "branch protection unavailable (403)",
+          }),
+        now,
+      },
+    );
+    expect(unavailable.hardFail).toBe(true);
+    expect(unavailable.summary).toContain("unavailable");
+  });
+
+  it("preserves app-bound required check context in rendered evidence", async () => {
+    const verdict = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles: ["src/a.ts"],
+        requirePullRequest: false,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async () =>
+          remote({
+            checks: [
+              {
+                name: "unit",
+                status: "completed",
+                conclusion: "success",
+                required: true,
+                appId: 15368,
+              },
+            ],
+          }),
+        now,
+      },
+    );
+    expect(renderGroundTruthEvidence(verdict)).toContain("appId=15368");
   });
 
   it("preserves both directions of file mismatch in the structured verdict", async () => {
@@ -199,24 +334,25 @@ describe("verifyGroundTruth", () => {
     expect(verdict.files.claimedButNotChanged).toEqual(["src/claimed.ts"]);
   });
 
-  it("turns API errors into inconclusive verdicts, never hard failures", async () => {
+  it("skips fetching and does not hard-fail when the feature does not apply", async () => {
+    const fetchPullRequest = vi.fn(async () => {
+      throw new Error("rate limited");
+    });
     const verdict = await verifyGroundTruth(
       {
-        completion,
-        claimedFiles: ["src/a.ts"],
-        requirePullRequest: true,
+        completion: "no pull request",
+        claimedFiles: [],
+        requirePullRequest: false,
         hardFailEnabled: true,
       },
       {
-        fetchPullRequest: async () => {
-          throw new Error("rate limited");
-        },
+        fetchPullRequest,
         now,
       },
     );
-    expect(verdict.status).toBe("inconclusive");
+    expect(verdict.status).toBe("missing_pr");
     expect(verdict.hardFail).toBe(false);
-    expect(verdict.error).toBe("rate limited");
+    expect(fetchPullRequest).not.toHaveBeenCalled();
   });
 });
 
