@@ -22,6 +22,7 @@ import {
   cliInferencePlugin,
   findHandleResponseTool,
   LARGE_TIER_MODEL_TYPES,
+  parseTurnTimeout,
   resolveCliBackend,
   resolveSdkEffort,
 } from "../index";
@@ -1197,5 +1198,18 @@ describe("Stage-1 ENVELOPE mode (claude-sdk handle_response tool)", () => {
     expect(body.trimEnd().endsWith("with the completed envelope fields.")).toBe(true);
     // System-less calls still produce a well-formed body.
     expect(buildEnvelopeBody(undefined, "just body")).toContain("just body");
+  });
+});
+
+describe("parseTurnTimeout (#16553)", () => {
+  it('passes an explicit "0" through as the unbounded opt-out', () => {
+    expect(parseTurnTimeout("0")).toBe(0);
+  });
+
+  it("parses a positive budget and rejects junk/negatives to undefined (bounded default applies)", () => {
+    expect(parseTurnTimeout("120000")).toBe(120_000);
+    expect(parseTurnTimeout(undefined)).toBeUndefined();
+    expect(parseTurnTimeout("abc")).toBeUndefined();
+    expect(parseTurnTimeout("-5")).toBeUndefined();
   });
 });
