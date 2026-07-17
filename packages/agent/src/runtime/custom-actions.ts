@@ -15,15 +15,9 @@ import {
 } from "node:http";
 import { request as requestHttps } from "node:https";
 import net from "node:net";
-import {
-  type Action,
-  type HandlerOptions,
-  type IAgentRuntime,
-  logger,
-} from "@elizaos/core";
+import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
 import { resolveApiToken, resolveServerOnlyPort } from "@elizaos/shared";
 import { hasSelectedContextOrSignalSync } from "../actions/context-signal.ts";
-import { loadElizaConfig } from "../config/config.ts";
 import type {
   CustomActionDef,
   CustomActionHandler,
@@ -969,21 +963,6 @@ function defToAction(def: CustomActionDef): Action {
       schema: { type: "string" as const },
     })),
   };
-}
-
-export function loadCustomActions(): Action[] {
-  try {
-    const config = loadElizaConfig();
-    const defs = config.customActions ?? [];
-    return defs.filter((d) => d.enabled).map(defToAction);
-  } catch (err) {
-    logger.warn(
-      `[custom-actions] Failed to load custom actions from config: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return [];
-  }
 }
 
 export function buildTestHandler(

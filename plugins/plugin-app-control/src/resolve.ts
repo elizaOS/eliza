@@ -1,7 +1,7 @@
 /**
  * @module plugin-app-control/resolve
- * @description Helpers for resolving a user-supplied "app name" to either a
- * registered app (for launch) or an active run (for close).
+ * @description Helpers for resolving a user-supplied "app name" to a
+ * registered app (for launch).
  *
  * Match rules:
  * - Exact case-insensitive match on `name`, `displayName`, or `pluginName`
@@ -10,7 +10,7 @@
  *   are returned as candidates for disambiguation at the caller.
  */
 
-import type { AppRunSummary, InstalledAppInfo } from "./types.js";
+import type { InstalledAppInfo } from "./types.js";
 
 export interface ResolveResult<T> {
 	kind: "match" | "ambiguous" | "none";
@@ -24,10 +24,6 @@ function norm(value: string): string {
 
 function appKeys(app: InstalledAppInfo): string[] {
 	return [app.name, app.displayName, app.pluginName].map(norm);
-}
-
-function runKeys(run: AppRunSummary): string[] {
-	return [run.appName, run.displayName, run.pluginName, run.runId].map(norm);
 }
 
 function matches<T>(
@@ -68,22 +64,6 @@ export function resolveInstalledApp(
 	return matches(name, apps, appKeys);
 }
 
-export function resolveRunByName(
-	name: string,
-	runs: readonly AppRunSummary[],
-): ResolveResult<AppRunSummary> {
-	return matches(name, runs, runKeys);
-}
-
 export function formatAppCandidates(apps: readonly InstalledAppInfo[]): string {
 	return apps.map((app) => `- ${app.displayName} (${app.name})`).join("\n");
-}
-
-export function formatRunCandidates(runs: readonly AppRunSummary[]): string {
-	return runs
-		.map(
-			(run) =>
-				`- ${run.displayName} [runId: ${run.runId}, status: ${run.status}]`,
-		)
-		.join("\n");
 }

@@ -7,10 +7,7 @@ export type {
   ConnectorStatus,
   DispatchResult,
 } from "./contract.js";
-export {
-  DEFAULT_CONNECTOR_PACK,
-  registerDefaultConnectorPack,
-} from "./default-pack.js";
+export { registerDefaultConnectorPack } from "./default-pack.js";
 export {
   type DispatchFailureReason,
   type DispatchPolicyContext,

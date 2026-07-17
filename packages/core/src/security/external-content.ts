@@ -213,7 +213,7 @@ export function wrapExternalContent(
 	const { source, sender, subject, includeWarning = true } = options;
 
 	const sanitized = replaceMarkers(content);
-	const sourceLabel = EXTERNAL_SOURCE_LABELS[source] ?? "External";
+	const sourceLabel = EXTERNAL_SOURCE_LABELS[source];
 	const metadataLines: string[] = [`Source: ${sourceLabel}`];
 
 	if (sender) {

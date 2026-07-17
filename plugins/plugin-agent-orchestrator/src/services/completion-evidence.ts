@@ -129,6 +129,35 @@ const MAX_ARTIFACTS = 20;
 const MAX_TOOL_OUTPUT_CHARS = 2_000;
 
 /**
+ * Append a verifier-produced section without replacing the evidence assembled
+ * above. When the combined string exceeds the prompt budget, preserve the new
+ * (usually highest-value) section and trim only the older evidence prefix.
+ */
+export function appendCompletionEvidenceSection(
+  evidence: string,
+  section: string,
+): string {
+  const base = evidence.trim();
+  const addition = section.trim();
+  if (!addition) return base;
+  if (!base) return clamp(addition, MAX_EVIDENCE_CHARS);
+  const separator = "\n\n";
+  if (base.length + separator.length + addition.length <= MAX_EVIDENCE_CHARS) {
+    return `${base}${separator}${addition}`;
+  }
+  if (addition.length >= MAX_EVIDENCE_CHARS) {
+    const marker = "\n… [truncated]";
+    return `${addition.slice(0, MAX_EVIDENCE_CHARS - marker.length)}${marker}`;
+  }
+  const marker = "\n… [evidence truncated]";
+  const available = Math.max(
+    0,
+    MAX_EVIDENCE_CHARS - addition.length - separator.length - marker.length,
+  );
+  return `${base.slice(0, available)}${marker}${separator}${addition}`;
+}
+
+/**
  * Lines that look like the output of a build / test / typecheck / lint run.
  * Deliberately broad across the common toolchains (vitest/jest, tsc, biome,
  * eslint, cargo, go, pytest, generic "exit code") so a real run is surfaced

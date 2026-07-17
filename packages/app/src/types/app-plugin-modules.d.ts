@@ -75,6 +75,9 @@ declare module "@elizaos/app-core" {
 declare module "@elizaos/plugin-personal-assistant" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
+  export const LifeOpsActivitySignalsEffect: ComponentType<
+    Record<string, never>
+  >;
 }
 
 declare module "@elizaos/plugin-blocker" {

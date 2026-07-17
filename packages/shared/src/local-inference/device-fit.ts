@@ -118,7 +118,7 @@ function maxFittingContextForTier(
 ): { context: number; kvBytesPerToken: number } | null {
   const kvBytesPerToken = kvBytesPerTokenForTier(tier);
   if (kvBytesPerToken == null) return null;
-  const sizeGb = tier.sizeGb ?? 0;
+  const sizeGb = tier.sizeGb;
   const kvAvailableGb = freeRamGb - sizeGb - RUNTIME_OVERHEAD_GB;
   if (kvAvailableGb <= 0) return { context: 0, kvBytesPerToken };
   const tokensThatFit = (kvAvailableGb * BYTES_PER_GB) / kvBytesPerToken;

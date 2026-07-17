@@ -56,9 +56,6 @@ export interface TaskAgentFrameworkAvailability {
   installed: boolean;
   authReady: boolean;
   subscriptionReady: boolean;
-  temporarilyDisabled: boolean;
-  temporarilyDisabledUntil?: number;
-  temporarilyDisabledReason?: string;
   recommended: boolean;
   reason: string;
   installCommand?: string;
@@ -318,12 +315,6 @@ const frameworkStateInflight = new Map<
   FrameworkDiscoveryCacheKey,
   Promise<FrameworkInventory>
 >();
-const frameworkCooldowns = new Map<
-  SupportedTaskAgentAdapter,
-  { until: number; reason: string }
->();
-const TASK_AGENT_USAGE_EXHAUSTED_RE =
-  /\b(insufficient(?:[_\s]+(?:credits?|quota))|insufficient_quota|out of credits|credit balance|usage (?:has )?(?:reached|exceeded)|(?:you(?:'ve| have)? hit your usage limits?)|usage[-\s]?limits?|quota exceeded|payment required|status(?:code)?[:\s]*402)\b/i;
 
 function frameworkDiscoveryCacheKey(
   probe?: TaskAgentFrameworkProbe,
@@ -384,19 +375,6 @@ function safeGetSetting(
 
 function trimModelPref(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-export function readTaskAgentModelPrefs(
-  value: unknown,
-): TaskAgentModelPrefs | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return undefined;
-  }
-  const record = value as Record<string, unknown>;
-  return compactTaskAgentModelPrefs({
-    powerful: trimModelPref(record.powerful),
-    fast: trimModelPref(record.fast),
-  });
 }
 
 function compactTaskAgentModelPrefs(
@@ -662,18 +640,6 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
   }
 }
 
-function getFrameworkCooldown(
-  id: SupportedTaskAgentAdapter,
-): { until: number; reason: string } | undefined {
-  const cooldown = frameworkCooldowns.get(id);
-  if (!cooldown) return undefined;
-  if (cooldown.until <= Date.now()) {
-    frameworkCooldowns.delete(id);
-    return undefined;
-  }
-  return cooldown;
-}
-
 async function computeTaskAgentFrameworkState(
   runtime: IAgentRuntime,
   probe?: TaskAgentFrameworkProbe,
@@ -701,9 +667,10 @@ async function computeTaskAgentFrameworkState(
           preflightByAdapter.set(adapterId, result);
         }
       }
-    } catch {
+    } catch (error) {
       // error-policy:J4 ACP preflight probe failed transiently; discovery degrades
       // to static filesystem/env detection so status surfaces stay alive.
+      runtime.reportError("task-agent-frameworks.preflight", error);
     }
   }
 
@@ -749,8 +716,14 @@ async function computeTaskAgentFrameworkState(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
+  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
+  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
+  // INSTALLED: it shares OpenCode's provider thumb (below) and its
+  // capability-profile fit dominates OpenCode on every axis, so with an equal
+  // provider signal it wins the weighted sort (alphabetical tie-break also
+  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
+  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
+  // running). Claude/Codex only become preferred when their key path is set.
   const providerPrefersOpencode =
     !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
@@ -760,7 +733,6 @@ async function computeTaskAgentFrameworkState(
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
       const preflight = preflightByAdapter.get(id);
-      const cooldown = getFrameworkCooldown(id);
       const nativeExplicit =
         (id === "elizaos" || id === "pi-agent") && explicitDefault === id;
       const installed =
@@ -805,13 +777,8 @@ async function computeTaskAgentFrameworkState(
         installed,
         authReady,
         subscriptionReady,
-        temporarilyDisabled: Boolean(cooldown),
-        temporarilyDisabledUntil: cooldown?.until,
-        temporarilyDisabledReason: cooldown?.reason,
         recommended: false,
-        reason: cooldown
-          ? `${reason}; temporarily disabled after a provider failure: ${cooldown.reason}`
-          : reason,
+        reason,
         installCommand:
           preflight?.installCommand ??
           (id === "elizaos"
@@ -834,26 +801,23 @@ async function computeTaskAgentFrameworkState(
   }));
   const metrics = probe?.getAgentMetrics?.() ?? {};
   const profile = buildTaskAgentTaskProfile(profileInput);
-  const selectable = frameworks.filter(
-    (framework) => framework.installed && !framework.temporarilyDisabled,
-  );
-  const candidates =
-    selectable.length > 0
-      ? selectable
-      : frameworks.filter((framework) => framework.installed);
+  const candidates = frameworks.filter((framework) => framework.installed);
 
   const scoredCandidates = candidates.map((framework) => {
     const explicitOverride =
-      explicitDefault === framework.id
-        ? framework.installed && !framework.temporarilyDisabled
-          ? 40
-          : 0
-        : 0;
+      explicitDefault === framework.id && framework.installed ? 40 : 0;
     const providerPreference =
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code shares OpenCode's BYO provider thumb when no provider
+            // key prefers claude/codex; its dominant capability-profile fit then
+            // makes an installed eliza-code the default over OpenCode.
+            framework.id === "elizaos" && providerPrefersOpencode
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
@@ -870,8 +834,7 @@ async function computeTaskAgentFrameworkState(
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
-      (framework.subscriptionReady ? 8 : 0) +
-      (framework.temporarilyDisabled ? -80 : 0);
+      (framework.subscriptionReady ? 8 : 0);
     const profileScore = computeProfileFitScore(framework.id, profile);
     const metricsScore = computeMetricsScore(
       metrics[framework.id],
@@ -1062,33 +1025,35 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
+  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
+  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
+  // INSTALLED: it shares OpenCode's provider thumb (below) and its
+  // capability-profile fit dominates OpenCode on every axis, so with an equal
+  // provider signal it wins the weighted sort (alphabetical tie-break also
+  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
+  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
+  // running). Claude/Codex only become preferred when their key path is set.
   const providerPrefersOpencode =
     !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
-  const candidates =
-    frameworks.filter(
-      (framework) => framework.installed && !framework.temporarilyDisabled,
-    ).length > 0
-      ? frameworks.filter(
-          (framework) => framework.installed && !framework.temporarilyDisabled,
-        )
-      : frameworks.filter((framework) => framework.installed);
+  const candidates = frameworks.filter((framework) => framework.installed);
   const scoredCandidates = candidates.map((framework) => {
     const explicitOverride =
-      explicitDefault === framework.id
-        ? framework.installed && !framework.temporarilyDisabled
-          ? 40
-          : 0
-        : 0;
+      explicitDefault === framework.id && framework.installed ? 40 : 0;
     const providerPreference =
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code shares OpenCode's BYO provider thumb when no provider
+            // key prefers claude/codex; its dominant capability-profile fit then
+            // makes an installed eliza-code the default over OpenCode.
+            framework.id === "elizaos" && providerPrefersOpencode
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
@@ -1105,8 +1070,7 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
-      (framework.subscriptionReady ? 8 : 0) +
-      (framework.temporarilyDisabled ? -80 : 0);
+      (framework.subscriptionReady ? 8 : 0);
     const profileScore = computeProfileFitScore(framework.id, profile);
     const metricsScore = computeMetricsScore(
       metrics[framework.id],
@@ -1334,30 +1298,6 @@ export function clearTaskAgentFrameworkStateCache(): void {
   frameworkStateInflight.clear();
 }
 
-export function isUsageExhaustedTaskAgentError(text: string): boolean {
-  return TASK_AGENT_USAGE_EXHAUSTED_RE.test(text);
-}
-
-export function markTaskAgentFrameworkUnavailable(
-  id: SupportedTaskAgentAdapter,
-  reason: string,
-  cooldownMs = 30 * 60 * 1000,
-): void {
-  frameworkCooldowns.set(id, {
-    until: Date.now() + cooldownMs,
-    reason,
-  });
-  clearTaskAgentFrameworkStateCache();
-}
-
-export function markTaskAgentFrameworkHealthy(
-  id: SupportedTaskAgentAdapter,
-): void {
-  if (frameworkCooldowns.delete(id)) {
-    clearTaskAgentFrameworkStateCache();
-  }
-}
-
 export function formatTaskAgentFrameworkLine(
   framework: TaskAgentFrameworkAvailability,
 ): string {
@@ -1367,9 +1307,6 @@ export function formatTaskAgentFrameworkLine(
   ];
   if (framework.subscriptionReady) {
     parts.push("uses the user's subscription");
-  }
-  if (framework.temporarilyDisabled) {
-    parts.push("temporarily disabled");
   }
   if (framework.recommended) {
     parts.push("recommended");
@@ -1390,19 +1327,6 @@ export function formatTaskAgentStatus(status: string): string {
     default:
       return status;
   }
-}
-
-export function truncateTaskAgentText(text: string, max = 120): string {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}...` : trimmed;
-}
-
-export function rewriteTaskAgentText(text: string): string {
-  return text
-    .replace(/\bcoding agents\b/gi, "task agents")
-    .replace(/\bcoding agent\b/gi, "task agent")
-    .replace(/\bcoding sessions\b/gi, "task-agent sessions")
-    .replace(/\bcoding session\b/gi, "task-agent session");
 }
 
 export { FRAMEWORK_LABELS as TASK_AGENT_FRAMEWORK_LABELS };

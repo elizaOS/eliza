@@ -1,9 +1,7 @@
 /**
- * Shared helpers for app-core unit tests: an environment-variable sandbox,
- * plugin-shape predicates and export extractors, package/connector import
- * resolvers (Telegram, Lens, Farcaster, Nostr, Matrix, Feishu), mock
- * update-check payloads, lightweight mocked HTTP request/response objects, and
- * optional-dynamic-import guards that swallow missing-module errors.
+ * Shared helpers for app-core unit tests: plugin-shape predicates and export
+ * extractors, package/connector import resolvers (Telegram, Lens, Farcaster,
+ * Nostr, Matrix, Feishu), and lightweight mocked HTTP request/response objects.
  */
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
@@ -11,54 +9,6 @@ import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-
-const OPTIONAL_IMPORT_ERROR_MARKERS = [
-  "Cannot find module",
-  "Cannot find package",
-  "ERR_MODULE_NOT_FOUND",
-  "MODULE_NOT_FOUND",
-  "Dynamic require of",
-  "native addon module",
-  "Failed to resolve entry",
-  "tfjs_binding",
-  "NAPI_MODULE_NOT_FOUND",
-  "spec not found",
-];
-
-/** Standardized test result for mocked updater checks. */
-export type MockUpdateCheckResult = {
-  updateAvailable: boolean;
-  currentVersion: string;
-  latestVersion: string | null;
-  channel: string;
-  distTag: string;
-  cached: boolean;
-  error: string | null;
-};
-
-/** Snapshot and restore the configured environment variables around a test. */
-export function createEnvSandbox(keys: readonly string[]) {
-  const backup: Record<string, string | undefined> = {};
-
-  function clear(): void {
-    for (const key of keys) {
-      backup[key] = process.env[key];
-      delete process.env[key];
-    }
-  }
-
-  function restore(): void {
-    for (const key of keys) {
-      if (backup[key] === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = backup[key];
-      }
-    }
-  }
-
-  return { clear, restore };
-}
 
 export type PluginModuleShape = {
   [key: string]: unknown;
@@ -96,14 +46,6 @@ export function isPackageImportResolvable(packageName: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Check whether a dependency specifier should be treated as a workspace-local version. */
-export function isWorkspaceDependency(version: string | undefined): boolean {
-  return (
-    typeof version === "string" &&
-    (version.startsWith(".") || version.startsWith("workspace:"))
-  );
 }
 
 const PACKAGE_ROOT = path.resolve(
@@ -262,22 +204,6 @@ export function resolveFeishuPluginImportSpecifier(): string | null {
   });
 }
 
-/** Build a mock update check result with deterministic defaults. */
-export function buildMockUpdateCheckResult(
-  overrides: Partial<MockUpdateCheckResult> = {},
-): MockUpdateCheckResult {
-  return {
-    updateAvailable: false,
-    currentVersion: "2.0.0",
-    latestVersion: "2.0.0",
-    channel: "stable",
-    distTag: "latest",
-    cached: false,
-    error: null,
-    ...overrides,
-  };
-}
-
 /** Small utility to wait for asynchronous side-effects in tests. */
 export function waitMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -344,16 +270,6 @@ export function createMockHttpResponse<T = unknown>(): MockResponsePayload<T> {
   };
 }
 
-export function createMockHeadersRequest(
-  headers: Record<string, string> = {},
-  options: Omit<MockRequestOptions, "headers" | "body"> = {},
-): http.IncomingMessage & { destroy: () => void } {
-  return createMockIncomingMessage({
-    ...options,
-    headers,
-  });
-}
-
 export function createMockIncomingMessage({
   method = "GET",
   url = "/",
@@ -396,39 +312,4 @@ export function createMockIncomingMessage({
   queueMicrotask(() => req.emit("end"));
 
   return req;
-}
-
-export function createMockJsonRequest(
-  body: unknown,
-  options: Omit<MockRequestOptions, "body" | "json"> = {},
-): http.IncomingMessage & { destroy: () => void } {
-  return createMockIncomingMessage({
-    ...options,
-    body,
-    json: true,
-  });
-}
-
-/** Return true when optional plugin imports are intentionally unavailable in this env. */
-export function isOptionalImportError(
-  error: unknown,
-  extraMarkers: readonly string[] = [],
-): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return OPTIONAL_IMPORT_ERROR_MARKERS.concat(extraMarkers).some((marker) =>
-    message.includes(marker),
-  );
-}
-
-/** Safely import optional plugin modules while allowing hard failures to bubble. */
-export async function tryOptionalDynamicImport<T>(
-  moduleName: string,
-  markers?: readonly string[],
-): Promise<T | null> {
-  try {
-    return (await import(moduleName)) as T;
-  } catch (error) {
-    if (isOptionalImportError(error, markers)) return null;
-    throw error;
-  }
 }

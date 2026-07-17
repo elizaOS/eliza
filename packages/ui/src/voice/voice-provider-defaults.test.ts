@@ -9,6 +9,7 @@ import {
   type PresetRuntimeMode,
   pickDefaultVoiceProvider,
   resolveDefaultTtsProvider,
+  resolveWavAsrRoute,
   type VoiceCapabilitySnapshot,
 } from "./voice-provider-defaults";
 
@@ -289,5 +290,81 @@ describe("resolveDefaultTtsProvider — capability-aware default chain", () => {
         }
       }
     }
+  });
+});
+
+describe("resolveWavAsrRoute", () => {
+  const base = {
+    cloudConnected: false,
+    captureSupported: true,
+    localInferenceReady: false,
+  };
+
+  it("keeps an explicit local-inference choice local while the server is ready", () => {
+    expect(
+      resolveWavAsrRoute({
+        ...base,
+        provider: "local-inference",
+        localInferenceReady: true,
+        cloudConnected: true,
+      }),
+    ).toBe("local-inference");
+  });
+
+  it("degrades an unready local-inference choice to the cloud route when a cloud session exists (#16524)", () => {
+    expect(
+      resolveWavAsrRoute({
+        ...base,
+        provider: "local-inference",
+        cloudConnected: true,
+      }),
+    ).toBe("cloud");
+  });
+
+  it("returns no WAV route for an unready local-inference choice without a cloud session", () => {
+    expect(
+      resolveWavAsrRoute({ ...base, provider: "local-inference" }),
+    ).toBeNull();
+  });
+
+  it("routes eliza-cloud and openai to the cloud proxy", () => {
+    expect(resolveWavAsrRoute({ ...base, provider: "eliza-cloud" })).toBe(
+      "cloud",
+    );
+    expect(resolveWavAsrRoute({ ...base, provider: "openai" })).toBe("cloud");
+  });
+
+  it("returns no WAV route without capture primitives, whatever the provider", () => {
+    for (const provider of [
+      "local-inference",
+      "eliza-cloud",
+      "openai",
+    ] as const) {
+      expect(
+        resolveWavAsrRoute({
+          provider,
+          cloudConnected: true,
+          captureSupported: false,
+          localInferenceReady: true,
+        }),
+      ).toBeNull();
+    }
+  });
+
+  it("returns no WAV route for a forced browser engine or an unset provider", () => {
+    expect(
+      resolveWavAsrRoute({
+        ...base,
+        provider: "browser",
+        cloudConnected: true,
+      }),
+    ).toBeNull();
+    expect(
+      resolveWavAsrRoute({
+        ...base,
+        provider: undefined,
+        cloudConnected: true,
+      }),
+    ).toBeNull();
   });
 });

@@ -51,6 +51,7 @@ import {
   type SpeechRecognitionResultEvent,
   TALKMODE_STOP_SETTLE_MS,
 } from "./voice-chat-types";
+import { resolveWavAsrRoute } from "./voice-provider-defaults";
 
 /** Backend the factory ended up using for the current capture. */
 export type VoiceCaptureBackend =
@@ -124,6 +125,15 @@ export interface VoiceCaptureFactoryOptions {
    * available (useful in tests / browsers without an Eliza API server).
    */
   asrProvider?: AsrProvider | "browser";
+  /**
+   * True when a cloud session with a working STT proxy (`/api/asr/cloud`)
+   * exists. Lets a `local-inference` preference whose server-side runtime is
+   * unavailable degrade to the cloud WAV route instead of falling through to
+   * browser SpeechRecognition (absent on Safari/iOS PWA) — see
+   * `resolveWavAsrRoute` (#16524). Default `false`: without a declared cloud
+   * session the resolution behaves exactly as before.
+   */
+  cloudConnected?: boolean;
   /** Locale string forwarded to the browser SpeechRecognition API. Default `en-US`. */
   lang?: string;
   localAsrAutoStop?: LocalAsrAutoStopOptions;
@@ -184,6 +194,7 @@ function isNativeTalkModeCaptureAvailable(): boolean {
 
 async function resolveBackendKind(
   preferred: AsrProvider | "browser" | undefined,
+  cloudConnected: boolean,
 ): Promise<VoiceCaptureBackend> {
   if (preferred === "browser") {
     return "browser";
@@ -195,27 +206,27 @@ async function resolveBackendKind(
   if (isNativeTalkModeCaptureAvailable()) {
     return "talkmode";
   }
-  // local-inference is the default elsewhere, but it needs BOTH the client
-  // mic-capture primitives AND a server that can actually transcribe. Probe the
-  // server's readiness (GET /api/asr/local-inference/status) so an unconfigured
-  // box (no local ASR assets / native adapter) degrades to browser SpeechRecognition
-  // instead of capturing audio it can only 502 on at stop().
-  if (
-    (preferred === "local-inference" || preferred === undefined) &&
-    isLocalAsrCaptureSupported() &&
-    (await isLocalInferenceAsrReady())
-  ) {
-    return "local-inference";
-  }
-  // Eliza-cloud / OpenAI ASR: capture the same WAV as the local path and POST
-  // it to the cloud STT proxy (`/api/asr/cloud`). This is the real transcriber
-  // for the documented web/cloud `eliza-cloud` default — the browser recognizer
-  // is engine-dependent (or absent) and is NOT the cloud path.
-  if (
-    (preferred === "eliza-cloud" || preferred === "openai") &&
-    isLocalAsrCaptureSupported()
-  ) {
-    return "cloud";
+  // WAV routing (local-inference vs the cloud STT proxy) is the shared rule in
+  // `resolveWavAsrRoute` — the same one `useVoiceChat` applies, so the two
+  // capture surfaces cannot diverge (#16524). local-inference needs BOTH the
+  // client mic-capture primitives AND a server that can actually transcribe
+  // (GET /api/asr/local-inference/status); an unready explicit local choice
+  // degrades to the cloud WAV route when a cloud session exists. The factory's
+  // documented default for an unset provider is the local-first preference.
+  const provider = preferred ?? "local-inference";
+  const captureSupported = isLocalAsrCaptureSupported();
+  const localInferenceReady =
+    provider === "local-inference" && captureSupported
+      ? await isLocalInferenceAsrReady()
+      : false;
+  const wavRoute = resolveWavAsrRoute({
+    provider,
+    cloudConnected,
+    captureSupported,
+    localInferenceReady,
+  });
+  if (wavRoute) {
+    return wavRoute;
   }
   // Browser SpeechRecognition is the fallback ONLY where no WAV path exists —
   // a renderer without `getUserMedia`/`AudioContext` can't record a WAV to POST,
@@ -231,6 +242,7 @@ export function createVoiceCapture(
     onStateChange,
     onSilentDrop,
     asrProvider,
+    cloudConnected = false,
     lang = "en-US",
     localAsrAutoStop,
     finalizeOnStop = false,
@@ -401,7 +413,7 @@ export function createVoiceCapture(
     if (active) return;
     setState("starting");
     try {
-      backendKind = await resolveBackendKind(asrProvider);
+      backendKind = await resolveBackendKind(asrProvider, cloudConnected);
       if (backendKind === "talkmode") {
         await startTalkMode();
       } else if (backendKind === "local-inference" || backendKind === "cloud") {

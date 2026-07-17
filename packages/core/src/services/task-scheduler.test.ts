@@ -19,8 +19,8 @@ import {
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000aa" as UUID;
 
-function makeRuntime(): IAgentRuntime {
-	return { agentId: AGENT_ID } as unknown as IAgentRuntime;
+function makeRuntime(reportError = vi.fn()): IAgentRuntime {
+	return { agentId: AGENT_ID, reportError } as unknown as IAgentRuntime;
 }
 
 /**
@@ -64,7 +64,9 @@ describe("task-scheduler", () => {
 		// The rejection is surfaced through the structured logger, not swallowed.
 		expect(errorSpy).toHaveBeenCalledTimes(1);
 		const [context, message] = errorSpy.mock.calls[0];
-		expect(context).toMatchObject({ err: failure });
+		expect(context).toMatchObject({
+			err: { code: "TASK_SCHEDULER_QUERY_FAILED", cause: failure },
+		});
 		expect(message).toContain("tick failed");
 
 		// Scheduling continues: a fresh dirty agent on the next tick still queries.
@@ -151,6 +153,46 @@ describe("task-scheduler", () => {
 		await runOneTick();
 		expect(getTasks).toHaveBeenCalledTimes(1);
 		expect(runTick).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports and rejects adapter rows outside the queried tenant scope", async () => {
+		const reportError = vi.fn();
+		const rogue = {
+			id: "rogue",
+			agentId: "00000000-0000-0000-0000-0000000000ff" as UUID,
+		} as Task;
+		const getTasks = vi.fn(async () => [rogue]);
+		startTaskScheduler({ getTasks } as unknown as IDatabaseAdapter);
+		const runTick = vi.fn(async () => undefined);
+		registerTaskSchedulerRuntime(makeRuntime(reportError), { runTick });
+
+		await runOneTick();
+
+		expect(runTick).not.toHaveBeenCalled();
+		expect(reportError).toHaveBeenCalledWith(
+			"TaskScheduler.scope",
+			expect.objectContaining({ code: "TASK_SCHEDULER_SCOPE_VIOLATION" }),
+			{ agentId: AGENT_ID },
+		);
+	});
+
+	it("reports runTick failures through the owning runtime", async () => {
+		const reportError = vi.fn();
+		const task = { id: "t1", agentId: AGENT_ID } as unknown as Task;
+		startTaskScheduler({
+			getTasks: vi.fn(async () => [task]),
+		} as unknown as IDatabaseAdapter);
+		const failure = new Error("tick exploded");
+		registerTaskSchedulerRuntime(makeRuntime(reportError), {
+			runTick: vi.fn(async () => {
+				throw failure;
+			}),
+		});
+
+		await runOneTick();
+		expect(reportError).toHaveBeenCalledWith("TaskScheduler.runTick", failure, {
+			agentId: AGENT_ID,
+		});
 	});
 
 	it("does not log when getTasks succeeds", async () => {

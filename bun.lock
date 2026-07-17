@@ -914,6 +914,14 @@
       "name": "@elizaos/docs",
       "version": "2.0.0-beta.2",
     },
+    "packages/eliza-hub": {
+      "name": "@elizaos/eliza-hub",
+      "version": "0.1.0",
+      "dependencies": {
+        "jose": "^6.2.3",
+        "pg": "^8.22.0",
+      },
+    },
     "packages/elizaos": {
       "name": "elizaos",
       "version": "2.0.3-beta.7",
@@ -4708,11 +4716,14 @@
         "@elizaos/plugin-goals": "workspace:*",
         "@elizaos/plugin-google": "workspace:*",
         "@elizaos/plugin-health": "workspace:*",
+        "@elizaos/plugin-imessage": "workspace:*",
         "@elizaos/plugin-inbox": "workspace:*",
         "@elizaos/plugin-phone": "workspace:*",
         "@elizaos/plugin-reminders": "workspace:*",
         "@elizaos/plugin-remote-desktop": "workspace:*",
         "@elizaos/plugin-scheduling": "workspace:*",
+        "@elizaos/plugin-signal": "workspace:*",
+        "@elizaos/plugin-telegram": "workspace:*",
         "@elizaos/plugin-whatsapp": "workspace:*",
         "@elizaos/plugin-x": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -6333,6 +6344,8 @@
     "@elizaos/docs-elizacloud-redirect": ["@elizaos/docs-elizacloud-redirect@workspace:packages/cloud/docs-redirect"],
 
     "@elizaos/electrobun": ["@elizaos/electrobun@workspace:packages/app-core/platforms/electrobun"],
+
+    "@elizaos/eliza-hub": ["@elizaos/eliza-hub@workspace:packages/eliza-hub"],
 
     "@elizaos/evidence": ["@elizaos/evidence@workspace:packages/evidence"],
 

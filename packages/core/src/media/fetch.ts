@@ -271,7 +271,7 @@ async function readResponseWithLimit(
 	maxBytes: number,
 ): Promise<Buffer> {
 	const body = res.body;
-	if (!body || typeof body.getReader !== "function") {
+	if (!body) {
 		const fallback = Buffer.from(await res.arrayBuffer());
 		if (fallback.length > maxBytes) {
 			throw new MediaFetchError(

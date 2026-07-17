@@ -198,23 +198,6 @@ export async function listAgentWallets(
 }
 
 /**
- * List every agent that has at least one wallet stored. Returns the
- * agent IDs (decoded). Use for UI surfaces enumerating agent wallets.
- */
-export async function listAgentsWithWallets(
-  vault: Vault,
-): Promise<readonly string[]> {
-  const keys = await vault.list(PREFIX);
-  const agents = new Set<string>();
-  for (const key of keys) {
-    const parsed = parseAgentWalletKey(key);
-    if (!parsed) continue;
-    agents.add(parsed.agentId);
-  }
-  return [...agents];
-}
-
-/**
  * Persist a wallet for an agent. Replaces any existing entry for that
  * (agentId, chain). Stamps `lastModified`.
  *
@@ -392,19 +375,6 @@ export async function removeAgentWallet(
   const key = walletKey(agentId, chain);
   await vault.remove(key);
   await removeEntryMeta(vault, key);
-}
-
-/**
- * Remove every wallet for an agent. Use during agent deletion.
- */
-export async function removeAllAgentWallets(
-  vault: Vault,
-  agentId: string,
-): Promise<void> {
-  const wallets = await listAgentWallets(vault, agentId);
-  for (const w of wallets) {
-    await removeAgentWallet(vault, agentId, w.chain);
-  }
 }
 
 // Internal helpers — exported for tests only.

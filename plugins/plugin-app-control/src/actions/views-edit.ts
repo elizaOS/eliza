@@ -164,9 +164,7 @@ async function dispatchEditAgent({
 	originRoomId: string;
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
-	const createTaskName = findAsyncCodingDelegationActionName(
-		runtime.actions ?? [],
-	);
+	const createTaskName = findAsyncCodingDelegationActionName(runtime.actions);
 	const createTask = runtime.actions.find((a) => a.name === createTaskName);
 	if (!createTask) {
 		const text =

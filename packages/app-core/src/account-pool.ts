@@ -3,3 +3,4 @@
  * or from `@elizaos/app-core` (barrel).
  */
 export * from "./services/account-pool.js";
+export * from "./services/account-pool-consumer-metering.js";

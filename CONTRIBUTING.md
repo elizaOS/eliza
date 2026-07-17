@@ -149,14 +149,22 @@ rebasing when `develop` changes the behavior under review.
 **Headless agents (no browser, cannot drag-and-drop):** upload media to the
 dedicated [`pr-evidence` release](https://github.com/elizaOS/eliza/releases/tag/pr-evidence)
 and embed the asset URLs — they end in a media extension, render inline via
-`![](…)`, and satisfy the evidence gate:
+`![](…)`, and satisfy the evidence gate. Prefer the one-command tool, which
+also patches the PR rows and verifies the gate locally:
 
 ```bash
 # name files <pr-number>-<artifact>.<ext>, then:
-gh release upload pr-evidence 15171-after-desktop.jpg 15171-walkthrough.mp4
+node scripts/pr-evidence.mjs attach 15171 15171-after-desktop.jpg 15171-walkthrough.mp4
 # embed in the PR evidence rows:
 #   ![after](https://github.com/elizaOS/eliza/releases/download/pr-evidence/15171-after-desktop.jpg)
 ```
+
+GitHub caps a release at 1000 assets, so once `pr-evidence` fills, `attach`
+rolls uploads into overflow releases (`pr-evidence-2`, `pr-evidence-3`, …) and
+emits the URL of whichever release holds the asset. The gate accepts the whole
+`pr-evidence`/`pr-evidence-N` family identically, so no manual tag juggling is
+needed — always attach via the script rather than a raw `gh release upload`,
+which fails once the target release is full.
 
 Never delete assets referenced by an open PR. A worked example of a fully
 evidenced PR (before/after screenshots, MP4 walkthroughs, OCR readout,

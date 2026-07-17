@@ -450,8 +450,3 @@ export async function extractBill(
   pruneCache();
   return final;
 }
-
-/** Test hook: clear in-memory cache. */
-export function _resetBillExtractionCache(): void {
-  CACHE.clear();
-}

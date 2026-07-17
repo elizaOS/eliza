@@ -16,6 +16,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { sql } from "drizzle-orm";
 import { v4 } from "uuid";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { PgDatabaseAdapter } from "../../pg/adapter";
@@ -660,6 +661,266 @@ describe("Memory Integration Tests", () => {
       expect(results.length).toBe(1);
       expect(results[0].id).toBe(memory1.id as UUID);
       expect(results[0].similarity).toBeGreaterThan(0.99);
+    });
+
+    it("creates the HNSW cosine index for the active dimension on ensure", async () => {
+      await adapter.ensureEmbeddingDimension(384);
+      const rows = await (
+        adapter as unknown as { db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> } }
+      ).db.execute(
+        sql`SELECT indexname FROM pg_indexes WHERE tablename = 'embeddings' AND indexname = 'idx_embeddings_dim_384_hnsw_cosine'`
+      );
+      const names = (rows.rows ?? rows) as Array<{ indexname: string }>;
+      expect(names.length).toBe(1);
+    });
+
+    it("short-circuits via IF NOT EXISTS when a valid index already exists (no rebuild)", async () => {
+      const db = (
+        adapter as unknown as {
+          db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> };
+        }
+      ).db;
+      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_dim_384_hnsw_cosine'`;
+
+      await adapter.ensureEmbeddingDimension(384);
+      const first = await db.execute(oidQuery);
+      const firstOid = ((first.rows ?? first) as Array<{ oid: unknown }>)[0]?.oid;
+      expect(firstOid).toBeDefined();
+
+      await adapter.ensureEmbeddingDimension(384);
+      const second = await db.execute(oidQuery);
+      const secondOid = ((second.rows ?? second) as Array<{ oid: unknown }>)[0]?.oid;
+      // Same relation OID: the second ensure hit IF NOT EXISTS and did not
+      // drop/recreate the index.
+      expect(String(secondOid)).toBe(String(firstOid));
+    });
+
+    it("drops and rebuilds an INVALID index left by a failed concurrent build", async () => {
+      const db = (
+        adapter as unknown as {
+          db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> };
+        }
+      ).db;
+      await adapter.ensureEmbeddingDimension(384);
+      const oidQuery = sql`SELECT i.indexrelid::bigint AS oid, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid WHERE c.relname = 'idx_embeddings_dim_384_hnsw_cosine'`;
+      const before = await db.execute(oidQuery);
+      const beforeRow = ((before.rows ?? before) as Array<{ oid: unknown }>)[0];
+      expect(beforeRow).toBeDefined();
+
+      // Simulate the aftermath of a crashed CREATE INDEX CONCURRENTLY: the
+      // catalog row exists but indisvalid = false (superuser catalog update —
+      // the same state a failed concurrent build leaves behind).
+      await db.execute(
+        sql`UPDATE pg_index SET indisvalid = false WHERE indexrelid = 'idx_embeddings_dim_384_hnsw_cosine'::regclass`
+      );
+
+      await adapter.ensureEmbeddingDimension(384);
+      const after = await db.execute(oidQuery);
+      const afterRows = (after.rows ?? after) as Array<{ oid: unknown; indisvalid: boolean }>;
+      expect(afterRows.length).toBe(1);
+      expect(afterRows[0].indisvalid).toBe(true);
+      // A different relation OID proves the invalid index was dropped and
+      // rebuilt, not just left in place behind IF NOT EXISTS.
+      expect(String(afterRows[0].oid)).not.toBe(String(beforeRow.oid));
+    });
+
+    it("degrades without throwing when the index cannot be created", async () => {
+      const db = (
+        adapter as unknown as {
+          db: { execute: (q: unknown) => Promise<{ rows?: unknown[] }> };
+        }
+      ).db;
+      // Make CREATE INDEX fail for real by hiding the embeddings table; the
+      // ensure path must warn and resolve (search degrades to a sequential
+      // scan) rather than fail closed over a missing optimization.
+      await db.execute(sql`ALTER TABLE "embeddings" RENAME TO "embeddings_hidden"`);
+      try {
+        await expect(adapter.ensureEmbeddingDimension(768)).resolves.toBeUndefined();
+        const rows = await db.execute(
+          sql`SELECT indexname FROM pg_indexes WHERE indexname = 'idx_embeddings_dim_768_hnsw_cosine'`
+        );
+        expect(((rows.rows ?? rows) as unknown[]).length).toBe(0);
+      } finally {
+        await db.execute(sql`ALTER TABLE "embeddings_hidden" RENAME TO "embeddings"`);
+        await adapter.ensureEmbeddingDimension(384);
+      }
+    });
+
+    it("ranks by similarity, honors the threshold, and filters through the KNN pool", async () => {
+      // Orthogonal-ish vectors with known cosine ordering against the query.
+      const dims = 384;
+      const query = Array.from({ length: dims }, (_, i) => (i === 0 ? 1 : 0));
+      const near = Array.from({ length: dims }, (_, i) => (i === 0 ? 1 : i === 1 ? 0.1 : 0));
+      const far = Array.from({ length: dims }, (_, i) => (i === 1 ? 1 : 0));
+      const nearId = v4() as UUID;
+      const farId = v4() as UUID;
+      for (const [id, embedding, text] of [
+        [nearId, near, "near"],
+        [farId, far, "far"],
+      ] as const) {
+        await adapter.createMemory(
+          {
+            id,
+            content: { text },
+            createdAt: Date.now(),
+            embedding: [...embedding],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+          } as Memory,
+          "knn-order"
+        );
+      }
+
+      const ranked = await adapter.searchMemoriesByEmbedding(query, {
+        tableName: "knn-order",
+        count: 10,
+      });
+      expect(ranked[0]?.id).toBe(nearId);
+      expect(ranked[0]?.similarity ?? 0).toBeGreaterThan(ranked[1]?.similarity ?? 1);
+
+      // The orthogonal vector (similarity 0) must fall to the threshold.
+      const thresholded = await adapter.searchMemoriesByEmbedding(query, {
+        tableName: "knn-order",
+        count: 10,
+        match_threshold: 0.5,
+      });
+      expect(thresholded.map((m) => m.id)).toEqual([nearId]);
+
+      // Type filtering is part of the ordered scan itself.
+      const otherTable = await adapter.searchMemoriesByEmbedding(query, {
+        tableName: "some-other-table",
+        count: 10,
+      });
+      expect(otherTable.length).toBe(0);
+    });
+
+    // Eligibility must be part of the KNN scan, not applied to a global
+    // top-K sample: a filtered search is "top K among eligible memories",
+    // and any two-stage global-candidate form silently starves a scope
+    // whenever closer out-of-scope vectors outnumber the candidate pool.
+    // Each case plants MORE nearer out-of-scope vectors (300) than the old
+    // candidate-pool floor (256) so the starvation regression cannot pass.
+    describe("filtered search under out-of-scope crowding", () => {
+      const dims = 384;
+      const query = Array.from({ length: dims }, (_, i) => (i === 0 ? 1 : 0));
+      // cosine ~= 0.707 to the query — clearly eligible, never the global nearest.
+      const target = Array.from({ length: dims }, (_, i) =>
+        i === 0 || i === 1 ? Math.SQRT1_2 : 0
+      );
+      const DISTRACTORS = 300;
+
+      const plantDistractors = async (
+        overrides: Partial<Memory>,
+        tableName: string
+      ): Promise<void> => {
+        for (let i = 0; i < DISTRACTORS; i++) {
+          await adapter.createMemory(
+            {
+              id: v4() as UUID,
+              content: { text: `distractor ${i}` },
+              createdAt: Date.now(),
+              // Exact query vector: cosine 1.0, always nearer than the target.
+              embedding: [...query],
+              agentId: testAgentId,
+              roomId: testRoomId,
+              entityId: testEntityId,
+              unique: false,
+              ...overrides,
+            } as Memory,
+            tableName
+          );
+        }
+      };
+
+      it("finds the eligible memory when 300 nearer vectors live in another table", async () => {
+        const targetId = v4() as UUID;
+        await adapter.createMemory(
+          {
+            id: targetId,
+            content: { text: "the one eligible memory" },
+            createdAt: Date.now(),
+            embedding: [...target],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+            unique: false,
+          } as Memory,
+          "starve-target-type"
+        );
+        await plantDistractors({}, "starve-distractor-type");
+
+        const results = await adapter.searchMemoriesByEmbedding(query, {
+          tableName: "starve-target-type",
+          count: 1,
+        });
+        expect(results.map((m) => m.id)).toEqual([targetId]);
+        expect(results[0]?.similarity ?? 0).toBeGreaterThan(0.7);
+      });
+
+      it("finds the eligible memory when 300 nearer vectors live in another room", async () => {
+        const otherRoomId = v4() as UUID;
+        await adapter.createRooms([
+          {
+            id: otherRoomId,
+            agentId: testAgentId,
+            source: "test",
+            type: ChannelType.GROUP,
+          } as Parameters<typeof adapter.createRooms>[0][0],
+        ]);
+        const targetId = v4() as UUID;
+        await adapter.createMemory(
+          {
+            id: targetId,
+            content: { text: "eligible in this room" },
+            createdAt: Date.now(),
+            embedding: [...target],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+            unique: false,
+          } as Memory,
+          "starve-room-scope"
+        );
+        await plantDistractors({ roomId: otherRoomId }, "starve-room-scope");
+
+        const results = await adapter.searchMemoriesByEmbedding(query, {
+          tableName: "starve-room-scope",
+          roomId: testRoomId,
+          count: 1,
+        });
+        expect(results.map((m) => m.id)).toEqual([targetId]);
+      });
+
+      it("finds the eligible memory when 300 nearer vectors belong to another agent", async () => {
+        const otherAgentId = v4() as UUID;
+        await adapter.createAgent({
+          id: otherAgentId,
+          name: `crowding-agent-${otherAgentId.slice(0, 8)}`,
+          bio: "starvation-test agent",
+        } as Parameters<typeof adapter.createAgent>[0]);
+        const targetId = v4() as UUID;
+        await adapter.createMemory(
+          {
+            id: targetId,
+            content: { text: "eligible for this agent" },
+            createdAt: Date.now(),
+            embedding: [...target],
+            agentId: testAgentId,
+            roomId: testRoomId,
+            entityId: testEntityId,
+            unique: false,
+          } as Memory,
+          "starve-agent-scope"
+        );
+        await plantDistractors({ agentId: otherAgentId }, "starve-agent-scope");
+
+        const results = await adapter.searchMemoriesByEmbedding(query, {
+          tableName: "starve-agent-scope",
+          count: 1,
+        });
+        expect(results.map((m) => m.id)).toEqual([targetId]);
+      });
     });
   });
 

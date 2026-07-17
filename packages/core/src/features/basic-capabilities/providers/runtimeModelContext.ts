@@ -164,8 +164,20 @@ function displayModelFor(
 		const trimmed = metadata.displayModel.trim();
 		if (trimmed) return trimmed;
 	}
+	if (Array.isArray(metadata.displayModelSettings)) {
+		for (const setting of metadata.displayModelSettings) {
+			if (typeof setting !== "string" || !setting.trim()) continue;
+			const configured = readSetting(runtime, setting);
+			if (configured) return configured;
+		}
+	}
 	if (typeof metadata.displayModelSetting === "string") {
-		return readSetting(runtime, metadata.displayModelSetting);
+		const configured = readSetting(runtime, metadata.displayModelSetting);
+		if (configured) return configured;
+	}
+	if (typeof metadata.displayModelDefault === "string") {
+		const trimmed = metadata.displayModelDefault.trim();
+		if (trimmed) return trimmed;
 	}
 	return undefined;
 }

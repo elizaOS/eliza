@@ -1,21 +1,14 @@
 /**
  * Server-side plugin widget declarations.
  *
- * Two sources merge here:
- *   1. The plugin's own `widgets` field on its `Plugin` instance (canonical).
- *   2. The static `PLUGIN_WIDGET_MAP` below, kept as an empty compatibility
- *      fallback for older callers.
+ * Widget declarations come from the plugin's own `widgets` field on its
+ * `Plugin` instance; `getPluginWidgets` resolves them for a plugin id by
+ * matching against the supplied runtime plugin list.
  */
 
 import type { Plugin, PluginWidgetDeclaration } from "@elizaos/core";
 
 export type PluginWidgetDeclarationServer = PluginWidgetDeclaration;
-
-/**
- * Static map of plugin widget declarations.
- * Key: plugin ID. Value: array of widget declarations.
- */
-export const PLUGIN_WIDGET_MAP: Record<string, PluginWidgetDeclaration[]> = {};
 
 /** Strip common scope/prefix to compare a Plugin.name against a PluginEntry.id. */
 function normalizePluginIdentity(value: string): string {
@@ -30,42 +23,23 @@ function normalizePluginIdentity(value: string): string {
 }
 
 /**
- * Resolve widget declarations for a plugin by id, merging:
- *   - the plugin instance's own `widgets` field (when a runtime plugin list is
- *     supplied and a match is found), and
- *   - the static `PLUGIN_WIDGET_MAP` fallback.
- *
- * Declarations from the plugin instance take precedence; static-map entries
- * with the same `(pluginId, id)` key are dropped.
+ * Resolve widget declarations for a plugin by id from the matching runtime
+ * plugin instance's own `widgets` field. Returns an empty list when no runtime
+ * plugin list is supplied or no matched plugin declares widgets.
  */
 export function getPluginWidgets(
   pluginId: string,
   runtimePlugins?: ReadonlyArray<Plugin>,
 ): PluginWidgetDeclaration[] {
-  const fromInstance: PluginWidgetDeclaration[] = [];
-  if (runtimePlugins && runtimePlugins.length > 0) {
-    const normalizedId = normalizePluginIdentity(pluginId);
-    const match = runtimePlugins.find(
-      (p) => normalizePluginIdentity(p.name) === normalizedId,
-    );
-    if (match?.widgets && match.widgets.length > 0) {
-      fromInstance.push(...match.widgets);
-    }
+  if (!runtimePlugins || runtimePlugins.length === 0) {
+    return [];
   }
-
-  const fallback = PLUGIN_WIDGET_MAP[pluginId] ?? [];
-  if (fromInstance.length === 0) {
-    return [...fallback];
+  const normalizedId = normalizePluginIdentity(pluginId);
+  const match = runtimePlugins.find(
+    (p) => normalizePluginIdentity(p.name) === normalizedId,
+  );
+  if (match?.widgets && match.widgets.length > 0) {
+    return [...match.widgets];
   }
-
-  const seen = new Set(fromInstance.map((w) => `${w.pluginId}::${w.id}`));
-  const merged = [...fromInstance];
-  for (const decl of fallback) {
-    const key = `${decl.pluginId}::${decl.id}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      merged.push(decl);
-    }
-  }
-  return merged;
+  return [];
 }

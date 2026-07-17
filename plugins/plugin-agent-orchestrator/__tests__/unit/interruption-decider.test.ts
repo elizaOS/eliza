@@ -232,6 +232,48 @@ describe("decideInterruptionWithModel", () => {
     expect(decision.reason).toMatch(/^model:/);
   });
 
+  it("delivers a relevant shared-channel message when an idle-session model says queue", async () => {
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "queue", reason: "relevant task follow-up" }),
+    );
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      {
+        ...base,
+        text: "For this refactor, also cover expired sessions",
+        sessionBusy: false,
+        sharedChannel: true,
+      },
+    );
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(decision).toEqual({
+      action: "deliver",
+      reason:
+        "model: relevant task follow-up; queue normalized for idle session",
+    });
+  });
+
+  it("queues a relevant shared-channel message when a busy-session model says deliver", async () => {
+    const useModel = vi.fn(async () =>
+      JSON.stringify({ action: "deliver", reason: "relevant task follow-up" }),
+    );
+    const decision = await decideInterruptionWithModel(
+      runtimeWithModel(useModel),
+      {
+        ...base,
+        text: "For this refactor, also cover concurrent refreshes",
+        sessionBusy: true,
+        sharedChannel: true,
+      },
+    );
+    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(decision).toEqual({
+      action: "queue",
+      reason:
+        "model: relevant task follow-up; delivery normalized for busy session",
+    });
+  });
+
   it("lets the model interrupt for a semantic redirect the regex would only queue", async () => {
     // "let's rework this to use Postgres" has no STOP/REDIRECT regex token, so
     // the pure decider queues it; the model recognizes a direction-invalidating
