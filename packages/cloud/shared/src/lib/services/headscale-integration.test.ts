@@ -80,6 +80,59 @@ describe("Headscale identity inference", () => {
   });
 });
 
+describe("Headscale container credentials", () => {
+  test("uses a persistent node with a single-use key so Docker restarts can reconnect", async () => {
+    let request: Record<string, unknown> | null = null;
+    const fake = {
+      getNodeByNameStrict: async () => null,
+      createPreAuthKey: async (input: Record<string, unknown>) => {
+        request = input;
+        return { key: "test-preauth-key" };
+      },
+    } as unknown as HeadscaleClient;
+
+    const prepared = await new HeadscaleIntegration(fake).prepareContainerVPN({
+      agentId: "11111111-1111-4111-8111-111111111111",
+      organizationId: "22222222-2222-4222-8222-222222222222",
+    });
+
+    expect(request).toMatchObject({
+      reusable: false,
+      ephemeral: false,
+      aclTags: ["tag:agent"],
+    });
+    expect(prepared.preAuthKey).toBe("test-preauth-key");
+  });
+
+  test("removes a stale persistent registration before issuing a replacement key", async () => {
+    const calls: string[] = [];
+    const fake = {
+      getNodeByNameStrict: async (name: string) => {
+        calls.push(`lookup:${name}`);
+        return { id: "stale-node-70", name, ipAddresses: ["100.64.0.56"] };
+      },
+      deleteNode: async (id: string) => {
+        calls.push(`delete:${id}`);
+      },
+      createPreAuthKey: async () => {
+        calls.push("create-key");
+        return { key: "replacement-key" };
+      },
+    } as unknown as HeadscaleClient;
+
+    await new HeadscaleIntegration(fake).prepareContainerVPN({
+      agentId: "11111111-1111-4111-8111-111111111111",
+      agentName: "Eliza",
+    });
+
+    expect(calls).toEqual([
+      "lookup:eliza-11111111-111",
+      "delete:stale-node-70",
+      "create-key",
+    ]);
+  });
+});
+
 describe("Headscale node lookup is keyed on the node name (not the agentId)", () => {
   // Regression guard: the container registers under TS_HOSTNAME
   // (inferTailscaleHostname = `<agentName>-<id12>`), so lookups must use that
