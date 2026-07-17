@@ -557,6 +557,39 @@ describe("voice-session WS lifecycle", () => {
     expect(client.closedWith).toBeNull();
   });
 
+  test("canonical 402 becomes a non-retryable insufficient-credits turn error", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async () =>
+        Response.json(
+          {
+            success: false,
+            error:
+              "Insufficient credits. Required: $0.0014, Available: $0.0000",
+            code: "insufficient_credits",
+            retryable: false,
+          },
+          { status: 402 },
+        )) as unknown as typeof fetch,
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "please answer");
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "insufficient_credits",
+        retryable: false,
+      }),
+    );
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.closedWith).toBeNull();
+  });
+
   test("TTS provider error becomes retryable client error and closes the active turn", async () => {
     const client = new FakeClientSocket();
     await connectSession({

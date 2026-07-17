@@ -36,7 +36,10 @@ import type {
   VoiceUsageLimits,
   VoiceUsageStore,
 } from "@/lib/services/voice-usage-meter";
-import { streamElizaConversation } from "@/lib/voice-session/eliza-sse-bridge";
+import {
+  ElizaSseBridgeError,
+  streamElizaConversation,
+} from "@/lib/voice-session/eliza-sse-bridge";
 import { PhraseAggregator } from "@/lib/voice-session/phrase-aggregator";
 import type { ServerControlFrame } from "@/lib/voice-session/protocol";
 import {
@@ -594,8 +597,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       if (this.currentVoiceTurnId !== traceId) return;
       this.send({
         t: "error",
-        code: error instanceof Error ? error.name : "llm_error",
-        retryable: true,
+        code:
+          error instanceof ElizaSseBridgeError && error.upstreamCode
+            ? error.upstreamCode
+            : error instanceof Error
+              ? error.name
+              : "llm_error",
+        retryable:
+          error instanceof ElizaSseBridgeError ? error.retryable : true,
       });
       this.finishTurn(traceId);
     }
