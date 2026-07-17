@@ -1,5 +1,5 @@
 /**
- * Storybook stories for AccountCommandTable — the desktop command-center
+ * Storybook stories for AccountCommandTable - the desktop command-center
  * table across a mixed-health pool, with and without #16355 lease
  * observability (proving the feature-detected column).
  */
@@ -31,7 +31,7 @@ function makeAccount(
 const pool: AccountWithCredentialFlag[] = [
   makeAccount({
     id: "primary",
-    label: "Anthropic — primary",
+    label: "Anthropic - primary",
     email: "primary@team.io",
     priority: 1,
     lastUsedAt: now - 1000 * 60 * 3,
@@ -44,7 +44,7 @@ const pool: AccountWithCredentialFlag[] = [
   }),
   makeAccount({
     id: "heavy",
-    label: "Anthropic — heavy",
+    label: "Anthropic - heavy",
     email: "heavy@team.io",
     priority: 2,
     lastUsedAt: now - 1000 * 60 * 40,
@@ -57,7 +57,7 @@ const pool: AccountWithCredentialFlag[] = [
   }),
   makeAccount({
     id: "capped",
-    label: "Anthropic — capped",
+    label: "Anthropic - capped",
     email: "capped@team.io",
     priority: 3,
     health: "rate-limited",
@@ -72,7 +72,7 @@ const pool: AccountWithCredentialFlag[] = [
   }),
   makeAccount({
     id: "stale",
-    label: "Anthropic — needs reauth",
+    label: "Anthropic - needs reauth",
     email: "stale@team.io",
     priority: 4,
     health: "needs-reauth",
@@ -81,7 +81,7 @@ const pool: AccountWithCredentialFlag[] = [
   }),
   makeAccount({
     id: "backup",
-    label: "Anthropic — backup",
+    label: "Anthropic - backup",
     email: "backup@team.io",
     source: "api-key",
     enabled: false,

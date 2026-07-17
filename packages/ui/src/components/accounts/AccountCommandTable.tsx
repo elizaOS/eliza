@@ -1,5 +1,5 @@
 /**
- * AccountCommandTable — desktop "command center" table view for a provider's
+ * AccountCommandTable - desktop "command center" table view for a provider's
  * account pool.
  *
  * Replaces the stacked `AccountCard`s inside an expanded provider row when the
@@ -249,7 +249,7 @@ export function AccountCommandTable({
   );
 
   // Priority order is the pool's own ordering and the axis reorder swaps
-  // operate on — kept separate from the (view-only) table sort so move
+  // operate on - kept separate from the (view-only) table sort so move
   // up/down always targets the correct neighbour even when the user has
   // sorted the table by health or usage.
   const priorityOrder = useMemo(
@@ -622,7 +622,7 @@ export function AccountCommandTable({
                     <span className="text-[11px] text-muted">
                       {account.lastUsedAt
                         ? formatRelativeTimeShort(account.lastUsedAt)
-                        : "—"}
+                        : "-"}
                     </span>
                   </td>
                   {showLeaseColumn ? (

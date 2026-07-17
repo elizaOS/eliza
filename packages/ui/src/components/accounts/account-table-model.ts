@@ -1,5 +1,5 @@
 /**
- * account-table-model — pure derivation + sorting for the desktop account
+ * account-table-model - pure derivation + sorting for the desktop account
  * command-center table.
  *
  * Kept DOM-free so the health-badge mapping, usage extraction, sort
@@ -112,7 +112,7 @@ function healthRank(account: AccountWithCredentialFlag): number {
 }
 
 /**
- * "Worst" usage figure for sort/among the bars — the higher of session/weekly,
+ * "Worst" usage figure for sort/among the bars - the higher of session/weekly,
  * so an account that's blown either window sorts as heavily-used. Returns -1
  * when no usage snapshot exists so unknowns sink below known values.
  */
@@ -146,7 +146,7 @@ export const DEFAULT_ACCOUNT_SORT: AccountSort = {
  * Direction-aware comparator. Returns the ordered delta for the two rows
  * already accounting for `direction`, so callers do not post-multiply. This
  * lets the `usage` column keep unknown-usage rows pinned to the BOTTOM in both
- * ascending and descending order (a column of "—" is never useful at the top).
+ * ascending and descending order (a column of "-" is never useful at the top).
  */
 function compareByKey(
   a: AccountWithCredentialFlag,
