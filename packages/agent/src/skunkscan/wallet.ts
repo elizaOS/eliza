@@ -1,5 +1,4 @@
 import {
-  getSolanaOldestKnownSignature,
   getSolanaParsedTransactions,
 } from "./helius";
 import { requireBlockchainConnector } from "./chains/registry";
@@ -113,14 +112,35 @@ if (
   );
 }
 
-const oldestKnownSignature = await getSolanaOldestKnownSignature(
-  walletAddress,
-);
+if (!connector.getOldestTransaction) {
+  throw new Error(
+    "The blockchain connector does not support oldest transaction retrieval.",
+  );
+}
+
+const oldestTransactionResult =
+  await connector.getOldestTransaction(
+    walletAddress,
+  );
+
+if (
+  oldestTransactionResult.status === "error" ||
+  oldestTransactionResult.status === "unsupported" ||
+  !oldestTransactionResult.data
+) {
+  throw new Error(
+    oldestTransactionResult.error?.message ??
+      "Unable to retrieve the wallet oldest transaction.",
+  );
+}
+
+const oldestKnownTransaction =
+  oldestTransactionResult.data;
 
 const parsedTransactions =
-  oldestKnownSignature.signature
+  oldestKnownTransaction.transactionId
     ? await getSolanaParsedTransactions([
-        oldestKnownSignature.signature,
+        oldestKnownTransaction.transactionId,
       ])
     : [];
 
@@ -212,8 +232,8 @@ const tokenHoldings: WalletTokenHolding[] =
   );
        const activity = analyzeWalletActivity(recentTransactions);
         const age = analyzeWalletAge(
-  oldestKnownSignature.signature,
-  oldestKnownSignature.blockTime,
+  oldestKnownTransaction.transactionId,
+  oldestKnownTransaction.timestamp,
 );
 
         const funding = analyzeWalletFunding(
