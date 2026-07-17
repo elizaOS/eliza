@@ -456,23 +456,11 @@ export function findAccountPoolConsumerByKey(
   for (const record of readKeysFile().keys) {
     if (!safeDigestEqual(record.keyDigest, digest)) continue;
     if (!record.enabled) return "disabled";
-    stampConsumerLastUsed(record.id);
-    return publicKey({ ...record, lastUsedAt: Date.now() });
+    // Authentication is deliberately read-only. Rewriting the whole key store
+    // here could race an admin rotation and resurrect the revoked digest.
+    return publicKey(record);
   }
   return null;
-}
-
-function stampConsumerLastUsed(id: string): void {
-  const file = readKeysFile();
-  const index = file.keys.findIndex((record) => record.id === id);
-  const current = file.keys[index];
-  if (!current) return;
-  file.keys[index] = {
-    ...current,
-    lastUsedAt: Date.now(),
-    updatedAt: current.updatedAt,
-  };
-  writeKeysFile(file);
 }
 
 function publicConsumerAuthEnabled(
