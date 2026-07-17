@@ -65,7 +65,20 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     const fileAction = (codingToolsPlugin.actions ?? []).find(
       (action) => action.name === "FILE",
     );
-    expect(fileAction?.similes).toEqual(["FILE_OPERATION", "FILE_IO"]);
+    // The #16546 invented-name family. NOTE: LIST_FILES also belongs to the
+    // stored-media FILES action (since #8970) — the resolver drops a simile
+    // claimed by two parents as ambiguous (#16561), so it is runtime-inert
+    // here; removing it from this list is #16546-author follow-up.
+    expect(fileAction?.similes).toEqual([
+      "FILE_OPERATION",
+      "FILE_IO",
+      "FILES_READ",
+      "FILES_LIST",
+      "FILE_READ",
+      "FILE_LIST",
+      "READ_FILE",
+      "LIST_FILES",
+    ]);
   });
 
   it("each action has the required fields", () => {
