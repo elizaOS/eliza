@@ -21,6 +21,45 @@ export interface OrchestratorOwnedArtifact {
   source: OrchestratorOwnedArtifactSource;
 }
 
+export const ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY =
+  "orchestratorOwnedArtifacts";
+
+const OWNED_ARTIFACT_SOURCES: ReadonlySet<string> = new Set([
+  "identity-scaffold",
+  "skills-manifest",
+  "completion-evidence",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isOwnedArtifactSource(
+  value: unknown,
+): value is OrchestratorOwnedArtifactSource {
+  return typeof value === "string" && OWNED_ARTIFACT_SOURCES.has(value);
+}
+
+function isOwnedArtifact(value: unknown): value is OrchestratorOwnedArtifact {
+  return (
+    isRecord(value) &&
+    typeof value.path === "string" &&
+    typeof value.sha256 === "string" &&
+    typeof value.byteLength === "number" &&
+    Number.isFinite(value.byteLength) &&
+    value.byteLength >= 0 &&
+    isOwnedArtifactSource(value.source)
+  );
+}
+
+export function readOwnedArtifactsFromMetadata(
+  metadata: Record<string, unknown> | undefined,
+): OrchestratorOwnedArtifact[] {
+  const raw = metadata?.[ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isOwnedArtifact);
+}
+
 export function toWorkdirRelative(
   workdir: string,
   file: string,

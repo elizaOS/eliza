@@ -120,7 +120,11 @@ import {
   runIndependentVerification,
   shouldRunIndependentVerify,
 } from "./independent-verifier.js";
-import type { OrchestratorOwnedArtifact } from "./orchestrator-artifact-ownership.js";
+import {
+  ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
+  readOwnedArtifactsFromMetadata,
+  type OrchestratorOwnedArtifact,
+} from "./orchestrator-artifact-ownership.js";
 import {
   summarizeUsage,
   summarizeUsageRows,
@@ -654,8 +658,11 @@ function residualsOrchestratorOwnedArtifacts(
   acp: AcpService | undefined,
   session: OrchestratorTaskSession | undefined,
 ): OrchestratorOwnedArtifact[] {
-  if (!acp || !session) return [];
-  return acp.getOrchestratorOwnedArtifacts(session.sessionId);
+  if (!session) return [];
+  const live = acp?.getOrchestratorOwnedArtifacts(session.sessionId) ?? [];
+  return live.length > 0
+    ? live
+    : readOwnedArtifactsFromMetadata(session.metadata);
 }
 
 /** Envelope-derived residuals legs from the VALID CompletionEnvelope stamped
@@ -4494,9 +4501,12 @@ export class OrchestratorTaskService extends Service {
       throw err;
     }
 
-    const account = accountMetaFromSessionMetadata(
-      result.metadata as Record<string, unknown> | undefined,
-    );
+    const resultMetadata = result.metadata as
+      | Record<string, unknown>
+      | undefined;
+    const account = accountMetaFromSessionMetadata(resultMetadata);
+    const orchestratorOwnedArtifacts =
+      readOwnedArtifactsFromMetadata(resultMetadata);
     const ts = nowIso();
     const session: OrchestratorTaskSession = {
       id: randomUUID(),
@@ -4541,7 +4551,13 @@ export class OrchestratorTaskService extends Service {
       ...(traceEnv[TRACE_ENV.PARENT_STEP_ID]
         ? { parentTrajectoryStepId: traceEnv[TRACE_ENV.PARENT_STEP_ID] }
         : {}),
-      metadata: {},
+      metadata:
+        orchestratorOwnedArtifacts.length > 0
+          ? {
+              [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
+                orchestratorOwnedArtifacts,
+            }
+          : {},
       createdAt: ts,
       updatedAt: ts,
     };

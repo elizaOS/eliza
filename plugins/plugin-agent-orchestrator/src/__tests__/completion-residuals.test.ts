@@ -27,6 +27,8 @@ import {
 } from "../services/completion-residuals.js";
 import {
   createOwnedArtifactRecord,
+  ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY,
+  readOwnedArtifactsFromMetadata,
   type OrchestratorOwnedArtifact,
 } from "../services/orchestrator-artifact-ownership.js";
 
@@ -317,6 +319,26 @@ describe("collectCompletionResiduals — orchestrator-owned scaffold paths", () 
       workdir,
       repoExpected: true,
       orchestratorOwnedArtifacts,
+    });
+
+    expect(result.status).toBe("clean");
+    expect(result.residuals).toEqual([]);
+  });
+
+  it("recovers unchanged scaffold ownership from persisted session metadata after restart", async () => {
+    const { workdir } = makeRepo({ withUpstream: false });
+    const orchestratorOwnedArtifacts = writeOrchestratorOwnedScaffolds(workdir);
+    const persistedMetadata = JSON.parse(
+      JSON.stringify({
+        [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]: orchestratorOwnedArtifacts,
+      }),
+    ) as Record<string, unknown>;
+
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      orchestratorOwnedArtifacts:
+        readOwnedArtifactsFromMetadata(persistedMetadata),
     });
 
     expect(result.status).toBe("clean");
