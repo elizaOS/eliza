@@ -326,3 +326,45 @@ describe("ClaudeSdkSession — serialization", () => {
     await session.dispose();
   });
 });
+
+describe("start-path timeout (#16553)", () => {
+  it("bounds a hung session start with the turn budget and fails retryable", async () => {
+    const { session } = makeSession([{ text: "unused", subtype: "success" }], {
+      turnTimeoutMs: 40,
+    });
+    // Simulate the unbounded startup await (SDK dynamic import / spawn
+    // handshake hanging on a CLI version download): start never resolves.
+    (session as unknown as { start: () => Promise<void> }).start = () =>
+      new Promise<void>(() => {});
+    const started = Date.now();
+    await expect(session.send("hi")).rejects.toThrow(/session start timed out/);
+    expect(Date.now() - started).toBeLessThan(2_000);
+    // Self-healed: a follow-up dispose is safe and the session holds no query.
+    await session.dispose();
+  });
+
+  it("tears down a start that resolves after dispose instead of resurrecting", async () => {
+    const { session } = makeSession([{ text: "late", subtype: "success" }], {
+      turnTimeoutMs: 30,
+    });
+    const inner = session as unknown as {
+      start: (...args: unknown[]) => Promise<void>;
+      query: unknown;
+    };
+    const realStart = inner.start.bind(session);
+    let releaseStart: (() => void) | undefined;
+    inner.start = async (...args: unknown[]) => {
+      await new Promise<void>((res) => {
+        releaseStart = res;
+      });
+      await realStart(...args);
+    };
+    const turn = session.send("hi");
+    // The bounded start times out (30ms) and disposes, bumping the epoch.
+    await expect(turn).rejects.toThrow(/session start timed out/);
+    // Now let the stale start finish — it must tear itself down, not attach.
+    releaseStart?.();
+    await new Promise((res) => setTimeout(res, 20));
+    expect(inner.query).toBeNull();
+  });
+});
