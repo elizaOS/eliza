@@ -186,6 +186,45 @@ if (
 }
 
 if (
+  age.classification !== "veteran" &&
+  age.classification !== "established"
+) {
+  investorInsights.neutral.push(
+    createInvestorInsight({
+      id: "limited-wallet-history",
+
+      title: "Limited Wallet History",
+
+      finding:
+        age.classification === "new"
+          ? "The wallet appears to be relatively new and therefore has limited historical blockchain activity available for assessment."
+          : "The wallet's age could not be confidently determined from the available blockchain history.",
+
+      whyItMatters:
+        "A shorter or uncertain wallet history provides less evidence for evaluating long-term behavior, consistency, and previous blockchain activity.",
+
+      impact: "neutral",
+
+      confidence:
+        age.classification === "new"
+          ? "high"
+          : "medium",
+
+      severity: "medium",
+
+      evidenceRecordIds: [
+        "wallet-age-assessment",
+      ],
+
+      limitations: [
+        "A new or uncertain wallet history does not by itself indicate suspicious activity or harmful intent.",
+        "The earliest transaction identified may not represent the wallet's complete blockchain history.",
+      ],
+    }),
+  );
+}
+  
+if (
   activity.activityLevel === "high" ||
   activity.activityLevel === "medium" ||
   activity.activityLevel === "low"
