@@ -53,13 +53,15 @@ export interface Bindings {
 
   // ---- Cartesia ----
   /**
-   * Server-side Cartesia API key. When set, WAV-format TTS requests (codec-less
-   * clients) synthesize via Cartesia Sonic streaming (~150 ms to first audio)
-   * instead of the buffered ElevenLabs PCM round-trip, billed at the same
-   * ElevenLabs catalog rate. Unset → ElevenLabs behavior is unchanged.
+   * Server-side Cartesia API key. When set, un-pinned/default cloud TTS
+   * synthesizes with Cartesia Sonic. MP3 uses Cartesia's REST bytes endpoint;
+   * WAV uses the streaming adapter for codec-less clients. Unset falls back to
+   * the Kokoro/ElevenLabs selection chain.
    */
   CARTESIA_API_KEY?: string;
-  /** Overrides the default Cartesia voice id used for un-pinned WAV requests. */
+  /** Overrides the default Cartesia voice id used for un-pinned requests. */
+  CARTESIA_VOICE_ID?: string;
+  /** Legacy name accepted while deploy environments migrate to CARTESIA_VOICE_ID. */
   CARTESIA_DEFAULT_VOICE_ID?: string;
 
   // ---- Free self-hosted voice (default) ----

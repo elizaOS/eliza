@@ -3,11 +3,16 @@
  * implementation, plus the small helpers (body/header coercion, method rules)
  * the platform-specific transports share.
  */
+export interface AgentRequestContext {
+  timeoutMs?: number;
+  responseType?: "text" | "arraybuffer";
+}
+
 export interface AgentRequestTransport {
   request(
     url: string,
     init: RequestInit,
-    context?: { timeoutMs?: number },
+    context?: AgentRequestContext,
   ): Promise<Response>;
 }
 

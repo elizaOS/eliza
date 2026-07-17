@@ -427,6 +427,11 @@ export function normalizeLinkedAccountRecord(
     typeof record.lastUsedAt === "number" && Number.isFinite(record.lastUsedAt)
       ? record.lastUsedAt
       : undefined;
+  const lastPrimedAt =
+    typeof record.lastPrimedAt === "number" &&
+    Number.isFinite(record.lastPrimedAt)
+      ? record.lastPrimedAt
+      : undefined;
   const healthDetail = normalizeLinkedAccountHealthDetail(record.healthDetail);
   const usage = normalizeLinkedAccountUsage(record.usage);
   const subscriptionEndsAt =
@@ -449,6 +454,7 @@ export function normalizeLinkedAccountRecord(
     createdAt,
     health,
     ...(lastUsedAt !== undefined ? { lastUsedAt } : {}),
+    ...(lastPrimedAt !== undefined ? { lastPrimedAt } : {}),
     ...(healthDetail ? { healthDetail } : {}),
     ...(usage ? { usage } : {}),
     ...(subscriptionEndsAt !== undefined ? { subscriptionEndsAt } : {}),

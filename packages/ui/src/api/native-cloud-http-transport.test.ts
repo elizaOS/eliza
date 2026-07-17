@@ -77,19 +77,18 @@ describe("nativeCloudHttpTransportForUrl selection", () => {
     ).toBeNull();
   });
 
-  it("does NOT claim the cloud web/auth hosts as agent subdomains", () => {
-    // www/dev/apex are not dedicated agent subdomains and do not serve CORS for
-    // the app origin, so their SSE must not be routed to the native fetch.
-    expect(
-      nativeCloudHttpTransportForUrl(
-        "https://www.elizacloud.ai/api/x/messages/stream",
-      ),
-    ).toBeNull();
-    expect(
-      nativeCloudHttpTransportForUrl(
-        "https://dev.elizacloud.ai/api/x/messages/stream",
-      ),
-    ).toBeNull();
+  it("claims cloud web hosts for binary routing without treating them as agent SSE hosts", async () => {
+    const url = "https://www.elizacloud.ai/api/x/messages/stream";
+    const transport = nativeCloudHttpTransportForUrl(url);
+    expect(transport).not.toBeNull();
+
+    await transport?.request(url, {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+    });
+    expect(globalFetchMock).toHaveBeenCalledTimes(1);
+    expect(webFetchMock).not.toHaveBeenCalled();
+    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
   });
 
   it("returns null off native platforms", () => {
@@ -208,5 +207,122 @@ describe("non-streaming requests are unchanged", () => {
     expect(globalFetchMock).toHaveBeenCalledTimes(1);
     expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
     expect(webFetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("binary cloud responses (#16106)", () => {
+  const arbitraryAudio = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0x80, 0xff, 0x00, 0xc3, 0x28,
+  ]);
+  const encodedAudio = btoa(
+    Array.from(arbitraryAudio, (byte) => String.fromCharCode(byte)).join(""),
+  );
+
+  it.each([
+    "https://api.elizacloud.ai/api/tts/cloud",
+    "https://elizacloud.ai/api/v1/voice/tts",
+    "https://agent-123.elizacloud.ai/api/v1/voice/tts",
+  ])("preserves arbitrary audio bytes from %s", async (url) => {
+    capacitorHttpRequestMock.mockResolvedValueOnce({
+      status: 200,
+      headers: { "content-type": "audio/wav" },
+      data: encodedAudio,
+    });
+    const transport = nativeCloudHttpTransportForUrl(url);
+    const response = await transport?.request(
+      url,
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer secret", Accept: "audio/wav" },
+        body: JSON.stringify({ text: "hello" }),
+      },
+      { responseType: "arraybuffer" },
+    );
+
+    expect(response).toBeDefined();
+    expect(new Uint8Array(await (response as Response).arrayBuffer())).toEqual(
+      arbitraryAudio,
+    );
+    expect(capacitorHttpRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseType: "arraybuffer",
+        disableRedirects: true,
+        headers: expect.objectContaining({ authorization: "Bearer secret" }),
+      }),
+    );
+    expect(globalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves JSON error bodies when the binary request fails (CapacitorHttp returns a parsed object)", async () => {
+    // CapacitorHttp ignores responseType=arraybuffer for application/json and
+    // hands back a parsed object; the transport must surface that error text
+    // instead of blanking it through the base64 decoder.
+    capacitorHttpRequestMock.mockResolvedValueOnce({
+      status: 401,
+      headers: { "content-type": "application/json" },
+      data: { error: "invalid token" },
+    });
+    const url = "https://api.elizacloud.ai/api/v1/voice/tts";
+    const response = await nativeCloudHttpTransportForUrl(url)?.request(
+      url,
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer expired" },
+        body: JSON.stringify({ text: "hello" }),
+      },
+      { responseType: "arraybuffer" },
+    );
+
+    expect(response?.status).toBe(401);
+    expect(await (response as Response).text()).toContain("invalid token");
+  });
+
+  it("preserves string error bodies on non-2xx binary responses", async () => {
+    capacitorHttpRequestMock.mockResolvedValueOnce({
+      status: 400,
+      headers: { "content-type": "text/plain" },
+      data: "text is required",
+    });
+    const url = "https://api.elizacloud.ai/api/v1/voice/tts";
+    const response = await nativeCloudHttpTransportForUrl(url)?.request(
+      url,
+      { method: "POST", headers: {}, body: "{}" },
+      { responseType: "arraybuffer" },
+    );
+
+    expect(response?.status).toBe(400);
+    expect(await (response as Response).text()).toBe("text is required");
+  });
+
+  it("surfaces a 302 without following or replaying its bearer", async () => {
+    capacitorHttpRequestMock.mockResolvedValueOnce({
+      status: 302,
+      headers: { location: "https://attacker.example/audio" },
+      data: "",
+    });
+    const url = "https://api.elizacloud.ai/api/tts/cloud";
+    const response = await nativeCloudHttpTransportForUrl(url)?.request(
+      url,
+      {
+        method: "POST",
+        headers: { Authorization: "Bearer do-not-replay" },
+        body: "{}",
+      },
+      { responseType: "arraybuffer" },
+    );
+
+    expect(response?.status).toBe(302);
+    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
+    expect(capacitorHttpRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({ disableRedirects: true }),
+    );
+  });
+
+  it.each([
+    "/api/tts/cloud",
+    "http://127.0.0.1:41337/api/tts/cloud",
+    "eliza-local-agent://agent/api/tts/cloud",
+  ])("does not claim local transport URL %s", (url) => {
+    expect(nativeCloudHttpTransportForUrl(url)).toBeNull();
   });
 });

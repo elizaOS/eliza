@@ -71,7 +71,11 @@ describe("eliza sse bridge", () => {
   });
 
   test("scopes the request to the minted agent + conversation (body + headers)", async () => {
-    let seenBody: { agentId?: string; conversationId?: string } | null = null;
+    let seenBody: {
+      agentId?: string;
+      conversationId?: string;
+      stream_options?: { include_usage?: boolean };
+    } | null = null;
     let seenHeaders: Headers | null = null;
     const fetchImpl = (async (_url: string, init: RequestInit) => {
       seenBody = JSON.parse(String(init.body));
@@ -97,6 +101,37 @@ describe("eliza sse bridge", () => {
     // Scope also travels in headers so schema-strict endpoints still route it.
     expect(seenHeaders?.get("X-Eliza-Agent-Id")).toBe("agent-XYZ");
     expect(seenHeaders?.get("X-Eliza-Conversation-Id")).toBe("conv-ABC");
+    // The gateway's Cerebras byte pass-through only qualifies requests that
+    // opt in to the terminal usage frame; without this the voice LLM leg
+    // silently falls onto the slower AI-SDK decode/re-encode path.
+    expect(seenBody?.stream_options).toEqual({ include_usage: true });
+  });
+
+  test("ignores the terminal usage frame (empty choices) before [DONE]", async () => {
+    const deltas: string[] = [];
+    const fetchImpl = (async () =>
+      sseResponse([
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "hi" } }] })}\n\n`,
+        // include_usage terminal frame: empty choices + usage payload.
+        `data: ${JSON.stringify({ choices: [], usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 } })}\n\n`,
+        "data: [DONE]\n\n",
+      ])) as unknown as typeof fetch;
+    const result = await streamElizaConversation(
+      {
+        endpoint: "http://x",
+        authorization: "Bearer s",
+        model: "m",
+        transcript: "hi",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+        traceId: "t",
+        signal: new AbortController().signal,
+        fetchImpl,
+      },
+      (d) => deltas.push(d),
+    );
+    expect(deltas).toEqual(["hi"]);
+    expect(result.completed).toBe(true);
   });
 
   test("reports aborted when the signal fires mid-stream", async () => {

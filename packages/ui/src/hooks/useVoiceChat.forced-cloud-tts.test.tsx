@@ -5,12 +5,12 @@
  * is `eliza-cloud`, a dedicated/on-device agent must NOT relay TTS through its
  * own `/api/tts/cloud` proxy (an extra phone-side download + base64 IPC
  * re-marshal) when a cloud session bearer + configured cloud origin are present:
- * it POSTs straight to the cloud worker's `/api/v1/voice/tts` with a CORS-safe
- * bare fetch (Authorization + Content-Type only, no cookies, no csrf mirror).
+ * it POSTs straight to the cloud worker's `/api/v1/voice/tts` through the canonical platform transport
+ * without CSRF or cookie mutation (Authorization + Content-Type only, no cookies, no csrf mirror).
  * Any direct failure (network reject or non-2xx) degrades to the on-device
  * proxy, which authenticates server-side. With no cloud auth the proxy path is
  * preserved. Drives the real hook + real processQueue against mocked HTTP
- * layers (bare `fetch` for the direct worker, `fetchWithCsrf` for the proxy)
+ * layers (`requestViaAgentTransport` for the direct worker, `fetchWithCsrf` for the proxy)
  * and a fake audio graph.
  */
 
@@ -21,6 +21,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const fetchWithCsrf = vi.fn();
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: (...args: unknown[]) => fetchWithCsrf(...args),
+  requestViaAgentTransport: (url: string, init?: RequestInit) =>
+    directFetch(url, init),
 }));
 
 import {
