@@ -27,7 +27,7 @@
 
 import { execFile } from "node:child_process";
 import nodeCrypto from "node:crypto";
-import { access } from "node:fs/promises";
+import { access, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import {
@@ -61,7 +61,7 @@ import {
   type SubscriptionProvider,
 } from "@elizaos/auth/types";
 import type { AccountPoolBrokerSnapshot } from "@elizaos/core";
-import { ElizaError, logger } from "@elizaos/core";
+import { ElizaError, logger, resolveStateDir } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
 import {
   isLinkedAccountProviderId,
@@ -91,22 +91,128 @@ async function commandAvailable(command: string): Promise<boolean> {
   return false;
 }
 
-async function ensureSubscriptionCli(
+const SUBSCRIPTION_CLI_INSTALL_TIMEOUT_MS = 2 * 60 * 1000;
+/**
+ * A structurally failed install (no npm, unwritable state dir) is remembered
+ * so every OAuth attempt doesn't re-run a guaranteed-to-fail npm install
+ * (#16518); the cooldown lets a repaired environment recover without a
+ * process restart.
+ */
+const SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS = 5 * 60 * 1000;
+const subscriptionCliInstallFailures = new Map<
+  string,
+  { error: ElizaError; retryAt: number }
+>();
+
+/** Test hook: forget cached install failures between tests. */
+export function __clearSubscriptionCliInstallFailures(): void {
+  subscriptionCliInstallFailures.clear();
+}
+
+/**
+ * Per-user install prefix for device-login CLIs. Under the eliza state dir so
+ * a non-root service user can always write it — the previous `npm install -g`
+ * hit EACCES on /usr/lib/node_modules for every non-root host (#16518).
+ */
+function subscriptionCliInstallPrefix(): string {
+  return path.join(resolveStateDir(), "tools", "subscription-cli");
+}
+
+/** Idempotently make `dir` visible to this process's PATH resolution. */
+function prependToProcessPath(dir: string): void {
+  const current = process.env.PATH ?? "";
+  if (current.split(path.delimiter).includes(dir)) return;
+  process.env.PATH = current ? `${dir}${path.delimiter}${current}` : dir;
+}
+
+export async function ensureSubscriptionCli(
   providerId: "anthropic-subscription" | "openai-codex",
+  deps: {
+    runInstall?: (args: string[]) => Promise<unknown>;
+    isAvailable?: (command: string) => Promise<boolean>;
+    now?: () => number;
+  } = {},
 ): Promise<void> {
   const command = providerId === "openai-codex" ? "codex" : "claude";
-  if (await commandAvailable(command)) return;
+  const isAvailable = deps.isAvailable ?? commandAvailable;
+  const now = deps.now ?? Date.now;
+
+  // A prior per-user install must stay visible to this check AND to the later
+  // bare `spawn("codex"|"claude")` in the login flows — including after a
+  // process restart, where the parent PATH doesn't carry the tools dir.
+  const binDir = path.join(
+    subscriptionCliInstallPrefix(),
+    "node_modules",
+    ".bin",
+  );
+  prependToProcessPath(binDir);
+  if (await isAvailable(command)) return;
+
+  const cached = subscriptionCliInstallFailures.get(command);
+  if (cached && now() < cached.retryAt) {
+    throw cached.error;
+  }
+
   const packageName =
     providerId === "openai-codex"
       ? "@openai/codex"
       : "@anthropic-ai/claude-code";
-  logger.info(`[accounts] Installing missing ${command} CLI for device login`);
-  await execFileAsync("npm", ["install", "-g", packageName], {
-    timeout: 2 * 60 * 1000,
-  });
-  if (!(await commandAvailable(command))) {
-    throw new Error(`${command} CLI installation completed but is not on PATH`);
+  const prefix = subscriptionCliInstallPrefix();
+  logger.info(
+    `[accounts] Installing missing ${command} CLI for device login into ${prefix}`,
+  );
+  const runInstall =
+    deps.runInstall ??
+    ((args: string[]) =>
+      execFileAsync("npm", args, {
+        timeout: SUBSCRIPTION_CLI_INSTALL_TIMEOUT_MS,
+      }));
+  try {
+    await mkdir(prefix, { recursive: true });
+    // A user-prefix install, never `-g`: no writes under /usr/lib/node_modules,
+    // works for any service user that owns the eliza state dir.
+    await runInstall([
+      "install",
+      "--prefix",
+      prefix,
+      "--no-fund",
+      "--no-audit",
+      packageName,
+    ]);
+  } catch (cause) {
+    const error = new ElizaError(
+      `The ${command} CLI required for device login could not be installed`,
+      {
+        code: "SUBSCRIPTION_CLI_INSTALL_FAILED",
+        context: {
+          command,
+          packageName,
+          prefix,
+          cause: cause instanceof Error ? cause.message : String(cause),
+        },
+      },
+    );
+    subscriptionCliInstallFailures.set(command, {
+      error,
+      retryAt: now() + SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS,
+    });
+    throw error;
   }
+  if (!(await isAvailable(command))) {
+    const error = new ElizaError(
+      `${command} CLI installation completed but is not on PATH`,
+      {
+        code: "SUBSCRIPTION_CLI_NOT_ON_PATH",
+        context: { command, packageName, prefix, binDir },
+      },
+    );
+    subscriptionCliInstallFailures.set(command, {
+      error,
+      retryAt: now() + SUBSCRIPTION_CLI_RETRY_COOLDOWN_MS,
+    });
+    throw error;
+  }
+  subscriptionCliInstallFailures.delete(command);
 }
 
 function requestUsesLocalRoot(req: RouteRequestContext["req"]): boolean {
@@ -1141,6 +1247,17 @@ async function handleOAuthRoutes(
       logger.error(
         `[accounts] Failed to start ${providerId} OAuth flow: ${String(err)}`,
       );
+      // A missing/uninstallable device-login CLI is an actionable prerequisite
+      // failure (#16518), not an opaque 500 — surface the structured message so
+      // the operator sees what to fix (writable state dir, npm present, …).
+      if (
+        err instanceof ElizaError &&
+        typeof err.code === "string" &&
+        err.code.startsWith("SUBSCRIPTION_CLI_")
+      ) {
+        error(res, `${err.message} (${err.code})`, 503);
+        return true;
+      }
       error(res, "Failed to start OAuth flow", 500);
       return true;
     }
