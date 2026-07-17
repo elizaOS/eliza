@@ -66,6 +66,10 @@ export class ElizaSseBridgeError extends Error {
     readonly upstreamCode?: string,
     /** Whether retrying the turn can succeed without user action. */
     readonly retryable = true,
+    /** Bounded canonical-route message safe for a public voice error frame. */
+    readonly upstreamMessage?: string,
+    /** Bounded non-JSON upstream body prefix safe for diagnostics. */
+    readonly upstreamSnippet?: string,
   ) {
     super(message);
     this.name = "ElizaSseBridgeError";
@@ -132,6 +136,8 @@ export async function streamElizaConversation(
       response.status,
       upstreamError.code,
       upstreamError.retryable,
+      upstreamError.message,
+      upstreamError.snippet,
     );
   }
   if (!response.body) {
@@ -217,10 +223,18 @@ function canonicalConversationStreamUrl(
 
 const MAX_UPSTREAM_ERROR_BYTES = 4096;
 const SAFE_UPSTREAM_CODE = /^[a-z0-9_]{1,64}$/;
+const SAFE_PUBLIC_UPSTREAM_MESSAGES = new Set([
+  "Agent not found",
+  "Insufficient credits",
+  "Invalid request body",
+  "Message text is required",
+  "Missing request body",
+]);
 
 async function readUpstreamError(response: Response): Promise<{
   code?: string;
   message?: string;
+  snippet?: string;
   retryable: boolean;
 }> {
   const fallbackRetryable =
@@ -270,12 +284,22 @@ async function readUpstreamError(response: Response): Promise<{
           : "";
     return {
       ...(SAFE_UPSTREAM_CODE.test(rawCode) ? { code: rawCode } : {}),
-      ...(rawMessage.trim() ? { message: rawMessage.trim().slice(0, 512) } : {}),
-      retryable: typeof parsed.retryable === "boolean" ? parsed.retryable : fallbackRetryable,
+      ...(SAFE_PUBLIC_UPSTREAM_MESSAGES.has(rawMessage.trim())
+        ? { message: rawMessage.trim().slice(0, 512) }
+        : rawMessage.trim()
+          ? { snippet: "Upstream request failed" }
+          : {}),
+      retryable:
+        typeof parsed.retryable === "boolean"
+          ? parsed.retryable
+          : fallbackRetryable,
     };
   } catch {
     // error-policy:J3 malformed/truncated upstream JSON: use status semantics.
-    return { retryable: fallbackRetryable };
+    return {
+      ...(text.trim() ? { snippet: "Upstream returned a non-JSON error" } : {}),
+      retryable: fallbackRetryable,
+    };
   }
 }
 

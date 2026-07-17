@@ -28,7 +28,8 @@ import {
   attachVoiceWsHandler,
   type ServerWebSocketLike,
 } from "@/lib/voice-session/ws-handler";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
+import { createInternalElizaConversationFetch } from "../lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,
   createWorkerDeepgramFluxFactory,
@@ -204,6 +205,13 @@ app.get("/", (c) => {
         elizaEndpoint,
         elizaAuthorization,
         elizaModel: resolveElizaModel(env),
+        fetchImpl: createInternalElizaConversationFetch(
+          c.env as unknown as Bindings,
+          {
+            agentId: claims.agentId,
+            conversationId: claims.conversationId,
+          },
+        ),
         usageStore,
         usageLimits,
         isRevoked: (jti) => isVoiceSessionTokenRevoked(jti),

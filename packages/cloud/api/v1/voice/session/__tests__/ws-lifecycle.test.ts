@@ -150,6 +150,14 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
       }),
     });
   }
+  sentText(): string {
+    return this.sent
+      .map((entry) => {
+        const parsed = JSON.parse(entry) as { transcript?: unknown };
+        return typeof parsed.transcript === "string" ? parsed.transcript : "";
+      })
+      .join("");
+  }
   private fire(type: string, payload: unknown) {
     for (const l of this.listeners.get(type) ?? []) l(payload);
   }
@@ -429,6 +437,27 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Canonical chunk."]),
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "voice transcript");
+    await flush();
+    await flush();
+
+    expect(client.controlTypes()).toContain("llm_first_text");
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toContain("Canonical chunk.");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("usage");
+  });
+
   test("terminal Cartesia phrase carries continue:false and no empty-transcript finish (live-provider fix)", async () => {
     // Regression from the LIVE-provider evidence run: the session used to send
     // every phrase with continue:true then an empty-transcript finish(), which
@@ -586,6 +615,43 @@ describe("voice-session WS lifecycle", () => {
         retryable: false,
       }),
     );
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.closedWith).toBeNull();
+  });
+
+  test("canonical 404 Agent not found is exposed in a bounded public voice error payload", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async () =>
+        Response.json(
+          {
+            success: false,
+            error: "Agent not found",
+          },
+          { status: 404 },
+        )) as unknown as typeof fetch,
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "please answer");
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "ElizaSseBridgeError",
+        retryable: false,
+        upstreamStatus: 404,
+        upstreamMessage: "Agent not found",
+      }),
+    );
+    const errorFrame = client.controlFrames.find(
+      (f) => f.t === "error" && "upstreamStatus" in f,
+    ) as Record<string, unknown> | undefined;
+    expect(JSON.stringify(errorFrame)).not.toContain("Bearer");
+    expect(JSON.stringify(errorFrame)).not.toContain("X-Service-Key");
     expect(client.controlTypes()).toContain("usage");
     expect(client.closedWith).toBeNull();
   });
