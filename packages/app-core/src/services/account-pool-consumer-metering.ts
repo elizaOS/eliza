@@ -537,8 +537,32 @@ export function anthropicQuotaError(
   };
 }
 
+export function estimateAnthropicRequestReservation(payload: unknown): number {
+  let serializedBytes = 0;
+  try {
+    serializedBytes = Buffer.byteLength(JSON.stringify(payload) ?? "", "utf8");
+  } catch {
+    // Cyclic/non-serializable input cannot be a valid JSON request. Reserving
+    // one token keeps this helper total while the protocol parser rejects it.
+    serializedBytes = 1;
+  }
+  const maxTokens =
+    payload &&
+    typeof payload === "object" &&
+    "max_tokens" in payload &&
+    typeof (payload as { max_tokens?: unknown }).max_tokens === "number" &&
+    Number.isSafeInteger((payload as { max_tokens: number }).max_tokens) &&
+    (payload as { max_tokens: number }).max_tokens > 0
+      ? (payload as { max_tokens: number }).max_tokens
+      : 0;
+  // UTF-8 bytes are a conservative upper bound for input token count. Add the
+  // requested output ceiling so quota admission happens before upstream work.
+  return Math.max(1, serializedBytes + maxTokens);
+}
+
 export async function authenticateAccountPoolConsumerRequest(
   headers: HeaderInput,
+  requestPayload: unknown,
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<AccountPoolConsumerAuthResult> {
   const original = headersToHeaders(headers);
@@ -580,7 +604,10 @@ export async function authenticateAccountPoolConsumerRequest(
       upstreamHeaders,
     };
   }
-  const admission = await admitAccountPoolConsumerRequest(consumer);
+  const admission = await admitAccountPoolConsumerRequest(
+    consumer,
+    estimateAnthropicRequestReservation(requestPayload),
+  );
   if ("ok" in admission) {
     return { ...admission, upstreamHeaders };
   }
@@ -948,13 +975,20 @@ export function parseAnthropicSseEventUsage(
   return null;
 }
 
+export interface AnthropicSseUsageMeter
+  extends TransformStream<Uint8Array, Uint8Array> {
+  /** Idempotent finalizer. Call from the proxy's finally block on abort/error. */
+  finalizeUsage(): Promise<void>;
+}
+
 export function createAnthropicSseUsageMeter(
   onUsage: (usage: AccountPoolConsumerUsage) => void | Promise<void>,
-): TransformStream<Uint8Array, Uint8Array> {
+): AnthropicSseUsageMeter {
   const decoder = new TextDecoder();
   const usage: AccountPoolConsumerUsage = { ...EMPTY_USAGE };
   let textBuffer = "";
   let pendingData: string[] = [];
+  let finalized = false;
 
   function consumeText(text: string): void {
     textBuffer += text;
@@ -998,19 +1032,24 @@ export function createAnthropicSseUsageMeter(
     if (eventUsage) mergeStreamingUsage(usage, eventUsage);
   }
 
-  return new TransformStream<Uint8Array, Uint8Array>({
+  async function finalizeUsage(): Promise<void> {
+    if (finalized) return;
+    finalized = true;
+    const tail = decoder.decode();
+    if (tail) consumeText(tail);
+    if (textBuffer) consumeLine(textBuffer);
+    consumeEvent();
+    await onUsage({ ...usage });
+  }
+
+  const stream = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       controller.enqueue(chunk);
       consumeText(decoder.decode(chunk, { stream: true }));
     },
-    async flush() {
-      const tail = decoder.decode();
-      if (tail) consumeText(tail);
-      if (textBuffer) consumeLine(textBuffer);
-      consumeEvent();
-      await onUsage({ ...usage });
-    },
+    flush: finalizeUsage,
   });
+  return Object.assign(stream, { finalizeUsage });
 }
 
 export async function queryAccountPoolConsumerUsage(

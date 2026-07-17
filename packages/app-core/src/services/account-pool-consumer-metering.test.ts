@@ -119,16 +119,46 @@ describe("Anthropic usage extraction", () => {
       },
     ]);
   });
+
+  it("finalizes partial observed usage exactly once after an abnormal stream end", async () => {
+    const observed: unknown[] = [];
+    const stream = createAnthropicSseUsageMeter((usage) => {
+      observed.push(usage);
+    });
+    const writer = stream.writable.getWriter();
+    const reader = stream.readable.getReader();
+    const chunk = new TextEncoder().encode(
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":7}}}\n\n',
+    );
+    const read = reader.read();
+    await writer.write(chunk);
+    await read;
+    await writer.abort(new Error("client disconnected"));
+    await stream.finalizeUsage();
+    await stream.finalizeUsage();
+
+    expect(observed).toEqual([
+      {
+        input_tokens: 7,
+        output_tokens: 0,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    ]);
+  });
 });
 
 describe("consumer auth helper", () => {
   it("preserves legacy mode unless public consumer auth is explicitly enabled", async () => {
     delete process.env.ELIZA_ACCOUNT_POOL_CONSUMER_AUTH_ENABLED;
-    const auth = await authenticateAccountPoolConsumerRequest({
-      authorization: "Bearer caller-key",
-      "x-api-key": "caller-key",
-      "anthropic-version": "2023-06-01",
-    });
+    const auth = await authenticateAccountPoolConsumerRequest(
+      {
+        authorization: "Bearer caller-key",
+        "x-api-key": "caller-key",
+        "anthropic-version": "2023-06-01",
+      },
+      { max_tokens: 32, messages: [] },
+    );
     expect(auth.ok).toBe(true);
     if (!auth.ok) throw new Error("unexpected auth failure");
     expect(auth.mode).toBe("legacy");
@@ -144,31 +174,54 @@ describe("consumer auth helper", () => {
     });
     if (!disabled) throw new Error("failed to create disabled key");
 
-    const unknown = await authenticateAccountPoolConsumerRequest({
-      authorization: "Bearer not-real",
-      "x-api-key": "not-real",
-      "anthropic-version": "2023-06-01",
-    });
+    const unknown = await authenticateAccountPoolConsumerRequest(
+      {
+        authorization: "Bearer not-real",
+        "x-api-key": "not-real",
+        "anthropic-version": "2023-06-01",
+      },
+      { max_tokens: 32, messages: [] },
+    );
     if (unknown.ok) throw new Error("unexpected unknown-key auth success");
     expect(unknown.status).toBe(401);
     expect(unknown.body.error.type).toBe("authentication_error");
     expect(unknown.upstreamHeaders.has("authorization")).toBe(false);
     expect(unknown.upstreamHeaders.has("x-api-key")).toBe(false);
 
-    const blocked = await authenticateAccountPoolConsumerRequest({
-      authorization: `Bearer ${disabled.key}`,
-    });
+    const blocked = await authenticateAccountPoolConsumerRequest(
+      { authorization: `Bearer ${disabled.key}` },
+      { max_tokens: 32, messages: [] },
+    );
     if (blocked.ok) throw new Error("unexpected disabled-key auth success");
     expect(blocked.status).toBe(401);
   });
 
   it("does not treat the broker admin bearer as a consumer key", async () => {
-    const auth = await authenticateAccountPoolConsumerRequest({
-      authorization: "Bearer admin-broker-secret-admin-broker-secret",
-    });
+    const auth = await authenticateAccountPoolConsumerRequest(
+      { authorization: "Bearer admin-broker-secret-admin-broker-secret" },
+      { max_tokens: 32, messages: [] },
+    );
     if (auth.ok) throw new Error("unexpected admin-bearer auth success");
     expect(auth.status).toBe(401);
     expect(auth.body.error.type).toBe("authentication_error");
+  });
+
+  it("reserves the conservative request size before upstream admission", async () => {
+    const created = createAccountPoolConsumerKey({
+      label: "request-sized-quota",
+      dailyTokenQuota: 100,
+    });
+    if (!created) throw new Error("failed to create key");
+
+    const auth = await authenticateAccountPoolConsumerRequest(
+      { "x-api-key": created.key },
+      { max_tokens: 80, messages: [] },
+    );
+    expect(auth).toMatchObject({
+      ok: false,
+      status: 429,
+      body: { error: { type: "rate_limit_error" } },
+    });
   });
 });
 
@@ -203,9 +256,10 @@ describe("quota and totals", () => {
       body: { error: { type: "rate_limit_error" } },
     });
 
-    const authenticated = await authenticateAccountPoolConsumerRequest({
-      "x-api-key": created.key,
-    });
+    const authenticated = await authenticateAccountPoolConsumerRequest(
+      { "x-api-key": created.key },
+      { max_tokens: 1, messages: [] },
+    );
     expect(authenticated).toMatchObject({
       ok: false,
       status: 429,
