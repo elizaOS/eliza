@@ -1,7 +1,6 @@
 import {
   getSolanaOldestKnownSignature,
   getSolanaParsedTransactions,
-  getSolanaRecentSignatures,
 } from "./helius";
 import { requireBlockchainConnector } from "./chains/registry";
 import { analyzeWalletActivity } from "./analyzers/activity";
@@ -98,10 +97,21 @@ const balance = {
   sol: solBalance,
 };
 
-const recentSignatures = await getSolanaRecentSignatures(
-  walletAddress,
-  10,
-);
+const recentTransactionsResult =
+  await connector.getTransactions(walletAddress, {
+    limit: 10,
+  });
+
+if (
+  recentTransactionsResult.status === "error" ||
+  recentTransactionsResult.status === "unsupported" ||
+  !recentTransactionsResult.data
+) {
+  throw new Error(
+    recentTransactionsResult.error?.message ??
+      "Unable to retrieve the wallet transactions.",
+  );
+}
 
 const oldestKnownSignature = await getSolanaOldestKnownSignature(
   walletAddress,
@@ -187,15 +197,18 @@ const tokenHoldings: WalletTokenHolding[] =
           rawAmount: balance.lamports,
         };
         const recentTransactions: WalletRecentTransaction[] =
-  recentSignatures.map((tx) => ({
-    signature: String(tx.signature ?? ""),
-    slot: typeof tx.slot === "number" ? tx.slot : undefined,
-    blockTime:
-      typeof tx.blockTime === "number" || tx.blockTime === null
-        ? tx.blockTime
-        : undefined,
-    status: tx.err ? "failed" : "success",
-  }));
+  recentTransactionsResult.data.transactions.map(
+    (transaction) => ({
+      signature: transaction.transactionId,
+      slot: transaction.blockNumber,
+      blockTime:
+        transaction.timestamp ?? undefined,
+      status:
+        transaction.status === "failed"
+          ? "failed"
+          : "success",
+    }),
+  );
        const activity = analyzeWalletActivity(recentTransactions);
         const age = analyzeWalletAge(
   oldestKnownSignature.signature,
