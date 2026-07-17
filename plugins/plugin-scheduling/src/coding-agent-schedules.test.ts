@@ -113,10 +113,13 @@ function makeHarness(args: {
   agentId?: string;
   prs?: PrShepherdPullRequest[];
   initialIso?: string;
+  settings?: Record<string, string | undefined>;
+  useInjectedGithubService?: boolean;
 }) {
   const agentId = args.agentId ?? "agent-a";
   let nowIso = args.initialIso ?? "2026-07-17T12:00:00.000Z";
   let prs = args.prs ?? [makePr()];
+  const useInjectedGithubService = args.useInjectedGithubService ?? true;
   const github: GitHubPrShepherdService = {
     async listAssignedOpenPullRequests(input) {
       expect(input.agentId).toBe(agentId);
@@ -126,8 +129,17 @@ function makeHarness(args: {
   const orchestrator = makeOrchestrator();
   const runtime = {
     agentId,
+    fetch: vi.fn(),
+    getSetting(key: string) {
+      return args.settings?.[key];
+    },
     getService(type: string) {
-      if (type === GITHUB_PR_SHEPHERD_SERVICE_TYPE) return github;
+      if (
+        type === GITHUB_PR_SHEPHERD_SERVICE_TYPE &&
+        useInjectedGithubService
+      ) {
+        return github;
+      }
       if (type === ORCHESTRATOR_TASK_SERVICE_TYPE) {
         return orchestrator.service;
       }
@@ -181,6 +193,55 @@ function makeHarness(args: {
       });
     },
   };
+}
+
+function createGitHubFetchStub() {
+  const calls: Array<{ url: string; authorization: string | null }> = [];
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = input.toString();
+    calls.push({
+      url,
+      authorization: new Headers(init?.headers).get("authorization"),
+    });
+    if (url === "https://api.github.com/user") {
+      return Response.json({ login: "assigned-user" });
+    }
+    if (url === "https://api.github.com/graphql") {
+      return Response.json({
+        data: {
+          search: {
+            nodes: [
+              {
+                number: 123,
+                title: "Fix flaky check",
+                url: "https://github.com/elizaOS/eliza/pull/123",
+                headRefName: "fix/flaky",
+                baseRefName: "develop",
+                reviewDecision: "CHANGES_REQUESTED",
+                mergeStateStatus: "CLEAN",
+                repository: {
+                  name: "eliza",
+                  owner: { login: "elizaOS" },
+                },
+                commits: {
+                  nodes: [
+                    {
+                      commit: {
+                        statusCheckRollup: { state: "SUCCESS" },
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+      });
+    }
+    throw new Error(`unexpected GitHub request ${url}`);
+  });
+  return { fetch, calls };
 }
 
 function cloneRunner(args: {
@@ -431,6 +492,66 @@ describe("pr-shepherd coding-agent schedules", () => {
     const schedule = await schedulePrShepherd(h.runner, h.agentId);
     const result = await h.runner.fireWithResult(schedule.taskId);
     expect(result.kind).toBe("dispatch_failed");
+    expect(h.orchestrator.tasks).toHaveLength(0);
+  });
+
+  it("uses GITHUB_TOKEN before GH_PAT for the default GitHub reader", async () => {
+    const github = createGitHubFetchStub();
+    const h = makeHarness({
+      useInjectedGithubService: false,
+      settings: {
+        GITHUB_TOKEN: " github-token ",
+        GH_PAT: "gh-pat",
+      },
+    });
+    h.runtime.fetch = github.fetch;
+
+    const schedule = await schedulePrShepherd(h.runner, h.agentId);
+    const result = await h.runner.fireWithResult(schedule.taskId);
+
+    expect(result.kind).toBe("fired");
+    expect(h.orchestrator.tasks).toHaveLength(1);
+    expect(github.calls).toHaveLength(2);
+    expect(github.calls.map((call) => call.authorization)).toEqual([
+      "Bearer github-token",
+      "Bearer github-token",
+    ]);
+  });
+
+  it("falls back to GH_PAT for the default GitHub reader", async () => {
+    const github = createGitHubFetchStub();
+    const h = makeHarness({
+      useInjectedGithubService: false,
+      settings: {
+        GH_PAT: "gh-pat",
+      },
+    });
+    h.runtime.fetch = github.fetch;
+
+    const schedule = await schedulePrShepherd(h.runner, h.agentId);
+    const result = await h.runner.fireWithResult(schedule.taskId);
+
+    expect(result.kind).toBe("fired");
+    expect(h.orchestrator.tasks).toHaveLength(1);
+    expect(github.calls.map((call) => call.authorization)).toEqual([
+      "Bearer gh-pat",
+      "Bearer gh-pat",
+    ]);
+  });
+
+  it("fails without a GitHub token when no PR shepherd service is injected", async () => {
+    const h = makeHarness({
+      useInjectedGithubService: false,
+      settings: {},
+    });
+    const fetch = vi.fn();
+    h.runtime.fetch = fetch;
+
+    const schedule = await schedulePrShepherd(h.runner, h.agentId);
+    const result = await h.runner.fireWithResult(schedule.taskId);
+
+    expect(result.kind).toBe("dispatch_failed");
+    expect(fetch).not.toHaveBeenCalled();
     expect(h.orchestrator.tasks).toHaveLength(0);
   });
 

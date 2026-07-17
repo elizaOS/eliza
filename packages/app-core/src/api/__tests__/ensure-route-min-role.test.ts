@@ -18,7 +18,11 @@ import {
   it,
   vi,
 } from "vitest";
-import { ensureRouteAuthorized, ensureRouteMinRole } from "../auth.js";
+import {
+  ensureRouteAuthorized,
+  ensureRouteMinRole,
+  resolveAuthorizedRouteRole,
+} from "../auth.js";
 
 const mocks = vi.hoisted(() => {
   vi.resetModules();
@@ -193,6 +197,20 @@ describe("ensureRouteMinRole", () => {
     expect(res.status()).toBe(200);
   });
 
+  it("preserves the owner session identity in route authorization", async () => {
+    mocks.findActiveSession.mockResolvedValue(makeSession());
+    mocks.findIdentity.mockResolvedValue(makeIdentity("owner"));
+    const req = makeReq({ headers: { cookie: "eliza_session=owner-session" } });
+
+    await expect(
+      resolveAuthorizedRouteRole(req, { state: STATE_WITH_DB, skipCsrf: true }),
+    ).resolves.toMatchObject({
+      ok: true,
+      role: "OWNER",
+      identityId: "identity-id",
+    });
+  });
+
   it("rejects a machine session from OWNER routes", async () => {
     mocks.findActiveSession.mockResolvedValue(
       makeSession({ id: "machine-session", kind: "machine" }),
@@ -224,6 +242,24 @@ describe("ensureRouteMinRole", () => {
       ensureRouteMinRole(req, res.res, STATE_WITH_DB, "USER"),
     ).resolves.toBe(true);
     expect(res.status()).toBe(200);
+  });
+
+  it("preserves the machine session identity at the USER tier", async () => {
+    mocks.findActiveSession.mockResolvedValue(
+      makeSession({ id: "machine-session", kind: "machine" }),
+    );
+    mocks.findIdentity.mockResolvedValue(makeIdentity("machine"));
+    const req = makeReq({
+      headers: { authorization: "Bearer machine-session" },
+    });
+
+    await expect(
+      resolveAuthorizedRouteRole(req, { state: STATE_WITH_DB, skipCsrf: true }),
+    ).resolves.toMatchObject({
+      ok: true,
+      role: "USER",
+      identityId: "identity-id",
+    });
   });
 
   it("uses the same resolver for plain authenticated route gates", async () => {
