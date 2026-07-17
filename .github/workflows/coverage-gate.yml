@@ -88,6 +88,10 @@ jobs:
         # execute its changed tests, or the suite goes vacuously green (#15849).
         uses: ./.github/actions/setup-bun-workspace
         with:
+          # Match the canonical CI toolchain. Floating canary requires a GitHub
+          # tags API lookup before tests can run and makes this required gate
+          # unavailable whenever that unrelated endpoint is degraded.
+          bun-version: "1.3.14"
           install-native-deps: "false"
           install-protoc: "false"
           setup-python: "false"

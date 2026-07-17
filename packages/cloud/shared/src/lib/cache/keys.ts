@@ -328,7 +328,10 @@ export const CacheTTL = {
     list: 180, // 3 minutes - discovery results
   },
   models: {
-    catalog: 3600, // 1 hour - upstream model catalogs change infrequently
+    // Physical retention is deliberately much longer than freshness. A stale
+    // catalog remains usable routing evidence during a prolonged upstream
+    // outage; CacheStaleTTL still starts revalidation after 15 minutes.
+    catalog: 7 * 24 * 60 * 60,
   },
   /**
    * Code Agent cache TTLs

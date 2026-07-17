@@ -72,6 +72,7 @@ import {
   summarizeEnvelope,
 } from "./completion-envelope.js";
 import {
+  appendCompletionEvidenceSection,
   buildCompletionEvidenceString,
   type CompletionEvidenceBundle,
   classifyToolOutput,
@@ -102,6 +103,15 @@ import {
   coerceGoalCapabilityProfile,
   type GoalFollowUpReason,
 } from "./goal-prompt.js";
+import {
+  type GroundTruthVerdict,
+  groundTruthApplies,
+  groundTruthHardFailEnabled,
+  groundTruthRequiresPullRequest,
+  renderGroundTruthEvidence,
+  shouldIncludeGroundTruthEvidence,
+  verifyGroundTruth,
+} from "./ground-truth-verifier.js";
 import {
   type IndependentVerifierVerdict,
   runIndependentVerification,
@@ -183,6 +193,7 @@ import {
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
 import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
+import { getCodingWorkspaceService } from "./workspace-service.js";
 
 /**
  * Recoverable operator-recovery conflict.
@@ -679,6 +690,26 @@ function priorCleanResidualsSnapshot(
   if (!Array.isArray(raw.residuals)) return undefined;
   if (typeof raw.checkedAt !== "number") return undefined;
   return raw as unknown as CompletionResidualsResult;
+}
+
+function _readGroundTruthVerdict(
+  metadata: Record<string, unknown>,
+): GroundTruthVerdict | undefined {
+  const raw = metadata.groundTruthVerdict;
+  if (!isRecord(raw)) return undefined;
+  if (
+    typeof raw.status !== "string" ||
+    typeof raw.checkedAt !== "string" ||
+    !isRecord(raw.pr) ||
+    !isRecord(raw.checks) ||
+    !isRecord(raw.files) ||
+    typeof raw.hardFail !== "boolean" ||
+    !Array.isArray(raw.hardFailReasons) ||
+    typeof raw.summary !== "string"
+  ) {
+    return undefined;
+  }
+  return raw as unknown as GroundTruthVerdict;
 }
 
 function eventExcerpt(
@@ -2853,6 +2884,42 @@ export class OrchestratorTaskService extends Service {
         },
       );
     }
+    const groundTruth =
+      result.passed && !result.humanOverride
+        ? await this.verifyGroundTruthForValidation(doc, evidence)
+        : undefined;
+    if (groundTruth?.hardFail) {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "validation_blocked_ground_truth",
+        summary: groundTruth.summary,
+        data: {
+          verifier: "ground-truth-verifier",
+          groundTruth,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...(doc.task.metadata ?? {}),
+          groundTruthVerdict: groundTruth,
+        },
+      });
+      this.emitChange(taskId);
+      throw new ElizaError(
+        `Ground-truth verification blocks validation: ${groundTruth.summary}`,
+        {
+          code: "TASK_GROUND_TRUTH_BLOCKED",
+          context: {
+            taskId,
+            status: groundTruth.status,
+            reasons: groundTruth.hardFailReasons,
+          },
+        },
+      );
+    }
     const trigger: TaskLifecycleTrigger = result.humanOverride
       ? result.passed
         ? "human_override_passed"
@@ -2910,28 +2977,89 @@ export class OrchestratorTaskService extends Service {
     return this.getTask(taskId);
   }
 
+  private async verifyGroundTruthForValidation(
+    doc: OrchestratorTaskDocument,
+    evidence: string,
+  ): Promise<GroundTruthVerdict | undefined> {
+    const workspaceSession = latestWorkspaceSession(doc);
+    const changeSet = workspaceSession
+      ? await this.resolveCompletionChangeSet(workspaceSession.sessionId, doc)
+      : undefined;
+    const claimedFiles = changeSet?.changedFiles ?? [];
+    const metadataPr = str(doc.task.metadata?.prUrl);
+    const completion = [evidence, metadataPr].filter(Boolean).join("\n");
+    const requirePullRequest = groundTruthRequiresPullRequest(
+      (key) => this.runtime.getSetting(key),
+      doc.task.metadata,
+    );
+    if (
+      !groundTruthApplies({
+        completion,
+        claimedFiles,
+        requirePullRequest,
+      })
+    ) {
+      return undefined;
+    }
+
+    const workspace = getCodingWorkspaceService(this.runtime);
+    const verdict = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles,
+        requirePullRequest,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async (link) => {
+          if (!workspace) {
+            throw new ElizaError(
+              "Coding workspace GitHub service is unavailable",
+              {
+                code: "GROUND_TRUTH_WORKSPACE_SERVICE_UNAVAILABLE",
+                context: { taskId: doc.task.id, repo: link.repo },
+              },
+            );
+          }
+          return workspace.getPullRequestGroundTruth(link);
+        },
+      },
+    );
+    await this.store.updateTask(doc.task.id, {
+      metadata: {
+        ...doc.task.metadata,
+        groundTruthVerdict: verdict,
+      },
+    });
+    return verdict;
+  }
+
   /**
    * Verify a freshly-`validating` task against its acceptance criteria before
    * promoting it to `done` (issue #8124). One linear pipeline runs inside the
    * re-entrancy guard:
    *
-   * 1. **Structural envelope gate (#8895).** {@link parseCompletionEnvelope} reads
+   * 1. **Remote ground truth.** The claimed GitHub PR, head-SHA check rollup,
+   *    and changed files are verified without a model call. The structured
+   *    verdict is persisted and appended to the existing completion evidence;
+   *    optional hard-fail policy blocks a missing PR or red required checks.
+   * 2. **Structural envelope gate (#8895).** {@link parseCompletionEnvelope} reads
    *    the sub-agent's verbatim final message. A PRESENT-but-malformed envelope is
    *    blocked *before* any model spend and the worker is re-prompted with
    *    {@link envelopeCorrection}. An ABSENT envelope falls through unchanged
    *    (back-compat). A VALID envelope is stamped onto `metadata.completionEnvelope`
    *    and its {@link summarizeEnvelope} is prepended to the judge's evidence so the
    *    judge grills the contract, not prose.
-   * 2. **Independent execution verifier (#8898).** For code-change tasks
+   * 3. **Independent execution verifier (#8898).** For code-change tasks
    *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
    *    the tests/diff and returns an execution-grounded verdict. A failing verdict
    *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
    *    the task `validating` (never a false promotion on a verifier crash); a
    *    passing/skipped verdict falls through.
-   * 3. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
+   * 4. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
    *    judges the evidence and promotes (→ `done`) or re-prompts.
    *
-   * All three failure paths share one {@link reEngageOrEscalate} helper, one
+   * All failure paths share one {@link reEngageOrEscalate} helper, one
    * `autoVerifyAttempts` counter, and one {@link MAX_AUTO_VERIFY_ATTEMPTS} cap, so a
    * malformed/failing worker is re-prompted a bounded number of times and then
    * parked on `waiting_on_user`.
@@ -3070,14 +3198,86 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
+      // 1. Deterministic remote ground-truth verifier. This uses the PR URL in
+      // the worker's verbatim completion, the captured WorkspaceChangeSet, and
+      // the CodingWorkspaceService's existing authenticated GitHub plumbing.
+      // It always persists a structured verdict when enabled. API failures are
+      // explicitly inconclusive and never become a false hard failure.
+      let evidence = completionEvidence;
+      const includeGroundTruth = shouldIncludeGroundTruthEvidence((key) =>
+        this.runtime.getSetting(key),
+      );
+      const hardFailGroundTruth = groundTruthHardFailEnabled((key) =>
+        this.runtime.getSetting(key),
+      );
+      if (includeGroundTruth || hardFailGroundTruth) {
+        const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+        const workspace = getCodingWorkspaceService(this.runtime);
+        const groundTruth = await verifyGroundTruth(
+          {
+            completion: rawCompletion,
+            claimedFiles: changeSet?.changedFiles ?? [],
+            requirePullRequest: groundTruthRequiresPullRequest(
+              (key) => this.runtime.getSetting(key),
+              doc.task.metadata,
+            ),
+            hardFailEnabled: hardFailGroundTruth,
+          },
+          {
+            fetchPullRequest: async (link) => {
+              if (!workspace) {
+                throw new Error(
+                  "Coding workspace GitHub service is unavailable",
+                );
+              }
+              return workspace.getPullRequestGroundTruth(link);
+            },
+          },
+        );
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...doc.task.metadata,
+            groundTruthVerdict: groundTruth,
+          },
+        });
+        doc = (await this.store.getTask(taskId)) ?? doc;
+        if (includeGroundTruth) {
+          evidence = appendCompletionEvidenceSection(
+            evidence,
+            renderGroundTruthEvidence(groundTruth),
+          );
+        }
+        if (groundTruth.hardFail) {
+          const failureEvidence = renderGroundTruthEvidence(groundTruth);
+          await this.validateTaskLocked(taskId, {
+            passed: false,
+            summary: groundTruth.summary,
+            evidence: failureEvidence,
+            verifier: "ground-truth-verifier",
+          });
+          await this.reEngageOrEscalate({
+            taskId,
+            sessionId,
+            correction: buildAutoVerifyCorrection(
+              groundTruth.hardFailReasons,
+              attempts + 1,
+            ),
+            eventType: "ground_truth_failed",
+            verifier: "ground-truth-verifier",
+            summary: groundTruth.summary,
+            missing: groundTruth.hardFailReasons,
+            attempt: attempts,
+          });
+          return;
+        }
+      }
+
       const acceptanceCriteria = doc.task.acceptanceCriteria;
-      // Criteria-free tasks keep the prior behavior: stay `validating` for a
-      // human/manual caller, no surprise model spend. The residuals gate above
-      // has already run, so "no criteria" no longer implies "no verification".
+      // Criteria-free tasks keep the prior behavior after deterministic gates:
+      // stay `validating` for a human/manual caller, with no model spend.
       if (acceptanceCriteria.length === 0) return;
 
-      // 1. Structural envelope gate (#8895) — BEFORE any model spend.
-      let evidence = completionEvidence;
+      // 2. Structural envelope gate (#8895) — BEFORE any model spend.
       if (parse.present && !parse.ok) {
         // Malformed contract: block the judge and re-prompt for a valid envelope.
         await this.reEngageOrEscalate({
@@ -3119,10 +3319,10 @@ export class OrchestratorTaskService extends Service {
             },
           },
         });
-        evidence = `${summarizeEnvelope(parse.envelope)}\n\n${completionEvidence}`;
+        evidence = `${summarizeEnvelope(parse.envelope)}\n\n${evidence}`;
       }
 
-      // 2. Independent read-only execution verifier (#8898).
+      // 3. Independent read-only execution verifier (#8898).
       const independent = await this.runIndependentVerify(
         taskId,
         doc,
@@ -3189,7 +3389,7 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
-      // 3. Text judge (fallback for non-code / criteria-light tasks).
+      // 4. Text judge (fallback for non-code / criteria-light tasks).
       const verdict = await verifyGoalCompletion(
         this.runtime,
         {
@@ -3237,8 +3437,8 @@ export class OrchestratorTaskService extends Service {
 
   /**
    * Shared re-prompt / escalation path for every failed completion verdict — the
-   * malformed-envelope gate (#8895), the independent-verify block (#8898), and the
-   * text judge. ONE `autoVerifyAttempts` counter and ONE
+   * remote-ground-truth gate, malformed-envelope gate (#8895), independent-verify
+   * block (#8898), and text judge. ONE `autoVerifyAttempts` counter and ONE
    * {@link MAX_AUTO_VERIFY_ATTEMPTS} cap govern all three: under the cap the
    * kept-alive worker is reactivated and re-prompted with `correction` (and a
    * reflexion post-mortem is recorded for the next respawn, #8899); at the cap, or

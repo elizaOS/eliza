@@ -716,8 +716,14 @@ async function computeTaskAgentFrameworkState(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
+  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
+  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
+  // INSTALLED: it shares OpenCode's provider thumb (below) and its
+  // capability-profile fit dominates OpenCode on every axis, so with an equal
+  // provider signal it wins the weighted sort (alphabetical tie-break also
+  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
+  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
+  // running). Claude/Codex only become preferred when their key path is set.
   const providerPrefersOpencode =
     !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
@@ -804,7 +810,14 @@ async function computeTaskAgentFrameworkState(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code shares OpenCode's BYO provider thumb when no provider
+            // key prefers claude/codex; its dominant capability-profile fit then
+            // makes an installed eliza-code the default over OpenCode.
+            framework.id === "elizaos" && providerPrefersOpencode
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18
@@ -1012,8 +1025,14 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
     configuredSubscriptionProvider === "openai-codex" ||
     configuredSubscriptionProvider === "openai-subscription" ||
     hasCodexApiKey(runtime);
-  // OpenCode is the BYO-provider default. Claude/Codex only become the
-  // preferred default when their specific subscription/key path is configured.
+  // eliza-code (elizaos) and OpenCode are co-equal BYO backends when no
+  // provider-specific key prefers Claude/Codex. eliza-code is the default WHEN
+  // INSTALLED: it shares OpenCode's provider thumb (below) and its
+  // capability-profile fit dominates OpenCode on every axis, so with an equal
+  // provider signal it wins the weighted sort (alphabetical tie-break also
+  // favors "elizaos"). OpenCode is the fallback when eliza-code is not installed
+  // (an uninstalled framework's availabilityScore of -100 keeps it out of the
+  // running). Claude/Codex only become preferred when their key path is set.
   const providerPrefersOpencode =
     !providerPrefersClaude && !providerPrefersCodex;
   const explicitDefault = safeGetSetting(runtime, "ELIZA_DEFAULT_AGENT_TYPE")
@@ -1027,7 +1046,14 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
       framework.id === "elizaos" || framework.id === "pi-agent"
         ? explicitDefault === framework.id
           ? 18
-          : 0
+          : // eliza-code shares OpenCode's BYO provider thumb when no provider
+            // key prefers claude/codex; its dominant capability-profile fit then
+            // makes an installed eliza-code the default over OpenCode.
+            framework.id === "elizaos" && providerPrefersOpencode
+            ? framework.authReady
+              ? 18
+              : 6
+            : 0
         : providerPrefersClaude && framework.id === "claude"
           ? framework.subscriptionReady
             ? 18

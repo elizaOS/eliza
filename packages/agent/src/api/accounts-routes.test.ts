@@ -3,6 +3,9 @@
  * health operations while isolating only filesystem and provider clients.
  */
 import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fakes = vi.hoisted(() => ({
@@ -94,6 +97,7 @@ vi.mock("../runtime/host-bridge.ts", () => ({
 }));
 
 import {
+  __clearSubscriptionCliInstallFailures,
   _resetAccountsRoutesPoolCache,
   type AccountsRouteContext,
   handleAccountsRoutes,
@@ -507,6 +511,37 @@ describe("accounts routes", () => {
       },
     ]);
     expect(fakes.startFlow).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an uninstallable device-login CLI as a structured 503, not an opaque 500 (#16518)", async () => {
+    // No PATH → the CLI probe finds nothing and the npm bootstrap can't run
+    // (ENOENT), deterministically exercising the prerequisite-failure path on
+    // any machine. ELIZA_STATE_DIR keeps the install prefix in a temp dir.
+    const prevPath = process.env.PATH;
+    const prevStateDir = process.env.ELIZA_STATE_DIR;
+    const stateDir = mkdtempSync(path.join(tmpdir(), "eliza-state-"));
+    process.env.PATH = "";
+    process.env.ELIZA_STATE_DIR = stateDir;
+    try {
+      const started = makeContext(
+        "POST",
+        "/api/accounts/openai-codex/oauth/start",
+        { label: "Codex", mode: "device" },
+      );
+      await handleAccountsRoutes(started.ctx);
+      expect(started.errorCalls).toHaveLength(1);
+      expect(started.errorCalls[0]?.status).toBe(503);
+      expect(started.errorCalls[0]?.message).toContain(
+        "(SUBSCRIPTION_CLI_INSTALL_FAILED)",
+      );
+      expect(fakes.startFlow).not.toHaveBeenCalled();
+    } finally {
+      process.env.PATH = prevPath;
+      if (prevStateDir === undefined) delete process.env.ELIZA_STATE_DIR;
+      else process.env.ELIZA_STATE_DIR = prevStateDir;
+      __clearSubscriptionCliInstallFailures();
+      rmSync(stateDir, { recursive: true, force: true });
+    }
   });
 
   it("keeps terminal credential health terminal during usage refresh", async () => {

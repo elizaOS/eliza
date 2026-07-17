@@ -84,6 +84,10 @@ describe("useVoiceChat app-suspend capture teardown (#voice-V1)", () => {
     const { result } = renderHook(() =>
       useVoiceChat({
         onTranscript,
+        // Explicit cloud provider → the WAV cloud route under the shared
+        // resolution rule with or without a session flag (#16524); the pin
+        // keeps this suite's routing assumption visible.
+        cloudConnected: false,
         voiceConfig: {
           provider: "eliza-cloud",
           asr: { provider: "eliza-cloud" },

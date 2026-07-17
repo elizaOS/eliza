@@ -144,6 +144,10 @@ describe("useVoiceChat bidirectional browser voice", () => {
       useVoiceChat({
         onTranscript: vi.fn(),
         onPlaybackStart,
+        // Pinned: this suite asserts the browser-recognizer cascade, which is
+        // reached only when no WAV ASR route resolves (#16524) — an unset
+        // provider with no cloud session must keep landing on browser capture.
+        cloudConnected: false,
       }),
     );
 
