@@ -6,7 +6,6 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { getAccessToken } from "@elizaos/auth/credentials";
-import { logger } from "@elizaos/core";
 import type {
   AccountPoolBrokerAccountSnapshot,
   AccountPoolBrokerFailoverSnapshot,
@@ -14,6 +13,7 @@ import type {
   AccountPoolBrokerProviderSnapshot,
   AccountPoolBrokerSnapshot,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { LinkedAccountUsage } from "@elizaos/shared/contracts/service-routing";
 import { isLinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {

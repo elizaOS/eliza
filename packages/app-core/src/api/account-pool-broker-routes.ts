@@ -14,6 +14,13 @@ import {
   parseBrokerReleaseRequest,
   parseBrokerReportRequest,
 } from "../services/account-pool-broker.js";
+import {
+  createAccountPoolConsumerKey,
+  listAccountPoolConsumerKeys,
+  queryAccountPoolConsumerUsage,
+  rotateAccountPoolConsumerKey,
+  updateAccountPoolConsumerKey,
+} from "../services/account-pool-consumer-metering.js";
 import { readCompatJsonBody } from "./compat-route-shared.js";
 import { sendJson } from "./response.js";
 
@@ -82,12 +89,29 @@ function sendBrokerJson(
 
 function methodAllowed(
   method: string,
-  expected: "GET" | "POST",
+  expected: "GET" | "POST" | "PATCH",
   res: http.ServerResponse,
 ): boolean {
   if (method === expected) return true;
   sendBrokerJson(res, 405, { ok: false, error: "method_not_allowed" });
   return false;
+}
+
+function parseOptionalMs(value: string | null): number | undefined | null {
+  if (value === null || value === "") return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
+  return parsed;
+}
+
+function decodeRouteSegment(value: string): string | null {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    // error-policy:J3 route path segments are untrusted input; malformed
+    // percent-encoding is an invalid request, not an internal route failure.
+    return null;
+  }
 }
 
 export async function handleAccountPoolBrokerRoute(
@@ -167,6 +191,92 @@ export async function handleAccountPoolBrokerRoute(
       return true;
     }
     sendBrokerJson(res, 200, broker().release(parsed));
+    return true;
+  }
+
+  if (url.pathname === `${ROUTE_PREFIX}/consumer-keys`) {
+    if (method === "GET") {
+      sendBrokerJson(res, 200, {
+        ok: true,
+        keys: listAccountPoolConsumerKeys(),
+      });
+      return true;
+    }
+    if (!methodAllowed(method, "POST", res)) return true;
+    const body = await readCompatJsonBody(req, res);
+    if (body === null) return true;
+    const created = createAccountPoolConsumerKey(body);
+    if (!created) {
+      sendBrokerJson(res, 400, {
+        ok: false,
+        error: "invalid_consumer_key_request",
+      });
+      return true;
+    }
+    sendBrokerJson(res, 201, { ok: true, ...created });
+    return true;
+  }
+
+  const consumerKeyMatch = url.pathname.match(
+    new RegExp(`^${ROUTE_PREFIX}/consumer-keys/([^/]+)(/rotate)?$`),
+  );
+  if (consumerKeyMatch) {
+    const id = decodeRouteSegment(consumerKeyMatch[1] ?? "");
+    if (id === null) {
+      sendBrokerJson(res, 400, {
+        ok: false,
+        error: "invalid_consumer_key_id",
+      });
+      return true;
+    }
+    if (consumerKeyMatch[2] === "/rotate") {
+      if (!methodAllowed(method, "POST", res)) return true;
+      const rotated = rotateAccountPoolConsumerKey(id);
+      if (!rotated) {
+        sendBrokerJson(res, 404, {
+          ok: false,
+          error: "consumer_key_not_found",
+        });
+        return true;
+      }
+      sendBrokerJson(res, 200, { ok: true, ...rotated });
+      return true;
+    }
+    if (!methodAllowed(method, "PATCH", res)) return true;
+    const body = await readCompatJsonBody(req, res);
+    if (body === null) return true;
+    const updated = updateAccountPoolConsumerKey(id, body);
+    if (updated === "invalid") {
+      sendBrokerJson(res, 400, {
+        ok: false,
+        error: "invalid_consumer_key_request",
+      });
+      return true;
+    }
+    if (!updated) {
+      sendBrokerJson(res, 404, { ok: false, error: "consumer_key_not_found" });
+      return true;
+    }
+    sendBrokerJson(res, 200, { ok: true, consumer: updated });
+    return true;
+  }
+
+  if (url.pathname === `${ROUTE_PREFIX}/usage`) {
+    if (!methodAllowed(method, "GET", res)) return true;
+    const startMs = parseOptionalMs(url.searchParams.get("startMs"));
+    const endMs = parseOptionalMs(url.searchParams.get("endMs"));
+    if (startMs === null || endMs === null) {
+      sendBrokerJson(res, 400, { ok: false, error: "invalid_usage_query" });
+      return true;
+    }
+    const usage = await queryAccountPoolConsumerUsage({
+      ...(url.searchParams.get("consumerId")
+        ? { consumerId: url.searchParams.get("consumerId") ?? undefined }
+        : {}),
+      ...(startMs !== undefined ? { startMs } : {}),
+      ...(endMs !== undefined ? { endMs } : {}),
+    });
+    sendBrokerJson(res, 200, { ok: true, usage });
     return true;
   }
 

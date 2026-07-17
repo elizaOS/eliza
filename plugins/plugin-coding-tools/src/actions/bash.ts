@@ -30,9 +30,11 @@ import {
 } from "../lib/format.js";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import { resolveHostShell } from "../lib/terminal-capabilities.js";
+import type { BackgroundShellService } from "../services/background-shell-service.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
+  BACKGROUND_SHELL_SERVICE,
   CODING_TOOLS_CONTEXTS,
   CODING_TOOLS_LOG_PREFIX,
   SANDBOX_SERVICE,
@@ -51,7 +53,15 @@ const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
 const COINGECKO_SIMPLE_PRICE_BASE =
   "https://api.coingecko.com/api/v3/simple/price";
 
-type ShellActionSubaction = "run" | "clear_history" | "view_history";
+type ShellActionSubaction =
+  | "run"
+  | "clear_history"
+  | "view_history"
+  | "start_background"
+  | "poll_background"
+  | "write_background"
+  | "kill_background"
+  | "list_background";
 
 interface CryptoSpotAsset {
   symbol: string;
@@ -262,6 +272,31 @@ function normalizeShellSubaction(
     case "list_history":
     case "history_view":
       return "view_history";
+    case "start":
+    case "bg":
+    case "background":
+    case "start_background":
+    case "background_start":
+      return "start_background";
+    case "poll":
+    case "poll_background":
+    case "background_poll":
+      return "poll_background";
+    case "write_stdin":
+    case "stdin":
+    case "write_background":
+    case "background_write":
+      return "write_background";
+    case "kill":
+    case "stop":
+    case "terminate":
+    case "kill_background":
+    case "background_kill":
+      return "kill_background";
+    case "list_background":
+    case "background_list":
+    case "sessions":
+      return "list_background";
     default:
       return "run";
   }
@@ -286,6 +321,14 @@ function getShellHistoryService(
   return service && typeof service === "object" ? service : null;
 }
 
+function getBackgroundShellService(
+  runtime: IAgentRuntime,
+): BackgroundShellService | null {
+  return runtime.getService(
+    BACKGROUND_SHELL_SERVICE,
+  ) as BackgroundShellService | null;
+}
+
 function clampTimeout(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) return fallback;
   return Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(value)));
@@ -296,6 +339,15 @@ function clampHistoryLimit(value: number | undefined): number {
     return SHELL_HISTORY_DEFAULT_LIMIT;
   }
   return Math.max(1, Math.min(100, Math.floor(value)));
+}
+
+function readNonNegativeOffset(
+  options: unknown,
+  key: string,
+): number | undefined {
+  const value = readNumberParam(options, key);
+  if (value === undefined || !Number.isFinite(value)) return undefined;
+  return Math.max(0, Math.floor(value));
 }
 
 function isMissingPathError(error: unknown): boolean {
@@ -1103,16 +1155,27 @@ export const shellAction: Action = {
   contextGate: { anyOf: ["code", "terminal", "automation"] },
   similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Run shell commands or view/clear per-conversation shell history. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
-  descriptionCompressed: "Run shell commands; clear/view shell history.",
+    "Run shell commands, manage per-conversation background shell sessions, or view/clear shell history. Use bounded commands; default to the session cwd unless the user supplied an exact cwd or the session moved.",
+  descriptionCompressed:
+    "Run shell commands; start/poll/write/kill/list background sessions; clear/view history.",
   parameters: [
     {
       name: "action",
-      description: "Shell operation: run | clear_history | view_history.",
+      description:
+        "Shell operation: run | start_background | poll_background | write_background | kill_background | list_background | clear_history | view_history.",
       required: false,
       schema: {
         type: "string",
-        enum: ["run", "clear_history", "view_history"],
+        enum: [
+          "run",
+          "start_background",
+          "poll_background",
+          "write_background",
+          "kill_background",
+          "list_background",
+          "clear_history",
+          "view_history",
+        ],
       },
     },
     {
@@ -1145,6 +1208,33 @@ export const shellAction: Action = {
     {
       name: "limit",
       description: "For action=view_history: max recorded commands.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "handle",
+      description:
+        "Stable background shell handle returned by action=start_background.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "stdin",
+      description: "For action=write_background: text to write to stdin.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "stdout_offset",
+      description:
+        "For action=poll_background: next stdout offset previously returned by poll/start.",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "stderr_offset",
+      description:
+        "For action=poll_background: next stderr offset previously returned by poll/start.",
       required: false,
       schema: { type: "number" },
     },
@@ -1227,6 +1317,141 @@ export const shellAction: Action = {
         [CANONICAL_SUBACTION_KEY]: "view_history",
         entryCount: entries.length,
       });
+    }
+
+    if (
+      subaction === "poll_background" ||
+      subaction === "write_background" ||
+      subaction === "kill_background" ||
+      subaction === "list_background"
+    ) {
+      if (!message.roomId) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "no roomId",
+        });
+      }
+      const conversationId = String(message.roomId);
+      const backgroundShell = getBackgroundShellService(runtime);
+      if (!backgroundShell) {
+        return failureToActionResult({
+          reason: "internal",
+          message: "Background shell service unavailable.",
+        });
+      }
+      try {
+        if (subaction === "list_background") {
+          const sessions = backgroundShell.list(conversationId);
+          const lines = sessions.length
+            ? sessions
+                .map((session) =>
+                  [
+                    session.handle,
+                    session.status,
+                    `pid=${session.pid ?? "unknown"}`,
+                    `cwd=${session.cwd}`,
+                    `command=${session.command}`,
+                  ].join(" "),
+                )
+                .join("\n")
+            : "(no background shell sessions for this conversation)";
+          const text = `Background shell sessions (${sessions.length}):\n${lines}`;
+          if (callback) await callback({ text, source: "coding-tools" });
+          return successActionResult(text, {
+            actionName: "SHELL",
+            [CANONICAL_SUBACTION_KEY]: "list_background",
+            sessions,
+          });
+        }
+
+        const handle = readStringParam(options, "handle");
+        if (!handle) {
+          return failureToActionResult({
+            reason: "missing_param",
+            message: "background shell action requires 'handle'",
+          });
+        }
+
+        if (subaction === "write_background") {
+          const stdin = readStringParam(options, "stdin");
+          if (stdin === undefined) {
+            return failureToActionResult({
+              reason: "missing_param",
+              message: "write_background requires 'stdin'",
+            });
+          }
+          const session = backgroundShell.write({
+            conversationId,
+            handle,
+            stdin,
+          });
+          const text = `Wrote ${stdin.length} chars to background shell ${handle}.`;
+          if (callback) await callback({ text, source: "coding-tools" });
+          return successActionResult(text, {
+            actionName: "SHELL",
+            [CANONICAL_SUBACTION_KEY]: "write_background",
+            session,
+          });
+        }
+
+        if (subaction === "kill_background") {
+          const session = await backgroundShell.kill({
+            conversationId,
+            handle,
+          });
+          const text = [
+            `Killed background shell ${handle}`,
+            `(status=${session.status}, signal=${session.signal ?? "none"}).`,
+          ].join(" ");
+          if (callback) await callback({ text, source: "coding-tools" });
+          return successActionResult(text, {
+            actionName: "SHELL",
+            [CANONICAL_SUBACTION_KEY]: "kill_background",
+            session,
+          });
+        }
+
+        const poll = backgroundShell.poll({
+          conversationId,
+          handle,
+          stdoutOffset: readNonNegativeOffset(options, "stdout_offset"),
+          stderrOffset: readNonNegativeOffset(options, "stderr_offset"),
+        });
+        const text = [
+          [
+            `Background shell ${handle}`,
+            `status=${poll.status}`,
+            `exit=${poll.exitCode ?? "running"}`,
+            `signal=${poll.signal ?? "none"}`,
+          ].join(" "),
+          [
+            `stdout offsets ${poll.stdout.startOffset}..${poll.stdout.endOffset}`,
+            `truncated_before=${poll.stdout.truncatedBefore}`,
+          ].join(" "),
+          poll.stdout.text ? `--- stdout ---\n${poll.stdout.text}` : "",
+          [
+            `stderr offsets ${poll.stderr.startOffset}..${poll.stderr.endOffset}`,
+            `truncated_before=${poll.stderr.truncatedBefore}`,
+          ].join(" "),
+          poll.stderr.text ? `--- stderr ---\n${poll.stderr.text}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        if (callback) await callback({ text, source: "coding-tools" });
+        return successActionResult(text, {
+          actionName: "SHELL",
+          [CANONICAL_SUBACTION_KEY]: "poll_background",
+          ...poll,
+        });
+      } catch (err) {
+        // error-policy:J1 SHELL action boundary; background session lookup and
+        // process-control failures are returned to the planner as structured
+        // tool failures.
+        return failureToActionResult({
+          reason: "internal",
+          message: (err as Error).message,
+        });
+      }
     }
 
     const rawCommand = readStringParam(options, "command");
@@ -1398,6 +1623,47 @@ export const shellAction: Action = {
         command = cryptoCommand.command;
         coreLogger.warn(
           `${CODING_TOOLS_LOG_PREFIX} SHELL replaced unreliable crypto spot-price endpoint with neutral no-key API`,
+        );
+      }
+    }
+
+    if (subaction === "start_background") {
+      const backgroundShell = getBackgroundShellService(runtime);
+      if (!backgroundShell) {
+        return failureToActionResult({
+          reason: "internal",
+          message: "Background shell service unavailable.",
+        });
+      }
+      try {
+        const session = backgroundShell.startSession({
+          conversationId,
+          command,
+          cwd,
+        });
+        const text = [
+          `$ ${command}`,
+          `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${cwd})`,
+          `poll with stdout_offset=${session.stdoutOffset} stderr_offset=${session.stderrOffset}`,
+        ].join("\n");
+        if (callback) await callback({ text, source: "coding-tools" });
+        return successActionResult(text, {
+          actionName: "SHELL",
+          [CANONICAL_SUBACTION_KEY]: "start_background",
+          command,
+          cwd,
+          handle: session.handle,
+          session,
+          execution_route: session.sandbox === "host" ? "host" : "sandbox",
+          sandbox_backend: session.sandbox,
+        });
+      } catch (err) {
+        // error-policy:J1 SHELL action boundary; unsupported execution backends
+        // and spawn failures must be visible to the planner instead of falling
+        // back to a host-spawned process.
+        return failureToActionResult(
+          { reason: "internal", message: (err as Error).message },
+          { command, cwd },
         );
       }
     }

@@ -131,6 +131,67 @@ describe("runtimeModelContextProvider", () => {
 		}
 	});
 
+	it("resolves ordered provider settings from the per-agent runtime before defaults", async () => {
+		const runtime = makeRuntime(
+			{
+				ELIZA_CLI_CLAUDE_MODEL: "character-large",
+				ELIZA_CLI_CLAUDE_PLANNER_MODEL: "character-planner",
+			},
+			{
+				models: new Map([
+					[
+						ModelType.RESPONSE_HANDLER,
+						[
+							{
+								metadata: {
+									displayModelSettings: ["ELIZA_CLI_CLAUDE_MODEL"],
+									displayModelDefault: "claude-opus-4-8",
+								},
+								provider: "cli-inference",
+							},
+						],
+					],
+					[
+						ModelType.ACTION_PLANNER,
+						[
+							{
+								metadata: {
+									displayModelSettings: [
+										"ELIZA_CLI_CLAUDE_PLANNER_MODEL",
+										"ELIZA_CLI_CLAUDE_MODEL",
+									],
+									displayModelDefault: "claude-opus-4-8",
+								},
+								provider: "cli-inference",
+							},
+						],
+					],
+				]),
+			} as Partial<IAgentRuntime>,
+		);
+
+		const previousLarge = process.env.ELIZA_CLI_CLAUDE_MODEL;
+		const previousPlanner = process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL;
+		process.env.ELIZA_CLI_CLAUDE_MODEL = "host-large";
+		process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = "host-planner";
+		try {
+			const result = await runtimeModelContextProvider.get(
+				runtime,
+				makeMessage("what model are you using?"),
+				{} as never,
+			);
+			expect(result.data?.responseHandlerModel).toBe("character-large");
+			expect(result.data?.actionPlannerModel).toBe("character-planner");
+		} finally {
+			if (previousLarge === undefined)
+				delete process.env.ELIZA_CLI_CLAUDE_MODEL;
+			else process.env.ELIZA_CLI_CLAUDE_MODEL = previousLarge;
+			if (previousPlanner === undefined)
+				delete process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL;
+			else process.env.ELIZA_CLI_CLAUDE_PLANNER_MODEL = previousPlanner;
+		}
+	});
+
 	it("does not use provider-name branches for display model settings", async () => {
 		const runtime = makeRuntime({}, {
 			models: new Map([

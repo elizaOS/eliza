@@ -28,6 +28,7 @@ function makeTaskRuntime() {
 		agentId: AGENT_ID,
 		serverless: false,
 		logger: { debug: noop, info: noop, warn: noop, error: noop },
+		reportError: vi.fn(),
 		registerTaskWorker: (worker: TaskWorker) => {
 			workers.set(worker.name, worker);
 		},
@@ -232,7 +233,7 @@ describe("TaskService tick re-arm", () => {
 				updateInterval: 1_000,
 				baseInterval: 1_000,
 				updatedAt: T0,
-				maxFailures: 0,
+				maxFailures: -1,
 			},
 		});
 
@@ -323,6 +324,112 @@ describe("TaskService tick re-arm", () => {
 		// Paused task stays paused: no further executions.
 		await vi.advanceTimersByTimeAsync(120_000);
 		expect(execute).toHaveBeenCalledTimes(5);
+	});
+
+	it("runs healthy rows before rejecting with every invalid-row failure", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("HEALTHY", { name: "HEALTHY", execute });
+		workers.set("BAD_PREFLIGHT", {
+			name: "BAD_PREFLIGHT",
+			shouldRun: async () => "yes" as unknown as boolean,
+			execute: vi.fn(async () => undefined),
+		});
+		tasks.set("healthy", {
+			id: "healthy" as UUID,
+			name: "HEALTHY",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		tasks.set("missing-worker", {
+			id: "missing-worker" as UUID,
+			name: "MISSING",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		tasks.set("bad-preflight", {
+			id: "bad-preflight" as UUID,
+			name: "BAD_PREFLIGHT",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await expect(service.runDueTasks()).rejects.toMatchObject({
+			code: "TASK_TICK_FAILED",
+			context: {
+				failureCodes: ["TASK_WORKER_MISSING", "TASK_PREFLIGHT_INVALID"],
+			},
+		});
+		expect(execute).toHaveBeenCalledTimes(1);
+	});
+
+	it("manual execution rejects after persisting the worker failure", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		workers.set("FAIL", {
+			name: "FAIL",
+			execute: async () => {
+				throw new Error("worker exploded");
+			},
+		});
+		tasks.set("repeat", {
+			id: "repeat" as UUID,
+			name: "FAIL",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 1_000, updatedAt: T0 },
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await expect(
+			service.executeTaskById("repeat" as UUID),
+		).rejects.toMatchObject({
+			code: "TASK_EXECUTION_FAILED",
+		});
+		expect(tasks.get("repeat")?.metadata).toMatchObject({
+			failureCount: 1,
+			lastError: "worker exploded",
+		});
+	});
+
+	it("preserves bigint dueAt support for adapter-returned tasks", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("BIGINT_DUE", { name: "BIGINT_DUE", execute });
+		tasks.set("bigint", {
+			id: "bigint" as UUID,
+			name: "BIGINT_DUE",
+			agentId: AGENT_ID,
+			tags: ["queue"],
+			dueAt: BigInt(T0 - 1),
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await expect(service.runDueTasks()).resolves.toBeUndefined();
+		expect(execute).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects invalid zero repeat intervals without running a busy loop", async () => {
+		const { runtime, tasks, workers } = makeTaskRuntime();
+		const execute = vi.fn(async () => undefined);
+		workers.set("ZERO", { name: "ZERO", execute });
+		tasks.set("zero", {
+			id: "zero" as UUID,
+			name: "ZERO",
+			agentId: AGENT_ID,
+			tags: ["queue", "repeat"],
+			metadata: { updateInterval: 0, updatedAt: T0 },
+		});
+		(runtime as { serverless: boolean }).serverless = true;
+		service = (await TaskService.start(runtime)) as TaskService;
+
+		await expect(service.runDueTasks()).rejects.toMatchObject({
+			code: "TASK_TICK_FAILED",
+		});
+		expect(execute).not.toHaveBeenCalled();
 	});
 
 	it("does not compound backoff and restores the original cadence when baseInterval was never set", async () => {
