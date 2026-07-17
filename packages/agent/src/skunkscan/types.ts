@@ -686,6 +686,10 @@ export type WalletSmartMoneySummary = {
   positiveSignals: string[];
 
   limitations: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
 };
 
 export type WalletInvestigationReport = {
