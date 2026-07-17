@@ -145,6 +145,13 @@ export interface VoiceMicCaptureOptions {
   /** Injectable AudioContext factory (tests). */
   createAudioContext?: () => MicAudioContextLike;
   /**
+   * Cancels capture setup and any live capture. The caller should scope this
+   * to the owning transport, not merely the wider session, so a reconnect can
+   * cancel an old socket's pending getUserMedia/worklet setup before starting
+   * a replacement capture.
+   */
+  signal?: AbortSignal;
+  /**
    * Injectable visibility source. Defaults to the document. Tests drive it to
    * exercise the suspend/resume path without a real DOM.
    */
@@ -156,6 +163,49 @@ export interface VoiceMicCaptureOptions {
 }
 
 const WORKLET_NAME = "eliza-voice-session-uplink";
+
+class VoiceMicCaptureCancelledError extends Error {
+  constructor(cause?: unknown) {
+    super("microphone capture cancelled", { cause });
+    this.name = "AbortError";
+  }
+}
+
+function throwIfCaptureCancelled(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw new VoiceMicCaptureCancelledError(signal.reason);
+  }
+}
+
+function awaitCaptureStep<T>(
+  promise: Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(new VoiceMicCaptureCancelledError(signal.reason));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(new VoiceMicCaptureCancelledError(signal.reason));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    void promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function stopMediaStream(stream: MediaStream): void {
+  for (const track of stream.getTracks()) track.stop();
+}
 
 /** Runtime AudioWorklet availability probe — never assumed (WebView 113). */
 export function hasAudioWorkletSupport(
@@ -251,9 +301,12 @@ export async function startVoiceMicCapture(
       return context;
     });
 
-  let stream: MediaStream;
+  const signal = options.signal;
+  throwIfCaptureCancelled(signal);
+
+  let stream: MediaStream | null = null;
   try {
-    stream = await getUserMedia({
+    const mediaPromise = getUserMedia({
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
@@ -262,7 +315,25 @@ export async function startVoiceMicCapture(
       },
       video: false,
     });
+    // getUserMedia itself is not abortable. If it settles after cancellation,
+    // stop its tracks immediately instead of leaking a hot mic that the caller
+    // can no longer reach.
+    if (signal) {
+      void mediaPromise.then(
+        (lateStream) => {
+          if (signal.aborted) stopMediaStream(lateStream);
+        },
+        // error-policy:J5 the same promise's rejection is observed by awaitCaptureStep below; this branch only prevents an unhandled-rejection duplicate.
+        () => {},
+      );
+    }
+    stream = await awaitCaptureStep(mediaPromise, signal);
+    throwIfCaptureCancelled(signal);
   } catch (err) {
+    if (err instanceof VoiceMicCaptureCancelledError) {
+      if (stream) stopMediaStream(stream);
+      throw err;
+    }
     const name = (err as { name?: string })?.name;
     if (name === "NotAllowedError" || name === "SecurityError") {
       throw new VoiceMicCaptureError(
@@ -277,27 +348,41 @@ export async function startVoiceMicCapture(
     if (err instanceof VoiceMicCaptureError) throw err;
     throw new VoiceMicCaptureError("getUserMedia failed", "start_failed", err);
   }
+  if (!stream) {
+    throw new VoiceMicCaptureError(
+      "getUserMedia returned no stream",
+      "start_failed",
+    );
+  }
 
   let acquiredContext: MicAudioContextLike | null = null;
   let acquiredSource: AudioNodeLike | null = null;
   try {
     acquiredContext = createAudioContext();
+    throwIfCaptureCancelled(signal);
     if (
       acquiredContext.state === "suspended" ||
       acquiredContext.state === "interrupted"
     ) {
       try {
-        await acquiredContext.resume();
+        await awaitCaptureStep(acquiredContext.resume(), signal);
+        throwIfCaptureCancelled(signal);
       } catch (ignoredError) {
+        if (ignoredError instanceof VoiceMicCaptureCancelledError) {
+          throw ignoredError;
+        }
+        // error-policy:J5 a denied resume is observed downstream: a non-running graph delivers no frames and the suspend path reports it.
         void ignoredError;
-        // best-effort; a running graph is confirmed by frame delivery.
       }
     }
     acquiredSource = acquiredContext.createMediaStreamSource(stream);
+    throwIfCaptureCancelled(signal);
   } catch (error) {
     acquiredSource?.disconnect();
-    for (const track of stream.getTracks()) track.stop();
+    stopMediaStream(stream);
+    // error-policy:J6 best-effort context close on the failure path; the pipeline error below is the surfaced failure.
     await acquiredContext?.close().catch(() => {});
+    if (error instanceof VoiceMicCaptureCancelledError) throw error;
     if (error instanceof VoiceMicCaptureError) throw error;
     throw new VoiceMicCaptureError(
       "microphone audio pipeline failed to start",
@@ -306,7 +391,8 @@ export async function startVoiceMicCapture(
     );
   }
   if (!acquiredContext || !acquiredSource) {
-    for (const track of stream.getTracks()) track.stop();
+    stopMediaStream(stream);
+    // error-policy:J6 best-effort context close on the failure path; the initialization error below is the surfaced failure.
     await acquiredContext?.close().catch(() => {});
     throw new VoiceMicCaptureError(
       "microphone audio pipeline failed to initialize",
@@ -345,7 +431,11 @@ export async function startVoiceMicCapture(
   try {
     if (hasAudioWorkletSupport(ctx)) {
       backend = "audioworklet";
-      await ctx.audioWorklet.addModule(resolveAudioWorkletModuleUrl("uplink"));
+      await awaitCaptureStep(
+        ctx.audioWorklet.addModule(resolveAudioWorkletModuleUrl("uplink")),
+        signal,
+      );
+      throwIfCaptureCancelled(signal);
       const node = constructBrowserAudioWorkletNode(
         ctx,
         WORKLET_NAME,
@@ -358,6 +448,7 @@ export async function startVoiceMicCapture(
         );
       }
       workletNode = node;
+      throwIfCaptureCancelled(signal);
       node.port.onmessage = (event) => {
         const data = event.data as { pcm?: Float32Array } | undefined;
         if (data?.pcm) emitResampled(data.pcm);
@@ -367,6 +458,7 @@ export async function startVoiceMicCapture(
       node.connect(ctx.destination);
     } else if (typeof ctx.createScriptProcessor === "function") {
       backend = "scriptprocessor";
+      throwIfCaptureCancelled(signal);
       // 4096-sample buffer is the WebView-113-safe choice (power of two, low
       // dropout risk). Mono in, mono out.
       scriptNode = ctx.createScriptProcessor(4096, 1, 1);
@@ -393,8 +485,10 @@ export async function startVoiceMicCapture(
       scriptNode.disconnect();
     }
     source.disconnect();
-    for (const track of stream.getTracks()) track.stop();
+    stopMediaStream(stream);
+    // error-policy:J6 best-effort context close on the failure path; the pipeline error below is the surfaced failure.
     await ctx.close().catch(() => {});
+    if (error instanceof VoiceMicCaptureCancelledError) throw error;
     if (error instanceof VoiceMicCaptureError) throw error;
     throw new VoiceMicCaptureError(
       "microphone audio pipeline failed to start",
@@ -421,20 +515,25 @@ export async function startVoiceMicCapture(
     if (visibility.isHidden()) {
       if (!suspended) {
         suspended = true;
+        // error-policy:J5 a failed suspend is inert: the `suspended` gate already stops frame emission, which is the state the caller observes.
         void ctx.suspend?.().catch(() => {});
         options.onSuspend?.();
       }
     } else if (suspended) {
       suspended = false;
+      // error-policy:J5 a failed resume is observed downstream as absent frame delivery on a non-running graph.
       void ctx.resume().catch(() => {});
       options.onResume?.();
     }
   };
   visibility?.addListener(onVisibilityChange);
 
+  let onAbort: (() => void) | null = null;
+
   const stop = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
     visibility?.removeListener(onVisibilityChange);
     if (workletNode) {
       workletNode.port.onmessage = null;
@@ -445,9 +544,19 @@ export async function startVoiceMicCapture(
       scriptNode.disconnect();
     }
     source.disconnect();
-    for (const track of stream.getTracks()) track.stop();
+    stopMediaStream(stream);
+    // error-policy:J6 best-effort context close during teardown; tracks are already stopped above.
     await ctx.close().catch(() => {});
   };
+
+  onAbort = () => {
+    void stop();
+  };
+  if (signal?.aborted) {
+    await stop();
+    throw new VoiceMicCaptureCancelledError(signal.reason);
+  }
+  signal?.addEventListener("abort", onAbort, { once: true });
 
   return {
     get active() {

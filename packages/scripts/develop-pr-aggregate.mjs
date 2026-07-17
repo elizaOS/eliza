@@ -110,6 +110,9 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
 const FRESHNESS_SKEW_MS = 10_000;
 const DEFAULT_TERMINAL_SETTLE_MS = 15_000;
+const DEFAULT_API_MAX_ATTEMPTS = 5;
+const DEFAULT_API_RETRY_BASE_MS = 1_000;
+const DEFAULT_API_RETRY_CAP_MS = 8_000;
 
 function parseTimestamp(value) {
   if (typeof value !== "string" || value.length === 0) return null;
@@ -277,15 +280,74 @@ function apiHeaders(token) {
   };
 }
 
-async function requestJson(url, token) {
-  const response = await fetch(url, { headers: apiHeaders(token) });
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(
-      `GitHub API ${response.status} for ${url}: ${body.slice(0, 500)}`,
-    );
+function isRetryableApiStatus(status) {
+  return status === 429 || status >= 500;
+}
+
+function retryDelayMs(response, attempt, baseDelayMs, nowMs) {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const hintedMs = Number.isFinite(seconds)
+      ? seconds * 1_000
+      : Date.parse(retryAfter) - nowMs;
+    if (Number.isFinite(hintedMs) && hintedMs > 0) {
+      return Math.min(hintedMs, DEFAULT_API_RETRY_CAP_MS);
+    }
   }
-  return response.json();
+
+  return Math.min(baseDelayMs * 2 ** (attempt - 1), DEFAULT_API_RETRY_CAP_MS);
+}
+
+export async function requestJson(
+  url,
+  token,
+  {
+    fetchImpl = globalThis.fetch,
+    sleepImpl = sleep,
+    maxAttempts = DEFAULT_API_MAX_ATTEMPTS,
+    baseDelayMs = DEFAULT_API_RETRY_BASE_MS,
+    now = Date.now,
+  } = {},
+) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let response;
+    try {
+      response = await fetchImpl(url, { headers: apiHeaders(token) });
+    } catch (error) {
+      if (attempt === maxAttempts) {
+        throw new Error(
+          `GitHub API request failed for ${url} after ${maxAttempts} attempts: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
+      }
+      const delayMs = Math.min(
+        baseDelayMs * 2 ** (attempt - 1),
+        DEFAULT_API_RETRY_CAP_MS,
+      );
+      console.warn(
+        `GitHub API request failed for ${url}; retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})`,
+      );
+      await sleepImpl(delayMs);
+      continue;
+    }
+
+    if (response.ok) return response.json();
+
+    const body = await response.text();
+    const detail = `GitHub API ${response.status} for ${url}: ${body.slice(0, 500)}`;
+    if (!isRetryableApiStatus(response.status) || attempt === maxAttempts) {
+      throw new Error(detail);
+    }
+
+    const delayMs = retryDelayMs(response, attempt, baseDelayMs, now());
+    console.warn(
+      `${detail}; retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})`,
+    );
+    await sleepImpl(delayMs);
+  }
+
+  throw new Error(`GitHub API retry loop exhausted for ${url}`);
 }
 
 export async function loadOwnedCheckRuns({

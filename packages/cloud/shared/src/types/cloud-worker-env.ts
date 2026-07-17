@@ -114,23 +114,22 @@ export interface Bindings {
   /** Cartesia voice id (UUID) used for the realtime downlink. */
   VOICE_REALTIME_CARTESIA_VOICE_ID?: string;
   /**
-   * Worker-internal SSE endpoint for the LLM leg. MUST be an agent-scoped
-   * conversation endpoint (or a voice-aware shim) that consumes the
-   * `X-Eliza-Agent-Id` / `X-Eliza-Conversation-Id` scope headers the bridge
-   * sends — NOT raw `/api/v1/chat/completions`, whose ChatRequest ignores that
-   * scope and would run turns without agent context/persistence.
+   * API origin for the LLM leg. The bridge constructs the canonical
+   * `/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream`
+   * URL from the signed voice-session scope. Never point this at a raw model
+   * gateway, which would bypass agent context and conversation persistence.
    */
   VOICE_REALTIME_ELIZA_ENDPOINT?: string;
   /**
    * Server-held credential (Bearer value) the voice-session uses to call the
-   * internal chat/completions SSE leg. The realtime WS is headerless (WebView
+   * internal canonical agent message SSE leg. The realtime WS is headerless (WebView
    * 113), so the client's Authorization is unavailable inside the session; the
    * server presents this credential instead. The user identity is carried by
    * the verified voice-token claims, NOT by the client. Deploy as a wrangler
    * secret; never returned to clients.
    */
   VOICE_REALTIME_ELIZA_AUTHORIZATION?: string;
-  /** Gemma pass-through model id for the LLM leg. */
+  /** Legacy model setting retained for rollout compatibility. */
   VOICE_REALTIME_ELIZA_MODEL?: string;
   /** Per-org daily voice minute cap (SEC-15). */
   VOICE_REALTIME_ORG_DAILY_MINUTES?: string;
@@ -141,7 +140,9 @@ export interface Bindings {
 
   // ---- AI providers ----
   CEREBRAS_API_KEY?: string;
-  /** Deepgram Flux realtime STT key (server-held; NEVER returned to clients). */
+  /** Opt-in batch STT provider. Deepgram is never selected by key presence alone. */
+  VOICE_BATCH_STT_PROVIDER?: string;
+  /** Deepgram realtime Flux and opt-in prerecorded STT key (server-held; NEVER returned to clients). */
   DEEPGRAM_API_KEY?: string;
   /** BYOK OpenRouter key — the backup for models we have no native key for. */
   OPENROUTER_API_KEY?: string;

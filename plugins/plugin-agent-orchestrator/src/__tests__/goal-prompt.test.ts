@@ -146,6 +146,22 @@ describe("buildGoalPrompt Cloud app descriptor (#14119)", () => {
   });
 });
 
+describe("buildGoalPrompt curated repo memory", () => {
+  const baseInput = { agentName: "Ada", goal: "ship the thing" };
+
+  it("injects only a supplied bounded notes block", () => {
+    expect(buildGoalPrompt(baseInput)).not.toContain("Relevant Repo Notes");
+    const prompt = buildGoalPrompt({
+      ...baseInput,
+      curatedCodingMemory:
+        "curated_coding_memory:\n  - Keep writes atomic (confidence 0.90; task:1)",
+    });
+    expect(prompt).toContain("--- Relevant Repo Notes ---");
+    expect(prompt).toContain("Keep writes atomic");
+    expect(prompt).toContain("advisory");
+  });
+});
+
 describe("buildGoalPrompt attempt reflections (#8899)", () => {
   const baseInput = { agentName: "Ada", goal: "ship the thing" };
 

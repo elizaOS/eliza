@@ -669,10 +669,12 @@ export class MessageManager {
 		const reactionScopeSetting = this.runtime.getSetting(
 			"DISCORD_STATUS_REACTIONS",
 		) as string | undefined;
+		// Default: react on all handled messages. Set DISCORD_STATUS_REACTIONS to
+		// "group-mentions" or "none" to narrow the acknowledgement scope.
 		this.statusReactionScope = (
 			["all", "group-mentions", "none"].includes(reactionScopeSetting ?? "")
 				? reactionScopeSetting
-				: "group-mentions"
+				: "all"
 		) as StatusReactionScope;
 
 		const envelopeSetting = this.runtime.getSetting(

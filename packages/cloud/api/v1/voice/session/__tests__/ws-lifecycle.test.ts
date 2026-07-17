@@ -83,6 +83,9 @@ class FakeFluxSocket implements DeepgramFluxWebSocket {
   emitConnectedHandshake() {
     this.fire("message", { data: JSON.stringify({ type: "Connected" }) });
   }
+  emitTransportError() {
+    this.fire("error", new Event("error"));
+  }
   private fire(type: string, payload: unknown) {
     for (const l of this.listeners.get(type) ?? []) l(payload);
   }
@@ -134,6 +137,17 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
   emitDone() {
     this.fire("message", {
       data: JSON.stringify({ type: "done", done: true }),
+    });
+  }
+  emitProviderError(code = "provider_failed") {
+    this.fire("message", {
+      data: JSON.stringify({
+        type: "error",
+        title: "Provider failed",
+        message: "TTS provider failed",
+        error_code: code,
+        status_code: 503,
+      }),
     });
   }
   private fire(type: string, payload: unknown) {
@@ -224,6 +238,29 @@ function makeSseFetch(
   }) as unknown as typeof fetch;
 }
 
+function makeCanonicalChunkFetch(deltas: string[]): typeof fetch {
+  return (async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of deltas) {
+          controller.enqueue(
+            encoder.encode(
+              `event: chunk\ndata: ${JSON.stringify({ chunk })}\n\n`,
+            ),
+          );
+        }
+        controller.enqueue(encoder.encode("event: done\ndata: {}\n\n"));
+        controller.close();
+      },
+    });
+    return new Response(body, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+  }) as unknown as typeof fetch;
+}
+
 // --- helpers --------------------------------------------------------------
 
 const CLAIMS = {
@@ -304,6 +341,60 @@ function pcmChunk(bytes: number): Uint8Array {
 // --- tests ----------------------------------------------------------------
 
 describe("voice-session WS lifecycle", () => {
+  test("stt_final posts the transcript to the canonical agent conversation stream with scoped identity", async () => {
+    const requests: Array<{
+      url: string;
+      headers: Record<string, string>;
+      body: unknown;
+    }> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async (url: string, init?: RequestInit) => {
+        requests.push({
+          url,
+          headers: Object.fromEntries(new Headers(init?.headers).entries()),
+          body: JSON.parse(String(init?.body)),
+        });
+        return makeCanonicalChunkFetch(["Canonical reply."])(url, init);
+      }) as unknown as typeof fetch,
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("Update", "hello agen");
+    flux.emitTurn("EagerEndOfTurn", "hello agent");
+    flux.emitTurn("EndOfTurn", "hello agent");
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "stt_partial", text: "hello agen" }),
+    );
+    expect(client.controlTypes()).toContain("stt_eager_eot");
+    expect(requests).toHaveLength(1);
+    expect(new URL(requests[0].url).pathname).toBe(
+      "/api/v1/eliza/agents/agent-1/api/conversations/conv-1/messages/stream",
+    );
+    expect(requests[0].body).toEqual({ text: "hello agent" });
+    expect(requests[0].headers.authorization).toBe("Bearer eliza-server");
+    expect(requests[0].headers["x-service-key"]).toBe("Bearer eliza-server");
+    expect(requests[0].headers["x-eliza-agent-id"]).toBe("agent-1");
+    expect(requests[0].headers["x-eliza-conversation-id"]).toBe("conv-1");
+    expect(requests[0].headers["x-eliza-organization-id"]).toBe("org-1");
+    expect(requests[0].headers["x-eliza-user-id"]).toBe("user-1");
+    expect(requests[0].headers["x-eliza-voice-trace-id"]).toContain(
+      "sess-lifecycle:turn:1:",
+    );
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    cartesia.emitDone();
+    await flush();
+    expect(client.audioFrames.length).toBeGreaterThan(0);
+    expect(client.controlTypes()).toContain("speaking_end");
+    expect(client.controlTypes()).toContain("usage");
+  });
+
   test("hello -> ready -> full turn produces stt_final, llm_first_text, speaking, usage", async () => {
     const client = new FakeClientSocket();
     await connectSession({
@@ -436,6 +527,70 @@ describe("voice-session WS lifecycle", () => {
     expect(flux.sentChunks.every((c) => c.byteLength === 2560)).toBe(true);
   });
 
+  test("LLM upstream failure becomes a retryable turn error and returns to listening", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async () =>
+        new Response("nope", { status: 503 })) as unknown as typeof fetch,
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "please answer");
+    await flush();
+    await flush();
+
+    const error = client.controlFrames.find(
+      (f) => f.t === "error" && f.code === "ElizaSseBridgeError",
+    );
+    expect(error).toMatchObject({ retryable: true });
+    expect(client.controlTypes()).toContain("usage");
+
+    const usageCount = client
+      .controlTypes()
+      .filter((t) => t === "usage").length;
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(client.controlTypes().filter((t) => t === "usage").length).toBe(
+      usageCount,
+    );
+    expect(client.closedWith).toBeNull();
+  });
+
+  test("TTS provider error becomes retryable client error and closes the active turn", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["This should fail in TTS."]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "speak this");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    cartesia.emitProviderError("cartesia_overloaded");
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "cartesia_overloaded",
+        retryable: true,
+      }),
+    );
+    expect(client.controlTypes()).toContain("usage");
+    const usageCount = client
+      .controlTypes()
+      .filter((t) => t === "usage").length;
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(client.controlTypes().filter((t) => t === "usage").length).toBe(
+      usageCount,
+    );
+  });
+
   test("barge-in cancels TTS with ZERO post-cancel binary frames", async () => {
     const client = new FakeClientSocket();
     await connectSession({
@@ -494,6 +649,98 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(aborted).toBe(true);
     expect(client.controlTypes()).toContain("interrupted");
+  });
+
+  test("bye tears down providers, unregisters, closes cleanly, and revokes the bootstrap token", async () => {
+    const client = new FakeClientSocket();
+    const minted = await mintVoiceSessionToken(CLAIMS);
+    const revoked: Array<{ jti: string; expSeconds: number }> = [];
+    const usageStore = new InMemoryVoiceUsageStore();
+
+    attachVoiceWsHandler(client, {
+      requestedSessionId: CLAIMS.sessionId,
+      buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
+        new VoiceSession({
+          sessionId: claims.sessionId,
+          jti,
+          organizationId: claims.organizationId,
+          userId: claims.userId,
+          agentId: claims.agentId,
+          conversationId: claims.conversationId,
+          tokenExpSeconds,
+          deepgramApiKey: "dg-key",
+          deepgramWebSocketFactory: () => new FakeFluxSocket(),
+          cartesiaApiKey: "ct-key",
+          cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+          cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
+          elizaEndpoint: "http://internal",
+          elizaAuthorization: "Bearer service",
+          elizaModel: "gemma-4-31b",
+          fetchImpl: makeSseFetch(["unused."]),
+          usageStore,
+          usageLimits: {
+            organizationDailyMinutes: 600,
+            userDailyMinutes: 120,
+          },
+          downlink,
+          onTeardownRevoke: async (jti, expSeconds) => {
+            revoked.push({ jti, expSeconds });
+          },
+        }),
+    });
+
+    client.clientSend(
+      JSON.stringify({
+        t: "hello",
+        token: minted.token,
+        protocol: 1,
+        uplinkCodec: "pcm16",
+        downlinkCodec: "pcm16",
+        sampleRate: 16000,
+      }),
+    );
+    await flush();
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    expect(client.controlTypes()).toContain("ready");
+
+    client.clientSend(JSON.stringify({ t: "bye" }));
+    await flush();
+
+    expect(flux.closed).toBe(true);
+    expect(client.closedWith).toEqual({ code: 1000, reason: "completed" });
+    expect(client.controlFrames.find((f) => f.t === "error")).toBeUndefined();
+    expect(revoked).toEqual([
+      { jti: minted.jti, expSeconds: minted.expSeconds },
+    ]);
+    client.clientSend(pcmChunk(2560));
+    await flush();
+    expect(flux.sentChunks).toHaveLength(0);
+  });
+
+  test("provider transport error and close surface fatal session errors", async () => {
+    const errored = new FakeClientSocket();
+    await connectSession({ client: errored, fetchImpl: makeSseFetch(["ok."]) });
+    const errorFlux = FakeFluxSocket.instances.at(-1)!;
+    errorFlux.emitTransportError();
+    await flush();
+    expect(errored.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "transport_error",
+        retryable: false,
+      }),
+    );
+    expect(errored.closedWith).toBeNull();
+
+    const closed = new FakeClientSocket();
+    await connectSession({ client: closed, fetchImpl: makeSseFetch(["ok."]) });
+    const closeFlux = FakeFluxSocket.instances.at(-1)!;
+    closeFlux.close(1006, "provider gone");
+    await flush();
+    expect(closed.controlFrames).toContainEqual(
+      expect.objectContaining({ t: "error", code: "error", retryable: true }),
+    );
+    expect(closed.closedWith).toEqual({ code: 1000, reason: "error" });
   });
 
   test("hello-first is enforced: a binary frame before hello closes the socket", async () => {

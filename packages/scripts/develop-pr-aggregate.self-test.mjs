@@ -14,6 +14,7 @@ import {
   GITHUB_ACTIONS_APP_ID,
   REQUIRED_CHECKS,
   renderSummary,
+  requestJson,
 } from "./develop-pr-aggregate.mjs";
 import {
   OBSERVED_HEAD_LINE,
@@ -179,6 +180,41 @@ const summary = renderSummary(allGreen, {
 });
 assert.match(summary, /Verdict: \*\*success\*\*/);
 assert.match(summary, /coverage on changed files/);
+
+const apiAttempts = [];
+const retrySleeps = [];
+const retriedPayload = await requestJson(
+  "https://api.github.test/check-runs",
+  "test-token",
+  {
+    fetchImpl: async () => {
+      apiAttempts.push(Date.now());
+      if (apiAttempts.length < 3) {
+        return new Response("temporarily unavailable", { status: 503 });
+      }
+      return Response.json({ check_runs: [] });
+    },
+    sleepImpl: async (delayMs) => retrySleeps.push(delayMs),
+    maxAttempts: 3,
+    baseDelayMs: 5,
+  },
+);
+assert.deepEqual(retriedPayload, { check_runs: [] });
+assert.equal(apiAttempts.length, 3);
+assert.deepEqual(retrySleeps, [5, 10]);
+
+let permanentAttempts = 0;
+await assert.rejects(
+  requestJson("https://api.github.test/missing", "test-token", {
+    fetchImpl: async () => {
+      permanentAttempts += 1;
+      return new Response("not found", { status: 404 });
+    },
+    sleepImpl: async () => assert.fail("404 responses must not be retried"),
+  }),
+  /GitHub API 404/,
+);
+assert.equal(permanentAttempts, 1);
 
 const workflowPath = fileURLToPath(
   new URL("../../.github/workflows/develop-pr-gate.yml", import.meta.url),

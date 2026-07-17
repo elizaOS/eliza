@@ -17,6 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
+import { Octokit } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   CredentialService as CredentialServiceInstance,
@@ -52,7 +53,9 @@ type WorkspaceServiceWithCloneOverride = {
   ) => Promise<void>;
 };
 
-import type { AuthPromptCallback } from "./workspace-github.js";
+import type { RemotePullRequest } from "./ground-truth-verifier.js";
+import type { ParsedPullRequestLink } from "./pull-request-link.js";
+import type { AuthPromptCallback, GitHubRequest } from "./workspace-github.js";
 import {
   type GitHubContext,
   addComment as ghAddComment,
@@ -60,6 +63,7 @@ import {
   closeIssue as ghCloseIssue,
   createIssue as ghCreateIssue,
   getIssue as ghGetIssue,
+  getPullRequestGroundTruth as ghGetPullRequestGroundTruth,
   listComments as ghListComments,
   listIssues as ghListIssues,
   reopenIssue as ghReopenIssue,
@@ -75,6 +79,10 @@ import {
   reviewDiff,
   summarizeDiffGate,
 } from "./diff-review-gate.js";
+import type {
+  OrchestratorTaskDocument,
+  OrchestratorTaskSession,
+} from "./orchestrator-task-types.js";
 import {
   assertSafeGitRef,
   assertSafeGitRemote,
@@ -120,6 +128,31 @@ import type {
 type WorkspaceEventCallback = (event: WorkspaceEvent) => void;
 type ScratchRetentionPolicy = "ephemeral" | "pending_decision" | "persistent";
 type ScratchTerminalEvent = "stopped" | "task_complete" | "error";
+type TaskReaderService = {
+  getTask?: (taskId: string) => Promise<OrchestratorTaskDocument | null>;
+  listTasks?: (filter?: {
+    search?: string;
+    includeArchived?: boolean;
+    limit?: number;
+  }) => Promise<Array<{ id: string }>>;
+};
+
+const TERMINAL_REUSE_SESSION_STATUSES: ReadonlySet<string> = new Set([
+  "stopped",
+  "completed",
+  "done",
+  "error",
+  "errored",
+  "cancelled",
+]);
+
+export interface ActiveTaskSessionReuse {
+  taskId: string;
+  sessionId: string;
+  agentType: string;
+  workdir: string;
+  status: string;
+}
 
 export interface ScratchWorkspaceRecord {
   sessionId: string;
@@ -130,6 +163,14 @@ export interface ScratchWorkspaceRecord {
   terminalAt: number;
   terminalEvent: ScratchTerminalEvent;
   expiresAt?: number;
+}
+
+function newestReusableSession(
+  sessions: readonly OrchestratorTaskSession[],
+): OrchestratorTaskSession | undefined {
+  return sessions
+    .filter((session) => !TERMINAL_REUSE_SESSION_STATUSES.has(session.status))
+    .sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
 }
 
 /**
@@ -309,6 +350,7 @@ export class CodingWorkspaceService {
   private workspaceService: WorkspaceServiceInstance | null = null;
   private credentialService: CredentialServiceInstance | null = null;
   private githubClient: GitHubPatClientInstance | null = null;
+  private githubRequest: GitHubRequest | null = null;
   private githubAuthInProgress: Promise<GitHubPatClientInstance> | null = null;
   private serviceConfig: CodingWorkspaceConfig;
   // Shared with every AcpService so one disk cap spans scratch + git workspaces
@@ -349,11 +391,62 @@ export class CodingWorkspaceService {
     return service;
   }
 
+  getWorkspaceRegistry(): WorkspaceRegistry {
+    return this.workspaceRegistry;
+  }
+
   static async stopRuntime(runtime: IAgentRuntime): Promise<void> {
     const service = getCodingWorkspaceService(runtime);
     if (service) {
       await service.stop();
     }
+  }
+
+  /**
+   * Find the newest non-terminal session for a durable task so planner lanes
+   * can reuse an already-running worker instead of spawning a duplicate. The
+   * workspace service owns this lookup contract because callers already depend
+   * on it for workspace/session reuse, while the durable task service remains
+   * the source of truth for task documents.
+   */
+  async findActiveSessionForTask(input: {
+    taskId?: string;
+    title?: string;
+  }): Promise<ActiveTaskSessionReuse | null> {
+    const reader = this.runtime.getService?.("ORCHESTRATOR_TASK_SERVICE") as
+      | TaskReaderService
+      | null
+      | undefined;
+    if (!reader) {
+      throw new ElizaError("Orchestrator task service is unavailable", {
+        code: "ORCHESTRATOR_TASK_SERVICE_UNAVAILABLE",
+        context: input,
+        severity: "ephemeral",
+      });
+    }
+    const taskId =
+      input.taskId ??
+      (input.title && typeof reader.listTasks === "function"
+        ? (
+            await reader.listTasks({
+              search: input.title,
+              includeArchived: false,
+              limit: 1,
+            })
+          )[0]?.id
+        : undefined);
+    if (!taskId || typeof reader.getTask !== "function") return null;
+    const doc = await reader.getTask(taskId);
+    if (!doc) return null;
+    const session = newestReusableSession(doc.sessions);
+    if (!session) return null;
+    return {
+      taskId,
+      sessionId: session.sessionId,
+      agentType: session.framework,
+      workdir: session.workdir,
+      status: session.status,
+    };
   }
 
   private async initialize(): Promise<void> {
@@ -395,6 +488,7 @@ export class CodingWorkspaceService {
       | undefined;
     if (githubToken) {
       this.githubClient = new GitHubPatClient({ token: githubToken });
+      this.githubRequest = this.createGitHubRequest(githubToken);
       this.log("GitHubPatClient initialized with PAT");
     } else {
       this.log(
@@ -481,6 +575,7 @@ export class CodingWorkspaceService {
     this.workspaceService = null;
     this.credentialService = null;
     this.githubClient = null;
+    this.githubRequest = null;
     this.log("CodingWorkspaceService shutdown complete");
   }
 
@@ -910,11 +1005,18 @@ export class CodingWorkspaceService {
   // === Delegated GitHub / Issue Management ===
 
   private getGitHubContext(): GitHubContext {
+    const service = this;
     return {
       runtime: this.runtime,
       githubClient: this.githubClient,
       setGithubClient: (client: GitHubPatClientInstance) => {
         this.githubClient = client;
+      },
+      get githubRequest() {
+        return service.githubRequest;
+      },
+      setGithubRequest: (request: GitHubRequest | null) => {
+        this.githubRequest = request;
       },
       githubAuthInProgress: this.githubAuthInProgress,
       setGithubAuthInProgress: (p: Promise<GitHubPatClientInstance> | null) => {
@@ -923,6 +1025,11 @@ export class CodingWorkspaceService {
       authPromptCallback: this.authPromptCallback,
       log: (msg: string) => this.log(msg),
     };
+  }
+
+  private createGitHubRequest(token: string): GitHubRequest {
+    const octokit = new Octokit({ auth: token });
+    return octokit.request.bind(octokit) as GitHubRequest;
   }
 
   /** Set a callback to surface OAuth auth prompts to the user. */
@@ -938,6 +1045,12 @@ export class CodingWorkspaceService {
     callback: (record: ScratchWorkspaceRecord) => Promise<void>,
   ): void {
     this.scratchDecisionCallback = callback;
+  }
+
+  async getPullRequestGroundTruth(
+    link: ParsedPullRequestLink,
+  ): Promise<RemotePullRequest | null> {
+    return ghGetPullRequestGroundTruth(this.getGitHubContext(), link);
   }
 
   async createIssue(

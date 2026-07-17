@@ -142,6 +142,75 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
+	it("resolves a simile candidate hint to its catalog parent (BASH -> SHELL)", () => {
+		// The live regression this locks: Stage-1 hints candidateActions=["BASH"]
+		// (the documented canonical hint) but the parent action is named SHELL with
+		// BASH only as a simile. Without simile resolution the hint is dead and the
+		// surface cut hands the planner unrelated keyword matches instead.
+		const catalog = buildActionCatalog([
+			{
+				name: "SHELL",
+				description: "Run a shell command on the host.",
+				similes: ["BASH", "EXEC", "RUN_COMMAND"],
+				tags: ["system"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "how much disk space is left on the server",
+			candidateActions: ["BASH"],
+		});
+		expect(response.results[0]).toMatchObject({
+			name: "SHELL",
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("resolves a child simile hint to the child's parent", () => {
+		const catalog = buildActionCatalog([
+			{
+				name: "TASKS",
+				description: "Manage coding agent task sessions.",
+				subActions: ["SEND_PROMPT"],
+			},
+			{
+				name: "SEND_PROMPT",
+				description: "Send a follow-up prompt to a running session.",
+				similes: ["SEND_TO_AGENT"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "pass this along",
+			candidateActions: ["SEND_TO_AGENT"],
+		});
+		expect(response.results[0]).toMatchObject({
+			name: "TASKS",
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
+	it("does not let a simile hijack a real parent name", () => {
+		// EMAIL exists as a real parent; a MUSIC simile spelled "EMAIL" must not
+		// reroute an EMAIL candidate hint to MUSIC.
+		const catalog = buildActionCatalog([
+			{
+				name: "MUSIC2",
+				description: "Control playback.",
+				similes: ["EMAIL"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "message my contact",
+			candidateActions: ["EMAIL"],
+		});
+		expect(response.results[0]?.name).toBe("EMAIL");
+	});
+
 	it("applies exact parent hints as a score floor", () => {
 		const catalog = buildActionCatalog(actions);
 		const response = retrieveActions({

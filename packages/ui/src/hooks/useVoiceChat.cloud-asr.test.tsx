@@ -155,6 +155,225 @@ describe("useVoiceChat cloud ASR", () => {
     );
   });
 
+  it("unready persisted local-inference degrades to the cloud WAV route when cloudConnected (#16524)", async () => {
+    // The staging-Safari dead-mic shape: the saved character config pins
+    // `local-inference`, the cloud agent's local ASR runtime reports
+    // `{ ready: false }`, and the browser has no SpeechRecognition engine
+    // (jsdom, like Safari without webkitSpeechRecognition exposure). The mic
+    // must still work: record the WAV and POST it to the cloud STT proxy.
+    fetchWithCsrfMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url.includes("/api/asr/local-inference/status")) {
+        return new Response(JSON.stringify({ ready: false }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/asr/cloud")) {
+        return new Response(JSON.stringify({ text: "hello cloud voice" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected endpoint", { status: 404 });
+    });
+    const stop = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3, 4]));
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop,
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const onTranscript = vi.fn();
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript,
+        cloudConnected: true,
+        voiceConfig: {
+          provider: "eliza-cloud",
+          asr: { provider: "local-inference" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+    await act(async () => {
+      await result.current.stopListening({ submit: true });
+    });
+
+    // Readiness was probed once, then the WAV recorder armed for the cloud
+    // route — capture never fell through to browser SpeechRecognition.
+    expect(fetchWithCsrfMock).toHaveBeenCalledWith(
+      "/api/asr/local-inference/status",
+      expect.objectContaining({ method: "GET" }),
+    );
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(fetchWithCsrfMock).toHaveBeenCalledWith(
+      "/api/asr/cloud",
+      expect.objectContaining({ method: "POST" }),
+    );
+    // The audio must NOT have been sent to the unready local transcriber.
+    expect(fetchWithCsrfMock).not.toHaveBeenCalledWith(
+      "/api/asr/local-inference",
+      expect.anything(),
+    );
+    expect(onTranscript).toHaveBeenCalledWith(
+      "hello cloud voice",
+      expect.objectContaining({
+        isFinal: true,
+        turn: expect.objectContaining({ source: "cloud" }),
+      }),
+    );
+  });
+
+  it("ready persisted local-inference stays on the local route even when cloudConnected (#16524)", async () => {
+    fetchWithCsrfMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url.includes("/api/asr/local-inference/status")) {
+        return new Response(JSON.stringify({ ready: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/api/asr/local-inference")) {
+        return new Response(JSON.stringify({ text: "hello local voice" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected endpoint", { status: 404 });
+    });
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(new Uint8Array([1, 2])),
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const onTranscript = vi.fn();
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript,
+        cloudConnected: true,
+        voiceConfig: {
+          provider: "eliza-cloud",
+          asr: { provider: "local-inference" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+    await act(async () => {
+      await result.current.stopListening({ submit: true });
+    });
+
+    expect(fetchWithCsrfMock).not.toHaveBeenCalledWith(
+      "/api/asr/cloud",
+      expect.anything(),
+    );
+    expect(onTranscript).toHaveBeenCalledWith(
+      "hello local voice",
+      expect.anything(),
+    );
+  });
+
+  it("unready local-inference without a cloud session never arms a WAV capture (#16524)", async () => {
+    fetchWithCsrfMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url.includes("/api/asr/local-inference/status")) {
+        return new Response(JSON.stringify({ ready: false }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected endpoint", { status: 404 });
+    });
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        cloudConnected: false,
+        voiceConfig: {
+          provider: "eliza-cloud",
+          asr: { provider: "local-inference" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+
+    // No cloud fallback to lean on: the WAV recorder must not arm (there is
+    // nothing that could transcribe it) — legacy behavior preserved.
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+    expect(fetchWithCsrfMock).not.toHaveBeenCalledWith(
+      "/api/asr/cloud",
+      expect.anything(),
+    );
+  });
+
+  it("never probes local readiness nor arms a recorder without WAV capture primitives (#16524)", async () => {
+    // No getUserMedia/AudioContext → no WAV route can serve ANY provider; the
+    // readiness probe must not even fire (nothing could record the audio).
+    isLocalAsrCaptureSupportedMock.mockReturnValue(false);
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        cloudConnected: true,
+        voiceConfig: {
+          provider: "eliza-cloud",
+          asr: { provider: "local-inference" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+    });
+
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(startLocalAsrRecorderMock).not.toHaveBeenCalled();
+  });
+
+  it("a second startListening while capture is armed is a no-op (single recorder)", async () => {
+    fetchWithCsrfMock.mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url.includes("/api/asr/local-inference/status")) {
+        return new Response(JSON.stringify({ ready: false }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected endpoint", { status: 404 });
+    });
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        cloudConnected: true,
+        voiceConfig: {
+          provider: "eliza-cloud",
+          asr: { provider: "local-inference" },
+        },
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startListening("push-to-talk");
+      await result.current.startListening("push-to-talk");
+    });
+
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+  });
+
   it("does not submit a turn when the cloud proxy fails (no silent browser downgrade)", async () => {
     startLocalAsrRecorderMock.mockResolvedValue({
       stop: vi.fn().mockResolvedValue(new Uint8Array([1])),
