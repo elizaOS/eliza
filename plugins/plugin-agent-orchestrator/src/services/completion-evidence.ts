@@ -109,6 +109,19 @@ export interface CompletionEvidenceBundle {
    *  distinct, explicitly-unverified section so the judge can not mistake a
    *  claimed link for a reachable deploy. */
   mentionedUrls?: string[];
+  /** Claimed changed files backed by a successful write in the session tool
+   *  ledger (#16523) — the file-path analog of `verifiedUrls`. */
+  ledgerVerifiedFiles?: string[];
+  /** Claimed changed files with NO successful ledger write, fail-closed
+   *  labelled per claim (`rejected-write` when the tool layer refused the
+   *  write, `no-write-observed` otherwise). Rendered as an explicitly
+   *  unverified section so a reported "Created X" cannot masquerade as an
+   *  observed write. Only populated when the session actually recorded a
+   *  mutating tool ledger. */
+  unverifiedClaimedFiles?: Array<{
+    path: string;
+    reason: "rejected-write" | "no-write-observed";
+  }>;
   /** Screenshot artifact paths found on the task/session. */
   screenshots: string[];
   /** Path to the persisted trajectory JSONL artifact for this completion. */
@@ -328,6 +341,32 @@ function renderMentionedUrlsSection(urls: readonly string[]): string {
   return lines.join("\n");
 }
 
+/** Claimed changed files with no successful write in the session tool ledger
+ *  (#16523) — same claims-vs-proof stance as {@link renderMentionedUrlsSection}:
+ *  the reported "Created/Modified X" is a claim; the ledger holds the proof.
+ *  `rejected-write` means the tool layer actively REFUSED the write (e.g. the
+ *  stale-write guard), so the judge must treat that file as NOT delivered. */
+function renderUnverifiedFilesSection(
+  files: ReadonlyArray<{
+    path: string;
+    reason: "rejected-write" | "no-write-observed";
+  }>,
+): string {
+  const lines = [
+    "## UNVERIFIED FILE CLAIMS (no successful write in the tool ledger — treat each as NOT delivered until re-verified)",
+  ];
+  for (const file of files.slice(0, MAX_ARTIFACTS)) {
+    lines.push(
+      `- ${file.path} (${
+        file.reason === "rejected-write"
+          ? "the tool layer REJECTED this write"
+          : "no successful write observed"
+      })`,
+    );
+  }
+  return lines.join("\n");
+}
+
 function renderArtifactsSection(
   artifacts: readonly EvidenceArtifactRef[],
 ): string {
@@ -414,6 +453,15 @@ export function buildCompletionEvidenceString(
     sections.push(renderMentionedUrlsSection(mentioned));
   }
 
+  // Unverified file claims are the flag of #16523 — informational for the
+  // same reason as claimed URLs (a reported path is not proof of a write), so
+  // they never count as "richer" evidence. Ledger-verified files need no
+  // section of their own: the diff summary already shows the real change set.
+  const unverifiedFiles = bundle.unverifiedClaimedFiles ?? [];
+  if (unverifiedFiles.length > 0) {
+    sections.push(renderUnverifiedFilesSection(unverifiedFiles));
+  }
+
   if (bundle.toolOutput && hasToolOutput(bundle.toolOutput)) {
     sections.push(renderToolOutputSection(bundle.toolOutput));
     hasRicherSection = true;
@@ -437,6 +485,16 @@ export function buildCompletionEvidenceString(
   }
 
   if (!hasRicherSection) {
+    // Fail-closed exception (#16523): the unverified-file flag is a NEGATIVE
+    // signal and must survive the thin-completion fallback — dropping it here
+    // would relay the phantom "Created" claim the section exists to expose.
+    // It still does not count as "richer" evidence above: a flag alone never
+    // upgrades a thin completion, it only annotates the bare reply.
+    if (unverifiedFiles.length > 0) {
+      return [reply, renderUnverifiedFilesSection(unverifiedFiles)].join(
+        "\n\n",
+      );
+    }
     return reply;
   }
 
