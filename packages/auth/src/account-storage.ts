@@ -7,6 +7,7 @@
  */
 
 import fs from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { logger, resolveStateDir } from "@elizaos/core";
 import { writeJsonAtomicSync } from "./atomic-json.ts";
@@ -57,6 +58,42 @@ function ensureProviderDir(provider: AccountCredentialProvider): void {
   const dir = providerDir(provider);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
+}
+
+function isTestProcess(): boolean {
+  const argv = process.argv.join(" ").toLowerCase();
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.VITEST === "true" ||
+    process.env.BUN_ENV === "test" ||
+    argv.includes("vitest") ||
+    argv.includes("bun test")
+  );
+}
+
+/**
+ * Tests must opt into a throwaway ELIZA_HOME before deleting credentials.
+ * This prevents a test worker inherited from an interactive shell from
+ * silently unlinking the user's live account pool.
+ */
+function assertDestructiveStorageAllowed(): void {
+  if (!isTestProcess() || process.env.ELIZA_ALLOW_REAL_STATE_IN_TESTS === "1") {
+    return;
+  }
+
+  const targetAuthRoot = path.resolve(authRoot());
+  const temporaryRoot = path.resolve(tmpdir());
+  const isTemporaryTarget =
+    targetAuthRoot.startsWith(`${temporaryRoot}${path.sep}`) &&
+    targetAuthRoot !== temporaryRoot;
+
+  if (!isTemporaryTarget) {
+    throw new Error(
+      "Refusing to delete credentials from a non-temporary Eliza state directory during tests. " +
+        "Set ELIZA_HOME to a mkdtemp directory under the OS temporary directory, or explicitly " +
+        "set ELIZA_ALLOW_REAL_STATE_IN_TESTS=1 to override.",
+    );
   }
 }
 
@@ -169,6 +206,7 @@ export function deleteAccount(
   provider: AccountCredentialProvider,
   accountId: string,
 ): void {
+  assertDestructiveStorageAllowed();
   const file = accountFile(provider, accountId);
   try {
     fs.unlinkSync(file);

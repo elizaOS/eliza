@@ -6,6 +6,9 @@
  * Deterministic: it drives the pure config mutators and asserts against
  * process.env and the in-memory config object; no live provider is contacted.
  */
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   DIRECT_ACCOUNT_PROVIDER_ENV,
   DIRECT_ACCOUNT_PROVIDER_IDS,
@@ -19,6 +22,23 @@ import {
   clearSubscriptionProviderConfig,
   openAiBaseUrlIsThirdParty,
 } from "./provider-switch-config";
+
+let isolatedElizaHome: string;
+let previousElizaHome: string | undefined;
+
+beforeEach(() => {
+  previousElizaHome = process.env.ELIZA_HOME;
+  isolatedElizaHome = mkdtempSync(
+    path.join(tmpdir(), "eliza-provider-switch-"),
+  );
+  process.env.ELIZA_HOME = isolatedElizaHome;
+});
+
+afterEach(() => {
+  if (previousElizaHome === undefined) delete process.env.ELIZA_HOME;
+  else process.env.ELIZA_HOME = previousElizaHome;
+  rmSync(isolatedElizaHome, { recursive: true, force: true });
+});
 
 describe("applySubscriptionProviderConfig", () => {
   afterEach(() => {
