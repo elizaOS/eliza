@@ -8,7 +8,7 @@
  * account, consumer, key, and lease records never cross this boundary.
  */
 
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   appendFileSync,
   existsSync,
@@ -77,6 +77,8 @@ type InternalPoolModelBuckets =
     };
 
 interface InternalPoolStatusAccount {
+  /** Stable local identity for persisted burn snapshots. Never serialized. */
+  snapshotKey: string;
   name: string;
   accountState: PublicAccountState;
   sessionUsedPct: number | null;
@@ -171,6 +173,7 @@ export interface PublicPoolConsumerTotals {
 }
 
 interface StatusSnapshotAccount {
+  snapshotKey: string;
   name: string;
   weeklyUsedPct: number | null;
   fableUsedPct: number | null;
@@ -254,6 +257,12 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
+function snapshotKey(account: LinkedAccountConfig): string {
+  return createHash("sha256")
+    .update(`${account.providerId}:${account.id}`, "utf8")
+    .digest("hex");
+}
+
 function durationText(ms: number | null): string | null {
   if (typeof ms !== "number" || !Number.isFinite(ms)) return null;
   if (ms <= 0) return "now";
@@ -293,8 +302,13 @@ function readSnapshots(): StatusSnapshot[] {
       snapshots.push({
         ts: parsed.ts,
         accounts: parsed.accounts
-          .filter((account) => typeof account.name === "string")
+          .filter(
+            (account) =>
+              typeof account.name === "string" &&
+              typeof account.snapshotKey === "string",
+          )
           .map((account) => ({
+            snapshotKey: account.snapshotKey,
             name: account.name,
             weeklyUsedPct: clampPct(account.weeklyUsedPct),
             fableUsedPct: clampPct(account.fableUsedPct),
@@ -319,6 +333,7 @@ function appendSnapshot(status: InternalPoolStatus): void {
   const snapshot: StatusSnapshot = {
     ts: nowMs(),
     accounts: status.perAccount.map((account) => ({
+      snapshotKey: account.snapshotKey,
       name: account.name,
       weeklyUsedPct: account.weeklyUsedPct,
       fableUsedPct: account.fableUsedPct,
@@ -369,7 +384,9 @@ function calculateBurn(
   }
   const candidates: { ts: number; used: number }[] = [];
   for (const snapshot of snapshots) {
-    const old = snapshot.accounts.find((account) => account.name === row.name);
+    const old = snapshot.accounts.find(
+      (account) => account.snapshotKey === row.snapshotKey,
+    );
     if (!old || snapshot.ts >= now) continue;
     if (
       old.weeklyResetAt === null ||
@@ -537,6 +554,8 @@ function buildStatus(
   const selection = pool.selectionState(PROVIDER_ID, "reset-soonest");
   let fableLeft = 0;
   let allLeft = 0;
+  let fableKnownAccounts = 0;
+  let allModelsKnownAccounts = 0;
   let fableFromBucket = true;
   let lastRefreshed = 0;
   const rows: InternalPoolStatusAccount[] = accounts.map((account, index) => {
@@ -554,8 +573,14 @@ function buildStatus(
     if (!(modelBuckets.available && modelBuckets.fable)) {
       fableFromBucket = false;
     }
-    if (fableUsed !== null) fableLeft += 100 - fableUsed;
-    if (weeklyAll !== null) allLeft += 100 - weeklyAll;
+    if (fableUsed !== null) {
+      fableLeft += 100 - fableUsed;
+      fableKnownAccounts += 1;
+    }
+    if (weeklyAll !== null) {
+      allLeft += 100 - weeklyAll;
+      allModelsKnownAccounts += 1;
+    }
     const weeklyResetAt =
       modelBuckets.available && modelBuckets.fable
         ? modelBuckets.fable.resetAt
@@ -569,6 +594,7 @@ function buildStatus(
       selection.activeAccountId === account.id &&
       isAccountSelectableNow(account, now);
     return {
+      snapshotKey: snapshotKey(account),
       name: `account-${index + 1}`,
       accountState: exhausted ? "exhausted" : serving ? "serving" : "draining",
       sessionUsedPct: sessionPct === null ? null : round2(sessionPct),
@@ -606,14 +632,14 @@ function buildStatus(
     },
     fable: {
       leftPct: round2(fableLeft),
-      ofPct: accounts.length * 100,
+      ofPct: fableKnownAccounts * 100,
       source: fableFromBucket
         ? "fable weekly bucket"
         : "all-model weekly fallback",
     },
     allModels: {
       leftPct: round2(allLeft),
-      ofPct: accounts.length * 100,
+      ofPct: allModelsKnownAccounts * 100,
     },
     perAccount: rows,
     publicEdge: publicEdgeUsage(consumerUsage, now),

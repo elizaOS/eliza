@@ -125,6 +125,36 @@ describe("public account-pool status", () => {
     walk(status);
   });
 
+  it("excludes accounts with unknown usage from capacity denominators", async () => {
+    const now = Date.UTC(2026, 6, 16, 4);
+    const dir = mkdtempSync(path.join(tmpdir(), "eliza-pool-status-"));
+    cleanup.push(dir);
+    const known = fixtureAccount(now, 25);
+    const { usage: _usage, ...unknownBase } = fixtureAccount(now, 0);
+    const unknown: LinkedAccountConfig = {
+      ...unknownBase,
+      id: "unknown-account-id",
+    };
+    const pool = new AccountPool({
+      readAccounts: () => ({
+        "anthropic-subscription:private-account-id": known,
+        "anthropic-subscription:unknown-account-id": unknown,
+      }),
+      writeAccount: async () => {},
+    });
+    __resetAccountPoolStatusForTests({
+      pool,
+      now: () => now,
+      stateDir: () => dir,
+      queryConsumerUsage: async () => usageBreakdown("2026-07-16"),
+    });
+
+    const status = await getPublicAccountPoolStatus();
+    expect(status.pool.accounts).toBe(2);
+    expect(status.fable).toMatchObject({ leftPct: 75, ofPct: 100 });
+    expect(status.allModels).toEqual({ leftPct: 75, ofPct: 100 });
+  });
+
   it("persists snapshots and projects burn only after a same-window sample", async () => {
     let now = Date.UTC(2026, 6, 16, 4);
     let weeklyPct = 20;
