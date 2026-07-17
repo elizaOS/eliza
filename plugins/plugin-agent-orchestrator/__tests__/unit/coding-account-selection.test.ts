@@ -42,6 +42,10 @@ describe("resolveCodingAccountStrategy", () => {
     expect(resolveCodingAccountStrategy(" Round-Robin ")).toBe("round-robin");
     expect(resolveCodingAccountStrategy("priority")).toBe("priority");
     expect(resolveCodingAccountStrategy("quota-aware")).toBe("quota-aware");
+    expect(resolveCodingAccountStrategy("reset-soonest")).toBe("reset-soonest");
+    expect(resolveCodingAccountStrategy("drain-soonest-reset")).toBe(
+      "drain-soonest-reset",
+    );
   });
   it("returns undefined for unknown / empty", () => {
     expect(resolveCodingAccountStrategy("nonsense")).toBeUndefined();
@@ -109,7 +113,15 @@ describe("selectCodingAccount", () => {
         envPatch: { CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat-X" },
       })),
     };
-    const resolved = await selectCodingAccount("claude", { sessionKey: "s1" });
+    const resolved = await selectCodingAccount("claude", {
+      sessionKey: "s1",
+      model: "claude-fable-5",
+    });
+    const select = getCodingAccountBridge()?.select as ReturnType<typeof vi.fn>;
+    expect(select).toHaveBeenCalledWith(
+      "claude",
+      expect.objectContaining({ model: "claude-fable-5" }),
+    );
     expect(resolved?.selection.envPatch.CLAUDE_CODE_OAUTH_TOKEN).toBe(
       "sk-ant-oat-X",
     );

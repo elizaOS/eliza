@@ -75,6 +75,7 @@ export * from "./security/platform-secure-store";
 export * from "./security/platform-secure-store-node";
 export * from "./security/wallet-os-store-actions";
 export * from "./services/account-pool";
+export * from "./services/account-pool-consumer-metering";
 export * from "./services/auth-store";
 export * from "./services/credential-tunnel-service";
 export * from "./services/github-credentials";
