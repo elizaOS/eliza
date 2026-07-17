@@ -264,6 +264,37 @@ if (
     }),
   );
 }
+
+if (activity.activityLevel === "none") {
+  investorInsights.neutral.push(
+    createInvestorInsight({
+      id: "limited-recent-activity",
+
+      title: "Limited Recent Activity",
+
+      finding:
+        "No recent blockchain activity was identified within the analyzed transaction sample.",
+
+      whyItMatters:
+        "An inactive wallet provides less current evidence about how it is being used today, although inactivity alone does not indicate elevated risk.",
+
+      impact: "neutral",
+
+      confidence: "high",
+
+      severity: "low",
+
+      evidenceRecordIds: [
+        "activity-summary",
+      ],
+
+      limitations: [
+        "The activity assessment is based on the analyzed transaction sample.",
+        "An inactive wallet is not necessarily suspicious and may simply not have been used recently.",
+      ],
+    }),
+  );
+}
   
 if (exposure.exposureLevel === "none") {
   investorInsights.positive.push(
