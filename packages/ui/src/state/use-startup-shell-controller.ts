@@ -11,9 +11,11 @@ import { CONNECT_EVENT } from "../events";
 import { adoptRemoteAgentFirstRun } from "../first-run/adopt-remote-first-run";
 import { ensureStoreBuildWorkspaceFolder } from "../first-run/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../first-run/mobile-runtime-mode";
+import { refreshAuthStatus } from "../hooks/useAuthStatus";
 import { applyLaunchConnection } from "../platform";
 import { confirmDesktopAction } from "../utils/desktop-dialogs";
 import { useAppSelectorShallow } from "./app-store";
+import { needsBootstrapSession } from "./top-level-auth-gate";
 import type { StartupErrorReason, StartupErrorState } from "./types";
 
 /**
@@ -65,17 +67,6 @@ function phaseToStatusKey(phase: string): string {
       return "startupshell.Loading";
     default:
       return "startupshell.Starting";
-  }
-}
-
-function needsBootstrapSession(): boolean {
-  try {
-    return !sessionStorage.getItem("eliza_session");
-  } catch {
-    // error-policy:J3 sessionStorage may be unavailable (privacy mode / disabled
-    // storage); assume a bootstrap session is needed — the safe branch that runs
-    // setup rather than skipping it on an unreadable store.
-    return true;
   }
 }
 
@@ -258,6 +249,10 @@ export function useStartupShellController(): StartupShellController {
     setShowBootstrap(false);
     setState("firstRunComplete", true);
     coordinatorDispatchRef.current({ type: "FIRST_RUN_COMPLETE" });
+    // BootstrapStep installs the new bearer directly on `client`. The startup
+    // auth prime may still hold the pre-exchange 401, so force a probe now or
+    // App's top-level gate immediately replaces setup with the password wall.
+    void refreshAuthStatus();
   }, [setState]);
 
   let startupErrorState: StartupErrorState | null = null;

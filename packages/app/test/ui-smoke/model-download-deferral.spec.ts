@@ -83,6 +83,9 @@ async function fulfillJson(
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    // Production onboarding is cloud-only by default. This smoke explicitly
+    // exercises the retained developer-only on-device chooser.
+    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;

@@ -376,6 +376,9 @@ async function installMutableFirstRun(page: Page): Promise<FirstRunControl> {
 
 async function injectFullCapabilityHost(page: Page): Promise<void> {
   await page.addInitScript(() => {
+    // Production onboarding is cloud-only by default. The walkthrough's
+    // runtime-choice steps intentionally cover the retained developer chooser.
+    window.localStorage.setItem("eliza:enable-runtime-chooser", "1");
     (window as unknown as Record<string, unknown>).__ELIZA_APP_API_BASE__ =
       window.location.origin;
     (window as unknown as Record<string, number>).__electrobunWindowId = 1;
@@ -536,8 +539,44 @@ export async function installJourneyRoutes(
   lane: Lane,
 ): Promise<JourneyRoutes> {
   await injectFullCapabilityHost(page);
-  await seedAppStorage(page, { "eliza:first-run-complete": "" });
+  await seedAppStorage(page, {
+    "eliza:first-run-complete": "",
+    // The walkthrough is about the app journey, not the post-onboarding native
+    // permissions primer. Keep that independent modal from covering every
+    // subsequent tutorial/settings/chat step.
+    "eliza:permissions-primed": "1",
+  });
   await installDefaultAppRoutes(page);
+  // Settings opens the model panel and account inventory during the journey.
+  // The zero-key stack intentionally does not implement these APIs, so provide
+  // the canonical empty-state contracts instead of allowing catch-all 501s to
+  // poison the walkthrough's no-5xx diagnostics gate.
+  await page.route("**/api/models?catalogOnly=1", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      providers: {},
+      catalog: { providers: {} },
+    });
+  });
+  await page.route("**/api/models/config", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, {
+      targets: { small: {}, large: {}, coding: {} },
+    });
+  });
+  await page.route("**/api/accounts", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await fulfillJson(route, 200, { providers: [] });
+  });
   // The agent's TTS playback (e.g. the tutorial tour narrating) posts far-end
   // reference frames to this OPTIONAL echo-cancellation route. The keyless stub
   // 501s it; the route is explicitly fire-and-forget ("a missing backend must

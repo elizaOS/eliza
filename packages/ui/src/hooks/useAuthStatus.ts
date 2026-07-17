@@ -130,6 +130,12 @@ async function fetchAuthStatus(): Promise<void> {
   return authStatusFetch;
 }
 
+/** Force a fresh auth probe after an out-of-band session change (for example,
+ * the bootstrap token exchange setting the bearer directly on the client). */
+export function refreshAuthStatus(): Promise<void> {
+  return fetchAuthStatus();
+}
+
 /**
  * Start the `/api/auth/me` probe early — during startup's restoring-session
  * phase, right after the restored connection is applied to the client — so it
