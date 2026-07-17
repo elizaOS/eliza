@@ -207,6 +207,30 @@ const REGISTRY: ViewSummary[] = [
 		tags: ["calendar", "schedule", "events"],
 		visibleInManager: true,
 	},
+	{
+		id: "simple-calendar",
+		label: "Simple Calendar",
+		description:
+			"Developer QA calendar for exercising view capabilities and split layouts.",
+		path: "/simple-calendar",
+		pluginName: "@elizaos/plugin-simple-views",
+		available: true,
+		viewType: "gui",
+		tags: ["simple calendar", "calendar", "events", "developer qa"],
+		developerOnly: true,
+		visibleInManager: true,
+		capabilities: [
+			{
+				id: "create-calendar-event",
+				description: "Create an event in the Simple Calendar QA view.",
+				params: {
+					title: { type: "string", description: "Event title." },
+					date: { type: "string", description: "Date in YYYY-MM-DD format." },
+					time: { type: "string", description: "Time label." },
+				},
+			},
+		],
+	},
 ];
 
 function clientFor(views: ViewSummary[]): ViewsClient {
@@ -318,6 +342,18 @@ describe("view switching — VIEWS action resolver", () => {
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["settings"]);
 		});
+
+		it("keeps bare calendar navigation on the production Calendar when Simple Calendar is also registered", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open calendar");
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "show",
+				viewId: "calendar",
+			});
+			expect(navigated).toEqual(["calendar"]);
+		});
 	});
 
 	describe("PASSIVE intent routing — intent-only phrases (planner supplies view id)", () => {
@@ -368,6 +404,57 @@ describe("view switching — VIEWS action resolver", () => {
 			const { result } = await runShow(REGISTRY, "show me the calendar");
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["calendar"]);
+		});
+	});
+
+	describe("developer QA split routing", () => {
+		it("preserves the exact notes and simple-calendar ids in the split payload", async () => {
+			installNavigateCapture();
+			const views = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Developer QA notes view.",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui" as const,
+					tags: ["notes", "developer qa"],
+				},
+			];
+
+			const { result } = await runShow(
+				views,
+				"split Notes and Simple Calendar side by side",
+				{
+					action: "split",
+					views: ["notes", "simple-calendar"],
+					layout: "horizontal",
+				},
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "split",
+				viewIds: ["notes", "simple-calendar"],
+				layout: "horizontal",
+			});
+			expect(result?.data).toMatchObject({
+				viewId: "notes",
+				viewIds: ["notes", "simple-calendar"],
+			});
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				"http://127.0.0.1:3456/api/views/notes/navigate",
+				expect.objectContaining({
+					method: "POST",
+					body: JSON.stringify({
+						action: "split-view",
+						views: ["notes", "simple-calendar"],
+						layout: "horizontal",
+					}),
+				}),
+			);
 		});
 	});
 

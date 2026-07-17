@@ -949,14 +949,20 @@ function resolveViewCapability({
 		const normalized = normalizeCapabilityKey(explicitCapability);
 		const exactCandidates = candidates.filter(
 			(candidate) =>
-				normalizeCapabilityKey(candidate.capability.id) === normalized &&
-				(!requestedView || candidate.view.id === requestedView.id),
+				normalizeCapabilityKey(candidate.capability.id) === normalized,
 		);
-		if (requestedView && exactCandidates[0]) return exactCandidates[0];
+		const requestedExact = exactCandidates.find(
+			(candidate) => candidate.view.id === requestedView?.id,
+		);
+		if (requestedExact) return requestedExact;
 		const currentExact = exactCandidates.find(
 			(candidate) => candidate.view.id === currentView?.id,
 		);
 		if (currentExact) return currentExact;
+		// A planner may use the production domain id ("calendar") while naming a
+		// capability that only a dedicated workbench view declares. The capability
+		// catalog is authoritative for interaction routing: a sole exact declaration
+		// is safer than invoking an undeclared capability on the named view.
 		if (exactCandidates.length === 1) return exactCandidates[0];
 	}
 
@@ -965,10 +971,40 @@ function resolveViewCapability({
 		.join(" ");
 	const sourceTokens = tokensFor(sourceText);
 	const sourceOperation = operationFamilyForTokens(sourceTokens);
+	const requestedViewHasRelevantCapability = requestedView
+		? candidates.some((candidate) => {
+				if (candidate.view.id !== requestedView.id) return false;
+				const candidateOperation = operationFamilyForCapability(
+					candidate.capability,
+				);
+				if (
+					sourceOperation &&
+					candidateOperation &&
+					candidateOperation !== sourceOperation
+				) {
+					return false;
+				}
+				if (!explicitCapability) return true;
+				const explicitTokens = tokensFor(explicitCapability);
+				return (
+					normalizeCapabilityKey(candidate.capability.id) ===
+						normalizeCapabilityKey(explicitCapability) ||
+					countIntersection(
+						explicitTokens,
+						capabilityTokens(candidate.capability),
+					) > 0
+				);
+			})
+		: false;
 	let best: { candidate: ResolvedViewCapability; score: number } | null = null;
 
 	for (const candidate of candidates) {
-		if (requestedView && candidate.view.id !== requestedView.id) continue;
+		if (
+			requestedViewHasRelevantCapability &&
+			candidate.view.id !== requestedView?.id
+		) {
+			continue;
+		}
 		const vTokens = viewTokens(candidate.view);
 		const cTokens = capabilityTokens(candidate.capability);
 		const capOperation = operationFamilyForCapability(candidate.capability);
@@ -1019,6 +1055,7 @@ function readCapabilityParams(
 	capability?: ViewCapability | null,
 	resolvedView?: ViewSummary | null,
 	messageText?: string,
+	registeredViews: readonly ViewSummary[] = [],
 ): Record<string, unknown> | undefined {
 	const params: Record<string, unknown> = {};
 	const capabilityParamKeys = new Set(Object.keys(capability?.params ?? {}));
@@ -1050,6 +1087,7 @@ function readCapabilityParams(
 		capabilityFamily !== "delete" &&
 		unresolvedTarget &&
 		!targetMatchesResolvedView(unresolvedTarget, resolvedView) &&
+		!targetMatchesRegisteredView(unresolvedTarget, registeredViews) &&
 		!params.title &&
 		capabilityParamKeys.has("title")
 	) {
@@ -1058,6 +1096,7 @@ function readCapabilityParams(
 		capabilityFamily !== "delete" &&
 		unresolvedTarget &&
 		!targetMatchesResolvedView(unresolvedTarget, resolvedView) &&
+		!targetMatchesRegisteredView(unresolvedTarget, registeredViews) &&
 		!params.name &&
 		capabilityParamKeys.has("name")
 	) {
@@ -1233,6 +1272,13 @@ function targetMatchesResolvedView(
 		(normalizeCapabilityKey(resolvedView.id) === normalizedTarget ||
 			normalizeCapabilityKey(resolvedView.label) === normalizedTarget)
 	);
+}
+
+function targetMatchesRegisteredView(
+	target: string,
+	views: readonly ViewSummary[],
+): boolean {
+	return resolveViewTarget(target, views) !== null;
 }
 
 function isCloseAllRequest(
@@ -1491,12 +1537,52 @@ function resolveLayoutTargets(
 	}
 
 	const explicitUnique = uniqueByViewId(explicitResolved);
-	const textUnique = uniqueByViewId(textResolved);
+	// A specific structured target can contain another view's whole generic name
+	// ("Simple Calendar" contains "Calendar"). Drop only that shadow match; keep
+	// genuinely additional text targets so a partially populated planner payload
+	// can still be completed from the user's words.
+	const textUnique = uniqueByViewId(textResolved).filter(
+		(view) =>
+			explicitUnique.some((explicitView) => explicitView.id === view.id) ||
+			!explicitUnique.some((explicitView) =>
+				viewNameIsContainedBy(view, explicitView),
+			),
+	);
+	if (
+		explicitUnique.length >= 2 &&
+		textUnique.length === explicitUnique.length &&
+		textUnique.every((view) =>
+			explicitUnique.some((explicitView) => explicitView.id === view.id),
+		)
+	) {
+		return explicitUnique;
+	}
 	return textUnique.length >= 2
 		? textUnique
 		: textUnique.length === 1 && explicitUnique.length <= 1
 			? textUnique
 			: uniqueByViewId([...explicitUnique, ...textUnique]);
+}
+
+function viewNameIsContainedBy(
+	candidate: ViewSummary,
+	moreSpecific: ViewSummary,
+): boolean {
+	const candidateNames = uniqueStrings([
+		normalizeLooseTerm(candidate.id),
+		normalizeLooseTerm(candidate.label),
+	]);
+	const specificNames = uniqueStrings([
+		normalizeLooseTerm(moreSpecific.id),
+		normalizeLooseTerm(moreSpecific.label),
+	]);
+	return candidateNames.some((candidateName) =>
+		specificNames.some(
+			(specificName) =>
+				specificName.length > candidateName.length &&
+				textMentionsTerm(specificName, candidateName),
+		),
+	);
 }
 
 function isLayoutOnlyFollowupRequest(
@@ -1831,8 +1917,8 @@ async function runViewsLayout({
 	if (targets.length < 2 && !singleViewPlacement) {
 		const reply =
 			mode === "split"
-				? 'Tell me two views to split, e.g. action=split views=["notes","calendar"] layout=horizontal.'
-				: 'Tell me two or more views to tile, e.g. action=tile views=["notes","calendar"].';
+				? 'Tell me two views to split, e.g. action=split views=["notes","simple-calendar"] layout=horizontal.'
+				: 'Tell me two or more views to tile, e.g. action=tile views=["notes","simple-calendar"].';
 		await callback?.({ text: reply });
 		return {
 			success: false,
@@ -2065,7 +2151,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		descriptionCompressed:
 			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
 		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. For add/create calendar-event requests, use action=interact view=calendar capability=create-calendar-event; do not answer by opening or splitting the calendar unless the user asked for layout. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'list my apps', 'what apps are running'), launching/restarting an app, or building a new app is the APP action, not VIEWS; only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
+			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. A bare navigation request such as 'open calendar' uses action=show view=calendar for the production Calendar. For add/create calendar-event requests in the developer QA workbench, use action=interact view=simple-calendar capability=create-calendar-event; capability declarations are authoritative, so never invoke that capability on a view that does not declare it and never treat an event request as view scaffolding. For the QA split use the exact ids views=['notes','simple-calendar']. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with view=<view id> and capability=<capability id>, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'list my apps', 'what apps are running'), launching/restarting an app, or building a new app is the APP action, not VIEWS; only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
 		allowAdditionalParameters: true,
 		suppressPostActionContinuation: true,
 
@@ -2130,7 +2216,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "views",
 				description:
-					"Multiple view ids/names for split or tile mode, e.g. ['notes','calendar'].",
+					"Multiple exact view ids for split or tile mode, e.g. ['notes','simple-calendar'] for the developer QA workbench.",
 				required: false,
 				schema: { type: "array", items: { type: "string" } },
 			},
@@ -2626,6 +2712,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							resolvedCapability?.capability,
 							resolvedCapability?.view,
 							text,
+							views,
 						);
 						const timeoutMs =
 							typeof actionOptions?.timeoutMs === "number" &&
@@ -2891,12 +2978,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "split notes and calendar side by side" },
+					content: { text: "split Notes and Simple Calendar side by side" },
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Split views: Notes, Calendar (horizontal).",
+						text: "Split views: Notes, Simple Calendar (horizontal).",
 						action: "VIEWS",
 					},
 				},
@@ -2904,12 +2991,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "tile notes calendar and trajectories" },
+					content: {
+						text: "tile Notes, Simple Calendar, and Trajectories",
+					},
 				},
 				{
 					name: "{{agentName}}",
 					content: {
-						text: "Tiled views: Notes, Calendar, Trajectories.",
+						text: "Tiled views: Notes, Simple Calendar, Trajectories.",
 						action: "VIEWS",
 					},
 				},
@@ -2972,7 +3061,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				{
 					name: "{{user1}}",
 					content: {
-						text: "add a calendar event titled team sync on 2026-06-08 at 17:00",
+						text: "add a Simple Calendar event titled team sync on 2026-06-08 at 17:00",
 					},
 				},
 				{
@@ -2987,7 +3076,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				{
 					name: "{{user1}}",
 					content: {
-						text: "tomorrow is my birthday can you add that to calendar",
+						text: "tomorrow is my birthday can you add that to Simple Calendar",
 					},
 				},
 				{
@@ -3001,7 +3090,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
-					content: { text: "show calendar events for 2026-06-08" },
+					content: { text: "show Simple Calendar events for 2026-06-08" },
 				},
 				{
 					name: "{{agentName}}",

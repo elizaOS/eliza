@@ -2201,7 +2201,15 @@ describe("view management actions", () => {
 						id: "calendar",
 						label: "Calendar",
 						path: "/calendar",
-						tags: ["calendar", "events"],
+						pluginName: "@elizaos/plugin-calendar",
+						tags: ["calendar", "events", "production calendar"],
+					}),
+					view({
+						id: "simple-calendar",
+						label: "Simple Calendar",
+						path: "/simple-calendar",
+						pluginName: "@elizaos/plugin-simple-views",
+						tags: ["simple calendar", "calendar", "events", "developer qa"],
 						capabilities: [
 							{
 								id: "get-calendar-state",
@@ -2328,6 +2336,22 @@ describe("view management actions", () => {
 			},
 			callback,
 		);
+		const explicitCalendarCapabilityResult = await action.handler(
+			runtime as never,
+			message("add the release review to my calendar") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "create-calendar-event",
+				params: {
+					title: "release review",
+					date: "2026-06-10",
+					time: "09:30",
+				},
+			},
+			callback,
+		);
 		const explicitCapabilityWordingCalendarResult = await action.handler(
 			runtime as never,
 			message("create calendar event through the VIEWS capability") as never,
@@ -2420,31 +2444,37 @@ describe("view management actions", () => {
 		expect(calendarResult?.success).toBe(true);
 		expect(calendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "calendar",
+			viewId: "simple-calendar",
 			capability: "create-calendar-event",
 		});
 		expect(plannerCalendarResult?.success).toBe(true);
 		expect(plannerCalendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "calendar",
+			viewId: "simple-calendar",
+			capability: "create-calendar-event",
+		});
+		expect(explicitCalendarCapabilityResult?.success).toBe(true);
+		expect(explicitCalendarCapabilityResult?.values).toMatchObject({
+			mode: "interact",
+			viewId: "simple-calendar",
 			capability: "create-calendar-event",
 		});
 		expect(explicitCapabilityWordingCalendarResult?.success).toBe(true);
 		expect(explicitCapabilityWordingCalendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "calendar",
+			viewId: "simple-calendar",
 			capability: "create-calendar-event",
 		});
 		expect(camelCalendarResult?.success).toBe(true);
 		expect(camelCalendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "calendar",
+			viewId: "simple-calendar",
 			capability: "create-calendar-event",
 		});
 		expect(listEventsResult?.success).toBe(true);
 		expect(listEventsResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "calendar",
+			viewId: "simple-calendar",
 			capability: "get-calendar-state",
 		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -2538,7 +2568,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2550,7 +2580,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2566,7 +2596,23 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					capability: "create-calendar-event",
+					params: {
+						title: "release review",
+						date: "2026-06-10",
+						time: "09:30",
+					},
+					timeoutMs: 5_000,
+					viewType: "gui",
+				}),
+			}),
+		);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2582,7 +2628,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2598,7 +2644,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
