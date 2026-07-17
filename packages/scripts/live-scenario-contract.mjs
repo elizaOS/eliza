@@ -1,4 +1,8 @@
 #!/usr/bin/env node
+/**
+ * Validate live-scenario shard prerequisites and verify each shard's complete
+ * evidence contract before the workflow's aggregate authority can pass.
+ */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
