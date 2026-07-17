@@ -225,11 +225,18 @@ const MAX_UPSTREAM_ERROR_BYTES = 4096;
 const SAFE_UPSTREAM_CODE = /^[a-z0-9_]{1,64}$/;
 const SAFE_PUBLIC_UPSTREAM_MESSAGES = new Set([
   "Agent not found",
-  "Insufficient credits",
   "Invalid request body",
   "Message text is required",
   "Missing request body",
 ]);
+
+function isSafePublicUpstreamMessage(message: string): boolean {
+  return (
+    SAFE_PUBLIC_UPSTREAM_MESSAGES.has(message) ||
+    message === "Insufficient credits" ||
+    message.startsWith("Insufficient credits. ")
+  );
+}
 
 async function readUpstreamError(response: Response): Promise<{
   code?: string;
@@ -284,15 +291,12 @@ async function readUpstreamError(response: Response): Promise<{
           : "";
     return {
       ...(SAFE_UPSTREAM_CODE.test(rawCode) ? { code: rawCode } : {}),
-      ...(SAFE_PUBLIC_UPSTREAM_MESSAGES.has(rawMessage.trim())
+      ...(isSafePublicUpstreamMessage(rawMessage.trim())
         ? { message: rawMessage.trim().slice(0, 512) }
         : rawMessage.trim()
           ? { snippet: "Upstream request failed" }
           : {}),
-      retryable:
-        typeof parsed.retryable === "boolean"
-          ? parsed.retryable
-          : fallbackRetryable,
+      retryable: typeof parsed.retryable === "boolean" ? parsed.retryable : fallbackRetryable,
     };
   } catch {
     // error-policy:J3 malformed/truncated upstream JSON: use status semantics.

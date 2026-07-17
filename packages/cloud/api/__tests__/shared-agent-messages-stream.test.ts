@@ -204,7 +204,12 @@ describe("shared agent messages/stream", () => {
       {
         VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
       } as Parameters<typeof createInternalElizaConversationFetch>[0],
-      { agentId: AGENT, conversationId: VOICE_CONVERSATION },
+      {
+        agentId: AGENT,
+        conversationId: VOICE_CONVERSATION,
+        organizationId: ORG,
+        userId: "user-voice",
+      },
     );
 
     const res = await fetchImpl(
@@ -232,6 +237,50 @@ describe("shared agent messages/stream", () => {
         text: "adapter transcript",
         roomId: VOICE_CONVERSATION,
       },
+    });
+  });
+
+  test("internal voice fetch adapter rejects mismatched verified scope before persistence", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "user-voice",
+      agent_name: "Voice Agent",
+    });
+
+    const fetchImpl = createInternalElizaConversationFetch(
+      {
+        VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+      } as Parameters<typeof createInternalElizaConversationFetch>[0],
+      {
+        agentId: AGENT,
+        conversationId: VOICE_CONVERSATION,
+        organizationId: ORG,
+        userId: "user-voice",
+      },
+    );
+
+    const res = await fetchImpl(
+      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Service-Key": "Bearer voice-service",
+          "X-Eliza-Organization-Id": ORG,
+          "X-Eliza-User-Id": "different-user",
+        },
+        body: JSON.stringify({ text: "do not persist" }),
+      },
+    );
+
+    expect(res.status).toBe(404);
+    expect(bridgeStream).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toEqual({
+      success: false,
+      error: "Agent not found",
+      code: "agent_not_found",
     });
   });
 
