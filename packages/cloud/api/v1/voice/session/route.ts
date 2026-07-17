@@ -80,21 +80,26 @@ app.post("/", async (c) => {
   // ownership MUST be enforced here before signing them into the token. Both
   // user_characters and conversations are USER-owned (not just org-owned), so a
   // same-org peer who learns another user's IDs must still be refused.
+  // The managed-cloud UI persists the selected agent_sandboxes UUID, while
+  // older callers submit the character UUID. Accept either public identifier,
+  // but always resolve both records and enforce the same user + org ownership
+  // before minting a server-credentialed session.
+  let sandboxAgent = await agentSandboxesRepository.findById(body.agentId);
+  const characterId = sandboxAgent?.character_id ?? body.agentId;
   const agent = await userCharactersRepository.findByIdInOrganization(
-    body.agentId,
+    characterId,
     auth.organization_id,
   );
   if (!agent || agent.user_id !== auth.id) {
     return c.json({ error: "agent not found", code: "agent_not_found" }, 404);
   }
-  // The public mint contract uses the selected character id, while canonical
-  // conversation routes use the backing agent_sandboxes id. Resolve it here,
-  // before signing, so the WS cannot later route a character UUID as an agent UUID.
-  const sandboxAgent = await agentSandboxesRepository.findLatestByCharacterId(
-    body.agentId,
-  );
+  if (!sandboxAgent) {
+    sandboxAgent =
+      await agentSandboxesRepository.findLatestByCharacterId(characterId);
+  }
   if (
     !sandboxAgent ||
+    sandboxAgent.character_id !== agent.id ||
     sandboxAgent.organization_id !== auth.organization_id ||
     sandboxAgent.user_id !== auth.id
   ) {

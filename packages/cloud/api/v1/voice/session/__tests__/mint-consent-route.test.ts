@@ -33,6 +33,15 @@ mock.module("@/db/repositories/characters", () => ({
 }));
 mock.module("@/db/repositories/agent-sandboxes", () => ({
   agentSandboxesRepository: {
+    findById: async (id: string) =>
+      id === "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+        ? {
+            id,
+            character_id: "11111111-1111-4111-8111-111111111111",
+            organization_id: "org-1",
+            user_id: "user-1",
+          }
+        : undefined,
     findLatestByCharacterId: async (characterId: string) =>
       characterId === "11111111-1111-4111-8111-111111111111"
         ? {
@@ -191,6 +200,31 @@ describe("voice-session mint route", () => {
       headers: { "Content-Type": "application/json" },
     });
     expect(replay.status).toBe(403);
+  });
+
+  test("accepts the sandbox UUID persisted by the managed-cloud UI", async () => {
+    const app = appWithFlag("true");
+    const consentRes = await app.request("/api/v1/voice/session/consent", {
+      method: "POST",
+    });
+    const { consentNonce } = (await consentRes.json()) as {
+      consentNonce: string;
+    };
+    const res = await app.request("/api/v1/voice/session", {
+      method: "POST",
+      body: JSON.stringify({
+        agentId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        consentNonce,
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { token: string };
+    const verified = await verifyVoiceSessionToken(body.token);
+    expect(verified.claims.agentId).toBe(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
   });
 
   test("mint response never contains a provider key", async () => {
