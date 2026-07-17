@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const { getPublicAccountPoolStatus } = vi.hoisted(() => ({
   getPublicAccountPoolStatus: vi.fn(),
 }));
-vi.mock("../services/account-pool-status", () => ({
+vi.mock("../services/account-pool-status.js", () => ({
   getPublicAccountPoolStatus,
 }));
 
