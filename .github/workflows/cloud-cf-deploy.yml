@@ -514,6 +514,23 @@ jobs:
           ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64: ${{ secrets.ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 }}
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           VAST_BASE_URL: ${{ secrets.VAST_BASE_URL }}
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
+          DEPLOY_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+          VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
+          # Keep this mirror locked to wrangler.toml's env.production value.
+          # The workflow contract test fails if they drift.
+          PRODUCTION_REALTIME_WS_ENABLED: "false"
+          # Production intentionally omits these runtime vars while realtime is
+          # off. Their mirrors are also contract-locked to wrangler.toml so a
+          # future enable cannot deploy a credential-complete but 503-only route.
+          PRODUCTION_REALTIME_CARTESIA_VOICE_ID: ""
+          PRODUCTION_REALTIME_ELIZA_ENDPOINT: ""
+          VOICE_REALTIME_ELIZA_AUTHORIZATION: ${{ secrets.VOICE_REALTIME_ELIZA_AUTHORIZATION }}
+          # Staging may use its existing Cloud key for the Worker-to-gateway
+          # voice bridge. Production MUST use the dedicated authorization and
+          # can never fall back to a repository-wide Cloud key.
+          STAGING_ELIZACLOUD_API_KEY: ${{ steps.env.outputs.deploy_environment == 'staging' && secrets.ELIZACLOUD_API_KEY || '' }}
           # Platform key the Worker forwards as X-Steward-Platform-Key so per-org
           # sandbox Steward tenants provision instead of collapsing onto the
           # shared default tenant (#11461). publish_secret no-ops with a notice
@@ -523,6 +540,66 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
+          has_nonblank_value() {
+            local value="${1:-}"
+            [ -n "${value//[[:space:]]/}" ]
+          }
+
+          is_truthy() {
+            case "${1,,}" in
+              1|true|yes|on) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # Construct the staging fallback only when the source key is real.
+          # Never publish the invalid-but-nonempty string "Bearer ".
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             is_truthy "$VOICE_REALTIME_WS_ENABLED" && \
+             ! has_nonblank_value "$VOICE_REALTIME_ELIZA_AUTHORIZATION" && \
+             has_nonblank_value "$STAGING_ELIZACLOUD_API_KEY"; then
+            VOICE_REALTIME_ELIZA_AUTHORIZATION="Bearer $STAGING_ELIZACLOUD_API_KEY"
+            export VOICE_REALTIME_ELIZA_AUTHORIZATION
+          fi
+
+          # Production realtime is currently explicitly disabled. A stale
+          # Worker secret may therefore remain stored but is unreachable. If a
+          # future change enables the route, fail that deploy unless every
+          # provider and the dedicated bridge authorization is configured; the
+          # next publish then overwrites any legacy repository-key fallback.
+          # Production never constructs the staging repository-key fallback.
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ] && \
+             is_truthy "$PRODUCTION_REALTIME_WS_ENABLED"; then
+            missing_voice_secrets=()
+            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION PRODUCTION_REALTIME_CARTESIA_VOICE_ID PRODUCTION_REALTIME_ELIZA_ENDPOINT; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_voice_secrets+=("$name")
+              fi
+            done
+            if [ "${#missing_voice_secrets[@]}" -gt 0 ]; then
+              echo "::error::Production realtime voice is enabled but required dedicated/provider secrets are missing: ${missing_voice_secrets[*]}"
+              exit 1
+            fi
+          fi
+
+          # Staging advertises realtime only when the repository variable
+          # VOICE_REALTIME_WS_ENABLED is explicitly truthy. Refuse that opt-in
+          # unless every required provider and bridge credential is present; a
+          # green deploy with a 503-only voice route is not honest availability.
+          if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
+             is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+            missing_voice_secrets=()
+            for name in DEEPGRAM_API_KEY CARTESIA_API_KEY VOICE_REALTIME_ELIZA_AUTHORIZATION; do
+              if ! has_nonblank_value "${!name:-}"; then
+                missing_voice_secrets+=("$name")
+              fi
+            done
+            if [ "${#missing_voice_secrets[@]}" -gt 0 ]; then
+              echo "::error::Realtime voice is enabled for staging but required secrets are missing: ${missing_voice_secrets[*]}"
+              exit 1
+            fi
+          fi
+
           # The Worker is the gateway: it calls native providers directly and
           # uses OpenRouter (BYOK) as the backup. At least one provider key (the
           # OpenRouter backup, or a native key) must be configured.
@@ -534,7 +611,15 @@ jobs:
           publish_secret() {
             local name="$1"
             local value="${!name:-}"
-            if [ -z "$value" ]; then
+            case "$name" in
+              DEEPGRAM_API_KEY|CARTESIA_API_KEY|VOICE_REALTIME_ELIZA_AUTHORIZATION)
+                if ! is_truthy "$VOICE_REALTIME_WS_ENABLED"; then
+                  echo "::notice::$name is gated by VOICE_REALTIME_WS_ENABLED; skipping"
+                  return 0
+                fi
+                ;;
+            esac
+            if ! has_nonblank_value "$value"; then
               echo "::notice::$name is not configured; skipping"
               return 0
             fi
@@ -602,6 +687,9 @@ jobs:
             ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64 \
             VAST_API_KEY \
             VAST_BASE_URL \
+            DEEPGRAM_API_KEY \
+            CARTESIA_API_KEY \
+            VOICE_REALTIME_ELIZA_AUTHORIZATION \
             STEWARD_PLATFORM_KEYS
           do
             publish_secret "$name"
@@ -644,8 +732,9 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
+          VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
         run: |
-          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA")
+          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
@@ -923,6 +1012,8 @@ jobs:
           # `ENVIRONMENT` binding is invisible to the SPA — VITE_ENVIRONMENT is
           # the only thing the bundle can see at runtime.
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an
@@ -1305,6 +1396,8 @@ jobs:
           VITE_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           NEXT_PUBLIC_STEWARD_TENANT_ID: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'elizacloud' || 'elizacloud-staging' }}
           VITE_ENVIRONMENT: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+          VITE_VOICE_REALTIME_WS: ${{ !((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && '1' || '0' }}
+          VITE_VOICE_REALTIME_FORCE: "0"
           NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${{ vars.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID }}
 
       # Refuse to deploy a bundle where the bn.js/crypto graph folded into an

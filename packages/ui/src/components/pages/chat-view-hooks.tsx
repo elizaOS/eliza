@@ -26,11 +26,20 @@ import {
   type ContinuousChatState,
   useContinuousChat,
 } from "../../hooks/useContinuousChat";
+import {
+  type ContinuousVoiceSessionState,
+  useContinuousVoiceSession,
+} from "../../hooks/useContinuousVoiceSession";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
+import {
+  isRealtimeVoiceFlagEnabled,
+  useRealtimeVoiceSession,
+} from "../../hooks/useRealtimeVoiceSession";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
+import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
 import {
   DEFAULT_VOICE_CONTINUOUS_MODE,
@@ -41,6 +50,8 @@ import {
   type VoiceSpeakerMetadata,
   type VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
+import type { VoiceTraceMark } from "../../voice/voice-session-client";
+import type { VoiceSessionMintResponse } from "../../voice/voice-session-protocol";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 
 /* ── Shared constants ──────────────────────────────────────────────── */
@@ -203,6 +214,21 @@ export function useChatVoiceController(options: {
    * unrelated coding-agent PTY sessions.
    */
   onServerTurnAbort?: () => void;
+  /**
+   * Owner agent UUID for a realtime voice-session mint. When absent (or the
+   * realtime flag is off, or the mint reports the feature disabled), the mic
+   * runs the EXISTING batch path unchanged. Supplied by ChatView from the
+   * resolved cloud runtime; a local/self-hosted runtime leaves it undefined and
+   * the realtime path never arms.
+   */
+  realtimeAgentId?: string | null;
+  /**
+   * Obtain a one-time consent nonce for the realtime session (POST
+   * /api/v1/voice/session/consent). Returning null (feature off / consent store
+   * not configured) keeps the batch path as the fallback. Required only when
+   * `realtimeAgentId` is set.
+   */
+  getRealtimeConsentNonce?: () => Promise<string | null>;
 }) {
   const { setTimeout } = useTimeout();
   const {
@@ -223,6 +249,8 @@ export function useChatVoiceController(options: {
     uiLanguage,
     continuousMode = DEFAULT_VOICE_CONTINUOUS_MODE,
     onServerTurnAbort,
+    realtimeAgentId,
+    getRealtimeConsentNonce,
   } = options;
   const onServerTurnAbortRef = useRef(onServerTurnAbort);
   onServerTurnAbortRef.current = onServerTurnAbort;
@@ -508,7 +536,7 @@ export function useChatVoiceController(options: {
     companionBootstrapAutoSpeakRef.current = null;
   }, [voiceUnlockedGeneration]);
 
-  const beginVoiceCapture = useCallback(
+  const beginBatchVoiceCapture = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (isComposerLocked || voice.isListening) return;
       const latestAssistant = findLatestAssistantMessage(conversationMessages);
@@ -529,7 +557,7 @@ export function useChatVoiceController(options: {
     ],
   );
 
-  const endVoiceCapture = useCallback(
+  const endBatchVoiceCapture = useCallback(
     (captureOptions?: { submit?: boolean }) => {
       if (!voice.isListening) return;
       void stopListening(captureOptions);
@@ -784,19 +812,245 @@ export function useChatVoiceController(options: {
     [voiceLatency],
   );
 
+  // Realtime WebSocket voice session — an ADDITIVE enhancement of the mic, not
+  // a replacement. It only arms when the VITE flag is on AND the server mint
+  // succeeds; otherwise `available` stays false and the composed surface below
+  // falls through to the batch `continuous` path UNCHANGED.
+  const realtimeConsentNonce = useCallback(async () => {
+    if (!getRealtimeConsentNonce) return null;
+    return getRealtimeConsentNonce();
+  }, [getRealtimeConsentNonce]);
+  const realtimeSessionIdRef = useRef<string | null>(null);
+  const handleRealtimeMinted = useCallback(
+    (minted: VoiceSessionMintResponse) => {
+      realtimeSessionIdRef.current = minted.sessionId;
+      // The always-on capture HUD gets only presence metadata. Full correlation
+      // identifiers remain available in the explicitly opt-in TTS debug stream.
+      voiceCaptureDebug("realtime:mint", { correlated: true });
+      ttsDebug("realtime:mint", { sessionId: minted.sessionId });
+    },
+    [],
+  );
+  const handleRealtimeTraceMark = useCallback((mark: VoiceTraceMark) => {
+    const sessionId = realtimeSessionIdRef.current;
+    voiceCaptureDebug("realtime:trace", {
+      name: mark.name,
+      atMs: mark.atMs,
+      hasSessionId: Boolean(sessionId),
+      hasTraceId: Boolean(mark.traceId),
+    });
+    ttsDebug("realtime:trace", {
+      sessionId,
+      traceId: mark.traceId,
+      name: mark.name,
+      atMs: mark.atMs,
+    });
+  }, []);
+  const realtime = useRealtimeVoiceSession({
+    agentId: realtimeAgentId ?? null,
+    conversationId: activeConversationId,
+    flagEnabled: isRealtimeVoiceFlagEnabled() && Boolean(realtimeAgentId),
+    getConsentNonce: realtimeConsentNonce,
+    onMinted: handleRealtimeMinted,
+    clientOptions: { onTraceMark: handleRealtimeTraceMark },
+    speaker: voiceSpeaker,
+  });
+
+  // A normal composer mic tap is a distinct realtime intent from the
+  // continuous-mode toggle. Without this latch, a tap while the default mode
+  // is `off` starts realtime and the toggle-driven effect immediately stops it.
+  const [manualRealtimeRequested, setManualRealtimeRequested] = useState(false);
+  const manualRealtimeRequestedRef = useRef(false);
+  const setManualRealtimeIntent = useCallback((requested: boolean) => {
+    manualRealtimeRequestedRef.current = requested;
+    setManualRealtimeRequested(requested);
+  }, []);
+
+  const realtimeWanted =
+    (continuousMode !== "off" || manualRealtimeRequested) &&
+    !isComposerLocked &&
+    realtime.available &&
+    !realtime.error;
+
+  // The batch continuous-chat engine. While the realtime WS session is the
+  // active mic, the batch passive capture must NOT also run (double mic / double
+  // STT). We `disabled` the batch hook whenever realtime is active OR the
+  // composer is locked — the batch bring-up effect keys off `disabled`, so this
+  // keeps its mic fully closed while realtime owns it, and re-opens it the
+  // instant realtime hands back (mode still non-off). When realtime is
+  // unavailable this reduces to the EXISTING `disabled: isComposerLocked`.
   const continuous = useContinuousChat({
     voice,
     mode: continuousMode,
-    disabled: isComposerLocked,
+    disabled: isComposerLocked || realtime.active || realtimeWanted,
     latency: continuousChatLatency,
     speaker: voiceSpeaker,
     assistantGenerating: chatSending && !chatFirstTokenReceived,
   });
 
+  // The single mic-facing surface: realtime when available, batch otherwise.
+  const voiceSession = useContinuousVoiceSession({
+    batch: continuous,
+    realtime,
+  });
+
+  // Drive the realtime session off the SAME toggle the batch continuous-chat
+  // path uses: when the user turns continuous mode on AND realtime is available,
+  // the WS session becomes the mic; when they turn it off (or realtime becomes
+  // unavailable), the session tears down and the batch path owns the mic again.
+  // This is the enhancement of the EXISTING surface — no new toggle, no new UI.
+  const realtimeStartRef = useRef(realtime.start);
+  const realtimeStopRef = useRef(realtime.stop);
+  const realtimeStartPendingRef = useRef(false);
+  const realtimeStopPendingRef = useRef(false);
+  realtimeStartRef.current = realtime.start;
+  realtimeStopRef.current = realtime.stop;
+  useEffect(() => {
+    if (realtime.active) {
+      realtimeStartPendingRef.current = false;
+    } else {
+      realtimeStopPendingRef.current = false;
+      if (!realtimeWanted) realtimeStartPendingRef.current = false;
+    }
+    if (
+      realtimeWanted &&
+      !realtime.active &&
+      !realtimeStartPendingRef.current
+    ) {
+      realtimeStartPendingRef.current = true;
+      void realtimeStartRef.current();
+    } else if (
+      !realtimeWanted &&
+      // A no-longer-wanted session must also be cancelled while it is still
+      // connecting — `active` is truthful now (live only), so gating stop on
+      // it alone would let an unwanted bring-up finish connecting first.
+      (realtime.active || realtime.connecting) &&
+      !realtimeStopPendingRef.current
+    ) {
+      realtimeStartPendingRef.current = false;
+      realtimeStopPendingRef.current = true;
+      void realtimeStopRef.current();
+    }
+  }, [realtimeWanted, realtime.active, realtime.connecting]);
+
+  // A failed/disabled realtime start hands ownership back to batch. Clear the
+  // manual intent as well so the next gesture can take the fallback branch.
+  useEffect(() => {
+    if (
+      manualRealtimeRequested &&
+      (!realtime.available || Boolean(realtime.error))
+    ) {
+      realtimeStartPendingRef.current = false;
+      setManualRealtimeIntent(false);
+    }
+  }, [
+    manualRealtimeRequested,
+    realtime.available,
+    realtime.error,
+    setManualRealtimeIntent,
+  ]);
+
+  const beginVoiceCapture = useCallback(
+    (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
+      if (isComposerLocked) return;
+      // Realtime owns the tap while available and not in a NON-actionable error
+      // state. An actionable error (permission re-granted, transport drop,
+      // connect timeout) advertises "tap the mic to try again" — so that tap
+      // must re-enter the realtime branch (start() clears the error); only
+      // non-actionable failures (consent/mint, which also latch eligibility
+      // off) hand the tap to the batch path as their copy promises.
+      if (
+        voiceSession.realtimeEligible &&
+        (!voiceSession.realtimeError || voiceSession.realtimeError.actionable)
+      ) {
+        setManualRealtimeIntent(true);
+        realtimeStartPendingRef.current = true;
+        const latestAssistant =
+          findLatestAssistantMessage(conversationMessages);
+        suppressedAssistantSpeechRef.current = latestAssistant
+          ? { messageId: latestAssistant.id, text: latestAssistant.text }
+          : null;
+        voiceDraftBaseInputRef.current = chatInput;
+        stopSpeaking();
+        void voiceSession.start().then((outcome) => {
+          realtimeStartPendingRef.current = false;
+          if (outcome.kind !== "fallback-to-batch") return;
+          setManualRealtimeIntent(false);
+          beginBatchVoiceCapture(mode);
+        });
+        return;
+      }
+      beginBatchVoiceCapture(mode);
+    },
+    [
+      beginBatchVoiceCapture,
+      chatInput,
+      conversationMessages,
+      isComposerLocked,
+      stopSpeaking,
+      setManualRealtimeIntent,
+      voiceSession,
+    ],
+  );
+
+  const endVoiceCapture = useCallback(
+    (captureOptions?: { submit?: boolean }) => {
+      if (
+        voiceSession.realtimeActive ||
+        voiceSession.realtimeConnecting ||
+        manualRealtimeRequestedRef.current
+      ) {
+        setManualRealtimeIntent(false);
+        realtimeStartPendingRef.current = false;
+        realtimeStopPendingRef.current = true;
+        // A second tap can arrive while start is still pending and `active` is
+        // false. The composed session's stop is active-gated, so cancel the
+        // realtime lifecycle directly to prevent the pending start from
+        // resurrecting a socket/mic after the user's stop intent.
+        void realtimeStopRef.current();
+        return;
+      }
+      endBatchVoiceCapture(captureOptions);
+    },
+    [endBatchVoiceCapture, setManualRealtimeIntent, voiceSession],
+  );
+
+  // The composer must reflect the path that owns the mic *or its pending start*.
+  // Otherwise a second tap during consent/mint sees `isListening=false` and
+  // calls start again instead of cancelling the lifecycle. While the agent is
+  // speaking we intentionally report false so that same tap reaches the
+  // existing start handler's barge-in branch instead of the stop branch.
+  const realtimeOwnsComposer =
+    manualRealtimeRequested || voiceSession.realtimeActive;
+  const composerVoice = useMemo(
+    () => ({
+      isListening:
+        voice.isListening ||
+        (realtimeOwnsComposer && !voiceSession.agentSpeaking),
+      captureMode: realtimeOwnsComposer
+        ? ("compose" as const)
+        : voice.captureMode,
+      interimTranscript: voiceSession.realtimeActive
+        ? voiceSession.interimTranscript
+        : voice.interimTranscript,
+    }),
+    [
+      voice.captureMode,
+      voice.interimTranscript,
+      voice.isListening,
+      realtimeOwnsComposer,
+      voiceSession.agentSpeaking,
+      voiceSession.interimTranscript,
+      voiceSession.realtimeActive,
+    ],
+  );
+
   return {
     beginVoiceCapture,
+    composerVoice,
     endVoiceCapture,
     continuous,
+    voiceSession,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
@@ -810,7 +1064,7 @@ export type UseChatVoiceControllerReturn = ReturnType<
   typeof useChatVoiceController
 >;
 
-export type { ContinuousChatState };
+export type { ContinuousChatState, ContinuousVoiceSessionState };
 
 /* ── useGameModalMessages ──────────────────────────────────────────── */
 
