@@ -49,6 +49,7 @@ import {
 // that adds rate limiting, audit logging, and a forced confirmation delay.
 import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared/contracts/first-run-options";
+import { handleAccountPoolStatusRoute } from "./account-pool-status-routes";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -830,6 +831,12 @@ const COMPAT_ROUTE_CHAIN: readonly CompatRouteChainEntry[] = [
     id: "sensitive-request",
     handler: ({ req, res, state }) =>
       handleSensitiveRequestRoutes(req, res, state),
+  },
+  {
+    // Public-safe anonymous capacity status for the first-class account pool.
+    id: "account-pool-status",
+    handler: ({ req, res, method, url }) =>
+      handleAccountPoolStatusRoute(req, res, method, url.pathname),
   },
   {
     id: "credential-tunnel",

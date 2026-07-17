@@ -160,6 +160,13 @@ function deriveHealthLabel(
         }),
         tone: "danger",
       };
+    case "expired":
+      return {
+        label: t("accounts.health.expired", {
+          defaultValue: "Expired",
+        }),
+        tone: "warning",
+      };
     default:
       return {
         label: t("accounts.health.unknown", { defaultValue: "Unknown" }),
@@ -372,12 +379,15 @@ export function AccountCard({
             <UsageBar
               label={t("accounts.usage.session5h", { defaultValue: "5h" })}
               pct={usage?.sessionPct}
-              resetsAt={usage?.resetsAt}
+              // Anthropic persists the seven-day reset. Codex currently
+              // persists its primary five-hour reset. Never label one clock
+              // as the other in the UI.
+              resetsAt={isCodex ? usage?.resetsAt : undefined}
             />
             <UsageBar
               label={t("accounts.usage.weekly", { defaultValue: "7d" })}
               pct={usage?.weeklyPct}
-              resetsAt={usage?.resetsAt}
+              resetsAt={isAnthropic ? usage?.resetsAt : undefined}
             />
           </>
         ) : usage ? (

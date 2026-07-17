@@ -15,11 +15,18 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchWithCsrf = vi.fn();
+const requestViaAgentTransport = vi.fn();
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: (...args: unknown[]) => fetchWithCsrf(...args),
+  requestViaAgentTransport: (...args: unknown[]) =>
+    requestViaAgentTransport(...args),
 }));
 
 import { globalAudioCache } from "../voice/voice-chat-types";
+import {
+  DEFAULT_BOOT_CONFIG,
+  setBootConfig,
+} from "../config/boot-config-store";
 import {
   __resetDirectCloudTtsFallbackWarnings,
   useVoiceChat,
@@ -75,13 +82,16 @@ class FakeAudioContext {
     createdSources.push(source);
     return source;
   });
-  decodeAudioData = vi.fn(async () => ({
-    duration: 0.04,
-    sampleRate: 16_000,
-    length: 640,
-    numberOfChannels: 1,
-    getChannelData: () => new Float32Array(640).fill(0.25),
-  }));
+  decodeAudioData = vi.fn(async (audioData: ArrayBuffer) => {
+    decodedAudioInputs.push(new Uint8Array(audioData.slice(0)));
+    return {
+      duration: 0.04,
+      sampleRate: 16_000,
+      length: 640,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array(640).fill(0.25),
+    };
+  });
   close = vi.fn(async () => {});
 }
 
@@ -114,18 +124,33 @@ const speechSynthesisMock = {
 };
 
 const fetchedUrls: string[] = [];
+const fetchedContexts: unknown[] = [];
+const decodedAudioInputs: Uint8Array[] = [];
+
+function bytesFromBase64(base64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
 
 function installMocks() {
   fetchWithCsrf.mockReset();
+  requestViaAgentTransport.mockReset();
   fetchedUrls.length = 0;
+  fetchedContexts.length = 0;
+  decodedAudioInputs.length = 0;
   createdSources.length = 0;
   speechSynthesisMock.spoken = [];
   speechSynthesisMock.speak.mockClear();
   speechSynthesisMock.cancel.mockClear();
   globalAudioCache.clear();
-  fetchWithCsrf.mockImplementation(async (input: unknown) => {
+  fetchWithCsrf.mockImplementation(async (input: unknown, _init, context) => {
     const url = typeof input === "string" ? input : String(input);
     fetchedUrls.push(url);
+    fetchedContexts.push(context);
     if (url.includes("/api/voice/playback-frames")) {
       return new Response(null, { status: 204 });
     }
@@ -136,6 +161,9 @@ function installMocks() {
       headers: { "content-type": "audio/wav" },
     });
   });
+  requestViaAgentTransport.mockImplementation(
+    async (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
+  );
   Object.defineProperty(globalThis, "AudioContext", {
     configurable: true,
     value: FakeAudioContext,
@@ -204,6 +232,7 @@ describe("useVoiceChat TTS playback across providers", () => {
       writable: true,
       value: originalFetch,
     });
+    setBootConfig(DEFAULT_BOOT_CONFIG);
     vi.restoreAllMocks();
   });
 
@@ -229,6 +258,90 @@ describe("useVoiceChat TTS playback across providers", () => {
     ).toBe(true);
     // Cloud Kokoro is not the browser engine — no SpeechSynthesis swap.
     expect(speechSynthesisMock.speak).not.toHaveBeenCalled();
+  });
+
+  it("requests cloud TTS as an arraybuffer and preserves bridge-decoded WAV bytes exactly", async () => {
+    const wavBytes = new Uint8Array([
+      0x52, 0x49, 0x46, 0x46, 0x00, 0x80, 0xff, 0x57, 0x41, 0x56, 0x45,
+    ]);
+    const encodedWav = btoa(
+      Array.from(wavBytes, (byte) => String.fromCharCode(byte)).join(""),
+    );
+    fetchWithCsrf.mockImplementation(async (input: unknown, _init, context) => {
+      const url = typeof input === "string" ? input : String(input);
+      fetchedUrls.push(url);
+      fetchedContexts.push(context);
+      if (url.includes("/api/voice/playback-frames")) {
+        return new Response(null, { status: 204 });
+      }
+      return new Response(bytesFromBase64(encodedWav), {
+        status: 200,
+        headers: { "content-type": "audio/wav" },
+      });
+    });
+
+    const { result } = renderVoiceChat({ provider: "eliza-cloud" });
+
+    act(() => {
+      result.current.speak("binary cloud reply");
+    });
+
+    await waitFor(() => {
+      expect(createdSources[0]?.start).toHaveBeenCalledWith(0);
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+
+    const cloudCallIndex = fetchedUrls.findIndex((url) =>
+      url.includes("/api/tts/cloud"),
+    );
+    expect(cloudCallIndex).toBeGreaterThanOrEqual(0);
+    expect(fetchedContexts[cloudCallIndex]).toEqual({
+      responseType: "arraybuffer",
+      timeoutMs: 60_000,
+    });
+    expect(decodedAudioInputs[0]).toEqual(wavBytes);
+    expect(result.current.ttsError ?? null).toBeNull();
+  });
+
+  it("surfaces a cloud TTS timeout instead of decoding or playing a stale healthy state", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    fetchWithCsrf.mockImplementation(async (input: unknown, _init, context) => {
+      const url = typeof input === "string" ? input : String(input);
+      fetchedUrls.push(url);
+      fetchedContexts.push(context);
+      if (url.includes("/api/tts/cloud")) {
+        throw new DOMException("Eliza Cloud TTS timed out", "TimeoutError");
+      }
+      return new Response(null, { status: 204 });
+    });
+    const { result } = renderVoiceChat({ provider: "eliza-cloud" });
+
+    act(() => {
+      result.current.speak("timeout please");
+    });
+
+    await waitFor(() => {
+      expect(result.current.ttsError).not.toBeNull();
+    });
+
+    const cloudCallIndex = fetchedUrls.findIndex((url) =>
+      url.includes("/api/tts/cloud"),
+    );
+    expect(fetchedContexts[cloudCallIndex]).toEqual({
+      responseType: "arraybuffer",
+      timeoutMs: 60_000,
+    });
+    expect(result.current.ttsError?.engine).toBe("eliza-cloud");
+    expect(result.current.ttsError?.message).toContain(
+      "Eliza Cloud TTS timed out",
+    );
+    expect(decodedAudioInputs).toEqual([]);
+    expect(createdSources).toEqual([]);
+    expect(consoleErrorSpy).toHaveBeenCalled();
   });
 
   it("plays a local-inference reply end to end", async () => {
@@ -326,6 +439,7 @@ describe("useVoiceChat TTS playback across providers", () => {
     // worker path; the direct bare fetch dies (network / preflight) and the
     // designed degrade must play the same clip through the on-device proxy.
     localStorage.setItem("steward_session_token", "header.payload.signature");
+    setBootConfig({ branding: {}, cloudApiBase: "https://elizacloud.ai" });
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const directFetch = vi.fn(async () => {
       throw new TypeError("Failed to fetch");

@@ -1,10 +1,11 @@
 /**
  * Provider selection for the cloud voice TTS route.
  *
- * The route keeps Kokoro as the free default when it is configured, while
- * preserving arbitrary ElevenLabs voice ids for custom voices. Explicit
- * Kokoro-shaped ids are fail-closed so a typo never waits on, or bills through,
- * the ElevenLabs upstream.
+ * The route prefers an explicitly configured Cartesia cloud default, keeps
+ * Kokoro as the free fallback when Cartesia is absent, and preserves arbitrary
+ * ElevenLabs voice ids for custom voices. Explicit Kokoro-shaped ids are
+ * fail-closed so a typo never waits on, or bills through, the ElevenLabs
+ * upstream.
  */
 
 const DEFAULT_KOKORO_VOICE_ID = "af_heart";
@@ -31,9 +32,15 @@ export const KOKORO_VOICE_IDS = new Set([
   "bm_lewis",
 ]);
 
-export type TtsProvider = "kokoro" | "elevenlabs";
+export type TtsProvider = "cartesia" | "kokoro" | "elevenlabs";
 
 export type TtsProviderSelection =
+  | {
+      ok: true;
+      provider: "cartesia";
+      voiceId?: string;
+      fallbackReason: "configured-default" | "configured-default-compat";
+    }
   | {
       ok: true;
       provider: "kokoro";
@@ -72,11 +79,19 @@ export function isKokoroShapedVoiceId(voiceId: string): boolean {
 
 export function selectTtsProvider(args: {
   voiceId?: string;
+  cartesiaConfigured?: boolean;
   kokoroConfigured: boolean;
 }): TtsProviderSelection {
   const voiceId = args.voiceId?.trim();
 
   if (!voiceId) {
+    if (args.cartesiaConfigured) {
+      return {
+        ok: true,
+        provider: "cartesia",
+        fallbackReason: "configured-default",
+      };
+    }
     if (args.kokoroConfigured) {
       return {
         ok: true,
@@ -94,9 +109,24 @@ export function selectTtsProvider(args: {
 
   // The server cloud proxy normalizes omitted/OpenAI/Edge voice names to this
   // legacy ElevenLabs default before forwarding. Treat it as the product
-  // default when Kokoro is available, while retaining the legacy fallback when
-  // Kokoro is not configured.
-  if (args.kokoroConfigured && voiceId === LEGACY_DEFAULT_ELEVENLABS_VOICE_ID) {
+  // default for configured cloud defaults, while retaining the legacy fallback
+  // when neither Cartesia nor Kokoro is configured.
+  if (voiceId === LEGACY_DEFAULT_ELEVENLABS_VOICE_ID) {
+    if (args.cartesiaConfigured) {
+      return {
+        ok: true,
+        provider: "cartesia",
+        fallbackReason: "configured-default-compat",
+      };
+    }
+    if (!args.kokoroConfigured) {
+      return {
+        ok: true,
+        provider: "elevenlabs",
+        voiceId,
+        fallbackReason: "kokoro-unconfigured-default",
+      };
+    }
     return {
       ok: true,
       provider: "kokoro",

@@ -6,6 +6,7 @@
 
 import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realRedisFactory from "../cache/redis-factory";
+import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models/catalog";
 
 // Capture the REAL cloud-bindings surface so the stub keeps every export and can
 // be restored. The coverage lane runs all changed files in ONE bun process with
@@ -82,7 +83,12 @@ describe("voice-session config", () => {
     expect(config.resolveMaxSessions({ VOICE_REALTIME_MAX_SESSIONS: "3.8" })).toBe(3);
     expect(config.resolveMaxSessions({ VOICE_REALTIME_MAX_SESSIONS: "0" })).toBe(200);
     expect(config.resolveElizaModel({ VOICE_REALTIME_ELIZA_MODEL: "  model-a  " })).toBe("model-a");
-    expect(config.resolveElizaModel({ VOICE_REALTIME_ELIZA_MODEL: "   " })).toBe("gemma-4-31b");
+    // Blank/unset falls back to the CLOUD DEFAULT small-model route (the same
+    // Cerebras pin fresh cloud agents get), not a voice-local hardcode.
+    expect(config.resolveElizaModel({ VOICE_REALTIME_ELIZA_MODEL: "   " })).toBe(
+      CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    );
+    expect(config.resolveElizaModel(undefined)).toBe(CEREBRAS_DEFAULT_TEXT_SMALL_MODEL);
   });
 });
 

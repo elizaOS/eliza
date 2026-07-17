@@ -1,0 +1,65 @@
+# Example Eliza Merge Steward config for a private staging deployment.
+# Do not commit real tokens, webhook secrets, or database URLs.
+
+forgejo:
+  base_url: "https://git.example.invalid"
+  bot_username: "eliza-merge-steward"
+  token_env: "FORGEJO_STEWARD_TOKEN"
+  webhook_secret_env: "FORGEJO_WEBHOOK_SECRET"
+
+database:
+  url_env: "DATABASE_URL"
+
+repositories:
+  - owner: "elizaos"
+    name: "eliza"
+    protected_targets:
+      - "develop"
+      - "main"
+    integration_branch_prefix: "eliza-queue"
+    required_checks:
+      - "smoke"
+      - "typecheck"
+    required_human_approval_paths:
+      - "packages/cloud-api/**"
+      - "packages/cloud-shared/src/db/migrations/**"
+      - ".forgejo/workflows/**"
+      - ".github/workflows/**"
+      - "**/.env*"
+
+labels:
+  queue_ready: "queue:ready"
+  queue_queued: "queue:queued"
+  queue_building: "queue:building"
+  queue_blocked: "queue:blocked"
+  agent_owned: "agent:owned"
+  agent_stale: "agent:stale"
+  agent_needs_human: "agent:needs-human"
+  risk_low: "risk:low"
+  risk_medium: "risk:medium"
+  risk_high: "risk:high"
+
+policy:
+  max_low_risk_changed_lines: 250
+  max_medium_risk_changed_lines: 900
+  stale_after_target_commits: 25
+  max_retries: 3
+  require_issue_link_for_agent_prs: true
+  require_agent_run_receipt_for_agent_prs: false
+  require_verified_agent_run_receipt_for_agent_prs: false
+  agent_run_receipt_secret_env: "MERGE_STEWARD_AGENT_RUN_RECEIPT_SECRET"
+  require_work_reservation_for_agent_prs: false
+  require_agent_branch_namespace_for_agent_prs: false
+  agent_branch_namespace_prefix: "agent"
+  quarantine_unknown_agents: true
+  allow_batching: false
+
+runner:
+  require_isolated_runner: true
+  allowed_runner_labels:
+    - "docker"
+    - "sandbox"
+
+comments:
+  enabled: true
+  update_existing_status_comment: true

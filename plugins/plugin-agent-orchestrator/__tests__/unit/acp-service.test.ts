@@ -378,6 +378,7 @@ describe("AcpService", () => {
     const promise = service.spawnSession({
       name: "s1",
       agentType: "codex",
+      model: "gpt-5.5",
       workdir: "/tmp/acp-test",
     });
     await waitForSpawn(reg);

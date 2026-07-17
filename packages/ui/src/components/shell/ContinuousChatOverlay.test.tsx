@@ -69,6 +69,10 @@ import type {
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
+  GLASS_SHEET_BACKDROP_FILTER,
+  GLASS_SHEET_FILL,
+} from "../../glass/tokens";
+import {
   LAYOUT_SHIFT_INTENT_ATTR,
   LAYOUT_SHIFT_INTENT_TRANSIENT,
 } from "../../hooks/useLayoutShiftMonitor";
@@ -232,6 +236,18 @@ describe("ContinuousChatOverlay", () => {
     });
     expect(screen.getByLabelText("send")).toBeTruthy();
     expect(screen.queryByLabelText("talk")).toBeNull();
+  });
+
+  it("renders the frosted sheet from the glass token system (no saturate)", () => {
+    // The chat sheet is a liquid-glass SYSTEM surface: its inset material comes
+    // from GLASS_SHEET_* tokens, not a hand-rolled inline recipe. The backdrop
+    // filter is a neutral blur with NO saturate — saturate muddies the warm
+    // field to brown, which the whole liquid-glass system forbids.
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    const surface = screen.getByTestId("chat-sheet-surface");
+    expect(surface.style.backdropFilter).toBe(GLASS_SHEET_BACKDROP_FILTER);
+    expect(surface.style.backdropFilter).not.toMatch(/saturate|brightness/);
+    expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
   });
 
   it("reports typing start and pause from the real composer draft", () => {

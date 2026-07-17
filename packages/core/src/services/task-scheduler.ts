@@ -6,6 +6,7 @@
  * Opt-in: host calls startTaskScheduler(adapter); TaskService registers when daemon is present.
  */
 
+import { ElizaError } from "../errors";
 import { logger } from "../logger";
 import type { IDatabaseAdapter } from "../types/database";
 import type { UUID } from "../types/primitives";
@@ -48,13 +49,18 @@ async function tick(): Promise<void> {
 			tags: ["queue"],
 			agentIds,
 		});
-	} catch (error) {
-		// A transient getTasks rejection must NOT permanently silence the cleared
-		// agents: we already drained dirtyAgents above, so re-arm the ones still
-		// registered before rethrowing. Otherwise one DB hiccup drops every repeat
-		// task (incl. the LifeOps heartbeat) until each agent is marked dirty again.
+	} catch (cause) {
+		const error = new ElizaError("Shared task queue query failed", {
+			code: "TASK_SCHEDULER_QUERY_FAILED",
+			context: { agentIds: snapshot },
+			cause,
+			severity: "ephemeral",
+		});
 		for (const aid of snapshot) {
-			if (registry.has(aid)) dirtyAgents.add(aid);
+			const entry = registry.get(aid);
+			if (!entry) continue;
+			dirtyAgents.add(aid);
+			entry.runtime.reportError("TaskScheduler.query", error, { agentId: aid });
 		}
 		throw error;
 	}
@@ -63,7 +69,28 @@ async function tick(): Promise<void> {
 	const byAgent = new Map<string, Task[]>();
 	for (const task of allTasks) {
 		const aid = task.agentId != null ? String(task.agentId) : "";
-		if (!aid) continue;
+		if (!aid || !snapshot.includes(aid) || !registry.has(aid)) {
+			const error = new ElizaError(
+				"Task scheduler adapter returned an out-of-scope task",
+				{
+					code: "TASK_SCHEDULER_SCOPE_VIOLATION",
+					context: {
+						taskId: task.id,
+						returnedAgentId: aid || null,
+						queriedAgentIds: snapshot,
+					},
+					severity: "fatal",
+				},
+			);
+			for (const queriedAgentId of snapshot) {
+				registry
+					.get(queriedAgentId)
+					?.runtime.reportError("TaskScheduler.scope", error, {
+						agentId: queriedAgentId,
+					});
+			}
+			continue;
+		}
 		const list = byAgent.get(aid) ?? [];
 		list.push(task);
 		byAgent.set(aid, list);
@@ -74,8 +101,10 @@ async function tick(): Promise<void> {
 		if (!entry) continue;
 		try {
 			await entry.taskService.runTick(tasks);
-		} catch (_) {
-			// WHY: one agent's runTick failure must not break other agents' ticks; errors are logged inside runTick/executeTask.
+		} catch (error) {
+			entry.runtime.reportError("TaskScheduler.runTick", error, {
+				agentId: agentIdKey,
+			});
 		}
 		// Non-empty queue: keep the agent dirty so the next tick re-queries. WHY: repeat tasks and
 		// not-yet-due one-shots become due purely by time passing, with no markTaskSchedulerDirty
