@@ -25,6 +25,10 @@
 #                              graph-smoke log directory, default verify/hardware-results
 #   ELIZA_MTP_LLAMA_DIR     default ~/.cache/eliza-mtp/eliza-llama-cpp
 #   ELIZA_MTP_LIBGGML_CUDA  default $ELIZA_MTP_LLAMA_DIR/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
+#   ELIZA_MTP_BIN_DIR       optional exact prebuilt llama binary directory;
+#                           forwarded to runtime_graph_smoke.sh --bin-dir
+#   ELIZA_MTP_GRAPH_REPORT_DIR optional graph log directory; forwarded to
+#                           runtime_graph_smoke.sh --report-dir
 #   ELIZA_MTP_SMOKE_MODEL   required unless CUDA_SKIP_GRAPH_SMOKE=1
 #   ELIZA_MTP_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
 #                              forwarded to runtime_graph_smoke.sh
@@ -187,6 +191,8 @@ if [[ -n "${CUDA_REMOTE:-}" ]]; then
         ELIZA_MTP_HARDWARE_REPORT_DIR='${ELIZA_MTP_HARDWARE_REPORT_DIR:-}' \
         ELIZA_MTP_LLAMA_DIR=$REMOTE_LLAMA_DIR \
         ELIZA_MTP_LIBGGML_CUDA='${ELIZA_MTP_LIBGGML_CUDA:-}' \
+        ELIZA_MTP_BIN_DIR='${ELIZA_MTP_BIN_DIR:-}' \
+        ELIZA_MTP_GRAPH_REPORT_DIR='${ELIZA_MTP_GRAPH_REPORT_DIR:-}' \
         ELIZA_MTP_SMOKE_MODEL='${ELIZA_MTP_SMOKE_MODEL:-}' \
         ELIZA_MTP_SMOKE_CACHE_TYPES='${ELIZA_MTP_SMOKE_CACHE_TYPES:-}' \
         ELIZA_MTP_SMOKE_TOKENS='${ELIZA_MTP_SMOKE_TOKENS:-}' \
@@ -249,7 +255,20 @@ if [[ "${CUDA_SKIP_GRAPH_SMOKE:-0}" == "1" ]]; then
     fail "CUDA_SKIP_GRAPH_SMOKE=1 — fixture parity only; graph dispatch NOT verified, so no hardware pass can be recorded"
 fi
 
+BIN_DIR_ARGS=()
+if [[ -n "${ELIZA_MTP_BIN_DIR:-}" ]]; then
+    [[ -d "$ELIZA_MTP_BIN_DIR" ]] || fail "ELIZA_MTP_BIN_DIR is not a directory: $ELIZA_MTP_BIN_DIR"
+    BIN_DIR_ARGS=(--bin-dir "$ELIZA_MTP_BIN_DIR")
+fi
+REPORT_DIR_ARGS=()
+if [[ -n "${ELIZA_MTP_GRAPH_REPORT_DIR:-}" ]]; then
+    mkdir -p "$ELIZA_MTP_GRAPH_REPORT_DIR"
+    REPORT_DIR_ARGS=(--report-dir "$ELIZA_MTP_GRAPH_REPORT_DIR")
+fi
+
 "$HERE/runtime_graph_smoke.sh" \
     --target "$CUDA_TARGET" \
     --backend-pattern 'CUDA|cuda|cuBLAS|ggml_cuda|NVIDIA' \
+    "${BIN_DIR_ARGS[@]}" \
+    "${REPORT_DIR_ARGS[@]}" \
     --gen-check

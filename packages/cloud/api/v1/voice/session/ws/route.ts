@@ -1,4 +1,8 @@
-// Handles the realtime voice-session WebSocket upgrade (Phase 1, flag-gated).
+/**
+ * Flag-gated realtime voice WebSocket upgrade. Authentication occurs in the
+ * first hello frame because embedded WebViews cannot attach upgrade headers;
+ * provider sockets and metering remain closed until that frame is verified.
+ */
 import { Hono } from "hono";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
 import {
@@ -129,7 +133,26 @@ app.get("/", (c) => {
 
   // The shared handler is synchronous, so normalize Workerd's binary messages
   // at the platform boundary instead of allowing Blob audio into JSON parsing.
-  server.binaryType = "arraybuffer";
+  // A default-`blob` server socket coerces every uplink audio frame into the
+  // string "[object Blob]", which the control parser rejects as
+  // `control_invalid_json` — the session still reaches `ready` but no speech
+  // ever lands. Set binaryType BEFORE accept() so even the first pipelined
+  // frame is typed correctly.
+  try {
+    server.binaryType = "arraybuffer";
+  } catch (error) {
+    // error-policy:J1 a runtime that rejects the binaryType write would serve a
+    // silent no-audio session (worse than an honest failure); the handler has
+    // no sync Blob path, so translate the failure into a fail-closed 503 at
+    // this upgrade boundary. The Workers runtime accepts this write, so this is
+    // a defensive guard, not a hot path.
+    logger.error(
+      "[voice-session-ws] cannot set server binaryType; refusing upgrade",
+      { error: error instanceof Error ? error.message : String(error) },
+    );
+    return c.json({ error: "voice realtime transport unavailable" }, 503);
+  }
+
   server.accept();
 
   const usageLimits = resolveVoiceUsageLimits(env);

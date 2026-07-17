@@ -373,7 +373,8 @@ export function RemotePluginHostSection() {
       if (installed === null) {
         setError(
           t("remotepluginhost.installFailed", {
-            defaultValue: "Install failed — desktop bridge not available.",
+            defaultValue:
+              "Install failed because the desktop bridge is unavailable.",
           }),
         );
         return;
@@ -399,7 +400,7 @@ export function RemotePluginHostSection() {
         setError(
           t("remotepluginhost.folderPickerUnavailable", {
             defaultValue:
-              "Folder picker unavailable — desktop bridge not connected.",
+              "The folder picker is unavailable because the desktop bridge is disconnected.",
           }),
         );
         return;

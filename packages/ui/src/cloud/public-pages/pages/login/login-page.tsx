@@ -86,12 +86,12 @@ export default function LoginPage() {
           <div className="space-y-1.5">
             <h1 className="font-sans text-2xl font-semibold tracking-tight text-txt-strong">
               {t("cloud.login.signIn", {
-                defaultValue: "Sign in or create an account",
+                defaultValue: "Sign in to Eliza Cloud",
               })}
             </h1>
             <p className="text-sm text-muted">
               {t("cloud.login.tagline", {
-                defaultValue: "Run Eliza in Cloud.",
+                defaultValue: "Build and run agents from anywhere.",
               })}
             </p>
           </div>

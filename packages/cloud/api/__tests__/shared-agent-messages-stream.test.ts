@@ -21,6 +21,8 @@
 
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
+import { Hono } from "hono";
+import * as realAgentSandboxes from "@/db/repositories/agent-sandboxes";
 import { InsufficientCreditsError } from "@/lib/api/errors";
 // Keep the real modules so afterAll can restore them — bun's `mock.module` is
 // process-global, so a blanket `mock.restore()` here would strand sibling test
@@ -30,6 +32,15 @@ import * as realResolveSharedAgent from "@/lib/services/shared-runtime/resolve-s
 
 const resolveSharedAgent = mock();
 const bridgeStream = mock();
+const findByIdAndOrg = mock();
+
+mock.module("@/db/repositories/agent-sandboxes", () => ({
+  ...realAgentSandboxes,
+  agentSandboxesRepository: {
+    ...realAgentSandboxes.agentSandboxesRepository,
+    findByIdAndOrg,
+  },
+}));
 
 mock.module("@/lib/services/shared-runtime/resolve-shared-agent", () => ({
   ...realResolveSharedAgent,
@@ -54,6 +65,7 @@ const streamRoute = (
 // Restore the real modules so this file's process-global mocks don't strand later
 // test files that use the full elizaSandboxService / resolveSharedAgent surface.
 afterAll(() => {
+  mock.module("@/db/repositories/agent-sandboxes", () => realAgentSandboxes);
   mock.module("@/lib/services/eliza-sandbox", () => realElizaSandbox);
   mock.module(
     "@/lib/services/shared-runtime/resolve-shared-agent",
@@ -63,6 +75,12 @@ afterAll(() => {
 
 const AGENT = "de42b5ff-72d3-4a1a-8a16-19aee293bfea";
 const ORG = "org-1";
+const VOICE_CONVERSATION = "conv-voice-service";
+const voiceServiceApp = new Hono();
+voiceServiceApp.route(
+  "/api/v1/eliza/agents/:agentId/api/conversations/:conversationId/messages/stream",
+  streamRoute,
+);
 
 // The route is a sub-app whose handlers are registered at "/" (the generated
 // router mounts it at its full path; agentId/conversationId are injected by the
@@ -82,10 +100,28 @@ function postStream(body: unknown, origin?: string) {
   });
 }
 
+function postVoiceServiceStream(body: unknown) {
+  return voiceServiceApp.request(
+    `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer voice-service",
+        "Content-Type": "application/json",
+        "X-Eliza-Organization-Id": ORG,
+        "X-Eliza-User-Id": "user-voice",
+      },
+      body: JSON.stringify(body),
+    },
+    { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
+  );
+}
+
 describe("shared agent messages/stream", () => {
   beforeEach(() => {
     resolveSharedAgent.mockReset();
     bridgeStream.mockReset();
+    findByIdAndOrg.mockReset();
     resolveSharedAgent.mockResolvedValue({
       agent: {},
       agentId: AGENT,
@@ -113,6 +149,57 @@ describe("shared agent messages/stream", () => {
     expect(call[1]).toBe(ORG);
     expect(call[2].method).toBe("message.send");
     expect(call[2].params).toMatchObject({ text: "say hi", roomId: AGENT });
+  });
+
+  test("voice service credential resolves the scoped agent and persists to the requested conversation", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "user-voice",
+      agent_name: "Voice Agent",
+    });
+    bridgeStream.mockResolvedValue(
+      new Response('event: chunk\ndata: {"chunk":"voice ok"}\n\n', {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const res = await postVoiceServiceStream({ text: "voice transcript" });
+
+    expect(res.status).toBe(200);
+    await expect(res.text()).resolves.toContain("voice ok");
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).toHaveBeenCalledWith(AGENT, ORG);
+    const call = bridgeStream.mock.calls[0];
+    expect(call[0]).toBe(AGENT);
+    expect(call[1]).toBe(ORG);
+    expect(call[2]).toMatchObject({
+      jsonrpc: "2.0",
+      method: "message.send",
+      params: {
+        text: "voice transcript",
+        roomId: "conv-voice-service",
+      },
+    });
+  });
+
+  test("voice service credential rejects an agent outside the scoped user or org before persistence", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "different-user",
+      agent_name: "Wrong Agent",
+    });
+
+    const res = await postVoiceServiceStream({ text: "do not persist" });
+
+    expect(res.status).toBe(404);
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toMatchObject({
+      success: false,
+      error: "Agent not found",
+    });
   });
 
   test("forwards a multi-chunk body incrementally — the route never awaits/buffers res.body", async () => {

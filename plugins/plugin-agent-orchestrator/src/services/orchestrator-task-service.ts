@@ -91,6 +91,10 @@ import {
   summarizeResiduals,
 } from "./completion-residuals.js";
 import {
+  getCuratedCodingMemoryService,
+  renderInjectedCodingNotes,
+} from "./curated-coding-memory.js";
+import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
   MAX_AUTO_VERIFY_ATTEMPTS,
@@ -2979,7 +2983,33 @@ export class OrchestratorTaskService extends Service {
           }
         : {}),
     });
+    // Curated memory requires a fresh verified GitHub verdict from this exact
+    // validation pass. Human overrides and non-GitHub tasks may still complete,
+    // but must never reuse a stale verdict left in task metadata.
+    if (next === "done" && groundTruth?.status === "verified") {
+      await this.harvestCuratedCodingMemory(taskId);
+    }
     return this.getTask(taskId);
+  }
+
+  private async harvestCuratedCodingMemory(taskId: string): Promise<void> {
+    const memory = getCuratedCodingMemoryService(this.runtime);
+    if (!memory) return;
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    try {
+      await memory.harvestVerifiedTask(doc);
+    } catch (err) {
+      // error-policy:J7 curated-memory persistence is diagnostic context for
+      // future tasks; a failed write must not roll back a verified completion.
+      this.runtime.reportError?.("OrchestratorTask.curatedCodingMemory", err, {
+        taskId,
+      });
+      this.log("warn", "curated coding memory harvest failed", {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   private async verifyGroundTruthForValidation(
@@ -4285,6 +4315,33 @@ export class OrchestratorTaskService extends Service {
     // (#14119). Null for unbound tasks or projects with no Cloud app.
     const cloudAppId =
       resolveBoundProjectCloudAppId(doc.task.projectId) ?? undefined;
+    let curatedCodingMemory = "";
+    const codingMemoryService = getCuratedCodingMemoryService(this.runtime);
+    if (codingMemoryService && workdir) {
+      try {
+        curatedCodingMemory = renderInjectedCodingNotes(
+          await codingMemoryService.retrieveRelevant({
+            text: `${doc.task.goal}\n${opts.task ?? ""}`,
+            repoKey:
+              opts.repo ??
+              doc.task.boundRepo ??
+              _readGroundTruthVerdict(doc.task.metadata)?.pr.repo ??
+              undefined,
+          }),
+        );
+      } catch (err) {
+        // error-policy:J7 durable notes are advisory context. A missing or
+        // corrupt notes file must never prevent a coding worker from spawning.
+        this.runtime.reportError?.(
+          "OrchestratorTask.curatedMemoryInject",
+          err,
+          {
+            taskId,
+            workdir,
+          },
+        );
+      }
+    }
     const goalPrompt = buildGoalPrompt({
       agentName,
       goal: doc.task.goal,
@@ -4297,6 +4354,7 @@ export class OrchestratorTaskService extends Service {
       // Replay prior failed-verification post-mortems so a re-spawn of this task
       // doesn't repeat them (#8899).
       attemptReflections: readAttemptReflections(doc.task.metadata),
+      ...(curatedCodingMemory ? { curatedCodingMemory } : {}),
       ...(capabilityProfile ? { capabilityProfile } : {}),
       brokerWired,
     });
