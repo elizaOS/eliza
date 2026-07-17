@@ -133,8 +133,7 @@ export class HeadscaleClient {
   /** List all registered nodes. */
   async listNodes(): Promise<HeadscaleNode[]> {
     try {
-      const data = await this.request<{ nodes?: HeadscaleNode[] }>("GET", "/api/v1/node");
-      return data.nodes ?? [];
+      return await this.listNodesStrict();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error("[headscale] error listing nodes:", msg);
@@ -142,9 +141,21 @@ export class HeadscaleClient {
     }
   }
 
+  /** List nodes while propagating API failures to callers that must fail closed. */
+  async listNodesStrict(): Promise<HeadscaleNode[]> {
+    const data = await this.request<{ nodes?: HeadscaleNode[] }>("GET", "/api/v1/node");
+    return data.nodes ?? [];
+  }
+
   /** Find a node by its hostname. */
   async getNodeByName(name: string): Promise<HeadscaleNode | null> {
     const nodes = await this.listNodes();
+    return nodes.find((n) => n.name === name) ?? null;
+  }
+
+  /** Find a node by hostname while propagating listing failures. */
+  async getNodeByNameStrict(name: string): Promise<HeadscaleNode | null> {
+    const nodes = await this.listNodesStrict();
     return nodes.find((n) => n.name === name) ?? null;
   }
 
