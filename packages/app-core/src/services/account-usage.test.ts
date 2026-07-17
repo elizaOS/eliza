@@ -3,8 +3,9 @@
  *
  * Gap (D): `account-usage.ts` shipped with no unit coverage. The probes parse
  * provider responses in two distinct shapes (legacy flat vs. new nested) and
- * funnel them through two internal normalizers — `utilizationToPct` (0..1 ->
- * percent, clamped to 0..100) and `normalizeResetTimestamp` (epoch seconds vs.
+ * funnel them through two internal normalizers — `utilizationToPct` (legacy
+ * flat fractions or current nested percentage points, clamped to 0..100) and
+ * `normalizeResetTimestamp` (epoch seconds vs.
  * milliseconds vs. ISO string). Those normalizers are NOT exported, so we
  * exercise them through the only public surface that touches them:
  * `pollAnthropicUsage` and `pollCodexUsage`. Both probes default their
@@ -13,7 +14,7 @@
  *
  * What these tests would catch as a regression:
  *  - dropping support for either the flat or nested Anthropic shape;
- *  - forgetting to multiply Anthropic utilization by 100 (it ships 0..1);
+ *  - treating current nested `1.0` as a fraction instead of one percent;
  *  - failing to clamp utilization into [0, 100];
  *  - mishandling NaN / non-number / missing utilization;
  *  - treating epoch-seconds reset timestamps as already-milliseconds (or vice
@@ -71,6 +72,7 @@ describe("pollAnthropicUsage", () => {
         five_hour_utilization: 0.42,
         five_hour_resets_at: "2026-06-22T12:00:00.000Z",
         seven_day_utilization: 0.1,
+        seven_day_resets_at: "2026-06-29T12:00:00.000Z",
       }),
     );
 
@@ -79,7 +81,7 @@ describe("pollAnthropicUsage", () => {
     // 0.42 * 100 -> 42
     expect(snap.sessionPct).toBe(42);
     expect(snap.weeklyPct).toBeCloseTo(10, 10);
-    expect(snap.resetsAt).toBe(Date.parse("2026-06-22T12:00:00.000Z"));
+    expect(snap.resetsAt).toBe(Date.parse("2026-06-29T12:00:00.000Z"));
     expect(typeof snap.refreshedAt).toBe("number");
 
     // Probe hit the right endpoint with the OAuth bearer + beta header.
@@ -94,36 +96,211 @@ describe("pollAnthropicUsage", () => {
     expect(headers["anthropic-beta"]).toBe("oauth-2025-04-20");
   });
 
-  it("parses the NESTED response shape (five_hour.utilization / resets_at)", async () => {
+  it("treats nested 1.0 utilization as 1% and uses the weekly reset", async () => {
     stubFetch(
       jsonResponse({
-        five_hour: { utilization: 0.5, resets_at: 1_700_000_000 },
-        seven_day: { utilization: 0.25 },
+        five_hour: { utilization: 1, resets_at: 1_700_000_000 },
+        seven_day: { utilization: 1, resets_at: 1_700_604_800 },
       }),
     );
 
     const snap = await pollAnthropicUsage("nested-token");
 
-    expect(snap.sessionPct).toBe(50);
-    expect(snap.weeklyPct).toBe(25);
+    expect(snap.sessionPct).toBe(1);
+    expect(snap.weeklyPct).toBe(1);
     // resets_at given in epoch SECONDS -> normalized to ms (* 1000).
-    expect(snap.resetsAt).toBe(1_700_000_000 * 1000);
+    expect(snap.resetsAt).toBe(1_700_604_800 * 1000);
+  });
+
+  it("parses the current weekly_scoped limits shape into per-model buckets", async () => {
+    stubFetch(
+      jsonResponse({
+        five_hour: { utilization: 20, resets_at: 1_700_000_000 },
+        seven_day: {
+          utilization: 50,
+          resets_at: "2026-06-28T12:00:00.000Z",
+        },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 64,
+            resets_at: "2026-06-29T12:00:00.000Z",
+            scope: { model: { display_name: "Fable" } },
+          },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 12,
+            resets_at: "2026-06-30T12:00:00.000Z",
+            scope: { model: { display_name: "Sonnet" } },
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("limits-token");
+
+    expect(snap.sessionPct).toBe(20);
+    expect(snap.weeklyPct).toBe(50);
+    expect(snap.resetsAt).toBe(Date.parse("2026-06-28T12:00:00.000Z"));
+    expect(snap.weeklyModelBuckets).toEqual({
+      Fable: { pct: 64, resetsAt: Date.parse("2026-06-29T12:00:00.000Z") },
+      Sonnet: { pct: 12, resetsAt: Date.parse("2026-06-30T12:00:00.000Z") },
+    });
+  });
+
+  it("parses the live 2026-07 payload: percentage-point units, weekly reset, fable bucket", async () => {
+    // Redacted from a real GET api.anthropic.com/api/oauth/usage response
+    // captured 2026-07-17 (account 300cc640…, receipt
+    // PR16398-FIX2-2026-07-16.md). The key unit fact: seven_day.utilization
+    // is 9.0 and the weekly_all limit reports percent: 9 — the same number in
+    // both places — proving the nested windows carry PERCENTAGE POINTS, not
+    // fractions. A fractional reading would have produced 900%.
+    stubFetch(
+      jsonResponse({
+        five_hour: {
+          utilization: 0.0,
+          resets_at: "2026-07-17T05:19:59.895388+00:00",
+          limit_dollars: null,
+          used_dollars: null,
+          remaining_dollars: null,
+        },
+        seven_day: {
+          utilization: 9.0,
+          resets_at: "2026-07-22T22:59:59.895413+00:00",
+          limit_dollars: null,
+          used_dollars: null,
+          remaining_dollars: null,
+        },
+        limits: [
+          {
+            kind: "session",
+            group: "session",
+            percent: 0,
+            severity: "normal",
+            resets_at: "2026-07-17T05:19:59.895388+00:00",
+            scope: null,
+            is_active: false,
+          },
+          {
+            kind: "weekly_all",
+            group: "weekly",
+            percent: 9,
+            severity: "normal",
+            resets_at: "2026-07-22T22:59:59.895413+00:00",
+            scope: null,
+            is_active: false,
+          },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 14,
+            severity: "normal",
+            resets_at: "2026-07-22T22:59:59.895736+00:00",
+            scope: {
+              model: { id: null, display_name: "Fable" },
+              surface: null,
+            },
+            is_active: true,
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("live-token");
+
+    // 9.0 means 9%, NOT 900% (fraction misread) and NOT 0.09% either way.
+    expect(snap.weeklyPct).toBe(9);
+    expect(snap.sessionPct).toBe(0);
+    // resetsAt is the SEVEN-DAY weekly clock, not the five-hour session clock.
+    expect(snap.resetsAt).toBe(Date.parse("2026-07-22T22:59:59.895413+00:00"));
+    expect(snap.resetsAt).not.toBe(
+      Date.parse("2026-07-17T05:19:59.895388+00:00"),
+    );
+    expect(snap.weeklyModelBuckets).toEqual({
+      Fable: {
+        pct: 14,
+        resetsAt: Date.parse("2026-07-22T22:59:59.895736+00:00"),
+      },
+    });
+  });
+
+  it("prefers the limits[].percent source over nested windows when both exist", async () => {
+    // limits[] is the least ambiguous source (the field is literally named
+    // `percent`), so it wins over the nested windows if they ever disagree.
+    stubFetch(
+      jsonResponse({
+        five_hour: { utilization: 33, resets_at: 1_700_000_000 },
+        seven_day: { utilization: 44, resets_at: 1_700_604_800 },
+        limits: [
+          {
+            kind: "session",
+            group: "session",
+            percent: 31,
+            resets_at: 1_700_000_000,
+          },
+          {
+            kind: "weekly_all",
+            group: "weekly",
+            percent: 41,
+            resets_at: 1_700_604_800,
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("limits-priority-token");
+
+    expect(snap.sessionPct).toBe(31);
+    expect(snap.weeklyPct).toBe(41);
+    expect(snap.resetsAt).toBe(1_700_604_800 * 1000);
+  });
+
+  it("null weekly_scoped resets_at (fresh window) omits the bucket reset", async () => {
+    // Live payloads report resets_at: null for a weekly_scoped bucket the
+    // account has not touched in the current window (shadow3 post-reset
+    // capture, 2026-07-17). The bucket keeps its pct but must not fabricate a
+    // reset timestamp.
+    stubFetch(
+      jsonResponse({
+        seven_day: { utilization: 0.0, resets_at: "2026-07-23T19:00:00Z" },
+        limits: [
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 0,
+            resets_at: null,
+            scope: {
+              model: { id: null, display_name: "Fable" },
+              surface: null,
+            },
+            is_active: false,
+          },
+        ],
+      }),
+    );
+
+    const snap = await pollAnthropicUsage("fresh-bucket-token");
+
+    expect(snap.weeklyModelBuckets).toEqual({ Fable: { pct: 0 } });
+    expect(snap.resetsAt).toBe(Date.parse("2026-07-23T19:00:00Z"));
   });
 
   it("prefers the nested utilization over the flat field when both are present", async () => {
     stubFetch(
       jsonResponse({
-        five_hour: { utilization: 0.9 },
+        five_hour: { utilization: 9 },
         five_hour_utilization: 0.1,
-        seven_day: { utilization: 0.8 },
+        seven_day: { utilization: 8 },
         seven_day_utilization: 0.2,
       }),
     );
 
     const snap = await pollAnthropicUsage("both-token");
 
-    expect(snap.sessionPct).toBe(90);
-    expect(snap.weeklyPct).toBe(80);
+    expect(snap.sessionPct).toBe(9);
+    expect(snap.weeklyPct).toBe(8);
   });
 
   it("preserves utilization already expressed as a 0..100 percentage", async () => {
@@ -170,7 +347,7 @@ describe("pollAnthropicUsage", () => {
 
   it("passes through an epoch-MILLISECONDS reset timestamp unchanged", async () => {
     const ms = 1_700_000_000_000; // already > 1e12
-    stubFetch(jsonResponse({ five_hour: { resets_at: ms } }));
+    stubFetch(jsonResponse({ seven_day: { resets_at: ms } }));
 
     const snap = await pollAnthropicUsage("ms-token");
 
@@ -178,7 +355,7 @@ describe("pollAnthropicUsage", () => {
   });
 
   it("returns undefined resetsAt for an unparseable reset string", async () => {
-    stubFetch(jsonResponse({ five_hour: { resets_at: "not-a-date" } }));
+    stubFetch(jsonResponse({ seven_day: { resets_at: "not-a-date" } }));
 
     const snap = await pollAnthropicUsage("baddate-token");
 
