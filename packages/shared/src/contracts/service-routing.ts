@@ -207,7 +207,8 @@ function normalizeServiceRouteAccountStrategy(
     value === "round-robin" ||
     value === "least-used" ||
     value === "quota-aware" ||
-    value === "reset-soonest"
+    value === "reset-soonest" ||
+    value === "drain-soonest-reset"
     ? value
     : undefined;
 }
@@ -295,7 +296,8 @@ function normalizeLinkedAccountHealth(
     value === "rate-limited" ||
     value === "needs-reauth" ||
     value === "invalid" ||
-    value === "unknown"
+    value === "unknown" ||
+    value === "expired"
     ? value
     : undefined;
 }
@@ -347,10 +349,35 @@ function normalizeLinkedAccountUsage(
     typeof usage.resetsAt === "number" && Number.isFinite(usage.resetsAt)
       ? usage.resetsAt
       : undefined;
+  const rawWeeklyModelBuckets = asRecord(usage.weeklyModelBuckets);
+  const weeklyModelBuckets: LinkedAccountUsage["weeklyModelBuckets"] = {};
+  if (rawWeeklyModelBuckets) {
+    for (const [name, rawBucket] of Object.entries(rawWeeklyModelBuckets)) {
+      const key = name.trim();
+      const bucket = asRecord(rawBucket);
+      if (!key || !bucket) continue;
+      const pct =
+        typeof bucket.pct === "number" && Number.isFinite(bucket.pct)
+          ? bucket.pct
+          : undefined;
+      const bucketResetsAt =
+        typeof bucket.resetsAt === "number" && Number.isFinite(bucket.resetsAt)
+          ? bucket.resetsAt
+          : undefined;
+      if (pct === undefined) continue;
+      weeklyModelBuckets[key] = {
+        pct,
+        ...(bucketResetsAt !== undefined ? { resetsAt: bucketResetsAt } : {}),
+      };
+    }
+  }
   return {
     refreshedAt,
     ...(sessionPct !== undefined ? { sessionPct } : {}),
     ...(weeklyPct !== undefined ? { weeklyPct } : {}),
+    ...(Object.keys(weeklyModelBuckets).length > 0
+      ? { weeklyModelBuckets }
+      : {}),
     ...(resetsAt !== undefined ? { resetsAt } : {}),
   };
 }
@@ -376,6 +403,11 @@ export function normalizeLinkedAccountRecord(
     typeof record.priority === "number" && Number.isFinite(record.priority)
       ? record.priority
       : null;
+  const prioritySource =
+    record.prioritySource === "explicit" ||
+    record.prioritySource === "generated"
+      ? record.prioritySource
+      : undefined;
   const health = normalizeLinkedAccountHealth(record.health);
 
   if (
@@ -395,8 +427,18 @@ export function normalizeLinkedAccountRecord(
     typeof record.lastUsedAt === "number" && Number.isFinite(record.lastUsedAt)
       ? record.lastUsedAt
       : undefined;
+  const lastPrimedAt =
+    typeof record.lastPrimedAt === "number" &&
+    Number.isFinite(record.lastPrimedAt)
+      ? record.lastPrimedAt
+      : undefined;
   const healthDetail = normalizeLinkedAccountHealthDetail(record.healthDetail);
   const usage = normalizeLinkedAccountUsage(record.usage);
+  const subscriptionEndsAt =
+    typeof record.subscriptionEndsAt === "number" &&
+    Number.isFinite(record.subscriptionEndsAt)
+      ? record.subscriptionEndsAt
+      : undefined;
   const organizationId = readTrimmedString(record, "organizationId");
   const userId = readTrimmedString(record, "userId");
   const email = readTrimmedString(record, "email");
@@ -408,11 +450,14 @@ export function normalizeLinkedAccountRecord(
     source,
     enabled,
     priority,
+    ...(prioritySource ? { prioritySource } : {}),
     createdAt,
     health,
     ...(lastUsedAt !== undefined ? { lastUsedAt } : {}),
+    ...(lastPrimedAt !== undefined ? { lastPrimedAt } : {}),
     ...(healthDetail ? { healthDetail } : {}),
     ...(usage ? { usage } : {}),
+    ...(subscriptionEndsAt !== undefined ? { subscriptionEndsAt } : {}),
     ...(organizationId ? { organizationId } : {}),
     ...(userId ? { userId } : {}),
     ...(email ? { email } : {}),

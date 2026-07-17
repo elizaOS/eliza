@@ -478,6 +478,19 @@ jobs:
           # FAL_KEY ?? FAL_API_KEY, and prod carries it as FAL_API_KEY (#13406).
           FAL_API_KEY: ${{ secrets.FAL_API_KEY }}
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          # Self-hosted Whisper STT base URL (OpenAI-compatible
+          # /v1/audio/transcriptions). When set, /api/v1/voice/stt uses free
+          # Whisper instead of billed ElevenLabs Scribe. Sourced from the same
+          # repo VARIABLE the voice-live-e2e workflow reads, so CI and the
+          # deployed Worker always point at the same Whisper host. Without
+          # this the Worker falls through to ElevenLabs, whose free-tier quota
+          # block surfaces as a persistent 503 on STT (and 502 through the
+          # agent's /api/asr/cloud proxy). Published via publish_toggle_secret:
+          # unset DELETES the Worker secret (presence toggles the route).
+          WHISPER_STT_URL: ${{ vars.ELIZA_VOICE_WHISPER_STT_URL }}
+          # Optional model pin for the hosted Whisper service (defaults to
+          # Systran/faster-whisper-small in code — #14511).
+          WHISPER_STT_MODEL: ${{ vars.ELIZA_VOICE_WHISPER_STT_MODEL }}
           # Ed25519 keypair for the signed voice-model catalog —
           # /v1/voice-models/catalog 503s while the signing key is unset
           # (#13406). publish_secret no-ops with a notice while these are
@@ -523,6 +536,42 @@ jobs:
             return 1
           }
 
+          # Like publish_secret, but for values that act as ROUTING TOGGLES
+          # (code branches on presence, e.g. `env.WHISPER_STT_URL`). An unset
+          # source must DELETE any previously published secret. A plain
+          # skip would leave a stale toggle active on the Worker forever
+          # (e.g. STT pinned to a dead Whisper host during an outage).
+          publish_toggle_secret() {
+            local name="$1"
+            local value="${!name:-}"
+            if [ -n "$value" ]; then
+              publish_secret "$name"
+              return $?
+            fi
+            # Unset: delete so the Worker falls back to its default path.
+            # Wrangler auto-confirms the prompt in non-interactive CI.
+            # "Binding not found" is success (nothing was published). Any
+            # other failure must FAIL after retries: deploying with a stale
+            # routing toggle is exactly the outage this function prevents.
+            local out
+            for attempt in 1 2 3; do
+              if out=$(bunx wrangler secret delete "$name" ${{ steps.env.outputs.wrangler_args }} 2>&1); then
+                echo "::notice::$name is not configured; deleted any previously published value"
+                return 0
+              fi
+              if printf '%s' "$out" | grep -qi "not found"; then
+                echo "::notice::$name is not configured and not present on the Worker; nothing to do"
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::wrangler secret delete $name failed on attempt $attempt; retrying in 10s"
+                sleep 10
+              fi
+            done
+            echo "::error::$name is unset but deleting the stale Worker secret failed after 3 attempts: $out"
+            return 1
+          }
+
           for name in \
             OPENROUTER_API_KEY \
             OPENAI_API_KEY \
@@ -540,6 +589,16 @@ jobs:
             STEWARD_PLATFORM_KEYS
           do
             publish_secret "$name"
+          done
+
+          # Routing toggles: presence changes code paths, so unset must delete.
+          # A failed put must fail the step (never deploy with a half-applied
+          # toggle), matching the publish_secret loop's set -e behavior.
+          for name in \
+            WHISPER_STT_URL \
+            WHISPER_STT_MODEL
+          do
+            publish_toggle_secret "$name" || exit 1
           done
 
       # Freshness guard (#14083): skip a stale Worker deploy about to roll the

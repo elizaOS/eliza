@@ -41,8 +41,9 @@ export const availableToolsProvider: Provider = {
     const lines = [
       "# Native coding tools",
       "",
-      "FILE reads/writes/searches, SHELL runs commands, WEB_FETCH reads public HTTPS pages, WEB_SEARCH researches the web, and WORKTREE manages git worktrees.",
+      "FILE reads/writes/searches, SHELL runs commands plus background sessions, WEB_FETCH reads public HTTPS pages, WEB_SEARCH researches the web, and WORKTREE manages git worktrees.",
       "Use absolute workspace paths unless a tool says it defaults to session cwd. Configured private/system paths are blocked.",
+      "SHELL background subactions: start_background returns a stable handle; poll_background reads incremental stdout/stderr with offsets and truncation markers; write_background sends stdin; kill_background terminates; list_background shows sessions.",
       "",
       ...TOOL_NAMES.map((n) => `- ${n}`),
     ];

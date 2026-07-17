@@ -21,8 +21,8 @@
  * below). It's a separate slot from the per-capability
  * `serviceRouting[capability].strategy` so the UI can express
  * "always prefer my Pro Anthropic account before falling back to my
- * Max one" without having to know which capability each provider
- * powers.
+ * Max one" without having to know which capability each provider powers.
+ * Per-strategy knobs live beside it in `accountStrategySettings`.
  */
 
 import { execFile } from "node:child_process";
@@ -144,6 +144,7 @@ interface PoolFacade {
     accessToken: string,
     opts?: { codexAccountId?: string; providerId?: string },
   ): Promise<void>;
+  sweepExpired?(providerId?: string): Promise<number>;
   /**
    * Non-mutating "which account is next + why" dry-run for the accounts API.
    * Older host bridges may not implement it; callers must null-guard.
@@ -347,14 +348,27 @@ const accountPatchSchema = z
     label: z.string().trim().min(1).max(120).optional(),
     enabled: z.boolean().optional(),
     priority: z.number().int().min(0).max(10_000).optional(),
+    subscriptionEndsAt: z
+      .union([z.number().finite().int(), z.null()])
+      .optional()
+      .superRefine((value, ctx) => {
+        if (typeof value === "number" && value <= Date.now()) {
+          ctx.addIssue({
+            code: zod.ZodIssueCode.custom,
+            message: "subscriptionEndsAt must be a future epoch-ms timestamp",
+          });
+        }
+      }),
   })
   .refine(
     (v) =>
       v.label !== undefined ||
       v.enabled !== undefined ||
-      v.priority !== undefined,
+      v.priority !== undefined ||
+      v.subscriptionEndsAt !== undefined,
     {
-      message: "PATCH body must set at least one of: label, enabled, priority",
+      message:
+        "PATCH body must set at least one of: label, enabled, priority, subscriptionEndsAt",
     },
   );
 
@@ -364,6 +378,7 @@ const STRATEGY_VALUES = [
   "least-used",
   "quota-aware",
   "reset-soonest",
+  "drain-soonest-reset",
 ] as const satisfies readonly ServiceRouteAccountStrategy[];
 
 const strategyPatchSchema = z.object({
@@ -393,7 +408,12 @@ function readAccountStrategy(
 ): ServiceRouteAccountStrategy {
   const strategies = (config as ElizaConfig & AccountStrategiesShape)
     .accountStrategies;
-  return strategies?.[providerId] ?? "priority";
+  return (
+    strategies?.[providerId] ??
+    (providerId === "anthropic-subscription"
+      ? "drain-soonest-reset"
+      : "priority")
+  );
 }
 
 function writeAccountStrategy(
@@ -424,6 +444,7 @@ function buildLinkedAccountConfigFromRecord(
     source: record.source,
     enabled: true,
     priority,
+    prioritySource: "generated",
     createdAt: record.createdAt,
     health: "ok",
     ...(record.lastUsedAt !== undefined
@@ -753,6 +774,7 @@ async function handleListAllAccounts(
 ): Promise<boolean> {
   const { res, json } = ctx;
   const pool = await getPool();
+  await pool.sweepExpired?.();
   const broker = brokerSnapshot();
   const providers = SUPPORTED_PROVIDER_IDS.map((providerId) => {
     const linkedConfigs = pool
@@ -929,6 +951,7 @@ async function handleCreateApiKeyAccount(
         ...buildLinkedAccountConfigFromRecord(record, priority),
         enabled: stableReplacementTarget.enabled,
         priority,
+        prioritySource: stableReplacementTarget.prioritySource,
         createdAt: stableReplacementTarget.createdAt,
         health: "ok" as const,
       }
@@ -1060,6 +1083,7 @@ async function handleOAuthRoutes(
           ...canonical,
           enabled: liveTarget.enabled,
           priority: liveTarget.priority,
+          prioritySource: liveTarget.prioritySource,
           createdAt: liveTarget.createdAt,
           health: "ok",
         });
@@ -1237,6 +1261,7 @@ async function handlePatchAccount(
     label?: unknown;
     enabled?: unknown;
     priority?: unknown;
+    subscriptionEndsAt?: unknown;
   }>(req, res);
   if (!body) return true;
   const parsed = accountPatchSchema.safeParse(body);
@@ -1257,7 +1282,22 @@ async function handlePatchAccount(
       ? { enabled: parsed.data.enabled }
       : {}),
     ...(parsed.data.priority !== undefined
-      ? { priority: parsed.data.priority }
+      ? { priority: parsed.data.priority, prioritySource: "explicit" as const }
+      : {}),
+    ...(parsed.data.subscriptionEndsAt !== undefined
+      ? parsed.data.subscriptionEndsAt === null
+        ? {
+            subscriptionEndsAt: undefined,
+            ...(existing.health === "expired"
+              ? { health: "ok" as const, healthDetail: undefined }
+              : {}),
+          }
+        : {
+            subscriptionEndsAt: parsed.data.subscriptionEndsAt,
+            ...(existing.health === "expired"
+              ? { health: "ok" as const, healthDetail: undefined }
+              : {}),
+          }
       : {}),
   };
   await pool.upsert(next);

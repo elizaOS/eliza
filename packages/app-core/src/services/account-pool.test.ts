@@ -9,8 +9,12 @@
  */
 import { logger } from "@elizaos/core";
 import type { LinkedAccountConfig } from "@elizaos/shared";
-import { describe, expect, it, vi } from "vitest";
-import { AccountPool } from "./account-pool";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  AccountPool,
+  configureDefaultAccountPoolSelection,
+  selectionForProvider,
+} from "./account-pool";
 
 function account(
   providerId: LinkedAccountConfig["providerId"],
@@ -29,6 +33,11 @@ function account(
   };
 }
 
+afterEach(() => {
+  vi.useRealTimers();
+  configureDefaultAccountPoolSelection();
+});
+
 describe("AccountPool provider-scoped account resolution", () => {
   it("delegates metadata deletion with the provider-qualified account id", async () => {
     const deleteAccount = vi.fn(async () => {});
@@ -42,6 +51,33 @@ describe("AccountPool provider-scoped account resolution", () => {
 
     expect(deleteAccount).toHaveBeenCalledOnce();
     expect(deleteAccount).toHaveBeenCalledWith("openai-codex", "shared-id");
+  });
+
+  it("preserves explicit priority provenance and defaults new accounts to generated", async () => {
+    const writes: LinkedAccountConfig[] = [];
+    const existing = account("anthropic-subscription", {
+      id: "existing",
+      priority: 7,
+      prioritySource: "explicit",
+    });
+    const pool = new AccountPool({
+      readAccounts: () => ({ "anthropic-subscription:existing": existing }),
+      writeAccount: async (next) => {
+        writes.push(next);
+      },
+    });
+
+    await pool.upsert({
+      ...existing,
+      label: "Relinked",
+      prioritySource: undefined,
+    });
+    await pool.upsert(
+      account("anthropic-subscription", { id: "new", priority: 8 }),
+    );
+
+    expect(writes[0]?.prioritySource).toBe("explicit");
+    expect(writes[1]?.prioritySource).toBe("generated");
   });
 
   it("gets the matching provider account when ids collide", () => {
@@ -190,7 +226,7 @@ describe("AccountPool provider-scoped account resolution", () => {
             String(url).includes("/profile")
               ? profileResponse()
               : new Response(
-                  JSON.stringify({ five_hour: { utilization: 0.5 } }),
+                  JSON.stringify({ five_hour: { utilization: 50 } }),
                   { status: 200 },
                 )) as unknown as typeof fetch,
         });
@@ -688,5 +724,431 @@ describe("AccountPool reset-soonest selection", () => {
         "reset-soonest",
       ),
     ).toEqual({ activeAccountId: "solo", reason: "only-eligible" });
+  });
+});
+
+// ── drain-soonest-reset strategy ─────────────────────────────────────
+// Drain-soonest-reset honors only explicitly hand-set priority before weekly
+// drain ordering. Generated creation-order priority is display metadata, not a
+// hard override. Within the non-explicit pool it spends the relevant weekly
+// model bucket whose reset arrives first, then the lower utilization bucket,
+// with subscription end only as a final-days booster/tiebreak.
+describe("AccountPool drain-soonest-reset selection", () => {
+  const fixedNow = 1_800_000_000_000;
+  const hour = 60 * 60 * 1000;
+  const poolOf = (
+    accounts: Record<string, LinkedAccountConfig>,
+    writes: LinkedAccountConfig[] = [],
+  ) =>
+    new AccountPool({
+      readAccounts: () => accounts,
+      writeAccount: async (next) => {
+        writes.push(next);
+        accounts[`${next.providerId}:${next.id}`] = next;
+      },
+    });
+
+  it("prefers soonest weekly reset over generated priority", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:generated-top": account(
+        "anthropic-subscription",
+        {
+          id: "generated-top",
+          priority: 0,
+          prioritySource: "generated",
+          usage: {
+            weeklyPct: 10,
+            resetsAt: fixedNow + 30 * hour,
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+      "anthropic-subscription:soon-reset": account("anthropic-subscription", {
+        id: "soon-reset",
+        priority: 10,
+        prioritySource: "generated",
+        usage: {
+          weeklyPct: 80,
+          resetsAt: fixedNow + 2 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "soon-reset" });
+  });
+
+  it("uses weekly headroom when resets tie", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:busy": account("anthropic-subscription", {
+        id: "busy",
+        usage: {
+          weeklyPct: 70,
+          resetsAt: fixedNow + 5 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:open": account("anthropic-subscription", {
+        id: "open",
+        usage: {
+          weeklyPct: 20,
+          resetsAt: fixedNow + 5 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "open" });
+  });
+
+  it("skips a session-exhausted account without changing weekly ordering", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:exhausted": account("anthropic-subscription", {
+        id: "exhausted",
+        usage: {
+          sessionPct: 100,
+          weeklyPct: 10,
+          resetsAt: fixedNow + hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:ready": account("anthropic-subscription", {
+        id: "ready",
+        usage: {
+          sessionPct: 20,
+          weeklyPct: 60,
+          resetsAt: fixedNow + 10 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "ready" });
+  });
+
+  it("uses the requested model bucket and falls back to blended weeklyPct when unavailable", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:fable-soon": account("anthropic-subscription", {
+        id: "fable-soon",
+        usage: {
+          weeklyPct: 90,
+          resetsAt: fixedNow + 30 * hour,
+          weeklyModelBuckets: {
+            Fable: { pct: 90, resetsAt: fixedNow + hour },
+          },
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:blended-soon": account("anthropic-subscription", {
+        id: "blended-soon",
+        usage: {
+          weeklyPct: 10,
+          resetsAt: fixedNow + 2 * hour,
+          weeklyModelBuckets: {
+            Sonnet: { pct: 5, resetsAt: fixedNow + 10 * hour },
+          },
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+        model: "claude-fable-5",
+      }),
+    ).resolves.toMatchObject({ id: "fable-soon" });
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+        model: "opus",
+      }),
+    ).resolves.toMatchObject({ id: "blended-soon" });
+  });
+
+  it("preserves a weekly-scoped Fable reset for drain ordering", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:fable-window": account("anthropic-subscription", {
+        id: "fable-window",
+        usage: {
+          sessionPct: 1,
+          weeklyPct: 5,
+          resetsAt: fixedNow + 20 * hour,
+          weeklyModelBuckets: {
+            Fable: { pct: 12, resetsAt: fixedNow + hour },
+          },
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:blended-window": account(
+        "anthropic-subscription",
+        {
+          id: "blended-window",
+          usage: {
+            sessionPct: 1,
+            weeklyPct: 1,
+            resetsAt: fixedNow + 2 * hour,
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+        model: "claude-fable-5",
+      }),
+    ).resolves.toMatchObject({ id: "fable-window" });
+  });
+
+  it("sorts a missing weekly reset after a known reset as a fail-safe", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:missing-reset": account(
+        "anthropic-subscription",
+        {
+          id: "missing-reset",
+          usage: {
+            sessionPct: 1,
+            weeklyPct: 0,
+            refreshedAt: fixedNow,
+          },
+        },
+      ),
+      "anthropic-subscription:known-reset": account("anthropic-subscription", {
+        id: "known-reset",
+        usage: {
+          sessionPct: 1,
+          weeklyPct: 99,
+          resetsAt: fixedNow + 10 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "known-reset" });
+  });
+
+  it("Codex 429 cooldown adopts the provider-authoritative 5h reset (no 60s ping-pong)", async () => {
+    // usage.resetsAt for openai-codex is the PRIMARY FIVE-HOUR window reset
+    // (see LinkedAccountUsage contract) — exactly the 429 cooldown clock. A
+    // caller passing no/short heuristic must not re-admit the account every
+    // 60s into a still-limited ~5h window (the documented ping-pong).
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const codexReset = fixedNow + 3 * hour;
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "openai-codex:cdx": account("openai-codex", {
+        id: "cdx",
+        usage: {
+          sessionPct: 100,
+          resetsAt: codexReset,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+    const pool = poolOf(accounts, writes);
+
+    // Caller has only the 60s probe default (passes a non-finite/elapsed until).
+    await pool.markRateLimited("cdx", Number.NaN, "HTTP 429", {
+      providerId: "openai-codex",
+    });
+
+    expect(writes[0]?.health).toBe("rate-limited");
+    expect(writes[0]?.healthDetail?.until).toBe(codexReset);
+  });
+
+  it("Anthropic 429 cooldown ignores the weekly resetsAt (would strand for days)", async () => {
+    // usage.resetsAt for anthropic-subscription is the SEVEN-DAY weekly reset
+    // used by drain ordering. Adopting it as a 429 cooldown would bench a
+    // session-limited account for up to a week; the caller heuristic must win.
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const weeklyReset = fixedNow + 6 * 24 * hour;
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "anthropic-subscription:ant": account("anthropic-subscription", {
+        id: "ant",
+        usage: {
+          weeklyPct: 40,
+          resetsAt: weeklyReset,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+    const pool = poolOf(accounts, writes);
+
+    // No usable caller until → falls back to the 60s heuristic, NOT the
+    // weekly clock.
+    await pool.markRateLimited("ant", Number.NaN, "HTTP 429", {
+      providerId: "anthropic-subscription",
+    });
+    expect(writes[0]?.healthDetail?.until).toBe(fixedNow + 60_000);
+    expect(writes[0]?.healthDetail?.until).not.toBe(weeklyReset);
+
+    // An explicit caller until (e.g. provider retry-after) is respected.
+    await pool.markRateLimited("ant", fixedNow + 15 * 60 * 1000, "HTTP 429", {
+      providerId: "anthropic-subscription",
+    });
+    expect(writes[1]?.healthDetail?.until).toBe(fixedNow + 15 * 60 * 1000);
+  });
+
+  it("keeps 429 cooldown separate from weekly ranking after readmission", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const writes: LinkedAccountConfig[] = [];
+    const accounts = {
+      "anthropic-subscription:cooling": account("anthropic-subscription", {
+        id: "cooling",
+        usage: {
+          weeklyPct: 90,
+          resetsAt: fixedNow + hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:later": account("anthropic-subscription", {
+        id: "later",
+        usage: {
+          weeklyPct: 5,
+          resetsAt: fixedNow + 10 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+    const pool = poolOf(accounts, writes);
+    await pool.markRateLimited("cooling", fixedNow + 30 * 60 * 1000, "429", {
+      providerId: "anthropic-subscription",
+    });
+    expect(writes[0]?.healthDetail?.until).toBe(fixedNow + 30 * 60 * 1000);
+
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "later" });
+    vi.setSystemTime(fixedNow + 31 * 60 * 1000);
+    await expect(
+      pool.select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "cooling" });
+  });
+
+  it("uses subscription end as a final-days tiebreaker after reset and utilization", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:renewing": account("anthropic-subscription", {
+        id: "renewing",
+        createdAt: 1,
+        usage: {
+          weeklyPct: 30,
+          resetsAt: fixedNow + 4 * hour,
+          refreshedAt: fixedNow,
+        },
+        subscriptionEndsAt: fixedNow + 20 * 24 * hour,
+      }),
+      "anthropic-subscription:ending": account("anthropic-subscription", {
+        id: "ending",
+        createdAt: 2,
+        usage: {
+          weeklyPct: 30,
+          resetsAt: fixedNow + 4 * hour,
+          refreshedAt: fixedNow,
+        },
+        subscriptionEndsAt: fixedNow + 2 * hour,
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "ending" });
+  });
+
+  it("honors an explicitly hand-set priority as a hard override", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(fixedNow);
+    const accounts = {
+      "anthropic-subscription:manual": account("anthropic-subscription", {
+        id: "manual",
+        priority: 0,
+        prioritySource: "explicit",
+        usage: {
+          weeklyPct: 99,
+          resetsAt: fixedNow + 50 * hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+      "anthropic-subscription:soon": account("anthropic-subscription", {
+        id: "soon",
+        priority: 10,
+        prioritySource: "generated",
+        usage: {
+          weeklyPct: 5,
+          resetsAt: fixedNow + hour,
+          refreshedAt: fixedNow,
+        },
+      }),
+    };
+
+    await expect(
+      poolOf(accounts).select({
+        providerId: "anthropic-subscription",
+        strategy: "drain-soonest-reset",
+      }),
+    ).resolves.toMatchObject({ id: "manual" });
+  });
+
+  it("defaults Anthropic subscription to drain-soonest-reset when unconfigured", () => {
+    expect(selectionForProvider("anthropic-subscription").strategy).toBe(
+      "drain-soonest-reset",
+    );
+    configureDefaultAccountPoolSelection({
+      accountStrategies: { "anthropic-subscription": "priority" },
+    });
+    expect(selectionForProvider("anthropic-subscription").strategy).toBe(
+      "priority",
+    );
   });
 });
