@@ -73,6 +73,10 @@ export type WalletWhaleSummary = {
   reasons: string[];
 
   limitations: string[];
+
+  investorExplanation?: InvestorExplanation;
+
+  investorInsights?: InvestorEvidenceCollection;
 };
 
 export type WalletEvidenceItem = {
