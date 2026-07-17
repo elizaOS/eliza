@@ -618,7 +618,7 @@ describe("Anthropic subscription usage priming", () => {
       JSON.stringify({
         five_hour_utilization: 0.1,
         seven_day_utilization: 0.2,
-        ...(resetsAt !== undefined ? { five_hour_resets_at: resetsAt } : {}),
+        ...(resetsAt !== undefined ? { seven_day_resets_at: resetsAt } : {}),
       }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     );
