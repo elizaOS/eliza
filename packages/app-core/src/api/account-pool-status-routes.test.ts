@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import type http from "node:http";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { getPublicAccountPoolStatus } = vi.hoisted(() => ({
   getPublicAccountPoolStatus: vi.fn(),
@@ -29,9 +29,38 @@ function response(): http.ServerResponse & {
   return res;
 }
 
-beforeEach(() => vi.clearAllMocks());
+const previousPublicStatus =
+  process.env.ELIZA_ACCOUNT_POOL_PUBLIC_STATUS_ENABLED;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  process.env.ELIZA_ACCOUNT_POOL_PUBLIC_STATUS_ENABLED = "1";
+});
+
+afterEach(() => {
+  if (previousPublicStatus === undefined) {
+    delete process.env.ELIZA_ACCOUNT_POOL_PUBLIC_STATUS_ENABLED;
+  } else {
+    process.env.ELIZA_ACCOUNT_POOL_PUBLIC_STATUS_ENABLED = previousPublicStatus;
+  }
+});
 
 describe("GET /api/pool/status", () => {
+  it("returns 404 unless public status is explicitly enabled", async () => {
+    delete process.env.ELIZA_ACCOUNT_POOL_PUBLIC_STATUS_ENABLED;
+    const res = response();
+    await expect(
+      handleAccountPoolStatusRoute(
+        {} as http.IncomingMessage,
+        res,
+        "GET",
+        "/api/pool/status",
+      ),
+    ).resolves.toBe(true);
+    expect(res.statusCode).toBe(404);
+    expect(getPublicAccountPoolStatus).not.toHaveBeenCalled();
+  });
+
   it("serves the public-safe service result", async () => {
     getPublicAccountPoolStatus.mockResolvedValue({ pool: { accounts: 2 } });
     const res = response();
