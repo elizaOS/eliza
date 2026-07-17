@@ -21,12 +21,12 @@ import type {
   AccountsListProvider,
   AccountWithCredentialFlag,
 } from "../../api/client-agent";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { cn } from "../../lib/utils";
 import {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useAppSelector } from "../../state";
 import { Button } from "../ui/button";
 import { AccountCard } from "./AccountCard";
@@ -401,9 +401,7 @@ export function ProviderAccountRow({
               accounts={sorted}
               activeAccountId={selection.accountId}
               saving={saving}
-              onPatch={(accountId, body) =>
-                onPatch(option.id, accountId, body)
-              }
+              onPatch={(accountId, body) => onPatch(option.id, accountId, body)}
               onReauthenticate={
                 onReauthenticate
                   ? (account) => onReauthenticate(option.id, account)
@@ -439,16 +437,12 @@ export function ProviderAccountRow({
                     testBusy={saving.has(`test:${account.id}`)}
                     refreshBusy={saving.has(`usage:${account.id}`)}
                     onPatch={(body) => onPatch(option.id, account.id, body)}
-                    onMoveUp={() =>
-                      onMove(option.id, sorted, account.id, "up")
-                    }
+                    onMoveUp={() => onMove(option.id, sorted, account.id, "up")}
                     onMoveDown={() =>
                       onMove(option.id, sorted, account.id, "down")
                     }
                     onTest={() => onTest(option.id, account.id)}
-                    onRefreshUsage={() =>
-                      onRefreshUsage(option.id, account.id)
-                    }
+                    onRefreshUsage={() => onRefreshUsage(option.id, account.id)}
                     onDelete={() => onDelete(option.id, account.id)}
                     onReauthenticate={
                       onReauthenticate

@@ -241,6 +241,7 @@ export function AccountCommandTable({
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [editingLabelId, setEditingLabelId] = useState<string | null>(null);
   const [labelDraft, setLabelDraft] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const showLeaseColumn = useMemo(
     () => hasLeaseObservability(accounts),
@@ -290,6 +291,15 @@ export function AccountCommandTable({
     void deleteModal.submit(() => Promise.resolve(onDelete(id)));
   }, [deleteModal, onDelete, pendingDeleteId]);
 
+  const runAction = useCallback((action: () => Promise<void>) => {
+    setActionError(null);
+    void action().catch((error: unknown) => {
+      setActionError(
+        error instanceof Error ? error.message : "Account action failed",
+      );
+    });
+  }, []);
+
   const beginLabelEdit = useCallback((account: AccountWithCredentialFlag) => {
     setEditingLabelId(account.id);
     setLabelDraft(account.label);
@@ -315,6 +325,14 @@ export function AccountCommandTable({
       className="overflow-x-auto rounded-sm border border-border/40"
       data-testid="account-command-table"
     >
+      {actionError ? (
+        <div
+          className="border-b border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          role="alert"
+        >
+          {actionError}
+        </div>
+      ) : null}
       <table className="w-full min-w-[720px] border-collapse text-left">
         <thead>
           <tr className="border-b border-border/40 bg-bg-accent/40">
@@ -645,11 +663,9 @@ export function AccountCommandTable({
                               rowSaving || priorityOrder[0]?.id === account.id
                             }
                             onClick={() =>
-                              void onMove(
-                                priorityOrder,
-                                account.id,
-                                "up",
-                              ).catch(() => {})
+                              runAction(() =>
+                                onMove(priorityOrder, account.id, "up"),
+                              )
                             }
                             aria-label={t("accounts.table.moveUp", {
                               defaultValue: `Raise priority of ${account.label}`,
@@ -672,11 +688,9 @@ export function AccountCommandTable({
                                 account.id
                             }
                             onClick={() =>
-                              void onMove(
-                                priorityOrder,
-                                account.id,
-                                "down",
-                              ).catch(() => {})
+                              runAction(() =>
+                                onMove(priorityOrder, account.id, "down"),
+                              )
                             }
                             aria-label={t("accounts.table.moveDown", {
                               defaultValue: `Lower priority of ${account.label}`,
@@ -699,9 +713,7 @@ export function AccountCommandTable({
                           disabled={
                             rowSaving || saving.has(`test:${account.id}`)
                           }
-                          onClick={() =>
-                            void onTest(account.id).catch(() => {})
-                          }
+                          onClick={() => runAction(() => onTest(account.id))}
                           className="h-7 px-2 text-[11px]"
                         >
                           {saving.has(`test:${account.id}`) ? (
@@ -720,7 +732,7 @@ export function AccountCommandTable({
                             rowSaving || saving.has(`usage:${account.id}`)
                           }
                           onClick={() =>
-                            void onRefreshUsage(account.id).catch(() => {})
+                            runAction(() => onRefreshUsage(account.id))
                           }
                           aria-label={t("accounts.table.refresh", {
                             defaultValue: `Refresh usage for ${account.label}`,

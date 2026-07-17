@@ -271,6 +271,17 @@ describe("AccountCommandTable", () => {
     ).toBe(true);
   });
 
+  it("surfaces rejected table actions instead of swallowing them", async () => {
+    renderTable([account({ id: "fails" })], {
+      onTest: vi.fn().mockRejectedValue(new Error("Probe unavailable")),
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Test" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Probe unavailable",
+    );
+  });
+
   it("hides test/refresh/reorder when their handlers are not supplied", () => {
     renderTable([account({ id: "a", health: "ok" })]);
     const row = screen.getByTestId("account-row-a");
