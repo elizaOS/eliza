@@ -96,6 +96,12 @@ import {
 import { buildSkillsManifest } from "./skill-manifest.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
+  canonicalForwardedEnvKey,
+  forwardableSubAgentEnv as applySubAgentEnvPolicy,
+  isCloudKeyForwardingOptIn,
+  isDeniedSubAgentEnvKey,
+} from "./sub-agent-env-policy.js";
+import {
   appendSubagentStdout,
   isSubagentStdoutLoggingEnabled,
   subagentStdoutLogPath,
@@ -127,6 +133,28 @@ import {
   resolveDiskBudgetConfig,
   type WorkspaceRegistry,
 } from "./workspace-registry.js";
+
+export {
+  canonicalForwardedEnvKey,
+  isDeniedSubAgentEnvKey,
+  isEnvForwardableToSubAgent,
+  shouldForwardEnv,
+} from "./sub-agent-env-policy.js";
+
+/** Resolve the config-backed cloud-key forwarding opt-in for each child spawn. */
+export function isCloudKeyForwardingEnabled(): boolean {
+  return isCloudKeyForwardingOptIn(
+    readConfigEnvKey("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS"),
+  );
+}
+
+/** Preserve the public config-backed helper while delegating policy to a pure module. */
+export function forwardableSubAgentEnv(
+  source: Record<string, string | undefined>,
+  forwardCloudKey = isCloudKeyForwardingEnabled(),
+): Record<string, string> {
+  return applySubAgentEnvPolicy(source, forwardCloudKey);
+}
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -713,38 +741,6 @@ function sessionTransportMode(
   if (mode === "native" || mode === "cli") return mode;
   return serviceTransportMode;
 }
-const DENY_ENV_PATTERNS = [
-  /DISCORD.*TOKEN/i,
-  /TELEGRAM.*TOKEN/i,
-  /SLACK.*TOKEN/i,
-  /BOT.*TOKEN/i,
-  /ELIZA_VAULT_PASSPHRASE/i,
-  // Host-API shell-exec / stdio-MCP auth secret — consumed only by
-  // packages/agent/src/api/*, never by a coding sub-agent. Forwarding it would
-  // hand a child process a credential that re-authorizes arbitrary host command
-  // execution with zero legitimate use for it.
-  /TERMINAL_RUN_TOKEN/i,
-  // Repo-scoped GitHub host credentials must not be injected into sub-agents,
-  // including through customCredentials. Registry push uses the dedicated
-  // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
-  /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT)$/i,
-  // OpenCode's spawn config is runtime-built (buildOpencodeAcpEnv overwrites it
-  // AFTER this filter runs). A caller- or host-supplied value would let the
-  // spawner inject arbitrary provider config into the child, so it is denied at
-  // both intake paths.
-  /^OPENCODE_CONFIG_CONTENT$/i,
-];
-
-/**
- * A key that must never reach a sub-agent, regardless of source — parent
- * process.env forwarding OR caller-supplied customCredentials. Both paths run
- * through this so a spawn request cannot inject a secret (connector bot token,
- * vault passphrase) the deny-list exists to keep out of sub-agents.
- */
-export function isDeniedSubAgentEnvKey(key: string): boolean {
-  return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
-}
-
 export const ACP_SUBPROCESS_SERVICE_TYPE =
   CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE ??
   "ACP_SUBPROCESS_SERVICE";
@@ -4572,172 +4568,6 @@ export function isClaudeOAuthSubscriptionToken(
   value: string | undefined,
 ): boolean {
   return value?.startsWith("sk-ant-oat") ?? false;
-}
-
-/**
- * OS-level environment variables a spawned coding agent needs to function.
- * Matched case-insensitively (see `shouldForwardEnv`): the repo runtime is Bun,
- * and Bun on Windows reports these with native casing — `Path`, not `PATH` —
- * so a case-sensitive check would forward NONE of them, leaving the child with
- * no search path (the opencode shim then fails with "'bun' is not recognized").
- * Includes the Windows essentials cmd.exe + Bun + the agent's config/cache
- * resolution rely on, alongside the POSIX names.
- */
-const FORWARDED_SYSTEM_ENV: ReadonlySet<string> = new Set([
-  "PATH",
-  "PATHEXT",
-  "HOME",
-  "USER",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TZ",
-  "TERM",
-  // Windows essentials.
-  "SYSTEMROOT",
-  "WINDIR",
-  "COMSPEC",
-  "SYSTEMDRIVE",
-  "TEMP",
-  "TMP",
-  "USERPROFILE",
-  "HOMEDRIVE",
-  "HOMEPATH",
-  "APPDATA",
-  "LOCALAPPDATA",
-  "PROGRAMDATA",
-  "PROGRAMFILES",
-  "PROGRAMFILES(X86)",
-  "COMMONPROGRAMFILES",
-  "NUMBER_OF_PROCESSORS",
-  "PROCESSOR_ARCHITECTURE",
-  "USERNAME",
-  "USERDOMAIN",
-]);
-
-/**
- * The key a forwarded var is assigned under. OS system vars are canonicalized to
- * their uppercase `FORWARDED_SYSTEM_ENV` form because Bun on Windows reports them
- * with native casing (`Path`, `Pathext`, `SystemRoot`, `ProgramFiles`, …); a
- * child must not inherit two casings of the same var (the winner is undefined on
- * Windows), and JS consumers that read `env.PATH` case-sensitively need the
- * canonical key. Non-system keys (ELIZA_*, API keys, model overrides) keep their
- * original casing.
- */
-export function canonicalForwardedEnvKey(key: string): string {
-  return FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ? key.toUpperCase() : key;
-}
-
-/**
- * Config key that opts a spawn INTO forwarding the owner's raw `ELIZAOS_CLOUD*`
- * creds (the live Cloud API key + URL) into every child env. Default OFF: a
- * sub-agent reaches Cloud through the parent-agent broker instead (`apps.create`
- * / `containers.create` — spend-capped, confirmation-gated), so the owner key
- * never lands in an autonomous child's env where it can leak into files, logs,
- * or artifacts (#14093 had to redact stdout for exactly this class of leak).
- * The one value a self-serving monetized container genuinely needs at RUNTIME
- * (its own upstream cloud bearer) is fetched through the owner-approved,
- * single-use credential bridge, not force-forwarded. Set to `1` only for a flow
- * the broker cannot serve yet.
- */
-const FORWARD_CLOUD_KEY_CONFIG = "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS";
-
-/**
- * Whether the operator opted into forwarding raw `ELIZAOS_CLOUD*` creds into
- * child envs (see {@link FORWARD_CLOUD_KEY_CONFIG}). Reads config-env so a UI or
- * service.env toggle takes effect without a restart; default OFF.
- */
-export function isCloudKeyForwardingEnabled(): boolean {
-  const raw = readConfigEnvKey(FORWARD_CLOUD_KEY_CONFIG)?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-}
-
-/**
- * The per-var forwarding predicate. `forwardCloudKey` (default false) opts a
- * spawn into forwarding the owner's raw `ELIZAOS_CLOUD*` creds — pure so the
- * gate is unit-testable without touching config; `forwardableSubAgentEnv`
- * resolves the flag from config-env once per build.
- */
-export function shouldForwardEnv(
-  key: string,
-  forwardCloudKey = false,
-): boolean {
-  return (
-    FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ||
-    key.startsWith("ACPX_AUTH_") ||
-    key.startsWith("ELIZA_") ||
-    // The live Cloud creds use the ELIZAOS_ prefix (ELIZAOS_CLOUD_API_KEY /
-    // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match.
-    // Broker-first (#14118): a child does NOT get the raw owner key by default —
-    // it registers/deploys via the parent broker (spend-gated) and fetches any
-    // container-runtime secret via the owner-approved credential bridge. Only the
-    // explicit ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS opt-in restores raw forwarding.
-    (forwardCloudKey && key.startsWith("ELIZAOS_CLOUD")) ||
-    // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
-    // ELIZA_ prefix). Without this the loopback /api/coding-agents/<id>/* bridge
-    // is unreachable from an ACP-spawned sub-agent.
-    key === "PARALLAX_SESSION_ID" ||
-    [
-      "OPENAI_API_KEY",
-      "ANTHROPIC_API_KEY",
-      "CEREBRAS_API_KEY",
-      "CEREBRAS_BASE_URL",
-      "CEREBRAS_MODEL",
-      "OPENAI_MODEL",
-      "ANTHROPIC_MODEL",
-      "OPENCODE_MODEL",
-      // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
-      // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
-      "CLAUDE_CODE_EFFORT_LEVEL",
-      "OPENCODE_DISABLE_AUTOUPDATE",
-      "OPENCODE_DISABLE_TERMINAL_TITLE",
-      "CODEX_HOME",
-      // Container-registry PUSH credential for app-image builds (docker login
-      // ghcr.io before the deploy contract's docker push). Narrow by design:
-      // these are the dedicated registry-scoped names (a packages:write PAT),
-      // mirrored cloud-side by containersEnv.registryUsername()/registryToken().
-      // The broad GITHUB_TOKEN / GH_TOKEN / CR_PAT stay DENIED — a repo-scoped
-      // host token must never ride into a sub-agent. The canonical
-      // ELIZA_APP_IMAGE_REGISTRY_USERNAME/_TOKEN pair already forwards via the
-      // ELIZA_ prefix above.
-      "GHCR_USERNAME",
-      "GHCR_TOKEN",
-    ].includes(key)
-  );
-}
-
-/**
- * The single forwarding decision buildEnv applies per host env var: the
- * deny-list wins over the allowlist. A few keys (the privileged host secrets in
- * DENY_ENV_PATTERNS) match shouldForwardEnv — e.g. via the broad ELIZA_ prefix —
- * yet must never reach a coding sub-agent, so the deny check runs first.
- */
-export function isEnvForwardableToSubAgent(
-  key: string,
-  forwardCloudKey = false,
-): boolean {
-  if (isDeniedSubAgentEnvKey(key)) return false;
-  return shouldForwardEnv(key, forwardCloudKey);
-}
-
-/**
- * The deny-list-filtered, allowlisted, casing-canonicalized subset of `source`
- * to forward to a coding sub-agent. Pure (no process.env read) so it is unit
- * testable: pass a synthetic env (e.g. `{ Path: "…" }`, the casing Bun reports
- * on Windows) and assert the result is keyed by `PATH`. See
- * `canonicalForwardedEnvKey` for why OS vars are canonicalized.
- */
-export function forwardableSubAgentEnv(
-  source: Record<string, string | undefined>,
-  forwardCloudKey = isCloudKeyForwardingEnabled(),
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(source)) {
-    if (typeof value !== "string") continue;
-    if (!isEnvForwardableToSubAgent(key, forwardCloudKey)) continue;
-    out[canonicalForwardedEnvKey(key)] = value;
-  }
-  return out;
 }
 
 function extractSessionId(event: AcpJsonRpcMessage): string | undefined {
