@@ -23,7 +23,7 @@ import { desktopLocalAgentTransportForUrl } from "./desktop-local-agent-transpor
 import { iosInProcessAgentTransportForUrl } from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
-import { fetchAgentTransport } from "./transport";
+import { type AgentRequestContext, fetchAgentTransport } from "./transport";
 
 /**
  * Reads the current CSRF token from `document.cookie`.
@@ -46,6 +46,7 @@ const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "DELETE", "PATCH"]);
 export async function fetchWithCsrf(
   url: string,
   init: RequestInit = {},
+  context: AgentRequestContext = {},
 ): Promise<Response> {
   // Resolve relative API paths against the configured API base. On Capacitor
   // remote mode the page origin is the bundle's asset server, which answers
@@ -79,6 +80,18 @@ export async function fetchWithCsrf(
     credentials: "include",
     headers,
   };
+  return requestViaAgentTransport(url, requestInit, context);
+}
+
+/**
+ * Route a caller-authenticated request through the canonical platform
+ * transport selector without adding cookies, CSRF, or boot-token headers.
+ */
+export async function requestViaAgentTransport(
+  url: string,
+  init: RequestInit = {},
+  context: AgentRequestContext = {},
+): Promise<Response> {
   const transport =
     (await androidNativeAgentTransportForUrl(url)) ??
     (await iosInProcessAgentTransportForUrl(url)) ??
@@ -86,7 +99,8 @@ export async function fetchWithCsrf(
     desktopHttpTransportForUrl(url) ??
     nativeCloudHttpTransportForUrl(url) ??
     fetchAgentTransport;
-  return transport.request(url, requestInit, {
-    timeoutMs: defaultFetchTimeoutMs(url, requestInit),
+  return transport.request(url, init, {
+    timeoutMs: context.timeoutMs ?? defaultFetchTimeoutMs(url, init),
+    ...(context.responseType ? { responseType: context.responseType } : {}),
   });
 }

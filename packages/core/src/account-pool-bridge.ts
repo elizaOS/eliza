@@ -97,11 +97,13 @@ export type CodingAccountStrategy =
 	// plugin-cli-inference (#16203). The type accepts it here so the
 	// settings picker can persist it; the actual reset-soonest ordering is
 	// implemented in AccountPool.applyStrategy (app-core).
-	| "reset-soonest";
+	| "reset-soonest"
+	| "drain-soonest-reset";
 
 export interface CodingAccountUsage {
 	sessionPct?: number;
 	weeklyPct?: number;
+	weeklyModelBuckets?: Record<string, { pct: number; resetsAt?: number }>;
 	resetsAt?: number;
 	refreshedAt: number;
 }
@@ -139,6 +141,8 @@ export interface CodingAgentSelectorBridge {
 		opts?: {
 			sessionKey?: string;
 			strategy?: CodingAccountStrategy;
+			/** Requested model/display name, used to rank provider-specific weekly buckets. */
+			model?: string;
 			exclude?: string[];
 			/**
 			 * Restrict selection to these account ids. A continuing session pins

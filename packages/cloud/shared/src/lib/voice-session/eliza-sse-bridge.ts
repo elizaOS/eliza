@@ -95,6 +95,14 @@ export async function streamElizaConversation(
       body: JSON.stringify({
         model: request.model,
         stream: true,
+        // Opt in to the terminal usage frame. The gateway's Cerebras byte
+        // pass-through (#15428) only qualifies requests that carry
+        // `stream_options.include_usage` (its billing meter reads that frame
+        // from a teed branch); without it every voice turn silently takes the
+        // AI-SDK decode/re-encode path, whose extra TTFB is exactly what the
+        // voice latency budget cannot afford. The usage frame itself has an
+        // empty `choices` array, which extractDeltaContent already ignores.
+        stream_options: { include_usage: true },
         // Scope the turn to the minted agent + conversation so voice traffic
         // routes to the selected agent and persists into the right
         // conversation, rather than a server default.

@@ -129,3 +129,38 @@ describe("ProviderAccountRow command-table switch", () => {
     });
   });
 });
+
+describe("ProviderAccountRow selection reason", () => {
+  afterEach(cleanup);
+
+  it("labels the active account as draining its weekly reset", () => {
+    const provider: AccountsListProvider = {
+      providerId: "anthropic-subscription",
+      strategy: "drain-soonest-reset",
+      selection: {
+        activeAccountId: "fable-account",
+        reason: "drain-soonest-reset",
+      },
+      accounts: [account({ id: "fable-account", label: "Fable weekly" })],
+    } as AccountsListProvider;
+
+    render(
+      <ProviderAccountRow
+        option={anthropicOption}
+        provider={provider}
+        expanded={false}
+        onToggle={vi.fn()}
+        onAdd={vi.fn()}
+        saving={new Set()}
+        onPatch={vi.fn()}
+        onMove={vi.fn()}
+        onTest={vi.fn()}
+        onRefreshUsage={vi.fn()}
+        onDelete={vi.fn()}
+        onStrategyChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/draining weekly reset/i)).toBeTruthy();
+  });
+});

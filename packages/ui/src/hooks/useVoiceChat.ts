@@ -24,7 +24,7 @@ import {
 } from "react";
 import type { VoiceConfig } from "../api/client";
 import { getCloudAuthToken } from "../api/client-cloud";
-import { fetchWithCsrf } from "../api/csrf-client";
+import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -1645,6 +1645,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             const cloudRes = await fetchWithCsrf(
               cloudTarget,
               makeProxyRequestInit(),
+              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
             );
             if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) {
               return cloudRes;
@@ -1676,6 +1677,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           return fetchWithCsrf(
             resolveApiUrl("/api/tts/elevenlabs"),
             makeProxyRequestInit(),
+            { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
           );
         };
 
@@ -1932,17 +1934,21 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 }
               : {};
           const fetchViaProxy = (url: string, bearer: string | null) =>
-            fetchWithCsrf(url, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
-                ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
-                ...debugHeaders,
+            fetchWithCsrf(
+              url,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Accept: "audio/wav, audio/mpeg, audio/*;q=0.9",
+                  ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+                  ...debugHeaders,
+                },
+                body: JSON.stringify({ text }),
+                signal: controller.signal,
               },
-              body: JSON.stringify({ text }),
-              signal: controller.signal,
-            });
+              { responseType: "arraybuffer", timeoutMs: CLOUD_TTS_TIMEOUT_MS },
+            );
           if (route.via === "direct-cloud") {
             ttsDebug("useVoiceChat:eliza-cloud-direct-worker", {
               ttsTarget: route.url,
@@ -1950,7 +1956,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             });
             fetchedTtsUrl = route.url;
             try {
-              // CORS-safe bare fetch for the cross-origin cloud worker POST:
+              // Caller-authenticated request through the canonical transport selector:
               // Bearer auth needs no cookies, so no `credentials: "include"`
               // (the worker answers `Access-Control-Allow-Origin: *`, which a
               // browser rejects when combined with credentials), and no
@@ -1960,21 +1966,28 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               // both in `CORS_ALLOW_HEADER_NAMES`
               // (packages/cloud/shared/src/lib/cors-constants.ts), so the
               // preflight passes.
-              const directRes = await fetch(route.url, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(route.bearer
-                    ? { Authorization: `Bearer ${route.bearer}` }
-                    : {}),
+              const directRes = await requestViaAgentTransport(
+                route.url,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    ...(route.bearer
+                      ? { Authorization: `Bearer ${route.bearer}` }
+                      : {}),
+                  },
+                  body: JSON.stringify({
+                    text,
+                    ...(route.voiceId ? { voiceId: route.voiceId } : {}),
+                    ...(route.modelId ? { modelId: route.modelId } : {}),
+                  }),
+                  signal: controller.signal,
                 },
-                body: JSON.stringify({
-                  text,
-                  ...(route.voiceId ? { voiceId: route.voiceId } : {}),
-                  ...(route.modelId ? { modelId: route.modelId } : {}),
-                }),
-                signal: controller.signal,
-              });
+                {
+                  responseType: "arraybuffer",
+                  timeoutMs: CLOUD_TTS_TIMEOUT_MS,
+                },
+              );
               if (!directRes.ok) {
                 const preview = await directRes.text().catch(() => "");
                 throw new Error(
