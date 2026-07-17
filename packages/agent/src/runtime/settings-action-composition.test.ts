@@ -37,6 +37,39 @@ function actionParameter(settingsAction: Action, name: string) {
 }
 
 describe("default SETTINGS action composition", () => {
+  it("registers pendant session sync as private raw runtime routes", () => {
+    const plugin = createElizaPlugin();
+    expect(plugin.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "POST",
+          path: "/api/pendant/sessions",
+          rawPath: true,
+        }),
+        expect.objectContaining({
+          type: "POST",
+          path: "/api/pendant/sessions/:sessionId/segments",
+          rawPath: true,
+        }),
+        expect.objectContaining({
+          type: "PUT",
+          path: "/api/pendant/sessions/:sessionId/insight-refs",
+          rawPath: true,
+        }),
+      ]),
+    );
+
+    for (const path of [
+      "/api/pendant/sessions",
+      "/api/pendant/sessions/:sessionId/segments",
+      "/api/pendant/sessions/:sessionId/insight-refs",
+    ]) {
+      expect(
+        plugin.routes?.find((route) => route.path === path)?.public,
+      ).not.toBe(true);
+    }
+  });
+
   it("keeps exactly one SETTINGS action with legacy and section-registry operations", async () => {
     const plugins = [
       createElizaPlugin(),

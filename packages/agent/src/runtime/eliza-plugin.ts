@@ -47,6 +47,7 @@ import {
   registerMediaGcTask,
   registerMediaPipelineHook,
 } from "../api/media-runtime.ts";
+import { pendantSessionRoutes } from "../api/pendant-session-routes.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
 import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
@@ -81,6 +82,7 @@ import {
 } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
+import { pendantSessionSchema } from "../services/pendant-session/index.ts";
 import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
@@ -142,10 +144,12 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     name: "eliza",
     description: "Eliza workspace context, session keys, and lifecycle actions",
 
-    // Runtime-owned knowledge graph (entity nodes + typed relationship edges)
-    // under the app_lifeops schema. Registered here so the tables exist
-    // whenever the runtime runs and are migrated by the SQL plugin.
-    schema: knowledgeGraphSchema,
+    // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
+    // migrates the runtime data model whenever the agent runs.
+    schema: {
+      ...knowledgeGraphSchema,
+      ...pendantSessionSchema,
+    },
 
     services: [
       AgentEventService as ServiceClass,
@@ -264,6 +268,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       backgroundGenerateImageRoute,
       backgroundUploadImageRoute,
       ...filesRoutes,
+      ...pendantSessionRoutes,
     ],
 
     actions: [

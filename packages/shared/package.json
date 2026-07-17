@@ -208,6 +208,16 @@
       "import": "./dist/contracts/index.js",
       "default": "./dist/contracts/index.js"
     },
+    "./contracts/pendant-session-sync": {
+      "types": "./dist/contracts/pendant-session-sync.d.ts",
+      "eliza-source": {
+        "types": "./src/contracts/pendant-session-sync.ts",
+        "import": "./src/contracts/pendant-session-sync.ts",
+        "default": "./src/contracts/pendant-session-sync.ts"
+      },
+      "import": "./dist/contracts/pendant-session-sync.js",
+      "default": "./dist/contracts/pendant-session-sync.js"
+    },
     "./utils/asset-url": {
       "types": "./dist/utils/asset-url.d.ts",
       "eliza-source": {

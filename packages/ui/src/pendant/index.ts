@@ -75,6 +75,13 @@ export {
   selectPendantTransport,
 } from "./select-transport";
 export {
+  createPendantSessionSyncClient,
+  PendantSessionSyncClient,
+  type PendantSessionSyncClientOptions,
+  PendantSessionSyncError,
+  type QueuedPendantMutation,
+} from "./session-sync-client";
+export {
   dispatchPendantTranscriptSegment,
   normalizePendantAsrWords,
   PENDANT_TRANSCRIPT_SEGMENT_EVENT,
