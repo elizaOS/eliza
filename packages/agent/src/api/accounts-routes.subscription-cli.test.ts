@@ -60,6 +60,40 @@ describe("ensureSubscriptionCli (#16518)", () => {
     expect(installs[0]).not.toContain("-g");
   });
 
+  it("deduplicates concurrent bootstrap attempts into one install", async () => {
+    let installs = 0;
+    let installed = false;
+    let releaseInstall: (() => void) | undefined;
+    let notifyInstallStarted: (() => void) | undefined;
+    const installGate = new Promise<void>((resolve) => {
+      releaseInstall = resolve;
+    });
+    const installStarted = new Promise<void>((resolve) => {
+      notifyInstallStarted = resolve;
+    });
+    const deps = {
+      isAvailable: async () => installed,
+      runInstall: async () => {
+        installs += 1;
+        notifyInstallStarted?.();
+        await installGate;
+        installed = true;
+      },
+    };
+
+    const first = ensureSubscriptionCli("anthropic-subscription", deps);
+    const second = ensureSubscriptionCli("anthropic-subscription", deps);
+    await installStarted;
+    expect(installs).toBe(1);
+
+    releaseInstall?.();
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      undefined,
+      undefined,
+    ]);
+    expect(installs).toBe(1);
+  });
+
   it("makes the tools bin dir visible on PATH for the later bare spawn, idempotently", async () => {
     await ensureSubscriptionCli("openai-codex", {
       isAvailable: async () => true,
