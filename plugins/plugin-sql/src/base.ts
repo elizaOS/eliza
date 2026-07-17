@@ -212,6 +212,7 @@ import {
   eq,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lt,
   lte,
@@ -565,7 +566,100 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       }
 
       this.embeddingDimension = resolvedDimension;
+      await this.ensureEmbeddingVectorIndex(dimension);
     });
+  }
+
+  /**
+   * Create the HNSW cosine index for the active embedding column if it does
+   * not exist. Without it every `searchMemoriesByEmbedding` call is a full
+   * sequential scan computing cosine distance across the whole embeddings
+   * table — measured at ~45ms per query over 5000x1536 vectors in-process,
+   * growing linearly with table size. Only the ACTIVE dimension is indexed
+   * (each row populates exactly one column, and deployments use one width),
+   * so fresh agents pay nothing and existing stores pay a one-time build on
+   * the first boot after upgrade.
+   *
+   * On shared Postgres the build runs CONCURRENTLY so other agents' memory
+   * writes are not blocked behind the index build's SHARE lock; PGlite is a
+   * single connection where CONCURRENTLY is meaningless (and unsupported).
+   */
+  private async ensureEmbeddingVectorIndex(dimension: number): Promise<void> {
+    const columnName = `dim_${dimension}`;
+    const indexName = `idx_embeddings_${columnName}_hnsw_cosine`;
+    // CONCURRENTLY cannot run inside a transaction block; this executes as a
+    // standalone autocommit statement. PGlite is a single connection with
+    // nothing to lock out (and no CONCURRENTLY support).
+    const concurrently = this.databaseBackend === "postgres" ? "CONCURRENTLY " : "";
+    try {
+      // A failed CREATE INDEX CONCURRENTLY (crash, lock timeout, OOM mid-build)
+      // leaves an INVALID index behind, and IF NOT EXISTS would then treat it
+      // as present forever — pinning every vector search to sequential scans.
+      // Detect that leftover and drop it so the create below rebuilds it.
+      const invalid = await this.db.execute(
+        sql.raw(
+          `SELECT 1 FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid ` +
+            `WHERE c.relname = '${indexName}' AND NOT i.indisvalid`
+        )
+      );
+      const invalidRows = invalid.rows;
+      if (!Array.isArray(invalidRows)) {
+        // An invalid driver result must not make an INVALID index look absent,
+        // because IF NOT EXISTS would then preserve the broken index forever.
+        throw new ElizaError("Embedding index validity query returned malformed rows", {
+          code: "DB_QUERY_FAILED",
+          context: { table: "pg_index", indexName },
+        });
+      }
+      if (invalidRows.length > 0) {
+        logger.warn(
+          { src: "plugin:sql", agentId: this.agentId, indexName },
+          "Dropping INVALID HNSW embeddings index left by a failed concurrent build; rebuilding"
+        );
+        await this.db.execute(sql.raw(`DROP INDEX IF EXISTS "${indexName}"`));
+      }
+      await this.db.execute(
+        sql.raw(
+          `CREATE INDEX ${concurrently}IF NOT EXISTS "${indexName}" ` +
+            `ON "embeddings" USING hnsw ("${columnName}" vector_cosine_ops)`
+        )
+      );
+    } catch (error) {
+      // error-policy:J4 designed degrade — the index is a performance
+      // structure only; the KNN query is correct (just slower) without it,
+      // e.g. on a pgvector build without HNSW support. Search must not fail
+      // closed over a missing optimization.
+      logger.warn(
+        {
+          src: "plugin:sql",
+          agentId: this.agentId,
+          dimension,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Could not create HNSW index for embeddings; vector search will sequential-scan"
+      );
+    }
+
+    // PGlite is one sticky session, so a single SET makes filtered HNSW index
+    // scans refill in exact order until the LIMIT is satisfied instead of
+    // short-reading under selective filters (pgvector >= 0.8). Pooled
+    // Postgres gets the same GUC per connection in PostgresConnectionManager.
+    if (this.databaseBackend === "pglite") {
+      try {
+        await this.db.execute(sql.raw(`SET hnsw.iterative_scan = 'strict_order'`));
+      } catch (error) {
+        // error-policy:J4 designed degrade — older pgvector has no
+        // iterative_scan GUC; search stays correct on non-index plans.
+        logger.debug(
+          {
+            src: "plugin:sql",
+            agentId: this.agentId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          "hnsw.iterative_scan unavailable; filtered vector search may use non-index plans"
+        );
+      }
+    }
   }
 
   /**
@@ -2603,21 +2697,33 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
   ): Promise<Memory[]> {
     return this.withDatabase(async () => {
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
+      const activeColumn = embeddingTable[this.embeddingDimension];
+      const count = params.count ?? 10;
 
-      const similarity = sql<number>`1 - (${cosineDistance(
-        embeddingTable[this.embeddingDimension],
-        cleanVector
-      )})`;
-
-      const conditions = [eq(memoryTable.type, params.tableName)];
+      // Eligibility lives INSIDE the ordered scan: every scope predicate
+      // (type, agent, room, world, entity, uniqueness, threshold) is part of
+      // the WHERE of the same query that orders by the raw distance operator.
+      // The contract is "top K among eligible memories" — a two-stage form
+      // that takes a global top-K first and filters afterwards silently drops
+      // eligible matches whenever closer out-of-scope vectors outnumber the
+      // candidate pool (multi-agent and room-scoped recall starve first).
+      // Ordering by `asc(cosineDistance(...))` — not by the derived
+      // similarity — is the shape the HNSW index (ensureEmbeddingVectorIndex)
+      // can serve; `hnsw.iterative_scan = strict_order` keeps a filtered
+      // index scan refilling until the LIMIT is satisfied, and when the
+      // planner prefers a non-index plan for a selective scope the result is
+      // identical, just unaccelerated.
+      const distance = cosineDistance(activeColumn, cleanVector);
+      const similarity = sql<number>`1 - (${distance})`;
+      const conditions = [
+        isNotNull(activeColumn),
+        eq(memoryTable.type, params.tableName),
+        eq(memoryTable.agentId, this.agentId),
+      ];
 
       if (params.unique) {
         conditions.push(eq(memoryTable.unique, true));
       }
-
-      conditions.push(eq(memoryTable.agentId, this.agentId));
-
-      // Add filters based on direct params
       if (params.roomId) {
         conditions.push(eq(memoryTable.roomId, params.roomId));
       }
@@ -2627,7 +2733,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       if (params.entityId) {
         conditions.push(eq(memoryTable.entityId, params.entityId));
       }
-
       if (params.match_threshold) {
         conditions.push(gte(similarity, params.match_threshold));
       }
@@ -2636,13 +2741,13 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .select({
           memory: memoryTable,
           similarity,
-          embedding: embeddingTable[this.embeddingDimension],
+          embedding: activeColumn,
         })
         .from(embeddingTable)
         .innerJoin(memoryTable, eq(memoryTable.id, embeddingTable.memoryId))
         .where(and(...conditions))
-        .orderBy(desc(similarity))
-        .limit(params.count ?? 10);
+        .orderBy(asc(distance))
+        .limit(count);
 
       return results.map((row) => ({
         id: row.memory.id as UUID,

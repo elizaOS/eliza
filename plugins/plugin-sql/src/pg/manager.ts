@@ -57,6 +57,25 @@ export class PostgresConnectionManager {
       );
     });
 
+    // pgvector >= 0.8: a filtered HNSW index scan stops after ef_search
+    // candidates and can return fewer rows than LIMIT under a selective
+    // filter (short reads). strict_order iterative scanning keeps pulling
+    // exact-order candidates until the LIMIT is satisfied, which is what lets
+    // the eligibility-filtered vector search (searchMemoriesByEmbedding)
+    // return "top K among eligible" through the index. Per-connection because
+    // pool sessions do not share GUCs; best effort because the GUC only
+    // exists once pgvector 0.8+ is installed.
+    this.pool.on("connect", (client) => {
+      client.query("SET hnsw.iterative_scan = 'strict_order'").catch((error) => {
+        // error-policy:J4 designed degrade — older pgvector has no
+        // iterative_scan GUC; search stays correct on non-index plans.
+        logger.debug(
+          { src: "plugin:sql", error: error instanceof Error ? error.message : String(error) },
+          "hnsw.iterative_scan unavailable on this connection; filtered vector search may use non-index plans"
+        );
+      });
+    });
+
     this.db = drizzle(this.pool, { casing: "snake_case" });
   }
 
