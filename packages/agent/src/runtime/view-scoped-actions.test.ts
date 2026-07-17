@@ -46,9 +46,11 @@ const INTERACTIVE_VIEW_ID = "settings_fixture";
 function makeInteractiveView(id: string, mountedIds: Set<string>) {
   const filled: Record<string, string> = {};
   const clicked: string[] = [];
+  const interactionRuntimes: Array<IAgentRuntime | undefined> = [];
   return {
     filled,
     clicked,
+    interactionRuntimes,
     view: {
       id,
       label: `${id} view`,
@@ -79,7 +81,9 @@ function makeInteractiveView(id: string, mountedIds: Set<string>) {
       serverInteract: async (
         capability: string,
         params?: Record<string, unknown>,
+        context?: { runtime?: IAgentRuntime },
       ) => {
+        interactionRuntimes.push(context?.runtime);
         const targetId = typeof params?.id === "string" ? params.id : "";
         if (!mountedIds.has(targetId)) {
           return { ok: false, id: targetId, reason: "element not found" };
@@ -223,18 +227,17 @@ describe("view-scoped action handler drives the interact protocol", () => {
       INTERACTIVE_VIEW_ID,
       settings.view.scopedActions[0],
     );
-    const result = await action.handler(
-      {} as IAgentRuntime,
-      fakeMessage,
-      undefined,
-      { parameters: { provider: "anthropic" } },
-    );
+    const runtime = { agentId: "runtime-owner" } as unknown as IAgentRuntime;
+    const result = await action.handler(runtime, fakeMessage, undefined, {
+      parameters: { provider: "anthropic" },
+    });
 
     expect(result?.success).toBe(true);
     // The fill drove the real serverInteract with the resolved param value…
     expect(settings.filled["provider-select"]).toBe("anthropic");
     // …and the click step ran.
     expect(settings.clicked).toContain("save-button");
+    expect(settings.interactionRuntimes).toEqual([runtime, runtime, runtime]);
     // The step trace is reported for observability.
     expect(result?.data?.steps).toEqual([
       "agent-focus:provider-select",
