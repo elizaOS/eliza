@@ -383,7 +383,12 @@ function ensureMinRole(
 }
 
 export type RouteRoleResolution =
-  | { ok: true; role: RoleGateRole }
+  | {
+      ok: true;
+      role: RoleGateRole;
+      identityId?: string;
+      principal?: string;
+    }
   | { ok: false; status: 401 | 403 | 429; reason: string };
 
 type AuthorizedRouteRoleOptions =
@@ -488,6 +493,7 @@ export async function resolveAuthorizedRouteRole(
       return {
         ok: true,
         role: await resolveSessionRole(store, session.identityId),
+        identityId: session.identityId,
       };
     }
   }
@@ -503,6 +509,7 @@ export async function resolveAuthorizedRouteRole(
       return {
         ok: true,
         role: await resolveSessionRole(store, sessionFromBearer.identityId),
+        identityId: sessionFromBearer.identityId,
       };
     }
 
@@ -517,17 +524,20 @@ export async function resolveAuthorizedRouteRole(
 
     // Embed session token → its verified boundary role (OWNER→OWNER,
     // ADMIN→USER). Fails closed on a tampered/expired token or no secret.
-    const embedRole = embedBoundaryRole(
-      resolveEmbedPrincipal(
-        req,
-        options.now,
-        state
-          ? (key) => readEmbedSessionSecretSetting(state.current, key)
-          : options.readSetting,
-      ),
+    const embedPrincipal = resolveEmbedPrincipal(
+      req,
+      options.now,
+      state
+        ? (key) => readEmbedSessionSecretSetting(state.current, key)
+        : options.readSetting,
     );
+    const embedRole = embedBoundaryRole(embedPrincipal);
     if (embedRole) {
-      return { ok: true, role: embedRole };
+      return {
+        ok: true,
+        role: embedRole,
+        ...(embedPrincipal ? { principal: embedPrincipal.entityId } : {}),
+      };
     }
   }
 
