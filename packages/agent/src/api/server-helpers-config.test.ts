@@ -6,7 +6,53 @@
  * pinned.
  */
 import { describe, expect, it } from "vitest";
-import { isSafeResetStateDir } from "./server-helpers-config";
+import {
+  annotateServerBackedElevenLabsMode,
+  isSafeResetStateDir,
+} from "./server-helpers-config";
+
+describe("annotateServerBackedElevenLabsMode", () => {
+  it("marks an older server-backed provider as own-key without exposing a key", () => {
+    const config = annotateServerBackedElevenLabsMode(
+      {
+        messages: {
+          tts: {
+            provider: "elevenlabs",
+            elevenlabs: { voiceId: "voice" },
+          },
+        },
+      },
+      true,
+    );
+
+    expect(config).toEqual({
+      messages: {
+        tts: {
+          provider: "elevenlabs",
+          mode: "own-key",
+          elevenlabs: { voiceId: "voice" },
+        },
+      },
+    });
+  });
+
+  it("does not make an unavailable or cloud provider look server-backed", () => {
+    const unavailable = {
+      messages: { tts: { provider: "elevenlabs" } },
+    };
+    expect(annotateServerBackedElevenLabsMode(unavailable, false)).toBe(
+      unavailable,
+    );
+    expect(
+      annotateServerBackedElevenLabsMode(
+        { messages: { tts: { provider: "elevenlabs", mode: "cloud" } } },
+        true,
+      ),
+    ).toEqual({
+      messages: { tts: { provider: "elevenlabs", mode: "cloud" } },
+    });
+  });
+});
 
 describe("isSafeResetStateDir", () => {
   const home = "/home/user";

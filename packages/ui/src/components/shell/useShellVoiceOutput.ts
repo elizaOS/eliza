@@ -7,6 +7,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { AsrProvider } from "../../api/client-types-config";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { useVoiceConfig } from "../../voice/useVoiceConfig";
+import type { VoiceTtsError } from "../../voice/voice-chat-types";
 
 /** `useVoiceChat` requires a transcript sink; the overlay owns input elsewhere. */
 const NOOP_TRANSCRIPT = (): void => {};
@@ -26,6 +27,10 @@ function findLatestAssistantText(
 export interface ShellVoiceOutput {
   /** True while an assistant reply is being spoken aloud. */
   speaking: boolean;
+  /** Configured-engine failure surfaced to the shell instead of silent idle. */
+  ttsError: VoiceTtsError | null;
+  /** Changes whenever automatic reply speech takes ownership of playback. */
+  automaticSpeechEpoch: number;
   /**
    * Speak an arbitrary message aloud on demand — backs the per-message
    * "Play audio" control (#10713). Distinct from the automatic voice-reply
@@ -102,6 +107,7 @@ export function useShellVoiceOutput(
     isSpeaking,
     needsAudioUnlock,
     unlockAudio,
+    ttsError,
   } = useVoiceChat({
     voiceConfig,
     cloudConnected,
@@ -112,6 +118,7 @@ export function useShellVoiceOutput(
   });
 
   const spokenRef = React.useRef<{ id: string; text: string } | null>(null);
+  const [automaticSpeechEpoch, setAutomaticSpeechEpoch] = React.useState(0);
   // Voice-ness is decided PER assistant message at the moment it first appears,
   // not re-checked on every render. `lastTurnVoice` is a single boolean that any
   // later send (a typed turn, a hands-free re-arm) flips — reading it at speak
@@ -163,6 +170,7 @@ export function useShellVoiceOutput(
     const replace = previous?.id !== latest.id;
     spokenRef.current = latest;
     queueAssistantSpeech(latest.id, latest.text, !chatSending, { replace });
+    setAutomaticSpeechEpoch((epoch) => epoch + 1);
   }, [
     agentVoiceMuted,
     voiceBootstrapTick,
@@ -183,6 +191,8 @@ export function useShellVoiceOutput(
 
   return {
     speaking: isSpeaking,
+    ttsError: ttsError ?? null,
+    automaticSpeechEpoch,
     speak,
     stopSpeaking,
     agentVoiceMuted,

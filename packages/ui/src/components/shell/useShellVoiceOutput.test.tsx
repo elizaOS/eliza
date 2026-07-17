@@ -11,6 +11,11 @@ const hoisted = vi.hoisted(() => ({
   stopSpeaking: vi.fn(),
   cfg: {
     isSpeaking: false,
+    ttsError: null as {
+      engine: "elevenlabs";
+      message: string;
+      atMs: number;
+    } | null,
     voiceBootstrapTick: 1,
     // Full voice config the useVoiceConfig mock returns; tests vary `asr` to
     // check the hook surfaces the resolved ASR provider for the capture path.
@@ -24,6 +29,7 @@ vi.mock("../../hooks/useVoiceChat", () => ({
     queueAssistantSpeech: hoisted.queueAssistantSpeech,
     stopSpeaking: hoisted.stopSpeaking,
     isSpeaking: hoisted.cfg.isSpeaking,
+    ttsError: hoisted.cfg.ttsError,
     // Unused by the output hook, present to satisfy the shape.
     isListening: false,
     captureMode: "idle",
@@ -93,6 +99,7 @@ beforeEach(() => {
   hoisted.queueAssistantSpeech.mockClear();
   hoisted.stopSpeaking.mockClear();
   hoisted.cfg.isSpeaking = false;
+  hoisted.cfg.ttsError = null;
   hoisted.cfg.voiceBootstrapTick = 1;
   hoisted.cfg.voiceConfig = { provider: "local-inference" };
 });
@@ -100,8 +107,20 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useShellVoiceOutput", () => {
+  it("surfaces the configured TTS engine error to the shell", () => {
+    hoisted.cfg.ttsError = {
+      engine: "elevenlabs",
+      message: "Missing ElevenLabs key",
+      atMs: 1,
+    };
+
+    const { result } = render(BASE);
+
+    expect(result.current.ttsError).toEqual(hoisted.cfg.ttsError);
+  });
+
   it("speaks the assistant reply after a voice turn", () => {
-    const { rerender } = render({
+    const { rerender, result } = render({
       ...BASE,
       lastTurnVoice: true,
       conversationMessages: [userMsg("u1", "what's the weather")],
@@ -125,6 +144,7 @@ describe("useShellVoiceOutput", () => {
       true,
       { replace: true },
     );
+    expect(result.current.automaticSpeechEpoch).toBe(1);
   });
 
   it("stays silent when the latest turn was typed, not voice", () => {

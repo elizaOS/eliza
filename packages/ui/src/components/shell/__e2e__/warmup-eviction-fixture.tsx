@@ -190,6 +190,7 @@ function Harness(): React.JSX.Element {
     phase: "summoned",
     responding: chatSending,
     turnStatus: chatSending ? { kind: "thinking" as const } : null,
+    ttsError: null,
     messages,
     canSend: true,
     recording: false,

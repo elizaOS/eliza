@@ -265,6 +265,7 @@ export function useMockChat(config: MockChatConfig): MockChat {
         : phase === "responding"
           ? { kind: "thinking" as const }
           : null,
+      ttsError: null,
       messages,
       noProviderConfigured: config.noProvider,
       canSend: phase !== "booting",

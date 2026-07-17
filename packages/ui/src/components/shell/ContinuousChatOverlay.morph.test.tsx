@@ -55,6 +55,7 @@ function makeController(
     canSend: true,
     responding: false,
     turnStatus: null,
+    ttsError: null,
     recording: false,
     transcript: "",
     transcriptionMode: false,

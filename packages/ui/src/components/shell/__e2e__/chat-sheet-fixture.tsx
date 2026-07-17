@@ -505,6 +505,7 @@ function Harness(): React.JSX.Element {
       : phase === "responding"
         ? { kind: "thinking" as const }
         : null,
+    ttsError: null,
     messages,
     // Mirrors the real controller: true once the latest assistant turn carries
     // `failureKind: "no_provider"`. Drives the overlay to keep boot trouble

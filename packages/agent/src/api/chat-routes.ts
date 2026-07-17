@@ -2631,22 +2631,25 @@ export async function generateChatResponse(
     const recordActionCallback = (
       actionTag: string,
       hasText: boolean,
+      ownsVisibleOutput: boolean = hasText,
     ): void => {
       actionCallbacksSeen += 1;
       const normalizedActionTag = normalizeActionName(actionTag);
       if (normalizedActionTag) {
         seenActionTags.add(normalizedActionTag);
       }
-      // The reply is now coming from an action handler, not raw LLM streaming —
-      // surface it as `running_action`, carrying the concrete action name (when
-      // it is a real action rather than the generic VISIBLE_CALLBACK tag) so the
-      // status reads e.g. "Running SEND_MESSAGE" instead of generic "Working".
-      emitStatus({
-        kind: "running_action",
-        ...(normalizedActionTag && normalizedActionTag !== "VISIBLE_CALLBACK"
-          ? { actionName: normalizedActionTag }
-          : {}),
-      });
+      // An untagged callback with no client-visible text is lifecycle/accounting
+      // only. Emitting a bare `running_action` for it would overwrite a useful
+      // streaming/tool phase with the generic "Working" label even though the
+      // callback produced nothing the user can see.
+      if (ownsVisibleOutput || normalizedActionTag !== "VISIBLE_CALLBACK") {
+        emitStatus({
+          kind: "running_action",
+          ...(normalizedActionTag && normalizedActionTag !== "VISIBLE_CALLBACK"
+            ? { actionName: normalizedActionTag }
+            : {}),
+        });
+      }
       runtime.logger.info(
         {
           src: "eliza-api",
@@ -2826,12 +2829,16 @@ export async function generateChatResponse(
                 const visibleChunk = isInternalStructuredStreamText(chunk)
                   ? ""
                   : chunk;
+                const hasVisibleText = visibleChunk.trim().length > 0;
+                const ownsVisibleOutput = hasVisibleText
+                  ? claimStreamSource("callback")
+                  : false;
                 recordActionCallback(
                   extractCallbackActionTag(content),
-                  Boolean(visibleChunk),
+                  hasVisibleText,
+                  ownsVisibleOutput,
                 );
-                if (!visibleChunk) return [];
-                if (!claimStreamSource("callback")) return [];
+                if (!ownsVisibleOutput) return [];
                 applyCallbackTextUpdate(content, visibleChunk);
                 return [];
               },

@@ -62,6 +62,7 @@ function makeController(
     phase: "summoned",
     responding: false,
     turnStatus: null,
+    ttsError: null,
     messages: MESSAGES,
     canSend: true,
     modelStatus: {

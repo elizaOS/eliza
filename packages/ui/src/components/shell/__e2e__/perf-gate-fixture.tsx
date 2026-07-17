@@ -139,6 +139,7 @@ function Harness(): React.JSX.Element {
     canSend: true,
     responding,
     turnStatus: null,
+    ttsError: null,
     recording: false,
     waveformMode: "idle",
     analyser: null,

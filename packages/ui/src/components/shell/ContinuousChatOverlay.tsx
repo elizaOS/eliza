@@ -97,6 +97,7 @@ import {
   summarizeDroppedAttachments,
 } from "../../utils/image-attachment";
 import { voiceCaptureDebug } from "../../utils/voice-capture-debug";
+import { toSpeakableText } from "../../voice/voice-chat-playback";
 import { InlineWidgetText } from "../chat/InlineWidgetText";
 import { MessageAttachments } from "../chat/MessageAttachments";
 import {
@@ -143,7 +144,11 @@ import {
   measureSafeAreaInsetTop,
   resolveChatPanelLayout,
 } from "./chat-panel-layout";
-import { LIQUID_GLASS_EDGE_SHADOW, LIQUID_GLASS_SHEEN } from "./liquid-glass";
+import {
+  LIQUID_GLASS_BLUR,
+  LIQUID_GLASS_EDGE_SHADOW,
+  LIQUID_GLASS_SHEEN,
+} from "./liquid-glass";
 import { withPressLatch } from "./press-latch";
 import { SlashCommandMenu, useSlashMenu } from "./SlashCommandMenu";
 import {
@@ -899,21 +904,23 @@ function MessageScrollerSearchBridge({
 }
 
 /**
- * The phase-aware status accessory shown while the assistant works (#8813).
- * It stays chromeless inside the latest message's action lane so temporary
- * lifecycle state cannot be mistaken for another transcript row.
+ * The phase-aware status shown while the assistant works (#8813). Generic turn
+ * progress lives in the composer's text slot; manual playback may reuse the
+ * same compact treatment beside the controls of the message being spoken.
  */
 function TurnStatusIndicator({
   status,
   reduce,
+  testId = "turn-status-composer",
 }: {
   status: ChatTurnStatus | null;
   reduce?: boolean;
+  testId?: string;
 }): React.JSX.Element {
   return (
     <motion.div
       className="flex min-w-0 shrink-0 items-center whitespace-nowrap"
-      data-testid="turn-status-accessory"
+      data-testid={testId}
       // A pure opacity dissolve avoids adding another moving surface while the
       // real assistant turn mounts and begins streaming beneath it.
       initial={{ opacity: 0 }}
@@ -1189,6 +1196,7 @@ export function ContinuousChatOverlay({
     phase,
     responding,
     turnStatus,
+    ttsError,
     send,
     canSend,
     recording,
@@ -1268,16 +1276,23 @@ export function ContinuousChatOverlay({
   // Which message initiated the current voice playback, so ONLY that bubble
   // shows Stop. The global `speaking` flag alone lit EVERY assistant bubble to
   // "Stop" at once; scope the playing state to the actual source message.
-  // Cleared when playback ends (speaking true→false) so a stale id never
-  // re-lights an old bubble during the next, unrelated playback.
+  // Cleared whenever no playback is active. This also covers an engine that
+  // fails before React observes a true speaking frame, so a stale optimistic id
+  // cannot suppress later composer status.
   const [playingMessageId, setPlayingMessageId] = React.useState<string | null>(
     null,
   );
-  const wasSpeakingRef = React.useRef(false);
+  const automaticSpeechEpoch = controller.automaticSpeechEpoch ?? 0;
+  const previousAutomaticSpeechEpochRef = React.useRef(automaticSpeechEpoch);
   React.useEffect(() => {
-    if (wasSpeakingRef.current && !speaking) setPlayingMessageId(null);
-    wasSpeakingRef.current = speaking;
-  }, [speaking]);
+    if (previousAutomaticSpeechEpochRef.current === automaticSpeechEpoch)
+      return;
+    previousAutomaticSpeechEpochRef.current = automaticSpeechEpoch;
+    setPlayingMessageId(null);
+  }, [automaticSpeechEpoch]);
+  React.useEffect(() => {
+    if (playingMessageId && !speaking) setPlayingMessageId(null);
+  }, [playingMessageId, speaking]);
 
   // Play an assistant message aloud from its reveal row (#10713). Toggling: a tap
   // on the message currently playing stops it; any other tap speaks that message
@@ -1289,6 +1304,7 @@ export function ContinuousChatOverlay({
         setPlayingMessageId(null);
         return;
       }
+      if (!toSpeakableText(text)) return;
       speak?.(text);
       setPlayingMessageId(id);
     },
@@ -1905,26 +1921,6 @@ export function ContinuousChatOverlay({
     renderableMessages,
     renderWindow.windowSize,
   ]);
-  const turnStatusAnchorId = React.useMemo(() => {
-    if (!responding) return null;
-    // Manual playback belongs to the message that started it. Automatic voice
-    // replies have no source id and continue to use the latest visible turn.
-    if (speaking && playingMessageId) return playingMessageId;
-    for (let index = visibleMessages.length - 1; index >= 0; index -= 1) {
-      const candidate = visibleMessages[index];
-      if (!candidate) continue;
-      const isEmptyAssistantPlaceholder =
-        candidate.role === "assistant" &&
-        !candidate.content.trim() &&
-        !candidate.attachments?.length &&
-        !candidate.failureKind &&
-        !candidate.reasoning?.trim() &&
-        !candidate.secretRequest &&
-        !candidate.toolEvents?.length;
-      if (!isEmptyAssistantPlaceholder) return candidate.id;
-    }
-    return null;
-  }, [playingMessageId, responding, speaking, visibleMessages]);
   const lastId = visibleMessages.at(-1)?.id ?? null;
   const lastContent = visibleMessages.at(-1)?.content ?? "";
   // The thread body is mounted while the sheet is open OR during an upward
@@ -2239,8 +2235,8 @@ export function ContinuousChatOverlay({
         !message.secretRequest &&
         !message.toolEvents?.length;
       // The server's empty assistant placeholder is deliberately not a visual
-      // turn. The status remains attached to the latest real message's action
-      // lane, preventing a Thinking/Replying bubble swap before the first token.
+      // turn. Generic lifecycle status has one stable owner in the composer,
+      // so token one never needs to swap a temporary transcript row.
       if (isInFlight) return null;
       // Only the last assistant turn reads volatile reasoning suppression;
       // every settled row gets no renderContext so its memo identity is stable.
@@ -2259,8 +2255,12 @@ export function ContinuousChatOverlay({
         >
           <ChatMessage
             actionAccessory={
-              responding && m.id === turnStatusAnchorId ? (
-                <TurnStatusIndicator status={turnStatus} reduce={reduce} />
+              speaking && playingMessageId === m.id ? (
+                <TurnStatusIndicator
+                  status={{ kind: "speaking" }}
+                  reduce={reduce}
+                  testId="turn-status-accessory"
+                />
               ) : undefined
             }
             appearance="glass"
@@ -2285,8 +2285,6 @@ export function ContinuousChatOverlay({
     },
     [
       visibleMessages.length,
-      turnStatusAnchorId,
-      turnStatus,
       agentName,
       reduce,
       handleCopyMessage,
@@ -5146,6 +5144,39 @@ export function ContinuousChatOverlay({
         </div>
       ) : null}
 
+      {/* A configured voice failure stays visible even while the sheet is
+          collapsed. It lives beside the pill rather than inside `chat-content`,
+          which is intentionally inert and transparent in the pilled state. */}
+      {ttsError ? (
+        <div className="pointer-events-none relative mb-2 flex w-full justify-center px-3">
+          <div
+            role="alert"
+            title={ttsError.message}
+            data-testid="chat-voice-tts-error"
+            className="pointer-events-auto flex min-w-0 items-center gap-3 rounded-full border border-white/25 bg-black/70 px-3 py-2 text-xs text-white/85"
+            style={{
+              backgroundImage: LIQUID_GLASS_SHEEN,
+              boxShadow: LIQUID_GLASS_EDGE_SHADOW,
+              WebkitBackdropFilter: LIQUID_GLASS_BLUR,
+              backdropFilter: LIQUID_GLASS_BLUR,
+            }}
+          >
+            <span className="min-w-0 truncate">
+              Voice playback unavailable
+              <span className="sr-only">: {ttsError.message}</span>
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={openSettings}
+              className="min-h-touch shrink-0 bg-transparent px-2 py-0 text-xs font-medium text-white/90 hover:bg-transparent hover:text-white"
+            >
+              Voice settings
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Local model download/load status renders as the home-grid
           model-download widget only — no floating pill above the composer (the
           double status read as clutter). Send stays ungated; the server holds
@@ -5771,7 +5802,8 @@ export function ContinuousChatOverlay({
                 (or a credit/retry state is live), so this is inert in the common
                 case. Full chat-column width, styled to sit in the sheet. */}
             <AgentProvisioningWidget spanClassName="relative z-10 mx-auto w-full max-w-3xl shrink-0 px-3 pt-2" />
-            {/* Pending image attachments + any read error, just above the input. */}
+            {/* Pending attachments and recoverable composer errors stay close
+                to the control that can resolve them. */}
             {hasImages || imageError ? (
               <div className="relative z-10 flex shrink-0 flex-col gap-1.5 px-3 pt-2">
                 {hasImages ? (
@@ -5942,91 +5974,115 @@ export function ContinuousChatOverlay({
                   transcript={transcript}
                 />
               ) : (
-                <Textarea
-                  ref={inputRef}
-                  rows={1}
-                  value={draft}
-                  // Onboarding is sign-in-first: lock the composer until the user
-                  // signs in, so they can't type into a chat that isn't ready yet.
-                  disabled={firstRunOpen}
-                  onChange={(e) => {
-                    const nextDraft = e.target.value;
-                    if (
-                      draft.trim().length > 0 &&
-                      nextDraft.trim().length === 0
-                    ) {
-                      reportComposerActivity({
-                        activity: "draft_abandoned",
-                        surface: COMPOSER_ACTIVITY_SURFACE,
-                        conversationId: activeConversationIdRef.current,
-                        draftLength: 0,
-                        reason: "cleared",
-                      });
+                <div className="relative min-w-0 flex-1 self-center">
+                  <Textarea
+                    ref={inputRef}
+                    rows={1}
+                    value={draft}
+                    // Onboarding is sign-in-first: lock the composer until the user
+                    // signs in, so they can't type into a chat that isn't ready yet.
+                    disabled={firstRunOpen}
+                    onChange={(e) => {
+                      const nextDraft = e.target.value;
+                      if (
+                        draft.trim().length > 0 &&
+                        nextDraft.trim().length === 0
+                      ) {
+                        reportComposerActivity({
+                          activity: "draft_abandoned",
+                          surface: COMPOSER_ACTIVITY_SURFACE,
+                          conversationId: activeConversationIdRef.current,
+                          draftLength: 0,
+                          reason: "cleared",
+                        });
+                      }
+                      setDraft(nextDraft);
+                      // Mirror the live draft to the active view (Help search etc.).
+                      viewChatBinding?.onQuery?.(nextDraft);
+                      if (nextDraft.trim().length > 0) expand();
+                    }}
+                    onFocus={() => {
+                      // Widen out of the short-landscape compact affordance (#14173)
+                      // on focus, before the first keystroke.
+                      setComposerFocused(true);
+                      // A pill-open focus only raises the keyboard; it must not
+                      // expand a history thread (see suppressExpandOnFocusRef).
+                      if (suppressExpandOnFocusRef.current) {
+                        suppressExpandOnFocusRef.current = false;
+                      } else {
+                        expand();
+                      }
+                    }}
+                    onBlur={() => setComposerFocused(false)}
+                    onPaste={handleComposerPaste}
+                    onKeyDown={handleComposerKeyDown}
+                    // The composer is LOCKED during onboarding: first-run is
+                    // sign-in-first, so the input is disabled (see `disabled` above)
+                    // until the user signs in.
+                    // (This surface's strings are plain literals by design — see
+                    // the imageError note above.)
+                    placeholder={
+                      turnStatus && !playingMessageId && !hasDraft
+                        ? ""
+                        : compactLanding
+                          ? "Ask"
+                          : firstRunOpen
+                            ? "Sign in to start chatting"
+                            : noProviderConfigured
+                              ? "Connect a model provider in Settings to chat"
+                              : modelBlocksSend
+                                ? modelStatus?.kind === "downloading"
+                                  ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
+                                  : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
+                                : booting
+                                  ? `Ask ${agentName} — waking up…`
+                                  : (viewChatBinding?.placeholder ??
+                                    `Ask ${agentName}`)
                     }
-                    setDraft(nextDraft);
-                    // Mirror the live draft to the active view (Help search etc.).
-                    viewChatBinding?.onQuery?.(nextDraft);
-                    if (nextDraft.trim().length > 0) expand();
-                  }}
-                  onFocus={() => {
-                    // Widen out of the short-landscape compact affordance (#14173)
-                    // on focus, before the first keystroke.
-                    setComposerFocused(true);
-                    // A pill-open focus only raises the keyboard; it must not
-                    // expand a history thread (see suppressExpandOnFocusRef).
-                    if (suppressExpandOnFocusRef.current) {
-                      suppressExpandOnFocusRef.current = false;
-                    } else {
-                      expand();
+                    aria-label="message"
+                    data-testid="chat-composer-textarea"
+                    data-chat-sheet-scroll-region
+                    data-scroll-fade={composerScrollFade}
+                    onScroll={(event) =>
+                      updateComposerScrollFade(event.currentTarget)
                     }
-                  }}
-                  onBlur={() => setComposerFocused(false)}
-                  onPaste={handleComposerPaste}
-                  onKeyDown={handleComposerKeyDown}
-                  // The composer is LOCKED during onboarding: first-run is
-                  // sign-in-first, so the input is disabled (see `disabled` above)
-                  // until the user signs in.
-                  // (This surface's strings are plain literals by design — see
-                  // the imageError note above.)
-                  placeholder={
-                    compactLanding
-                      ? "Ask"
-                      : firstRunOpen
-                        ? "Sign in to start chatting"
-                        : noProviderConfigured
-                          ? "Connect a model provider in Settings to chat"
-                          : modelBlocksSend
-                            ? modelStatus?.kind === "downloading"
-                              ? `Downloading ${modelStatus.modelName ?? "your model"} — you can keep typing`
-                              : `Getting ${modelStatus?.modelName ?? "your model"} ready — you can keep typing`
-                            : booting
-                              ? `Ask ${agentName} — waking up…`
-                              : (viewChatBinding?.placeholder ??
-                                `Ask ${agentName}`)
-                  }
-                  aria-label="message"
-                  data-testid="chat-composer-textarea"
-                  data-chat-sheet-scroll-region
-                  data-scroll-fade={composerScrollFade}
-                  onScroll={(event) =>
-                    updateComposerScrollFade(event.currentTarget)
-                  }
-                  aria-describedby={
-                    booting && !noProviderConfigured && !firstRunOpen
-                      ? "cc-booting-hint"
-                      : undefined
-                  }
-                  // Combobox semantics (role + aria-*) are applied as one spread,
-                  // and only when a slash catalog is wired in — a plain message
-                  // box otherwise.
-                  {...comboboxAria}
-                  // The floating composer is the primary chat affordance on the
-                  // ambient home surface, so its placeholder must stay readable
-                  // even when the glass pill sits over dark wallpaper. During
-                  // onboarding `disabled:opacity-100` prevents the browser from
-                  // dimming the locked cue.
-                  className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 min-w-0 flex-1 resize-none self-center overflow-y-auto overscroll-contain border-none bg-transparent py-1 pr-3 pl-1.5 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
-                />
+                    aria-describedby={
+                      booting && !noProviderConfigured && !firstRunOpen
+                        ? "cc-booting-hint"
+                        : undefined
+                    }
+                    // Combobox semantics (role + aria-*) are applied as one spread,
+                    // and only when a slash catalog is wired in — a plain message
+                    // box otherwise.
+                    {...comboboxAria}
+                    // The floating composer is the primary chat affordance on the
+                    // ambient home surface, so its placeholder must stay readable
+                    // even when the glass pill sits over dark wallpaper. During
+                    // onboarding `disabled:opacity-100` prevents the browser from
+                    // dimming the locked cue.
+                    className="chat-composer-scrollbar max-h-[8.5rem] min-h-8 w-full resize-none overflow-y-auto overscroll-contain border-none bg-transparent py-1 pr-3 pl-1.5 text-left text-sm leading-relaxed text-txt outline-none placeholder:text-muted-strong disabled:pointer-events-none disabled:opacity-100"
+                  />
+                  <AnimatePresence initial={false}>
+                    {turnStatus && !playingMessageId && !hasDraft ? (
+                      <motion.div
+                        key="composer-turn-status"
+                        className="pointer-events-none absolute inset-y-0 left-1.5 right-3 flex items-center"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{
+                          duration: reduce ? 0 : 0.36,
+                          ease: OVERLAY_EASE,
+                        }}
+                      >
+                        <TurnStatusIndicator
+                          status={turnStatus}
+                          reduce={reduce}
+                        />
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </div>
               )}
               {!transcriptionComposerActive &&
               booting &&
@@ -6077,10 +6133,17 @@ export function ContinuousChatOverlay({
                           onClick={submit}
                           testId="chat-composer-action"
                         />
-                      ) : !recording && responding ? (
+                      ) : !recording &&
+                        responding &&
+                        turnStatus &&
+                        !playingMessageId ? (
                         <SoftButton
                           glyph={STOP_GLYPH}
-                          label="stop generating"
+                          label={
+                            turnStatus.kind === "speaking"
+                              ? "stop speaking"
+                              : "stop generating"
+                          }
                           onClick={() => stop()}
                           testId="chat-composer-stop"
                         />
@@ -6114,7 +6177,12 @@ export function ContinuousChatOverlay({
                     {/* Dictation stays rightmost so starting it can morph this mic
                     directly into the active Stop control. */}
                     {!((hasDraft || hasImages) && !recording) &&
-                    !(!recording && responding) ? (
+                    !(
+                      !recording &&
+                      responding &&
+                      turnStatus &&
+                      !playingMessageId
+                    ) ? (
                       <SoftButton
                         icon={Mic}
                         label="start transcription"

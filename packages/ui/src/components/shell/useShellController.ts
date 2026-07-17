@@ -74,6 +74,7 @@ import {
 import {
   VOICE_CONTINUOUS_MODES,
   type VoiceContinuousMode,
+  type VoiceTtsError,
 } from "../../voice/voice-chat-types";
 import { buildVoiceTurnSignal } from "../../voice/voice-turn-signal";
 import { matchWakeName } from "../../voice/wake-name-match";
@@ -131,6 +132,10 @@ export interface ShellController {
    *  falls back to client-derived signals. Use this for the status indicator;
    *  `responding` remains the coarse busy boolean for gating. */
   turnStatus: ChatTurnStatus | null;
+  /** Configured TTS engine failure for an explicit, visible error state. */
+  ttsError: VoiceTtsError | null;
+  /** Changes whenever automatic reply speech takes ownership of playback. */
+  automaticSpeechEpoch?: number;
   messages: readonly ShellMessage[];
   canSend: boolean;
   /** Local text-model readiness for the home surface. Gates send while not ready. */
@@ -1375,6 +1380,16 @@ export function useShellController(): ShellController {
   // surfaced even before chatSending settles, so it shows while the agent boots.
   const turnStatus = React.useMemo<ChatTurnStatus | null>(() => {
     if (voiceOutput.speaking) return { kind: "speaking" };
+    const visibleReplySettled =
+      chatFirstTokenReceived &&
+      serverTurnStatus?.kind === "running_action" &&
+      serverTurnStatus.actionName?.trim().toUpperCase() === "REPLY";
+    // REPLY callbacks carry the complete visible answer. The transport may
+    // continue briefly with evaluators and persistence after that callback, but
+    // those internal tasks are not generation the user can stop. Let the
+    // composer settle as soon as the visible reply does while `responding`
+    // remains true for queueing and voice gates until the transport finishes.
+    if (visibleReplySettled) return null;
     if (
       serverTurnStatus &&
       (chatSending || serverTurnStatus.kind === "waking")
@@ -1869,6 +1884,8 @@ export function useShellController(): ShellController {
     bootProgressSignal,
     responding,
     turnStatus,
+    ttsError: voiceOutput.ttsError,
+    automaticSpeechEpoch: voiceOutput.automaticSpeechEpoch,
     messages,
     canSend,
     modelStatus,

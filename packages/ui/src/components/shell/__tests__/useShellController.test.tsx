@@ -173,6 +173,7 @@ vi.mock("../../../voice/local-asr-capture", async (importOriginal) => {
 // re-listen loop is deterministic (never spuriously "speaking").
 const voiceOutputMock = vi.hoisted(() => ({
   speaking: false,
+  ttsError: null,
   stopSpeaking: vi.fn(),
   agentVoiceMuted: false,
   toggleAgentVoiceMute: vi.fn(),
@@ -221,6 +222,7 @@ afterEach(() => {
   appMock.value.activeConversationId = null;
   appMock.value.conversations = [];
   voiceOutputMock.stopSpeaking.mockClear();
+  voiceOutputMock.ttsError = null;
   voiceOutputMock.lastTurnVoiceSeen = undefined;
   wakeListenMock.lastEnabled = undefined;
   try {
@@ -637,6 +639,20 @@ describe("useShellController — turnStatus derivation", () => {
       kind: "running_action",
       actionName: "SEND_MESSAGE",
     });
+  });
+
+  it("settles the visible controls after a complete REPLY callback while transport work finishes", () => {
+    composerMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = true;
+    appMock.serverTurnStatus = {
+      kind: "running_action",
+      actionName: "REPLY",
+    } as { kind: string };
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.responding).toBe(true);
+    expect(result.current.turnStatus).toBeNull();
   });
 
   it("surfaces a waking server status even before chatSending settles", () => {

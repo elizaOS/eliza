@@ -16,7 +16,7 @@ import {
   type Memory,
   stringToUuid,
 } from "@elizaos/core";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { ChatTurnStatus, ReadJsonBodyOptions } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import {
   __getChatDedupeTtlMsForTests,
@@ -530,6 +530,165 @@ describe("chat route helper coverage", () => {
 });
 
 describe("generateChatResponse token streaming", () => {
+  it("does not replace the turn phase for an invisible untagged callback", async () => {
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback, options) {
+        await options?.onStreamChunk?.("Visible reply.");
+        await callback?.({ text: "" });
+        return {
+          didRespond: true,
+          responseContent: { text: "Visible reply." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "invisible-callback-status-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const statuses: ChatTurnStatus[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("status please"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: () => undefined,
+        onStatus: (status) => statuses.push(status),
+      },
+    );
+
+    expect(statuses).toEqual([{ kind: "thinking" }, { kind: "streaming" }]);
+    expect(result.usedActionCallbacks).toBe(true);
+    expect(runtime.logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "VISIBLE_CALLBACK",
+        hasText: false,
+      }),
+      expect.stringContaining("VISIBLE_CALLBACK"),
+    );
+  });
+
+  it("does not replace a claimed streaming phase with rejected callback text", async () => {
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback, options) {
+        await options?.onStreamChunk?.("Stream-owned reply.");
+        await callback?.({ text: "Rejected callback reply." });
+        return {
+          didRespond: true,
+          responseContent: { text: "Stream-owned reply." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "mixed-stream-callback-status-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const statuses: ChatTurnStatus[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("stream this"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: () => undefined,
+        onStatus: (status) => statuses.push(status),
+      },
+    );
+
+    expect(statuses).toEqual([{ kind: "thinking" }, { kind: "streaming" }]);
+    expect(result.text).toBe("Stream-owned reply.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
+  it("treats whitespace-only callbacks as invisible lifecycle events", async () => {
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback, options) {
+        await options?.onStreamChunk?.("Visible reply.");
+        await callback?.({ text: "   \n  " });
+        return {
+          didRespond: true,
+          responseContent: { text: "Visible reply." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "whitespace-callback-status-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const statuses: ChatTurnStatus[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("status please"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: () => undefined,
+        onStatus: (status) => statuses.push(status),
+      },
+    );
+
+    expect(statuses).toEqual([{ kind: "thinking" }, { kind: "streaming" }]);
+    expect(result.text).toBe("Visible reply.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
+  it("still reports a generic action phase when an untagged callback has visible text", async () => {
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback) {
+        await callback?.({ text: "Callback reply." });
+        return {
+          didRespond: true,
+          responseContent: { text: "Callback reply." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "visible-callback-status-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const statuses: ChatTurnStatus[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("callback please"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onStatus: (status) => statuses.push(status),
+      },
+    );
+
+    expect(statuses).toEqual([
+      { kind: "thinking" },
+      { kind: "running_action" },
+    ]);
+    expect(result.text).toBe("Callback reply.");
+    expect(result.usedActionCallbacks).toBe(true);
+  });
+
   it("forwards onStreamChunk deltas to caller onChunk in order", async () => {
     // Tokens chosen so no token's prefix matches the prior token's suffix —
     // mergeStreamingText would otherwise treat overlap as a snapshot revision

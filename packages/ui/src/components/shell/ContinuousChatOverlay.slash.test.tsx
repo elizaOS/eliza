@@ -22,6 +22,7 @@ function makeController(
     canSend: true,
     responding: false,
     turnStatus: null,
+    ttsError: null,
     recording: false,
     transcript: "",
     // Required ShellController surface the overlay reads unconditionally.

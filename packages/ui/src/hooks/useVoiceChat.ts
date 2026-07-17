@@ -156,6 +156,7 @@ declare global {
 let sharedAudioCtx: AudioContext | null = null;
 const CLOUD_TTS_TIMEOUT_MS = 60_000;
 const LOCAL_INFERENCE_TTS_TIMEOUT_MS = 60_000;
+const BROWSER_TTS_START_TIMEOUT_MS = 2_500;
 /** How long the transient `micReconnected` pulse stays set after an auto-restart. */
 const MIC_RECONNECT_PULSE_MS = 1500;
 /**
@@ -720,19 +721,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return;
       }
 
-      // ── Browser TTS: sine-wave mouth + safety check ──────────────
+      // Browser engines may leave `speaking` and `pending` false while an
+      // utterance waits to start, especially in embedded Chromium. The queue's
+      // onend/onerror callbacks and safety timeout own completion; treating
+      // those advisory flags as authoritative cancels valid delayed playback.
       const sinceStart = Date.now() - speakingStartRef.current;
-      if (
-        sinceStart > 500 &&
-        synthRef.current &&
-        !synthRef.current.speaking &&
-        !synthRef.current.pending
-      ) {
-        utteranceRef.current = null;
-        setIsSpeaking(false);
-        return;
-      }
-
       const elapsed = sinceStart / 1000;
       const base = Math.sin(elapsed * 12) * 0.3 + 0.4;
       const detail = Math.sin(elapsed * 18.7) * 0.15;
@@ -1539,6 +1532,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         .catch(() => {});
     }
 
+    if (getElectrobunRendererRpc()?.request?.talkmodeStopSpeaking) {
+      // error-policy:J6 best-effort interrupt/teardown of native desktop speech;
+      // the renderer has already returned to idle, so a bridge failure is only
+      // actionable as a diagnostic.
+      void invokeDesktopBridgeRequest<void>({
+        rpcMethod: "talkmodeStopSpeaking",
+        ipcChannel: "talkmode:stopSpeaking",
+      }).catch((error: unknown) => {
+        ttsDebug("play:talkmode:stop-failed", {
+          err:
+            error instanceof Error
+              ? `${error.name}: ${error.message.slice(0, 200)}`
+              : String(error).slice(0, 200),
+        });
+      });
+    }
+
     clearSpeechTimers();
     usingAudioAnalysisRef.current = false;
     setUsingAudioAnalysis(false);
@@ -2343,7 +2353,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const requestedLocale = normalizeSpeechLocale(options.lang);
       const words = text.trim().split(/\s+/).length;
       const estimatedMs = Math.max(1200, (words / 3) * 1000);
-      const useTalkModeTts = !synth && Boolean(getElectrobunRendererRpc());
+      const useTalkModeTts =
+        !synth &&
+        typeof getElectrobunRendererRpc()?.request?.talkmodeSpeak ===
+          "function";
 
       ttsDebug("speakBrowser:enter", {
         path: synth
@@ -2361,7 +2374,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           : {}),
       });
 
-      return new Promise<void>((resolve) => {
+      return new Promise<void>((resolve, reject) => {
         let finished = false;
         const finish = () => {
           if (finished) return;
@@ -2373,19 +2386,34 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           utteranceRef.current = null;
           resolve();
         };
+        const fail = (error: Error) => {
+          if (finished) return;
+          finished = true;
+          if (activeTaskFinishRef.current === finish) {
+            activeTaskFinishRef.current = null;
+          }
+          synth?.cancel();
+          clearSpeechTimers();
+          utteranceRef.current = null;
+          reject(error);
+        };
 
         activeTaskFinishRef.current = finish;
 
         if (!synth) {
-          if (!getElectrobunRendererRpc()) {
+          if (!useTalkModeTts) {
             ttsDebug("play:browser:no-synth", {
               segment: task.segment,
               textChars: text.trim().length,
               preview: ttsDebugTextPreview(text),
               engine: "none",
-              note: "No SpeechSynthesis or Talk Mode bridge; no playback emitted",
+              note: "No SpeechSynthesis or Talk Mode bridge; playback unavailable",
             });
-            finish();
+            fail(
+              new Error(
+                "This browser does not provide a speech playback engine.",
+              ),
+            );
             return;
           }
 
@@ -2397,20 +2425,6 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             engine: "native-talkmode-bridge",
             note: "No window.speechSynthesis — routing TTS to main-process talkmodeSpeak",
           });
-          void invokeDesktopBridgeRequest<void>({
-            rpcMethod: "talkmodeSpeak",
-            ipcChannel: "talkmode:speak",
-            params: { text: text.trim() },
-          }).catch((err: unknown) => {
-            ttsDebug("play:talkmode:speak-failed", {
-              segment: task.segment,
-              preview: ttsDebugTextPreview(text),
-              err:
-                err instanceof Error
-                  ? `${err.name}: ${err.message.slice(0, 200)}`
-                  : String(err).slice(0, 200),
-            });
-          });
           emitPlaybackStart({
             text,
             segment: task.segment,
@@ -2419,7 +2433,40 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             startedAtMs: performance.now(),
             ...task.telemetry,
           });
-          speechTimeoutRef.current = setTimeout(finish, estimatedMs);
+          void invokeDesktopBridgeRequest<void>({
+            rpcMethod: "talkmodeSpeak",
+            ipcChannel: "talkmode:speak",
+            params: { text: text.trim() },
+          }).then(
+            (result) => {
+              if (result === null) {
+                fail(
+                  new Error(
+                    "The desktop speech bridge does not provide Talk Mode playback.",
+                  ),
+                );
+                return;
+              }
+              finish();
+            },
+            (error: unknown) => {
+              ttsDebug("play:talkmode:speak-failed", {
+                segment: task.segment,
+                preview: ttsDebugTextPreview(text),
+                err:
+                  error instanceof Error
+                    ? `${error.name}: ${error.message.slice(0, 200)}`
+                    : String(error).slice(0, 200),
+              });
+              fail(
+                error instanceof Error
+                  ? error
+                  : new Error(
+                      `Desktop speech playback failed: ${String(error)}`,
+                    ),
+              );
+            },
+          );
           return;
         }
 
@@ -2502,6 +2549,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const browserPlayStartMsRef = { value: 0 };
         utterance.onstart = () => {
           if (generation !== generationRef.current) return;
+          clearSpeechTimers();
           browserPlayStartMsRef.value = performance.now();
           ttsDebug("play:browser:speechSynthesis:start", {
             segment: task.segment,
@@ -2520,6 +2568,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             startedAtMs: browserPlayStartMsRef.value,
             ...task.telemetry,
           });
+          speechTimeoutRef.current = setTimeout(finish, estimatedMs + 5_000);
         };
         const endBrowserUtterance = () => {
           if (browserPlayStartMsRef.value > 0) {
@@ -2535,18 +2584,34 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         utterance.onend = endBrowserUtterance;
         utterance.onerror = (ev) => {
           const errEv = ev as SpeechSynthesisErrorEvent;
+          const synthesisError = errEv.error ?? "unknown";
           ttsDebug("play:browser:speechSynthesis:error", {
             segment: task.segment,
-            synthesisError: errEv.error ?? "unknown",
+            synthesisError,
             preview: ttsDebugTextPreview(text),
             requestedLocale,
             ...webSpeechVoiceDebugFields(selectedVoice),
           });
-          endBrowserUtterance();
+          fail(new Error(`Browser speech playback failed: ${synthesisError}.`));
         };
-        synth.speak(utterance);
-
-        speechTimeoutRef.current = setTimeout(finish, estimatedMs + 5000);
+        speechTimeoutRef.current = setTimeout(
+          () =>
+            fail(
+              new Error(
+                "Browser speech playback did not start before the engine timeout.",
+              ),
+            ),
+          BROWSER_TTS_START_TIMEOUT_MS,
+        );
+        try {
+          synth.speak(utterance);
+        } catch (error) {
+          fail(
+            error instanceof Error
+              ? error
+              : new Error(`Browser speech playback failed: ${String(error)}`),
+          );
+        }
       });
     },
     [clearSpeechTimers, options.lang],
@@ -2769,7 +2834,24 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             });
           }
 
-          await speakBrowser(task.text, task, workerGeneration);
+          try {
+            await speakBrowser(task.text, task, workerGeneration);
+          } catch (error) {
+            if (
+              workerGeneration !== generationRef.current ||
+              isAbortError(error)
+            ) {
+              break;
+            }
+            ttsDebug("useVoiceChat:browser-speech-failed", {
+              err:
+                error instanceof Error
+                  ? `${error.name}: ${error.message.slice(0, 200)}`
+                  : String(error).slice(0, 200),
+            });
+            failClosed("browser", error);
+            break;
+          }
         }
       } catch (error) {
         workerError = error;

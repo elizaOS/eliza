@@ -72,6 +72,8 @@ function installMocks() {
   speechSynthesisMock.speak.mockClear();
   speechSynthesisMock.cancel.mockClear();
   fetchWithCsrf.mockReset();
+  delete (window as Window & { __ELIZA_ELECTROBUN_RPC__?: unknown })
+    .__ELIZA_ELECTROBUN_RPC__;
   Object.defineProperty(window, "speechSynthesis", {
     configurable: true,
     value: speechSynthesisMock,
@@ -103,6 +105,7 @@ describe("useVoiceChat TTS fails closed (#12253)", () => {
     installMocks();
   });
   afterEach(() => {
+    vi.useRealTimers();
     cleanup();
     vi.restoreAllMocks();
   });
@@ -231,5 +234,165 @@ describe("useVoiceChat TTS fails closed (#12253)", () => {
     expect(result.current.ttsError ?? null).toBeNull();
     // Never reached the local-inference route — the browser IS the config.
     expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a browser voice error when SpeechSynthesis is unavailable", async () => {
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: undefined,
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "edge" },
+      }),
+    );
+
+    act(() => {
+      result.current.speak("this must not disappear silently");
+    });
+
+    await waitFor(() => {
+      expect(result.current.ttsError).not.toBeNull();
+    });
+
+    expect(result.current.ttsError?.engine).toBe("browser");
+    expect(result.current.ttsError?.message).toContain(
+      "does not provide a speech playback engine",
+    );
+    expect(result.current.isSpeaking).toBe(false);
+    expect(fetchWithCsrf).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a desktop Talk Mode bridge rejection", async () => {
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: undefined,
+    });
+    const talkmodeSpeak = vi
+      .fn()
+      .mockRejectedValue(new Error("desktop voice bridge offline"));
+    (
+      window as unknown as {
+        __ELIZA_ELECTROBUN_RPC__?: unknown;
+      }
+    ).__ELIZA_ELECTROBUN_RPC__ = {
+      request: { talkmodeSpeak },
+      onMessage: vi.fn(),
+      offMessage: vi.fn(),
+    };
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "edge" },
+      }),
+    );
+
+    act(() => {
+      result.current.speak("surface the native desktop failure");
+    });
+
+    await waitFor(() => {
+      expect(result.current.ttsError).not.toBeNull();
+    });
+    expect(talkmodeSpeak).toHaveBeenCalledWith({
+      text: "surface the native desktop failure",
+    });
+    expect(result.current.ttsError?.engine).toBe("browser");
+    expect(result.current.ttsError?.message).toContain(
+      "desktop voice bridge offline",
+    );
+    expect(result.current.isSpeaking).toBe(false);
+  });
+
+  it("surfaces SpeechSynthesis playback errors instead of ending silently", async () => {
+    speechSynthesisMock.speak.mockImplementationOnce((utterance) => {
+      speechSynthesisMock.spoken.push(utterance);
+      utterance.onerror?.({
+        error: "synthesis-failed",
+      } as SpeechSynthesisErrorEvent);
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "edge" },
+      }),
+    );
+
+    act(() => {
+      result.current.speak("surface the synthesizer failure");
+    });
+
+    await waitFor(() => {
+      expect(result.current.ttsError).not.toBeNull();
+    });
+
+    expect(result.current.ttsError?.engine).toBe("browser");
+    expect(result.current.ttsError?.message).toContain("synthesis-failed");
+    expect(result.current.isSpeaking).toBe(false);
+  });
+
+  it("does not cancel a browser utterance while its engine delays onstart", async () => {
+    speechSynthesisMock.speak.mockImplementationOnce((utterance) => {
+      speechSynthesisMock.spoken.push(utterance);
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "edge" },
+      }),
+    );
+
+    act(() => {
+      result.current.speak("allow the embedded browser time to begin");
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(true);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 650));
+    });
+    expect(result.current.isSpeaking).toBe(true);
+
+    act(() => {
+      speechSynthesisMock.spoken[0]?.onstart?.();
+      speechSynthesisMock.spoken[0]?.onend?.();
+    });
+    await waitFor(() => {
+      expect(result.current.isSpeaking).toBe(false);
+    });
+  });
+
+  it("surfaces a browser voice error when the engine emits no lifecycle events", async () => {
+    vi.useFakeTimers();
+    speechSynthesisMock.speak.mockImplementationOnce((utterance) => {
+      speechSynthesisMock.spoken.push(utterance);
+    });
+
+    const { result } = renderHook(() =>
+      useVoiceChat({
+        onTranscript: vi.fn(),
+        voiceConfig: { provider: "edge" },
+      }),
+    );
+
+    act(() => {
+      result.current.speak("do not pretend this silent engine succeeded");
+    });
+    expect(result.current.isSpeaking).toBe(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_600);
+    });
+
+    expect(result.current.ttsError?.engine).toBe("browser");
+    expect(result.current.ttsError?.message).toContain("did not start");
+    expect(result.current.isSpeaking).toBe(false);
+    expect(speechSynthesisMock.cancel).toHaveBeenCalled();
   });
 });

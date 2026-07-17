@@ -69,6 +69,35 @@ export function redactConfigSecrets(
   return redactDeep(config) as Record<string, unknown>;
 }
 
+/**
+ * Advertise the server-owned ElevenLabs transport without exposing its key.
+ * Older first-run configs stored only `provider: elevenlabs`; this runtime
+ * capability annotation lets the client distinguish a working server-backed
+ * choice from the obsolete character-preset provider pin.
+ */
+export function annotateServerBackedElevenLabsMode(
+  config: Record<string, unknown>,
+  serverKeyConfigured = Boolean(process.env.ELEVENLABS_API_KEY?.trim()),
+): Record<string, unknown> {
+  if (!serverKeyConfigured) return config;
+  const messages =
+    config.messages && typeof config.messages === "object"
+      ? (config.messages as Record<string, unknown>)
+      : null;
+  const tts =
+    messages?.tts && typeof messages.tts === "object"
+      ? (messages.tts as Record<string, unknown>)
+      : null;
+  if (tts?.provider !== "elevenlabs" || tts.mode) return config;
+  return {
+    ...config,
+    messages: {
+      ...messages,
+      tts: { ...tts, mode: "own-key" },
+    },
+  };
+}
+
 export function isRedactedSecretValue(value: unknown): boolean {
   return (
     typeof value === "string" && value.trim().toUpperCase() === "[REDACTED]"
@@ -246,6 +275,7 @@ export function applyFirstRunVoicePreset(
   messages.tts = {
     ...existingTts,
     provider: "elevenlabs",
+    mode: "own-key",
     elevenlabs: {
       ...existingElevenlabs,
       voiceId,

@@ -25,6 +25,7 @@ import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { buildCharacterFromConfig } from "../runtime/build-character-config.ts";
 import { applyCanonicalFirstRunConfig } from "./provider-switch-config.ts";
+import { annotateServerBackedElevenLabsMode } from "./server-helpers-config.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -333,7 +334,12 @@ export async function handleConfigRoutes(
         `[eliza][settings][api] GET /api/config → respond (redacted) topKeys=${Object.keys(cfg).sort().join(",")} cloud=${JSON.stringify(settingsDebugCloudSummary(cloud))}`,
       );
     }
-    json(res, redactConfigSecrets(asConfigRecord(config)));
+    json(
+      res,
+      annotateServerBackedElevenLabsMode(
+        redactConfigSecrets(asConfigRecord(config)),
+      ),
+    );
     return true;
   }
 
@@ -613,7 +619,12 @@ export async function handleConfigRoutes(
         `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
       );
     }
-    json(res, redactConfigSecrets(asConfigRecord(config)));
+    json(
+      res,
+      annotateServerBackedElevenLabsMode(
+        redactConfigSecrets(asConfigRecord(config)),
+      ),
+    );
     return true;
   }
 
