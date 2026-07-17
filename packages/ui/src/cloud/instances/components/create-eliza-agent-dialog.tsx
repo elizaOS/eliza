@@ -158,7 +158,11 @@ function ProvisioningProgress({
   const isComplete = status === "running";
 
   return (
-    <div className="space-y-5 py-1">
+    <div
+      aria-busy={!isComplete && !hasError}
+      aria-live="polite"
+      className="space-y-5 py-1"
+    >
       <div className="flex items-center justify-between">
         <p className="text-sm text-txt">
           {isComplete
@@ -167,7 +171,7 @@ function ProvisioningProgress({
               })
             : hasError
               ? t("cloud.createAgent.wentWrong", {
-                  defaultValue: "Something went wrong",
+                  defaultValue: "Agent setup stopped",
                 })
               : t("cloud.createAgent.settingUp", {
                   defaultValue: "Setting up your agent…",
@@ -193,10 +197,7 @@ function ProvisioningProgress({
               className="flex items-start gap-3 relative"
             >
               {!isLast && (
-                <div
-                  className="absolute left-[11px] top-6 w-px"
-                  style={{ height: "calc(100% - 2px)" }}
-                >
+                <div className="absolute bottom-0 left-3 top-6 w-px">
                   <div
                     className={`h-full w-full transition-colors duration-500 ${
                       state === "complete"
@@ -230,7 +231,10 @@ function ProvisioningProgress({
       </div>
 
       {hasError && error && (
-        <div className="border border-destructive/20 bg-destructive-subtle px-3 py-2.5 space-y-2">
+        <div
+          className="space-y-2 border border-destructive/20 bg-destructive-subtle px-3 py-2.5"
+          role="alert"
+        >
           <p className="text-sm text-destructive">{error}</p>
           <Button
             variant="ghost"

@@ -16,7 +16,12 @@ export {
   OMI_AUDIO_SERVICE_UUID,
   OMI_CODEC,
   type OmiCodecId,
+  type OmiFrameDiagnostic,
+  type OmiFrameDiagnosticCode,
+  type OmiFrameMetricsSnapshot,
   OmiFrameReassembler,
+  type OmiFrameReassemblerResult,
+  type OmiWireMode,
   type ReassembledFrame,
 } from "./omi-protocol";
 export {
@@ -69,6 +74,13 @@ export {
   isNativeAndroid,
   selectPendantTransport,
 } from "./select-transport";
+export {
+  createPendantSessionSyncClient,
+  PendantSessionSyncClient,
+  type PendantSessionSyncClientOptions,
+  PendantSessionSyncError,
+  type QueuedPendantMutation,
+} from "./session-sync-client";
 export {
   dispatchPendantTranscriptSegment,
   normalizePendantAsrWords,

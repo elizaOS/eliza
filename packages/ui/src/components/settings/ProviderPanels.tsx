@@ -211,7 +211,7 @@ export function SubscriptionPanel({
         {cloudCallsDisabled ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlySubscriptionPaused", {
-              defaultValue: "Local-only active — remote routing is paused.",
+              defaultValue: "Local only is active. Remote routing is paused.",
             })}
           </div>
         ) : null}
@@ -275,7 +275,7 @@ export function ApiKeyPanel({
         {cloudCallsDisabled ? (
           <div className="mb-3 rounded-sm border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs">
             {t("providerpanels.localOnlyApiPaused", {
-              defaultValue: "Local-only active — remote routing is paused.",
+              defaultValue: "Local only is active. Remote routing is paused.",
             })}
           </div>
         ) : null}
