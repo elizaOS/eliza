@@ -10,6 +10,24 @@ export {
   registerAppLifeOpsAnchors,
 } from "./anchors/anchor-registry.ts";
 export {
+  buildPrShepherdScheduleInput,
+  CODING_AGENT_SCHEDULE_METADATA_KEY,
+  type CreateCodingAgentScheduleDispatcherOptions,
+  createCodingAgentScheduleDispatcher,
+  deleteCodingAgentSchedule,
+  GITHUB_PR_SHEPHERD_SERVICE_TYPE,
+  type GitHubPrShepherdService,
+  ORCHESTRATOR_TASK_SERVICE_TYPE,
+  PR_SHEPHERD_RECIPE,
+  type PrShepherdPullRequest,
+  type PrShepherdRunReceipt,
+  type PrShepherdRunSummary,
+  type PrShepherdScheduleMetadata,
+  type PrShepherdSchedulePolicy,
+  pauseCodingAgentSchedule,
+  resumeCodingAgentSchedule,
+} from "./coding-agent-schedules.ts";
+export {
   type DispatchFailureReason,
   type DispatchPolicyContext,
   type DispatchPolicyDecision,
