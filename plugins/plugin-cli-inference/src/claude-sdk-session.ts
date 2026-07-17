@@ -59,6 +59,10 @@ import { ProviderApiError, parseProviderApiErrorText } from "./provider-errors";
 const DEFAULT_MODEL = "claude-opus-4-8";
 const DEFAULT_RESTART_AFTER_TURNS = 20;
 const DEFAULT_TURN_TIMEOUT_MS = 90_000;
+/** Teardown budget for `dispose()`'s interrupt ACK (#16553): long enough for a
+ *  healthy CLI to acknowledge, short enough that a wedged spawn cannot wedge
+ *  the turn's failure path behind it. */
+const DISPOSE_INTERRUPT_BUDGET_MS = 5_000;
 /** Fully-qualified names the SDK assigns our in-process MCP tools. */
 const ROUTE_TOOL = "mcp__eliza__route_action";
 const ENVELOPE_TOOL = "mcp__eliza__handle_response";
@@ -227,7 +231,9 @@ export interface ClaudeSdkSessionConfig {
   claudeExecutablePath?: string | null;
   /** Restart the warm session after this many turns (bounds context growth). */
   restartAfterTurns?: number;
-  /** Hard wall-clock budget for one SDK turn. Defaults below common 120s connector timeouts. */
+  /** Hard wall-clock budget for one SDK turn. Defaults below common 120s
+   *  connector timeouts. Explicit `0` opts out to unbounded (#16553) — an
+   *  operator choice, never a default. */
   turnTimeoutMs?: number;
   /**
    * Reasoning effort for this session's turns, forwarded to the Agent SDK's
@@ -347,10 +353,14 @@ export class ClaudeSdkSession {
       config.restartAfterTurns && config.restartAfterTurns > 0
         ? config.restartAfterTurns
         : DEFAULT_RESTART_AFTER_TURNS;
+    // Explicit 0 = operator opt-out to unbounded (#16553); unset/invalid
+    // falls to the bounded default so a hung spawn can never wedge by default.
     this.turnTimeoutMs =
-      config.turnTimeoutMs && config.turnTimeoutMs > 0
-        ? config.turnTimeoutMs
-        : DEFAULT_TURN_TIMEOUT_MS;
+      config.turnTimeoutMs === 0
+        ? 0
+        : config.turnTimeoutMs && config.turnTimeoutMs > 0
+          ? config.turnTimeoutMs
+          : DEFAULT_TURN_TIMEOUT_MS;
     this.effort = normalizeEffort(config.effort);
     this.subprocessEnv = config.subprocessEnv ?? null;
     this.sdkOverride = config.sdkModule;
@@ -570,6 +580,10 @@ export class ClaudeSdkSession {
     if (!iterator) {
       throw new Error("[cli-inference:sdk] session not started");
     }
+    // Explicit operator opt-out (#16553): no timer, the read is unbounded.
+    if (this.turnTimeoutMs === 0) {
+      return iterator.next();
+    }
 
     let timer: NodeJS.Timeout | undefined;
     try {
@@ -727,7 +741,18 @@ export class ClaudeSdkSession {
     );
   }
 
-  /** Tear down the warm session (on restart, error, or dispose). */
+  /**
+   * Tear down the warm session (on restart, error, or dispose).
+   *
+   * BOUNDED (#16553): `query.interrupt()` sends a control request to the CLI
+   * process and awaits its acknowledgement — a wedged spawn (version-mismatch
+   * download, OAuth refresh hang) never ACKs, so an unbounded await here
+   * swallowed the turn-timeout rejection behind it and serialized the whole
+   * inbound pipeline until an operator restart. The teardown races a short
+   * budget; on expiry the interrupt is abandoned (the session references are
+   * already nulled, so the next turn respawns cleanly) and the wedge is
+   * logged instead of inherited.
+   */
   async dispose(): Promise<void> {
     const q = this.query;
     this.query = null;
@@ -737,11 +762,30 @@ export class ClaudeSdkSession {
     this.pendingDecision = null;
     this.pendingEnvelope = null;
     if (q?.interrupt) {
+      let timer: NodeJS.Timeout | undefined;
       try {
-        await q.interrupt();
+        await Promise.race([
+          q.interrupt(),
+          new Promise<void>((resolve) => {
+            timer = setTimeout(() => {
+              logger.warn(
+                {
+                  src: "cli-inference:sdk",
+                  model: this.model,
+                  mode: this.mode,
+                },
+                `[cli-inference:sdk] abandoning interrupt of a wedged session after ${DISPOSE_INTERRUPT_BUDGET_MS}ms`
+              );
+              resolve();
+            }, DISPOSE_INTERRUPT_BUDGET_MS);
+            timer.unref?.();
+          }),
+        ]);
       } catch {
         // error-policy:J6 best-effort teardown — interrupting an already-dead
         // query on dispose; failure here does not matter (the session is discarded).
+      } finally {
+        if (timer) clearTimeout(timer);
       }
     }
   }
