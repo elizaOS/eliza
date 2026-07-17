@@ -15,7 +15,7 @@ This catalog is generated from `packages/prompts/specs/**` by `bun run --cwd pac
 - **Plugin overlay actions:** 9
 - **Canonical providers:** 23
 - **Core providers:** 23
-- **Registered runtime actions:** 187
+- **Registered runtime actions:** 188
 
 ## Actions
 
@@ -382,7 +382,6 @@ section drifts from source.
 - `DOCUMENT` — `packages/core/src/features/documents/actions.ts`
 - `DRAFT_PRESS_RELEASE` — `plugins/plugin-cloud-apps/src/actions/press-releases.ts`
 - `DUPLICATE_AD_CAMPAIGN` — `plugins/plugin-cloud-apps/src/actions/ad-campaigns.ts`
-- `ELIZAOS` — `plugins/plugin-agent-orchestrator/src/actions/elizaos-capability.ts`
 - `ENABLE_AUTONOMOUS_MODE` — `packages/core/src/features/autonomy/action.ts`
 - `ENTITY` — `plugins/plugin-personal-assistant/src/actions/entity.ts`
 - `ESCALATE` — `packages/core/src/features/autonomy/action.ts`
@@ -509,6 +508,8 @@ section drifts from source.
 - `VISUALWEBBENCH_TASK` — `plugins/plugin-benchmarks/src/actions/visualwebbench.ts`
 - `VOICE_CALL` — `plugins/plugin-personal-assistant/src/actions/voice-call.ts`
 - `WALLET` — `plugins/plugin-wallet/src/chains/wallet-action.ts`
+- `WEB_FETCH` — `plugins/plugin-coding-tools/src/actions/web-fetch.ts`
+- `WEB_SEARCH` — `plugins/plugin-coding-tools/src/actions/web-search.ts`
 - `WEBSHOP` — `plugins/plugin-benchmarks/src/actions/webshop.ts`
 - `WINDOW` — `plugins/plugin-computeruse/src/actions/window.ts`
 - `WITHDRAW_APP_EARNINGS` — `plugins/plugin-cloud-apps/src/actions/withdraw-app-earnings.ts`
