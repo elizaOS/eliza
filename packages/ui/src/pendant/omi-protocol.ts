@@ -162,6 +162,14 @@ interface MutableOmiFrameMetrics {
   outOfOrder: number;
 }
 
+function payloadsEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 const UINT16_MODULUS = 0x10000;
 const UINT16_HALF_RANGE = 0x8000;
 const MAX_CADENCE_SAMPLES = 512;
@@ -372,6 +380,25 @@ export class OmiFrameReassembler {
     const deltaFromLastChunk = unwrappedIndex - this.buffer.lastUnwrappedIndex;
     const deltaFromFrameStart =
       unwrappedIndex - this.buffer.startUnwrappedIndex;
+    // A chunk-0 boundary cannot resolve equal same-id chunks: they may be a
+    // two-chunk legacy frame or a bumped-index retransmit of a one-notification
+    // sequence frame. Do not guess and emit corrupted audio. A later non-equal
+    // continuation would have locked frame-id mode before reaching this path.
+    if (this.mode === "unknown" && this.buffer.chunks.length > 1) {
+      const gap = Math.max(0, deltaFromLastChunk - 1);
+      if (gap > 0) {
+        this.recordMissingNotifications(gap, rawIndex, 0, diagnostics);
+      }
+      this.dropBuffered(
+        diagnostics,
+        rawIndex,
+        0,
+        "dropped-buffered-frame",
+        "Ambiguous equal same-id tail dropped at the next frame boundary.",
+      );
+      this.startBuffer(rawIndex, unwrappedIndex, payload, gap);
+      return frames;
+    }
     const canCloseSequence =
       this.mode !== "frame-id" && deltaFromLastChunk === 1;
     const canCloseFrameId =
@@ -435,6 +462,32 @@ export class OmiFrameReassembler {
       return;
     }
 
+    // Equal adjacent payloads with a repeated raw index are ambiguous until
+    // the following notification arrives. If that notification advances the
+    // raw sequence while repeating the expected chunk index, the ambiguous
+    // chunk was a link-layer retransmit, not a legacy frame-id continuation.
+    if (
+      this.mode === "unknown" &&
+      chunkIndex === this.buffer.expectedChunkIndex - 1 &&
+      unwrappedIndex - this.buffer.lastUnwrappedIndex === 1 &&
+      this.buffer.chunks.length >= 2
+    ) {
+      const last = this.buffer.chunks[this.buffer.chunks.length - 1];
+      const previous = this.buffer.chunks[this.buffer.chunks.length - 2];
+      if (last && previous && payloadsEqual(last, previous)) {
+        this.buffer.chunks.pop();
+        this.buffer.expectedChunkIndex -= 1;
+        this.metrics.duplicates += 1;
+        diagnostics.push({
+          code: "duplicate-notification",
+          packetIndex: this.buffer.startRawIndex,
+          chunkIndex,
+          detail:
+            "Deferred same-frame-id payload resolved as a retransmit by the following sequence notification.",
+        });
+      }
+    }
+
     if (chunkIndex !== this.buffer.expectedChunkIndex) {
       if (chunkIndex > this.buffer.expectedChunkIndex) {
         const missing = chunkIndex - this.buffer.expectedChunkIndex;
@@ -479,7 +532,15 @@ export class OmiFrameReassembler {
     }
 
     if (sameFrameId) {
-      if (this.mode === "unknown") this.mode = "frame-id";
+      if (this.mode === "unknown") {
+        const previousChunk = this.buffer.chunks[this.buffer.chunks.length - 1];
+        // A same-id chunk with different bytes proves the legacy contract.
+        // Equal bytes stay ambiguous until the next notification, because they
+        // can be either valid encoded audio or a bumped-index retransmit.
+        if (!previousChunk || !payloadsEqual(previousChunk, payload)) {
+          this.mode = "frame-id";
+        }
+      }
       this.appendChunk(rawIndex, unwrappedIndex, payload);
       return;
     }

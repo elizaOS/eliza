@@ -116,7 +116,8 @@ All settings are read via `getSetting(runtime, key)` (runtime config first, then
 | `OPENAI_ALLOW_BROWSER_API_KEY` | no | `false` | Send auth header in browser (opt-in) |
 | `ELIZA_PROVIDER` | no | — | Set to `cerebras` or `evolink` to force that provider mode |
 | `CEREBRAS_BASE_URL` | no | `https://api.cerebras.ai/v1` | Cerebras API base |
-| `CEREBRAS_MODEL` | no | — | Override model name in Cerebras mode |
+| `CEREBRAS_SMALL_MODEL` / `CEREBRAS_LARGE_MODEL` | no | — | Per-tier Cerebras model overrides |
+| `CEREBRAS_MODEL` | no | — | Legacy Cerebras small-tier fallback; also used for large when no large-tier override exists |
 | `EVOLINK_BASE_URL` | no | `https://direct.evolink.ai/v1` | EvoLink API base |
 | `EVOLINK_MODEL` | no | `gpt-5.2` | Override model name in EvoLink mode |
 

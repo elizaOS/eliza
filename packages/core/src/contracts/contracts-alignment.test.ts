@@ -49,6 +49,7 @@ const linkedAccountHealthValues = [
 	"needs-reauth",
 	"invalid",
 	"unknown",
+	"expired",
 ] as const satisfies readonly LinkedAccountHealth[];
 
 const linkedAccountSources = [
@@ -61,6 +62,8 @@ const serviceRouteStrategies = [
 	"round-robin",
 	"least-used",
 	"quota-aware",
+	"reset-soonest",
+	"drain-soonest-reset",
 ] as const satisfies readonly ServiceRouteAccountStrategy[];
 
 const walletCredentialKeys = [
@@ -223,6 +226,16 @@ describe("core contract implementation alignment", () => {
 			}),
 		).toEqual({
 			llmText: { backend: "elizacloud", strategy: "reset-soonest" },
+		});
+	});
+
+	it("preserves drain-soonest-reset as a supported account strategy", () => {
+		expect(
+			normalizeServiceRoutingConfig({
+				llmText: { backend: "elizacloud", strategy: "drain-soonest-reset" },
+			}),
+		).toEqual({
+			llmText: { backend: "elizacloud", strategy: "drain-soonest-reset" },
 		});
 	});
 

@@ -40,11 +40,15 @@ export interface UsageEntry {
 const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 type FetchLike = typeof fetch;
 
-function utilizationToPct(value: unknown): number | undefined {
+function utilizationToPct(
+  value: unknown,
+  scaleFractional = true,
+): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
-  // Anthropic has returned both fractional (0..1) and percentage (0..100)
-  // shapes. Scale only fractional values; otherwise 5% becomes 500%/clamped.
-  const percent = value >= 0 && value <= 1 ? value * 100 : value;
+  // Legacy flat fields used fractions, while current nested fields and limits
+  // report percentage points (including 1.0 meaning 1%, not 100%).
+  const percent =
+    scaleFractional && value >= 0 && value <= 1 ? value * 100 : value;
   return Math.max(0, Math.min(100, percent));
 }
 
@@ -65,6 +69,18 @@ interface AnthropicUsageWindow {
   resets_at?: string | number;
 }
 
+interface AnthropicUsageLimitScope {
+  model?: { display_name?: string };
+}
+
+interface AnthropicUsageLimit {
+  kind?: string;
+  group?: string;
+  percent?: number;
+  resets_at?: string | number;
+  scope?: AnthropicUsageLimitScope;
+}
+
 interface AnthropicUsagePayload {
   five_hour_utilization?: number;
   five_hour_resets_at?: string | number;
@@ -72,6 +88,7 @@ interface AnthropicUsagePayload {
   seven_day_resets_at?: string | number;
   five_hour?: AnthropicUsageWindow;
   seven_day?: AnthropicUsageWindow;
+  limits?: AnthropicUsageLimit[];
 }
 
 /**
@@ -105,21 +122,65 @@ export async function pollAnthropicUsage(
 
   const fiveHour = payload.five_hour;
   const sevenDay = payload.seven_day;
+  const weeklyModelBuckets: NonNullable<UsageSnapshot["weeklyModelBuckets"]> =
+    {};
+  // The `limits` array is the least ambiguous part of the payload: its field
+  // is literally named `percent` (0..100 percentage points). Prefer it as the
+  // primary source for session/weekly percentages, cross-checked against a
+  // live redacted payload (see account-usage.test.ts "parses the live 2026-07
+  // payload"): `seven_day.utilization: 9.0` matches `weekly_all.percent: 9`,
+  // confirming the nested windows also report percentage points, NOT
+  // fractions. Only the legacy flat fields were fractional.
+  let sessionLimitPct: number | undefined;
+  let weeklyLimitPct: number | undefined;
+  let weeklyLimitResetsAt: number | undefined;
+  if (Array.isArray(payload.limits)) {
+    for (const limit of payload.limits) {
+      if (limit.kind === "session" && limit.group === "session") {
+        sessionLimitPct ??= utilizationToPct(limit.percent, false);
+        continue;
+      }
+      if (limit.kind === "weekly_all" && limit.group === "weekly") {
+        weeklyLimitPct ??= utilizationToPct(limit.percent, false);
+        weeklyLimitResetsAt ??= normalizeResetTimestamp(limit.resets_at);
+        continue;
+      }
+      if (limit.kind !== "weekly_scoped" || limit.group !== "weekly") {
+        continue;
+      }
+      const pct = utilizationToPct(limit.percent, false);
+      if (pct === undefined) continue;
+      const resetsAt = normalizeResetTimestamp(limit.resets_at);
+      const modelName = limit.scope?.model?.display_name?.trim();
+      if (modelName) {
+        weeklyModelBuckets[modelName] = {
+          pct,
+          ...(resetsAt !== undefined ? { resetsAt } : {}),
+        };
+      }
+    }
+  }
 
   const sessionPct =
-    utilizationToPct(fiveHour?.utilization) ??
+    sessionLimitPct ??
+    utilizationToPct(fiveHour?.utilization, false) ??
     utilizationToPct(payload.five_hour_utilization);
   const weeklyPct =
-    utilizationToPct(sevenDay?.utilization) ??
+    weeklyLimitPct ??
+    utilizationToPct(sevenDay?.utilization, false) ??
     utilizationToPct(payload.seven_day_utilization);
   const resetsAt =
-    normalizeResetTimestamp(fiveHour?.resets_at) ??
-    normalizeResetTimestamp(payload.five_hour_resets_at);
+    weeklyLimitResetsAt ??
+    normalizeResetTimestamp(sevenDay?.resets_at) ??
+    normalizeResetTimestamp(payload.seven_day_resets_at);
 
   return {
     refreshedAt: Date.now(),
     ...(sessionPct !== undefined ? { sessionPct } : {}),
     ...(weeklyPct !== undefined ? { weeklyPct } : {}),
+    ...(Object.keys(weeklyModelBuckets).length > 0
+      ? { weeklyModelBuckets }
+      : {}),
     ...(resetsAt !== undefined ? { resetsAt } : {}),
   };
 }

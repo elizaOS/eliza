@@ -67,6 +67,69 @@ function frameIdFrame(packetIndex: number, parts: number[][]): Uint8Array[] {
 }
 
 describe("OmiFrameReassembler", () => {
+  it("defers and ignores a bumped-index retransmit in sequence mode", () => {
+    const r = new OmiFrameReassembler();
+    const results = pushAll(r, [
+      notif(10, 0, [1, 2, 3]),
+      notif(10, 1, [1, 2, 3]),
+      // Repeating chunk 1 while the raw notification index advances resolves
+      // the prior same-id equal payload as a retransmit.
+      notif(11, 1, [4, 5, 6]),
+      notif(12, 0, [7, 8, 9]),
+    ]);
+
+    expect(diagnostics(results)).toContain("duplicate-notification");
+    expect(diagnostics(results)).not.toContain("mode-conflict");
+    expect(emittedPayloads(results)).toEqual([[1, 2, 3, 4, 5, 6]]);
+    const metrics = r.getMetricsSnapshot();
+    expect(metrics.detectedWireMode).toBe("notification-sequence");
+    expect(metrics.duplicates).toBe(1);
+  });
+
+  it("drops an equal same-id tail when the next chunk-0 cannot resolve its mode", () => {
+    const r = new OmiFrameReassembler();
+    const results = pushAll(r, [
+      notif(10, 0, [1, 2, 3]),
+      notif(10, 1, [1, 2, 3]),
+      notif(11, 0, [4, 5, 6]),
+    ]);
+
+    expect(diagnostics(results)).toContain("dropped-buffered-frame");
+    expect(emittedPayloads(results)).toEqual([]);
+    expect(r.getMetricsSnapshot().detectedWireMode).toBe("unknown");
+  });
+
+  it("accounts for a packet gap after an unresolved equal same-id tail", () => {
+    const r = new OmiFrameReassembler();
+    const results = pushAll(r, [
+      notif(10, 0, [1, 2, 3]),
+      notif(10, 1, [1, 2, 3]),
+      notif(13, 0, [4, 5, 6]),
+    ]);
+
+    expect(diagnostics(results)).toContain("missing-notification");
+    expect(r.getMetricsSnapshot().missingNotifications).toBe(2);
+  });
+
+  it("preserves identical adjacent chunks in legacy frame-id mode", () => {
+    const r = new OmiFrameReassembler();
+    const results = pushAll(r, [
+      notif(10, 0, [1, 2, 3]),
+      // Equal payload bytes are valid when the chunk index advances. Treating
+      // this as a retransmit would silently truncate the encoded audio frame.
+      notif(10, 1, [1, 2, 3]),
+      // A later non-equal same-id chunk resolves the ambiguity as legacy mode.
+      notif(10, 2, [7, 8, 9]),
+      notif(11, 0, [4, 5, 6]),
+    ]);
+
+    expect(diagnostics(results)).not.toContain("duplicate-notification");
+    expect(emittedPayloads(results)).toEqual([[1, 2, 3, 1, 2, 3, 7, 8, 9]]);
+    const metrics = r.getMetricsSnapshot();
+    expect(metrics.detectedWireMode).toBe("frame-id");
+    expect(metrics.duplicates).toBe(0);
+  });
+
   it("emits a single-notification frame when the next frame starts", () => {
     const r = new OmiFrameReassembler();
     const results = pushAll(r, [

@@ -48,6 +48,15 @@ const publicExact = (
   matcher: { kind: "exact", path },
 });
 
+const publicExactAnyMethod = (
+  id: string,
+  path: string,
+): CompatRouteAuthPolicy => ({
+  id,
+  tier: "public",
+  matcher: { kind: "exact", path },
+});
+
 const sessionExact = (
   id: string,
   method: keyof typeof METHODS,
@@ -113,6 +122,9 @@ export const COMPAT_ROUTE_AUTH_POLICIES: readonly CompatRouteAuthPolicy[] = [
   publicExact("auth.pair", "POST", "/api/auth/pair"),
   publicExact("embed.auth", "POST", "/api/embed/auth"),
   publicExact("tts.elevenlabs-passthrough", "POST", "/api/tts/elevenlabs"),
+  // The handler itself rejects non-GET methods with 405 + Allow. Keep every
+  // method public at the auth gate so unsupported methods can reach it.
+  publicExactAnyMethod("pool.status", "/api/pool/status"),
 
   sessionExact("runtime.mode", "GET", "/api/runtime/mode"),
   sessionExact("cloud.status", "GET", "/api/cloud/status"),
@@ -207,6 +219,7 @@ const COMPAT_MANAGED_PREFIXES = [
   "/api/local-inference/",
   "/api/voice/",
   "/api/plugins",
+  "/api/pool",
   "/api/runtime/",
   "/api/secrets/",
   "/api/sensitive-requests",
