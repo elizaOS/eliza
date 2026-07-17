@@ -322,6 +322,26 @@ describe("view management actions", () => {
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
 	});
 
+	it("keeps opt-in workbench ids out of the global planner surface", () => {
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+		});
+		const plannerSurface = JSON.stringify({
+			routingHint: action.routingHint,
+			parameters: action.parameters,
+			examples: action.examples,
+		});
+
+		expect(plannerSurface).not.toMatch(
+			/simple-calendar|developer qa|qa split/i,
+		);
+	});
+
 	it("stays available when stage 1 routes a view request to a domain context", () => {
 		const action = createViewsAction();
 		expect(action.contexts).toEqual(
@@ -2201,15 +2221,7 @@ describe("view management actions", () => {
 						id: "calendar",
 						label: "Calendar",
 						path: "/calendar",
-						pluginName: "@elizaos/plugin-calendar",
-						tags: ["calendar", "events", "production calendar"],
-					}),
-					view({
-						id: "simple-calendar",
-						label: "Simple Calendar",
-						path: "/simple-calendar",
-						pluginName: "@elizaos/plugin-simple-views",
-						tags: ["simple calendar", "calendar", "events", "developer qa"],
+						tags: ["calendar", "events"],
 						capabilities: [
 							{
 								id: "get-calendar-state",
@@ -2336,22 +2348,6 @@ describe("view management actions", () => {
 			},
 			callback,
 		);
-		const explicitCalendarCapabilityResult = await action.handler(
-			runtime as never,
-			message("add the release review to my calendar") as never,
-			undefined,
-			{
-				action: "interact",
-				view: "calendar",
-				capability: "create-calendar-event",
-				params: {
-					title: "release review",
-					date: "2026-06-10",
-					time: "09:30",
-				},
-			},
-			callback,
-		);
 		const explicitCapabilityWordingCalendarResult = await action.handler(
 			runtime as never,
 			message("create calendar event through the VIEWS capability") as never,
@@ -2444,37 +2440,31 @@ describe("view management actions", () => {
 		expect(calendarResult?.success).toBe(true);
 		expect(calendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "simple-calendar",
+			viewId: "calendar",
 			capability: "create-calendar-event",
 		});
 		expect(plannerCalendarResult?.success).toBe(true);
 		expect(plannerCalendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "simple-calendar",
-			capability: "create-calendar-event",
-		});
-		expect(explicitCalendarCapabilityResult?.success).toBe(true);
-		expect(explicitCalendarCapabilityResult?.values).toMatchObject({
-			mode: "interact",
-			viewId: "simple-calendar",
+			viewId: "calendar",
 			capability: "create-calendar-event",
 		});
 		expect(explicitCapabilityWordingCalendarResult?.success).toBe(true);
 		expect(explicitCapabilityWordingCalendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "simple-calendar",
+			viewId: "calendar",
 			capability: "create-calendar-event",
 		});
 		expect(camelCalendarResult?.success).toBe(true);
 		expect(camelCalendarResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "simple-calendar",
+			viewId: "calendar",
 			capability: "create-calendar-event",
 		});
 		expect(listEventsResult?.success).toBe(true);
 		expect(listEventsResult?.values).toMatchObject({
 			mode: "interact",
-			viewId: "simple-calendar",
+			viewId: "calendar",
 			capability: "get-calendar-state",
 		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -2568,7 +2558,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2580,7 +2570,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2596,23 +2586,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
-					capability: "create-calendar-event",
-					params: {
-						title: "release review",
-						date: "2026-06-10",
-						time: "09:30",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2628,7 +2602,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2644,7 +2618,7 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
@@ -2655,6 +2629,151 @@ describe("view management actions", () => {
 				}),
 			}),
 		);
+	});
+
+	it("routes natural Simple Calendar mutations through its registered capability", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "calendar",
+						label: "Calendar",
+						path: "/calendar",
+						pluginName: "@elizaos/plugin-calendar",
+						tags: ["calendar", "events"],
+					}),
+					view({
+						id: "simple-calendar",
+						label: "Simple Calendar",
+						path: "/simple-calendar",
+						pluginName: "@elizaos/plugin-simple-views",
+						tags: ["simple calendar", "calendar", "events"],
+						capabilities: [
+							{
+								id: "create-calendar-event",
+								description: "Create a calendar event.",
+								params: {
+									title: { type: "string", description: "Event title." },
+									date: {
+										type: "string",
+										description: "Date in YYYY-MM-DD format.",
+									},
+									time: { type: "string", description: "Time label." },
+								},
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { text: "Created.", success: true },
+			}),
+		} as Response);
+
+		const bareResult = await action.handler(
+			runtime as never,
+			message(
+				"add a calendar event titled team sync on 2026-06-08 at 17:00",
+			) as never,
+			undefined,
+			undefined,
+			callback,
+		);
+		const plannerResult = await action.handler(
+			runtime as never,
+			message("add a calendar event titled planning review") as never,
+			undefined,
+			{
+				action: "create",
+				view: "simple-calendar",
+				intent: "Create event titled planning review on 2026-06-09 at 12:00",
+			},
+			callback,
+		);
+
+		for (const result of [bareResult, plannerResult]) {
+			expect(result?.success, JSON.stringify(result)).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "interact",
+				viewId: "simple-calendar",
+				capability: "create-calendar-event",
+			});
+		}
+		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/simple-calendar/interact?viewType=gui",
+			expect.objectContaining({ method: "POST" }),
+		);
+	});
+
+	it("rejects destructive capabilities aimed at a registered wrong view", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "calendar",
+						label: "Calendar",
+						path: "/calendar",
+						pluginName: "@elizaos/plugin-calendar",
+					}),
+					view({
+						id: "simple-calendar",
+						label: "Simple Calendar",
+						path: "/simple-calendar",
+						pluginName: "@elizaos/plugin-simple-views",
+						capabilities: [
+							{
+								id: "create-calendar-event",
+								description: "Create a calendar event.",
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const explicitCapabilityResult = await action.handler(
+			runtime as never,
+			message("add the release review to my calendar") as never,
+			undefined,
+			{
+				action: "interact",
+				view: "calendar",
+				capability: "create-calendar-event",
+			},
+			callback,
+		);
+		const inferredCapabilityResult = await action.handler(
+			runtime as never,
+			message("add a calendar event titled release review") as never,
+			undefined,
+			{ action: "create", view: "calendar" },
+			callback,
+		);
+
+		for (const result of [explicitCapabilityResult, inferredCapabilityResult]) {
+			expect(result?.success).toBe(false);
+			expect(result?.data).toMatchObject({
+				reason: "capability-not-declared-by-explicit-view",
+				viewId: "calendar",
+				operation: "create",
+			});
+			expect(result?.text).toContain('View "Calendar" does not declare');
+		}
+		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
 	it("summarizes structured interaction results without dumping JSON into chat", async () => {
