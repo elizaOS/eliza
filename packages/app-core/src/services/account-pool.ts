@@ -330,10 +330,13 @@ export class AccountPool {
   selectionState(
     providerId: PoolProviderId,
     strategy: Strategy = "priority",
-    opts?: { model?: string },
+    opts?: { model?: string; accountIds?: string[] },
   ): { activeAccountId: string | null; reason: string | null } {
     const all = this.deps.readAccounts();
-    const eligible = this.filterEligible(all, { providerId });
+    const eligible = this.filterEligible(all, {
+      providerId,
+      accountIds: opts?.accountIds,
+    });
     if (eligible.length === 0) return { activeAccountId: null, reason: null };
     if (eligible.length === 1) {
       return {

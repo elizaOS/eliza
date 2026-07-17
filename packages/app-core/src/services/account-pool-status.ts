@@ -24,6 +24,7 @@ import {
   type AccountPool,
   getDefaultAccountPool,
   isAccountSelectableNow,
+  selectionForProvider,
 } from "./account-pool.js";
 import {
   type AccountPoolConsumerUsageBreakdown,
@@ -545,13 +546,24 @@ function buildStatus(
   snapshots: readonly StatusSnapshot[],
 ): InternalPoolStatus {
   const now = nowMs();
+  const configured = selectionForProvider(PROVIDER_ID);
+  const configuredIds = configured.accountIds
+    ? new Set(configured.accountIds)
+    : null;
   const accounts = pool
     .list(PROVIDER_ID)
-    .filter((account) => account.enabled !== false);
+    .filter((account) => account.enabled !== false)
+    .filter(
+      (account) => configuredIds === null || configuredIds.has(account.id),
+    );
   if (accounts.length === 0) {
     throw new Error("no enabled public pool accounts");
   }
-  const selection = pool.selectionState(PROVIDER_ID, "reset-soonest");
+  const selection = pool.selectionState(
+    PROVIDER_ID,
+    configured.strategy ?? "drain-soonest-reset",
+    configured.accountIds ? { accountIds: configured.accountIds } : undefined,
+  );
   let fableLeft = 0;
   let allLeft = 0;
   let fableKnownAccounts = 0;

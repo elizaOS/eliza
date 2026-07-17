@@ -690,6 +690,30 @@ describe("AccountPool reset-soonest selection", () => {
     ).toEqual(state);
   });
 
+  it("selectionState honors configured account-id pins", () => {
+    const accounts = {
+      "anthropic-subscription:soon": account("anthropic-subscription", {
+        id: "soon",
+        usage: { sessionPct: 10, resetsAt: now + 3_600_000, refreshedAt: now },
+      }),
+      "anthropic-subscription:pinned": account("anthropic-subscription", {
+        id: "pinned",
+        usage: {
+          sessionPct: 10,
+          resetsAt: now + 50 * 3_600_000,
+          refreshedAt: now,
+        },
+      }),
+    };
+    expect(
+      poolOf(accounts).selectionState(
+        "anthropic-subscription",
+        "reset-soonest",
+        { accountIds: ["pinned"] },
+      ),
+    ).toEqual({ activeAccountId: "pinned", reason: "only-eligible" });
+  });
+
   it("selectionState falls back to least-recently-throttled when resets unknown", () => {
     const accounts = {
       "anthropic-subscription:stale": account("anthropic-subscription", {
