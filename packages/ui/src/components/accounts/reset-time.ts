@@ -39,10 +39,10 @@ export function accountResetAt(
 /**
  * A reset explicitly known to govern the all-model weekly budget.
  *
- * Legacy `resetsAt` values are primary/session resets. The corrected
- * Anthropic parser marks its weekly semantics by including model buckets;
- * future contracts may expose an explicit `weeklyResetsAt`. If neither marker
- * exists, return unknown instead of relabelling a session cooldown as weekly.
+ * `resetsAt` is provider-specific by contract: Anthropic stores its all-model
+ * seven-day reset there, while Codex stores its primary five-hour reset. An
+ * explicit future `weeklyResetsAt` wins; otherwise only Anthropic may use the
+ * canonical `resetsAt` value as weekly.
  */
 export function weeklyResetAt(
   account: AccountWithCredentialFlag,
@@ -55,7 +55,7 @@ export function weeklyResetAt(
     | undefined;
   if (!usage) return undefined;
   if (typeof usage.weeklyResetsAt === "number") return usage.weeklyResetsAt;
-  if (usage.weeklyModelBuckets) return usage.resetsAt;
+  if (account.providerId === "anthropic-subscription") return usage.resetsAt;
   return undefined;
 }
 /**

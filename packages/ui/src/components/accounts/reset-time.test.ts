@@ -72,10 +72,18 @@ describe("accountResetAt", () => {
 });
 
 describe("weeklyResetAt", () => {
-  it("does not treat an unmarked legacy resetsAt as weekly", () => {
+  it("uses canonical resetsAt for Anthropic but not Codex weekly copy", () => {
     const at = NOW + 15_000;
     expect(
       weeklyResetAt(acct({ usage: { resetsAt: at, refreshedAt: NOW } })),
+    ).toBe(at);
+    expect(
+      weeklyResetAt(
+        acct({
+          providerId: "openai-codex",
+          usage: { resetsAt: at, refreshedAt: NOW },
+        }),
+      ),
     ).toBeUndefined();
   });
 
