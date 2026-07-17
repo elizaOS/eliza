@@ -22,6 +22,7 @@ import {
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
   failureToActionResult,
+  fencePreformatted,
   readNumberParam,
   readPositiveIntSetting,
   readStringParam,
@@ -1711,7 +1712,8 @@ export const shellAction: Action = {
     });
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
-    if (callback) await callback({ text, source: "coding-tools" });
+    if (callback)
+      await callback({ text: fencePreformatted(text), source: "coding-tools" });
 
     if (timedOut) {
       return failureToActionResult(
