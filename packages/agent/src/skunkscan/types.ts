@@ -3,6 +3,316 @@ import { InvestorEvidenceCollection } from "./explainability/evidenceCollection"
 
 export type SupportedChain = "solana" | "ethereum" | "base" | "bnb";
 
+/**
+ * Universal blockchain architecture.
+ *
+ * SupportedChain remains in use by the current API for backward
+ * compatibility. New chain integrations should use ChainIdentifier
+ * and BlockchainNetworkDefinition.
+ */
+
+export type ChainIdentifier = string;
+
+export type BlockchainFamily =
+  | "evm"
+  | "utxo"
+  | "solana"
+  | "cosmos"
+  | "move"
+  | "xrp_ledger"
+  | "stellar"
+  | "cardano"
+  | "substrate"
+  | "tron"
+  | "ton"
+  | "algorand"
+  | "near"
+  | "other";
+
+export type BlockchainNetworkType =
+  | "mainnet"
+  | "testnet"
+  | "devnet"
+  | "other";
+
+export type BlockchainAddressModel =
+  | "account"
+  | "utxo"
+  | "account_and_utxo"
+  | "other";
+
+export type BlockchainFinalityType =
+  | "probabilistic"
+  | "deterministic"
+  | "hybrid"
+  | "unknown";
+
+export type BlockchainCapabilities = {
+  supportsNativeAsset: boolean;
+  supportsFungibleTokens: boolean;
+  supportsNfts: boolean;
+  supportsSmartContracts: boolean;
+  supportsDefi: boolean;
+  supportsStaking: boolean;
+  supportsMemoOrTag: boolean;
+  supportsInternalTransactions: boolean;
+  supportsTransactionLogs: boolean;
+  supportsTokenApprovals: boolean;
+};
+
+export type BlockchainNetworkDefinition = {
+  id: ChainIdentifier;
+
+  name: string;
+
+  family: BlockchainFamily;
+
+  networkType: BlockchainNetworkType;
+
+  addressModel: BlockchainAddressModel;
+
+  nativeAssetSymbol: string;
+
+  nativeAssetDecimals: number;
+
+  finalityType: BlockchainFinalityType;
+
+  capabilities: BlockchainCapabilities;
+
+  explorerUrl?: string | null;
+
+  chainReference?: string | number | null;
+
+  isEnabled: boolean;
+};
+
+export type UniversalAddressType =
+  | "wallet"
+  | "contract"
+  | "program"
+  | "validator"
+  | "token_contract"
+  | "multisig"
+  | "exchange"
+  | "bridge"
+  | "protocol"
+  | "unknown";
+
+export type UniversalBlockchainAddress = {
+  chainId: ChainIdentifier;
+
+  address: string;
+
+  normalizedAddress: string;
+
+  addressType: UniversalAddressType;
+
+  isValid: boolean;
+
+  memoOrTag?: string | null;
+
+  label?: string | null;
+
+  metadata?: Record<string, unknown>;
+};
+
+export type UniversalAssetType =
+  | "native"
+  | "fungible_token"
+  | "nft"
+  | "semi_fungible_token"
+  | "liquidity_position"
+  | "other";
+
+export type UniversalAssetIdentifier = {
+  chainId: ChainIdentifier;
+
+  assetType: UniversalAssetType;
+
+  assetId: string;
+
+  symbol?: string | null;
+
+  name?: string | null;
+
+  decimals?: number | null;
+
+  contractAddress?: string | null;
+
+  tokenId?: string | null;
+
+  metadata?: Record<string, unknown>;
+};
+
+export type UniversalAmount = {
+  rawAmount: string;
+
+  decimalAmount?: string | null;
+
+  estimatedUsdValue?: number | null;
+};
+
+export type UniversalTransferDirection =
+  | "incoming"
+  | "outgoing"
+  | "self"
+  | "internal"
+  | "unknown";
+
+export type UniversalTransferType =
+  | "native_transfer"
+  | "token_transfer"
+  | "nft_transfer"
+  | "mint"
+  | "burn"
+  | "fee"
+  | "reward"
+  | "refund"
+  | "internal_transfer"
+  | "unknown";
+
+export type UniversalTransfer = {
+  id: string;
+
+  chainId: ChainIdentifier;
+
+  transactionId: string;
+
+  transferIndex: number;
+
+  transferType: UniversalTransferType;
+
+  direction: UniversalTransferDirection;
+
+  asset: UniversalAssetIdentifier;
+
+  amount: UniversalAmount;
+
+  from?: UniversalBlockchainAddress | null;
+
+  to?: UniversalBlockchainAddress | null;
+
+  success: boolean;
+
+  metadata?: Record<string, unknown>;
+};
+
+export type UniversalTransactionStatus =
+  | "pending"
+  | "confirmed"
+  | "finalized"
+  | "failed"
+  | "dropped"
+  | "unknown";
+
+export type UniversalTransactionClassification =
+  | "transfer"
+  | "swap"
+  | "bridge"
+  | "deposit"
+  | "withdrawal"
+  | "staking"
+  | "unstaking"
+  | "delegation"
+  | "lending"
+  | "borrowing"
+  | "repayment"
+  | "liquidation"
+  | "liquidity_add"
+  | "liquidity_remove"
+  | "nft_trade"
+  | "token_approval"
+  | "contract_deployment"
+  | "contract_interaction"
+  | "governance"
+  | "mining_reward"
+  | "validator_reward"
+  | "coinbase"
+  | "consolidation"
+  | "data_transaction"
+  | "unknown";
+
+export type UniversalTransaction = {
+  chainId: ChainIdentifier;
+
+  transactionId: string;
+
+  blockIdentifier?: string | null;
+
+  blockHeight?: number | null;
+
+  transactionIndex?: number | null;
+
+  timestamp?: number | null;
+
+  status: UniversalTransactionStatus;
+
+  classifications: UniversalTransactionClassification[];
+
+  initiator?: UniversalBlockchainAddress | null;
+
+  signers: UniversalBlockchainAddress[];
+
+  counterparties: UniversalBlockchainAddress[];
+
+  transfers: UniversalTransfer[];
+
+  fee?: {
+    asset: UniversalAssetIdentifier;
+    amount: UniversalAmount;
+    payer?: UniversalBlockchainAddress | null;
+  } | null;
+
+  programOrContractIds: string[];
+
+  memo?: string | null;
+
+  rawDataAvailable: boolean;
+
+  metadata?: Record<string, unknown>;
+};
+
+export type ChainAdapterSupportLevel =
+  | "full"
+  | "partial"
+  | "experimental"
+  | "planned"
+  | "unsupported";
+
+export type ChainAdapterCapabilities = {
+  addressValidation: boolean;
+
+  balanceRetrieval: boolean;
+
+  transactionRetrieval: boolean;
+
+  transactionParsing: boolean;
+
+  tokenRetrieval: boolean;
+
+  nftRetrieval: boolean;
+
+  protocolDetection: boolean;
+
+  internalTransferDetection: boolean;
+
+  historicalTransactionRetrieval: boolean;
+};
+
+export type ChainAdapterDescriptor = {
+  chainId: ChainIdentifier;
+
+  family: BlockchainFamily;
+
+  supportLevel: ChainAdapterSupportLevel;
+
+  capabilities: ChainAdapterCapabilities;
+
+  providerNames: string[];
+
+  limitations: string[];
+};
+
 export type WalletInvestigationStatus =
   | "supported"
   | "unsupported_chain"
