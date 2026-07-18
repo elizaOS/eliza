@@ -165,7 +165,7 @@ async function driveReady(
 }
 
 describe("useRealtimeVoiceSession", () => {
-  it("fails closed instead of crashing on a non-string legacy conversation id", () => {
+  it("fails closed instead of crashing on a non-string legacy conversation id", async () => {
     const { options } = makeOptions({
       conversationId: { id: CONV_ID } as unknown as string,
     });
@@ -173,6 +173,9 @@ describe("useRealtimeVoiceSession", () => {
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     expect(result.current.available).toBe(false);
+    await expect(result.current.start()).resolves.toEqual({
+      kind: "unavailable",
+    });
   });
 
   it("invokes the advertised onMinted callback with the validated mint", async () => {

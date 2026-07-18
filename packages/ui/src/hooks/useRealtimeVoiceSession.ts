@@ -314,19 +314,28 @@ export function useRealtimeVoiceSession(
     resolve: (outcome: RealtimeVoiceStartOutcome) => void;
   } | null>(null);
 
+  const normalizedAgentId = normalizeVoiceIdentityId(agentId);
+  const normalizedConversationId = normalizeVoiceIdentityId(conversationId);
+
   // Keep the latest callbacks/config in refs so the stable `start`/`stop`
   // identities don't churn the mic button bindings each render.
   const getConsentNonceRef = useRef(getConsentNonce);
   const createClientRef = useRef(createClient);
   const clientOptionsRef = useRef(clientOptions);
   const onMintedRef = useRef(onMinted);
-  const idsRef = useRef({ agentId, conversationId });
+  const idsRef = useRef({
+    agentId: normalizedAgentId,
+    conversationId: normalizedConversationId,
+  });
   const readyTimeoutMsRef = useRef(readyTimeoutMs);
   getConsentNonceRef.current = getConsentNonce;
   createClientRef.current = createClient;
   clientOptionsRef.current = clientOptions;
   onMintedRef.current = onMinted;
-  idsRef.current = { agentId, conversationId };
+  idsRef.current = {
+    agentId: normalizedAgentId,
+    conversationId: normalizedConversationId,
+  };
   readyTimeoutMsRef.current = readyTimeoutMs;
 
   const clearReadyTimer = useCallback(() => {
@@ -349,8 +358,6 @@ export function useRealtimeVoiceSession(
     [],
   );
 
-  const normalizedAgentId = normalizeVoiceIdentityId(agentId);
-  const normalizedConversationId = normalizeVoiceIdentityId(conversationId);
   const hasIds = Boolean(normalizedAgentId) && Boolean(normalizedConversationId);
   const available = flagEnabled && hasIds && !featureDisabled;
 
@@ -420,7 +427,7 @@ export function useRealtimeVoiceSession(
     }
     if (!flagEnabled) return { kind: "unavailable" };
     const { agentId: aId, conversationId: cId } = idsRef.current;
-    if (!aId?.trim() || !cId?.trim()) return { kind: "unavailable" };
+    if (!aId || !cId) return { kind: "unavailable" };
 
     startingRef.current = true;
     micOwnedRef.current = false;
@@ -730,7 +737,7 @@ export function useRealtimeVoiceSession(
       const { agentId: nextAgentId, conversationId: nextConversationId } =
         idsRef.current;
       identityRestartPendingRef.current = false;
-      if (flagEnabled && nextAgentId?.trim() && nextConversationId?.trim()) {
+      if (flagEnabled && nextAgentId && nextConversationId) {
         await start();
       }
     })();
