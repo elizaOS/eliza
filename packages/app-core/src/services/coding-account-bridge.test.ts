@@ -221,6 +221,17 @@ describe("coding-account-bridge", () => {
     const configOverEnv = await bridge?.select("claude");
     expect(configOverEnv?.strategy).toBe("least-used");
     expect(configOverEnv?.accountId).toBe("spare");
+
+    // The active llmText route remains the highest-precedence app config.
+    configureDefaultAccountPoolSelection({
+      accountStrategies: { "anthropic-subscription": "least-used" },
+      serviceRouting: {
+        llmText: { backend: "anthropic", strategy: "priority" },
+      },
+    });
+    const routeOverAccountStrategy = await bridge?.select("claude");
+    expect(routeOverAccountStrategy?.strategy).toBe("priority");
+    expect(routeOverAccountStrategy?.accountId).toBe("primary");
   });
 
   it("materializes a per-account CODEX_HOME/auth.json for Codex (incl. id_token)", async () => {

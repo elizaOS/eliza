@@ -1212,7 +1212,13 @@ export function selectionForProvider(providerId: PoolProviderId): {
 export function configuredAccountStrategyForProvider(
   providerId: string,
 ): Strategy | undefined {
-  return normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId]);
+  const route = defaultSelectionConfig.serviceRouting?.llmText;
+  return (
+    (routeTargetsProvider(route, providerId)
+      ? normalizeStrategy(route?.strategy)
+      : undefined) ??
+    normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId])
+  );
 }
 
 export function configureDefaultAccountPoolSelection(
