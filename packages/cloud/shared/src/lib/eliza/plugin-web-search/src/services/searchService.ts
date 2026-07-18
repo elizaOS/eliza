@@ -1,9 +1,6 @@
 // Wires hosted Eliza agent searchService behavior for cloud runtime services.
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
-import {
-  executeHostedGoogleSearch,
-  type HostedSearchResult,
-} from "../../../../services/google-search";
+import type { HostedSearchResult } from "../../../../services/google-search";
 import type { IWebSearchService, SearchOptions, SearchResponse } from "../types";
 import { executeKeylessMcpSearch } from "./keyless-search";
 
@@ -88,6 +85,11 @@ export class WebSearchService extends Service implements IWebSearchService {
       };
     }
     try {
+      // Lazy import: the Google-grounded path drags the cloud services/db
+      // graph; keyless deployments never pay that module cost.
+      const { executeHostedGoogleSearch } = await import(
+        "../../../../services/google-search"
+      );
       const result = await executeHostedGoogleSearch(
         {
           query,
