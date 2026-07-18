@@ -1,0 +1,43 @@
+name: Agent Code Review (self-hosted proposal)
+
+# Proposal workflow. Keep dispatch-only until a dedicated `pool-review` runner
+# is registered on the machine that owns the loopback broker. Activation is a
+# separate, manually reviewed workflow-policy change.
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: agent-code-review-${{ inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  agent-review:
+    name: agent-review
+    runs-on: [self-hosted, pool-review]
+    timeout-minutes: 15
+    steps:
+      # Deliberately no checkout: untrusted PR code must never execute on the
+      # private runner. The trusted script is fetched from the base branch.
+      - name: Check out trusted review client only
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/ci/self-hosted-agent-review.mjs
+          sparse-checkout-cone-mode: false
+
+      - name: Review pull request through loopback broker
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REVIEW_ENDPOINT: http://127.0.0.1:18801/v1/messages
+        run: node scripts/ci/self-hosted-agent-review.mjs
