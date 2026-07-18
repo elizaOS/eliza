@@ -16,6 +16,7 @@ import {
   requiresDockerHostGateway,
   resolveAgentContainerClass,
   resolveStewardContainerUrl,
+  resolveVpnTeardown,
   shellQuote,
   validateAgentId,
   validateContainerName,
@@ -217,5 +218,30 @@ describe("agent container labels", () => {
     // Embedded single quote must be escaped, not break out of the quoting.
     expect(flags[2]).toContain(`'"'"'`);
     expect(flags[3]).toBe("--label 'ai.elizaos.container-class=test'");
+  });
+});
+
+describe("resolveVpnTeardown (#16565)", () => {
+  test("a registered id always wins — the only unambiguous deletion handle", () => {
+    expect(resolveVpnTeardown({ vpnNodeId: "blue-3", previousVpnNodeId: "old-7" })).toEqual({
+      kind: "by-id",
+      nodeId: "blue-3",
+    });
+    expect(resolveVpnTeardown({ vpnNodeId: "blue-3" })).toEqual({
+      kind: "by-id",
+      nodeId: "blue-3",
+    });
+  });
+
+  test("preserve mode with no registered id forbids by-name deletion — the same-name node is the LIVE one", () => {
+    // The review-blocking hole: container-start failure or required-registration
+    // timeout while the old node is preserved must never resolve to by-name.
+    expect(resolveVpnTeardown({ previousVpnNodeId: "old-7" })).toEqual({
+      kind: "skip-preserved",
+    });
+  });
+
+  test("plain provisions without an id keep the historical by-name cleanup", () => {
+    expect(resolveVpnTeardown({})).toEqual({ kind: "by-name" });
   });
 });

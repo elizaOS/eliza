@@ -42,6 +42,7 @@ import {
   requiresDockerHostGateway,
   resolveAgentContainerClass,
   resolveStewardContainerUrl,
+  resolveVpnTeardown,
   shellQuote,
   validateAgentId,
   validateAgentName,
@@ -1472,15 +1473,26 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         });
       }
-      // Deletes the Headscale pre-auth key if VPN was prepared
+      // Removes blue's Headscale node if VPN was prepared. Preserve-aware
+      // (#16565): when previousVpnNodeId is recorded, blue has NOT registered
+      // yet, so the only node under this hostname is the LIVE preserved one —
+      // a by-name cleanup here would delete it, the exact hole this feature
+      // closes. Nothing of blue's exists in Headscale at this point; its
+      // unused single-use pre-auth key is inert.
       if (headscaleEnabled) {
-        await headscaleIntegration
-          .cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId)
-          .catch((cleanupErr) => {
-            logger.warn(
-              `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-            );
-          });
+        if (resolveVpnTeardown({ previousVpnNodeId }).kind === "skip-preserved") {
+          logger.info(
+            `[docker-sandbox] Skipping Headscale cleanup during rollback for ${agentId}: preserved live node holds the hostname and blue never registered`,
+          );
+        } else {
+          await headscaleIntegration
+            .cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId)
+            .catch((cleanupErr) => {
+              logger.warn(
+                `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+              );
+            });
+        }
       }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1877,19 +1889,30 @@ export class DockerSandboxProvider implements SandboxProvider {
     const headscaleEnv = currentHeadscaleRouteEnv();
     const registeredNodeName = meta.tsHostname;
     if (shouldCleanupHeadscaleVpn(headscaleEnv, registeredNodeName)) {
-      // Prefer deletion by THIS container's registered node id (#16565): during
-      // a blue/green overlap the old and new nodes share the hostname, and a
-      // by-name delete from a rolled-back blue would kill the LIVE old node.
-      // The by-name path remains for containers that never resolved an id
-      // (registration timeout — nothing ambiguous exists then).
-      const cleanup = meta.vpnNodeId
-        ? headscaleIntegration.removeVpnNodeById(meta.vpnNodeId)
-        : headscaleIntegration.cleanupContainerVPN(registeredNodeName);
-      await withTimeout(cleanup, HEADSCALE_CLEANUP_TIMEOUT_MS, "headscale cleanup").catch((err) => {
-        logger.warn(
-          `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+      // One pinned decision for every teardown path (#16565): by-id when this
+      // container registered, forbidden by-name in preserve mode where the
+      // only same-name node is the LIVE preserved one, historical by-name for
+      // plain provisions.
+      const teardown = resolveVpnTeardown(meta);
+      const cleanup =
+        teardown.kind === "by-id"
+          ? headscaleIntegration.removeVpnNodeById(teardown.nodeId)
+          : teardown.kind === "by-name"
+            ? headscaleIntegration.cleanupContainerVPN(registeredNodeName)
+            : null;
+      if (cleanup) {
+        await withTimeout(cleanup, HEADSCALE_CLEANUP_TIMEOUT_MS, "headscale cleanup").catch(
+          (err) => {
+            logger.warn(
+              `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          },
         );
-      });
+      } else {
+        logger.info(
+          `[docker-sandbox] Skipping Headscale cleanup for ${meta.agentId}: preserved live node holds the hostname and this container never registered`,
+        );
+      }
     }
 
     // Remove from in-memory registry
