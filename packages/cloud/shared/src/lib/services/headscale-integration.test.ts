@@ -125,11 +125,7 @@ describe("Headscale container credentials", () => {
       agentName: "Eliza",
     });
 
-    expect(calls).toEqual([
-      "lookup:eliza-11111111-111",
-      "delete:stale-node-70",
-      "create-key",
-    ]);
+    expect(calls).toEqual(["lookup:eliza-11111111-111", "delete:stale-node-70", "create-key"]);
   });
 });
 
