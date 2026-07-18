@@ -61,9 +61,13 @@ const streamRoute = (
     "../v1/eliza/agents/[agentId]/api/conversations/[conversationId]/messages/stream/route"
   )
 ).default;
-const { createInternalElizaConversationFetch } = await import(
-  "../v1/voice/session/lib/internal-eliza-conversation-fetch"
-);
+const {
+  createInternalElizaConversationFetch,
+  createInternalElizaConversationFetchFactory,
+} = await import("../v1/voice/session/lib/internal-eliza-conversation-fetch");
+const { hasDbCacheContext, runWithDbCacheAsync } = await import("@/db/client");
+const { getCloudAwareEnv, hasCloudBindingsContext, runWithCloudBindingsAsync } =
+  await import("@/lib/runtime/cloud-bindings");
 
 // Restore the real modules so this file's process-global mocks don't strand later
 // test files that use the full elizaSandboxService / resolveSharedAgent surface.
@@ -238,6 +242,72 @@ describe("shared agent messages/stream", () => {
         roomId: VOICE_CONVERSATION,
       },
     });
+  });
+
+  test("late voice callback restores captured Worker bindings and a fresh DB cache", async () => {
+    const env = {
+      DATABASE_URL: "postgresql://captured.example/eliza",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+    } as Parameters<typeof createInternalElizaConversationFetchFactory>[0];
+    let createLateFetch!: ReturnType<
+      typeof createInternalElizaConversationFetchFactory
+    >;
+
+    await runWithCloudBindingsAsync(env, () =>
+      runWithDbCacheAsync(async () => {
+        expect(hasCloudBindingsContext()).toBe(true);
+        expect(hasDbCacheContext()).toBe(true);
+        createLateFetch = createInternalElizaConversationFetchFactory(env);
+      }),
+    );
+
+    // Route setup has returned. This models the later WebSocket message event,
+    // whose async chain no longer owns the upgrade request's ALS stores.
+    expect(hasCloudBindingsContext()).toBe(false);
+    expect(hasDbCacheContext()).toBe(false);
+
+    findByIdAndOrg.mockImplementation(async () => {
+      expect(hasCloudBindingsContext()).toBe(true);
+      expect(hasDbCacheContext()).toBe(true);
+      expect(getCloudAwareEnv().DATABASE_URL).toBe(env.DATABASE_URL);
+      return {
+        id: AGENT,
+        organization_id: ORG,
+        user_id: "user-voice",
+        agent_name: "Voice Agent",
+      };
+    });
+    bridgeStream.mockImplementation(async () => {
+      expect(hasCloudBindingsContext()).toBe(true);
+      expect(hasDbCacheContext()).toBe(true);
+      return new Response("event: done\ndata: {}\n\n", {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    });
+
+    const fetchImpl = createLateFetch({
+      agentId: AGENT,
+      conversationId: VOICE_CONVERSATION,
+      organizationId: ORG,
+      userId: "user-voice",
+    });
+    const res = await fetchImpl(
+      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Eliza-Organization-Id": ORG,
+          "X-Eliza-User-Id": "user-voice",
+        },
+        body: JSON.stringify({ text: "late callback transcript" }),
+      },
+    );
+
+    expect(res.status).toBe(200);
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(bridgeStream).toHaveBeenCalledTimes(1);
   });
 
   test("internal voice fetch adapter rejects mismatched verified scope before persistence", async () => {

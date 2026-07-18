@@ -284,6 +284,7 @@ export function MediaGalleryView({
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const mountedRef = useRef(true);
   const [filter, setFilter] = useState<MediaType>("all");
   const [search, setSearch] = useState("");
@@ -429,12 +430,19 @@ export function MediaGalleryView({
           ? "video/mp4"
           : "audio/mpeg";
     const filename = selectedItem.filename || filenameForMime(mime);
+    setActionError("");
     try {
       await downloadAttachment(url, filename);
-    } catch {
-      // Download failed for this transport — nothing more we can do client-side.
+    } catch (err) {
+      setActionError(
+        t("mediagalleryview.DownloadFailed", {
+          name: filename,
+          message: err instanceof Error ? err.message : "error",
+          defaultValue: "Could not download {{name}}: {{message}}",
+        }),
+      );
     }
-  }, [selectedItem]);
+  }, [selectedItem, t]);
 
   const handleShareSelected = useCallback(async () => {
     if (!selectedItem) return;
@@ -525,13 +533,28 @@ export function MediaGalleryView({
       contentHeader={contentHeader}
       contentInnerClassName="w-full min-h-0"
     >
-      <div className="flex min-h-0 flex-1 flex-col w-full">
+      <div className="flex min-h-0 flex-1 flex-col w-full" aria-busy={loading}>
+        {actionError ? (
+          <div
+            role="alert"
+            className="mb-4 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger"
+          >
+            {actionError}
+          </div>
+        ) : null}
         {error ? (
-          <div className="mb-4 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger">
+          <div
+            role="alert"
+            className="mb-4 rounded-sm border border-danger/35 bg-danger/10 px-4 py-3 text-sm text-danger"
+          >
             {error}
           </div>
         ) : loading ? (
-          <div className="flex flex-1 items-center justify-center text-sm italic text-muted">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex flex-1 items-center justify-center text-sm italic text-muted"
+          >
             {t("mediagalleryview.ScanningForMedia")}
           </div>
         ) : !selectedItem ? (
