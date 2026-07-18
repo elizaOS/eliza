@@ -533,6 +533,15 @@ export function collectPluginNames(
       "@elizaos/plugin-cli-inference",
       "cloud container default (inert unless ELIZA_CHAT_VIA_CLI selects a backend)",
     );
+    // Cloud containers drop local inference unless the on-device signal is
+    // explicitly set: they have no GPU, the on-device gte-small embedder runs
+    // 1.5–98s per batch on contended container CPU, and its 384-dim vectors
+    // mismatch the cloud's 1536-dim TEXT_EMBEDDING — dropping every memory
+    // insert (see LEAN_CHAT_EXCLUDED_PLUGINS, which already encodes this for
+    // lean chat). The cloud embedding handler serves TEXT_EMBEDDING instead.
+    if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") {
+      pluginsToLoad.delete("@elizaos/plugin-local-inference");
+    }
   }
   if (!onMobile && gitpathologistRequested(config)) {
     pluginsToLoad.add("@elizaos/plugin-gitpathologist");

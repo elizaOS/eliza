@@ -210,4 +210,27 @@ describe("collectPluginNames cloud-container operator defaults", () => {
     expect(names.has("@elizaos/plugin-pty")).toBe(false);
     expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
   });
+
+  it("drops local inference on cloud containers (cloud embeddings serve TEXT_EMBEDDING)", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+  });
+
+  it("keeps local inference on cloud containers when ELIZA_LOCAL_LLAMA=1", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_LOCAL_LLAMA = "1";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+  });
+
+  it("keeps local inference off cloud containers (unchanged local boot)", () => {
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
+  });
 });
