@@ -40,21 +40,18 @@ const mocks = vi.hoisted(() => ({
     resetConnection: vi.fn(),
     fetch: vi.fn(async () => ({ ok: true })),
     getBaseUrl: vi.fn(() => "http://127.0.0.1:31337"),
+    rawRequest: vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ currentView: null, justSwitched: false }),
+          { status: 200 },
+        ),
+    ),
   },
-  fetchCurrentView: vi.fn(
-    async () =>
-      new Response(JSON.stringify({ currentView: null, justSwitched: false }), {
-        status: 200,
-      }),
-  ),
 }));
 
 vi.mock("../api", () => ({
   client: mocks.client,
-}));
-
-vi.mock("../api/csrf-client", () => ({
-  fetchWithCsrf: mocks.fetchCurrentView,
 }));
 
 const observedNavigations: NavigateViewDetail[] = [];
@@ -132,7 +129,12 @@ describe("useAppLifecycleEvents", () => {
     mocks.client.resetConnection.mockClear();
     mocks.client.fetch.mockClear();
     mocks.client.getBaseUrl.mockReturnValue("http://127.0.0.1:31337");
-    mocks.fetchCurrentView.mockClear();
+    mocks.client.rawRequest.mockClear();
+    mocks.client.rawRequest.mockResolvedValue(
+      new Response(JSON.stringify({ currentView: null, justSwitched: false }), {
+        status: 200,
+      }),
+    );
     observedNavigations.length = 0;
     window.addEventListener(NAVIGATE_VIEW_EVENT, recordNavigation);
     window.localStorage.clear();
@@ -149,7 +151,7 @@ describe("useAppLifecycleEvents", () => {
   });
 
   it("on resume: reconnects, refetches the tail, and recovers missed navigation (D2)", async () => {
-    mocks.fetchCurrentView.mockResolvedValueOnce(
+    mocks.client.rawRequest.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           currentView: {

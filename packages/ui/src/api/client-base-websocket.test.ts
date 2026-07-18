@@ -115,6 +115,16 @@ describe("ElizaClient websocket connection policy", () => {
     );
   });
 
+  it("keeps one shell identity across replacement client instances", () => {
+    const first = new ElizaClient("https://agent.example.test", "agent-token");
+    const replacement = new ElizaClient(
+      "https://agent.example.test",
+      "agent-token",
+    );
+
+    expect(replacement.getClientId()).toBe(first.getClientId());
+  });
+
   it("does not open mixed-content ws from an https origin", () => {
     const createdUrls = stubWebSocket();
 

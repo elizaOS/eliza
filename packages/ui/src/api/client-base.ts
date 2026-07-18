@@ -688,8 +688,29 @@ export class ElizaClient {
     return `ui-${random.slice(0, 256).replace(/[^a-zA-Z0-9._-]/g, "")}`;
   }
 
+  private static resolveShellClientId(): string {
+    const key = Symbol.for("elizaos.ui.client-id");
+    const host = globalThis as unknown as Record<PropertyKey, unknown>;
+    const existing = host[key];
+    if (
+      typeof existing === "string" &&
+      existing.length <= 256 &&
+      /^ui-[a-zA-Z0-9._-]+$/.test(existing)
+    ) {
+      return existing;
+    }
+
+    // Vite can replace the API-client module while an SSE turn is still using
+    // its previous instance. The identity belongs to the browser shell, not the
+    // module instance, so HTTP recovery and the live WebSocket keep addressing
+    // the same server-side view scope across hot reloads.
+    const generated = ElizaClient.generateClientId();
+    host[key] = generated;
+    return generated;
+  }
+
   constructor(baseUrl?: string, token?: string) {
-    this.clientId = ElizaClient.generateClientId();
+    this.clientId = ElizaClient.resolveShellClientId();
     this._token = token?.trim() || null;
 
     const bootBase = getBootConfig().apiBase;

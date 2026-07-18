@@ -65,6 +65,7 @@ const mocks = vi.hoisted(() => ({
     deleteConversationMessage: vi.fn(() =>
       Promise.resolve({ ok: true, deletedCount: 1 }),
     ),
+    rawRequest: vi.fn(),
     getBaseUrl: vi.fn(() => ""),
     // Real client exposes onWsEvent(type, handler) => unsubscribe; the retry
     // path subscribes to "ws-reconnected" through it. Default no-op unsubscribe.
@@ -723,22 +724,19 @@ describe("useChatSend VIEWS action handoff", () => {
         },
       ],
     });
-    const fetchMock = vi.fn(async () =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify({
-            currentView: {
-              viewId: "calendar",
-              viewPath: "/calendar",
-              viewLabel: "Calendar",
-              viewType: "gui",
-            },
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } },
-        ),
+    mocks.client.rawRequest.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          currentView: {
+            viewId: "calendar",
+            viewPath: "/calendar",
+            viewLabel: "Calendar",
+            viewType: "gui",
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
       ),
     );
-    vi.stubGlobal("fetch", fetchMock);
     const navigations: CustomEvent[] = [];
     const onNavigate = (event: Event) => navigations.push(event as CustomEvent);
     window.addEventListener(NAVIGATE_VIEW_EVENT, onNavigate);
@@ -754,9 +752,10 @@ describe("useChatSend VIEWS action handoff", () => {
       });
     });
 
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(mocks.client.rawRequest).toHaveBeenCalledWith(
       "/api/views/current",
-      expect.any(Object),
+      undefined,
+      { allowNonOk: true },
     );
     expect(navigations).toHaveLength(1);
     expect(navigations[0]?.detail).toEqual({
@@ -781,9 +780,8 @@ describe("useChatSend VIEWS action handoff", () => {
         },
       ],
     });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("offline", { status: 503 })),
+    mocks.client.rawRequest.mockResolvedValue(
+      new Response("offline", { status: 503 }),
     );
     const deps = makeDeps({
       activeConversationId: "conv-1",
