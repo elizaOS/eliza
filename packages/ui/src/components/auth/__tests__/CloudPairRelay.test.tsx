@@ -15,6 +15,7 @@ import {
   getElizaApiToken,
 } from "../../../utils/eliza-globals";
 import {
+  CLOUD_PAIR_LOCAL_STORAGE_KEY,
   CLOUD_PAIR_SESSION_STORAGE_KEY,
   CloudHostedAgentAuthNotice,
   CloudPairExchangeError,
@@ -23,6 +24,7 @@ import {
   getCloudPairTokenFromLocation,
   isElizaCloudHostedLocation,
   persistCloudPairApiToken,
+  resolveCloudHostedAgentUrl,
   resolveCloudPairExchangeUrl,
 } from "../CloudPairRelay";
 
@@ -38,6 +40,7 @@ describe("CloudPairRelay", () => {
     setBootConfig(DEFAULT_BOOT_CONFIG);
     clearElizaApiToken();
     window.sessionStorage.clear();
+    window.localStorage.clear();
     window.history.replaceState(null, "", "/");
   });
 
@@ -134,6 +137,9 @@ describe("CloudPairRelay", () => {
     expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
       "agent-key",
     );
+    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
+      "agent-key",
+    );
     expect(
       (globalThis as Record<string, unknown>).__ELIZA_APP_BOOT_CONFIG__,
     ).toEqual(expect.objectContaining({ apiToken: "agent-key" }));
@@ -159,6 +165,9 @@ describe("CloudPairRelay", () => {
     expect(window.sessionStorage.getItem(CLOUD_PAIR_SESSION_STORAGE_KEY)).toBe(
       "agent-key",
     );
+    expect(window.localStorage.getItem(CLOUD_PAIR_LOCAL_STORAGE_KEY)).toBe(
+      "agent-key",
+    );
   });
 
   it("shows a clean Cloud-pair error instead of the local password form", async () => {
@@ -181,13 +190,38 @@ describe("CloudPairRelay", () => {
     expect(screen.queryByText("Remember this device for 30 days")).toBeNull();
   });
 
-  it("shows a Cloud-hosted auth notice without the local password wall", () => {
+  it("shows a Cloud-hosted auth notice with a tappable Cloud reopen CTA", () => {
     render(<CloudHostedAgentAuthNotice />);
 
     expect(screen.getByText("Open this agent from Eliza Cloud")).toBeTruthy();
+    const link = screen.getByRole("link", {
+      name: "Re-open from Eliza Cloud",
+    });
+    expect(link.getAttribute("href")).toBe(
+      "https://elizacloud.ai/dashboard/agents",
+    );
+    expect(link.getAttribute("target")).toBe("_top");
     expect(screen.queryByText("Display name")).toBeNull();
     expect(screen.queryByText("Password")).toBeNull();
     expect(screen.queryByText("Remember this device for 30 days")).toBeNull();
+  });
+
+  it("resolves production, staging, and agent-specific Cloud reopen URLs", () => {
+    expect(
+      resolveCloudHostedAgentUrl({
+        hostname: "agent-123.elizacloud.ai",
+      }),
+    ).toBe("https://elizacloud.ai/dashboard/agents/agent-123");
+    expect(
+      resolveCloudHostedAgentUrl({
+        hostname: "agent-123.staging.elizacloud.ai",
+      }),
+    ).toBe("https://staging.elizacloud.ai/dashboard/agents/agent-123");
+    expect(
+      resolveCloudHostedAgentUrl({
+        hostname: "app-staging.elizacloud.ai",
+      }),
+    ).toBe("https://staging.elizacloud.ai/dashboard/agents");
   });
 });
 

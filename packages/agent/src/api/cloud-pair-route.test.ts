@@ -133,7 +133,13 @@ describe("handleStandaloneCloudPairRoute", () => {
       }),
     );
     expect(harness.body()).toContain(
-      'window.sessionStorage.setItem("eliza:cloud-pair:api-token", key)',
+      "persist(window.sessionStorage)",
+    );
+    expect(harness.body()).toContain(
+      "persist(window.localStorage)",
+    );
+    expect(harness.body()).toContain(
+      'throw new Error("No browser storage accepted the paired token.")',
     );
     expect(harness.body()).toContain("apiToken: key");
     expect(harness.body()).toContain('window.location.replace("/")');

@@ -95,7 +95,19 @@ function renderRedirectHtml(apiKey: string): string {
     (function () {
       try {
         var key = ${safeKey};
-        window.sessionStorage.setItem("eliza:cloud-pair:api-token", key);
+        function persist(storage) {
+          try {
+            storage.setItem("eliza:cloud-pair:api-token", key);
+            return true;
+          } catch (_storageError) {
+            return false;
+          }
+        }
+        var storedInSession = persist(window.sessionStorage);
+        var storedDurably = persist(window.localStorage);
+        if (!(storedInSession || storedDurably)) {
+          throw new Error("No browser storage accepted the paired token.");
+        }
         var slot = Symbol.for("elizaos.app.boot-config");
         var previous = window.__ELIZAOS_APP_BOOT_CONFIG__ ||
           window.__ELIZA_APP_BOOT_CONFIG__ ||
