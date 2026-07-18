@@ -77,7 +77,9 @@ export function createInternalElizaConversationFetchFactory(
 
       // If session-start warming is still in flight, reuse its result rather
       // than issuing the same tenancy query concurrently on the first turn.
-      if (prewarmPromise) await prewarmPromise;
+      // Warmup is best-effort: a transient failure must fall through to the
+      // normal per-turn validation, never fail the user's turn by itself.
+      if (prewarmPromise) await prewarmPromise.catch(() => undefined);
 
       return runWithCloudBindingsAsync(
         env as unknown as Record<string, unknown>,
