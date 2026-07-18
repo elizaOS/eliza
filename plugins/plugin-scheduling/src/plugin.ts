@@ -9,7 +9,9 @@
  */
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
+import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
+
 import {
   getScheduledTaskRunner,
   getScheduledTaskRunnerDeps,
@@ -24,7 +26,9 @@ import {
 export const schedulingPlugin: Plugin = {
   name: "@elizaos/plugin-scheduling",
   description:
-    "Scheduling spine: the always-loaded ScheduledTask runtime primitive — runner host, REST surface, and default-pack seed registry. Persistence and owner/channel deps are injected by a host plugin; built-in defaults run when no host is present.",
+    "Scheduling spine: the always-loaded ScheduledTask runtime primitive — runner host, REST surface, durable store, and default-pack seed registry. Owner/channel deps are injected by a host plugin; built-in defaults run when no host is present.",
+  dependencies: ["@elizaos/plugin-sql"],
+  schema: schedulingDbSchema,
   services: [ScheduledTaskRunnerService],
   routes: buildSchedulingRoutes(),
   views: [
