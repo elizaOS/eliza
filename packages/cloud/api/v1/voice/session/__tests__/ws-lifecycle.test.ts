@@ -456,6 +456,27 @@ describe("voice-session WS lifecycle", () => {
     await flush();
   });
 
+  test("empty LLM reply cancels the prewarmed Cartesia context", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say nothing");
+    await flush();
+    await flush();
+
+    // The socket was opened speculatively at turn start; with no speakable
+    // output it must be cancelled (closed) rather than leaked, and the turn
+    // still closes out with a usage frame.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.closed).toBe(true);
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.controlTypes()).not.toContain("speaking_start");
+  });
+
   test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
     const client = new FakeClientSocket();
     await connectSession({
