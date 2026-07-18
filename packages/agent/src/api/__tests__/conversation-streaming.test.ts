@@ -9,6 +9,7 @@
 
 import type http from "node:http";
 import {
+  type Action,
   type AgentRuntime,
   ChannelType,
   type Content,
@@ -687,6 +688,93 @@ describe("generateChatResponse token streaming", () => {
     ]);
     expect(result.text).toBe("Callback reply.");
     expect(result.usedActionCallbacks).toBe(true);
+  });
+
+  it("preserves callback action attribution and marks response-owning VIEWS output terminal", async () => {
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback) {
+        await callback?.(
+          { text: "Navigated to Notes.", action: "REPLY" },
+          "VIEWS",
+        );
+        return {
+          didRespond: true,
+          responseContent: { text: "Navigated to Notes." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "views-terminal-callback-status-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({
+      actions: [
+        {
+          name: "VIEWS",
+          callbackCompletesResponse: true,
+        } as Action,
+      ],
+      messageService: service,
+    });
+    const statuses: ChatTurnStatus[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("switch to notes"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onStatus: (status) => statuses.push(status),
+      },
+    );
+
+    expect(statuses).toEqual([
+      { kind: "thinking" },
+      { kind: "running_action", actionName: "VIEWS", terminal: true },
+    ]);
+    expect(result.text).toBe("Navigated to Notes.");
+  });
+
+  it("marks the built-in REPLY callback terminal without requiring runtime action metadata", async () => {
+    const service: MessageService = {
+      async handleMessage(_runtime, _message, callback) {
+        await callback?.({ text: "Complete reply." }, "REPLY");
+        return {
+          didRespond: true,
+          responseContent: { text: "Complete reply." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "reply-terminal-callback-status-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const runtime = createRuntime({ messageService: service });
+    const statuses: ChatTurnStatus[] = [];
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("reply please"),
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onStatus: (status) => statuses.push(status),
+      },
+    );
+
+    expect(statuses).toEqual([
+      { kind: "thinking" },
+      { kind: "running_action", actionName: "REPLY", terminal: true },
+    ]);
+    expect(result.text).toBe("Complete reply.");
   });
 
   it("forwards onStreamChunk deltas to caller onChunk in order", async () => {

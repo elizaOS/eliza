@@ -61,7 +61,7 @@ async function referenceServerInteract(
   params?: Record<string, unknown>,
 ): Promise<unknown> {
   if (capability === "list-views") {
-    return { views: REFERENCE_VIEWS };
+    return { success: true, views: REFERENCE_VIEWS };
   }
   if (capability === "open-view") {
     const viewId =

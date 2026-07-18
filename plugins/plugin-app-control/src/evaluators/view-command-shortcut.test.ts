@@ -4,6 +4,7 @@
 
 import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { createViewsAction } from "../actions/views.ts";
 import { viewCommandShortcutEvaluator } from "./view-command-shortcut.ts";
 
 function ctx(
@@ -59,6 +60,12 @@ function augmented(userRequest: string): string {
 }
 
 describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", () => {
+	it("makes the VIEWS callback the sole visible-response owner", () => {
+		const action = createViewsAction();
+		expect(action.suppressEarlyReply).toBe(true);
+		expect(action.suppressPostActionContinuation).toBe(true);
+	});
+
 	const commands: Array<[text: string, view: string]> = [
 		["open settings", "settings"],
 		["go to settings view", "settings"],
@@ -87,6 +94,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			const patch = await run(text);
 			expect(patch).toBeTruthy();
 			expect(patch?.requiresTool).toBe(true);
+			expect(patch?.clearReply).toBe(true);
 			expect(viewCommandShortcutEvaluator.priority).toBeLessThan(20);
 			expect(patch?.clearCandidateActions).toBe(true);
 			expect(patch?.addCandidateActions).toContain("VIEWS");
@@ -117,6 +125,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 
 		expect(patch).toMatchObject({
 			requiresTool: true,
+			clearReply: true,
 			clearCandidateActions: true,
 			addCandidateActions: ["VIEWS"],
 			clearParentActionHints: true,

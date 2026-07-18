@@ -367,7 +367,7 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
   it("routes additive status events to onStatus without ending the stream", async () => {
     const client = streamFromSse(
       'data: {"type":"status","kind":"thinking"}\n\n' +
-        'data: {"type":"status","kind":"running_action","actionName":"SEND_MESSAGE"}\n\n' +
+        'data: {"type":"status","kind":"running_action","actionName":"SEND_MESSAGE","terminal":true}\n\n' +
         'data: {"type":"status","kind":"streaming"}\n\n' +
         'data: {"type":"token","text":"Done.","fullText":"Done."}\n\n' +
         'data: {"type":"done","fullText":"Done.","agentName":"Eliza"}\n\n',
@@ -393,7 +393,11 @@ describe("ElizaClient chat-turn status SSE (#8813)", () => {
     // Every status event surfaced, in order, with action detail preserved.
     expect(onStatus.mock.calls.map((c) => c[0])).toEqual([
       { kind: "thinking" },
-      { kind: "running_action", actionName: "SEND_MESSAGE" },
+      {
+        kind: "running_action",
+        actionName: "SEND_MESSAGE",
+        terminal: true,
+      },
       { kind: "streaming" },
     ]);
   });

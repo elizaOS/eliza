@@ -11,6 +11,7 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getActiveViewContext } from "../runtime/view-action-affinity.ts";
 import {
   registerBuiltinViews,
   registerPluginViews,
@@ -19,6 +20,7 @@ import {
 import {
   type CurrentViewState,
   clearCurrentViewState,
+  getCurrentViewRevision,
   getCurrentViewState,
   handleViewsRoutes,
   isViewSwitchFresh,
@@ -44,21 +46,25 @@ function makeNavigateCtx(
   id: string,
   body: NavigateBody | null,
   search = "",
+  clientId?: string,
 ): {
   ctx: ViewsRouteContext;
   json: ReturnType<typeof vi.fn>;
   error: ReturnType<typeof vi.fn>;
   broadcastWs: ReturnType<typeof vi.fn>;
+  broadcastWsToClientId: ReturnType<typeof vi.fn>;
 } {
   // `readJsonBody` reads the request as a Node stream; Readable.from yields the
   // JSON exactly as an inbound HTTP request body would.
   const req = Readable.from(
     body === null ? [] : [Buffer.from(JSON.stringify(body))],
   ) as unknown as http.IncomingMessage;
+  req.headers = clientId ? { "x-elizaos-client-id": clientId } : {};
   const res = {} as http.ServerResponse;
   const json = vi.fn();
   const error = vi.fn();
   const broadcastWs = vi.fn();
+  const broadcastWsToClientId = vi.fn(() => 1);
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
     req,
@@ -69,8 +75,9 @@ function makeNavigateCtx(
     json,
     error,
     broadcastWs,
+    broadcastWsToClientId,
   };
-  return { ctx, json, error, broadcastWs };
+  return { ctx, json, error, broadcastWs, broadcastWsToClientId };
 }
 
 function makeInteractCtx(
@@ -212,9 +219,9 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
   });
 
   it("broadcasts split and tile layout metadata to the shell", async () => {
-    const { ctx, broadcastWs, json } = makeNavigateCtx("notes", {
+    const { ctx, broadcastWs, json } = makeNavigateCtx("settings", {
       action: "split-view",
-      views: ["notes", "calendar"],
+      views: ["settings", "character"],
       layout: "horizontal",
       placement: "right",
     });
@@ -224,9 +231,9 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(broadcastWs).toHaveBeenCalledWith(
       expect.objectContaining({
         type: SHELL_NAVIGATE_VIEW_WS_EVENT,
-        viewId: "notes",
+        viewId: "settings",
         action: "split-view",
-        views: ["notes", "calendar"],
+        views: ["settings", "character"],
         layout: "horizontal",
         placement: "right",
       }),
@@ -236,11 +243,90 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       expect.objectContaining({
         ok: true,
         action: "split-view",
-        views: ["notes", "calendar"],
+        views: ["settings", "character"],
         layout: "horizontal",
         placement: "right",
       }),
     );
+    expect(getCurrentViewState()).toMatchObject({
+      viewId: "settings",
+      views: ["settings", "character"],
+      layout: "horizontal",
+      placement: "right",
+    });
+    expect(getActiveViewContext()).toMatchObject({
+      viewId: "settings",
+      viewIds: ["settings", "character"],
+      layout: "horizontal",
+      placement: "right",
+    });
+  });
+
+  it("normalizes split state to every visible pane with the primary first", async () => {
+    const { ctx, broadcastWs } = makeNavigateCtx("settings", {
+      action: "split-view",
+      views: [" character ", "character"],
+      layout: "horizontal",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        viewId: "settings",
+        views: ["settings", "character"],
+      }),
+    );
+    expect(getCurrentViewState()?.views).toEqual(["settings", "character"]);
+    expect(getActiveViewContext()?.viewIds).toEqual(["settings", "character"]);
+  });
+
+  it("records exact mixed pane types and rejects an ambiguous secondary without a hint", async () => {
+    await registerPluginViews({
+      name: "@test/views-route",
+      description: "Mixed-modality layout fixtures.",
+      views: [
+        { id: "dual-pane", label: "Dual GUI", viewType: "gui" },
+        { id: "dual-pane", label: "Dual XR", viewType: "xr" },
+        { id: "xr-pane", label: "XR Pane", viewType: "xr" },
+      ],
+    });
+
+    const typed = makeNavigateCtx("settings", {
+      views: ["settings", "dual-pane", "xr-pane"],
+      viewTypes: { "dual-pane": "xr" },
+      clientId: "layout-owner",
+      layout: "horizontal",
+    });
+    await handleViewsRoutes(typed.ctx);
+
+    expect(getActiveViewContext("layout-owner")?.panes).toEqual([
+      { viewId: "settings", viewType: "gui", clientId: "layout-owner" },
+      { viewId: "dual-pane", viewType: "xr", clientId: "layout-owner" },
+      { viewId: "xr-pane", viewType: "xr", clientId: "layout-owner" },
+    ]);
+    expect(getCurrentViewState("layout-owner")?.panes).toEqual([
+      { viewId: "settings", viewType: "gui" },
+      { viewId: "dual-pane", viewType: "xr" },
+      { viewId: "xr-pane", viewType: "xr" },
+    ]);
+
+    const priorState = getCurrentViewState("layout-owner");
+    const priorRevision = getCurrentViewRevision("layout-owner");
+    const ambiguous = makeNavigateCtx("settings", {
+      views: ["settings", "dual-pane"],
+      clientId: "layout-owner",
+      layout: "horizontal",
+    });
+    await handleViewsRoutes(ambiguous.ctx);
+    expect(ambiguous.error).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.stringContaining("dual-pane"),
+      400,
+    );
+    expect(ambiguous.broadcastWs).not.toHaveBeenCalled();
+    expect(getCurrentViewState("layout-owner")).toEqual(priorState);
+    expect(getCurrentViewRevision("layout-owner")).toBe(priorRevision);
   });
 
   it("drops a non-boolean alwaysOnTop and a non-string action", async () => {
@@ -359,6 +445,178 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(state?.action).toBe("pin-tab");
   });
 
+  it("rejects a stale conditional navigation without mutating or broadcasting", async () => {
+    const expectedRevision = getCurrentViewRevision();
+    const first = makeNavigateCtx("settings", { expectedRevision });
+    await handleViewsRoutes(first.ctx);
+
+    expect(getCurrentViewState()?.viewId).toBe("settings");
+    expect(getCurrentViewRevision()).toBe(expectedRevision + 1);
+
+    const stale = makeNavigateCtx("character", { expectedRevision });
+    await expect(handleViewsRoutes(stale.ctx)).resolves.toBe(true);
+
+    expect(stale.broadcastWs).not.toHaveBeenCalled();
+    expect(stale.json).toHaveBeenCalledWith(
+      stale.ctx.res,
+      expect.objectContaining({
+        ok: false,
+        conflict: true,
+        currentView: expect.objectContaining({ viewId: "settings" }),
+        revision: expectedRevision + 1,
+      }),
+      409,
+    );
+    expect(getCurrentViewState()?.viewId).toBe("settings");
+  });
+
+  it("isolates navigation, revisions, CAS, and broadcasts by X-ElizaOS-Client-Id", async () => {
+    const clientA = "shell-client-a";
+    const clientB = "shell-client-b";
+    const firstA = makeNavigateCtx(
+      "settings",
+      { expectedRevision: 0 },
+      "",
+      clientA,
+    );
+    const firstB = makeNavigateCtx(
+      "character",
+      { expectedRevision: 0 },
+      "",
+      clientB,
+    );
+
+    await handleViewsRoutes(firstA.ctx);
+    await handleViewsRoutes(firstB.ctx);
+
+    expect(firstA.broadcastWs).not.toHaveBeenCalled();
+    expect(firstB.broadcastWs).not.toHaveBeenCalled();
+    expect(firstA.broadcastWsToClientId).toHaveBeenCalledWith(
+      clientA,
+      expect.objectContaining({ viewId: "settings" }),
+    );
+    expect(firstB.broadcastWsToClientId).toHaveBeenCalledWith(
+      clientB,
+      expect.objectContaining({ viewId: "character" }),
+    );
+
+    const initialCurrentA = makeCurrentCtx(clientA);
+    const initialCurrentB = makeCurrentCtx(clientB);
+    await handleViewsRoutes(initialCurrentA.ctx);
+    await handleViewsRoutes(initialCurrentB.ctx);
+    expect(initialCurrentA.json).toHaveBeenCalledWith(
+      initialCurrentA.ctx.res,
+      expect.objectContaining({
+        currentView: expect.objectContaining({ viewId: "settings" }),
+        revision: 1,
+      }),
+    );
+    expect(initialCurrentB.json).toHaveBeenCalledWith(
+      initialCurrentB.ctx.res,
+      expect.objectContaining({
+        currentView: expect.objectContaining({ viewId: "character" }),
+        revision: 1,
+      }),
+    );
+
+    const staleA = makeNavigateCtx(
+      "notes",
+      { expectedRevision: 0 },
+      "",
+      clientA,
+    );
+    const nextB = makeNavigateCtx(
+      "notes",
+      { expectedRevision: 1 },
+      "",
+      clientB,
+    );
+    await handleViewsRoutes(staleA.ctx);
+    await handleViewsRoutes(nextB.ctx);
+
+    expect(staleA.json).toHaveBeenCalledWith(
+      staleA.ctx.res,
+      expect.objectContaining({
+        ok: false,
+        conflict: true,
+        currentView: expect.objectContaining({ viewId: "settings" }),
+        revision: 1,
+      }),
+      409,
+    );
+    expect(staleA.broadcastWs).not.toHaveBeenCalled();
+    expect(staleA.broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(nextB.broadcastWsToClientId).toHaveBeenCalledWith(
+      clientB,
+      expect.objectContaining({ viewId: "notes" }),
+    );
+
+    const finalCurrentA = makeCurrentCtx(clientA);
+    const finalCurrentB = makeCurrentCtx(clientB);
+    await handleViewsRoutes(finalCurrentA.ctx);
+    await handleViewsRoutes(finalCurrentB.ctx);
+    expect(finalCurrentA.json).toHaveBeenCalledWith(
+      finalCurrentA.ctx.res,
+      expect.objectContaining({
+        currentView: expect.objectContaining({ viewId: "settings" }),
+        revision: 1,
+      }),
+    );
+    expect(finalCurrentB.json).toHaveBeenCalledWith(
+      finalCurrentB.ctx.res,
+      expect.objectContaining({
+        currentView: expect.objectContaining({ viewId: "notes" }),
+        revision: 2,
+      }),
+    );
+  });
+
+  it("rejects an ambiguous scoped layout without mutating either client", async () => {
+    await registerPluginViews({
+      name: "@test/views-route",
+      description: "Ambiguous client-isolation fixture.",
+      views: [
+        { id: "dual-pane", label: "Dual GUI", viewType: "gui" },
+        { id: "dual-pane", label: "Dual XR", viewType: "xr" },
+      ],
+    });
+    const clientA = "layout-client-a";
+    const clientB = "layout-client-b";
+    await handleViewsRoutes(
+      makeNavigateCtx("settings", { expectedRevision: 0 }, "", clientA).ctx,
+    );
+    await handleViewsRoutes(
+      makeNavigateCtx("character", { expectedRevision: 0 }, "", clientB).ctx,
+    );
+    const stateA = getCurrentViewState(clientA);
+    const stateB = getCurrentViewState(clientB);
+
+    const ambiguous = makeNavigateCtx(
+      "settings",
+      {
+        action: "split-view",
+        views: ["settings", "dual-pane"],
+        layout: "horizontal",
+        expectedRevision: 1,
+      },
+      "",
+      clientA,
+    );
+    await handleViewsRoutes(ambiguous.ctx);
+
+    expect(ambiguous.error).toHaveBeenCalledWith(
+      ambiguous.ctx.res,
+      expect.stringContaining("dual-pane"),
+      400,
+    );
+    expect(ambiguous.broadcastWs).not.toHaveBeenCalled();
+    expect(ambiguous.broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(getCurrentViewState(clientA)).toEqual(stateA);
+    expect(getCurrentViewRevision(clientA)).toBe(1);
+    expect(getCurrentViewState(clientB)).toEqual(stateB);
+    expect(getCurrentViewRevision(clientB)).toBe(1);
+  });
+
   // ── #9945: settings subview deep-linking ──────────────────────────────────
 
   it("threads a body subview into the frame, response, and current state", async () => {
@@ -409,11 +667,12 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
 
   // ── #8788: turn-scoped "view switch just happened" stamp ──────────────────
 
-  function makeCurrentCtx(): {
+  function makeCurrentCtx(clientId?: string): {
     ctx: ViewsRouteContext;
     json: ReturnType<typeof vi.fn>;
   } {
     const req = Readable.from([]) as unknown as http.IncomingMessage;
+    req.headers = clientId ? { "x-elizaos-client-id": clientId } : {};
     const res = {} as http.ServerResponse;
     const json = vi.fn();
     const pathname = "/api/views/current";
@@ -446,6 +705,7 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       expect.objectContaining({
         currentView: expect.objectContaining({ viewId: "settings" }),
         justSwitched: true,
+        revision: getCurrentViewRevision(),
       }),
     );
   });

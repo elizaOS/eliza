@@ -30,6 +30,7 @@ import {
   MESSAGE_SOURCE_AGENT_GREETING,
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Memory,
+  MemoryType,
   type RolesWorldMetadata,
   recordOwnerGrant,
   recordRoleGrant,
@@ -96,6 +97,7 @@ import {
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
+import { normalizeWsClientId } from "./server-helpers-auth.ts";
 import type { ConversationMeta } from "./server-types.ts";
 import {
   resolveWaifuChatAccess,
@@ -109,6 +111,30 @@ interface DiscordProfileLike {
   displayName?: string;
   rawUserId?: string;
   username?: string;
+}
+
+function firstHeaderValue(value: string | string[] | undefined): string | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+/**
+ * Attach the server-validated shell identity only to the in-memory turn. The
+ * persisted message deliberately excludes this transport detail: view context
+ * belongs to the originating renderer, not to durable conversation history.
+ */
+function scopeMessageToRequestClient(
+  message: Memory,
+  req: Pick<http.IncomingMessage, "headers">,
+): Memory {
+  const clientId = normalizeWsClientId(
+    firstHeaderValue(req.headers["x-elizaos-client-id"]),
+  );
+  if (!clientId) return message;
+  return {
+    ...message,
+    metadata: { ...message.metadata, type: MemoryType.MESSAGE, clientId },
+  };
 }
 
 // Lazy memoized loader: @elizaos/plugin-discord (and its transitive deps) loads
@@ -2585,7 +2611,7 @@ export async function handleConversationRoutes(
       );
     }
 
-    const { userMessage, messageToStore } = await buildUserMessages({
+    const builtMessages = await buildUserMessages({
       images,
       prompt,
       userId,
@@ -2595,6 +2621,11 @@ export async function handleConversationRoutes(
       messageSource: source,
       metadata: chatMetadata,
     });
+    const { messageToStore } = builtMessages;
+    const userMessage = scopeMessageToRequestClient(
+      builtMessages.userMessage,
+      req,
+    );
 
     try {
       await persistConversationMemory(runtime, messageToStore);
@@ -3026,7 +3057,7 @@ export async function handleConversationRoutes(
       return true;
     }
 
-    const { userMessage, messageToStore } = await buildUserMessages({
+    const builtMessages = await buildUserMessages({
       images,
       prompt,
       userId,
@@ -3036,6 +3067,11 @@ export async function handleConversationRoutes(
       messageSource: source,
       metadata: restMetadata,
     });
+    const { messageToStore } = builtMessages;
+    const userMessage = scopeMessageToRequestClient(
+      builtMessages.userMessage,
+      req,
+    );
 
     try {
       await persistConversationMemory(runtime, messageToStore);

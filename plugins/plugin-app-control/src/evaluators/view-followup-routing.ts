@@ -10,6 +10,7 @@ import type {
 import { getUserMessageText } from "@elizaos/core";
 import {
 	createViewsClient,
+	readViewClientId,
 	type ViewSummary,
 } from "../actions/views-client.js";
 
@@ -45,8 +46,8 @@ const REFERENCE_TOKENS = new Set([
 // create/update follow-ups so an ordinary conversational reply that merely
 // reuses a mutation verb does not get hijacked into VIEWS. Deliberately
 // excludes the bare preposition "with": it co-occurs with too many non-view
-// replies ("set it up with them", "go with that") and produced false routes
-// that suppressed the real answer with the canned "On it.".
+// replies ("set it up with them", "go with that") and would incorrectly hand
+// an ordinary conversational turn to the active view.
 const CONTENT_MARKER_TOKENS = new Set([
 	"BODY",
 	"CONTENT",
@@ -126,6 +127,7 @@ function shouldConsiderViewFollowup(
 
 async function resolveActiveViewForFamily(
 	family: CapabilityFamily,
+	clientId?: string,
 ): Promise<ViewSummary | null> {
 	// The intent gate (family verb + reference token, plus a content marker for
 	// create/update) is enforced in shouldConsiderViewFollowup. Here we only need
@@ -133,7 +135,7 @@ async function resolveActiveViewForFamily(
 	// A loopback failure means we can't confirm the active view — degrade to "no
 	// route" so the agent's normal reply stands rather than crashing the evaluator.
 	try {
-		const client = createViewsClient();
+		const client = createViewsClient({ clientId });
 		const current = await client.getCurrentView();
 		if (!current) return null;
 
@@ -160,18 +162,30 @@ export const viewFollowupRoutingEvaluator: ResponseHandlerEvaluator = {
 		const family = shouldConsiderViewFollowup(context);
 		if (!family) return undefined;
 
-		const activeView = await resolveActiveViewForFamily(family);
+		const activeView = await resolveActiveViewForFamily(
+			family,
+			readViewClientId(context.message),
+		);
 		if (!activeView) return undefined;
 
 		return {
 			requiresTool: true,
 			clearReply: true,
-			reply: "On it.",
 			addContexts: [GENERAL_CONTEXT],
+			clearCandidateActions: true,
 			addCandidateActions: [VIEWS_ACTION_NAME],
+			clearParentActionHints: true,
 			addParentActionHints: [VIEWS_ACTION_NAME],
+			deterministicToolCall: {
+				name: VIEWS_ACTION_NAME,
+				params: {
+					action: "interact",
+					view: activeView.id,
+					...(activeView.viewType ? { viewType: activeView.viewType } : {}),
+				},
+			},
 			debug: [
-				`active view ${activeView.id} supports ${family}; routing follow-up through VIEWS`,
+				`active view ${activeView.id} supports ${family}; forcing sole deterministic VIEWS owner`,
 			],
 		};
 	},

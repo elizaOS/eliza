@@ -11,7 +11,12 @@
  */
 import type http from "node:http";
 import { Readable } from "node:stream";
-import type { Action, IAgentRuntime, ViewScopedAction } from "@elizaos/core";
+import type {
+  Action,
+  IAgentRuntime,
+  Memory,
+  ViewScopedAction,
+} from "@elizaos/core";
 import { type ElizaError, isElizaError } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_VIEWS } from "../api/builtin-views.ts";
@@ -22,6 +27,7 @@ import {
 import {
   clearCurrentViewState,
   handleViewsRoutes,
+  resolveViewInteractResult,
   setViewsBroadcastWs,
   type ViewsRouteContext,
 } from "../api/views-routes.ts";
@@ -82,27 +88,38 @@ function makeInteractiveView(id: string, mountedIds: Set<string>) {
       ) => {
         const targetId = typeof params?.id === "string" ? params.id : "";
         if (!mountedIds.has(targetId)) {
-          return { ok: false, id: targetId, reason: "element not found" };
+          return {
+            success: true,
+            result: { ok: false, id: targetId, reason: "element not found" },
+          };
         }
         if (capability === "agent-fill") {
           filled[targetId] =
             typeof params?.value === "string" ? params.value : "";
-          return { ok: true, id: targetId, value: filled[targetId] };
+          return {
+            success: true,
+            result: { ok: true, id: targetId, value: filled[targetId] },
+          };
         }
         if (capability === "agent-click") {
           clicked.push(targetId);
         }
-        return { ok: true, id: targetId };
+        return { success: true, result: { ok: true, id: targetId } };
       },
     },
   };
 }
 
 /** Drive the REAL navigate route so setActiveViewContext runs as it does live. */
-async function navigateTo(id: string): Promise<void> {
+async function navigateTo(
+  id: string,
+  body: Record<string, unknown> = {},
+  clientId?: string,
+): Promise<void> {
   const req = Readable.from([
-    Buffer.from(JSON.stringify({})),
+    Buffer.from(JSON.stringify(body)),
   ]) as unknown as http.IncomingMessage;
+  req.headers = clientId ? { "x-elizaos-client-id": clientId } : {};
   const pathname = `/api/views/${encodeURIComponent(id)}/navigate`;
   const ctx: ViewsRouteContext = {
     req,
@@ -113,6 +130,7 @@ async function navigateTo(id: string): Promise<void> {
     json: vi.fn(),
     error: vi.fn(),
     broadcastWs: vi.fn(),
+    broadcastWsToClientId: vi.fn(() => 1),
   };
   await handleViewsRoutes(ctx);
 }
@@ -170,7 +188,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("view-scoped action validate() gating on the active view", () => {
+describe("view-scoped action validate() gating on visible views", () => {
   it("returns false when the declaring view is not active and true when it is", async () => {
     const settings = makeInteractiveView(INTERACTIVE_VIEW_ID, new Set());
     await registerPluginViews(
@@ -200,6 +218,212 @@ describe("view-scoped action validate() gating on the active view", () => {
     // Switch away again → closes without any restart.
     await navigateTo("chat");
     expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+  });
+
+  it("isolates visible-view action affinity between two shell clients", async () => {
+    const notes = makeInteractiveView("notes_client_fixture", new Set());
+    const calendar = makeInteractiveView("calendar_client_fixture", new Set());
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "client-scoped action-affinity fixtures",
+        views: [notes.view, calendar.view],
+      },
+      process.cwd(),
+    );
+    await navigateTo(notes.view.id, {}, "shell-client-a");
+    await navigateTo(calendar.view.id, {}, "shell-client-b");
+
+    const notesAction = buildViewScopedAction(
+      notes.view.id,
+      notes.view.scopedActions[0],
+    );
+    const calendarAction = buildViewScopedAction(
+      calendar.view.id,
+      calendar.view.scopedActions[0],
+    );
+    const messageFor = (clientId: string) =>
+      ({ metadata: { type: "message", clientId } }) as Memory;
+
+    expect(
+      await notesAction.validate(
+        {} as IAgentRuntime,
+        messageFor("shell-client-a"),
+      ),
+    ).toBe(true);
+    expect(
+      await notesAction.validate(
+        {} as IAgentRuntime,
+        messageFor("shell-client-b"),
+      ),
+    ).toBe(false);
+    expect(
+      await calendarAction.validate(
+        {} as IAgentRuntime,
+        messageFor("shell-client-a"),
+      ),
+    ).toBe(false);
+    expect(
+      await calendarAction.validate(
+        {} as IAgentRuntime,
+        messageFor("shell-client-b"),
+      ),
+    ).toBe(true);
+    expect(await notesAction.validate({} as IAgentRuntime, fakeMessage)).toBe(
+      false,
+    );
+  });
+
+  it("keeps a secondary split pane's scoped action available until that pane closes", async () => {
+    const primary = makeInteractiveView("primary_fixture", new Set());
+    const secondary = makeInteractiveView(
+      "secondary_fixture",
+      new Set(["provider-select", "save-button"]),
+    );
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "split scoped action fixtures",
+        views: [primary.view, secondary.view],
+      },
+      process.cwd(),
+    );
+    await navigateTo(primary.view.id, {
+      views: [primary.view.id, secondary.view.id],
+      layout: "horizontal",
+    });
+
+    const action = buildViewScopedAction(
+      secondary.view.id,
+      secondary.view.scopedActions[0],
+    );
+    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(true);
+    const result = await action.handler(
+      {} as IAgentRuntime,
+      fakeMessage,
+      undefined,
+      { parameters: { provider: "anthropic" } },
+    );
+    expect(result?.success).toBe(true);
+    expect(secondary.filled["provider-select"]).toBe("anthropic");
+
+    // The primary remains open, but removing the secondary pane gates its
+    // action immediately without a runtime restart.
+    await navigateTo(primary.view.id);
+    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(false);
+  });
+
+  it("targets a frontend-only secondary pane's owning shell", async () => {
+    const scopedAction: ViewScopedAction = {
+      name: "VIEW_SECONDARY_FRONTEND_SAVE",
+      description: "Save through the secondary frontend pane.",
+      steps: [{ kind: "agent-click", target: "save-button" }],
+    };
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "frontend-only split scoped-action fixtures",
+        views: [
+          { id: "primary_frontend", label: "Primary frontend" },
+          {
+            id: "secondary_frontend",
+            label: "Secondary frontend",
+            surface: { capabilities: ["agent-surface"] },
+            scopedActions: [scopedAction],
+          },
+        ],
+      },
+      process.cwd(),
+    );
+    await navigateTo("primary_frontend", {
+      views: ["primary_frontend", "secondary_frontend"],
+      layout: "horizontal",
+      clientId: "secondary-owner",
+    });
+
+    const broad = vi.fn();
+    const targeted = vi.fn((clientId: string, payload: object) => {
+      const frame = payload as { requestId?: string };
+      if (frame.requestId) {
+        resolveViewInteractResult({
+          requestId: frame.requestId,
+          success: true,
+          result: { ok: true, id: "save-button" },
+        });
+      }
+      return clientId === "secondary-owner" ? 1 : 0;
+    });
+    setViewsBroadcastWs(broad, targeted);
+
+    const action = buildViewScopedAction("secondary_frontend", scopedAction);
+    const result = await action.handler(
+      {} as IAgentRuntime,
+      {
+        metadata: { type: "message", clientId: "secondary-owner" },
+      } as Memory,
+      undefined,
+      {},
+    );
+
+    expect(result?.success).toBe(true);
+    expect(targeted).toHaveBeenCalledTimes(1);
+    expect(targeted).toHaveBeenCalledWith(
+      "secondary-owner",
+      expect.objectContaining({
+        type: "view:interact",
+        viewId: "secondary_frontend",
+        viewType: "gui",
+        capability: "agent-click",
+      }),
+    );
+    expect(broad).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "view:interact" }),
+    );
+  });
+
+  it("dispatches the declaration matching the visible pane's exact modality", async () => {
+    const clicked: string[] = [];
+    const scopedAction: ViewScopedAction = {
+      name: "VIEW_DUAL_MODAL_ACTIVATE",
+      description: "Activate the visible modal surface.",
+      steps: [{ kind: "agent-click", target: "activate" }],
+    };
+    await registerPluginViews(
+      {
+        name: TEST_PLUGIN,
+        description: "duplicate-id modality fixtures",
+        views: [
+          {
+            id: "dual_modal",
+            label: "Dual GUI",
+            viewType: "gui",
+            surface: { capabilities: ["agent-surface"] },
+            serverInteract: async () => {
+              clicked.push("gui");
+              return { success: true, result: { ok: true } };
+            },
+          },
+          {
+            id: "dual_modal",
+            label: "Dual XR",
+            viewType: "xr",
+            surface: { capabilities: ["agent-surface"] },
+            scopedActions: [scopedAction],
+            serverInteract: async () => {
+              clicked.push("xr");
+              return { success: true, result: { ok: true } };
+            },
+          },
+        ],
+      },
+      process.cwd(),
+    );
+    await navigateTo("dual_modal", { viewType: "xr" });
+
+    const action = buildViewScopedAction("dual_modal", scopedAction, "xr");
+    expect(await action.validate({} as IAgentRuntime, fakeMessage)).toBe(true);
+    await action.handler({} as IAgentRuntime, fakeMessage, undefined, {});
+    expect(clicked).toEqual(["xr"]);
   });
 });
 
@@ -453,15 +677,21 @@ function characterView() {
       ) => {
         const targetId = typeof params?.id === "string" ? params.id : "";
         if (!CHARACTER_MOUNTED_IDS.has(targetId)) {
-          return { ok: false, id: targetId, reason: "element not found" };
+          return {
+            success: true,
+            result: { ok: false, id: targetId, reason: "element not found" },
+          };
         }
         if (capability === "agent-fill") {
           filled[targetId] =
             typeof params?.value === "string" ? params.value : "";
-          return { ok: true, id: targetId, value: filled[targetId] };
+          return {
+            success: true,
+            result: { ok: true, id: targetId, value: filled[targetId] },
+          };
         }
         if (capability === "agent-click") clicked.push(targetId);
-        return { ok: true, id: targetId };
+        return { success: true, result: { ok: true, id: targetId } };
       },
     },
   };
@@ -651,9 +881,12 @@ describe("character view scoped actions (#14155)", () => {
         _cap: string,
         params?: Record<string, unknown>,
       ) => ({
-        ok: false,
-        id: typeof params?.id === "string" ? params.id : "",
-        reason: "element not found",
+        success: true,
+        result: {
+          ok: false,
+          id: typeof params?.id === "string" ? params.id : "",
+          reason: "element not found",
+        },
       }),
     };
     await registerPluginViews(

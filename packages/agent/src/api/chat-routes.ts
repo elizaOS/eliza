@@ -26,6 +26,7 @@ import {
   logger,
   MESSAGE_SOURCE_CLIENT_CHAT,
   ModelType,
+  REPLY_ACTION_NAME,
   type RolesWorldMetadata,
   type RouteRequestContext,
   recordOwnerGrant,
@@ -598,13 +599,7 @@ async function rewriteDirectActionCallbackText(args: {
 }): Promise<string> {
   const text = args.text.trim();
   if (!text) return args.text;
-  const fallback = () => {
-    const error =
-      typeof args.content?.error === "string" && args.content.error.trim()
-        ? ` It reported: ${args.content.error.trim()}`
-        : "";
-    return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
-  };
+  const fallback = () => args.text;
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: [
@@ -636,9 +631,9 @@ async function rewriteDirectActionCallbackText(args: {
       providerOptions: { eliza: { thinking: "off" } },
     });
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
-    return typeof parsed.response === "string" && parsed.response.trim()
-      ? parsed.response.trim()
-      : fallback();
+    const response =
+      typeof parsed.response === "string" ? parsed.response.trim() : "";
+    return response && response !== text ? response : fallback();
   } catch (err) {
     args.runtime.logger.debug(
       {
@@ -2456,7 +2451,7 @@ export async function generateChatResponse(
     let lastStatusSignature = "";
     const emitStatus = (status: ChatTurnStatus): void => {
       if (!opts?.onStatus) return;
-      const signature = `${status.kind}:${status.actionName ?? ""}:${status.toolName ?? ""}`;
+      const signature = `${status.kind}:${status.actionName ?? ""}:${status.toolName ?? ""}:${status.terminal === true ? "terminal" : ""}`;
       if (signature === lastStatusSignature) return;
       lastStatusSignature = signature;
       opts.onStatus(status);
@@ -2628,6 +2623,16 @@ export async function generateChatResponse(
     let capturedUsage: CapturedModelUsage | null = null;
     let actionCallbacksSeen = 0;
     const seenActionTags = new Set<string>();
+    const callbackActionNameLookup = buildRuntimeActionNameLookup(runtime);
+    const terminalCallbackActions = new Set([
+      // REPLY is a built-in planner terminal rather than a registered runtime
+      // action, so it cannot carry Action metadata of its own.
+      normalizeActionName(REPLY_ACTION_NAME),
+      ...(runtime.actions ?? [])
+        .filter((action) => action.callbackCompletesResponse === true)
+        .map((action) => normalizeActionName(action.name))
+        .filter(Boolean),
+    ]);
     const recordActionCallback = (
       actionTag: string,
       hasText: boolean,
@@ -2635,8 +2640,11 @@ export async function generateChatResponse(
     ): void => {
       actionCallbacksSeen += 1;
       const normalizedActionTag = normalizeActionName(actionTag);
-      if (normalizedActionTag) {
-        seenActionTags.add(normalizedActionTag);
+      const canonicalActionTag =
+        callbackActionNameLookup.get(normalizedActionTag) ??
+        normalizedActionTag;
+      if (canonicalActionTag) {
+        seenActionTags.add(canonicalActionTag);
       }
       // An untagged callback with no client-visible text is lifecycle/accounting
       // only. Emitting a bare `running_action` for it would overwrite a useful
@@ -2645,21 +2653,31 @@ export async function generateChatResponse(
       if (ownsVisibleOutput || normalizedActionTag !== "VISIBLE_CALLBACK") {
         emitStatus({
           kind: "running_action",
-          ...(normalizedActionTag && normalizedActionTag !== "VISIBLE_CALLBACK"
-            ? { actionName: normalizedActionTag }
+          ...(canonicalActionTag && canonicalActionTag !== "VISIBLE_CALLBACK"
+            ? { actionName: canonicalActionTag }
+            : {}),
+          ...(ownsVisibleOutput &&
+          terminalCallbackActions.has(canonicalActionTag)
+            ? { terminal: true }
             : {}),
         });
       }
       runtime.logger.info(
         {
           src: "eliza-api",
-          action: normalizedActionTag || actionTag,
+          action: canonicalActionTag || actionTag,
           hasText,
         },
-        `[eliza-api] Action callback fired: ${normalizedActionTag || actionTag}`,
+        `[eliza-api] Action callback fired: ${canonicalActionTag || actionTag}`,
       );
     };
-    const extractCallbackActionTag = (content: Content): string => {
+    const extractCallbackActionTag = (
+      content: Content,
+      actionName?: string,
+    ): string => {
+      if (typeof actionName === "string" && actionName.trim().length > 0) {
+        return actionName;
+      }
       const record = content as Record<string, unknown>;
       if (typeof record.action === "string" && record.action.length > 0) {
         return record.action;
@@ -2820,7 +2838,7 @@ export async function generateChatResponse(
             result = await runtime.messageService?.handleMessage(
               runtime,
               generationMessage,
-              async (content: Content) => {
+              async (content: Content, actionName?: string) => {
                 if (generationTimedOut || opts?.isAborted?.()) {
                   throw createChatGenerationTimeoutError(generationTimeoutMs);
                 }
@@ -2834,7 +2852,7 @@ export async function generateChatResponse(
                   ? claimStreamSource("callback")
                   : false;
                 recordActionCallback(
-                  extractCallbackActionTag(content),
+                  extractCallbackActionTag(content, actionName),
                   hasVisibleText,
                   ownsVisibleOutput,
                 );

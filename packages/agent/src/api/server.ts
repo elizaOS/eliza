@@ -5217,7 +5217,11 @@ export async function startApiServer(opts?: {
   // drive a mounted shell through the same `view:interact` path the route uses.
   void import("./views-routes.ts")
     .then(({ setViewsBroadcastWs }) => {
-      setViewsBroadcastWs(state.broadcastWs ?? null);
+      setViewsBroadcastWs(
+        state.broadcastWs ?? null,
+        (clientId, payload) =>
+          state.broadcastWsToClientId?.(clientId, payload) ?? 0,
+      );
     })
     .catch((err) => {
       logger.error(

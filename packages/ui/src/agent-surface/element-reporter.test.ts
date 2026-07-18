@@ -2,11 +2,26 @@
  * Unit coverage for agent-surface element-reporter payload building against the
  * view registry. Pure functions, no live agent.
  */
-import { describe, expect, it } from "vitest";
-import { buildPayload } from "./element-reporter.hooks";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { client } from "../api/client";
+import {
+  buildPayload,
+  reportAgentSurfaceElementSnapshot,
+} from "./element-reporter.hooks";
 import { ViewAgentRegistry } from "./registry";
 
+const fetchWithCsrfMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/csrf-client", () => ({
+  fetchWithCsrf: fetchWithCsrfMock,
+}));
+
 describe("element-reporter buildPayload", () => {
+  beforeEach(() => {
+    fetchWithCsrfMock.mockReset();
+    fetchWithCsrfMock.mockResolvedValue(new Response("{}"));
+  });
+
   it("maps the registry snapshot to the report payload shape", () => {
     const registry = new ViewAgentRegistry("wallet", "gui");
     registry.register(
@@ -25,6 +40,7 @@ describe("element-reporter buildPayload", () => {
 
     const payload = buildPayload(registry);
     expect(payload.viewId).toBe("wallet");
+    expect(payload.viewType).toBe("gui");
     const byId = Object.fromEntries(payload.elements.map((e) => [e.id, e]));
     expect(byId.amount).toMatchObject({
       id: "amount",
@@ -67,5 +83,31 @@ describe("element-reporter buildPayload", () => {
   it("returns an empty element list for an empty view", () => {
     const registry = new ViewAgentRegistry("empty", "gui");
     expect(buildPayload(registry).elements).toEqual([]);
+  });
+
+  it("reports the real snapshot body with the shell WebSocket client identity", async () => {
+    const registry = new ViewAgentRegistry("calendar", "gui");
+    registry.register(
+      { id: "create-event", label: "Create event", role: "button" },
+      () => null,
+    );
+
+    await reportAgentSurfaceElementSnapshot(registry);
+
+    expect(fetchWithCsrfMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchWithCsrfMock.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(url).toContain("/api/views/calendar/elements");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({
+      "Content-Type": "application/json",
+      "X-ElizaOS-Client-Id": client.getClientId(),
+    });
+    expect(JSON.parse(String(init.body))).toEqual({
+      viewType: "gui",
+      elements: [{ id: "create-event", role: "button", label: "Create event" }],
+    });
   });
 });

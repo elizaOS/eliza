@@ -1021,7 +1021,7 @@ export interface ViewDeclaration {
 	serverInteract?: (
 		capability: string,
 		params?: Record<string, unknown>,
-		context?: { runtime?: IAgentRuntime },
+		context?: { runtime?: IAgentRuntime; clientId?: string },
 	) => Promise<unknown>;
 	/** Allow this view to be pinned as a desktop tab. Default true. */
 	desktopTabEnabled?: boolean;

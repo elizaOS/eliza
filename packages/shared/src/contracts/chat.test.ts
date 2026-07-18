@@ -35,14 +35,16 @@ describe("ChatTurnStatus contract", () => {
     expect(kinds).toHaveLength(7);
   });
 
-  it("carries only optional label/actionName/toolName alongside kind", () => {
+  it("carries optional detail and terminal-visible state alongside kind", () => {
     const running: ChatTurnStatus = {
       kind: "running_action",
       actionName: "SEND_MESSAGE",
+      terminal: true,
     };
     const tool: ChatTurnStatus = { kind: "running_tool", toolName: "search" };
     const bare: ChatTurnStatus = { kind: "thinking" };
     expect(running.actionName).toBe("SEND_MESSAGE");
+    expect(running.terminal).toBe(true);
     expect(tool.toolName).toBe("search");
     expect(bare.label).toBeUndefined();
   });

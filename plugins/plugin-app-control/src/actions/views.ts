@@ -23,6 +23,7 @@ import {
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import {
 	createViewsClient,
+	readViewClientId,
 	type ViewSummary,
 	type ViewsClient,
 } from "./views-client.js";
@@ -759,6 +760,11 @@ const OPERATION_TOKEN_FAMILIES: Record<OperationFamily, Set<string>> = {
 	select: new Set(["select", "choose", "pick"]),
 };
 
+const CAPABILITY_OPERATION_TOKENS = new Set(
+	Object.values(OPERATION_TOKEN_FAMILIES).flatMap((family) => [...family]),
+);
+const BULK_OPERATION_TOKENS = new Set(["all", "clear", "every"]);
+
 function normalizeCapabilityKey(value: string | null | undefined): string {
 	return (value ?? "")
 		.trim()
@@ -776,10 +782,13 @@ function tokensFor(value: string | null | undefined): Set<string> {
 }
 
 function operationFamilyForTokens(tokens: Set<string>): OperationFamily | null {
-	for (const [family, familyTokens] of Object.entries(
-		OPERATION_TOKEN_FAMILIES,
-	) as [OperationFamily, Set<string>][]) {
-		for (const token of tokens) {
+	// Token insertion order preserves the command phrase. The user's leading
+	// mutation verb must beat later surface nouns such as "view", which is also a
+	// read alias ("delete a note from the Notes view" is delete, not get-notes).
+	for (const token of tokens) {
+		for (const [family, familyTokens] of Object.entries(
+			OPERATION_TOKEN_FAMILIES,
+		) as [OperationFamily, Set<string>][]) {
 			if (familyTokens.has(token)) return family;
 		}
 	}
@@ -792,6 +801,12 @@ function operationFamilyForCapability(
 	return operationFamilyForTokens(
 		tokensFor(`${capability.id} ${capability.description ?? ""}`),
 	);
+}
+
+function isBulkDestructiveCapability(capability: ViewCapability): boolean {
+	if (operationFamilyForCapability(capability) !== "delete") return false;
+	const tokens = tokensFor(`${capability.id} ${capability.description ?? ""}`);
+	return [...BULK_OPERATION_TOKENS].some((token) => tokens.has(token));
 }
 
 function viewTokens(view: ViewSummary): Set<string> {
@@ -807,6 +822,23 @@ function capabilityTokens(capability: ViewCapability): Set<string> {
 			capability.description,
 			...Object.keys(capability.params ?? {}),
 		].join(" "),
+	);
+}
+
+function capabilityDomainTokens(
+	candidate: ResolvedViewCapability,
+): Set<string> {
+	return new Set(
+		[
+			...tokensFor(
+				[
+					candidate.view.id,
+					candidate.view.label,
+					...(candidate.view.tags ?? []),
+					candidate.capability.id,
+				].join(" "),
+			),
+		].filter((token) => !CAPABILITY_OPERATION_TOKENS.has(token)),
 	);
 }
 
@@ -838,6 +870,33 @@ function resolveViewTarget(
 	return match.kind === "match" ? match.view : null;
 }
 
+const VIEW_PLUGIN_AUTHORING_SUBJECT_RE =
+	/\b(?:create|build|make|scaffold|generate|spin\s+up|edit|update|modify|change|fix|improve|rewrite|delete|remove|uninstall|destroy|drop)\b.{0,50}\b(?:view|views|plugin|plugins)\b/i;
+const VIEW_PLUGIN_CONTENT_CLAUSE_RE =
+	/\b(?:about|called|containing|for|from|in|inside|named|on|saying|that\s+says|through|titled|using|via|with\s+(?:the\s+)?(?:body|content|text|title)|within)\b/i;
+const DOMAIN_RECORD_OPERATION_RE =
+	/\b(?:add|create|delete|edit|get|list|make|new|read|remove|show|update)\b.{0,30}\b(?:document|entry|event|item|note|record|reminder|task|todo)s?\b/i;
+
+function viewPluginAuthoringCommandHead(source: string): string {
+	let cutAt =
+		VIEW_PLUGIN_CONTENT_CLAUSE_RE.exec(source)?.index ?? source.length;
+	const withClause = /\bwith\b/i.exec(source);
+	if (
+		withClause &&
+		withClause.index < cutAt &&
+		DOMAIN_RECORD_OPERATION_RE.test(source.slice(0, withClause.index))
+	) {
+		cutAt = withClause.index;
+	}
+	return source.slice(0, cutAt);
+}
+
+function hasExplicitViewPluginAuthoringSubject(source: string): boolean {
+	return VIEW_PLUGIN_AUTHORING_SUBJECT_RE.test(
+		viewPluginAuthoringCommandHead(source),
+	);
+}
+
 function isViewPluginAuthoringRequest(
 	mode: ViewsMode,
 	text: string,
@@ -858,16 +917,28 @@ function isViewPluginAuthoringRequest(
 	) {
 		return true;
 	}
-	if (hasExplicitViewCapabilityIntent(text, options)) {
+	if (hasStructuredViewCapabilityIntent(options)) {
 		return false;
 	}
-	const intent = readStringOption(options, "intent");
-	const source = `${text} ${intent ?? ""}`;
-	return /\b(view|views|plugin|plugins)\b/i.test(source);
+	const sources = [
+		viewRequestText(text),
+		readStringOption(options, "intent"),
+	].filter((source): source is string => source !== null);
+	if (sources.some(hasExplicitViewPluginAuthoringSubject)) {
+		return true;
+	}
+	// Domain records may legitimately contain words such as "view" or "plugin"
+	// in their title/body. A capability-shaped payload is stronger evidence than
+	// those incidental nouns, so keep it on the registered view interaction path.
+	if (hasCapabilityPayloadOptions(options)) return false;
+	return sources.some((source) =>
+		/\b(?:view|views|plugin|plugins)\b/i.test(
+			viewPluginAuthoringCommandHead(source),
+		),
+	);
 }
 
-function hasExplicitViewCapabilityIntent(
-	text: string,
+function hasStructuredViewCapabilityIntent(
 	options?: Record<string, unknown>,
 ): boolean {
 	if (readStringOption(options, "capability")) return true;
@@ -877,11 +948,7 @@ function hasExplicitViewCapabilityIntent(
 	const actionIsMode =
 		!!explicitAction &&
 		(MODES as readonly string[]).includes(explicitAction.trim().toLowerCase());
-	if (explicitAction && !actionIsMode) return true;
-
-	const intent = readStringOption(options, "intent");
-	const source = `${text} ${intent ?? ""}`;
-	return /\b(capability|interact|invoke)\b/i.test(source);
+	return Boolean(explicitAction && !actionIsMode);
 }
 
 function isViewNavigationRequest(
@@ -948,13 +1015,92 @@ function resolveViewCapability({
 		!!explicitAction &&
 		(MODES as readonly string[]).includes(explicitAction.trim().toLowerCase());
 	const actionToken = actionIsMode ? null : explicitAction;
-	const requestedView = resolveViewTarget(readViewTargetOption(options), views);
-	// A resolved planner target is authoritative. Foreground UI state is only a
-	// fallback for requests that do not identify a registered view.
+	let requestedView = resolveViewTarget(readViewTargetOption(options), views);
+	const candidates = capabilityCandidates(views, viewType);
+	const sourceText = [
+		actionToken ?? text,
+		readStringOption(options, "intent"),
+		explicitCapability,
+	]
+		.filter(Boolean)
+		.join(" ");
+	const sourceTokens = tokensFor(sourceText);
+	const sourceOperation = operationFamilyForTokens(sourceTokens);
+	const sourceRequestsBulkOperation = [...BULK_OPERATION_TOKENS].some((token) =>
+		sourceTokens.has(token),
+	);
+
+	if (!explicitCapability && requestedView) {
+		const semanticSourceTokens = new Set(
+			[...sourceTokens].filter(
+				(token) => !CAPABILITY_OPERATION_TOKENS.has(token),
+			),
+		);
+		const supportsSourceOperation = (candidate: ResolvedViewCapability) => {
+			const candidateOperation = operationFamilyForCapability(
+				candidate.capability,
+			);
+			return (
+				!sourceOperation ||
+				!candidateOperation ||
+				candidateOperation === sourceOperation
+			);
+		};
+		const requestedSupportsOperation = candidates.some(
+			(candidate) =>
+				candidate.view.id === requestedView?.id &&
+				supportsSourceOperation(candidate),
+		);
+		const requestedHasDomainMatch = candidates.some(
+			(candidate) =>
+				candidate.view.id === requestedView?.id &&
+				supportsSourceOperation(candidate) &&
+				countIntersection(
+					semanticSourceTokens,
+					capabilityDomainTokens(candidate),
+				) > 0,
+		);
+		const alternativeViewIds = new Set(
+			candidates
+				.filter(
+					(candidate) =>
+						candidate.view.id !== requestedView?.id &&
+						supportsSourceOperation(candidate) &&
+						countIntersection(
+							semanticSourceTokens,
+							capabilityDomainTokens(candidate),
+						) > 0,
+				)
+				.map((candidate) => candidate.view.id),
+		);
+		// Generic targets inside the capability broker are hints, unlike explicit
+		// capability/view pairs or authoring targets with no compatible capability.
+		// When the user's domain noun identifies one unambiguous different view,
+		// discard the stale hint so a note cannot silently become an event/document.
+		if (
+			requestedSupportsOperation &&
+			!requestedHasDomainMatch &&
+			alternativeViewIds.size === 1
+		) {
+			requestedView = null;
+		} else if (
+			requestedSupportsOperation &&
+			!requestedHasDomainMatch &&
+			alternativeViewIds.size > 1
+		) {
+			// More than one registered surface owns the user's domain noun. Keeping
+			// the contradictory planner target would mutate the wrong domain, while
+			// picking the first alternative would make plugin load order observable.
+			// Fail closed so the explicit-target mismatch path asks for a declared
+			// target/capability pair instead of inventing one.
+			return null;
+		}
+	}
+	// A semantically consistent planner target is authoritative. Foreground UI
+	// state is only a fallback when the request does not identify a view.
 	const currentView = requestedView
 		? null
 		: (views.find((view) => view.id === currentViewId) ?? null);
-	const candidates = capabilityCandidates(views, viewType);
 
 	if (explicitCapability) {
 		const normalized = normalizeCapabilityKey(explicitCapability);
@@ -966,6 +1112,37 @@ function resolveViewCapability({
 			(candidate) => candidate.view.id === requestedView?.id,
 		);
 		if (requestedExact) return requestedExact;
+		if (requestedView) {
+			const explicitTokens = tokensFor(explicitCapability);
+			const explicitOperation = operationFamilyForTokens(explicitTokens);
+			const semanticTokens = new Set(
+				[...explicitTokens].filter(
+					(token) => !CAPABILITY_OPERATION_TOKENS.has(token),
+				),
+			);
+			const hasSemanticAlias = candidates.some((candidate) => {
+				if (candidate.view.id !== requestedView.id) return false;
+				const candidateOperation = operationFamilyForCapability(
+					candidate.capability,
+				);
+				if (
+					explicitOperation &&
+					candidateOperation &&
+					explicitOperation !== candidateOperation
+				) {
+					return false;
+				}
+				return (
+					countIntersection(semanticTokens, capabilityDomainTokens(candidate)) >
+					0
+				);
+			});
+			// Preserve harmless aliases inside the requested view (list-notes ->
+			// get-notes, createEvent -> create-calendar-event), but reject a pair
+			// with no shared semantic noun. The operation verb alone is insufficient:
+			// create-note must never become a calendar event or document mutation.
+			if (!hasSemanticAlias) return null;
+		}
 		const currentExact = exactCandidates.find(
 			(candidate) => candidate.view.id === currentView?.id,
 		);
@@ -974,11 +1151,6 @@ function resolveViewCapability({
 			return exactCandidates[0];
 	}
 
-	const sourceText = [actionToken ?? text, explicitCapability]
-		.filter(Boolean)
-		.join(" ");
-	const sourceTokens = tokensFor(sourceText);
-	const sourceOperation = operationFamilyForTokens(sourceTokens);
 	let best: { candidate: ResolvedViewCapability; score: number } | null = null;
 
 	for (const candidate of candidates) {
@@ -986,6 +1158,9 @@ function resolveViewCapability({
 		const vTokens = viewTokens(candidate.view);
 		const cTokens = capabilityTokens(candidate.capability);
 		const capOperation = operationFamilyForCapability(candidate.capability);
+		const candidateIsBulkDelete = isBulkDestructiveCapability(
+			candidate.capability,
+		);
 		if (
 			explicitCapability &&
 			sourceOperation &&
@@ -994,6 +1169,9 @@ function resolveViewCapability({
 		) {
 			continue;
 		}
+		// A single-record delete must never drift into a destructive clear-all
+		// capability merely because both descriptions mention the same domain noun.
+		if (candidateIsBulkDelete && !sourceRequestsBulkOperation) continue;
 		const viewMatches =
 			requestedView?.id === candidate.view.id ||
 			countIntersection(sourceTokens, vTokens) > 0 ||
@@ -1006,6 +1184,7 @@ function resolveViewCapability({
 		score += countIntersection(sourceTokens, vTokens) * 2;
 		score += countIntersection(sourceTokens, cTokens);
 		if (sourceOperation && capOperation === sourceOperation) score += 4;
+		if (candidateIsBulkDelete && sourceRequestsBulkOperation) score += 4;
 		if (
 			actionToken &&
 			normalizeCapabilityKey(actionToken) ===
@@ -1690,8 +1869,7 @@ async function resolveSingleShellTargetView({
 		explicit?.toLowerCase() === "current" ||
 		(!explicit && /\bcurrent\b/i.test(requestText))
 	) {
-		// error-policy:J4 current-view read over loopback; unreachable -> null -> resolve to "none"
-		const currentView = await client.getCurrentView().catch(() => null);
+		const currentView = await client.getCurrentView();
 		if (!currentView?.viewId) return { kind: "none" };
 		return {
 			kind: "match",
@@ -1802,8 +1980,7 @@ async function completeSplitTargetsWithCurrentView({
 	placement?: "left" | "right" | "top" | "bottom";
 }): Promise<ViewSummary[]> {
 	if (targets.length !== 1) return targets;
-	// error-policy:J4 current-view read over loopback; unreachable -> null -> keep given targets
-	const currentView = await client.getCurrentView().catch(() => null);
+	const currentView = await client.getCurrentView();
 	const currentId = currentView?.viewId;
 	if (!currentId || currentId === targets[0].id) return targets;
 	const currentSummary = views.find((view) => view.id === currentId);
@@ -1826,12 +2003,12 @@ async function completeSplitTargetsFromCurrentLayout({
 	views: readonly ViewSummary[];
 	preferCurrentLayout?: boolean;
 }): Promise<ViewSummary[]> {
-	// error-policy:J4 current-view read over loopback; unreachable -> null -> no layout completion
-	const currentView = await client.getCurrentView().catch(() => null);
+	if (!preferCurrentLayout && targets.length >= 2) return targets;
+	const currentView = await client.getCurrentView();
 	const currentLayoutIds = currentView?.views ?? [];
 	const byId = new Map(views.map((view) => [view.id, view]));
 	if (currentLayoutIds.some((viewId) => !byId.has(viewId))) {
-		const unfilteredViews = await client.listViews().catch(() => []);
+		const unfilteredViews = await client.listViews();
 		for (const view of unfilteredViews) byId.set(view.id, view);
 	}
 	const currentTargets = currentLayoutIds.map((viewId) => {
@@ -1859,12 +2036,14 @@ async function runViewsClose({
 	options,
 	viewType,
 	callback,
+	clientId,
 }: {
 	client: ViewsClient;
 	message: Memory;
 	options?: Record<string, unknown>;
 	viewType?: ViewType;
 	callback?: HandlerCallback;
+	clientId?: string;
 }): Promise<ActionResult> {
 	const text = getUserMessageText(message);
 	if (isCloseAllRequest(text, options)) {
@@ -1873,6 +2052,9 @@ async function runViewsClose({
 			"close-all",
 			"Closed all views.",
 			"Requested closing all views.",
+			undefined,
+			false,
+			clientId,
 		);
 		await callback?.({ text: result.text });
 		return {
@@ -1930,6 +2112,8 @@ async function runViewsClose({
 		`Closed ${label ?? viewId}.`,
 		`Requested closing ${label ?? viewId}.`,
 		resolvedViewType === "gui" ? undefined : resolvedViewType,
+		false,
+		clientId,
 	);
 	await callback?.({ text: result.text });
 	return {
@@ -1952,6 +2136,7 @@ async function runViewsLayout({
 	options,
 	viewType,
 	callback,
+	clientId,
 }: {
 	client: ViewsClient;
 	message: Memory;
@@ -1959,6 +2144,7 @@ async function runViewsLayout({
 	options?: Record<string, unknown>;
 	viewType?: ViewType;
 	callback?: HandlerCallback;
+	clientId?: string;
 }): Promise<ActionResult> {
 	const text = getUserMessageText(message);
 	const views = await client.listViews({ viewType });
@@ -2026,6 +2212,7 @@ async function runViewsLayout({
 			: mode === "split"
 				? `Requested split layout for views: ${labels}.`
 				: `Requested tiled layout for views: ${labels}.`,
+		clientId,
 	});
 	await callback?.({ text: result.text });
 	return {
@@ -2062,7 +2249,6 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 }
 
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
-	const clientFactory = () => deps.client ?? createViewsClient();
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
 	const getRepoRoot = () => deps.repoRoot ?? defaultRepoRoot();
 
@@ -2224,7 +2410,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		routingHint:
 			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. A bare navigation request such as 'open calendar' uses action=show with the matching registered Calendar view. For content operations, choose only a capability declared by the target view. If the request names a domain but not a specific registered view, omit the view parameter and let the registered capability catalog resolve it; never guess a similarly named target or treat a content request as view scaffolding. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with capability=<capability id> and include view=<view id> only when that registered view declares the capability, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'list my apps', 'what apps are running'), launching/restarting an app, or building a new app is the APP action, not VIEWS; only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
 		allowAdditionalParameters: true,
+		// Every VIEWS mode reports its authoritative result through its handler
+		// callback. Do not emit the response router's speculative progress text
+		// before that callback, or one navigation turn shows two assistant messages
+		// (for example, "On it." followed by "Navigated to Notes").
+		suppressEarlyReply: true,
 		suppressPostActionContinuation: true,
+		preserveCallbackText: true,
+		callbackCompletesResponse: true,
 
 		parameters: [
 			{
@@ -2531,7 +2724,8 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		): Promise<ActionResult> => {
 			const run = async (): Promise<ActionResult> => {
 				const actionOptions = normalizeActionOptions(options);
-				const client = clientFactory();
+				const clientId = readViewClientId(message);
+				const client = deps.client ?? createViewsClient({ clientId });
 				const text = getUserMessageText(message);
 				const roomId =
 					typeof message.roomId === "string" ? message.roomId : runtime.agentId;
@@ -2584,21 +2778,22 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					| Awaited<ReturnType<ViewsClient["getCurrentView"]>>
 					| null
 					| undefined;
+				let hasPrefetchedCurrentView = false;
 				let forcedResolvedCapability: ResolvedViewCapability | null = null;
 				const getViews = async () => {
 					prefetchedViews ??= await client.listViews();
 					return prefetchedViews;
 				};
 				const getCurrentView = async () => {
-					// error-policy:J4 current-view read over loopback; unreachable -> null -> resolver degrades to no current-view context
-					prefetchedCurrentView ??= await client
-						.getCurrentView()
-						.catch(() => null);
+					if (!hasPrefetchedCurrentView) {
+						prefetchedCurrentView = await client.getCurrentView();
+						hasPrefetchedCurrentView = true;
+					}
 					return prefetchedCurrentView;
 				};
 
 				if (effectiveMode === "interact") {
-					const views = await getViews().catch(() => []);
+					const views = await getViews();
 					effectiveMode =
 						preferLayoutModeOverCapability({
 							text,
@@ -2608,7 +2803,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				if (shouldResolveModeAsCapability(effectiveMode, text, actionOptions)) {
-					const views = await getViews().catch(() => []);
+					const views = await getViews();
 					const currentView = await getCurrentView();
 					forcedResolvedCapability = resolveViewCapability({
 						views,
@@ -2675,6 +2870,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							options: actionOptions,
 							viewType,
 							callback,
+							clientId,
 						});
 
 					case "search": {
@@ -2693,6 +2889,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const result = await navigateToPath(
 							managerView.path,
 							managerView.label,
+							clientId,
 						);
 						await callback?.({ text: result.text });
 						return {
@@ -2739,7 +2936,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							readStringOption(actionOptions, "target");
 						let capability = readStringOption(actionOptions, "capability");
 						let resolvedViewType = viewType;
-						const views = await getViews().catch(() => []);
+						const views = await getViews();
 						if (!viewId && /\bcurrent\b/i.test(text)) {
 							const currentView = await getCurrentView();
 							viewId = currentView?.viewId ?? null;
@@ -2818,6 +3015,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							params,
 							timeoutMs,
 							resolvedViewType,
+							clientId,
 						);
 						const resultText = interaction.text;
 						await callback?.({ text: resultText });
@@ -2930,6 +3128,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						const pinResult = await pinViewAsTab(
 							pinView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
+							clientId,
 						);
 						await callback?.({ text: pinResult.text });
 						return {
@@ -2980,6 +3179,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							windowView.id,
 							resolvedViewType === "gui" ? undefined : resolvedViewType,
 							alwaysOnTop,
+							clientId,
 						);
 						await callback?.({ text: windowResult.text });
 						return {
@@ -3008,6 +3208,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							options: actionOptions,
 							viewType,
 							callback,
+							clientId,
 						});
 				}
 			};
@@ -3280,9 +3481,17 @@ interface ShellNavResult {
 	text: string;
 }
 
+function viewShellHeaders(clientId?: string): Record<string, string> {
+	return {
+		"Content-Type": "application/json",
+		...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+	};
+}
+
 async function navigateToPath(
 	pathStr: string,
 	label: string,
+	clientId?: string,
 ): Promise<ShellNavResult> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3291,8 +3500,8 @@ async function navigateToPath(
 	try {
 		const resp = await fetch(`${base}/api/views/__view-manager__/navigate`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ path: pathStr }),
+			headers: viewShellHeaders(clientId),
+			body: JSON.stringify({ path: pathStr, clientId }),
 			signal: AbortSignal.timeout(5_000),
 		});
 		if (resp.ok || resp.status === 501 || resp.status === 404) {
@@ -3320,6 +3529,7 @@ async function navigateViewWithShellAction(
 	fallbackText: string,
 	viewType?: ViewType,
 	alwaysOnTop = false,
+	clientId?: string,
 ): Promise<ShellNavResult> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3330,8 +3540,13 @@ async function navigateViewWithShellAction(
 			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ action, viewType, alwaysOnTop }),
+				headers: viewShellHeaders(clientId),
+				body: JSON.stringify({
+					action,
+					viewType,
+					alwaysOnTop,
+					clientId,
+				}),
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
@@ -3359,6 +3574,7 @@ async function navigateViewLayout({
 	viewType,
 	successText,
 	fallbackText,
+	clientId,
 }: {
 	viewId: string;
 	action: "split-view" | "tile-views";
@@ -3368,6 +3584,7 @@ async function navigateViewLayout({
 	viewType?: ViewType;
 	successText: string;
 	fallbackText: string;
+	clientId?: string;
 }): Promise<ShellNavResult> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3378,13 +3595,14 @@ async function navigateViewLayout({
 			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: viewShellHeaders(clientId),
 				body: JSON.stringify({
 					action,
 					views: viewIds,
 					layout,
 					...(placement ? { placement } : {}),
 					...(viewType ? { viewType } : {}),
+					...(clientId ? { clientId } : {}),
 				}),
 				signal: AbortSignal.timeout(5_000),
 			},
@@ -3407,6 +3625,7 @@ async function navigateViewLayout({
 function pinViewAsTab(
 	viewId: string,
 	viewType?: ViewType,
+	clientId?: string,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
 		viewId,
@@ -3414,6 +3633,8 @@ function pinViewAsTab(
 		`Pinned ${viewType ?? "gui"} view "${viewId}" as a desktop tab.`,
 		`Requested desktop tab pin for ${viewType ?? "gui"} view "${viewId}".`,
 		viewType,
+		false,
+		clientId,
 	);
 }
 
@@ -3421,6 +3642,7 @@ function openViewInWindow(
 	viewId: string,
 	viewType?: ViewType,
 	alwaysOnTop = false,
+	clientId?: string,
 ): Promise<ShellNavResult> {
 	return navigateViewWithShellAction(
 		viewId,
@@ -3429,6 +3651,7 @@ function openViewInWindow(
 		`Requested separate window for ${viewType ?? "gui"} view "${viewId}".`,
 		viewType,
 		alwaysOnTop,
+		clientId,
 	);
 }
 
@@ -3442,6 +3665,7 @@ async function interactWithView(
 	params: Record<string, unknown> | undefined,
 	timeoutMs: number,
 	viewType?: ViewType,
+	clientId?: string,
 ): Promise<{ success: boolean; text: string; result?: unknown }> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -3453,12 +3677,20 @@ async function interactWithView(
 			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
+				headers: viewShellHeaders(clientId),
+				body: JSON.stringify({
+					capability,
+					params,
+					timeoutMs,
+					viewType,
+					clientId,
+				}),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},
 		);
 	} catch (err) {
+		// error-policy:J1 boundary translation — the action boundary turns a
+		// transport failure into an explicit tool failure the planner can inspect.
 		logger.warn(
 			`[plugin-app-control] VIEWS/interact network error: ${err instanceof Error ? err.message : String(err)}`,
 		);
@@ -3486,7 +3718,8 @@ async function interactWithView(
 			const body = (await resp.json()) as Record<string, unknown>;
 			detail = typeof body.error === "string" ? ` — ${body.error}` : "";
 		} catch {
-			/* ignore */
+			// error-policy:J3 untrusted-input sanitizing — an invalid error body is
+			// still an explicit HTTP failure; it never becomes a healthy result.
 		}
 		return {
 			success: false,
@@ -3507,14 +3740,23 @@ async function interactWithView(
 	try {
 		result = await resp.json();
 	} catch {
+		// error-policy:J3 untrusted-input sanitizing — a successful HTTP status
+		// without the required JSON contract is an invalid interaction response.
 		return {
-			success: true,
-			text: `Interacted with view "${viewId}" (capability "${capability}") — no parseable result.`,
+			success: false,
+			text: `View "${viewId}" returned an invalid response for capability "${capability}".`,
+		};
+	}
+
+	const success = successFromInteractionResult(result);
+	if (success === null) {
+		return {
+			success: false,
+			text: `View "${viewId}" returned an invalid response for capability "${capability}".`,
 		};
 	}
 
 	const text = textFromInteractionResult(result);
-	const success = successFromInteractionResult(result);
 	if (text) return { success, text, result };
 
 	return {
@@ -3564,17 +3806,12 @@ function textFromInteractionResult(result: unknown): string | null {
 	return null;
 }
 
-function successFromInteractionResult(result: unknown): boolean {
+function successFromInteractionResult(result: unknown): boolean | null {
 	if (!result || typeof result !== "object" || Array.isArray(result))
-		return true;
+		return null;
 	const record = result as Record<string, unknown>;
 	if (typeof record.success === "boolean") return record.success;
-	const nested = record.result;
-	if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-		const nestedSuccess = (nested as Record<string, unknown>).success;
-		if (typeof nestedSuccess === "boolean") return nestedSuccess;
-	}
-	return true;
+	return null;
 }
 
 /**

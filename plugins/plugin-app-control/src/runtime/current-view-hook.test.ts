@@ -3,12 +3,8 @@
  */
 
 import type { PipelineHookContextForPhase } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { applyCurrentViewComposeHook } from "./current-view-hook.js";
-import {
-	__resetViewSwitchSignal,
-	markViewSwitch,
-} from "./view-switch-signal.js";
 
 type Ctx = PipelineHookContextForPhase<"compose_state_providers">;
 
@@ -54,8 +50,6 @@ function augmented(userRequest: string): string {
 }
 
 describe("applyCurrentViewComposeHook (#8788)", () => {
-	afterEach(() => __resetViewSwitchSignal());
-
 	it("injects current_view on an imminent explicit command turn", () => {
 		const ctx = makeCtx({ text: "open my wallet" });
 		applyCurrentViewComposeHook(ctx);
@@ -68,12 +62,10 @@ describe("applyCurrentViewComposeHook (#8788)", () => {
 		expect(ctx.providers.current).toContain("current_view");
 	});
 
-	it("injects current_view when a switch was just recorded for the room", () => {
-		const roomId = "33333333-3333-3333-3333-333333333333";
-		markViewSwitch(roomId);
-		const ctx = makeCtx({ text: "thanks!", roomId });
+	it("does not replay prior-switch context on the next turn", () => {
+		const ctx = makeCtx({ text: "thanks!" });
 		applyCurrentViewComposeHook(ctx);
-		expect(ctx.providers.current).toContain("current_view");
+		expect(ctx.providers.current).not.toContain("current_view");
 	});
 
 	it("does NOT inject on a non-switch turn (no command, no recent switch)", () => {

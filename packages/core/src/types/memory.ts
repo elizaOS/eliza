@@ -491,6 +491,8 @@ interface MemoryMetadataBase {
 	scope?: MemoryScope;
 	timestamp?: number;
 	platformMessageId?: string;
+	/** Originating UI shell for turn-local routing; transport code must not persist it. */
+	clientId?: string;
 	share?: ArtifactShareMetadata;
 }
 

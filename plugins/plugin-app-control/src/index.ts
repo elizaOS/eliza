@@ -185,8 +185,8 @@ export const appControlPlugin: Plugin = {
 		VerificationRoomBridgeService,
 	],
 	async init(_config, runtime) {
-		// Inject the `current_view` acknowledgement provider into the curated
-		// Stage-1 response state ONLY on switch turns (gating in
+		// Inject the `current_view` state provider into the curated Stage-1
+		// response state only on explicit switch turns (gating in
 		// applyCurrentViewComposeHook), so non-switch turns pay no prompt/token
 		// cost. The planner state already composes `current_view` by default.
 		runtime.registerPipelineHook({
@@ -247,10 +247,10 @@ export const appControlPlugin: Plugin = {
 					description: "Return the available view list as structured data",
 				},
 			],
-			serverInteract: async (capability, params) => {
-				const client = createViewsClient();
+			serverInteract: async (capability, params, context) => {
+				const client = createViewsClient({ clientId: context?.clientId });
 				if (capability === "list-views") {
-					return { views: await client.listViews() };
+					return { success: true, views: await client.listViews() };
 				}
 				if (capability === "open-view") {
 					const viewId =

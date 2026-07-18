@@ -20,9 +20,12 @@ import {
 	resolveServerOnlyPort,
 } from "@elizaos/core";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
-import { markViewSwitch } from "../runtime/view-switch-signal.js";
 import { matchViewCommand } from "./view-command-matcher.js";
-import type { ViewSummary, ViewsClient } from "./views-client.js";
+import {
+	readViewClientId,
+	type ViewSummary,
+	type ViewsClient,
+} from "./views-client.js";
 import { scoreView } from "./views-search.js";
 
 const SHOW_VERBS = [
@@ -361,6 +364,7 @@ async function navigateToView(
 	view: ViewSummary,
 	requestedViewType?: ViewType,
 	subview?: string,
+	clientId?: string,
 ): Promise<NavigateResult> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// A 501/404 means this shell doesn't implement the navigate route — opening
@@ -377,10 +381,14 @@ async function navigateToView(
 			`${base}/api/views/${encodeURIComponent(view.id)}/navigate${requestedViewType ? `?viewType=${requestedViewType}` : ""}`,
 			{
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
+				headers: {
+					"Content-Type": "application/json",
+					...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+				},
 				body: JSON.stringify({
 					path: view.path,
 					viewType: requestedViewType,
+					...(clientId ? { clientId } : {}),
 					...(resolvedSubview ? { subview: resolvedSubview } : {}),
 				}),
 				signal: AbortSignal.timeout(5_000),
@@ -492,11 +500,12 @@ export async function runViewsShow({
 	const view = resolution.view;
 	const subview =
 		readStringOpt(options, "subview") ?? readStringOpt(options, "section");
-	const result = await navigateToView(view, viewType, subview ?? undefined);
-
-	// Record the switch so the compose hook injects the acknowledgement provider
-	// (and the provider phrases it) on this turn's reply and the immediate next.
-	if (result.ok) markViewSwitch(message?.roomId);
+	const result = await navigateToView(
+		view,
+		viewType,
+		subview ?? undefined,
+		readViewClientId(message),
+	);
 
 	logger.info(
 		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}${result.subview ? ` subview=${result.subview}` : ""}`,

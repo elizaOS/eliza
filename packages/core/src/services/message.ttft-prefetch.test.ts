@@ -13,6 +13,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { embedRecallQuery } from "../features/documents/recall-embed";
 import { TurnControllerRegistry } from "../runtime/turn-controller";
+import { getTrajectoryContext } from "../trajectory-context";
 import type { Room, World } from "../types/environment";
 import type { IAgentRuntime, Memory, UUID } from "../types/index";
 import { ModelType } from "../types/index";
@@ -64,7 +65,9 @@ function makeRuntime(opts: RuntimeOptions = {}) {
 	const getWorld = vi.fn(async (worldId: UUID) =>
 		worldId === WORLD_ID ? world : null,
 	);
+	const observedClientIds: Array<string | undefined> = [];
 	const useModel = vi.fn(async (modelType: string) => {
+		observedClientIds.push(getTrajectoryContext()?.clientId);
 		if (modelType === ModelType.TEXT_EMBEDDING) return WARM_VECTOR;
 		throw new Error(`unexpected non-embedding model call: ${modelType}`);
 	});
@@ -113,7 +116,7 @@ function makeRuntime(opts: RuntimeOptions = {}) {
 		providers: [],
 		evaluators: [],
 	} as unknown as IAgentRuntime;
-	return { runtime, useModel, getWorld };
+	return { runtime, useModel, getWorld, observedClientIds };
 }
 
 function userMessage(text: string): Memory {
@@ -127,6 +130,17 @@ function userMessage(text: string): Memory {
 }
 
 describe("recall-query embed prefetch (per-turn cache warm)", () => {
+	it("propagates the turn-local shell identity through trajectory context", async () => {
+		const { runtime, observedClientIds } = makeRuntime();
+		const message = userMessage("show the notes for this shell");
+		message.metadata = { type: "message", clientId: "shell-client-a" };
+
+		await new DefaultMessageService().handleMessage(runtime, message);
+
+		expect(observedClientIds).toEqual(["shell-client-a"]);
+		expect(getTrajectoryContext()).toBeUndefined();
+	});
+
 	it("fires exactly one TEXT_EMBEDDING call with the message text", async () => {
 		const { runtime, useModel } = makeRuntime();
 		const service = new DefaultMessageService();

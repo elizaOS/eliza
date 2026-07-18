@@ -152,6 +152,41 @@ describe("POST /api/views/:id/activate", () => {
     expect(payload.element).toBeUndefined();
   });
 
+  it("passes the owning client identity to the shared serverInteract dispatch", async () => {
+    const { ctx } = makeCtx("POST", "/api/views/approve/activate", {
+      elementId: "send-it",
+      clientId: "shell-client-a",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(serverInteract).toHaveBeenCalledWith(
+      "click-element",
+      expect.objectContaining({ elementId: "send-it" }),
+      { runtime: ctx.runtime, clientId: "shell-client-a" },
+    );
+  });
+
+  it.each([
+    ["a primitive", "clicked"],
+    ["an object without success", { text: "clicked" }],
+  ])("fails closed when serverInteract returns %s", async (_label, result) => {
+    serverInteract.mockImplementationOnce(async () => result as never);
+    const { ctx, json } = makeCtx("POST", "/api/views/approve/activate", {
+      elementId: "send-it",
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: false,
+        dispatch: expect.objectContaining({ success: false, result }),
+      }),
+    );
+  });
+
   it("rejects an activate body that omits elementId", async () => {
     const { ctx, json, error } = makeCtx(
       "POST",

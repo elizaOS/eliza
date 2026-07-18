@@ -201,6 +201,8 @@ function makeMockAction(opts: {
 		schema: { type: "string" | "number" | "boolean" | "object" | "array" };
 	}>;
 	suppressActionResultClipboard?: boolean;
+	suppressEarlyReply?: boolean;
+	suppressPostActionContinuation?: boolean;
 }): Action {
 	return {
 		name: opts.name,
@@ -214,6 +216,10 @@ function makeMockAction(opts: {
 		...(opts.contexts ? { contexts: opts.contexts } : {}),
 		...(opts.suppressActionResultClipboard
 			? { suppressActionResultClipboard: true }
+			: {}),
+		...(opts.suppressEarlyReply ? { suppressEarlyReply: true } : {}),
+		...(opts.suppressPostActionContinuation
+			? { suppressPostActionContinuation: true }
 			: {}),
 	} as Action;
 }
@@ -872,6 +878,346 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			ModelType.TEXT_SMALL,
 			ModelType.RESPONSE_HANDLER,
 		]);
+	});
+
+	it("keeps the Stage 1 reply when the planner selects a non-owning action from mixed candidates", async () => {
+		let viewCalls = 0;
+		let otherCalls = 0;
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			suppressEarlyReply: true,
+			handler: async () => {
+				viewCalls++;
+				return { success: true, text: "Opened the view." };
+			},
+		});
+		const otherAction = makeMockAction({
+			name: "OTHER_ACTION",
+			handler: async () => {
+				otherCalls++;
+				return { success: true, text: "Updated the other resource." };
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [views, otherAction],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS", "OTHER_ACTION"],
+						replyText: "I'll update that now.",
+						thought: "One of two tools may be needed.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Updating the other resource.",
+						toolCalls: [{ id: "other-call", name: "OTHER_ACTION", args: {} }],
+					},
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "The other resource was updated.",
+						messageToUser: "The update is complete.",
+					}),
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("update that resource"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledOnce();
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({ text: "I'll update that now." }),
+		);
+		expect(viewCalls).toBe(0);
+		expect(otherCalls).toBe(1);
+		expect(result.kind).toBe("planned_reply");
+	});
+
+	it("suppresses the Stage 1 reply when a deterministic VIEWS call owns mixed candidates", async () => {
+		let viewCalls = 0;
+		let otherCalls = 0;
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			handler: async () => {
+				viewCalls++;
+				return {
+					success: true,
+					text: "Navigated to Notes (gui).",
+					userFacingText: "Notes is open.",
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const otherAction = makeMockAction({
+			name: "OTHER_ACTION",
+			handler: async () => {
+				otherCalls++;
+				return { success: true, text: "Updated the other resource." };
+			},
+		});
+		const deterministicViewEvaluator = {
+			name: "test.force_deterministic_view",
+			priority: 10,
+			shouldRun: () => true,
+			evaluate: () => ({
+				requiresTool: true,
+				deterministicToolCall: {
+					name: "VIEWS",
+					params: { action: "show", view: "notes" },
+				},
+			}),
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views, otherAction],
+			responseHandlerEvaluators: [deterministicViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["VIEWS", "OTHER_ACTION"],
+						replyText: "Opening Notes now.",
+						thought: "The view switch is deterministic.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Opening Notes.",
+						toolCalls: [
+							{
+								id: "view-call",
+								name: "VIEWS",
+								args: { action: "show", view: "notes" },
+							},
+						],
+					},
+				},
+			],
+		});
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("switch to notes"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(viewCalls).toBe(1);
+		expect(otherCalls).toBe(0);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.actionResults?.[0]?.continueChain).toBe(false);
+		}
+	});
+
+	it("gives rapid deterministic view switches one authoritative visible reply each", async () => {
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const earlyReply = vi.fn(async () => undefined);
+		const calendarReply = "Simple Calendar is open.";
+		const notesReply = "Notes is open.";
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			handler: async (_runtime, _message, _state, options, callback) => {
+				const view = String(options.parameters?.view ?? "");
+				const label = view === "calendar" ? "Simple Calendar" : "Notes";
+				const text = `Navigated to ${label} (gui).`;
+				await callback?.({ text });
+				return {
+					success: true,
+					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const forcedViewEvaluator = {
+			name: "test.force_explicit_view",
+			priority: 10,
+			shouldRun: () => true,
+			evaluate: (context: {
+				message: Memory;
+			}): import("../runtime/response-handler-evaluators").ResponseHandlerPatch => {
+				const text = String(context.message.content.text ?? "").toLowerCase();
+				const view = text.includes("note") ? "notes" : "calendar";
+				return {
+					requiresTool: true,
+					clearReply: true,
+					clearCandidateActions: true,
+					addCandidateActions: ["VIEWS"],
+					deterministicToolCall: {
+						name: "VIEWS",
+						params: { action: "show", view },
+					},
+				};
+			},
+		} satisfies import("../runtime/response-handler-evaluators").ResponseHandlerEvaluator;
+		const runtime = makeRuntime({
+			actions: [views],
+			responseHandlerEvaluators: [forcedViewEvaluator],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["simple"],
+						replyText: "On it.",
+						thought: "Open Calendar.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Opening Calendar.",
+						toolCalls: [
+							{
+								id: "calendar-call",
+								name: "VIEWS",
+								args: { action: "show", view: "calendar" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({ response: calendarReply }),
+				},
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					body: stage1Response({
+						contexts: ["simple"],
+						replyText: "opening your notes now",
+						thought: "Switch to Notes.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Opening Notes.",
+						toolCalls: [
+							{
+								id: "notes-call",
+								name: "VIEWS",
+								args: { action: "show", view: "notes" },
+							},
+						],
+					},
+				},
+				{
+					expectModelType: ModelType.TEXT_SMALL,
+					body: JSON.stringify({ response: notesReply }),
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("can u open calendar"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const first = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("can u open calendar"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+		const second = await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage("switch to notes"),
+				id: "00000000-0000-0000-0000-000000000006" as UUID,
+				createdAt: 14_999,
+			},
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000007" as UUID,
+			callback: wrappedCallback,
+			deliveredVisibleTexts,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(delivered).toEqual([calendarReply, notesReply]);
+		expect(deliveredVisibleTexts).toEqual(
+			new Set([
+				"navigated to simple calendar (gui).",
+				calendarReply.toLowerCase(),
+				"navigated to notes (gui).",
+				notesReply.toLowerCase(),
+			]),
+		);
+		expect(callback).toHaveBeenCalledTimes(2);
+		expect(getCalls(runtime).map((call) => call.modelType)).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.TEXT_SMALL,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+			ModelType.TEXT_SMALL,
+		]);
+		for (const result of [first, second]) {
+			expect(result.kind).toBe("planned_reply");
+			if (result.kind === "planned_reply") {
+				expect(result.result.responseContent).toBeNull();
+				expect(result.result.actionResults?.[0]?.continueChain).toBe(false);
+			}
+		}
 	});
 
 	it("sanitizes drifted callback text at the wire while planner-echo suppression still matches the raw form (#15888)", async () => {

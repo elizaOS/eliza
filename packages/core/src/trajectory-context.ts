@@ -27,6 +27,8 @@ export interface TrajectoryContext {
 	runId?: string;
 	/** Room context for pipeline/model hooks emitted during trajectory logging. */
 	roomId?: string;
+	/** UI shell identity that originated the turn, used for client-scoped view context. */
+	clientId?: string;
 	/** Source message identifier associated with the active trajectory context. */
 	messageId?: string;
 	/** Sender role resolved for the active message, used for prompt identity and role-aware logging. */

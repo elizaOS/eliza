@@ -9,7 +9,10 @@
 import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setActiveViewContext } from "../runtime/view-action-affinity.ts";
+import {
+  getActiveViewContext,
+  setActiveViewContext,
+} from "../runtime/view-action-affinity.ts";
 import {
   registerBuiltinViews,
   registerPluginViews,
@@ -181,13 +184,16 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
     );
   });
 
-  it("targets the mounted active-view owner when interact has no explicit client id", async () => {
-    setActiveViewContext({
-      viewId: "frontend-only",
-      viewLabel: "Frontend Only",
-      viewType: "gui",
-      viewPath: "/frontend-only",
-    });
+  it("targets the mounted active-view owner within the requesting client scope", async () => {
+    setActiveViewContext(
+      {
+        viewId: "frontend-only",
+        viewLabel: "Frontend Only",
+        viewType: "gui",
+        viewPath: "/frontend-only",
+      },
+      "mounted-shell",
+    );
     const { ctx: elementsCtx } = makeCtx(
       "POST",
       "/api/views/frontend-only/elements",
@@ -203,6 +209,7 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
       "/api/views/frontend-only/interact",
       {
         capability: "get-state",
+        clientId: "mounted-shell",
         timeoutMs: 5_000,
       },
     );
@@ -241,6 +248,81 @@ describe("POST /api/views/interact-result resolves a pending interact", () => {
         result: { text: "mounted owner handled it" },
       }),
     );
+  });
+
+  it("bounds untrusted element fields and rejects oversized routing ids", async () => {
+    setActiveViewContext(
+      {
+        viewId: "frontend-only",
+        viewLabel: "Frontend Only",
+        viewType: "gui",
+        viewPath: "/frontend-only",
+      },
+      "mounted-shell",
+    );
+    const { ctx, json } = makeCtx("POST", "/api/views/frontend-only/elements", {
+      clientId: "mounted-shell",
+      viewType: "gui",
+      elements: [
+        {
+          id: "x".repeat(129),
+          role: "button",
+          label: "must be dropped",
+        },
+        {
+          id: " safe-id ",
+          role: ` button ${"r".repeat(80)}`,
+          label: ` label ${"l".repeat(300)}`,
+          value: "v".repeat(1_100),
+        },
+      ],
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ accepted: true, count: 1 }),
+    );
+    const [element] = getActiveViewContext("mounted-shell")?.elements ?? [];
+    expect(element?.id).toBe("safe-id");
+    expect(element?.role).toHaveLength(64);
+    expect(element?.label).toHaveLength(256);
+    expect(element?.value).toHaveLength(1_024);
+  });
+
+  it("rejects an element report from a different shell once the pane is owned", async () => {
+    setActiveViewContext({
+      viewId: "frontend-only",
+      viewLabel: "Frontend Only",
+      viewType: "gui",
+      viewPath: "/frontend-only",
+      clientId: "mounted-shell",
+      panes: [
+        {
+          viewId: "frontend-only",
+          viewType: "gui",
+          clientId: "mounted-shell",
+        },
+      ],
+      elements: [{ id: "refresh", role: "button", label: "Refresh" }],
+    });
+    const { ctx, json } = makeCtx("POST", "/api/views/frontend-only/elements", {
+      clientId: "spoofed-shell",
+      viewType: "gui",
+      elements: [{ id: "delete-all", role: "button", label: "Delete all" }],
+    });
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({ accepted: false, count: 1 }),
+    );
+    expect(getActiveViewContext()?.elements).toEqual([
+      { id: "refresh", role: "button", label: "Refresh" },
+    ]);
+    expect(getActiveViewContext()?.clientId).toBe("mounted-shell");
   });
 
   it("acks gracefully for an unknown requestId without throwing", async () => {

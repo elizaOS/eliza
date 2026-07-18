@@ -5297,6 +5297,45 @@ function listAvailableContextsForRole(
 	return registry.listAvailable(role);
 }
 
+/**
+ * Whether a routed action has claimed the pre-planner reply boundary.
+ *
+ * Actions with `suppressEarlyReply` promise to emit the authoritative visible
+ * result from their handler callback. A deterministic call is already the
+ * selected action, so it alone owns this decision. Relevance candidates are
+ * only hints before planning; they may suppress the reply only when every
+ * candidate resolves to the same canonical action. Candidate names may be
+ * action similes, so resolve them through the same runtime lookup used by
+ * execution.
+ */
+function actionOwnsResponseHandlerEarlyReply(
+	runtime: Pick<IAgentRuntime, "actions">,
+	messageHandler: MessageHandlerResult,
+): boolean {
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	const deterministicToolCall = messageHandler.plan.deterministicToolCall;
+	if (deterministicToolCall) {
+		return (
+			resolveRuntimeAction(actionLookup, deterministicToolCall.name)
+				?.suppressEarlyReply === true
+		);
+	}
+
+	const candidateNames = messageHandler.plan.candidateActions ?? [];
+	if (candidateNames.length === 0) return false;
+
+	const resolvedCandidates = new Map<string, Action>();
+	for (const name of candidateNames) {
+		if (typeof name !== "string" || !name.trim()) return false;
+		const action = resolveRuntimeAction(actionLookup, name);
+		if (!action) return false;
+		resolvedCandidates.set(normalizeActionIdentifier(action.name), action);
+	}
+
+	if (resolvedCandidates.size !== 1) return false;
+	return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
+}
+
 interface ExecuteV5PlannedToolCallParams {
 	runtime: IAgentRuntime;
 	toolCall: PlannerToolCall;
@@ -5823,7 +5862,10 @@ async function executeV5PlannedToolCall(
 			recorder: args.recorder,
 			trajectoryId: args.trajectoryId,
 		});
-		return subPlannerResultToPlannerToolResult(subResult);
+		return projectActionResponseOwnership(
+			action,
+			subPlannerResultToPlannerToolResult(subResult),
+		);
 	}
 
 	const rawActionResult = await executePlannedToolCall(
@@ -5837,13 +5879,33 @@ async function executeV5PlannedToolCall(
 		rawActionResult,
 		toolCall.name,
 	);
-	return actionResultToPlannerToolResult(actionResult, {
-		summary: summarizeActionResultForPlanner(
-			action,
-			actionResult,
-			toolCall.params,
-		),
-	});
+	return projectActionResponseOwnership(
+		action,
+		actionResultToPlannerToolResult(actionResult, {
+			summary: summarizeActionResultForPlanner(
+				action,
+				actionResult,
+				toolCall.params,
+			),
+		}),
+	);
+}
+
+/**
+ * Project turn ownership onto the result consumed by the planner loop.
+ *
+ * Handler results describe operation success, while action metadata describes
+ * whether another planner iteration is allowed. Keeping those concerns
+ * separate lets a dispatcher such as VIEWS own every sub-mode without each
+ * handler remembering to repeat `continueChain: false`.
+ */
+function projectActionResponseOwnership(
+	action: Pick<Action, "suppressPostActionContinuation"> | undefined,
+	result: PlannerToolResult,
+): PlannerToolResult {
+	return action?.suppressPostActionContinuation === true
+		? { ...result, continueChain: false }
+		: result;
 }
 
 function plannerToolCallHasActionParameter(toolCall: PlannerToolCall): boolean {
@@ -7106,8 +7168,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		const earlyReplyText =
-			routedResponseHandlerReply || parsedResponseHandlerReply;
+		const earlyReplyText = actionOwnsResponseHandlerEarlyReply(
+			args.runtime,
+			messageHandler,
+		)
+			? ""
+			: routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		const earlyReplySent =
 			messageHandler.processMessage === "RESPOND" &&
@@ -8739,7 +8805,7 @@ export function stripReplyWhenActionOwnsTurn(
 
 export function wrapSingleTurnVisibleCallback(
 	runtime: Pick<IAgentRuntime, "agentId" | "logger"> &
-		Partial<Pick<IAgentRuntime, "character" | "useModel">> & {
+		Partial<Pick<IAgentRuntime, "actions" | "character" | "useModel">> & {
 			getService?: IAgentRuntime["getService"];
 		},
 	message: Pick<Memory, "id" | "roomId" | "entityId">,
@@ -8749,6 +8815,20 @@ export function wrapSingleTurnVisibleCallback(
 	if (!callback) return callback;
 	const fullRuntime = runtime as IAgentRuntime;
 	const deliver = async (response: Content, actionName?: string) => {
+		const rawActionTextValue =
+			response.data &&
+			typeof response.data === "object" &&
+			!Array.isArray(response.data)
+				? (response.data as Record<string, unknown>).rawActionText
+				: undefined;
+		const rawActionText =
+			typeof rawActionTextValue === "string" ? rawActionTextValue : undefined;
+		// Voice rewriting changes the wire text, but planner dedup still compares
+		// against the handler's canonical raw result. Record both forms so a
+		// turn-owning action cannot gain a second bubble after its callback.
+		if (rawActionText?.trim()) {
+			recordDeliveredVisibleText?.(rawActionText);
+		}
 		// Shared post-model, pre-channel sanitization (#15888): every visible
 		// delivery — action callbacks, early replies, simple replies, terminal
 		// content — funnels through this wrap, so stripping leaked machine
@@ -8780,7 +8860,7 @@ export function wrapSingleTurnVisibleCallback(
 		response: Content,
 		actionName?: string,
 	): Promise<Content> => {
-		if (!shouldRewriteActionCallback(response, actionName)) {
+		if (!shouldRewriteActionCallback(fullRuntime, response, actionName)) {
 			return response;
 		}
 		const text = response.text?.trim();
@@ -8885,6 +8965,7 @@ function actionCallbackVoiceRewriteEnabled(runtime: IAgentRuntime): boolean {
 }
 
 function shouldRewriteActionCallback(
+	runtime: Pick<IAgentRuntime, "actions">,
 	response: Content | null | undefined,
 	actionName?: string,
 ): response is Content & { text: string } {
@@ -8900,6 +8981,11 @@ function shouldRewriteActionCallback(
 		resolveCallbackActionName(response, actionName) ?? "",
 	);
 	if (!resolvedAction) return false;
+	const action = resolveRuntimeAction(
+		buildRuntimeActionLookup(runtime),
+		resolvedAction,
+	);
+	if (action?.preserveCallbackText === true) return false;
 	return !PASSIVE_TURN_ACTIONS.has(resolvedAction);
 }
 
@@ -8910,14 +8996,7 @@ async function rewriteActionCallbackInCharacter(args: {
 	actionName?: string;
 	text: string;
 }): Promise<string | null> {
-	const fallback = () => {
-		const action = args.actionName ?? "the action";
-		const error =
-			typeof args.response.error === "string" && args.response.error.trim()
-				? ` It reported: ${args.response.error.trim()}`
-				: "";
-		return `I ran ${action} and got a result, but I couldn't format the details cleanly here.${error}`;
-	};
+	const fallback = () => args.text;
 	if (typeof args.runtime.useModel !== "function") return fallback();
 	const character = args.runtime.character;
 	const characterVoice = {
@@ -9273,6 +9352,10 @@ export class DefaultMessageService implements IMessageService {
 			traceId,
 			runId: runtime.getCurrentRunId?.(),
 			roomId: message.roomId,
+			...(typeof message.metadata?.clientId === "string" &&
+			message.metadata.clientId.trim().length > 0
+				? { clientId: message.metadata.clientId.trim() }
+				: {}),
 			messageId: message.id,
 			userRole: senderRole,
 		};

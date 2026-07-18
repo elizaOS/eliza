@@ -641,12 +641,28 @@ describe("useShellController — turnStatus derivation", () => {
     });
   });
 
-  it("settles the visible controls after a complete REPLY callback while transport work finishes", () => {
+  it("settles the visible controls after a terminal callback while transport work finishes", () => {
     composerMock.value.chatSending = true;
     appMock.value.chatFirstTokenReceived = true;
     appMock.serverTurnStatus = {
       kind: "running_action",
       actionName: "REPLY",
+      terminal: true,
+    } as { kind: string };
+
+    const { result } = renderHook(() => useShellController());
+
+    expect(result.current.responding).toBe(true);
+    expect(result.current.turnStatus).toBeNull();
+  });
+
+  it("settles a response-owning VIEWS callback without hardcoding its action name", () => {
+    composerMock.value.chatSending = true;
+    appMock.value.chatFirstTokenReceived = true;
+    appMock.serverTurnStatus = {
+      kind: "running_action",
+      actionName: "VIEWS",
+      terminal: true,
     } as { kind: string };
 
     const { result } = renderHook(() => useShellController());

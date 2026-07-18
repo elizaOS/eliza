@@ -101,6 +101,7 @@ type StreamChatEvent = {
   label?: string;
   actionName?: string;
   toolName?: string;
+  terminal?: boolean;
   phase?: ChatToolCallEvent["phase"];
   callId?: string;
   args?: Record<string, unknown>;
@@ -170,6 +171,7 @@ function parseChatTurnStatus(parsed: StreamChatEvent): ChatTurnStatus | null {
     ...(typeof parsed.toolName === "string" && parsed.toolName
       ? { toolName: parsed.toolName }
       : {}),
+    ...(parsed.terminal === true ? { terminal: true } : {}),
   };
 }
 
@@ -748,6 +750,11 @@ export class ElizaClient {
 
   hasToken(): boolean {
     return Boolean(this.apiToken);
+  }
+
+  /** Stable identity shared by this client's HTTP requests and WebSocket. */
+  getClientId(): string {
+    return this.clientId;
   }
 
   /**

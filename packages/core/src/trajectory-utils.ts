@@ -878,6 +878,7 @@ async function withChildTrajectoryStep<T>(
 	}
 
 	let childStepId = generateChildStepId(options.stepIdPrefix);
+	let usesGeneratedChildStep = true;
 
 	if (trajectoryId && typeof trajectoryLogger.startStep === "function") {
 		try {
@@ -895,9 +896,16 @@ async function withChildTrajectoryStep<T>(
 				normalizedStartedStepId !== trajectoryId
 			) {
 				childStepId = normalizedStartedStepId;
+				usesGeneratedChildStep = false;
 			}
-		} catch {
-			// startStep is best-effort; continue with the generated id
+		} catch (error) {
+			// error-policy:J7 the generated child remains a valid diagnostic scope,
+			// while the logger allocation failure is surfaced to the agent and owner.
+			runtime.reportError("withChildTrajectoryStep.startChild", error, {
+				trajectoryId,
+				parentStepId,
+				purpose: options.purpose,
+			});
 		}
 	}
 
@@ -909,17 +917,61 @@ async function withChildTrajectoryStep<T>(
 		purpose: options.purpose,
 	};
 
+	let completed = false;
 	try {
-		return await runWithTrajectoryContext(childContext, () => fn());
+		const result = await runWithTrajectoryContext(childContext, () => fn());
+		completed = true;
+		return result;
 	} finally {
+		if (
+			usesGeneratedChildStep &&
+			typeof trajectoryLogger.endTrajectory === "function"
+		) {
+			if (typeof trajectoryLogger.flushWriteQueue === "function") {
+				try {
+					await trajectoryLogger.flushWriteQueue(childStepId);
+				} catch (error) {
+					// error-policy:J7 trajectory persistence is diagnostic and must not
+					// replace the action/provider/evaluator outcome, but a failed flush
+					// must remain visible to the runtime owner.
+					runtime.reportError("withChildTrajectoryStep.flushChild", error, {
+						childStepId,
+						parentStepId,
+						purpose: options.purpose,
+					});
+				}
+			}
+			try {
+				await trajectoryLogger.endTrajectory(
+					childStepId,
+					completed ? "completed" : "error",
+				);
+			} catch (error) {
+				// error-policy:J7 trajectory persistence is diagnostic and must not
+				// replace the action/provider/evaluator outcome, but an orphaned child
+				// must remain visible to the runtime owner.
+				runtime.reportError("withChildTrajectoryStep.endChild", error, {
+					childStepId,
+					parentStepId,
+					purpose: options.purpose,
+				});
+			}
+		}
 		if (
 			trajectoryId &&
 			typeof trajectoryLogger.flushWriteQueue === "function"
 		) {
 			try {
 				await trajectoryLogger.flushWriteQueue(trajectoryId);
-			} catch {
-				// Trajectory flushing must never break the host flow.
+			} catch (error) {
+				// error-policy:J7 parent persistence is diagnostic and must not replace
+				// the host result, but its failure must remain observable.
+				runtime.reportError("withChildTrajectoryStep.flushParent", error, {
+					trajectoryId,
+					parentStepId,
+					childStepId,
+					purpose: options.purpose,
+				});
 			}
 		}
 		try {
@@ -927,8 +979,15 @@ async function withChildTrajectoryStep<T>(
 				stepId: parentStepId,
 				appendChildSteps: [childStepId],
 			});
-		} catch {
-			// Trajectory annotation must never break the host flow.
+		} catch (error) {
+			// error-policy:J7 child linkage is diagnostic and must not replace the
+			// host result, but an unlinked child must remain observable.
+			runtime.reportError("withChildTrajectoryStep.annotateParent", error, {
+				trajectoryId,
+				parentStepId,
+				childStepId,
+				purpose: options.purpose,
+			});
 		}
 	}
 }

@@ -43,8 +43,10 @@ import {
 } from "@elizaos/shared/views/view-interact-protocol";
 import {
   type ActiveViewElement,
+  type ActiveViewPane,
   clearActiveViewContext,
   getActiveViewContext,
+  resolveVisiblePane,
   setActiveViewContext,
   setActiveViewElements,
 } from "../runtime/view-action-affinity.ts";
@@ -84,8 +86,64 @@ function parseViewTypeValue(value: unknown): ViewType | undefined {
     : undefined;
 }
 
+const VIEW_TYPES: readonly ViewType[] = ["gui", "xr", "tui"];
+
+function hasExactView(viewId: string, viewType: ViewType): boolean {
+  return getView(viewId, { viewType })?.viewType === viewType;
+}
+
+/**
+ * Materialize id-only layout state into exact pane identities. A secondary id
+ * registered for more than one modality is omitted unless the caller supplies
+ * a `viewTypes` hint; routing it with the primary pane's type would dispatch an
+ * unrelated declaration. The primary type is authoritative from navigation.
+ */
+function resolveLayoutPanes(
+  primaryViewId: string,
+  primaryViewType: ViewType,
+  viewIds: readonly string[],
+  rawViewTypes: unknown,
+  clientId: string | null,
+): ActiveViewPane[] {
+  const hintedTypes =
+    rawViewTypes &&
+    typeof rawViewTypes === "object" &&
+    !Array.isArray(rawViewTypes)
+      ? (rawViewTypes as Record<string, unknown>)
+      : {};
+  const panes: ActiveViewPane[] = [];
+
+  for (const viewId of viewIds) {
+    let resolvedType: ViewType | undefined;
+    if (viewId === primaryViewId) {
+      resolvedType = primaryViewType;
+    } else {
+      const hinted = parseViewTypeValue(hintedTypes[viewId]);
+      if (hinted && hasExactView(viewId, hinted)) {
+        resolvedType = hinted;
+      } else if (!hinted) {
+        const declaredTypes = VIEW_TYPES.filter((viewType) =>
+          hasExactView(viewId, viewType),
+        );
+        if (declaredTypes.length === 1) resolvedType = declaredTypes[0];
+      }
+    }
+    if (!resolvedType) continue;
+    panes.push({
+      viewId,
+      viewType: resolvedType,
+      ...(clientId ? { clientId } : {}),
+    });
+  }
+  return panes;
+}
+
 /** Hard cap on accepted element reports to bound memory + prompt growth. */
 const MAX_REPORTED_VIEW_ELEMENTS = 200;
+const MAX_REPORTED_ELEMENT_ID_LENGTH = 128;
+const MAX_REPORTED_ELEMENT_ROLE_LENGTH = 64;
+const MAX_REPORTED_ELEMENT_LABEL_LENGTH = 256;
+const MAX_REPORTED_ELEMENT_VALUE_LENGTH = 1_024;
 
 /**
  * Validate + normalize an untrusted element-snapshot body into the strict
@@ -98,14 +156,27 @@ function normalizeActiveViewElements(raw: unknown): ActiveViewElement[] {
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const r = item as Record<string, unknown>;
-    if (typeof r.id !== "string" || r.id.length === 0) continue;
+    if (typeof r.id !== "string") continue;
+    const id = r.id.trim();
+    // IDs are routing keys. Truncating one could alias a different control, so
+    // reject oversized identifiers while safely truncating display-only data.
+    if (id.length === 0 || id.length > MAX_REPORTED_ELEMENT_ID_LENGTH) continue;
+    const role =
+      typeof r.role === "string" && r.role.trim().length > 0
+        ? r.role.trim().slice(0, MAX_REPORTED_ELEMENT_ROLE_LENGTH)
+        : "element";
+    const label =
+      typeof r.label === "string" && r.label.trim().length > 0
+        ? r.label.trim().slice(0, MAX_REPORTED_ELEMENT_LABEL_LENGTH)
+        : id;
     const el: ActiveViewElement = {
-      id: r.id,
-      role:
-        typeof r.role === "string" && r.role.length > 0 ? r.role : "element",
-      label: typeof r.label === "string" && r.label.length > 0 ? r.label : r.id,
+      id,
+      role,
+      label,
     };
-    if (typeof r.value === "string") el.value = r.value;
+    if (typeof r.value === "string") {
+      el.value = r.value.slice(0, MAX_REPORTED_ELEMENT_VALUE_LENGTH);
+    }
     if (r.focused === true) el.focused = true;
     out.push(el);
     if (out.length >= MAX_REPORTED_VIEW_ELEMENTS) break;
@@ -207,17 +278,31 @@ const pendingInteractRequests = new PendingRequestMap();
  * result rather than silently succeeding when it is unset.
  */
 let moduleBroadcastWs: ((payload: object) => void) | null = null;
+let moduleBroadcastWsToClientId:
+  | ((clientId: string, payload: object) => number)
+  | null = null;
 
-/** Wire the process WS broadcaster into the views module. Called once at boot. */
+/** Wire the process WS broadcasters into the views module. Called once at boot. */
 export function setViewsBroadcastWs(
   broadcast: ((payload: object) => void) | null,
+  broadcastToClientId:
+    | ((clientId: string, payload: object) => number)
+    | null = null,
 ): void {
   moduleBroadcastWs = broadcast;
+  moduleBroadcastWsToClientId = broadcastToClientId;
 }
 
 /** The wired process WS broadcaster, or null when none is installed. */
 export function getViewsBroadcastWs(): ((payload: object) => void) | null {
   return moduleBroadcastWs;
+}
+
+/** The wired client-targeted WS broadcaster, or null when none is installed. */
+export function getViewsBroadcastWsToClientId():
+  | ((clientId: string, payload: object) => number)
+  | null {
+  return moduleBroadcastWsToClientId;
 }
 
 export interface CurrentViewState {
@@ -227,6 +312,8 @@ export interface CurrentViewState {
   viewType: ViewType;
   action?: string;
   views?: string[];
+  /** Typed pane identities retained for unambiguous routing and reconnects. */
+  panes?: Array<Pick<ActiveViewPane, "viewId" | "viewType">>;
   layout?: string;
   placement?: string;
   /**
@@ -237,9 +324,9 @@ export interface CurrentViewState {
    */
   subview?: string;
   /**
-   * ISO timestamp of the navigate that *switched* into this view (distinct from
-   * `updatedAt`, which also moves on same-view re-stamps). Read by the
-   * `current_view` acknowledgement provider to know a switch *just happened*.
+   * ISO timestamp of the navigate that switched into this view. The shell uses
+   * its short freshness window to recover an agent navigation missed during a
+   * reconnect without replaying old navigation indefinitely.
    */
   switchedAt?: string;
   /** Who initiated the switch: the agent (default) or the user clicking the UI. */
@@ -248,9 +335,8 @@ export interface CurrentViewState {
 }
 
 /**
- * A view switch is treated as "just happened" for this long after navigate, so
- * the acknowledgement provider only references it on the turn(s) immediately
- * following the switch and never re-acknowledges a stale switch forever.
+ * A view switch remains recoverable for this long after navigation. This is a
+ * transport-recovery window, not conversational context.
  */
 export const VIEW_SWITCH_FRESH_MS = 15_000;
 
@@ -265,15 +351,51 @@ export function isViewSwitchFresh(
   return now - t <= VIEW_SWITCH_FRESH_MS;
 }
 
-let currentViewState: CurrentViewState | null = null;
+const DEFAULT_VIEW_STATE_SCOPE = "__default__";
+interface CurrentViewScopeState {
+  currentView: CurrentViewState | null;
+  revision: number;
+}
+const currentViewsByScope = new Map<string, CurrentViewScopeState>();
 
-export function getCurrentViewState(): CurrentViewState | null {
-  return currentViewState;
+function viewStateScope(scopeId?: string | null): string {
+  const normalized = scopeId?.trim();
+  return normalized || DEFAULT_VIEW_STATE_SCOPE;
 }
 
-export function clearCurrentViewState(): void {
-  currentViewState = null;
-  clearActiveViewContext();
+function currentViewScopeState(scopeId?: string | null): CurrentViewScopeState {
+  return (
+    currentViewsByScope.get(viewStateScope(scopeId)) ?? {
+      currentView: null,
+      revision: 0,
+    }
+  );
+}
+
+export function getCurrentViewState(
+  scopeId?: string | null,
+): CurrentViewState | null {
+  return currentViewScopeState(scopeId).currentView;
+}
+
+/** Monotonic ownership token for compare-and-set view navigation. */
+export function getCurrentViewRevision(scopeId?: string | null): number {
+  return currentViewScopeState(scopeId).revision;
+}
+
+export function clearCurrentViewState(scopeId?: string | null): void {
+  if (scopeId === undefined) {
+    currentViewsByScope.clear();
+    clearActiveViewContext();
+    return;
+  }
+  const scope = viewStateScope(scopeId);
+  const previous = currentViewScopeState(scope);
+  currentViewsByScope.set(scope, {
+    currentView: null,
+    revision: previous.revision + 1,
+  });
+  clearActiveViewContext(scope);
 }
 
 /**
@@ -419,13 +541,16 @@ export async function handleViewsRoutes(
   }
 
   // ── GET /api/views/current ───────────────────────────────────────────────
-  // `justSwitched` is a turn-scoped signal (distinct from the always-present
-  // current view): true only briefly after a navigate so the `current_view`
-  // provider can phrase the just-happened switch as an acknowledgement.
+  // `justSwitched` lets a shell reconnect replay one recently missed agent
+  // navigation. It is deliberately separate from prompt/view context.
   if (method === "GET" && pathname === `${PREFIX}/current`) {
+    const scopeId =
+      resolveViewInteractClientId(req, null) ?? DEFAULT_VIEW_STATE_SCOPE;
+    const currentView = getCurrentViewState(scopeId);
     json(res, {
-      currentView: currentViewState,
-      justSwitched: isViewSwitchFresh(currentViewState),
+      currentView,
+      justSwitched: isViewSwitchFresh(currentView),
+      revision: getCurrentViewRevision(scopeId),
     });
     return true;
   }
@@ -889,7 +1014,7 @@ export async function handleViewsRoutes(
   }
 
   // ── POST /api/views/:id/navigate ─────────────────────────────────────────
-  // Broadcasts a shell:navigate:view WebSocket event to all connected clients.
+  // Sends a shell:navigate:view WebSocket event to the owning client scope.
   // The frontend's startup-phase-hydrate WS handler dispatches eliza:navigate:view
   // on window when it receives this message, which App.tsx handles.
   //
@@ -901,19 +1026,55 @@ export async function handleViewsRoutes(
   //   action: "split-view" — asks the shell to split multiple views
   //   action: "tile-views" — asks the shell to tile multiple views
   //   views: string[]      — view ids participating in split/tile actions
+  //   viewTypes: object    — optional view-id -> modality hints for split/tile panes
   //   layout: string       — split/tile layout hint: horizontal, vertical, grid
   //   placement: string    — optional split placement hint: left/right/top/bottom
   //   path: string         — override the navigation path
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   //   payload: unknown     — opaque deep-link state consumed by the target view
+  //   expectedRevision: number — conditional navigation; rejected if state moved
   if (method === "POST" && subResource === "navigate") {
-    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
-      () => null,
-    );
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const scopeId =
+      resolveViewInteractClientId(req, body) ?? DEFAULT_VIEW_STATE_SCOPE;
+    let currentViewState = getCurrentViewState(scopeId);
+    let currentViewRevision = getCurrentViewRevision(scopeId);
     const viewType =
       parseViewTypeValue(body?.viewType) ??
       parseViewTypeParam(url.searchParams.get("viewType"));
+    const rawExpectedRevision = body?.expectedRevision;
+    if (
+      rawExpectedRevision !== undefined &&
+      (typeof rawExpectedRevision !== "number" ||
+        !Number.isSafeInteger(rawExpectedRevision) ||
+        rawExpectedRevision < 0)
+    ) {
+      error(
+        res,
+        'Invalid "expectedRevision"; expected a non-negative integer',
+        400,
+      );
+      return true;
+    }
+    if (
+      typeof rawExpectedRevision === "number" &&
+      rawExpectedRevision !== currentViewRevision
+    ) {
+      json(
+        res,
+        {
+          ok: false,
+          conflict: true,
+          currentView: currentViewState,
+          revision: currentViewRevision,
+        },
+        409,
+      );
+      return true;
+    }
     const entry = getView(id, { viewType });
+    const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
     const viewPath =
@@ -935,12 +1096,48 @@ export async function handleViewsRoutes(
           ? body.section.trim()
           : undefined;
     const alwaysOnTop = body?.alwaysOnTop === true;
-    const layoutViews = Array.isArray(body?.views)
-      ? body.views.filter(
-          (value): value is string =>
-            typeof value === "string" && value.trim().length > 0,
+    const requestedLayoutViews = Array.isArray(body?.views)
+      ? body.views.flatMap((value) => {
+          if (typeof value !== "string") return [];
+          const normalized = value.trim();
+          return normalized ? [normalized] : [];
+        })
+      : undefined;
+    // Layout state is consumed as the complete set of visible panes. Keep the
+    // routed primary first even when a caller only supplies the panes being
+    // added, and normalize duplicates before publishing state/prompt context.
+    const layoutViews =
+      requestedLayoutViews && requestedLayoutViews.length > 0
+        ? [...new Set([id, ...requestedLayoutViews])]
+        : undefined;
+    const layoutOwnerClientId = resolveViewInteractClientId(req, body);
+    const layoutPanes = layoutViews
+      ? resolveLayoutPanes(
+          id,
+          resolvedViewType,
+          layoutViews,
+          body?.viewTypes,
+          layoutOwnerClientId,
         )
       : undefined;
+    if (layoutViews && layoutPanes?.length !== layoutViews.length) {
+      const resolvedPaneIds = new Set(
+        layoutPanes?.map(({ viewId }) => viewId) ?? [],
+      );
+      const unresolvedViewIds = layoutViews.filter(
+        (viewId) => !resolvedPaneIds.has(viewId),
+      );
+      error(
+        res,
+        `Cannot resolve an exact view type for layout pane${unresolvedViewIds.length === 1 ? "" : "s"}: ${unresolvedViewIds.join(", ")}. Supply a valid viewTypes hint for every ambiguous pane.`,
+        400,
+      );
+      return true;
+    }
+    const layoutStatePanes = layoutPanes?.map(({ viewId, viewType }) => ({
+      viewId,
+      viewType,
+    }));
     const layout =
       typeof body?.layout === "string" && body.layout.trim().length > 0
         ? body.layout.trim()
@@ -963,7 +1160,6 @@ export async function handleViewsRoutes(
       `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}${subview ? ` (subview=${subview})` : ""}`,
     );
 
-    const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
     // Closing a view must NOT stamp it (or the synthetic "__all__" close-all id)
     // as the active view: that left the planner upweighting a dismissed view's
     // scoped actions and made "what view am I on" report a closed view forever.
@@ -971,12 +1167,14 @@ export async function handleViewsRoutes(
     // re-stamps it.
     const isCloseNavigation = action === "close" || action === "close-all";
     if (isCloseNavigation) {
-      clearCurrentViewState();
+      clearCurrentViewState(scopeId);
+      currentViewState = null;
+      currentViewRevision = getCurrentViewRevision(scopeId);
     } else {
       const now = new Date().toISOString();
       const source = reportedSource;
-      // Stamp `switchedAt` only when the view actually changes; a re-navigate to
-      // the same view should not re-trigger an acknowledgement.
+      // Stamp `switchedAt` only when the view actually changes; a same-view
+      // re-stamp must not extend the reconnect recovery window.
       const previousViewId = currentViewState?.viewId ?? null;
       const viewChanged = previousViewId !== id;
       const switchedAt = viewChanged
@@ -991,21 +1189,34 @@ export async function handleViewsRoutes(
         ...(subview ? { subview } : {}),
         ...(alwaysOnTop ? { alwaysOnTop } : {}),
         ...layoutPayload,
+        ...(layoutStatePanes ? { panes: layoutStatePanes } : {}),
         switchedAt,
         source,
         updatedAt: now,
       };
+      currentViewRevision += 1;
+      currentViewsByScope.set(scopeId, {
+        currentView: currentViewState,
+        revision: currentViewRevision,
+      });
       // Publish to the prompt-optimization layer so the planner upweights this
       // view's scoped actions while it is on screen.
-      setActiveViewContext({
-        viewId: id,
-        viewLabel,
-        viewType: resolvedViewType,
-        viewPath,
-        // Carry freshness so Stage-1 can acknowledge a just-happened switch (#8788).
-        ...(switchedAt ? { switchedAt } : {}),
-        ...(source ? { source } : {}),
-      });
+      setActiveViewContext(
+        {
+          viewId: id,
+          viewLabel,
+          viewType: resolvedViewType,
+          viewPath,
+          ...(layoutOwnerClientId ? { clientId: layoutOwnerClientId } : {}),
+          ...(layoutViews && layoutViews.length > 0
+            ? { viewIds: layoutViews }
+            : {}),
+          ...(layoutPanes ? { panes: layoutPanes } : {}),
+          ...(layout ? { layout } : {}),
+          ...(placement ? { placement } : {}),
+        },
+        scopeId,
+      );
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on
       // re-navigates), and fire-and-forget so it never blocks the response.
@@ -1050,7 +1261,12 @@ export async function handleViewsRoutes(
         ...layoutPayload,
         ...deepLinkPayload,
       };
-      ctx.broadcastWs?.(createShellNavigateViewWsFrame(navigatePayload));
+      const frame = createShellNavigateViewWsFrame(navigatePayload);
+      if (scopeId !== DEFAULT_VIEW_STATE_SCOPE && ctx.broadcastWsToClientId) {
+        ctx.broadcastWsToClientId(scopeId, frame);
+      } else {
+        ctx.broadcastWs?.(frame);
+      }
     }
 
     json(res, {
@@ -1063,6 +1279,7 @@ export async function handleViewsRoutes(
       ...(alwaysOnTop ? { alwaysOnTop } : {}),
       ...layoutPayload,
       ...deepLinkPayload,
+      revision: currentViewRevision,
     });
     return true;
   }
@@ -1076,12 +1293,21 @@ export async function handleViewsRoutes(
   // overwrite the foreground view's elements (accepted=false when it doesn't
   // match — the report is simply dropped).
   if (method === "POST" && subResource === "elements") {
-    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
-      () => null,
-    );
-    const elements = normalizeActiveViewElements(body?.elements);
+    const body = await readJsonBody<Record<string, unknown>>(req, res);
+    if (!body) return true;
+    const elements = normalizeActiveViewElements(body.elements);
     const clientId = resolveViewInteractClientId(req, body);
-    const accepted = setActiveViewElements(id, elements, clientId);
+    const viewType =
+      parseViewTypeValue(body?.viewType) ??
+      parseViewTypeParam(url.searchParams.get("viewType"));
+    const scopeId = clientId ?? DEFAULT_VIEW_STATE_SCOPE;
+    const accepted = setActiveViewElements(
+      id,
+      elements,
+      clientId,
+      viewType,
+      scopeId,
+    );
     json(res, { ok: true, viewId: id, accepted, count: elements.length });
     return true;
   }
@@ -1127,7 +1353,8 @@ export async function handleViewsRoutes(
     // Resolve the element from the active-view snapshot for context (the planner
     // reports it via /:id/elements). Only used when this view is the foreground
     // active view; absent otherwise — the click still dispatches by id.
-    const active = getActiveViewContext();
+    const clientId = resolveViewInteractClientId(req, body);
+    const active = getActiveViewContext(clientId ?? DEFAULT_VIEW_STATE_SCOPE);
     const element =
       active?.viewId === id
         ? active.elements?.find((el) => el.id === elementId)
@@ -1144,7 +1371,7 @@ export async function handleViewsRoutes(
     const dispatch = await dispatchViewInteract(entry, id, capability, params, {
       broadcastWs: ctx.broadcastWs,
       broadcastWsToClientId: ctx.broadcastWsToClientId,
-      clientId: resolveTargetViewClientId(id, req, body),
+      clientId: resolveTargetViewClientId(id, entry.viewType, req, body),
       runtime: ctx.runtime ?? undefined,
     });
 
@@ -1255,8 +1482,10 @@ export async function handleViewsRoutes(
 
     if (typeof entry.serverInteract === "function") {
       try {
+        const clientId = resolveViewInteractClientId(req, body) ?? undefined;
         const result = await entry.serverInteract(capability, params, {
           runtime: ctx.runtime ?? undefined,
+          ...(clientId ? { clientId } : {}),
         });
         ctx.broadcastWs?.({
           type: "view:event",
@@ -1290,7 +1519,12 @@ export async function handleViewsRoutes(
 
     // Register the pending slot before broadcasting — avoids a race where the
     // frontend responds before we start waiting.
-    const targetClientId = resolveTargetViewClientId(id, req, body);
+    const targetClientId = resolveTargetViewClientId(
+      id,
+      entry.viewType,
+      req,
+      body,
+    );
     const frame = {
       type: "view:interact",
       viewId: id,
@@ -1402,6 +1636,7 @@ export async function dispatchViewInteract(
     try {
       const result = await entry.serverInteract(capability, params, {
         runtime: transport.runtime,
+        ...(transport.clientId ? { clientId: transport.clientId } : {}),
       });
       transport.broadcastWs?.({
         type: "view:event",
@@ -1485,31 +1720,33 @@ function resolveViewInteractClientId(
   body: Record<string, unknown> | null | undefined,
 ): string | null {
   return (
-    normalizeWsClientId(firstHeaderValue(req.headers["x-elizaos-client-id"])) ??
-    normalizeWsClientId(firstHeaderValue(req.headers["x-eliza-client-id"])) ??
+    normalizeWsClientId(
+      firstHeaderValue(req.headers?.["x-elizaos-client-id"]),
+    ) ??
+    normalizeWsClientId(firstHeaderValue(req.headers?.["x-eliza-client-id"])) ??
     normalizeWsClientId(body?.clientId)
   );
 }
 
 function resolveTargetViewClientId(
   viewId: string,
+  viewType: ViewType,
   req: Pick<http.IncomingMessage, "headers">,
   body: Record<string, unknown> | null | undefined,
 ): string | null {
   const explicit = resolveViewInteractClientId(req, body);
-  const active = getActiveViewContext();
+  const active = getActiveViewContext(explicit ?? DEFAULT_VIEW_STATE_SCOPE);
   const mountedOwner =
-    active?.viewId === viewId ? (active.clientId ?? null) : null;
+    resolveVisiblePane(viewId, active, viewType)?.clientId ?? null;
   if (!mountedOwner) return explicit;
   return !explicit || explicit === mountedOwner ? mountedOwner : null;
 }
 
 function resultSuccess(result: unknown): boolean {
   if (!result || typeof result !== "object" || Array.isArray(result)) {
-    return true;
+    return false;
   }
-  const success = (result as Record<string, unknown>).success;
-  return typeof success === "boolean" ? success : true;
+  return (result as Record<string, unknown>).success === true;
 }
 
 function streamHeroImage(

@@ -5,6 +5,7 @@
  */
 
 import { ElizaError } from "@elizaos/core";
+import { client } from "./api/client";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { fetchWithCsrf } from "./api/csrf-client";
 import { dispatchNavigateViewEvent } from "./events";
@@ -133,7 +134,9 @@ async function fetchCurrentViewResponse(
   fetchCurrentView?: () => Promise<Response>,
 ): Promise<CurrentViewResponse> {
   const response = await (fetchCurrentView?.() ??
-    fetchWithCsrf("/api/views/current"));
+    fetchWithCsrf("/api/views/current", {
+      headers: { "X-ElizaOS-Client-Id": client.getClientId() },
+    }));
   if (!response.ok) {
     throw new ElizaError(
       `GET /api/views/current returned HTTP ${response.status}`,

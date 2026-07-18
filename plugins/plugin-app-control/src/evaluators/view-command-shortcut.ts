@@ -47,6 +47,11 @@ export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 		if (!viewId) return undefined;
 		return {
 			requiresTool: true,
+			// The VIEWS action owns the visible confirmation after navigation has
+			// actually succeeded or failed. A speculative Stage-1 acknowledgement
+			// would otherwise be emitted as a second assistant message before the
+			// action callback reports the authoritative outcome.
+			clearReply: true,
 			clearCandidateActions: true,
 			addCandidateActions: [VIEWS_ACTION_NAME],
 			clearParentActionHints: true,

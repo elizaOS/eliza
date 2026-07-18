@@ -2,22 +2,87 @@
  * Evaluator that maps user context to registered views and dispatches navigation.
  */
 
-import type { Evaluator, EvaluatorProcessor } from "@elizaos/core";
+import type { Evaluator, EvaluatorProcessor, Memory } from "@elizaos/core";
 import {
 	getUserMessageText,
 	logger,
 	ModelType,
 	resolveOptimizedPromptForRuntime,
 } from "@elizaos/core";
-import { createViewsClient } from "../actions/views-client.js";
+import {
+	createViewsClient,
+	getCurrentViewSnapshot,
+	readViewClientId,
+} from "../actions/views-client.js";
 import {
 	isStandaloneNotesSurfaceRequest,
 	resolveIntentView,
 } from "../actions/views-show.js";
-import { markViewSwitch } from "../runtime/view-switch-signal.js";
 
 const VIEWS_ACTION_NAME = "VIEWS";
 const NONE = "none";
+
+interface ViewTurnStamp {
+	key: string;
+	createdAt: number;
+	clientScope: string;
+}
+
+interface ViewTurnOwner {
+	/** Null means two accepted messages shared one millisecond and neither owns it. */
+	key: string | null;
+	createdAt: number;
+}
+
+const DEFAULT_VIEW_TURN_SCOPE = "__default__";
+const latestViewTurns = new Map<string, ViewTurnOwner>();
+
+function viewTurnKey(message: Memory): string {
+	if (message.id) return String(message.id);
+	return `${message.createdAt ?? "unknown"}:${getUserMessageText(message)}`;
+}
+
+/**
+ * Record ownership from the message timestamp assigned when the turn entered
+ * the runtime, rather than from evaluator invocation order. Each renderer owns
+ * an independent view surface, so only turns from that same client compete.
+ * Missing or tied timestamps fail closed: contextual navigation is optional
+ * and must never guess which of two turns is newer.
+ */
+function observeViewTurn(message: Memory): ViewTurnStamp | null {
+	const createdAt =
+		typeof message.createdAt === "number" &&
+		Number.isSafeInteger(message.createdAt) &&
+		message.createdAt >= 0
+			? message.createdAt
+			: null;
+	if (createdAt === null) return null;
+
+	const key = viewTurnKey(message);
+	const clientScope = readViewClientId(message) ?? DEFAULT_VIEW_TURN_SCOPE;
+	const latestViewTurn = latestViewTurns.get(clientScope);
+	const candidate = { key, createdAt, clientScope };
+	if (!latestViewTurn || createdAt > latestViewTurn.createdAt) {
+		latestViewTurns.set(clientScope, candidate);
+	} else if (
+		createdAt === latestViewTurn.createdAt &&
+		latestViewTurn.key !== key
+	) {
+		latestViewTurns.set(clientScope, { key: null, createdAt });
+	}
+	return candidate;
+}
+
+function isLatestViewTurn(turn: ViewTurnStamp | null): boolean {
+	const latestViewTurn = turn
+		? latestViewTurns.get(turn.clientScope)
+		: undefined;
+	return (
+		turn !== null &&
+		latestViewTurn?.key === turn.key &&
+		latestViewTurn.createdAt === turn.createdAt
+	);
+}
 
 // The user-facing domain surfaces a situation can map to. Kept as a fixed enum
 // so the model output is constrained; the processor still confirms the id is an
@@ -87,7 +152,9 @@ export const BASELINE_VIEW_CONTEXT_INSTRUCTION = [
  */
 const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 	name: "navigate-to-contextual-view",
-	async process({ output, message }) {
+	async process({ output, message, runtime }) {
+		const turn = observeViewTurn(message);
+		if (!turn || !isLatestViewTurn(turn)) return undefined;
 		const viewId =
 			typeof output?.viewId === "string"
 				? output.viewId.trim().toLowerCase()
@@ -101,33 +168,65 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 			return undefined;
 		}
 
-		const client = createViewsClient();
+		const clientId = readViewClientId(message);
+		const client = createViewsClient({ clientId });
+		let startingViewRevision: number;
+		try {
+			const startingSnapshot = await getCurrentViewSnapshot(clientId);
+			startingViewRevision = startingSnapshot.revision;
+			if (startingSnapshot.currentView?.viewId === viewId) return undefined;
+		} catch (error) {
+			// error-policy:J7 post-response navigation diagnostics must not fail the
+			// completed chat turn, but the agent must still observe the broken boundary.
+			runtime.reportError("app-control.view-context.current-view", error, {
+				phase: "before-discovery",
+				viewId,
+			});
+			return undefined;
+		}
+		if (!isLatestViewTurn(turn)) return undefined;
+
 		let views: Awaited<ReturnType<typeof client.listViews>>;
 		try {
 			views = await client.listViews();
-		} catch {
-			return undefined; // not a view-capable surface / loopback down
+		} catch (error) {
+			// error-policy:J7 post-response navigation diagnostics must not fail the
+			// completed chat turn, but the agent must still observe the broken boundary.
+			runtime.reportError("app-control.view-context.list-views", error, {
+				viewId,
+			});
+			return undefined;
 		}
 		const target = views.find((view) => view.id === viewId);
 		if (!target) return undefined; // model named a view this deployment lacks
+		if (!isLatestViewTurn(turn)) return undefined;
 
 		try {
-			const current = await client.getCurrentView();
-			if (current?.viewId === viewId) return undefined; // already there
-		} catch {
-			// couldn't read current view — proceed; navigate is idempotent
+			const currentSnapshot = await getCurrentViewSnapshot(clientId);
+			if (currentSnapshot.currentView?.viewId === viewId) return undefined;
+			// A navigation completed while the contextual classifier was pending.
+			// Treat that newer shell state as authoritative even if its post-turn
+			// evaluator has not reached `shouldRun` to advance the watermark yet.
+			if (currentSnapshot.revision !== startingViewRevision) {
+				return undefined;
+			}
+		} catch (error) {
+			// error-policy:J7 fail closed when ownership cannot be revalidated; an
+			// unverified post-response navigation could overwrite a newer user intent.
+			runtime.reportError("app-control.view-context.current-view", error, {
+				phase: "before-navigation",
+				viewId,
+			});
+			return undefined;
 		}
+		if (!isLatestViewTurn(turn)) return undefined;
 
 		const ok = await client.navigate(viewId, {
 			path: target.path,
 			viewType: target.viewType,
+			expectedRevision: startingViewRevision,
 		});
 		if (!ok) return undefined;
-		// This evaluator runs *after* the reply, so it cannot acknowledge the
-		// switch in the just-sent message. Record the switch (and the server
-		// stamps it on navigate): the `current_view` provider then acknowledges it
-		// on the immediate next turn rather than the user being moved silently.
-		markViewSwitch(message?.roomId);
 		logger.info(
 			`[plugin-app-control] contextual view nav → ${viewId}${output.reason ? ` (${output.reason})` : ""}`,
 		);
@@ -168,6 +267,11 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		required: ["viewId"],
 	},
 	async shouldRun({ runtime, message, options }) {
+		// Observe every turn, including explicit commands that return false below.
+		// That makes a newer deterministic VIEWS command supersede any slower
+		// contextual classifier still finishing for the previous turn.
+		const turn = observeViewTurn(message);
+		if (!turn || !isLatestViewTurn(turn)) return false;
 		if (options?.didRespond === false) return false;
 		// Must be a view-capable app surface (VIEWS registered).
 		const hasViews = (runtime.actions ?? []).some(

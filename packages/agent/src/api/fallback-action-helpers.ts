@@ -23,7 +23,7 @@ export type FallbackParsedAction = {
 
 type RuntimeActionLike = Pick<
   Action,
-  "name" | "similes" | "validate" | "handler"
+  "name" | "similes" | "validate" | "handler" | "preserveCallbackText"
 >;
 
 async function rewriteFallbackActionText(args: {
@@ -31,16 +31,12 @@ async function rewriteFallbackActionText(args: {
   actionName: string;
   text: string;
   content?: Content;
+  preserveCallbackText?: boolean;
 }): Promise<string> {
   const text = args.text.trim();
   if (!text) return args.text;
-  const fallback = () => {
-    const error =
-      typeof args.content?.error === "string" && args.content.error.trim()
-        ? ` It reported: ${args.content.error.trim()}`
-        : "";
-    return `I ran ${args.actionName} and got a result, but I couldn't format the details cleanly here.${error}`;
-  };
+  if (args.preserveCallbackText === true) return args.text;
+  const fallback = () => args.text;
   if (typeof args.runtime.useModel !== "function") return fallback();
 
   try {
@@ -74,9 +70,9 @@ async function rewriteFallbackActionText(args: {
       providerOptions: { eliza: { thinking: "off" } },
     });
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
-    return typeof parsed.response === "string" && parsed.response.trim()
-      ? parsed.response.trim()
-      : fallback();
+    const response =
+      typeof parsed.response === "string" ? parsed.response.trim() : "";
+    return response && response !== text ? response : fallback();
   } catch (err) {
     args.runtime.logger.debug(
       {
@@ -216,6 +212,7 @@ export async function executeFallbackParsedActions(
               actionName: actionTag,
               text: chunk,
               content: contentRecord as Content,
+              preserveCallbackText: action.preserveCallbackText,
             });
             (options?.onCallbackText ?? appendIncomingText)(voicedChunk);
           }
@@ -253,6 +250,7 @@ export async function executeFallbackParsedActions(
             runtime,
             actionName: parsed.name,
             text: fallbackText,
+            preserveCallbackText: action.preserveCallbackText,
           });
           appendIncomingText(
             currentText.trim().length > 0

@@ -57,7 +57,7 @@ import {
 import {
   applyActiveViewAwareness,
   getActiveViewContext,
-  viewScopedActionNames,
+  visiblePaneActionNames,
 } from "./view-action-affinity.ts";
 
 export {
@@ -1429,11 +1429,10 @@ export function installPromptOptimizations(
     let nextMessages = originalMessages;
     let outputReserveTokens: number | undefined;
 
-    // The shell reports the view the user is looking at via POST
-    // /api/views/:id/navigate (stored in view-action-affinity). Read it once so
-    // both the action-weighting (keep view-scoped actions at full param detail)
-    // and the awareness block below stay consistent for this prompt.
-    const activeView = getActiveViewContext();
+    // The shell reports the visible view layout via POST /api/views/:id/navigate
+    // (stored in view-action-affinity). Read it once so action weighting for
+    // every pane and the awareness block stay consistent for this prompt.
+    const activeView = getActiveViewContext(getTrajectoryContext()?.clientId);
 
     // Skip intent compaction while trajectory capture is active; hard model
     // budgets still apply because providers cannot accept overflow prompts.
@@ -1447,7 +1446,7 @@ export function installPromptOptimizations(
       // All action names remain visible — only param detail is stripped.
       let workingPrompt = compactActionsForIntent(
         originalPrompt,
-        viewScopedActionNames(activeView?.viewId),
+        visiblePaneActionNames(activeView),
       );
       if (workingPrompt !== originalPrompt) {
         promptOptimizationTelemetry.transformations.push(

@@ -3,7 +3,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createViewsClient } from "./views-client.js";
+import { createViewsClient, getCurrentViewSnapshot } from "./views-client.js";
 
 const coreMock = vi.hoisted(() => ({
 	resolveServerOnlyPort: vi.fn(() => 3456),
@@ -130,5 +130,115 @@ describe("views client", () => {
 			viewId: "settings",
 			subview: "voice",
 		});
+	});
+
+	it("preserves the server revision for compare-and-set navigation", async () => {
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValueOnce(
+				jsonResponse({
+					currentView: null,
+					revision: 17,
+				}),
+			)
+			.mockResolvedValueOnce(jsonResponse({ ok: true, revision: 18 }));
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(getCurrentViewSnapshot("shell-a")).resolves.toEqual({
+			currentView: null,
+			revision: 17,
+		});
+		await expect(
+			createViewsClient({ clientId: "shell-a" }).navigate("calendar", {
+				expectedRevision: 17,
+			}),
+		).resolves.toBe(true);
+
+		const [, init] = fetchMock.mock.calls[1] as [
+			RequestInfo | URL,
+			RequestInit,
+		];
+		expect(JSON.parse(String(init.body))).toMatchObject({
+			expectedRevision: 17,
+			clientId: "shell-a",
+		});
+		expect(init.headers).toMatchObject({
+			"X-ElizaOS-Client-Id": "shell-a",
+		});
+		const [, currentInit] = fetchMock.mock.calls[0] as [
+			RequestInfo | URL,
+			RequestInit,
+		];
+		expect(currentInit.headers).toMatchObject({
+			"X-ElizaOS-Client-Id": "shell-a",
+		});
+	});
+
+	it("keeps snapshot and navigate requests isolated between shell clients", async () => {
+		const requests: Array<{
+			clientId: string | null;
+			body?: Record<string, unknown>;
+			url: string;
+		}> = [];
+		const fetchMock = vi.fn(
+			async (input: RequestInfo | URL, init?: RequestInit) => {
+				const url = String(input);
+				const clientId = new Headers(init?.headers).get("X-ElizaOS-Client-Id");
+				const body =
+					typeof init?.body === "string"
+						? (JSON.parse(init.body) as Record<string, unknown>)
+						: undefined;
+				requests.push({ url, clientId, ...(body ? { body } : {}) });
+
+				if (url.endsWith("/api/views/current")) {
+					return jsonResponse({
+						currentView: null,
+						revision: clientId === "shell-a" ? 11 : 29,
+					});
+				}
+				return jsonResponse({ ok: true });
+			},
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const [snapshotA, snapshotB] = await Promise.all([
+			getCurrentViewSnapshot("shell-a"),
+			getCurrentViewSnapshot("shell-b"),
+		]);
+		await Promise.all([
+			createViewsClient({ clientId: "shell-a" }).navigate("calendar", {
+				expectedRevision: snapshotA.revision,
+			}),
+			createViewsClient({ clientId: "shell-b" }).navigate("notes", {
+				expectedRevision: snapshotB.revision,
+			}),
+		]);
+
+		expect(requests).toEqual([
+			{
+				url: "http://127.0.0.1:3456/api/views/current",
+				clientId: "shell-a",
+			},
+			{
+				url: "http://127.0.0.1:3456/api/views/current",
+				clientId: "shell-b",
+			},
+			{
+				url: "http://127.0.0.1:3456/api/views/calendar/navigate",
+				clientId: "shell-a",
+				body: expect.objectContaining({
+					clientId: "shell-a",
+					expectedRevision: 11,
+				}),
+			},
+			{
+				url: "http://127.0.0.1:3456/api/views/notes/navigate",
+				clientId: "shell-b",
+				body: expect.objectContaining({
+					clientId: "shell-b",
+					expectedRevision: 29,
+				}),
+			},
+		]);
 	});
 });

@@ -435,6 +435,21 @@ export interface Action {
 	suppressEarlyReply?: boolean;
 
 	/**
+	 * When true, handler callback text is already the action's canonical,
+	 * user-facing result and must bypass the generic character-voice rewrite.
+	 * Use this for deterministic actions where changing the callback can duplicate
+	 * acknowledgements or weaken an exact success/failure contract.
+	 */
+	preserveCallbackText?: boolean;
+
+	/**
+	 * When true, a visible handler callback completes the user-facing response.
+	 * Transports may settle response controls after delivering that callback even
+	 * while persistence or evaluator work finishes in the background.
+	 */
+	callbackCompletesResponse?: boolean;
+
+	/**
 	 * When true, runtime-level action result finalizers must not store this
 	 * action's visible result text in task clipboard state.
 	 */

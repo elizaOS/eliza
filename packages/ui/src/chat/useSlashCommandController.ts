@@ -57,6 +57,7 @@ export function reportUserViewSwitch(viewId: string, viewPath?: string): void {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "X-ElizaOS-Client-Id": client.getClientId(),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({

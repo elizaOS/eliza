@@ -1,6 +1,8 @@
 /**
  * View-scoped agent actions: turns a view's `ViewScopedAction` declarations into
- * real runtime actions that are gated on the declaring view being foreground.
+ * real runtime actions gated on the declaring view being visible. A split-pane
+ * layout therefore exposes actions from each mounted pane, while closed and
+ * background views remain unavailable.
  *
  * A scoped action's `validate()` returns false unless the declaring view is the
  * active view (read from the same authoritative active-view context the affinity
@@ -23,25 +25,41 @@ import {
   type Action,
   type ActionResult,
   ElizaError,
+  getTrajectoryContext,
+  getViewModalities,
   type IAgentRuntime,
   logger,
   type Memory,
   type State,
   type ViewScopedAction,
   type ViewScopedActionStep,
+  type ViewType,
 } from "@elizaos/core";
 import { getView } from "../api/views-registry.ts";
 import {
   dispatchViewInteract,
   getViewsBroadcastWs,
+  getViewsBroadcastWsToClientId,
 } from "../api/views-routes.ts";
-import { getActiveViewContext } from "./view-action-affinity.ts";
+import {
+  getActiveViewContext,
+  resolveVisiblePane,
+  visiblePaneViewIds,
+} from "./view-action-affinity.ts";
 
 /** How long a single agent-surface step waits for the frontend to resolve. */
 const SCOPED_ACTION_STEP_TIMEOUT_MS = 5_000;
 
 /** Whole-string `{{paramName}}` token; the token must be the entire value. */
 const PARAM_TOKEN = /^\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}$/;
+
+function viewClientIdForMessage(message: Memory): string | undefined {
+  const messageClientId = message.metadata?.clientId;
+  if (typeof messageClientId === "string" && messageClientId.trim()) {
+    return messageClientId.trim();
+  }
+  return getTrajectoryContext()?.clientId;
+}
 
 /**
  * Read the action parameters the planner passes. The runtime nests validated
@@ -153,7 +171,10 @@ function unwrapInteractResult(result: unknown): unknown {
 export function buildViewScopedAction(
   viewId: string,
   decl: ViewScopedAction,
+  viewTypes: ViewType | readonly ViewType[] = "gui",
 ): Action {
+  const declaredViewTypes =
+    typeof viewTypes === "string" ? [viewTypes] : [...viewTypes];
   const paramList = decl.parameters ?? [];
   const paramLine =
     paramList.length > 0 ? ` (parameters: ${paramList.join(", ")})` : "";
@@ -162,32 +183,44 @@ export function buildViewScopedAction(
     name: decl.name,
     description: decl.description,
     similes: decl.similes,
-    routingHint: `only available while the "${viewId}" view is active -> ${decl.name}${paramLine}; drives that view's controls, unavailable elsewhere`,
-    // The declaring view must be the FOREGROUND active view. This is the gate
-    // that keeps the agent from driving a view's controls while looking at a
-    // different one; a view switch (POST /api/views/:id/navigate) re-stamps the
-    // active context and flips this without a restart.
-    validate: async (): Promise<boolean> => {
-      return getActiveViewContext()?.viewId === viewId;
+    routingHint: `only available while the "${viewId}" view is visible -> ${decl.name}${paramLine}; drives that view's controls, unavailable elsewhere`,
+    // A split layout makes every mounted pane available to the user. Gate on
+    // visibility rather than only the primary pane so a secondary Notes or
+    // Calendar surface keeps its declared actions without exposing actions for
+    // background/closed views.
+    validate: async (
+      _runtime: IAgentRuntime,
+      message: Memory,
+    ): Promise<boolean> => {
+      return Boolean(
+        resolveVisiblePane(
+          viewId,
+          getActiveViewContext(viewClientIdForMessage(message)),
+          declaredViewTypes,
+        ),
+      );
     },
     handler: async (
       runtime: IAgentRuntime,
-      _message: Memory,
+      message: Memory,
       _state?: State,
       options?: unknown,
     ): Promise<ActionResult> => {
       // Defense in depth: the executor already gates on validate(), but a
       // hallucinated direct call must not drive a background view's controls.
-      const active = getActiveViewContext();
-      if (active?.viewId !== viewId) {
+      const active = getActiveViewContext(viewClientIdForMessage(message));
+      const pane = resolveVisiblePane(viewId, active, declaredViewTypes);
+      if (!active || !pane) {
+        const visibleViews = visiblePaneViewIds(active);
         throw new ElizaError(
-          `View-scoped action "${decl.name}" requires the "${viewId}" view to be active (active view: ${active?.viewId ?? "none"})`,
+          `View-scoped action "${decl.name}" requires the "${viewId}" view to be visible (visible views: ${visibleViews.join(", ") || "none"})`,
           {
             code: "VIEW_SCOPED_ACTION_VIEW_INACTIVE",
             context: {
               actionName: decl.name,
               requiredView: viewId,
               activeView: active?.viewId ?? null,
+              visibleViews,
             },
             severity: "ephemeral",
           },
@@ -195,32 +228,42 @@ export function buildViewScopedAction(
       }
 
       const broadcastWs = getViewsBroadcastWs();
-      const entry = getView(viewId, { viewType: active.viewType });
-      // A scoped action drives a MOUNTED view surface. With no way to reach a
-      // shell (no server-side handler and no WS broadcaster), the dispatch would
-      // block on the pending-request timeout and then read as a plain failure —
-      // fail loudly instead so the missing wiring surfaces to the agent.
-      if (!entry?.serverInteract && !broadcastWs) {
-        throw new ElizaError(
-          `View-scoped action "${decl.name}" cannot reach the "${viewId}" view: no mounted shell to dispatch to`,
-          {
-            code: "VIEW_SCOPED_ACTION_NO_SHELL",
-            context: { actionName: decl.name, viewId },
-            severity: "ephemeral",
-          },
-        );
-      }
+      const broadcastWsToClientId = getViewsBroadcastWsToClientId();
+      const resolvedEntry = getView(viewId, { viewType: pane.viewType });
+      const entry =
+        resolvedEntry?.viewType === pane.viewType ? resolvedEntry : undefined;
       if (!entry) {
         throw new ElizaError(
           `View-scoped action "${decl.name}" references view "${viewId}" which is not registered`,
           {
             code: "VIEW_SCOPED_ACTION_VIEW_UNREGISTERED",
-            context: { actionName: decl.name, viewId },
+            context: {
+              actionName: decl.name,
+              viewId,
+              viewType: pane.viewType,
+            },
             severity: "fatal",
           },
         );
       }
-
+      // A scoped action drives a MOUNTED view surface. With no way to reach a
+      // shell (no server-side handler or owning targeted WS connection), the
+      // dispatch cannot have exactly one executor. Fail loudly instead of
+      // broadcasting a mutating interaction to every connected shell.
+      if (!entry.serverInteract && (!pane.clientId || !broadcastWsToClientId)) {
+        throw new ElizaError(
+          `View-scoped action "${decl.name}" cannot reach the "${viewId}" (${pane.viewType}) view: no owning mounted shell to dispatch to`,
+          {
+            code: "VIEW_SCOPED_ACTION_NO_SHELL",
+            context: {
+              actionName: decl.name,
+              viewId,
+              viewType: pane.viewType,
+            },
+            severity: "ephemeral",
+          },
+        );
+      }
       const params = readActionParams(options);
       const driven: string[] = [];
 
@@ -235,7 +278,12 @@ export function buildViewScopedAction(
           viewId,
           capability,
           stepParams,
-          { ...(broadcastWs ? { broadcastWs } : {}), runtime },
+          {
+            ...(broadcastWs ? { broadcastWs } : {}),
+            ...(broadcastWsToClientId ? { broadcastWsToClientId } : {}),
+            ...(pane.clientId ? { clientId: pane.clientId } : {}),
+            runtime,
+          },
           SCOPED_ACTION_STEP_TIMEOUT_MS,
         );
 
@@ -275,8 +323,14 @@ export function buildViewScopedAction(
       }
 
       logger.info(
-        { src: "ViewScopedActions", actionName: decl.name, viewId, driven },
-        `[ViewScopedActions] "${decl.name}" drove ${driven.length} step(s) on view "${viewId}"`,
+        {
+          src: "ViewScopedActions",
+          actionName: decl.name,
+          viewId,
+          viewType: pane.viewType,
+          driven,
+        },
+        `[ViewScopedActions] "${decl.name}" drove ${driven.length} step(s) on view "${viewId}" (${pane.viewType})`,
       );
 
       const text = `Ran "${decl.name}" on the ${entry.label} view (${driven.length} step${driven.length === 1 ? "" : "s"}).`;
@@ -284,7 +338,12 @@ export function buildViewScopedAction(
         success: true,
         text,
         userFacingText: text,
-        data: { viewId, actionName: decl.name, steps: driven },
+        data: {
+          viewId,
+          viewType: pane.viewType,
+          actionName: decl.name,
+          steps: driven,
+        },
       };
     },
   };
@@ -305,6 +364,8 @@ export function scopedActionNames(
 /** A view (any modality) that can carry scoped-action declarations. */
 interface ScopedActionSourceView {
   id: string;
+  viewType?: ViewType;
+  modalities?: ViewType[];
   scopedActions?: ViewScopedAction[];
 }
 
@@ -394,7 +455,11 @@ export function registerViewScopedActions(
         );
         continue;
       }
-      const action = buildViewScopedAction(view.id, decl);
+      const action = buildViewScopedAction(
+        view.id,
+        decl,
+        getViewModalities(view),
+      );
       runtime.registerAction(action);
       if (
         Array.isArray(runtime.actions) &&

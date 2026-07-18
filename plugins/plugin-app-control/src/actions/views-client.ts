@@ -1,13 +1,11 @@
 /**
- * @module plugin-app-control/actions/views-client
- * @description HTTP client for the `/api/views/*` routes.
- *
- * Mirrors the structure of `client/api.ts` but scoped to the view registry
- * endpoints. Kept as a separate module so the views action does not import
- * the full AppControlClient (different concern, different surface).
+ * HTTP client for the view registry, active-view snapshot, navigation, and
+ * interaction routes. The narrow client keeps app-control actions independent
+ * from the broader application API while preserving the server's navigation
+ * revision token for compare-and-set contextual switches.
  */
 
-import type { ViewCapability, ViewType } from "@elizaos/core";
+import type { Memory, ViewCapability, ViewType } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -51,9 +49,31 @@ export interface CurrentViewSummary {
 	updatedAt: string;
 }
 
+/** Active shell state plus the server-owned navigation revision. */
+export interface CurrentViewSnapshot {
+	currentView: CurrentViewSummary | null;
+	revision: number;
+}
+
 function getApiBase(): string {
 	const port = resolveServerOnlyPort(process.env);
 	return `http://127.0.0.1:${port}`;
+}
+
+export function readViewClientId(
+	message: Pick<Memory, "metadata">,
+): string | undefined {
+	const clientId = message.metadata?.clientId;
+	return typeof clientId === "string" && clientId.trim()
+		? clientId.trim()
+		: undefined;
+}
+
+function viewRequestHeaders(clientId?: string): Record<string, string> {
+	return {
+		"Content-Type": "application/json",
+		...(clientId ? { "X-ElizaOS-Client-Id": clientId } : {}),
+	};
 }
 
 function isObject(v: unknown): v is Record<string, unknown> {
@@ -269,6 +289,37 @@ function parseCurrentView(body: unknown): CurrentViewSummary | null {
 	};
 }
 
+function parseCurrentViewSnapshot(body: unknown): CurrentViewSnapshot {
+	if (!isObject(body)) {
+		throw new Error("Malformed /api/views/current response: expected object");
+	}
+	const revision = body.revision;
+	if (
+		typeof revision !== "number" ||
+		!Number.isSafeInteger(revision) ||
+		revision < 0
+	) {
+		throw new Error("Malformed /api/views/current response: missing revision");
+	}
+	return { currentView: parseCurrentView(body), revision };
+}
+
+/** Read the active view and the revision required for conditional navigation. */
+export async function getCurrentViewSnapshot(
+	clientId?: string,
+): Promise<CurrentViewSnapshot> {
+	const response = await fetch(`${getApiBase()}/api/views/current`, {
+		method: "GET",
+		headers: viewRequestHeaders(clientId),
+		signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+	});
+	if (!response.ok) {
+		throw new Error(`Failed to get current view: HTTP ${response.status}`);
+	}
+	const body: unknown = await response.json();
+	return parseCurrentViewSnapshot(body);
+}
+
 export interface ViewsClient {
 	listViews(opts?: {
 		developerMode?: boolean;
@@ -284,11 +335,20 @@ export interface ViewsClient {
 	 */
 	navigate(
 		viewId: string,
-		opts?: { path?: string; viewType?: ViewType },
+		opts?: {
+			path?: string;
+			viewType?: ViewType;
+			/** Apply only if the server still owns this active-view revision. */
+			expectedRevision?: number;
+			subview?: string;
+		},
 	): Promise<boolean>;
 }
 
-export function createViewsClient(): ViewsClient {
+export function createViewsClient(
+	options: { clientId?: string } = {},
+): ViewsClient {
+	const { clientId } = options;
 	return {
 		async listViews(opts = {}) {
 			const params = new URLSearchParams();
@@ -298,7 +358,7 @@ export function createViewsClient(): ViewsClient {
 			const url = `${getApiBase()}/api/views${qs}`;
 			const response = await fetch(url, {
 				method: "GET",
-				headers: { "Content-Type": "application/json" },
+				headers: viewRequestHeaders(clientId),
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
@@ -311,7 +371,7 @@ export function createViewsClient(): ViewsClient {
 		async getCurrentView() {
 			const response = await fetch(`${getApiBase()}/api/views/current`, {
 				method: "GET",
-				headers: { "Content-Type": "application/json" },
+				headers: viewRequestHeaders(clientId),
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
@@ -326,8 +386,14 @@ export function createViewsClient(): ViewsClient {
 				`${getApiBase()}/api/views/${encodeURIComponent(viewId)}/navigate`,
 				{
 					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ path: opts.path, viewType: opts.viewType }),
+					headers: viewRequestHeaders(clientId),
+					body: JSON.stringify({
+						path: opts.path,
+						viewType: opts.viewType,
+						expectedRevision: opts.expectedRevision,
+						subview: opts.subview,
+						...(clientId ? { clientId } : {}),
+					}),
 					signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 				},
 			);

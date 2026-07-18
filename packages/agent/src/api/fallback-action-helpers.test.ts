@@ -69,4 +69,99 @@ describe("executeFallbackParsedActions", () => {
       expect.any(Object),
     );
   });
+
+  it.each([
+    ["unchanged", async () => JSON.stringify({ response: "Exact output." })],
+    ["malformed", async () => "not json"],
+    [
+      "failed",
+      async () => {
+        throw new Error("formatter unavailable");
+      },
+    ],
+  ])("keeps original fallback output when rewriting is %s", async (_case, model) => {
+    const action: Action = {
+      name: "CUSTOM_FALLBACK",
+      description: "Return an exact action result",
+      validate: vi.fn(async () => true),
+      handler: vi.fn(async (_runtime, _message, _state, _options, callback) => {
+        await callback?.({ text: "Exact output." });
+        return { success: true };
+      }),
+    } as Action;
+    const runtime = {
+      actions: [action],
+      character: { name: "Example" },
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      getService: vi.fn(() => ({
+        getLoadedSkill: vi.fn(() => ({ slug: "example-skill" })),
+      })),
+      useModel: vi.fn(model),
+    } as unknown as AgentRuntime;
+    const message = createMessageMemory({
+      id: stringToUuid(`fallback-${_case}`),
+      entityId: stringToUuid("fallback-user"),
+      roomId: stringToUuid("fallback-room"),
+      content: { text: "run exact fallback", source: "test" },
+    });
+    const appended: string[] = [];
+
+    await executeFallbackParsedActions(
+      runtime,
+      message,
+      [{ name: "CUSTOM_FALLBACK", parameters: {} }],
+      (incoming) => appended.push(incoming),
+      () => undefined,
+    );
+
+    expect(appended).toEqual(["Exact output."]);
+  });
+
+  it("preserves canonical callback text when the action opts out of voice rewriting", async () => {
+    const action: Action = {
+      name: "VIEWS",
+      description: "Navigate views",
+      preserveCallbackText: true,
+      validate: vi.fn(async () => true),
+      handler: vi.fn(async (_runtime, _message, _state, _options, callback) => {
+        await callback?.({ text: "Navigated to Notes." });
+        return { success: true };
+      }),
+    } as Action;
+    const runtime = {
+      actions: [action],
+      logger: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      useModel: vi.fn(async () =>
+        JSON.stringify({ response: "I opened Notes for you." }),
+      ),
+    } as unknown as AgentRuntime;
+    const message = createMessageMemory({
+      id: stringToUuid("fallback-views-message"),
+      entityId: stringToUuid("fallback-user"),
+      roomId: stringToUuid("fallback-room"),
+      content: { text: "open notes", source: "test" },
+    });
+    const appended: string[] = [];
+
+    await executeFallbackParsedActions(
+      runtime,
+      message,
+      [{ name: "VIEWS", parameters: { action: "show", view: "notes" } }],
+      (incoming) => appended.push(incoming),
+      () => undefined,
+    );
+
+    expect(appended).toEqual(["Navigated to Notes."]);
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
 });

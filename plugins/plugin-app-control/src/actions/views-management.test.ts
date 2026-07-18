@@ -287,16 +287,21 @@ describe("view management actions", () => {
 		);
 
 		expect(await viewFollowupRoutingEvaluator.shouldRun(context)).toBe(true);
-		await expect(
-			viewFollowupRoutingEvaluator.evaluate(context),
-		).resolves.toMatchObject({
+		const patch = await viewFollowupRoutingEvaluator.evaluate(context);
+		expect(patch).toMatchObject({
 			requiresTool: true,
 			clearReply: true,
-			reply: "On it.",
 			addContexts: ["general"],
+			clearCandidateActions: true,
 			addCandidateActions: ["VIEWS"],
+			clearParentActionHints: true,
 			addParentActionHints: ["VIEWS"],
+			deterministicToolCall: {
+				name: "VIEWS",
+				params: { action: "interact", view: "notes" },
+			},
 		});
+		expect(patch?.reply).toBeUndefined();
 	});
 
 	it("leaves ordinary non-view follow-ups on the direct path", async () => {
@@ -419,6 +424,117 @@ describe("view management actions", () => {
 					text: expect.stringContaining("Started view create task"),
 				}),
 			);
+		} finally {
+			repo.cleanup();
+		}
+	});
+
+	it("keeps explicit view authoring authoritative over title payload fields", async () => {
+		const repo = createRepoFixture();
+		try {
+			const { runtime, codingHandler } = createRuntime({
+				modelText: "name: notes-roadmap\ndisplayName: Notes Roadmap",
+			});
+			const callback = vi.fn();
+			const listViews = vi.fn(async () => [
+				view({
+					id: "notes",
+					label: "Notes",
+					capabilities: [
+						{
+							id: "create-note",
+							description: "Create a sticky note.",
+							params: {
+								title: { type: "string", description: "Note title." },
+							},
+						},
+					],
+				}),
+			]);
+			const action = createViewsAction({
+				client: {
+					listViews,
+					getCurrentView: vi.fn(async () => null),
+				},
+				hasOwnerAccess: vi.fn(async () => true),
+				repoRoot: repo.repoRoot,
+			});
+
+			const result = await action.handler(
+				runtime as never,
+				message("create a Notes view titled Roadmap") as never,
+				undefined,
+				{ action: "create", title: "Roadmap" },
+				callback,
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "create",
+				subMode: "choice",
+			});
+			expect(result?.text).toContain("[CHOICE:views-create");
+			expect(codingHandler).not.toHaveBeenCalled();
+			expect(listViews).toHaveBeenCalledTimes(1);
+			expect(globalThis.fetch).not.toHaveBeenCalled();
+		} finally {
+			repo.cleanup();
+		}
+	});
+
+	it.each([
+		"capability",
+		"interact",
+		"invoke",
+	])("keeps explicit view authoring authoritative when its description mentions %s", async (term) => {
+		const repo = createRepoFixture();
+		try {
+			const { runtime, codingHandler } = createRuntime({
+				modelText: "name: notes-qa\ndisplayName: Notes QA",
+			});
+			const callback = vi.fn();
+			const listViews = vi.fn(async () => [
+				view({
+					id: "notes",
+					label: "Notes",
+					capabilities: [
+						{
+							id: "create-note",
+							description: "Create a sticky note.",
+							params: {
+								title: {
+									type: "string",
+									description: "Note title.",
+								},
+							},
+						},
+					],
+				}),
+			]);
+			const action = createViewsAction({
+				client: {
+					listViews,
+					getCurrentView: vi.fn(async () => null),
+				},
+				hasOwnerAccess: vi.fn(async () => true),
+				repoRoot: repo.repoRoot,
+			});
+
+			const result = await action.handler(
+				runtime as never,
+				message(`create a Notes view for testing ${term} routing`) as never,
+				undefined,
+				{ action: "create", view: "notes", title: "Capability QA" },
+				callback,
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "create",
+				subMode: "choice",
+			});
+			expect(codingHandler).not.toHaveBeenCalled();
+			expect(globalThis.fetch).not.toHaveBeenCalled();
 		} finally {
 			repo.cleanup();
 		}
@@ -2828,6 +2944,102 @@ describe("view management actions", () => {
 			}),
 		);
 		expect(callback.mock.calls[0]?.[0]?.text).not.toContain("{");
+	});
+
+	it("fails an interaction whose success response is not valid JSON", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "settings",
+						label: "Settings",
+						capabilities: [
+							{
+								id: "get-state",
+								description: "Read settings state.",
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => {
+				throw new SyntaxError("invalid JSON");
+			},
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("get the state of settings") as never,
+			undefined,
+			{ action: "interact", view: "settings", capability: "get-state" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toBe(
+			'View "settings" returned an invalid response for capability "get-state".',
+		);
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({ text: result?.text }),
+		);
+	});
+
+	it.each([
+		["null", null],
+		["an array", []],
+		["a missing top-level success field", { result: { success: true } }],
+		["a non-boolean success field", { success: "true" }],
+	])("fails an interaction whose JSON contract is %s", async (_label, body) => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "settings",
+						label: "Settings",
+						capabilities: [
+							{
+								id: "get-state",
+								description: "Read settings state.",
+							},
+						],
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => body,
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("get the state of settings") as never,
+			undefined,
+			{ action: "interact", view: "settings", capability: "get-state" },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.text).toBe(
+			'View "settings" returned an invalid response for capability "get-state".',
+		);
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({ text: result?.text }),
+		);
 	});
 
 	it('splits a single mentioned view "next to" the current view', async () => {

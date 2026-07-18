@@ -37,6 +37,12 @@ export interface ChatTurnStatus {
   actionName?: string;
   /** Tool/MCP name when `kind === "running_tool"`. */
   toolName?: string;
+  /**
+   * The visible callback is authoritative and complete even if transport-side
+   * evaluators or persistence are still finishing. Clients can settle the
+   * composer without guessing which action names own their reply boundary.
+   */
+  terminal?: boolean;
 }
 
 /**

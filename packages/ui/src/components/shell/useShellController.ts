@@ -1381,14 +1381,11 @@ export function useShellController(): ShellController {
   const turnStatus = React.useMemo<ChatTurnStatus | null>(() => {
     if (voiceOutput.speaking) return { kind: "speaking" };
     const visibleReplySettled =
-      chatFirstTokenReceived &&
-      serverTurnStatus?.kind === "running_action" &&
-      serverTurnStatus.actionName?.trim().toUpperCase() === "REPLY";
-    // REPLY callbacks carry the complete visible answer. The transport may
-    // continue briefly with evaluators and persistence after that callback, but
-    // those internal tasks are not generation the user can stop. Let the
-    // composer settle as soon as the visible reply does while `responding`
-    // remains true for queueing and voice gates until the transport finishes.
+      chatFirstTokenReceived && serverTurnStatus?.terminal === true;
+    // Response-owning callbacks carry the complete visible answer. The
+    // transport may continue briefly with evaluators and persistence after that
+    // callback, but those internal tasks are not generation the user can stop.
+    // The server owns this boundary; the shell never guesses from action names.
     if (visibleReplySettled) return null;
     if (
       serverTurnStatus &&

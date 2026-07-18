@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { createMockRuntime } from "../../testing/mock-runtime";
-import type { HandlerCallback, Memory } from "../../types";
+import type { Action, HandlerCallback, Memory } from "../../types";
 import { ModelType } from "../../types";
 import { wrapSingleTurnVisibleCallback } from "../message";
 
@@ -78,6 +78,68 @@ describe("action callback voice rewriting", () => {
 		expect(callback).toHaveBeenCalledWith(
 			{ text: "Already model-written." },
 			"REPLY",
+		);
+	});
+
+	it("preserves canonical VIEWS callbacks without a TEXT_SMALL rewrite", async () => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const runtime = createMockRuntime({
+			agentId: "agent",
+			character: { name: "Example" },
+			actions: [
+				{
+					name: "VIEWS",
+					preserveCallbackText: true,
+				} as Action,
+			],
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(),
+		});
+		const message = {
+			id: "message",
+			roomId: "room",
+			entityId: "user",
+		} as unknown as Memory;
+
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		await wrapped?.({ text: "Navigated to Notes." }, "VIEWS");
+
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "Navigated to Notes." },
+			"VIEWS",
+		);
+	});
+
+	it.each([
+		["unchanged", async () => JSON.stringify({ response: "Exact result." })],
+		["malformed", async () => "not json"],
+		[
+			"failed",
+			async () => {
+				throw new Error("formatter unavailable");
+			},
+		],
+	])("keeps the original action text when rewriting is %s", async (_case, model) => {
+		const callback: HandlerCallback = vi.fn(async () => []);
+		const runtime = createMockRuntime({
+			agentId: "agent",
+			character: { name: "Example" },
+			logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+			useModel: vi.fn(model),
+		});
+		const message = {
+			id: "message",
+			roomId: "room",
+			entityId: "user",
+		} as unknown as Memory;
+
+		const wrapped = wrapSingleTurnVisibleCallback(runtime, message, callback);
+		await wrapped?.({ text: "Exact result." }, "CREATE_TASK");
+
+		expect(callback).toHaveBeenCalledWith(
+			{ text: "Exact result." },
+			"CREATE_TASK",
 		);
 	});
 });

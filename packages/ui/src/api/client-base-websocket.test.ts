@@ -110,6 +110,9 @@ describe("ElizaClient websocket connection policy", () => {
     expect(createdUrls).toHaveLength(1);
     expect(createdUrls[0]).toContain("wss://agent.example.test/ws?");
     expect(createdUrls[0]).toContain("token=agent-token");
+    expect(new URL(createdUrls[0]).searchParams.get("clientId")).toBe(
+      client.getClientId(),
+    );
   });
 
   it("does not open mixed-content ws from an https origin", () => {

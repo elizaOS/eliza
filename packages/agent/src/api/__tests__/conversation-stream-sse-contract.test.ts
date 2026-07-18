@@ -29,6 +29,7 @@ import {
   type AgentRuntime,
   ChannelType,
   logger,
+  type Memory,
   ModelType,
   stringToUuid,
   type UUID,
@@ -514,6 +515,36 @@ describe("conversation stream SSE contract (#10712)", () => {
         },
       ],
     });
+  });
+
+  it("scopes processing to the request client without persisting that transport identity", async () => {
+    const processedMessages: Memory[] = [];
+    const messageService: NonNullable<AgentRuntime["messageService"]> = {
+      async handleMessage(_runtime, message) {
+        processedMessages.push(message);
+        return {
+          didRespond: true,
+          responseContent: { text: "Scoped response." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "client-scope-contract-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const { ctx } = createCtx(messageService);
+    ctx.req.headers["x-elizaos-client-id"] = " shell-client-a ";
+
+    await handleConversationRoutes(ctx);
+
+    expect(processedMessages[0]?.metadata?.clientId).toBe("shell-client-a");
+    expect(persistConversationMemory).toHaveBeenCalledTimes(1);
+    const persisted = vi.mocked(persistConversationMemory).mock.calls[0]?.[1];
+    expect(persisted?.metadata?.clientId).toBeUndefined();
   });
 
   it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {

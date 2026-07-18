@@ -52,6 +52,22 @@ describe("writeChatStatusSse (#8813)", () => {
     expect(payload).toEqual({ type: "status", kind: "thinking" });
   });
 
+  it("carries the terminal-visible callback marker", () => {
+    const { res, writes } = makeRes();
+    writeChatStatusSse(res, {
+      kind: "running_action",
+      actionName: "VIEWS",
+      terminal: true,
+    });
+    const payload = JSON.parse(writes[0].slice("data: ".length).trim());
+    expect(payload).toEqual({
+      type: "status",
+      kind: "running_action",
+      actionName: "VIEWS",
+      terminal: true,
+    });
+  });
+
   it("does not write once the response is ended (closed connection)", () => {
     const { res, writes } = makeRes();
     (res as { writableEnded: boolean }).writableEnded = true;
