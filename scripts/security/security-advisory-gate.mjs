@@ -8,7 +8,7 @@ const LABELS = new Set([
   "payment integration",
 ]);
 const REVIEWED_FILE =
-  /\.(ts|tsx|js|jsx|mjs|cjs|json|ya?ml)$|(^|\/)Dockerfile$|(^|\/)\.env\.example$/i;
+  /\.(ts|tsx|js|jsx|mjs|cjs|json|sql|ya?ml)$|(^|\/)Dockerfile$|(^|\/)\.env\.example$/i;
 const PATHS = [
   /(^|\/)[^/]*(auth|oauth|security|payments?|billing|wallets?|secrets?|credentials?|tokens?|connectors?|trusted-routing)[^/]*(\/|$)/i,
   /^\.github\/(workflows|actions)\//,
