@@ -354,6 +354,52 @@ describe("view switching — VIEWS action resolver", () => {
 			});
 			expect(navigated).toEqual(["calendar"]);
 		});
+
+		it("navigates a planner-routed bare show command instead of reading calendar data", async () => {
+			const registryWithReadableSimpleCalendar = REGISTRY.map(
+				(registeredView) =>
+					registeredView.id === "simple-calendar"
+						? {
+								...registeredView,
+								capabilities: [
+									...(registeredView.capabilities ?? []),
+									{
+										id: "get-calendar-state",
+										description:
+											"Return selected date and all Simple Calendar events as structured data.",
+									},
+								],
+							}
+						: registeredView,
+			);
+			const { navigated } = installNavigateCapture();
+			const { result, callback } = await runShow(
+				registryWithReadableSimpleCalendar,
+				"can u show calender now",
+				{
+					action: "show",
+					view: "simple-calendar",
+				},
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "show",
+				viewId: "simple-calendar",
+			});
+			expect(navigated).toEqual(["simple-calendar"]);
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				"http://127.0.0.1:3456/api/views/simple-calendar/navigate",
+				expect.objectContaining({ method: "POST" }),
+			);
+			expect(globalThis.fetch).not.toHaveBeenCalledWith(
+				expect.stringContaining("/interact"),
+				expect.anything(),
+			);
+			expect(callback).toHaveBeenCalledWith({
+				text: "Navigated to Simple Calendar (gui).",
+			});
+		});
 	});
 
 	describe("PASSIVE intent routing — intent-only phrases (planner supplies view id)", () => {
@@ -499,38 +545,221 @@ describe("view switching — VIEWS action resolver", () => {
 				}),
 			);
 		});
+
+		it("keeps a complete structured target list over conflicting prose targets", async () => {
+			installNavigateCapture();
+			const views = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Developer QA notes view.",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui" as const,
+					tags: ["notes", "developer qa"],
+				},
+			];
+
+			const { result } = await runShow(
+				views,
+				"split Wallet and Inbox side by side",
+				{
+					action: "split",
+					views: ["notes", "simple-calendar"],
+					layout: "horizontal",
+				},
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "split",
+				viewIds: ["notes", "simple-calendar"],
+				layout: "horizontal",
+			});
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				"http://127.0.0.1:3456/api/views/notes/navigate",
+				expect.objectContaining({
+					method: "POST",
+					body: JSON.stringify({
+						action: "split-view",
+						views: ["notes", "simple-calendar"],
+						layout: "horizontal",
+					}),
+				}),
+			);
+		});
+
+		it("rejects a complete structured layout list with an unknown target", async () => {
+			const { navigated } = installNavigateCapture();
+			const views = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Developer QA notes view.",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui" as const,
+					tags: ["notes"],
+				},
+			];
+
+			const { result } = await runShow(
+				views,
+				"split Notes and Calendar side by side",
+				{
+					action: "split",
+					views: ["notes", "spaceship"],
+					layout: "horizontal",
+				},
+			);
+
+			expect(result?.success).toBe(false);
+			expect(result?.data).toMatchObject({
+				reason: "view-target-not-found",
+				target: "spaceship",
+			});
+			expect(navigated).toEqual([]);
+		});
+
+		it("rejects a complete structured layout list with an ambiguous target", async () => {
+			const { navigated } = installNavigateCapture();
+			const views = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Developer QA notes view.",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui" as const,
+					tags: ["notes"],
+				},
+				{
+					id: "alpha-board",
+					label: "Alpha Board",
+					description: "First planning surface.",
+					path: "/alpha-board",
+					pluginName: "@elizaos/plugin-alpha-board",
+					available: true,
+					viewType: "gui" as const,
+				},
+				{
+					id: "beta-board",
+					label: "Beta Board",
+					description: "Second planning surface.",
+					path: "/beta-board",
+					pluginName: "@elizaos/plugin-beta-board",
+					available: true,
+					viewType: "gui" as const,
+				},
+			];
+
+			const { result } = await runShow(
+				views,
+				"split Notes and Calendar side by side",
+				{
+					action: "split",
+					views: ["notes", "board"],
+					layout: "horizontal",
+				},
+			);
+
+			expect(result?.success).toBe(false);
+			expect(result?.data).toMatchObject({
+				reason: "view-target-ambiguous",
+				target: "board",
+			});
+			expect(result?.data?.candidates).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ id: "alpha-board" }),
+					expect.objectContaining({ id: "beta-board" }),
+				]),
+			);
+			expect(navigated).toEqual([]);
+		});
 	});
 
-	describe("model param hallucination — user's words win over a wrong view param", () => {
-		// A weak local planner can emit VIEWS with a WRONG view
-		// param (e.g. view:"wallet" for "open my calendar"). The user's own words
-		// are authoritative when they name a registered domain surface, so the
-		// hallucinated param must not mis-navigate. This is the "structured
-		// guidance so the model doesn't have to guess the parameter" guarantee.
-		const HALLUCINATION_CASES: ReadonlyArray<
+	describe("structured target authority", () => {
+		// Planner output is the semantic boundary. Once it supplies a valid
+		// action and registered target, deterministic text fallbacks must not
+		// silently rewrite that decision into a different view.
+		const STRUCTURED_TARGET_CASES: ReadonlyArray<
 			readonly [string, string, string]
 		> = [
-			["open my calendar", "wallet", "calendar"],
-			["check my messages", "calendar", "inbox"],
-			["show my wallet", "calendar", "wallet"],
-			["muéstrame mi calendario", "wallet", "calendar"],
-			["我的钱包", "calendar", "wallet"],
+			["open my calendar", "wallet", "wallet"],
+			["check my messages", "calendar", "calendar"],
+			["show my wallet", "calendar", "calendar"],
+			["muéstrame mi calendario", "wallet", "wallet"],
+			["我的钱包", "calendar", "calendar"],
+			["close calendar", "wallet", "wallet"],
+			["now open calendar next to it", "wallet", "wallet"],
 		];
-		it.each(HALLUCINATION_CASES)(
-			'"%s" + bogus view param "%s" still navigates to "%s"',
-			async (phrase, bogusView, expected) => {
-				const { navigated } = installNavigateCapture();
-				const { result } = await runShow(REGISTRY, phrase, {
-					action: "show",
-					view: bogusView,
-				});
-				expect(result?.success).toBe(true);
-				expect(navigated).toEqual([expected]);
-			},
-		);
+		it.each(
+			STRUCTURED_TARGET_CASES,
+		)('"%s" keeps the planner target "%s" and navigates to "%s"', async (phrase, target, expected) => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, phrase, {
+				action: "show",
+				view: target,
+			});
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual([expected]);
+		});
 
-		// But when the intent maps to a surface this deployment does NOT have, the
-		// planner's explicit, registered target is honored (no over-correction).
+		it.each([
+			"view",
+			"open_view",
+			"navigate",
+			"navigate_to_view",
+			"switch_view",
+		])("keeps the planner target for the %s navigation alias", async (action) => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open calendar", {
+				action,
+				view: "wallet",
+			});
+
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["wallet"]);
+		});
+
+		it("keeps show navigation authoritative when a stale capability is present", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open calendar", {
+				action: "show",
+				view: "wallet",
+				capability: "get-notes",
+			});
+
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["wallet"]);
+			expect(globalThis.fetch).not.toHaveBeenCalledWith(
+				expect.stringContaining("/interact"),
+				expect.anything(),
+			);
+		});
+
+		it("keeps a supplied target authoritative when the operation is inferred", async () => {
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(REGISTRY, "open calendar", {
+				view: "wallet",
+			});
+
+			expect(result?.success).toBe(true);
+			expect(result?.values).toMatchObject({
+				mode: "show",
+				viewId: "wallet",
+			});
+			expect(navigated).toEqual(["wallet"]);
+		});
+
+		// The same rule holds when the text-derived fallback names a surface this
+		// deployment does not register.
 		it("keeps a registered explicit target when the intent view is not registered", async () => {
 			const { navigated } = installNavigateCapture();
 			// "add a feature" → task-coordinator (not in REGISTRY); planner picked
@@ -581,6 +810,40 @@ describe("view switching — VIEWS action resolver", () => {
 			const { result } = await runShow(withNotes, "open notes");
 			expect(result?.success).toBe(true);
 			expect(navigated).toEqual(["notes"]);
+		});
+
+		it("does not rewrite a structured Documents target into Notes", async () => {
+			const withNotesAndDocuments: ViewSummary[] = [
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Simple notes",
+					path: "/notes",
+					pluginName: "@elizaos/plugin-simple-views",
+					available: true,
+					viewType: "gui",
+					tags: ["notes"],
+				},
+				{
+					id: "documents",
+					label: "Documents",
+					description: "Document library",
+					path: "/documents",
+					pluginName: "@elizaos/plugin-documents",
+					available: true,
+					viewType: "gui",
+					tags: ["documents", "files"],
+				},
+			];
+			const { navigated } = installNavigateCapture();
+			const { result } = await runShow(withNotesAndDocuments, "open notes", {
+				action: "show",
+				view: "documents",
+			});
+
+			expect(result?.success).toBe(true);
+			expect(navigated).toEqual(["documents"]);
 		});
 
 		it("asks which one when a target is genuinely ambiguous", async () => {

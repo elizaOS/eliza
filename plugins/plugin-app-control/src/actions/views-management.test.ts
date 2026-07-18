@@ -975,19 +975,19 @@ describe("view management actions", () => {
 			}),
 		);
 
-		const openActionWindowResult = await action.handler(
+		const structuredWindowResult = await action.handler(
 			runtime as never,
 			message("open orchestrator in a new window") as never,
 			undefined,
 			{
-				action: "open",
+				action: "window",
 				view: "orchestrator",
 			},
 			callback,
 		);
 
-		expect(openActionWindowResult?.success).toBe(true);
-		expect(openActionWindowResult?.values).toMatchObject({
+		expect(structuredWindowResult?.success).toBe(true);
+		expect(structuredWindowResult?.values).toMatchObject({
 			mode: "window",
 			viewId: "orchestrator",
 			viewType: "gui",
@@ -1057,19 +1057,19 @@ describe("view management actions", () => {
 			}),
 		);
 
-		const pollutedSplitResult = await action.handler(
+		const structuredSplitResult = await action.handler(
 			runtime as never,
 			message("split orchestrator and views manager side by side") as never,
 			undefined,
 			{
 				action: "split",
-				views: ["orchestrator", "views manager", "chat", "settings"],
+				views: ["orchestrator", "views manager"],
 			},
 			callback,
 		);
 
-		expect(pollutedSplitResult?.success).toBe(true);
-		expect(pollutedSplitResult?.values).toMatchObject({
+		expect(structuredSplitResult?.success).toBe(true);
+		expect(structuredSplitResult?.values).toMatchObject({
 			mode: "split",
 			viewIds: ["orchestrator", "views-manager"],
 			layout: "horizontal",
@@ -1288,7 +1288,7 @@ describe("view management actions", () => {
 			}),
 		);
 
-		const plannerPartialTileResult = await action.handler(
+		const structuredTileResult = await action.handler(
 			runtime as never,
 			message("tile chat settings orchestrator and views manager") as never,
 			undefined,
@@ -1299,25 +1299,25 @@ describe("view management actions", () => {
 			callback,
 		);
 
-		expect(plannerPartialTileResult?.success).toBe(true);
-		expect(plannerPartialTileResult?.values).toMatchObject({
+		expect(structuredTileResult?.success).toBe(true);
+		expect(structuredTileResult?.values).toMatchObject({
 			mode: "tile",
-			viewIds: ["chat", "settings", "orchestrator", "views-manager"],
+			viewIds: ["orchestrator", "views-manager"],
 			layout: "grid",
 		});
 		expect(globalThis.fetch).toHaveBeenLastCalledWith(
-			"http://127.0.0.1:3456/api/views/chat/navigate",
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
 					action: "tile-views",
-					views: ["chat", "settings", "orchestrator", "views-manager"],
+					views: ["orchestrator", "views-manager"],
 					layout: "grid",
 				}),
 			}),
 		);
 
-		const badSplitModeTileResult = await action.handler(
+		const structuredSplitResult = await action.handler(
 			runtime as never,
 			message("tile chat settings orchestrator and views manager") as never,
 			undefined,
@@ -1328,19 +1328,19 @@ describe("view management actions", () => {
 			callback,
 		);
 
-		expect(badSplitModeTileResult?.success).toBe(true);
-		expect(badSplitModeTileResult?.values).toMatchObject({
-			mode: "tile",
-			viewIds: ["chat", "settings", "orchestrator", "views-manager"],
+		expect(structuredSplitResult?.success).toBe(true);
+		expect(structuredSplitResult?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["orchestrator", "views-manager"],
 			layout: "grid",
 		});
 		expect(globalThis.fetch).toHaveBeenLastCalledWith(
-			"http://127.0.0.1:3456/api/views/chat/navigate",
+			"http://127.0.0.1:3456/api/views/orchestrator/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
-					action: "tile-views",
-					views: ["chat", "settings", "orchestrator", "views-manager"],
+					action: "split-view",
+					views: ["orchestrator", "views-manager"],
 					layout: "grid",
 				}),
 			}),
@@ -1418,7 +1418,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('treats "next to it" as split even when the planner passes action=open', async () => {
+	it('uses action=split for a contextual "next to it" layout request', async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -1447,7 +1447,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("now open the calender view next to it") as never,
 			undefined,
-			{ action: "open", view: "calendar" },
+			{ action: "split", view: "calendar" },
 			callback,
 		);
 
@@ -1537,7 +1537,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('treats "next to it" as split even when the planner passes action=tile', async () => {
+	it("keeps an explicit tile action despite split-like wording", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -1576,18 +1576,18 @@ describe("view management actions", () => {
 
 		expect(result?.success).toBe(true);
 		expect(result?.values).toMatchObject({
-			mode: "split",
+			mode: "tile",
 			viewIds: ["notes", "calendar"],
-			layout: "horizontal",
+			layout: "grid",
 		});
 		expect(globalThis.fetch).toHaveBeenCalledWith(
 			"http://127.0.0.1:3456/api/views/notes/navigate",
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
-					action: "split-view",
+					action: "tile-views",
 					views: ["notes", "calendar"],
-					layout: "horizontal",
+					layout: "grid",
 				}),
 			}),
 		);
@@ -2060,7 +2060,7 @@ describe("view management actions", () => {
 		expect(client.getCurrentView).not.toHaveBeenCalled();
 	});
 
-	it('treats VIEWS action=delete for "close all views" as close-all, not plugin deletion', async () => {
+	it("closes all views with the structured close action", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -2081,7 +2081,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("close all views") as never,
 			undefined,
-			{ action: "delete", mode: "delete", confirm: true },
+			{ action: "close" },
 			callback,
 		);
 
@@ -2102,7 +2102,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it('treats action=delete for "close calendar view" as non-destructive close', async () => {
+	it("closes one view with the structured close action", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const client = {
@@ -2126,7 +2126,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("close the calendar view") as never,
 			undefined,
-			{ action: "delete", mode: "delete", view: "calendar", confirm: true },
+			{ action: "close", view: "calendar" },
 			callback,
 		);
 
@@ -2147,6 +2147,53 @@ describe("view management actions", () => {
 			expect.objectContaining({ text: "Closed Calendar." }),
 		);
 		expect(client.getCurrentView).not.toHaveBeenCalled();
+	});
+
+	it("keeps a structured close target when the prose says close all", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const client = {
+			listViews: vi.fn(async () => [
+				view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+			]),
+			getCurrentView: vi.fn(async () => null),
+		};
+		const action = createViewsAction({
+			client,
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("close all views") as never,
+			undefined,
+			{ action: "close", view: "calendar" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "close",
+			viewId: "calendar",
+			viewType: "gui",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/calendar/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({ action: "close", alwaysOnTop: false }),
+			}),
+		);
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/__all__/navigate",
+			expect.anything(),
+		);
 	});
 
 	it('resolves casual aliases like "notepad" and "calender" for view navigation', async () => {
@@ -2396,17 +2443,18 @@ describe("view management actions", () => {
 			) as never,
 			undefined,
 			{
-				action: "create",
-				view: "smoke note",
+				action: "interact",
+				view: "notes",
+				capability: "create-note",
 				intent: "Note titled smoke note with body created from routing.",
 			},
 			callback,
 		);
-		const showNotesResult = await action.handler(
+		const getNotesResult = await action.handler(
 			runtime as never,
 			message("show me my notes") as never,
 			undefined,
-			{ action: "show", view: "notes" },
+			{ action: "interact", view: "notes", capability: "get-notes" },
 			callback,
 		);
 		const listNotesAliasResult = await action.handler(
@@ -2427,7 +2475,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("delete the nubby note") as never,
 			undefined,
-			{ action: "delete" },
+			undefined,
 			callback,
 		);
 		const createNoteFromMessageResult = await action.handler(
@@ -2436,7 +2484,7 @@ describe("view management actions", () => {
 				"can you make another one saying i need to wake up at 3am",
 			) as never,
 			undefined,
-			{ action: "create" },
+			{ action: "interact", view: "notes" },
 			callback,
 		);
 		const currentElementsResult = await action.handler(
@@ -2450,7 +2498,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("add a calendar event") as never,
 			undefined,
-			{ action: "CALENDAR_CREATE_EVENT", title: "smoke event" },
+			{ action: "CREATE_CALENDAR_EVENT", title: "smoke event" },
 			callback,
 		);
 		const plannerCalendarResult = await action.handler(
@@ -2458,8 +2506,9 @@ describe("view management actions", () => {
 			message("add a calendar event titled smoke event") as never,
 			undefined,
 			{
-				action: "create",
+				action: "interact",
 				view: "calendar",
+				capability: "create-calendar-event",
 				intent: "Create event titled smoke event on 2026-06-08 at 17:00",
 			},
 			callback,
@@ -2469,14 +2518,15 @@ describe("view management actions", () => {
 			message("create calendar event through the VIEWS capability") as never,
 			undefined,
 			{
-				action: "create",
+				action: "interact",
 				view: "calendar",
+				capability: "create-calendar-event",
 				intent:
 					"Create calendar event through the VIEWS capability titled routed event on 2026-06-09 at 12:00",
 			},
 			callback,
 		);
-		const camelCalendarResult = await action.handler(
+		const invalidAliasResult = await action.handler(
 			runtime as never,
 			message("add a calendar event titled smoke event") as never,
 			undefined,
@@ -2499,7 +2549,7 @@ describe("view management actions", () => {
 			{
 				action: "interact",
 				view: "calendar",
-				capability: "list-events",
+				capability: "get-calendar-state",
 				params: { date: "2026-06-08" },
 			},
 			callback,
@@ -2517,17 +2567,17 @@ describe("view management actions", () => {
 			viewId: "notes",
 			capability: "create-note",
 		});
-		expect(showNotesResult?.success).toBe(true);
-		expect(showNotesResult?.values).toMatchObject({
+		expect(getNotesResult?.success).toBe(true);
+		expect(getNotesResult?.values).toMatchObject({
 			mode: "interact",
 			viewId: "notes",
 			capability: "get-notes",
 		});
-		expect(listNotesAliasResult?.success).toBe(true);
-		expect(listNotesAliasResult?.values).toMatchObject({
-			mode: "interact",
+		expect(listNotesAliasResult?.success).toBe(false);
+		expect(listNotesAliasResult?.data).toMatchObject({
+			reason: "capability-not-declared-by-explicit-view",
 			viewId: "notes",
-			capability: "get-notes",
+			capability: "list-notes",
 		});
 		expect(deleteNoteResult?.success).toBe(true);
 		expect(deleteNoteResult?.values).toMatchObject({
@@ -2541,7 +2591,10 @@ describe("view management actions", () => {
 			viewId: "notes",
 			capability: "delete-note",
 		});
-		expect(createNoteFromMessageResult?.success).toBe(true);
+		expect(
+			createNoteFromMessageResult?.success,
+			JSON.stringify(createNoteFromMessageResult),
+		).toBe(true);
 		expect(createNoteFromMessageResult?.values).toMatchObject({
 			mode: "interact",
 			viewId: "notes",
@@ -2571,11 +2624,11 @@ describe("view management actions", () => {
 			viewId: "calendar",
 			capability: "create-calendar-event",
 		});
-		expect(camelCalendarResult?.success).toBe(true);
-		expect(camelCalendarResult?.values).toMatchObject({
-			mode: "interact",
+		expect(invalidAliasResult?.success).toBe(false);
+		expect(invalidAliasResult?.data).toMatchObject({
+			reason: "capability-not-declared-by-explicit-view",
 			viewId: "calendar",
-			capability: "create-calendar-event",
+			capability: "createEvent",
 		});
 		expect(listEventsResult?.success).toBe(true);
 		expect(listEventsResult?.values).toMatchObject({
@@ -2722,22 +2775,6 @@ describe("view management actions", () => {
 			expect.objectContaining({
 				method: "POST",
 				body: JSON.stringify({
-					capability: "create-calendar-event",
-					params: {
-						title: "camel event",
-						date: "2026-06-08",
-						time: "18:00",
-					},
-					timeoutMs: 5_000,
-					viewType: "gui",
-				}),
-			}),
-		);
-		expect(globalThis.fetch).toHaveBeenCalledWith(
-			"http://127.0.0.1:3456/api/views/calendar/interact?viewType=gui",
-			expect.objectContaining({
-				method: "POST",
-				body: JSON.stringify({
 					capability: "get-calendar-state",
 					params: { date: "2026-06-08" },
 					timeoutMs: 5_000,
@@ -2809,8 +2846,9 @@ describe("view management actions", () => {
 			message("add a calendar event titled planning review") as never,
 			undefined,
 			{
-				action: "create",
+				action: "interact",
 				view: "simple-calendar",
+				capability: "create-calendar-event",
 				intent: "Create event titled planning review on 2026-06-09 at 12:00",
 			},
 			callback,
@@ -2872,15 +2910,15 @@ describe("view management actions", () => {
 			},
 			callback,
 		);
-		const inferredCapabilityResult = await action.handler(
+		const missingCapabilityResult = await action.handler(
 			runtime as never,
 			message("add a calendar event titled release review") as never,
 			undefined,
-			{ action: "create", view: "calendar" },
+			{ action: "interact", view: "calendar" },
 			callback,
 		);
 
-		for (const result of [explicitCapabilityResult, inferredCapabilityResult]) {
+		for (const result of [explicitCapabilityResult, missingCapabilityResult]) {
 			expect(result?.success).toBe(false);
 			expect(result?.data).toMatchObject({
 				reason: "capability-not-declared-by-explicit-view",
@@ -2888,6 +2926,85 @@ describe("view management actions", () => {
 				operation: "create",
 			});
 			expect(result?.text).toContain('View "Calendar" does not declare');
+		}
+		expect(globalThis.fetch).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{
+			label: "unknown target with a registered capability",
+			target: "spaceship",
+			capability: "create-note",
+			reason: "view-target-not-found",
+		},
+		{
+			label: "unknown target with an invalid capability",
+			target: "spaceship",
+			capability: "launch-missiles",
+			reason: "view-target-not-found",
+		},
+		{
+			label: "ambiguous target with a registered capability",
+			target: "board",
+			capability: "create-note",
+			reason: "view-target-ambiguous",
+		},
+		{
+			label: "ambiguous target with an invalid capability",
+			target: "board",
+			capability: "launch-missiles",
+			reason: "view-target-ambiguous",
+		},
+	])("fails closed for $label", async ({ target, capability, reason }) => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						capabilities: [
+							{
+								id: "create-note",
+								description: "Create a note.",
+							},
+						],
+					}),
+					view({
+						id: "alpha-board",
+						label: "Alpha Board",
+						path: "/alpha-board",
+					}),
+					view({
+						id: "beta-board",
+						label: "Beta Board",
+						path: "/beta-board",
+					}),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		const result = await action.handler(
+			runtime as never,
+			message("create a note") as never,
+			undefined,
+			{ action: "interact", view: target, capability },
+			callback,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({ reason, target });
+		if (reason === "view-target-ambiguous") {
+			expect(result?.data?.candidates).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ id: "alpha-board" }),
+					expect.objectContaining({ id: "beta-board" }),
+				]),
+			);
 		}
 		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
@@ -3158,7 +3275,7 @@ describe("view management actions", () => {
 		);
 	});
 
-	it("uses placement orientation over stale generated capability options for placement follow-ups", async () => {
+	it("uses a structured split action for placement follow-ups", async () => {
 		const { runtime } = createRuntime();
 		const callback = vi.fn();
 		const action = createViewsAction({
@@ -3199,9 +3316,10 @@ describe("view management actions", () => {
 			message("and calender on the right") as never,
 			undefined,
 			{
-				action: "create-calendar-event",
+				action: "split",
 				view: "calendar",
-				layout: "vertical",
+				layout: "horizontal",
+				placement: "right",
 			},
 			callback,
 		);
@@ -3226,6 +3344,63 @@ describe("view management actions", () => {
 					placement: "right",
 				}),
 			}),
+		);
+	});
+
+	it("does not reinterpret a structured capability interaction as layout", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "notes",
+						label: "Notes",
+						path: "/notes",
+						capabilities: [
+							{
+								id: "get-notes",
+								description: "Return all notes.",
+							},
+						],
+					}),
+					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+				]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({
+				success: true,
+				result: { success: true, text: "No notes yet." },
+			}),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("show notes next to calendar") as never,
+			undefined,
+			{ action: "interact", view: "notes", capability: "get-notes" },
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "interact",
+			viewId: "notes",
+			capability: "get-notes",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/interact?viewType=gui",
+			expect.objectContaining({ method: "POST" }),
+		);
+		expect(globalThis.fetch).not.toHaveBeenCalledWith(
+			expect.stringContaining("/navigate"),
+			expect.anything(),
 		);
 	});
 
@@ -3268,7 +3443,6 @@ describe("view management actions", () => {
 			{
 				action: "split",
 				layout: "vertical",
-				views: ["notes", "plugins-page", "calendar"],
 			},
 			callback,
 		);
@@ -3286,6 +3460,71 @@ describe("view management actions", () => {
 				body: JSON.stringify({
 					action: "split-view",
 					views: ["plugins-page", "calendar"],
+					layout: "vertical",
+				}),
+			}),
+		);
+	});
+
+	it("keeps structured split targets for layout-only prose", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [
+					view({
+						id: "plugins-page",
+						label: "Plugins",
+						path: "/apps/plugins",
+					}),
+					view({ id: "calendar", label: "Calendar", path: "/calendar" }),
+					view({ id: "notes", label: "Notes", path: "/notes" }),
+					view({ id: "wallet", label: "Wallet", path: "/wallet" }),
+				]),
+				getCurrentView: vi.fn(async () => ({
+					viewId: "plugins-page",
+					viewLabel: "Plugins",
+					viewPath: "/apps/plugins",
+					viewType: "gui",
+					action: "split-view",
+					views: ["plugins-page", "calendar"],
+					layout: "horizontal",
+				})),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message("split vertical instead") as never,
+			undefined,
+			{
+				action: "split",
+				views: ["notes", "wallet"],
+				layout: "vertical",
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "split",
+			viewIds: ["notes", "wallet"],
+			layout: "vertical",
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/notes/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "split-view",
+					views: ["notes", "wallet"],
 					layout: "vertical",
 				}),
 			}),
@@ -3449,7 +3688,7 @@ describe("view management actions", () => {
 			runtime as never,
 			message("i want notes to be on left of screen") as never,
 			undefined,
-			{ action: "create" },
+			{ action: "split", view: "notes", placement: "left" },
 			callback,
 		);
 

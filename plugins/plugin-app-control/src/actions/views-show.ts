@@ -20,6 +20,7 @@ import {
 	resolveServerOnlyPort,
 } from "@elizaos/core";
 import { resolveSettingsSectionToken } from "@elizaos/ui/components/settings/settings-section-tokens";
+import { readViewTargetOption } from "./view-action-options.js";
 import { matchViewCommand } from "./view-command-matcher.js";
 import {
 	readViewClientId,
@@ -85,12 +86,7 @@ function extractViewTarget(
 	// sub-modes accept (view/viewId/id/target/name) so a planner-supplied
 	// `{ action: "show", target: "settings" }` or `{ viewId: "settings" }`
 	// resolves instead of dead-ending on the text scan.
-	const explicit =
-		readStringOpt(options, "view") ??
-		readStringOpt(options, "viewId") ??
-		readStringOpt(options, "id") ??
-		readStringOpt(options, "target") ??
-		readStringOpt(options, "name");
+	const explicit = readViewTargetOption(options);
 	if (explicit) return explicit;
 
 	const text = getUserMessageText(message);
@@ -450,6 +446,7 @@ export async function runViewsShow({
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const messageText = getUserMessageText(message);
+	const hasStructuredNavigationTarget = readViewTargetOption(options) !== null;
 	// Passive intent ("what's on my calendar", "muéstrame mi calendario") carries
 	// no explicit view name, so the verb scan yields nothing — the domain intent
 	// supplies the view id. Either source is enough to proceed.
@@ -465,6 +462,7 @@ export async function runViewsShow({
 	const views = await client.listViews({ viewType });
 	let resolution = resolveNavigationView(target, views);
 	if (
+		!hasStructuredNavigationTarget &&
 		isStandaloneNotesSurfaceRequest(messageText) &&
 		resolution.kind === "match" &&
 		resolution.view.id === "documents"
@@ -473,15 +471,14 @@ export async function runViewsShow({
 		resolution = resolveRegisteredNotesView(views);
 	}
 
-	// The user's own words are authoritative: when the message names a known
-	// domain surface, prefer that deterministic intent view over a (possibly
-	// hallucinated) model-supplied `view` param — but ONLY when the intent view
-	// is actually registered in this deployment. A weak/local planner emitting
-	// view:"wallet" for "open my calendar" is corrected here; an intent that maps
-	// to a surface this build doesn't have (e.g. task-coordinator without the
-	// coding plugin loaded) leaves the planner's explicit, registered target in
-	// place. So the model never needs to correctly GUESS the surface.
-	if (intentViewId && intentViewId !== target) {
+	// For an unstructured request, a recognized domain intent is a stronger
+	// fallback than fuzzy name scoring. Structured planner targets bypass this
+	// branch and are only validated against the registered catalog.
+	if (
+		!hasStructuredNavigationTarget &&
+		intentViewId &&
+		intentViewId !== target
+	) {
 		const intentResolution = resolveNavigationView(intentViewId, views);
 		const intentRegistered =
 			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";

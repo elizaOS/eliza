@@ -22,6 +22,11 @@ import {
 } from "@elizaos/core";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import {
+	isViewNavigationOperation,
+	readViewOperationOption,
+	readViewTargetOption,
+} from "./view-action-options.js";
+import {
 	createViewsClient,
 	readViewClientId,
 	type ViewSummary,
@@ -285,15 +290,6 @@ const SPLIT_VERBS =
 	/\b(split|side.?by.?side|next to|beside|alongside|left|right|top|bottom)\b.{0,80}\b(views?|apps?|panels?|windows?|tabs?)\b|\b(views?|apps?|panels?|windows?|tabs?)\b.{0,80}\b(split|side.?by.?side|next to|beside|alongside|left|right|top|bottom)\b/i;
 const TILE_VERBS =
 	/\b(tile|grid|arrange|layout)\b.{0,80}\b(views?|apps?|panels?|windows?|tabs?)\b|\b(views?|apps?|panels?|windows?|tabs?)\b.{0,80}\b(tile|grid|arrange|layout)\b/i;
-const LAYOUT_OVERRIDE_MODES = new Set([
-	"create",
-	"delete",
-	"edit",
-	"list",
-	"open",
-	"remove",
-	"show",
-]);
 const VIEW_SURFACE_TOKENS = new Set([
 	"app",
 	"apps",
@@ -414,103 +410,23 @@ function inferMode(
 	text: string,
 	options?: Record<string, unknown>,
 ): ViewsMode | null {
-	const explicit =
-		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	const trimmed = viewRequestText(text).trim();
-	const normalizedExplicit = explicit?.trim().toLowerCase().replace(/-/g, "_");
-	// An explicit request to (re)generate a view's icon/image wins over the
-	// generic edit/create/update verbs that share its phrasing — regenerating an
-	// icon is a direct asset write, not a coding-agent edit.
-	if (
-		isViewIconRequest(trimmed, options) &&
-		(!normalizedExplicit ||
-			normalizedExplicit === "icon" ||
-			normalizedExplicit === "edit" ||
-			normalizedExplicit === "create" ||
-			normalizedExplicit === "update" ||
-			normalizedExplicit === "modify" ||
-			normalizedExplicit === "change")
-	) {
+	const normalizedExplicit = readViewOperationOption(options);
+	const structuredMode = normalizedExplicit
+		? canonicalStructuredViewMode(normalizedExplicit)
+		: null;
+
+	// Structured planner output is the semantic boundary. Text inference exists
+	// only for direct/unstructured callers that did not supply an operation.
+	if (normalizedExplicit) {
+		return structuredMode ?? "interact";
+	}
+
+	if (isViewIconRequest(trimmed, options)) {
 		return "icon";
-	}
-	if (
-		normalizedExplicit === "close" ||
-		normalizedExplicit === "close_view" ||
-		normalizedExplicit === "close_all" ||
-		normalizedExplicit === "close_all_views"
-	) {
-		return "close";
-	}
-	if (
-		normalizedExplicit === "split" ||
-		normalizedExplicit === "split_view" ||
-		normalizedExplicit === "split_views"
-	) {
-		if (isTileLayoutRequest(trimmed) && !isSplitLayoutRequest(trimmed)) {
-			return "tile";
-		}
-		return "split";
-	}
-	if (
-		(normalizedExplicit === "tile" ||
-			normalizedExplicit === "tile_view" ||
-			normalizedExplicit === "tile_views") &&
-		isSplitLayoutRequest(trimmed) &&
-		!isTileLayoutRequest(trimmed)
-	) {
-		return "split";
-	}
-	if (
-		normalizedExplicit === "tile" ||
-		normalizedExplicit === "tile_view" ||
-		normalizedExplicit === "tile_views"
-	) {
-		return "tile";
 	}
 	if (isNonDestructiveCloseRequest(trimmed)) {
 		return "close";
-	}
-	if (
-		(normalizedExplicit === "delete" || normalizedExplicit === "remove") &&
-		isNonDestructiveCloseRequest(trimmed) &&
-		!DELETE_VERBS_RE.test(trimmed)
-	) {
-		return "close";
-	}
-	if (normalizedExplicit && isGenericViewNavigationMode(normalizedExplicit)) {
-		if (isPinRequest(trimmed)) return "pin";
-		if (isWindowRequest(trimmed)) return "window";
-		if (isTileLayoutRequest(trimmed)) return "tile";
-		if (isSplitLayoutRequest(trimmed)) return "split";
-	}
-	// Explicit rollback aliases. Handled before the generic non-mode -> interact
-	// fallthrough so `action=revert`/`action=undo` resolve to the rollback handler.
-	if (
-		normalizedExplicit === "rollback" ||
-		normalizedExplicit === "roll_back" ||
-		normalizedExplicit === "revert" ||
-		normalizedExplicit === "undo" ||
-		normalizedExplicit === "restore"
-	) {
-		return "rollback";
-	}
-	if (
-		normalizedExplicit &&
-		!(MODES as readonly string[]).includes(normalizedExplicit)
-	) {
-		return "interact";
-	}
-	if (
-		normalizedExplicit &&
-		(MODES as readonly string[]).includes(normalizedExplicit)
-	) {
-		if (LAYOUT_OVERRIDE_MODES.has(normalizedExplicit)) {
-			if (isPinRequest(trimmed)) return "pin";
-			if (isWindowRequest(trimmed)) return "window";
-			if (isTileLayoutRequest(trimmed)) return "tile";
-			if (isSplitLayoutRequest(trimmed)) return "split";
-		}
-		return normalizedExplicit as ViewsMode;
 	}
 
 	if (!trimmed) return null;
@@ -554,19 +470,44 @@ function inferMode(
 	return null;
 }
 
-function isGenericViewNavigationMode(normalizedExplicit: string): boolean {
-	return (
-		normalizedExplicit === "open" ||
-		normalizedExplicit === "show" ||
-		normalizedExplicit === "view" ||
-		normalizedExplicit === "open_view" ||
-		normalizedExplicit === "show_view" ||
-		normalizedExplicit === "navigate" ||
-		normalizedExplicit === "navigate_to_view" ||
-		normalizedExplicit === "go_to_view" ||
-		normalizedExplicit === "switch" ||
-		normalizedExplicit === "switch_view"
-	);
+function canonicalStructuredViewMode(operation: string): ViewsMode | null {
+	if (
+		operation === "close" ||
+		operation === "close_view" ||
+		operation === "close_all" ||
+		operation === "close_all_views"
+	) {
+		return "close";
+	}
+	if (
+		operation === "split" ||
+		operation === "split_view" ||
+		operation === "split_views"
+	) {
+		return "split";
+	}
+	if (
+		operation === "tile" ||
+		operation === "tile_view" ||
+		operation === "tile_views"
+	) {
+		return "tile";
+	}
+	if (isViewNavigationOperation(operation)) {
+		return operation === "open" ? "open" : "show";
+	}
+	if (
+		operation === "rollback" ||
+		operation === "roll_back" ||
+		operation === "revert" ||
+		operation === "undo" ||
+		operation === "restore"
+	) {
+		return "rollback";
+	}
+	return (MODES as readonly string[]).includes(operation)
+		? (operation as ViewsMode)
+		: null;
 }
 
 function isTileLayoutRequest(text: string): boolean {
@@ -684,18 +625,6 @@ const CLOSE_TARGET_FILLER = new Set([
 	"now",
 ]);
 
-function readViewTargetOption(
-	options?: Record<string, unknown>,
-): string | null {
-	return (
-		readStringOption(options, "view") ??
-		readStringOption(options, "viewId") ??
-		readStringOption(options, "id") ??
-		readStringOption(options, "name") ??
-		readStringOption(options, "target")
-	);
-}
-
 const CAPABILITY_PARAM_RESERVED_KEYS = new Set([
 	"action",
 	"mode",
@@ -737,7 +666,7 @@ type ResolvedViewCapability = {
 type ExplicitCapabilityTargetMismatch = {
 	view: ViewSummary;
 	capability: string | null;
-	operation: OperationFamily;
+	operation: OperationFamily | null;
 };
 
 type OperationFamily = "create" | "read" | "update" | "delete" | "select";
@@ -760,9 +689,6 @@ const OPERATION_TOKEN_FAMILIES: Record<OperationFamily, Set<string>> = {
 	select: new Set(["select", "choose", "pick"]),
 };
 
-const CAPABILITY_OPERATION_TOKENS = new Set(
-	Object.values(OPERATION_TOKEN_FAMILIES).flatMap((family) => [...family]),
-);
 const BULK_OPERATION_TOKENS = new Set(["all", "clear", "every"]);
 
 function normalizeCapabilityKey(value: string | null | undefined): string {
@@ -825,23 +751,6 @@ function capabilityTokens(capability: ViewCapability): Set<string> {
 	);
 }
 
-function capabilityDomainTokens(
-	candidate: ResolvedViewCapability,
-): Set<string> {
-	return new Set(
-		[
-			...tokensFor(
-				[
-					candidate.view.id,
-					candidate.view.label,
-					...(candidate.view.tags ?? []),
-					candidate.capability.id,
-				].join(" "),
-			),
-		].filter((token) => !CAPABILITY_OPERATION_TOKENS.has(token)),
-	);
-}
-
 function countIntersection(left: Set<string>, right: Set<string>): number {
 	let count = 0;
 	for (const value of left) {
@@ -859,6 +768,50 @@ function capabilityCandidates(
 		.flatMap((view) =>
 			(view.capabilities ?? []).map((capability) => ({ view, capability })),
 		);
+}
+
+/**
+ * Capability payloads may legitimately declare `id`, `name`, or `target`
+ * parameters, which overlap with legacy view aliases. The explicit `view` and
+ * `viewId` fields always identify a view; the overlapping aliases do so only
+ * when the selected capability does not declare that field as payload.
+ */
+function readCapabilityViewTargetOption(
+	options: Record<string, unknown> | undefined,
+	candidates: readonly ResolvedViewCapability[],
+): string | null {
+	const explicitView =
+		readStringOption(options, "view") ?? readStringOption(options, "viewId");
+	if (explicitView) return explicitView;
+
+	const operation = readViewOperationOption(options);
+	const structuredCapability =
+		readStringOption(options, "capability") ??
+		(operation && canonicalStructuredViewMode(operation) === null
+			? operation
+			: null);
+	const capabilityMatches = structuredCapability
+		? candidates.filter(
+				(candidate) =>
+					normalizeCapabilityKey(candidate.capability.id) ===
+					normalizeCapabilityKey(structuredCapability),
+			)
+		: [];
+
+	for (const key of ["id", "name", "target"] as const) {
+		const value = readStringOption(options, key);
+		if (!value) continue;
+		if (
+			capabilityMatches.some((candidate) =>
+				Object.hasOwn(candidate.capability.params ?? {}, key),
+			)
+		) {
+			continue;
+		}
+		return value;
+	}
+
+	return null;
 }
 
 function resolveViewTarget(
@@ -956,9 +909,7 @@ function isViewNavigationRequest(
 	text: string,
 	options?: Record<string, unknown>,
 ): boolean {
-	const explicit =
-		readStringOption(options, "action") ?? readStringOption(options, "mode");
-	const source = `${text} ${explicit ?? ""}`;
+	const source = `${text} ${readViewOperationOption(options) ?? ""}`;
 	if (mode === "open") return true;
 	if (
 		/\b(open|launch|switch to|go to|navigate to|pull up|bring up)\b/i.test(
@@ -983,6 +934,10 @@ function shouldResolveModeAsCapability(
 	text: string,
 	options?: Record<string, unknown>,
 ): boolean {
+	// A declared operation is complete planner output. Capability inference is
+	// only for unstructured/direct requests that omitted the action contract.
+	const operation = readViewOperationOption(options);
+	if (operation) return false;
 	if (isViewPluginAuthoringRequest(mode, text, options)) return false;
 	if (isViewNavigationRequest(mode, text, options)) return false;
 	return (
@@ -1015,8 +970,11 @@ function resolveViewCapability({
 		!!explicitAction &&
 		(MODES as readonly string[]).includes(explicitAction.trim().toLowerCase());
 	const actionToken = actionIsMode ? null : explicitAction;
-	let requestedView = resolveViewTarget(readViewTargetOption(options), views);
 	const candidates = capabilityCandidates(views, viewType);
+	const requestedView = resolveViewTarget(
+		readCapabilityViewTargetOption(options, candidates),
+		views,
+	);
 	const sourceText = [
 		actionToken ?? text,
 		readStringOption(options, "intent"),
@@ -1030,125 +988,27 @@ function resolveViewCapability({
 		sourceTokens.has(token),
 	);
 
-	if (!explicitCapability && requestedView) {
-		const semanticSourceTokens = new Set(
-			[...sourceTokens].filter(
-				(token) => !CAPABILITY_OPERATION_TOKENS.has(token),
-			),
-		);
-		const supportsSourceOperation = (candidate: ResolvedViewCapability) => {
-			const candidateOperation = operationFamilyForCapability(
-				candidate.capability,
-			);
-			return (
-				!sourceOperation ||
-				!candidateOperation ||
-				candidateOperation === sourceOperation
-			);
-		};
-		const requestedSupportsOperation = candidates.some(
-			(candidate) =>
-				candidate.view.id === requestedView?.id &&
-				supportsSourceOperation(candidate),
-		);
-		const requestedHasDomainMatch = candidates.some(
-			(candidate) =>
-				candidate.view.id === requestedView?.id &&
-				supportsSourceOperation(candidate) &&
-				countIntersection(
-					semanticSourceTokens,
-					capabilityDomainTokens(candidate),
-				) > 0,
-		);
-		const alternativeViewIds = new Set(
-			candidates
-				.filter(
-					(candidate) =>
-						candidate.view.id !== requestedView?.id &&
-						supportsSourceOperation(candidate) &&
-						countIntersection(
-							semanticSourceTokens,
-							capabilityDomainTokens(candidate),
-						) > 0,
-				)
-				.map((candidate) => candidate.view.id),
-		);
-		// Generic targets inside the capability broker are hints, unlike explicit
-		// capability/view pairs or authoring targets with no compatible capability.
-		// When the user's domain noun identifies one unambiguous different view,
-		// discard the stale hint so a note cannot silently become an event/document.
-		if (
-			requestedSupportsOperation &&
-			!requestedHasDomainMatch &&
-			alternativeViewIds.size === 1
-		) {
-			requestedView = null;
-		} else if (
-			requestedSupportsOperation &&
-			!requestedHasDomainMatch &&
-			alternativeViewIds.size > 1
-		) {
-			// More than one registered surface owns the user's domain noun. Keeping
-			// the contradictory planner target would mutate the wrong domain, while
-			// picking the first alternative would make plugin load order observable.
-			// Fail closed so the explicit-target mismatch path asks for a declared
-			// target/capability pair instead of inventing one.
-			return null;
-		}
-	}
-	// A semantically consistent planner target is authoritative. Foreground UI
-	// state is only a fallback when the request does not identify a view.
+	// A structured target is authoritative. Foreground UI state and prose-based
+	// catalog scoring are only fallbacks when the caller omitted the target.
 	const currentView = requestedView
 		? null
 		: (views.find((view) => view.id === currentViewId) ?? null);
 
-	if (explicitCapability) {
-		const normalized = normalizeCapabilityKey(explicitCapability);
+	const structuredCapability = explicitCapability ?? actionToken;
+	if (structuredCapability) {
+		const normalized = normalizeCapabilityKey(structuredCapability);
 		const exactCandidates = candidates.filter(
 			(candidate) =>
 				normalizeCapabilityKey(candidate.capability.id) === normalized,
 		);
-		const requestedExact = exactCandidates.find(
-			(candidate) => candidate.view.id === requestedView?.id,
-		);
-		if (requestedExact) return requestedExact;
 		if (requestedView) {
-			const explicitTokens = tokensFor(explicitCapability);
-			const explicitOperation = operationFamilyForTokens(explicitTokens);
-			const semanticTokens = new Set(
-				[...explicitTokens].filter(
-					(token) => !CAPABILITY_OPERATION_TOKENS.has(token),
-				),
+			return (
+				exactCandidates.find(
+					(candidate) => candidate.view.id === requestedView?.id,
+				) ?? null
 			);
-			const hasSemanticAlias = candidates.some((candidate) => {
-				if (candidate.view.id !== requestedView.id) return false;
-				const candidateOperation = operationFamilyForCapability(
-					candidate.capability,
-				);
-				if (
-					explicitOperation &&
-					candidateOperation &&
-					explicitOperation !== candidateOperation
-				) {
-					return false;
-				}
-				return (
-					countIntersection(semanticTokens, capabilityDomainTokens(candidate)) >
-					0
-				);
-			});
-			// Preserve harmless aliases inside the requested view (list-notes ->
-			// get-notes, createEvent -> create-calendar-event), but reject a pair
-			// with no shared semantic noun. The operation verb alone is insufficient:
-			// create-note must never become a calendar event or document mutation.
-			if (!hasSemanticAlias) return null;
 		}
-		const currentExact = exactCandidates.find(
-			(candidate) => candidate.view.id === currentView?.id,
-		);
-		if (currentExact) return currentExact;
-		if (!requestedView && exactCandidates.length === 1)
-			return exactCandidates[0];
+		return exactCandidates.length === 1 ? exactCandidates[0] : null;
 	}
 
 	let best: { candidate: ResolvedViewCapability; score: number } | null = null;
@@ -1208,10 +1068,9 @@ function resolveViewCapability({
 }
 
 /**
- * Identifies a destructive content operation whose structured target is a
- * registered view but whose capability catalog cannot satisfy the request.
- * Explicit registered targets are a trust boundary: routing to a similarly
- * named view would mutate a different surface than the planner requested.
+ * Identifies an interaction whose structured target cannot satisfy the
+ * requested capability. Registered targets are a trust boundary: a failed
+ * match must surface instead of being redirected by prose or plugin order.
  */
 function findExplicitCapabilityTargetMismatch({
 	views,
@@ -1226,7 +1085,10 @@ function findExplicitCapabilityTargetMismatch({
 }): ExplicitCapabilityTargetMismatch | null {
 	if (isViewPluginAuthoringRequest(mode, text, options)) return null;
 
-	const target = resolveViewTarget(readViewTargetOption(options), views);
+	const target = resolveViewTarget(
+		readCapabilityViewTargetOption(options, capabilityCandidates(views)),
+		views,
+	);
 	if (!target) return null;
 
 	const explicitCapability = readStringOption(options, "capability");
@@ -1259,11 +1121,7 @@ function findExplicitCapabilityTargetMismatch({
 				: mode === "delete" || mode === "remove"
 					? "delete"
 					: null);
-	if (
-		operation !== "create" &&
-		operation !== "update" &&
-		operation !== "delete"
-	) {
+	if (!operation && !explicitCapability && !generatedCapability) {
 		return null;
 	}
 
@@ -1294,7 +1152,7 @@ async function rejectExplicitCapabilityTargetMismatch(
 		data: {
 			reason: "capability-not-declared-by-explicit-view",
 			viewId: mismatch.view.id,
-			operation: mismatch.operation,
+			...(mismatch.operation ? { operation: mismatch.operation } : {}),
 			...(mismatch.capability ? { capability: mismatch.capability } : {}),
 		},
 	};
@@ -1541,7 +1399,7 @@ function isCloseAllRequest(
 		readBooleanOption(options, "all") ||
 		explicit === "all" ||
 		explicit === "__all__" ||
-		CLOSE_ALL_VERBS.test(requestText)
+		(!explicit && CLOSE_ALL_VERBS.test(requestText))
 	);
 }
 
@@ -1798,20 +1656,13 @@ function resolveLayoutTargets(
 				viewNameIsContainedBy(view, explicitView),
 			),
 	);
-	if (
-		explicitUnique.length >= 2 &&
-		textUnique.length === explicitUnique.length &&
-		textUnique.every((view) =>
-			explicitUnique.some((explicitView) => explicitView.id === view.id),
-		)
-	) {
-		return explicitUnique;
+	// Two structured targets fully specify a layout. Prose matching may complete
+	// a partial payload, but it cannot replace a complete planner decision.
+	if (explicitUnique.length >= 2) return explicitUnique;
+	if (explicitUnique.length === 1) {
+		return uniqueByViewId([...explicitUnique, ...textUnique]);
 	}
-	return textUnique.length >= 2
-		? textUnique
-		: textUnique.length === 1 && explicitUnique.length <= 1
-			? textUnique
-			: uniqueByViewId([...explicitUnique, ...textUnique]);
+	return textUnique;
 }
 
 function viewNameIsContainedBy(
@@ -2148,10 +1999,41 @@ async function runViewsLayout({
 }): Promise<ActionResult> {
 	const text = getUserMessageText(message);
 	const views = await client.listViews({ viewType });
+	const structuredLayoutTargets = readLayoutTargetsFromOptions(options);
+	for (const target of structuredLayoutTargets) {
+		const resolution = resolveCloseTargetView(target, views);
+		if (resolution.kind === "none") {
+			const reply = `No view matches "${target}". No layout was changed; use action=list to see available views.`;
+			await callback?.({ text: reply });
+			return {
+				success: false,
+				text: reply,
+				data: { reason: "view-target-not-found", target },
+			};
+		}
+		if (resolution.kind === "ambiguous") {
+			const list = resolution.candidates
+				.map((candidate) => `- ${candidate.label} (${candidate.id})`)
+				.join("\n");
+			const reply = `"${target}" matches multiple views:\n${list}\nNo layout was changed; choose one view id.`;
+			await callback?.({ text: reply });
+			return {
+				success: false,
+				text: reply,
+				data: {
+					reason: "view-target-ambiguous",
+					target,
+					candidates: resolution.candidates,
+				},
+			};
+		}
+	}
 	const placement =
 		mode === "split" ? readPlacementValue(text, options) : undefined;
 	const layoutOnlyFollowup =
-		mode === "split" ? isLayoutOnlyFollowupRequest(text, views) : false;
+		mode === "split" && structuredLayoutTargets.length === 0
+			? isLayoutOnlyFollowupRequest(text, views)
+			: false;
 	let targets =
 		mode === "split"
 			? await completeSplitTargetsWithCurrentView({
@@ -2423,7 +2305,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "action",
 				description:
-					"Operation: list | current | show | open | close | search | manager | broadcast | interact | pin | window | split | tile | create | edit | icon | rollback | delete | remove, or a registered/generated view capability name to resolve through the view catalog. Use rollback to undo a view/plugin create or edit by resetting its source to the pre-edit snapshot.",
+					"Operation: list | current | show | open | close | search | manager | broadcast | interact | pin | window | split | tile | create | edit | icon | rollback | delete | remove, or a registered/generated view capability name. show/open only navigate; interact invokes a registered view capability. create/edit/delete/remove manage view plugins, never records inside a view. Use rollback to undo a view/plugin create or edit by resetting its source to the pre-edit snapshot.",
 				required: true,
 				schema: {
 					type: "string",
@@ -2792,7 +2674,8 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					return prefetchedCurrentView;
 				};
 
-				if (effectiveMode === "interact") {
+				const structuredOperation = readViewOperationOption(actionOptions);
+				if (effectiveMode === "interact" && !structuredOperation) {
 					const views = await getViews();
 					effectiveMode =
 						preferLayoutModeOverCapability({
@@ -2944,15 +2827,44 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 
 					case "interact": {
-						let viewId =
-							readStringOption(actionOptions, "view") ??
-							readStringOption(actionOptions, "viewId") ??
-							readStringOption(actionOptions, "id") ??
-							readStringOption(actionOptions, "name") ??
-							readStringOption(actionOptions, "target");
+						let viewId: string | null = null;
 						let capability = readStringOption(actionOptions, "capability");
 						let resolvedViewType = viewType;
 						const views = await getViews();
+						viewId = readCapabilityViewTargetOption(
+							actionOptions,
+							capabilityCandidates(views, viewType),
+						);
+						if (viewId) {
+							const targetResolution = resolveCloseTargetView(viewId, views);
+							if (targetResolution.kind === "none") {
+								const reply = `No view matches "${viewId}". No interaction was sent; use action=list to see available views.`;
+								await callback?.({ text: reply });
+								return {
+									success: false,
+									text: reply,
+									data: { reason: "view-target-not-found", target: viewId },
+								};
+							}
+							if (targetResolution.kind === "ambiguous") {
+								const list = targetResolution.candidates
+									.map((candidate) => `- ${candidate.label} (${candidate.id})`)
+									.join("\n");
+								const reply = `"${viewId}" matches multiple views:\n${list}\nNo interaction was sent; choose one view id.`;
+								await callback?.({ text: reply });
+								return {
+									success: false,
+									text: reply,
+									data: {
+										reason: "view-target-ambiguous",
+										target: viewId,
+										candidates: targetResolution.candidates,
+									},
+								};
+							}
+							viewId = targetResolution.view.id;
+							resolvedViewType = viewType ?? targetResolution.view.viewType;
+						}
 						if (!viewId && /\bcurrent\b/i.test(text)) {
 							const currentView = await getCurrentView();
 							viewId = currentView?.viewId ?? null;

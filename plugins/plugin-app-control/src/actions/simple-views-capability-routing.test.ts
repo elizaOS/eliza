@@ -149,15 +149,17 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		const created = await run(
 			"create a note titled Routing QA with body Keep Notes isolated",
 			{
-				action: "create",
+				action: "interact",
 				view: "notes",
+				capability: "create-note",
 				title: "Routing QA",
 				body: "Keep Notes isolated",
 			},
 		);
 		const listed = await run("list my notes", {
-			action: "list",
+			action: "interact",
 			view: "notes",
+			capability: "get-notes",
 		});
 
 		expect(created?.values).toMatchObject({
@@ -184,16 +186,18 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		{
 			text: "create a note titled Plugin Architecture",
 			options: {
-				action: "create",
+				action: "interact",
 				view: "notes",
+				capability: "create-note",
 				title: "Plugin Architecture",
 			},
 		},
 		{
 			text: "create a note about view switching",
 			options: {
-				action: "create",
+				action: "interact",
 				view: "notes",
+				capability: "create-note",
 				body: "view switching",
 			},
 		},
@@ -204,8 +208,9 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		{
 			text: "create a note in the Notes view titled Pane ownership",
 			options: {
-				action: "create",
+				action: "interact",
 				view: "notes",
+				capability: "create-note",
 				title: "Pane ownership",
 			},
 		},
@@ -228,8 +233,9 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		const result = await run(
 			"delete a note from the Notes view titled Plugin Architecture",
 			{
-				action: "delete",
+				action: "interact",
 				view: "notes",
+				capability: "delete-note",
 				title: "Plugin Architecture",
 			},
 		);
@@ -245,8 +251,9 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 
 	it("reserves the destructive clear capability for an explicit bulk request", async () => {
 		const result = await run("delete all notes", {
-			action: "delete",
+			action: "interact",
 			view: "notes",
+			capability: "clear-notes",
 		});
 
 		expect(result?.values).toMatchObject({
@@ -262,8 +269,9 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		const result = await run(
 			"create an event titled View QA on 2026-07-18 at 14:30",
 			{
-				action: "create",
+				action: "interact",
 				view: "simple-calendar",
+				capability: "create-calendar-event",
 				title: "View QA",
 				date: "2026-07-18",
 				time: "14:30",
@@ -288,7 +296,7 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		foreground = foregroundView;
 		const result = await run(
 			"create a note titled Foreground isolation with body User words win",
-			{ action: "create" },
+			undefined,
 		);
 
 		expect(result?.values).toMatchObject({
@@ -301,31 +309,11 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		expect(requests[0]?.url).not.toContain(`/api/views/${foregroundView}/`);
 	});
 
-	it.each([
-		"calendar",
-		"simple-calendar",
-		"documents",
-	])("lets an explicit Notes request override a conflicting generic %s target", async (wrongView) => {
-		const result = await run("create a note titled User request wins", {
-			action: "create",
-			view: wrongView,
-			title: "User request wins",
-		});
-
-		expect(result?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "create-note",
-		});
-		expect(requests).toHaveLength(1);
-		expect(requests[0]?.url).toContain("/api/views/notes/interact");
-		expect(requests[0]?.url).not.toContain(`/api/views/${wrongView}/`);
-	});
-
 	it("rejects a contradictory target when multiple event views are valid", async () => {
 		const result = await run("create an event titled Ambiguous ownership", {
-			action: "create",
+			action: "interact",
 			view: "notes",
+			capability: "create-calendar-event",
 			title: "Ambiguous ownership",
 			date: "2026-07-18",
 		});
