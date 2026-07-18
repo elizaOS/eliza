@@ -49,6 +49,30 @@ export function normalizeDirectCloudSharedAgentApiBase(value: string): string {
   return stripTrailingSlash(url.toString());
 }
 
+/**
+ * Extract the agent id from a direct shared-runtime Cloud agent base. Shared
+ * agents expose exactly one REST conversation and its id is the agent id, so
+ * callers can use this to avoid a redundant `/api/conversations` create round
+ * trip when the selected base is already scoped to that agent.
+ */
+export function directCloudSharedAgentIdFromBase(
+  value: string | null | undefined,
+): string | null {
+  if (!value?.trim()) return null;
+  const url = normalizeHttpUrl(value.trim());
+  if (!url) return null;
+  const sharedPath = directSharedAgentPath(url.pathname);
+  if (!sharedPath) return null;
+  const path = stripTrailingSlash(sharedPath.apiPath);
+  const agentId = path.slice("/api/v1/eliza/agents/".length);
+  try {
+    return agentId ? decodeURIComponent(agentId) : null;
+  } catch {
+    // error-policy:J3 malformed URL encoding yields the explicit null signal.
+    return null;
+  }
+}
+
 // Staging apex + API. Without these, `staging.elizacloud.ai` ends with
 // `.elizacloud.ai` and is misclassified as a per-agent subdomain.
 const STAGING_CONSOLE_HOSTS = new Set([

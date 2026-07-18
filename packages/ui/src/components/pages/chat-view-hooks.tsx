@@ -550,6 +550,8 @@ export function useChatVoiceController(options: {
     [
       chatInput,
       conversationMessages,
+      activeConversationId,
+      realtimeAgentId,
       isComposerLocked,
       startListening,
       stopSpeaking,
@@ -959,10 +961,7 @@ export function useChatVoiceController(options: {
       // must re-enter the realtime branch (start() clears the error); only
       // non-actionable failures (consent/mint, which also latch eligibility
       // off) hand the tap to the batch path as their copy promises.
-      if (
-        voiceSession.realtimeEligible &&
-        (!voiceSession.realtimeError || voiceSession.realtimeError.actionable)
-      ) {
+      if (voiceSession.realtimeEligible) {
         setManualRealtimeIntent(true);
         realtimeStartPendingRef.current = true;
         const latestAssistant =
@@ -979,6 +978,12 @@ export function useChatVoiceController(options: {
           beginBatchVoiceCapture(mode);
         });
         return;
+      }
+      if (
+        isRealtimeVoiceFlagEnabled() &&
+        (!realtimeAgentId || !activeConversationId)
+      ) {
+        voiceSession.reportRealtimeFallback("missing-identity");
       }
       beginBatchVoiceCapture(mode);
     },
@@ -1022,11 +1027,17 @@ export function useChatVoiceController(options: {
   // existing start handler's barge-in branch instead of the stop branch.
   const realtimeOwnsComposer =
     manualRealtimeRequested || voiceSession.realtimeActive;
+  const realtimeIsCapturingSpeech =
+    voiceSession.status === "listening" ||
+    voiceSession.status === "transcribing";
+  const realtimeStartAwaitingActivation =
+    manualRealtimeRequested && !voiceSession.realtimeActive;
   const composerVoice = useMemo(
     () => ({
       isListening:
         voice.isListening ||
-        (realtimeOwnsComposer && !voiceSession.agentSpeaking),
+        realtimeStartAwaitingActivation ||
+        (voiceSession.realtimeActive && realtimeIsCapturingSpeech),
       captureMode: realtimeOwnsComposer
         ? ("compose" as const)
         : voice.captureMode,
@@ -1039,7 +1050,8 @@ export function useChatVoiceController(options: {
       voice.interimTranscript,
       voice.isListening,
       realtimeOwnsComposer,
-      voiceSession.agentSpeaking,
+      realtimeIsCapturingSpeech,
+      realtimeStartAwaitingActivation,
       voiceSession.interimTranscript,
       voiceSession.realtimeActive,
     ],

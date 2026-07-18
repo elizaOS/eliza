@@ -225,4 +225,15 @@ describe("ChatVoiceStatusBar", () => {
     expect(screen.queryByTestId("chat-voice-realtime-live")).toBeNull();
     expect(screen.queryByTestId("chat-voice-realtime-armed")).toBeNull();
   });
+
+  it("shows the standard-mode notice with a debuggable fallback reason", () => {
+    render(
+      <ChatVoiceStatusBar status="listening" realtimeFallbackReason="mint" />,
+    );
+    const notice = screen.getByTestId("chat-voice-realtime-fallback");
+    expect(notice.textContent).toContain(
+      "Realtime voice unavailable, using standard voice mode",
+    );
+    expect(notice.getAttribute("data-reason")).toBe("mint");
+  });
 });
