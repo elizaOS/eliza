@@ -1312,7 +1312,12 @@ export const shellAction: Action = {
             .join("\n")
         : "(no shell history recorded for this conversation)";
       const text = `Shell command history (last ${entries.length}):\n${lines}`;
-      if (callback) await callback({ text, source: "coding-tools" });
+      // Fenced (#16563): raw executed commands routinely carry paired `*`/`_`.
+      if (callback)
+        await callback({
+          text: fencePreformatted(text),
+          source: "coding-tools",
+        });
       return successActionResult(text, {
         actionName: "SHELL",
         [CANONICAL_SUBACTION_KEY]: "view_history",
@@ -1357,7 +1362,12 @@ export const shellAction: Action = {
                 .join("\n")
             : "(no background shell sessions for this conversation)";
           const text = `Background shell sessions (${sessions.length}):\n${lines}`;
-          if (callback) await callback({ text, source: "coding-tools" });
+          // Fenced (#16563): per-session lines embed raw command strings.
+          if (callback)
+            await callback({
+              text: fencePreformatted(text),
+              source: "coding-tools",
+            });
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "list_background",
@@ -1438,7 +1448,13 @@ export const shellAction: Action = {
         ]
           .filter(Boolean)
           .join("\n");
-        if (callback) await callback({ text, source: "coding-tools" });
+        // Fenced (#16563): the stdout/stderr blocks are the same transcript
+        // format the fenced foreground path emits.
+        if (callback)
+          await callback({
+            text: fencePreformatted(text),
+            source: "coding-tools",
+          });
         return successActionResult(text, {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "poll_background",
@@ -1647,7 +1663,13 @@ export const shellAction: Action = {
           `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${cwd})`,
           `poll with stdout_offset=${session.stdoutOffset} stderr_offset=${session.stderrOffset}`,
         ].join("\n");
-        if (callback) await callback({ text, source: "coding-tools" });
+        // Fenced (#16563): the echoed `$ command` line is the literal
+        // italics-eaten failure shape from #16542's repro.
+        if (callback)
+          await callback({
+            text: fencePreformatted(text),
+            source: "coding-tools",
+          });
         return successActionResult(text, {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "start_background",
