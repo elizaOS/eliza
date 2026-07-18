@@ -89,6 +89,12 @@ export const SUB_AGENT_PROVIDER_ENV_KEYS = [
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_BASE_URL",
+  // OpenAI twins of the Anthropic proxy/tier forwarding (#16562): a parent on
+  // a third-party OpenAI-compatible endpoint must not spawn children that
+  // silently talk to api.openai.com with default tier models.
+  "OPENAI_BASE_URL",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
   "CEREBRAS_API_KEY",
   "CEREBRAS_BASE_URL",
   "CEREBRAS_MODEL",
