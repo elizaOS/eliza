@@ -66,18 +66,11 @@ import {
 // ── Types ────────────────────────────────────────────────────────────
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+const SHELL_VIEW_SYNC_FAILURE_NOTICE =
+  "Couldn't sync the current view with the agent — your message wasn't sent. Try again.";
 
 async function synchronizeShellViewBeforeTurn(): Promise<void> {
-  try {
-    await ensureAuthoritativeShellViewState();
-  } catch (error) {
-    // error-policy:J4 chat remains usable when an older/limited runtime lacks
-    // view context. The failed publication is observable and reconnect retries.
-    logger.warn(
-      { error },
-      "[useChatSend] shell view context publication failed",
-    );
-  }
+  await ensureAuthoritativeShellViewState();
 }
 
 async function handoffCompletedViewAction(
@@ -773,6 +766,26 @@ export function useChatSend(deps: UseChatSendDeps) {
     elizaCloudConnected,
     pollCloudCredits,
   } = deps;
+
+  const synchronizeShellViewForTurn =
+    useCallback(async (): Promise<boolean> => {
+      try {
+        // A false result is the designed compatibility path for runtimes that do
+        // not expose the view registry (404/501); only thrown transport/server
+        // failures prevent this turn from being planned against stale context.
+        await synchronizeShellViewBeforeTurn();
+        return true;
+      } catch (error) {
+        // error-policy:J4 the draft/turn remains available for an explicit retry,
+        // while the failed context publication is visible to both user and logs.
+        logger.warn(
+          { error },
+          "[useChatSend] shell view context publication failed",
+        );
+        setActionNotice(SHELL_VIEW_SYNC_FAILURE_NOTICE, "error", 8_000);
+        return false;
+      }
+    }, [setActionNotice]);
 
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
@@ -2338,6 +2351,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         conversationId?: string | null;
         images?: ImageAttachment[];
         metadata?: Record<string, unknown>;
+        /** The caller already completed the same-turn view-state barrier. */
+        shellViewSynchronized?: boolean;
       },
     ) => {
       const hasAttachedImages = Boolean(options?.images?.length);
@@ -2348,7 +2363,12 @@ export function useChatSend(deps: UseChatSendDeps) {
       // A restarted backend has no in-memory active-view state. Publish the
       // visible route/layout before the message is queued so this exact turn's
       // planner receives the same per-view context the user can already see.
-      await synchronizeShellViewBeforeTurn();
+      if (
+        options?.shellViewSynchronized !== true &&
+        !(await synchronizeShellViewForTurn())
+      ) {
+        return;
+      }
 
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
@@ -2392,7 +2412,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         void flushQueuedChatSends();
       });
     },
-    [flushQueuedChatSends, setChatSending, setChatReplyTarget, tab],
+    [
+      flushQueuedChatSends,
+      setChatSending,
+      setChatReplyTarget,
+      synchronizeShellViewForTurn,
+      tab,
+    ],
   );
 
   const handleChatSend = useCallback(
@@ -2411,6 +2437,11 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      // Keep the draft and attachments untouched until the exact visible
+      // route/layout has reached the backend. A failed barrier therefore has a
+      // literal one-click retry path instead of clearing unsent user input.
+      if (!(await synchronizeShellViewForTurn())) return;
+
       chatInputRef.current = "";
       chatPendingImagesRef.current = [];
       setChatInput("");
@@ -2428,6 +2459,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         conversationId: activeConversationIdRef.current,
         images: imagesToSend,
         metadata: options?.metadata,
+        shellViewSynchronized: true,
       });
     },
     [
@@ -2437,6 +2469,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       sendChatText,
       setChatInput,
       setChatPendingImages,
+      synchronizeShellViewForTurn,
     ],
   );
 
@@ -2445,7 +2478,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      await synchronizeShellViewBeforeTurn();
+      if (!(await synchronizeShellViewForTurn())) return;
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
@@ -2741,6 +2774,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       uiLanguage,
       scheduleStreamingText,
       scheduleToolEvent,
+      synchronizeShellViewForTurn,
       flushStreamingText,
     ],
   );
@@ -2781,6 +2815,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       const userMsg = currentMessages[userIdx];
       const retryText = userMsg.text;
       if (!retryText) return;
+      if (!(await synchronizeShellViewForTurn())) return;
 
       const convId = activeConversationIdRef.current;
       const canTruncate =
@@ -2801,7 +2836,10 @@ export function useChatSend(deps: UseChatSendDeps) {
           await client.truncateConversationMessages(convId, userMsg.id, {
             inclusive: true,
           });
-          await sendChatText(retryText, { conversationId: convId });
+          await sendChatText(retryText, {
+            conversationId: convId,
+            shellViewSynchronized: true,
+          });
         } catch (err) {
           await loadConversationMessages(convId);
           setActionNotice(
@@ -2824,7 +2862,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             !(m.id === userMsg.id && m.id.startsWith("temp-")),
         ),
       );
-      void sendChatText(retryText);
+      void sendChatText(retryText, { shellViewSynchronized: true });
     },
     [
       sendChatText,
@@ -2834,6 +2872,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       interruptActiveChatPipeline,
       loadConversationMessages,
       setActionNotice,
+      synchronizeShellViewForTurn,
     ],
   );
 
@@ -2870,6 +2909,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       ) {
         return false;
       }
+      if (!(await synchronizeShellViewForTurn())) return false;
 
       interruptActiveChatPipeline();
       setChatInput("");
@@ -2882,7 +2922,10 @@ export function useChatSend(deps: UseChatSendDeps) {
         await client.truncateConversationMessages(convId, messageId, {
           inclusive: true,
         });
-        await sendChatText(nextText, { conversationId: convId });
+        await sendChatText(nextText, {
+          conversationId: convId,
+          shellViewSynchronized: true,
+        });
         return true;
       } catch (err) {
         await loadConversationMessages(convId);
@@ -2901,6 +2944,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       activeConversationIdRef.current,
       conversationMessagesRef,
       interruptActiveChatPipeline,
+      synchronizeShellViewForTurn,
       setChatInput,
       setConversationMessages,
     ],

@@ -33,7 +33,21 @@ interface PublishDependencies {
   request?: ViewStateRequest;
 }
 
+interface AuthoritativeStateOptions {
+  /** The visible route/layout is known, but its exact registry metadata is not. */
+  pending?: boolean;
+}
+
+interface ReadinessWaiter {
+  resolve: () => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
+const AUTHORITATIVE_STATE_READY_TIMEOUT_MS = 5_000;
+
 let authoritativeState: AuthoritativeShellViewState | null = null;
+let authoritativeStatePending = false;
+const readinessWaiters = new Set<ReadinessWaiter>();
 let publicationTail: Promise<void> = Promise.resolve();
 
 function normalizedState(
@@ -49,8 +63,40 @@ function normalizedState(
 /** Replace the shell snapshot used by the next reconnect or chat-send barrier. */
 export function setAuthoritativeShellViewState(
   state: AuthoritativeShellViewState | null,
+  options: AuthoritativeStateOptions = {},
 ): void {
   authoritativeState = state ? normalizedState(state) : null;
+  authoritativeStatePending = state === null && options.pending === true;
+  if (authoritativeStatePending) return;
+  for (const waiter of readinessWaiters) {
+    clearTimeout(waiter.timeoutId);
+    waiter.resolve();
+  }
+  readinessWaiters.clear();
+}
+
+function waitForAuthoritativeStateReadiness(): Promise<void> {
+  if (!authoritativeStatePending) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const waiter: ReadinessWaiter = {
+      resolve,
+      timeoutId: setTimeout(() => {
+        readinessWaiters.delete(waiter);
+        reject(
+          new ElizaError(
+            "Shell view registry did not become ready before chat send",
+            {
+              code: "VIEW_SHELL_STATE_NOT_READY",
+              context: {
+                timeoutMs: AUTHORITATIVE_STATE_READY_TIMEOUT_MS,
+              },
+            },
+          ),
+        );
+      }, AUTHORITATIVE_STATE_READY_TIMEOUT_MS),
+    };
+    readinessWaiters.add(waiter);
+  });
 }
 
 function publishBody(
@@ -127,10 +173,18 @@ export function rehydrateAuthoritativeShellViewState(
 export function ensureAuthoritativeShellViewState(
   dependencies: PublishDependencies = {},
 ): Promise<boolean> {
-  return rehydrateAuthoritativeShellViewState(dependencies);
+  return waitForAuthoritativeStateReadiness().then(() =>
+    rehydrateAuthoritativeShellViewState(dependencies),
+  );
 }
 
 export function __resetAuthoritativeShellViewStateForTests(): void {
   authoritativeState = null;
+  authoritativeStatePending = false;
+  for (const waiter of readinessWaiters) {
+    clearTimeout(waiter.timeoutId);
+    waiter.resolve();
+  }
+  readinessWaiters.clear();
   publicationTail = Promise.resolve();
 }
