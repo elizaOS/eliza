@@ -1034,7 +1034,7 @@ export function DocumentsView({
                   facetCountsAreApproximate
                     ? t("knowledgehub.approxCountHint", {
                         defaultValue:
-                          "Approximate — whole-store counts are unavailable.",
+                          "Approximate. Whole-store counts are unavailable.",
                       })
                     : undefined
                 }

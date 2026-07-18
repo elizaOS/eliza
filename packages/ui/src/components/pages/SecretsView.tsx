@@ -481,10 +481,11 @@ function SecretPicker({
                           {s.description}
                           {s.usedBy.length > 0 && (
                             <span className="ml-1">
-                              —{" "}
+                              (
                               {enabledPlugins.length > 0
                                 ? `${enabledPlugins.length} active plugin${enabledPlugins.length !== 1 ? "s" : ""}`
-                                : `${s.usedBy.length} plugin${s.usedBy.length !== 1 ? "s" : ""} (none active)`}
+                                : `${s.usedBy.length} plugin${s.usedBy.length !== 1 ? "s" : ""}, none active`}
+                              )
                             </span>
                           )}
                         </div>
