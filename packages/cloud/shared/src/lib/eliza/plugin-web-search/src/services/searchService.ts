@@ -87,9 +87,7 @@ export class WebSearchService extends Service implements IWebSearchService {
     try {
       // Lazy import: the Google-grounded path drags the cloud services/db
       // graph; keyless deployments never pay that module cost.
-      const { executeHostedGoogleSearch } = await import(
-        "../../../../services/google-search"
-      );
+      const { executeHostedGoogleSearch } = await import("../../../../services/google-search");
       const result = await executeHostedGoogleSearch(
         {
           query,

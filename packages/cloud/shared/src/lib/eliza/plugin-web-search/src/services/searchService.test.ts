@@ -44,12 +44,9 @@ describe("WebSearchService without a Google key", () => {
   });
 
   it("surfaces a real error when every keyless provider fails", async () => {
-    globalThis.fetch = (async () =>
-      new Response("down", { status: 500 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response("down", { status: 500 })) as typeof fetch;
 
     const service = await WebSearchService.start(keylessRuntime);
-    await expect(service.search("anything")).rejects.toThrow(
-      "Keyless web search failed",
-    );
+    await expect(service.search("anything")).rejects.toThrow("Keyless web search failed");
   });
 });

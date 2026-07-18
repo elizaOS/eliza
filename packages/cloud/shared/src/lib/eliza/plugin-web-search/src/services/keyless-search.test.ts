@@ -69,15 +69,11 @@ describe("executeKeylessMcpSearch", () => {
 
     const result = await executeKeylessMcpSearch("test query", 5);
     expect(result).toEqual({ answer: "exa answer", provider: "exa" });
-    expect(urls).toEqual([
-      "https://search.parallel.ai/mcp",
-      "https://mcp.exa.ai/mcp",
-    ]);
+    expect(urls).toEqual(["https://search.parallel.ai/mcp", "https://mcp.exa.ai/mcp"]);
   });
 
   it("throws when both providers fail", async () => {
-    globalThis.fetch = (async () =>
-      new Response("nope", { status: 500 })) as typeof fetch;
+    globalThis.fetch = (async () => new Response("nope", { status: 500 })) as typeof fetch;
 
     await expect(executeKeylessMcpSearch("test query", 5)).rejects.toThrow(
       "Keyless web search failed",
