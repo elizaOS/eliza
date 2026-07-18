@@ -25,6 +25,9 @@ mock.module("../../providers/language-model", () => ({
 
 mock.module("ai", () => ({
   generateText: async () => generateTextImpl(),
+  streamText: () => {
+    throw new Error("streamText is not used by non-stream error-policy tests");
+  },
 }));
 
 const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
