@@ -76,7 +76,9 @@ const nativeClientMock = getNativeMockState();
 
 vi.mock("../../src/services/acp-native-transport.js", () => {
   const state = getNativeMockState();
-  state.NativeAcpClient = class MockNativeAcpClient implements MockNativeClient {
+  state.NativeAcpClient = class MockNativeAcpClient
+    implements MockNativeClient
+  {
     opts: NativeOptions;
     eventHandler?: NativeEventHandler;
     start = vi.fn(async () => {
@@ -433,7 +435,8 @@ describe("AcpService", () => {
     const args = spawnMock.mock.calls[0]?.[1] as string[] | undefined;
     expect(args).not.toContain("--no-terminal");
     const env = spawnMock.mock.calls[0]?.[2]?.env as
-      Record<string, string> | undefined;
+      | Record<string, string>
+      | undefined;
     expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
   });
 
@@ -531,7 +534,8 @@ describe("AcpService", () => {
       await service.stop();
 
       const env = spawnMock.mock.calls[0]?.[2]?.env as
-        Record<string, string> | undefined;
+        | Record<string, string>
+        | undefined;
       expect(env).toMatchObject({
         GIT_AUTHOR_NAME: "Configured Author",
         GIT_AUTHOR_EMAIL: "author@example.test",
@@ -1204,7 +1208,8 @@ describe("AcpService", () => {
     expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as
-      Record<string, string> | undefined;
+      | Record<string, string>
+      | undefined;
     const config = JSON.parse(env?.OPENCODE_CONFIG_CONTENT ?? "{}") as {
       provider?: Record<
         string,
@@ -1247,7 +1252,8 @@ describe("AcpService", () => {
     expect(args).not.toContain("opencode");
 
     const env = spawnMock.mock.calls[0]?.[2]?.env as
-      Record<string, string> | undefined;
+      | Record<string, string>
+      | undefined;
     expect(env?.OPENCODE_MODEL).toBeUndefined();
     expect(env?.OPENAI_MODEL).toBeUndefined();
   });
@@ -1670,7 +1676,8 @@ describe("AcpService", () => {
 
     const result = await sent;
     const promptEnv = spawnMock.mock.calls[1]?.[2]?.env as
-      Record<string, string> | undefined;
+      | Record<string, string>
+      | undefined;
     expect(promptEnv?.PARALLAX_SESSION_ID).toBe(sessionId);
     expect(result.response).toContain("done");
     expect(result.response).toContain("[tool output: Running tool]");
@@ -1849,46 +1856,44 @@ describe("AcpService", () => {
     expect((await service.getSession(sessionId))?.status).toBe("ready");
   });
 
-  it.each(["max_tokens", "interrupted"])(
-    "native sendPrompt does not advertise an incomplete %s turn as task_complete",
-    async (stopReason) => {
-      const service = new AcpService(
-        runtime({ ELIZA_ACP_TRANSPORT: "native" }),
-      );
-      const events: string[] = [];
-      service.onSessionEvent((_sid, event) => events.push(event));
-      await service.start();
-      const { sessionId } = await service.spawnSession({
-        name: `native-${stopReason}`,
-        agentType: "codex",
-        workdir: "/tmp/acp-test",
-      });
-      events.length = 0;
-      const client = firstNativeClient();
-      client.prompt.mockImplementationOnce(async () => {
-        client.emit({
-          jsonrpc: "2.0",
-          id: "prompt",
-          sessionId: "protocol-session",
-          result: {
-            stopReason,
-            content: [{ type: "text", text: "partial output" }],
-          },
-        } as AcpJsonRpcMessage);
-        return { stopReason };
-      });
+  it.each([
+    "max_tokens",
+    "interrupted",
+  ])("native sendPrompt does not advertise an incomplete %s turn as task_complete", async (stopReason) => {
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "native" }));
+    const events: string[] = [];
+    service.onSessionEvent((_sid, event) => events.push(event));
+    await service.start();
+    const { sessionId } = await service.spawnSession({
+      name: `native-${stopReason}`,
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+    events.length = 0;
+    const client = firstNativeClient();
+    client.prompt.mockImplementationOnce(async () => {
+      client.emit({
+        jsonrpc: "2.0",
+        id: "prompt",
+        sessionId: "protocol-session",
+        result: {
+          stopReason,
+          content: [{ type: "text", text: "partial output" }],
+        },
+      } as AcpJsonRpcMessage);
+      return { stopReason };
+    });
 
-      const result = await service.sendPrompt(sessionId, "continue the task");
+    const result = await service.sendPrompt(sessionId, "continue the task");
 
-      expect(result).toMatchObject({
-        stopReason,
-        finalText: "partial output",
-      });
-      expect(events).not.toContain("task_complete");
-      expect(events).not.toContain("stopped");
-      expect((await service.getSession(sessionId))?.status).toBe("ready");
-    },
-  );
+    expect(result).toMatchObject({
+      stopReason,
+      finalText: "partial output",
+    });
+    expect(events).not.toContain("task_complete");
+    expect(events).not.toContain("stopped");
+    expect((await service.getSession(sessionId))?.status).toBe("ready");
+  });
 
   // Fix #2 (PR #9855): a terminal `stopReason === "error"` that nonetheless
   // captured a real deliverable (the sub-agent edited files / deployed / printed

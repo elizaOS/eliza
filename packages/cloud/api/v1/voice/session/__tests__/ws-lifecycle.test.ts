@@ -437,6 +437,76 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("prewarms Cartesia as soon as the response turn starts", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A short answer."]),
+    });
+
+    const before = FakeCartesiaSocket.instances.length;
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer briefly");
+
+    // Socket creation is synchronous at turn start, before any asynchronous LLM
+    // delta is consumed, so its handshake overlaps model generation.
+    expect(FakeCartesiaSocket.instances.length).toBe(before + 1);
+    await flush();
+    await flush();
+  });
+
+  test("empty LLM reply cancels the prewarmed Cartesia context", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say nothing");
+    await flush();
+    await flush();
+
+    // The socket was opened speculatively at turn start; with no speakable
+    // output it must be cancelled (closed) rather than leaked, and the turn
+    // still closes out with a usage frame.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.closed).toBe(true);
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.controlTypes()).not.toContain("speaking_start");
+  });
+
+  test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Sunlight reaches Earth quickly."]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "tell me about sunlight");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatchObject({
+      transcript: "Sunlight reaches Earth ",
+      continue: true,
+    });
+    expect(requests[1]).toMatchObject({
+      transcript: "quickly.",
+      continue: false,
+    });
+  });
+
   test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
     const client = new FakeClientSocket();
     await connectSession({
