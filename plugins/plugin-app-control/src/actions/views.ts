@@ -2836,9 +2836,24 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						return runViewsList({ client, viewType });
 
 					case "current": {
-						const currentView = await client.getCurrentView();
+						const currentView = await getCurrentView();
+						const visibleViewIds = currentView
+							? currentView.views?.length
+								? currentView.views
+								: [currentView.viewId]
+							: [];
+						const otherVisibleViewIds = visibleViewIds.filter(
+							(viewId) => viewId !== currentView?.viewId,
+						);
+						const availableViews =
+							otherVisibleViewIds.length > 0 ? await getViews() : [];
+						const otherVisibleLabels = otherVisibleViewIds.map(
+							(viewId) =>
+								availableViews.find((view) => view.id === viewId)?.label ??
+								viewId,
+						);
 						const resultText = currentView
-							? `Current view: ${currentView.viewLabel} (${currentView.viewType}) — ${currentView.viewId}${currentView.viewPath ? ` at ${currentView.viewPath}` : ""}.`
+							? `Current view: ${currentView.viewLabel} (${currentView.viewType}) — ${currentView.viewId}${currentView.viewPath ? ` at ${currentView.viewPath}` : ""}.${otherVisibleLabels.length > 0 ? ` Also visible: ${otherVisibleLabels.join(", ")}.` : ""}`
 							: "No current view has been reported yet.";
 						await callback?.({ text: resultText });
 						return {
@@ -2848,6 +2863,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 								mode: "current",
 								viewId: currentView?.viewId,
 								viewType: currentView?.viewType,
+								viewIds: visibleViewIds,
 							},
 							data: { currentView },
 						};

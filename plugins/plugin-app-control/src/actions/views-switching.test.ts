@@ -407,6 +407,49 @@ describe("view switching — VIEWS action resolver", () => {
 		});
 	});
 
+	describe("current layout reporting", () => {
+		it("names the focused pane and every other visible pane", async () => {
+			const client = clientFor([
+				...REGISTRY,
+				{
+					id: "notes",
+					label: "Notes",
+					description: "Simple Notes QA view.",
+					path: "/notes",
+					pluginName: "simple-views",
+					available: true,
+					viewType: "gui",
+				},
+			]);
+			client.getCurrentView = vi.fn(async () => ({
+				viewId: "simple-calendar",
+				viewLabel: "Simple Calendar",
+				viewType: "gui",
+				viewPath: "/simple-calendar",
+				views: ["simple-calendar", "notes"],
+			}));
+			const action = createViewsAction({
+				client,
+				hasOwnerAccess: vi.fn(async () => true),
+			});
+			const callback = vi.fn();
+
+			const result = await action.handler(
+				{ agentId: "agent-1" } as never,
+				message("what views are visible?") as never,
+				undefined,
+				{ action: "current" },
+				callback,
+			);
+
+			expect(result?.success).toBe(true);
+			expect(result?.text).toContain("Current view: Simple Calendar");
+			expect(result?.text).toContain("Also visible: Notes.");
+			expect(result?.values?.viewIds).toEqual(["simple-calendar", "notes"]);
+			expect(callback).toHaveBeenCalledWith({ text: result?.text });
+		});
+	});
+
 	describe("developer QA split routing", () => {
 		it("preserves the exact notes and simple-calendar ids in the split payload", async () => {
 			installNavigateCapture();

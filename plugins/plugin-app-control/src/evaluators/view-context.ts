@@ -17,6 +17,7 @@ import {
 import {
 	isStandaloneNotesSurfaceRequest,
 	resolveIntentView,
+	resolveNavigationView,
 } from "../actions/views-show.js";
 
 const VIEWS_ACTION_NAME = "VIEWS";
@@ -197,13 +198,14 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 			});
 			return undefined;
 		}
-		const target = views.find((view) => view.id === viewId);
-		if (!target) return undefined; // model named a view this deployment lacks
+		const resolution = resolveNavigationView(viewId, views);
+		if (resolution.kind !== "match") return undefined;
+		const target = resolution.view;
 		if (!isLatestViewTurn(turn)) return undefined;
 
 		try {
 			const currentSnapshot = await getCurrentViewSnapshot(clientId);
-			if (currentSnapshot.currentView?.viewId === viewId) return undefined;
+			if (currentSnapshot.currentView?.viewId === target.id) return undefined;
 			// A navigation completed while the contextual classifier was pending.
 			// Treat that newer shell state as authoritative even if its post-turn
 			// evaluator has not reached `shouldRun` to advance the watermark yet.
@@ -221,16 +223,16 @@ const navigateToContextualView: EvaluatorProcessor<ViewContextOutput> = {
 		}
 		if (!isLatestViewTurn(turn)) return undefined;
 
-		const ok = await client.navigate(viewId, {
+		const ok = await client.navigate(target.id, {
 			path: target.path,
 			viewType: target.viewType,
 			expectedRevision: startingViewRevision,
 		});
 		if (!ok) return undefined;
 		logger.info(
-			`[plugin-app-control] contextual view nav → ${viewId}${output.reason ? ` (${output.reason})` : ""}`,
+			`[plugin-app-control] contextual view nav → ${target.id}${output.reason ? ` (${output.reason})` : ""}`,
 		);
-		return { success: true, values: { contextualView: viewId } };
+		return { success: true, values: { contextualView: target.id } };
 	},
 };
 

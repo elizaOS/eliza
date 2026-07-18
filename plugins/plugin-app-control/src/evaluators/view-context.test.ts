@@ -55,10 +55,12 @@ function turnMessage(text: string, roomId = "r1") {
 /** Mock the loopback: list views, current view, capture navigate POSTs. */
 function mockLoopback(opts: {
 	ids?: readonly string[];
+	views?: readonly ReturnType<typeof viewSummary>[];
 	current?: string | null;
 }) {
 	const navigated: string[] = [];
-	const ids = opts.ids ?? REGISTERED_VIEW_IDS;
+	const views =
+		opts.views ?? (opts.ids ?? REGISTERED_VIEW_IDS).map(viewSummary);
 	let current = opts.current ?? null;
 	let revision = 1;
 	vi.mocked(globalThis.fetch).mockImplementation(
@@ -102,7 +104,7 @@ function mockLoopback(opts: {
 			return {
 				ok: true,
 				status: 200,
-				json: async () => ({ views: ids.map(viewSummary) }),
+				json: async () => ({ views }),
 			} as Response;
 		},
 	);
@@ -269,6 +271,69 @@ describe("viewContextEvaluator processor — navigates on the (mock-LLM) decisio
 			success: true,
 			values: { contextualView: "task-coordinator" },
 		});
+	});
+
+	it("resolves the calendar domain to the only registered simple-calendar view", async () => {
+		const simpleCalendar = {
+			...viewSummary("simple-calendar"),
+			label: "Calendar",
+		};
+		const { navigated } = mockLoopback({
+			views: [simpleCalendar],
+			current: "chat",
+		});
+
+		const result = await runProcessor({
+			viewId: "calendar",
+			reason: "meetings",
+		});
+
+		expect(navigated).toEqual(["simple-calendar"]);
+		expect(result).toMatchObject({
+			success: true,
+			values: { contextualView: "simple-calendar" },
+		});
+	});
+
+	it("prefers the exact calendar id when both calendar variants are registered", async () => {
+		const exactCalendar = { ...viewSummary("calendar"), label: "Calendar" };
+		const simpleCalendar = {
+			...viewSummary("simple-calendar"),
+			label: "Calendar",
+		};
+		const { navigated } = mockLoopback({
+			views: [simpleCalendar, exactCalendar],
+			current: "chat",
+		});
+
+		const result = await runProcessor({
+			viewId: "calendar",
+			reason: "meetings",
+		});
+
+		expect(navigated).toEqual(["calendar"]);
+		expect(result).toMatchObject({
+			success: true,
+			values: { contextualView: "calendar" },
+		});
+	});
+
+	it("fails closed when the calendar domain has equally ranked candidates", async () => {
+		const { navigated } = mockLoopback({
+			views: [
+				{ ...viewSummary("simple-calendar"), label: "Simple Calendar" },
+				{ ...viewSummary("work-calendar"), label: "Work Calendar" },
+			],
+			current: "chat",
+		});
+
+		const result = await runProcessor({
+			viewId: "calendar",
+			reason: "meetings",
+		});
+
+		expect(navigated).toEqual([]);
+		expect(result).toBeUndefined();
 	});
 
 	it('does NOT navigate when the decision is "none"', async () => {
