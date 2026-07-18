@@ -46,7 +46,7 @@ import {
 } from "../view-action-handoff";
 import { ensureAuthoritativeShellViewState } from "../view-shell-state";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
-import { clearChatDraft } from "./ChatComposerContext.hooks";
+import { clearChatDraft, writeChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   applyStreamingTextModification,
@@ -71,6 +71,55 @@ const SHELL_VIEW_SYNC_FAILURE_NOTICE =
 
 async function synchronizeShellViewBeforeTurn(): Promise<void> {
   await ensureAuthoritativeShellViewState();
+}
+
+interface ComposerPreflightClaimState {
+  nextNonce: number;
+  activeNonce: number | null;
+}
+
+/**
+ * Remove a successfully-sent snapshot without erasing edits made while its
+ * view-context preflight was pending. Appended text is the only edit that can
+ * be separated safely: any other mutation leaves the current draft intact.
+ */
+function consumeClaimedComposerText(
+  currentInput: string,
+  claimedInput: string,
+): string {
+  if (currentInput === claimedInput) return "";
+  if (currentInput.startsWith(claimedInput)) {
+    return currentInput.slice(claimedInput.length).trimStart();
+  }
+  return currentInput;
+}
+
+function isClaimedAttachment(
+  current: ImageAttachment,
+  claimed: ImageAttachment,
+): boolean {
+  if (current === claimed) return true;
+  return Boolean(
+    current.transcriptId &&
+      claimed.transcriptId &&
+      current.transcriptId === claimed.transcriptId,
+  );
+}
+
+/** Remove only attachment instances (or persistent transcript ids) claimed by the send. */
+function consumeClaimedComposerAttachments(
+  currentImages: ImageAttachment[],
+  claimedImages: ImageAttachment[],
+): ImageAttachment[] {
+  const unconsumedClaims = [...claimedImages];
+  return currentImages.filter((currentImage) => {
+    const claimIndex = unconsumedClaims.findIndex((claimedImage) =>
+      isClaimedAttachment(currentImage, claimedImage),
+    );
+    if (claimIndex < 0) return true;
+    unconsumedClaims.splice(claimIndex, 1);
+    return false;
+  });
 }
 
 async function handoffCompletedViewAction(
@@ -812,6 +861,16 @@ export function useChatSend(deps: UseChatSendDeps) {
   // the abort/finally microtask. Explicit stops and all other terminal paths
   // still clear it normally.
   const unmountingRef = useRef(false);
+
+  // The view-state barrier happens before a turn reaches the existing send
+  // queue. Claiming that short preflight independently prevents a double tap
+  // from submitting the same still-visible draft twice without changing the
+  // queue's deliberate ability to accept a later, newly-authored message while
+  // an earlier turn is streaming.
+  const composerPreflightClaimRef = useRef<ComposerPreflightClaimState>({
+    nextNonce: 0,
+    activeNonce: null,
+  });
 
   // Freeze-on-shared (cloud-agent handoff, PR2). While a shared→dedicated
   // handoff is migrating, the user is still pointed at the SHARED agent but the
@@ -2428,39 +2487,72 @@ export function useChatSend(deps: UseChatSendDeps) {
         metadata?: Record<string, unknown>;
       },
     ) => {
+      const preflightState = composerPreflightClaimRef.current;
+      if (preflightState.activeNonce !== null) return;
+
       const claimedInput = chatInputRef.current;
-      const imagesToSend = chatPendingImagesRef.current.length
-        ? [...chatPendingImagesRef.current]
-        : undefined;
+      const claimedImages = [...chatPendingImagesRef.current];
+      const imagesToSend = claimedImages.length ? claimedImages : undefined;
 
       if (!claimedInput.trim() && !imagesToSend?.length) {
         return;
       }
 
-      // Keep the draft and attachments untouched until the exact visible
-      // route/layout has reached the backend. A failed barrier therefore has a
-      // literal one-click retry path instead of clearing unsent user input.
-      if (!(await synchronizeShellViewForTurn())) return;
+      const claimNonce = ++preflightState.nextNonce;
+      preflightState.activeNonce = claimNonce;
+      const claimedConversationId = activeConversationIdRef.current;
 
-      chatInputRef.current = "";
-      chatPendingImagesRef.current = [];
-      setChatInput("");
-      setChatPendingImages([]);
-      // The composer draft for this conversation is now stale — the
-      // user just sent it. Clear before the debounce window so a
-      // background-app pause cannot snapshot the empty-then-restored
-      // value back to storage.
-      clearChatDraft(activeConversationIdRef.current);
+      try {
+        // Keep the draft and attachments untouched until the exact visible
+        // route/layout has reached the backend. A failed barrier therefore has
+        // a literal one-click retry path, including anything authored during
+        // the wait.
+        if (!(await synchronizeShellViewForTurn())) return;
 
-      // The reply target (if any) is attached + cleared inside sendChatText, the
-      // single chokepoint both this and the overlay's send() funnel through.
-      await sendChatText(claimedInput, {
-        channelType,
-        conversationId: activeConversationIdRef.current,
-        images: imagesToSend,
-        metadata: options?.metadata,
-        shellViewSynchronized: true,
-      });
+        // A conversation switch replaces the composer with another draft. The
+        // claimed turn still targets its original conversation, but must never
+        // consume state belonging to the newly-active one.
+        if (activeConversationIdRef.current === claimedConversationId) {
+          const remainingInput = consumeClaimedComposerText(
+            chatInputRef.current,
+            claimedInput,
+          );
+          const remainingImages = consumeClaimedComposerAttachments(
+            chatPendingImagesRef.current,
+            claimedImages,
+          );
+          chatInputRef.current = remainingInput;
+          chatPendingImagesRef.current = remainingImages;
+          setChatInput(remainingInput);
+          setChatPendingImages(remainingImages);
+
+          // Persist the exact remainder synchronously so a background-app pause
+          // cannot restore the already-sent prefix during the debounce window.
+          if (remainingInput) {
+            writeChatDraft(claimedConversationId, remainingInput);
+          } else {
+            clearChatDraft(claimedConversationId);
+          }
+        }
+
+        // The reply target (if any) is attached + cleared inside sendChatText,
+        // the single chokepoint both this and the overlay's send() funnel
+        // through. Calling it claims the queue synchronously before this
+        // preflight claim is released.
+        const sendPromise = sendChatText(claimedInput, {
+          channelType,
+          conversationId: claimedConversationId,
+          images: imagesToSend,
+          metadata: options?.metadata,
+          shellViewSynchronized: true,
+        });
+        preflightState.activeNonce = null;
+        await sendPromise;
+      } finally {
+        if (preflightState.activeNonce === claimNonce) {
+          preflightState.activeNonce = null;
+        }
+      }
     },
     [
       activeConversationIdRef,

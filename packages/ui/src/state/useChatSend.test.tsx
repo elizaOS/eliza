@@ -757,6 +757,161 @@ describe("useChatSend always streams (#9174)", () => {
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
   });
 
+  it("preserves text and attachments added while the view preflight is pending", async () => {
+    const viewPublished = deferred<Response>();
+    mocks.client.rawRequest.mockImplementationOnce(() => viewPublished.promise);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Done.",
+      completed: true,
+    });
+    setAuthoritativeShellViewState({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewType: "gui",
+    });
+    const claimedImage: ImageAttachment = {
+      data: "CLAIMED",
+      mimeType: "image/png",
+      name: "claimed.png",
+    };
+    const laterImage: ImageAttachment = {
+      data: "LATER",
+      mimeType: "image/png",
+      name: "later.png",
+    };
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.chatInputRef.current = "add a note";
+    deps.chatPendingImagesRef.current = [claimedImage];
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    act(() => {
+      sendPromise = result.current.handleChatSend();
+    });
+    await vi.waitFor(() => {
+      expect(mocks.client.rawRequest).toHaveBeenCalledTimes(1);
+    });
+
+    // The composer remains live during the preflight. Appending text keeps the
+    // original prefix visible; adding another attachment extends the same list.
+    deps.chatInputRef.current = "add a note and draft the next one";
+    deps.chatPendingImagesRef.current = [claimedImage, laterImage];
+
+    await act(async () => {
+      viewPublished.resolve(new Response("{}", { status: 200 }));
+      await sendPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    const sendArgs = mocks.client.sendConversationMessageStream.mock.calls[0];
+    expect(sendArgs[1]).toBe("add a note");
+    expect(sendArgs[5]).toEqual([claimedImage]);
+    expect(deps.chatInputRef.current).toBe("and draft the next one");
+    expect(deps.chatPendingImagesRef.current).toEqual([laterImage]);
+    expect(deps.setChatInput).toHaveBeenCalledWith("and draft the next one");
+    expect(deps.setChatPendingImages).toHaveBeenCalledWith([laterImage]);
+  });
+
+  it("claims a composer preflight once when Send is pressed twice", async () => {
+    const viewPublished = deferred<Response>();
+    mocks.client.rawRequest.mockImplementationOnce(() => viewPublished.promise);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Done.",
+      completed: true,
+    });
+    setAuthoritativeShellViewState({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewType: "gui",
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.chatInputRef.current = "send exactly once";
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let firstSend: Promise<void> | undefined;
+    let secondSend: Promise<void> | undefined;
+    act(() => {
+      firstSend = result.current.handleChatSend();
+      secondSend = result.current.handleChatSend();
+    });
+    await vi.waitFor(() => {
+      expect(mocks.client.rawRequest).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      viewPublished.resolve(new Response("{}", { status: 200 }));
+      await Promise.all([firstSend, secondSend]);
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0][1]).toBe(
+      "send exactly once",
+    );
+    expect(deps.chatInputRef.current).toBe("");
+  });
+
+  it("preserves the complete live composer when a pending view preflight fails", async () => {
+    const viewPublished = deferred<Response>();
+    mocks.client.rawRequest.mockImplementationOnce(() => viewPublished.promise);
+    setAuthoritativeShellViewState({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewType: "gui",
+    });
+    const claimedImage: ImageAttachment = {
+      data: "CLAIMED",
+      mimeType: "image/png",
+      name: "claimed.png",
+    };
+    const laterImage: ImageAttachment = {
+      data: "LATER",
+      mimeType: "image/png",
+      name: "later.png",
+    };
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.chatInputRef.current = "add a note";
+    deps.chatPendingImagesRef.current = [claimedImage];
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    act(() => {
+      sendPromise = result.current.handleChatSend();
+    });
+    await vi.waitFor(() => {
+      expect(mocks.client.rawRequest).toHaveBeenCalledTimes(1);
+    });
+
+    deps.chatInputRef.current = "replace this draft while waiting";
+    deps.chatPendingImagesRef.current = [laterImage];
+
+    await act(async () => {
+      viewPublished.reject(
+        Object.assign(new Error("Failed to fetch"), { kind: "network" }),
+      );
+      await sendPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+    expect(deps.chatInputRef.current).toBe("replace this draft while waiting");
+    expect(deps.chatPendingImagesRef.current).toEqual([laterImage]);
+    expect(deps.setChatInput).not.toHaveBeenCalled();
+    expect(deps.setChatPendingImages).not.toHaveBeenCalled();
+    expect(deps.setActionNotice).toHaveBeenCalledWith(
+      expect.stringMatching(/message wasn't sent.*try again/i),
+      "error",
+      8_000,
+    );
+  });
+
   it.each([
     "transport",
     "server",
