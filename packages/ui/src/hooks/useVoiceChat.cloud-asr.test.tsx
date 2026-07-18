@@ -26,7 +26,8 @@ const startLocalAsrRecorderMock = vi.mocked(startLocalAsrRecorder);
  * Regression guard for the cloud STT wiring gap: an `eliza-cloud` / `openai`
  * voice config used to fall straight through to the browser SpeechRecognition
  * engine in the chat composer (`useVoiceChat` only branched local-inference vs
- * browser), so the documented cloud transcriber (`/api/asr/cloud`) was never
+ * browser), so the documented cloud transcriber (direct worker when the cloud
+ * session is available, otherwise `/api/asr/cloud`) was never
  * reached from the PWA. These tests lock the composer capture to the cloud
  * proxy when the config selects a cloud provider.
  */
