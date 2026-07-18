@@ -259,6 +259,34 @@ jobs:
           # `audit:test-realness` compares touched tests against origin/develop.
           # Keep the merge base available so the diff-scoped ratchet runs in CI.
           fetch-depth: 0
+          clean: true
+
+      - name: Enforce runner workspace hygiene
+        run: |
+          # Self-hosted runners reuse the _work checkout across workflows. Jobs
+          # that check out submodules (nightly, build-android, publish-packages,
+          # voice-live-e2e, ...) leave populated submodule trees behind, and
+          # actions/checkout with `submodules: false` does not remove them.
+          # Their vendored test files then leak into repo-wide scans: on
+          # 2026-07-18, audit:test-realness scanned 7,914 files (todoTest=1)
+          # on runner-2 vs 7,520 (todoTest=0) in a clean checkout, because
+          # plugins/plugin-agent-orchestrator/vendor/opencode and
+          # plugins/plugin-local-inference/native/llama.cpp were still
+          # populated from a prior submodule-enabled run.
+          git submodule deinit -f --all >/dev/null
+          git clean -ffdx --quiet
+          status_output=$(git status --porcelain)
+          if [ -n "$status_output" ]; then
+            echo "::error::Runner workspace contaminated: git status is not clean after submodule deinit + clean. This is a stale-runner-workspace problem, not a branch regression."
+            echo "$status_output"
+            exit 1
+          fi
+          populated=$(git submodule status | grep -cv '^-' || true)
+          if [ "$populated" != "0" ]; then
+            echo "::error::Runner workspace contaminated: $populated submodule(s) still populated in a submodules:false job."
+            git submodule status
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
