@@ -562,6 +562,61 @@ describeIfPosix("shellAction", () => {
     );
   });
 
+  it("fences every user-facing background/history relay (#16563)", async () => {
+    const { runtime } = await makeRuntime();
+    const message = makeMessage();
+    const posts: Array<{ text: string; source?: string }> = [];
+    const cb = async (content: unknown) => {
+      posts.push(content as { text: string; source?: string });
+      return [];
+    };
+
+    // start_background echoes `$ command` — the literal italics-eaten shape
+    // from #16542's repro when the command carries paired asterisks.
+    const start = await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      {
+        action: "start_background",
+        command: "printf 'globs: *.md and *.ts'",
+      },
+      cb,
+    );
+    const handle = (start?.data as Record<string, unknown>).handle as string;
+
+    await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      { action: "poll_background", handle },
+      cb,
+    );
+    await shellAction.handler?.(
+      runtime,
+      message,
+      undefined,
+      { action: "list_background" },
+      cb,
+    );
+    // view_history needs the shell-history service this harness does not
+    // register; its relay shares the same fencePreformatted call (#16563).
+
+    expect(posts.length).toBe(3);
+    for (const post of posts) {
+      expect(post.source).toBe("coding-tools");
+      expect(post.text.startsWith("```")).toBe(true);
+      expect(post.text.trimEnd().endsWith("```")).toBe(true);
+    }
+
+    await pollUntil(
+      runtime,
+      message,
+      handle,
+      (data) => data.status === "exited",
+    );
+  });
+
   it("reports buffer truncation when background output exceeds the cap", async () => {
     const { runtime } = await makeRuntime({ backgroundBufferChars: 20 });
     const message = makeMessage();
