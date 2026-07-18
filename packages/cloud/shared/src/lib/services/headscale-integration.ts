@@ -67,8 +67,16 @@ export class HeadscaleIntegration {
   /**
    * Prepare VPN credentials for a new agent container.
    *
-   * Returns a single-use, ephemeral pre-auth key and the full set of
+   * Returns a single-use, persistent-node pre-auth key and the full set of
    * environment variables the container needs to join the VPN on boot.
+   *
+   * The node must not be ephemeral. Docker's `unless-stopped` policy restarts
+   * an agent in the same writable layer, so tailscaled reconnects with its
+   * persisted node identity. Headscale deletes ephemeral nodes as soon as they
+   * disconnect; the restarted container then sees `node no longer exists`,
+   * while its single-use auth key can only return `authkey already used`,
+   * leaving the agent in a permanent restart loop. Explicit sandbox teardown
+   * already calls cleanupContainerVPN(), so persistent nodes are still removed.
    */
   async prepareContainerVPN(input: PrepareContainerVPNInput): Promise<{
     preAuthKey: string;
@@ -78,15 +86,29 @@ export class HeadscaleIntegration {
     logger.info(`[headscale-integration] preparing VPN for agent ${agentId}`);
 
     try {
+      const tsHostname = inferTailscaleHostname(input);
+
+      // Persistent nodes survive ordinary Docker restarts by design. A full
+      // reprovision, however, creates a fresh container and auth key. Remove a
+      // stale registration for the deterministic hostname before issuing that
+      // key, otherwise waitForVPNRegistration() could accept the old node's IP
+      // before the replacement has joined. Fail closed on lookup/deletion
+      // errors so we never route a new sandbox to a stale container.
+      const existingNode = await this.client.getNodeByNameStrict(tsHostname);
+      if (existingNode) {
+        await this.client.deleteNode(existingNode.id);
+        logger.info(
+          `[headscale-integration] removed stale VPN node ${existingNode.id} before reprovisioning ${agentId}`,
+        );
+      }
+
       const preAuthKeyObj = await this.client.createPreAuthKey({
         reusable: false,
-        ephemeral: true,
+        ephemeral: false,
         aclTags: ["tag:agent"],
         user: inferHeadscaleUser(input),
         ensureUser: true,
       });
-
-      const tsHostname = inferTailscaleHostname(input);
 
       const envVars: Record<string, string> = {
         HEADSCALE_URL: headscalePublicUrl(),

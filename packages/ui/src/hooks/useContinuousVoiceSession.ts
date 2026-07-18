@@ -36,7 +36,7 @@ export interface ContinuousVoiceSessionState {
   realtimeEligible: boolean;
   /** Unified status for `ChatVoiceStatusBar` (realtime wins when active). */
   status: VoiceContinuousStatus;
-  /** Live partial transcript (realtime `stt_partial`, else batch interim). */
+  /** Visible in-flight transcript: partial while speaking, committed final while thinking. */
   interimTranscript: string;
   /** Committed final transcript from the realtime path ("" on batch). */
   finalTranscript: string;
@@ -44,6 +44,10 @@ export interface ContinuousVoiceSessionState {
   agentSpeaking: boolean;
   /** Realtime session paused by a visibility-hide (paused, not broken). */
   paused: boolean;
+  /** Why this interaction fell back to standard voice, retained for UI diagnostics. */
+  realtimeFallbackReason: UseRealtimeVoiceSessionState["fallbackReason"];
+  /** Record an eligibility fallback discovered before realtime start. */
+  reportRealtimeFallback: UseRealtimeVoiceSessionState["reportFallback"];
   /** Typed realtime error, actionable or not (null on the batch path). */
   realtimeError: RealtimeVoiceError | null;
   /** Latency snapshot for the badge (batch — realtime latency is server-side). */
@@ -77,16 +81,15 @@ export function useContinuousVoiceSession(
 
   const realtimeActive = realtime.available && realtime.active;
 
-  const start = useCallback(
-    async (): Promise<RealtimeVoiceStartOutcome | { kind: "batch" }> => {
-      if (realtime.available) {
-        return realtime.start();
-      }
-      await batch.resume();
-      return { kind: "batch" };
-    },
-    [batch, realtime],
-  );
+  const start = useCallback(async (): Promise<
+    RealtimeVoiceStartOutcome | { kind: "batch" }
+  > => {
+    if (realtime.available) {
+      return realtime.start();
+    }
+    await batch.resume();
+    return { kind: "batch" };
+  }, [batch, realtime]);
 
   const stop = useCallback(async () => {
     // A stop during bring-up (connecting, not yet live) must cancel the pending
@@ -109,7 +112,8 @@ export function useContinuousVoiceSession(
       ? realtime.status
       : batch.status;
     const interimTranscript = realtimeActive
-      ? realtime.transcriptPartial
+      ? realtime.transcriptPartial ||
+        (status === "thinking" ? realtime.transcriptFinal : "")
       : batch.interimTranscript;
 
     return {
@@ -123,6 +127,8 @@ export function useContinuousVoiceSession(
         ? realtime.agentSpeaking
         : batch.status === "speaking",
       paused: realtimeActive ? realtime.paused : false,
+      realtimeFallbackReason: realtime.fallbackReason,
+      reportRealtimeFallback: realtime.reportFallback,
       realtimeError: realtime.error,
       latency: batch.latency,
       speaker: realtime.speaker ?? batch.speaker,

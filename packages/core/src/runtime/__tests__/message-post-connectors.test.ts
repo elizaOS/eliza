@@ -252,6 +252,43 @@ describe("message and post connector registries", () => {
 		expect(runtime.getPostConnectors()).toEqual([]);
 	});
 
+	it("preserves accountRouting: connector through registration normalization (unscoped only)", () => {
+		const runtime = makeRuntime();
+
+		runtime.registerMessageConnector({
+			source: "x",
+			label: "X DMs",
+			accountRouting: "connector",
+			sendHandler: async () => undefined,
+		});
+		runtime.registerPostConnector({
+			source: "x",
+			label: "X",
+			accountRouting: "connector",
+			postHandler: async () => undefined,
+		});
+		// A scoped registration must NOT carry the unscoped dispatcher opt-in.
+		runtime.registerPostConnector({
+			source: "social",
+			accountId: "owner-account",
+			label: "Social Owner",
+			accountRouting: "connector",
+			postHandler: async () => undefined,
+		});
+
+		const message = runtime
+			.getMessageConnectors()
+			.find((connector) => connector.source === "x");
+		expect(message?.accountRouting).toBe("connector");
+		const posts = runtime.getPostConnectors();
+		expect(
+			posts.find((connector) => connector.source === "x")?.accountRouting,
+		).toBe("connector");
+		expect(
+			posts.find((connector) => connector.source === "social")?.accountRouting,
+		).toBeUndefined();
+	});
+
 	it("selects account-scoped connectors without falling back to another account", () => {
 		const connectors = [
 			{

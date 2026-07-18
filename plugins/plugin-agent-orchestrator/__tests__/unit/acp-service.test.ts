@@ -23,6 +23,7 @@ import {
   type AcpJsonRpcMessage,
   type ApprovalPreset,
   SessionCapError,
+  type SessionInfo,
 } from "../../src/services/types.js";
 
 type NativeEventHandler = (
@@ -57,6 +58,10 @@ type NativeMockState = {
   NativeAcpClient?: new (opts: NativeOptions) => MockNativeClient;
   instances: MockNativeClient[];
   startImplementation?: (client: MockNativeClient) => Promise<void>;
+  createSessionImplementation?: (
+    client: MockNativeClient,
+    workdir: string,
+  ) => Promise<{ sessionId: string; agentSessionId: string }>;
 };
 
 function getNativeMockState(): NativeMockState {
@@ -79,10 +84,14 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
     start = vi.fn(async () => {
       await getNativeMockState().startImplementation?.(this);
     });
-    createSession = vi.fn(async () => ({
-      sessionId: "protocol-session",
-      agentSessionId: "agent-session",
-    }));
+    createSession = vi.fn(async (workdir: string) =>
+      getNativeMockState().createSessionImplementation
+        ? await getNativeMockState().createSessionImplementation(this, workdir)
+        : {
+            sessionId: "protocol-session",
+            agentSessionId: "agent-session",
+          },
+    );
     prompt = vi.fn(async () => ({ stopReason: "end_turn" }));
     cancel = vi.fn(async () => undefined);
     closeSession = vi.fn(async () => undefined);
@@ -117,7 +126,9 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
 import {
   AcpService,
   ensureWorkspaceElizaCodeAcp,
+  normalizeClaudeAcpModelId,
 } from "../../src/services/acp-service.js";
+import { InMemorySessionStore } from "../../src/services/session-store.js";
 
 vi.mock("node:child_process", () => ({
   exec: vi.fn(),
@@ -303,6 +314,7 @@ beforeEach(() => {
   spawnMock.mockReset();
   nativeClientMock.instances.length = 0;
   nativeClientMock.startImplementation = undefined;
+  nativeClientMock.createSessionImplementation = undefined;
 });
 
 afterEach(() => {
@@ -313,6 +325,18 @@ function firstNativeClient(): MockNativeClient {
   const client = nativeClientMock.instances[0];
   if (!client) throw new Error("expected NativeAcpClient to be constructed");
   return client;
+}
+
+async function waitForNativeClient(
+  timeoutMs = 4000,
+): Promise<MockNativeClient> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const client = nativeClientMock.instances[0];
+    if (client) return client;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("expected NativeAcpClient to be constructed");
 }
 
 describe("AcpService", () => {
@@ -414,6 +438,70 @@ describe("AcpService", () => {
       | Record<string, string>
       | undefined;
     expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
+  });
+
+  it("normalizes Claude ACP model context suffixes on explicit spawn models", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CLAUDE_ACP_COMMAND: "claude-agent-acp --stdio",
+      }),
+    );
+    await service.start();
+
+    const result = await service.spawnSession({
+      name: "claude-normalized-model",
+      agentType: "claude",
+      model: "claude-opus-4-8[1m]",
+      workdir: "/tmp/acp-test",
+    });
+
+    const session = await service.getSession(result.sessionId);
+    expect(normalizeClaudeAcpModelId(" claude-sonnet-5[200k][1m] ")).toBe(
+      "claude-sonnet-5",
+    );
+    expect(nativeClientMock.instances[0]?.opts.env?.ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-8",
+    );
+    expect(nativeClientMock.instances[0]?.opts.env?.OPENAI_MODEL).toBe(
+      "claude-opus-4-8",
+    );
+    expect(session?.metadata?.spawnModel).toBe("claude-opus-4-8");
+    await service.stop();
+  });
+
+  it("normalizes Claude ACP model context suffixes inherited from config env", async () => {
+    const previous = snapshotEnv([
+      "ELIZA_CLAUDE_MODEL_POWERFUL",
+      "ELIZA_CONFIG_PATH",
+    ]);
+    process.env.ELIZA_CLAUDE_MODEL_POWERFUL = "claude-opus-4-8[1m]";
+    process.env.ELIZA_CONFIG_PATH = join(
+      tmpdir(),
+      "acp-claude-model-config-does-not-exist.json",
+    );
+    try {
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_CLAUDE_ACP_COMMAND: "claude-agent-acp --stdio",
+        }),
+      );
+      await service.start();
+
+      await service.spawnSession({
+        name: "claude-config-normalized-model",
+        agentType: "claude",
+        workdir: "/tmp/acp-test",
+      });
+
+      expect(nativeClientMock.instances[0]?.opts.env?.ANTHROPIC_MODEL).toBe(
+        "claude-opus-4-8",
+      );
+      await service.stop();
+    } finally {
+      restoreEnv(previous);
+    }
   });
 
   it("pins configured coding git identity over inherited GIT env on CLI spawns", async () => {
@@ -962,6 +1050,66 @@ describe("AcpService", () => {
     }
   });
 
+  it("retries Codex ACP once when createSession surfaces the Landlock panic", async () => {
+    const previousOverride = process.env.ELIZA_CODEX_ACP_LANDLOCK;
+    process.env.ELIZA_CODEX_ACP_LANDLOCK = "1";
+    try {
+      nativeClientMock.createSessionImplementation = async (client) => {
+        if (client.opts.env?.INITIAL_AGENT_MODE !== "agent-full-access") {
+          throw new Error(
+            "ACP agent exited with code 101: thread 'main' panicked: permission profiles requiring direct runtime enforcement are incompatible with --use-legacy-landlock",
+          );
+        }
+        return {
+          sessionId: "protocol-session",
+          agentSessionId: "agent-session",
+        };
+      };
+      const rt = runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+      });
+      const service = new AcpService(rt);
+      await service.start();
+
+      const result = await service.spawnSession({
+        name: "codex-create-session-landlock-retry",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+      });
+
+      expect(result.status).toBe("ready");
+      expect(nativeClientMock.instances).toHaveLength(2);
+      expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
+        undefined,
+      );
+      expect(nativeClientMock.instances[0]?.close).toHaveBeenCalled();
+      expect(nativeClientMock.instances[1]?.opts.command).toBe(
+        nativeClientMock.instances[0]?.opts.command,
+      );
+      expect(nativeClientMock.instances[1]?.opts.env?.INITIAL_AGENT_MODE).toBe(
+        "agent-full-access",
+      );
+      expect(nativeClientMock.instances[1]?.createSession).toHaveBeenCalledWith(
+        RESOLVED_ACP_WORKDIR,
+      );
+      const logger = (rt as { logger: { warn: ReturnType<typeof vi.fn> } })
+        .logger;
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Codex ACP Landlock unavailable"),
+        expect.objectContaining({
+          sandboxMode: "danger-full-access",
+          approvalPolicy: "never",
+        }),
+      );
+    } finally {
+      if (previousOverride === undefined) {
+        delete process.env.ELIZA_CODEX_ACP_LANDLOCK;
+      } else {
+        process.env.ELIZA_CODEX_ACP_LANDLOCK = previousOverride;
+      }
+    }
+  });
+
   it("does not relax an explicit managed sandbox after a Landlock panic", async () => {
     nativeClientMock.startImplementation = async () => {
       throw new Error(
@@ -1181,6 +1329,233 @@ describe("AcpService", () => {
         ],
       ]),
     );
+  });
+
+  it("dispatches sendPrompt by persisted session transport in a mixed resumed service", async () => {
+    const stateRoot = await fs.mkdtemp(join(os.tmpdir(), "acp-mixed-mode-"));
+    const store = new InMemorySessionStore();
+    const now = new Date();
+    const session = (
+      id: string,
+      transportMode: "cli" | "native",
+      acpxSessionId: string,
+    ): SessionInfo => ({
+      id,
+      name: id,
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      status: "ready",
+      acpxSessionId,
+      approvalPreset: "autonomous",
+      createdAt: now,
+      lastActivityAt: now,
+      metadata: { transportMode },
+    });
+    await store.create(session("cli-resumed", "cli", "cli-protocol"));
+    await store.create(session("native-resumed", "native", "native-protocol"));
+    await fs.mkdir(join(stateRoot, "sessions"), { recursive: true });
+    await fs.writeFile(
+      join(stateRoot, "sessions", "cli-protocol.json"),
+      "{}",
+      "utf8",
+    );
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      }),
+      { store },
+    );
+    Object.defineProperty(service, "acpxStateRoot", {
+      value: () => stateRoot,
+    });
+    const events: Array<[string, string, unknown]> = [];
+    service.onSessionEvent((sid, event, payload) =>
+      events.push([sid, event, payload]),
+    );
+    await service.start();
+
+    const cliPrompt = nextProc();
+    const sentCli = service.sendPrompt("cli-resumed", "hello cli");
+    await waitForSpawn(cliPrompt);
+    cliPrompt.proc.stdout.emit(
+      "data",
+      Buffer.from(
+        '{"jsonrpc":"2.0","id":"req-1","result":{"stopReason":"end_turn"},"sessionId":"cli-resumed"}\n',
+      ),
+    );
+    closeOk(cliPrompt);
+    await sentCli;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(spawnMock.mock.calls[0]?.[0]).toBe("acpx");
+    expect(spawnMock.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([
+        "prompt",
+        "-s",
+        "cli-resumed",
+        "--",
+        "hello cli",
+      ]),
+    );
+    expect(nativeClientMock.instances).toHaveLength(0);
+
+    const sentNative = service.sendPrompt("native-resumed", "hello native");
+    const client = await waitForNativeClient();
+    await sentNative;
+
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+    expect(client.opts.command).toBe("codex-acp --stdio");
+    expect(client.createSession).toHaveBeenCalledWith(RESOLVED_ACP_WORKDIR);
+    expect(client.prompt).toHaveBeenCalledWith(
+      "protocol-session",
+      "hello native",
+    );
+    expect(events).toEqual(
+      expect.arrayContaining([
+        [
+          "native-resumed",
+          "reconnected",
+          expect.objectContaining({ acpxSessionId: "protocol-session" }),
+        ],
+      ]),
+    );
+    await service.stop();
+    await fs.rm(stateRoot, { recursive: true, force: true });
+  });
+
+  it("dispatches cancelSession and closeSession by persisted CLI transport in a native-default service", async () => {
+    const store = new InMemorySessionStore();
+    const now = new Date();
+    const cliSession = (id: string): SessionInfo => ({
+      id,
+      name: id,
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+      status: "ready",
+      acpxSessionId: `${id}-protocol`,
+      approvalPreset: "autonomous",
+      createdAt: now,
+      lastActivityAt: now,
+      metadata: { transportMode: "cli" },
+    });
+    await store.create(cliSession("cli-cancel"));
+    await store.create(cliSession("cli-close"));
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      }),
+      { store },
+    );
+    await service.start();
+
+    const cancelProc = nextProc();
+    const cancelled = service.cancelSession("cli-cancel");
+    await waitForSpawn(cancelProc);
+    closeOk(cancelProc);
+    await cancelled;
+
+    const closeProc = nextProc();
+    const closed = service.closeSession("cli-close");
+    await waitForSpawn(closeProc);
+    closeOk(closeProc);
+    await closed;
+
+    expect(nativeClientMock.instances).toHaveLength(0);
+    expect(spawnMock).toHaveBeenCalledTimes(2);
+    expect(spawnMock.mock.calls[0]?.[0]).toBe("acpx");
+    expect(spawnMock.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining(["codex", "cancel", "-s", "cli-cancel"]),
+    );
+    expect(spawnMock.mock.calls[1]?.[0]).toBe("acpx");
+    expect(spawnMock.mock.calls[1]?.[1]).toEqual(
+      expect.arrayContaining(["codex", "sessions", "close", "cli-close"]),
+    );
+    expect((await service.getSession("cli-cancel"))?.status).toBe("cancelled");
+    expect((await service.getSession("cli-close"))?.status).toBe("stopped");
+    await service.stop();
+  });
+
+  it("retries managed Codex Landlock fallback when reconnecting a native session", async () => {
+    const previousOverride = process.env.ELIZA_CODEX_ACP_LANDLOCK;
+    process.env.ELIZA_CODEX_ACP_LANDLOCK = "1";
+    try {
+      const store = new InMemorySessionStore();
+      const now = new Date();
+      await store.create({
+        id: "native-reconnect",
+        name: "native-reconnect",
+        agentType: "codex",
+        workdir: "/tmp/acp-test",
+        status: "ready",
+        acpxSessionId: "old-protocol",
+        approvalPreset: "autonomous",
+        createdAt: now,
+        lastActivityAt: now,
+        metadata: {
+          transportMode: "native",
+          spawnModel: "claude-opus-4-1",
+        },
+      });
+      nativeClientMock.createSessionImplementation = async (client) => {
+        if (client.opts.env?.INITIAL_AGENT_MODE !== "agent-full-access") {
+          throw new Error(
+            "ACP agent exited with code 101: thread 'main' panicked: permission profiles requiring direct runtime enforcement are incompatible with --use-legacy-landlock",
+          );
+        }
+        return {
+          sessionId: "protocol-session",
+          agentSessionId: "agent-session",
+        };
+      };
+      const rt = runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+      });
+      const service = new AcpService(rt, { store });
+      await service.start();
+
+      const result = await service.sendPrompt("native-reconnect", "resume");
+
+      expect(result.stopReason).toBe("end_turn");
+      expect(nativeClientMock.instances).toHaveLength(2);
+      expect(nativeClientMock.instances[0]?.opts.env?.INITIAL_AGENT_MODE).toBe(
+        undefined,
+      );
+      expect(nativeClientMock.instances[0]?.opts.env?.OPENAI_MODEL).toBe(
+        "claude-opus-4-1",
+      );
+      expect(nativeClientMock.instances[0]?.close).toHaveBeenCalled();
+      expect(nativeClientMock.instances[1]?.opts.command).toBe(
+        nativeClientMock.instances[0]?.opts.command,
+      );
+      expect(nativeClientMock.instances[1]?.opts.env?.INITIAL_AGENT_MODE).toBe(
+        "agent-full-access",
+      );
+      expect(nativeClientMock.instances[1]?.createSession).toHaveBeenCalledWith(
+        RESOLVED_ACP_WORKDIR,
+      );
+      expect(nativeClientMock.instances[1]?.prompt).toHaveBeenCalledWith(
+        "protocol-session",
+        "resume",
+      );
+      const logger = (rt as { logger: { warn: ReturnType<typeof vi.fn> } })
+        .logger;
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Codex ACP Landlock unavailable"),
+        expect.objectContaining({
+          sandboxMode: "danger-full-access",
+          approvalPolicy: "never",
+        }),
+      );
+      await service.stop();
+    } finally {
+      if (previousOverride === undefined) {
+        delete process.env.ELIZA_CODEX_ACP_LANDLOCK;
+      } else {
+        process.env.ELIZA_CODEX_ACP_LANDLOCK = previousOverride;
+      }
+    }
   });
 
   it("uses an explicit OpenCode ACP command override when configured", async () => {

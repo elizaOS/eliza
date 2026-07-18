@@ -132,6 +132,7 @@ import {
   type ModelGatewayLeaseBroker,
   resetModelGatewayLease,
 } from "../../src/services/model-gateway-lease.js";
+import { InMemorySessionStore } from "../../src/services/session-store.js";
 import { resetSessionSpendUsd } from "../../src/services/spend-allowance.js";
 
 const GATEWAY_URL = "https://gateway.test.invalid/v1";
@@ -579,6 +580,42 @@ describe("strict mode — fail closed rather than hand out a static token", () =
     expect(nativeClientMock.instances).toHaveLength(0);
     expect(await service.listSessions()).toHaveLength(0);
     await service.stop();
+  });
+
+  it("strict reconnect lease rejection preserves the persisted session as errored", async () => {
+    enableGateway();
+    process.env.ELIZA_MODEL_GATEWAY_STRICT = "1";
+    const gateway = new FakeGateway();
+    configureModelGatewayLease({ broker: gateway.broker() });
+    const store = new InMemorySessionStore();
+
+    const { runtime: firstRuntime } = runtime();
+    const firstService = new AcpService(firstRuntime, { store });
+    await firstService.start();
+    const spawned = await firstService.spawnSession({
+      name: "lease-strict-reconnect",
+      agentType: "claude",
+      workdir: "/tmp/acp-lease-test",
+    });
+    await firstService.stop();
+
+    gateway.mintError = new Error("broker unreachable on reconnect");
+    const { runtime: reconnectRuntime } = runtime();
+    const reconnectService = new AcpService(reconnectRuntime, { store });
+    await reconnectService.start();
+
+    await expect(
+      reconnectService.sendToSession(spawned.sessionId, "resume after restart"),
+    ).rejects.toThrow(/strict fail-closed/i);
+
+    expect(nativeClientMock.instances).toHaveLength(1);
+    const persisted = await store.get(spawned.sessionId);
+    expect(persisted).toMatchObject({
+      id: spawned.sessionId,
+      status: "errored",
+    });
+    expect(persisted?.lastError).toMatch(/strict fail-closed/i);
+    await reconnectService.stop();
   });
 
   it("gateway ON, NON-strict, broker mint fails: falls back to the static token", async () => {

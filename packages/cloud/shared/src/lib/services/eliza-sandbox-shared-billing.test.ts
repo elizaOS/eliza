@@ -10,7 +10,8 @@ import { sharedRuntimeHistoryRepository } from "../../db/repositories/shared-run
 import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import * as realAiBillingNs from "./ai-billing";
 import * as realAiBillingRecordsNs from "./ai-billing-records";
-import * as realRunSharedAgentTurnNs from "./shared-runtime/run-shared-agent-turn";
+
+const realRunSharedAgentTurnNs = await import("./shared-runtime/run-shared-agent-turn");
 
 // Bun runs every cloud-shared test file in a single process, and `mock.module`
 // overrides are process-global with no built-in per-file teardown. The mocks
@@ -105,6 +106,24 @@ const runSharedAgentTurn = mock(async () => ({
   },
 }));
 
+const runSharedAgentTurnStream = mock(async () => ({
+  model: "gpt-oss-120b",
+  degraded: false,
+  parts: (async function* () {
+    yield { type: "text-delta" as const, text: "metered " };
+    yield { type: "text-delta" as const, text: "reply" };
+    yield {
+      type: "finish" as const,
+      text: "metered reply",
+      usage: {
+        inputTokens: 11,
+        outputTokens: 7,
+        totalTokens: 18,
+      },
+    };
+  })(),
+}));
+
 const resolveSharedAgentTurnModel = mock(() => "gpt-oss-120b");
 
 beforeAll(() => {
@@ -122,6 +141,7 @@ beforeAll(() => {
   }));
   mock.module("./shared-runtime/run-shared-agent-turn", () => ({
     runSharedAgentTurn,
+    runSharedAgentTurnStream,
     resolveSharedAgentTurnModel,
   }));
 });
@@ -204,8 +224,32 @@ afterEach(() => {
   estimateInputTokens.mockClear();
   aiBillingRecord.mockClear();
   runSharedAgentTurn.mockClear();
+  runSharedAgentTurnStream.mockClear();
   resolveSharedAgentTurnModel.mockClear();
 });
+
+function delay(ms: number): Promise<"timeout"> {
+  return new Promise((resolve) => setTimeout(() => resolve("timeout"), ms));
+}
+
+async function readSharedStreamEvents(
+  response: Response,
+): Promise<Array<{ event: string | null; data: Record<string, unknown> }>> {
+  const body = await response.text();
+  return body
+    .split("\n\n")
+    .filter((frame) => frame.trim().length > 0)
+    .map((frame) => {
+      const lines = frame.split("\n");
+      const eventLine = lines.find((line) => line.startsWith("event: "));
+      const dataLine = lines.find((line) => line.startsWith("data: "));
+      if (!dataLine) throw new Error(`SSE frame missing data: ${frame}`);
+      return {
+        event: eventLine ? eventLine.slice("event: ".length) : null,
+        data: JSON.parse(dataLine.slice("data: ".length)),
+      };
+    });
+}
 
 describe("ElizaSandboxService shared runtime billing", () => {
   test("running dedicated turns use the Worker router origin and bypass shared billing", async () => {
@@ -447,6 +491,135 @@ describe("ElizaSandboxService shared runtime billing", () => {
       }));
       findRunningSandboxSpy.mockRestore();
       historyGetSpy.mockRestore();
+    }
+  });
+
+  test("shared-runtime bridgeStream refunds the reservation when the stream has no parts", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
+    runSharedAgentTurnStream.mockImplementationOnce(async () => ({
+      model: "gpt-oss-120b",
+      degraded: false,
+    }));
+
+    try {
+      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridgeStream(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "missing-parts",
+          method: "message.send",
+          params: { text: "hello" },
+        }),
+      );
+
+      expect(response).toBeInstanceOf(Response);
+      expect(await response?.text()).toContain("Shared runtime stream did not start");
+      expect(reconcileReservation).toHaveBeenCalledWith(0);
+      expect(historyUpsertSpy).not.toHaveBeenCalled();
+      expect(billUsage).not.toHaveBeenCalled();
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyUpsertSpy.mockRestore();
+    }
+  });
+
+  test("shared-runtime bridgeStream returns before model completion and emits chunks before done", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
+    let finishModel!: () => void;
+    const modelCompletion = new Promise<void>((resolve) => {
+      finishModel = resolve;
+    });
+    runSharedAgentTurn.mockImplementationOnce(async () => {
+      await modelCompletion;
+      return {
+        reply: "should not buffer through non-streaming send",
+        history: [],
+        model: "gpt-oss-120b",
+        degraded: false,
+      };
+    });
+    runSharedAgentTurnStream.mockImplementationOnce(async () => ({
+      model: "gpt-oss-120b",
+      degraded: false,
+      parts: (async function* () {
+        yield { type: "text-delta" as const, text: "metered " };
+        await modelCompletion;
+        yield { type: "text-delta" as const, text: "reply" };
+        yield {
+          type: "finish" as const,
+          text: "metered reply",
+          usage: {
+            inputTokens: 11,
+            outputTokens: 7,
+            totalTokens: 18,
+          },
+        };
+      })(),
+    }));
+
+    try {
+      const responsePromise = runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridgeStream(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "shared-stream",
+          method: "message.send",
+          params: { text: "hello" },
+        }),
+      );
+      const earlyResponse = await Promise.race([responsePromise, delay(50)]);
+      expect(earlyResponse).toBeInstanceOf(Response);
+      expect(runSharedAgentTurn).not.toHaveBeenCalled();
+      expect(runSharedAgentTurnStream).toHaveBeenCalledTimes(1);
+
+      finishModel();
+      const response = await responsePromise;
+      if (!response) throw new Error("bridgeStream returned null");
+      const events = await readSharedStreamEvents(response);
+
+      expect(events.map((event) => event.event)).toEqual(["chunk", "chunk", "done"]);
+      expect(events[0]?.data.chunk).toBe("metered ");
+      expect(events[1]?.data.chunk).toBe("reply");
+      expect(events[0]?.data.fullText).toBe("metered ");
+      expect(events[1]?.data.fullText).toBe("metered reply");
+      expect(events[2]?.data.text).toBe("metered reply");
+      expect(reserveCredits).toHaveBeenCalledTimes(1);
+      expect(historyUpsertSpy).toHaveBeenCalledTimes(1);
+      expect(billUsage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organizationId: sandbox.organization_id,
+          model: "gpt-oss-120b",
+        }),
+        { inputTokens: 11, outputTokens: 7, totalTokens: 18 },
+      );
+      expect(reconcileReservation).toHaveBeenCalledWith(0.0003);
+      expect(recordUsageAnalytics).toHaveBeenCalledWith(
+        expect.objectContaining({ organizationId: sandbox.organization_id }),
+        expect.objectContaining({ totalCost: 0.0003 }),
+        expect.objectContaining({ type: "chat", content: "metered reply", prompt: "hello" }),
+      );
+    } finally {
+      finishModel();
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyUpsertSpy.mockRestore();
     }
   });
 });

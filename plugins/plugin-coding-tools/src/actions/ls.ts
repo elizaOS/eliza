@@ -20,6 +20,7 @@ import {
 
 import {
   failureToActionResult,
+  fencePreformatted,
   readArrayParam,
   readStringParam,
   successActionResult,
@@ -213,7 +214,8 @@ export async function lsHandler(
       `${CODING_TOOLS_LOG_PREFIX} LS dir=${routed.payload.path} count=${sorted.length} truncated=${routed.payload.truncated}`,
     );
 
-    if (callback) await callback({ text, source: "coding-tools" });
+    if (callback)
+      await callback({ text: fencePreformatted(text), source: "coding-tools" });
 
     return successActionResult(text, {
       entries: sorted,
@@ -289,7 +291,8 @@ export async function lsHandler(
     `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated}`,
   );
 
-  if (callback) await callback({ text, source: "coding-tools" });
+  if (callback)
+    await callback({ text: fencePreformatted(text), source: "coding-tools" });
 
   return successActionResult(text, {
     entries: sorted,

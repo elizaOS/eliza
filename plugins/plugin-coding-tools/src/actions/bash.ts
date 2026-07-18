@@ -20,8 +20,11 @@ import {
   type State,
 } from "@elizaos/core";
 import { resolveRuntimeExecutionMode } from "@elizaos/shared";
+import { classifyDestructiveCommand } from "../lib/destructive-gate.js";
 import {
   failureToActionResult,
+  fencePreformatted,
+  readBoolParam,
   readNumberParam,
   readPositiveIntSetting,
   readStringParam,
@@ -1212,6 +1215,13 @@ export const shellAction: Action = {
       schema: { type: "number" },
     },
     {
+      name: "confirm",
+      description:
+        "Set true ONLY after the user has explicitly confirmed THIS destructive bulk operation in chat (recursive delete, raw device overwrite, database drop). Never set it preemptively.",
+      required: false,
+      schema: { type: "boolean" },
+    },
+    {
       name: "handle",
       description:
         "Stable background shell handle returned by action=start_background.",
@@ -1311,7 +1321,12 @@ export const shellAction: Action = {
             .join("\n")
         : "(no shell history recorded for this conversation)";
       const text = `Shell command history (last ${entries.length}):\n${lines}`;
-      if (callback) await callback({ text, source: "coding-tools" });
+      // Fenced (#16563): raw executed commands routinely carry paired `*`/`_`.
+      if (callback)
+        await callback({
+          text: fencePreformatted(text),
+          source: "coding-tools",
+        });
       return successActionResult(text, {
         actionName: "SHELL",
         [CANONICAL_SUBACTION_KEY]: "view_history",
@@ -1356,7 +1371,12 @@ export const shellAction: Action = {
                 .join("\n")
             : "(no background shell sessions for this conversation)";
           const text = `Background shell sessions (${sessions.length}):\n${lines}`;
-          if (callback) await callback({ text, source: "coding-tools" });
+          // Fenced (#16563): per-session lines embed raw command strings.
+          if (callback)
+            await callback({
+              text: fencePreformatted(text),
+              source: "coding-tools",
+            });
           return successActionResult(text, {
             actionName: "SHELL",
             [CANONICAL_SUBACTION_KEY]: "list_background",
@@ -1437,7 +1457,13 @@ export const shellAction: Action = {
         ]
           .filter(Boolean)
           .join("\n");
-        if (callback) await callback({ text, source: "coding-tools" });
+        // Fenced (#16563): the stdout/stderr blocks are the same transcript
+        // format the fenced foreground path emits.
+        if (callback)
+          await callback({
+            text: fencePreformatted(text),
+            source: "coding-tools",
+          });
         return successActionResult(text, {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "poll_background",
@@ -1584,6 +1610,38 @@ export const shellAction: Action = {
         process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE?.trim().toLowerCase();
       return v === "1" || v === "true" || v === "yes" || v === "on";
     })();
+    // Destructive bulk operations on the CHAT path require an explicit
+    // in-chat confirmation before they run (a confirmation gate, not a
+    // refusal — the planner re-issues the same command with confirm=true
+    // after the user says yes). Coding sub-agents execute explicit task
+    // briefs, which carry their own confirmation upstream, so they are
+    // exempt. Opt out with ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0.
+    const destructiveGateEnabled = ((): boolean => {
+      const v =
+        process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM?.trim().toLowerCase();
+      return !(v === "0" || v === "false" || v === "off");
+    })();
+    if (!codingSubAgentShell && destructiveGateEnabled) {
+      const verdict = classifyDestructiveCommand(command);
+      const confirmed = readBoolParam(options, "confirm") === true;
+      if (verdict.destructive && !confirmed) {
+        const targetList =
+          verdict.targets.filter(Boolean).join(", ") || "its targets";
+        return failureToActionResult(
+          {
+            reason: "needs_confirmation",
+            message:
+              `this ${verdict.reason ?? "destructive operation"} would permanently affect: ${targetList}. ` +
+              "ask the user to confirm the exact operation, then re-run with confirm=true.",
+          },
+          {
+            command,
+            destructive_reason: verdict.reason,
+            targets: verdict.targets,
+          },
+        );
+      }
+    }
     if (!codingSubAgentShell) {
       const localStatusCommand = resolveLocalStatusCommand({
         command,
@@ -1646,7 +1704,13 @@ export const shellAction: Action = {
           `[background ${session.handle}] (pid=${session.pid ?? "unknown"}, cwd=${cwd})`,
           `poll with stdout_offset=${session.stdoutOffset} stderr_offset=${session.stderrOffset}`,
         ].join("\n");
-        if (callback) await callback({ text, source: "coding-tools" });
+        // Fenced (#16563): the echoed `$ command` line is the literal
+        // italics-eaten failure shape from #16542's repro.
+        if (callback)
+          await callback({
+            text: fencePreformatted(text),
+            source: "coding-tools",
+          });
         return successActionResult(text, {
           actionName: "SHELL",
           [CANONICAL_SUBACTION_KEY]: "start_background",
@@ -1711,7 +1775,8 @@ export const shellAction: Action = {
     });
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
-    if (callback) await callback({ text, source: "coding-tools" });
+    if (callback)
+      await callback({ text: fencePreformatted(text), source: "coding-tools" });
 
     if (timedOut) {
       return failureToActionResult(
