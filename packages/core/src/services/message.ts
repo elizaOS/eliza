@@ -3161,6 +3161,7 @@ direct/private rules:
 - Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations: use contexts=["simple"] and put the final answer in replyText.
 - For simple requests, replyText is the natural user-facing answer; avoid single-token fragments or placeholders unless the user asked for terse.
 - Use non-simple context/action names only for tools, live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- UI view/navigation/layout requests are never simple chat. For open/close/switch/show/arrange/split/tile/display—including follow-ups that name views—use contexts=["general"], candidateActionNames=["VIEWS"], and a brief ack. Never invent layout limits; VIEWS reports support.
 - Goals/todos/reminders/habits/routines are non-simple; goals -> tasks + OWNER_GOALS, never work threads.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If a specific name/thing is unclear, choose general or memory.
 - Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
@@ -7160,7 +7161,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		const actionOwnsStage1Draft =
 			route.type === "planning_needed" &&
 			actionOwnsResponseHandlerEarlyReply(args.runtime, messageHandler);
-		if (!actionOwnsStage1Draft) {
+		const responseHandlerDraft =
+			getMessageHandlerReply(messageHandler) || parsedResponseHandlerReply;
+		const stage1DraftIsSafeToRelease =
+			route.type === "final_reply" ||
+			(route.type === "planning_needed" &&
+				looksLikeProgressOnlyReply(responseHandlerDraft));
+		if (!actionOwnsStage1Draft && stage1DraftIsSafeToRelease) {
 			await releaseStage1Draft();
 		}
 
@@ -7239,10 +7246,16 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
-		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		const earlyReplyText = actionOwnsStage1Draft
-			? ""
-			: routedResponseHandlerReply || parsedResponseHandlerReply;
+		// Planning can discover an authoritative action even when Stage 1 did not
+		// name it. Only progress-shaped drafts are safe to publish before that
+		// decision; questions, answers, and capability claims wait so a verified
+		// action callback can supersede them instead of entering chat history as a
+		// contradiction. If planning produces no result, the normal final fallback
+		// below still has the untouched Stage-1 text.
+		const earlyReplyText =
+			actionOwnsStage1Draft || !looksLikeProgressOnlyReply(responseHandlerDraft)
+				? ""
+				: responseHandlerDraft;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
 		const earlyReplySent =
 			messageHandler.processMessage === "RESPOND" &&

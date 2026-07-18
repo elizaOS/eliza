@@ -1276,7 +1276,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		// Compactness ceiling for the DM Stage-1 prompt. Any leaked context
 		// description (~2,500+ chars each) blows far past this; deliberate
 		// template rules only nudge it, so keep the ceiling tight.
-		expect(systemContent.length).toBeLessThan(3_800);
+		expect(systemContent.length).toBeLessThan(4_100);
 	});
 
 	it("direct-channel prompt grounds capability denials in available_contexts and requires fresh tool retries", async () => {

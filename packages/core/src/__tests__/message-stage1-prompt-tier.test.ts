@@ -297,6 +297,11 @@ describe("Stage-1 prompt tiering", () => {
 			makeMessage({ channelType: String(ChannelType.DM) }),
 		);
 		expect(systemContent).toContain(DIRECT_MESSAGE_MARKER);
+		expect(systemContent).toContain(
+			"UI view/navigation/layout requests are never simple chat",
+		);
+		expect(systemContent).toContain('candidateActionNames=["VIEWS"]');
+		expect(systemContent).toContain("Never invent layout limits");
 		expect(systemContent).not.toContain(GROUP_TRIAGE_MARKER);
 		expect(systemContent).not.toContain(FULL_TEMPLATE_MARKER);
 	});

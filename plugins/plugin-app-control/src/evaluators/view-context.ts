@@ -2,7 +2,12 @@
  * Evaluator that maps user context to registered views and dispatches navigation.
  */
 
-import type { Evaluator, EvaluatorProcessor, Memory } from "@elizaos/core";
+import type {
+	Evaluator,
+	EvaluatorProcessor,
+	EvaluatorRunContext,
+	Memory,
+} from "@elizaos/core";
 import {
 	getUserMessageText,
 	logger,
@@ -82,6 +87,18 @@ function isLatestViewTurn(turn: ViewTurnStamp | null): boolean {
 		turn !== null &&
 		latestViewTurn?.key === turn.key &&
 		latestViewTurn.createdAt === turn.createdAt
+	);
+}
+
+function turnRanViewsAction(state: EvaluatorRunContext["state"]): boolean {
+	return (
+		state?.data.actionResults?.some((result) => {
+			const actionName = result.data?.actionName;
+			return (
+				typeof actionName === "string" &&
+				actionName.trim().toUpperCase() === VIEWS_ACTION_NAME
+			);
+		}) ?? false
 	);
 }
 
@@ -268,7 +285,7 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 		},
 		required: ["viewId"],
 	},
-	async shouldRun({ runtime, message, options }) {
+	async shouldRun({ runtime, message, state, options }) {
 		// Observe every turn, including explicit commands that return false below.
 		// That makes a newer deterministic VIEWS command supersede any slower
 		// contextual classifier still finishing for the previous turn.
@@ -280,6 +297,10 @@ export const viewContextEvaluator: Evaluator<ViewContextOutput> = {
 			(action) => action.name?.toUpperCase() === VIEWS_ACTION_NAME,
 		);
 		if (!hasViews) return false;
+		// A VIEWS action attempt owns shell intent for this turn. Post-response
+		// contextual inference must not follow a deliberate split/tile/navigation
+		// (or reinterpret its explicit failure) with a second one-view navigation.
+		if (turnRanViewsAction(state)) return false;
 		const text = getUserMessageText(message);
 		if (text.trim().length < 8) return false;
 		if (isStandaloneNotesSurfaceRequest(text)) return false;

@@ -1077,6 +1077,113 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		}
 	});
 
+	it("withholds a speculative Stage 1 question when planning discovers a reply-owning action", async () => {
+		const streamedDraft: string[] = [];
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "views",
+					description: "Registered view ids",
+					required: true,
+					schema: { type: "array" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			callbackCompletesResponse: true,
+			preserveCallbackText: true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				const text = "Split views: Simple Calendar, Notes (horizontal).";
+				await callback?.({ text }, "VIEWS");
+				return {
+					success: true,
+					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [views],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					streamChunks: ["both of what?"],
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: [],
+						replyText: "both of what?",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Splitting the requested views.",
+						toolCalls: [
+							{
+								id: "split-call",
+								name: "VIEWS",
+								args: {
+									action: "split",
+									views: ["simple-calendar", "notes"],
+								},
+							},
+						],
+					},
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const message = makeMessage("can u show both");
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			message,
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: async (chunk) => {
+					streamedDraft.push(chunk);
+				},
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message,
+					state: makeState(),
+					responseId: RESPONSE_ID,
+					callback: wrappedCallback,
+					deliveredVisibleTexts,
+					onResponseHandlerEarlyReply: earlyReply,
+				}),
+		);
+
+		expect(streamedDraft).toEqual([]);
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(delivered).toEqual([
+			"Split views: Simple Calendar, Notes (horizontal).",
+		]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+	});
+
 	it("returns a visible failure when a reply-owning action never delivers its callback", async () => {
 		const streamedDraft: string[] = [];
 		const earlyReply = vi.fn(async () => undefined);

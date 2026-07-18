@@ -170,6 +170,71 @@ describe("viewContextEvaluator.shouldRun — contextual gate", () => {
 		).toBe(false);
 	});
 
+	it("does not reinterpret a multi-view action as one contextual view", async () => {
+		for (const text of [
+			"split notes and calendar",
+			"tile the calendar with my notes",
+		]) {
+			expect(
+				await viewContextEvaluator.shouldRun(
+					ctx(text, {
+						state: {
+							values: {},
+							data: {
+								actionResults: [
+									{
+										success: true,
+										data: { actionName: "VIEWS" },
+									},
+								],
+							},
+							text: "",
+						},
+					}),
+				),
+			).toBe(false);
+		}
+		expect(
+			await viewContextEvaluator.shouldRun(
+				ctx("split notes and calendar", {
+					state: {
+						values: {},
+						data: {
+							actionResults: [
+								{
+									success: false,
+									data: { actionName: "VIEWS" },
+								},
+							],
+						},
+						text: "",
+					},
+				}),
+			),
+		).toBe(false);
+	});
+
+	it("keeps contextual inference after unrelated actions", async () => {
+		expect(
+			await viewContextEvaluator.shouldRun(
+				ctx("can you fix the login bug", {
+					state: {
+						values: {},
+						data: {
+							actionResults: [
+								{
+									success: true,
+									data: { actionName: "OTHER_ACTION" },
+								},
+							],
+						},
+						text: "",
+					},
+				}),
+			),
+		).toBe(true);
+	});
+
 	it("does not run on small talk / non-activity", async () => {
 		expect(
 			await viewContextEvaluator.shouldRun(ctx("thanks, that helped")),
