@@ -1209,6 +1209,12 @@ export function selectionForProvider(providerId: PoolProviderId): {
   };
 }
 
+export function configuredAccountStrategyForProvider(
+  providerId: string,
+): Strategy | undefined {
+  return normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId]);
+}
+
 export function configureDefaultAccountPoolSelection(
   config: AccountPoolSelectionConfig = {},
 ): void {
