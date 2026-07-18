@@ -608,6 +608,8 @@ function isExecutableFile(candidate: string): boolean {
     fs.accessSync(candidate, fs.constants.X_OK);
     return true;
   } catch {
+    // error-policy:J3 command-path probe; a missing, inaccessible, or
+    // non-executable candidate means the framework is unavailable.
     return false;
   }
 }
