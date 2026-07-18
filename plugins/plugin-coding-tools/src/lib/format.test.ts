@@ -122,7 +122,6 @@ describe("readPositiveIntSetting", () => {
   });
 });
 
-
 describe("fencePreformatted", () => {
   it("wraps plain transcripts in a three-backtick fence with a trailing newline", () => {
     expect(fencePreformatted('$ find . -name "*.md"\nok')).toBe(
