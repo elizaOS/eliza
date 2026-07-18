@@ -27,6 +27,12 @@ const CLAUSE_BREAKS = new Set([",", ";", ":", "—"]);
 export interface PhraseAggregatorOptions {
   maxBufferChars?: number;
   minEmitChars?: number;
+  /**
+   * When true, crossing maxBufferChars waits for the next whitespace so a TTS
+   * chunk never cuts through a word. A bounded overrun prevents an unbroken
+   * token/URL from buffering forever.
+   */
+  preferWordBoundaryAtMax?: boolean;
 }
 
 export class PhraseAggregator {
@@ -34,10 +40,12 @@ export class PhraseAggregator {
   private emittedCount = 0;
   private readonly maxBufferChars: number;
   private readonly minEmitChars: number;
+  private readonly preferWordBoundaryAtMax: boolean;
 
   constructor(options?: PhraseAggregatorOptions) {
     this.maxBufferChars = options?.maxBufferChars ?? PHRASE_MAX_BUFFER_CHARS;
     this.minEmitChars = options?.minEmitChars ?? PHRASE_MIN_EMIT_CHARS;
+    this.preferWordBoundaryAtMax = options?.preferWordBoundaryAtMax ?? false;
   }
 
   /** Number of phrases emitted so far (for `continueContext` sequencing). */
@@ -66,8 +74,17 @@ export class PhraseAggregator {
         continue;
       }
       if (this.buffer.length >= this.maxBufferChars) {
-        const phrase = this.take();
-        if (phrase) phrases.push(phrase);
+        const wordBoundary = /\s/.test(ch);
+        const hardCapReached = this.buffer.length >= this.maxBufferChars + 16;
+        if (!this.preferWordBoundaryAtMax || wordBoundary || hardCapReached) {
+          const phrase = this.take();
+          if (phrase) {
+            // `take()` trims for normal punctuation boundaries. In this mode the
+            // whitespace is semantic: it separates this TTS chunk from the next
+            // word, so carry one space forward on the emitted phrase.
+            phrases.push(this.preferWordBoundaryAtMax && wordBoundary ? `${phrase} ` : phrase);
+          }
+        }
       }
     }
     return phrases;
