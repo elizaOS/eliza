@@ -14,6 +14,7 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		ELIZAIOSBRIDGE00000000001 /* ElizaBridgeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZAIOSBRIDGE00000000002 /* ElizaBridgeViewController.swift */; };
+		ELIZAWEB_AUTH000000000001 /* ElizaWebAuthenticationPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZAWEB_AUTH000000000002 /* ElizaWebAuthenticationPlugin.swift */; };
 		ELIZASTARTTRACE000000001 /* ElizaStartupTrace.swift in Sources */ = {isa = PBXBuildFile; fileRef = ELIZASTARTTRACE000000002 /* ElizaStartupTrace.swift */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
 		E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1A5105A0000000000000002 /* ElizaAppIntents.swift */; };
@@ -126,6 +127,7 @@
 		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		ELIZAIOSBRIDGE00000000002 /* ElizaBridgeViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaBridgeViewController.swift; sourceTree = "<group>"; };
+		ELIZAWEB_AUTH000000000002 /* ElizaWebAuthenticationPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaWebAuthenticationPlugin.swift; sourceTree = "<group>"; };
 		ELIZASTARTTRACE000000002 /* ElizaStartupTrace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElizaStartupTrace.swift; sourceTree = "<group>"; };
 		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
@@ -269,6 +271,7 @@
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				ELIZASTARTTRACE000000002 /* ElizaStartupTrace.swift */,
 				ELIZAIOSBRIDGE00000000002 /* ElizaBridgeViewController.swift */,
+				ELIZAWEB_AUTH000000000002 /* ElizaWebAuthenticationPlugin.swift */,
 				SCENEDEL00000000000002 /* SceneDelegate.swift */,
 				E1A5105A0000000000000002 /* ElizaAppIntents.swift */,
 				MIPL00010000000000000002 /* ElizaIntentPlugin.swift */,
@@ -690,6 +693,7 @@
 				504EC3081FED79650016851F /* AppDelegate.swift in Sources */,
 				ELIZASTARTTRACE000000001 /* ElizaStartupTrace.swift in Sources */,
 				ELIZAIOSBRIDGE00000000001 /* ElizaBridgeViewController.swift in Sources */,
+				ELIZAWEB_AUTH000000000001 /* ElizaWebAuthenticationPlugin.swift in Sources */,
 				SCENEDEL00000000000001 /* SceneDelegate.swift in Sources */,
 				E1A5105A0000000000000001 /* ElizaAppIntents.swift in Sources */,
 				MIPL00010000000000000001 /* ElizaIntentPlugin.swift in Sources */,
@@ -864,7 +868,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -915,7 +919,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
@@ -937,7 +941,7 @@
 				ELIZA_DISPLAY_NAME = elizaOS;
 				ENABLE_ONLY_ACTIVE_RESOURCES = NO;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
@@ -963,7 +967,7 @@
 				ELIZA_DISPLAY_NAME = elizaOS;
 				ENABLE_ONLY_ACTIVE_RESOURCES = NO;
 				INFOPLIST_FILE = App/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;
@@ -983,7 +987,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/WebsiteBlockerContentExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;
@@ -1004,7 +1008,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/WebsiteBlockerContentExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;
@@ -1024,7 +1028,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/DeviceActivityMonitorExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.DeviceActivityMonitorExtension;
@@ -1045,7 +1049,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/DeviceActivityMonitorExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.DeviceActivityMonitorExtension;
@@ -1065,7 +1069,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/DeviceActivityReportExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.DeviceActivityReportExtension;
@@ -1086,7 +1090,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/DeviceActivityReportExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.DeviceActivityReportExtension;
@@ -1106,7 +1110,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/ElizaWidgets/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaWidgets;
@@ -1127,7 +1131,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/ElizaWidgets/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaWidgets;
@@ -1147,7 +1151,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/ElizaKeyboard/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaKeyboard;
@@ -1168,7 +1172,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				INFOPLIST_FILE = App/ElizaKeyboard/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @executable_path/../../Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.ElizaKeyboard;
@@ -1186,7 +1190,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.AppUITests;
@@ -1206,7 +1210,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 25877RY2EH;
 				GENERATE_INFOPLIST_FILE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.4;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.AppUITests;

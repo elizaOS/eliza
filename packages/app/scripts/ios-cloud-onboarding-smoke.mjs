@@ -99,19 +99,21 @@ function simctl(args, options = {}) {
   return run("xcrun", ["simctl", ...args], { stdio: "pipe", ...options });
 }
 
-function bootedUdid() {
+function findSimulator(target) {
   const json = tryRun("xcrun", [
     "simctl",
     "list",
     "devices",
-    "booted",
+    "available",
     "--json",
   ]);
   if (!json) return null;
   const parsed = JSON.parse(json);
   for (const devices of Object.values(parsed.devices ?? {})) {
-    const booted = devices.find((device) => device.state === "Booted");
-    if (booted?.udid) return booted.udid;
+    const simulator = devices.find(
+      (device) => device.udid === target || device.name === target,
+    );
+    if (simulator?.udid) return simulator;
   }
   return null;
 }
@@ -120,18 +122,25 @@ function ensureSimulatorBooted() {
   if (process.platform !== "darwin") {
     throw new Error("iOS cloud onboarding requires macOS with xcrun simctl.");
   }
-  const existing = bootedUdid();
-  if (existing) {
-    log(`reusing booted simulator ${existing}`);
-    return existing;
+  const target = val("--device") ?? process.env.ELIZA_IOS_SIMULATOR_UDID;
+  if (!target) {
+    throw new Error(
+      "iOS cloud onboarding requires an exact simulator via --device or ELIZA_IOS_SIMULATOR_UDID.",
+    );
   }
-  const target = val("--device", "iPhone 16 Pro");
-  log(`booting simulator ${target}`);
-  simctl(["boot", target], { stdio: "inherit" });
+  const simulator = findSimulator(target);
+  if (!simulator) {
+    throw new Error(`Simulator ${target} is not available.`);
+  }
+  if (simulator.state !== "Booted") {
+    log(`booting simulator ${simulator.udid}`);
+    simctl(["boot", simulator.udid], { stdio: "inherit" });
+  } else {
+    log(`reusing dedicated simulator ${simulator.udid}`);
+  }
   tryRun("open", ["-a", "Simulator"]);
-  const udid = bootedUdid();
-  if (!udid) throw new Error(`Simulator ${target} did not reach Booted state.`);
-  return udid;
+  simctl(["bootstatus", simulator.udid, "-b"], { stdio: "inherit" });
+  return simulator.udid;
 }
 
 function latestBuiltApp() {

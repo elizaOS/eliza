@@ -140,29 +140,26 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.build_ios == 'true'
     runs-on: macos-15
-    # Embedding the no-JIT Bun engine + CocoaPods adds build time over a thin
-    # cloud-only client, so allow more headroom than the bare-IPA budget.
+    # The signed archive still runs the full CocoaPods/Fastlane release path.
     timeout-minutes: 90
     env:
       # Make this split build (web + cap sync + ios-overlay + fastlane) behave
-      # like buildIos()'s App Store target, which bundles a working on-device
-      # agent. These env vars are normally set by configureIosAppStoreBuildDefaults
-      # / buildWeb("ios"); the workflow must set them itself because it bypasses
-      # buildIos(). Without them the IPA ships as a cloud-only thin client whose
-      # "start local agent" path hard-fails ("the JSContext compatibility
-      # transport is disabled outside iOS development builds").
+      # like buildIos()'s Cloud-only App Store target. The workflow must declare
+      # these values because it bypasses configureIosAppStoreBuildDefaults().
       #   - ELIZA_BUILD_VARIANT/RELEASE_AUTHORITY: bake __ELIZA_BUILD_VARIANT__
-      #     ="store" (store CSP + isNativeIosStoreBuild()) and embed the engine.
-      #   - ELIZA_IOS_FULL_BUN_ENGINE=1: force the engine pod into the IPA.
-      #   - VITE_ELIZA_IOS_FULL_BUN_AVAILABLE=1: tell the renderer the engine is
-      #     present (isFullBunRuntimeBuiltIn) so the transport actually uses it.
-      #   - VITE_ELIZA_IOS_RUNTIME_MODE=cloud-hybrid: App Store default mode; the
-      #     user switching to "local" persists to localStorage and wins.
+      #     ="store" and apply the App Store CSP/signing policy.
+      #   - APP_STORE_LOCAL_RUNTIME=0/FULL_BUN_ENGINE=0: omit local execution.
+      #   - The runtime-mode values stamp Cloud as the only launch target.
       ELIZA_BUILD_VARIANT: store
       ELIZA_RELEASE_AUTHORITY: apple-app-store
-      ELIZA_IOS_FULL_BUN_ENGINE: "1"
-      VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1"
-      VITE_ELIZA_IOS_RUNTIME_MODE: cloud-hybrid
+      ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0"
+      ELIZA_IOS_FULL_BUN_ENGINE: "0"
+      ELIZA_IOS_RUNTIME_MODE: cloud
+      VITE_ELIZA_IOS_RUNTIME_MODE: cloud
+      ELIZA_RUNTIME_MODE: cloud
+      RUNTIME_MODE: cloud
+      LOCAL_RUNTIME_MODE: cloud
+      VITE_ELIZA_RUNTIME_MODE: cloud
       APPLE_ID: ${{ secrets.APPLE_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ITC_TEAM_ID: ${{ secrets.ITC_TEAM_ID }}
@@ -239,13 +236,6 @@ jobs:
         run: bun run cap:sync:ios
         env:
           LANG: en_US.UTF-8
-
-      # Build the on-device agent bundle the embedded Bun engine executes.
-      # buildIos() does this via buildMobileAgentBundle(); this split workflow
-      # must run it explicitly so the ios-overlay step below can stage
-      # packages/agent/dist-mobile-ios into the app's public/agent.
-      - name: Build iOS agent bundle
-        run: bun run --cwd packages/agent build:ios-bun
 
       - name: Overlay iOS native files (Fastlane, AppDelegate, entitlements)
         run: node packages/app-core/scripts/run-mobile-build.mjs ios-overlay

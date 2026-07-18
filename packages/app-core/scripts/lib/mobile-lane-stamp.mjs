@@ -201,7 +201,7 @@ export function evaluateIosLocalLaneRuntime({
  * the local IPC transport, and the device hangs at "Booting up…".
  *
  * NOTE the store/sideload asymmetry: the App Store lane (`--store`)
- * legitimately ships a cloud-hybrid bundle with no `Agent.apiBase` — cloud
+ * legitimately ships a Cloud-only bundle with no `Agent.apiBase` — cloud
  * onboarding happens in-app after install. This rule therefore applies to
  * sideload preflight ONLY; never wire it into the store lane.
  *

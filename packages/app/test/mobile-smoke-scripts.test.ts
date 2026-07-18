@@ -1,5 +1,6 @@
 /**
- * Locks public mobile smoke commands and their CI evidence/gating contracts.
+ * Locks public mobile smoke commands and their CI evidence/gating contracts
+ * without weakening the explicit local and remote compatibility lanes.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -12,6 +13,10 @@ const appPackage = JSON.parse(
 ) as { scripts: Record<string, string> };
 
 const script = (name: string) => appPackage.scripts[name] ?? "";
+const appleStoreWorkflow = readFileSync(
+  path.resolve(testDir, "../../../.github/workflows/apple-store-release.yml"),
+  "utf8",
+);
 
 describe("mobile simulator smoke package scripts", () => {
   it("makes public local-chat simulator lanes require a real installed app", () => {
@@ -31,6 +36,68 @@ describe("mobile simulator smoke package scripts", () => {
     expect(script("test:e2e:ios:cloud")).toBe(
       "node scripts/ios-e2e.mjs --cloud",
     );
+  });
+
+  it("ad-hoc signs the Cloud simulator app for real native Keychain auth", () => {
+    const command = script("build:ios:cloud:sim");
+    expect(command).toContain("ELIZA_IOS_APP_STORE_LOCAL_RUNTIME=0");
+    expect(command).toContain("ELIZA_IOS_CODE_SIGNING_ALLOWED=YES");
+    expect(command).toContain("ELIZA_IOS_BUILD_SDK=iphonesimulator");
+  });
+
+  it("pins Cloud onboarding to the lane's simulator and DerivedData product", () => {
+    const command = script("test:e2e:ios:cloud-onboarding");
+    const harness = readFileSync(
+      path.resolve(testDir, "../scripts/ios-cloud-onboarding-smoke.mjs"),
+      "utf8",
+    );
+    expect(command).toContain(
+      `\${ELIZA_IOS_SIMULATOR_UDID:?Set ELIZA_IOS_SIMULATOR_UDID to the dedicated simulator UDID}`,
+    );
+    expect(command).toContain(
+      'ELIZA_IOS_DERIVED_DATA_PATH="$PWD/ios/build/cloud-onboarding-derived-data"',
+    );
+    expect(command).toContain('--device "$ELIZA_IOS_SIMULATOR_UDID"');
+    expect(command).toContain(
+      '--app-path "$PWD/ios/build/cloud-onboarding-derived-data/Build/Products/Debug-iphonesimulator/App.app"',
+    );
+    expect(harness).toContain(
+      "device.udid === target || device.name === target",
+    );
+    expect(harness).toContain(
+      "requires an exact simulator via --device or ELIZA_IOS_SIMULATOR_UDID",
+    );
+    expect(harness).not.toContain("function bootedUdid");
+  });
+
+  it("keeps local and remote iOS compatibility behind explicit commands", () => {
+    expect(script("build:ios")).toBe(
+      "node ../../packages/app-core/scripts/run-mobile-build.mjs ios",
+    );
+    expect(script("build:ios:local")).toContain("ELIZA_IOS_FULL_BUN_ENGINE=1");
+    const remote = script("build:ios:remote:sim");
+    expect(remote).toContain(
+      `\${VITE_ELIZA_IOS_API_BASE:?Set VITE_ELIZA_IOS_API_BASE to the explicit remote agent URL}`,
+    );
+    expect(remote).toContain("VITE_ELIZA_IOS_RUNTIME_MODE=remote-mac");
+    expect(remote).toContain("ELIZA_BUILD_VARIANT=direct");
+  });
+
+  it("opens the already-generated iOS workspace without rebuilding it", () => {
+    expect(script("cap:open:ios")).toBe("capacitor open ios");
+  });
+
+  it("ships the App Store workflow through the same Cloud-only policy", () => {
+    expect(appleStoreWorkflow).toContain(
+      'ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0"',
+    );
+    expect(appleStoreWorkflow).toContain('ELIZA_IOS_FULL_BUN_ENGINE: "0"');
+    expect(appleStoreWorkflow).toContain("VITE_ELIZA_IOS_RUNTIME_MODE: cloud");
+    expect(appleStoreWorkflow).toContain("VITE_ELIZA_RUNTIME_MODE: cloud");
+    expect(appleStoreWorkflow).not.toContain(
+      "VITE_ELIZA_IOS_RUNTIME_MODE: cloud-hybrid",
+    );
+    expect(appleStoreWorkflow).not.toContain("Build iOS agent bundle");
   });
 });
 
@@ -103,5 +170,17 @@ describe("mobile-build-smoke.yml iOS chat-correctness gating (#13576)", () => {
     expect(fullBun).toContain('"plistPath" in r');
     expect(fullBun).toContain("orchestrator/summary.json");
     expect(iosE2e).toContain("ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR");
+  });
+
+  it("pins and proves the PR Simulator build is Cloud-only", () => {
+    const build = stepBlock("Build Cloud-only iOS simulator app");
+    expect(build).toContain('ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0"');
+    expect(build).toContain('ELIZA_IOS_FULL_BUN_ENGINE: "0"');
+    expect(build).toContain('VITE_ELIZA_IOS_RUNTIME_MODE: "cloud"');
+    expect(build).toContain('VITE_ELIZA_RUNTIME_MODE: "cloud"');
+
+    const verify = stepBlock("Verify staged renderer is the freshly built one");
+    expect(verify).toContain('stamp.runtimeMode !== "cloud"');
+    expect(verify).toContain("ElizaBunRuntime|MobileAgentBridge|LlamaCpp");
   });
 });

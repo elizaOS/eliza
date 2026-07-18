@@ -126,17 +126,25 @@ jobs:
         # Build those package chains before Vite evaluates/bundles the app.
         run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
 
-      - name: Build iOS simulator app
+      - name: Build Cloud-only iOS simulator app
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
         env:
           LANG: en_US.UTF-8
-          # The simulator smokes drive a loopback host agent. Use the direct
-          # developer iOS lane; App Store/cloud builds intentionally reject
-          # cleartext loopback and are covered by release workflows.
+          # The PR lane uses developer signing and permits loopback-only smoke
+          # fixtures, while keeping the renderer/native runtime policy identical
+          # to the Cloud-only launch build. Local and remote-host execution are
+          # separate explicit developer commands.
           ELIZA_BUILD_VARIANT: "direct"
           ELIZA_RELEASE_AUTHORITY: "developer-toolchain"
           VITE_ELIZA_IOS_ALLOW_SIMULATOR_LOOPBACK: "1"
+          ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0"
           ELIZA_IOS_FULL_BUN_ENGINE: "0"
+          ELIZA_IOS_RUNTIME_MODE: "cloud"
+          VITE_ELIZA_IOS_RUNTIME_MODE: "cloud"
+          ELIZA_RUNTIME_MODE: "cloud"
+          RUNTIME_MODE: "cloud"
+          LOCAL_RUNTIME_MODE: "cloud"
+          VITE_ELIZA_RUNTIME_MODE: "cloud"
           ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator"
           ELIZA_IOS_BUILD_SDK: "iphonesimulator"
           ELIZA_MOBILE_BUILD_TIMING_OUT: ${{ runner.temp }}/ios-simulator-build-timing.json
@@ -197,6 +205,19 @@ jobs:
           fi
           echo "Renderer build stamp present in built .app:"
           cat "$APP_PATH/public/eliza-renderer-build.json"
+          STAMP_PATH="$APP_PATH/public/eliza-renderer-build.json"
+          node -e '
+            const fs = require("node:fs");
+            const stamp = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (stamp.runtimeMode !== "cloud") {
+              throw new Error(`iOS PR app must be Cloud-only; got runtimeMode=${stamp.runtimeMode}`);
+            }
+          ' "$STAMP_PATH"
+          if find "$APP_PATH/Frameworks" -maxdepth 1 -type d -name "*.framework" \
+            | grep -Eiq "ElizaBunRuntime|MobileAgentBridge|LlamaCpp"; then
+            echo "ERROR: Cloud-only iOS PR app contains a local runtime framework"
+            exit 1
+          fi
 
       - name: Run iOS onboarding -> home simulator smoke
         run: |

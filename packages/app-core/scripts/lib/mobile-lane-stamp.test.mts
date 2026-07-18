@@ -30,9 +30,9 @@ const POLICIES = {
   ios: {
     buildVariant: "store",
     capacitorTarget: "ios",
-    iosRuntimeMode: "cloud-hybrid",
+    iosRuntimeMode: "cloud",
     androidRuntimeMode: null,
-    runtimeExecutionMode: "local-safe",
+    runtimeExecutionMode: "cloud",
   },
   android: {
     buildVariant: "direct",
@@ -67,13 +67,13 @@ describe("resolveExpectedRendererStamp", () => {
     });
   });
 
-  it("ios (store) lane bakes variant=store runtimeMode=cloud-hybrid", () => {
+  it("ios (store) lane bakes variant=store runtimeMode=cloud", () => {
     expect(
       resolveExpectedRendererStamp({ policy: POLICIES.ios, env: {} }),
     ).toEqual({
       variant: "store",
       capacitorTarget: "ios",
-      runtimeMode: "cloud-hybrid",
+      runtimeMode: "cloud",
     });
   });
 

@@ -89,7 +89,6 @@ import {
   type AppBootConfig,
   getBootConfig,
   setBootConfig,
-  shouldUseCloudOnlyBranding,
 } from "@elizaos/ui/config";
 import {
   AGENT_READY_EVENT,
@@ -180,6 +179,7 @@ import { renderBootFailure } from "./boot-failure";
 import { startVoiceModuleLoad } from "./boot-voice-load";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { resolveAppCloudOnlyBranding } from "./cloud-only-branding";
 import { isTrustedAppLink } from "./deep-link-handler";
 import {
   buildAssistantLaunchHashRoute,
@@ -375,11 +375,13 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   // backend should control first-run capabilities instead — UNLESS the desktop
   // shell explicitly opted into cloud-only mode (desktopRuntimeMode === "cloud"),
   // which forces cloud-only regardless of the injected loopback proxy base.
-  cloudOnly: shouldUseCloudOnlyBranding({
+  cloudOnly: resolveAppCloudOnlyBranding({
     isDev: import.meta.env.DEV ?? false,
+    env: import.meta.env,
     injectedApiBase:
       typeof window === "undefined" ? undefined : getInjectedAppApiBase(),
     isNativePlatform: Capacitor.isNativePlatform(),
+    platform: Capacitor.getPlatform(),
     desktopRuntimeMode: getInjectedDesktopRuntimeMode(),
   }),
 };
@@ -1571,6 +1573,9 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
 }
 
 async function initializeAgent(): Promise<void> {
+  // Pure Cloud iOS has no bundled agent process; querying the optional local
+  // plugin here creates a false startup warning and a misleading ready event.
+  if (isIOS && getCurrentIosRuntimeConfig().mode === "cloud") return;
   try {
     const status = await Agent.getStatus();
     dispatchAppEvent(AGENT_READY_EVENT, status);

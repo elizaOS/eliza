@@ -10,7 +10,7 @@ capacitor_ios_path = node_package_path('@capacitor/ios')
 
 require_relative File.join(capacitor_ios_path, 'scripts/pods_helpers')
 
-platform :ios, '15.0'
+platform :ios, '17.4'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires

@@ -15,18 +15,16 @@ const env = (overrides = {}) => ({
 });
 
 describe("evaluateIosStoreEngineGate (#8861)", () => {
-  it("a store build with the local runtime left enabled EMBEDS the engine (the regression guard)", () => {
-    // This is the exact case the bug shipped wrong: store IPA without the
-    // engine → "start local agent" hard-fails. It MUST embed.
+  it("keeps the launch store build Cloud-only by default", () => {
     expect(
       evaluateIosStoreEngineGate(env({ ELIZA_BUILD_VARIANT: "store" }))
         .engineWillEmbed,
-    ).toBe(true);
+    ).toBe(false);
     expect(
       evaluateIosStoreEngineGate(
         env({ ELIZA_RELEASE_AUTHORITY: "apple-app-store" }),
       ).engineWillEmbed,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("detects the store variant from either flag (case-insensitive)", () => {
@@ -41,8 +39,8 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
     expect(evaluateIosStoreEngineGate(env()).storeVariant).toBe(false);
   });
 
-  it("defaults the local runtime ON (must be explicitly disabled)", () => {
-    expect(evaluateIosStoreEngineGate(env()).localRuntimeDisabled).toBe(false);
+  it("defaults the local runtime OFF and permits an explicit opt-in", () => {
+    expect(evaluateIosStoreEngineGate(env()).localRuntimeDisabled).toBe(true);
     for (const v of ["0", "false", "no", "off", "OFF", " 0 "]) {
       expect(
         evaluateIosStoreEngineGate(
@@ -57,6 +55,17 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
         ).localRuntimeDisabled,
       ).toBe(false);
     }
+  });
+
+  it("embeds the engine when a custom store build opts into local execution", () => {
+    const gate = evaluateIosStoreEngineGate(
+      env({
+        ELIZA_BUILD_VARIANT: "store",
+        ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+      }),
+    );
+    expect(gate.localRuntimeDisabled).toBe(false);
+    expect(gate.engineWillEmbed).toBe(true);
   });
 
   it("an intentional cloud-only store build (local runtime disabled) omits the engine", () => {

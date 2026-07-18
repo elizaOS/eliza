@@ -95,9 +95,11 @@ bun run --cwd packages/app test:hmr                   # HMR smoke tests
 # Mobile
 bun run --cwd packages/app ios                        # Build + open Xcode
 bun run --cwd packages/app android                    # Build + open Android Studio
-bun run --cwd packages/app build:ios                  # iOS Capacitor build
+bun run --cwd packages/app build:ios                  # Cloud-only iOS/App Store build (launch default)
+bun run --cwd packages/app build:ios:cloud:sim        # Signed Cloud-only generic Simulator build
 bun run --cwd packages/app build:android              # Android Capacitor build
 bun run --cwd packages/app build:ios:local            # iOS with full Bun engine (ELIZA_IOS_FULL_BUN_ENGINE=1)
+bun run --cwd packages/app build:ios:remote:sim        # Explicit remote-host Simulator build; requires VITE_ELIZA_IOS_API_BASE
 bun run --cwd packages/app cap:sync                   # Capacitor sync for both platforms + patch iOS plist
 bun run --cwd packages/app cap:sync:ios               # Capacitor sync iOS only
 bun run --cwd packages/app cap:sync:android           # Capacitor sync Android only
@@ -105,7 +107,7 @@ bun run --cwd packages/app cap:sync:android           # Capacitor sync Android o
 # Simulator smoke tests
 bun run --cwd packages/app test:e2e:ios              # Boot sim, build, auth smoke, full-Bun local chat
 bun run --cwd packages/app test:e2e:ios:cloud        # iOS e2e plus cloud provisioning probe
-ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run --cwd packages/app test:e2e:ios:cloud-onboarding
+ELIZA_IOS_SIMULATOR_UDID=<dedicated-udid> bun run --cwd packages/app test:e2e:ios:cloud-onboarding
                                                        # iOS sim fresh cloud sign-in + e2e SIWE wallet, tap + autologin
 ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 bun run --cwd packages/app test:e2e:android:cloud-onboarding
                                                        # Android emu fresh cloud sign-in + e2e SIWE wallet, tap + autologin
@@ -185,13 +187,16 @@ separate renderer stream) — keep in sync with `ElizaStartupTrace.swift`;
 
 ## iOS runtime-mode CI coverage (#13578)
 
-The iOS app ships three runtime modes; their unattended (CI) coverage is:
+The launch and App Store build is Cloud-only. Local and remote-host modes stay
+available for explicit custom builds, but neither is a launch default. Their
+unattended coverage is kept visible here so optional compatibility does not
+silently change the shipping policy:
 
 | Mode | On-device engine | Automated lane | Gating |
 |---|---|---|---|
-| **remote** (pair to a host agent) | none — proxies to a paired host | `build-ios` job in `.github/workflows/mobile-build-smoke.yml` (onboarding smoke + `serve-real-local-agent` host + local-chat smoke) | PR-blocking |
-| **local** (full-Bun on-device engine) | full Bun runtime + on-device GGUF | `build-ios-local` job in `mobile-build-smoke.yml` — nightly `schedule` (too heavy for the PR path): builds with `ELIZA_IOS_FULL_BUN_ENGINE=1`, caches a real small GGUF, then runs `ios-e2e.mjs --skip-build --app-path …` to explicitly install the app, approve its custom scheme in the fresh simulator's LaunchServices dictionary (with one reboot), prove the auth-callback end state, and require the on-device non-stream + stream replies to contain the confirmation phrase without a failure signal | nightly-gating |
-| **cloud** (shared runtime by default) | none — talks to Eliza Cloud | `ios-cloud-mode` job in `mobile-build-smoke.yml` — nightly `schedule` / `workflow_dispatch`. Seeds a real Cloud credential from `secrets.ELIZACLOUD_API_KEY` (the headless session seed — bypasses the interactive device-code / OAuth browser leg that XCTSkips on the simulator) and runs `cloud-provisioning-e2e.mjs --fresh-agent`: creates a Cloud agent without a dedicated-tier signal, waits for its runtime URL, and probes `/api/status|health|me`. This is shared/status coverage, not managed dedicated/Hetzner ingress proof. With the seed present it is a HARD gate (no `continue-on-error`); when the secret is absent it records an explicit skip in the step summary. | nightly-gating (when seeded) |
+| **cloud** (launch default) | none — talks to Eliza Cloud | `build-ios` in `.github/workflows/mobile-build-smoke.yml` builds the Cloud-only Simulator app on the PR path. The nightly `ios-cloud-mode` job uses a real Cloud credential and `cloud-provisioning-e2e.mjs --fresh-agent` to create and probe a shared Cloud agent. | PR build-blocking; live Cloud provisioning nightly-gating when seeded |
+| **local** (full-Bun on-device engine) | full Bun runtime + on-device GGUF | `build-ios-local` job in `mobile-build-smoke.yml` — nightly `schedule` (too heavy for the PR path): builds `build:ios:local:sim` (`ELIZA_IOS_FULL_BUN_ENGINE=1`), caches + stages a real small GGUF, boots a sim, installs, runs `test:sim:local-chat:ios:full-bun` and asserts the exact on-device reply | nightly-gating |
+| **remote** (explicit custom build) | none — proxies to an operator-supplied host | `build:ios:remote:sim` requires an explicit `VITE_ELIZA_IOS_API_BASE`; command-policy tests ensure it cannot become the default accidentally. | N/A for launch — no dedicated device lane; custom-build compatibility only |
 
 Keep this table honest: an N/A row must name what is missing, not hide it.
 
