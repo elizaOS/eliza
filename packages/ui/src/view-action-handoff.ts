@@ -9,6 +9,7 @@ import { client } from "./api";
 import type { ChatActionResultSummary } from "./api/client-types-chat";
 import { dispatchNavigateViewEvent } from "./events";
 import { getWindowNavigationPath } from "./navigation";
+import { rehydrateAuthoritativeShellViewState } from "./view-shell-state";
 
 interface CurrentViewNavigation {
   viewId: string;
@@ -238,4 +239,19 @@ export async function recoverMissedCurrentView(
     ...(current.subview ? { subview: current.subview } : {}),
   });
   return true;
+}
+
+/**
+ * Reconcile transport recovery without letting stale server state overwrite
+ * the visible shell. A fresh missed agent switch wins; otherwise the browser's
+ * already-rendered route/layout becomes the backend's client-scoped context.
+ */
+export async function reconcileCurrentViewAfterReconnect(
+  dependencies: Parameters<typeof recoverMissedCurrentView>[0] & {
+    rehydrate?: () => Promise<boolean>;
+  } = {},
+): Promise<boolean> {
+  const { rehydrate, ...recoveryDependencies } = dependencies;
+  if (await recoverMissedCurrentView(recoveryDependencies)) return true;
+  return (rehydrate ?? rehydrateAuthoritativeShellViewState)();
 }

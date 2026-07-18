@@ -2,10 +2,11 @@
  * `POST /api/views/:id/navigate` → `EventType.VIEW_SWITCHED` emission contract
  * (#8792). The navigate route is the one server-side seam that turns a view
  * change — agent-initiated OR client-reported (`source: "user"`) — into the
- * first-class interaction event the proactive decider keys off. This pins that
- * contract: emit on a real change, carry `initiatedBy` + `previousViewId`, and
- * stay quiet on a re-navigate or a close (which would otherwise spam the
- * decider). The broadcast/state half is covered by
+ * first-class interaction event the proactive decider keys off. Silent shell
+ * rehydration restores the same state without fabricating a user interaction.
+ * This pins that contract: emit on a real change, carry `initiatedBy` +
+ * `previousViewId`, and stay quiet on a re-navigate, close, or rehydration
+ * (which would otherwise spam the decider). The broadcast/state half is covered by
  * views-routes.navigate-broadcast.test.ts.
  */
 import type http from "node:http";
@@ -122,6 +123,20 @@ describe("POST /api/views/:id/navigate — VIEW_SWITCHED emission (#8792)", () =
       action: "close",
     });
     await handleViewsRoutes(ctx);
+    expect(viewSwitchedCalls(emitEvent)).toHaveLength(0);
+  });
+
+  it("does NOT emit for shell state rehydration", async () => {
+    const { ctx, emitEvent } = makeCtx("settings", {
+      rehydrate: true,
+      action: "split-view",
+      views: ["settings", "character"],
+      viewTypes: { settings: "gui", character: "gui" },
+      layout: "horizontal",
+    });
+
+    await handleViewsRoutes(ctx);
+
     expect(viewSwitchedCalls(emitEvent)).toHaveLength(0);
   });
 

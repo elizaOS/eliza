@@ -36,7 +36,7 @@ import {
   tabFromPath,
 } from "../navigation";
 import { isTransientOptionalFetchFailure } from "../utils";
-import { recoverMissedCurrentView } from "../view-action-handoff";
+import { reconcileCurrentViewAfterReconnect } from "../view-action-handoff";
 import { emitViewEvent } from "../views/view-event-bus";
 import type { ActionTone } from "./action-notice";
 import {
@@ -388,10 +388,10 @@ export function bindReadyPhase(
       hydratePty();
       void depsRef.current?.loadWalletConfig();
       void depsRef.current?.pollCloudCredits();
-      void recoverMissedCurrentView().catch((error) => {
+      void reconcileCurrentViewAfterReconnect().catch((error) => {
         // error-policy:J5 the structured warning observes this fire-and-forget
-        // recovery rejection; the next lifecycle event retries it.
-        logger.warn({ error }, "[startup] current view recovery failed");
+        // reconciliation rejection; the next lifecycle event retries it.
+        logger.warn({ error }, "[startup] current view reconciliation failed");
       });
     }),
   );

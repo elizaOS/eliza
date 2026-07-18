@@ -16,6 +16,7 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { writeViewLayoutToHistory } from "./app-navigate-view";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
@@ -90,6 +91,11 @@ const dynamicViewLoaderMock = vi.hoisted(() => ({
       />
     ),
   ),
+}));
+
+const viewShellStateMock = vi.hoisted(() => ({
+  rehydrate: vi.fn(async () => true),
+  set: vi.fn(),
 }));
 
 const settingsViewMock = vi.hoisted(() => ({
@@ -388,6 +394,11 @@ vi.mock("./components/views/DynamicViewLoader", () => ({
   DynamicViewLoader: dynamicViewLoaderMock.render,
 }));
 
+vi.mock("./view-shell-state", () => ({
+  rehydrateAuthoritativeShellViewState: viewShellStateMock.rehydrate,
+  setAuthoritativeShellViewState: viewShellStateMock.set,
+}));
+
 vi.mock("./components/shell/BugReportModal", () => ({
   BugReportModal: () => null,
 }));
@@ -498,6 +509,8 @@ describe("App navigate-view event wiring", () => {
     desktopBridgeMock.invokeDesktopBridgeRequest.mockClear();
     desktopBridgeMock.subscribeDesktopBridgeEvent.mockClear();
     dynamicViewLoaderMock.render.mockClear();
+    viewShellStateMock.rehydrate.mockClear();
+    viewShellStateMock.set.mockClear();
     settingsViewMock.render.mockClear();
   });
 
@@ -806,6 +819,43 @@ describe("App navigate-view event wiring", () => {
     );
     expect(desktopTabsMock.openTab).toHaveBeenCalledWith(calendarView, {
       pinned: false,
+    });
+  });
+
+  it("restores and republishes the exact split layout after a document reload", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+    writeViewLayoutToHistory({
+      mode: "split",
+      viewIds: ["documents", "calendar"],
+      layout: "vertical",
+      placement: "right",
+    });
+
+    const { getAllByTestId, getByTestId } = render(<App />);
+
+    await waitFor(() => {
+      expect(getByTestId("view-layout-surface")).toBeTruthy();
+    });
+    expect(
+      getAllByTestId("dynamic-view-loader").map((loader) =>
+        loader.getAttribute("data-view-id"),
+      ),
+    ).toEqual(["documents", "calendar"]);
+    await waitFor(() => {
+      expect(viewShellStateMock.set).toHaveBeenCalledWith({
+        viewId: "documents",
+        viewPath: "/documents",
+        viewType: "gui",
+        mode: "split",
+        panes: [
+          { viewId: "documents", viewType: "gui" },
+          { viewId: "calendar", viewType: "gui" },
+        ],
+        layout: "vertical",
+        placement: "right",
+      });
+      expect(viewShellStateMock.rehydrate).toHaveBeenCalledTimes(1);
     });
   });
 

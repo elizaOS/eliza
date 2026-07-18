@@ -10,6 +10,7 @@ import type { ChatActionResultSummary } from "./api/client-types-chat";
 import {
   dispatchViewActionHandoff,
   findViewActionHandoff,
+  reconcileCurrentViewAfterReconnect,
   recoverMissedCurrentView,
 } from "./view-action-handoff";
 
@@ -174,5 +175,52 @@ describe("view action handoff", () => {
       }),
     ).resolves.toBe(false);
     expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it("keeps a fresh missed agent switch instead of rehydrating stale shell state", async () => {
+    const rehydrate = vi.fn(async () => true);
+
+    await expect(
+      reconcileCurrentViewAfterReconnect({
+        fetchCurrentView: async () =>
+          new Response(
+            JSON.stringify({
+              currentView: {
+                viewId: "calendar",
+                viewPath: "/calendar",
+                viewLabel: "Calendar",
+                viewType: "gui",
+                source: "agent",
+              },
+              justSwitched: true,
+            }),
+            { status: 200 },
+          ),
+        currentPath: () => "/chat",
+        dispatch: vi.fn(),
+        rehydrate,
+      }),
+    ).resolves.toBe(true);
+
+    expect(rehydrate).not.toHaveBeenCalled();
+  });
+
+  it("rehydrates the visible shell when reconnect finds no missed agent switch", async () => {
+    const rehydrate = vi.fn(async () => true);
+
+    await expect(
+      reconcileCurrentViewAfterReconnect({
+        fetchCurrentView: async () =>
+          new Response(
+            JSON.stringify({ currentView: null, justSwitched: false }),
+            { status: 200 },
+          ),
+        currentPath: () => "/notes",
+        dispatch: vi.fn(),
+        rehydrate,
+      }),
+    ).resolves.toBe(true);
+
+    expect(rehydrate).toHaveBeenCalledTimes(1);
   });
 });

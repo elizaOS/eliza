@@ -1033,6 +1033,7 @@ export async function handleViewsRoutes(
   //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   //   payload: unknown     — opaque deep-link state consumed by the target view
   //   expectedRevision: number — conditional navigation; rejected if state moved
+  //   rehydrate: true      — restore the visible shell state without echoing or emitting a switch
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
@@ -1087,8 +1088,11 @@ export async function handleViewsRoutes(
     // manually clicking a tab/tile/slash-command, which the client *reports* with
     // `source: "user"`. A user-reported switch must NOT re-broadcast
     // the shell navigation WS event (the client already navigated locally) — that would
-    // echo back and re-navigate. It still records state + emits VIEW_SWITCHED.
-    const reportedSource = body?.source === "user" ? "user" : "agent";
+    // echo back and re-navigate. Rehydration is the same client-owned state report, but
+    // it also stays silent on VIEW_SWITCHED because no interaction occurred.
+    const isShellRehydrate = body?.rehydrate === true;
+    const reportedSource =
+      body?.source === "user" || isShellRehydrate ? "user" : "agent";
     const subview =
       typeof body?.subview === "string" && body.subview.trim().length > 0
         ? body.subview.trim()
@@ -1220,7 +1224,7 @@ export async function handleViewsRoutes(
       // Emit the first-class VIEW_SWITCHED interaction event (#8792) so a
       // proactive decider can comment. Only on a real change (no spam on
       // re-navigates), and fire-and-forget so it never blocks the response.
-      if (viewChanged && ctx.runtime) {
+      if (viewChanged && ctx.runtime && !isShellRehydrate) {
         void ctx.runtime
           .emitEvent(EventType.VIEW_SWITCHED, {
             runtime: ctx.runtime,

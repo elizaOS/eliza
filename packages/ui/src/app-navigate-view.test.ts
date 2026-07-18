@@ -18,6 +18,8 @@ import {
   directTabForNavigateView,
   navigateBrowserPath,
   pathForNavigateViewDetail,
+  readViewLayoutFromHistory,
+  writeViewLayoutToHistory,
 } from "./app-navigate-view";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
@@ -107,6 +109,10 @@ describe("App navigate-view shell handler", () => {
 
   it("sets direct app tabs without changing browser history", () => {
     const fixture = createHandlerFixture();
+    writeViewLayoutToHistory({
+      mode: "split",
+      viewIds: ["remote-ledger", "calendar"],
+    });
 
     fixture.handler(navigateEvent({ viewPath: "/views" }));
     fixture.handler(navigateEvent({ viewId: "views-manager" }));
@@ -116,6 +122,7 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.setTab).toHaveBeenNthCalledWith(2, "views");
     expect(fixture.navigatePath).not.toHaveBeenCalled();
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
+    expect(readViewLayoutFromHistory()).toBeNull();
   });
 
   it("pins a view as a desktop tab and navigates to the view path", () => {
@@ -194,6 +201,10 @@ describe("App navigate-view shell handler", () => {
       path: "/apps/local-notes",
     });
     const fixture = createHandlerFixture([remoteLedger, localNotes]);
+    writeViewLayoutToHistory({
+      mode: "split",
+      viewIds: ["remote-ledger", "local-notes"],
+    });
 
     fixture.handler(
       navigateEvent({
@@ -208,6 +219,7 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.setTab).toHaveBeenCalledWith("chat");
     expect(fixture.setViewLayout).toHaveBeenCalledWith(null);
     expect(fixture.navigatePath).not.toHaveBeenCalled();
+    expect(readViewLayoutFromHistory()).toBeNull();
   });
 
   it("opens layout event participants as desktop tabs and activates layout state", () => {
@@ -250,6 +262,40 @@ describe("App navigate-view shell handler", () => {
     });
     expect(fixture.setTab).toHaveBeenCalledWith("views");
     expect(fixture.navigatePath).toHaveBeenCalledWith("/views");
+    expect(readViewLayoutFromHistory()).toEqual({
+      mode: "split",
+      viewIds: ["notes", "calendar"],
+      layout: "horizontal",
+      placement: "right",
+    });
+  });
+
+  it("restores a validated layout from this tab's history entry", () => {
+    writeViewLayoutToHistory({
+      mode: "tile",
+      viewIds: ["notes", "calendar"],
+      layout: "grid",
+    });
+
+    expect(readViewLayoutFromHistory()).toEqual({
+      mode: "tile",
+      viewIds: ["notes", "calendar"],
+      layout: "grid",
+    });
+
+    window.history.replaceState(
+      { __elizaViewLayout: { mode: "grid", viewIds: ["notes"] } },
+      "",
+      "/views",
+    );
+    expect(readViewLayoutFromHistory()).toBeNull();
+
+    window.history.replaceState(
+      { __elizaViewLayout: { mode: "split", viewIds: ["notes", 42] } },
+      "",
+      "/views",
+    );
+    expect(readViewLayoutFromHistory()).toBeNull();
   });
 
   it("activates the first resolved layout participant when the first requested view is unavailable", () => {

@@ -17,6 +17,65 @@ export type ActiveViewLayout = {
   placement?: string;
 };
 
+const VIEW_LAYOUT_HISTORY_KEY = "__elizaViewLayout";
+
+function parseHistoryViewLayout(value: unknown): ActiveViewLayout | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.mode !== "split" && record.mode !== "tile") return null;
+  if (
+    !Array.isArray(record.viewIds) ||
+    record.viewIds.length === 0 ||
+    !record.viewIds.every(
+      (viewId) => typeof viewId === "string" && viewId.trim().length > 0,
+    )
+  ) {
+    return null;
+  }
+  const viewIds = record.viewIds.map((viewId) => viewId.trim());
+  if (new Set(viewIds).size !== viewIds.length) return null;
+  return {
+    mode: record.mode,
+    viewIds,
+    ...(typeof record.layout === "string" && record.layout.trim()
+      ? { layout: record.layout.trim() }
+      : {}),
+    ...(typeof record.placement === "string" && record.placement.trim()
+      ? { placement: record.placement.trim() }
+      : {}),
+  };
+}
+
+/** Read the split/tile state attached to this tab's current history entry. */
+export function readViewLayoutFromHistory(): ActiveViewLayout | null {
+  if (typeof window === "undefined") return null;
+  const state = window.history.state;
+  if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+  return parseHistoryViewLayout(
+    (state as Record<string, unknown>)[VIEW_LAYOUT_HISTORY_KEY],
+  );
+}
+
+/**
+ * Persist layout beside the route in browser history. History state is scoped
+ * to one tab and survives document reload without coupling independent tabs.
+ */
+export function writeViewLayoutToHistory(
+  layout: ActiveViewLayout | null,
+): void {
+  if (typeof window === "undefined") return;
+  const current =
+    window.history.state &&
+    typeof window.history.state === "object" &&
+    !Array.isArray(window.history.state)
+      ? (window.history.state as Record<string, unknown>)
+      : {};
+  const next = { ...current };
+  if (layout) next[VIEW_LAYOUT_HISTORY_KEY] = { ...layout };
+  else delete next[VIEW_LAYOUT_HISTORY_KEY];
+  shellHistory.replaceState(next, "", window.location.href);
+}
+
 // Cross-view navigation payload channel.
 //
 // `NavigateViewDetail.payload` is an opaque, view-owned deep-link value:
@@ -150,6 +209,7 @@ export function createNavigateViewHandler({
     storeNavigateViewPayload(detail);
     if (detail.action === "close" || detail.action === "close-all") {
       setViewLayout?.(null);
+      writeViewLayoutToHistory(null);
       if (detail.action === "close-all" || detail.viewId === "__all__") {
         for (const tab of desktopTabs) {
           closeDesktopTab?.(tab.viewId);
@@ -184,6 +244,12 @@ export function createNavigateViewHandler({
       });
       setTab("views");
       navigatePath("/views");
+      writeViewLayoutToHistory({
+        mode: detail.action === "split-view" ? "split" : "tile",
+        viewIds: resolvedViewIds.length > 0 ? resolvedViewIds : viewIds,
+        layout: detail.layout,
+        placement: detail.placement,
+      });
       return;
     }
     const path = pathForNavigateViewDetail(detail);
@@ -191,6 +257,7 @@ export function createNavigateViewHandler({
     setViewLayout?.(null);
     const directTab = directTabForNavigateView(detail, path);
     if (directTab) {
+      writeViewLayoutToHistory(null);
       setTab(directTab);
       return;
     }
@@ -214,6 +281,10 @@ export function createNavigateViewHandler({
           if (!result) {
             activateTabForPath(viewPath);
             navigatePath(viewPath);
+          } else {
+            // A separate window leaves this history entry in place, so clear
+            // layout metadata here rather than relying on a fresh route entry.
+            writeViewLayoutToHistory(null);
           }
         })
         .catch((err: unknown) => {

@@ -36,7 +36,7 @@ const clientMock = vi.hoisted(() => {
     connectWs: vi.fn(),
     disconnectWs: vi.fn(),
     getCodingAgentStatus: vi.fn(async () => ({ tasks: [] })),
-    recoverMissedCurrentView: vi.fn(async () => {
+    reconcileCurrentViewAfterReconnect: vi.fn(async () => {
       recoveredViews.push("current");
     }),
     recoveredViews,
@@ -68,7 +68,8 @@ const clientMock = vi.hoisted(() => {
 
 vi.mock("../api", () => ({ client: clientMock }));
 vi.mock("../view-action-handoff", () => ({
-  recoverMissedCurrentView: clientMock.recoverMissedCurrentView,
+  reconcileCurrentViewAfterReconnect:
+    clientMock.reconcileCurrentViewAfterReconnect,
 }));
 vi.mock("../components/views/view-interact-registry", () => ({
   dispatchViewInteract: vi.fn(async () => {}),
@@ -109,7 +110,7 @@ describe("agent view-switch raw WS frame to DOM navigate event", () => {
     clientMock.connectWs.mockClear();
     clientMock.disconnectWs.mockClear();
     clientMock.onWsEvent.mockClear();
-    clientMock.recoverMissedCurrentView.mockClear();
+    clientMock.reconcileCurrentViewAfterReconnect.mockClear();
     clientMock.recoveredViews.length = 0;
     navHandler = vi.fn();
     window.addEventListener(NAVIGATE_VIEW_EVENT, navHandler);

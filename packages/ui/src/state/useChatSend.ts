@@ -44,6 +44,7 @@ import {
   dispatchViewActionHandoff,
   findViewActionHandoff,
 } from "../view-action-handoff";
+import { ensureAuthoritativeShellViewState } from "../view-shell-state";
 import type { ChatReplyTarget } from "./ChatComposerContext.hooks";
 import { clearChatDraft } from "./ChatComposerContext.hooks";
 import { isConversationRecord } from "./chat-conversation-guards";
@@ -65,6 +66,19 @@ import {
 // ── Types ────────────────────────────────────────────────────────────
 
 const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
+
+async function synchronizeShellViewBeforeTurn(): Promise<void> {
+  try {
+    await ensureAuthoritativeShellViewState();
+  } catch (error) {
+    // error-policy:J4 chat remains usable when an older/limited runtime lacks
+    // view context. The failed publication is observable and reconnect retries.
+    logger.warn(
+      { error },
+      "[useChatSend] shell view context publication failed",
+    );
+  }
+}
 
 async function handoffCompletedViewAction(
   actionResults: ChatActionResultSummary[] | undefined,
@@ -2331,6 +2345,11 @@ export function useChatSend(deps: UseChatSendDeps) {
         return;
       }
 
+      // A restarted backend has no in-memory active-view state. Publish the
+      // visible route/layout before the message is queued so this exact turn's
+      // planner receives the same per-view context the user can already see.
+      await synchronizeShellViewBeforeTurn();
+
       // Claim + clear the active reply target here — the single chokepoint every
       // real user turn (composer send + overlay/voice send()) funnels through —
       // so one Reply affordance covers all surfaces and a second send never
@@ -2426,6 +2445,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
+      await synchronizeShellViewBeforeTurn();
       if (chatSendBusyRef.current) return;
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;

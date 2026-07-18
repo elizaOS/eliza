@@ -16,6 +16,7 @@ import {
   type SurfaceManifestBearer,
   type ViewKind,
 } from "@elizaos/core";
+import { logger } from "@elizaos/logger";
 import { X } from "lucide-react";
 import "./components/chat/chat-source-registration";
 import {
@@ -27,6 +28,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -35,6 +37,7 @@ import {
   createNavigateViewHandler,
   type NavigateViewDetail,
   navigateBrowserPath,
+  readViewLayoutFromHistory,
 } from "./app-navigate-view";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
@@ -154,6 +157,11 @@ import { shellHistory } from "./surface-realm-channel";
 import { TutorialConductorMount } from "./tutorial/TutorialConductor";
 import { isElizaCloudControlPlaneAgentlessBase } from "./utils/cloud-agent-base";
 import { confirmDesktopAction } from "./utils/desktop-dialogs";
+import {
+  type AuthoritativeShellViewState,
+  rehydrateAuthoritativeShellViewState,
+  setAuthoritativeShellViewState,
+} from "./view-shell-state";
 import { VoiceSelfTestShell } from "./voice/voice-selftest/VoiceSelfTestShell";
 import { VoiceWorkbenchShell } from "./voice/voice-selftest/VoiceWorkbenchShell";
 
@@ -1075,6 +1083,93 @@ function useActiveViewSurface({
       viewLayout,
     });
   }, [availableViews, navigationPath, registryVersion, tab, viewLayout]);
+}
+
+function resolveAuthoritativeShellViewState({
+  activeViewId,
+  availableViews,
+  navigationPath,
+  tab,
+  viewLayout,
+}: {
+  activeViewId: string;
+  availableViews: ViewRegistryEntry[];
+  navigationPath: string;
+  tab: Tab;
+  viewLayout: ActiveViewLayout | null;
+}): AuthoritativeShellViewState | null {
+  if (viewLayout) {
+    const panes = viewLayout.viewIds.map((viewId) => {
+      const entry = availableViews.find((view) => view.id === viewId);
+      return entry
+        ? { viewId: entry.id, viewType: entry.viewType ?? ("gui" as const) }
+        : null;
+    });
+    // The backend requires exact modality for every pane. Waiting for the
+    // registry is safer than publishing a guessed partial layout during boot.
+    if (panes.some((pane) => pane === null)) return null;
+    const exactPanes = panes.filter(
+      (pane): pane is NonNullable<typeof pane> => pane !== null,
+    );
+    const primary = availableViews.find(
+      (view) => view.id === exactPanes[0]?.viewId,
+    );
+    if (!primary || exactPanes.length === 0) return null;
+    return {
+      viewId: primary.id,
+      viewPath: primary.path ?? navigationPath,
+      viewType: primary.viewType ?? "gui",
+      mode: viewLayout.mode,
+      panes: exactPanes,
+      ...(viewLayout.layout ? { layout: viewLayout.layout } : {}),
+      ...(viewLayout.placement ? { placement: viewLayout.placement } : {}),
+    };
+  }
+
+  const trimmedPath = trimmedNavigationPath(navigationPath);
+  const entry = availableViews.find(
+    (view) =>
+      view.id === activeViewId ||
+      view.path === navigationPath ||
+      view.path === trimmedPath,
+  );
+  if (entry) {
+    return {
+      viewId: entry.id,
+      viewPath: entry.path ?? navigationPath,
+      viewType: entry.viewType ?? "gui",
+    };
+  }
+
+  // Dynamic routes initially resolve to the generic views/apps tab until their
+  // registry entry arrives. Do not stamp that placeholder over the real view.
+  if (
+    (tab === "views" || tab === "apps") &&
+    activeViewId === tab &&
+    navigationPath !== `/${tab}`
+  ) {
+    return null;
+  }
+  return {
+    viewId: activeViewId,
+    viewPath: navigationPath,
+    viewType: "gui",
+  };
+}
+
+function viewLayoutsEqual(
+  left: ActiveViewLayout | null,
+  right: ActiveViewLayout | null,
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.mode === right.mode &&
+    left.layout === right.layout &&
+    left.placement === right.placement &&
+    left.viewIds.length === right.viewIds.length &&
+    left.viewIds.every((viewId, index) => viewId === right.viewIds[index])
+  );
 }
 
 function trimmedNavigationPath(navigationPath: string): string {
@@ -2305,7 +2400,11 @@ function AppContent() {
     null,
   );
   const { views: availableViewsForDesktopTabs } = useRoutableViews();
-  const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(null);
+  const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(() =>
+    trimmedNavigationPath(getWindowNavigationPath()) === "/views"
+      ? readViewLayoutFromHistory()
+      : null,
+  );
   const navigationPath = useCurrentNavigationPath();
   const screenBackgroundPolicy = useActiveScreenBackgroundPolicy({
     tab,
@@ -2330,6 +2429,46 @@ function AppContent() {
     availableViews: availableViewsForDesktopTabs,
     viewLayout,
   });
+  const authoritativeShellViewState = useMemo(
+    () =>
+      resolveAuthoritativeShellViewState({
+        activeViewId: activeViewSurface.viewId,
+        availableViews: availableViewsForDesktopTabs,
+        navigationPath,
+        tab,
+        viewLayout,
+      }),
+    [
+      activeViewSurface.viewId,
+      availableViewsForDesktopTabs,
+      navigationPath,
+      tab,
+      viewLayout,
+    ],
+  );
+  const initialViewStatePublishedRef = useRef(false);
+  useEffect(() => {
+    setAuthoritativeShellViewState(authoritativeShellViewState);
+    if (
+      !authoritativeShellViewState ||
+      initialViewStatePublishedRef.current ||
+      startupCoordinator.phase !== "ready"
+    ) {
+      return;
+    }
+    initialViewStatePublishedRef.current = true;
+    void rehydrateAuthoritativeShellViewState().catch((error) => {
+      // error-policy:J4 the route remains visible and the pre-send barrier
+      // retries. Keep the startup failure observable without blocking paint.
+      logger.warn({ error }, "[App] initial shell view rehydrate failed");
+    });
+  }, [authoritativeShellViewState, startupCoordinator.phase]);
+  useEffect(
+    () => () => {
+      setAuthoritativeShellViewState(null);
+    },
+    [],
+  );
   useEffect(() => {
     if (typeof window === "undefined") return;
     const scope = new SurfaceRealmScope(
@@ -2462,6 +2601,19 @@ function AppContent() {
       setViewLayout(null);
     }
   }, [tab, viewLayout]);
+
+  // Split/tile geometry lives on each browser history entry so reload and
+  // back/forward restore the same per-tab shell instead of a generic launcher.
+  useEffect(() => {
+    const restored =
+      tab === "views" && trimmedNavigationPath(navigationPath) === "/views"
+        ? readViewLayoutFromHistory()
+        : null;
+    setViewLayout((current) => {
+      if (viewLayoutsEqual(current, restored)) return current;
+      return restored;
+    });
+  }, [navigationPath, tab]);
 
   useEffect(() => {
     if (isSettingsPage || settingsInitialSection === null) {

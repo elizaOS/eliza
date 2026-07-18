@@ -27,6 +27,10 @@ import {
   CLOUD_HANDOFF_PHASE_EVENT,
   NAVIGATE_VIEW_EVENT,
 } from "../events";
+import {
+  __resetAuthoritativeShellViewStateForTests,
+  setAuthoritativeShellViewState,
+} from "../view-shell-state";
 import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
@@ -657,8 +661,13 @@ describe("useChatSend 404 recovery", () => {
 describe("useChatSend always streams (#9174)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    __resetAuthoritativeShellViewStateForTests();
     mocks.client.getBaseUrl.mockReturnValue("");
     mocks.client.renameConversation.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    __resetAuthoritativeShellViewStateForTests();
   });
 
   it("uses the streaming endpoint on the happy path and never the non-streaming one", async () => {
@@ -697,6 +706,55 @@ describe("useChatSend always streams (#9174)", () => {
     expect(deps.setChatFirstTokenReceived).toHaveBeenCalledWith(true);
     // The streaming callback actually received incremental tokens.
     expect(tokens).toEqual([["Hello", " world"]]);
+  });
+
+  it("publishes the visible view before submitting the chat turn", async () => {
+    const viewPublished = deferred<Response>();
+    mocks.client.rawRequest.mockImplementationOnce(() => viewPublished.promise);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Done.",
+      completed: true,
+    });
+    setAuthoritativeShellViewState({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewType: "gui",
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    act(() => {
+      sendPromise = result.current.sendChatText("add a note", {
+        conversationId: "conv-1",
+      });
+    });
+    await vi.waitFor(() => {
+      expect(mocks.client.rawRequest).toHaveBeenCalledWith(
+        "/api/views/notes/navigate",
+        expect.objectContaining({
+          body: JSON.stringify({
+            source: "user",
+            rehydrate: true,
+            path: "/notes",
+            viewType: "gui",
+          }),
+          method: "POST",
+        }),
+        { allowNonOk: true },
+      );
+    });
+    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+
+    await act(async () => {
+      viewPublished.resolve(new Response("{}", { status: 200 }));
+      await sendPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
   });
 });
 

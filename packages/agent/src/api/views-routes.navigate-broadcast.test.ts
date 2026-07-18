@@ -720,6 +720,84 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
     expect(nav.broadcastWs).not.toHaveBeenCalled();
   });
 
+  it("rehydrates exact client-scoped shell layouts without broadcasting an echo", async () => {
+    const splitClientId = "rehydrate-split-client";
+    const singleClientId = "rehydrate-single-client";
+    const split = makeNavigateCtx(
+      "settings",
+      {
+        rehydrate: true,
+        action: "split-view",
+        views: ["settings", "character"],
+        viewTypes: { settings: "gui", character: "gui" },
+        layout: "vertical",
+        placement: "right",
+      },
+      "",
+      splitClientId,
+    );
+    const single = makeNavigateCtx(
+      "character",
+      { rehydrate: true },
+      "",
+      singleClientId,
+    );
+
+    await handleViewsRoutes(split.ctx);
+    await handleViewsRoutes(single.ctx);
+
+    expect(split.broadcastWs).not.toHaveBeenCalled();
+    expect(split.broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(single.broadcastWs).not.toHaveBeenCalled();
+    expect(single.broadcastWsToClientId).not.toHaveBeenCalled();
+    expect(split.json).toHaveBeenCalledWith(
+      split.ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "settings",
+        viewPath: "/settings",
+        viewType: "gui",
+        action: "split-view",
+        views: ["settings", "character"],
+        layout: "vertical",
+        placement: "right",
+      }),
+    );
+    expect(getCurrentViewState(splitClientId)).toMatchObject({
+      viewId: "settings",
+      viewPath: "/settings",
+      viewType: "gui",
+      action: "split-view",
+      views: ["settings", "character"],
+      panes: [
+        { viewId: "settings", viewType: "gui" },
+        { viewId: "character", viewType: "gui" },
+      ],
+      layout: "vertical",
+      placement: "right",
+      source: "user",
+    });
+    expect(getActiveViewContext(splitClientId)).toMatchObject({
+      viewId: "settings",
+      clientId: splitClientId,
+      viewIds: ["settings", "character"],
+      panes: [
+        { viewId: "settings", viewType: "gui", clientId: splitClientId },
+        { viewId: "character", viewType: "gui", clientId: splitClientId },
+      ],
+      layout: "vertical",
+      placement: "right",
+    });
+    expect(getCurrentViewState(singleClientId)).toMatchObject({
+      viewId: "character",
+      viewPath: "/character",
+      viewType: "gui",
+      source: "user",
+    });
+    expect(getCurrentViewState(singleClientId)?.views).toBeUndefined();
+    expect(getCurrentViewState()).toBeNull();
+  });
+
   it("does not re-stamp switchedAt when re-navigating to the same view", async () => {
     // Fake timers so each navigate gets a distinct, controlled timestamp
     // (real wall-clock resolution can collapse sub-millisecond navigates).
