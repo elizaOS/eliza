@@ -59,7 +59,9 @@ export function createInternalElizaConversationFetchFactory(
               claims.agentId,
               claims.organizationId,
             );
-            scopePreverified = Boolean(agent && agent.user_id === claims.userId);
+            scopePreverified = Boolean(
+              agent && agent.user_id === claims.userId,
+            );
           }),
       ).finally(() => {
         prewarmPromise = null;
@@ -67,10 +69,7 @@ export function createInternalElizaConversationFetchFactory(
       return prewarmPromise;
     };
 
-    const fetchImpl = (async (
-      input: RequestInfo | URL,
-      init?: RequestInit,
-    ) => {
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
       logger.info("[voice-sse-context] adapter entry", {
         cloudBindingsContext: hasCloudBindingsContext(),
         dbCacheContext: hasDbCacheContext(),
