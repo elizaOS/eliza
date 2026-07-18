@@ -494,6 +494,44 @@ describe("ElizaSandboxService shared runtime billing", () => {
     }
   });
 
+  test("shared-runtime bridgeStream refunds the reservation when the stream has no parts", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = sharedSandbox();
+    const findRunningSandboxSpy = spyOn(
+      agentSandboxesRepository,
+      "findRunningSandbox",
+    ).mockResolvedValue(sandbox);
+    const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+    const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+      undefined,
+    );
+    runSharedAgentTurnStream.mockImplementationOnce(async () => ({
+      model: "gpt-oss-120b",
+      degraded: false,
+    }));
+
+    try {
+      const response = await runWithCloudBindings({ CEREBRAS_API_KEY: "test-key" }, () =>
+        new ElizaSandboxService().bridgeStream(sandbox.id, sandbox.organization_id, {
+          jsonrpc: "2.0",
+          id: "missing-parts",
+          method: "message.send",
+          params: { text: "hello" },
+        }),
+      );
+
+      expect(response).toBeInstanceOf(Response);
+      expect(await response?.text()).toContain("Shared runtime stream did not start");
+      expect(reconcileReservation).toHaveBeenCalledWith(0);
+      expect(historyUpsertSpy).not.toHaveBeenCalled();
+      expect(billUsage).not.toHaveBeenCalled();
+    } finally {
+      findRunningSandboxSpy.mockRestore();
+      historyGetSpy.mockRestore();
+      historyUpsertSpy.mockRestore();
+    }
+  });
+
   test("shared-runtime bridgeStream returns before model completion and emits chunks before done", async () => {
     const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
     const sandbox = sharedSandbox();
