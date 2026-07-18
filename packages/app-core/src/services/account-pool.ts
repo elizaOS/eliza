@@ -1210,7 +1210,7 @@ export function selectionForProvider(providerId: PoolProviderId): {
 }
 
 export function configuredAccountStrategyForProvider(
-  providerId: string,
+  providerId: PoolProviderId,
 ): Strategy | undefined {
   const route = defaultSelectionConfig.serviceRouting?.llmText;
   return (
