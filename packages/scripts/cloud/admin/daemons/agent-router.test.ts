@@ -305,6 +305,9 @@ describe("handleRequest — agent-host CORS preflight (#15347)", () => {
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "x-elizaos-client-id",
+    );
   });
 
   it("non-agent host with no route match → plain 404 (unchanged)", async () => {

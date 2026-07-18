@@ -296,7 +296,8 @@ function corsHeadersFor(request: Request): Record<string, string> {
     vary: "origin",
     "access-control-allow-credentials": "true",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-    "access-control-allow-headers": "authorization,content-type,x-api-key",
+    "access-control-allow-headers":
+      "authorization,content-type,x-api-key,x-elizaos-client-id",
   };
 }
 

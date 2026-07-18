@@ -135,6 +135,29 @@ describe("dedicated-agent-proxy — unified auth", () => {
     );
   });
 
+  test("preserves the browser tab scope while swapping only authentication", async () => {
+    authResult = { user: { id: "u1", organization_id: "org1" } };
+    sandboxResult = runningDedicated;
+    const headers = new Headers({
+      authorization: "Bearer cloud-token-abc",
+      origin: "https://app-staging.elizacloud.ai",
+      "x-elizaos-client-id": "ui-dedicated-tab-a",
+    });
+    const request = new Request(
+      `https://${AGENT}.elizacloud.ai/api/conversations/conv/messages/stream`,
+      { headers },
+    );
+
+    await handleDedicatedAgentProxy(request, ENV, urlOf(request), AGENT);
+
+    expect(captured?.headers.get("authorization")).toBe(
+      "Bearer agent-secret-token",
+    );
+    expect(captured?.headers.get("x-elizaos-client-id")).toBe(
+      "ui-dedicated-tab-a",
+    );
+  });
+
   test("NO cloud token → pass through unchanged (never injects the agent token)", async () => {
     authResult = "throw";
     const r = makeRequest();
@@ -270,6 +293,9 @@ describe("dedicated-agent-proxy — CORS + unroutable short-circuit (#15347)", (
     expect(res.status).toBe(204);
     expect(res.headers.get("access-control-allow-origin")).toBe(ORIGIN);
     expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain(
+      "x-elizaos-client-id",
+    );
     expect(captured).toBeNull(); // preflight is answered at the edge
   });
 

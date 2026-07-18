@@ -29,6 +29,7 @@ function makeClient(
 }
 
 const DEDICATED_BASE = "https://agent-abc123.elizacloud.ai";
+const SHELL_CLIENT_ID_KEY = Symbol.for("elizaos.ui.client-id");
 
 function sharedResolver404(): Response {
   return new Response(JSON.stringify({ error: "Not a shared-runtime agent" }), {
@@ -41,11 +42,13 @@ describe("ElizaClient.getStatus — dedicated agent shared-resolver 404 (#15310 
   beforeEach(() => {
     setBootConfig({ branding: {} });
     vi.restoreAllMocks();
+    Reflect.deleteProperty(globalThis, SHELL_CLIENT_ID_KEY);
     // No desktop electrobun RPC / native lifecycle — force the plain HTTP path.
     Reflect.deleteProperty(globalThis, "window");
   });
 
   afterEach(() => {
+    Reflect.deleteProperty(globalThis, SHELL_CLIENT_ID_KEY);
     Reflect.deleteProperty(globalThis, "window");
   });
 
@@ -88,7 +91,7 @@ describe("ElizaClient.getStatus — dedicated agent shared-resolver 404 (#15310 
     await expect(client.getStatus()).rejects.toThrow();
   });
 
-  it("omits dedicated-CORS-blocked automatic headers while keeping Authorization", async () => {
+  it("keeps the per-tab client scope on dedicated requests while omitting the unsupported UI language", async () => {
     const request = vi.fn<AgentRequestTransport["request"]>(async () => {
       return new Response(JSON.stringify({ ok: true }), {
         status: 200,
@@ -113,8 +116,58 @@ describe("ElizaClient.getStatus — dedicated agent shared-resolver 404 (#15310 
     const lowerHeaderNames = Object.keys(headers).map((key) =>
       key.toLowerCase(),
     );
-    expect(lowerHeaderNames).not.toContain("x-elizaos-client-id");
+    expect(headers["X-ElizaOS-Client-Id"]).toBe("manual-client-id");
     expect(lowerHeaderNames).not.toContain("x-elizaos-ui-language");
+  });
+
+  it("keeps two dedicated browser tabs in distinct current-view scopes", async () => {
+    const currentViews = new Map<string, string>();
+    const request = vi.fn<AgentRequestTransport["request"]>(
+      async (url, init) => {
+        const clientId = new Headers(init.headers).get("X-ElizaOS-Client-Id");
+        if (!clientId) throw new Error("missing dedicated client scope");
+        const pathname = new URL(url).pathname;
+        const navigate = pathname.match(/^\/api\/views\/([^/]+)\/navigate$/);
+        if (navigate) {
+          currentViews.set(clientId, decodeURIComponent(navigate[1]));
+          return Response.json({ ok: true });
+        }
+        if (pathname === "/api/views/current") {
+          return Response.json({
+            currentView: { viewId: currentViews.get(clientId) ?? null },
+          });
+        }
+        throw new Error(`unexpected request: ${pathname}`);
+      },
+    );
+
+    Reflect.set(globalThis, SHELL_CLIENT_ID_KEY, "ui-dedicated-tab-a");
+    const tabA = makeClient(DEDICATED_BASE, request);
+    Reflect.set(globalThis, SHELL_CLIENT_ID_KEY, "ui-dedicated-tab-b");
+    const tabB = makeClient(DEDICATED_BASE, request);
+
+    await Promise.all([
+      tabA.fetch("/api/views/notes/navigate", { method: "POST", body: "{}" }),
+      tabB.fetch("/api/views/simple-calendar/navigate", {
+        method: "POST",
+        body: "{}",
+      }),
+    ]);
+    const [currentA, currentB] = await Promise.all([
+      tabA.fetch<{ currentView: { viewId: string } }>("/api/views/current"),
+      tabB.fetch<{ currentView: { viewId: string } }>("/api/views/current"),
+    ]);
+
+    expect(tabA.getClientId()).toBe("ui-dedicated-tab-a");
+    expect(tabB.getClientId()).toBe("ui-dedicated-tab-b");
+    expect(currentA.currentView.viewId).toBe("notes");
+    expect(currentB.currentView.viewId).toBe("simple-calendar");
+    expect(currentViews).toEqual(
+      new Map([
+        ["ui-dedicated-tab-a", "notes"],
+        ["ui-dedicated-tab-b", "simple-calendar"],
+      ]),
+    );
   });
 
   it("short-circuits authenticated dedicated config as empty without probing /api/config", async () => {

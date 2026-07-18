@@ -71,10 +71,7 @@ const ELIZA_CLOUD_CONTROL_PLANE_HOSTS = new Set([
   "api-staging.elizacloud.ai",
   "app-staging.elizacloud.ai",
 ]);
-const DEDICATED_CLOUD_CORS_BLOCKED_HEADERS = new Set([
-  "x-elizaos-client-id",
-  "x-elizaos-ui-language",
-]);
+const DEDICATED_CLOUD_CORS_BLOCKED_HEADERS = new Set(["x-elizaos-ui-language"]);
 const REPLAYABLE_WS_EVENT_TYPES: ReadonlySet<string> = new Set([
   SHELL_NAVIGATE_VIEW_WS_EVENT,
 ]);
@@ -1134,9 +1131,7 @@ export class ElizaClient {
   ): RequestInit {
     const isDedicatedCloudRequest = isDedicatedCloudAgentBase(requestUrl);
     const headers: Record<string, string> = {
-      ...(!isDedicatedCloudRequest
-        ? { "X-ElizaOS-Client-Id": this.clientId }
-        : {}),
+      "X-ElizaOS-Client-Id": this.clientId,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(!isDedicatedCloudRequest && this._uiLanguage
         ? { "X-ElizaOS-UI-Language": this._uiLanguage }

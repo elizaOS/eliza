@@ -547,6 +547,42 @@ describe("conversation stream SSE contract (#10712)", () => {
     expect(persisted?.metadata?.clientId).toBeUndefined();
   });
 
+  it("keeps same-room turns from two browser tabs in distinct planner scopes", async () => {
+    const processedMessages: Memory[] = [];
+    const messageService: NonNullable<AgentRuntime["messageService"]> = {
+      async handleMessage(_runtime, message) {
+        processedMessages.push(message);
+        return {
+          didRespond: true,
+          responseContent: { text: "Scoped response." },
+          responseMessages: [],
+        };
+      },
+      shouldRespond: () => ({
+        shouldRespond: true,
+        skipEvaluation: true,
+        reason: "two-client-scope-contract-test",
+      }),
+      deleteMessage: async () => undefined,
+      clearChannel: async () => undefined,
+    };
+    const tabA = createCtx(messageService);
+    const tabB = createCtx(messageService);
+    tabA.ctx.req.headers["x-elizaos-client-id"] = "ui-dedicated-tab-a";
+    tabB.ctx.req.headers["x-elizaos-client-id"] = "ui-dedicated-tab-b";
+
+    await handleConversationRoutes(tabA.ctx);
+    await handleConversationRoutes(tabB.ctx);
+
+    expect(processedMessages.map((message) => message.roomId)).toEqual([
+      ROOM_ID,
+      ROOM_ID,
+    ]);
+    expect(
+      processedMessages.map((message) => message.metadata?.clientId),
+    ).toEqual(["ui-dedicated-tab-a", "ui-dedicated-tab-b"]);
+  });
+
   it("delivers a post-SSE-init failure as a structured SSE error frame, not an HTTP error", async () => {
     const { ctx, record, useModel } = createCtx();
     // First failure point past the SSE init: storing the user message.
