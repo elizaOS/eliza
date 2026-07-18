@@ -31,6 +31,8 @@ jobs:
   security:
     # Skip for draft PRs, [skip-security] in title, or bot-triggered
     if: |
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.repo.full_name == github.repository) &&
       github.event.pull_request.draft != true &&
       !contains(github.event.pull_request.title, '[skip-security]') &&
       github.actor != 'cursor[bot]' &&
@@ -51,7 +53,6 @@ jobs:
           fetch-depth: 2
 
       - name: Run Claude Security Review
-        if: ${{ env.ANTHROPIC_API_KEY != '' }}
         # Pinned to SHA for supply chain security.
         uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda
         env:
@@ -61,9 +62,31 @@ jobs:
           comment-pr: true
           upload-results: true
           claudecode-timeout: 30
+          run-every-commit: true
 
           # Exclude non-critical directories
           exclude-directories: "node_modules,dist,coverage,.turbo,.next,docs"
 
           # Use Opus 4.5 for deeper security analysis
           claude-model: claude-opus-4-7
+
+      # The pinned action converts API/Claude failures into zero findings and
+      # exits successfully. Fail this advisory check when no verdict exists.
+      - name: Verify Claude Security Review completed
+        if: always()
+        run: |
+          if [ ! -s claudecode-results.json ]; then
+            echo "::error::Claude security review produced no results"
+            exit 1
+          fi
+
+          error="$(jq -r '.error // empty' claudecode-results.json)"
+          if [ -n "$error" ]; then
+            echo "::error::Claude security review failed: $error"
+            exit 1
+          fi
+
+          if ! jq -e '.findings | type == "array"' claudecode-results.json >/dev/null; then
+            echo "::error::Claude security review produced no findings verdict"
+            exit 1
+          fi
