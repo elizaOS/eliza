@@ -16,7 +16,10 @@ import {
 } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { writeViewLayoutToHistory } from "./app-navigate-view";
+import {
+  readViewLayoutFromHistory,
+  writeViewLayoutToHistory,
+} from "./app-navigate-view";
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
@@ -822,6 +825,103 @@ describe("App navigate-view event wiring", () => {
     });
   });
 
+  it("keeps the foreground layout when a background desktop tab closes", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+    desktopTabsState.tabs = [
+      {
+        viewId: "shopify",
+        label: "Shopify",
+        path: "/shopify",
+        pinned: false,
+      },
+      {
+        viewId: "calendar",
+        label: "Calendar",
+        path: "/calendar",
+        pinned: false,
+      },
+      {
+        viewId: "remote-ledger",
+        label: "Remote Ledger",
+        path: "/apps/remote-ledger",
+        pinned: true,
+      },
+    ];
+    const { getByTestId } = render(<App />);
+
+    navigateView({
+      action: "split-view",
+      viewId: "shopify",
+      views: ["shopify", "calendar"],
+      layout: "horizontal",
+    });
+    await waitFor(() => {
+      expect(getByTestId("view-layout-surface")).toBeTruthy();
+    });
+    const expectedLayout = readViewLayoutFromHistory();
+    appState.setTab.mockClear();
+    desktopTabsMock.closeTab.mockClear();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Close Remote Ledger" }),
+    );
+
+    expect(desktopTabsMock.closeTab).toHaveBeenCalledWith("remote-ledger");
+    expect(appState.setTab).not.toHaveBeenCalled();
+    expect(getByTestId("view-layout-surface")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-shopify")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-calendar")).toBeTruthy();
+    expect(readViewLayoutFromHistory()).toEqual(expectedLayout);
+  });
+
+  it("publishes the pane the user most recently focused as primary context", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+    mockAvailableViews.splice(
+      0,
+      mockAvailableViews.length,
+      shopifyAgentSurfaceView,
+      calendarView,
+    );
+    const { getByTestId } = render(<App />);
+
+    navigateView({
+      action: "split-view",
+      viewId: "shopify",
+      views: ["shopify", "calendar"],
+      layout: "horizontal",
+    });
+
+    const calendarPane = await waitFor(() =>
+      getByTestId("view-layout-pane-calendar"),
+    );
+    expect(calendarPane.getAttribute("data-focused")).toBe("false");
+    fireEvent.pointerDown(calendarPane);
+
+    await waitFor(() => {
+      expect(calendarPane.getAttribute("data-focused")).toBe("true");
+      expect(viewShellStateMock.set).toHaveBeenLastCalledWith(
+        {
+          viewId: "calendar",
+          viewPath: "/calendar",
+          viewType: "gui",
+          mode: "split",
+          panes: [
+            { viewId: "shopify", viewType: "gui" },
+            { viewId: "calendar", viewType: "gui" },
+          ],
+          layout: "horizontal",
+        },
+        { pending: false },
+      );
+    });
+    expect(readViewLayoutFromHistory()).toMatchObject({
+      focusedViewId: "calendar",
+      viewIds: ["shopify", "calendar"],
+    });
+  });
+
   it("restores and republishes the exact split layout after a document reload", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");
@@ -843,18 +943,21 @@ describe("App navigate-view event wiring", () => {
       ),
     ).toEqual(["documents", "calendar"]);
     await waitFor(() => {
-      expect(viewShellStateMock.set).toHaveBeenCalledWith({
-        viewId: "documents",
-        viewPath: "/documents",
-        viewType: "gui",
-        mode: "split",
-        panes: [
-          { viewId: "documents", viewType: "gui" },
-          { viewId: "calendar", viewType: "gui" },
-        ],
-        layout: "vertical",
-        placement: "right",
-      });
+      expect(viewShellStateMock.set).toHaveBeenCalledWith(
+        {
+          viewId: "documents",
+          viewPath: "/documents",
+          viewType: "gui",
+          mode: "split",
+          panes: [
+            { viewId: "documents", viewType: "gui" },
+            { viewId: "calendar", viewType: "gui" },
+          ],
+          layout: "vertical",
+          placement: "right",
+        },
+        { pending: false },
+      );
       expect(viewShellStateMock.rehydrate).toHaveBeenCalledTimes(1);
     });
   });

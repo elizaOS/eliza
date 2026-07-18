@@ -38,6 +38,7 @@ import {
   type NavigateViewDetail,
   navigateBrowserPath,
   readViewLayoutFromHistory,
+  writeViewLayoutToHistory,
 } from "./app-navigate-view";
 import { AppBackground } from "./backgrounds/AppBackground";
 import {
@@ -1111,9 +1112,12 @@ function resolveAuthoritativeShellViewState({
     const exactPanes = panes.filter(
       (pane): pane is NonNullable<typeof pane> => pane !== null,
     );
-    const primary = availableViews.find(
-      (view) => view.id === exactPanes[0]?.viewId,
-    );
+    const focusedViewId =
+      viewLayout.focusedViewId &&
+      exactPanes.some((pane) => pane.viewId === viewLayout.focusedViewId)
+        ? viewLayout.focusedViewId
+        : exactPanes[0]?.viewId;
+    const primary = availableViews.find((view) => view.id === focusedViewId);
     if (!primary || exactPanes.length === 0) return null;
     return {
       viewId: primary.id,
@@ -1167,6 +1171,7 @@ function viewLayoutsEqual(
     left.mode === right.mode &&
     left.layout === right.layout &&
     left.placement === right.placement &&
+    left.focusedViewId === right.focusedViewId &&
     left.viewIds.length === right.viewIds.length &&
     left.viewIds.every((viewId, index) => viewId === right.viewIds[index])
   );
@@ -1301,16 +1306,16 @@ function ViewLayoutSurface({
   availableViews,
   layout,
   onClear,
+  onFocusView,
 }: {
   availableViews: ViewRegistryEntry[];
   layout: ActiveViewLayout;
   onClear: () => void;
+  onFocusView: (viewId: string) => void;
 }): ReactNode {
   const entries = layout.viewIds
     .map((viewId) => availableViews.find((view) => view.id === viewId))
     .filter((view): view is ViewRegistryEntry => Boolean(view));
-  const paneClassName =
-    "flex min-h-[18rem] min-w-0 flex-col overflow-hidden border border-border/45 bg-bg";
   const routeOverrideForView = (
     view: ViewRegistryEntry,
   ): ViewRouterRouteOverride => {
@@ -1363,7 +1368,19 @@ function ViewLayoutSurface({
               <section
                 key={view.id}
                 data-testid={`view-layout-pane-${view.id}`}
-                className={paneClassName}
+                data-focused={
+                  (layout.focusedViewId ?? layout.viewIds[0]) === view.id
+                    ? "true"
+                    : "false"
+                }
+                onPointerDown={() => onFocusView(view.id)}
+                onFocusCapture={() => onFocusView(view.id)}
+                className={cn(
+                  "flex min-h-[18rem] min-w-0 flex-col overflow-hidden border bg-bg transition-colors",
+                  (layout.focusedViewId ?? layout.viewIds[0]) === view.id
+                    ? "border-border"
+                    : "border-border/45",
+                )}
               >
                 <div className="flex h-9 shrink-0 items-center border-b border-border/35 px-2.5">
                   <span className="truncate text-xs font-medium text-muted">
@@ -1827,6 +1844,7 @@ type ShellContentProps = {
   uiShellMode: string;
   viewLayout: ActiveViewLayout | null;
   onClearViewLayout: () => void;
+  onFocusViewLayout: (viewId: string) => void;
 };
 
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
@@ -1900,6 +1918,7 @@ function RoutedShellContent(props: ShellContentProps): ReactNode {
             availableViews={props.availableViewsForLayout}
             layout={props.viewLayout}
             onClear={props.onClearViewLayout}
+            onFocusView={props.onFocusViewLayout}
           />
         ) : (
           <ViewRouter
@@ -2399,7 +2418,10 @@ function AppContent() {
   const [activeDesktopTabId, setActiveDesktopTabId] = useState<string | null>(
     null,
   );
-  const { views: availableViewsForDesktopTabs } = useRoutableViews();
+  const {
+    views: availableViewsForDesktopTabs,
+    loading: availableViewsLoading,
+  } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(() =>
     trimmedNavigationPath(getWindowNavigationPath()) === "/views"
       ? readViewLayoutFromHistory()
@@ -2446,23 +2468,31 @@ function AppContent() {
       viewLayout,
     ],
   );
-  const initialViewStatePublishedRef = useRef(false);
+  const publishedShellViewStateKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    setAuthoritativeShellViewState(authoritativeShellViewState);
-    if (
-      !authoritativeShellViewState ||
-      initialViewStatePublishedRef.current ||
-      startupCoordinator.phase !== "ready"
-    ) {
+    setAuthoritativeShellViewState(authoritativeShellViewState, {
+      pending:
+        authoritativeShellViewState === null && availableViewsLoading === true,
+    });
+    if (!authoritativeShellViewState || startupCoordinator.phase !== "ready") {
       return;
     }
-    initialViewStatePublishedRef.current = true;
+    const publicationKey = JSON.stringify(authoritativeShellViewState);
+    if (publishedShellViewStateKeyRef.current === publicationKey) return;
+    publishedShellViewStateKeyRef.current = publicationKey;
     void rehydrateAuthoritativeShellViewState().catch((error) => {
       // error-policy:J4 the route remains visible and the pre-send barrier
       // retries. Keep the startup failure observable without blocking paint.
-      logger.warn({ error }, "[App] initial shell view rehydrate failed");
+      logger.warn({ error }, "[App] shell view rehydrate failed");
+      if (publishedShellViewStateKeyRef.current === publicationKey) {
+        publishedShellViewStateKeyRef.current = null;
+      }
     });
-  }, [authoritativeShellViewState, startupCoordinator.phase]);
+  }, [
+    authoritativeShellViewState,
+    availableViewsLoading,
+    startupCoordinator.phase,
+  ]);
   useEffect(
     () => () => {
       setAuthoritativeShellViewState(null);
@@ -2555,6 +2585,7 @@ function AppContent() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const baseHandler = createNavigateViewHandler({
+      activeForegroundViewId: activeViewSurface.viewId,
       availableViewsForDesktopTabs,
       closeDesktopTab,
       desktopTabs,
@@ -2563,6 +2594,7 @@ function AppContent() {
       setActiveDesktopTabId,
       setTab,
       setViewLayout,
+      viewLayout,
     });
     // An agent-dispatched navigate to the Settings view that carries a `subview`
     // deep-links a section. Route it through the same settings state the
@@ -2591,9 +2623,11 @@ function AppContent() {
   }, [
     setTab,
     availableViewsForDesktopTabs,
+    activeViewSurface.viewId,
     closeDesktopTab,
     desktopTabs,
     openDesktopTab,
+    viewLayout,
   ]);
 
   useEffect(() => {
@@ -2674,14 +2708,17 @@ function AppContent() {
 
   const handleDesktopTabClose = useCallback(
     (viewId: string) => {
-      setViewLayout(null);
+      if (viewLayout?.viewIds.includes(viewId)) {
+        setViewLayout(null);
+        writeViewLayoutToHistory(null);
+      }
       closeDesktopTab(viewId);
       if (activeDesktopTabId === viewId) {
         setActiveDesktopTabId(null);
         setTab("chat");
       }
     },
-    [closeDesktopTab, activeDesktopTabId, setTab],
+    [closeDesktopTab, activeDesktopTabId, setTab, viewLayout],
   );
 
   const handleOpenViewManagerFromTabBar = useCallback(() => {
@@ -2691,6 +2728,19 @@ function AppContent() {
 
   const handleClearViewLayout = useCallback(() => {
     setViewLayout(null);
+    writeViewLayoutToHistory(null);
+  }, []);
+
+  const handleFocusViewLayout = useCallback((viewId: string) => {
+    setViewLayout((current) => {
+      if (!current?.viewIds.includes(viewId)) return current;
+      if ((current.focusedViewId ?? current.viewIds[0]) === viewId) {
+        return current;
+      }
+      const next = { ...current, focusedViewId: viewId };
+      writeViewLayoutToHistory(next);
+      return next;
+    });
   }, []);
 
   // desktopTabBar is computed here (after handlers) so the memo below can
@@ -2750,6 +2800,7 @@ function AppContent() {
         uiShellMode={uiShellMode}
         viewLayout={viewLayout}
         onClearViewLayout={handleClearViewLayout}
+        onFocusViewLayout={handleFocusViewLayout}
       />
     ),
     [
@@ -2767,6 +2818,7 @@ function AppContent() {
       availableViewsForDesktopTabs,
       viewLayout,
       handleClearViewLayout,
+      handleFocusViewLayout,
     ],
   );
 

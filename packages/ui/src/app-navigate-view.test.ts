@@ -12,6 +12,7 @@ import { createNavigateViewEvent } from "@elizaos/shared/events";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __setNavigateViewPayloadForTests,
+  type ActiveViewLayout,
   consumeNavigateViewPayload,
   createNavigateViewHandler,
   type DesktopBridgeRequest,
@@ -35,7 +36,11 @@ function view(patch: Partial<ViewRegistryEntry> = {}): ViewRegistryEntry {
   };
 }
 
-function createHandlerFixture(views: ViewRegistryEntry[] = [view()]) {
+function createHandlerFixture(
+  views: ViewRegistryEntry[] = [view()],
+  viewLayout: ActiveViewLayout | null = null,
+  activeForegroundViewId?: string | null,
+) {
   const invokeDesktopBridgeRequest = vi.fn(
     async <T>() =>
       ({
@@ -49,6 +54,7 @@ function createHandlerFixture(views: ViewRegistryEntry[] = [view()]) {
   const setTab = vi.fn();
   const setViewLayout = vi.fn();
   const handler = createNavigateViewHandler({
+    activeForegroundViewId,
     availableViewsForDesktopTabs: views,
     closeDesktopTab,
     desktopTabs: views.map((entry) => ({ viewId: entry.id })),
@@ -58,6 +64,7 @@ function createHandlerFixture(views: ViewRegistryEntry[] = [view()]) {
     setActiveDesktopTabId,
     setTab,
     setViewLayout,
+    viewLayout,
   });
   return {
     handler,
@@ -222,6 +229,122 @@ describe("App navigate-view shell handler", () => {
     expect(readViewLayoutFromHistory()).toBeNull();
   });
 
+  it("closes a background tab without disturbing the visible layout", () => {
+    const notes = view({ id: "notes", label: "Notes", path: "/notes" });
+    const calendar = view({
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+    });
+    const background = view({
+      id: "remote-ledger",
+      label: "Remote Ledger",
+      path: "/apps/remote-ledger",
+    });
+    const layout: ActiveViewLayout = {
+      mode: "split",
+      viewIds: ["notes", "calendar"],
+      focusedViewId: "notes",
+      layout: "horizontal",
+    };
+    writeViewLayoutToHistory(layout);
+    const fixture = createHandlerFixture(
+      [notes, calendar, background],
+      layout,
+      "notes",
+    );
+
+    fixture.handler(
+      navigateEvent({ viewId: "remote-ledger", action: "close" }),
+    );
+
+    expect(fixture.closeDesktopTab).toHaveBeenCalledWith("remote-ledger");
+    expect(fixture.setViewLayout).not.toHaveBeenCalled();
+    expect(fixture.setActiveDesktopTabId).not.toHaveBeenCalled();
+    expect(fixture.setTab).not.toHaveBeenCalled();
+    expect(fixture.navigatePath).not.toHaveBeenCalled();
+    expect(readViewLayoutFromHistory()).toEqual(layout);
+  });
+
+  it("closes a background tab without replacing a single foreground view", () => {
+    const notes = view({ id: "notes", label: "Notes", path: "/notes" });
+    const background = view({
+      id: "remote-ledger",
+      label: "Remote Ledger",
+      path: "/apps/remote-ledger",
+    });
+    const fixture = createHandlerFixture([notes, background], null, "notes");
+
+    fixture.handler(
+      navigateEvent({ viewId: "remote-ledger", action: "close" }),
+    );
+
+    expect(fixture.closeDesktopTab).toHaveBeenCalledWith("remote-ledger");
+    expect(fixture.setViewLayout).not.toHaveBeenCalled();
+    expect(fixture.setActiveDesktopTabId).not.toHaveBeenCalled();
+    expect(fixture.setTab).not.toHaveBeenCalled();
+    expect(fixture.navigatePath).not.toHaveBeenCalled();
+  });
+
+  it("closes one split pane and routes to the surviving view", () => {
+    const notes = view({ id: "notes", label: "Notes", path: "/notes" });
+    const calendar = view({
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+    });
+    const layout: ActiveViewLayout = {
+      mode: "split",
+      viewIds: ["notes", "calendar"],
+      focusedViewId: "calendar",
+      layout: "horizontal",
+    };
+    writeViewLayoutToHistory(layout);
+    const fixture = createHandlerFixture([notes, calendar], layout);
+
+    fixture.handler(navigateEvent({ viewId: "calendar", action: "close" }));
+
+    expect(fixture.closeDesktopTab).toHaveBeenCalledWith("calendar");
+    expect(fixture.setViewLayout).toHaveBeenCalledWith(null);
+    expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("notes");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/notes");
+    expect(readViewLayoutFromHistory()).toBeNull();
+  });
+
+  it("removes one tiled pane while retaining the other panes and focus", () => {
+    const notes = view({ id: "notes", label: "Notes", path: "/notes" });
+    const calendar = view({
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+    });
+    const tasks = view({ id: "tasks", label: "Tasks", path: "/tasks" });
+    const layout: ActiveViewLayout = {
+      mode: "tile",
+      viewIds: ["notes", "calendar", "tasks"],
+      focusedViewId: "calendar",
+      layout: "grid",
+    };
+    const fixture = createHandlerFixture([notes, calendar, tasks], layout);
+
+    fixture.handler(navigateEvent({ viewId: "notes", action: "close" }));
+
+    expect(fixture.setViewLayout).toHaveBeenCalledWith({
+      mode: "tile",
+      viewIds: ["calendar", "tasks"],
+      focusedViewId: "calendar",
+      layout: "grid",
+    });
+    expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("calendar");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/views");
+    expect(readViewLayoutFromHistory()).toEqual({
+      mode: "tile",
+      viewIds: ["calendar", "tasks"],
+      focusedViewId: "calendar",
+      layout: "grid",
+    });
+  });
+
   it("opens layout event participants as desktop tabs and activates layout state", () => {
     const notes = view({
       id: "notes",
@@ -257,6 +380,7 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.setViewLayout).toHaveBeenCalledWith({
       mode: "split",
       viewIds: ["notes", "calendar"],
+      focusedViewId: "notes",
       layout: "horizontal",
       placement: "right",
     });
@@ -265,6 +389,7 @@ describe("App navigate-view shell handler", () => {
     expect(readViewLayoutFromHistory()).toEqual({
       mode: "split",
       viewIds: ["notes", "calendar"],
+      focusedViewId: "notes",
       layout: "horizontal",
       placement: "right",
     });
@@ -280,6 +405,7 @@ describe("App navigate-view shell handler", () => {
     expect(readViewLayoutFromHistory()).toEqual({
       mode: "tile",
       viewIds: ["notes", "calendar"],
+      focusedViewId: "notes",
       layout: "grid",
     });
 
@@ -322,6 +448,7 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.setViewLayout).toHaveBeenCalledWith({
       mode: "split",
       viewIds: ["calendar"],
+      focusedViewId: "calendar",
       layout: "horizontal",
       placement: undefined,
     });

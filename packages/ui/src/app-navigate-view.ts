@@ -13,6 +13,7 @@ export type { NavigateViewDetail };
 export type ActiveViewLayout = {
   mode: "split" | "tile";
   viewIds: string[];
+  focusedViewId?: string;
   layout?: string;
   placement?: string;
 };
@@ -34,9 +35,15 @@ function parseHistoryViewLayout(value: unknown): ActiveViewLayout | null {
   }
   const viewIds = record.viewIds.map((viewId) => viewId.trim());
   if (new Set(viewIds).size !== viewIds.length) return null;
+  const focusedViewId =
+    typeof record.focusedViewId === "string" &&
+    viewIds.includes(record.focusedViewId.trim())
+      ? record.focusedViewId.trim()
+      : viewIds[0];
   return {
     mode: record.mode,
     viewIds,
+    ...(focusedViewId ? { focusedViewId } : {}),
     ...(typeof record.layout === "string" && record.layout.trim()
       ? { layout: record.layout.trim() }
       : {}),
@@ -178,6 +185,7 @@ function layoutViewIdsForDetail(detail: NavigateViewDetail): string[] {
 }
 
 export function createNavigateViewHandler({
+  activeForegroundViewId,
   availableViewsForDesktopTabs,
   closeDesktopTab,
   desktopTabs = [],
@@ -187,7 +195,9 @@ export function createNavigateViewHandler({
   setActiveDesktopTabId,
   setTab,
   setViewLayout,
+  viewLayout = null,
 }: {
+  activeForegroundViewId?: string | null;
   availableViewsForDesktopTabs: ViewRegistryEntry[];
   closeDesktopTab?: DesktopTabClose;
   desktopTabs?: Array<{ viewId: string }>;
@@ -197,6 +207,7 @@ export function createNavigateViewHandler({
   setActiveDesktopTabId: (viewId: string | null) => void;
   setTab: (tab: Tab) => void;
   setViewLayout?: (layout: ActiveViewLayout | null) => void;
+  viewLayout?: ActiveViewLayout | null;
 }): (event: Event) => void {
   const activateTabForPath = (path: string) => {
     const routeTab = tabFromPath(path);
@@ -208,9 +219,72 @@ export function createNavigateViewHandler({
     if (!detail) return;
     storeNavigateViewPayload(detail);
     if (detail.action === "close" || detail.action === "close-all") {
+      const closesEveryView =
+        detail.action === "close-all" || detail.viewId === "__all__";
+      const targetedViewIsVisible = detail.viewId
+        ? viewLayout
+          ? viewLayout.viewIds.includes(detail.viewId)
+          : activeForegroundViewId === undefined
+            ? undefined
+            : activeForegroundViewId === detail.viewId
+        : false;
+      if (
+        !closesEveryView &&
+        detail.viewId &&
+        targetedViewIsVisible === false
+      ) {
+        closeDesktopTab?.(detail.viewId);
+        return;
+      }
+      if (
+        !closesEveryView &&
+        detail.viewId &&
+        viewLayout?.viewIds.includes(detail.viewId)
+      ) {
+        const remainingViewIds = viewLayout.viewIds.filter(
+          (viewId) => viewId !== detail.viewId,
+        );
+        closeDesktopTab?.(detail.viewId);
+        if (remainingViewIds.length > 1) {
+          const focusedViewId =
+            viewLayout.focusedViewId &&
+            remainingViewIds.includes(viewLayout.focusedViewId)
+              ? viewLayout.focusedViewId
+              : remainingViewIds[0];
+          const nextLayout: ActiveViewLayout = {
+            ...viewLayout,
+            viewIds: remainingViewIds,
+            focusedViewId,
+          };
+          setViewLayout?.(nextLayout);
+          writeViewLayoutToHistory(nextLayout);
+          setActiveDesktopTabId(focusedViewId);
+          setTab("views");
+          navigatePath("/views");
+          return;
+        }
+        const remainingViewId = remainingViewIds[0];
+        setViewLayout?.(null);
+        writeViewLayoutToHistory(null);
+        if (remainingViewId) {
+          const remainingEntry = desktopEntryForDetail(
+            availableViewsForDesktopTabs,
+            remainingViewId,
+          );
+          const remainingPath =
+            remainingEntry?.path ?? `/apps/${remainingViewId}`;
+          setActiveDesktopTabId(remainingViewId);
+          activateTabForPath(remainingPath);
+          navigatePath(remainingPath);
+        } else {
+          setActiveDesktopTabId(null);
+          setTab("chat");
+        }
+        return;
+      }
       setViewLayout?.(null);
       writeViewLayoutToHistory(null);
-      if (detail.action === "close-all" || detail.viewId === "__all__") {
+      if (closesEveryView) {
         for (const tab of desktopTabs) {
           closeDesktopTab?.(tab.viewId);
         }
@@ -236,20 +310,17 @@ export function createNavigateViewHandler({
       const primaryViewId =
         resolvedViewIds[0] ?? viewIds[0] ?? detail.viewId ?? null;
       if (primaryViewId) setActiveDesktopTabId(primaryViewId);
-      setViewLayout?.({
+      const nextLayout: ActiveViewLayout = {
         mode: detail.action === "split-view" ? "split" : "tile",
         viewIds: resolvedViewIds.length > 0 ? resolvedViewIds : viewIds,
+        ...(primaryViewId ? { focusedViewId: primaryViewId } : {}),
         layout: detail.layout,
         placement: detail.placement,
-      });
+      };
+      setViewLayout?.(nextLayout);
       setTab("views");
       navigatePath("/views");
-      writeViewLayoutToHistory({
-        mode: detail.action === "split-view" ? "split" : "tile",
-        viewIds: resolvedViewIds.length > 0 ? resolvedViewIds : viewIds,
-        layout: detail.layout,
-        placement: detail.placement,
-      });
+      writeViewLayoutToHistory(nextLayout);
       return;
     }
     const path = pathForNavigateViewDetail(detail);
