@@ -1,0 +1,74 @@
+/**
+ * Destructive-bulk classifier tests: what fires the chat-path confirm gate and
+ * — just as load-bearing — what must NOT fire it. Deterministic, no processes.
+ */
+import { describe, expect, it } from "vitest";
+import { classifyDestructiveCommand } from "./destructive-gate";
+
+describe("classifyDestructiveCommand — fires", () => {
+  it("rm -rf on a path", () => {
+    const v = classifyDestructiveCommand("rm -rf /home/milady/projects/old");
+    expect(v.destructive).toBe(true);
+    expect(v.reason).toBe("recursive delete");
+    expect(v.targets).toContain("/home/milady/projects/old");
+  });
+  it("rm -fr and rm -R variants", () => {
+    expect(classifyDestructiveCommand("rm -fr build").destructive).toBe(true);
+    expect(classifyDestructiveCommand("rm -R cache").destructive).toBe(true);
+  });
+  it("recursive rm hidden behind a chain", () => {
+    const v = classifyDestructiveCommand("ls && rm -rf ./data");
+    expect(v.destructive).toBe(true);
+  });
+  it("forced glob delete", () => {
+    expect(
+      classifyDestructiveCommand("rm -f /var/log/app/*.log").destructive,
+    ).toBe(true);
+  });
+  it("find -delete", () => {
+    expect(
+      classifyDestructiveCommand("find /tmp/scratch -name '*.tmp' -delete")
+        .destructive,
+    ).toBe(true);
+  });
+  it("dd onto a raw device", () => {
+    const v = classifyDestructiveCommand("dd if=/dev/zero of=/dev/sda bs=1M");
+    expect(v.destructive).toBe(true);
+    expect(v.targets).toContain("of=/dev/sda");
+  });
+  it("mkfs family and shred", () => {
+    expect(classifyDestructiveCommand("mkfs.ext4 /dev/sdb1").destructive).toBe(
+      true,
+    );
+    expect(classifyDestructiveCommand("shred -u secrets.txt").destructive).toBe(
+      true,
+    );
+  });
+  it("DROP DATABASE through a sql runner", () => {
+    const v = classifyDestructiveCommand('psql -c "DROP DATABASE eliza"');
+    expect(v.destructive).toBe(true);
+    expect(v.targets[0]).toContain("eliza");
+  });
+});
+
+describe("classifyDestructiveCommand — must NOT fire", () => {
+  it.each([
+    ["ls -la /tmp"],
+    ["rm single-file.txt"],
+    ["rm -f one-exact-file.log"],
+    ["git rm old.ts"],
+    ["df -h / && du -sh /home"],
+    ["grep -r pattern src/"],
+    ["echo 'rm -rf /' # just talking about it"],
+    ["find . -name '*.ts' -print"],
+    ["dd if=/dev/urandom of=./random.bin count=1"],
+    ["mkdir -p new/dir"],
+  ])("%s", (command) => {
+    expect(classifyDestructiveCommand(command).destructive).toBe(false);
+  });
+  it("quoted rm -rf inside a string argument does not fire", () => {
+    expect(
+      classifyDestructiveCommand('echo "rm -rf would be bad"').destructive,
+    ).toBe(false);
+  });
+});
