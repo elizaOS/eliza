@@ -20,6 +20,8 @@ jobs:
   claude-review:
     # Skip review if PR title contains [skip-review] or is a draft
     if: |
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.repo.full_name == github.repository) &&
       !contains(github.event.pull_request.title, '[skip-review]') &&
       github.event.pull_request.draft != true
 
@@ -39,10 +41,8 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        # Don't fail the workflow when the Anthropic API is unavailable
-        # (low credit balance, rate limit, transient outage). The bot review
-        # is best-effort; a missing review must not block CI.
-        continue-on-error: true
+        # This remains advisory because it is not a required check, but errors
+        # must stay visible instead of being rewritten as a green review.
         uses: anthropics/claude-code-action@12531344451323133b0493233c759991ac61da12
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

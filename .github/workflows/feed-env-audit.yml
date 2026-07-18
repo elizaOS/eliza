@@ -43,4 +43,3 @@ jobs:
 
       - name: Env audit check
         run: bun run --cwd packages/feed env:audit:check
-        continue-on-error: true
