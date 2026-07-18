@@ -9,7 +9,9 @@
  */
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { buildSchedulingRoutes } from "./routes/plugin-routes.js";
+import { schedulingDbSchema } from "./scheduled-task/db-schema.js";
 import { buildFallbackDefaultPack } from "./scheduled-task/default-pack.js";
+
 import {
   getScheduledTaskRunner,
   getScheduledTaskRunnerDeps,
@@ -21,10 +23,30 @@ import {
   seedRegisteredTaskPacks,
 } from "./scheduled-task/seed-registry.js";
 
+export async function waitForScheduledTaskRunnerService(
+  runtime: IAgentRuntime,
+): Promise<ScheduledTaskRunnerService> {
+  await runtime.initPromise;
+
+  if (!runtime.hasService(ScheduledTaskRunnerService.serviceType)) {
+    // `registerPlugin` awaits `init()` before recording the same plugin's
+    // service classes. When a plugin is loaded after runtime init, the
+    // already-resolved initPromise can resume this seeder one microtask before
+    // the registerPlugin continuation registers ScheduledTaskRunnerService.
+    await Promise.resolve();
+  }
+
+  return (await runtime.getServiceLoadPromise(
+    ScheduledTaskRunnerService.serviceType,
+  )) as ScheduledTaskRunnerService;
+}
+
 export const schedulingPlugin: Plugin = {
   name: "@elizaos/plugin-scheduling",
   description:
-    "Scheduling spine: the always-loaded ScheduledTask runtime primitive — runner host, REST surface, and default-pack seed registry. Persistence and owner/channel deps are injected by a host plugin; built-in defaults run when no host is present.",
+    "Scheduling spine: the always-loaded ScheduledTask runtime primitive — runner host, REST surface, durable store, and default-pack seed registry. Owner/channel deps are injected by a host plugin; built-in defaults run when no host is present.",
+  dependencies: ["@elizaos/plugin-sql"],
+  schema: schedulingDbSchema,
   services: [ScheduledTaskRunnerService],
   routes: buildSchedulingRoutes(),
   views: [
@@ -58,9 +80,7 @@ export const schedulingPlugin: Plugin = {
     void runtime.initPromise
       .then(async () => {
         try {
-          await runtime.getServiceLoadPromise(
-            ScheduledTaskRunnerService.serviceType,
-          );
+          await waitForScheduledTaskRunnerService(runtime);
           // Register the built-in fallback pack only when no consumer host has
           // injected deps (e.g. a stock mobile boot without
           // @elizaos/plugin-personal-assistant). When a host is present it owns

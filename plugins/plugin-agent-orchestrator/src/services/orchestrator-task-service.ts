@@ -58,6 +58,10 @@ import {
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
+  extractWriteLedger,
+  verifyClaimedFiles,
+} from "./claimed-file-verification.js";
+import {
   accountMetaFromSessionMetadata,
   assessCodingAccountReadiness,
   type CodingAccountReadiness,
@@ -72,6 +76,7 @@ import {
   summarizeEnvelope,
 } from "./completion-envelope.js";
 import {
+  appendCompletionEvidenceSection,
   buildCompletionEvidenceString,
   type CompletionEvidenceBundle,
   classifyToolOutput,
@@ -90,6 +95,10 @@ import {
   summarizeResiduals,
 } from "./completion-residuals.js";
 import {
+  getCuratedCodingMemoryService,
+  renderInjectedCodingNotes,
+} from "./curated-coding-memory.js";
+import {
   buildAutoVerifyCorrection,
   LLM_GOAL_VERIFIER_NAME,
   MAX_AUTO_VERIFY_ATTEMPTS,
@@ -102,6 +111,15 @@ import {
   coerceGoalCapabilityProfile,
   type GoalFollowUpReason,
 } from "./goal-prompt.js";
+import {
+  type GroundTruthVerdict,
+  groundTruthApplies,
+  groundTruthHardFailEnabled,
+  groundTruthRequiresPullRequest,
+  renderGroundTruthEvidence,
+  shouldIncludeGroundTruthEvidence,
+  verifyGroundTruth,
+} from "./ground-truth-verifier.js";
 import {
   type IndependentVerifierVerdict,
   runIndependentVerification,
@@ -179,10 +197,16 @@ import {
   TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 import {
+  WAVE_SUPERVISOR_SERVICE_TYPE,
+  WaveConcurrencyCapError,
+  type WaveSupervisor,
+} from "./wave-supervisor.js";
+import {
   ensureTaskWorkdir,
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
 import { captureChangeSet, type WorkspaceChangeSet } from "./workspace-diff.js";
+import { getCodingWorkspaceService } from "./workspace-service.js";
 
 /**
  * Recoverable operator-recovery conflict.
@@ -679,6 +703,26 @@ function priorCleanResidualsSnapshot(
   if (!Array.isArray(raw.residuals)) return undefined;
   if (typeof raw.checkedAt !== "number") return undefined;
   return raw as unknown as CompletionResidualsResult;
+}
+
+function _readGroundTruthVerdict(
+  metadata: Record<string, unknown>,
+): GroundTruthVerdict | undefined {
+  const raw = metadata.groundTruthVerdict;
+  if (!isRecord(raw)) return undefined;
+  if (
+    typeof raw.status !== "string" ||
+    typeof raw.checkedAt !== "string" ||
+    !isRecord(raw.pr) ||
+    !isRecord(raw.checks) ||
+    !isRecord(raw.files) ||
+    typeof raw.hardFail !== "boolean" ||
+    !Array.isArray(raw.hardFailReasons) ||
+    typeof raw.summary !== "string"
+  ) {
+    return undefined;
+  }
+  return raw as unknown as GroundTruthVerdict;
 }
 
 function eventExcerpt(
@@ -1875,12 +1919,31 @@ export class OrchestratorTaskService extends Service {
       (ref) => (ref.artifactType === "screenshot" && ref.ref ? [ref.ref] : []),
     );
 
+    // Same claims-vs-proof split for FILE paths (#16523): the captured change
+    // set records every path a mutating tool call TARGETED — including writes
+    // the tool layer rejected — so each claimed path is cross-checked against
+    // the deterministic write ledger folded from the recorded tool events. A
+    // claim with no successful ledger write surfaces fail-closed as
+    // unverified, never silently as "Created". Sessions with no structured
+    // tool ledger (adapter folded results into messages) contribute nothing —
+    // absence of a ledger is not evidence of a phantom claim.
+    const ledgerVerdict = verifyClaimedFiles(
+      changeSet?.changedFiles ?? [],
+      extractWriteLedger(sessionEvents),
+    );
+
     return {
       summary,
       diffSummary,
       toolOutput,
       verifiedUrls,
       mentionedUrls,
+      ...(ledgerVerdict.ledgerObserved
+        ? {
+            ledgerVerifiedFiles: ledgerVerdict.verifiedClaims,
+            unverifiedClaimedFiles: ledgerVerdict.unverifiedClaims,
+          }
+        : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -2853,6 +2916,42 @@ export class OrchestratorTaskService extends Service {
         },
       );
     }
+    const groundTruth =
+      result.passed && !result.humanOverride
+        ? await this.verifyGroundTruthForValidation(doc, evidence)
+        : undefined;
+    if (groundTruth?.hardFail) {
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "validation_blocked_ground_truth",
+        summary: groundTruth.summary,
+        data: {
+          verifier: "ground-truth-verifier",
+          groundTruth,
+        },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...(doc.task.metadata ?? {}),
+          groundTruthVerdict: groundTruth,
+        },
+      });
+      this.emitChange(taskId);
+      throw new ElizaError(
+        `Ground-truth verification blocks validation: ${groundTruth.summary}`,
+        {
+          code: "TASK_GROUND_TRUTH_BLOCKED",
+          context: {
+            taskId,
+            status: groundTruth.status,
+            reasons: groundTruth.hardFailReasons,
+          },
+        },
+      );
+    }
     const trigger: TaskLifecycleTrigger = result.humanOverride
       ? result.passed
         ? "human_override_passed"
@@ -2907,7 +3006,90 @@ export class OrchestratorTaskService extends Service {
           }
         : {}),
     });
+    // Curated memory requires a fresh verified GitHub verdict from this exact
+    // validation pass. Human overrides and non-GitHub tasks may still complete,
+    // but must never reuse a stale verdict left in task metadata.
+    if (next === "done" && groundTruth?.status === "verified") {
+      await this.harvestCuratedCodingMemory(taskId);
+    }
     return this.getTask(taskId);
+  }
+
+  private async harvestCuratedCodingMemory(taskId: string): Promise<void> {
+    const memory = getCuratedCodingMemoryService(this.runtime);
+    if (!memory) return;
+    const doc = await this.store.getTask(taskId);
+    if (!doc) return;
+    try {
+      await memory.harvestVerifiedTask(doc);
+    } catch (err) {
+      // error-policy:J7 curated-memory persistence is diagnostic context for
+      // future tasks; a failed write must not roll back a verified completion.
+      this.runtime.reportError?.("OrchestratorTask.curatedCodingMemory", err, {
+        taskId,
+      });
+      this.log("warn", "curated coding memory harvest failed", {
+        taskId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  private async verifyGroundTruthForValidation(
+    doc: OrchestratorTaskDocument,
+    evidence: string,
+  ): Promise<GroundTruthVerdict | undefined> {
+    const workspaceSession = latestWorkspaceSession(doc);
+    const changeSet = workspaceSession
+      ? await this.resolveCompletionChangeSet(workspaceSession.sessionId, doc)
+      : undefined;
+    const claimedFiles = changeSet?.changedFiles ?? [];
+    const metadataPr = str(doc.task.metadata?.prUrl);
+    const completion = [evidence, metadataPr].filter(Boolean).join("\n");
+    const requirePullRequest = groundTruthRequiresPullRequest(
+      (key) => this.runtime.getSetting(key),
+      doc.task.metadata,
+    );
+    if (
+      !groundTruthApplies({
+        completion,
+        claimedFiles,
+        requirePullRequest,
+      })
+    ) {
+      return undefined;
+    }
+
+    const workspace = getCodingWorkspaceService(this.runtime);
+    const verdict = await verifyGroundTruth(
+      {
+        completion,
+        claimedFiles,
+        requirePullRequest,
+        hardFailEnabled: true,
+      },
+      {
+        fetchPullRequest: async (link) => {
+          if (!workspace) {
+            throw new ElizaError(
+              "Coding workspace GitHub service is unavailable",
+              {
+                code: "GROUND_TRUTH_WORKSPACE_SERVICE_UNAVAILABLE",
+                context: { taskId: doc.task.id, repo: link.repo },
+              },
+            );
+          }
+          return workspace.getPullRequestGroundTruth(link);
+        },
+      },
+    );
+    await this.store.updateTask(doc.task.id, {
+      metadata: {
+        ...doc.task.metadata,
+        groundTruthVerdict: verdict,
+      },
+    });
+    return verdict;
   }
 
   /**
@@ -2915,23 +3097,27 @@ export class OrchestratorTaskService extends Service {
    * promoting it to `done` (issue #8124). One linear pipeline runs inside the
    * re-entrancy guard:
    *
-   * 1. **Structural envelope gate (#8895).** {@link parseCompletionEnvelope} reads
+   * 1. **Remote ground truth.** The claimed GitHub PR, head-SHA check rollup,
+   *    and changed files are verified without a model call. The structured
+   *    verdict is persisted and appended to the existing completion evidence;
+   *    optional hard-fail policy blocks a missing PR or red required checks.
+   * 2. **Structural envelope gate (#8895).** {@link parseCompletionEnvelope} reads
    *    the sub-agent's verbatim final message. A PRESENT-but-malformed envelope is
    *    blocked *before* any model spend and the worker is re-prompted with
    *    {@link envelopeCorrection}. An ABSENT envelope falls through unchanged
    *    (back-compat). A VALID envelope is stamped onto `metadata.completionEnvelope`
    *    and its {@link summarizeEnvelope} is prepended to the judge's evidence so the
    *    judge grills the contract, not prose.
-   * 2. **Independent execution verifier (#8898).** For code-change tasks
+   * 3. **Independent execution verifier (#8898).** For code-change tasks
    *    ({@link shouldRunIndependentVerify}) a SEPARATE read-only ACP session re-runs
    *    the tests/diff and returns an execution-grounded verdict. A failing verdict
    *    BLOCKS (provenance `independent-acp-verifier`); an inconclusive verdict keeps
    *    the task `validating` (never a false promotion on a verifier crash); a
    *    passing/skipped verdict falls through.
-   * 3. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
+   * 4. **Text judge (fallback).** {@link verifyGoalCompletion} (`ModelType.TEXT_SMALL`)
    *    judges the evidence and promotes (→ `done`) or re-prompts.
    *
-   * All three failure paths share one {@link reEngageOrEscalate} helper, one
+   * All failure paths share one {@link reEngageOrEscalate} helper, one
    * `autoVerifyAttempts` counter, and one {@link MAX_AUTO_VERIFY_ATTEMPTS} cap, so a
    * malformed/failing worker is re-prompted a bounded number of times and then
    * parked on `waiting_on_user`.
@@ -3070,14 +3256,86 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
+      // 1. Deterministic remote ground-truth verifier. This uses the PR URL in
+      // the worker's verbatim completion, the captured WorkspaceChangeSet, and
+      // the CodingWorkspaceService's existing authenticated GitHub plumbing.
+      // It always persists a structured verdict when enabled. API failures are
+      // explicitly inconclusive and never become a false hard failure.
+      let evidence = completionEvidence;
+      const includeGroundTruth = shouldIncludeGroundTruthEvidence((key) =>
+        this.runtime.getSetting(key),
+      );
+      const hardFailGroundTruth = groundTruthHardFailEnabled((key) =>
+        this.runtime.getSetting(key),
+      );
+      if (includeGroundTruth || hardFailGroundTruth) {
+        const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
+        const workspace = getCodingWorkspaceService(this.runtime);
+        const groundTruth = await verifyGroundTruth(
+          {
+            completion: rawCompletion,
+            claimedFiles: changeSet?.changedFiles ?? [],
+            requirePullRequest: groundTruthRequiresPullRequest(
+              (key) => this.runtime.getSetting(key),
+              doc.task.metadata,
+            ),
+            hardFailEnabled: hardFailGroundTruth,
+          },
+          {
+            fetchPullRequest: async (link) => {
+              if (!workspace) {
+                throw new Error(
+                  "Coding workspace GitHub service is unavailable",
+                );
+              }
+              return workspace.getPullRequestGroundTruth(link);
+            },
+          },
+        );
+        await this.store.updateTask(taskId, {
+          metadata: {
+            ...doc.task.metadata,
+            groundTruthVerdict: groundTruth,
+          },
+        });
+        doc = (await this.store.getTask(taskId)) ?? doc;
+        if (includeGroundTruth) {
+          evidence = appendCompletionEvidenceSection(
+            evidence,
+            renderGroundTruthEvidence(groundTruth),
+          );
+        }
+        if (groundTruth.hardFail) {
+          const failureEvidence = renderGroundTruthEvidence(groundTruth);
+          await this.validateTaskLocked(taskId, {
+            passed: false,
+            summary: groundTruth.summary,
+            evidence: failureEvidence,
+            verifier: "ground-truth-verifier",
+          });
+          await this.reEngageOrEscalate({
+            taskId,
+            sessionId,
+            correction: buildAutoVerifyCorrection(
+              groundTruth.hardFailReasons,
+              attempts + 1,
+            ),
+            eventType: "ground_truth_failed",
+            verifier: "ground-truth-verifier",
+            summary: groundTruth.summary,
+            missing: groundTruth.hardFailReasons,
+            attempt: attempts,
+          });
+          return;
+        }
+      }
+
       const acceptanceCriteria = doc.task.acceptanceCriteria;
-      // Criteria-free tasks keep the prior behavior: stay `validating` for a
-      // human/manual caller, no surprise model spend. The residuals gate above
-      // has already run, so "no criteria" no longer implies "no verification".
+      // Criteria-free tasks keep the prior behavior after deterministic gates:
+      // stay `validating` for a human/manual caller, with no model spend.
       if (acceptanceCriteria.length === 0) return;
 
-      // 1. Structural envelope gate (#8895) — BEFORE any model spend.
-      let evidence = completionEvidence;
+      // 2. Structural envelope gate (#8895) — BEFORE any model spend.
       if (parse.present && !parse.ok) {
         // Malformed contract: block the judge and re-prompt for a valid envelope.
         await this.reEngageOrEscalate({
@@ -3093,6 +3351,38 @@ export class OrchestratorTaskService extends Service {
         return;
       }
       if (parse.present && parse.ok) {
+        // Deterministic claimed-file cross-check (#16523): the envelope's
+        // `filesChanged` are CLAIMS; the session's recorded tool events are
+        // the ledger of what was actually written and how each write ended.
+        // Flag-don't-rewrite: the envelope text/fields the worker produced
+        // stay intact, and unverified claims ride the envelope's existing
+        // marker fields (`artifactsVerified` / `missingArtifacts`) fail-closed
+        // — a claim with no matching successful ledger write can never pass
+        // through as "Created". No model spend.
+        const ledgerVerdict = verifyClaimedFiles(
+          parse.envelope.filesChanged,
+          extractWriteLedger(
+            doc.events.filter(
+              (event) =>
+                event.sessionId === sessionId || event.sessionId === undefined,
+            ),
+          ),
+        );
+        const unverifiedPaths = ledgerVerdict.unverifiedClaims.map(
+          (claim) => claim.path,
+        );
+        const ledgerMarkers =
+          ledgerVerdict.ledgerObserved && unverifiedPaths.length > 0
+            ? {
+                artifactsVerified: false,
+                missingArtifacts: [
+                  ...new Set([
+                    ...(parse.envelope.missingArtifacts ?? []),
+                    ...unverifiedPaths,
+                  ]),
+                ],
+              }
+            : {};
         // Valid contract: stamp the structured fields and feed the judge a
         // contract-grounded evidence string instead of raw prose.
         await this.store.updateTask(taskId, {
@@ -3116,13 +3406,32 @@ export class OrchestratorTaskService extends Service {
               testResults: parse.envelope.testResults,
               acceptanceCriteriaStatus: parse.envelope.acceptanceCriteriaStatus,
               residualRisks: parse.envelope.residualRisks,
+              // Last so the deterministic verdict wins over any self-reported
+              // `artifactsVerified: true` covering a rejected write.
+              ...ledgerMarkers,
             },
           },
         });
-        evidence = `${summarizeEnvelope(parse.envelope)}\n\n${completionEvidence}`;
+        evidence = `${summarizeEnvelope(parse.envelope)}\n\n${evidence}`;
+        if (ledgerVerdict.ledgerObserved && unverifiedPaths.length > 0) {
+          evidence = appendCompletionEvidenceSection(
+            evidence,
+            [
+              "## UNVERIFIED FILE CLAIMS (envelope `filesChanged` with no successful write in the tool ledger)",
+              ...ledgerVerdict.unverifiedClaims.map(
+                (claim) =>
+                  `- ${claim.path} (${
+                    claim.reason === "rejected-write"
+                      ? "the tool layer REJECTED this write"
+                      : "no successful write observed"
+                  })`,
+              ),
+            ].join("\n"),
+          );
+        }
       }
 
-      // 2. Independent read-only execution verifier (#8898).
+      // 3. Independent read-only execution verifier (#8898).
       const independent = await this.runIndependentVerify(
         taskId,
         doc,
@@ -3189,7 +3498,7 @@ export class OrchestratorTaskService extends Service {
         }
       }
 
-      // 3. Text judge (fallback for non-code / criteria-light tasks).
+      // 4. Text judge (fallback for non-code / criteria-light tasks).
       const verdict = await verifyGoalCompletion(
         this.runtime,
         {
@@ -3237,8 +3546,8 @@ export class OrchestratorTaskService extends Service {
 
   /**
    * Shared re-prompt / escalation path for every failed completion verdict — the
-   * malformed-envelope gate (#8895), the independent-verify block (#8898), and the
-   * text judge. ONE `autoVerifyAttempts` counter and ONE
+   * remote-ground-truth gate, malformed-envelope gate (#8895), independent-verify
+   * block (#8898), and text judge. ONE `autoVerifyAttempts` counter and ONE
    * {@link MAX_AUTO_VERIFY_ATTEMPTS} cap govern all three: under the cap the
    * kept-alive worker is reactivated and re-prompted with `correction` (and a
    * reflexion post-mortem is recorded for the next respawn, #8899); at the cap, or
@@ -4080,6 +4389,33 @@ export class OrchestratorTaskService extends Service {
     // (#14119). Null for unbound tasks or projects with no Cloud app.
     const cloudAppId =
       resolveBoundProjectCloudAppId(doc.task.projectId) ?? undefined;
+    let curatedCodingMemory = "";
+    const codingMemoryService = getCuratedCodingMemoryService(this.runtime);
+    if (codingMemoryService && workdir) {
+      try {
+        curatedCodingMemory = renderInjectedCodingNotes(
+          await codingMemoryService.retrieveRelevant({
+            text: `${doc.task.goal}\n${opts.task ?? ""}`,
+            repoKey:
+              opts.repo ??
+              doc.task.boundRepo ??
+              _readGroundTruthVerdict(doc.task.metadata)?.pr.repo ??
+              undefined,
+          }),
+        );
+      } catch (err) {
+        // error-policy:J7 durable notes are advisory context. A missing or
+        // corrupt notes file must never prevent a coding worker from spawning.
+        this.runtime.reportError?.(
+          "OrchestratorTask.curatedMemoryInject",
+          err,
+          {
+            taskId,
+            workdir,
+          },
+        );
+      }
+    }
     const goalPrompt = buildGoalPrompt({
       agentName,
       goal: doc.task.goal,
@@ -4092,6 +4428,7 @@ export class OrchestratorTaskService extends Service {
       // Replay prior failed-verification post-mortems so a re-spawn of this task
       // doesn't repeat them (#8899).
       attemptReflections: readAttemptReflections(doc.task.metadata),
+      ...(curatedCodingMemory ? { curatedCodingMemory } : {}),
       ...(capabilityProfile ? { capabilityProfile } : {}),
       brokerWired,
     });
@@ -4133,6 +4470,42 @@ export class OrchestratorTaskService extends Service {
       opts.framework ??
       policy.preferredFramework ??
       configuredDefaultAgentType(this.runtime);
+
+    // W3 wave cap layers on top of the existing global ACP admission queue.
+    // Default-OFF supervisor means this lookup is behavior-neutral. When the
+    // wave is full, top-level work parks in the SAME durable queue rather than
+    // creating a second queue/store; drain replay uses parkOnCap:false and gets
+    // a typed cap error so it can preserve the entry's original seniority.
+    const waveSupervisor = this.runtime.getService<WaveSupervisor>(
+      WAVE_SUPERVISOR_SERVICE_TYPE,
+    );
+    if (
+      waveSupervisor?.enabled() &&
+      !(await waveSupervisor.tryAcquire(taskId))
+    ) {
+      const wave = await waveSupervisor.concurrencyForTask(taskId);
+      if (
+        nestingDepth === 0 &&
+        opts.parkOnCap !== false &&
+        this.admissionQueueEnabled()
+      ) {
+        return this.enqueueAdmission(taskId, doc.task.priority, {
+          framework: opts.framework,
+          model: opts.model ?? policy.model,
+          workdir: opts.workdir,
+          repo: opts.repo,
+          label: opts.label,
+          task: opts.task,
+          approvalPreset: opts.approvalPreset,
+          providerSource: opts.providerSource ?? policy.providerSource,
+        });
+      }
+      throw new WaveConcurrencyCapError(
+        wave?.waveId ?? "unknown",
+        wave?.cap ?? 0,
+      );
+    }
+
     let result: SpawnResult;
     try {
       result = await acp.spawnSession({
@@ -4181,6 +4554,7 @@ export class OrchestratorTaskService extends Service {
         },
       });
     } catch (err) {
+      waveSupervisor?.release(taskId);
       // The worker cap is full. A TOP-LEVEL spawn parks in the admission queue
       // (task stays `open`, admission metadata persisted) and the caller gets a
       // truthful detail with the queued position instead of a hard failure. A
@@ -4292,8 +4666,10 @@ export class OrchestratorTaskService extends Service {
           doc.task.boundWorkdir !== result.workdir,
       });
       await this.advanceTaskStatus(taskId, "session_active");
+      waveSupervisor?.release(taskId);
       return this.getTask(taskId);
     } catch (err) {
+      waveSupervisor?.release(taskId);
       // error-policy:J4 the ACP spawn already succeeded (session is live); a
       // failed durable write degrades to a truthful live-session detail below,
       // never a false 500/404.
@@ -5069,7 +5445,21 @@ export class OrchestratorTaskService extends Service {
         Date.now(),
         this.admissionAgingMs(),
       );
-      const head = ordered[0];
+      const waveSupervisor = this.runtime.getService<WaveSupervisor>(
+        WAVE_SUPERVISOR_SERVICE_TYPE,
+      );
+      let head: QueueEntry | undefined;
+      for (const candidate of ordered) {
+        if (
+          !waveSupervisor?.enabled() ||
+          (await waveSupervisor.tryAcquire(candidate.taskId))
+        ) {
+          head = candidate;
+          break;
+        }
+      }
+      // Global capacity exists, but every queued task belongs to a wave already
+      // at its own cap. Leave their durable order untouched until a lane ends.
       if (!head) break;
       // Drop the head from the in-memory order up front; a re-park below will
       // re-add it. This keeps the loop from re-selecting the same head when the
@@ -5078,15 +5468,27 @@ export class OrchestratorTaskService extends Service {
       if (idx >= 0) this.admissionQueue.splice(idx, 1);
       const doc = await this.store.getTask(head.taskId);
       const admission = doc && OrchestratorTaskService.admissionOf(doc.task);
-      if (!doc || !admission) continue;
+      if (!doc || !admission) {
+        waveSupervisor?.release(head.taskId);
+        continue;
+      }
       if (TERMINAL_TASK_STATUSES.has(doc.task.status)) {
+        waveSupervisor?.release(head.taskId);
         await this.writeAdmission(head.taskId, null);
         continue;
       }
       // A pause that raced this pass: drop the task from the dispatch order but
       // KEEP the durable record — pauseTask retained it so resume can replay
       // the original spawn (clearing it here would make resume a silent no-op).
-      if (doc.task.paused) continue;
+      if (doc.task.paused) {
+        waveSupervisor?.release(head.taskId);
+        continue;
+      }
+      // Selection reserved this candidate only long enough to avoid choosing a
+      // wave-blocked head. Release before replay; spawnAgentForTask performs the
+      // authoritative acquire and re-parks on a race, while every skip/error
+      // path above has now released its provisional reservation.
+      waveSupervisor?.release(head.taskId);
       await this.writeAdmission(head.taskId, null);
       try {
         await this.spawnAgentForTask(head.taskId, {
@@ -5100,13 +5502,24 @@ export class OrchestratorTaskService extends Service {
         });
       } catch (err) {
         if (err instanceof SessionCapError) {
-          // A concurrent spawn took the slot. Re-park at the head and stop —
-          // the next terminal event or reconcile tick drains again.
+          // A concurrent spawn took the global slot. Re-park at the head and
+          // stop; the next terminal event or reconcile tick drains again.
           await this.writeAdmission(head.taskId, admission);
           if (!this.admissionQueue.includes(head.taskId)) {
             this.admissionQueue.unshift(head.taskId);
           }
           break;
+        }
+        if (err instanceof WaveConcurrencyCapError) {
+          // This wave is full, but another wave may still use the free global
+          // slot. Keep the original durable enqueue timestamp (seniority), move
+          // the blocked id behind this pass, and continue within the bounded
+          // queue-length budget so no wave can head-of-line block the queue.
+          await this.writeAdmission(head.taskId, admission);
+          if (!this.admissionQueue.includes(head.taskId)) {
+            this.admissionQueue.push(head.taskId);
+          }
+          continue;
         }
         // error-policy:J7 the dispatch of a parked task failed for a non-cap
         // reason (bad workdir, transport error). Report it so the agent/owner

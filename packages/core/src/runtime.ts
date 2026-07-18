@@ -782,6 +782,8 @@ function normalizeMessageConnector(
 		contexts: metadata.contexts ? [...metadata.contexts] : [],
 	};
 
+	if (metadata.accountRouting === "connector" && !accountId)
+		connector.accountRouting = metadata.accountRouting;
 	if (metadata.description) connector.description = metadata.description;
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.resolveTargets)
@@ -838,6 +840,8 @@ function normalizePostConnector(
 		contexts: metadata.contexts ? [...metadata.contexts] : [],
 	};
 
+	if (metadata.accountRouting === "connector" && !accountId)
+		connector.accountRouting = metadata.accountRouting;
 	if (metadata.description) connector.description = metadata.description;
 	if (metadata.metadata) connector.metadata = { ...metadata.metadata };
 	if (metadata.postHandler) connector.postHandler = metadata.postHandler;

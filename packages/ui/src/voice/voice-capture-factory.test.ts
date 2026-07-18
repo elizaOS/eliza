@@ -174,6 +174,64 @@ describe("createVoiceCapture", () => {
     expect(onStateChange).toHaveBeenLastCalledWith("error", expect.any(Error));
   });
 
+  it("unready local-inference degrades to the cloud WAV route when cloudConnected (#16524)", async () => {
+    // The staging-Safari dead-mic shape: the persisted config pins
+    // local-inference, the cloud agent has no local ASR runtime, and the
+    // browser has no SpeechRecognition engine. With a cloud session declared,
+    // resolution must arm the SAME WAV recorder and hand the audio to the
+    // cloud transcriber — never fall through to the absent browser engine.
+    isLocalInferenceAsrReadyMock.mockResolvedValue(false);
+    const wav = new Uint8Array([7, 7, 7]);
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(wav),
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const onTranscript = vi.fn();
+    const capture = createVoiceCapture({
+      asrProvider: "local-inference",
+      cloudConnected: true,
+      onTranscript,
+    });
+
+    await capture.start();
+    expect(isLocalInferenceAsrReadyMock).toHaveBeenCalledTimes(1);
+    expect(startLocalAsrRecorderMock).toHaveBeenCalledTimes(1);
+
+    await capture.stop();
+    expect(transcribeCloudWavMock).toHaveBeenCalledWith(wav);
+    expect(transcribeLocalInferenceWavMock).not.toHaveBeenCalled();
+    expect(onTranscript).toHaveBeenCalledWith({
+      text: "Grace Hopper",
+      final: true,
+      backend: "cloud",
+      audioWav: wav,
+    });
+  });
+
+  it("ready local-inference stays local even when cloudConnected (#16524)", async () => {
+    const wav = new Uint8Array([5, 5]);
+    startLocalAsrRecorderMock.mockResolvedValue({
+      stop: vi.fn().mockResolvedValue(wav),
+      cancel: vi.fn(),
+      analyser: null,
+    });
+    const onTranscript = vi.fn();
+    const capture = createVoiceCapture({
+      asrProvider: "local-inference",
+      cloudConnected: true,
+      onTranscript,
+    });
+
+    await capture.start();
+    await capture.stop();
+    expect(transcribeLocalInferenceWavMock).toHaveBeenCalledWith(wav);
+    expect(transcribeCloudWavMock).not.toHaveBeenCalled();
+    expect(onTranscript).toHaveBeenCalledWith(
+      expect.objectContaining({ final: true, backend: "local-inference" }),
+    );
+  });
+
   it("prefers native TalkMode on a native platform and streams interim + final", async () => {
     isNativePlatformMock.mockReturnValue(true);
     const talkMode = makeFakeTalkMode();

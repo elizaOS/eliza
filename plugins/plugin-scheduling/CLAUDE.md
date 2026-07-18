@@ -33,10 +33,12 @@ runtime surface that makes them work standalone:
 - **The runner host service** `ScheduledTaskRunnerService` (serviceType
   `"lifeops_scheduled_task_runner"`, in `scheduled-task/runner-service.ts`) +
   the runtime-injected deps port `registerScheduledTaskRunnerDeps` /
-  `getScheduledTaskRunnerDeps`. A built-in **default deps provider** (in-memory
-  store, built-in registries, an `in_app`/NOTIFICATION dispatcher, warn-once
-  ports, an `ELIZA_PLATFORM`-driven host-capability predicate) runs when no host
-  injects production deps — so the runner works on a stock mobile boot.
+  `getScheduledTaskRunnerDeps`. A built-in **default deps provider**
+  (scheduling-owned SQL store when a runtime DB exists, in-memory fallback when
+  it does not, built-in registries, an `in_app`/NOTIFICATION dispatcher,
+  warn-once ports, an `ELIZA_PLATFORM`-driven host-capability predicate) runs
+  when no host injects production deps — so the runner works on a stock mobile
+  boot.
 - **The generic REST surface** at `/api/lifeops/scheduled-tasks`
   (`routes/scheduled-tasks.ts` + `routes/plugin-routes.ts`), registered via the
   plugin's `routes:` array on every platform (path unchanged for the UI).
@@ -53,8 +55,9 @@ runtime surface that makes them work standalone:
 A host (`@elizaos/plugin-personal-assistant`) injects the production deps via
 `registerScheduledTaskRunnerDeps` (first-wins) and registers its domain packs +
 the `SCHEDULED_TASKS` action; PA's dev `/api/lifeops/dev/registries` composite
-stays PA-side. Tables stay in PA's `app_lifeops` and are reached via the
-injected store (a later optional carve can move them to `app_scheduling`).
+stays PA-side. ScheduledTask rows and state-log rows are scheduling-owned in
+`app_scheduling`; the migration service non-destructively copies legacy
+`app_lifeops` rows into that schema.
 
 Gate: `rg "@elizaos/(app-core|agent|plugin-personal-assistant|plugin-google)"
 plugins/plugin-scheduling/src` must return comments/strings only.

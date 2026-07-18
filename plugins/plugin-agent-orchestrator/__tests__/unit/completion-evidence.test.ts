@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  appendCompletionEvidenceSection,
   buildCompletionEvidenceString,
   buildEvidenceStringFromInput,
 } from "../../src/services/completion-evidence.js";
@@ -217,5 +218,22 @@ describe("buildCompletionEvidenceString (typed bundle, #8894)", () => {
     });
     expect(evidence).not.toContain("## TEST / BUILD / TYPECHECK OUTPUT");
     expect(evidence).toContain("## CHANGESET");
+  });
+
+  it("appends ground truth as a new section without replacing existing evidence", () => {
+    const evidence = appendCompletionEvidenceSection(
+      "## CHANGESET\nsrc/a.ts",
+      "## GROUND TRUTH (GitHub API verification)\nstatus: verified",
+    );
+    expect(evidence).toContain("## CHANGESET\nsrc/a.ts");
+    expect(evidence).toContain("## GROUND TRUTH");
+  });
+
+  it("keeps an oversized appended section inside the evidence cap", () => {
+    const evidence = appendCompletionEvidenceSection(
+      "existing",
+      "x".repeat(20_000),
+    );
+    expect(evidence.length).toBeLessThanOrEqual(8_000);
   });
 });

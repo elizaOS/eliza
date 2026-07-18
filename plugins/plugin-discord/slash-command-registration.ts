@@ -91,11 +91,14 @@ export async function registerDiscordSlashCommands(
 	let registrationError: Error | null = null;
 	let registrationFailed = false;
 
-	// Opt into user-installable / group-DM command availability. Off by
-	// default: Discord rejects user-install command registration unless the
-	// app is configured as user-installable in the developer portal.
+	// User-installable / group-DM command availability, ON by default so
+	// commands work in group DMs and DMs-with-others out of the box. This
+	// REQUIRES the Discord app be configured as "User Install" in the developer
+	// portal (Installation settings); Discord rejects user-install command
+	// registration otherwise. Set DISCORD_USER_INSTALL=false for a guild-only app
+	// that is not portal-configured for user install.
 	const userInstall = parseBooleanFromTextFn(
-		String(host.runtime.getSetting("DISCORD_USER_INSTALL") ?? ""),
+		String(host.runtime.getSetting("DISCORD_USER_INSTALL") ?? "true"),
 	);
 
 	host.commandRegistrationQueue = host.commandRegistrationQueue

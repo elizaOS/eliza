@@ -36,6 +36,28 @@ import { sharedVault } from "../services/vault-mirror";
 let installed = false;
 
 export function installAgentHostBridge(): void {
+  const resolveHttpRequestAuthorization: NonNullable<
+    AgentHostBridge["resolveHttpRequestAuthorization"]
+  > = async (req, runtime) => {
+    const resolved = await resolveAuthorizedRouteRole(req, {
+      // Agent-owned legacy mutations predate app-core's CSRF header and the
+      // web client does not attach it to that surface. These requests have
+      // already passed the server's strict Origin/CORS gate; validate the
+      // host session here without imposing the compat-route CSRF contract.
+      skipCsrf: true,
+      state: {
+        current: runtime,
+      },
+    });
+    return resolved.ok
+      ? {
+          ok: true,
+          role: resolved.role,
+          ...(resolved.identityId ? { identityId: resolved.identityId } : {}),
+          ...(resolved.principal ? { principal: resolved.principal } : {}),
+        }
+      : { ok: false, role: "NONE" };
+  };
   const bridge: AgentHostBridge = {
     captureWalletEnvBootBaseline,
     hydrateWalletKeysFromNodePlatformSecureStore,
@@ -49,19 +71,9 @@ export function installAgentHostBridge(): void {
     getBuildVariant,
     isStoreBuild,
     handleCloudPairRoute,
-    isHttpRequestAuthorized: async (req, runtime) => {
-      const resolved = await resolveAuthorizedRouteRole(req, {
-        // Agent-owned legacy mutations predate app-core's CSRF header and the
-        // web client does not attach it to that surface. These requests have
-        // already passed the server's strict Origin/CORS gate; validate the
-        // host session here without imposing the compat-route CSRF contract.
-        skipCsrf: true,
-        state: {
-          current: runtime,
-        },
-      });
-      return resolved.ok;
-    },
+    resolveHttpRequestAuthorization,
+    isHttpRequestAuthorized: async (req, runtime) =>
+      (await resolveHttpRequestAuthorization(req, runtime)).ok,
   };
   setAgentHostBridge(bridge);
   installed = true;

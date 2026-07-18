@@ -1,7 +1,8 @@
 /**
  * Exercises `handleCloudPairRoute` — the `/pair` HTTP handler that redeems a
  * cloud pairing token against the cloud API and returns an HTML handoff page
- * that stores the returned apiKey in sessionStorage. Drives real
+ * that stores the returned apiKey in durable localStorage plus sessionStorage.
+ * Drives real
  * http.IncomingMessage/ServerResponse fakes and stubs `globalThis.fetch` to
  * simulate the cloud API; covers the missing-token, expired, unreachable, no-key,
  * XSS-escaping, origin-forwarding, and per-IP rate-limit branches.
@@ -216,7 +217,7 @@ describe("handleCloudPairRoute", () => {
     expect(headers.origin).toBe("https://203.0.113.10:21363");
   });
 
-  it("renders happy-path HTML with the apiKey stored in sessionStorage and pinned on window globals", async () => {
+  it("renders happy-path HTML with the apiKey stored durably and pinned on window globals", async () => {
     globalThis.fetch = vi
       .fn()
       .mockResolvedValue(
@@ -232,8 +233,10 @@ describe("handleCloudPairRoute", () => {
     expect(harness.status()).toBe(200);
     const body = harness.body();
     expect(body).toContain('"agent_secret_value"');
+    expect(body).toContain("persist(window.sessionStorage)");
+    expect(body).toContain("persist(window.localStorage)");
     expect(body).toContain(
-      'window.sessionStorage.setItem("eliza:cloud-pair:api-token", key)',
+      'throw new Error("No browser storage accepted the paired token.")',
     );
     expect(body).toContain('Symbol.for("elizaos.app.boot-config")');
     expect(body).toContain("apiToken: key");

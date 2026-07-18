@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { globHandler } from "./glob.js";
+import { globHandler, globToRegExp } from "./glob.js";
 
 let tmpRoot: string;
 let blockedPath: string;
@@ -69,6 +69,32 @@ afterEach(async () => {
 const state: State | undefined = undefined;
 
 describe("GLOB", () => {
+  it("fences and source-tags the user-facing path listing (#16563)", async () => {
+    const { runtime, message } = await buildRuntime();
+    const posts: Array<{ text: string; source?: string }> = [];
+
+    const result = await globHandler(
+      runtime,
+      message,
+      state,
+      { parameters: { pattern: "**/*.ts" } },
+      async (content) => {
+        posts.push(content as { text: string; source?: string });
+        return [];
+      },
+    );
+
+    expect(result.success).toBe(true);
+    // Planner-facing text stays raw; the user-facing relay is fenced (paths
+    // like __tests__/ get bold-consumed unfenced) and tagged like every
+    // sibling coding-tools relay.
+    expect(result.text?.startsWith("```")).toBe(false);
+    expect(posts).toHaveLength(1);
+    expect(posts[0].source).toBe("coding-tools");
+    expect(posts[0].text.startsWith("```")).toBe(true);
+    expect(posts[0].text.trimEnd().endsWith("```")).toBe(true);
+  });
+
   it("matches **/*.ts and returns expected count", async () => {
     const { runtime, message } = await buildRuntime();
     const result = await globHandler(runtime, message, state, {
@@ -142,5 +168,25 @@ describe("GLOB", () => {
     });
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
+  });
+});
+
+describe("globToRegExp (fallback matcher)", () => {
+  it("mirrors native glob semantics per branch", () => {
+    // `**/` spans directories, including zero of them.
+    expect(globToRegExp("**/*.ts").test("a.ts")).toBe(true);
+    expect(globToRegExp("**/*.ts").test("deep/nested/a.ts")).toBe(true);
+    // bare `**` spans everything.
+    expect(globToRegExp("src/**").test("src/a/b/c.txt")).toBe(true);
+    // single `*` never crosses a slash.
+    expect(globToRegExp("*.ts").test("dir/a.ts")).toBe(false);
+    expect(globToRegExp("*.ts").test("a.ts")).toBe(true);
+    // `?` is exactly one non-slash char.
+    expect(globToRegExp("a?.ts").test("ab.ts")).toBe(true);
+    expect(globToRegExp("a?.ts").test("a/.ts")).toBe(false);
+    // dots and regex specials are literal.
+    expect(globToRegExp("a.ts").test("aXts")).toBe(false);
+    expect(globToRegExp("a+(b).ts").test("a+(b).ts")).toBe(true);
+    expect(globToRegExp("a+(b).ts").test("ab.ts")).toBe(false);
   });
 });

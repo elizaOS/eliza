@@ -10,6 +10,7 @@
  * operator explicitly turns this on.
  */
 
+import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../models/catalog";
 import type { VoiceUsageLimits } from "../services/voice-usage-meter";
 
 export interface VoiceRealtimeEnv {
@@ -30,7 +31,14 @@ const TRUEY = new Set(["1", "true", "yes", "on"]);
 const DEFAULT_ORG_DAILY_MINUTES = 600;
 const DEFAULT_USER_DAILY_MINUTES = 120;
 const DEFAULT_MAX_SESSIONS = 200;
-const DEFAULT_ELIZA_MODEL = "gemma-4-31b";
+// The voice LLM leg rides the CLOUD DEFAULT small-model route (the same
+// Cerebras-direct pin every fresh cloud agent gets via
+// applyManagedAgentInferenceEnvDefaults), NOT a voice-local hardcode. Voice is
+// the latency-critical consumer of that route: keeping this single-sourced
+// means a cloud default-model change is exercised by staging voice
+// automatically, and `VOICE_REALTIME_ELIZA_MODEL` stays a per-env override
+// rather than a drift point.
+const DEFAULT_ELIZA_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 
 /**
  * THE flag consumer. Returns true only when the operator has explicitly enabled

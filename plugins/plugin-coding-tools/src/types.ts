@@ -13,6 +13,7 @@ export const FILE_STATE_SERVICE = "CODING_TOOLS_FILE_STATE";
 export const SANDBOX_SERVICE = "CODING_TOOLS_SANDBOX";
 export const SESSION_CWD_SERVICE = "CODING_TOOLS_SESSION_CWD";
 export const RIPGREP_SERVICE = "CODING_TOOLS_RIPGREP";
+export const BACKGROUND_SHELL_SERVICE = "CODING_TOOLS_BACKGROUND_SHELL";
 
 export const CODING_TOOLS_CONTEXTS = [
   "code",
@@ -37,6 +38,7 @@ export type ToolFailureReason =
   | "no_match"
   | "unchanged"
   | "command_failed"
+  | "needs_confirmation"
   | "timeout"
   | "io_error"
   | "internal";

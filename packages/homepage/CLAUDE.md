@@ -10,6 +10,12 @@ This package builds and deploys the public-facing marketing site and user onboar
 
 ```
 packages/homepage/
+  edge/
+    apple-app-site-association.json Reviewed production iOS association manifest (never published by Pages)
+    apple-app-site-association.ts  Exact-path Cloudflare Worker for the production iOS association response
+    apple-app-site-association.test.ts  Manifest, native identity, transport, and deploy contract tests
+    text-modules.d.ts             Exact-text manifest import type used by the Worker
+    tsconfig.json                 Standalone strict typecheck for the edge Worker
   src/
     main.tsx                    App entry — mounts <App> under StrictMode + I18nProvider
     App.tsx                     Route table (BrowserRouter + React Router)
@@ -49,13 +55,15 @@ packages/homepage/
       release-data.ts           Auto-generated from GitHub Releases API — do not edit by hand
     types/
       speech-recognition.d.ts   Ambient SpeechRecognition Web API types
-  public/                       Static assets (logos, favicons, OG images, install scripts)
+  public/                       Static assets plus an intentionally inert Pages AASA fallback
+  wrangler-aasa.toml            Production-only route for the exact eliza.app AASA URL
   tests/
     smoke.node.test.mjs         Node --test smoke suite (the `test` script)
     contact.test.ts             SMS/WhatsApp href unit test
     e2e/                        Playwright e2e specs (aesthetic-audit, route-coverage, visual, live-routes, ...)
   scripts/
     generate-contact-sheet.mjs  Generates HTML contact sheet from Playwright screenshots
+    verify-aasa-response.mjs    Separately gates exact origin and Apple CDN bytes, metadata, identity, and routes
   vite.config.ts                Vite config — aliases, gh404Fallback plugin, bundle visualizer
   playwright.config.ts          Playwright config for e2e
 ```
@@ -81,6 +89,9 @@ bun run --cwd packages/homepage lint:check     # Biome check (read-only)
 bun run --cwd packages/homepage format         # Biome format --write
 bun run --cwd packages/homepage format:check   # Biome format (read-only)
 bun run --cwd packages/homepage test           # Node --test smoke suite
+bun run --cwd packages/homepage test:aasa-edge # AASA body/header/origin-pass-through contract
+bun run --cwd packages/homepage typecheck:aasa-edge # Strict standalone edge Worker typecheck
+bun run --cwd packages/homepage deploy:aasa-edge # Deploy exact-path production Worker (requires Cloudflare credentials)
 bun run --cwd packages/homepage test:e2e       # Playwright e2e (all specs)
 bun run --cwd packages/homepage test:audit     # Aesthetic audit + contact sheet
 bun run --cwd packages/homepage check:release-data  # Validate generated release-data.ts
@@ -130,6 +141,7 @@ Use `elizacloudFetch` (public) or `elizacloudAuthFetch` (sends Bearer token) fro
 - **GitHub Pages deep-link fallback:** The `gh404Fallback` Vite plugin copies `index.html` → `404.html` at build time. `public/_redirects` and `public/_headers` serve the same purpose on Cloudflare Pages.
 - **`CF_PAGES=1` disables the 404.html copy** — set this env var when building for Cloudflare Pages.
 - **Dev server port is 4444** (not the standard 5173). `bun run dev` is required; `vite preview` alone will not have the correct env from the orchestrator.
+- **GitHub Pages ignores `public/_headers`.** The production AASA response is owned by the exact-path Worker in `edge/apple-app-site-association.ts`; it serves the exact bytes of the reviewed edge-only JSON manifest and forwards every non-exact request to the existing Pages origin. The public AASA file deliberately keeps its placeholder Team ID so `develop` Pages builds cannot publish production trust. `.github/workflows/deploy-aasa.yml` publishes only from protected `main`, rolls back an invalid origin before observing Apple's CDN in a separate job, and never treats cache-bypass behavior as release evidence.
 - **SIWS test signer:** Playwright e2e injects `window.__siwsTestSigner` to simulate Solana wallet sign-in without a real wallet extension.
 - For logging, architecture, and naming conventions see the root `AGENTS.md`.
 

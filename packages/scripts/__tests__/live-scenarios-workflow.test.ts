@@ -5,13 +5,26 @@
  */
 import { expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listScenarioMetadata } from "../../scenario-runner/src/loader.ts";
 import { main as auditScenarioCoverage } from "../check-scenario-workflow-coverage.mjs";
 import { PLUGIN_ROUTE_COVERAGE } from "../e2e-coverage/manifest.ts";
+import {
+  evaluatePrerequisites,
+  loadShard,
+  verifyEvidence,
+  writeOutcome,
+} from "../live-scenario-contract.mjs";
 import {
   createLiveScenarioPlan,
   main as runLiveScenarios,
@@ -65,6 +78,101 @@ function exitingChild(
   queueMicrotask(() => child.emit("exit", code, signal));
   return child;
 }
+
+test("pins an authoritative, bounded shard catalog", () => {
+  const manifestPath = fileURLToPath(
+    new URL("../live-scenario-shards.json", import.meta.url),
+  );
+  const { manifest, shard } = loadShard(manifestPath, "plugin-health");
+  expect(manifest.authority).toBe(".github/workflows/live-scenarios.yml");
+  expect(manifest.costCeiling).toMatchObject({
+    maxConcurrentShards: 1,
+    maxWorkflowMinutes: 120,
+  });
+  expect(manifest.shards.map((entry: { id: string }) => entry.id)).toEqual([
+    "lifeops-connectors",
+    "plugin-health",
+    "app-control",
+  ]);
+  expect(shard.artifactContract).toEqual([
+    "report",
+    "matrix",
+    "viewer",
+    "native-jsonl",
+    "logs",
+  ]);
+});
+
+test("emits typed prerequisite outcomes without exposing secret values", () => {
+  const shard = {
+    id: "sample",
+    root: "sample-root",
+    artifactContract: ["report"],
+    requiredSecrets: ["JUDGE_KEY"],
+    requiredAnySecrets: [["MODEL_A", "MODEL_B"]],
+  };
+  const blocked = evaluatePrerequisites(shard, { MODEL_A: "top-secret" });
+  expect(blocked).toEqual({
+    status: "prerequisite_unavailable",
+    missing: ["JUDGE_KEY"],
+    missingAny: [],
+  });
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "scenario-preflight-"));
+  try {
+    const outputPath = path.join(tempRoot, "outcome.json");
+    writeOutcome({
+      shard,
+      result: blocked,
+      outputPath,
+      sha: "abc",
+      runId: "123",
+    });
+    const serialized = readFileSync(outputPath, "utf8");
+    expect(serialized).toContain("prerequisite_unavailable");
+    expect(serialized).not.toContain("top-secret");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("fails evidence verification when any contracted artifact is absent", () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), "scenario-evidence-"));
+  const shard = {
+    report: "artifacts/report.json",
+    runDir: "artifacts/run",
+  };
+  try {
+    for (const relative of [
+      shard.report,
+      `${shard.runDir}/matrix.json`,
+      `${shard.runDir}/viewer/index.html`,
+      `${shard.runDir}/native.jsonl`,
+      `${shard.runDir}/runner.log`,
+    ]) {
+      const target = path.join(tempRoot, relative);
+      mkdirSync(path.dirname(target), { recursive: true });
+      writeFileSync(target, "evidence");
+    }
+    expect(verifyEvidence(shard, tempRoot)).toEqual({
+      status: "evidence_complete",
+      missing: [],
+    });
+    rmSync(path.join(tempRoot, shard.runDir, "native.jsonl"));
+    expect(verifyEvidence(shard, tempRoot).status).toBe("evidence_incomplete");
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("keeps shard failures non-short-circuiting and enforces one aggregate result", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  expect(workflow.match(/continue-on-error: true/g)).toHaveLength(4);
+  expect(workflow).toContain("Enforce aggregate shard result");
+  expect(workflow).toContain("if-no-files-found: error");
+  expect(workflow).toContain(
+    "live-scenario-contract.mjs verify lifeops-connectors",
+  );
+});
 
 test("builds the dist-exported runtime packages before the scenario CLI starts", () => {
   const workflow = readFileSync(workflowPath, "utf8");

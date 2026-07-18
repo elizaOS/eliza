@@ -136,6 +136,28 @@ describe("phrase aggregator", () => {
     expect(out.length).toBe(1);
   });
 
+  test("can defer the max threshold to a word boundary for TTS", () => {
+    const agg = new PhraseAggregator({
+      maxBufferChars: 10,
+      preferWordBoundaryAtMax: true,
+    });
+    expect(agg.push("abcdefghij")).toEqual([]);
+    const first = agg.push(" klm");
+    expect(first).toEqual(["abcdefghij "]);
+    const tail = agg.flush();
+    expect(tail).toBe("klm");
+    expect(`${first.join("")}${tail}`).toBe("abcdefghij klm");
+  });
+
+  test("word-boundary mode still hard-caps an unbroken token", () => {
+    const agg = new PhraseAggregator({
+      maxBufferChars: 10,
+      preferWordBoundaryAtMax: true,
+    });
+    expect(agg.push("a".repeat(25))).toEqual([]);
+    expect(agg.push("a")).toEqual(["a".repeat(26)]);
+  });
+
   test("emitted count sequences continueContext", () => {
     const agg = new PhraseAggregator();
     agg.push("First. Second.");

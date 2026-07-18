@@ -4,14 +4,15 @@
  *
  * This is the storage-agnostic home of the scheduled-task spine's runtime
  * surface. `@elizaos/plugin-scheduling` ships a DEFAULT deps provider
- * (in-memory store, built-in registries, an `in_app`/NOTIFICATION dispatcher,
- * warn-once stand-in ports, and an `ELIZA_PLATFORM`-driven host-capability
+ * (scheduling-owned SQL store when a runtime DB exists, otherwise in-memory
+ * fallback; built-in registries; an `in_app`/NOTIFICATION dispatcher;
+ * warn-once stand-in ports; and an `ELIZA_PLATFORM`-driven host-capability
  * predicate) so the runner + its REST surface + the seed mechanism work on ANY
  * platform — including mobile — from this plugin alone.
  *
  * A consumer (e.g. `@elizaos/plugin-personal-assistant`) injects its production
- * deps via {@link registerScheduledTaskRunnerDeps} at init: a repository-backed
- * durable store, the production dispatcher, real owner-facts / channel-keys /
+ * deps via {@link registerScheduledTaskRunnerDeps} at init: the durable store
+ * plus production dispatcher, real owner-facts / channel-keys /
  * host-capability probes. When PA is loaded its deps win; when absent, the
  * default deps run. This keeps `@elizaos/plugin-scheduling` free of any
  * `@elizaos/app-core` / `@elizaos/agent` / `@elizaos/plugin-personal-assistant`
@@ -29,6 +30,10 @@ import {
   ServiceType,
 } from "@elizaos/core";
 import { resolvePlatform } from "@elizaos/shared/runtime-env";
+import {
+  createCodingAgentScheduleDispatcher,
+  PR_SHEPHERD_DISPATCH_CHANNEL,
+} from "../coding-agent-schedules.js";
 import type { DispatchResult } from "../dispatch-types.js";
 import {
   type CompletionCheckRegistry,
@@ -57,6 +62,7 @@ import {
   registerBuiltInGates,
   type TaskGateRegistry,
 } from "./gate-registry.js";
+import { migrateSchedulingTables } from "./migration.js";
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
@@ -64,10 +70,15 @@ import {
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
 } from "./runner.js";
+import { executeRawSql, getRuntimeDb } from "./sql.js";
 import {
   createInMemoryScheduledTaskLogStore,
   type ScheduledTaskLogStore,
 } from "./state-log.js";
+import {
+  createSchedulingSqlScheduledTaskLogStore,
+  createSchedulingSqlScheduledTaskStore,
+} from "./store.js";
 import {
   type ActivitySignalBusView,
   type GlobalPauseView,
@@ -82,8 +93,8 @@ const SERVICE_TYPE = "lifeops_scheduled_task_runner" as const;
 /**
  * Everything the runner needs that is host-specific. A consumer injects a
  * provider via {@link registerScheduledTaskRunnerDeps}; the default provider
- * below supplies a durable-enough in-memory implementation that works on any
- * platform.
+ * below supplies a scheduling-owned SQL store when a runtime DB is available
+ * and an in-memory fallback for isolated hosts/tests.
  *
  * Registries are optional: when omitted, the host service builds the built-in
  * gate / completion-check / ladder / anchor / consolidation registries.
@@ -297,17 +308,24 @@ const ALWAYS_ALLOW_GLOBAL_PAUSE: GlobalPauseView = {
 };
 
 /**
- * The default (no-PA) deps provider. In-memory store + log store, built-in
- * registries (built by the host service), warn-once activity/subject ports, a
- * permissive global-pause view, an empty owner-facts view, a notification-only
- * dispatcher, and the `ELIZA_PLATFORM` host-capability predicate.
+ * The default (no-PA) deps provider. Uses scheduling-owned SQL persistence
+ * when the runtime DB is present, then falls back to in-memory for isolated
+ * tests/hosts without `@elizaos/plugin-sql`; the rest of the bundle is built-in
+ * registries, warn-once activity/subject ports, permissive global-pause, empty
+ * owner-facts, notification-only dispatch, and platform capability probing.
  */
 function defaultRunnerDeps(
   runtime: IAgentRuntime,
+  agentId: string,
 ): ScheduledTaskRunnerDepsBundle {
+  const hasRuntimeDb = getRuntimeDb(runtime) !== null;
   return {
-    store: createInMemoryScheduledTaskStore(),
-    logStore: createInMemoryScheduledTaskLogStore(),
+    store: hasRuntimeDb
+      ? createSchedulingSqlScheduledTaskStore({ runtime, agentId })
+      : createInMemoryScheduledTaskStore(),
+    logStore: hasRuntimeDb
+      ? createSchedulingSqlScheduledTaskLogStore({ runtime, agentId })
+      : createInMemoryScheduledTaskLogStore(),
     dispatcher: createDefaultScheduledTaskDispatcher(runtime),
     ownerFacts: () => ({}) as OwnerFactsView,
     globalPause: ALWAYS_ALLOW_GLOBAL_PAUSE,
@@ -351,6 +369,21 @@ function buildRunner(
 
   const consolidation = deps.consolidation ?? createConsolidationRegistry();
 
+  const dispatcher = createCodingAgentScheduleDispatcher(runtime, {
+    delegate: deps.dispatcher,
+  });
+  const hostChannelKeys = deps.channelKeys;
+  const channelKeys = hostChannelKeys
+    ? () => new Set([...hostChannelKeys(), PR_SHEPHERD_DISPATCH_CHANNEL])
+    : undefined;
+  const hostChannelAvailable = deps.channelAvailable;
+  const channelAvailable = hostChannelAvailable
+    ? (channelKey: string) =>
+        channelKey === PR_SHEPHERD_DISPATCH_CHANNEL
+          ? true
+          : hostChannelAvailable(channelKey)
+    : undefined;
+
   return createScheduledTaskRunner({
     agentId: opts.agentId,
     store: deps.store,
@@ -364,11 +397,9 @@ function buildRunner(
     globalPause: deps.globalPause,
     activity: deps.activity,
     subjectStore: deps.subjectStore,
-    dispatcher: deps.dispatcher,
-    ...(deps.channelKeys ? { channelKeys: deps.channelKeys } : {}),
-    ...(deps.channelAvailable
-      ? { channelAvailable: deps.channelAvailable }
-      : {}),
+    dispatcher,
+    ...(channelKeys ? { channelKeys } : {}),
+    ...(channelAvailable ? { channelAvailable } : {}),
     ...(deps.hostCapabilities
       ? { hostCapabilities: deps.hostCapabilities }
       : {}),
@@ -423,6 +454,13 @@ export class ScheduledTaskRunnerService extends Service {
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<ScheduledTaskRunnerService> {
+    // This service is the boot barrier used by routes and seed packs. Copy
+    // legacy rows before either can insert an idempotency-key collision.
+    if (getRuntimeDb(runtime)) {
+      await migrateSchedulingTables((statement) =>
+        executeRawSql(runtime, statement),
+      );
+    }
     logger.debug(
       { src: SERVICE_TYPE, agentId: runtime.agentId },
       "ScheduledTaskRunnerService started",

@@ -1,0 +1,68 @@
+{
+  "schema": "eliza_live_scenario_shards_v1",
+  "authority": ".github/workflows/live-scenarios.yml",
+  "owner": "elizaOS runtime/scenario maintainers",
+  "triggers": ["schedule:30 8 * * *", "workflow_dispatch"],
+  "timeoutMinutes": 120,
+  "costCeiling": {
+    "maxWorkflowMinutes": 120,
+    "maxConcurrentShards": 1,
+    "note": "One shared dependency build and three serial shard runs. Provider-side token budgets remain enforced by the scenario runner."
+  },
+  "shards": [
+    {
+      "id": "lifeops-connectors",
+      "root": "packages/test/scenarios",
+      "report": "artifacts/lifeops-scenario-report.json",
+      "runDir": "artifacts/scenario-runs/live",
+      "requiredAnySecrets": [
+        [
+          "OPENAI_API_KEY",
+          "OPENROUTER_API_KEY",
+          "ANTHROPIC_API_KEY",
+          "GOOGLE_GENERATIVE_AI_API_KEY",
+          "GOOGLE_API_KEY",
+          "GROQ_API_KEY"
+        ]
+      ],
+      "requiredSecrets": ["CEREBRAS_API_KEY"],
+      "artifactContract": ["report", "matrix", "viewer", "native-jsonl", "logs"]
+    },
+    {
+      "id": "plugin-health",
+      "root": "plugins/plugin-health/test/scenarios",
+      "report": "artifacts/plugin-health-scenario-report.json",
+      "runDir": "artifacts/scenario-runs/plugin-health",
+      "requiredAnySecrets": [
+        [
+          "OPENAI_API_KEY",
+          "OPENROUTER_API_KEY",
+          "ANTHROPIC_API_KEY",
+          "GOOGLE_GENERATIVE_AI_API_KEY",
+          "GOOGLE_API_KEY",
+          "GROQ_API_KEY"
+        ]
+      ],
+      "requiredSecrets": ["CEREBRAS_API_KEY"],
+      "artifactContract": ["report", "matrix", "viewer", "native-jsonl", "logs"]
+    },
+    {
+      "id": "app-control",
+      "root": "plugins/plugin-app-control/test/scenarios",
+      "report": "artifacts/app-control-scenario-report.json",
+      "runDir": "artifacts/scenario-runs/app-control",
+      "requiredAnySecrets": [
+        [
+          "OPENAI_API_KEY",
+          "OPENROUTER_API_KEY",
+          "ANTHROPIC_API_KEY",
+          "GOOGLE_GENERATIVE_AI_API_KEY",
+          "GOOGLE_API_KEY",
+          "GROQ_API_KEY"
+        ]
+      ],
+      "requiredSecrets": ["CEREBRAS_API_KEY"],
+      "artifactContract": ["report", "matrix", "viewer", "native-jsonl", "logs"]
+    }
+  ]
+}

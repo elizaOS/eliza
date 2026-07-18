@@ -70,7 +70,9 @@ export function resolveCodingAccountStrategy(
     value === "priority" ||
     value === "round-robin" ||
     value === "least-used" ||
-    value === "quota-aware"
+    value === "quota-aware" ||
+    value === "reset-soonest" ||
+    value === "drain-soonest-reset"
   ) {
     return value;
   }
@@ -100,6 +102,8 @@ export async function selectCodingAccount(
     exclude?: string[];
     /** Pin selection to these account ids (see the bridge contract in core). */
     accountIds?: string[];
+    /** Requested model/display name for model-scoped weekly buckets. */
+    model?: string;
   } = {},
 ): Promise<ResolvedCodingAccount | null> {
   if (!isMultiAccountAgentType(agentType)) return null;

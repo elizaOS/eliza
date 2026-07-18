@@ -1,11 +1,4 @@
-/**
- * Unit coverage for the successful WebSocket upgrade branch of the voice-session
- * ws route. The route-level guard cases (flag off / not an upgrade / capacity /
- * misconfigured / transport unavailable) are covered by
- * voice-session-routes-and-auth.test.ts; this file drives the happy path where a
- * Workers `WebSocketPair` exists, so lines that mint the pair, pick the usage
- * store, and attach the WS handler execute.
- */
+/** Exercises the real voice upgrade route with deterministic socket/provider boundaries. */
 
 import {
   afterAll,
@@ -42,6 +35,7 @@ const attachCalls: Array<Record<string, unknown>> = [];
 let registrySize = 0;
 let evalCapableRedis = true;
 let durableStoreValue: unknown = { kind: "durable" };
+let binaryTypeWritable = true;
 
 mock.module("@elizaos/core", () => ({
   isSensitiveKeyName: () => false,
@@ -125,7 +119,7 @@ const baseEnv = {
   VOICE_REALTIME_WS_ENABLED: "true",
   DEEPGRAM_API_KEY: "dg",
   CARTESIA_API_KEY: "cartesia",
-  VOICE_REALTIME_CARTESIA_VOICE_ID: "voice",
+  VOICE_REALTIME_CARTESIA_VOICE_ID: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
   VOICE_REALTIME_ELIZA_ENDPOINT: "https://eliza.test/sse",
   VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer service",
 };
@@ -150,9 +144,20 @@ beforeEach(() => {
   registrySize = 0;
   evalCapableRedis = true;
   durableStoreValue = { kind: "durable" };
+  binaryTypeWritable = true;
   (globalThis as { WebSocketPair?: unknown }).WebSocketPair = class {
     0 = {};
-    1 = new FakeServerSocket();
+    1 = (() => {
+      const server = new FakeServerSocket();
+      if (!binaryTypeWritable) {
+        Object.defineProperty(server, "binaryType", {
+          set() {
+            throw new Error("read only");
+          },
+        });
+      }
+      return server;
+    })();
   };
 });
 
@@ -244,6 +249,51 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(attachCalls.length).toBe(1);
   });
 
+  test("buildSession wires a prewarm-capable scoped Eliza fetch", async () => {
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    const deps = attachCalls[0].deps as unknown as {
+      buildSession: (args: {
+        claims: Record<string, string>;
+        jti: string;
+        tokenExpSeconds: number;
+        downlink: Record<string, unknown>;
+      }) => {
+        config?: unknown;
+      };
+    };
+    // Construct a REAL VoiceSession through the route's closure. No providers
+    // are dialed at construction time (start() is never called here), so this
+    // exercises the fetchImpl/prewarmElizaContext wiring added for the
+    // session-start tenancy warmup.
+    const session = deps.buildSession({
+      claims: {
+        sessionId: "sess-upgrade-wire",
+        organizationId: "org-1",
+        userId: "user-1",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+      },
+      jti: "jti-upgrade-wire",
+      tokenExpSeconds: Math.floor(Date.now() / 1000) + 60,
+      downlink: {
+        sendControl: () => undefined,
+        sendAudio: () => undefined,
+        close: () => undefined,
+      },
+    }) as unknown as {
+      config: {
+        fetchImpl?: { prewarm?: unknown };
+        prewarmElizaContext?: unknown;
+      };
+    };
+    expect(typeof session.config.fetchImpl).toBe("function");
+    expect(typeof session.config.prewarmElizaContext).toBe("function");
+    expect(session.config.prewarmElizaContext).toBe(
+      (session.config.fetchImpl as { prewarm?: unknown }).prewarm,
+    );
+  });
+
   test("returns 503 transport-unavailable when WebSocketPair is absent", async () => {
     delete (globalThis as { WebSocketPair?: unknown }).WebSocketPair;
     const res = await upgrade();
@@ -251,5 +301,12 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect((await res.json()) as unknown).toEqual({
       error: "voice realtime transport unavailable",
     });
+  });
+
+  test("fails closed when the runtime cannot deliver binary ArrayBuffers", async () => {
+    binaryTypeWritable = false;
+    const res = await upgrade();
+    expect(res.status).toBe(503);
+    expect(attachCalls).toHaveLength(0);
   });
 });

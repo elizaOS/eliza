@@ -362,6 +362,12 @@ export interface MessageConnector {
 	source: string;
 	accountId?: string;
 	account?: ConnectorAccountRef;
+	/**
+	 * `connector` opts an unscoped registration into receiving a trusted
+	 * `MessageConnectorQueryContext.accountId` and dispatching it internally.
+	 * The default is runtime-scoped routing via this connector's `accountId`.
+	 */
+	accountRouting?: "connector";
 	label: string;
 	capabilities: MessageConnectorCapability[];
 	supportedTargetKinds: MessageTargetKind[];
@@ -493,12 +499,21 @@ export interface PostConnector {
 	source: string;
 	accountId?: string;
 	account?: ConnectorAccountRef;
+	/**
+	 * `connector` opts an unscoped registration into receiving a trusted
+	 * `PostConnectorQueryContext.accountId` and dispatching it internally.
+	 */
+	accountRouting?: "connector";
 	label: string;
 	capabilities: PostConnectorCapability[];
 	description?: string;
 	contexts: AgentContext[];
 	metadata?: Metadata;
-	postHandler?: (runtime: IAgentRuntime, content: Content) => SendHandlerResult;
+	postHandler?: (
+		runtime: IAgentRuntime,
+		content: Content,
+		context?: PostConnectorQueryContext,
+	) => SendHandlerResult;
 	fetchFeed?: (
 		context: PostConnectorQueryContext,
 		params: PostConnectorFeedParams,

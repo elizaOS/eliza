@@ -13,6 +13,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 
 const als = new AsyncLocalStorage<Record<string, unknown>>();
 
+/** Whether the current async chain still owns a Worker bindings context. */
+export function hasCloudBindingsContext(): boolean {
+  return als.getStore() !== undefined;
+}
+
 /**
  * Run `fn` with Worker bindings visible to `getCloudAwareEnv()`.
  */

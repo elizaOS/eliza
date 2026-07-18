@@ -89,8 +89,12 @@ describe("useVoiceChat talk-mode listener registration (FIX 1)", () => {
   });
 
   it("serializes concurrent registration passes — exactly three listeners, all removable", async () => {
+    // cloudConnected pinned false: talk-mode capture is reached only when no
+    // WAV ASR route resolves for the config (#16524) — a cloud session here
+    // would be irrelevant (unset provider), but the pin keeps this suite's
+    // cascade assumption explicit as the shared routing rule evolves.
     const { result, unmount } = renderHook(() =>
-      useVoiceChat({ onTranscript: vi.fn() }),
+      useVoiceChat({ onTranscript: vi.fn(), cloudConnected: false }),
     );
 
     // Two overlapping starts: both pass the enabledRef guard (neither has

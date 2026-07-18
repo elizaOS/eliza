@@ -41,9 +41,15 @@ import { getElevenLabsService } from "@/lib/services/elevenlabs";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import { resolveWhisperSttModel } from "./whisper-model";
-import { parseWhisperTimestamps } from "./whisper-timestamps";
+import {
+  parseWhisperTimestamps,
+  type SttTimedSpan,
+} from "./whisper-timestamps";
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+const DEEPGRAM_PRERECORDED_URL = "https://api.deepgram.com/v1/listen";
+const DEEPGRAM_PRERECORDED_MODEL = "nova-3";
+const STT_PRICING_PROXY_MODEL = "elevenlabs/scribe_v1";
 
 const SUPPORTED_MIME_TYPES = [
   "audio/mp3",
@@ -91,6 +97,107 @@ function estimateAudioDurationMinutes(
   return Math.max(0.1, estimatedMinutes);
 }
 
+interface DeepgramTranscription {
+  transcript: string;
+  segments?: SttTimedSpan[];
+  words?: SttTimedSpan[];
+}
+
+interface SttBillingEstimate {
+  durationSeconds: number;
+  estimatedDurationMinutes: number;
+}
+
+function deepgramSpan(
+  text: unknown,
+  start: unknown,
+  end: unknown,
+): SttTimedSpan | null {
+  if (typeof text !== "string" || text.trim().length === 0) return null;
+  if (typeof start !== "number" || !Number.isFinite(start) || start < 0) {
+    return null;
+  }
+  if (typeof end !== "number" || !Number.isFinite(end) || end < start) {
+    return null;
+  }
+  return {
+    text: text.trim(),
+    startMs: Math.round(start * 1000),
+    endMs: Math.round(end * 1000),
+  };
+}
+
+function parseDeepgramArray(
+  value: unknown,
+  textKey: "transcript" | "word",
+): { spans: SttTimedSpan[]; invalid: boolean } {
+  if (value === undefined) return { spans: [], invalid: false };
+  if (!Array.isArray(value)) return { spans: [], invalid: true };
+
+  const spans: SttTimedSpan[] = [];
+  let invalid = false;
+  for (const entry of value) {
+    const row =
+      entry && typeof entry === "object"
+        ? (entry as Record<string, unknown>)
+        : null;
+    const span = row ? deepgramSpan(row[textKey], row.start, row.end) : null;
+    if (span) {
+      spans.push(span);
+    } else {
+      invalid = true;
+    }
+  }
+  return { spans, invalid };
+}
+
+function parseDeepgramTranscription(
+  payload: unknown,
+): DeepgramTranscription | null {
+  const root =
+    payload !== null && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : null;
+  const results =
+    root?.results &&
+    typeof root.results === "object" &&
+    !Array.isArray(root.results)
+      ? (root.results as Record<string, unknown>)
+      : null;
+  const channels = Array.isArray(results?.channels)
+    ? results.channels
+    : undefined;
+  const firstChannel =
+    channels?.[0] &&
+    typeof channels[0] === "object" &&
+    !Array.isArray(channels[0])
+      ? (channels[0] as Record<string, unknown>)
+      : null;
+  const alternatives = Array.isArray(firstChannel?.alternatives)
+    ? firstChannel.alternatives
+    : undefined;
+  const firstAlternative =
+    alternatives?.[0] &&
+    typeof alternatives[0] === "object" &&
+    !Array.isArray(alternatives[0])
+      ? (alternatives[0] as Record<string, unknown>)
+      : null;
+  if (!firstAlternative || typeof firstAlternative.transcript !== "string") {
+    return null;
+  }
+
+  const transcript = firstAlternative.transcript.trim();
+  const words = parseDeepgramArray(firstAlternative.words, "word");
+  const segments = parseDeepgramArray(results?.utterances, "transcript");
+  if (words.invalid || segments.invalid) return null;
+
+  return {
+    transcript,
+    ...(segments.spans.length > 0 ? { segments: segments.spans } : {}),
+    ...(words.spans.length > 0 ? { words: words.spans } : {}),
+  };
+}
+
 /**
  * POST /api/v1/voice/stt
  * Converts speech to text using the voice transcription service.
@@ -116,7 +223,11 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
     const formData = await request.formData();
     const audioFile = formData.get("audio") as File | null;
-    const languageCode = formData.get("languageCode") as string | undefined;
+    const languageCodeValue = formData.get("languageCode");
+    const languageCode =
+      typeof languageCodeValue === "string" && languageCodeValue.trim()
+        ? languageCodeValue.trim()
+        : undefined;
 
     if (!audioFile) {
       return Response.json(
@@ -187,6 +298,222 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       userId: user.id,
       verifiedMimeType: fileTypeResult.mime,
     });
+
+    let billingEstimate: SttBillingEstimate | undefined;
+    const getBillingEstimate = async (): Promise<SttBillingEstimate> => {
+      if (billingEstimate) return billingEstimate;
+      const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
+      const parsedDurationSeconds = metadata.format?.duration;
+      const durationSeconds = Number.isFinite(parsedDurationSeconds)
+        ? Math.max(parsedDurationSeconds ?? 0, 1)
+        : Math.max(
+            estimateAudioDurationMinutes(audioFile.size, finalMimeType) * 60,
+            1,
+          );
+      billingEstimate = {
+        durationSeconds,
+        estimatedDurationMinutes: durationSeconds / 60,
+      };
+      return billingEstimate;
+    };
+
+    const reserveOr402 = async (
+      estimate: SttBillingEstimate,
+      sttCost: Awaited<ReturnType<typeof calculateSTTCostFromCatalog>>,
+    ): Promise<Response | CreditReservation> => {
+      try {
+        return await creditsService.reserve({
+          organizationId: user.organization_id,
+          amount: sttCost.totalCost,
+          userId: user.id,
+          description: `STT transcription: ~${estimate.estimatedDurationMinutes.toFixed(1)} min`,
+        });
+      } catch (error) {
+        if (error instanceof InsufficientCreditsError) {
+          return Response.json(
+            {
+              error: "Insufficient credits for speech-to-text",
+              required: error.required,
+            },
+            { status: 402 },
+          );
+        }
+        throw error;
+      }
+    };
+
+    const batchSttProvider = env.VOICE_BATCH_STT_PROVIDER?.trim().toLowerCase();
+    const deepgramApiKey = env.DEEPGRAM_API_KEY?.trim();
+    if (batchSttProvider === "deepgram" && !deepgramApiKey) {
+      logger.error(
+        "[Voice STT API] Deepgram batch provider selected but not configured",
+      );
+      return Response.json(
+        { error: "Speech-to-text service is not configured" },
+        { status: 503 },
+      );
+    }
+    // Deepgram prerecorded is opt-in because the same key also powers realtime
+    // Flux sessions. Key presence alone must not silently move every paid batch
+    // transcription onto Deepgram in production without an explicit rollout.
+    if (batchSttProvider === "deepgram" && deepgramApiKey) {
+      const estimate = await getBillingEstimate();
+      const sttCost = await calculateSTTCostFromCatalog({
+        model: STT_PRICING_PROXY_MODEL,
+        durationSeconds: estimate.durationSeconds,
+      });
+      const deepgramReservation = await reserveOr402(estimate, sttCost);
+      if (deepgramReservation instanceof Response) return deepgramReservation;
+      reservation = deepgramReservation;
+
+      const refundDeepgramReservation = async () => {
+        if (!reservation) return;
+        await reservation.reconcile(0);
+        reservation = undefined;
+      };
+
+      const deepgramStart = Date.now();
+      const deepgramUrl = new URL(DEEPGRAM_PRERECORDED_URL);
+      deepgramUrl.searchParams.set("model", DEEPGRAM_PRERECORDED_MODEL);
+      deepgramUrl.searchParams.set("smart_format", "true");
+      deepgramUrl.searchParams.set("utterances", "true");
+      deepgramUrl.searchParams.set("words", "true");
+      if (languageCode) deepgramUrl.searchParams.set("language", languageCode);
+
+      let deepgramResponse: Response;
+      try {
+        deepgramResponse = await fetch(deepgramUrl, {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${deepgramApiKey}`,
+            "Content-Type": finalMimeType,
+          },
+          body: buffer,
+        });
+      } catch (error) {
+        // error-policy:J1 provider transport failures translate at the route boundary.
+        await refundDeepgramReservation();
+        logger.error("[Voice STT API] Deepgram request failed", {
+          errorType: error instanceof Error ? error.name : "unknown",
+        });
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+      if (!deepgramResponse.ok) {
+        await deepgramResponse.body?.cancel().catch(() => {
+          // error-policy:J6 response-body drain is best-effort after upstream failure.
+          return undefined;
+        });
+        await refundDeepgramReservation();
+        logger.error("[Voice STT API] Deepgram request failed", {
+          status: deepgramResponse.status,
+        });
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+
+      let deepgramPayload: unknown;
+      try {
+        deepgramPayload = await deepgramResponse.json();
+      } catch {
+        // error-policy:J3 provider JSON is untrusted input at the HTTP boundary.
+        await refundDeepgramReservation();
+        logger.error("[Voice STT API] Deepgram returned unparseable JSON");
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+
+      const transcription = parseDeepgramTranscription(deepgramPayload);
+      if (!transcription) {
+        await refundDeepgramReservation();
+        logger.error("[Voice STT API] Deepgram returned a malformed payload");
+        return Response.json(
+          { error: "Speech-to-text failed" },
+          { status: 502 },
+        );
+      }
+
+      const deepgramDuration = Date.now() - deepgramStart;
+      const billing = await billFlatUsage(
+        {
+          organizationId: user.organization_id,
+          userId: user.id,
+          apiKeyId: apiKey?.id ?? null,
+          model: DEEPGRAM_PRERECORDED_MODEL,
+          provider: "deepgram",
+          billingSource: "elevenlabs",
+          affiliateCode: request.headers.get("X-Affiliate-Code"),
+          description: `STT transcription: ${estimate.estimatedDurationMinutes.toFixed(2)} min`,
+          metadata: {
+            pricingProxyProvider: "elevenlabs",
+            pricingProxyModel: STT_PRICING_PROXY_MODEL,
+          },
+        },
+        sttCost,
+        reservation,
+      );
+      reservation = undefined;
+
+      logger.info("[Voice STT API] Deepgram completed", {
+        billing: "paid",
+        durationMs: deepgramDuration,
+        model: DEEPGRAM_PRERECORDED_MODEL,
+        pricingProxyModel: STT_PRICING_PROXY_MODEL,
+        provider: "deepgram",
+        segmentCount: transcription.segments?.length,
+        transcriptLength: transcription.transcript.length,
+        wordCount: transcription.words?.length,
+      });
+      (async () => {
+        try {
+          await usageService.create({
+            organization_id: user.organization_id,
+            user_id: user.id,
+            api_key_id: apiKey?.id ?? null,
+            type: "stt",
+            model: DEEPGRAM_PRERECORDED_MODEL,
+            provider: "deepgram",
+            input_tokens: 0,
+            output_tokens: transcription.transcript.length,
+            input_cost: String(billing.totalCost),
+            output_cost: String(0),
+            markup: String(billing.platformMarkup),
+            duration_ms: deepgramDuration,
+            is_successful: true,
+            metadata: {
+              audioSizeBytes: audioFile.size,
+              estimatedDurationMinutes: estimate.estimatedDurationMinutes,
+              durationSeconds: estimate.durationSeconds,
+              languageCode,
+              transcriptLength: transcription.transcript.length,
+              baseTotalCost: billing.baseTotalCost,
+              billingSource: "elevenlabs",
+              pricingProxyProvider: "elevenlabs",
+              pricingProxyModel: STT_PRICING_PROXY_MODEL,
+              provider: "deepgram",
+              model: DEEPGRAM_PRERECORDED_MODEL,
+            },
+          });
+        } catch (error) {
+          logger.error("[Voice STT API] Failed to create usage record", {
+            errorType: error instanceof Error ? error.name : "unknown",
+          });
+        }
+      })();
+
+      return Response.json({
+        transcript: transcription.transcript,
+        duration_ms: deepgramDuration,
+        ...(transcription.segments ? { segments: transcription.segments } : {}),
+        ...(transcription.words ? { words: transcription.words } : {}),
+      });
+    }
 
     // -------------------------------------------------------------------------
     // Free default STT: self-hosted Whisper (OpenAI-compatible
@@ -286,17 +613,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       });
     }
 
-    const metadata = await parseBuffer(buffer, { mimeType: finalMimeType });
-    const parsedDurationSeconds = metadata.format?.duration;
-    const durationSeconds = Number.isFinite(parsedDurationSeconds)
-      ? Math.max(parsedDurationSeconds ?? 0, 1)
-      : Math.max(
-          estimateAudioDurationMinutes(audioFile.size, finalMimeType) * 60,
-          1,
-        );
-    const estimatedDurationMinutes = durationSeconds / 60;
+    const { durationSeconds, estimatedDurationMinutes } =
+      await getBillingEstimate();
     const sttCost = await calculateSTTCostFromCatalog({
-      model: "elevenlabs/scribe_v1",
+      model: STT_PRICING_PROXY_MODEL,
       durationSeconds,
     });
 
