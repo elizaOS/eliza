@@ -12,10 +12,12 @@
  * hook swallows + cleans up state) stays at the call-site.
  */
 
+import { getCloudAuthToken } from "../api/client-cloud";
 import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
 import {
   buildSharedRuntimeSttBody,
+  configuredCloudVoiceOrigin,
   currentSharedRuntimeVoiceOrigin,
   parseSharedRuntimeSttResponse,
   sharedRuntimeSttUrl,
@@ -201,8 +203,12 @@ export async function transcribeCloudWav(
       // also bypasses the container proxy and calls that Worker route directly;
       // local/remote dedicated agents without cloud auth keep the raw-WAV proxy.
       const sharedOrigin = currentSharedRuntimeVoiceOrigin();
-      const directOrigin = options?.configuredCloudOrigin?.replace(/\/+$/, "");
-      const cloudToken = options?.cloudSessionToken?.trim();
+      const directOrigin = (
+        options?.configuredCloudOrigin ?? configuredCloudVoiceOrigin()
+      )?.replace(/\/+$/, "");
+      const cloudToken = (
+        options?.cloudSessionToken ?? getCloudAuthToken()
+      )?.trim();
       const directRoute =
         !sharedOrigin && directOrigin && cloudToken
           ? { origin: directOrigin, token: cloudToken }
