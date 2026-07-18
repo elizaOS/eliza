@@ -20,6 +20,7 @@ const ENV_KEYS = [
   "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
   "ELIZA_BUILD_VARIANT",
   "ELIZA_AGENT_ORCHESTRATOR",
+  "ELIZA_PLUGIN_SET",
   "ELIZA_DEFAULT_AGENT_TYPE",
   "ELIZA_ACP_DEFAULT_AGENT",
   "ELIZA_AGENT_SELECTION_STRATEGY",
@@ -166,5 +167,47 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames({} as ElizaConfig);
 
     expect(names.has("agent-orchestrator")).toBe(false);
+  });
+});
+
+describe("collectPluginNames cloud-container operator defaults", () => {
+  it("defaults the operator surface ON for dedicated cloud containers", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("agent-orchestrator")).toBe(true);
+    expect(names.has("@elizaos/plugin-pty")).toBe(true);
+    expect(names.has("@elizaos/plugin-cli-inference")).toBe(true);
+  });
+
+  it("keeps ELIZA_AGENT_ORCHESTRATOR=0 authoritative on cloud containers", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_AGENT_ORCHESTRATOR = "0";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("agent-orchestrator")).toBe(false);
+    // The terminal + CLI-inference lanes are independent of the orchestrator gate.
+    expect(names.has("@elizaos/plugin-pty")).toBe(true);
+    expect(names.has("@elizaos/plugin-cli-inference")).toBe(true);
+  });
+
+  it("keeps lean-chat containers lean despite cloud-container defaults", () => {
+    process.env.ELIZA_CLOUD_PROVISIONED = "1";
+    process.env.ELIZA_PLUGIN_SET = "lean-chat";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("agent-orchestrator")).toBe(false);
+    expect(names.has("@elizaos/plugin-pty")).toBe(false);
+    expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
+  });
+
+  it("does not add the operator surface off cloud containers", () => {
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("@elizaos/plugin-pty")).toBe(false);
+    expect(names.has("@elizaos/plugin-cli-inference")).toBe(false);
   });
 });
