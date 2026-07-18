@@ -103,7 +103,11 @@ export const relevantConversationsProvider: Provider = {
   contextGate: { anyOf: ["memory", "messaging"] },
   cacheStable: false,
   cacheScope: "turn",
-  alwaysInResponseState: true,
+  // NOT always-on: this provider does a 2000-row memory scan + BM25 + vector
+  // search (~5s). Its contextGate already restricts it to memory/messaging
+  // turns; forcing it into every Stage-1 compose made "gm"/"thanks" pay that
+  // cost. Gated like DOCUMENTS — the planner recompose re-adds it only when the
+  // turn actually routes to memory/messaging, so trivial turns stay fast.
   roleGate: { minRole: "USER" },
 
   async get(

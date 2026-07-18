@@ -94,7 +94,29 @@ export const advancedActions = [
 	withCanonicalActionDocs(updateRoleAction),
 	withCanonicalActionDocs(searchExperiencesAction),
 	withCanonicalActionDocs(manageExperienceAction),
-	...promoteSubactionsToActions(messageAction),
+	...promoteSubactionsToActions(messageAction, {
+		// The recall op (read_with_contact) reads the person's real DM/room
+		// memory — which includes the messages the agent SENT — but without a
+		// distinguishing blurb the planner couldn't tell it from the inbound-only
+		// inbox ops and routed "did I DM X" to search_inbox (empty), then denied
+		// sends it had actually made. Disambiguate the retrieval text.
+		overrides: {
+			read_with_contact: {
+				description:
+					"Recall your prior conversation with a specific PERSON across every platform — includes the messages you SENT plus what you received. Use for 'did I DM X', 'what have I sent to X', 'our DMs', 'our chat history'. Reads that person's actual DM/room memory, not the inbox.",
+				descriptionCompressed:
+					"recall conversation/DM history with a person incl. messages you SENT; did i dm X / what have i sent X / our dms",
+			},
+			search_inbox: {
+				descriptionCompressed:
+					"search INBOUND received inbox items only (LifeOps); NOT your sent messages or DM history",
+			},
+			list_inbox: {
+				descriptionCompressed:
+					"list INBOUND unread inbox items only (LifeOps); NOT your sent messages or DM history",
+			},
+		},
+	}),
 	...promoteSubactionsToActions(postAction),
 	// Personality actions — keep CHARACTER (legacy) alongside the new
 	// PERSONALITY surface so existing callers continue to resolve.

@@ -997,6 +997,11 @@ function normalizeSendParams(
 	let target =
 		textParam(raw.target) ??
 		textParam(raw.recipient) ??
+		textParam(raw.to) ??
+		textParam(raw.userId) ??
+		textParam(raw.targetUserId) ??
+		textParam(raw.recipientId) ??
+		textParam(raw.entityId) ??
 		textParam(message.content.target) ??
 		inferTargetFromText(message.content.text) ??
 		inferTargetFromRecentConversation(state);
@@ -1016,7 +1021,12 @@ function normalizeSendParams(
 		if (source) sourceResolution = "inferred";
 	}
 
-	const messageText = textParam(raw.message) ?? textParam(raw.text) ?? "";
+	const messageText =
+		textParam(raw.message) ??
+		textParam(raw.text) ??
+		textParam(raw.body) ??
+		textParam(raw.content) ??
+		"";
 	const targetKind = normalizeTargetKind(raw.targetKind ?? raw.targetType);
 
 	return {
@@ -1787,6 +1797,15 @@ async function persistOutboundMemory(params: {
 }): Promise<Memory | undefined> {
 	if (!params.persist) return params.sentMemory ?? undefined;
 	const { runtime, source, target, label, kind, content, sentMemory } = params;
+	// When the connector already persisted the sent message in its own correctly-
+	// roomed memory (Discord returns one with a real DM roomId), reuse it as-is.
+	// Synthesizing an outbound room here would mint a spurious
+	// `${agentId}:${source}:message-room:…` world and re-upsert the row's worldId
+	// to it — cross-wiring the message away from the platform world its room
+	// actually belongs to. Only synthesize for connectors that return nothing.
+	if (sentMemory?.id && sentMemory.roomId) {
+		return sentMemory;
+	}
 	try {
 		const { roomId, worldId } = await ensureOutboundRoom(
 			runtime,
@@ -2465,8 +2484,18 @@ async function handleReadWithContact(
 	_state: State | undefined,
 	params: ParamRecord,
 ): Promise<ActionResult> {
-	const contact = textParam(params.contact);
-	const entityId = textParam(params.entityId);
+	// Accept the common arg-name variants a planner reaches for (contactId,
+	// userId, handle, name) so a well-formed recall request never bounces on a
+	// schema-name mismatch and falls back to the wrong op.
+	const contact =
+		textParam(params.contact) ??
+		textParam(params.name) ??
+		textParam(params.handle) ??
+		textParam(params.query);
+	const entityId =
+		textParam(params.entityId) ??
+		textParam(params.contactId) ??
+		textParam(params.userId);
 	const platform = textParam(params.platform);
 	const limit = clampLimit(
 		numberParam(params.limit),
@@ -2534,6 +2563,16 @@ async function handleReadWithContact(
 		messageCount: number;
 		lastMessageAt: string | null;
 	}> = [];
+	// Actual message bodies so the agent can QUOTE what it sent, not just report
+	// that a thread exists. `direction: "sent"` = the agent authored it (this is
+	// how "did I DM X" gets a truthful yes with the text). Capped to bound the
+	// planner payload; these are the agent's own DMs so quoting them is safe.
+	const RECENT_BODY_LIMIT = 12;
+	const recentMessages: Array<{
+		direction: "sent" | "received";
+		text: string;
+		createdAt: string | null;
+	}> = [];
 	let totalMessages = 0;
 
 	for (const id of entityIds) {
@@ -2564,6 +2603,17 @@ async function handleReadWithContact(
 						? new Date(last.createdAt).toISOString()
 						: null,
 				});
+				for (const m of memories) {
+					const text = m.content?.text?.trim();
+					if (!text) continue;
+					recentMessages.push({
+						direction: m.entityId === runtime.agentId ? "sent" : "received",
+						text,
+						createdAt: m.createdAt
+							? new Date(m.createdAt).toISOString()
+							: null,
+					});
+				}
 				totalMessages += memories.length;
 			}
 		} catch (error) {
@@ -2580,14 +2630,22 @@ async function handleReadWithContact(
 		return b.lastMessageAt.localeCompare(a.lastMessageAt);
 	});
 
+	recentMessages.sort((a, b) =>
+		(b.createdAt ?? "").localeCompare(a.createdAt ?? ""),
+	);
+	const sentCount = recentMessages.filter(
+		(m) => m.direction === "sent",
+	).length;
+
 	return opSuccess(
 		"read_with_contact",
-		`Conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages.`,
+		`Conversations with ${person.displayName}: ${conversations.length} thread(s), ${totalMessages} messages (${sentCount} sent by you in the last ${RECENT_BODY_LIMIT}).`,
 		{
 			personName: person.displayName,
 			primaryEntityId: person.primaryEntityId,
 			conversations,
 			totalMessages,
+			recentMessages: recentMessages.slice(0, RECENT_BODY_LIMIT),
 			platforms: [...new Set(conversations.map((c) => c.platform))],
 		},
 	);
@@ -3444,6 +3502,38 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 			"draft_reply",
 			"respond",
 		],
+		schema: { type: "string" },
+	},
+	{
+		// Natural aliases for the send target so the planner isn't punished for
+		// saying `to`/`targetUserId`/`recipientId` instead of `target` (all read
+		// by normalizeSendParams). Prefer `target`; these keep a well-formed send
+		// from bouncing on a param-name mismatch.
+		name: "to",
+		description: "Alias for target (send). Recipient user/handle/id.",
+		required: false,
+		subactions: ["send"],
+		schema: { type: "string" },
+	},
+	{
+		name: "targetUserId",
+		description: "Alias for target (send). Recipient platform user id.",
+		required: false,
+		subactions: ["send"],
+		schema: { type: "string" },
+	},
+	{
+		name: "recipientId",
+		description: "Alias for target (send). Recipient id.",
+		required: false,
+		subactions: ["send"],
+		schema: { type: "string" },
+	},
+	{
+		name: "content",
+		description: "Alias for message body (send).",
+		required: false,
+		subactions: ["send"],
 		schema: { type: "string" },
 	},
 	{

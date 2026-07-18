@@ -1712,6 +1712,14 @@ export class DiscordService extends Service implements IDiscordService {
 
 		let targetChannel: Channel | undefined | null = null;
 		let resolvedChannelId: string | null = null;
+		let dmRecipient:
+			| {
+					entityId: UUID;
+					discordUserId: string;
+					userName?: string;
+					name?: string;
+			  }
+			| undefined;
 
 		try {
 			if (target.channelId) {
@@ -1745,6 +1753,16 @@ export class DiscordService extends Service implements IDiscordService {
 				const user = await client.users.fetch(discordUserId);
 				if (user) {
 					targetChannel = user.dmChannel ?? (await user.createDM());
+					// Remember the recipient so the outbound DM's room lists THEM as a
+					// participant too (below). Without this the room has only the agent,
+					// and `getRoomsForParticipant(recipient)` returns nothing — so the
+					// agent cannot later recall the DMs it sent them.
+					dmRecipient = {
+						entityId: target.entityId as UUID,
+						discordUserId,
+						userName: user.username,
+						name: user.displayName || user.username,
+					};
 				}
 			} else {
 				throw new Error(
@@ -1937,6 +1955,33 @@ export class DiscordService extends Service implements IDiscordService {
 							accountId,
 						},
 					});
+
+					// Symmetric participation: when this send is a DM to a resolved
+					// recipient, register THEM in the room too (an inbound DM already
+					// does this for the sender). This is what makes
+					// `getRoomsForParticipant(recipient)` return the DM room so the agent
+					// can later recall "did I DM them / what have I sent them".
+					if (dmRecipient) {
+						try {
+							await this.runtime.ensureConnection({
+								entityId: dmRecipient.entityId,
+								roomId,
+								userName: dmRecipient.userName,
+								name: dmRecipient.name,
+								source: "discord",
+								channelId: targetChannel.id,
+								messageServerId: stringToUuid(serverId),
+								type: channelType,
+								worldId,
+								worldName,
+								metadata: { accountId },
+							});
+						} catch (error) {
+							runtime.logger.warn(
+								`Failed to register DM recipient ${dmRecipient.discordUserId} as room participant: ${error instanceof Error ? error.message : String(error)}`,
+							);
+						}
+					}
 
 					let lastPersistedMemory: Memory | undefined;
 					for (const sentMsg of sentMessages) {
