@@ -67,6 +67,9 @@ export type RealtimeVoiceStartOutcome =
   | { kind: "error"; error: RealtimeVoiceError }
   | { kind: "unavailable" };
 
+export type RealtimeVoiceFallbackReason =
+  "consent" | "mint" | "transport" | "unknown" | "missing-identity";
+
 /** Consent-nonce source. Returns null when consent could not be issued. */
 export type MintConsentNonce = () => Promise<string | null>;
 
@@ -155,6 +158,10 @@ export interface UseRealtimeVoiceSessionState {
   paused: boolean;
   /** Actionable/typed error, or null. */
   error: RealtimeVoiceError | null;
+  /** Last reason realtime handed this interaction to batch. */
+  fallbackReason: RealtimeVoiceFallbackReason | null;
+  /** Record a pre-start eligibility fallback such as missing identity. */
+  reportFallback: (reason: RealtimeVoiceFallbackReason) => void;
   /** Speaker attribution passthrough. */
   speaker: VoiceSpeakerMetadata | null;
   /**
@@ -286,10 +293,8 @@ export function useRealtimeVoiceSession(
   const [active, setActive] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<RealtimeVoiceError | null>(null);
-  // `featureDisabled` latches when a mint reports 404 so we stop advertising the
-  // realtime path as available for this mounted chat surface (the caller uses
-  // batch rather than repeatedly probing a disabled route on every mic tap).
-  const [featureDisabled, setFeatureDisabled] = useState(false);
+  const [fallbackReason, setFallbackReason] =
+    useState<RealtimeVoiceFallbackReason | null>(null);
 
   const clientRef = useRef<VoiceSessionClient | null>(null);
   // A generation counter so a stale client's async callbacks (a teardown that
@@ -352,14 +357,18 @@ export function useRealtimeVoiceSession(
         return;
       }
       pending.settled = true;
+      if (outcome.kind === "fallback-to-batch") {
+        setFallbackReason(outcome.reason);
+      }
       pending.resolve(outcome);
       startOutcomeRef.current = null;
     },
     [],
   );
 
-  const hasIds = Boolean(normalizedAgentId) && Boolean(normalizedConversationId);
-  const available = flagEnabled && hasIds && !featureDisabled;
+  const hasIds =
+    Boolean(normalizedAgentId) && Boolean(normalizedConversationId);
+  const available = flagEnabled && hasIds;
 
   const applyServerEventToTranscript = useCallback(
     (event: ServerControlFrame) => {
@@ -432,6 +441,7 @@ export function useRealtimeVoiceSession(
     startingRef.current = true;
     micOwnedRef.current = false;
     setError(null);
+    setFallbackReason(null);
     setNeedsUnlock(false);
     const gen = ++sessionGenRef.current;
     const isCurrent = () => sessionGenRef.current === gen;
@@ -543,12 +553,10 @@ export function useRealtimeVoiceSession(
         clearReadyTimer();
         // A 404 mint (feature disabled server-side) reaches us through the
         // client's onError (the client swallows the throw + tears down). Treat
-        // it as a fall-back-to-batch signal, NOT an error surface: latch
-        // `featureDisabled` so `available` flips false and the caller uses the
-        // batch path. Any other error is a real, surfaced failure.
+        // it as a fall-back-to-batch signal, NOT an error surface. Eligibility
+        // remains retryable on the next user interaction.
         if (err instanceof VoiceSessionMintError) {
           failedThisSession = true;
-          setFeatureDisabled(true);
           if (err.isFeatureDisabled) {
             setConnecting(false);
             resolveStartOutcome(gen, {
@@ -567,9 +575,6 @@ export function useRealtimeVoiceSession(
         // path ("standard voice"): mint and consent. Actionable kinds
         // (permission, no-device, transport) keep `available` true so the
         // advertised mic-tap retry is actually possible.
-        if (classified.kind === "mint" || classified.kind === "consent") {
-          setFeatureDisabled(true);
-        }
         if (
           !micOwnedRef.current ||
           classified.kind === "transport" ||
@@ -596,7 +601,7 @@ export function useRealtimeVoiceSession(
       // `start()` creates the playback AudioContext + mints + connects. The
       // client swallows a mint failure internally (emits via onError, tears
       // down), so this resolves even on a 404 — the fall-back branch is driven
-      // by `featureDisabled` (set in onError), not a throw here.
+      // by the typed onError callback, not a throw here.
       await client.start();
       if (!isCurrent()) {
         // A newer start/stop superseded us mid-connect; tear this one down.
@@ -626,13 +631,6 @@ export function useRealtimeVoiceSession(
       setError(classified);
       // Same latch policy as onError: only failures whose copy promises the
       // batch path disarm realtime; actionable kinds stay retryable.
-      if (
-        classified.kind === "mint" ||
-        classified.kind === "consent" ||
-        classified.kind === "unknown"
-      ) {
-        setFeatureDisabled(true);
-      }
       clientRef.current = null;
       // error-policy:J6 Failed startup teardown follows the surfaced primary error.
       await client.stop().catch(() => {});
@@ -661,6 +659,10 @@ export function useRealtimeVoiceSession(
     resolveStartOutcome,
   ]);
 
+  const reportFallback = useCallback((reason: RealtimeVoiceFallbackReason) => {
+    setFallbackReason(reason);
+  }, []);
+
   const bargeIn = useCallback(() => {
     clientRef.current?.bargeIn();
   }, []);
@@ -675,7 +677,6 @@ export function useRealtimeVoiceSession(
           error instanceof Error ? error : new Error(String(error)),
         ),
       );
-      setFeatureDisabled(true);
     }
   }, []);
 
@@ -717,8 +718,8 @@ export function useRealtimeVoiceSession(
 
     const shouldRestart = Boolean(
       identityRestartPendingRef.current ||
-        clientRef.current ||
-        startingRef.current,
+      clientRef.current ||
+      startingRef.current,
     );
     if (!shouldRestart) return;
 
@@ -758,6 +759,8 @@ export function useRealtimeVoiceSession(
       needsUnlock,
       paused,
       error,
+      fallbackReason,
+      reportFallback,
       speaker: speaker ?? null,
       start,
       stop,
@@ -775,6 +778,8 @@ export function useRealtimeVoiceSession(
       needsUnlock,
       paused,
       error,
+      fallbackReason,
+      reportFallback,
       speaker,
       start,
       stop,

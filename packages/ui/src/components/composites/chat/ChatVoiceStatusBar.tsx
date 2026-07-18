@@ -84,6 +84,8 @@ export interface ChatVoiceStatusBarProps {
    * realtime session is never silent (UI three-state rule).
    */
   realtimeErrorMessage?: string | null;
+  /** Non-blocking notice when this interaction handed the mic to batch voice. */
+  realtimeFallbackReason?: string | null;
   /** Visible only when continuous mode is on AND we have something to show. */
   visible?: boolean;
   className?: string;
@@ -145,6 +147,7 @@ export function ChatVoiceStatusBar({
   realtimeEligible = false,
   realtimePaused = false,
   realtimeErrorMessage = null,
+  realtimeFallbackReason = null,
   visible = true,
   className,
   "data-testid": dataTestId,
@@ -225,6 +228,20 @@ export function ChatVoiceStatusBar({
         >
           <Radio className="h-3 w-3" aria-hidden="true" />
           <span>Realtime armed</span>
+        </span>
+      ) : null}
+
+      {realtimeFallbackReason ? (
+        <span
+          className="inline-flex min-w-0 items-center gap-1 rounded-sm border border-warn/40 bg-warn/10 px-2 py-0.5 font-medium text-warn"
+          data-testid="chat-voice-realtime-fallback"
+          data-reason={realtimeFallbackReason}
+          title={`Realtime fallback reason: ${realtimeFallbackReason}`}
+        >
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">
+            Realtime voice unavailable, using standard voice mode
+          </span>
         </span>
       ) : null}
 

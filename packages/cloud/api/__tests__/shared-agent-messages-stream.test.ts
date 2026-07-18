@@ -130,7 +130,11 @@ describe("shared agent messages/stream", () => {
     bridgeStream.mockReset();
     findByIdAndOrg.mockReset();
     resolveSharedAgent.mockResolvedValue({
-      agent: {},
+      agent: {
+        id: AGENT,
+        organization_id: ORG,
+        execution_tier: "shared",
+      },
       agentId: AGENT,
       orgId: ORG,
       agentName: "Eliza",
@@ -503,6 +507,26 @@ describe("shared agent messages/stream", () => {
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
   });
 
+  test("exposes pre-header phase timing on successful streams", async () => {
+    bridgeStream.mockResolvedValue(
+      new Response('event: done\ndata: {"text":"ok"}\n\n', {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const res = await postStream({ text: "timed" }, "https://localhost");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-expose-headers")).toContain(
+      "Server-Timing",
+    );
+    expect(res.headers.get("server-timing")).toContain("scope;dur=");
+    expect(res.headers.get("server-timing")).toContain("body;dur=");
+    expect(res.headers.get("server-timing")).toContain("bridge;dur=");
+    expect(res.headers.get("x-eliza-stream-scope-ms")).not.toBeNull();
+    expect(res.headers.get("x-eliza-stream-bridge-ms")).not.toBeNull();
+  });
+
   test("empty text → 400 (not a stream)", async () => {
     const res = await postStream({ text: "  " });
     expect(res.status).toBe(400);
@@ -535,6 +559,7 @@ describe("shared agent messages/stream", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe(
       "https://localhost",
     );
+    expect(res.headers.get("server-timing")).toContain("bridge;dur=");
     await expect(res.json()).resolves.toEqual({
       success: false,
       error: "Insufficient credits. Required: $0.0500, Available: $0.0000",
