@@ -603,29 +603,45 @@ function isOpencodeLocalMode(): boolean {
 }
 
 function hasBinaryOnPath(binaryName: string): boolean {
-  const command = process.platform === "win32" ? "where" : "which";
-  const args = [binaryName];
-  try {
-    execFileSync(command, args, {
-      encoding: "utf8",
-      timeout: 1500,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return true;
-  } catch {
-    // error-policy:J3 binary existence probe (`which`/`where`); a non-zero exit
-    // or missing command means the binary is absent (false).
-    return false;
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (!dir) continue;
+    const candidate = path.join(dir, binaryName);
+    if (fs.existsSync(candidate)) return true;
+    if (process.platform === "win32") {
+      for (const ext of (process.env.PATHEXT ?? ".EXE;.CMD;.BAT")
+        .split(";")
+        .filter(Boolean)) {
+        if (fs.existsSync(`${candidate}${ext.toLowerCase()}`)) return true;
+        if (fs.existsSync(`${candidate}${ext.toUpperCase()}`)) return true;
+      }
+    }
   }
+  return false;
+}
+
+function leadingCommandToken(command: string): string | undefined {
+  const [token] = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/gu) ?? [];
+  return token?.replace(/^(['"])(.*)\1$/u, "$2");
+}
+
+function isCommandExecutableAvailable(command: string | undefined): boolean {
+  const executable = leadingCommandToken(command?.trim() ?? "");
+  if (!executable) return false;
+  if (path.isAbsolute(executable)) return fs.existsSync(executable);
+  if (executable.includes("/") || executable.includes("\\")) {
+    return fs.existsSync(resolveUserPath(executable));
+  }
+  return hasBinaryOnPath(executable);
 }
 
 function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
   switch (id) {
-    case "elizaos":
-      return (
-        Boolean(readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND")) ||
-        hasBinaryOnPath("eliza-code-acp")
-      );
+    case "elizaos": {
+      const configured = readConfigEnvKey("ELIZA_ELIZAOS_ACP_COMMAND");
+      return configured
+        ? isCommandExecutableAvailable(configured)
+        : hasBinaryOnPath("eliza-code-acp");
+    }
     case "pi-agent":
       return (
         Boolean(readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND")) ||
@@ -633,8 +649,12 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
       );
     case "claude":
       return hasBinaryOnPath("claude");
-    case "codex":
-      return hasBinaryOnPath("codex");
+    case "codex": {
+      const configured = readConfigEnvKey("ELIZA_CODEX_ACP_COMMAND");
+      return configured
+        ? isCommandExecutableAvailable(configured)
+        : hasBinaryOnPath("codex");
+    }
     case "opencode":
       return hasOpencodeBinary();
   }
