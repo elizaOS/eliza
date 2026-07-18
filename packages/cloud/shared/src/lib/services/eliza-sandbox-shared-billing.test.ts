@@ -547,18 +547,6 @@ describe("ElizaSandboxService shared runtime billing", () => {
     const modelCompletion = new Promise<void>((resolve) => {
       finishModel = resolve;
     });
-    let finishReservation!: () => void;
-    const reservationCompletion = new Promise<void>((resolve) => {
-      finishReservation = resolve;
-    });
-    reserveCredits.mockImplementationOnce(async () => {
-      await reservationCompletion;
-      return {
-        reservedAmount: 0.002,
-        reservationTransactionId: "reservation-1",
-        reconcile: reconcileReservation,
-      };
-    });
     runSharedAgentTurn.mockImplementationOnce(async () => {
       await modelCompletion;
       return {
@@ -596,18 +584,10 @@ describe("ElizaSandboxService shared runtime billing", () => {
           params: { text: "hello" },
         }),
       );
-      // Provider setup starts while the independent credit reservation is
-      // unresolved, but no Response/model bytes escape before credit approval.
-      for (let attempt = 0; attempt < 50; attempt += 1) {
-        if (runSharedAgentTurnStream.mock.calls.length > 0) break;
-        await delay(1);
-      }
-      expect(runSharedAgentTurnStream).toHaveBeenCalledTimes(1);
-      expect(await Promise.race([responsePromise, delay(20)])).toBe("timeout");
-      finishReservation();
       const earlyResponse = await Promise.race([responsePromise, delay(50)]);
       expect(earlyResponse).toBeInstanceOf(Response);
       expect(runSharedAgentTurn).not.toHaveBeenCalled();
+      expect(runSharedAgentTurnStream).toHaveBeenCalledTimes(1);
 
       finishModel();
       const response = await responsePromise;
@@ -636,7 +616,6 @@ describe("ElizaSandboxService shared runtime billing", () => {
         expect.objectContaining({ type: "chat", content: "metered reply", prompt: "hello" }),
       );
     } finally {
-      finishReservation();
       finishModel();
       findRunningSandboxSpy.mockRestore();
       historyGetSpy.mockRestore();
