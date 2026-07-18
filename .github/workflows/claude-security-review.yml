@@ -80,13 +80,25 @@ jobs:
             exit 1
           fi
 
-          error="$(jq -r '.error // empty' claudecode-results.json)"
-          if [ -n "$error" ]; then
-            echo "::error::Claude security review failed: $error"
-            exit 1
-          fi
-
-          if ! jq -e '.findings | type == "array"' claudecode-results.json >/dev/null; then
-            echo "::error::Claude security review produced no findings verdict"
+          if ! jq -e '
+            type == "object" and
+            (.error? == null) and
+            (.findings | type == "array") and
+            (.analysis_summary | type == "object") and
+            (.analysis_summary.review_completed == true) and
+            (.analysis_summary.files_reviewed |
+              type == "number" and . >= 0 and floor == .) and
+            all(.findings[];
+              type == "object" and
+              (.file | type == "string" and length > 0) and
+              (.line | type == "number" and . >= 1 and floor == .) and
+              (.severity == "HIGH" or .severity == "MEDIUM" or .severity == "LOW") and
+              (.category | type == "string" and length > 0) and
+              (.description | type == "string" and length > 0) and
+              (.exploit_scenario | type == "string" and length > 0) and
+              (.recommendation | type == "string" and length > 0) and
+              (.confidence | type == "number" and . >= 0 and . <= 1))
+          ' claudecode-results.json >/dev/null; then
+            echo "::error::Claude security review produced a missing or malformed verdict"
             exit 1
           fi
