@@ -84,6 +84,12 @@ runs:
     # repository never populated a turbo-Linux-* entry. Keep the standalone
     # shim for workflows that invoke it directly; setup-bun-workspace must
     # inline the same pinned cache contract so its post step can save.
+    #
+    # Include github.job in the primary key because every setup consumer races
+    # to save at post-job time. Without a lane suffix, a fast non-Turbo lane
+    # such as lint wins the immutable key with an empty .turbo directory and
+    # prevents Build/Type Check from publishing their populated caches. The
+    # deterministic hash restore prefix still permits safe cross-lane warming.
     - name: Compute deterministic Turbo cache key
       id: turbo-key
       shell: bash
@@ -94,8 +100,9 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: .turbo
-        key: turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}
+        key: turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-${{ github.job }}
         restore-keys: |
+          turbo-${{ runner.os }}-${{ steps.turbo-key.outputs.turbo_cache_key }}-
           turbo-${{ runner.os }}-
 
     # actions/setup-python@v6 downloads a CPython build requiring the
