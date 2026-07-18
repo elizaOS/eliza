@@ -23,6 +23,9 @@ const androidBoot = vi.hoisted(() => ({
   installAec: vi.fn(),
   initializeAppLifecycle: vi.fn(),
   initializeNetworkListener: vi.fn(async () => undefined),
+  startCameraBridgeResponder: vi.fn(() => vi.fn()),
+  registerWebsiteBlocker: vi.fn(),
+  registerAppBlocker: vi.fn(),
 }));
 
 androidBoot.createRoot.mockReturnValue({ render: androidBoot.render });
@@ -77,6 +80,21 @@ vi.mock("@elizaos/capacitor-agent", () => ({
 vi.mock("@elizaos/capacitor-llama", () => ({
   startDeviceBridgeClient: androidBoot.startDeviceBridge,
 }));
+vi.mock("./camera-bridge-responder", () => ({
+  startCameraBridgeResponder: androidBoot.startCameraBridgeResponder,
+}));
+vi.mock("@elizaos/plugin-blocker/native", () => ({
+  registerNativeWebsiteBlockerBackend: androidBoot.registerWebsiteBlocker,
+  registerNativeAppBlockerBackend: androidBoot.registerAppBlocker,
+}));
+vi.mock("@elizaos/capacitor-websiteblocker", () => ({
+  WebsiteBlocker: {},
+  createNativeWebsiteBlockerBackend: vi.fn(() => ({ kind: "website" })),
+}));
+vi.mock("@elizaos/capacitor-appblocker", () => ({
+  AppBlocker: {},
+  createNativeAppBlockerBackend: vi.fn(() => ({ kind: "app" })),
+}));
 vi.mock("./mobile-lifecycle", () => ({
   createMobileLifecycle: vi.fn(() => ({
     initializeAppLifecycle: androidBoot.initializeAppLifecycle,
@@ -128,6 +146,12 @@ describe("renderer Android local composition", () => {
     await vi.waitFor(() => expect(androidBoot.render).toHaveBeenCalledOnce());
     await vi.waitFor(() =>
       expect(androidBoot.startDeviceBridge).toHaveBeenCalledOnce(),
+    );
+    await vi.waitFor(() =>
+      expect(androidBoot.startCameraBridgeResponder).toHaveBeenCalledOnce(),
+    );
+    await vi.waitFor(() =>
+      expect(androidBoot.registerWebsiteBlocker).toHaveBeenCalledOnce(),
     );
 
     expect(main.isAndroid).toBe(true);

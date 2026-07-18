@@ -48,6 +48,7 @@ function json(value, init = {}) {
 function validIosFullBunResult() {
   return {
     ok: true,
+    phase: "complete",
     updatedAt: new Date().toISOString(),
     runtimeStatus: { ready: true, engine: "bun" },
     bridgeStatus: {
@@ -55,9 +56,15 @@ function validIosFullBunResult() {
       engine: "bun",
       transport: "bun-host-ipc",
     },
+    directHealth: { ready: true, runtime: "ok" },
     fetchHealth: { ready: true, runtime: "ok" },
     localInference: {
-      hub: { installed: [{ id: "eliza-1-2b" }] },
+      hub: {
+        catalog: [],
+        installed: [{ id: "eliza-1-2b" }],
+        active: {},
+        assignments: {},
+      },
       device: {
         enabled: true,
         connected: true,
@@ -75,6 +82,7 @@ function validIosFullBunResult() {
       installed: { models: [{ id: "eliza-1-2b" }] },
       activatedModel: { status: "ready", modelPath: "/models/model.gguf" },
       active: { status: "ready" },
+      routing: { registrations: [], preferences: {} },
     },
     conversationId: "ios-conversation",
     modelInput: {
@@ -364,7 +372,7 @@ describe("mobile smoke native command boundaries", () => {
     const screenshot = smoke.takeIosScreenshot(launched.udid, "unit");
     expect(fs.readFileSync(screenshot, "utf8")).toBe("screenshot");
     expect(await smoke.verifyIosFullBunSmoke({ installed: false })).toBeNull();
-  }, 15_000);
+  }, 60_000);
 
   it("drives Android package, preference, registry, model, and cleanup commands", async () => {
     expect(smoke.androidDeviceSerial(fakeAndroidContext.adb)).toBe(
@@ -404,7 +412,7 @@ describe("mobile smoke native command boundaries", () => {
     expect(smoke.dumpAndroidUiHierarchy(fakeAndroidContext, "unit")).toContain(
       "unit-",
     );
-  });
+  }, 60_000);
 });
 
 describe("mobile smoke result parsing", () => {

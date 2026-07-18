@@ -10,15 +10,23 @@ import {
 
 function validResult() {
   return {
+    ok: true,
+    phase: "complete",
     runtimeStatus: { ready: true, engine: "bun" },
     bridgeStatus: {
       ready: true,
       engine: "bun",
       transport: "bun-host-ipc",
     },
+    directHealth: { ready: true, runtime: "ok" },
     fetchHealth: { ready: true, runtime: "ok" },
     localInference: {
-      hub: { installed: [{ id: "eliza-1-2b" }] },
+      hub: {
+        catalog: [],
+        installed: [{ id: "eliza-1-2b" }],
+        active: {},
+        assignments: {},
+      },
       device: {
         enabled: true,
         connected: true,
@@ -39,6 +47,7 @@ function validResult() {
         modelPath: "/models/eliza-1-2b.gguf",
       },
       active: { status: "ready" },
+      routing: { registrations: [], preferences: {} },
     },
     conversationId: "conversation-1",
     modelInput: {
@@ -80,17 +89,23 @@ describe("iOS full-Bun smoke result parsing", () => {
 });
 
 describe("iOS full-Bun smoke success contract", () => {
-  it("accepts complete Bun/IPC/model proof, including an empty scanner result", () => {
+  it("accepts complete Bun/IPC/model proof and semantic reply wording", () => {
     expect(() => assertIosFullBunSmokeSuccess(validResult())).not.toThrow();
-    const noScannerModels = changed((result) => {
-      result.localInference.hub.installed = [];
-      delete result.localInference.activatedModel;
-      delete result.localInference.active;
+    const elaboratedReply = changed((result) => {
+      result.sendMessage.text =
+        "Yes, the iOS full Bun local backend is running and ready for requests.";
     });
-    expect(() => assertIosFullBunSmokeSuccess(noScannerModels)).not.toThrow();
+    expect(() => assertIosFullBunSmokeSuccess(elaboratedReply)).not.toThrow();
   });
 
   it.each([
+    [
+      "terminal phase",
+      (result) => {
+        result.phase = "running";
+      },
+      /not a completed success/,
+    ],
     [
       "runtime shape",
       (result) => {
@@ -120,6 +135,13 @@ describe("iOS full-Bun smoke success contract", () => {
       /exposed port metadata/,
     ],
     [
+      "direct health",
+      (result) => {
+        result.directHealth.ready = false;
+      },
+      /directHealth was not ready/,
+    ],
+    [
       "fetch health",
       (result) => {
         result.fetchHealth.ready = false;
@@ -134,11 +156,25 @@ describe("iOS full-Bun smoke success contract", () => {
       /localInference was not an object/,
     ],
     [
+      "hub catalog shape",
+      (result) => {
+        result.localInference.hub.catalog = null;
+      },
+      /hub.catalog was not an array/,
+    ],
+    [
       "hub installed shape",
       (result) => {
         result.localInference.hub.installed = null;
       },
       /hub.installed was not an array/,
+    ],
+    [
+      "staged model",
+      (result) => {
+        result.localInference.hub.installed = [];
+      },
+      /did not contain a staged model/,
     ],
     [
       "device transport",
@@ -218,6 +254,13 @@ describe("iOS full-Bun smoke success contract", () => {
         result.localInference.active.status = "idle";
       },
       /active model was not ready/,
+    ],
+    [
+      "routing shape",
+      (result) => {
+        result.localInference.routing.registrations = null;
+      },
+      /routing.registrations was not an array/,
     ],
     [
       "non-streaming reply",

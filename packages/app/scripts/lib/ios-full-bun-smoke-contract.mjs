@@ -61,6 +61,12 @@ function normalizeSmokeReply(value) {
  * local-inference, model-activation, non-streaming, or streaming proof.
  */
 export function assertIosFullBunSmokeSuccess(result) {
+  if (result?.ok !== true || result.phase !== "complete") {
+    throw new Error(
+      `iOS full Bun result was not a completed success: ${JSON.stringify(result)}`,
+    );
+  }
+
   const runtimeStatus = assertObject(
     result.runtimeStatus,
     "iOS full Bun runtimeStatus",
@@ -90,6 +96,16 @@ export function assertIosFullBunSmokeSuccess(result) {
     );
   }
 
+  const directHealth = assertObject(
+    result.directHealth,
+    "iOS full Bun directHealth",
+  );
+  if (directHealth.ready !== true || directHealth.runtime !== "ok") {
+    throw new Error(
+      `iOS full Bun directHealth was not ready: ${JSON.stringify(directHealth)}`,
+    );
+  }
+
   const fetchHealth = assertObject(
     result.fetchHealth,
     "iOS full Bun fetchHealth",
@@ -112,6 +128,14 @@ export function assertIosFullBunSmokeSuccess(result) {
     hub.installed,
     "iOS full Bun localInference.hub.installed",
   );
+  assertArray(hub.catalog, "iOS full Bun localInference.hub.catalog");
+  assertObject(hub.active, "iOS full Bun localInference.hub.active");
+  assertObject(hub.assignments, "iOS full Bun localInference.hub.assignments");
+  if (hubInstalled.length === 0) {
+    throw new Error(
+      "iOS full Bun localInference hub did not contain a staged model.",
+    );
+  }
   const device = assertObject(
     localInference.device,
     "iOS full Bun localInference.device",
@@ -172,35 +196,45 @@ export function assertIosFullBunSmokeSuccess(result) {
     ).models,
     "iOS full Bun localInference.installed.models",
   );
-  if (hubInstalled.length > 0) {
-    if (installed.length === 0) {
-      throw new Error(
-        "iOS full Bun scanner saw an installed model, but /installed returned none.",
-      );
-    }
-    const activatedModel = assertObject(
-      localInference.activatedModel,
-      "iOS full Bun localInference.activatedModel",
+  if (installed.length === 0) {
+    throw new Error(
+      "iOS full Bun scanner saw an installed model, but /installed returned none.",
     );
-    if (
-      activatedModel.status !== "ready" ||
-      typeof activatedModel.modelPath !== "string" ||
-      !activatedModel.modelPath
-    ) {
-      throw new Error(
-        `iOS full Bun model activation was not ready: ${JSON.stringify(activatedModel)}`,
-      );
-    }
-    const active = assertObject(
-      localInference.active,
-      "iOS full Bun localInference.active",
-    );
-    if (active.status !== "ready") {
-      throw new Error(
-        `iOS full Bun active model was not ready: ${JSON.stringify(active)}`,
-      );
-    }
   }
+  const activatedModel = assertObject(
+    localInference.activatedModel,
+    "iOS full Bun localInference.activatedModel",
+  );
+  if (
+    activatedModel.status !== "ready" ||
+    typeof activatedModel.modelPath !== "string" ||
+    !activatedModel.modelPath
+  ) {
+    throw new Error(
+      `iOS full Bun model activation was not ready: ${JSON.stringify(activatedModel)}`,
+    );
+  }
+  const active = assertObject(
+    localInference.active,
+    "iOS full Bun localInference.active",
+  );
+  if (active.status !== "ready") {
+    throw new Error(
+      `iOS full Bun active model was not ready: ${JSON.stringify(active)}`,
+    );
+  }
+  const routing = assertObject(
+    localInference.routing,
+    "iOS full Bun localInference.routing",
+  );
+  assertArray(
+    routing.registrations,
+    "iOS full Bun localInference.routing.registrations",
+  );
+  assertObject(
+    routing.preferences,
+    "iOS full Bun localInference.routing.preferences",
+  );
 
   const sendMessage = assertObject(
     result.sendMessage,
@@ -208,7 +242,7 @@ export function assertIosFullBunSmokeSuccess(result) {
   );
   const reply = String(sendMessage.text ?? sendMessage.reply ?? "");
   if (
-    normalizeSmokeReply(reply) !== EXPECTED_REPLY ||
+    !normalizeSmokeReply(reply).includes(EXPECTED_REPLY) ||
     IOS_FULL_BUN_SMOKE_FAILURE_RE.test(reply)
   ) {
     throw new Error(

@@ -499,8 +499,9 @@ jobs:
       - name: Run composed iOS auth + full-Bun simulator e2e (#13577)
         # The canonical one-command lane explicitly installs the freshly built
         # app, proves callback delivery + rejected/session-unchanged auth state,
-        # then stages the real GGUF and asserts the exact on-device non-stream +
-        # stream reply (`The iOS full Bun local backend is running.`). No
+        # then stages the real GGUF and requires both on-device non-stream +
+        # stream replies to contain the confirmation phrase (`The iOS full Bun
+        # local backend is running.`) without a failure signal. No
         # `continue-on-error` — every leg and its named JSON evidence is a hard
         # gate.
         run: |

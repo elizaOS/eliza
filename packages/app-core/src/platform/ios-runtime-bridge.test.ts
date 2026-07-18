@@ -178,8 +178,10 @@ beforeEach(() => {
 });
 
 describe("iOS full-Bun browser smoke", () => {
-  it("drives the complete strict nonstream and stream contract", async () => {
+  it("drives the complete semantic nonstream and stream contract", async () => {
     const fetchMock = installHappyFetch();
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout");
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout");
     window.localStorage.setItem(REQUEST_KEY, "1");
     window.localStorage.setItem(RUNTIME_MODE_KEY, "local");
     const { runIosFullBunSmokeIfRequested } = await import(
@@ -212,6 +214,8 @@ describe("iOS full-Bun browser smoke", () => {
     expect(result).toMatchObject({
       ok: true,
       phase: "complete",
+      directHealth: { ready: true, runtime: "ok" },
+      fetchHealth: { ready: true, runtime: "ok" },
       conversationId: "conversation-1",
       modelInput: {
         text: "In one short sentence, confirm the iOS full Bun local backend is running.",
@@ -226,9 +230,33 @@ describe("iOS full-Bun browser smoke", () => {
     expect(document.body.textContent).toBe(
       "iOS full Bun backend smoke passed.",
     );
+    expect(setTimeoutSpy).toHaveBeenCalled();
+    const clearedTimeoutIds = new Set(
+      clearTimeoutSpy.mock.calls.map(([timeoutId]) => timeoutId),
+    );
+    for (const { value: timeoutId } of setTimeoutSpy.mock.results) {
+      expect(clearedTimeoutIds.has(timeoutId)).toBe(true);
+    }
+  }, 300_000);
+
+  it("accepts a model sentence that contains the required confirmation", async () => {
+    installHappyFetch({
+      messageReply:
+        "Yes, the iOS full Bun local backend is running and ready for requests.",
+    });
+    window.localStorage.setItem(REQUEST_KEY, "1");
+    window.localStorage.setItem(RUNTIME_MODE_KEY, "local");
+    const { runIosFullBunSmokeIfRequested } = await import(
+      "./ios-runtime-bridge"
+    );
+
+    await expect(runIosFullBunSmokeIfRequested()).resolves.toBe(true);
+
+    const result = JSON.parse(harness.preferences.get(RESULT_KEY) ?? "null");
+    expect(result).toMatchObject({ ok: true, phase: "complete" });
   });
 
-  it("fails closed when the live-model reply differs from the proven sentence", async () => {
+  it("fails closed when the live-model reply omits the required confirmation", async () => {
     installHappyFetch({ messageReply: "A nearby but unproven reply." });
     window.localStorage.setItem(REQUEST_KEY, "1");
     window.localStorage.setItem(RUNTIME_MODE_KEY, "local");

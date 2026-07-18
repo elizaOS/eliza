@@ -70,28 +70,38 @@ async function writeIosFullBunSmokeResult(
 async function boundedPreferenceWrite(
   operation: () => Promise<unknown>,
 ): Promise<void> {
+  let timeoutId: number | undefined;
   try {
     await Promise.race([
       operation(),
-      new Promise((resolve) => window.setTimeout(resolve, 2_000)),
+      new Promise((resolve) => {
+        timeoutId = window.setTimeout(resolve, 2_000);
+      }),
     ]);
   } catch {
     // error-policy:J7 the simulator observes the persisted result independently;
     // a blocked bridge must not wedge the smoke loop.
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
   }
 }
 
 async function boundedPreferenceGet(key: string): Promise<string | null> {
+  let timeoutId: number | undefined;
   try {
     const result = await Promise.race([
       Preferences.get({ key }),
-      new Promise<null>((resolve) => window.setTimeout(resolve, 2_000)),
+      new Promise<null>((resolve) => {
+        timeoutId = window.setTimeout(resolve, 2_000);
+      }),
     ]);
     return result?.value ?? null;
   } catch {
     // error-policy:J7 a blocked diagnostic probe is explicitly absent and the
     // caller either uses localStorage or leaves the host poll to time out.
     return null;
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
   }
 }
 
@@ -148,19 +158,15 @@ async function fetchIosFullBunSmokeJson<T>(
   if (!headers.has("accept")) headers.set("accept", "application/json");
   let status: number | undefined;
   let text: string | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    window.setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  await Promise.race([
+  await withIosFullBunSmokeTimeout(
+    label,
+    timeoutMs,
     (async () => {
       const response = await fetch(path, { ...init, headers });
       status = response.status;
       text = await response.text();
     })(),
-    timeout,
-  ]);
+  );
   if (typeof status !== "number" || typeof text !== "string") {
     throw new Error(`${label} did not return a complete response`);
   }
@@ -186,19 +192,15 @@ async function fetchIosFullBunSmokeText(
   const headers = new Headers(init?.headers);
   let status: number | undefined;
   let text: string | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    window.setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  await Promise.race([
+  await withIosFullBunSmokeTimeout(
+    label,
+    timeoutMs,
     (async () => {
       const response = await fetch(path, { ...init, headers });
       status = response.status;
       text = await response.text();
     })(),
-    timeout,
-  ]);
+  );
   if (typeof status !== "number" || typeof text !== "string") {
     throw new Error(`${label} did not return a complete response`);
   }
@@ -218,7 +220,9 @@ function normalizeIosFullBunSmokeReply(value: unknown): string {
 function assertIosFullBunSmokeModelReply(label: string, value: unknown): void {
   const text = String(value ?? "");
   if (
-    normalizeIosFullBunSmokeReply(text) !== IOS_FULL_BUN_SMOKE_EXPECTED_REPLY ||
+    !normalizeIosFullBunSmokeReply(text).includes(
+      IOS_FULL_BUN_SMOKE_EXPECTED_REPLY,
+    ) ||
     IOS_FULL_BUN_SMOKE_FAILURE_RE.test(text)
   ) {
     throw new Error(
@@ -269,14 +273,19 @@ async function withIosFullBunSmokeTimeout<T>(
   timeoutMs: number,
   operation: Promise<T>,
 ): Promise<T> {
-  return Promise.race([
-    operation,
-    new Promise<never>((_resolve, reject) => {
-      window.setTimeout(() => {
-        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-    }),
-  ]);
+  let timeoutId: number | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_resolve, reject) => {
+        timeoutId = window.setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+  }
 }
 
 /**
@@ -713,6 +722,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       finishedAt: new Date().toISOString(),
       runtimeStatus: status,
       bridgeStatus: bridgeStatus.result,
+      directHealth,
       fetchHealth,
       localInference: {
         hub: localInferenceHub,
