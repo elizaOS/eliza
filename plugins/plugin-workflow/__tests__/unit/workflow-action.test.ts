@@ -376,3 +376,34 @@ describe('workflowAction chat operations', () => {
     });
   });
 });
+
+describe('automation vocabulary (#16570)', () => {
+  test('carries the automation simile family a live agent actually guessed', () => {
+    const similes = new Set(workflowAction.similes ?? []);
+    // The two exact names from the production repro must resolve, plus the
+    // core family the "automations" UI vocabulary produces.
+    for (const guessed of [
+      'AUTOMATION_DELETE',
+      'AUTOMATION_CANCEL',
+      'DELETE_AUTOMATION',
+      'CANCEL_AUTOMATION',
+      'LIST_AUTOMATIONS',
+      'CREATE_AUTOMATION',
+      'DISABLE_AUTOMATION',
+    ]) {
+      expect(similes.has(guessed)).toBe(true);
+    }
+  });
+
+  test('describes itself with the automation vocabulary so keyword retrieval matches', () => {
+    expect(workflowAction.description.toLowerCase()).toContain('automation');
+    expect(workflowAction.descriptionCompressed?.toLowerCase()).toContain('automation');
+  });
+
+  test('the delete op the vocabulary routes to actually exists', () => {
+    const opParam = (workflowAction.parameters ?? []).find((p) => p.name === 'action');
+    const allowed = (opParam?.schema as { enum?: string[] } | undefined)?.enum ?? [];
+    expect(allowed).toContain('delete');
+    expect(allowed).toContain('deactivate');
+  });
+});
