@@ -721,6 +721,25 @@ export const workflowAction: Action = {
   contextGate: { anyOf: [...WORKFLOW_CONTEXTS] },
   roleGate: { minRole: 'OWNER' },
   similes: [
+    // Automation vocabulary (#16570): the product UI calls these
+    // "automations", and a live agent guessed AUTOMATION_DELETE /
+    // AUTOMATION_CANCEL when asked to remove a broken one — none of the
+    // WORKFLOW_* names below matched, so the planner had to refuse despite
+    // the delete op existing. Kept ONLY on this action (not TRIGGER): a
+    // simile claimed by two parents is dropped as ambiguous by the resolver
+    // (#16561), which would kill the routing this family exists to provide.
+    'AUTOMATION',
+    'AUTOMATIONS',
+    'LIST_AUTOMATIONS',
+    'CREATE_AUTOMATION',
+    'DELETE_AUTOMATION',
+    'AUTOMATION_DELETE',
+    'CANCEL_AUTOMATION',
+    'AUTOMATION_CANCEL',
+    'REMOVE_AUTOMATION',
+    'ENABLE_AUTOMATION',
+    'DISABLE_AUTOMATION',
+    'MANAGE_AUTOMATIONS',
     'LIST_WORKFLOWS',
     'SHOW_WORKFLOWS',
     'GET_WORKFLOW',
@@ -765,11 +784,11 @@ export const workflowAction: Action = {
     'OPTIMIZE_WORKFLOW_SAMPLES',
   ],
   description:
-    'Manage workflows. Action-based dispatch - provide an `action` parameter:\n' +
+    'Manage workflows (automations). Action-based dispatch - provide an `action` parameter:\n' +
     '  list, get, create, modify, activate, deactivate, toggle_active, delete, run, executions, revisions, restore, diagnose, eval_samples.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'workflow list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|diagnose|eval_samples',
+    'workflow/automation list|get|create|modify|activate|deactivate|toggle_active|delete|run|executions|revisions|restore|diagnose|eval_samples',
   parameters: [
     {
       name: 'action',
