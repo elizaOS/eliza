@@ -136,7 +136,7 @@ async function live() {
   throw new Error("timed out waiting for security advisory checks");
 }
 
-async function canary(name) {
+export async function canary(name) {
   const protectedInput = { labels: ["security"], files: [] };
   const cases = {
     bypass: () =>
