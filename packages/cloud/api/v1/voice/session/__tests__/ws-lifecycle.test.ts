@@ -455,6 +455,30 @@ describe("voice-session WS lifecycle", () => {
     expect(prewarmCalls).toBe(1);
   });
 
+  test("caps Cartesia server-side buffer delay for realtime voice", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A short answer."]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer briefly");
+    await flush();
+    await flush();
+
+    // Cartesia defaults to a 3000ms server aggregation window; the realtime
+    // session must cap it so already-aggregated clauses start synthesis fast.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map((entry) => JSON.parse(entry) as { max_buffer_delay_ms?: number })
+      .filter((entry) => entry.max_buffer_delay_ms !== undefined);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      expect(request.max_buffer_delay_ms).toBe(250);
+    }
+  });
+
   test("prewarms Cartesia as soon as the response turn starts", async () => {
     const client = new FakeClientSocket();
     await connectSession({
