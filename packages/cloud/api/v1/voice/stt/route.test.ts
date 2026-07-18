@@ -194,6 +194,61 @@ function sttRequest(
   });
 }
 
+async function cloneMultipartRequestWithHeaders(
+  request: Request,
+  headers: HeadersInit,
+): Promise<Request> {
+  const nextHeaders = new Headers(request.headers);
+  const body = await request.arrayBuffer();
+  for (const [key, value] of new Headers(headers)) {
+    nextHeaders.set(key, value);
+  }
+  return new Request(request.url, {
+    body,
+    headers: nextHeaders,
+    method: request.method,
+  });
+}
+
+async function multipartBodyLength(request: Request): Promise<number> {
+  return (await request.clone().arrayBuffer()).byteLength;
+}
+
+function streamRequest(
+  chunks: Uint8Array[],
+  headers: HeadersInit,
+  onCancel: () => void = () => {},
+): Request {
+  let index = 0;
+  const body = new ReadableStream<Uint8Array>({
+    cancel() {
+      onCancel();
+    },
+    pull(controller) {
+      const chunk = chunks[index];
+      index += 1;
+      if (chunk) {
+        controller.enqueue(chunk);
+        return;
+      }
+      controller.close();
+    },
+  });
+  return new Request("http://localhost/api/v1/voice/stt", {
+    body,
+    headers,
+    method: "POST",
+  });
+}
+
+function expectNoOversizedSideEffects() {
+  expect(requireAuthOrApiKeyWithOrg).not.toHaveBeenCalled();
+  expect(reserve).not.toHaveBeenCalled();
+  expect(billFlatUsage).not.toHaveBeenCalled();
+  expect(speechToText).not.toHaveBeenCalled();
+  expect(usageCreate).not.toHaveBeenCalled();
+}
+
 /**
  * The merged workers-types/DOM/bun globals leave `Response#json()`'s generic
  * unresolvable at bare call sites (it infers `undefined`, which rejects every
@@ -424,6 +479,167 @@ beforeEach(() => {
 });
 
 describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
+  test("rejects trustworthy oversized Content-Length before auth or body parsing", async () => {
+    const cancel = mock(() => {});
+    const res = await app.request(
+      streamRequest(
+        [new Uint8Array(8)],
+        {
+          "content-type": "multipart/form-data; boundary=oversized",
+          "content-length": String(25 * 1024 * 1024 + 1),
+        },
+        cancel,
+      ),
+      undefined,
+      whisperEnv,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: 25 * 1024 * 1024,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expectNoOversizedSideEffects();
+  });
+
+  test("cancels a chunked body as soon as it exceeds the configured multipart cap", async () => {
+    const cancel = mock(() => {});
+    const res = await app.request(
+      streamRequest(
+        [new Uint8Array(8), new Uint8Array(8)],
+        { "content-type": "multipart/form-data; boundary=chunked" },
+        cancel,
+      ),
+      undefined,
+      { VOICE_STT_MAX_MULTIPART_BYTES: "10" } as never,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: 10,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expectNoOversizedSideEffects();
+  });
+
+  test("does not trust a smaller Content-Length when the streamed body grows past the cap", async () => {
+    const cancel = mock(() => {});
+    const res = await app.request(
+      streamRequest(
+        [new Uint8Array(8), new Uint8Array(8)],
+        {
+          "content-type": "multipart/form-data; boundary=lying",
+          "content-length": "1",
+        },
+        cancel,
+      ),
+      undefined,
+      { VOICE_STT_MAX_MULTIPART_BYTES: "10" } as never,
+    );
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: 10,
+    });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expectNoOversizedSideEffects();
+  });
+
+  test("removes a false smaller Content-Length from buffered in-limit multipart requests", async () => {
+    upstreamReply = () => Response.json({ text: "false length accepted" });
+    const base = sttRequest(wavFile(), { languageCode: "en" });
+    const bodyBytes = await multipartBodyLength(base);
+    const falseLength = await cloneMultipartRequestWithHeaders(base, {
+      "content-length": "1",
+    });
+
+    const res = await app.request(falseLength, undefined, {
+      ...whisperEnv,
+      VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes + 1),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("false length accepted");
+    expect(captured.fields.language).toEqual(["en"]);
+    expect(requireAuthOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+  });
+
+  test("accepts a multipart body exactly at the configured cap including overhead", async () => {
+    upstreamReply = () => Response.json({ text: "exact boundary" });
+    const base = sttRequest(wavFile(), { languageCode: "en" });
+    const bodyBytes = await multipartBodyLength(base);
+    const exact = await cloneMultipartRequestWithHeaders(base, {
+      "content-length": String(bodyBytes),
+    });
+
+    const res = await app.request(exact, undefined, {
+      ...whisperEnv,
+      VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes),
+    } as never);
+
+    expect(res.status).toBe(200);
+    const body = (await readJson(res)) as Record<string, unknown>;
+    expect(body.transcript).toBe("exact boundary");
+    expect(requireAuthOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+  });
+
+  test("rejects a multipart body one byte over the configured cap including overhead", async () => {
+    const base = sttRequest(wavFile(), { languageCode: "en" });
+    const bodyBytes = await multipartBodyLength(base);
+    const over = await cloneMultipartRequestWithHeaders(base, {
+      "content-length": String(bodyBytes),
+    });
+
+    const res = await app.request(over, undefined, {
+      VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes - 1),
+    } as never);
+
+    expect(res.status).toBe(413);
+    expect(await readJson(res)).toEqual({
+      error: "STT multipart request body too large",
+      maxBytes: bodyBytes - 1,
+    });
+    expectNoOversizedSideEffects();
+  });
+
+  test("invalid optional multipart limit configuration fails closed", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      VOICE_STT_MAX_MULTIPART_BYTES: "not-a-number",
+    } as never);
+
+    expect(res.status).toBe(500);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text service is misconfigured",
+    });
+    expect(logError).toHaveBeenCalledWith(
+      "[Voice STT API] Invalid multipart body limit configuration",
+      { errorType: "Error" },
+    );
+    expectNoOversizedSideEffects();
+  });
+
+  test("blank multipart limit configuration fails closed instead of using the default", async () => {
+    const res = await app.request(sttRequest(), undefined, {
+      VOICE_STT_MAX_MULTIPART_BYTES: "   ",
+    } as never);
+
+    expect(res.status).toBe(500);
+    expect(await readJson(res)).toEqual({
+      error: "Speech-to-text service is misconfigured",
+    });
+    expect(logError).toHaveBeenCalledWith(
+      "[Voice STT API] Invalid multipart body limit configuration",
+      { errorType: "Error" },
+    );
+    expectNoOversizedSideEffects();
+  });
+
   test("a non-multipart body is a 400", async () => {
     const res = await app.request(
       new Request("http://localhost/api/v1/voice/stt", {
@@ -450,7 +666,7 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
     expect(await readJson(res)).toEqual({ error: "No audio file provided" });
   });
 
-  test("a file over the 25MB cap is rejected before any provider call", async () => {
+  test("a file over the 25 MiB request cap is rejected before auth or provider calls", async () => {
     const res = await app.request(
       sttRequest(
         new File([new ArrayBuffer(25 * 1024 * 1024 + 1)], "big.wav", {
@@ -460,10 +676,12 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
       undefined,
       whisperEnv,
     );
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(413);
     expect(await readJson(res)).toEqual({
-      error: "File too large. Maximum size is 25MB",
+      error: "STT multipart request body too large",
+      maxBytes: 25 * 1024 * 1024,
     });
+    expectNoOversizedSideEffects();
   });
 
   test("an unsupported declared MIME type is a 400", async () => {
@@ -510,6 +728,29 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
     const res = await app.request(sttRequest(), undefined, whisperEnv);
     expect(res.status).toBe(401);
     expect(await readJson(res)).toEqual({ error: "Unauthorized" });
+  });
+
+  test("malformed multipart remains a parse failure after auth when it is under the cap", async () => {
+    const res = await app.request(
+      new Request("http://localhost/api/v1/voice/stt", {
+        method: "POST",
+        headers: {
+          "content-type": "multipart/form-data",
+        },
+        body: "not a multipart body",
+      }),
+      undefined,
+      whisperEnv,
+    );
+
+    expect(res.status).toBe(500);
+    expect(await readJson(res)).toEqual({
+      error: "Failed to transcribe audio. Please try again.",
+    });
+    expect(requireAuthOrApiKeyWithOrg).toHaveBeenCalledTimes(1);
+    expect(reserve).not.toHaveBeenCalled();
+    expect(speechToText).not.toHaveBeenCalled();
+    expect(billFlatUsage).not.toHaveBeenCalled();
   });
 });
 
