@@ -875,6 +875,110 @@ describe("App navigate-view event wiring", () => {
     expect(readViewLayoutFromHistory()).toEqual(expectedLayout);
   });
 
+  it("keeps tiled survivors and focus when a non-focused pane tab closes", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+    desktopTabsState.tabs = [
+      {
+        viewId: "shopify",
+        label: "Shopify",
+        path: "/shopify",
+        pinned: false,
+      },
+      {
+        viewId: "calendar",
+        label: "Calendar",
+        path: "/calendar",
+        pinned: false,
+      },
+      {
+        viewId: "documents",
+        label: "Knowledge",
+        path: "/documents",
+        pinned: false,
+      },
+    ];
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    navigateView({
+      action: "tile-views",
+      viewId: "shopify",
+      views: ["shopify", "calendar", "documents"],
+      layout: "grid",
+    });
+    const calendarPane = await waitFor(() =>
+      getByTestId("view-layout-pane-calendar"),
+    );
+    fireEvent.pointerDown(calendarPane);
+    await waitFor(() => {
+      expect(calendarPane.getAttribute("data-focused")).toBe("true");
+    });
+    appState.setTab.mockClear();
+    desktopTabsMock.closeTab.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Shopify" }));
+
+    await waitFor(() => {
+      expect(queryByTestId("view-layout-pane-shopify")).toBeNull();
+    });
+    expect(desktopTabsMock.closeTab).toHaveBeenCalledWith("shopify");
+    expect(getByTestId("view-layout-pane-calendar")).toBeTruthy();
+    expect(getByTestId("view-layout-pane-documents")).toBeTruthy();
+    expect(
+      getByTestId("view-layout-pane-calendar").getAttribute("data-focused"),
+    ).toBe("true");
+    expect(appState.setTab).toHaveBeenCalledWith("views");
+    expect(window.location.pathname).toBe("/views");
+    expect(readViewLayoutFromHistory()).toEqual({
+      mode: "tile",
+      viewIds: ["calendar", "documents"],
+      focusedViewId: "calendar",
+      layout: "grid",
+    });
+  });
+
+  it("routes to the survivor when the focused pane tab closes", async () => {
+    appState.tab = "views";
+    window.history.replaceState(null, "", "/views");
+    desktopTabsState.tabs = [
+      {
+        viewId: "shopify",
+        label: "Shopify",
+        path: "/shopify",
+        pinned: false,
+      },
+      {
+        viewId: "calendar",
+        label: "Calendar",
+        path: "/calendar",
+        pinned: false,
+      },
+    ];
+    const { getByTestId, queryByTestId } = render(<App />);
+
+    navigateView({
+      action: "split-view",
+      viewId: "shopify",
+      views: ["shopify", "calendar"],
+      layout: "horizontal",
+    });
+    await waitFor(() => {
+      expect(
+        getByTestId("view-layout-pane-shopify").getAttribute("data-focused"),
+      ).toBe("true");
+    });
+    desktopTabsMock.closeTab.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Shopify" }));
+
+    await waitFor(() => {
+      expect(window.location.pathname).toBe("/calendar");
+    });
+    expect(desktopTabsMock.closeTab).toHaveBeenCalledWith("shopify");
+    expect(queryByTestId("view-layout-surface")).toBeNull();
+    expect(readViewLayoutFromHistory()).toBeNull();
+  });
+
   it("publishes the pane the user most recently focused as primary context", async () => {
     appState.tab = "views";
     window.history.replaceState(null, "", "/views");

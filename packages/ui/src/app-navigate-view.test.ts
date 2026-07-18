@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __setNavigateViewPayloadForTests,
   type ActiveViewLayout,
+  closeVisibleViewLayoutPane,
   consumeNavigateViewPayload,
   createNavigateViewHandler,
   type DesktopBridgeRequest,
@@ -284,6 +285,90 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.setActiveDesktopTabId).not.toHaveBeenCalled();
     expect(fixture.setTab).not.toHaveBeenCalled();
     expect(fixture.navigatePath).not.toHaveBeenCalled();
+  });
+
+  it("preserves focus when the shared layout close transition removes a non-focused pane", () => {
+    const notes = view({ id: "notes", label: "Notes", path: "/notes" });
+    const calendar = view({
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+    });
+    const tasks = view({ id: "tasks", label: "Tasks", path: "/tasks" });
+    const views = [notes, calendar, tasks];
+    const layout: ActiveViewLayout = {
+      mode: "tile",
+      viewIds: ["notes", "calendar", "tasks"],
+      focusedViewId: "calendar",
+      layout: "grid",
+    };
+    writeViewLayoutToHistory(layout);
+    const fixture = createHandlerFixture(views, layout);
+
+    const handled = closeVisibleViewLayoutPane({
+      availableViewsForDesktopTabs: views,
+      closeDesktopTab: fixture.closeDesktopTab,
+      navigatePath: fixture.navigatePath,
+      setActiveDesktopTabId: fixture.setActiveDesktopTabId,
+      setTab: fixture.setTab,
+      setViewLayout: fixture.setViewLayout,
+      viewId: "notes",
+      viewLayout: layout,
+    });
+
+    expect(handled).toBe(true);
+    expect(fixture.closeDesktopTab).toHaveBeenCalledWith("notes");
+    expect(fixture.setViewLayout).toHaveBeenCalledWith({
+      mode: "tile",
+      viewIds: ["calendar", "tasks"],
+      focusedViewId: "calendar",
+      layout: "grid",
+    });
+    expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("calendar");
+    expect(fixture.setTab).toHaveBeenCalledWith("views");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/views");
+    expect(readViewLayoutFromHistory()).toEqual({
+      mode: "tile",
+      viewIds: ["calendar", "tasks"],
+      focusedViewId: "calendar",
+      layout: "grid",
+    });
+  });
+
+  it("promotes the survivor when the shared layout close transition removes the focused pane", () => {
+    const notes = view({ id: "notes", label: "Notes", path: "/notes" });
+    const calendar = view({
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+    });
+    const views = [notes, calendar];
+    const layout: ActiveViewLayout = {
+      mode: "split",
+      viewIds: ["notes", "calendar"],
+      focusedViewId: "calendar",
+      layout: "horizontal",
+    };
+    writeViewLayoutToHistory(layout);
+    const fixture = createHandlerFixture(views, layout);
+
+    const handled = closeVisibleViewLayoutPane({
+      availableViewsForDesktopTabs: views,
+      closeDesktopTab: fixture.closeDesktopTab,
+      navigatePath: fixture.navigatePath,
+      setActiveDesktopTabId: fixture.setActiveDesktopTabId,
+      setTab: fixture.setTab,
+      setViewLayout: fixture.setViewLayout,
+      viewId: "calendar",
+      viewLayout: layout,
+    });
+
+    expect(handled).toBe(true);
+    expect(fixture.closeDesktopTab).toHaveBeenCalledWith("calendar");
+    expect(fixture.setViewLayout).toHaveBeenCalledWith(null);
+    expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("notes");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/notes");
+    expect(readViewLayoutFromHistory()).toBeNull();
   });
 
   it("closes one split pane and routes to the surviving view", () => {

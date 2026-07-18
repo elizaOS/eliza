@@ -34,6 +34,7 @@ import {
 } from "react";
 import {
   type ActiveViewLayout,
+  closeVisibleViewLayoutPane,
   createNavigateViewHandler,
   type NavigateViewDetail,
   navigateBrowserPath,
@@ -2708,17 +2709,29 @@ function AppContent() {
 
   const handleDesktopTabClose = useCallback(
     (viewId: string) => {
-      if (viewLayout?.viewIds.includes(viewId)) {
-        setViewLayout(null);
-        writeViewLayoutToHistory(null);
-      }
+      const closedVisiblePane = closeVisibleViewLayoutPane({
+        availableViewsForDesktopTabs,
+        closeDesktopTab,
+        setActiveDesktopTabId,
+        setTab,
+        setViewLayout,
+        viewId,
+        viewLayout,
+      });
+      if (closedVisiblePane) return;
       closeDesktopTab(viewId);
       if (activeDesktopTabId === viewId) {
         setActiveDesktopTabId(null);
         setTab("chat");
       }
     },
-    [closeDesktopTab, activeDesktopTabId, setTab, viewLayout],
+    [
+      activeDesktopTabId,
+      availableViewsForDesktopTabs,
+      closeDesktopTab,
+      setTab,
+      viewLayout,
+    ],
   );
 
   const handleOpenViewManagerFromTabBar = useCallback(() => {

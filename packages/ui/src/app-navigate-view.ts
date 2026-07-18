@@ -184,6 +184,77 @@ function layoutViewIdsForDetail(detail: NavigateViewDetail): string[] {
   });
 }
 
+/**
+ * Close one pane from a visible split/tile layout while keeping the remaining
+ * panes, route, desktop-tab focus, and history entry in agreement. Both agent
+ * navigation and the desktop tab bar use this transition so either close
+ * affordance produces the same surviving workspace.
+ */
+export function closeVisibleViewLayoutPane({
+  availableViewsForDesktopTabs,
+  closeDesktopTab,
+  navigatePath = navigateBrowserPath,
+  setActiveDesktopTabId,
+  setTab,
+  setViewLayout,
+  viewId,
+  viewLayout,
+}: {
+  availableViewsForDesktopTabs: ViewRegistryEntry[];
+  closeDesktopTab?: DesktopTabClose;
+  navigatePath?: (path: string) => void;
+  setActiveDesktopTabId: (viewId: string | null) => void;
+  setTab: (tab: Tab) => void;
+  setViewLayout?: (layout: ActiveViewLayout | null) => void;
+  viewId: string;
+  viewLayout: ActiveViewLayout | null;
+}): boolean {
+  if (!viewLayout?.viewIds.includes(viewId)) return false;
+
+  const remainingViewIds = viewLayout.viewIds.filter(
+    (layoutViewId) => layoutViewId !== viewId,
+  );
+  closeDesktopTab?.(viewId);
+
+  if (remainingViewIds.length > 1) {
+    const focusedViewId =
+      viewLayout.focusedViewId &&
+      remainingViewIds.includes(viewLayout.focusedViewId)
+        ? viewLayout.focusedViewId
+        : remainingViewIds[0];
+    const nextLayout: ActiveViewLayout = {
+      ...viewLayout,
+      viewIds: remainingViewIds,
+      focusedViewId,
+    };
+    setViewLayout?.(nextLayout);
+    setActiveDesktopTabId(focusedViewId);
+    setTab("views");
+    navigatePath("/views");
+    writeViewLayoutToHistory(nextLayout);
+    return true;
+  }
+
+  const remainingViewId = remainingViewIds[0];
+  setViewLayout?.(null);
+  writeViewLayoutToHistory(null);
+  if (remainingViewId) {
+    const remainingEntry = desktopEntryForDetail(
+      availableViewsForDesktopTabs,
+      remainingViewId,
+    );
+    const remainingPath = remainingEntry?.path ?? `/apps/${remainingViewId}`;
+    const routeTab = tabFromPath(remainingPath);
+    setActiveDesktopTabId(remainingViewId);
+    if (routeTab) setTab(routeTab);
+    navigatePath(remainingPath);
+  } else {
+    setActiveDesktopTabId(null);
+    setTab("chat");
+  }
+  return true;
+}
+
 export function createNavigateViewHandler({
   activeForegroundViewId,
   availableViewsForDesktopTabs,
@@ -241,45 +312,16 @@ export function createNavigateViewHandler({
         detail.viewId &&
         viewLayout?.viewIds.includes(detail.viewId)
       ) {
-        const remainingViewIds = viewLayout.viewIds.filter(
-          (viewId) => viewId !== detail.viewId,
-        );
-        closeDesktopTab?.(detail.viewId);
-        if (remainingViewIds.length > 1) {
-          const focusedViewId =
-            viewLayout.focusedViewId &&
-            remainingViewIds.includes(viewLayout.focusedViewId)
-              ? viewLayout.focusedViewId
-              : remainingViewIds[0];
-          const nextLayout: ActiveViewLayout = {
-            ...viewLayout,
-            viewIds: remainingViewIds,
-            focusedViewId,
-          };
-          setViewLayout?.(nextLayout);
-          writeViewLayoutToHistory(nextLayout);
-          setActiveDesktopTabId(focusedViewId);
-          setTab("views");
-          navigatePath("/views");
-          return;
-        }
-        const remainingViewId = remainingViewIds[0];
-        setViewLayout?.(null);
-        writeViewLayoutToHistory(null);
-        if (remainingViewId) {
-          const remainingEntry = desktopEntryForDetail(
-            availableViewsForDesktopTabs,
-            remainingViewId,
-          );
-          const remainingPath =
-            remainingEntry?.path ?? `/apps/${remainingViewId}`;
-          setActiveDesktopTabId(remainingViewId);
-          activateTabForPath(remainingPath);
-          navigatePath(remainingPath);
-        } else {
-          setActiveDesktopTabId(null);
-          setTab("chat");
-        }
+        closeVisibleViewLayoutPane({
+          availableViewsForDesktopTabs,
+          closeDesktopTab,
+          navigatePath,
+          setActiveDesktopTabId,
+          setTab,
+          setViewLayout,
+          viewId: detail.viewId,
+          viewLayout,
+        });
         return;
       }
       setViewLayout?.(null);
