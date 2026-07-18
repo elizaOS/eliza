@@ -16,3 +16,8 @@
 # absent until the Rolldown issue is fixed.
 packages/agent/src/api/server.ts
 packages/agent/src/runtime/eliza.ts
+
+# Interface/type-only module: zero executable statements, so neither bun nor
+# vitest emits an LCOV record for it (#16565 touched its SandboxCreateConfig
+# doc surface). Delete this entry if the file ever gains runtime code.
+packages/cloud/shared/src/lib/services/sandbox-provider-types.ts
