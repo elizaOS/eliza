@@ -533,6 +533,51 @@ describe("ElizaSandboxService shared runtime bridge", () => {
       }
     },
   );
+
+  test.skipIf(process.platform === "win32")(
+    "returns an SSE completion without persisting when streaming has no configured model",
+    async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const sandbox = sharedSandbox();
+      const findRunningSandboxSpy = spyOn(
+        agentSandboxesRepository,
+        "findRunningSandbox",
+      ).mockResolvedValue(sandbox);
+      const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+      const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+        undefined,
+      );
+
+      try {
+        const response = await runWithCloudBindings(
+          {
+            CEREBRAS_API_KEY: "",
+            OPENAI_API_KEY: "",
+          },
+          () =>
+            new ElizaSandboxService().bridgeStream(sandbox.id, sandbox.organization_id, {
+              jsonrpc: "2.0",
+              id: "shared-stream-turn",
+              method: "message.send",
+              params: { text: " hello " },
+            }),
+        );
+
+        expect(response).toBeInstanceOf(Response);
+        expect(response?.headers.get("content-type")).toContain("text/event-stream");
+        const body = await response?.text();
+        expect(body).toContain("event: chunk");
+        expect(body).toContain("no shared model configured");
+        expect(body).toContain("event: done");
+        expect(historyGetSpy).toHaveBeenCalled();
+        expect(historyUpsertSpy).not.toHaveBeenCalled();
+      } finally {
+        findRunningSandboxSpy.mockRestore();
+        historyGetSpy.mockRestore();
+        historyUpsertSpy.mockRestore();
+      }
+    },
+  );
 });
 
 describe("ElizaSandboxService wake", () => {

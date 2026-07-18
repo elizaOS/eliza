@@ -10,10 +10,17 @@
  */
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
-// Per-test controls for the two collaborators runSharedAgentTurn calls.
+// Per-test controls for the collaborators used by both turn entry points.
 let providerConfigured = true;
 let generateTextImpl: () => Promise<{ text: string; usage?: unknown }> = async () => ({
   text: "ok reply",
+});
+let streamTextImpl: () => { fullStream: AsyncIterable<unknown> } = () => ({
+  fullStream: (async function* () {
+    yield { type: "text-delta", text: "ok " };
+    yield { type: "text-delta", text: "reply" };
+    yield { type: "finish", totalUsage: { totalTokens: 3 } };
+  })(),
 });
 
 mock.module("../../providers/language-model", () => ({
@@ -25,15 +32,23 @@ mock.module("../../providers/language-model", () => ({
 
 mock.module("ai", () => ({
   generateText: async () => generateTextImpl(),
+  streamText: () => streamTextImpl(),
 }));
 
-const { runSharedAgentTurn } = await import("./run-shared-agent-turn");
+const { runSharedAgentTurn, runSharedAgentTurnStream } = await import("./run-shared-agent-turn");
 
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   providerConfigured = true;
   generateTextImpl = async () => ({ text: "ok reply" });
+  streamTextImpl = () => ({
+    fullStream: (async function* () {
+      yield { type: "text-delta", text: "ok " };
+      yield { type: "text-delta", text: "reply" };
+      yield { type: "finish", totalUsage: { totalTokens: 3 } };
+    })(),
+  });
   globalThis.fetch = mock(async () => {
     throw new Error("no network expected in this unit test");
   }) as unknown as typeof fetch;
@@ -125,5 +140,81 @@ describe("runSharedAgentTurn — internal failure propagates vs designed-empty d
       content: "hi from Nova",
     });
     expect(typeof result.history[3]?.createdAt).toBe("number");
+  });
+});
+
+describe("runSharedAgentTurnStream — incremental provider policy", () => {
+  test("streams text deltas and a final usage-bearing finish part", async () => {
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Nova", system: "You are Nova.", model: "gpt-oss-120b" },
+      history: [],
+      message: " hello ",
+    });
+
+    expect(result.degraded).toBe(false);
+    expect(result.model).toBe("gpt-oss-120b");
+    if (!("parts" in result)) throw new Error("expected streaming result");
+    const parts = [];
+    for await (const part of result.parts) parts.push(part);
+    expect(parts).toEqual([
+      { type: "text-delta", text: "ok " },
+      { type: "text-delta", text: "reply" },
+      { type: "finish", text: "ok reply", usage: { totalTokens: 3 } },
+    ]);
+  });
+
+  test("keeps no-model turns degraded without starting a provider stream", async () => {
+    providerConfigured = false;
+    streamTextImpl = () => {
+      throw new Error("streamText must not be reached when no model is configured");
+    };
+
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Nova" },
+      history: [],
+      message: " hello ",
+    });
+
+    expect(result).toMatchObject({
+      degraded: true,
+      model: "none",
+      reply: "Nova is temporarily unavailable (no shared model configured).",
+    });
+    if (!("history" in result)) throw new Error("expected degraded history result");
+    expect(result.history.map((entry) => entry.content)).toEqual([
+      "hello",
+      "Nova is temporarily unavailable (no shared model configured).",
+    ]);
+  });
+
+  test("wraps failures raised while consuming the provider stream", async () => {
+    streamTextImpl = () => ({
+      fullStream: (async function* () {
+        yield { type: "text-delta", text: "partial" };
+        throw new Error("provider stream reset");
+      })(),
+    });
+
+    const result = await runSharedAgentTurnStream({
+      character: { name: "Nova", model: "gpt-oss-120b" },
+      history: [],
+      message: "hello",
+    });
+    if (!("parts" in result)) throw new Error("expected streaming result");
+
+    const error = await (async () => {
+      try {
+        for await (const _part of result.parts) {
+          // Consume the stream so the late provider failure is observable.
+        }
+        throw new Error("expected stream consumption to fail");
+      } catch (caught) {
+        return caught;
+      }
+    })();
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("streaming agent turn failed");
+    expect(((error as Error).cause as Error).message).toContain("provider stream reset");
   });
 });
