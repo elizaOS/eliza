@@ -30,6 +30,7 @@ import {
 import type { LoadConversationMessagesResult } from "./internal";
 import {
   buildSendFailureNotice,
+  createConversationForFirstSend,
   getSendValidationFailureMessage,
   isRetryableSendError,
   resolveAbortRoomId,
@@ -2616,11 +2617,52 @@ describe("useChatSend manual resend still works after auto-retry exhausts", () =
   });
 });
 
+describe("createConversationForFirstSend", () => {
+  it("synthesizes the canonical shared conversation without a create request", async () => {
+    const createConversation = vi.fn();
+    const result = await createConversationForFirstSend(
+      {
+        getBaseUrl: () => SHARED_BASE,
+        createConversation,
+      } as never,
+      "en",
+    );
+
+    expect(createConversation).not.toHaveBeenCalled();
+    expect(result.conversation).toMatchObject({
+      id: "agent-123",
+      roomId: "agent-123",
+      title: "Chat",
+    });
+  });
+
+  it("keeps dedicated conversation creation on the REST client", async () => {
+    const conversation = {
+      id: "dedicated-conversation",
+      roomId: "dedicated-room",
+      title: "Chat",
+      createdAt: "2026-07-18T00:00:00.000Z",
+      updatedAt: "2026-07-18T00:00:00.000Z",
+    };
+    const createConversation = vi.fn(async () => ({ conversation }));
+    const result = await createConversationForFirstSend(
+      {
+        getBaseUrl: () => DEDICATED_BASE,
+        createConversation,
+      } as never,
+      "en",
+    );
+
+    expect(createConversation).toHaveBeenCalledWith(undefined, { lang: "en" });
+    expect(result.conversation).toEqual(conversation);
+  });
+});
+
 describe("resolveAbortRoomId", () => {
   it("resolves synchronously without requiring a conversation refresh", () => {
-    expect(resolveAbortRoomId("conversation-1", " room-known ", "room-cached")).toBe(
-      "room-known",
-    );
+    expect(
+      resolveAbortRoomId("conversation-1", " room-known ", "room-cached"),
+    ).toBe("room-known");
     expect(resolveAbortRoomId("conversation-1", null, " room-cached ")).toBe(
       "room-cached",
     );

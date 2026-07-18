@@ -73,6 +73,8 @@ function makeRealtime(
     needsUnlock: false,
     paused: false,
     error: null,
+    fallbackReason: null,
+    reportFallback: vi.fn(),
     speaker: null,
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),

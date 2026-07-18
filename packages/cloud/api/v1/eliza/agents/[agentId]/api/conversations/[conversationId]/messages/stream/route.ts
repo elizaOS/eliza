@@ -40,6 +40,14 @@ const CORS_METHODS = "POST, OPTIONS";
 
 const app = new Hono<AppEnv>();
 
+function nowMs(): number {
+  return performance.now();
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.round((nowMs() - startedAt) * 10) / 10;
+}
+
 async function resolveAgentScope(c: Parameters<typeof resolveSharedAgent>[0]) {
   const configured = c.env?.VOICE_REALTIME_ELIZA_AUTHORIZATION;
   const presented = c.req.header("authorization");
@@ -68,7 +76,24 @@ app.options("/", (c) =>
 
 app.post("/", async (c) => {
   const origin = c.req.header("origin");
-  const r = await resolveAgentScope(c);
+  const scopeStartedAt = nowMs();
+  const scopePromise = resolveAgentScope(c).then((result) => ({
+    result,
+    durationMs: elapsedMs(scopeStartedAt),
+  }));
+  const bodyStartedAt = nowMs();
+  const bodyPromise = c.req
+    .json()
+    .catch(() => ({}))
+    .then((body: unknown) => ({
+      body,
+      durationMs: elapsedMs(bodyStartedAt),
+    }));
+
+  const [
+    { result: r, durationMs: scopeMs },
+    { body: raw, durationMs: bodyMs },
+  ] = await Promise.all([scopePromise, bodyPromise]);
   if ("error" in r) {
     return applyCorsHeaders(
       Response.json(
@@ -85,13 +110,16 @@ app.post("/", async (c) => {
   }
 
   const conversationId = c.req.param("conversationId") ?? r.agentId;
-  const raw: unknown = await c.req.json().catch(() => ({}));
   return handleCanonicalScopedAgentStream({
     agentId: r.agentId,
     orgId: r.orgId,
     conversationId,
     body: raw,
     origin,
+    timings: {
+      scope: scopeMs,
+      body: bodyMs,
+    },
   } satisfies CanonicalScopedStreamRequest);
 });
 

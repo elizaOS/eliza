@@ -39,6 +39,7 @@ import {
   type CloudHandoffPhaseDetail,
 } from "../events";
 import { getWindowNavigationPath, type Tab } from "../navigation";
+import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
   dispatchViewActionHandoff,
   findViewActionHandoff,
@@ -680,6 +681,28 @@ export interface UseChatSendDeps {
 }
 
 // ── Hook ────────────────────────────────────────────────────────────
+
+export async function createConversationForFirstSend(
+  chatClient: Pick<typeof client, "createConversation" | "getBaseUrl">,
+  lang: string,
+): Promise<{ conversation: Conversation }> {
+  const sharedAgentId = directCloudSharedAgentIdFromBase(
+    chatClient.getBaseUrl(),
+  );
+  if (sharedAgentId) {
+    const createdAt = new Date().toISOString();
+    return {
+      conversation: {
+        id: sharedAgentId,
+        title: "Chat",
+        roomId: sharedAgentId,
+        createdAt,
+        updatedAt: createdAt,
+      },
+    };
+  }
+  return chatClient.createConversation(undefined, { lang });
+}
 
 export function useChatSend(deps: UseChatSendDeps) {
   const {
@@ -1397,9 +1420,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       if (!convId) {
         try {
           const { conversation: rawConversation } =
-            await client.createConversation(undefined, {
-              lang: uiLanguage,
-            });
+            await createConversationForFirstSend(client, uiLanguage);
           if (!isConversationRecord(rawConversation)) {
             throw new Error(
               "Conversation creation returned an invalid payload.",
