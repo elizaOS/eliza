@@ -288,13 +288,21 @@ export function resolveIntentView(text: string | undefined): string | null {
 	return null;
 }
 
-function resolveView(
-	target: string,
-	views: readonly ViewSummary[],
-):
+export type NavigationViewResolution =
 	| { kind: "match"; view: ViewSummary }
 	| { kind: "ambiguous"; candidates: ViewSummary[] }
-	| { kind: "none" } {
+	| { kind: "none" };
+
+/**
+ * Resolve a navigation target against the live view catalog. Callers that need
+ * to reason about an imminent switch use this same resolver as VIEWS/show so a
+ * domain alias such as `calendar` cannot drift from a plugin's registered id
+ * such as `simple-calendar`.
+ */
+export function resolveNavigationView(
+	target: string,
+	views: readonly ViewSummary[],
+): NavigationViewResolution {
 	const q = target.toLowerCase();
 
 	// Exact id match.
@@ -328,7 +336,7 @@ function resolveRegisteredNotesView(
 	| { kind: "match"; view: ViewSummary }
 	| { kind: "ambiguous"; candidates: ViewSummary[] }
 	| { kind: "none" } {
-	const resolution = resolveView("notes", views);
+	const resolution = resolveNavigationView("notes", views);
 	if (resolution.kind !== "match") return resolution;
 	return resolution.view.id === "documents" ? { kind: "none" } : resolution;
 }
@@ -455,7 +463,7 @@ export async function runViewsShow({
 	}
 
 	const views = await client.listViews({ viewType });
-	let resolution = resolveView(target, views);
+	let resolution = resolveNavigationView(target, views);
 	if (
 		isStandaloneNotesSurfaceRequest(messageText) &&
 		resolution.kind === "match" &&
@@ -474,7 +482,7 @@ export async function runViewsShow({
 	// coding plugin loaded) leaves the planner's explicit, registered target in
 	// place. So the model never needs to correctly GUESS the surface.
 	if (intentViewId && intentViewId !== target) {
-		const intentResolution = resolveView(intentViewId, views);
+		const intentResolution = resolveNavigationView(intentViewId, views);
 		const intentRegistered =
 			intentResolution.kind !== "none" && intentResolution.kind !== "ambiguous";
 		if (intentRegistered || resolution.kind === "none") {

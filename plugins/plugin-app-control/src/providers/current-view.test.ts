@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const h = vi.hoisted(() => ({
 	getCurrentView: vi.fn(),
+	listViews: vi.fn(),
 	createViewsClient: vi.fn(),
 }));
 
@@ -15,6 +16,7 @@ vi.mock("../actions/views-client.js", () => ({
 		h.createViewsClient(options);
 		return {
 			getCurrentView: () => h.getCurrentView(options?.clientId),
+			listViews: () => h.listViews(options?.clientId),
 		};
 	},
 	readViewClientId: (message: Memory) =>
@@ -27,6 +29,31 @@ import { currentViewProvider } from "./current-view.js";
 
 const reportError = vi.fn();
 const runtime = { reportError } as unknown as IAgentRuntime;
+const SIMPLE_VIEWS = [
+	{
+		id: "simple-calendar",
+		label: "Simple Calendar",
+		path: "/simple-calendar",
+		pluginName: "@elizaos/plugin-simple-views",
+		available: true,
+	},
+	{
+		id: "notes",
+		label: "Notes",
+		path: "/notes",
+		pluginName: "@elizaos/plugin-simple-views",
+		available: true,
+	},
+	{
+		id: "documents",
+		label: "Documents",
+		description: "Knowledge documents and notes",
+		path: "/documents",
+		pluginName: "core",
+		available: true,
+	},
+];
+
 function msg(text: string): Memory {
 	return {
 		id: "00000000-0000-0000-0000-000000000000",
@@ -51,6 +78,8 @@ function augmented(userRequest: string): string {
 describe("current_view state provider", () => {
 	beforeEach(() => {
 		h.getCurrentView.mockReset();
+		h.listViews.mockReset();
+		h.listViews.mockResolvedValue([]);
 		h.createViewsClient.mockReset();
 		reportError.mockReset();
 	});
@@ -129,6 +158,94 @@ describe("current_view state provider", () => {
 		expect(r.text).toContain("Wallet");
 		expect(r.values?.switchingToViewId).toBe("wallet");
 		expect(r.values?.viewSwitchPending).toBe(true);
+	});
+
+	it.each([
+		"open calendar",
+		"can u open calender",
+		"open simple-calendar",
+	])("canonicalizes the requested calendar target before comparing current state: %s", async (request) => {
+		h.listViews.mockResolvedValue(SIMPLE_VIEWS);
+		h.getCurrentView.mockResolvedValue({
+			viewId: "simple-calendar",
+			viewLabel: "Simple Calendar",
+			viewPath: "/simple-calendar",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+
+		const r = await currentViewProvider.get(runtime, msg(request), {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(r.text).toContain("currently viewing the Simple Calendar view");
+		expect(r.text).not.toContain("navigation completes");
+		expect(r.values?.currentViewId).toBe("simple-calendar");
+		expect(r.values?.viewSwitchPending).toBeUndefined();
+	});
+
+	it("reports the registered canonical id while a calendar alias is still pending", async () => {
+		h.listViews.mockResolvedValue(SIMPLE_VIEWS);
+		h.getCurrentView.mockResolvedValue({
+			viewId: "notes",
+			viewLabel: "Notes",
+			viewPath: "/notes",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+
+		const r = await currentViewProvider.get(
+			runtime,
+			msg("could you open calender"),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(r.text).toContain("Requested view target: Simple Calendar");
+		expect(r.values?.switchingToViewId).toBe("simple-calendar");
+		expect(r.values?.viewSwitchPending).toBe(true);
+	});
+
+	it("keeps standalone Notes canonical and distinct from Documents", async () => {
+		h.listViews.mockResolvedValue(SIMPLE_VIEWS);
+		h.getCurrentView.mockResolvedValue({
+			viewId: "documents",
+			viewLabel: "Documents",
+			viewPath: "/documents",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+
+		const r = await currentViewProvider.get(runtime, msg("open notes"), {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(r.text).toContain("Requested view target: Notes");
+		expect(r.values?.switchingToViewId).toBe("notes");
+		expect(r.values?.viewSwitchPending).toBe(true);
+	});
+
+	it("recognizes a completed Notes navigation without leaving a pending target", async () => {
+		h.listViews.mockResolvedValue(SIMPLE_VIEWS);
+		h.getCurrentView.mockResolvedValue({
+			viewId: "notes",
+			viewLabel: "Notes",
+			viewPath: "/notes",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+
+		const r = await currentViewProvider.get(runtime, msg("switch to notes"), {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(r.text).toContain("currently viewing the Notes view");
+		expect(r.values?.viewSwitchPending).toBeUndefined();
 	});
 
 	it("uses the user request rather than a surface named in retrieved context", async () => {

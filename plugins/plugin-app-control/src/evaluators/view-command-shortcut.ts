@@ -47,6 +47,10 @@ export const viewCommandShortcutEvaluator: ResponseHandlerEvaluator = {
 		if (!viewId) return undefined;
 		return {
 			requiresTool: true,
+			// Normalize an inconsistent HANDLE_RESPONSE `contexts:["simple"]`
+			// envelope at the deterministic routing seam. Explicit navigation is a
+			// tool turn even when the model initially labeled it as a direct reply.
+			setContexts: ["general"],
 			// The VIEWS action owns the visible confirmation after navigation has
 			// actually succeeded or failed. A speculative Stage-1 acknowledgement
 			// would otherwise be emitted as a second assistant message before the

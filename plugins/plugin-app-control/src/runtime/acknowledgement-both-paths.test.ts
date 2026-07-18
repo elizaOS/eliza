@@ -11,9 +11,12 @@ import type {
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const h = vi.hoisted(() => ({ getCurrentView: vi.fn() }));
+const h = vi.hoisted(() => ({ getCurrentView: vi.fn(), listViews: vi.fn() }));
 vi.mock("../actions/views-client.js", () => ({
-	createViewsClient: () => ({ getCurrentView: h.getCurrentView }),
+	createViewsClient: () => ({
+		getCurrentView: h.getCurrentView,
+		listViews: h.listViews,
+	}),
 	readViewClientId: () => undefined,
 }));
 
@@ -50,7 +53,11 @@ function msg(text: string): Memory {
 }
 
 describe("view-switch response context ownership", () => {
-	beforeEach(() => h.getCurrentView.mockReset());
+	beforeEach(() => {
+		h.getCurrentView.mockReset();
+		h.listViews.mockReset();
+		h.listViews.mockResolvedValue([]);
+	});
 
 	it("does not replay a completed switch acknowledgement on the next turn", () => {
 		const ctx = makeComposeCtx("thanks!");

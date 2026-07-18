@@ -96,6 +96,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 			const patch = await run(text);
 			expect(patch).toBeTruthy();
 			expect(patch?.requiresTool).toBe(true);
+			expect(patch?.setContexts).toEqual(["general"]);
 			expect(patch?.clearReply).toBe(true);
 			expect(viewCommandShortcutEvaluator.priority).toBeLessThan(20);
 			expect(patch?.clearCandidateActions).toBe(true);
@@ -127,6 +128,7 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 
 		expect(patch).toMatchObject({
 			requiresTool: true,
+			setContexts: ["general"],
 			clearReply: true,
 			clearCandidateActions: true,
 			addCandidateActions: ["VIEWS"],

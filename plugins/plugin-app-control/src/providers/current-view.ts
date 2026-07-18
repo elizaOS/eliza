@@ -31,7 +31,11 @@ import {
 	createViewsClient,
 	readViewClientId,
 } from "../actions/views-client.js";
-import { resolveIntentView } from "../actions/views-show.js";
+import {
+	isStandaloneNotesSurfaceRequest,
+	resolveIntentView,
+	resolveNavigationView,
+} from "../actions/views-show.js";
 
 const EMPTY: ProviderResult = { text: "", values: {}, data: {} };
 
@@ -61,14 +65,37 @@ export const currentViewProvider: Provider = {
 			// The renderer still reports the previous view until VIEWS completes. Keep
 			// the requested target authoritative so a rapid switch cannot inherit stale
 			// active-view language from the prior turn.
-			const intentTargetId = resolveIntentView(text);
-
-			const current = await createViewsClient({
+			const requestedTargetId = resolveIntentView(text);
+			const client = createViewsClient({
 				clientId: readViewClientId(message),
-			}).getCurrentView();
+			});
+			const [current, views] = await Promise.all([
+				client.getCurrentView(),
+				requestedTargetId ? client.listViews() : Promise.resolve(null),
+			]);
+			let intentTargetId = requestedTargetId;
+			let intentTargetLabel = requestedTargetId
+				? humanizeViewId(requestedTargetId)
+				: null;
+			if (requestedTargetId && views) {
+				let resolution = resolveNavigationView(requestedTargetId, views);
+				// A standalone Notes request must never canonicalize to Documents just
+				// because that view happens to mention notes in its searchable metadata.
+				if (
+					isStandaloneNotesSurfaceRequest(text) &&
+					resolution.kind === "match" &&
+					resolution.view.id === "documents"
+				) {
+					resolution = resolveNavigationView("notes", views);
+				}
+				if (resolution.kind === "match") {
+					intentTargetId = resolution.view.id;
+					intentTargetLabel = resolution.view.label;
+				}
+			}
 
 			if (intentTargetId && intentTargetId !== current?.viewId) {
-				const label = humanizeViewId(intentTargetId);
+				const label = intentTargetLabel ?? humanizeViewId(intentTargetId);
 				return {
 					text: `Requested view target: ${label} (id: ${intentTargetId}). The renderer${current ? ` is still on ${current.viewLabel} (id: ${current.viewId}) until navigation completes` : " has no active view yet"}. The requested target is authoritative for this turn.`,
 					values: {
