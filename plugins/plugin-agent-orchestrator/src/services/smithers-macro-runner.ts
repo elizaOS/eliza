@@ -126,8 +126,16 @@ async function resolvePluginRoot(): Promise<string> {
         name?: string;
       };
       if (manifest.name === "@elizaos/plugin-agent-orchestrator") return dir;
-    } catch {
-      // Expected while walking from src/services to the package root.
+    } catch (error) {
+      // A missing manifest is expected while walking from src/services. Other
+      // I/O and malformed-JSON errors indicate a broken package and fail loud.
+      if (
+        !(error instanceof Error) ||
+        !("code" in error) ||
+        error.code !== "ENOENT"
+      ) {
+        throw error;
+      }
     }
     const parent = dirname(dir);
     if (parent === dir) break;
