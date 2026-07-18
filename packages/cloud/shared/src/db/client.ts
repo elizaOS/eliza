@@ -334,6 +334,11 @@ function createConnection(url: string): Database {
  */
 const dbCacheAls = new AsyncLocalStorage<Map<string, Database>>();
 
+/** Whether the current async chain still owns a request-scoped DB cache. */
+export function hasDbCacheContext(): boolean {
+  return dbCacheAls.getStore() !== undefined;
+}
+
 export async function runWithDbCacheAsync<T>(fn: () => Promise<T>): Promise<T> {
   return await dbCacheAls.run(new Map(), fn);
 }

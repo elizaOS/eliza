@@ -215,6 +215,11 @@ export async function handleCloudTtsPreviewRoute(
       if (cloudUrl === undefined) {
         continue;
       }
+      // #16425: forward the client's per-utterance Idempotency-Key so the
+      // cloud route can replay the direct attempt's committed reservation
+      // instead of charging the same utterance a second time through this
+      // fallback transport.
+      const idempotencyKey = req.headers["idempotency-key"];
       const attempt = await fetch(cloudUrl, {
         method: "POST",
         headers: {
@@ -222,6 +227,9 @@ export async function handleCloudTtsPreviewRoute(
           "x-api-key": cloudApiKey,
           "Content-Type": "application/json",
           Accept: "audio/mpeg",
+          ...(typeof idempotencyKey === "string" && idempotencyKey
+            ? { "Idempotency-Key": idempotencyKey }
+            : {}),
         },
         body: JSON.stringify({
           text,

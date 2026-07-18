@@ -4,7 +4,9 @@
  * provider sockets and metering remain closed until that frame is verified.
  */
 import { Hono } from "hono";
+import { hasDbCacheContext } from "@/db/client";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { hasCloudBindingsContext } from "@/lib/runtime/cloud-bindings";
 import {
   createDurableVoiceUsageStore,
   InMemoryVoiceUsageStore,
@@ -29,7 +31,7 @@ import {
   type ServerWebSocketLike,
 } from "@/lib/voice-session/ws-handler";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
-import { createInternalElizaConversationFetch } from "../lib/internal-eliza-conversation-fetch";
+import { createInternalElizaConversationFetchFactory } from "../lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,
   createWorkerDeepgramFluxFactory,
@@ -182,14 +184,24 @@ app.get("/", (c) => {
     durableStore && evalCapable ? durableStore : getWorkerFallbackUsageStore();
 
   const maxSessions = resolveMaxSessions(env);
+  // Capture Worker bindings while this upgrade request is live. The returned
+  // factory restores a fresh bindings/DB context for each later WS voice turn.
+  const createScopedElizaFetch = createInternalElizaConversationFetchFactory(
+    c.env as unknown as Bindings,
+  );
   attachVoiceWsHandler(server, {
     requestedSessionId: sessionId,
     claimToken: (jti, expSeconds) => claimVoiceSessionToken(jti, expSeconds),
     // Enforce the per-worker ceiling against the LIVE registry at start time,
     // closing the race where many upgrades pass the earlier route-level check.
     admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
-    buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
-      new VoiceSession({
+    buildSession: ({ claims, jti, tokenExpSeconds, downlink }) => {
+      logger.info("[voice-sse-context] websocket callback", {
+        agentId: claims.agentId,
+        cloudBindingsContext: hasCloudBindingsContext(),
+        dbCacheContext: hasDbCacheContext(),
+      });
+      return new VoiceSession({
         sessionId: claims.sessionId,
         jti,
         organizationId: claims.organizationId,
@@ -205,22 +217,20 @@ app.get("/", (c) => {
         elizaEndpoint,
         elizaAuthorization,
         elizaModel: resolveElizaModel(env),
-        fetchImpl: createInternalElizaConversationFetch(
-          c.env as unknown as Bindings,
-          {
-            agentId: claims.agentId,
-            conversationId: claims.conversationId,
-            organizationId: claims.organizationId,
-            userId: claims.userId,
-          },
-        ),
+        fetchImpl: createScopedElizaFetch({
+          agentId: claims.agentId,
+          conversationId: claims.conversationId,
+          organizationId: claims.organizationId,
+          userId: claims.userId,
+        }),
         usageStore,
         usageLimits,
         isRevoked: (jti) => isVoiceSessionTokenRevoked(jti),
         onTeardownRevoke: (jti, expSeconds) =>
           revokeVoiceSessionToken(jti, expSeconds),
         downlink,
-      }),
+      });
+    },
   });
 
   return new Response(null, {

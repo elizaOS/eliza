@@ -188,9 +188,10 @@ describe("coding-account-bridge", () => {
     await setUsage("anthropic-subscription", "spare", 5);
     const bridge = getCodingAgentSelectorBridge();
 
-    // Unconfigured: least-used default.
+    // Unconfigured Anthropic subscriptions drain the weekly window that resets
+    // soonest. With no reset metadata, the lower-usage account is selected.
     const unconfigured = await bridge?.select("claude");
-    expect(unconfigured?.strategy).toBe("least-used");
+    expect(unconfigured?.strategy).toBe("drain-soonest-reset");
     expect(unconfigured?.accountId).toBe("spare");
 
     // The picker writes config.accountStrategies — selection must follow it.
@@ -220,6 +221,17 @@ describe("coding-account-bridge", () => {
     const configOverEnv = await bridge?.select("claude");
     expect(configOverEnv?.strategy).toBe("least-used");
     expect(configOverEnv?.accountId).toBe("spare");
+
+    // The active llmText route remains the highest-precedence app config.
+    configureDefaultAccountPoolSelection({
+      accountStrategies: { "anthropic-subscription": "least-used" },
+      serviceRouting: {
+        llmText: { backend: "anthropic", strategy: "priority" },
+      },
+    });
+    const routeOverAccountStrategy = await bridge?.select("claude");
+    expect(routeOverAccountStrategy?.strategy).toBe("priority");
+    expect(routeOverAccountStrategy?.accountId).toBe("primary");
   });
 
   it("materializes a per-account CODEX_HOME/auth.json for Codex (incl. id_token)", async () => {
@@ -594,10 +606,10 @@ describe("coding-account-bridge", () => {
   });
 
   // Follow-up pinning: session affinity alone expires after 3 selects, after
-  // which least-used actively prefers the SIBLING (the affine account carries
-  // the freshest selection stamp). The first test documents that real-pool
-  // failure mode; the pin tests prove `accountIds` is what keeps a continuing
-  // session's token resolves on its spawn-time account.
+  // which the configured strategy may choose another account. Force least-used
+  // here to exercise that drift independently of the Anthropic weekly-window
+  // drain default. The pin tests prove `accountIds` keeps a continuing session
+  // on its spawn-time account.
   it("drifts to the sibling once session affinity expires when NOT pinned", async () => {
     writeAccount("anthropic-subscription", "pin-a", "sk-ant-oat-PIN-A");
     writeAccount("anthropic-subscription", "pin-b", "sk-ant-oat-PIN-B");
@@ -611,7 +623,8 @@ describe("coding-account-bridge", () => {
     const followUps: Array<string | undefined> = [];
     for (let i = 0; i < 3; i += 1) {
       followUps.push(
-        (await bridge?.select("claude", { sessionKey }))?.accountId,
+        (await bridge?.select("claude", { sessionKey, strategy: "least-used" }))
+          ?.accountId,
       );
     }
     expect(followUps[0]).toBe(spawnId);

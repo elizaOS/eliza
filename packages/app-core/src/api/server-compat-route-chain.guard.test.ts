@@ -127,6 +127,7 @@ describe("compat-route registry drift guard (#12089 item 5)", () => {
       "auth-pairing",
       "embed-auth",
       "sensitive-request",
+      "account-pool-status",
       "credential-tunnel",
       "background-tasks",
       "internal-wake",

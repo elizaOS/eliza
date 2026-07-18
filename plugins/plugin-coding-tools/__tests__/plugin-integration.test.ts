@@ -65,7 +65,16 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     const fileAction = (codingToolsPlugin.actions ?? []).find(
       (action) => action.name === "FILE",
     );
-    expect(fileAction?.similes).toEqual(["FILE_OPERATION", "FILE_IO"]);
+    expect(fileAction?.similes).toEqual([
+      "FILE_OPERATION",
+      "FILE_IO",
+      "FILES_READ",
+      "FILES_LIST",
+      "FILE_READ",
+      "FILE_LIST",
+      "READ_FILE",
+      "LIST_FILES",
+    ]);
   });
 
   it("each action has the required fields", () => {

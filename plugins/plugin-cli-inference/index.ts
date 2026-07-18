@@ -298,8 +298,8 @@ function getSdkSession(
     claudeExecutablePath: getSetting(runtime, "ELIZA_CLI_CLAUDE_BIN"),
     restartAfterTurns: parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_RESTART_AFTER_TURNS")),
     turnTimeoutMs:
-      parseTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
-      parseTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
+      parseTurnTimeout(getSetting(runtime, "ELIZA_CLI_SDK_TURN_TIMEOUT_MS")) ??
+      parseTurnTimeout(getSetting(runtime, "ELIZA_CLI_TIMEOUT_MS")),
     effort: resolveSdkEffort(runtime, mode),
     subprocessEnv,
   });
@@ -383,6 +383,17 @@ function parseTimeout(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   const n = Number.parseInt(value, 10);
   return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** Turn-timeout parse (#16553): like {@link parseTimeout}, but an explicit
+ *  `"0"` passes through as 0 — the documented operator opt-out to an
+ *  unbounded turn. Unset/invalid still return undefined so the session's
+ *  bounded default applies. Exported for tests. */
+export function parseTurnTimeout(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return n;
 }
 
 // One binary setting covers both warm and cold backends so container images can

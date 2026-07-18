@@ -46,6 +46,7 @@ import type {
 import { goalsDbSchema } from "@elizaos/plugin-goals/db/schema";
 import { inboxDbSchema } from "@elizaos/plugin-inbox/db/schema";
 import { remindersDbSchema } from "@elizaos/plugin-reminders/db/schema";
+import { schedulingDbSchema } from "@elizaos/plugin-scheduling";
 import type {
   LifeOpsXDm,
   LifeOpsXFeedItem,
@@ -2304,6 +2305,10 @@ function parseScheduledTaskRow(
     createdBy: toText(row.created_by, ""),
     ownerVisible: toBoolean(row.owner_visible, true),
     metadata: parsedMetadata,
+    executionProfile:
+      typeof row.execution_profile === "string"
+        ? (row.execution_profile as TaskShape["executionProfile"])
+        : undefined,
   };
 }
 
@@ -2512,6 +2517,15 @@ export class LifeOpsRepository {
         {
           name: "@elizaos/plugin-goals",
           schema: goalsDbSchema,
+        },
+        // ScheduledTask tables were carved to @elizaos/plugin-scheduling
+        // (app_scheduling); the runner store and these PA repository methods
+        // now read/write those tables via raw SQL. Mirror the schema here so
+        // test harnesses that only call bootstrapSchema still materialize
+        // them.
+        {
+          name: "@elizaos/plugin-scheduling",
+          schema: schedulingDbSchema,
         },
         // The knowledge-graph tables are runtime-owned (registered by the
         // agent "eliza" plugin in production). Migrate them under the same
@@ -7563,8 +7577,9 @@ export class LifeOpsRepository {
   }
 
   // ScheduledTask spine. The runner is the only writer for these tables;
-  // tables are created by the drizzle plugin-migration system from
-  // `lifeOpsSchema`.
+  // plugin-scheduling owns the physical rows in `app_scheduling`. These PA
+  // methods remain for legacy scheduler paths that still coordinate through
+  // LifeOpsRepository while the runner store itself is scheduling-owned.
 
   /**
    * Upsert a scheduled task. When `expectedVersion` is omitted, behavior
@@ -7596,7 +7611,7 @@ export class LifeOpsRepository {
         ? "NULL"
         : `${sqlQuote(options.nextFireAtIso)}::timestamptz`;
     if (typeof expectedVersion === "number") {
-      const updateSql = `UPDATE app_lifeops.life_scheduled_tasks
+      const updateSql = `UPDATE app_scheduling.life_scheduled_tasks
             SET kind = ${sqlQuote(task.kind)},
                 prompt_instructions = ${sqlQuote(task.promptInstructions)},
                 context_request_json = ${sqlText(task.contextRequest ? JSON.stringify(task.contextRequest) : null)},
@@ -7616,6 +7631,7 @@ export class LifeOpsRepository {
                 created_by = ${sqlQuote(task.createdBy)},
                 owner_visible = ${sqlBoolean(task.ownerVisible)},
                 metadata_json = ${sqlJson(task.metadata ?? {})},
+                execution_profile = ${sqlText(task.executionProfile ?? null)},
                 next_fire_at = ${nextFireAtSql},
                 updated_at = ${sqlQuote(now)},
                 version = version + 1
@@ -7635,13 +7651,13 @@ export class LifeOpsRepository {
       }
       return;
     }
-    const upsertSql = `INSERT INTO app_lifeops.life_scheduled_tasks (
+    const upsertSql = `INSERT INTO app_scheduling.life_scheduled_tasks (
         id, agent_id, kind, prompt_instructions, context_request_json,
         trigger_json, priority, should_fire_json, completion_check_json,
         escalation_json, output_json, pipeline_json, subject_kind, subject_id,
         idempotency_key, respects_global_pause, state_json, source,
-        created_by, owner_visible, metadata_json, next_fire_at,
-        created_at, updated_at
+        created_by, owner_visible, metadata_json, execution_profile,
+        next_fire_at, created_at, updated_at
       ) VALUES (
         ${sqlQuote(task.taskId)},
         ${sqlQuote(agentId)},
@@ -7664,6 +7680,7 @@ export class LifeOpsRepository {
         ${sqlQuote(task.createdBy)},
         ${sqlBoolean(task.ownerVisible)},
         ${sqlJson(task.metadata ?? {})},
+        ${sqlText(task.executionProfile ?? null)},
         ${nextFireAtSql},
         ${sqlQuote(now)},
         ${sqlQuote(now)}
@@ -7688,6 +7705,7 @@ export class LifeOpsRepository {
         created_by = EXCLUDED.created_by,
         owner_visible = EXCLUDED.owner_visible,
         metadata_json = EXCLUDED.metadata_json,
+        execution_profile = EXCLUDED.execution_profile,
         next_fire_at = EXCLUDED.next_fire_at,
         updated_at = ${sqlQuote(now)}`;
     if (tx) {
@@ -7742,7 +7760,7 @@ export class LifeOpsRepository {
       : `AND (state_json::jsonb ->> 'status') = 'scheduled'`;
     const rows = await executeRawSql(
       this.runtime,
-      `UPDATE app_lifeops.life_scheduled_tasks
+      `UPDATE app_scheduling.life_scheduled_tasks
           SET state_json = jsonb_set(
                               jsonb_set(
                                 state_json::jsonb,
@@ -7774,7 +7792,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_scheduled_tasks
+         FROM app_scheduling.life_scheduled_tasks
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(taskId)}
         LIMIT 1`,
@@ -7790,7 +7808,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_scheduled_tasks
+         FROM app_scheduling.life_scheduled_tasks
         WHERE agent_id = ${sqlQuote(agentId)}
           AND idempotency_key = ${sqlQuote(idempotencyKey)}
         LIMIT 1`,
@@ -7868,7 +7886,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_scheduled_tasks
+         FROM app_scheduling.life_scheduled_tasks
         WHERE ${where}
         ORDER BY created_at ASC`,
     );
@@ -7878,13 +7896,13 @@ export class LifeOpsRepository {
   async deleteScheduledTask(agentId: string, taskId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_scheduled_tasks
+      `DELETE FROM app_scheduling.life_scheduled_tasks
         WHERE agent_id = ${sqlQuote(agentId)}
           AND id = ${sqlQuote(taskId)}`,
     );
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_scheduled_task_log
+      `DELETE FROM app_scheduling.life_scheduled_task_log
         WHERE agent_id = ${sqlQuote(agentId)}
           AND task_id = ${sqlQuote(taskId)}`,
     );
@@ -7905,8 +7923,8 @@ export class LifeOpsRepository {
   async resetSchedulingStateForScenario(agentId: string): Promise<void> {
     const quotedAgent = sqlQuote(agentId);
     for (const statement of [
-      `DELETE FROM app_lifeops.life_scheduled_tasks WHERE agent_id = ${quotedAgent}`,
-      `DELETE FROM app_lifeops.life_scheduled_task_log WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_scheduling.life_scheduled_tasks WHERE agent_id = ${quotedAgent}`,
+      `DELETE FROM app_scheduling.life_scheduled_task_log WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_schedule_merged_states WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_schedule_insights WHERE agent_id = ${quotedAgent}`,
       `DELETE FROM app_lifeops.life_schedule_observations WHERE agent_id = ${quotedAgent}`,
@@ -7921,7 +7939,7 @@ export class LifeOpsRepository {
   ): Promise<void> {
     await executeRawSql(
       this.runtime,
-      `INSERT INTO app_lifeops.life_scheduled_task_log (
+      `INSERT INTO app_scheduling.life_scheduled_task_log (
         id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
       ) VALUES (
         ${sqlQuote(entry.logId)},
@@ -7959,7 +7977,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_scheduled_task_log
+         FROM app_scheduling.life_scheduled_task_log
         WHERE ${clauses.join(" AND ")}
         ORDER BY occurred_at ASC
         ${limit}`,
@@ -7975,7 +7993,7 @@ export class LifeOpsRepository {
     const rows = await executeRawSql(
       this.runtime,
       `SELECT *
-         FROM app_lifeops.life_scheduled_task_log
+         FROM app_scheduling.life_scheduled_task_log
         WHERE agent_id = ${sqlQuote(args.agentId)}
           AND rolled_up = FALSE
           AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
@@ -8013,7 +8031,7 @@ export class LifeOpsRepository {
     // Delete the raw rows we just summarized.
     await executeRawSql(
       this.runtime,
-      `DELETE FROM app_lifeops.life_scheduled_task_log
+      `DELETE FROM app_scheduling.life_scheduled_task_log
         WHERE agent_id = ${sqlQuote(args.agentId)}
           AND rolled_up = FALSE
           AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
@@ -8024,7 +8042,7 @@ export class LifeOpsRepository {
       const id = `rollup-${s.taskId}-${s.dayIso}-${s.transition}-${counter}`;
       await executeRawSql(
         this.runtime,
-        `INSERT INTO app_lifeops.life_scheduled_task_log (
+        `INSERT INTO app_scheduling.life_scheduled_task_log (
           id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
         ) VALUES (
           ${sqlQuote(id)},

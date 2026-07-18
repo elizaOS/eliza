@@ -1454,16 +1454,11 @@ export const lifeBlockRules = appLifeopsPgSchema.table("life_block_rules", {
   releasedReason: text("released_reason"),
 });
 
-// ScheduledTask spine + state log.
+// ScheduledTask spine + state log migration source.
 //
-// `life_scheduled_tasks` stores the typed ScheduledTask record. The
-// runner is the only writer; each row's `state_json` carries the
-// `ScheduledTaskState` fields (status, firedAt, …). `idempotency_key`
-// is unique per agent and dedupes schedule() calls.
-//
-// `life_scheduled_task_log` is the append-only state-log; the nightly
-// rollup pass folds expired raw rows into a daily summary row keyed by
-// (task, day, transition).
+// plugin-scheduling now owns the physical ScheduledTask tables in
+// `app_scheduling`. These `app_lifeops` definitions remain as the
+// non-destructive migration source for existing installs.
 
 export const lifeScheduledTasks = appLifeopsPgSchema.table(
   "life_scheduled_tasks",
@@ -1705,8 +1700,6 @@ export const lifeOpsSchema = {
   lifeSchedulingNegotiations,
   lifeSchedulingProposals,
   lifeBlockRules,
-  lifeScheduledTasks,
-  lifeScheduledTaskLog,
   lifeWorkThreads,
   lifeWorkThreadEvents,
   lifeBriefItemEngagements,
