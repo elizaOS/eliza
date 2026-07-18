@@ -138,13 +138,17 @@ export function persistCloudPairApiToken(apiToken: string): void {
   }
 
   if (!(persistedInSession || persistedDurably)) {
-    throw new Error("Cloud pair API token could not be stored in this browser.");
+    throw new Error(
+      "Cloud pair API token could not be stored in this browser.",
+    );
   }
 }
 
 export function resolveCloudHostedAgentUrl(
-  locationLike: Pick<Location, "hostname"> | null =
-    typeof window === "undefined" ? null : window.location,
+  locationLike: Pick<Location, "hostname"> | null = typeof window ===
+  "undefined"
+    ? null
+    : window.location,
 ): string {
   const hostname = locationLike?.hostname.trim().toLowerCase() ?? "";
   const staging =
