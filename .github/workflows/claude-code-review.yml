@@ -39,10 +39,6 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        # Don't fail the workflow when the Anthropic API is unavailable
-        # (low credit balance, rate limit, transient outage). The bot review
-        # is best-effort; a missing review must not block CI.
-        continue-on-error: true
         uses: anthropics/claude-code-action@12531344451323133b0493233c759991ac61da12
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

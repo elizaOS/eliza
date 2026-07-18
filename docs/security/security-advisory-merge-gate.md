@@ -5,11 +5,11 @@
 - has `security`, `SECURITY ISSUE`, `auth`, `money-path`, or `payment integration` label, or
 - changes Security Review-eligible code/config files in authentication, OAuth, security, payment, billing, wallet, contract, migration, secret/credential/token, or GitHub workflow/action paths.
 
-Only `success` is accepted. A failed, cancelled, neutral, or skipped advisory fails the gate. A missing or running advisory remains pending until the 20-minute poll timeout, then fails. This narrowly closes the auto-merge race without making either advisory globally required. The security advisory is made available on every PR head and reruns on label and draft-ready transitions so a label-only decision cannot wedge on an absent check; ordinary PRs do not wait for it.
+Only `success` is accepted, and both advisory workflows now fail when their review action is skipped because credentials are absent or when the action errors. A failed, cancelled, neutral, or skipped advisory fails the gate. A missing or running advisory remains pending until the 20-minute poll timeout, then fails. This narrowly closes the auto-merge race without making either advisory globally required. The security advisory is made available on every PR head and reruns on label and draft-ready transitions so a label-only decision cannot wedge on an absent check; ordinary PRs do not wait for it.
 
-## Escape hatch
+## No label escape hatch
 
-A maintainer may apply `security-gate-exempt` after documenting why an advisory cannot run. Label changes rerun the gate. This is visible and auditable, unlike title-based skips.
+No PR label bypasses this gate. Labels can be applied by users with triage access and are not proof of maintainer authorization. If an advisory service is unavailable, a maintainer must inspect the evidence and merge manually under the repository's normal administrative controls.
 
 ## Activation
 

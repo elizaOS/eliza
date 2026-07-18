@@ -7,9 +7,8 @@ const LABELS = new Set([
   "money-path",
   "payment integration",
 ]);
-const ESCAPE_LABEL = "security-gate-exempt";
 const REVIEWED_FILE =
-  /\.(ts|tsx|js|jsx|json|ya?ml)$|(^|\/)Dockerfile$|(^|\/)\.env\.example$/i;
+  /\.(ts|tsx|js|jsx|mjs|cjs|json|ya?ml)$|(^|\/)Dockerfile$|(^|\/)\.env\.example$/i;
 const PATHS = [
   /(^|\/)[^/]*(auth|oauth|security|payments?|billing|wallets?|secrets?|credentials?|tokens?|connectors?|trusted-routing)[^/]*(\/|$)/i,
   /^\.github\/(workflows|actions)\//,
@@ -30,11 +29,17 @@ const TERMINAL = new Set([
 
 export function classify({ labels = [], files = [] }) {
   const normalized = labels.map((label) => label.toLowerCase());
-  if (normalized.includes(ESCAPE_LABEL))
-    return { protected: false, reason: `escape label: ${ESCAPE_LABEL}` };
   const label = normalized.find((value) => LABELS.has(value));
   if (label) return { protected: true, reason: `security label: ${label}` };
-  const file = files.find(
+
+  // A rename must be classified by both its source and destination. Otherwise
+  // moving auth/payment code to an innocuous path bypasses the gate.
+  const paths = files.flatMap((file) =>
+    typeof file === "string"
+      ? [file]
+      : [file.filename, file.previous_filename].filter(Boolean),
+  );
+  const file = paths.find(
     (value) =>
       REVIEWED_FILE.test(value) && PATHS.some((pattern) => pattern.test(value)),
   );
@@ -103,7 +108,7 @@ async function live() {
   const files = await paged(`/repos/${owner}/${repo}/pulls/${pr}/files`, token);
   const decision = classify({
     labels: pull.labels.map((x) => x.name),
-    files: files.map((x) => x.filename),
+    files,
   });
   console.log(decision.reason);
   if (!decision.protected) return;

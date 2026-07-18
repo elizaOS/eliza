@@ -21,7 +21,8 @@ permissions:
 
 jobs:
   security:
-    # Skip for draft PRs, [skip-security] in title, or bot-triggered
+    # A skipped advisory is rejected by Security Advisory Gate. Keep these
+    # ordinary-PR exclusions, but never report a vacuous successful review.
     if: |
       github.event.pull_request.draft != true &&
       !contains(github.event.pull_request.title, '[skip-security]') &&
@@ -34,6 +35,8 @@ jobs:
       contents: read
       pull-requests: write
       security-events: write
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
     steps:
       - name: Checkout repository
@@ -42,8 +45,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
+      - name: Require Claude Security Review credentials
+        run: test -n "$ANTHROPIC_API_KEY"
+
       - name: Run Claude Security Review
-        if: ${{ env.ANTHROPIC_API_KEY != '' }}
         # Pinned to SHA for supply chain security.
         uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda
         env:
