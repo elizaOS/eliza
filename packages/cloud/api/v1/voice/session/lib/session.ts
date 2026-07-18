@@ -599,12 +599,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         error instanceof ElizaSseBridgeError ? error : undefined;
       this.send({
         t: "error",
-        code:
-          bridgeError?.upstreamCode
-            ? bridgeError.upstreamCode
-            : error instanceof Error
-              ? error.name
-              : "llm_error",
+        code: bridgeError?.upstreamCode
+          ? bridgeError.upstreamCode
+          : error instanceof Error
+            ? error.name
+            : "llm_error",
         retryable: bridgeError ? bridgeError.retryable : true,
         ...(bridgeError?.status ? { upstreamStatus: bridgeError.status } : {}),
         ...(bridgeError?.upstreamMessage
