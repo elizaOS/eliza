@@ -2715,27 +2715,33 @@ export class ElizaSandboxService {
       reservationSettled = true;
       return (await reservation.reconcile(actualCost)) ?? null;
     };
-    if (billingContext) {
-      try {
-        reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
-      } catch (error) {
-        // error-policy:J1 boundary translation — no SSE bytes exist before credit
-        // reservation, so the HTTP route can still return the canonical 402.
-        if (error instanceof InsufficientCreditsError) {
-          throw new InsufficientCreditsApiError(
-            `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
-          );
-        }
-        throw error;
-      }
-    }
+    const reservationPromise: Promise<CreditReservation | null> = billingContext
+      ? reserveCredits(billingContext, estimatedInputTokens, 500).catch((error) => {
+          // error-policy:J1 boundary translation — no SSE bytes exist before
+          // both preflights settle, so the route can still return canonical 402.
+          if (error instanceof InsufficientCreditsError) {
+            throw new InsufficientCreditsApiError(
+              `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
+            );
+          }
+          throw error;
+        })
+      : Promise.resolve(null);
 
     try {
-      const turn = await runSharedAgentTurnStream({
-        character,
-        history,
-        message: text,
-      });
+      // Credit reservation is an independent DB preflight. Start it alongside
+      // provider stream setup instead of serializing two network round trips.
+      // We still await both before returning the Response, so no model bytes
+      // escape before credit approval and the canonical pre-SSE 402 survives.
+      const [resolvedReservation, turn] = await Promise.all([
+        reservationPromise,
+        runSharedAgentTurnStream({
+          character,
+          history,
+          message: text,
+        }),
+      ]);
+      reservation = resolvedReservation;
       if (turn.degraded) {
         await settleReservation(0);
         return this.createBridgeSseTextResponse(turn.reply ?? "");
