@@ -352,24 +352,72 @@ export function isViewSwitchFresh(
 }
 
 const DEFAULT_VIEW_STATE_SCOPE = "__default__";
+export const VIEW_SCOPE_IDLE_TTL_MS = 30 * 60 * 1_000;
+const VIEW_SCOPE_PRUNE_INTERVAL_MS = 60_000;
 interface CurrentViewScopeState {
   currentView: CurrentViewState | null;
   revision: number;
+  lastAccessedAt: number;
 }
 const currentViewsByScope = new Map<string, CurrentViewScopeState>();
+const connectedWebSocketViewScopes = new Set<string>();
+let lastViewScopePruneAt = 0;
 
 function viewStateScope(scopeId?: string | null): string {
   const normalized = scopeId?.trim();
   return normalized || DEFAULT_VIEW_STATE_SCOPE;
 }
 
-function currentViewScopeState(scopeId?: string | null): CurrentViewScopeState {
-  return (
-    currentViewsByScope.get(viewStateScope(scopeId)) ?? {
-      currentView: null,
-      revision: 0,
+/**
+ * Reclaim REST-only browser scopes after an inactivity lease. Dedicated cloud
+ * clients intentionally do not open WebSockets, so disconnect callbacks cannot
+ * be their only lifecycle boundary. Rehydration restores an expired active tab
+ * before its next message is sent.
+ */
+export function pruneIdleCurrentViewScopes(now: number = Date.now()): void {
+  lastViewScopePruneAt = now;
+  for (const [scope, state] of currentViewsByScope) {
+    if (
+      scope !== DEFAULT_VIEW_STATE_SCOPE &&
+      !connectedWebSocketViewScopes.has(scope) &&
+      now - state.lastAccessedAt >= VIEW_SCOPE_IDLE_TTL_MS
+    ) {
+      releaseCurrentViewScope(scope);
     }
-  );
+  }
+}
+
+function currentViewScopeState(
+  scopeId?: string | null,
+  now: number = Date.now(),
+): CurrentViewScopeState {
+  if (
+    now < lastViewScopePruneAt ||
+    now - lastViewScopePruneAt >= VIEW_SCOPE_PRUNE_INTERVAL_MS
+  ) {
+    pruneIdleCurrentViewScopes(now);
+  }
+  const scope = viewStateScope(scopeId);
+  const state = currentViewsByScope.get(scope);
+  if (state) {
+    state.lastAccessedAt = now;
+    return state;
+  }
+  return {
+    currentView: null,
+    revision: 0,
+    lastAccessedAt: now,
+  };
+}
+
+function storeCurrentViewScopeState(
+  scopeId: string,
+  state: Omit<CurrentViewScopeState, "lastAccessedAt">,
+): void {
+  currentViewsByScope.set(viewStateScope(scopeId), {
+    ...state,
+    lastAccessedAt: Date.now(),
+  });
 }
 
 export function getCurrentViewState(
@@ -386,15 +434,37 @@ export function getCurrentViewRevision(scopeId?: string | null): number {
 export function clearCurrentViewState(scopeId?: string | null): void {
   if (scopeId === undefined) {
     currentViewsByScope.clear();
+    connectedWebSocketViewScopes.clear();
+    lastViewScopePruneAt = 0;
     clearActiveViewContext();
     return;
   }
   const scope = viewStateScope(scopeId);
   const previous = currentViewScopeState(scope);
-  currentViewsByScope.set(scope, {
+  storeCurrentViewScopeState(scope, {
     currentView: null,
     revision: previous.revision + 1,
   });
+  clearActiveViewContext(scope);
+}
+
+/** Exclude a currently connected WebSocket client from REST inactivity reap. */
+export function registerCurrentViewScopeWebSocket(scopeId: string): void {
+  const scope = scopeId.trim();
+  if (!scope) return;
+  connectedWebSocketViewScopes.add(scope);
+}
+
+/**
+ * Release storage after a client's WebSocket grace or REST inactivity lease
+ * ends. Unlike an explicit close navigation, a released browser client has no
+ * revision lineage to preserve.
+ */
+export function releaseCurrentViewScope(scopeId: string): void {
+  const scope = scopeId.trim();
+  if (!scope) return;
+  currentViewsByScope.delete(scope);
+  connectedWebSocketViewScopes.delete(scope);
   clearActiveViewContext(scope);
 }
 
@@ -1041,6 +1111,7 @@ export async function handleViewsRoutes(
       resolveViewInteractClientId(req, body) ?? DEFAULT_VIEW_STATE_SCOPE;
     let currentViewState = getCurrentViewState(scopeId);
     let currentViewRevision = getCurrentViewRevision(scopeId);
+    const previousActiveViewContext = getActiveViewContext(scopeId);
     const viewType =
       parseViewTypeValue(body?.viewType) ??
       parseViewTypeParam(url.searchParams.get("viewType"));
@@ -1164,16 +1235,125 @@ export async function handleViewsRoutes(
       `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}${subview ? ` (subview=${subview})` : ""}`,
     );
 
-    // Closing a view must NOT stamp it (or the synthetic "__all__" close-all id)
-    // as the active view: that left the planner upweighting a dismissed view's
-    // scoped actions and made "what view am I on" report a closed view forever.
-    // Clear the active-view context on close instead; the next real navigation
-    // re-stamps it.
     const isCloseNavigation = action === "close" || action === "close-all";
     if (isCloseNavigation) {
-      clearCurrentViewState(scopeId);
-      currentViewState = null;
-      currentViewRevision = getCurrentViewRevision(scopeId);
+      const closesEveryView = action === "close-all" || id === "__all__";
+      const visibleViewIds = currentViewState?.views ?? [
+        ...(currentViewState?.viewId ? [currentViewState.viewId] : []),
+      ];
+      const closesVisibleView = visibleViewIds.includes(id);
+      const remainingViewIds = closesEveryView
+        ? []
+        : visibleViewIds.filter((viewId) => viewId !== id);
+
+      // Closing a background/non-visible view must not erase the foreground
+      // context. For an active multi-pane layout, retain every surviving pane;
+      // only the dismissed pane's capabilities and elements disappear.
+      if (!closesEveryView && !closesVisibleView) {
+        currentViewRevision = getCurrentViewRevision(scopeId);
+      } else if (remainingViewIds.length === 0) {
+        clearCurrentViewState(scopeId);
+        currentViewState = null;
+        currentViewRevision = getCurrentViewRevision(scopeId);
+      } else {
+        const focusedViewId = remainingViewIds.includes(
+          currentViewState?.viewId ?? "",
+        )
+          ? (currentViewState?.viewId as string)
+          : remainingViewIds[0];
+        const focusedPane = currentViewState?.panes?.find(
+          (pane) => pane.viewId === focusedViewId,
+        );
+        const focusedEntry = getView(focusedViewId, {
+          viewType: focusedPane?.viewType,
+        });
+        if (!focusedEntry) {
+          error(
+            res,
+            `Cannot retain remaining view "${focusedViewId}" after closing "${id}"`,
+            409,
+          );
+          return true;
+        }
+        const remainingPanes = currentViewState?.panes?.filter((pane) =>
+          remainingViewIds.includes(pane.viewId),
+        );
+        const remainingActivePanes = remainingPanes?.map((pane) => {
+          const mounted = resolveVisiblePane(
+            pane.viewId,
+            previousActiveViewContext,
+            pane.viewType,
+          );
+          return {
+            ...pane,
+            ...(mounted?.clientId
+              ? { clientId: mounted.clientId }
+              : layoutOwnerClientId
+                ? { clientId: layoutOwnerClientId }
+                : {}),
+            ...(mounted?.elements ? { elements: mounted.elements } : {}),
+          };
+        });
+        const focusedMountedPane = resolveVisiblePane(
+          focusedViewId,
+          previousActiveViewContext,
+          focusedEntry.viewType,
+        );
+        const now = new Date().toISOString();
+        const remainsLayout = remainingViewIds.length > 1;
+        currentViewState = {
+          viewId: focusedEntry.id,
+          viewPath: focusedEntry.path ?? null,
+          viewLabel: focusedEntry.label,
+          viewType: focusedEntry.viewType,
+          ...(remainsLayout && currentViewState?.action
+            ? { action: currentViewState.action }
+            : {}),
+          ...(remainsLayout ? { views: remainingViewIds } : {}),
+          ...(remainsLayout && remainingPanes?.length
+            ? { panes: remainingPanes }
+            : {}),
+          ...(remainsLayout && currentViewState?.layout
+            ? { layout: currentViewState.layout }
+            : {}),
+          ...(remainsLayout && currentViewState?.placement
+            ? { placement: currentViewState.placement }
+            : {}),
+          switchedAt: now,
+          source: reportedSource,
+          updatedAt: now,
+        };
+        currentViewRevision += 1;
+        storeCurrentViewScopeState(scopeId, {
+          currentView: currentViewState,
+          revision: currentViewRevision,
+        });
+        setActiveViewContext(
+          {
+            viewId: focusedEntry.id,
+            viewLabel: focusedEntry.label,
+            viewType: focusedEntry.viewType,
+            viewPath: focusedEntry.path ?? null,
+            ...(layoutOwnerClientId ? { clientId: layoutOwnerClientId } : {}),
+            ...(remainsLayout ? { viewIds: remainingViewIds } : {}),
+            ...(remainsLayout && remainingActivePanes?.length
+              ? {
+                  panes: remainingActivePanes,
+                }
+              : {}),
+            ...(focusedMountedPane?.elements
+              ? { elements: focusedMountedPane.elements }
+              : {}),
+            ...(remainsLayout && currentViewState.layout
+              ? { layout: currentViewState.layout }
+              : {}),
+            ...(remainsLayout && currentViewState.placement
+              ? { placement: currentViewState.placement }
+              : {}),
+          },
+          scopeId,
+        );
+      }
     } else {
       const now = new Date().toISOString();
       const source = reportedSource;
@@ -1199,9 +1379,28 @@ export async function handleViewsRoutes(
         updatedAt: now,
       };
       currentViewRevision += 1;
-      currentViewsByScope.set(scopeId, {
+      storeCurrentViewScopeState(scopeId, {
         currentView: currentViewState,
         revision: currentViewRevision,
+      });
+      const previousFocusedPane = resolveVisiblePane(
+        id,
+        previousActiveViewContext,
+        resolvedViewType,
+      );
+      const activeLayoutPanes = layoutPanes?.map((pane) => {
+        const mounted = resolveVisiblePane(
+          pane.viewId,
+          previousActiveViewContext,
+          pane.viewType,
+        );
+        return {
+          ...pane,
+          ...(mounted?.clientId && !pane.clientId
+            ? { clientId: mounted.clientId }
+            : {}),
+          ...(mounted?.elements ? { elements: mounted.elements } : {}),
+        };
       });
       // Publish to the prompt-optimization layer so the planner upweights this
       // view's scoped actions while it is on screen.
@@ -1215,7 +1414,10 @@ export async function handleViewsRoutes(
           ...(layoutViews && layoutViews.length > 0
             ? { viewIds: layoutViews }
             : {}),
-          ...(layoutPanes ? { panes: layoutPanes } : {}),
+          ...(activeLayoutPanes ? { panes: activeLayoutPanes } : {}),
+          ...(previousFocusedPane?.elements
+            ? { elements: previousFocusedPane.elements }
+            : {}),
           ...(layout ? { layout } : {}),
           ...(placement ? { placement } : {}),
         },

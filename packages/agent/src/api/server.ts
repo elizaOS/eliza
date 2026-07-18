@@ -1643,6 +1643,10 @@ import {
   wireCodingAgentWsBridge,
   wireCoordinatorEventRouting,
 } from "./server-helpers-swarm.ts";
+import {
+  registerViewScopeConnection,
+  scheduleViewScopeClearAfterGrace,
+} from "./view-scope-ws-lifecycle.ts";
 
 import {
   asObject,
@@ -4692,6 +4696,15 @@ export async function startApiServer(opts?: {
     process.env.ELIZA_PTY_WS_DISCONNECT_GRACE_MS,
   );
   /**
+   * Pending cleanup for client-scoped current-view state. View ownership must
+   * survive the same short reconnect gaps as the shell's WebSocket, while a
+   * client that is genuinely gone must not leave capabilities active forever.
+   */
+  const wsViewScopePendingClears = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  /**
    * Short-window idempotency cache for client-tagged WS messages, keyed by
    * `${clientId}:${msgId}`. A message resent after a reconnect (same id) is
    * dropped if seen within the TTL. Entries expire so the map stays bounded.
@@ -4821,13 +4834,33 @@ export async function startApiServer(opts?: {
 
     const activateAuthenticatedConnection = () => {
       wsClients.add(ws);
-      if (
-        wsClientId &&
-        cancelPendingPtySessionStop(wsClientId, wsPtyPendingStops)
-      ) {
-        logger.info(
-          `[eliza-api] client ${wsClientId} reconnected within the PTY grace window; keeping its PTY sessions alive`,
-        );
+      if (wsClientId) {
+        if (cancelPendingPtySessionStop(wsClientId, wsPtyPendingStops)) {
+          logger.info(
+            `[eliza-api] client ${wsClientId} reconnected within the PTY grace window; keeping its PTY sessions alive`,
+          );
+        }
+        const viewScopeReconnected = registerViewScopeConnection({
+          clientId: wsClientId,
+          pendingClears: wsViewScopePendingClears,
+          markViewScopeConnected: (clientId) => {
+            void import("./views-routes.ts")
+              .then(({ registerCurrentViewScopeWebSocket }) => {
+                registerCurrentViewScopeWebSocket(clientId);
+              })
+              .catch((err) => {
+                // error-policy:J1 The WS connection boundary observes registration failures.
+                logger.error(
+                  `[eliza-api] failed to register connected client view scope: ${err instanceof Error ? err.message : err}`,
+                );
+              });
+          },
+        });
+        if (viewScopeReconnected) {
+          logger.info(
+            `[eliza-api] client ${wsClientId} reconnected within the view-scope grace window; keeping its active view`,
+          );
+        }
       }
       addLog("info", "WebSocket client connected", "websocket", [
         "server",
@@ -4896,6 +4929,20 @@ export async function startApiServer(opts?: {
       }
     };
 
+    const currentClientHasLiveConnection = (): boolean => {
+      if (!wsClientId) return false;
+      for (const other of wsClients) {
+        if (
+          other !== ws &&
+          other.readyState === 1 &&
+          wsClientIds.get(other) === wsClientId
+        ) {
+          return true;
+        }
+      }
+      return false;
+    };
+
     /**
      * Reap this client's PTY sessions only after the disconnect grace window,
      * and only if no other live authenticated socket carries the same
@@ -4904,24 +4951,40 @@ export async function startApiServer(opts?: {
     const scheduleStopOwnedPtySessions = (reason: string): void => {
       if (!wsClientId) return;
       const clientId = wsClientId;
-      const clientHasLiveConnection = (): boolean => {
-        for (const other of wsClients) {
-          if (
-            other !== ws &&
-            other.readyState === 1 &&
-            wsClientIds.get(other) === clientId
-          ) {
-            return true;
-          }
-        }
-        return false;
-      };
       schedulePtySessionStopAfterGrace({
         clientId,
         graceMs: wsPtyDisconnectGraceMs,
         pendingStops: wsPtyPendingStops,
-        clientHasLiveConnection,
+        clientHasLiveConnection: currentClientHasLiveConnection,
         stopOwnedSessions: () => stopOwnedPtySessions(reason),
+      });
+    };
+
+    /**
+     * Remove capabilities owned by a client that remains disconnected. The
+     * route module stays lazy; liveness is checked again after its import so a
+     * reconnect racing module resolution cannot clear the restored scope.
+     */
+    const scheduleClearCurrentViewScope = (): void => {
+      if (!isAuthenticated || !wsClientId) return;
+      const clientId = wsClientId;
+      scheduleViewScopeClearAfterGrace({
+        clientId,
+        pendingClears: wsViewScopePendingClears,
+        clientHasLiveConnection: currentClientHasLiveConnection,
+        clearViewScope: () => {
+          void import("./views-routes.ts")
+            .then(({ releaseCurrentViewScope }) => {
+              if (currentClientHasLiveConnection()) return;
+              releaseCurrentViewScope(clientId);
+            })
+            .catch((err) => {
+              // error-policy:J6 WebSocket teardown cannot await optional route-module cleanup.
+              logger.warn(
+                `[eliza-api] failed to clear disconnected client view scope: ${err instanceof Error ? err.message : err}`,
+              );
+            });
+        },
       });
     };
 
@@ -5120,6 +5183,7 @@ export async function startApiServer(opts?: {
         subs.clear();
       }
       scheduleStopOwnedPtySessions("websocket close");
+      scheduleClearCurrentViewScope();
       addLog("info", "WebSocket client disconnected", "websocket", [
         "server",
         "websocket",
@@ -5139,6 +5203,7 @@ export async function startApiServer(opts?: {
         subs.clear();
       }
       scheduleStopOwnedPtySessions("websocket error");
+      scheduleClearCurrentViewScope();
     });
   });
 

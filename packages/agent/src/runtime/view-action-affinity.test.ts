@@ -653,6 +653,40 @@ describe("active-view element snapshot", () => {
     expect(
       resolveVisiblePane("calendar", getActiveViewContext(), "gui")?.clientId,
     ).toBe("secondary-owner");
+    expect(
+      resolveVisiblePane("calendar", getActiveViewContext(), "gui")?.elements,
+    ).toEqual([{ id: "create-event", role: "button", label: "Create event" }]);
+  });
+
+  it("renders split-pane element snapshots with their owning view", () => {
+    const block = renderActiveViewContextBlock({
+      ...VIEW,
+      viewIds: ["wallet", "calendar"],
+      panes: [
+        {
+          viewId: "wallet",
+          viewType: "gui",
+          elements: [{ id: "send", role: "button", label: "Send" }],
+        },
+        {
+          viewId: "calendar",
+          viewType: "gui",
+          elements: [
+            {
+              id: "create-event",
+              role: "button",
+              label: "Create event",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(block).toContain("visible panes");
+    expect(block).toContain('{"viewId":"wallet","viewType":"gui","id":"send"');
+    expect(block).toContain(
+      '{"viewId":"calendar","viewType":"gui","id":"create-event"',
+    );
   });
 
   it("rejects a missing or mismatched reporter after a pane has an owner", () => {

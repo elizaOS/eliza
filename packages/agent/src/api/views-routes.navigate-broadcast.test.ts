@@ -11,7 +11,12 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import { SHELL_NAVIGATE_VIEW_WS_EVENT } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getActiveViewContext } from "../runtime/view-action-affinity.ts";
+import {
+  getActiveViewContext,
+  renderActiveViewContextBlock,
+  resolveVisiblePane,
+  setActiveViewElements,
+} from "../runtime/view-action-affinity.ts";
 import {
   registerBuiltinViews,
   registerPluginViews,
@@ -216,6 +221,114 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       viewType: "gui",
       action: "close",
     });
+  });
+
+  it("closing one split pane retains the surviving view context", async () => {
+    const clientId = "close-secondary-client";
+    await handleViewsRoutes(
+      makeNavigateCtx(
+        "settings",
+        {
+          action: "split-view",
+          views: ["settings", "character"],
+          viewTypes: { settings: "gui", character: "gui" },
+          layout: "horizontal",
+        },
+        "",
+        clientId,
+      ).ctx,
+    );
+    expect(
+      setActiveViewElements(
+        "settings",
+        [{ id: "voice", role: "button", label: "Voice" }],
+        clientId,
+        "gui",
+        clientId,
+      ),
+    ).toBe(true);
+    expect(
+      setActiveViewElements(
+        "character",
+        [{ id: "name", role: "textbox", label: "Name" }],
+        clientId,
+        "gui",
+        clientId,
+      ),
+    ).toBe(true);
+
+    const close = makeNavigateCtx(
+      "character",
+      { action: "close" },
+      "",
+      clientId,
+    );
+    await handleViewsRoutes(close.ctx);
+
+    expect(getCurrentViewState(clientId)).toMatchObject({
+      viewId: "settings",
+      viewPath: "/settings",
+      viewType: "gui",
+    });
+    expect(getCurrentViewState(clientId)?.views).toBeUndefined();
+    expect(getActiveViewContext(clientId)).toMatchObject({
+      viewId: "settings",
+      viewPath: "/settings",
+      viewType: "gui",
+    });
+    expect(getActiveViewContext(clientId)?.viewIds).toBeUndefined();
+    expect(getActiveViewContext(clientId)?.elements).toEqual([
+      { id: "voice", role: "button", label: "Voice" },
+    ]);
+    expect(
+      resolveVisiblePane("character", getActiveViewContext(clientId), "gui"),
+    ).toBeNull();
+  });
+
+  it("closing the focused split pane promotes the remaining pane", async () => {
+    const clientId = "close-primary-client";
+    await handleViewsRoutes(
+      makeNavigateCtx(
+        "settings",
+        {
+          action: "split-view",
+          views: ["settings", "character"],
+          viewTypes: { settings: "gui", character: "gui" },
+          layout: "horizontal",
+        },
+        "",
+        clientId,
+      ).ctx,
+    );
+
+    await handleViewsRoutes(
+      makeNavigateCtx("settings", { action: "close" }, "", clientId).ctx,
+    );
+
+    expect(getCurrentViewState(clientId)).toMatchObject({
+      viewId: "character",
+      viewPath: "/character",
+      viewType: "gui",
+    });
+    expect(getCurrentViewState(clientId)?.views).toBeUndefined();
+    expect(getActiveViewContext(clientId)).toMatchObject({
+      viewId: "character",
+      viewPath: "/character",
+      viewType: "gui",
+    });
+  });
+
+  it("closing a non-visible view does not erase foreground context", async () => {
+    const clientId = "close-background-client";
+    await handleViewsRoutes(makeNavigateCtx("settings", {}, "", clientId).ctx);
+    const revision = getCurrentViewRevision(clientId);
+
+    await handleViewsRoutes(
+      makeNavigateCtx("character", { action: "close" }, "", clientId).ctx,
+    );
+
+    expect(getCurrentViewState(clientId)?.viewId).toBe("settings");
+    expect(getCurrentViewRevision(clientId)).toBe(revision);
   });
 
   it("broadcasts split and tile layout metadata to the shell", async () => {
@@ -569,6 +682,19 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
         revision: 2,
       }),
     );
+    const activeViewA = getActiveViewContext(clientA);
+    const activeViewB = getActiveViewContext(clientB);
+    expect(activeViewA?.viewId).toBe("settings");
+    expect(activeViewB?.viewId).toBe("notes");
+    if (!activeViewA || !activeViewB) {
+      throw new Error("scoped active-view context was not recorded");
+    }
+    const plannerContextA = renderActiveViewContextBlock(activeViewA);
+    const plannerContextB = renderActiveViewContextBlock(activeViewB);
+    expect(plannerContextA).toContain("id: settings, gui");
+    expect(plannerContextA).not.toContain("id: notes, gui");
+    expect(plannerContextB).toContain("id: notes, gui");
+    expect(plannerContextB).not.toContain("id: settings, gui");
   });
 
   it("rejects an ambiguous scoped layout without mutating either client", async () => {
