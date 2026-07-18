@@ -68,6 +68,7 @@ export const CORS_EXPOSE_HEADER_NAMES = [
   "X-Eliza-Stream-Body-Ms",
   "X-Eliza-Stream-Parse-Ms",
   "X-Eliza-Stream-Bridge-Ms",
+  "X-Eliza-TTS-Provider",
 ] as const;
 
 export const CORS_ALLOW_METHOD_NAMES = [

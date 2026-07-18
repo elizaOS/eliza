@@ -59,6 +59,8 @@ const realtimeHarness = vi.hoisted(() => {
     needsUnlock: false,
     paused: false,
     error: null as RealtimeVoiceError | null,
+    fallbackReason: null,
+    reportFallback: vi.fn(),
     speaker: null,
     start: vi.fn<() => Promise<RealtimeVoiceStartOutcome>>(async () => ({
       kind: "live",
