@@ -6,7 +6,7 @@
  * sensitivity hints for arbitrary config paths.
  */
 const SENSITIVE_CONFIG_KEY_RE =
-  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|tokens?$/i;
+  /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|tokens?$|(?:^|[._-])pat$/i;
 
 export function isSensitiveConfigKey(key: string): boolean {
   const lastSegment = key.split(".").at(-1) ?? key;

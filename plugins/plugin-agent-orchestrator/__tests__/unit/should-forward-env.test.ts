@@ -109,6 +109,10 @@ describe("shouldForwardEnv", () => {
     expect(isEnvForwardableToSubAgent("GHCR_TOKEN")).toBe(true);
     expect(shouldForwardEnv("GH_TOKEN")).toBe(false);
     expect(shouldForwardEnv("CR_PAT")).toBe(false);
+    // #16564: the PR-shepherd fallback PAT is a live GitHub bearer credential;
+    // children must never inherit it implicitly.
+    expect(shouldForwardEnv("GH_PAT")).toBe(false);
+    expect(isEnvForwardableToSubAgent("GH_PAT")).toBe(false);
     expect(isEnvForwardableToSubAgent("GITHUB_TOKEN")).toBe(false);
     expect(isEnvForwardableToSubAgent("GH_TOKEN")).toBe(false);
     expect(isEnvForwardableToSubAgent("CR_PAT")).toBe(false);

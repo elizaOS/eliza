@@ -259,7 +259,7 @@ export function isCanonicalSecretKey(key: string): key is CanonicalSecretKey {
  * swap from config/registry rather than a hand-copied list.
  */
 const SECRET_KEY_NAME_PATTERN =
-	/(?:API)?_?(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|PRIVATE_KEY)\b|SECRET|PASSWORD|MNEMONIC|CREDENTIAL/i;
+	/(?:API)?_?(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|PRIVATE_KEY)\b|(?:^|_)PAT\b|SECRET|PASSWORD|MNEMONIC|CREDENTIAL/i;
 
 export function isSecretKey(key: string): boolean {
 	if (!key) return false;
