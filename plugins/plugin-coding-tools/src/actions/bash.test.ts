@@ -1840,3 +1840,79 @@ describe("platform-aware canned resource commands", () => {
     });
   });
 });
+
+describe("destructive-bulk confirm gate", () => {
+  it("blocks an unconfirmed recursive delete with needs_confirmation", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "clean up the old projects"),
+      undefined,
+      { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+    );
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("needs_confirmation");
+    expect(result.text).toContain("confirm=true");
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.destructive_reason).toBe("recursive delete");
+  });
+
+  it("runs the same command when confirm=true", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "yes do it"),
+      undefined,
+      {
+        command: "rm -rf /tmp/coding-tools-gate-test-nonexistent",
+        confirm: true,
+      },
+    );
+    // The path does not exist; rm -rf exits 0 on nonexistent targets — the
+    // point is the gate let it through to real execution.
+    expect(result.success).toBe(true);
+  });
+
+  it("is exempt on the coding sub-agent path (task briefs carry confirmation)", async () => {
+    process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE = "1";
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "build step"),
+        undefined,
+        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+      );
+      expect(result.success).toBe(true);
+    } finally {
+      delete process.env.ELIZA_PLANNER_FULL_ACTION_SURFACE;
+    }
+  });
+
+  it("honors the ELIZA_SHELL_DESTRUCTIVE_CONFIRM=0 escape hatch", async () => {
+    process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM = "0";
+    try {
+      const { runtime } = await makeRuntime();
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(undefined, "clean up"),
+        undefined,
+        { command: "rm -rf /tmp/coding-tools-gate-test-nonexistent" },
+      );
+      expect(result.success).toBe(true);
+    } finally {
+      delete process.env.ELIZA_SHELL_DESTRUCTIVE_CONFIRM;
+    }
+  });
+
+  it("never gates ordinary commands", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(undefined, "whats here"),
+      undefined,
+      { command: "ls /tmp" },
+    );
+    expect(result.success).toBe(true);
+  });
+});
