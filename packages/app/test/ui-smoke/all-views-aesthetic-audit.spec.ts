@@ -26,6 +26,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { getAuditResponseWithTransportRetry } from "./helpers/audit-request";
 import {
   collectBlueColors,
   collectHoverViolations,
@@ -1184,7 +1185,10 @@ async function forceRemoteBundleAuditRoute(
   view: AuditCase,
 ): Promise<RemoteBundleAuditProof | null> {
   if (view.kind !== "plugin") return null;
-  const registryResponse = await page.request.get("/api/views");
+  const registryResponse = await getAuditResponseWithTransportRetry(
+    page.request,
+    "/api/views",
+  );
   expect(registryResponse.ok(), "plugin view registry must load").toBe(true);
   const payload: unknown = await registryResponse.json();
   const registered = findRemoteBundleDeclaration(

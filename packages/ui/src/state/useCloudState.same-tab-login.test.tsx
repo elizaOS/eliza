@@ -10,6 +10,7 @@
 // flow. jsdom pinned to a hosted elizacloud origin with the API client mocked.
 
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { client } from "../api";
 import {
@@ -45,6 +46,7 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
 
   beforeEach(() => {
     localStorage.clear();
+    client.setToken(null);
     assignSpy = vi.fn();
     Object.defineProperty(window, "location", {
       configurable: true,
@@ -94,6 +96,23 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
     expect(deviceCodeCalls()).toBe(0);
     expect(result.current.elizaCloudLoginBusy).toBe(false);
     expect(result.current.elizaCloudLoginError).toBeNull();
+  });
+
+  it("does not let cached server auth satisfy onboarding without a renderer Cloud token", async () => {
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+
+    expect(assignSpy).toHaveBeenCalledWith("/login?returnTo=%2F");
+    expect(deviceCodeCalls()).toBe(0);
   });
 
   it("leaves the first-run cloud-resume marker intact across the redirect leg", async () => {
@@ -193,6 +212,53 @@ describe("useCloudState — handleCloudLogin same-tab fallback on hosted web", (
       "sess-return",
     );
     expect(params.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("keeps the return session alive across StrictMode effect replay", async () => {
+    const search =
+      "?elizaCloudLogin=complete&elizaCloudLoginSession=sess-strict";
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        href: `https://app.elizacloud.ai/chat${search}`,
+        pathname: "/chat",
+        search,
+        assign: assignSpy,
+      },
+    });
+    let finishPoll: (
+      response: Awaited<ReturnType<typeof client.cloudLoginPollDirect>>,
+    ) => void = () => {};
+    const pendingPoll = new Promise<
+      Awaited<ReturnType<typeof client.cloudLoginPollDirect>>
+    >((resolve) => {
+      finishPoll = resolve;
+    });
+    cloudLoginPollDirectSpy.mockImplementation(() => pendingPoll);
+
+    const { result } = renderHook(() => useCloudState(makeParams()), {
+      wrapper: StrictMode,
+    });
+
+    await waitFor(() =>
+      expect(cloudLoginPollDirectSpy).toHaveBeenCalledTimes(1),
+    );
+    finishPoll({
+      status: "authenticated",
+      organizationId: "org-strict",
+      token: "strict-session-token",
+      userId: "user-strict",
+    });
+
+    await waitFor(() => {
+      expect(localStorage.getItem("steward_session_token")).toBe(
+        "strict-session-token",
+      );
+      expect(result.current.elizaCloudConnected).toBe(true);
+      expect(result.current.elizaCloudLoginBusy).toBe(false);
+    });
+    expect(cloudLoginPollDirectSpy).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the cloud auth popup opener and closes it on the matching completion message", async () => {

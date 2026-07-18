@@ -43,6 +43,10 @@ function expectNoLocalPersistOrStatusProbe(): void {
   }
 }
 
+function createDirectCloudClient(token = "cloud-api-key"): ElizaClient {
+  return new ElizaClient("https://api.elizacloud.ai", token);
+}
+
 describe("ElizaClient direct Cloud auth on native", () => {
   beforeEach(() => {
     setBootConfig({
@@ -208,7 +212,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.getCloudStatus();
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -229,13 +233,28 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expectNoLocalPersistOrStatusProbe();
   });
 
+  it("rejects a local agent bearer instead of promoting it to native Cloud auth", async () => {
+    const client = new ElizaClient(
+      "http://127.0.0.1:2508",
+      "local-agent-token",
+    );
+
+    await expect(client.getCloudStatus()).resolves.toEqual(
+      expect.objectContaining({
+        connected: false,
+        reason: "not-authenticated",
+      }),
+    );
+    expect(capacitorMocks.request).not.toHaveBeenCalled();
+  });
+
   it("checks direct Cloud credits through the Cloud API credits endpoint", async () => {
     capacitorMocks.request.mockResolvedValue({
       status: 200,
       data: { balance: 12.5 },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.getCloudCredits();
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -272,7 +291,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.getCloudCompatAgents();
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -333,7 +352,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
         },
       });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const create = await client.createCloudCompatAgent({
       agentName: "My Agent",
     });
@@ -378,7 +397,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     await client.createCloudCompatAgent({
       agentName: "My Agent",
       forceCreate: true,
@@ -407,7 +426,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     await client.createCloudCompatAgent({ agentName: "My Agent" });
 
     const body = capacitorMocks.request.mock.calls[0]?.[0]?.data as Record<
@@ -436,7 +455,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const create = await client.createCloudCompatAgent({
       agentName: "My Agent",
     });
@@ -462,7 +481,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const deleted = await client.deleteCloudCompatAgent("agent-1");
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -497,7 +516,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.suspendCloudCompatAgent("agent-1");
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -535,7 +554,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.resumeCloudCompatAgent("agent-1");
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -568,7 +587,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       data: { success: false, error: "Agent not found" },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
 
     await expect(client.suspendCloudCompatAgent("agent-1")).rejects.toThrow(
       "Cloud request failed (404): Agent not found",
@@ -616,7 +635,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.deleteCloudCompatAgent("agent-1");
 
     expect(result).toEqual({
@@ -649,7 +668,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const launch = await client.launchCloudCompatAgent("agent-1");
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -681,7 +700,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       () => new Promise(() => undefined),
     );
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = client.provisionCloudCompatAgent("agent-1");
     const expectation = expect(result).rejects.toThrow(
       "Eliza Cloud request timed out after 15s",
@@ -709,7 +728,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
 
     await expect(client.provisionCloudCompatAgent("agent-1")).rejects.toThrow(
       "Cloud request failed (500): Failed to start provisioning",
@@ -737,7 +756,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.provisionCloudCompatAgent("agent-1");
 
     expect(result).toEqual(
@@ -770,7 +789,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.provisionCloudCompatAgent("agent-1");
 
     expect(result).toEqual(
@@ -823,7 +842,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.getCloudCompatJobStatus("job-1");
 
     expect(capacitorMocks.request).toHaveBeenCalledWith(
@@ -861,7 +880,7 @@ describe("ElizaClient direct Cloud auth on native", () => {
       },
     });
 
-    const client = new ElizaClient(undefined, "cloud-api-key");
+    const client = createDirectCloudClient();
     const result = await client.getCloudCompatJobStatus("job-1");
 
     expect(result).toEqual(
@@ -971,6 +990,9 @@ describe("ElizaClient direct Cloud auth on native", () => {
       login.apiBase ?? "https://api.elizacloud.ai",
       login.sessionId ?? "missing-session",
     );
+    client.setBaseUrl(login.apiBase ?? "https://api.elizacloud.ai", {
+      persist: false,
+    });
     client.setToken(poll.token ?? null);
 
     const status = await client.getCloudStatus();

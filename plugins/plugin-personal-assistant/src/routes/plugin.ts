@@ -12,8 +12,7 @@
 
 import type http from "node:http";
 import { TLSSocket } from "node:tls";
-import { handleConnectorAccountRoutes } from "@elizaos/agent";
-import { AuthStore } from "@elizaos/app-core";
+import { handleConnectorAccountRoutes } from "@elizaos/agent/api/connector-account-routes";
 import {
   ensureRouteAuthorized,
   ensureSessionForRequest,
@@ -22,6 +21,7 @@ import {
   tokenMatches,
 } from "@elizaos/app-core/api/auth";
 import { isTrustedLocalRequest } from "@elizaos/app-core/api/compat-route-shared";
+import { AuthStore } from "@elizaos/app-core/services/auth-store";
 import type {
   AgentRuntime,
   LegacyRouteHandler,
@@ -37,6 +37,7 @@ import {
 } from "@elizaos/core";
 import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
+import { ensureLifeOpsSchema } from "../lifeops/schema-bootstrap.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
@@ -614,13 +615,16 @@ function scheduledTasksRouteHandler(): LegacyRouteHandler {
       });
     },
   });
-  return async (req, res, runtime): Promise<void> => {
+  return async (
+    req: unknown,
+    res: unknown,
+    runtime: unknown,
+  ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
-    // Cast: the elizaOS LegacyRouteHandler passes RouteResponse (an abstract
-    // wrapper), but the underlying value at runtime is a raw Node.js
-    // ServerResponse. The shapes differ at the type level, so we cast through
-    // unknown to access the raw response methods needed by buildLifeOpsContext.
-    const httpRes = res as unknown as http.ServerResponse;
+    // The legacy handler type abstracts the transport, while this raw-path host
+    // supplies Node's response object; unknown parameters keep that adaptation
+    // local instead of claiming the abstract route response is structurally exact.
+    const httpRes = res as http.ServerResponse;
     const ctx = buildLifeOpsContext(
       httpReq,
       httpRes,
@@ -658,11 +662,9 @@ function websiteBlockerRouteHandler(): LegacyRouteHandler {
   ): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
     const httpRes = res as http.ServerResponse;
-    const ctx = buildWebsiteBlockerContext(
-      httpReq,
-      httpRes,
-      (runtime as AgentRuntime) ?? null,
-    );
+    const agentRuntime = (runtime as AgentRuntime) ?? null;
+    await ensureLifeOpsSchema(agentRuntime);
+    const ctx = buildWebsiteBlockerContext(httpReq, httpRes, agentRuntime);
     await handleWebsiteBlockerRoutes(ctx);
   };
 }

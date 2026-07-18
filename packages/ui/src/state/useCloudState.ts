@@ -25,6 +25,7 @@ import { client } from "../api";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import {
   cloudTokenSecsRemaining,
+  getCloudAuthToken,
   refreshCloudStewardSession,
   resolveDirectCloudAuthApiBase,
   resolveDirectCloudWebBase,
@@ -62,6 +63,7 @@ import {
 } from "./cloud-steward-login";
 import { scrubPersistedActiveServerToken } from "./persistence";
 import { isPrivateNetworkHost } from "./private-network-host";
+import type { CloudLoginOptions } from "./types";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -489,6 +491,16 @@ export function useCloudState({
   /** Short-lived polling interval used during the browser-based login flow. */
   const elizaCloudLoginPollTimer = useRef<number | null>(null);
   const elizaCloudLoginCompletionRef = useRef<Promise<void> | null>(null);
+  const elizaCloudLoginRequiresClientAuthRef = useRef(false);
+  const elizaCloudClientAuthWaitersRef = useRef(0);
+  const elizaCloudPendingClientAuthPopupRef = useRef<Window | null>(null);
+  // React StrictMode replays effects after their cleanup. Capture the return
+  // session during render so URL cleanup cannot make the replay lose it.
+  const elizaCloudLoginReturnSessionRef = useRef(
+    readCloudLoginReturnSessionId(),
+  );
+  const elizaCloudLoginReturnConsumersRef = useRef(0);
+  const elizaCloudLoginReturnCancelRef = useRef<(() => void) | null>(null);
   /** Synchronous lock to prevent duplicate login clicks in the same tick. */
   const elizaCloudLoginBusyRef = useRef(false);
   /** Tracks whether the auth-rejected notice has already been sent for the current rejection. */
@@ -628,10 +640,40 @@ export function useCloudState({
   }, []);
 
   const handleCloudLogin = useCallback(
-    async (prePoppedWindow: Window | null = null) => {
-      rememberCloudLoginPopup(prePoppedWindow);
+    async (
+      prePoppedWindow: Window | null = null,
+      options: CloudLoginOptions = {},
+    ) => {
+      let loginPopup = prePoppedWindow;
+      const closeUnusedPrePoppedWindow = () => {
+        if (loginPopup && loginPopup !== activeCloudLoginPopup) {
+          closePopupWindow(loginPopup);
+        }
+      };
       const closePrePoppedWindow = () => {
-        closeCloudLoginPopup(prePoppedWindow);
+        const pendingClientAuthPopup =
+          !options.requireClientAuth &&
+          elizaCloudClientAuthWaitersRef.current > 0
+            ? elizaCloudPendingClientAuthPopupRef.current
+            : null;
+        if (pendingClientAuthPopup && !pendingClientAuthPopup.closed) {
+          // Transfer the named popup to the stronger onboarding flight. When
+          // callers supplied distinct handles, only the weaker owner's window
+          // is closed; reclaiming by name here could close the protected one.
+          if (loginPopup && loginPopup !== pendingClientAuthPopup) {
+            closePopupWindow(loginPopup);
+          }
+          if (
+            activeCloudLoginPopup &&
+            activeCloudLoginPopup !== pendingClientAuthPopup &&
+            activeCloudLoginPopup !== loginPopup
+          ) {
+            closePopupWindow(activeCloudLoginPopup);
+          }
+          activeCloudLoginPopup = pendingClientAuthPopup;
+          return;
+        }
+        closeCloudLoginPopup(loginPopup);
       };
       let cloudAuthMessageHandler: ((event: MessageEvent) => void) | null =
         null;
@@ -642,22 +684,81 @@ export function useCloudState({
         }
       };
 
+      // A server-side API key is enough for Settings/credits, but onboarding
+      // needs a renderer-held bearer for direct agent discovery/provisioning.
+      // Only callers that declare that stronger requirement bypass the normal
+      // connected-server short-circuits below.
+      const hasRequiredClientAuth = () =>
+        !options.requireClientAuth || Boolean(getCloudAuthToken(client));
       if (
-        isCloudStatusAuthenticated(elizaCloudConnected, elizaCloudStatusReason)
+        isCloudStatusAuthenticated(
+          elizaCloudConnected,
+          elizaCloudStatusReason,
+        ) &&
+        hasRequiredClientAuth()
       ) {
-        closePrePoppedWindow();
+        closeUnusedPrePoppedWindow();
         return;
       }
-      if (elizaCloudLoginBusyRef.current || elizaCloudLoginBusy) {
-        closePrePoppedWindow();
-        await elizaCloudLoginCompletionRef.current;
-        return;
+      while (elizaCloudLoginBusyRef.current) {
+        const activeCompletion = elizaCloudLoginCompletionRef.current;
+        if (!activeCompletion) {
+          closeUnusedPrePoppedWindow();
+          throw new Error(
+            "Eliza Cloud login is busy without a completion signal.",
+          );
+        }
+        const activeRequiresClientAuth =
+          elizaCloudLoginRequiresClientAuthRef.current;
+        const waitingForStrongerAuth = Boolean(
+          options.requireClientAuth && !activeRequiresClientAuth,
+        );
+        if (waitingForStrongerAuth) {
+          elizaCloudClientAuthWaitersRef.current += 1;
+          const pendingPopup = elizaCloudPendingClientAuthPopupRef.current;
+          if (!pendingPopup || pendingPopup.closed) {
+            const handoffPopup =
+              loginPopup && !loginPopup.closed
+                ? loginPopup
+                : activeCloudLoginPopup && !activeCloudLoginPopup.closed
+                  ? activeCloudLoginPopup
+                  : null;
+            elizaCloudPendingClientAuthPopupRef.current = handoffPopup;
+          }
+        }
+        try {
+          await activeCompletion;
+        } finally {
+          if (waitingForStrongerAuth) {
+            elizaCloudClientAuthWaitersRef.current -= 1;
+          }
+        }
+        const requiredClientAuthPresent = hasRequiredClientAuth();
+        if (requiredClientAuthPresent && waitingForStrongerAuth) {
+          const handedOffPopup = elizaCloudPendingClientAuthPopupRef.current;
+          elizaCloudPendingClientAuthPopupRef.current = null;
+          if (handedOffPopup) {
+            closeCloudLoginPopup(handedOffPopup);
+          } else {
+            closeUnusedPrePoppedWindow();
+          }
+          return;
+        }
+        if (requiredClientAuthPresent || activeRequiresClientAuth) {
+          closeUnusedPrePoppedWindow();
+          return;
+        }
       }
-      elizaCloudLoginBusyRef.current = true;
-      setElizaCloudLoginBusy(true);
-      setElizaCloudLoginError(null);
-      setElizaCloudLoginFallbackUrl(null);
-      elizaCloudPreferDisconnectedUntilLoginRef.current = false;
+      if (options.requireClientAuth) {
+        const pendingPopup = elizaCloudPendingClientAuthPopupRef.current;
+        if (pendingPopup && !pendingPopup.closed) {
+          if (loginPopup && loginPopup !== pendingPopup) {
+            closePopupWindow(loginPopup);
+          }
+          loginPopup = pendingPopup;
+        }
+        elizaCloudPendingClientAuthPopupRef.current = null;
+      }
       let resolveLoginCompletion: () => void = () => {};
       let loginCompletionResolved = false;
       const loginCompletion = new Promise<void>((resolve) => {
@@ -668,10 +769,20 @@ export function useCloudState({
         loginCompletionResolved = true;
         if (elizaCloudLoginCompletionRef.current === loginCompletion) {
           elizaCloudLoginCompletionRef.current = null;
+          elizaCloudLoginRequiresClientAuthRef.current = false;
         }
         resolveLoginCompletion();
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
+      elizaCloudLoginRequiresClientAuthRef.current = Boolean(
+        options.requireClientAuth,
+      );
+      elizaCloudLoginBusyRef.current = true;
+      rememberCloudLoginPopup(loginPopup);
+      setElizaCloudLoginBusy(true);
+      setElizaCloudLoginError(null);
+      setElizaCloudLoginFallbackUrl(null);
+      elizaCloudPreferDisconnectedUntilLoginRef.current = false;
 
       // Zero-interaction wallet SIWE (#13377) is the E2E HARNESS path ONLY.
       // A real browser wallet (Phantom, MetaMask, …) injects window.ethereum
@@ -802,7 +913,7 @@ export function useCloudState({
           Boolean(cloudStatus?.connected),
           cloudStatus?.reason,
         );
-        if (alreadyAuthenticated) {
+        if (alreadyAuthenticated && hasRequiredClientAuth()) {
           closePrePoppedWindow();
           await pollCloudCredits();
           await loadWalletConfig().catch((err: unknown) => {
@@ -833,7 +944,7 @@ export function useCloudState({
       // cloud targets only: an agent-proxied (hasBackend) login stays on the
       // device-code flow, whose copyable fallback link is the designed
       // degrade for blocked popups there.
-      if (useDirectAuth && shouldUseSameTabCloudLogin(prePoppedWindow)) {
+      if (useDirectAuth && shouldUseSameTabCloudLogin(loginPopup)) {
         closePrePoppedWindow();
         navigateToSameTabCloudLogin();
         elizaCloudLoginBusyRef.current = false;
@@ -900,8 +1011,8 @@ export function useCloudState({
         // open without crashing but never surface a usable window.
         if (resp.browserUrl) {
           setElizaCloudLoginFallbackUrl(resp.browserUrl);
-          if (prePoppedWindow) {
-            navigatePreOpenedWindow(prePoppedWindow, resp.browserUrl, {
+          if (loginPopup) {
+            navigatePreOpenedWindow(loginPopup, resp.browserUrl, {
               preserveOpener: true,
             });
           } else {
@@ -938,6 +1049,7 @@ export function useCloudState({
           // link after timeout / cancellation is misleading.
           setElizaCloudLoginFallbackUrl(null);
           if (error !== null) {
+            closePrePoppedWindow();
             setElizaCloudLoginError(error);
           }
           completeLogin();
@@ -1059,7 +1171,6 @@ export function useCloudState({
     },
     [
       elizaCloudConnected,
-      elizaCloudLoginBusy,
       elizaCloudStatusReason,
       setActionNotice,
       pollCloudCredits,
@@ -1068,23 +1179,64 @@ export function useCloudState({
   );
 
   useEffect(() => {
-    const sessionId = readCloudLoginReturnSessionId();
+    const sessionId = elizaCloudLoginReturnSessionRef.current;
     if (!sessionId) {
       clearCloudLoginReturnParams();
       return;
     }
     clearCloudLoginReturnParams();
-    if (elizaCloudLoginBusyRef.current) return;
+    elizaCloudLoginReturnConsumersRef.current += 1;
+    const releaseReturnLoginEffect = () => {
+      elizaCloudLoginReturnConsumersRef.current -= 1;
+      // StrictMode installs the replacement effect before this microtask. A
+      // true unmount leaves no consumer and cancels the shared poll; a replay
+      // adopts it, so only one request can consume the single-use token.
+      queueMicrotask(() => {
+        if (elizaCloudLoginReturnConsumersRef.current === 0) {
+          elizaCloudLoginReturnCancelRef.current?.();
+        }
+      });
+    };
+    if (elizaCloudLoginBusyRef.current) return releaseReturnLoginEffect;
 
     let cancelled = false;
+    let resolveReturnLoginCompletion: () => void = () => {};
+    let returnLoginCompletionResolved = false;
+    const returnLoginCompletion = new Promise<void>((resolve) => {
+      resolveReturnLoginCompletion = resolve;
+    });
+    const completeReturnLogin = () => {
+      if (returnLoginCompletionResolved) return;
+      returnLoginCompletionResolved = true;
+      if (elizaCloudLoginCompletionRef.current === returnLoginCompletion) {
+        elizaCloudLoginCompletionRef.current = null;
+        elizaCloudLoginRequiresClientAuthRef.current = false;
+        elizaCloudLoginBusyRef.current = false;
+        if (!cancelled) {
+          setElizaCloudLoginBusy(false);
+        }
+      }
+      if (elizaCloudLoginReturnCancelRef.current === cancelReturnLogin) {
+        elizaCloudLoginReturnCancelRef.current = null;
+      }
+      resolveReturnLoginCompletion();
+    };
+    const cancelReturnLogin = () => {
+      cancelled = true;
+      completeReturnLogin();
+    };
+    elizaCloudLoginReturnCancelRef.current = cancelReturnLogin;
+    elizaCloudLoginCompletionRef.current = returnLoginCompletion;
+    elizaCloudLoginRequiresClientAuthRef.current = true;
+    elizaCloudLoginBusyRef.current = true;
+    setElizaCloudLoginBusy(true);
+    setElizaCloudLoginError(null);
+    setElizaCloudLoginFallbackUrl(null);
+
     const sleep = (ms: number) =>
       new Promise((resolve) => window.setTimeout(resolve, ms));
 
     void (async () => {
-      elizaCloudLoginBusyRef.current = true;
-      setElizaCloudLoginBusy(true);
-      setElizaCloudLoginError(null);
-      setElizaCloudLoginFallbackUrl(null);
       const cloudApiBase =
         getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
       const authenticatedCloudApiBase =
@@ -1149,15 +1301,13 @@ export function useCloudState({
         }
       } finally {
         if (!cancelled) {
-          elizaCloudLoginBusyRef.current = false;
-          setElizaCloudLoginBusy(false);
+          elizaCloudLoginReturnSessionRef.current = null;
         }
+        completeReturnLogin();
       }
     })();
 
-    return () => {
-      cancelled = true;
-    };
+    return releaseReturnLoginEffect;
   }, []);
 
   const handleCloudDisconnect = useCallback(

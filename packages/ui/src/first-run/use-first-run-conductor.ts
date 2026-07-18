@@ -3,8 +3,8 @@
  *
  * Onboarding is PART OF THE CHAT. When `firstRunComplete === false` this hook
  * seeds synthetic assistant turns into the SAME live transcript the floating
- * `ContinuousChatOverlay` renders (greeting → runtime CHOICE → provider
- * CHOICE → tutorial CHOICE; Cloud-only sign-in stays a single CTA), and
+ * `ContinuousChatOverlay` renders (the optional chooser can step through
+ * runtime → provider → tutorial; production Cloud-only stays a single CTA), and
  * routes the user's first-run-scoped picks to the headless finish use case
  * (`first-run-finish.ts`). It owns NO presentation — the existing
  * `InlineWidgetText` + `SensitiveRequestBlock` renderers draw the widgets for
@@ -12,11 +12,10 @@
  * channel so the chat's single send funnel short-circuits first-run picks
  * before they hit the server.
  *
- * The composer is UNLOCKED during onboarding (#12178): the user can type
- * freely, and a second channel handler (`setFirstRunTextHandler`) answers that
- * free text with a local user turn + a deterministic assistant reply that
- * varies by flow position. Free text NEVER reaches the server pre-completion —
- * the AppContext funnel enforces that; this hook only renders the local echo.
+ * The overlay locks the composer, attachments, and microphone until the
+ * first-run gate closes, leaving the seeded CHOICE/OAuth widgets as the only
+ * live inputs. The reserved action channel still consumes stale or replayed
+ * first-run payloads so they can never leak into the agent message path.
  *
  * Provisioning runs exactly once and POSTs /api/first-run exactly once (the
  * finish module funnels + idempotency-guards it). The real `firstRunComplete`
@@ -30,7 +29,7 @@
  *   pick is live; leftover runtime/provider/cloud-agent widgets no-op.
  * - Strict id validation per group — garbage under the reserved prefix is
  *   consumed, never acted on and never forwarded to the server.
- * - needs-cloud-login re-offers an UNLOCKED runtime choice and arms a
+ * - needs-cloud-login re-offers the runtime choice and arms a
  *   connect-and-resume continuation (`pendingCloudResumeRef`).
  *
  * Device RAM-tier gating + reversibility (#14390): the runtime and provider

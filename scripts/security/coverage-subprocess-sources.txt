@@ -33,3 +33,7 @@ packages/cloud/shared/scripts/run-bun-tests.mjs
 # Workflow policy checker: both contract validation modes are process
 # entrypoints because importing the module immediately reads workflow files.
 packages/scripts/ci-merge-gate-contract.mjs
+
+# Playwright wrapper: importing it starts the test runner and registers process
+# exit/signal handlers. Its contract suite launches the real CLI in a child.
+packages/app/scripts/run-ui-playwright.mjs

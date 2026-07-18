@@ -37,6 +37,11 @@ const electrobunBuildDir = path.join(
   "build",
 );
 
+// A clean full-profile desktop build compiles more than two thousand runtime
+// packages and may download platform binaries. Keep a finite hang guard without
+// terminating a healthy cold build before it can produce the test launcher.
+const PACKAGED_AUTO_BUILD_TIMEOUT_MS = 30 * 60 * 1000;
+
 export interface PackagedProcessLogs {
   stdout: string[];
   stderr: string[];
@@ -208,7 +213,7 @@ function buildPackagedLauncherIfMissing(): void {
   runPackagedAutoBuildStep(
     "electrobun build",
     ["run", "--cwd", "packages/app-core/platforms/electrobun", "build"],
-    15 * 60 * 1000,
+    PACKAGED_AUTO_BUILD_TIMEOUT_MS,
   );
 }
 

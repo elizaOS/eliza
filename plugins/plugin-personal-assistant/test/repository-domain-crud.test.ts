@@ -21,6 +21,7 @@ import {
   createLifeOpsWorkflowRun,
   LifeOpsRepository,
 } from "../src/lifeops/repository.ts";
+import { executeRawSql } from "../src/lifeops/sql.ts";
 import type { RealTestRuntimeResult } from "./helpers/runtime.ts";
 import { createLifeOpsTestRuntime } from "./helpers/runtime.ts";
 
@@ -50,6 +51,19 @@ describe("LifeOpsRepository domain CRUD", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
     await LifeOpsRepository.bootstrapSchema(runtime);
+    const pendantTables = await executeRawSql(
+      runtime,
+      `SELECT table_name
+         FROM information_schema.tables
+        WHERE table_schema = 'app_lifeops'
+          AND table_name LIKE 'pendant%'
+        ORDER BY table_name`,
+    );
+    expect(pendantTables.map((row) => row.table_name)).toEqual([
+      "pendant_session_insight_refs",
+      "pendant_session_segments",
+      "pendant_sessions",
+    ]);
     const repository = new LifeOpsRepository(runtime);
     const base = ownership(runtime.agentId);
 

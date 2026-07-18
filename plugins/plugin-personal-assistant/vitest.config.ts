@@ -43,6 +43,30 @@ const appCoreTaskHostCapabilities = path.join(
   "services",
   "task-host-capabilities.ts",
 );
+const appCoreAuth = path.join(
+  elizaRoot,
+  "packages",
+  "app-core",
+  "src",
+  "api",
+  "auth.ts",
+);
+const appCoreCompatRouteShared = path.join(
+  elizaRoot,
+  "packages",
+  "app-core",
+  "src",
+  "api",
+  "compat-route-shared.ts",
+);
+const appCoreAuthStore = path.join(
+  elizaRoot,
+  "packages",
+  "app-core",
+  "src",
+  "services",
+  "auth-store.ts",
+);
 const agentSourceRoot = path.join(elizaRoot, "packages", "agent", "src");
 const corePackageRequire = createRequire(
   path.join(elizaRoot, "packages", "core", "package.json"),
@@ -249,6 +273,7 @@ export default defineConfig({
     ...baseConfig.ssr,
     noExternal: [
       "@elizaos/agent",
+      "@elizaos/app-core",
       "@elizaos/ui",
       ...(Array.isArray(baseConfig.ssr?.noExternal)
         ? baseConfig.ssr.noExternal
@@ -266,6 +291,18 @@ export default defineConfig({
       {
         find: /^@elizaos\/app-core\/services\/task-host-capabilities$/,
         replacement: appCoreTaskHostCapabilities,
+      },
+      {
+        find: /^@elizaos\/app-core\/api\/auth$/,
+        replacement: appCoreAuth,
+      },
+      {
+        find: /^@elizaos\/app-core\/api\/compat-route-shared$/,
+        replacement: appCoreCompatRouteShared,
+      },
+      {
+        find: /^@elizaos\/app-core\/services\/auth-store$/,
+        replacement: appCoreAuthStore,
       },
       {
         find: /^@elizaos\/core\/node$/,
@@ -377,6 +414,14 @@ export default defineConfig({
         replacement: path.join(lifeopsTestStubsRoot, "agent.ts"),
       },
       {
+        find: /^@elizaos\/agent\/api\/connector-account-routes$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "api",
+          "connector-account-routes.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/agent\/security\/access$/,
         replacement: path.join(agentSourceRoot, "security", "access.ts"),
       },
@@ -392,6 +437,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/agent\/config\/config$/,
         replacement: path.join(agentSourceRoot, "config", "config.ts"),
+      },
+      {
+        find: /^@elizaos\/agent\/runtime\/eliza-schema$/,
+        replacement: path.join(agentSourceRoot, "runtime", "eliza-schema.ts"),
       },
       {
         find: "@elizaos/agent",

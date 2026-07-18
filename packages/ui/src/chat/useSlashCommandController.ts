@@ -203,6 +203,69 @@ function isExpectedCatalogAuthError(error: unknown): boolean {
   return isApiError(error) && (error.status === 401 || error.status === 403);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isModelCatalogProviderMap(
+  value: unknown,
+): value is ModelCatalogProviders {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every(
+    (entries) =>
+      Array.isArray(entries) &&
+      entries.every(
+        (entry) =>
+          isRecord(entry) &&
+          typeof entry.id === "string" &&
+          typeof entry.display === "string" &&
+          Array.isArray(entry.efforts) &&
+          entry.efforts.every((effort) => typeof effort === "string") &&
+          Array.isArray(entry.roles) &&
+          entry.roles.every(
+            (role) => role === "small" || role === "large" || role === "coding",
+          ),
+      ),
+  );
+}
+
+function isLegacyModelProviderMap(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every(
+    (entries) =>
+      Array.isArray(entries) &&
+      entries.every(
+        (entry) =>
+          isRecord(entry) &&
+          typeof entry.id === "string" &&
+          typeof entry.name === "string" &&
+          typeof entry.category === "string",
+      ),
+  );
+}
+
+/**
+ * Dedicated Cloud agents can lag the app shell and still return the legacy
+ * provider-list shape from `GET /api/models`. That response contains no
+ * server-authored role/effort catalog, so it cannot safely drive `/model`
+ * completions. Treat that known capability gap as unavailable; every other
+ * malformed success response remains an observable boundary failure.
+ */
+function readOptionalModelCatalogProviders(
+  response: unknown,
+): ModelCatalogProviders | null {
+  if (isRecord(response)) {
+    const catalog = response.catalog;
+    if (isRecord(catalog) && isModelCatalogProviderMap(catalog.providers)) {
+      return catalog.providers;
+    }
+    if (isLegacyModelProviderMap(response.providers)) {
+      return null;
+    }
+  }
+  throw new Error("the runtime returned an invalid model catalog response");
+}
+
 /** Merge catalogs, keeping the first definition for any duplicated alias. */
 function mergeByAlias(
   groups: SlashCommandCatalogItem[][],
@@ -333,7 +396,9 @@ export function useSlashCommandController(
         void client
           .getModelsCatalog()
           .then((models) => {
-            if (!cancelled) setModelCatalog(models.catalog.providers);
+            if (!cancelled) {
+              setModelCatalog(readOptionalModelCatalogProviders(models));
+            }
           })
           .catch((error: unknown) => {
             // error-policy:J4 model completions degrade to none with the

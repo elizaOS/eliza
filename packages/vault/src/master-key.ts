@@ -5,12 +5,13 @@
  * and fail-closed TEE attestation before releasing sealed-volume keys.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { scryptSync } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { generateMasterKey, KEY_BYTES } from "./crypto.js";
+import { writeMacOSKeychainPassword as writeMacOSKeychainPasswordViaPty } from "./macos-keychain-password.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -52,8 +53,8 @@ export interface MasterKeyResolver {
 }
 
 export class MasterKeyUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "MasterKeyUnavailableError";
   }
 }
@@ -335,45 +336,20 @@ function writeMacOSKeychainPassword(
   account: string,
   password: string,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Use the system `security` tool instead of @napi-rs/keyring on macOS.
-    // Keychain ACLs are tied to the requesting binary; dev Bun paths change
-    // often enough that the native binding can trigger a GUI prompt on every
-    // boot. `/usr/bin/security` is stable and commonly already trusted by the
-    // item ACL. Password data goes through stdin, not argv.
-    const child = spawn(
-      "/usr/bin/security",
-      ["add-generic-password", "-s", service, "-a", account, "-U", "-w"],
-      { stdio: ["pipe", "ignore", "pipe"] },
-    );
-    let stderr = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new MasterKeyUnavailableError(
-          `macOS keychain write failed (${service}/${account}): ${
-            stderr.trim() || `security exited ${code}`
-          }`,
-        ),
+  // `/usr/bin/security` requires a terminal for its two password prompts.
+  // The shared helper allocates that PTY while keeping password data off argv.
+  return writeMacOSKeychainPasswordViaPty(service, account, password).catch(
+    (err: unknown) => {
+      // error-policy:J2 context-adding rethrow — failure to persist a new key
+      // must abort initialization or later ciphertext would become unreadable.
+      throw new MasterKeyUnavailableError(
+        `macOS keychain write failed (${service}/${account}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        { cause: err },
       );
-    });
-    // error-policy:J5 unhandled-rejection suppression — a stdin write EPIPE (child
-    // exited early) is observed via the `close` handler above, which rejects
-    // with the security stderr/exit code; this listener only prevents an
-    // unhandled 'error' event from crashing the process.
-    child.stdin.on("error", () => {});
-    child.stdin.write(`${password}\n${password}\n`, () => {
-      child.stdin.end();
-    });
-  });
+    },
+  );
 }
 
 /**

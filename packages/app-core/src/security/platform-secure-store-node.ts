@@ -1,6 +1,6 @@
 /**
  * Node-side OS secure-store backends for agent secrets: macOS Keychain (the
- * `security` CLI, passwords passed via stdin to keep them out of argv / `ps`),
+ * `security` CLI through a PTY helper whose secret arrives on stdin),
  * Linux libsecret (`secret-tool`), and an explicit unavailable backend on
  * platforms with no adapter. Exposes the platform factory plus availability and
  * env-gated (`ELIZA_WALLET_OS_STORE`) enablement checks for the wallet key path.
@@ -9,6 +9,8 @@ import { execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
+
+import { writeMacOSKeychainPassword } from "@elizaos/vault/macos-keychain-password";
 
 import {
   ELIZA_AGENT_VAULT_SERVICE,
@@ -24,51 +26,25 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+/** @internal Exported for the secure-store boundary regression test. */
+export function formatMacOSKeychainWriteError(err: unknown): string {
+  const rawStderr =
+    err &&
+    typeof err === "object" &&
+    "stderr" in err &&
+    typeof err.stderr === "string"
+      ? err.stderr.trim()
+      : "";
+  const fallback = err instanceof Error ? err.message : String(err);
+  return (rawStderr || fallback).trim().slice(0, 300);
+}
+
 function isDarwin(): boolean {
   return process.platform === "darwin";
 }
 
 function isLinux(): boolean {
   return process.platform === "linux";
-}
-
-/**
- * Write a password to the macOS Keychain via stdin to avoid argv exposure.
- * The `security add-generic-password` command reads from stdin when `-w`
- * is the last argument with no value. It prompts twice (password + retype),
- * so we write the value twice separated by a newline.
- */
-function keychainSetViaStdin(args: string[], password: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("security", args, {
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let stderr = "";
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        Object.assign(new Error(stderr.trim() || `security exited ${code}`), {
-          stderr,
-          code,
-        }),
-      );
-    });
-    // Swallow EPIPE if security exits before reading stdin (e.g. arg error).
-    // Without this, Node emits an unhandled error and may crash the process.
-    child.stdin.on("error", () => {});
-    // Write password twice (password + retype) then close stdin
-    child.stdin.write(`${password}\n${password}\n`, () => {
-      child.stdin.end();
-    });
-  });
 }
 
 function secretToolStoreWithStdin(
@@ -200,27 +176,19 @@ class MacOSKeychainPlatformSecureStore implements PlatformSecureStore {
   ): Promise<SecureStoreSetResult> {
     const account = keychainAccountForSecretKind(vaultId, kind);
     try {
-      // Pass password via stdin instead of argv to avoid exposure via `ps`.
-      // The `-w` flag (last, with no value) triggers stdin read mode.
-      await keychainSetViaStdin(
-        [
-          "add-generic-password",
-          "-s",
-          ELIZA_AGENT_VAULT_SERVICE,
-          "-a",
-          account,
-          "-U",
-          "-w",
-        ],
+      // The shared helper keeps the password on expect's stdin, then answers
+      // security's two terminal-only prompts through its child pseudo-terminal.
+      await writeMacOSKeychainPassword(
+        ELIZA_AGENT_VAULT_SERVICE,
+        account,
         value,
       );
       return { ok: true };
     } catch (err: unknown) {
-      const stderr = String((err as { stderr?: string }).stderr ?? err);
       return {
         ok: false,
         reason: "error",
-        message: stderr.trim().slice(0, 300),
+        message: formatMacOSKeychainWriteError(err),
       };
     }
   }

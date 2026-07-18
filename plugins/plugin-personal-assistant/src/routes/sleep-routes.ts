@@ -8,7 +8,8 @@
 import {
   createHealthSleepRouteHandler,
   type HealthSleepRouteContext,
-} from "@elizaos/plugin-health";
+} from "@elizaos/plugin-health/routes/sleep";
+import { ensureLifeOpsSchema } from "../lifeops/schema-bootstrap.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
@@ -25,11 +26,14 @@ type SleepRouteContext = HealthSleepRouteContext & {
 
 const handleHealthSleepRoutes =
   createHealthSleepRouteHandler<SleepRouteContext>({
-    createService: (ctx: SleepRouteContext): LifeOpsService | null => {
+    createService: async (
+      ctx: SleepRouteContext,
+    ): Promise<LifeOpsService | null> => {
       if (!ctx.state.runtime) {
         ctx.error(ctx.res, "Agent runtime is not available", 503);
         return null;
       }
+      await ensureLifeOpsSchema(ctx.state.runtime);
       return new LifeOpsService(ctx.state.runtime, {
         ownerEntityId: ctx.state.adminEntityId,
       });

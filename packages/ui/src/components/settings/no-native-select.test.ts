@@ -1,6 +1,6 @@
 /**
- * Static source-scan guard: fails if any `.tsx` under settings/ (plus
- * RoutingMatrix) hand-rolls a raw `<select>` instead of the canonical settings
+ * Keeps settings controls on the themed, agent-addressable select primitives.
+ * The static scan fails if any `.tsx` under settings/ (plus RoutingMatrix) hand-rolls a raw `<select>` instead of the canonical settings
  * controls. Reads files off disk — no render. Rationale below.
  */
 
@@ -39,17 +39,16 @@ function listTsxFiles(dir: string): string[] {
 describe("settings controls: no native <select>", () => {
   const files = [...listTsxFiles(settingsRoot), ...extraGuardedFiles];
 
-  it.each(files.map((f) => relative(settingsRoot, f)))(
-    "%s uses canonical settings controls, not a raw <select>",
-    (relPath) => {
-      const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
-      expect(
-        source.includes("<select"),
-        `${relPath} hand-rolls a native <select>. Use SettingsSelectRow ` +
-          `(Radix sheet select) or SettingsSegmentedRow (segmented control) ` +
-          `from ./settings-agent-rows instead — they are themed, 44px-touch, ` +
-          `and agent-addressable.`,
-      ).toBe(false);
-    },
-  );
+  it.each(
+    files.map((f) => relative(settingsRoot, f)),
+  )("%s uses canonical settings controls, not a raw <select>", (relPath) => {
+    const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
+    expect(
+      source.includes("<select"),
+      `${relPath} hand-rolls a native <select>. Use SettingsSelectRow ` +
+        `(Radix sheet select) or SettingsSegmentedRow (segmented control) ` +
+        `from ./settings-agent-rows instead — they are themed, 44px-touch, ` +
+        `and agent-addressable.`,
+    ).toBe(false);
+  });
 });

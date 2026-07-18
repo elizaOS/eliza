@@ -8,6 +8,7 @@
  * init runs without the optional third-party plugin present.
  */
 import type { IAgentRuntime, Plugin, TaskWorker, UUID } from "@elizaos/core";
+import { LIFEOPS_ACTIVITY_SIGNAL_SOURCES } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Isolate PA's own init wiring (registries, workers, policies, the scheduler
@@ -31,6 +32,7 @@ vi.mock("@elizaos/plugin-health", async (importOriginal) => ({
   createDefaultCircadianInsightContract: vi.fn(() => ({})),
 }));
 
+import { getSignalSourceRegistry } from "./lifeops/registries/signal-source-registry.js";
 import { personalAssistantPlugin } from "./plugin.js";
 
 const AGENT_ID = "00000000-0000-0000-0000-0000000000ab" as UUID;
@@ -39,11 +41,13 @@ interface RecordingRuntime {
   runtime: IAgentRuntime;
   taskWorkers: Map<string, TaskWorker>;
   registeredPlugins: Plugin[];
+  schemaMigrationCalls: unknown[][];
 }
 
 function createRecordingRuntime(): RecordingRuntime {
   const taskWorkers = new Map<string, TaskWorker>();
   const registeredPlugins: Plugin[] = [];
+  const schemaMigrationCalls: unknown[][] = [];
   const logger = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -62,6 +66,12 @@ function createRecordingRuntime(): RecordingRuntime {
     initPromise: Promise.resolve(),
     stopped: false,
     character: { name: "test-agent", settings: {} },
+    adapter: {
+      isReady: async () => true,
+      runPluginMigrations: async (...args: unknown[]) => {
+        schemaMigrationCalls.push(args);
+      },
+    },
     getTaskWorker: (name: string) => taskWorkers.get(name),
     registerTaskWorker: (worker: TaskWorker) => {
       taskWorkers.set(worker.name, worker);
@@ -84,7 +94,7 @@ function createRecordingRuntime(): RecordingRuntime {
       return noopCache.get(prop);
     },
   }) as unknown as IAgentRuntime;
-  return { runtime, taskWorkers, registeredPlugins };
+  return { runtime, taskWorkers, registeredPlugins, schemaMigrationCalls };
 }
 
 const LIFEOPS_TASK_NAME = "LIFEOPS_SCHEDULER";
@@ -106,12 +116,16 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
 
   it("registers the LifeOps worker identity even when the scheduler is disabled", async () => {
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
-    const { runtime, taskWorkers } = createRecordingRuntime();
+    const { runtime, schemaMigrationCalls, taskWorkers } =
+      createRecordingRuntime();
 
     await personalAssistantPlugin.init?.({}, runtime);
 
     const worker = taskWorkers.get(LIFEOPS_TASK_NAME);
     expect(worker).toBeDefined();
+    // Core startup owns schema ordering for a fully loaded plugin. The
+    // registry-only post-ready hook is the boundary that migrates routes.
+    expect(schemaMigrationCalls).toEqual([]);
     // Disabled worker keeps a valid identity but never executes.
     await expect(worker?.shouldRun?.(runtime)).resolves.toBe(false);
   });
@@ -126,5 +140,8 @@ describe("personalAssistantPlugin.init scheduler identity", () => {
     expect(worker).toBeDefined();
     // When enabled, shouldRun consults live app state (not a hardcoded false).
     expect(typeof worker?.shouldRun).toBe("function");
+    expect(getSignalSourceRegistry(runtime)?.sources().sort()).toEqual(
+      [...LIFEOPS_ACTIVITY_SIGNAL_SOURCES].sort(),
+    );
   });
 });

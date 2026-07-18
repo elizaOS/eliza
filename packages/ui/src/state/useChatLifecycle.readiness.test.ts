@@ -4,7 +4,13 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import type { AgentStatus } from "../api";
-import { shouldAwaitAgentReadiness } from "./types";
+import {
+  AGENT_STATES,
+  AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
+  deriveAgentReady,
+  LIFECYCLE_MESSAGES,
+  shouldAwaitAgentReadiness,
+} from "./types";
 import { readinessPollSignature } from "./useChatLifecycle";
 
 /**
@@ -17,6 +23,26 @@ import { readinessPollSignature } from "./useChatLifecycle";
 const status = (s: Partial<AgentStatus>): AgentStatus => s as AgentStatus;
 
 describe("shouldAwaitAgentReadiness (#8777 waking-up banner)", () => {
+  it("keeps the shared runtime-state constants and readiness fallback executable", () => {
+    expect(AGENT_STATES).toEqual(
+      new Set([
+        "not_started",
+        "starting",
+        "running",
+        "stopped",
+        "restarting",
+        "error",
+      ]),
+    );
+    expect(LIFECYCLE_MESSAGES.reset.success).toBe(
+      "Agent reset. Returning to first-run.",
+    );
+    expect(AGENT_TRANSFER_MIN_PASSWORD_LENGTH).toBe(4);
+    expect(
+      deriveAgentReady(status({ state: "running", model: "eliza-1" })),
+    ).toBe(true);
+  });
+
   it("polls when status is null/early (readiness unknown)", () => {
     expect(shouldAwaitAgentReadiness(null)).toBe(true);
   });

@@ -4,6 +4,7 @@
  * host closely enough that passive services cannot degrade while tests appear healthy.
  */
 import { KnowledgeGraphService, knowledgeGraphSchema } from "@elizaos/agent";
+import { elizaPluginSchema } from "@elizaos/agent/runtime/eliza-schema";
 import { ModelType, type Plugin } from "@elizaos/core";
 import {
   createRealTestRuntime,
@@ -38,6 +39,13 @@ const knowledgeGraphPlugin: Plugin = {
     "Runtime-owned entity and relationship graph required by LifeOps services.",
   schema: knowledgeGraphSchema,
   services: [KnowledgeGraphService],
+};
+
+const runtimeSchemaPlugin: Plugin = {
+  name: "eliza",
+  description:
+    "Core runtime tables required before application plugins run migrations.",
+  schema: elizaPluginSchema,
 };
 
 /**
@@ -127,6 +135,10 @@ export async function createLifeOpsTestRuntime(
     const result = await createRealTestRuntime({
       ...options,
       plugins: [
+        // Production registers the runtime-owned schema before app schemas;
+        // matching that order keeps SQL's post-migration search setup anchored
+        // to the real memories table instead of a partial plugin-only database.
+        runtimeSchemaPlugin,
         knowledgeGraphPlugin,
         schedulingPlugin,
         personalAssistantPlugin,

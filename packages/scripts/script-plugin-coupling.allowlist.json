@@ -202,6 +202,11 @@
     "reason": "facewear software-readiness gate; also asserts the removed plugin-smartglasses is gone"
   },
   {
+    "file": "scripts/cuda-continuity.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "CUDA continuity records the exact llama.cpp submodule commit exercised by the local-inference GPU workflow; the concrete submodule path is part of that evidence contract"
+  },
+  {
     "file": "scripts/generate-view-heroes.mjs",
     "tokens": [
       "plugins/plugin-app-control",

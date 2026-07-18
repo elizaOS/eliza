@@ -16,6 +16,7 @@ import {
   createLifeOpsActivitySignal,
   LifeOpsRepository,
 } from "../lifeops/repository.js";
+import { ensureLifeOpsSchema } from "../lifeops/schema-bootstrap.js";
 import { insertActivityEvent } from "./activity-tracker-repo.js";
 
 export type ActivityTrackerMode =
@@ -124,7 +125,7 @@ export class ActivityTrackerService extends Service {
     }
 
     try {
-      await LifeOpsRepository.bootstrapSchema(this.runtime);
+      await ensureLifeOpsSchema(this.runtime);
       this.handle = tracker.startActivityCollector({
         onEvent: (event) => {
           this.enqueueEvent(event);

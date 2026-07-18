@@ -76,13 +76,9 @@ import { ElizaCharacterPersistenceService } from "../services/character-persiste
 import { LocalFileStorageService } from "../services/file-storage.ts";
 import { GlobalPauseService } from "../services/global-pause/index.ts";
 import { HandoffService } from "../services/handoff/index.ts";
-import {
-  KnowledgeGraphService,
-  knowledgeGraphSchema,
-} from "../services/knowledge-graph/index.ts";
+import { KnowledgeGraphService } from "../services/knowledge-graph/index.ts";
 import { AgentMediaGenerationService } from "../services/media-generation.ts";
 import { OwnerBindingService } from "../services/owner-binding.ts";
-import { pendantSessionSchema } from "../services/pendant-session/index.ts";
 import { PendingPromptsService } from "../services/pending-prompts/index.ts";
 import { PermissionRegistry } from "../services/permissions-registry.ts";
 import { NotificationPushService } from "../services/push/notification-push-service.ts";
@@ -90,9 +86,12 @@ import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.
 import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { migrateWorkbenchScheduleTags } from "../triggers/workbench-migration.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
+import { elizaPluginSchema } from "./eliza-schema.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
 import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
+
+export { elizaPluginSchema } from "./eliza-schema.ts";
 
 export type ElizaPluginConfig = {
   workspaceDir?: string;
@@ -147,10 +146,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
     // Runtime-owned app_lifeops tables. Registered here so the SQL plugin
     // migrates the runtime data model whenever the agent runs.
-    schema: {
-      ...knowledgeGraphSchema,
-      ...pendantSessionSchema,
-    },
+    schema: elizaPluginSchema,
 
     services: [
       AgentEventService as ServiceClass,

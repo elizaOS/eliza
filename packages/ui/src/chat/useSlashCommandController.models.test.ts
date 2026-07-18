@@ -4,9 +4,9 @@
  * Model-catalog wiring for useSlashCommandController's "models" choice source:
  * the catalog is fetched only when a loaded command declares a "models"
  * dynamic arg, resolveChoices("models", ctx) answers per subcommand position
- * once it lands, describeChoice labels the values, and a failed fetch degrades
- * to no completions (logged, never a fake list) without polluting the command
- * catalog's error state.
+ * once it lands, describeChoice labels the values, and failed or legacy-server
+ * responses degrade without fabricating a role/effort catalog or polluting the
+ * command catalog's error state.
  */
 
 import type { CustomActionDef } from "@elizaos/shared";
@@ -20,7 +20,7 @@ const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
     listCommands:
       vi.fn<(surface?: string) => Promise<SlashCommandCatalogItem[]>>(),
     listCustomActions: vi.fn<() => Promise<CustomActionDef[]>>(),
-    getModelsCatalog: vi.fn<() => Promise<ModelCatalogResponse>>(),
+    getModelsCatalog: vi.fn<() => Promise<unknown>>(),
   }),
 );
 
@@ -217,6 +217,35 @@ describe("useSlashCommandController — models choice source", () => {
       }),
     ).toEqual([]);
     // The command catalog itself loaded fine — no false error state (#12784).
+    expect(result.current.error).toBe(false);
+    consoleError.mockRestore();
+  });
+
+  it("treats a legacy provider-only response as a quiet capability gap", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    listCommands.mockResolvedValue([MODEL_COMMAND]);
+    getModelsCatalog.mockResolvedValue({
+      providers: {
+        openrouter: [
+          { id: "openai/gpt-oss-120b", name: "GPT-OSS 120B", category: "chat" },
+        ],
+      },
+    });
+
+    const { result } = renderHook(() => useSlashCommandController());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(getModelsCatalog).toHaveBeenCalledTimes(1);
+    expect(consoleError).not.toHaveBeenCalled();
+    expect(
+      result.current.resolveChoices("models", {
+        commandKey: "model",
+        argIndex: 1,
+        precedingTokens: ["large"],
+      }),
+    ).toEqual([]);
     expect(result.current.error).toBe(false);
     consoleError.mockRestore();
   });

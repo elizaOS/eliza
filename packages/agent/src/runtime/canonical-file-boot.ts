@@ -286,7 +286,10 @@ export function applyCanonicalFileBootToConfig(
   const { text, audit } = composeCanonicalBootContext(manifest, deps);
   if (!text) return config;
 
-  const agents = (config.agents ?? {}) as NonNullable<ElizaConfig["agents"]>;
+  if (!config.agents) {
+    config.agents = {};
+  }
+  const agents = config.agents;
   const list = Array.isArray(agents.list) ? [...agents.list] : [];
   let idx = list.findIndex((a) => a?.default);
   if (idx < 0) {

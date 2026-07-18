@@ -1,13 +1,10 @@
 // @vitest-environment jsdom
-//
-// `useCloudState.handleCloudLogin` sign-in first-click behavior. With a
-// stored-but-EXPIRED Steward JWT and NO mounted Steward launcher
-// (registerStewardLoginLauncher has no production caller today, so the
-// dashboard runs launcher-less), the first click must drain the stale token and
-// proceed straight to the device-code flow — not enter the Steward branch,
-// which would throw "the Steward login surface is not mounted" and dead-end the
-// first click. A still-usable token and a mounted launcher keep the
-// Steward-branch behavior. jsdom with the API client mocked.
+/**
+ * Exercises Cloud login handoff and first-click recovery with a mocked API in
+ * jsdom. It covers stale Steward-token fallback plus the single-flight upgrade
+ * from server-only authentication to onboarding's renderer-token requirement,
+ * including preservation of the user-gesture popup across that handoff.
+ */
 
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -83,6 +80,8 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
 
   afterEach(() => {
     globalThis.fetch = realFetch;
+    client.setToken(null);
+    client.setBaseUrl(null, { persist: false });
     localStorage.clear();
     vi.restoreAllMocks();
   });
@@ -133,6 +132,374 @@ describe("useCloudState — handleCloudLogin with a stale Steward token and no l
       "info",
       4000,
     );
+  });
+
+  it("preserves the default cached-server-connected short-circuit", async () => {
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin();
+    });
+
+    expect(deviceCodeCalls()).toBe(0);
+  });
+
+  it("requires a client token for onboarding even when cached and fresh server status are connected", async () => {
+    getCloudStatusSpy.mockResolvedValue({
+      connected: true,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const params = makeParams();
+    const { result } = renderHook(() => useCloudState(params));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+
+    expect(deviceCodeCalls()).toBe(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+    expect(params.setActionNotice).not.toHaveBeenCalledWith(
+      "Already connected to Eliza Cloud.",
+      "info",
+      4000,
+    );
+  });
+
+  it("continues onboarding after an in-flight server-only login finishes without a client token", async () => {
+    const connectedStatus = {
+      connected: true,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>;
+    let finishServerStatus: (
+      response: Awaited<ReturnType<typeof client.getCloudStatus>>,
+    ) => void = () => {};
+    const serverStatus = new Promise<
+      Awaited<ReturnType<typeof client.getCloudStatus>>
+    >((resolve) => {
+      finishServerStatus = resolve;
+    });
+    getCloudStatusSpy
+      .mockImplementationOnce(() => serverStatus)
+      .mockResolvedValue(connectedStatus);
+    vi.spyOn(client, "getCloudCredits").mockResolvedValue({
+      balance: 10,
+      low: false,
+      critical: false,
+    } as Awaited<ReturnType<typeof client.getCloudCredits>>);
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    let ordinaryLogin: Promise<void> | undefined;
+    act(() => {
+      ordinaryLogin = result.current.handleCloudLogin();
+    });
+    await waitFor(() => expect(getCloudStatusSpy).toHaveBeenCalledTimes(1));
+
+    let onboardingLogin: Promise<void> | undefined;
+    act(() => {
+      onboardingLogin = result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+    finishServerStatus(connectedStatus);
+
+    await act(async () => {
+      await Promise.all([ordinaryLogin, onboardingLogin]);
+    });
+
+    expect(cloudLoginSpy).toHaveBeenCalledTimes(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+  });
+
+  it("closes a handed-off popup when the weaker flight obtains the required client token", async () => {
+    type LoginResponse = Awaited<ReturnType<typeof client.cloudLogin>>;
+    let finishOrdinaryLogin: (response: LoginResponse) => void = () => {};
+    const ordinaryResponse = new Promise<LoginResponse>((resolve) => {
+      finishOrdinaryLogin = resolve;
+    });
+    cloudLoginSpy.mockImplementationOnce(() => ordinaryResponse);
+    const popupState = {
+      closed: false,
+      close: vi.fn(() => {
+        popupState.closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    };
+    const popup = popupState as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(popup);
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    let ordinaryLogin: Promise<void> | undefined;
+    act(() => {
+      ordinaryLogin = result.current.handleCloudLogin(popup);
+    });
+    await waitFor(() => expect(cloudLoginSpy).toHaveBeenCalledOnce());
+
+    let onboardingLogin: Promise<void> | undefined;
+    act(() => {
+      onboardingLogin = result.current.handleCloudLogin(popup, {
+        requireClientAuth: true,
+      });
+    });
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(3600));
+    finishOrdinaryLogin({
+      ok: false,
+      sessionId: "",
+      browserUrl: "",
+      error: DEVICE_CODE_SENTINEL,
+    });
+
+    await act(async () => {
+      await Promise.all([ordinaryLogin, onboardingLogin]);
+    });
+
+    expect(cloudLoginSpy).toHaveBeenCalledOnce();
+    expect(popupState.close).toHaveBeenCalledOnce();
+    expect(result.current.elizaCloudLoginBusy).toBe(false);
+  });
+
+  it("single-flights concurrent onboarding upgrades and transfers their user-gesture popup", async () => {
+    type LoginResponse = Awaited<ReturnType<typeof client.cloudLogin>>;
+    let finishOrdinaryLogin: (response: LoginResponse) => void = () => {};
+    let finishOnboardingLogin: (response: LoginResponse) => void = () => {};
+    const ordinaryResponse = new Promise<LoginResponse>((resolve) => {
+      finishOrdinaryLogin = resolve;
+    });
+    const onboardingResponse = new Promise<LoginResponse>((resolve) => {
+      finishOnboardingLogin = resolve;
+    });
+    cloudLoginSpy
+      .mockImplementationOnce(() => ordinaryResponse)
+      .mockImplementationOnce(() => onboardingResponse);
+
+    const ordinaryPopupState = {
+      closed: false,
+      close: vi.fn(() => {
+        ordinaryPopupState.closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    };
+    const onboardingPopupState = {
+      closed: false,
+      close: vi.fn(() => {
+        onboardingPopupState.closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    };
+    const ordinaryPopup = ordinaryPopupState as unknown as Window;
+    const onboardingPopup = onboardingPopupState as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(onboardingPopup);
+
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    let ordinaryLogin: Promise<void> | undefined;
+    act(() => {
+      ordinaryLogin = result.current.handleCloudLogin(ordinaryPopup);
+    });
+    await waitFor(() => expect(cloudLoginSpy).toHaveBeenCalledTimes(1));
+
+    let firstOnboardingLogin: Promise<void> | undefined;
+    let secondOnboardingLogin: Promise<void> | undefined;
+    act(() => {
+      firstOnboardingLogin = result.current.handleCloudLogin(onboardingPopup, {
+        requireClientAuth: true,
+      });
+      secondOnboardingLogin = result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+    finishOrdinaryLogin({
+      ok: false,
+      sessionId: "",
+      browserUrl: "",
+      error: DEVICE_CODE_SENTINEL,
+    });
+
+    await waitFor(() => expect(cloudLoginSpy).toHaveBeenCalledTimes(2));
+    expect(ordinaryPopupState.closed).toBe(true);
+    expect(ordinaryPopupState.close).toHaveBeenCalledOnce();
+    expect(onboardingPopupState.closed).toBe(false);
+    expect(result.current.elizaCloudLoginBusy).toBe(true);
+
+    finishOnboardingLogin({
+      ok: false,
+      sessionId: "",
+      browserUrl: "",
+      error: DEVICE_CODE_SENTINEL,
+    });
+    await act(async () => {
+      await Promise.all([
+        ordinaryLogin,
+        firstOnboardingLogin,
+        secondOnboardingLogin,
+      ]);
+    });
+
+    expect(cloudLoginSpy).toHaveBeenCalledTimes(2);
+    expect(onboardingPopupState.close).toHaveBeenCalledTimes(1);
+    expect(result.current.elizaCloudLoginBusy).toBe(false);
+  });
+
+  it("hands off popup ownership when a weaker device-code poll expires", async () => {
+    vi.useFakeTimers();
+    type LoginResponse = Awaited<ReturnType<typeof client.cloudLogin>>;
+    let finishOnboardingLogin: (response: LoginResponse) => void = () => {};
+    const onboardingResponse = new Promise<LoginResponse>((resolve) => {
+      finishOnboardingLogin = resolve;
+    });
+    cloudLoginSpy
+      .mockResolvedValueOnce({
+        ok: true,
+        sessionId: "session-expired",
+        browserUrl: "https://elizacloud.ai/login/session-expired",
+      })
+      .mockImplementationOnce(() => onboardingResponse);
+    vi.spyOn(client, "cloudLoginPoll").mockResolvedValue({
+      status: "expired",
+      error: "Login session expired",
+    });
+    const ordinaryPopupState = {
+      closed: false,
+      close: vi.fn(() => {
+        ordinaryPopupState.closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    };
+    const onboardingPopupState = {
+      closed: false,
+      close: vi.fn(() => {
+        onboardingPopupState.closed = true;
+      }),
+      location: { href: "" },
+      opener: {},
+    };
+    const ordinaryPopup = ordinaryPopupState as unknown as Window;
+    const onboardingPopup = onboardingPopupState as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(onboardingPopup);
+
+    try {
+      const { result } = renderHook(() => useCloudState(makeParams()));
+      let ordinaryLogin: Promise<void> | undefined;
+      await act(async () => {
+        ordinaryLogin = result.current.handleCloudLogin(ordinaryPopup);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(cloudLoginSpy).toHaveBeenCalledOnce();
+
+      let onboardingLogin: Promise<void> | undefined;
+      act(() => {
+        onboardingLogin = result.current.handleCloudLogin(onboardingPopup, {
+          requireClientAuth: true,
+        });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(cloudLoginSpy).toHaveBeenCalledTimes(2);
+      expect(ordinaryPopupState.close).toHaveBeenCalledOnce();
+      expect(onboardingPopupState.closed).toBe(false);
+
+      finishOnboardingLogin({
+        ok: false,
+        sessionId: "",
+        browserUrl: "",
+        error: DEVICE_CODE_SENTINEL,
+      });
+      await act(async () => {
+        await Promise.all([ordinaryLogin, onboardingLogin]);
+      });
+
+      expect(onboardingPopupState.close).toHaveBeenCalledOnce();
+      expect(result.current.elizaCloudLoginBusy).toBe(false);
+    } finally {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not treat a local agent REST bearer as onboarding Cloud auth", async () => {
+    client.setBaseUrl("http://127.0.0.1:2508", { persist: false });
+    client.setToken("local-agent-token");
+    getCloudStatusSpy.mockResolvedValue({
+      connected: true,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const params = makeParams();
+    const { result } = renderHook(() => useCloudState(params));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+
+    expect(deviceCodeCalls()).toBe(1);
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+    expect(params.setActionNotice).not.toHaveBeenCalledWith(
+      "Already connected to Eliza Cloud.",
+      "info",
+      4000,
+    );
+  });
+
+  it("reauthenticates onboarding when the cached server is connected but the Steward JWT is expired", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(-60));
+    getCloudStatusSpy.mockResolvedValue({
+      connected: true,
+      enabled: true,
+    } as Awaited<ReturnType<typeof client.getCloudStatus>>);
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+
+    expect(deviceCodeCalls()).toBe(1);
+    expect(localStorage.getItem(STEWARD_TOKEN_KEY)).toBeNull();
+    expect(result.current.elizaCloudLoginError).toBe(DEVICE_CODE_SENTINEL);
+  });
+
+  it("does not reauthenticate when required client auth is already present", async () => {
+    localStorage.setItem(STEWARD_TOKEN_KEY, makeJwt(3600));
+    const { result } = renderHook(() => useCloudState(makeParams()));
+    act(() => {
+      result.current.setElizaCloudConnected(true);
+    });
+    await waitFor(() => expect(result.current.elizaCloudConnected).toBe(true));
+
+    await act(async () => {
+      await result.current.handleCloudLogin(null, {
+        requireClientAuth: true,
+      });
+    });
+
+    expect(deviceCodeCalls()).toBe(0);
   });
 
   it("a still-usable stored token keeps the Steward short-circuit (no device-code call)", async () => {

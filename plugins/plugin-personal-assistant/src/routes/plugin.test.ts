@@ -155,6 +155,39 @@ describe("LifeOps raw route owner/admin gate", () => {
     expect(res.writableEnded).toBe(false);
   });
 
+  it("dispatches authorized goals requests through the raw LifeOps handler", async () => {
+    process.env.ELIZA_API_TOKEN = "owner-token";
+    const route = findRoute("GET", "/api/lifeops/goals");
+    const res = createResponse();
+
+    await route.handler(
+      createRequest("/api/lifeops/goals", {
+        authorization: "Bearer owner-token",
+      }) as never,
+      res as never,
+      createRuntime() as never,
+    );
+
+    expect(res.writableEnded).toBe(false);
+  });
+
+  it("returns a service-unavailable response when the runtime is absent", async () => {
+    const res = createResponse();
+
+    await expect(
+      requireLifeOpsRouteOwnerAdminAccess({
+        req: createRequest("/api/lifeops/goals"),
+        res,
+        runtime: null,
+      }),
+    ).resolves.toBe(false);
+
+    expect(res.statusCode).toBe(503);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "Agent runtime is not available",
+    });
+  });
+
   it("allows trusted local UI calls without an actor header", async () => {
     const res = createResponse();
     const allowed = await requireLifeOpsRouteOwnerAdminAccess({
@@ -239,5 +272,10 @@ describe("LifeOps raw route owner/admin gate", () => {
     expect(JSON.parse(res.body)).toEqual({
       error: "Missing OAuth state",
     });
+  });
+
+  it("keeps goals and todos available through the route-only plugin", () => {
+    expect(findRoute("GET", "/api/lifeops/goals")).toBeDefined();
+    expect(findRoute("GET", "/api/lifeops/todos")).toBeDefined();
   });
 });

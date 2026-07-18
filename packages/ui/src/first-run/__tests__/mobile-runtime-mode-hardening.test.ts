@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 /**
- * Hardening coverage for `../mobile-runtime-mode.ts`. The sibling
+ * Hardens mobile runtime selection across native persistence and web fallbacks.
+ * The sibling
  * `../mobile-runtime-mode.test.ts` already covers the happy-path "persist
  * local mode" and "remove on empty target" cases against a native Capacitor
  * shell. This file fills the remaining gaps: pure-function normalization,
@@ -78,12 +79,14 @@ afterEach(async () => {
 });
 
 describe("normalizeMobileRuntimeMode", () => {
-  it.each(["remote-mac", "cloud", "cloud-hybrid", "local"] as const)(
-    "passes %s through unchanged",
-    (mode) => {
-      expect(normalizeMobileRuntimeMode(mode)).toBe(mode);
-    },
-  );
+  it.each([
+    "remote-mac",
+    "cloud",
+    "cloud-hybrid",
+    "local",
+  ] as const)("passes %s through unchanged", (mode) => {
+    expect(normalizeMobileRuntimeMode(mode)).toBe(mode);
+  });
 
   it("trims surrounding whitespace before matching", () => {
     expect(normalizeMobileRuntimeMode("  local  ")).toBe("local");
@@ -126,13 +129,15 @@ describe("readPersistedMobileRuntimeMode", () => {
     expect(readPersistedMobileRuntimeMode()).toBeNull();
   });
 
-  it.each(["remote-mac", "cloud", "cloud-hybrid", "local"] as const)(
-    "round-trips %s through localStorage",
-    (mode) => {
-      window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
-      expect(readPersistedMobileRuntimeMode()).toBe(mode);
-    },
-  );
+  it.each([
+    "remote-mac",
+    "cloud",
+    "cloud-hybrid",
+    "local",
+  ] as const)("round-trips %s through localStorage", (mode) => {
+    window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
+    expect(readPersistedMobileRuntimeMode()).toBe(mode);
+  });
 
   it("ignores garbage values written by an older build", () => {
     window.localStorage.setItem(
@@ -162,23 +167,20 @@ describe("persistMobileRuntimeModeForServerTarget", () => {
     ["elizacloud", "cloud"],
     ["elizacloud-hybrid", "cloud-hybrid"],
     ["local", "local"],
-  ] as const)(
-    "writes %s as %s to localStorage and Capacitor Preferences",
-    async (target, expected) => {
-      persistMobileRuntimeModeForServerTarget(target);
+  ] as const)("writes %s as %s to localStorage and Capacitor Preferences", async (target, expected) => {
+    persistMobileRuntimeModeForServerTarget(target);
 
-      expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
-        expected,
-      );
-      await vi.waitFor(() => {
-        expect(preferencesSetMock).toHaveBeenCalledWith({
-          key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
-          value: expected,
-        });
+    expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
+      expected,
+    );
+    await vi.waitFor(() => {
+      expect(preferencesSetMock).toHaveBeenCalledWith({
+        key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
+        value: expected,
       });
-      expect(preferencesRemoveMock).not.toHaveBeenCalled();
-    },
-  );
+    });
+    expect(preferencesRemoveMock).not.toHaveBeenCalled();
+  });
 
   it("clears a prior selection from localStorage when called with an empty target", async () => {
     window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, "local");

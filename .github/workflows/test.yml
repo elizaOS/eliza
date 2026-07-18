@@ -155,6 +155,9 @@ jobs:
       - name: Validate Windows command coverage contract
         run: node packages/scripts/ci-windows-command-coverage-contract.mjs
 
+      - name: Validate fork-safe homepage browser contract
+        run: node packages/scripts/quality-fork-browser-contract.mjs
+
       - name: Install alias-read guard parser dependency
         run: npm install --prefix "$RUNNER_TEMP/alias-read-guard-deps" --no-save --no-package-lock --ignore-scripts typescript@6.0.3
 

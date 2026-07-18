@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 /**
- * Unit coverage for the home-surface model-status hook: it stays `not-required`
- * for cloud/remote/unauthenticated runtimes and derives readiness from the hub
+ * Keeps the home surface from polling local inference outside local runtime
+ * mode. The hook stays `not-required` for cloud/remote/unauthenticated runtimes and derives readiness from the hub
  * fetch. Runtime-mode and the API client are mocked (jsdom, no network).
  */
 
@@ -113,20 +113,21 @@ afterEach(() => {
 });
 
 describe("useHomeModelStatus", () => {
-  it.each(["loading", "cloud", "remote"] as const)(
-    "does not poll local inference while runtime mode is %s",
-    async (mode) => {
-      setRuntimeMode(mode);
+  it.each([
+    "loading",
+    "cloud",
+    "remote",
+  ] as const)("does not poll local inference while runtime mode is %s", async (mode) => {
+    setRuntimeMode(mode);
 
-      const { result } = renderHook(() => useHomeModelStatus());
+    const { result } = renderHook(() => useHomeModelStatus());
 
-      await waitFor(() => {
-        expect(result.current.kind).toBe("not-required");
-      });
-      expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
-      expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
-    },
-  );
+    await waitFor(() => {
+      expect(result.current.kind).toBe("not-required");
+    });
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+    expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+  });
 
   it("polls local inference for local runtime mode", async () => {
     renderHook(() => useHomeModelStatus());

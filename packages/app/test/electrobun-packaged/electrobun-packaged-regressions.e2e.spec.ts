@@ -27,6 +27,7 @@ const PLUGINS_SELECTOR = '[data-testid="plugins-shell"]';
 // removed full-screen `startup-first-run-background` gate no longer exists.
 const FIRST_RUN_SELECTOR = '[data-testid="continuous-chat-overlay"]';
 const SETTINGS_ROUTE = "/settings";
+const SETTINGS_ADVANCED_ROUTE = "/settings/advanced";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";
 const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
@@ -49,13 +50,6 @@ function getApiBaseExpression(): string {
   return [
     "window.__ELIZAOS_APP_BOOT_CONFIG__?.apiBase",
     "window.__ELIZAOS_API_BASE__",
-  ].join(" ?? ");
-}
-
-function getDesktopRpcExpression(): string {
-  return [
-    "window.__ELIZA_ELECTROBUN_RPC__",
-    "window.__ELIZAOS_ELECTROBUN_RPC__",
   ].join(" ?? ");
 }
 
@@ -585,211 +579,53 @@ async function readVisiblePluginIds(
   return result.ids;
 }
 
-async function seedResettableState(
+async function assertSettingsResetControlsAbsent(
   harness: PackagedDesktopHarness,
 ): Promise<void> {
-  const result = await harness.eval<
-    EvalResult<{
-      firstRunComplete: string | null;
-      activeServer: string | null;
-    }>
-  >(
-    `(() => {
-      try {
-        localStorage.setItem("eliza:first-run-complete", "1");
-        localStorage.setItem(
-          "elizaos:active-server",
-          JSON.stringify({
-            id: "local:embedded",
-            kind: "local",
-            label: "This device",
-          }),
-        );
-        return {
-          ok: true,
-          firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-          activeServer: localStorage.getItem("elizaos:active-server"),
-        };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    })()`,
-  );
-
-  expect(result.ok, result.ok ? undefined : result.error).toBe(true);
-}
-
-async function triggerSettingsReset(
-  harness: PackagedDesktopHarness,
-): Promise<void> {
-  const buttonState = await waitForEval<EvalResult<{ label: string }>>(
-    harness,
-    `(() => {
-      try {
-        const shell = document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)});
-        if (!shell) {
-          ${getRouteNavigationScript(SETTINGS_ROUTE)}
-          return {
-            ok: false,
-            error: "Settings shell was not mounted; navigating to Settings.",
-          };
-        }
-        const resetByAgentId = document.querySelector(
-          '[data-agent-id="advanced-reset-open"]',
-        );
-        const buttons = Array.from(
-          document.querySelectorAll('[data-testid="settings-shell"] button'),
-        );
-        const resetButton =
-          resetByAgentId instanceof HTMLButtonElement
-            ? resetByAgentId
-            : buttons.find((button) =>
-                /reset everything/i.test((button.textContent || "").trim()),
-              );
-        if (!resetButton) {
-          const advancedSection = document.querySelector(
-            '[data-agent-id="section-advanced"]',
-          );
-          if (advancedSection instanceof HTMLButtonElement) {
-            advancedSection.click();
-          }
-        }
-        return resetButton
-          ? {
-              ok: true,
-              label: (resetButton.textContent || "").trim(),
-            }
-          : {
-              ok: false,
-              error: "Timed out waiting for the Settings reset button.",
-            };
-      } catch (error) {
-        return {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        };
-      }
-    })()`,
-    (current) => current.ok,
-    {
-      timeout: 20_000,
-      message: "Timed out waiting for the Settings reset button.",
-    },
-  );
-
-  expect(buttonState.ok, buttonState.ok ? undefined : buttonState.error).toBe(
-    true,
-  );
-
   const result = await waitForEval<
     EvalResult<{
-      label: string;
-      confirmClicked: boolean;
-      restartStubCalls: number;
+      route: string;
+      hash: string;
+      activeSettingsSection: string | null;
+      advancedContentReady: boolean;
+      resetOpenCount: number;
+      resetConfirmCount: number;
+      resetEverythingCount: number;
     }>
   >(
     harness,
     `(() => {
       try {
+        ${getRouteNavigationScript(SETTINGS_ADVANCED_ROUTE)}
         const shell = document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)});
         if (!shell) {
           return {
             ok: false,
-            error: "Settings shell disappeared before reset confirmation.",
+            error: "Settings shell was not mounted at the Advanced route.",
           };
         }
-        const rpc = ${getDesktopRpcExpression()};
-        window.confirm = () => true;
-        if (rpc?.request) {
-          const resetTest =
-            window.__ELIZA_PACKAGED_RESET_TEST__ ??
-            (window.__ELIZA_PACKAGED_RESET_TEST__ = {
-              messageBoxStubCalls: 0,
-              restartStubCalls: 0,
-            });
-          if (!resetTest.rpcPatched) {
-            const patchedRequest = Object.create(rpc.request);
-            patchedRequest.desktopShowMessageBox = async () => {
-              window.__ELIZA_PACKAGED_RESET_TEST__.messageBoxStubCalls += 1;
-              return { response: 0 };
-            };
-            patchedRequest.agentRestartClearLocalDb = async () => {
-              window.__ELIZA_PACKAGED_RESET_TEST__.restartStubCalls += 1;
-              return {
-                state: "running",
-                agentName: "PackagedDesktopTest",
-                model: undefined,
-                uptime: 0,
-                startedAt: Date.now(),
-              };
-            };
-            const patchedRpc = { ...rpc, request: patchedRequest };
-            window.__ELIZA_ELECTROBUN_RPC__ = patchedRpc;
-            window.__ELIZAOS_ELECTROBUN_RPC__ = patchedRpc;
-            resetTest.rpcPatched = true;
-          }
-        }
-        const resetTest = window.__ELIZA_PACKAGED_RESET_TEST__ ?? null;
-        if (resetTest?.confirmClicked) {
-          return {
-            ok: true,
-            label: "Reset Everything",
-            confirmClicked: true,
-            restartStubCalls: resetTest.restartStubCalls ?? 0,
-          };
-        }
-        const confirmButton = document.querySelector(
-          '[data-agent-id="advanced-reset-confirm"]',
-        );
-        if (confirmButton instanceof HTMLButtonElement) {
-          window.__ELIZA_PACKAGED_RESET_TEST__ = {
-            ...(window.__ELIZA_PACKAGED_RESET_TEST__ ?? {}),
-            confirmClicked: true,
-          };
-          confirmButton.click();
-          return {
-            ok: true,
-            label: (confirmButton.textContent || "").trim(),
-            confirmClicked: true,
-            restartStubCalls:
-              window.__ELIZA_PACKAGED_RESET_TEST__?.restartStubCalls ?? 0,
-          };
-        }
-        const resetByAgentId = document.querySelector(
-          '[data-agent-id="advanced-reset-open"]',
-        );
-        const buttons = Array.from(
-          document.querySelectorAll('[data-testid="settings-shell"] button'),
-        );
-        const resetButton =
-          resetByAgentId instanceof HTMLButtonElement
-            ? resetByAgentId
-            : buttons.find((button) =>
-                /reset everything/i.test((button.textContent || "").trim()),
-              );
-        if (!resetButton) {
-          const advancedSection = document.querySelector(
-            '[data-agent-id="section-advanced"]',
-          );
-          if (advancedSection instanceof HTMLButtonElement) {
-            advancedSection.click();
-          }
-          return {
-            ok: false,
-            error: "Settings reset button disappeared before click.",
-          };
-        }
-        resetButton.click();
+        const buttons = Array.from(document.querySelectorAll("button"));
         return {
-          ok: false,
-          error: "Clicked Settings reset button; waiting for confirmation handler.",
-          label: (resetButton.textContent || "").trim(),
-          confirmClicked: false,
-          restartStubCalls:
-            window.__ELIZA_PACKAGED_RESET_TEST__?.restartStubCalls ?? 0,
+          ok: true,
+          route: currentRoute,
+          hash: window.location.hash,
+          activeSettingsSection:
+            document
+              .querySelector('[data-agent-id^="section-"][aria-current="page"]')
+              ?.getAttribute("data-agent-id")
+              ?.replace(/^section-/, "") ?? null,
+          advancedContentReady: Boolean(
+            document.querySelector('[data-agent-id="advanced-export-open"]'),
+          ),
+          resetOpenCount: document.querySelectorAll(
+            '[data-agent-id="advanced-reset-open"]',
+          ).length,
+          resetConfirmCount: document.querySelectorAll(
+            '[data-agent-id="advanced-reset-confirm"]',
+          ).length,
+          resetEverythingCount: buttons.filter((button) =>
+            /reset everything/i.test((button.textContent || "").trim()),
+          ).length,
         };
       } catch (error) {
         return {
@@ -798,15 +634,26 @@ async function triggerSettingsReset(
         };
       }
     })()`,
-    (current) => current.ok && current.confirmClicked,
+    (current) =>
+      current.ok &&
+      current.route === SETTINGS_ROUTE &&
+      current.hash === "#advanced" &&
+      current.activeSettingsSection === "advanced" &&
+      current.advancedContentReady,
     {
       timeout: 30_000,
       message:
-        "Timed out waiting for the Settings reset click to enter the reset confirmation path.",
+        "Timed out waiting for packaged Advanced settings to finish rendering.",
     },
   );
 
   expect(result.ok, result.ok ? undefined : result.error).toBe(true);
+  if (!result.ok) {
+    return;
+  }
+  expect(result.resetOpenCount).toBe(0);
+  expect(result.resetConfirmCount).toBe(0);
+  expect(result.resetEverythingCount).toBe(0);
 }
 
 async function waitForResetUiState(
@@ -1193,7 +1040,7 @@ test("packaged desktop persists media, provider, and plugin state across relaunc
   });
 });
 
-test("packaged desktop reset from Settings returns the shell to first-run setup", async ({
+test("packaged desktop Advanced settings omits reset controls", async ({
   browserName: _browserName,
 }, testInfo) => {
   void _browserName;
@@ -1202,13 +1049,13 @@ test("packaged desktop reset from Settings returns the shell to first-run setup"
     "Packaged desktop regressions require a macOS, Windows, or Linux launcher.",
   );
 
-  await withPackagedHarness(async ({ api, harness }) => {
-    await openRouteAndWait(harness, SETTINGS_ROUTE, SETTINGS_SELECTOR);
-    await seedResettableState(harness);
-    await triggerSettingsReset(harness);
-    await waitForResetRequest(api);
-    await waitForResetUiState(harness);
-    await writeHarnessScreenshot(harness, testInfo, "reset-from-settings");
+  await withPackagedHarness(async ({ harness }) => {
+    await assertSettingsResetControlsAbsent(harness);
+    await writeHarnessScreenshot(
+      harness,
+      testInfo,
+      "advanced-settings-without-reset-controls",
+    );
   });
 });
 
@@ -1223,7 +1070,7 @@ test("packaged desktop reset from the application menu returns the shell to firs
 
   await withPackagedHarness(async ({ api, harness }) => {
     await openRouteAndWait(harness, SETTINGS_ROUTE, SETTINGS_SELECTOR);
-    await seedResettableState(harness);
+    await seedReturningInstallState(harness);
     await harness.menuAction("reset-app");
     await waitForResetRequest(api);
     await waitForResetUiState(harness);

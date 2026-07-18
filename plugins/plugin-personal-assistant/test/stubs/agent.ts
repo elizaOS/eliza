@@ -154,10 +154,8 @@ export function renderGroundedActionReply(args?: { text?: string }): string {
 
 export function createIntegrationTelemetrySpan() {
   return {
-    end: () => undefined,
-    recordException: () => undefined,
-    setAttribute: () => undefined,
-    setStatus: () => undefined,
+    success: () => undefined,
+    failure: () => undefined,
   };
 }
 

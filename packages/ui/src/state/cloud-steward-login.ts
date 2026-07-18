@@ -22,33 +22,11 @@ import {
   clearStoredStewardToken,
   readStoredStewardToken,
 } from "@elizaos/shared/steward-session-client";
-import { cloudTokenSecsRemaining } from "../api/client-cloud";
+import { isCloudAuthTokenUsable } from "../api/client-cloud";
 
 export interface StewardLoginResult {
   /** The Steward session JWT now present in localStorage. */
   token: string;
-}
-
-/**
- * Minimum lifetime (seconds) a stored Steward JWT must still have for the
- * short-circuit to trust it. A token at or under this margin is treated as
- * already dead: rather than hand the caller an expired session (which would
- * 401 the agent picker / subsequent calls in a loop) we clear it and force a
- * real re-auth.
- */
-const STEWARD_TOKEN_MIN_VALID_SECS = 10;
-
-/**
- * Whether a stored Steward token can be trusted to short-circuit sign-in.
- * Opaque (non-JWT) device-code / Remote session tokens have no decodable `exp`
- * (`cloudTokenSecsRemaining` → null) and are left to the legacy flow, matching
- * the cloud token-lifecycle refresh which also no-ops on a null result. A JWT
- * is usable only while it has more than a small safety margin of life left.
- */
-function isStoredStewardTokenUsable(token: string): boolean {
-  const secs = cloudTokenSecsRemaining(token);
-  if (secs === null) return true; // opaque/device-code token — not our concern
-  return secs > STEWARD_TOKEN_MIN_VALID_SECS;
 }
 
 /**
@@ -89,7 +67,7 @@ export function hasStewardLoginLauncher(): boolean {
  */
 export function hasUsableStoredStewardToken(): boolean {
   const existing = readStoredStewardToken()?.trim();
-  return Boolean(existing && isStoredStewardTokenUsable(existing));
+  return Boolean(existing && isCloudAuthTokenUsable(existing));
 }
 
 /**
@@ -103,7 +81,7 @@ export function hasUsableStoredStewardToken(): boolean {
  */
 export async function launchStewardLogin(): Promise<StewardLoginResult> {
   const existing = readStoredStewardToken()?.trim();
-  if (existing && isStoredStewardTokenUsable(existing)) {
+  if (existing && isCloudAuthTokenUsable(existing)) {
     return { token: existing };
   }
   if (existing) clearStoredStewardToken();

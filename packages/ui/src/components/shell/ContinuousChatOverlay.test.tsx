@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-//
-// Core behavior of the floating chat overlay: the mic ↔ send composer swap,
-// draft persistence, thread rendering, back-intent/prefill events, and the
-// press-and-hold copy gesture. Renders the real overlay in jsdom with the API
-// client + clipboard mocked (no network).
+
+/**
+ * Exercises the floating chat overlay's composer swap, draft persistence, thread rendering,
+ * navigation events, and copy gesture in jsdom with only network and clipboard boundaries mocked.
+ */
 
 import {
   act,
@@ -812,15 +812,12 @@ describe("ContinuousChatOverlay", () => {
     it.each([
       ["recording", { recording: true }],
       ["transcribing", { transcriptionMode: true }],
-    ] as const)(
-      "keeps the pulsing waveform neutral while %s",
-      (_label, override) => {
-        render(<ContinuousChatOverlay controller={makeController(override)} />);
-        const waveform = screen.getByTestId("chat-composer-mic");
-        expect(waveform.className).toContain("animate-pulse");
-        expect(waveform.className).not.toContain("text-accent");
-      },
-    );
+    ] as const)("keeps the pulsing waveform neutral while %s", (_label, override) => {
+      render(<ContinuousChatOverlay controller={makeController(override)} />);
+      const waveform = screen.getByTestId("chat-composer-mic");
+      expect(waveform.className).toContain("animate-pulse");
+      expect(waveform.className).not.toContain("text-accent");
+    });
 
     it("drops the pulse the moment the capture predicate clears", () => {
       const { rerender } = render(

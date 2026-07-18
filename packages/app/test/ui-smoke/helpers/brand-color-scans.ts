@@ -2,7 +2,7 @@
  * Brand-color scanner helpers that flag forbidden palette drift in UI-smoke
  * screenshots.
  */
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { bucket } from "../aesthetic-audit-rules";
 
 /**
@@ -36,6 +36,12 @@ export interface HoverScanResult {
   hoverFailures: string[];
 }
 
+/** Only controls that cannot receive a pointer hover are outside this audit. */
+export async function isActionableHoverTarget(btn: Locator): Promise<boolean> {
+  if (!(await btn.isVisible())) return false;
+  return btn.evaluate((el) => getComputedStyle(el).pointerEvents !== "none");
+}
+
 /** Tag primary buttons, read rest+hover backgrounds, flag brand violations. */
 export async function collectHoverViolations(
   page: Page,
@@ -46,7 +52,7 @@ export async function collectHoverViolations(
   const hoverFailures: string[] = [];
   for (let i = 0; i < count; i += 1) {
     const btn = buttons.nth(i);
-    if (!(await btn.isVisible().catch(() => false))) continue;
+    if (!(await isActionableHoverTarget(btn))) continue;
     const rest = await btn
       .evaluate((el) => getComputedStyle(el).backgroundColor)
       .catch(() => "");

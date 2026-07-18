@@ -74,6 +74,7 @@ const DEFAULT_DIRECT_CLOUD_API_BASE_URL = "https://api.elizacloud.ai";
 const STAGING_DIRECT_CLOUD_BASE_URL = "https://staging.elizacloud.ai";
 const STAGING_DIRECT_CLOUD_API_BASE_URL = "https://api-staging.elizacloud.ai";
 const DIRECT_CLOUD_HTTP_TIMEOUT_MS = 15_000;
+const CLOUD_AUTH_TOKEN_MIN_VALID_SECS = 10;
 const DIRECT_ELIZA_CLOUD_API_BY_HOST = new Map([
   ["api.elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
   ["elizacloud.ai", DEFAULT_DIRECT_CLOUD_API_BASE_URL],
@@ -491,14 +492,23 @@ function resolveDirectCloudClientApiBase(client: ElizaClient): string | null {
  * The Remote (device-code/pairing) flow mints its own session token via
  * `cloudLoginPollDirect` and persists it through the same steward-session store
  * (`writeStoredStewardToken`), so it resolves here through the canonical Steward
- * branch too. The client REST token is the last fallback.
+ * branch too. Every candidate is checked before use: opaque tokens remain valid,
+ * while expired or imminently-expiring JWTs cannot authenticate a request. A
+ * client REST bearer is a Cloud credential only when that client points
+ * directly at the Cloud control plane; a local/self-hosted agent token must
+ * never be promoted into a Steward session.
  */
 export function getCloudAuthToken(client?: ElizaClient): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
-  if (stewardToken) return stewardToken;
+  if (stewardToken && isCloudAuthTokenUsable(stewardToken)) return stewardToken;
 
-  const clientToken = client?.getRestAuthToken()?.trim();
-  return clientToken || null;
+  const clientToken =
+    client && isDirectCloudBase(client)
+      ? client.getRestAuthToken()?.trim()
+      : null;
+  return clientToken && isCloudAuthTokenUsable(clientToken)
+    ? clientToken
+    : null;
 }
 
 function readDirectCloudToken(client: ElizaClient): string | null {
@@ -526,6 +536,12 @@ export function cloudTokenSecsRemaining(token: string): number | null {
     // (opaque/device-code tokens); callers skip lifecycle refresh for it.
     return null;
   }
+}
+
+/** Whether a Cloud bearer has enough remaining lifetime to start an authed request. */
+export function isCloudAuthTokenUsable(token: string): boolean {
+  const secs = cloudTokenSecsRemaining(token);
+  return secs === null || secs > CLOUD_AUTH_TOKEN_MIN_VALID_SECS;
 }
 
 /**

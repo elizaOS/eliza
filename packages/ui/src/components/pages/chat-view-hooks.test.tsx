@@ -309,32 +309,29 @@ describe("useChatVoiceController voice playback unlock", () => {
     ["consent failure", "consent" as const],
     ["mint 404/failure", "mint" as const],
     ["pre-ready WS failure", "transport" as const],
-  ])(
-    "falls back to batch on the same mic tap after %s",
-    async (_label, reason) => {
-      realtimeHarness.state.available = true;
-      realtimeHarness.state.start.mockResolvedValueOnce({
-        kind: "fallback-to-batch",
-        reason,
-      });
-      const { result } = renderHook(() =>
-        useChatVoiceController({
-          ...baseOptions,
-          realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-          getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
-        }),
-      );
+  ])("falls back to batch on the same mic tap after %s", async (_label, reason) => {
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.start.mockResolvedValueOnce({
+      kind: "fallback-to-batch",
+      reason,
+    });
+    const { result } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
 
-      await act(async () => {
-        result.current.beginVoiceCapture("compose");
-        await Promise.resolve();
-        await Promise.resolve();
-      });
+    await act(async () => {
+      result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-      expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
-      expect(voiceState.startListening).toHaveBeenCalledTimes(1);
-    },
-  );
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+    expect(voiceState.startListening).toHaveBeenCalledTimes(1);
+  });
 
   it("starts batch directly when realtime eligibility is off", async () => {
     realtimeHarness.state.available = false;

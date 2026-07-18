@@ -2,8 +2,8 @@
 // @vitest-environment-options {"url":"http://localhost/"}
 
 /**
- * Coverage for `../deep-link-handler.ts` — the iOS / Android deep-link entry
- * that lands the user on the requested first-run target when the OS
+ * Routes iOS and Android deep links into the requested first-run target through
+ * `../deep-link-handler.ts` when the OS
  * dispatches a `eliza://first-run/runtime/<id>` URL.
  *
  * Two surfaces are exercised:
@@ -114,21 +114,22 @@ afterEach(() => {
 });
 
 describe("routeFirstRunDeepLink", () => {
-  it.each(["local", "cloud", "remote"] as const)(
-    "%s deep link forces first-run into that runtime target via the real reload path",
-    (target) => {
-      const handled = routeFirstRunDeepLink(
-        `eliza://first-run/runtime/${target}`,
-        URL_SCHEME,
-      );
+  it.each([
+    "local",
+    "cloud",
+    "remote",
+  ] as const)("%s deep link forces first-run into that runtime target via the real reload path", (target) => {
+    const handled = routeFirstRunDeepLink(
+      `eliza://first-run/runtime/${target}`,
+      URL_SCHEME,
+    );
 
-      expect(handled).toBe(true);
-      // The fix: it does REAL work (clears active-server + location.href reload)
-      // instead of a replaceState no-op that no live code reads (#13984).
-      expect(reloadIntoFirstRunRuntimeMock).toHaveBeenCalledTimes(1);
-      expect(reloadIntoFirstRunRuntimeMock).toHaveBeenCalledWith(target);
-    },
-  );
+    expect(handled).toBe(true);
+    // The fix: it does REAL work (clears active-server + location.href reload)
+    // instead of a replaceState no-op that no live code reads (#13984).
+    expect(reloadIntoFirstRunRuntimeMock).toHaveBeenCalledTimes(1);
+    expect(reloadIntoFirstRunRuntimeMock).toHaveBeenCalledWith(target);
+  });
 
   it("unknown step forces first-run WITHOUT a pinned target (user picks)", () => {
     const handled = routeFirstRunDeepLink(
@@ -413,19 +414,19 @@ describe("parseFirstRunRemoteConnectDeepLink", () => {
   // becomes an unattended credential against a pairing-enabled remote agent.
   // Documented in packages/app/docs/TEST_AUTH.md and asserted end-to-end in
   // packages/app-core/test/live-agent/auth-pairing-remote-connect.real.e2e.test.ts.
-  it.each(["token", "accessToken"])(
-    "drops a smuggled %s credential param, surfacing only the address (#13692)",
-    (credentialKey) => {
-      const result = parseFirstRunRemoteConnectDeepLink(
-        `eliza://first-run/runtime/remote?api=https://agent.example.com&${credentialKey}=smuggled-secret`,
-        URL_SCHEME,
-      );
-      expect(result).toEqual({ apiBase: "https://agent.example.com" });
-      expect(
-        (result as Record<string, unknown> | null)?.[credentialKey],
-      ).toBeUndefined();
-    },
-  );
+  it.each([
+    "token",
+    "accessToken",
+  ])("drops a smuggled %s credential param, surfacing only the address (#13692)", (credentialKey) => {
+    const result = parseFirstRunRemoteConnectDeepLink(
+      `eliza://first-run/runtime/remote?api=https://agent.example.com&${credentialKey}=smuggled-secret`,
+      URL_SCHEME,
+    );
+    expect(result).toEqual({ apiBase: "https://agent.example.com" });
+    expect(
+      (result as Record<string, unknown> | null)?.[credentialKey],
+    ).toBeUndefined();
+  });
 
   it("returns null for a link carrying ONLY a credential and no address (#13692 §4)", () => {
     expect(

@@ -7,6 +7,7 @@
  * case writes a throwaway plugin package into `node_modules`; another asserts
  * eliza.ts hardcodes no first-party route-loader fallbacks.
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -19,6 +20,7 @@ import {
 } from "./eliza.ts";
 
 const ENV_KEY = "ELIZA_SKIP_APP_ROUTE_PLUGINS";
+const nodeExecutable = process.versions.bun ? "node" : process.execPath;
 
 describe("getSkippedAppRoutePluginIds", () => {
   let savedValue: string | undefined;
@@ -160,6 +162,51 @@ describe("__loadAppRoutePluginFromSpecifierForTest", () => {
     expect(
       plugin.routes?.some((route) => route.path === "/api/orchestrator/status"),
     ).toBe(true);
+  });
+
+  it("loads the personal-assistant LifeOps routes by explicit specifier", async () => {
+    const appCoreRoot = path.resolve(import.meta.dirname, "../..");
+    const monorepoRoot = path.resolve(appCoreRoot, "../..");
+    const script = [
+      'const { __loadAppRoutePluginFromSpecifierForTest } = await import("./src/runtime/eliza.ts");',
+      "const plugin = await __loadAppRoutePluginFromSpecifierForTest(",
+      '  "@elizaos/plugin-personal-assistant/routes/plugin",',
+      '  "personalAssistantRoutesPlugin",',
+      ");",
+      "const paths = (plugin.routes ?? []).map((route) => route.path);",
+      'if (plugin.name !== "@elizaos/plugin-personal-assistant-routes") {',
+      '  throw new Error("Unexpected route plugin: " + plugin.name);',
+      "}",
+      'for (const requiredPath of ["/api/lifeops/goals", "/api/lifeops/todos"]) {',
+      "  if (!paths.includes(requiredPath)) {",
+      '    throw new Error("Missing LifeOps route: " + requiredPath);',
+      "  }",
+      "}",
+    ].join("\n");
+
+    // Runtime app-route imports are intentionally variable specifiers and
+    // therefore bypass Vite aliases. A source-conditioned Node process mirrors
+    // workspace development while keeping the default Vitest resolver stable.
+    execFileSync(
+      nodeExecutable,
+      [
+        "--conditions=eliza-source",
+        "--conditions=development",
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        script,
+      ],
+      {
+        cwd: appCoreRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          TSX_TSCONFIG_PATH: path.join(monorepoRoot, "tsconfig.json"),
+        },
+      },
+    );
   });
 });
 

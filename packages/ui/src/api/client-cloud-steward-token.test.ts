@@ -56,11 +56,51 @@ describe("getCloudAuthToken (Cloud = Steward everywhere)", () => {
     expect(getCloudAuthToken()).toBe("device-code-token");
   });
 
-  it("falls back to the client REST token last", () => {
+  it("falls back to the client REST token for a direct Cloud client", () => {
     const client = new ElizaClient();
+    client.setBaseUrl("https://api.elizacloud.ai", { persist: false });
     client.setToken("client-token");
     expect(getCloudAuthToken(client)).toBe("client-token");
     client.setToken(null);
+  });
+
+  it("does not promote a local agent REST bearer into Cloud auth", () => {
+    const client = new ElizaClient();
+    client.setBaseUrl("http://127.0.0.1:2508", { persist: false });
+    client.setToken("local-agent-token");
+
+    expect(getCloudAuthToken(client)).toBeNull();
+    client.setToken(null);
+  });
+
+  it("rejects expired Steward JWTs and falls back to the client REST token", () => {
+    const expired = makeJwt(Math.floor(Date.now() / 1000) - 60);
+    localStorage.setItem(STEWARD_TOKEN_KEY, expired);
+
+    expect(getCloudAuthToken()).toBeNull();
+
+    const client = new ElizaClient();
+    client.setBaseUrl("https://api.elizacloud.ai", { persist: false });
+    client.setToken("client-token");
+    expect(getCloudAuthToken(client)).toBe("client-token");
+    client.setToken(null);
+  });
+
+  it("rejects an expired Steward JWT mirrored by the client REST token", () => {
+    const expired = makeJwt(Math.floor(Date.now() / 1000) - 60);
+    localStorage.setItem(STEWARD_TOKEN_KEY, expired);
+    const client = new ElizaClient();
+    client.setToken(expired);
+
+    expect(getCloudAuthToken(client)).toBeNull();
+    client.setToken(null);
+  });
+
+  it("rejects Steward JWTs inside the request-start safety margin", () => {
+    const expiring = makeJwt(Math.floor(Date.now() / 1000) + 5);
+    localStorage.setItem(STEWARD_TOKEN_KEY, expiring);
+
+    expect(getCloudAuthToken()).toBeNull();
   });
 
   it("dispatches steward-token-sync when the client REST token changes", () => {

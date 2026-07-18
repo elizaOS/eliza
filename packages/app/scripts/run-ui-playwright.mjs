@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { getFreePort } from "../test/utils/get-free-port.mjs";
 import { resolveAuditAppOutput } from "./lib/audit-output.mjs";
 import { withElizaSourceNodeOptions } from "./lib/playwright-node-options.mjs";
+import { acquireUiSmokeViewLock as acquireOwnedUiSmokeViewLock } from "./lib/ui-smoke-view-lock.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
@@ -186,16 +187,6 @@ function sleepSync(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function readLockOwnerPid(lockDir) {
-  try {
-    const owner = fs.readFileSync(path.join(lockDir, "owner"), "utf8");
-    const pid = Number.parseInt(owner.split(/\r?\n/, 1)[0] ?? "", 10);
-    return Number.isFinite(pid) && pid > 0 ? pid : null;
-  } catch {
-    return null;
-  }
-}
-
 function isProcessAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -249,54 +240,15 @@ function cleanAuditAppOutput() {
 }
 
 function acquireUiSmokeViewLock() {
-  const staleAfterMs = 30 * 60 * 1000;
-  let announcedWait = false;
-
-  fs.mkdirSync(path.dirname(uiSmokeViewLockDir), { recursive: true });
-
-  for (;;) {
-    try {
-      fs.mkdirSync(uiSmokeViewLockDir);
-      fs.writeFileSync(
-        path.join(uiSmokeViewLockDir, "owner"),
-        `${process.pid}\n${new Date().toISOString()}\n`,
-      );
-      break;
-    } catch (error) {
-      if (error?.code !== "EEXIST") {
-        throw error;
-      }
-
-      let stat = null;
-      try {
-        stat = fs.statSync(uiSmokeViewLockDir);
-      } catch {
-        continue;
-      }
-
-      const ownerPid = readLockOwnerPid(uiSmokeViewLockDir);
-      if (
-        (ownerPid !== null && !isProcessAlive(ownerPid)) ||
-        Date.now() - stat.mtimeMs > staleAfterMs
-      ) {
-        removePathRecursive(uiSmokeViewLockDir, "ui smoke view lock");
-        continue;
-      }
-
-      if (!announcedWait) {
-        console.log("[ui-smoke] Waiting for another UI smoke run to finish...");
-        announcedWait = true;
-      }
-      sleepSync(250);
-    }
-  }
-
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    removePathRecursive(uiSmokeViewLockDir, "ui smoke view lock");
-  };
+  return acquireOwnedUiSmokeViewLock({
+    lockDir: uiSmokeViewLockDir,
+    removeLock: (lockDir) => removePathRecursive(lockDir, "ui smoke view lock"),
+    sleep: sleepSync,
+    isProcessAlive,
+    onWait: () => {
+      console.log("[ui-smoke] Waiting for another UI smoke run to finish...");
+    },
+  });
 }
 
 let releaseUiSmokeViewLock = null;

@@ -15,6 +15,17 @@ import {
 } from "../src/master-key.js";
 import { runtimePassphraseMasterKeyCaller } from "./vitest-assertion-shim.js";
 
+describe("MasterKeyUnavailableError", () => {
+  test("preserves a causal error for boundary diagnostics", () => {
+    const cause = new Error("keychain helper failed");
+    const error = new MasterKeyUnavailableError("vault key unavailable", {
+      cause,
+    });
+
+    expect(error.cause).toBe(cause);
+  });
+});
+
 describe("passphraseMasterKey", () => {
   test("returns a 32-byte key for a valid passphrase", async () => {
     const r = passphraseMasterKey({
@@ -148,13 +159,15 @@ describe("passphraseMasterKeyFromEnv", () => {
 describe("defaultMasterKey — fallback chain", () => {
   let prev: string | undefined;
   let prevDisable: string | undefined;
+  let prevDbus: string | undefined;
   beforeEach(() => {
     prev = process.env.ELIZA_VAULT_PASSPHRASE;
     prevDisable = process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
-    // Force the keychain "safe" path so the existing tests below
-    // exercise the keychain attempt regardless of host environment
-    // (e.g. headless Linux CI without D-Bus).
+    prevDbus = process.env.DBUS_SESSION_BUS_ADDRESS;
+    // The description tests exercise resolver ordering, independent of whether
+    // the host running the suite has a live desktop keychain session.
     delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
+    process.env.DBUS_SESSION_BUS_ADDRESS = "unix:path=/test/keychain-safe";
   });
   afterEach(() => {
     if (prev === undefined) delete process.env.ELIZA_VAULT_PASSPHRASE;
@@ -162,6 +175,8 @@ describe("defaultMasterKey — fallback chain", () => {
     if (prevDisable === undefined)
       delete process.env.ELIZA_VAULT_DISABLE_KEYCHAIN;
     else process.env.ELIZA_VAULT_DISABLE_KEYCHAIN = prevDisable;
+    if (prevDbus === undefined) delete process.env.DBUS_SESSION_BUS_ADDRESS;
+    else process.env.DBUS_SESSION_BUS_ADDRESS = prevDbus;
   });
 
   test.skipIf(process.platform === "linux")(
@@ -198,15 +213,15 @@ describe("defaultMasterKey — fallback chain", () => {
   test("describe surfaces both paths when passphrase env is set", () => {
     process.env.ELIZA_VAULT_PASSPHRASE = "fine-test-passphrase-env";
     const r = defaultMasterKey({ service: "test" });
-    expect(r.describe()).toContain("keychain://");
-    expect(r.describe()).toContain("passphrase://");
+    expect(r.describe()).toBe(
+      "keychain://test/vault.masterKey (fallback: passphrase://test)",
+    );
   });
 
   test("describe shows only keychain when passphrase env is unset", () => {
     delete process.env.ELIZA_VAULT_PASSPHRASE;
     const r = defaultMasterKey({ service: "test" });
-    expect(r.describe()).toContain("keychain://");
-    expect(r.describe()).not.toContain("passphrase://");
+    expect(r.describe()).toBe("keychain://test/vault.masterKey");
   });
 });
 

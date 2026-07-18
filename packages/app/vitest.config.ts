@@ -20,9 +20,9 @@ const unitExcludes = [
   "**/*.spec.{ts,tsx}",
   "test/ui-smoke/**",
   "test/electrobun-packaged/**",
-  // Script-level tests use Bun or Node test APIs and run through the package's
-  // dedicated `bun test` phase, outside Vitest's jsdom transform.
-  "scripts/**/*.test.{ts,tsx,mjs}",
+  // TypeScript script-level tests use Bun or Node test APIs and run through the
+  // package's dedicated `bun test` phase, outside Vitest's jsdom transform.
+  "scripts/**/*.test.{ts,tsx}",
 ];
 
 export default defineConfig({
@@ -110,11 +110,18 @@ export default defineConfig({
     ...baseConfig.test,
     environment: "jsdom",
     setupFiles: [path.join(here, "test/setup.ts")],
-    include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
-    exclude: unitExcludes,
     coverage: {
       ...baseConfig.test?.coverage,
-      include: ["src/**/*.{ts,tsx}"],
+      include: ["src/**/*.{ts,tsx}", "scripts/lib/ui-smoke-view-lock.mjs"],
     },
+    include: [
+      "src/**/*.test.{ts,tsx}",
+      "test/**/*.test.{ts,tsx}",
+      // The lock helper is plain ESM shared by the Playwright CLI. Its real
+      // temp-directory contract suite belongs in Vitest so the changed-file
+      // gate instruments the helper rather than silently skipping the test.
+      "scripts/ui-smoke-view-lock.test.mjs",
+    ],
+    exclude: unitExcludes,
   },
 });

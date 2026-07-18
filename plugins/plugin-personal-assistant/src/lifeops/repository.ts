@@ -11,10 +11,10 @@
 import crypto from "node:crypto";
 import {
   type EntityStore,
-  knowledgeGraphSchema,
   type RelationshipStore,
   resolveKnowledgeGraphService,
 } from "@elizaos/agent";
+import { elizaPluginSchema } from "@elizaos/agent/runtime/eliza-schema";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
 import type {
@@ -2428,6 +2428,8 @@ export class LifeOpsRepository {
    * doesn't flood logs.
    */
   private static telemetryMirrorFailures = new Map<string, number>();
+  /** Every bootstrap boundary for a runtime converges on one migration. */
+  private static schemaBootstraps = new WeakMap<IAgentRuntime, Promise<void>>();
 
   /**
    * Finance back-end repository. The finance tables (payment sources /
@@ -2475,7 +2477,32 @@ export class LifeOpsRepository {
     if (typeof adapter.isReady === "function" && !(await adapter.isReady())) {
       return;
     }
-    await adapter.runPluginMigrations(
+    const runPluginMigrations = adapter.runPluginMigrations.bind(adapter);
+    let bootstrap = LifeOpsRepository.schemaBootstraps.get(runtime);
+    if (!bootstrap) {
+      bootstrap = LifeOpsRepository.runSchemaBootstrap(
+        runtime,
+        runPluginMigrations,
+      );
+      LifeOpsRepository.schemaBootstraps.set(runtime, bootstrap);
+      // error-policy:J5 the caller observes this rejection below; this observer
+      // only evicts the failed flight so a later boundary can retry it.
+      void bootstrap.catch(() => {
+        if (LifeOpsRepository.schemaBootstraps.get(runtime) === bootstrap) {
+          LifeOpsRepository.schemaBootstraps.delete(runtime);
+        }
+      });
+    }
+    await bootstrap;
+  }
+
+  private static async runSchemaBootstrap(
+    runtime: IAgentRuntime,
+    runPluginMigrations: NonNullable<
+      NonNullable<IAgentRuntime["adapter"]>["runPluginMigrations"]
+    >,
+  ): Promise<void> {
+    await runPluginMigrations(
       [
         {
           name: "@elizaos/plugin-browser",
@@ -2527,13 +2554,14 @@ export class LifeOpsRepository {
           name: "@elizaos/plugin-scheduling",
           schema: schedulingDbSchema,
         },
-        // The knowledge-graph tables are runtime-owned (registered by the
-        // agent "eliza" plugin in production). Migrate them under the same
-        // plugin name here so test harnesses that only call
-        // bootstrapSchema still get the app_lifeops graph tables.
+        // The graph and pendant tables share the runtime-owned "eliza"
+        // migration identity. Reusing its canonical complete schema is
+        // essential: a partial schema makes the migrator interpret the omitted
+        // tables as removals and delete their data when destructive migrations
+        // are enabled.
         {
           name: "eliza",
-          schema: knowledgeGraphSchema,
+          schema: elizaPluginSchema,
         },
       ],
       {

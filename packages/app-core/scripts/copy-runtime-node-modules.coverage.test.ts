@@ -17,7 +17,9 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,11 +27,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  assertRequiredBundledPackagesLanded,
   assertTarSafeRuntimePaths,
   copyPackageDir,
   expandWorkspacePattern,
   getRuntimeDependencies,
   getRuntimeDependencyEntries,
+  getWorkspacePackageRuntimeCopyEntries,
   inferVersionFromBunEntryPath,
   isExactVersionSpecifier,
   isPackageCompatibleWithCurrentPlatform,
@@ -39,14 +43,18 @@ import {
   patchCopiedElevenLabsTarSafePaths,
   readWorkspacePatterns,
   recursiveRemoveErrorDetail,
+  selectCopyTargetNodeModules,
   selectResolvedCandidate,
   shouldCopyPackageEntry,
+  shouldCopyWorkspacePublishEntry,
   shouldKeepPackageRelativePath,
   shouldSkipPackagedAppCoreEntry,
+  shouldSkipPackagedDependency,
   visitFiles,
 } from "./copy-runtime-node-modules";
 
 let tmpDir: string;
+let workspaceTmpDir: string;
 
 function writeManifest(
   name: string,
@@ -60,10 +68,14 @@ function writeManifest(
 
 beforeEach(() => {
   tmpDir = mkdtempSync(path.join(tmpdir(), "copy-runtime-cov-"));
+  workspaceTmpDir = mkdtempSync(
+    path.join(process.cwd(), ".copy-runtime-workspace-cov-"),
+  );
 });
 
 afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
+  rmSync(workspaceTmpDir, { recursive: true, force: true });
 });
 
 describe("matchesRuntimeVariant", () => {
@@ -224,6 +236,22 @@ describe("shouldKeepPackageRelativePath", () => {
         "ffprobe-static",
       ),
     ).toBe(false);
+    expect(
+      shouldKeepPackageRelativePath(
+        "bin/darwin/arm64/ffprobe",
+        "darwin",
+        "arm64",
+        "ffprobe-static",
+      ),
+    ).toBe(true);
+    expect(
+      shouldKeepPackageRelativePath(
+        "bin/linux/x64/ffprobe",
+        "darwin",
+        "arm64",
+        "ffprobe-static",
+      ),
+    ).toBe(false);
   });
 
   it("drops dist-mobile output for @elizaos/agent", () => {
@@ -292,6 +320,280 @@ describe("shouldCopyPackageEntry", () => {
     const file = path.join(root, "index.js");
     writeFileSync(file, "");
     expect(shouldCopyPackageEntry(file, "pkg", root)).toBe(true);
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "keeps safe file symlinks and rejects broken or recursive directory links",
+    () => {
+      const root = mkdtempSync(path.join(tmpDir, "copy-entry-links-"));
+      const target = path.join(root, "target.js");
+      writeFileSync(target, "export {};\n");
+      const safeLink = path.join(root, "safe-link.js");
+      symlinkSync(target, safeLink);
+      expect(shouldCopyPackageEntry(safeLink, "pkg", root)).toBe(true);
+
+      const brokenLink = path.join(root, "broken-link.js");
+      symlinkSync(path.join(root, "missing.js"), brokenLink);
+      expect(shouldCopyPackageEntry(brokenLink, "pkg", root)).toBe(false);
+
+      const recursiveLink = path.join(root, "self");
+      symlinkSync(root, recursiveLink, "dir");
+      expect(shouldCopyPackageEntry(recursiveLink, "pkg", root)).toBe(false);
+    },
+  );
+});
+
+describe("workspace publish surface", () => {
+  it("derives runtime top-level entries from files and exports", () => {
+    mkdirSync(path.join(workspaceTmpDir, "src"));
+    writeFileSync(
+      path.join(workspaceTmpDir, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/coverage-fixture",
+        files: ["dist", "assets/icons", "!src/private"],
+        main: "./runtime/main.js",
+        module: "./esm/index.js",
+        exports: {
+          ".": {
+            types: "./types/index.d.ts",
+            "eliza-source": "./src/index.ts",
+            import: "./dist/index.js",
+            default: ["./dist/index.js", null],
+          },
+          "./feature": "./feature/index.js",
+        },
+      }),
+    );
+
+    const entries = getWorkspacePackageRuntimeCopyEntries(
+      "@elizaos/coverage-fixture",
+      workspaceTmpDir,
+    );
+    expect(entries).toEqual(
+      new Set([
+        "LICENSE",
+        "LICENSE.md",
+        "LICENSE.txt",
+        "README.md",
+        "package.json",
+        "dist",
+        "assets",
+        "runtime",
+        "esm",
+        "feature",
+      ]),
+    );
+    if (!entries) throw new Error("expected workspace publish entries");
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        workspaceTmpDir,
+        workspaceTmpDir,
+        entries,
+      ),
+    ).toBe(true);
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(workspaceTmpDir, "dist", "index.js"),
+        workspaceTmpDir,
+        entries,
+      ),
+    ).toBe(true);
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(workspaceTmpDir, "src", "private.ts"),
+        workspaceTmpDir,
+        entries,
+      ),
+    ).toBe(false);
+  });
+
+  it("returns no publish filter for external or invalid package manifests", () => {
+    const outside = mkdtempSync(path.join(tmpDir, "external-workspace-"));
+    writeFileSync(
+      path.join(outside, "package.json"),
+      JSON.stringify({ files: ["dist"] }),
+    );
+    expect(
+      getWorkspacePackageRuntimeCopyEntries("external", outside),
+    ).toBeNull();
+
+    writeFileSync(
+      path.join(workspaceTmpDir, "package.json"),
+      JSON.stringify({ files: ["dist", 42] }),
+    );
+    expect(
+      getWorkspacePackageRuntimeCopyEntries("invalid", workspaceTmpDir),
+    ).toBeNull();
+  });
+});
+
+describe("packaged dependency placement", () => {
+  it("applies platform and requester-specific dependency exclusions", () => {
+    expect(
+      shouldSkipPackagedDependency(
+        "@smithers-orchestrator/aws",
+        "@aws-sdk/client-codebuild",
+      ),
+    ).toBe(true);
+    expect(
+      shouldSkipPackagedDependency("ordinary-requester", "ordinary-package"),
+    ).toBe(false);
+    expect(
+      shouldSkipPackagedDependency(
+        "ordinary-requester",
+        "@node-llama-cpp/win32-ia32",
+      ),
+    ).toBe(true);
+  });
+
+  it("selects root, reusable ancestor, or requester-local node_modules", () => {
+    const rootDestDir = path.join(tmpDir, "bundle");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(rootDestDir, "plugins", "consumer");
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "pkg",
+        requesterDestDir: rootDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map(),
+        resolvedVersion: "1.0.0",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@elizaos/core",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["@elizaos/core", "1.0.0"]]),
+        resolvedVersion: "9.0.0",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "new-package",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map(),
+        resolvedVersion: "1.0.0",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "same-version",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["same-version", "1.2.3"]]),
+        resolvedVersion: "1.2.3",
+      }),
+    ).toBe(targetNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "version-conflict",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["version-conflict", "1.0.0"]]),
+        resolvedVersion: "2.0.0",
+      }),
+    ).toBe(path.join(requesterDestDir, "node_modules"));
+
+    const ancestor = path.join(rootDestDir, "plugins");
+    const ancestorNodeModules = path.join(ancestor, "node_modules");
+    const reusablePackage = path.join(ancestorNodeModules, "reuse-me");
+    mkdirSync(reusablePackage, { recursive: true });
+    writeFileSync(
+      path.join(reusablePackage, "package.json"),
+      JSON.stringify({ name: "reuse-me", version: "2.0.0" }),
+    );
+    expect(
+      selectCopyTargetNodeModules({
+        name: "reuse-me",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions: new Map([["reuse-me", "1.0.0"]]),
+        resolvedVersion: "2.0.0",
+      }),
+    ).toBe(ancestorNodeModules);
+  });
+});
+
+describe("required packaged runtime assertions", () => {
+  it("distinguishes missing packages from non-baseline packages", () => {
+    const targetNodeModules = path.join(tmpDir, "required", "node_modules");
+    const customPackage = path.join(targetNodeModules, "custom-package");
+    mkdirSync(customPackage, { recursive: true });
+    writeFileSync(
+      path.join(customPackage, "package.json"),
+      JSON.stringify({ name: "custom-package" }),
+    );
+    expect(() =>
+      assertRequiredBundledPackagesLanded(
+        targetNodeModules,
+        new Set(["custom-package"]),
+      ),
+    ).not.toThrow();
+    expect(() =>
+      assertRequiredBundledPackagesLanded(
+        targetNodeModules,
+        new Set(["missing-package"]),
+      ),
+    ).toThrow(/missing-package/);
+  });
+
+  it("requires every concrete baseline manifest entry to exist", () => {
+    const targetNodeModules = path.join(tmpDir, "baseline", "node_modules");
+    const coreDir = path.join(targetNodeModules, "@elizaos", "core");
+    mkdirSync(coreDir, { recursive: true });
+    writeFileSync(
+      path.join(coreDir, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/core",
+        main: "./dist/index.js",
+        module: "./dist/module.js",
+        exports: {
+          ".": {
+            types: "./dist/index.d.ts",
+            import: "./dist/index.js",
+          },
+          "./feature": [
+            "./feature",
+            { types: "./feature.d.ts", default: "./fallback.cjs" },
+          ],
+          "./wildcard": "./dist/*.js",
+          "./outside": "../outside.js",
+        },
+      }),
+    );
+    mkdirSync(path.join(coreDir, "dist"), { recursive: true });
+    writeFileSync(path.join(coreDir, "dist", "index.js"), "export {};\n");
+
+    expect(() =>
+      assertRequiredBundledPackagesLanded(
+        targetNodeModules,
+        new Set(["@elizaos/core"]),
+      ),
+    ).toThrow(/missing runtime entry/);
+
+    writeFileSync(path.join(coreDir, "dist", "module.js"), "export {};\n");
+    mkdirSync(path.join(coreDir, "feature"));
+    writeFileSync(path.join(coreDir, "feature", "index.js"), "export {};\n");
+    writeFileSync(path.join(coreDir, "fallback.cjs"), "module.exports = {};\n");
+    expect(() =>
+      assertRequiredBundledPackagesLanded(
+        targetNodeModules,
+        new Set(["@elizaos/core"]),
+      ),
+    ).not.toThrow();
   });
 });
 
@@ -453,14 +755,19 @@ describe("getRuntimeDependencyEntries", () => {
 });
 
 describe("normalizeResolvedPackage", () => {
-  it("resolves a real dir with a package.json to a ResolvedPackage", () => {
+  it("returns canonical paths for a real dir with a package.json", () => {
     const dir = mkdtempSync(path.join(tmpDir, "resolved-"));
     const manifestPath = path.join(dir, "package.json");
     writeFileSync(manifestPath, JSON.stringify({ name: "resolved-pkg" }));
 
     const resolved = normalizeResolvedPackage(dir);
-    expect(resolved).not.toBeNull();
-    expect(resolved?.packageJsonPath).toBe(manifestPath);
+    // macOS exposes its temp directory through /var while native realpath uses
+    // /private/var. The runtime copier must return one canonical candidate.
+    const canonicalDir = realpathSync.native(dir);
+    expect(resolved).toEqual({
+      sourceDir: canonicalDir,
+      packageJsonPath: path.join(canonicalDir, "package.json"),
+    });
   });
 
   it("returns null for a directory with no manifest and no tracked workspace match", () => {
