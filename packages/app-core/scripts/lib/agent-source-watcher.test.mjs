@@ -163,11 +163,11 @@ describe("startAgentSourceWatcher (integration)", () => {
     const fired = await waitUntil(() => calls.length > 0, 4000);
     expect(fired).toBe(true);
     expect(calls.some((c) => c.rel.includes("views.ts"))).toBe(true);
-    // A single edit reports a small changed-count (the bulk guard keys on this).
+    // A single edit reports a small changed-count for concise reload logging.
     expect(calls.every((c) => c.count <= 2)).toBe(true);
   });
 
-  it("reports a high changed-count for a bulk rewrite (so callers can skip it)", async () => {
+  it("reports a high changed-count for a bulk rewrite so callers can label it", async () => {
     root = mkdtempSync(path.join(tmpdir(), "agent-watch-bulk-"));
     const srcDir = path.join(root, "plugins", "plugin-x", "src");
     mkdirSync(srcDir, { recursive: true });
@@ -198,8 +198,8 @@ describe("startAgentSourceWatcher (integration)", () => {
 
     const fired = await waitUntil(() => calls.length > 0, 4000);
     expect(fired).toBe(true);
-    // macOS can coalesce fs.watch events, but burst rewrites still report more
-    // than the default bulk threshold used by dev-ui.
+    // macOS can coalesce fs.watch events, but burst rewrites still report a
+    // visibly larger generation than a normal hand edit.
     expect(Math.max(...calls.map((c) => c.count))).toBeGreaterThan(4);
   });
 });

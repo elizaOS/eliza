@@ -9,7 +9,8 @@
  * followed imports into `dist/` and reloaded mid-build, so it had to be
  * disabled; this never does.
  *
- * dev-ui.mjs wires `onChange` to the API supervisor's `restart()`.
+ * dev-ui.mjs feeds `onChange` into a readiness-gated reload queue, which asks
+ * the API supervisor to restart only after the current child is healthy.
  */
 
 import { existsSync, readdirSync, watch } from "node:fs";
@@ -101,8 +102,8 @@ export function isReloadableChangePath(absPath) {
  * @param {(relPath: string, changedCount: number) => void} params.onChange
  *   Debounced; receives one sample path (relative to `root`, or "source" when
  *   the filename is unknown) and the number of DISTINCT files that changed in
- *   the window — so the caller can ignore bulk rewrites (a git reset / checkout
- *   / build touches many files at once; a human edit touches one or a few).
+ *   the window. The caller can label bulk rewrites (a git reset / checkout
+ *   touches many files at once) while still coalescing them into one reload.
  * @param {(dir: string, err: Error) => void} [params.onError] Per-dir watch
  *   setup failure (e.g. a platform without recursive watch).
  * @param {number} [params.debounceMs]

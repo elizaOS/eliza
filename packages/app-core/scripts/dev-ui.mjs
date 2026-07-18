@@ -23,6 +23,7 @@ import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
 import * as JSON5Module from "json5";
+import { createAgentSourceReloadQueue } from "./lib/agent-source-reload-queue.mjs";
 import { startAgentSourceWatcher } from "./lib/agent-source-watcher.mjs";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
@@ -226,11 +227,6 @@ const verboseApiLogs = process.env.ELIZA_DEV_VERBOSE_LOGS !== "0";
 // why this no longer needs the opt-in / concurrent-build auto-disable dance.
 // Opt out with ELIZA_DEV_NO_WATCH=1.
 const skipSourceWatch = process.env.ELIZA_DEV_NO_WATCH === "1";
-// More distinct source files than this changing in one debounce window is a
-// git reset / checkout / build (churn), not a hand edit — skip the reload.
-// Override with ELIZA_DEV_HOT_RELOAD_BULK_LIMIT.
-const HOT_RELOAD_BULK_CHANGE_LIMIT =
-  Number(process.env.ELIZA_DEV_HOT_RELOAD_BULK_LIMIT) || 4;
 const DEV_TEST_MOCK_ENV_KEYS = [
   "ELIZA_MOCK_GOOGLE_BASE",
   "ELIZA_MOCK_TWILIO_BASE",
@@ -897,6 +893,8 @@ let apiProcess = null;
 let viteProcess = null;
 /** @type {{ count: number, close: () => void } | null} */
 let sourceWatcher = null;
+/** @type {ReturnType<typeof createAgentSourceReloadQueue> | null} */
+let sourceReloadQueue = null;
 let shuttingDown = false;
 let vitePluginBuildAttempted = false;
 let viteRestartCount = 0;
@@ -927,6 +925,10 @@ function cleanup(exitCode = 0) {
   if (sourceWatcher) {
     sourceWatcher.close();
     sourceWatcher = null;
+  }
+  if (sourceReloadQueue) {
+    sourceReloadQueue.close();
+    sourceReloadQueue = null;
   }
   terminateChild(viteProcess, "SIGTERM");
   terminateChild(apiProcess, "SIGTERM");
@@ -1342,30 +1344,29 @@ if (uiOnly) {
   apiSupervisor.start();
 
   // Agent hot-reload: bounce the API child when backend source changes. The
-  // watcher only sees `*/src` (never `dist/`), and a restart fires only when the
-  // agent is currently healthy — so a build, or a change during boot, can never
-  // kill an in-progress boot. A booting agent already loads the latest source.
+  // watcher only sees `*/src` (never `dist/`), while the reload queue waits for
+  // runtime readiness. Changes during boot or a bulk checkout therefore cause
+  // one restart after the tree settles instead of killing the boot or leaving a
+  // module imported early in that boot stale for the rest of the session.
   if (useWatch) {
+    sourceReloadQueue = createAgentSourceReloadQueue({
+      isReady: () => isAgentReadyNow(API_PORT),
+      restart: () => apiSupervisor.restart(),
+      isShuttingDown: () => shuttingDown,
+      onReload: ({ relPath, changedCount }) => {
+        const sourceLabel =
+          changedCount > 1
+            ? `${changedCount} source files (e.g. ${relPath})`
+            : relPath;
+        console.log(
+          `\n  ${green(logPrefix)} ${dim(`Source change (${sourceLabel}) — reloading agent…`)}`,
+        );
+      },
+    });
     sourceWatcher = startAgentSourceWatcher({
       root: apiSpawnCwd,
       onChange: (relPath, changedCount) => {
-        // A git reset/checkout/branch-switch or a build rewrites many files at
-        // once — that is churn, not a developer edit. Don't bounce the agent
-        // for it (the boots/502s would storm); a single restart can't track a
-        // moving tree anyway. A real edit touches one or a few files.
-        if (changedCount > HOT_RELOAD_BULK_CHANGE_LIMIT) {
-          console.log(
-            `\n  ${green(logPrefix)} ${dim(`Bulk change (${changedCount} files, e.g. ${relPath}) — skipping agent reload (looks like a reset/build).`)}`,
-          );
-          return;
-        }
-        void (async () => {
-          if (!(await isAgentReadyNow(API_PORT))) return;
-          console.log(
-            `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
-          );
-          apiSupervisor.restart();
-        })();
+        sourceReloadQueue?.requestReload({ relPath, changedCount });
       },
       onError: (dir, err) => {
         console.log(
