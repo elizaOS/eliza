@@ -358,6 +358,7 @@ function FilesViewBody() {
   const [restricted, setRestricted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
   const [facet, setFacet] = useState<FileFacet>("all");
   const [query, setQuery] = useState("");
   const [deletingName, setDeletingName] = useState<string | null>(null);
@@ -423,15 +424,25 @@ function FilesViewBody() {
     });
   }, [facet, files, query]);
 
-  const handleDownload = useCallback(async (file: StoredFile) => {
-    const url = resolveAppAssetUrl(file.url);
-    const filename = file.fileName || filenameForMime(file.mimeType);
-    try {
-      await downloadAttachment(url, filename);
-    } catch {
-      // Download failed for this transport — nothing more we can do client-side.
-    }
-  }, []);
+  const handleDownload = useCallback(
+    async (file: StoredFile) => {
+      const url = resolveAppAssetUrl(file.url);
+      const filename = file.fileName || filenameForMime(file.mimeType);
+      setDownloadError("");
+      try {
+        await downloadAttachment(url, filename);
+      } catch (err) {
+        setDownloadError(
+          t("filesview.downloadFailed", {
+            name: filename,
+            message: err instanceof Error ? err.message : "error",
+            defaultValue: "Could not download {{name}}: {{message}}",
+          }),
+        );
+      }
+    },
+    [t],
+  );
   const retryControl = useAgentElement<HTMLButtonElement>({
     id: "files-retry-load",
     role: "button",
@@ -533,6 +544,11 @@ function FilesViewBody() {
       {facetBar}
 
       <div className="flex min-h-0 flex-1 flex-col gap-4">
+        {downloadError ? (
+          <div role="alert" className="text-sm text-danger">
+            {downloadError}
+          </div>
+        ) : null}
         {error ? (
           <div
             role="alert"

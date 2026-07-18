@@ -1010,7 +1010,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const transcribeCloudAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      return transcribeCloudWav(audio, { signal });
+      return transcribeCloudWav(audio, {
+        signal,
+        configuredCloudOrigin: configuredCloudVoiceOrigin(),
+        cloudSessionToken: getCloudAuthToken(),
+      });
     },
     [],
   );

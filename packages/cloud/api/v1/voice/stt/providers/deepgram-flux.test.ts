@@ -414,7 +414,7 @@ describe("Deepgram Flux realtime adapter", () => {
       }),
     ).toMatchObject({
       eagerEotThreshold: 0.35,
-      eotThreshold: 0.8,
+      eotThreshold: 0.9,
       eotTimeoutMs: 5_000,
     });
     expect(() =>

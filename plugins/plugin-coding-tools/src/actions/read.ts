@@ -19,6 +19,7 @@ import {
 
 import {
   failureToActionResult,
+  fencePreformatted,
   readNumberParam,
   readPositiveIntSetting,
   readStringParam,
@@ -80,7 +81,13 @@ async function finalizeReadResult(params: {
   );
 
   if (params.callback) {
-    await params.callback({ text: formatted, source: "coding-tools" });
+    // Fenced (#16563): line-numbered file content is the richest preformatted
+    // payload of all — unfenced, Discord's markdown pass eats `*`/`_` pairs
+    // and embedded fences break the message layout.
+    await params.callback({
+      text: fencePreformatted(formatted),
+      source: "coding-tools",
+    });
   }
 
   return successActionResult(formatted, {

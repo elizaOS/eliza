@@ -47,6 +47,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   CodingWorkspaceService,
+  createGitHubPatProvider,
   DiffGateBlockedError,
 } from "../services/workspace-service.js";
 
@@ -108,6 +109,26 @@ afterEach(() => {
   for (const root of roots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+describe("GitHub workspace provider repository boundary", () => {
+  it("rejects malformed repository identifiers before constructing a client", async () => {
+    const createClient = vi.fn();
+    const provider = createGitHubPatProvider({ createClient });
+
+    await expect(
+      provider.branchExists("https://example.com/not-github/repo", "feature", {
+        id: "credential-1",
+        type: "pat",
+        token: "workspace-token",
+        repo: "https://github.com/example/repo.git",
+        permissions: ["contents:read"],
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+        provider: "github",
+      }),
+    ).rejects.toThrow("Invalid GitHub repository format");
+    expect(createClient).not.toHaveBeenCalled();
+  });
 });
 
 describe("CodingWorkspaceService.createPR diff-review boundary", () => {

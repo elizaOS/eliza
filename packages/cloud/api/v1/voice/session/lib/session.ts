@@ -76,6 +76,22 @@ const REVOCATION_POLL_MS = 400;
  * and severs fail-closed instead of streaming unbounded paid audio.
  */
 const MAX_OUTSTANDING_METER_WINDOWS = 2;
+/**
+ * Voice cannot wait for the generic 180-character phrase ceiling: short spoken
+ * replies often have no punctuation until the model's final token, which put
+ * ~2.8s of generation after `llm_first_text` on the first-audio path. Emit a
+ * speakable clause after a small token-sized prefix; Cartesia's continuation
+ * context preserves prosody across the resulting chunks.
+ */
+const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
+/**
+ * Cartesia's server buffers streamed transcript for up to 3000ms by default
+ * before starting synthesis, which measured ~2.7s of the speaking_start gap on
+ * staging even after phrases were sent early. The realtime session already
+ * batches text into speakable clauses via PhraseAggregator, so stacking the
+ * provider's own aggregation window on top is pure added latency.
+ */
+const VOICE_TTS_MAX_BUFFER_DELAY_MS = 250;
 
 export type { VoiceSessionDownlink } from "@/lib/voice-session/ws-handler";
 
@@ -101,6 +117,8 @@ export interface VoiceSessionConfig {
   elizaAuthorization: string;
   elizaModel: string;
   fetchImpl?: typeof fetch;
+  /** Session-start DB/tenancy warmup, injected only by the live Worker route. */
+  prewarmElizaContext?: () => Promise<void>;
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -241,6 +259,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }, msUntilExp);
 
     this.state = "listening";
+    // Warm immutable tenancy/DB context while the user is beginning to speak,
+    // instead of serializing the first Hyperdrive lookup after stt_final. This
+    // is read-only and best-effort; the turn still performs normal validation
+    // if warmup fails or does not finish in time.
+    if (this.config.prewarmElizaContext) {
+      void this.config.prewarmElizaContext().catch(() => undefined);
+    }
     // The session-level trace span id is stable until the first turn mints its own.
     const sessionTrace = this.mintTraceId("session");
     this.currentTraceId = sessionTrace;
@@ -471,18 +496,22 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   ): Promise<void> {
     const abort = new AbortController();
     this.llmAbort = abort;
-    const phrase = new PhraseAggregator();
+    const phrase = new PhraseAggregator({
+      maxBufferChars: VOICE_TTS_FIRST_CLAUSE_CHARS,
+      preferWordBoundaryAtMax: true,
+    });
     this.phrase = phrase;
 
     let tts: CartesiaSonicTtsStream | null = null;
-    // Held phrase (see the streaming loop below): kept back by one so the
-    // terminal phrase can be sent with continue:false to close the Cartesia
-    // context, rather than an empty-transcript finish() the live API rejects.
+    // Held terminal suffix (see the streaming loop below): Cartesia requires a
+    // non-empty final request carrying continue:false. We retain only the last
+    // word of each complete phrase, not the whole phrase, so synthesis can begin
+    // immediately while preserving a real terminal request for stream close.
     let pendingPhrase: string | null = null;
     const ensureTts = (): CartesiaSonicTtsStream => {
       if (tts) return tts;
       tts = this.cartesiaAdapter.createStream(
-        { traceId },
+        { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
         {
           onFirstAudio: () => {
             if (this.currentVoiceTurnId !== traceId) return;
@@ -506,9 +535,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
               code: err.code ?? "tts_error",
               retryable: true,
             });
+            // Prewarming means TTS can fail while the LLM is still generating.
+            // Abort that upstream work before finishTurn clears the controller,
+            // otherwise a failed voice turn can keep consuming model resources.
+            abort.abort();
             // Close out the failed turn so the client gets usage + returns to
-            // listening, instead of the session being stuck on a dead turn
-            // until a later barge-in or teardown.
+            // listening, instead of the session being stuck on a dead turn.
             this.finishTurn(traceId);
           },
         },
@@ -518,6 +550,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     };
 
     try {
+      // Open Cartesia in parallel with the LLM request. Previously the provider
+      // WebSocket was created lazily only after a complete speakable phrase had
+      // arrived, putting its DNS/TLS/WebSocket handshake directly on the
+      // first-audio critical path. A turn that is interrupted or produces no
+      // speakable output cancels this idle context below.
+      const prewarmedTts = ensureTts();
+      // Cancellation before the provider's open event rejects `opened`. This
+      // turn does not await readiness because outbound phrases queue in the
+      // adapter, so consume that designed rejection on fast teardown.
+      void prewarmedTts.opened.catch(() => undefined);
+
       const result = await streamElizaConversation(
         {
           endpoint: this.config.elizaEndpoint,
@@ -538,14 +581,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             this.firstLlmTextEmitted = true;
             this.send({ t: "llm_first_text", traceId });
           }
-          // Cartesia closes a synthesis context via the FINAL phrase carrying
-          // `continue:false` (verified against the LIVE API: a real terminal
-          // phrase with continue:false yields `done`; an empty-transcript
-          // request is rejected with "No valid transcripts passed"). So a phrase
-          // is only safe to send once we know whether ANOTHER follows. We hold
-          // back exactly one phrase: when a new phrase arrives, flush the held
-          // one with continue:true; the held phrase at stream-end is the
-          // terminal one and is sent with continue:false.
+          // Cartesia closes a synthesis context via the FINAL non-empty phrase
+          // carrying continue:false. Holding a whole sentence until LLM stream
+          // completion added seconds to first audio for one-sentence replies.
+          // Send the speakable prefix immediately and retain only its last word
+          // as the eventual terminal phrase. A following phrase first flushes
+          // the retained suffix with continue:true.
           const phrases = phrase.push(delta);
           for (const p of phrases) {
             this.turnTtsChars += p.length;
@@ -553,7 +594,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             if (pendingPhrase !== null) {
               stream.sendPhrase({ text: pendingPhrase, continueContext: true });
             }
-            pendingPhrase = p;
+            const split = splitTerminalSuffix(p);
+            if (split) {
+              stream.sendPhrase({ text: split.prefix, continueContext: true });
+              pendingPhrase = split.suffix;
+            } else {
+              pendingPhrase = p;
+            }
           }
         },
       );
@@ -585,12 +632,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // LIVE Cartesia API rejects.
         ensureTts().sendPhrase({ text: pendingPhrase, continueContext: false });
         pendingPhrase = null;
-      } else if (!tts) {
-        // No speakable output at all (empty LLM reply): close the turn.
+      } else {
+        // No speakable output at all (empty LLM reply). The socket was opened
+        // speculatively to hide its handshake behind LLM generation, so cancel
+        // the unused context before closing the turn. (Read via the class field:
+        // `tts` is only assigned inside closures, so outer-flow narrowing would
+        // otherwise collapse its type to never.)
+        this.ttsStream?.cancel("empty_llm_reply");
         this.finishTurn(traceId);
       }
-      // If tts exists but nothing above matched (all phrases already terminal),
-      // the context was already closed with continue:false; nothing to do.
+      // If a phrase was sent, its final continue:false closes the context.
     } catch (error) {
       // error-policy:J1 boundary translation — the LLM/TTS turn is the async
       // boundary; provider failures become a structured client `error` frame.
@@ -599,12 +650,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         error instanceof ElizaSseBridgeError ? error : undefined;
       this.send({
         t: "error",
-        code:
-          bridgeError?.upstreamCode
-            ? bridgeError.upstreamCode
-            : error instanceof Error
-              ? error.name
-              : "llm_error",
+        code: bridgeError?.upstreamCode
+          ? bridgeError.upstreamCode
+          : error instanceof Error
+            ? error.name
+            : "llm_error",
         retryable: bridgeError ? bridgeError.retryable : true,
         ...(bridgeError?.status ? { upstreamStatus: bridgeError.status } : {}),
         ...(bridgeError?.upstreamMessage
@@ -614,6 +664,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           ? { upstreamSnippet: bridgeError.upstreamSnippet }
           : {}),
       });
+      // The socket is already open because it was prewarmed before the LLM
+      // request. Do not leak an idle provider connection when that request or
+      // stream fails before a terminal TTS phrase is sent. finishTurn has not
+      // run yet, so ttsStream still belongs to this turn.
+      this.ttsStream?.cancel("llm_error");
       this.finishTurn(traceId);
     }
   }
@@ -809,4 +864,27 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   get currentState(): SessionState {
     return this.state;
   }
+}
+
+/**
+ * Keep a small real-text suffix available for Cartesia's required terminal
+ * continue:false request while allowing the rest of a completed phrase to
+ * start synthesis immediately. Very short/one-token phrases remain intact.
+ */
+function splitTerminalSuffix(
+  phrase: string,
+): { prefix: string; suffix: string } | null {
+  const hasTrailingBoundary = /\s$/.test(phrase);
+  const trimmed = phrase.trim();
+  const match = /^(.*\S)\s+(\S+)$/.exec(trimmed);
+  if (!match) return null;
+  const prefixText = match[1].trim();
+  const suffixText = match[2].trim();
+  if (prefixText.length < 8 || suffixText.length > 40) return null;
+  // Preserve both word boundaries when provider transcript chunks are
+  // concatenated. Cartesia accepts trailing whitespace on continuation chunks.
+  return {
+    prefix: `${prefixText} `,
+    suffix: hasTrailingBoundary ? `${suffixText} ` : suffixText,
+  };
 }

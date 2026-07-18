@@ -149,6 +149,30 @@ describe("FilesView", () => {
     expect(filename).toBe("photo.png");
   });
 
+  it("surfaces a download failure instead of silently doing nothing", async () => {
+    downloadShareMock.downloadAttachment.mockRejectedValueOnce(
+      new Error("Transport unavailable"),
+    );
+    renderFiles();
+    await screen.findByText("photo.png");
+
+    const imageCard = screen
+      .getAllByTestId("file-card")
+      .find((c) => c.getAttribute("data-file-name") === "photo.png");
+    fireEvent.click(
+      within(imageCard as HTMLElement).getByTestId("file-download"),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Could not download photo.png: Transport unavailable",
+    );
+
+    fireEvent.click(
+      within(imageCard as HTMLElement).getByTestId("file-download"),
+    );
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
   it("shares a file through the helper", async () => {
     renderFiles();
     await screen.findByText("photo.png");

@@ -201,6 +201,12 @@ app.get("/", (c) => {
         cloudBindingsContext: hasCloudBindingsContext(),
         dbCacheContext: hasDbCacheContext(),
       });
+      const elizaFetch = createScopedElizaFetch({
+        agentId: claims.agentId,
+        conversationId: claims.conversationId,
+        organizationId: claims.organizationId,
+        userId: claims.userId,
+      });
       return new VoiceSession({
         sessionId: claims.sessionId,
         jti,
@@ -217,12 +223,8 @@ app.get("/", (c) => {
         elizaEndpoint,
         elizaAuthorization,
         elizaModel: resolveElizaModel(env),
-        fetchImpl: createScopedElizaFetch({
-          agentId: claims.agentId,
-          conversationId: claims.conversationId,
-          organizationId: claims.organizationId,
-          userId: claims.userId,
-        }),
+        fetchImpl: elizaFetch,
+        prewarmElizaContext: elizaFetch.prewarm,
         usageStore,
         usageLimits,
         isRevoked: (jti) => isVoiceSessionTokenRevoked(jti),
