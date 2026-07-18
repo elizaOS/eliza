@@ -125,7 +125,10 @@ jobs:
               packages/cloud/api/__tests__/chat-completions-optimistic-billing.test.ts|packages/cloud/api/__tests__/chat-completions-passthrough-streaming.test.ts)
                 chat_group_tests+=("$test_file")
                 ;;
-              packages/cloud/api/*.test.ts|packages/cloud/api/*.test.tsx|packages/cloud/api/*.spec.ts|packages/cloud/api/*.spec.tsx|packages/cloud/api/__tests__/agent-a2a-billing.test.ts|packages/cloud/api/__tests__/bootstrap-app-unhandled-error.test.ts|packages/cloud/api/__tests__/malformed-json-body-routes.test.ts|packages/cloud/api/__tests__/messages-billing-offpath.test.ts|packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts|packages/cloud/shared/src/lib/auth-inference-api-key.test.ts|packages/cloud/shared/src/lib/auth/workers-hono-auth.api-key.test.ts|packages/cloud/shared/src/lib/services/inference-auth-context.test.ts|packages/cloud/shared/src/lib/services/inference-hot-path-benchmark.test.ts|packages/tools/voice-evidence-harness/src/cli-run.test.ts)
+              packages/cloud/api/*.test.ts|packages/cloud/api/*.test.tsx|packages/cloud/api/*.spec.ts|packages/cloud/api/*.spec.tsx|packages/cloud/shared/*.test.ts|packages/cloud/shared/*.test.tsx|packages/cloud/shared/*.spec.ts|packages/cloud/shared/*.spec.tsx)
+                process_isolated_tests+=("$test_file")
+                ;;
+              packages/tools/voice-evidence-harness/src/cli-run.test.ts)
                 process_isolated_tests+=("$test_file")
                 ;;
               *) shared_tests+=("$test_file") ;;
@@ -142,9 +145,11 @@ jobs:
           if [ "${#chat_group_tests[@]}" -gt 0 ]; then
             ELIZA_PROCESS_ISOLATED_TEST=1 bun test --conditions=eliza-source "${chat_group_tests[@]}" --coverage --coverage-reporter=lcov --coverage-dir=coverage/bun/chat-group
           fi
-          # Bun module mocks remain process-global despite `--isolate`. Tests
-          # listed here run in fresh processes and emit separate LCOV files;
-          # the gate below already aggregates every coverage/**/lcov.info.
+          # Bun module mocks remain process-global despite `--isolate`. Apart
+          # from the compatible chat pair above, Cloud API and shared tests
+          # follow their package-wide one-process-per-file contract; the other
+          # listed suites need the same boundary. Each process emits separate
+          # LCOV and the gate aggregates coverage/**/lcov.info.
           for index in "${!process_isolated_tests[@]}"; do
             ELIZA_PROCESS_ISOLATED_TEST=1 bun test --conditions=eliza-source "${process_isolated_tests[$index]}" --coverage --coverage-reporter=lcov --coverage-dir="coverage/bun/isolated-$index"
           done

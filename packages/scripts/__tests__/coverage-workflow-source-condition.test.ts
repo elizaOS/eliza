@@ -28,13 +28,12 @@ test("Bun suites with conflicting process-global module mocks run separately", (
   const chatGroupArm =
     "packages/cloud/api/__tests__/chat-completions-optimistic-billing.test.ts|packages/cloud/api/__tests__/chat-completions-passthrough-streaming.test.ts)";
   const cloudApiArm = [
-    "packages/cloud/api/*.test.ts|packages/cloud/api/*.test.tsx|packages/cloud/api/*.spec.ts|packages/cloud/api/*.spec.tsx)",
+    "packages/cloud/api/*.test.ts|packages/cloud/api/*.test.tsx|packages/cloud/api/*.spec.ts|packages/cloud/api/*.spec.tsx|packages/cloud/shared/*.test.ts|packages/cloud/shared/*.test.tsx|packages/cloud/shared/*.spec.ts|packages/cloud/shared/*.spec.tsx)",
     '                process_isolated_tests+=("$test_file")',
   ].join("\n");
   const isolatedSuites = [
-    "packages/cloud/shared/src/lib/auth-inference-api-key.test.ts",
-    "packages/cloud/shared/src/lib/services/inference-auth-context.test.ts",
-    "packages/cloud/shared/src/lib/services/inference-hot-path-benchmark.test.ts",
+    "packages/cloud/shared/*.test.ts",
+    "packages/tools/voice-evidence-harness/src/cli-run.test.ts",
   ];
 
   expect(workflow).toContain(chatGroupArm);
