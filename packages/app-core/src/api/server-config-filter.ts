@@ -18,6 +18,9 @@ export const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
   "ELIZAOS_CLOUD_API_KEY",
   // Third-party auth tokens
   "GITHUB_TOKEN",
+  // PR-shepherd fallback PAT (#16544): a live GitHub bearer credential the
+  // sensitive-suffix regex below cannot catch (no *TOKEN/KEY suffix).
+  "GH_PAT",
   // Database connection strings (may contain credentials)
   "DATABASE_URL",
   "POSTGRES_URL",
