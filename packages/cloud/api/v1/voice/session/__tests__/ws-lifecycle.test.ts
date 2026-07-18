@@ -282,6 +282,7 @@ const CLAIMS = {
 async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
+  prewarmElizaContext?: () => Promise<void>;
 }): Promise<{ sessionId: string }> {
   const minted = await mintVoiceSessionToken(CLAIMS);
   const usageStore = new InMemoryVoiceUsageStore();
@@ -306,6 +307,9 @@ async function connectSession(opts: {
         elizaAuthorization: "Bearer eliza-server",
         elizaModel: "gemma-4-31b",
         fetchImpl: opts.fetchImpl,
+        ...(opts.prewarmElizaContext
+          ? { prewarmElizaContext: opts.prewarmElizaContext }
+          : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
         downlink,
@@ -435,6 +439,20 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_end");
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("prewarms Eliza tenancy context when the live session starts", async () => {
+    let prewarmCalls = 0;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      prewarmElizaContext: async () => {
+        prewarmCalls += 1;
+      },
+    });
+    expect(client.controlTypes()).toContain("ready");
+    expect(prewarmCalls).toBe(1);
   });
 
   test("prewarms Cartesia as soon as the response turn starts", async () => {
