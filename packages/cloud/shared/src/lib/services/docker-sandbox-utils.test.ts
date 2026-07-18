@@ -1,5 +1,10 @@
 // Exercises docker sandbox utils behavior with deterministic cloud-shared lib fixtures.
-import { describe, expect, test } from "vitest";
+// bun:test, not vitest: this package runs unit lanes under bun
+// (scripts/run-bun-tests.mjs); its vitest config includes ONLY the
+// direct-wallet integration test, and the coverage-gate classifier routes
+// test files by their runner import — a vitest import here would send this
+// lane to a vitest invocation whose filter matches nothing (exit 1).
+import { describe, expect, test } from "bun:test";
 import {
   allocatePort,
   buildAgentContainerLabelArgs,
