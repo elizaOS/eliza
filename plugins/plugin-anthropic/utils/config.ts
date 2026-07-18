@@ -8,7 +8,7 @@
  * max-output-token override parsers documented in this package's CLAUDE.md.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, readCanonicalModel } from "@elizaos/core";
 import type { ModelName, ModelSize, ValidatedApiKey } from "../types";
 import { createModelName } from "../types";
 
@@ -83,6 +83,7 @@ export function getBaseURL(runtime: IAgentRuntime): string {
 export function getSmallModel(runtime: IAgentRuntime): ModelName {
   const model =
     getRawSetting(runtime, "ANTHROPIC_SMALL_MODEL") ??
+    readCanonicalModel(runtime, "small", "anthropic") ??
     getRawSetting(runtime, "SMALL_MODEL") ??
     DEFAULT_SMALL_MODEL;
   return createModelName(model);
@@ -107,6 +108,7 @@ export function getMediumModel(runtime: IAgentRuntime): ModelName {
 export function getLargeModel(runtime: IAgentRuntime): ModelName {
   const model =
     getRawSetting(runtime, "ANTHROPIC_LARGE_MODEL") ??
+    readCanonicalModel(runtime, "large", "anthropic") ??
     getRawSetting(runtime, "LARGE_MODEL") ??
     DEFAULT_LARGE_MODEL;
   return createModelName(model);

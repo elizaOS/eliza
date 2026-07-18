@@ -11,11 +11,15 @@ const mocks = vi.hoisted(() => ({
   loggerError: vi.fn(),
 }));
 
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    error: mocks.loggerError,
-  },
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: {
+      error: mocks.loggerError,
+    },
+  };
+});
 
 vi.mock("@google/genai", () => ({
   GoogleGenAI: mocks.googleGenAI,

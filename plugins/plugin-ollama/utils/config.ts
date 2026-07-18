@@ -9,6 +9,8 @@
  * `eliza start`, or tests.
  */
 
+import { readCanonicalModel } from "@elizaos/core";
+
 type SettingsProvider = {
   getSetting: (key: string) => string | number | boolean | null;
 };
@@ -59,6 +61,7 @@ export function getApiBase(runtime: SettingsProvider): string {
 export function getSmallModel(runtime: SettingsProvider): string {
   return (
     getSetting(runtime, "OLLAMA_SMALL_MODEL") ||
+    readCanonicalModel(runtime, "small", "ollama") ||
     getSetting(runtime, "SMALL_MODEL") ||
     DEFAULT_SMALL_MODEL
   );
@@ -83,6 +86,7 @@ export function getMediumModel(runtime: SettingsProvider): string {
 export function getLargeModel(runtime: SettingsProvider): string {
   return (
     getSetting(runtime, "OLLAMA_LARGE_MODEL") ||
+    readCanonicalModel(runtime, "large", "ollama") ||
     getSetting(runtime, "LARGE_MODEL") ||
     DEFAULT_LARGE_MODEL
   );

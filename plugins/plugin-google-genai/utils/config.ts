@@ -8,7 +8,7 @@
  * `getSafetySettings` returns the hardcoded block-medium-and-above thresholds.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, readCanonicalModel } from "@elizaos/core";
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory } from "@google/genai";
 
 function getEnvValue(key: string): string | undefined {
@@ -47,6 +47,7 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_SMALL_MODEL") ??
+    readCanonicalModel(runtime, "small", "google") ??
     getSetting(runtime, "SMALL_MODEL", "gemini-2.0-flash-001") ??
     "gemini-2.0-flash-001"
   );
@@ -71,6 +72,7 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "GOOGLE_LARGE_MODEL") ??
+    readCanonicalModel(runtime, "large", "google") ??
     getSetting(runtime, "LARGE_MODEL", "gemini-2.5-pro") ??
     "gemini-2.5-pro"
   );

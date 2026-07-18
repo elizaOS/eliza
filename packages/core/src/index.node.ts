@@ -440,6 +440,7 @@ export * from "./utils/prompt-compression";
 export * from "./utils/read-env";
 // Canonical runtime-setting → env resolver (per-agent setting first, then env)
 export * from "./utils/resolve-setting";
+export * from "./utils/canonical-model";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR → XDG state home)
 export * from "./utils/state-dir";

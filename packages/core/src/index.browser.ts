@@ -201,6 +201,7 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/project-memory-scope";
 export * from "./utils/read-env";
 export * from "./utils/resolve-setting";
+export * from "./utils/canonical-model";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 // Validation helpers (validateActionKeywords / validateActionRegex /

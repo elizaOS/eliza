@@ -7,7 +7,7 @@
  * whether an `Authorization` header is sent.
  */
 import type { IAgentRuntime } from "@elizaos/core";
-import { DEFAULT_CEREBRAS_TEXT_MODEL, logger } from "@elizaos/core";
+import { DEFAULT_CEREBRAS_TEXT_MODEL, logger, readCanonicalModel } from "@elizaos/core";
 
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined" || !process.env) {
@@ -258,29 +258,45 @@ export function getImageDescriptionBaseURL(runtime: IAgentRuntime): string {
   return getBaseURL(runtime);
 }
 
+// The canonical pair (ELIZA_MODEL_SMALL/LARGE) outranks each overlay's
+// DEFAULT constant but not its explicit keys: an operator who set the pair
+// expects it to win over a mode's baked-in default, while CEREBRAS_*_MODEL
+// stays the overlay's escape hatch.
 function getCerebrasSmallModel(runtime: IAgentRuntime): string | undefined {
   return isCerebrasMode(runtime)
     ? (getSetting(runtime, "CEREBRAS_SMALL_MODEL") ??
-        getSetting(runtime, "CEREBRAS_MODEL", DEFAULT_CEREBRAS_TEXT_MODEL))
+        getSetting(runtime, "CEREBRAS_MODEL") ??
+        readCanonicalModel(runtime, "small", "cerebras") ??
+        DEFAULT_CEREBRAS_TEXT_MODEL)
     : undefined;
 }
 
 function getCerebrasLargeModel(runtime: IAgentRuntime): string | undefined {
   return isCerebrasMode(runtime)
     ? (getSetting(runtime, "CEREBRAS_LARGE_MODEL") ??
-        getSetting(runtime, "CEREBRAS_MODEL", DEFAULT_CEREBRAS_TEXT_MODEL))
+        getSetting(runtime, "CEREBRAS_MODEL") ??
+        readCanonicalModel(runtime, "large", "cerebras") ??
+        DEFAULT_CEREBRAS_TEXT_MODEL)
     : undefined;
 }
 
-function getEvoLinkModel(runtime: IAgentRuntime): string | undefined {
-  return isEvoLinkMode(runtime) ? (getSetting(runtime, "EVOLINK_MODEL") ?? "gpt-5.2") : undefined;
+function getEvoLinkModel(
+  runtime: IAgentRuntime,
+  tier: "small" | "large" = "large"
+): string | undefined {
+  return isEvoLinkMode(runtime)
+    ? (getSetting(runtime, "EVOLINK_MODEL") ??
+        readCanonicalModel(runtime, tier, "openai") ??
+        "gpt-5.2")
+    : undefined;
 }
 
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_SMALL_MODEL") ??
     getCerebrasSmallModel(runtime) ??
-    getEvoLinkModel(runtime) ??
+    getEvoLinkModel(runtime, "small") ??
+    readCanonicalModel(runtime, "small", "openai") ??
     getSetting(runtime, "SMALL_MODEL") ??
     "gpt-5.6-luna"
   );
@@ -290,7 +306,7 @@ export function getNanoModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_NANO_MODEL") ??
     getCerebrasSmallModel(runtime) ??
-    getEvoLinkModel(runtime) ??
+    getEvoLinkModel(runtime, "small") ??
     getSetting(runtime, "NANO_MODEL") ??
     getSmallModel(runtime)
   );
@@ -300,7 +316,7 @@ export function getMediumModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "OPENAI_MEDIUM_MODEL") ??
     getCerebrasSmallModel(runtime) ??
-    getEvoLinkModel(runtime) ??
+    getEvoLinkModel(runtime, "small") ??
     getSetting(runtime, "MEDIUM_MODEL") ??
     getSmallModel(runtime)
   );
@@ -311,6 +327,7 @@ export function getLargeModel(runtime: IAgentRuntime): string {
     getSetting(runtime, "OPENAI_LARGE_MODEL") ??
     getCerebrasLargeModel(runtime) ??
     getEvoLinkModel(runtime) ??
+    readCanonicalModel(runtime, "large", "openai") ??
     getSetting(runtime, "LARGE_MODEL") ??
     "gpt-5.6-sol"
   );

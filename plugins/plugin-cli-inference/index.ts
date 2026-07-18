@@ -6,6 +6,7 @@ import {
   logger,
   ModelType,
   parseBooleanValue,
+  readCanonicalModel,
 } from "@elizaos/core";
 import {
   type RotationSubprocessEnv,
@@ -205,19 +206,28 @@ const sdkSessions = new Map<string, ClaudeSdkSession>();
 const MAX_SDK_SESSIONS = 8;
 
 /** The Claude model for a given tier (planner/small can differ from large). */
-function resolveSdkModel(runtime: IAgentRuntime, modelType: string): string {
+// Exported for unit coverage of the canonical-pair derivation; not public API.
+export function resolveSdkModel(runtime: IAgentRuntime, modelType: string): string {
   const large = getSetting(runtime, "ELIZA_CLI_CLAUDE_MODEL");
   const planner = getSetting(runtime, "ELIZA_CLI_CLAUDE_PLANNER_MODEL");
-  const fallback = (large || "claude-opus-4-8").trim();
-  // The planner tier keeps its own (typically heavier) model.
+  // Canonical pair (ELIZA_MODEL_SMALL/LARGE) sits below the lane's explicit
+  // ELIZA_CLI_CLAUDE_* keys and above the hardcoded defaults: set two vars and
+  // code decides the tiers (large -> replies, small -> planner + triage).
+  const canonicalLarge = readCanonicalModel(runtime, "large", "claude");
+  const canonicalSmall = readCanonicalModel(runtime, "small", "claude");
+  const fallback = (large || canonicalLarge || "claude-opus-4-8").trim();
   if (modelType === ModelType.ACTION_PLANNER) {
-    return (planner || fallback).trim();
+    return (planner || canonicalSmall || fallback).trim();
   }
   // ALL-TIERS triage: use the dedicated cheap model, else the large-tier model
   // (NOT the planner tier) so the high-frequency should-respond gate doesn't
   // run on opus.
   if (SMALL_TIER_MODEL_TYPES.includes(modelType)) {
-    return (getSetting(runtime, "ELIZA_CLI_CLAUDE_SMALL_MODEL") || fallback).trim();
+    return (
+      getSetting(runtime, "ELIZA_CLI_CLAUDE_SMALL_MODEL") ||
+      canonicalSmall ||
+      fallback
+    ).trim();
   }
   return fallback;
 }
@@ -333,11 +343,19 @@ export async function disposeSdkSessions(): Promise<void> {
 const codexSdkSessions = new Map<string, CodexSdkSession>();
 
 /** The codex model for a given tier (planner/small can differ from large). */
-function resolveCodexModel(runtime: IAgentRuntime, modelType: string): string {
+// Exported for unit coverage of the canonical-pair derivation; not public API.
+export function resolveCodexModel(runtime: IAgentRuntime, modelType: string): string {
   const large = getSetting(runtime, "ELIZA_CLI_CODEX_MODEL");
   const small = getSetting(runtime, "ELIZA_CLI_CODEX_PLANNER_MODEL");
+  const canonicalLarge = readCanonicalModel(runtime, "large", "codex");
+  const canonicalSmall = readCanonicalModel(runtime, "small", "codex");
   const isSmallTier = modelType === ModelType.ACTION_PLANNER || modelType === ModelType.TEXT_SMALL;
-  return ((isSmallTier ? small : large) || large || "gpt-5.5").trim();
+  return (
+    (isSmallTier ? small || canonicalSmall : large || canonicalLarge) ||
+    large ||
+    canonicalLarge ||
+    "gpt-5.5"
+  ).trim();
 }
 
 function codexSessionKey(model: string, router: boolean): string {

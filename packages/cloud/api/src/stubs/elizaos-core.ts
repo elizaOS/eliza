@@ -135,6 +135,58 @@ export function resolveSetting(
   );
 }
 
+/**
+ * Worker-safe mirror of core's `readCanonicalModel` (utils/canonical-model.ts):
+ * the canonical two-knob pair (ELIZA_MODEL_SMALL/LARGE) with family gating —
+ * qualified values (`family/model`) are honored only by the matching family;
+ * unknown-prefix slash values are whole model ids; blank is unset.
+ */
+const CANONICAL_MODEL_ENV_KEYS = {
+  small: "ELIZA_MODEL_SMALL",
+  large: "ELIZA_MODEL_LARGE",
+} as const;
+
+const FAMILY_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  openai: ["openai", "gpt"],
+  anthropic: ["anthropic", "claude"],
+  ollama: ["ollama"],
+  google: ["google", "google-genai", "gemini"],
+  elizacloud: ["elizacloud", "eliza-cloud", "cloud"],
+  cerebras: ["cerebras"],
+  groq: ["groq"],
+  claude: ["claude", "anthropic"],
+  codex: ["codex", "openai", "gpt"],
+};
+
+const KNOWN_FAMILY_TOKENS: ReadonlySet<string> = new Set(
+  Object.values(FAMILY_ALIASES).flat(),
+);
+
+export function readCanonicalModel(
+  runtime: SettingReader | null | undefined,
+  tier: "small" | "large",
+  family?: string,
+): string | undefined {
+  const raw = resolveSetting(runtime, CANONICAL_MODEL_ENV_KEYS[tier]);
+  const value = raw?.trim();
+  if (!value) return undefined;
+
+  const slash = value.indexOf("/");
+  if (slash <= 0) return value;
+
+  const prefix = value.slice(0, slash).trim().toLowerCase();
+  if (!KNOWN_FAMILY_TOKENS.has(prefix)) return value;
+  if (!family) return undefined;
+
+  const model = value.slice(slash + 1).trim();
+  if (!model) return undefined;
+
+  const aliases = FAMILY_ALIASES[family.toLowerCase()] ?? [
+    family.toLowerCase(),
+  ];
+  return aliases.includes(prefix) ? model : undefined;
+}
+
 export function getElizaNamespace(
   env: Record<string, string | undefined> = process.env,
 ): string {

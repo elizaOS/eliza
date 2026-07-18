@@ -6,6 +6,7 @@
  * Seeding order matters: every default here is set-if-missing, so explicit
  * operator config (env or character settings folded into env) always wins.
  */
+import { canonicalModelIsQualified, readCanonicalModel } from "@elizaos/core";
 import { DEFAULT_CEREBRAS_TEXT_MODEL } from "@elizaos/shared";
 
 /** Set an env default without clobbering an operator-provided value. */
@@ -45,6 +46,23 @@ export function isLikelyOpenAiTextModel(value: string | undefined): boolean {
   );
 }
 
+/**
+ * Canonical-pair leg for the Groq/Cerebras seeds. A family-qualified value
+ * (groq/..., cerebras/...) was explicitly targeted by the operator and is
+ * accepted verbatim; an unqualified value still passes the same
+ * OpenAI-id-shape guard the shared-model candidates use, so a bare gpt-* pair
+ * never poisons a non-OpenAI provider's seed.
+ */
+function guardedCanonicalSeed(
+  tier: "small" | "large",
+  family: string,
+): string | undefined {
+  const value = readCanonicalModel(null, tier, family);
+  if (!value) return undefined;
+  if (canonicalModelIsQualified(null, tier)) return value;
+  return isLikelyOpenAiTextModel(value) ? undefined : value;
+}
+
 export function applyProviderModelEnvDefaults(): void {
   // Normalize Google AI API key aliases — the elizaOS plugin and @google/genai
   // SDK expect different env var names. Canonicalize to the long form that
@@ -59,27 +77,40 @@ export function applyProviderModelEnvDefaults(): void {
   // null (not undefined) for missing keys, but the plugin checks !== undefined
   // causing String(null) = "null" to be sent as the model name. Set sensible
   // defaults so the plugin always has valid model names.
-  setEnvIfMissing("GOOGLE_SMALL_MODEL", "gemini-3-flash-preview");
-  setEnvIfMissing("GOOGLE_LARGE_MODEL", "gemini-3.1-pro-preview");
+  setEnvIfMissing(
+    "GOOGLE_SMALL_MODEL",
+    readCanonicalModel(null, "small", "google") ?? "gemini-3-flash-preview",
+  );
+  setEnvIfMissing(
+    "GOOGLE_LARGE_MODEL",
+    readCanonicalModel(null, "large", "google") ?? "gemini-3.1-pro-preview",
+  );
 
   // Default Groq model names — plugin-groq still ships a deprecated large-model
   // fallback. Seed runtime defaults before plugin init so direct Groq provider
   // sessions use the approved GPT-OSS default.
+  // Canonical pair (ELIZA_MODEL_SMALL/LARGE) ranks between the
+  // provider-prefixed shared keys and the bare aliases; family-gated so a
+  // qualified value never leaks into the wrong provider's seeded default.
   const currentSharedSmallModel =
-    process.env.OPENAI_SMALL_MODEL ?? process.env.SMALL_MODEL;
+    process.env.OPENAI_SMALL_MODEL ??
+    readCanonicalModel(null, "small") ??
+    process.env.SMALL_MODEL;
   const currentSharedLargeModel =
-    process.env.OPENAI_LARGE_MODEL ?? process.env.LARGE_MODEL;
+    process.env.OPENAI_LARGE_MODEL ??
+    readCanonicalModel(null, "large") ??
+    process.env.LARGE_MODEL;
   setEnvIfMissing(
     "GROQ_SMALL_MODEL",
     currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : "openai/gpt-oss-120b",
+      : (guardedCanonicalSeed("small", "groq") ?? "openai/gpt-oss-120b"),
   );
   setEnvIfMissing(
     "GROQ_LARGE_MODEL",
     currentSharedLargeModel && !isLikelyOpenAiTextModel(currentSharedLargeModel)
       ? currentSharedLargeModel
-      : "openai/gpt-oss-120b",
+      : (guardedCanonicalSeed("large", "groq") ?? "openai/gpt-oss-120b"),
   );
 
   // Seed independent Cerebras tiers from the matching shared tiers. Keep an
@@ -89,7 +120,8 @@ export function applyProviderModelEnvDefaults(): void {
   const cerebrasSmallModel =
     currentSharedSmallModel && !isLikelyOpenAiTextModel(currentSharedSmallModel)
       ? currentSharedSmallModel
-      : DEFAULT_CEREBRAS_TEXT_MODEL;
+      : (guardedCanonicalSeed("small", "cerebras") ??
+        DEFAULT_CEREBRAS_TEXT_MODEL);
   if (!explicitLegacyCerebrasModel) {
     setEnvIfMissing("CEREBRAS_SMALL_MODEL", cerebrasSmallModel);
     setEnvIfMissing(
@@ -97,7 +129,7 @@ export function applyProviderModelEnvDefaults(): void {
       currentSharedLargeModel &&
         !isLikelyOpenAiTextModel(currentSharedLargeModel)
         ? currentSharedLargeModel
-        : cerebrasSmallModel,
+        : (guardedCanonicalSeed("large", "cerebras") ?? cerebrasSmallModel),
     );
   }
   setEnvIfMissing(

@@ -124,6 +124,7 @@ import {
   MESSAGE_SOURCE_CLIENT_CHAT,
   type Plugin,
   type Provider,
+  readCanonicalModel,
   type ServiceClass,
   stringToUuid,
   subAgentCredentialsPlugin,
@@ -2231,6 +2232,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       llmText?.smallModel ||
       models?.small ||
       readEffectiveEnvValue(config, "ELIZAOS_CLOUD_SMALL_MODEL") ||
+      readCanonicalModel(
+        { getSetting: (key) => readEffectiveEnvValue(config, key) ?? null },
+        "small",
+        "elizacloud",
+      ) ||
       DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const medium =
       llmText?.mediumModel ||
@@ -2241,6 +2247,11 @@ export function applyCloudConfigToEnv(config: ElizaConfig): void {
       llmText?.largeModel ||
       models?.large ||
       readEffectiveEnvValue(config, "ELIZAOS_CLOUD_LARGE_MODEL") ||
+      readCanonicalModel(
+        { getSetting: (key) => readEffectiveEnvValue(config, key) ?? null },
+        "large",
+        "elizacloud",
+      ) ||
       DEFAULT_ELIZA_CLOUD_TEXT_MODEL;
     const mega =
       llmText?.megaModel ||
@@ -3031,6 +3042,10 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     // Google model defaults
     "GOOGLE_SMALL_MODEL",
     "GOOGLE_LARGE_MODEL",
+    // Canonical two-knob pair — every model lane derives from these when its
+    // provider-specific keys are unset (see @elizaos/core canonical-model.ts).
+    "ELIZA_MODEL_SMALL",
+    "ELIZA_MODEL_LARGE",
     // GitHub
     "GITHUB_TOKEN",
     "GITHUB_OAUTH_CLIENT_ID",

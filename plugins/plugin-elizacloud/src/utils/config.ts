@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, resolveSetting } from "@elizaos/core";
+import { logger, readCanonicalModel, resolveSetting } from "@elizaos/core";
 import {
   DEFAULT_ELIZA_CLOUD_LARGE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
@@ -151,6 +151,7 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
+    readCanonicalModel(runtime, "small", "elizacloud") ??
     (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string)
   );
 }
@@ -174,6 +175,7 @@ export function getMediumModel(runtime: IAgentRuntime): string {
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
     getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
+    readCanonicalModel(runtime, "large", "elizacloud") ??
     (getSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_LARGE_MODEL) as string)
   );
 }

@@ -49,9 +49,18 @@ export function getElizaCloudApiUrl(): string {
  * Get default models configuration
  */
 export function getDefaultModels() {
+  // ELIZA_MODEL_SMALL/LARGE are the canonical two-knob pair; the cloud-lane
+  // keys stay the specific escape hatches. Embeddings never derive from the
+  // pair (dimension pinning).
   return {
-    small: process.env.ELIZAOS_CLOUD_SMALL_MODEL || CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
-    large: process.env.ELIZAOS_CLOUD_LARGE_MODEL || CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
+    small:
+      process.env.ELIZAOS_CLOUD_SMALL_MODEL ||
+      process.env.ELIZA_MODEL_SMALL?.trim() ||
+      CEREBRAS_DEFAULT_TEXT_SMALL_MODEL,
+    large:
+      process.env.ELIZAOS_CLOUD_LARGE_MODEL ||
+      process.env.ELIZA_MODEL_LARGE?.trim() ||
+      CEREBRAS_DEFAULT_TEXT_LARGE_MODEL,
     embedding: process.env.ELIZAOS_CLOUD_EMBEDDING_MODEL || "text-embedding-3-small",
   };
 }
