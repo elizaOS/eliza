@@ -11,6 +11,8 @@ let validateBehavior: () => Promise<unknown> = async () => {
   throw new Error("database unavailable");
 };
 const validateApiKey = mock(() => validateBehavior());
+let userBehavior: () => Promise<unknown> = async () => null;
+const getWithOrganization = mock(() => userBehavior());
 
 mock.module("../services/api-keys", () => ({
   apiKeysService: {
@@ -21,7 +23,7 @@ mock.module("../services/api-keys", () => ({
 
 mock.module("../services/users", () => ({
   usersService: {
-    getWithOrganization: mock(async () => null),
+    getWithOrganization,
   },
 }));
 
@@ -41,7 +43,8 @@ mock.module("../utils/logger", () => ({
   },
 }));
 
-const { requireUserOrApiKey, requireUserOrApiKeyWithOrg } = await import("./workers-hono-auth");
+const { requireUserOrApiKey, requireUserOrApiKeyWithOrg, requireUserOrApiKeyWithOrgLookup } =
+  await import("./workers-hono-auth");
 
 function contextWithApiKey(apiKey: string) {
   const state = new Map<string, unknown>();
@@ -61,6 +64,7 @@ beforeEach(() => {
   validateBehavior = async () => {
     throw new Error("database unavailable");
   };
+  userBehavior = async () => null;
 });
 
 describe("Workers API-key auth", () => {
@@ -101,5 +105,40 @@ describe("Workers API-key auth", () => {
       status: 401,
       code: "authentication_required",
     });
+  });
+
+  test("overlaps an org-scoped lookup with user/org hydration after key validation", async () => {
+    let releaseUser!: () => void;
+    const userBlocked = new Promise<void>((resolve) => {
+      releaseUser = resolve;
+    });
+    validateBehavior = async () => ({
+      id: "key-1",
+      user_id: "user-1",
+      organization_id: "org-1",
+      is_active: true,
+      expires_at: null,
+    });
+    userBehavior = async () => {
+      await userBlocked;
+      return {
+        id: "user-1",
+        organization_id: "org-1",
+        organization: { id: "org-1", name: "Org", is_active: true },
+        is_active: true,
+        role: "member",
+      };
+    };
+    const lookup = mock(async () => "agent-1");
+
+    const pending = requireUserOrApiKeyWithOrgLookup(
+      contextWithApiKey("eliza_live_key") as never,
+      lookup,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(lookup).toHaveBeenCalledWith("org-1");
+    releaseUser();
+
+    await expect(pending).resolves.toMatchObject({ orgLookupResult: "agent-1" });
   });
 });

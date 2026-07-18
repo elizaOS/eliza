@@ -704,6 +704,17 @@ export async function createConversationForFirstSend(
   return chatClient.createConversation(undefined, { lang });
 }
 
+export async function prewarmSharedChatScope(
+  chatClient: Pick<typeof client, "getBaseUrl" | "getStatus">,
+): Promise<void> {
+  if (!directCloudSharedAgentIdFromBase(chatClient.getBaseUrl())) return;
+  // Selecting a shared Cloud agent and mounting its composer is a strong signal
+  // that a turn is imminent. Warm the exact authenticated scope gate before the
+  // user presses Send, so API-key validation, user/org hydration, and agent
+  // resolution do not all land on the click-to-first-token critical path.
+  await chatClient.getStatus();
+}
+
 export function useChatSend(deps: UseChatSendDeps) {
   const {
     t,
@@ -742,6 +753,20 @@ export function useChatSend(deps: UseChatSendDeps) {
 
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
+  // ElizaClient owns a mutable base outside React state. Snapshot it each render
+  // so selecting another agent retriggers the prewarm effect.
+  const chatScopePrewarmBase = client.getBaseUrl();
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the mutable client base snapshot is the intentional external dependency.
+  useEffect(() => {
+    void prewarmSharedChatScope(client).catch((error) => {
+      // Best-effort only. Send still runs the unchanged authoritative auth gate,
+      // so a prewarm outage must not disable or alter normal error semantics.
+      logger.debug("[chat] shared scope prewarm failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+  }, [chatScopePrewarmBase]);
 
   // Freeze-on-shared (cloud-agent handoff, PR2). While a shared→dedicated
   // handoff is migrating, the user is still pointed at the SHARED agent but the
