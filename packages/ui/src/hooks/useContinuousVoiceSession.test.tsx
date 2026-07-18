@@ -135,6 +135,21 @@ describe("useContinuousVoiceSession", () => {
     expect(result.current.agentSpeaking).toBe(true);
   });
 
+  it("keeps the committed transcript visible while the EOT request is thinking", () => {
+    const batch = makeBatch({ interimTranscript: "batch interim" });
+    const realtime = makeRealtime({
+      available: true,
+      active: true,
+      status: "thinking",
+      transcriptPartial: "",
+      transcriptFinal: "committed request",
+    });
+    const { result } = renderHook(() =>
+      useContinuousVoiceSession({ batch, realtime }),
+    );
+    expect(result.current.interimTranscript).toBe("committed request");
+  });
+
   it("surfaces realtime autoplay unlock state and action while realtime is active", () => {
     const batch = makeBatch({ needsAudioUnlock: false });
     const realtime = makeRealtime({

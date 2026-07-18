@@ -36,7 +36,7 @@ export interface ContinuousVoiceSessionState {
   realtimeEligible: boolean;
   /** Unified status for `ChatVoiceStatusBar` (realtime wins when active). */
   status: VoiceContinuousStatus;
-  /** Live partial transcript (realtime `stt_partial`, else batch interim). */
+  /** Visible in-flight transcript: partial while speaking, committed final while thinking. */
   interimTranscript: string;
   /** Committed final transcript from the realtime path ("" on batch). */
   finalTranscript: string;
@@ -108,7 +108,8 @@ export function useContinuousVoiceSession(
       ? realtime.status
       : batch.status;
     const interimTranscript = realtimeActive
-      ? realtime.transcriptPartial
+      ? realtime.transcriptPartial ||
+        (status === "thinking" ? realtime.transcriptFinal : "")
       : batch.interimTranscript;
 
     return {

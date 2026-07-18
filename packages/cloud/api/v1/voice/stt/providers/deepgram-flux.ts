@@ -16,7 +16,10 @@ export const DEEPGRAM_FLUX_CHUNK_MILLISECONDS = 80;
 export const DEEPGRAM_FLUX_CHUNK_BYTES = 2_560;
 
 const DEFAULT_EAGER_EOT_THRESHOLD = 0.35;
-const DEFAULT_EOT_THRESHOLD = 0.8;
+// 0.8 committed incomplete turns during ordinary 700 ms mid-sentence pauses in
+// live-provider testing (3/5 runs). 0.9 completed the same slow-speaker fixture
+// 5/5 without a premature EOT. Keep the 5 s silence fallback unchanged.
+const DEFAULT_EOT_THRESHOLD = 0.9;
 const DEFAULT_EOT_TIMEOUT_MS = 5_000;
 const DEFAULT_CLOSE_CODE = 1000;
 

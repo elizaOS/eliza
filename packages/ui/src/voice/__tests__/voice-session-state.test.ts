@@ -42,7 +42,7 @@ describe("voice-session-state machine (§7.4)", () => {
     expect(phases).toEqual([
       "ready",
       "transcribing",
-      "transcribing",
+      "thinking",
       "thinking",
       "speaking",
       "complete",
