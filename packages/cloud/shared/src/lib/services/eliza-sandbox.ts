@@ -2740,7 +2740,8 @@ export class ElizaSandboxService {
         await settleReservation(0);
         return this.createBridgeSseTextResponse(turn.reply ?? "");
       }
-      if (!turn.parts) {
+      const parts = turn.parts;
+      if (!parts) {
         await settleReservation(0);
         return this.createBridgeSseErrorResponse("Shared runtime stream did not start");
       }
@@ -2752,7 +2753,7 @@ export class ElizaSandboxService {
           let reply = "";
           let finished = false;
           try {
-            for await (const part of turn.parts!) {
+            for await (const part of parts) {
               if (part.type === "text-delta") {
                 reply += part.text;
                 controller.enqueue(

@@ -137,9 +137,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function beginStart(result: {
-  current: UseRealtimeVoiceSessionStateForTest;
-}) {
+function beginStart(result: { current: UseRealtimeVoiceSessionStateForTest }) {
   let startPromise!: ReturnType<typeof result.current.start>;
   act(() => {
     startPromise = result.current.start();

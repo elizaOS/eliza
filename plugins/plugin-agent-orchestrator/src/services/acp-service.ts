@@ -4459,7 +4459,8 @@ export class AcpService extends Service {
     data?: unknown,
   ): void {
     const loggerFn = this.logger[level] as
-      ((message: string, data?: unknown) => void) | undefined;
+      | ((message: string, data?: unknown) => void)
+      | undefined;
     loggerFn?.call(this.logger, `[AcpService] ${message}`, data);
   }
 
