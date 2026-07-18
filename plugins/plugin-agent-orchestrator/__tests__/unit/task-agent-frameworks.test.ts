@@ -231,6 +231,22 @@ describe("getTaskAgentFrameworkState", () => {
     ).toBe(false);
   });
 
+  it("rejects a configured Codex ACP command when the file is not executable", async () => {
+    const commandPath = path.join(tempHome, "codex-acp");
+    fs.writeFileSync(commandPath, "#!/bin/sh\nexit 0\n");
+    fs.chmodSync(commandPath, 0o644);
+    setEnv({
+      CODEX_API_KEY: "codex-test",
+      ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime());
+
+    expect(
+      state.frameworks.find((item) => item.id === "codex")?.installed,
+    ).toBe(false);
+  });
+
   it("accepts a configured Codex ACP shell command when the leading executable exists", async () => {
     writeExecutable(path.join(tempHome, "codex-acp"));
     setEnv({

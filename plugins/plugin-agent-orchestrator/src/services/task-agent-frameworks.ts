@@ -602,17 +602,27 @@ function isOpencodeLocalMode(): boolean {
   return flag === "1" || flag?.toLowerCase() === "true";
 }
 
+function isExecutableFile(candidate: string): boolean {
+  try {
+    if (!fs.statSync(candidate).isFile()) return false;
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function hasBinaryOnPath(binaryName: string): boolean {
   for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
     if (!dir) continue;
     const candidate = path.join(dir, binaryName);
-    if (fs.existsSync(candidate)) return true;
+    if (isExecutableFile(candidate)) return true;
     if (process.platform === "win32") {
       for (const ext of (process.env.PATHEXT ?? ".EXE;.CMD;.BAT")
         .split(";")
         .filter(Boolean)) {
-        if (fs.existsSync(`${candidate}${ext.toLowerCase()}`)) return true;
-        if (fs.existsSync(`${candidate}${ext.toUpperCase()}`)) return true;
+        if (isExecutableFile(`${candidate}${ext.toLowerCase()}`)) return true;
+        if (isExecutableFile(`${candidate}${ext.toUpperCase()}`)) return true;
       }
     }
   }
@@ -627,9 +637,9 @@ function leadingCommandToken(command: string): string | undefined {
 function isCommandExecutableAvailable(command: string | undefined): boolean {
   const executable = leadingCommandToken(command?.trim() ?? "");
   if (!executable) return false;
-  if (path.isAbsolute(executable)) return fs.existsSync(executable);
+  if (path.isAbsolute(executable)) return isExecutableFile(executable);
   if (executable.includes("/") || executable.includes("\\")) {
-    return fs.existsSync(resolveUserPath(executable));
+    return isExecutableFile(resolveUserPath(executable));
   }
   return hasBinaryOnPath(executable);
 }
