@@ -84,6 +84,14 @@ const MAX_OUTSTANDING_METER_WINDOWS = 2;
  * context preserves prosody across the resulting chunks.
  */
 const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
+/**
+ * Cartesia's server buffers streamed transcript for up to 3000ms by default
+ * before starting synthesis, which measured ~2.7s of the speaking_start gap on
+ * staging even after phrases were sent early. The realtime session already
+ * batches text into speakable clauses via PhraseAggregator, so stacking the
+ * provider's own aggregation window on top is pure added latency.
+ */
+const VOICE_TTS_MAX_BUFFER_DELAY_MS = 250;
 
 export type { VoiceSessionDownlink } from "@/lib/voice-session/ws-handler";
 
@@ -503,7 +511,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const ensureTts = (): CartesiaSonicTtsStream => {
       if (tts) return tts;
       tts = this.cartesiaAdapter.createStream(
-        { traceId },
+        { traceId, maxBufferDelayMs: VOICE_TTS_MAX_BUFFER_DELAY_MS },
         {
           onFirstAudio: () => {
             if (this.currentVoiceTurnId !== traceId) return;
