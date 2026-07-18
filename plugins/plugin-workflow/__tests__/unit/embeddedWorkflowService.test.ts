@@ -188,6 +188,10 @@ describe('EmbeddedWorkflowService', () => {
       { embedded_workflow_service: embedded },
       harness.runtime.db
     );
+    serviceRuntime.getServiceLoadPromise = async (serviceType) => {
+      if (serviceType === EmbeddedWorkflowService.serviceType) return embedded;
+      throw new Error(`Unexpected service load request: ${String(serviceType)}`);
+    };
     const service = await WorkflowService.start(serviceRuntime);
 
     const workflows = await service.listWorkflows();
@@ -554,7 +558,7 @@ describe('EmbeddedWorkflowService', () => {
       const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-child-'));
       const client = new PGlite({ dataDir: join(dir, 'pglite') });
       const db = drizzle(client, { schema: dbSchema });
-      const runtime = { db, getSetting: () => null, getService: () => null };
+      const runtime = { agentId: 'agent-test', db, getSetting: () => null, getService: () => null };
       const service = await EmbeddedWorkflowService.start(runtime);
       try {
         globalThis.fetch = async (url, options) =>
@@ -823,6 +827,7 @@ describe('EmbeddedWorkflowService', () => {
       import { PGlite } from '@electric-sql/pglite';
       import { drizzle } from 'drizzle-orm/pglite';
       import { EmbeddedWorkflowService } from './src/services/embedded-workflow-service.ts';
+      import { resolveSmithersDbPath } from './src/services/smithers-runtime.ts';
       import * as dbSchema from './src/db/schema.ts';
       const dir = await mkdtemp(join(tmpdir(), 'embedded-workflows-smithers-'));
       const client = new PGlite({ dataDir: join(dir, 'pglite') });
@@ -845,7 +850,7 @@ describe('EmbeddedWorkflowService', () => {
         const execution = await service.executeWorkflow(created.id);
         const item = execution.data?.resultData?.runData?.Set?.[0]?.data?.main?.[0]?.[0]?.json;
         const engine = execution.data?.resultData?.engine;
-        smithersDbPath = join(process.cwd(), '.eliza', 'smithers', created.id + '.sqlite');
+        smithersDbPath = resolveSmithersDbPath(runtime.agentId, created.id);
         const smithersDb = new Database(smithersDbPath, { readonly: true });
         try {
           const tables = smithersDb

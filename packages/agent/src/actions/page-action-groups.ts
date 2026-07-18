@@ -187,6 +187,80 @@ function findChildAction(
   return null;
 }
 
+function readAliasedDiscriminator(
+  action: Action,
+  requestedActionName: string,
+): string | undefined {
+  const canonicalName = normalizeActionName(action.name);
+  const requestedName = normalizeActionName(requestedActionName);
+  const candidates: string[] = [];
+  if (requestedName.startsWith(`${canonicalName}_`)) {
+    candidates.push(requestedName.slice(canonicalName.length + 1));
+  }
+  if (requestedName.endsWith(`_${canonicalName}`)) {
+    candidates.push(requestedName.slice(0, -(canonicalName.length + 1)));
+  }
+  if (candidates.length === 0) return undefined;
+
+  const discriminator = action.parameters?.find(
+    (parameter) => parameter.name === "action",
+  );
+  return discriminator?.schema.enum?.find((value) =>
+    candidates.includes(normalizeActionName(value)),
+  );
+}
+
+function findStructurallyAliasedChildAction(
+  runtime: IAgentRuntime,
+  actionName: string,
+  contexts: AgentContext[],
+): { action: Action; discriminator: string } | null {
+  const allowedContexts = new Set(contexts.map(normalizeContext));
+  for (const action of runtime.actions) {
+    if (
+      isPageDelegate(action) ||
+      !actionMatchesContexts(action, allowedContexts)
+    ) {
+      continue;
+    }
+    const discriminator = readAliasedDiscriminator(action, actionName);
+    if (discriminator) return { action, discriminator };
+  }
+  return null;
+}
+
+function prepareAliasedChildParameters(
+  action: Action,
+  explicit: ActionParameters | undefined,
+  discriminator: string,
+  message: Memory,
+): ActionParameters {
+  const declaredNames = new Set(
+    (action.parameters ?? []).map((parameter) => parameter.name),
+  );
+  const parameters: ActionParameters = {};
+  for (const [key, value] of Object.entries(explicit ?? {})) {
+    if (action.allowAdditionalParameters || declaredNames.has(key)) {
+      parameters[key] = value;
+    }
+  }
+  parameters.action = discriminator;
+
+  // A generated definition is not an authoritative create request. Umbrella
+  // actions that accept seedPrompt must regenerate from the user's actual words
+  // so a delegated alias cannot smuggle an invented graph past validation.
+  const messageText =
+    typeof message.content.text === "string" ? message.content.text.trim() : "";
+  if (
+    discriminator === "create" &&
+    declaredNames.has("seedPrompt") &&
+    messageText.length > 0
+  ) {
+    parameters.seedPrompt = messageText;
+  }
+  return parameters;
+}
+
 export const pageDelegateAction: PageActionGroup = {
   name: "PAGE_DELEGATE",
   similes: [
@@ -201,7 +275,15 @@ export const pageDelegateAction: PageActionGroup = {
     "OWNER_TOOLS",
     "PERSONAL_ASSISTANT_ACTIONS",
   ],
-  contexts: ["general", ...ALL_PAGE_CONTEXTS],
+  // Automation owns canonical umbrella actions (WORKFLOW, TRIGGER, and
+  // SCHEDULED_TASKS). Exposing this second umbrella in the same retrieval
+  // context makes the planner choose a page wrapper and invent child names.
+  // The fallback handler still accepts automation aliases from general chat,
+  // but automation-planned turns see the domain actions directly.
+  contexts: [
+    "general",
+    ...ALL_PAGE_CONTEXTS.filter((context) => context !== "automation"),
+  ],
   actionGroup: { contexts: ALL_PAGE_CONTEXTS },
   roleGate: { minRole: "OWNER" },
   // Outer envelope accepts unknown top-level keys (auto-lifted to the child
@@ -213,7 +295,7 @@ export const pageDelegateAction: PageActionGroup = {
   descriptionCompressed:
     "PAGE_DELEGATE {page browser|wallet|settings|connectors|phone|owner, action CHILD}",
   routingHint:
-    'main-chat browser/wallet/settings/connectors/phone/owner data operations -> PAGE_DELEGATE. Do not use PAGE_DELEGATE for UI view/window/panel/app navigation, opening/closing views, view manager, split/tile layout, or notes/calendar/notepad view switching; those belong to VIEWS. Browser web navigation still uses {page:"browser", action:"BROWSER_OPEN", url} or {page:"browser", action:"BROWSER", subaction:"open", url}.',
+    'main-chat browser/wallet/settings/connectors/phone/owner data operations -> PAGE_DELEGATE. Workflow lifecycle requests must call WORKFLOW directly with its action parameter; never wrap them in PAGE_DELEGATE or invent WORKFLOW_CREATE/CREATE_WORKFLOW. Do not use PAGE_DELEGATE for UI view/window/panel/app navigation, opening/closing views, view manager, split/tile layout, or notes/calendar/notepad view switching; those belong to VIEWS. Browser web navigation still uses {page:"browser", action:"BROWSER_OPEN", url} or {page:"browser", action:"BROWSER", subaction:"open", url}.',
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,
@@ -240,11 +322,25 @@ export const pageDelegateAction: PageActionGroup = {
     }
 
     const childContexts = PAGE_CONTEXTS[page];
-    const childAction = findChildAction(
-      runtime,
-      requestedAction,
-      childContexts,
-    );
+    let childAction = findChildAction(runtime, requestedAction, childContexts);
+    let childParameters = params.parameters ?? {};
+    let aliasedDiscriminator: string | undefined;
+    if (childAction) {
+      aliasedDiscriminator = readAliasedDiscriminator(
+        childAction,
+        requestedAction,
+      );
+    } else {
+      const structurallyAliased = findStructurallyAliasedChildAction(
+        runtime,
+        requestedAction,
+        childContexts,
+      );
+      if (structurallyAliased) {
+        childAction = structurallyAliased.action;
+        aliasedDiscriminator = structurallyAliased.discriminator;
+      }
+    }
     if (!childAction) {
       return {
         success: false,
@@ -258,6 +354,14 @@ export const pageDelegateAction: PageActionGroup = {
         text: `${childAction.name} is not available for this request.`,
       };
     }
+    if (aliasedDiscriminator) {
+      childParameters = prepareAliasedChildParameters(
+        childAction,
+        params.parameters,
+        aliasedDiscriminator,
+        message,
+      );
+    }
     const childCallback: typeof callback = callback
       ? (response, actionName) =>
           callback(response, actionName ?? childAction.name)
@@ -270,7 +374,7 @@ export const pageDelegateAction: PageActionGroup = {
         state,
         {
           ...options,
-          parameters: params.parameters ?? {},
+          parameters: childParameters,
         },
         childCallback,
       )) ?? {

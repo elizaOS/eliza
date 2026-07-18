@@ -166,6 +166,30 @@ const workflowRouteList: Route[] = [
     handler: workflowHandler,
   },
   {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/run',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/executions/:id',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'GET',
+    path: '/api/workflow/workflows/:id/revisions',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
+    type: 'POST',
+    path: '/api/workflow/workflows/:id/revisions/:versionId/restore',
+    rawPath: true,
+    handler: workflowHandler,
+  },
+  {
     type: 'GET',
     path: '/api/workflow/workflows/:id/evaluation-samples',
     rawPath: true,

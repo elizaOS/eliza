@@ -1185,7 +1185,10 @@ function routeTargetsProvider(
  * Every account-selecting bridge resolves through this so the picker steers
  * all of them — including the coding-agent bridge.
  */
-export function selectionForProvider(providerId: PoolProviderId): {
+export function selectionForProvider(
+  providerId: PoolProviderId,
+  opts: { includeProviderDefault?: boolean } = {},
+): {
   strategy?: Strategy;
   accountIds?: string[];
 } {
@@ -1202,9 +1205,11 @@ export function selectionForProvider(providerId: PoolProviderId): {
       normalizeStrategy(
         defaultSelectionConfig.accountStrategies?.[providerId],
       ) ??
-      (providerId === "anthropic-subscription"
-        ? "drain-soonest-reset"
-        : undefined),
+      (opts.includeProviderDefault === false
+        ? undefined
+        : providerId === "anthropic-subscription"
+          ? "drain-soonest-reset"
+          : undefined),
     accountIds: routeSelection.accountIds,
   };
 }

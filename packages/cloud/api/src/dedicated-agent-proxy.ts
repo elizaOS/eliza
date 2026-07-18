@@ -47,11 +47,40 @@ const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai";
 /** Non-`running` statuses we auto-resume on (mirrors the pairing endpoint). */
 const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
 const RETRY_AFTER_SECONDS = 5;
+const DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS = 30_000;
+const WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS = 5 * 60_000;
+const WORKFLOW_RUN_HEADERS_TIMEOUT_MS = 10 * 60_000;
 
-// The origin must produce response HEADERS within this window; the BODY then
-// streams untimed. Mutable only through __dedicatedProxyTestHooks so the
-// timeout paths are testable in milliseconds.
-let originHeadersTimeoutMs = 30_000;
+// Tests override every route's headers budget so the timeout paths complete in
+// milliseconds without weakening production's path-specific limits.
+let originHeadersTimeoutOverrideMs: number | null = null;
+
+/**
+ * Synchronous workflow generation and execution do not produce headers until
+ * their result exists, so their proxy budget must match the engine operation.
+ * The client keeps a ten-percent response-envelope buffer beyond these limits;
+ * ordinary agent routes retain the short dead-origin guard.
+ */
+export function dedicatedProxyOriginHeadersTimeoutMs(
+  method: string,
+  pathname: string,
+): number {
+  if (method.toUpperCase() !== "POST") {
+    return DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
+  }
+
+  const normalizedPath = pathname.replace(/\/+$/, "");
+  if (
+    normalizedPath === "/api/workflow/workflows/generate" ||
+    normalizedPath === "/api/workflow/workflows/resolve-clarification"
+  ) {
+    return WORKFLOW_GENERATION_HEADERS_TIMEOUT_MS;
+  }
+  if (/^\/api\/workflow\/workflows\/[^/]+\/run$/.test(normalizedPath)) {
+    return WORKFLOW_RUN_HEADERS_TIMEOUT_MS;
+  }
+  return DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
+}
 
 /**
  * Test-only seam for the headers-phase timeout. The `__` prefix + `TestHooks`
@@ -59,10 +88,13 @@ let originHeadersTimeoutMs = 30_000;
  */
 export const __dedicatedProxyTestHooks = {
   setOriginHeadersTimeoutMs(ms: number): void {
-    originHeadersTimeoutMs = ms;
+    originHeadersTimeoutOverrideMs = ms;
+  },
+  resetOriginHeadersTimeoutMs(): void {
+    originHeadersTimeoutOverrideMs = null;
   },
   get originHeadersTimeoutMs(): number {
-    return originHeadersTimeoutMs;
+    return originHeadersTimeoutOverrideMs ?? DEFAULT_ORIGIN_HEADERS_TIMEOUT_MS;
   },
 } as const;
 
@@ -110,6 +142,9 @@ async function proxyToOrigin(
   // established stream flows for as long as the origin keeps it open; only an
   // origin that never answers is aborted, and that is translated into a
   // structured 504 the client can read instead of a thrown TimeoutError.
+  const timeoutMs =
+    originHeadersTimeoutOverrideMs ??
+    dedicatedProxyOriginHeadersTimeoutMs(request.method, targetUrl.pathname);
   const controller = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -117,7 +152,7 @@ async function proxyToOrigin(
     controller.abort(
       new DOMException("origin response headers timed out", "TimeoutError"),
     );
-  }, originHeadersTimeoutMs);
+  }, timeoutMs);
   const init: RequestInit = {
     method: request.method,
     headers,
@@ -136,7 +171,7 @@ async function proxyToOrigin(
     logger.warn("[dedicated-proxy] origin did not respond within timeout", {
       host: targetUrl.hostname,
       path: targetUrl.pathname,
-      timeoutMs: originHeadersTimeoutMs,
+      timeoutMs,
     });
     const response = Response.json(
       {

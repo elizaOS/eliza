@@ -3776,6 +3776,10 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		return true;
 	}
 	return [
+		// Models sometimes serialize a namespaced client action as
+		// `call:automation:GET_WORKFLOW{...}`. It is still an invocation, not a
+		// user reply, even when its loose argument object is not valid JSON.
+		/^\s*(?:call|invoke|use|run)\s*:\s*[A-Za-z][A-Za-z0-9_.-]*(?::[A-Za-z][A-Za-z0-9_.-]*)*\s*[({]/i,
 		/\bto=functions\.[A-Z0-9_]+\b/i,
 		/\bfunctions\.[A-Z0-9_]+\b/i,
 		/"action"\s*:\s*"functions\.[A-Z0-9_]+"/i,
