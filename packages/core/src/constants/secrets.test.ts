@@ -13,6 +13,7 @@ import {
 	getProviderForApiKey,
 	getRequiredSecretsForChannel,
 	isCanonicalSecretKey,
+	isSecretKey,
 	isSecretKeyAlias,
 	MODEL_PROVIDER_SECRETS,
 	resolveSecretKeyAlias,
@@ -69,5 +70,18 @@ describe("channel secrets", () => {
 			required: [],
 			optional: [],
 		});
+	});
+});
+
+describe("isSecretKey — PAT names (#16564)", () => {
+	it("classifies bare PAT credential names without a KEY/TOKEN suffix", () => {
+		expect(isSecretKey("GH_PAT")).toBe(true);
+		expect(isSecretKey("CR_PAT")).toBe(true);
+	});
+
+	it("never classifies PATH-like or PATTERN-like names", () => {
+		for (const key of ["PATH", "XDG_DATA_PATH", "TEMPLATE_PATTERN", "FORMAT"]) {
+			expect(isSecretKey(key)).toBe(false);
+		}
 	});
 });

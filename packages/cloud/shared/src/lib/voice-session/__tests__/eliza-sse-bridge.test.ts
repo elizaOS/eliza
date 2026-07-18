@@ -15,7 +15,10 @@ function sseResponse(lines: string[], status = 200): Response {
       controller.close();
     },
   });
-  return new Response(body, { status, headers: { "Content-Type": "text/event-stream" } });
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/event-stream" },
+  });
 }
 
 describe("eliza sse bridge", () => {
@@ -191,6 +194,42 @@ describe("eliza sse bridge", () => {
         },
         () => {},
       ),
-    ).rejects.toMatchObject({ code: "upstream_error" });
+    ).rejects.toMatchObject({ code: "upstream_error", retryable: true });
+  });
+
+  test("preserves the canonical insufficient-credits code and retryability", async () => {
+    const fetchImpl = (async () =>
+      Response.json(
+        {
+          success: false,
+          error: "Insufficient credits. Required: $0.0014, Available: $0.0000",
+          code: "insufficient_credits",
+          retryable: false,
+        },
+        { status: 402 },
+      )) as unknown as typeof fetch;
+
+    await expect(
+      streamElizaConversation(
+        {
+          endpoint: "http://x",
+          authorization: "Bearer s",
+          model: "m",
+          transcript: "hi",
+          agentId: "agent-1",
+          conversationId: "conv-1",
+          traceId: "t",
+          signal: new AbortController().signal,
+          fetchImpl,
+        },
+        () => {},
+      ),
+    ).rejects.toMatchObject({
+      code: "upstream_error",
+      status: 402,
+      upstreamCode: "insufficient_credits",
+      retryable: false,
+      message: expect.stringContaining("Insufficient credits"),
+    });
   });
 });

@@ -29,6 +29,24 @@ describe("filterConfigEnvForResponse", () => {
     });
   });
 
+  test("redacts GH_PAT — a bearer credential the suffix regex cannot catch (#16564)", () => {
+    const filtered = filterConfigEnvForResponse({
+      env: {
+        GH_PAT: "ghp_livecredential",
+        GITHUB_TOKEN: "ghs_repo_scoped",
+        XDG_DATA_PATH: "/home/user/.local/share",
+      },
+    });
+
+    const env = filtered.env as Record<string, unknown>;
+    // Set members are REMOVED outright (stronger than redaction), exactly
+    // like the sibling GITHUB_TOKEN entry.
+    expect("GH_PAT" in env).toBe(false);
+    expect("GITHUB_TOKEN" in env).toBe(false);
+    // PATH-like names stay readable — no false positives from the PAT entry.
+    expect(env.XDG_DATA_PATH).toBe("/home/user/.local/share");
+  });
+
   test("removes blocked env keys after redaction", () => {
     const filtered = filterConfigEnvForResponse({
       env: {

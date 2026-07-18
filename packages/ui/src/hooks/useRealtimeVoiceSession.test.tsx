@@ -137,9 +137,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function beginStart(result: {
-  current: UseRealtimeVoiceSessionStateForTest;
-}) {
+function beginStart(result: { current: UseRealtimeVoiceSessionStateForTest }) {
   let startPromise!: ReturnType<typeof result.current.start>;
   act(() => {
     startPromise = result.current.start();
@@ -167,6 +165,19 @@ async function driveReady(
 }
 
 describe("useRealtimeVoiceSession", () => {
+  it("fails closed instead of crashing on a non-string legacy conversation id", async () => {
+    const { options } = makeOptions({
+      conversationId: { id: CONV_ID } as unknown as string,
+    });
+
+    const { result } = renderHook(() => useRealtimeVoiceSession(options));
+
+    expect(result.current.available).toBe(false);
+    await expect(result.current.start()).resolves.toEqual({
+      kind: "unavailable",
+    });
+  });
+
   it("invokes the advertised onMinted callback with the validated mint", async () => {
     const onMinted = vi.fn();
     const { options, ws } = makeOptions({ onMinted });
@@ -354,7 +365,7 @@ describe("useRealtimeVoiceSession", () => {
     });
   });
 
-  it("fallback: a mint 404 flips `available` false with NO error surface (caller uses batch)", async () => {
+  it("fallback: a mint 404 stays retryable and records the indicator reason", async () => {
     const { options } = makeOptions({ mintStatus: 404 });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
@@ -365,16 +376,15 @@ describe("useRealtimeVoiceSession", () => {
       await flushAsync();
     });
 
-    // 404 = feature disabled server-side. The hook latches it: available flips
-    // false, active stays false, and NO error is surfaced (batch fallback is a
-    // normal path, not an error).
-    await waitFor(() => expect(result.current.available).toBe(false));
+    // The current interaction falls back, but the next tap probes realtime again.
+    await waitFor(() => expect(result.current.available).toBe(true));
     expect(result.current.active).toBe(false);
     expect(result.current.error).toBeNull();
     expect(startOutcome!).toEqual({
       kind: "fallback-to-batch",
       reason: "mint",
     });
+    expect(result.current.fallbackReason).toBe("mint");
   });
 
   it("fallback: a pre-ready mint failure resolves to same-gesture batch fallback", async () => {
@@ -524,9 +534,8 @@ describe("useRealtimeVoiceSession", () => {
     // No mint request was made — consent is a hard precondition client-side too.
     expect(mint.calls.length).toBe(0);
     expect(result.current.active).toBe(false);
-    // The copy promises the batch path, so realtime must actually disarm: the
-    // next mic tap sees available=false and runs standard voice.
-    expect(result.current.available).toBe(false);
+    // This interaction falls back, while the next user tap may retry realtime.
+    expect(result.current.available).toBe(true);
     expect(result.current.error?.actionable).toBe(false);
     expect(result.current.error?.message).toMatch(/standard voice/i);
     expect(startOutcome!).toEqual({

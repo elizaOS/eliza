@@ -41,9 +41,7 @@ type RealtimeHarnessState = Omit<
   UseRealtimeVoiceSessionState,
   "start" | "stop" | "bargeIn" | "unlock"
 > & {
-  start: ReturnType<
-    typeof vi.fn<() => Promise<RealtimeVoiceStartOutcome>>
-  >;
+  start: ReturnType<typeof vi.fn<() => Promise<RealtimeVoiceStartOutcome>>>;
   stop: ReturnType<typeof vi.fn<() => Promise<void>>>;
   bargeIn: ReturnType<typeof vi.fn<() => void>>;
   unlock: ReturnType<typeof vi.fn<() => Promise<void>>>;
@@ -61,6 +59,8 @@ const realtimeHarness = vi.hoisted(() => {
     needsUnlock: false,
     paused: false,
     error: null as RealtimeVoiceError | null,
+    fallbackReason: null,
+    reportFallback: vi.fn(),
     speaker: null,
     start: vi.fn<() => Promise<RealtimeVoiceStartOutcome>>(async () => ({
       kind: "live",
@@ -305,32 +305,29 @@ describe("useChatVoiceController voice playback unlock", () => {
     ["consent failure", "consent" as const],
     ["mint 404/failure", "mint" as const],
     ["pre-ready WS failure", "transport" as const],
-  ])(
-    "falls back to batch on the same mic tap after %s",
-    async (_label, reason) => {
-      realtimeHarness.state.available = true;
-      realtimeHarness.state.start.mockResolvedValueOnce({
-        kind: "fallback-to-batch",
-        reason,
-      });
-      const { result } = renderHook(() =>
-        useChatVoiceController({
-          ...baseOptions,
-          realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
-          getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
-        }),
-      );
+  ])("falls back to batch on the same mic tap after %s", async (_label, reason) => {
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.start.mockResolvedValueOnce({
+      kind: "fallback-to-batch",
+      reason,
+    });
+    const { result } = renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
 
-      await act(async () => {
-        result.current.beginVoiceCapture("compose");
-        await Promise.resolve();
-        await Promise.resolve();
-      });
+    await act(async () => {
+      result.current.beginVoiceCapture("compose");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-      expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
-      expect(voiceState.startListening).toHaveBeenCalledTimes(1);
-    },
-  );
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+    expect(voiceState.startListening).toHaveBeenCalledTimes(1);
+  });
 
   it("starts batch directly when realtime eligibility is off", async () => {
     realtimeHarness.state.available = false;
@@ -519,6 +516,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     }));
     realtimeHarness.state.available = true;
     realtimeHarness.state.active = true;
+    realtimeHarness.state.status = "listening";
     const { result, rerender } = renderHook(() =>
       useChatVoiceController({
         ...baseOptions,
@@ -533,6 +531,14 @@ describe("useChatVoiceController voice playback unlock", () => {
       captureMode: "compose",
     });
 
+    realtimeHarness.state.status = "thinking";
+    await act(async () => {
+      rerender();
+      await Promise.resolve();
+    });
+    expect(result.current.composerVoice.isListening).toBe(false);
+
+    realtimeHarness.state.status = "speaking";
     realtimeHarness.state.agentSpeaking = true;
     await act(async () => {
       rerender();

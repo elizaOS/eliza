@@ -391,11 +391,21 @@ function getRegistryFromRuntime(
 ): IPermissionsRegistry | null {
   if (!runtime) return null;
   const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
-  if (!service) return null;
-  // IPermissionsRegistry is a plain interface (no Service base), so the
-  // getService<T> generic isn't usable; the registry service implements the
-  // interface structurally at runtime but does not extend it nominally.
-  return service as unknown as IPermissionsRegistry;
+  if (!isPermissionsRegistry(service)) return null;
+  return service;
+}
+
+function isPermissionsRegistry(
+  service: unknown,
+): service is IPermissionsRegistry {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    "get" in service &&
+    typeof service.get === "function" &&
+    "recordBlock" in service &&
+    typeof service.recordBlock === "function"
+  );
 }
 
 function buildPermissionFailure(

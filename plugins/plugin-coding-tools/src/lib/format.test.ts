@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { FAILURE_TEXT_PREFIX, type ToolFailure } from "../types.js";
 import {
   failureToActionResult,
+  fencePreformatted,
   readArrayParam,
   readBoolParam,
   readNumberParam,
@@ -118,5 +119,29 @@ describe("readPositiveIntSetting", () => {
     expect(readPositiveIntSetting(rt(0), "k", 3)).toBe(3);
     expect(readPositiveIntSetting(rt(-2), "k", 3)).toBe(3);
     expect(readPositiveIntSetting(rt("nope"), "k", 3)).toBe(3);
+  });
+});
+
+describe("fencePreformatted", () => {
+  it("wraps plain transcripts in a three-backtick fence with a trailing newline", () => {
+    expect(fencePreformatted('$ find . -name "*.md"\nok')).toBe(
+      '```\n$ find . -name "*.md"\nok\n```',
+    );
+  });
+
+  it("preserves markdown metacharacters verbatim inside the fence", () => {
+    const text = "*.md and _under_ and **bold**";
+    expect(fencePreformatted(text)).toContain(text);
+  });
+
+  it("grows the fence past the longest embedded backtick run", () => {
+    const text = "docs say ```js\ncode\n``` is a fence";
+    const fenced = fencePreformatted(text);
+    expect(fenced.startsWith("````\n")).toBe(true);
+    expect(fenced.endsWith("````")).toBe(true);
+  });
+
+  it("does not double a trailing newline", () => {
+    expect(fencePreformatted("line\n")).toBe("```\nline\n```");
   });
 });

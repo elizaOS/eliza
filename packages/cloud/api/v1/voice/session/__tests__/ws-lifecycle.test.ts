@@ -150,6 +150,14 @@ class FakeCartesiaSocket implements CartesiaWebSocketLike {
       }),
     });
   }
+  sentText(): string {
+    return this.sent
+      .map((entry) => {
+        const parsed = JSON.parse(entry) as { transcript?: unknown };
+        return typeof parsed.transcript === "string" ? parsed.transcript : "";
+      })
+      .join("");
+  }
   private fire(type: string, payload: unknown) {
     for (const l of this.listeners.get(type) ?? []) l(payload);
   }
@@ -274,6 +282,7 @@ const CLAIMS = {
 async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
+  prewarmElizaContext?: () => Promise<void>;
 }): Promise<{ sessionId: string }> {
   const minted = await mintVoiceSessionToken(CLAIMS);
   const usageStore = new InMemoryVoiceUsageStore();
@@ -298,6 +307,9 @@ async function connectSession(opts: {
         elizaAuthorization: "Bearer eliza-server",
         elizaModel: "gemma-4-31b",
         fetchImpl: opts.fetchImpl,
+        ...(opts.prewarmElizaContext
+          ? { prewarmElizaContext: opts.prewarmElizaContext }
+          : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
         downlink,
@@ -429,6 +441,171 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("prewarms Eliza tenancy context when the live session starts", async () => {
+    let prewarmCalls = 0;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      prewarmElizaContext: async () => {
+        prewarmCalls += 1;
+      },
+    });
+    expect(client.controlTypes()).toContain("ready");
+    expect(prewarmCalls).toBe(1);
+  });
+
+  test("caps Cartesia server-side buffer delay for realtime voice", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A short answer."]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer briefly");
+    await flush();
+    await flush();
+
+    // Cartesia defaults to a 3000ms server aggregation window; the realtime
+    // session must cap it so already-aggregated clauses start synthesis fast.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map((entry) => JSON.parse(entry) as { max_buffer_delay_ms?: number })
+      .filter((entry) => entry.max_buffer_delay_ms !== undefined);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      expect(request.max_buffer_delay_ms).toBe(250);
+    }
+  });
+
+  test("prewarms Cartesia as soon as the response turn starts", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A short answer."]),
+    });
+
+    const before = FakeCartesiaSocket.instances.length;
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer briefly");
+
+    // Socket creation is synchronous at turn start, before any asynchronous LLM
+    // delta is consumed, so its handshake overlaps model generation.
+    expect(FakeCartesiaSocket.instances.length).toBe(before + 1);
+    await flush();
+    await flush();
+  });
+
+  test("empty LLM reply cancels the prewarmed Cartesia context", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say nothing");
+    await flush();
+    await flush();
+
+    // The socket was opened speculatively at turn start; with no speakable
+    // output it must be cancelled (closed) rather than leaked, and the turn
+    // still closes out with a usage frame.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.closed).toBe(true);
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.controlTypes()).not.toContain("speaking_start");
+  });
+
+  test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
+    let aborted = false;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(
+        ["This answer starts speaking now and keeps going"],
+        {
+          hang: true,
+          onAbort: () => {
+            aborted = true;
+          },
+        },
+      ),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer quickly");
+    await flush();
+    await flush();
+
+    // No punctuation or stream-end was delivered, but the voice-specific
+    // clause ceiling must already have sent a continuation phrase to Cartesia.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests[0]?.continue).toBe(true);
+    expect(client.controlTypes()).toContain("speaking_start");
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(aborted).toBe(true);
+  });
+
+  test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Sunlight reaches Earth quickly."]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "tell me about sunlight");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(requests.map((request) => request.transcript).join("")).toBe(
+      "Sunlight reaches Earth quickly.",
+    );
+    expect(requests[0]?.continue).toBe(true);
+    expect(requests.at(-1)?.continue).toBe(false);
+  });
+
+  test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeCanonicalChunkFetch(["Canonical chunk."]),
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "voice transcript");
+    await flush();
+    await flush();
+
+    expect(client.controlTypes()).toContain("llm_first_text");
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.sentText()).toContain("Canonical chunk.");
+    cartesia.emitDone();
+    await flush();
+    expect(client.controlTypes()).toContain("usage");
+  });
+
   test("terminal Cartesia phrase carries continue:false and no empty-transcript finish (live-provider fix)", async () => {
     // Regression from the LIVE-provider evidence run: the session used to send
     // every phrase with continue:true then an empty-transcript finish(), which
@@ -554,6 +731,76 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes().filter((t) => t === "usage").length).toBe(
       usageCount,
     );
+    expect(client.closedWith).toBeNull();
+  });
+
+  test("canonical 402 becomes a non-retryable insufficient-credits turn error", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async () =>
+        Response.json(
+          {
+            success: false,
+            error:
+              "Insufficient credits. Required: $0.0014, Available: $0.0000",
+            code: "insufficient_credits",
+            retryable: false,
+          },
+          { status: 402 },
+        )) as unknown as typeof fetch,
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "please answer");
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "insufficient_credits",
+        retryable: false,
+      }),
+    );
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.closedWith).toBeNull();
+  });
+
+  test("canonical 404 Agent not found is exposed in a bounded public voice error payload", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async () =>
+        Response.json(
+          {
+            success: false,
+            error: "Agent not found",
+          },
+          { status: 404 },
+        )) as unknown as typeof fetch,
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "please answer");
+    await flush();
+    await flush();
+
+    expect(client.controlFrames).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "ElizaSseBridgeError",
+        retryable: false,
+        upstreamStatus: 404,
+        upstreamMessage: "Agent not found",
+      }),
+    );
+    const errorFrame = client.controlFrames.find(
+      (f) => f.t === "error" && "upstreamStatus" in f,
+    ) as Record<string, unknown> | undefined;
+    expect(JSON.stringify(errorFrame)).not.toContain("Bearer");
+    expect(JSON.stringify(errorFrame)).not.toContain("X-Service-Key");
+    expect(client.controlTypes()).toContain("usage");
     expect(client.closedWith).toBeNull();
   });
 

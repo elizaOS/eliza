@@ -235,6 +235,83 @@ describe("MESSAGE op=list_connections", () => {
 	});
 });
 
+describe("MESSAGE trusted connector account routing", () => {
+	it("passes the envelope account to a dispatcher and ignores Content spoofing", async () => {
+		let routedAccountId: string | undefined;
+		const runtime = mockRuntime([
+			{
+				source: "x",
+				label: "X",
+				accountRouting: "connector",
+				capabilities: [],
+				supportedTargetKinds: ["room"],
+				contexts: [],
+				listRooms: async (context: { accountId?: string }) => {
+					routedAccountId = context.accountId;
+					return [];
+				},
+			},
+		]);
+		const inbound = {
+			...message,
+			metadata: { type: "message", source: "x", accountId: "secondary" },
+			content: {
+				text: "show channels",
+				source: "x",
+				metadata: { accountId: "primary" },
+			},
+		} as Memory;
+
+		const result = await messageAction.handler(
+			runtime,
+			inbound,
+			undefined,
+			{ parameters: { action: "list_channels", source: "x" } },
+			undefined,
+			undefined,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(routedAccountId).toBe("secondary");
+		expect(inbound.content.metadata).toEqual({ accountId: "primary" });
+	});
+
+	it("fails closed when another account's display name collides with the trusted account id", async () => {
+		const listRooms = async () => [];
+		const runtime = mockRuntime([
+			{
+				source: "x",
+				label: "X other account",
+				accountId: "other",
+				account: { accountId: "other", name: "original" },
+				capabilities: [],
+				supportedTargetKinds: ["room"],
+				contexts: [],
+				listRooms,
+			},
+		]);
+		const inbound = {
+			...message,
+			metadata: { type: "message", source: "x", accountId: "original" },
+			content: { text: "show channels", source: "x" },
+		} as Memory;
+
+		const result = await messageAction.handler(
+			runtime,
+			inbound,
+			undefined,
+			{ parameters: { action: "list_channels", source: "x" } },
+			undefined,
+			undefined,
+		);
+
+		expect(result?.success).toBe(false);
+		expect(result?.data).toMatchObject({
+			error: "ACCOUNT_CONNECTOR_NOT_FOUND",
+		});
+	});
+});
+
 describe("MESSAGE op=send owner-binding gate", () => {
 	async function runtimeWithAccount(
 		accessGate: "open" | "owner_binding",

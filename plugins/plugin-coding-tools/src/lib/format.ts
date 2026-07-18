@@ -12,6 +12,23 @@ import {
   type ToolFailure,
 } from "../types.js";
 
+/**
+ * Wrap preformatted tool output (shell transcripts, grep matches, directory
+ * listings) in a markdown code fence for the user-facing callback channel.
+ * Chat connectors render callback text as markdown, so unfenced transcripts
+ * get mangled — Discord eats `*` pairs as italics, turning `-name "*.md"`
+ * into `-name ".md"` in the rendered message. The fence length adapts to the
+ * longest backtick run in the payload so embedded fences cannot break out.
+ * Planner-facing ActionResult text stays raw — fence only what users see.
+ */
+export function fencePreformatted(text: string): string {
+  const longestRun =
+    text.match(/`+/g)?.reduce((max, run) => Math.max(max, run.length), 0) ?? 0;
+  const fence = "`".repeat(Math.max(3, longestRun + 1));
+  const body = text.endsWith("\n") ? text : `${text}\n`;
+  return `${fence}\n${body}${fence}`;
+}
+
 export function failureToActionResult(
   failure: ToolFailure,
   data?: Record<string, unknown>,
