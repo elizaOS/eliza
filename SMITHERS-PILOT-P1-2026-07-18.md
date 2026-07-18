@@ -37,7 +37,7 @@ The result exposes Smithers-native operator commands:
 ```text
 bunx smithers-orchestrator monitor <run-id>
 bunx smithers-orchestrator inspect <run-id>
-bunx smithers-orchestrator events --run <run-id> --no-follow
+bunx smithers-orchestrator events <run-id> --json
 ```
 
 The first command opens the live Gateway monitor. The latter two inspect/replay the completed run after the fact.
@@ -72,7 +72,79 @@ The new lifecycle tests prove:
 
 ## Demonstration run
 
-To be appended after the PR exists and its CI verdict is available. The demonstration will observe this PR itself, then capture the ordered Smithers event/frame log without replaying the PR write.
+The pilot observed its own real delivery chain after PR creation, so the replayable segment contained no GitHub write.
+
+```text
+run:        smithers-p1-16638
+issue:      elizaOS/eliza#16632
+branch:     sol/smithers-pilot-p1
+commit:     12ea078b758
+PR:         https://github.com/elizaOS/eliza/pull/16638
+Eliza task: issue-16632-phase-1
+trajectory: sol-orch:3e36e822-4d96-4236-b4a2-9a8b4980a8e1
+CI verdict: Develop PR Gate success
+```
+
+Live watch proof was captured while `ci-verdict` was in progress:
+
+```text
+run:
+  id: smithers-p1-16638
+  workflow: eliza-issue-to-validated-pr
+  status: running
+runState:
+  state: running
+steps[6]{id,state,attempt,label}:
+  branch,finished,1,branch
+  ci-verdict,in-progress,1,ci-verdict
+  implement,finished,1,implement
+  issue-intake,finished,1,issue-intake
+  pr,finished,1,pr
+  test,finished,1,test
+```
+
+After CI, native `inspect` replayed the completed frame projection:
+
+```text
+run:
+  id: smithers-p1-16638
+  workflow: eliza-issue-to-validated-pr
+  status: finished
+  started: "2026-07-18T23:04:54.989Z"
+  finished: "2026-07-18T23:05:02.204Z"
+runState:
+  state: succeeded
+steps[6]{id,state,attempt,label}:
+  branch,finished,1,branch
+  ci-verdict,finished,1,ci-verdict
+  implement,finished,1,implement
+  issue-intake,finished,1,issue-intake
+  pr,finished,1,pr
+  test,finished,1,test
+```
+
+The durable phase output for every node carried the same task and trajectory correlation. Example:
+
+```json
+{
+  "phase": "ci-verdict",
+  "correlation": {
+    "smithersRunId": "smithers-p1-16638",
+    "smithersNodeId": "ci-verdict",
+    "smithersAttempt": 1,
+    "elizaTaskId": "issue-16632-phase-1",
+    "trajectoryId": "sol-orch:3e36e822-4d96-4236-b4a2-9a8b4980a8e1"
+  },
+  "evidence": {
+    "references": {
+      "commit": "12ea078b758",
+      "verdict": "Develop PR Gate success"
+    }
+  }
+}
+```
+
+The native event replay returned 20 ordered JSONL records. The opening records were `RunStarted` at sequence 0, six `NodePending` records for the named phases, then `NodeStarted` with `attempt: 1`; the stream closed with the six node completions and terminal run completion. It is replayable from the disposable native store with `bunx smithers-orchestrator events smithers-p1-16638 --json`. The PR gate was green. The separate `claude-review` check had an `is_error:true` action-infrastructure failure with no review comments; it was not a code/test verdict and is called out rather than represented as green.
 
 ## Explicit non-goals held
 

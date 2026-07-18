@@ -64,7 +64,7 @@ describe("runSmithersObservabilityMacro", () => {
         "inspect macro-correlation-test",
       );
       expect(result.watch.replayCommand).toContain(
-        "events --run macro-correlation-test",
+        "events macro-correlation-test --json",
       );
     },
     TIMEOUT,

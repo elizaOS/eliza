@@ -337,7 +337,7 @@ export async function runSmithersObservabilityMacro(
     watch: {
       monitorCommand: `bunx smithers-orchestrator monitor ${runId}`,
       inspectCommand: `bunx smithers-orchestrator inspect ${runId}`,
-      replayCommand: `bunx smithers-orchestrator events --run ${runId} --no-follow`,
+      replayCommand: `bunx smithers-orchestrator events ${runId} --json`,
     },
   };
 }
