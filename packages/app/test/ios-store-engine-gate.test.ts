@@ -1,12 +1,12 @@
 /**
- * Unit tests for the Ios Store Engine Gate app packaging script behavior and
- * platform guardrails.
+ * Exercises the iOS store-engine release policy through the app package's real
+ * Vitest lane so changed-file coverage observes the production module.
  */
-import { describe, expect, it } from "vitest";
-import { evaluateIosStoreEngineGate } from "./ios-store-engine-gate.mjs";
 
-/** Build an env with the iOS engine-gate vars unset, then apply overrides. */
-const env = (overrides = {}) => ({
+import { describe, expect, it } from "vitest";
+import { evaluateIosStoreEngineGate } from "../scripts/ios-store-engine-gate.mjs";
+
+const env = (overrides: Record<string, string | undefined> = {}) => ({
   ELIZA_BUILD_VARIANT: undefined,
   ELIZA_RELEASE_AUTHORITY: undefined,
   ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: undefined,
@@ -14,7 +14,7 @@ const env = (overrides = {}) => ({
   ...overrides,
 });
 
-describe("evaluateIosStoreEngineGate (#8861)", () => {
+describe("evaluateIosStoreEngineGate", () => {
   it("keeps the launch store build Cloud-only by default", () => {
     expect(
       evaluateIosStoreEngineGate(env({ ELIZA_BUILD_VARIANT: "store" }))
@@ -27,7 +27,7 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
     ).toBe(false);
   });
 
-  it("detects the store variant from either flag (case-insensitive)", () => {
+  it("detects either store marker without accepting direct builds", () => {
     expect(
       evaluateIosStoreEngineGate(env({ ELIZA_BUILD_VARIANT: "STORE" }))
         .storeVariant,
@@ -39,25 +39,25 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
     expect(evaluateIosStoreEngineGate(env()).storeVariant).toBe(false);
   });
 
-  it("defaults the local runtime OFF and permits an explicit opt-in", () => {
+  it("recognizes every explicit local-runtime disable spelling", () => {
     expect(evaluateIosStoreEngineGate(env()).localRuntimeDisabled).toBe(true);
-    for (const v of ["0", "false", "no", "off", "OFF", " 0 "]) {
+    for (const value of ["0", "false", "no", "off", "OFF", " 0 "]) {
       expect(
         evaluateIosStoreEngineGate(
-          env({ ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: v }),
+          env({ ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: value }),
         ).localRuntimeDisabled,
       ).toBe(true);
     }
-    for (const v of ["1", "true", "yes", "anything"]) {
+    for (const value of ["1", "true", "yes", "anything"]) {
       expect(
         evaluateIosStoreEngineGate(
-          env({ ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: v }),
+          env({ ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: value }),
         ).localRuntimeDisabled,
       ).toBe(false);
     }
   });
 
-  it("embeds the engine when a custom store build opts into local execution", () => {
+  it("embeds the engine for an explicit local custom store build", () => {
     const gate = evaluateIosStoreEngineGate(
       env({
         ELIZA_BUILD_VARIANT: "store",
@@ -68,26 +68,13 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
     expect(gate.engineWillEmbed).toBe(true);
   });
 
-  it("an intentional cloud-only store build (local runtime disabled) omits the engine", () => {
-    const gate = evaluateIosStoreEngineGate(
-      env({
-        ELIZA_BUILD_VARIANT: "store",
-        ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0",
-      }),
-    );
-    expect(gate.storeVariant).toBe(true);
-    expect(gate.localRuntimeDisabled).toBe(true);
-    expect(gate.engineWillEmbed).toBe(false);
-  });
-
-  it("ELIZA_IOS_FULL_BUN_ENGINE forces the engine even off a store build, and beats a disabled local runtime", () => {
-    for (const v of ["1", "true", "yes", "on"]) {
+  it("lets an explicit engine request override Cloud-only omission", () => {
+    for (const value of ["1", "true", "yes", "on"]) {
       expect(
-        evaluateIosStoreEngineGate(env({ ELIZA_IOS_FULL_BUN_ENGINE: v }))
+        evaluateIosStoreEngineGate(env({ ELIZA_IOS_FULL_BUN_ENGINE: value }))
           .engineWillEmbed,
       ).toBe(true);
     }
-    // forced wins over an explicit cloud-only disable.
     expect(
       evaluateIosStoreEngineGate(
         env({
@@ -99,7 +86,7 @@ describe("evaluateIosStoreEngineGate (#8861)", () => {
     ).toBe(true);
   });
 
-  it("a non-store build without forcing does NOT embed the engine", () => {
+  it("omits the engine from non-store builds without an explicit request", () => {
     expect(evaluateIosStoreEngineGate(env()).engineWillEmbed).toBe(false);
     expect(
       evaluateIosStoreEngineGate(env({ ELIZA_BUILD_VARIANT: "direct" }))

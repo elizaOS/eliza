@@ -12,7 +12,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   captureIosSimulatorScreenshot,
   startIosSimulatorVideo,
@@ -99,7 +99,7 @@ function simctl(args, options = {}) {
   return run("xcrun", ["simctl", ...args], { stdio: "pipe", ...options });
 }
 
-function findSimulator(target) {
+export function findSimulator(target) {
   const json = tryRun("xcrun", [
     "simctl",
     "list",
@@ -118,7 +118,7 @@ function findSimulator(target) {
   return null;
 }
 
-function ensureSimulatorBooted() {
+export function ensureSimulatorBooted() {
   if (process.platform !== "darwin") {
     throw new Error("iOS cloud onboarding requires macOS with xcrun simctl.");
   }
@@ -376,7 +376,7 @@ async function runMode({ udid, appId, mode, privateKey }) {
   }
 }
 
-async function main() {
+export async function main() {
   if (process.env.ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE !== "1") {
     throw new Error(
       "Set ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 to run against real Eliza Cloud.",
@@ -392,7 +392,12 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.stack : String(error));
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.stack : String(error));
+    process.exit(1);
+  });
+}

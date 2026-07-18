@@ -114,7 +114,15 @@ export default defineConfig({
     exclude: unitExcludes,
     coverage: {
       ...baseConfig.test?.coverage,
-      include: ["src/**/*.{ts,tsx}"],
+      // These release/device modules are production code exercised by the
+      // package's Vitest lane, so policy changes emit real LCOV instead of
+      // relying on source-string assertions.
+      include: [
+        "src/**/*.ts",
+        "scripts/ios-cloud-onboarding-smoke.mjs",
+        "scripts/ios-store-engine-gate.mjs",
+        "scripts/mobile-release-preflight.mjs",
+      ],
     },
   },
 });

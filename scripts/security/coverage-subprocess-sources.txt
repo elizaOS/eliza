@@ -24,6 +24,10 @@ packages/eliza-hub/deployment/hetzner-staging/scripts/storage-evidence.mjs
 packages/eliza-hub/services/merge-steward/scripts/sync-openapi-production-evidence-schema.mjs
 packages/eliza-hub/services/merge-steward/src/cli.js
 
+# The multi-platform mobile orchestrator owns process-global build policy and
+# is exercised in a fresh Node process by its changed iOS release-contract test.
+packages/app-core/scripts/run-mobile-build.mjs
+
 # ACP stdio entrypoint is exercised via spawned runtime contract tests; importing it in-process starts the protocol server.
 packages/examples/code/src/acp.ts
 

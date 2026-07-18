@@ -1,4 +1,5 @@
-/** Exercises run mobile build ios engine gate behavior with deterministic app-core test fixtures. */
+/** Exercises iOS build policy both directly and through a fresh real runner process. */
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -7,6 +8,53 @@ import {
   resolveMobileBuildPolicy,
   shouldIncludeIosFullBunEngine,
 } from "./run-mobile-build.mjs";
+
+const runnerUrl = new URL("./run-mobile-build.mjs", import.meta.url).href;
+const IOS_POLICY_ENV_KEYS = [
+  "ELIZA_BUILD_VARIANT",
+  "ELIZA_RELEASE_AUTHORITY",
+  "ELIZA_IOS_RUNTIME_MODE",
+  "VITE_ELIZA_IOS_RUNTIME_MODE",
+  "ELIZA_RUNTIME_MODE",
+  "RUNTIME_MODE",
+  "LOCAL_RUNTIME_MODE",
+  "VITE_ELIZA_RUNTIME_MODE",
+  "ELIZA_IOS_APP_STORE_LOCAL_RUNTIME",
+  "ELIZA_IOS_FULL_BUN_ENGINE",
+];
+
+function readIosPolicyFromFreshProcess(overrides = {}) {
+  const env = { ...process.env };
+  for (const key of IOS_POLICY_ENV_KEYS) delete env[key];
+  Object.assign(env, overrides);
+  const stdout = execFileSync(
+    process.execPath,
+    [
+      "--input-type=module",
+      "--eval",
+      `
+        import {
+          configureIosAppStoreBuildDefaults,
+          isIosAppStoreBuild,
+          resolveIosDeploymentTarget,
+          resolveMobileBuildPolicy,
+          shouldIncludeIosFullBunEngine,
+        } from ${JSON.stringify(runnerUrl)};
+        configureIosAppStoreBuildDefaults();
+        process.stdout.write(JSON.stringify({
+          appStoreBuild: isIosAppStoreBuild(),
+          deploymentTarget: resolveIosDeploymentTarget(),
+          includeFullBunEngine: shouldIncludeIosFullBunEngine(),
+          localRuntime: process.env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME,
+          policy: resolveMobileBuildPolicy("ios"),
+          runtimeMode: process.env.VITE_ELIZA_IOS_RUNTIME_MODE,
+        }));
+      `,
+    ],
+    { encoding: "utf8", env },
+  );
+  return JSON.parse(stdout);
+}
 
 // Launch builds intentionally omit the local runtime. The gate still guarantees
 // that an explicitly local-enabled custom store build embeds the engine instead
@@ -109,5 +157,39 @@ describe("iOS deployment target", () => {
     expect(resolveIosDeploymentTarget({ ELIZA_IOS_FULL_BUN_ENGINE: "1" })).toBe(
       "17.4",
     );
+  });
+});
+
+describe("fresh-process iOS release contract", () => {
+  it("executes the real build runner with Cloud-only launch defaults", () => {
+    expect(readIosPolicyFromFreshProcess()).toEqual({
+      appStoreBuild: true,
+      deploymentTarget: "17.4",
+      includeFullBunEngine: false,
+      localRuntime: "0",
+      policy: {
+        androidRuntimeMode: null,
+        appControlledOta: false,
+        buildVariant: "store",
+        capacitorTarget: "ios",
+        iosRuntimeMode: "cloud",
+        releaseAuthority: "apple-app-store",
+        runtimeExecutionMode: "cloud",
+      },
+      runtimeMode: "cloud",
+    });
+  });
+
+  it("preserves an explicit custom local-runtime opt-in", () => {
+    expect(
+      readIosPolicyFromFreshProcess({
+        ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "1",
+      }),
+    ).toMatchObject({
+      appStoreBuild: true,
+      deploymentTarget: "17.4",
+      includeFullBunEngine: true,
+      localRuntime: "1",
+    });
   });
 });
