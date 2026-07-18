@@ -76,6 +76,14 @@ const REVOCATION_POLL_MS = 400;
  * and severs fail-closed instead of streaming unbounded paid audio.
  */
 const MAX_OUTSTANDING_METER_WINDOWS = 2;
+/**
+ * Voice cannot wait for the generic 180-character phrase ceiling: short spoken
+ * replies often have no punctuation until the model's final token, which put
+ * ~2.8s of generation after `llm_first_text` on the first-audio path. Emit a
+ * speakable clause after a small token-sized prefix; Cartesia's continuation
+ * context preserves prosody across the resulting chunks.
+ */
+const VOICE_TTS_FIRST_CLAUSE_CHARS = 24;
 
 export type { VoiceSessionDownlink } from "@/lib/voice-session/ws-handler";
 
@@ -471,7 +479,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   ): Promise<void> {
     const abort = new AbortController();
     this.llmAbort = abort;
-    const phrase = new PhraseAggregator();
+    const phrase = new PhraseAggregator({
+      maxBufferChars: VOICE_TTS_FIRST_CLAUSE_CHARS,
+      preferWordBoundaryAtMax: true,
+    });
     this.phrase = phrase;
 
     let tts: CartesiaSonicTtsStream | null = null;
@@ -846,13 +857,17 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 function splitTerminalSuffix(
   phrase: string,
 ): { prefix: string; suffix: string } | null {
+  const hasTrailingBoundary = /\s$/.test(phrase);
   const trimmed = phrase.trim();
   const match = /^(.*\S)\s+(\S+)$/.exec(trimmed);
   if (!match) return null;
   const prefixText = match[1].trim();
-  const suffix = match[2].trim();
-  if (prefixText.length < 8 || suffix.length > 40) return null;
-  // Preserve the original word boundary when provider transcript chunks are
-  // concatenated. Cartesia accepts trailing whitespace on non-terminal chunks.
-  return { prefix: `${prefixText} `, suffix };
+  const suffixText = match[2].trim();
+  if (prefixText.length < 8 || suffixText.length > 40) return null;
+  // Preserve both word boundaries when provider transcript chunks are
+  // concatenated. Cartesia accepts trailing whitespace on continuation chunks.
+  return {
+    prefix: `${prefixText} `,
+    suffix: hasTrailingBoundary ? `${suffixText} ` : suffixText,
+  };
 }

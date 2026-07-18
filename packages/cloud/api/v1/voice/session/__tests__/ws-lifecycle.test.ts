@@ -477,6 +477,45 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).not.toContain("speaking_start");
   });
 
+  test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
+    let aborted = false;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(
+        ["This answer starts speaking now and keeps going"],
+        {
+          hang: true,
+          onAbort: () => {
+            aborted = true;
+          },
+        },
+      ),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer quickly");
+    await flush();
+    await flush();
+
+    // No punctuation or stream-end was delivered, but the voice-specific
+    // clause ceiling must already have sent a continuation phrase to Cartesia.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests[0]?.continue).toBe(true);
+    expect(client.controlTypes()).toContain("speaking_start");
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(aborted).toBe(true);
+  });
+
   test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
     const client = new FakeClientSocket();
     await connectSession({
@@ -496,15 +535,12 @@ describe("voice-session WS lifecycle", () => {
           JSON.parse(entry) as { transcript?: string; continue?: boolean },
       )
       .filter((entry) => entry.transcript);
-    expect(requests).toHaveLength(2);
-    expect(requests[0]).toMatchObject({
-      transcript: "Sunlight reaches Earth ",
-      continue: true,
-    });
-    expect(requests[1]).toMatchObject({
-      transcript: "quickly.",
-      continue: false,
-    });
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(requests.map((request) => request.transcript).join("")).toBe(
+      "Sunlight reaches Earth quickly.",
+    );
+    expect(requests[0]?.continue).toBe(true);
+    expect(requests.at(-1)?.continue).toBe(false);
   });
 
   test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
