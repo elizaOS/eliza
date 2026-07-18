@@ -248,6 +248,10 @@ const LIVE_SESSION_PHASES: ReadonlySet<string> = new Set([
 
 const DEFAULT_READY_TIMEOUT_MS = 15_000;
 
+function normalizeVoiceIdentityId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function fallbackReasonForError(
   error: RealtimeVoiceError,
 ): "consent" | "mint" | "transport" | "unknown" | null {
@@ -310,19 +314,28 @@ export function useRealtimeVoiceSession(
     resolve: (outcome: RealtimeVoiceStartOutcome) => void;
   } | null>(null);
 
+  const normalizedAgentId = normalizeVoiceIdentityId(agentId);
+  const normalizedConversationId = normalizeVoiceIdentityId(conversationId);
+
   // Keep the latest callbacks/config in refs so the stable `start`/`stop`
   // identities don't churn the mic button bindings each render.
   const getConsentNonceRef = useRef(getConsentNonce);
   const createClientRef = useRef(createClient);
   const clientOptionsRef = useRef(clientOptions);
   const onMintedRef = useRef(onMinted);
-  const idsRef = useRef({ agentId, conversationId });
+  const idsRef = useRef({
+    agentId: normalizedAgentId,
+    conversationId: normalizedConversationId,
+  });
   const readyTimeoutMsRef = useRef(readyTimeoutMs);
   getConsentNonceRef.current = getConsentNonce;
   createClientRef.current = createClient;
   clientOptionsRef.current = clientOptions;
   onMintedRef.current = onMinted;
-  idsRef.current = { agentId, conversationId };
+  idsRef.current = {
+    agentId: normalizedAgentId,
+    conversationId: normalizedConversationId,
+  };
   readyTimeoutMsRef.current = readyTimeoutMs;
 
   const clearReadyTimer = useCallback(() => {
@@ -345,7 +358,7 @@ export function useRealtimeVoiceSession(
     [],
   );
 
-  const hasIds = Boolean(agentId?.trim()) && Boolean(conversationId?.trim());
+  const hasIds = Boolean(normalizedAgentId) && Boolean(normalizedConversationId);
   const available = flagEnabled && hasIds && !featureDisabled;
 
   const applyServerEventToTranscript = useCallback(
@@ -414,7 +427,7 @@ export function useRealtimeVoiceSession(
     }
     if (!flagEnabled) return { kind: "unavailable" };
     const { agentId: aId, conversationId: cId } = idsRef.current;
-    if (!aId?.trim() || !cId?.trim()) return { kind: "unavailable" };
+    if (!aId || !cId) return { kind: "unavailable" };
 
     startingRef.current = true;
     micOwnedRef.current = false;
@@ -696,7 +709,7 @@ export function useRealtimeVoiceSession(
   // changes while a start/live session owns the mic, stop the old socket and
   // re-mint against the latest ids. A generation guard prevents rapid thread
   // switches from resurrecting an intermediate identity.
-  const identityKey = `${agentId?.trim() ?? ""}\n${conversationId?.trim() ?? ""}`;
+  const identityKey = `${normalizedAgentId}\n${normalizedConversationId}`;
   const previousIdentityRef = useRef(identityKey);
   useEffect(() => {
     if (previousIdentityRef.current === identityKey) return;
@@ -724,7 +737,7 @@ export function useRealtimeVoiceSession(
       const { agentId: nextAgentId, conversationId: nextConversationId } =
         idsRef.current;
       identityRestartPendingRef.current = false;
-      if (flagEnabled && nextAgentId?.trim() && nextConversationId?.trim()) {
+      if (flagEnabled && nextAgentId && nextConversationId) {
         await start();
       }
     })();

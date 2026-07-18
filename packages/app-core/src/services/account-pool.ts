@@ -1209,6 +1209,18 @@ export function selectionForProvider(providerId: PoolProviderId): {
   };
 }
 
+export function configuredAccountStrategyForProvider(
+  providerId: PoolProviderId,
+): Strategy | undefined {
+  const route = defaultSelectionConfig.serviceRouting?.llmText;
+  return (
+    (routeTargetsProvider(route, providerId)
+      ? normalizeStrategy(route?.strategy)
+      : undefined) ??
+    normalizeStrategy(defaultSelectionConfig.accountStrategies?.[providerId])
+  );
+}
+
 export function configureDefaultAccountPoolSelection(
   config: AccountPoolSelectionConfig = {},
 ): void {

@@ -109,6 +109,11 @@
           "reviewSensitive": true,
           "appReviewJustification": "Required for Screen Time and website blocking features exposed through the iOS app and extension."
         },
+        "com.apple.developer.associated-domains": {
+          "arrayStringPatterns": ["^applinks:eliza\\.app$"],
+          "reviewSensitive": true,
+          "appReviewJustification": "Required for the reviewed production Universal Link host used by native app association. The exact host is pinned so additional domains require a new review."
+        },
         "com.apple.security.application-groups": {
           "arrayStringPatterns": ["^group\\.[A-Za-z0-9.-]+$"],
           "justification": "Required to share scoped state with app extensions."
