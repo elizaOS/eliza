@@ -1,7 +1,7 @@
 /**
- * Decides which conversation messages render in the transcript. Internal-only
- * action callback memories stay available to diagnostics without becoming
- * assistant prose when the conversation is restored.
+ * Decides which conversation messages render in the transcript. Machine-only
+ * action inventories stay available to diagnostics without becoming assistant
+ * prose, while concise action results retain live-versus-restored parity.
  */
 import type { ConversationMessage } from "../api";
 
@@ -15,21 +15,18 @@ function normalizeCallbackHistory(history: readonly string[]): string {
   return normalized.join("\n");
 }
 
-function isCallbackOnlyAssistantMessage(message: ConversationMessage): boolean {
-  if (message.actionCallbackHistory?.length) {
-    return (
-      message.text.trim() ===
-      normalizeCallbackHistory(message.actionCallbackHistory)
-    );
-  }
+function isInternalAssistantMessage(message: ConversationMessage): boolean {
+  const text = message.text.trim();
+  const isViewInventory = /^available_views:\s*(?:\n|$)/.test(text);
+  if (!isViewInventory) return false;
 
-  // The VIEWS inventory is a machine-readable TOON table consumed by the
-  // planner. Some persisted callback rows lack action metadata, so recognize
-  // the complete envelope instead of exposing it as an assistant reply.
-  return (
-    /^available_views:\s*\n\s*type:\s*\S+/m.test(message.text) &&
-    /^views\[\d+\]\{id,label,type,path,available\}:/m.test(message.text)
-  );
+  // VIEWS inventory callbacks are machine-readable planner context. Match the
+  // complete callback fallback when metadata is present, while retaining the
+  // structural envelope check for older rows that lack action metadata.
+  if (message.actionCallbackHistory?.length) {
+    return text === normalizeCallbackHistory(message.actionCallbackHistory);
+  }
+  return /^views\[\d+\]\{id,label,type,path,available\}:/m.test(text);
 }
 
 /**
@@ -44,7 +41,7 @@ export function shouldKeepConversationMessage(
   if (message.role !== "assistant") return true;
   if (message.attachments?.length) return true;
   if (message.blocks?.length) return true;
-  if (isCallbackOnlyAssistantMessage(message)) return false;
+  if (isInternalAssistantMessage(message)) return false;
   return message.text.trim().length > 0;
 }
 

@@ -128,11 +128,17 @@ function findNearestPriorLocalTempUser(
   return null;
 }
 
-function resolvedLocalTempMessageIds(
+interface LocalTempMessageResolution {
+  resolvedIds: Set<string>;
+  serverIndexByLocalId: Map<string, number>;
+}
+
+function resolveLocalTempMessages(
   serverMessages: ConversationMessage[],
   currentMessages: ConversationMessage[],
-): Set<string> {
+): LocalTempMessageResolution {
   const resolvedIds = new Set<string>();
+  const serverIndexByLocalId = new Map<string, number>();
   const serverIndexById = new Map<string, number>();
   serverMessages.forEach((message, index) => {
     serverIndexById.set(message.id, index);
@@ -166,6 +172,7 @@ function resolvedLocalTempMessageIds(
     if (serverIndex < 0) return;
     usedServerUserIndexes.add(serverIndex);
     serverUserIndexByLocalId.set(message.id, serverIndex);
+    serverIndexByLocalId.set(message.id, serverIndex);
     resolvedIds.add(message.id);
   });
 
@@ -190,10 +197,54 @@ function resolvedLocalTempMessageIds(
     );
     if (serverIndex < 0) return;
     usedServerAssistantIndexes.add(serverIndex);
+    serverIndexByLocalId.set(message.id, serverIndex);
     resolvedIds.add(message.id);
   });
 
-  return resolvedIds;
+  return { resolvedIds, serverIndexByLocalId };
+}
+
+function pendingMessageAnchorIndex(
+  pendingIndex: number,
+  pendingMessage: ConversationMessage,
+  representedServerIndexByCurrentIndex: Map<number, number>,
+  currentMessageCount: number,
+  serverMessages: ConversationMessage[],
+): number {
+  // Assistant persistence can lag behind later server rows. Bounding a pending
+  // row by the canonical messages already represented on either side keeps the
+  // optimistic turn paired while timestamp-ordering any newly discovered rows.
+  let previousServerIndex = -1;
+  for (let index = pendingIndex - 1; index >= 0; index -= 1) {
+    const representedIndex = representedServerIndexByCurrentIndex.get(index);
+    if (typeof representedIndex !== "number") continue;
+    previousServerIndex = representedIndex;
+    break;
+  }
+
+  let nextServerIndex = serverMessages.length;
+  for (let index = pendingIndex + 1; index < currentMessageCount; index += 1) {
+    const representedIndex = representedServerIndexByCurrentIndex.get(index);
+    if (typeof representedIndex === "number") {
+      nextServerIndex = representedIndex;
+      break;
+    }
+  }
+
+  const lastAllowedIndex = Math.max(previousServerIndex, nextServerIndex - 1);
+  let anchorIndex = previousServerIndex;
+  for (
+    let index = previousServerIndex + 1;
+    index <= lastAllowedIndex && index < serverMessages.length;
+    index += 1
+  ) {
+    const serverMessage = serverMessages[index];
+    if (!serverMessage || serverMessage.timestamp > pendingMessage.timestamp) {
+      break;
+    }
+    anchorIndex = index;
+  }
+  return anchorIndex;
 }
 
 function mergeLocalPendingConversationMessages(
@@ -206,19 +257,58 @@ function mergeLocalPendingConversationMessages(
   if (loadedConversationId !== convId && !preserveUnownedPending) {
     return serverMessages;
   }
+  const serverIndexById = new Map<string, number>();
+  serverMessages.forEach((message, index) => {
+    serverIndexById.set(message.id, index);
+  });
   const serverIds = new Set(serverMessages.map((message) => message.id));
-  const resolvedTempIds = resolvedLocalTempMessageIds(
+  const { resolvedIds, serverIndexByLocalId } = resolveLocalTempMessages(
     serverMessages,
     currentMessages,
   );
-  const pendingMessages = currentMessages.filter(
-    (message) =>
+  const pendingMessageIndexes = new Set<number>();
+  currentMessages.forEach((message, index) => {
+    if (
       isLocalPendingConversationMessage(message) &&
       !serverIds.has(message.id) &&
-      !resolvedTempIds.has(message.id),
-  );
-  if (pendingMessages.length === 0) return serverMessages;
-  return [...serverMessages, ...pendingMessages];
+      !resolvedIds.has(message.id)
+    ) {
+      pendingMessageIndexes.add(index);
+    }
+  });
+  if (pendingMessageIndexes.size === 0) return serverMessages;
+
+  const representedServerIndexByCurrentIndex = new Map<number, number>();
+  currentMessages.forEach((message, index) => {
+    const serverIndex = isLocalPendingConversationMessage(message)
+      ? serverIndexByLocalId.get(message.id)
+      : serverIndexById.get(message.id);
+    if (typeof serverIndex === "number") {
+      representedServerIndexByCurrentIndex.set(index, serverIndex);
+    }
+  });
+
+  const pendingMessagesByAnchor = new Map<number, ConversationMessage[]>();
+  currentMessages.forEach((message, index) => {
+    if (!pendingMessageIndexes.has(index)) return;
+    const anchorIndex = pendingMessageAnchorIndex(
+      index,
+      message,
+      representedServerIndexByCurrentIndex,
+      currentMessages.length,
+      serverMessages,
+    );
+    const anchoredMessages = pendingMessagesByAnchor.get(anchorIndex) ?? [];
+    anchoredMessages.push(message);
+    pendingMessagesByAnchor.set(anchorIndex, anchoredMessages);
+  });
+
+  const mergedMessages = [...(pendingMessagesByAnchor.get(-1) ?? [])];
+  serverMessages.forEach((message, index) => {
+    mergedMessages.push(message);
+    mergedMessages.push(...(pendingMessagesByAnchor.get(index) ?? []));
+  });
+  return mergedMessages;
 }
 
 function buildLocalizedCharacterPayload(

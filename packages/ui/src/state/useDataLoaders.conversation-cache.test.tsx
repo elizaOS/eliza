@@ -380,6 +380,129 @@ describe("useDataLoaders — conversation message prefetch cache", () => {
     ).toEqual(["persisted-1", "server-user", "temp-resp-100"]);
   });
 
+  it("keeps three optimistic replies beside their users while assistant persistence catches up", async () => {
+    const tempUser1 = {
+      ...userMsg("temp-turn-1"),
+      text: "first question",
+      timestamp: 1_000,
+    };
+    const tempAssistant1 = {
+      ...assistantMsg("temp-resp-turn-1"),
+      text: "first answer",
+      timestamp: 2_000,
+    };
+    const tempUser2 = {
+      ...userMsg("temp-turn-2"),
+      text: "second question",
+      timestamp: 3_000,
+    };
+    const tempAssistant2 = {
+      ...assistantMsg("temp-resp-turn-2"),
+      text: "second answer",
+      timestamp: 4_000,
+    };
+    const tempUser3 = {
+      ...userMsg("temp-turn-3"),
+      text: "third question",
+      timestamp: 5_000,
+    };
+    const tempAssistant3 = {
+      ...assistantMsg("temp-resp-turn-3"),
+      text: "third answer",
+      timestamp: 6_000,
+    };
+    const serverUser1 = { ...tempUser1, id: "server-user-1" };
+    const serverAssistant1 = {
+      ...tempAssistant1,
+      id: "server-assistant-1",
+      actionCallbackHistory: [tempAssistant1.text],
+    };
+    const serverUser2 = { ...tempUser2, id: "server-user-2" };
+    const serverAssistant2 = {
+      ...tempAssistant2,
+      id: "server-assistant-2",
+      actionCallbackHistory: [tempAssistant2.text],
+    };
+    const serverUser3 = { ...tempUser3, id: "server-user-3" };
+    const serverAssistant3 = {
+      ...tempAssistant3,
+      id: "server-assistant-3",
+      actionCallbackHistory: [tempAssistant3.text],
+    };
+    mocks.client.getConversationMessages
+      .mockResolvedValueOnce({
+        messages: [serverUser1, serverUser2, serverUser3],
+      })
+      .mockResolvedValueOnce({
+        messages: [serverUser1, serverAssistant1, serverUser2, serverUser3],
+      })
+      .mockResolvedValueOnce({
+        messages: [
+          serverUser1,
+          serverAssistant1,
+          serverUser2,
+          serverAssistant2,
+          serverUser3,
+          serverAssistant3,
+        ],
+      });
+
+    const { deps, conversationMessagesRef, activeConversationIdRef } =
+      makeDeps();
+    activeConversationIdRef.current = "conv-a";
+    conversationMessagesRef.current = [
+      tempUser1,
+      tempAssistant1,
+      tempUser2,
+      tempAssistant2,
+      tempUser3,
+      tempAssistant3,
+    ];
+    const { result } = renderHook(() => useDataLoaders(deps));
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "server-user-1",
+      "temp-resp-turn-1",
+      "server-user-2",
+      "temp-resp-turn-2",
+      "server-user-3",
+      "temp-resp-turn-3",
+    ]);
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "server-user-1",
+      "server-assistant-1",
+      "server-user-2",
+      "temp-resp-turn-2",
+      "server-user-3",
+      "temp-resp-turn-3",
+    ]);
+
+    await act(async () => {
+      await result.current.loadConversationMessages("conv-a");
+    });
+    expect(
+      conversationMessagesRef.current.map((message) => message.id),
+    ).toEqual([
+      "server-user-1",
+      "server-assistant-1",
+      "server-user-2",
+      "server-assistant-2",
+      "server-user-3",
+      "server-assistant-3",
+    ]);
+  });
+
   it("keeps a distinct repeated temp user message when only the earlier identical turn is persisted", async () => {
     const firstUser = {
       ...userMsg("server-user-1"),

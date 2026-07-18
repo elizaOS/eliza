@@ -52,7 +52,7 @@ describe("shouldKeepConversationMessage", () => {
     ).toBe(true);
   });
 
-  it("drops an internal-only action callback memory restored as fallback text", () => {
+  it("drops an internal VIEWS inventory restored as fallback text", () => {
     expect(
       shouldKeepConversationMessage(
         msg({
@@ -62,6 +62,17 @@ describe("shouldKeepConversationMessage", () => {
         }),
       ),
     ).toBe(false);
+  });
+
+  it("keeps user-facing prose that contains an inventory-like line", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "Here are the registered surfaces.\navailable_views:\ncalendar\nnotes",
+          actionName: "VIEWS",
+        }),
+      ),
+    ).toBe(true);
   });
 
   it("drops a persisted VIEWS inventory envelope that lacks action metadata", () => {
@@ -88,6 +99,27 @@ describe("shouldKeepConversationMessage", () => {
           text: "Opening Notes now.",
           actionName: "VIEWS",
           actionCallbackHistory: ["available_views: calendar, notes"],
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a user-facing action result whose text is its callback fallback", () => {
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "Navigated to Notes (gui).",
+          actionName: "VIEWS",
+          actionCallbackHistory: ["Navigated to Notes (gui)."],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      shouldKeepConversationMessage(
+        msg({
+          text: "2026-07-18 14:00 - UI review",
+          actionName: "VIEWS",
+          actionCallbackHistory: ["2026-07-18 14:00 - UI review"],
         }),
       ),
     ).toBe(true);
