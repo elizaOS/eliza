@@ -322,6 +322,9 @@ export class ClaudeSdkSession {
   private readonly claudeExecutablePath: string | null;
   private readonly restartAfterTurns: number;
   private readonly turnTimeoutMs: number;
+  /** Bumped by dispose(); a start() that finishes into a stale epoch tears
+   * itself down instead of resurrecting a disposed session. */
+  private epoch = 0;
   private readonly effort: string | null;
   private readonly subprocessEnv: RotationSubprocessEnv | null;
   private readonly sdkOverride?: SdkModule;
@@ -404,7 +407,11 @@ export class ClaudeSdkSession {
       await this.dispose();
     }
     if (!this.query) {
-      await this.start();
+      // The startup path (SDK dynamic import + subprocess spawn) is the one
+      // await the per-read turn timeout cannot see — a hang here (CLI version
+      // download, OAuth refresh at spawn) otherwise wedges the turn forever
+      // (issue #16553). Bound it with the same budget and self-heal.
+      await this.startWithTimeout();
     }
     this.turns += 1;
     try {
@@ -417,7 +424,7 @@ export class ClaudeSdkSession {
     }
   }
 
-  private async start(): Promise<void> {
+  private async start(startEpoch: number = this.epoch): Promise<void> {
     const sdk = this.sdkOverride ?? (await loadSdk());
     // A pull-based async generator the SDK drains; we push the next user message
     // into it via `this.feed`.
@@ -565,6 +572,18 @@ export class ClaudeSdkSession {
     this.query = sdk.query({ prompt: promptStream(), options });
     this.iterator = this.query[Symbol.asyncIterator]();
     this.turns = 0;
+    if (startEpoch !== this.epoch) {
+      // A timeout/dispose raced this start; tear down the late spawn instead of
+      // resurrecting a session the caller already gave up on.
+      const stale = this.query;
+      this.query = null;
+      this.iterator = null;
+      this.feed = null;
+      stale?.interrupt?.().catch(() => {});
+      throw new ProviderApiError("[cli-inference:sdk] session disposed during start", {
+        retryable: true,
+      });
+    }
     logger.debug(
       {
         src: "cli-inference:sdk",
@@ -573,6 +592,34 @@ export class ClaudeSdkSession {
       },
       "warm Claude Agent SDK session started"
     );
+  }
+
+  private async startWithTimeout(): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const startEpoch = this.epoch;
+      await Promise.race([
+        this.start(startEpoch),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new ProviderApiError(
+                `[cli-inference:sdk] session start timed out after ${this.turnTimeoutMs}ms`,
+                { retryable: true }
+              )
+            );
+          }, this.turnTimeoutMs);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (error) {
+      // error-policy:J2 context-adding rethrow — dispose (bumping the epoch so
+      // a late-resolving start tears itself down), then rethrow unchanged.
+      await this.dispose();
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async nextWithTurnTimeout(): Promise<IteratorResult<SdkMessage>> {
@@ -754,6 +801,7 @@ export class ClaudeSdkSession {
    * logged instead of inherited.
    */
   async dispose(): Promise<void> {
+    this.epoch += 1;
     const q = this.query;
     this.query = null;
     this.iterator = null;
