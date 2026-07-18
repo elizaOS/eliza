@@ -22,6 +22,9 @@ export interface Bindings {
    * names (`lib/auth/steward-cookies.ts`) and cache key prefixes.
    */
   ENVIRONMENT?: string;
+  /** Registered active and approved `apps.id` for the native Cloud client. */
+  ELIZA_MOBILE_APP_AUTH_APP_ID?: string;
+  ELIZA_MOBILE_APP_AUTH_ENABLED?: string;
 
   // ---- Database (Railway Postgres via the Hyperdrive binding in cloud, PGlite locally) ----
   DATABASE_URL: string;

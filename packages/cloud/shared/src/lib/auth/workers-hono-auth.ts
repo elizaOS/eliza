@@ -15,6 +15,7 @@
 
 import { getCookie } from "hono/cookie";
 import type { UserWithOrganization } from "../../db/repositories/users";
+import type { ApiKey } from "../../db/schemas/api-keys";
 import type { AppContext, AuthedUser, Bindings } from "../../types/cloud-worker-env";
 import { ApiError, AuthenticationError, ForbiddenError } from "../api/cloud-worker-errors";
 import { logger } from "../utils/logger";
@@ -130,6 +131,40 @@ async function validateApiKeyOrServiceUnavailable(
       "API key validation is temporarily unavailable. Please retry.",
     );
   }
+}
+
+/**
+ * Resolves one explicitly presented API key and records its exact database ID.
+ * Session cookies and JWTs are excluded, while two credential headers are
+ * rejected so self-revocation can never select an ambiguous credential.
+ */
+export async function requireApiKeyCredential(c: AppContext): Promise<ApiKey> {
+  const headerKey = (c.req.header("X-API-Key") ?? c.req.header("x-api-key"))?.trim() || null;
+  const authorization = c.req.header("authorization")?.trim() ?? null;
+  const bearerMatch = authorization?.match(/^Bearer\s+(.+)$/i);
+  const bearerKey = bearerMatch?.[1]?.trim() || null;
+
+  if (headerKey && bearerKey) {
+    throw AuthenticationError("Present exactly one API key credential");
+  }
+  const presented = headerKey ?? bearerKey;
+  if (!presented?.startsWith("eliza_")) {
+    throw AuthenticationError("An API key credential is required");
+  }
+
+  const validated = await validateApiKeyOrServiceUnavailable(presented);
+  if (!validated) throw AuthenticationError("Invalid or expired API key");
+  if (!validated.is_active) throw ForbiddenError("API key is inactive");
+  if (validated.expires_at && new Date(validated.expires_at) <= new Date()) {
+    throw AuthenticationError("API key has expired");
+  }
+  if (!validated.id) {
+    throw AuthenticationError("Validated API key has no credential identity");
+  }
+
+  c.set("authMethod", "api_key");
+  c.set("apiKeyId", validated.id);
+  return validated;
 }
 
 function testAuthEnv(env: Bindings): PlaywrightTestAuthEnv {

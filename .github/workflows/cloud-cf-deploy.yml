@@ -169,6 +169,8 @@ jobs:
     timeout-minutes: 10
     env:
       MIGRATION_DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
+      ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ vars.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+      ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ vars.ELIZA_MOBILE_APP_AUTH_ENABLED }}
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
 
@@ -209,6 +211,18 @@ jobs:
           echo "Add the secret in: Settings → Environments → Environment secrets."
           exit 1
 
+      - name: Validate mobile App Auth release mode
+        run: |
+          if [[ "$ELIZA_MOBILE_APP_AUTH_ENABLED" != "true" && "$ELIZA_MOBILE_APP_AUTH_ENABLED" != "false" ]]; then
+            echo "::error::ELIZA_MOBILE_APP_AUTH_ENABLED must be exactly true or false on this environment."
+            exit 1
+          fi
+          if [[ "$ELIZA_MOBILE_APP_AUTH_ENABLED" == "true" && -z "$ELIZA_MOBILE_APP_AUTH_APP_ID" ]]; then
+            echo "::error::ELIZA_MOBILE_APP_AUTH_APP_ID is required when mobile App Auth is enabled."
+            echo "Register the first-party mobile app and set its UUID in the matching GitHub Environment."
+            exit 1
+          fi
+
       - name: Run migrations
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
@@ -218,6 +232,11 @@ jobs:
           # never builds core, so generate the file first (mirrors core's prebuild).
           node packages/shared/scripts/generate-keywords.mjs
           bun run db:cloud:migrate
+
+      - name: Verify mobile App Auth database registration
+        env:
+          DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
+        run: bun packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 
   # ---------------------------------------------------------------------------
   # API Worker
@@ -254,6 +273,8 @@ jobs:
     env:
       CHECKOUT_DIR: /tmp/eliza-checkout-${{ github.run_id }}-${{ github.run_attempt }}-deploy-api
       CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS: ${{ vars.CLOUD_CF_CHECKOUT_MATERIALIZE_TIMEOUT_SECONDS || '600' }}
+      ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ vars.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+      ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ vars.ELIZA_MOBILE_APP_AUTH_ENABLED }}
     steps:
       - name: Reclaim disk from leaked checkouts of prior runs
         continue-on-error: true
@@ -739,7 +760,7 @@ jobs:
           KOKORO_TTS_URL: ${{ vars.ELIZA_VOICE_KOKORO_TTS_URL }}
           VOICE_REALTIME_WS_ENABLED: ${{ steps.env.outputs.deploy_environment != 'production' && contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.VOICE_REALTIME_WS_ENABLED) && 'true' || 'false' }}
         run: |
-          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED")
+          args=(${{ steps.env.outputs.wrangler_args }} --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" --var ELIZA_MOBILE_APP_AUTH_APP_ID:"$ELIZA_MOBILE_APP_AUTH_APP_ID" --var ELIZA_MOBILE_APP_AUTH_ENABLED:"$ELIZA_MOBILE_APP_AUTH_ENABLED" --var VOICE_REALTIME_WS_ENABLED:"$VOICE_REALTIME_WS_ENABLED")
           if [ -n "${KOKORO_TTS_URL:-}" ]; then
             args+=(--var KOKORO_TTS_URL:"$KOKORO_TTS_URL")
           else
@@ -780,6 +801,13 @@ jobs:
           done
           echo "::error::API health did not serve the deployed commit ${expected_commit} for ${expected_environment}."
           exit 1
+
+      - name: Verify live mobile App Auth registration
+        if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
+        run: bun packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --skip-database --verify-live
 
       - name: Clean temp checkout
         if: always()

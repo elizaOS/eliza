@@ -83,6 +83,7 @@ const {
   apiKeyScopeHashPrefix,
   getCurrentUser,
   requireAdmin,
+  requireApiKeyCredential,
   requireCronSecret,
   requireUser,
   requireUserOrApiKey,
@@ -530,5 +531,62 @@ describe("apiKeyScopeHashPrefix (shared-agent scope cache key — COLDPATH-FIX-2
     expect(a).not.toBe(b);
     expect(a).toHaveLength(16);
     expect(b).toHaveLength(16);
+  });
+});
+
+describe("requireApiKeyCredential", () => {
+  test("rejects missing and JWT session auth before validating an API key", async () => {
+    await expect(requireApiKeyCredential(contextWithHeaders({}) as never)).rejects.toMatchObject({
+      status: 401,
+      code: "authentication_required",
+    });
+    await expect(
+      requireApiKeyCredential(
+        contextWithHeaders({ authorization: "Bearer header.payload.signature" }) as never,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: "authentication_required" });
+    expect(validateApiKey).not.toHaveBeenCalled();
+  });
+
+  test("rejects ambiguous API-key headers before validating either credential", async () => {
+    await expect(
+      requireApiKeyCredential(
+        contextWithHeaders({
+          authorization: "Bearer eliza_bearer_key",
+          "x-api-key": "eliza_header_key",
+        }) as never,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: "authentication_required" });
+    expect(validateApiKey).not.toHaveBeenCalled();
+  });
+
+  test("records the API-key identity proven by the exact presented credential", async () => {
+    const validated = {
+      id: "11111111-1111-4111-8111-111111111111",
+      key_hash: "a".repeat(64),
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    };
+    validateBehavior = async () => validated;
+    const context = contextWithHeaders({ authorization: "Bearer eliza_exact_key" });
+
+    expect(await requireApiKeyCredential(context as never)).toBe(validated);
+    expect(context.get("authMethod")).toBe("api_key");
+    expect(context.get("apiKeyId")).toBe(validated.id);
+    expect(validateApiKey).toHaveBeenCalledWith("eliza_exact_key");
+  });
+
+  test("distinguishes an invalid key from a validation storage outage", async () => {
+    validateBehavior = async () => null;
+    await expect(
+      requireApiKeyCredential(contextWithApiKey("eliza_invalid") as never),
+    ).rejects.toMatchObject({ status: 401, code: "authentication_required" });
+
+    validateBehavior = async () => {
+      throw new Error("database unavailable");
+    };
+    await expect(
+      requireApiKeyCredential(contextWithApiKey("eliza_valid_shape") as never),
+    ).rejects.toMatchObject({ status: 503, code: "service_unavailable" });
   });
 });

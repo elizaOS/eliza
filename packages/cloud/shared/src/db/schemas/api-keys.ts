@@ -1,5 +1,5 @@
-// Defines the api keys Drizzle table shape used by cloud repositories and services.
-import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
+/** Defines the API-key table shape consumed by cloud repositories and services. */
+import { type InferInsertModel, type InferSelectModel, sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -44,6 +44,9 @@ export const apiKeys = pgTable(
     user_id: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    // Mobile credentials retain their security attribution after the source
+    // app registration is deleted, so this deliberately has no foreign key.
+    source_app_id: uuid("source_app_id"),
     rate_limit: integer("rate_limit").notNull().default(1000),
     is_active: boolean("is_active").notNull().default(true),
     usage_count: integer("usage_count").default(0).notNull(),
@@ -58,6 +61,9 @@ export const apiKeys = pgTable(
     key_prefix_idx: index("api_keys_key_prefix_idx").on(table.key_prefix),
     organization_idx: index("api_keys_organization_idx").on(table.organization_id),
     user_idx: index("api_keys_user_idx").on(table.user_id),
+    source_app_idx: index("api_keys_source_app_id_idx")
+      .on(table.source_app_id)
+      .where(sql`${table.source_app_id} IS NOT NULL`),
     deleted_at_idx: index("api_keys_deleted_at_idx").on(table.deleted_at),
   }),
 );

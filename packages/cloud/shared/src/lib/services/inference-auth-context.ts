@@ -8,10 +8,10 @@
  * positive cache write with `waitUntil` so KV latency cannot hold the current
  * authorized response; non-Worker callers await the same operation inline.
  *
- * Scope: ONLY `X-API-Key` / `Bearer eliza_*` credentials are eligible. Wallet
- * (signature/timestamp-bound, fail-closed), Bearer-JWT, and cookie sessions are
- * NOT cacheable (no invalidation path / replay risk) and always take the
- * authoritative slow path. See `packages/cloud/api/docs/inference-hot-path.md`.
+ * Scope: ordinary `X-API-Key` / `Bearer eliza_*` credentials are eligible.
+ * Mobile lifecycle credentials, wallet signatures, Bearer JWTs, and cookie
+ * sessions always take the authoritative path because their revocation or
+ * expiry invariants are stricter than this cache's fixed TTL.
  *
  * Safety invariants:
  *   - A positive IAC entry is written ONLY for a fully-authorized credential.
@@ -26,7 +26,7 @@ import { type CacheBackendKind, cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { adminService } from "./admin";
-import { apiKeysService } from "./api-keys";
+import { apiKeysService, isMobileApiKeySecret } from "./api-keys";
 import { contentModerationService } from "./content-moderation";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
 import {
@@ -208,7 +208,7 @@ function freezeCacheWriteTrace(
 export type InferenceAuthResolution =
   | { kind: "authorized"; ctx: InferenceAuthContext; source: "cache" | "origin" }
   | { kind: "suspended"; userId: string }
-  | { kind: "slow_path"; reason: "non_api_key" };
+  | { kind: "slow_path"; reason: "mobile_api_key" | "non_api_key" };
 
 /**
  * Extract a cacheable API-key credential from the request, mirroring the
@@ -277,6 +277,9 @@ export async function resolveInferenceAuthContext(
     trace.timings.extractMs = durationSince(extractStartedAt);
     if (!credential) return { kind: "slow_path", reason: "non_api_key" };
     trace.authSource = credential.source;
+    if (isMobileApiKeySecret(credential.rawKey)) {
+      return { kind: "slow_path", reason: "mobile_api_key" };
+    }
     trace.result = "error";
     const probeDiscriminator = controlledProbeDiscriminator(req);
     trace.controlledProbe = probeDiscriminator ? "on" : "off";

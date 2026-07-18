@@ -208,6 +208,7 @@ export const TIER_UPGRADE_TEST_TABLES: readonly string[] = [
   "key_kms_key_version" integer,
   "organization_id" uuid NOT NULL,
   "user_id" uuid NOT NULL,
+  "source_app_id" uuid,
   "rate_limit" integer NOT NULL DEFAULT 1000,
   "is_active" boolean NOT NULL DEFAULT true,
   "usage_count" integer NOT NULL DEFAULT 0,

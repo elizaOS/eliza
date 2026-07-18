@@ -18,6 +18,7 @@
  */
 
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { createHash } from "node:crypto";
 import type { ApiKey } from "../../db/repositories";
 import { apiKeysRepository } from "../../db/repositories";
 import { cache } from "../cache/client";
@@ -36,6 +37,22 @@ function fakeKey(): ApiKey {
     user_id: "user-1",
     is_active: true,
   } as unknown as ApiKey;
+}
+
+const MOBILE_SECRET = `eliza_mobile_${"b".repeat(64)}`;
+const MOBILE_HASH = createHash("sha256").update(MOBILE_SECRET).digest("hex");
+const MOBILE_CREDENTIAL_ID = "11111111-1111-4111-8111-111111111111";
+const MOBILE_APP_ID = "22222222-2222-4222-8222-222222222222";
+
+function fakeMobileKey(overrides: Partial<ApiKey> = {}): ApiKey {
+  return {
+    ...fakeKey(),
+    id: MOBILE_CREDENTIAL_ID,
+    key_hash: MOBILE_HASH,
+    source_app_id: MOBILE_APP_ID,
+    expires_at: new Date(Date.now() + 60_000),
+    ...overrides,
+  } as ApiKey;
 }
 
 describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
@@ -79,7 +96,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
   });
 
   test("delete(): failed invalidation aborts BEFORE the DB row is removed", async () => {
-    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(fakeKey()));
     const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
     track(spyOn(cache, "delConfirmed").mockResolvedValue(false));
 
@@ -89,7 +106,7 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
   });
 
   test("delete(): confirmed invalidation lets the DB delete proceed", async () => {
-    track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(fakeKey()));
     const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
     track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
 
@@ -129,5 +146,57 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     track(spyOn(apiKeysRepository, "deleteByName").mockResolvedValue([fakeKey()]));
     track(spyOn(cache, "delConfirmed").mockResolvedValue(false));
     await expect(apiKeysService.revokeForAgent("sandbox-1")).resolves.toBeUndefined();
+  });
+
+  test("a response-loss retry returns its mobile tombstone without depending on cache health", async () => {
+    const revokedAt = new Date("2026-07-18T12:00:00.000Z");
+    track(
+      spyOn(apiKeysRepository, "findByHashConsistent").mockResolvedValue(
+        fakeMobileKey({
+          is_active: false,
+          deleted_at: revokedAt,
+        }),
+      ),
+    );
+    const invalidate = track(
+      spyOn(apiKeysService, "invalidateCache").mockRejectedValue(
+        new Error("configured cache backend is unavailable"),
+      ),
+    );
+
+    await expect(apiKeysService.revokePresentedMobileCredential(MOBILE_SECRET)).resolves.toEqual({
+      credentialId: MOBILE_CREDENTIAL_ID,
+      revokedAt: revokedAt.toISOString(),
+      status: "revoked",
+    });
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  test("a concurrent tombstone loser returns success without depending on cache health", async () => {
+    const revokedAt = new Date("2026-07-18T12:00:00.000Z");
+    const active = fakeMobileKey();
+    const tombstone = fakeMobileKey({
+      is_active: false,
+      deleted_at: revokedAt,
+    });
+    track(
+      spyOn(apiKeysRepository, "findByHashConsistent")
+        .mockResolvedValueOnce(active)
+        .mockResolvedValueOnce(tombstone),
+    );
+    track(spyOn(apiKeysRepository, "tombstoneExactMobileCredential").mockResolvedValue(undefined));
+    const invalidate = track(
+      spyOn(apiKeysService, "invalidateCache").mockRejectedValue(
+        new Error("configured cache backend is unavailable"),
+      ),
+    );
+
+    await expect(
+      apiKeysService.revokePresentedMobileCredential(MOBILE_SECRET),
+    ).resolves.toMatchObject({
+      credentialId: MOBILE_CREDENTIAL_ID,
+      status: "revoked",
+    });
+    expect(invalidate).not.toHaveBeenCalled();
   });
 });

@@ -16,9 +16,6 @@ test("changed Bun coverage tests use eliza-source workspace exports", () => {
     /bun test --conditions=eliza-source "\$\{shared_tests\[@\]\}" --coverage/,
   );
   expect(workflow).toContain(
-    "packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts",
-  );
-  expect(workflow).toContain(
     "packages/tools/voice-evidence-harness/src/cli-run.test.ts",
   );
   expect(workflow).toMatch(
@@ -28,12 +25,23 @@ test("changed Bun coverage tests use eliza-source workspace exports", () => {
 
 test("Bun suites with conflicting process-global module mocks run separately", () => {
   const workflow = readFileSync(workflowPath, "utf8");
+  const chatGroupArm =
+    "packages/cloud/api/__tests__/chat-completions-optimistic-billing.test.ts|packages/cloud/api/__tests__/chat-completions-passthrough-streaming.test.ts)";
+  const cloudApiArm = [
+    "packages/cloud/api/*.test.ts|packages/cloud/api/*.test.tsx|packages/cloud/api/*.spec.ts|packages/cloud/api/*.spec.tsx)",
+    '                process_isolated_tests+=("$test_file")',
+  ].join("\n");
   const isolatedSuites = [
-    "packages/cloud/api/__tests__/malformed-json-body-routes.test.ts",
     "packages/cloud/shared/src/lib/auth-inference-api-key.test.ts",
     "packages/cloud/shared/src/lib/services/inference-auth-context.test.ts",
     "packages/cloud/shared/src/lib/services/inference-hot-path-benchmark.test.ts",
   ];
+
+  expect(workflow).toContain(chatGroupArm);
+  expect(workflow).toContain(cloudApiArm);
+  expect(workflow.indexOf(chatGroupArm)).toBeLessThan(
+    workflow.indexOf(cloudApiArm),
+  );
 
   for (const suite of isolatedSuites) {
     expect(workflow).toContain(suite);
@@ -58,6 +66,6 @@ test("Node is available before changed-source classification", () => {
   expect(workflow).toContain(
     "uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
   );
-  expect(workflow).toContain("node-version: ${{ env.NODE_VERSION }}");
+  expect(workflow).toContain(`node-version: \${{ env.NODE_VERSION }}`);
   expect(setupNode).toBeLessThan(determineChanged);
 });
