@@ -24,6 +24,7 @@ import {
 	scoreFactKeywordRelevance,
 } from "../features/advanced-capabilities/fact-keywords.ts";
 import { isMobilePlatform } from "../runtime-env";
+import { runWithSuppressedModelStream } from "../streaming-context";
 import type {
 	MessageHandlerExtract,
 	MessageHandlerExtractedRelationship,
@@ -214,11 +215,13 @@ export async function runFactsAndRelationshipsStage(
 		priorDialogue: args.priorDialogue ?? [],
 	});
 
-	const raw = await runtime.useModel(ModelType.TEXT_LARGE, {
-		messages,
-		tools,
-		toolChoice: "required",
-	});
+	const raw = await runWithSuppressedModelStream(() =>
+		runtime.useModel(ModelType.TEXT_LARGE, {
+			messages,
+			tools,
+			toolChoice: "required",
+		}),
+	);
 	// Capture the provider that served THIS call immediately — reading it later
 	// (after the stage completes, in message.ts) could race a parallel/subsequent
 	// TEXT_LARGE call that overwrites the runtime-wide last-resolved value (#13623).

@@ -5300,24 +5300,26 @@ function listAvailableContextsForRole(
 /**
  * Whether a routed action has claimed the pre-planner reply boundary.
  *
- * Actions with `suppressEarlyReply` promise to emit the authoritative visible
- * result from their handler callback. A deterministic call is already the
- * selected action, so it alone owns this decision. Relevance candidates are
- * only hints before planning; they may suppress the reply only when every
- * candidate resolves to the same canonical action. Candidate names may be
- * action similes, so resolve them through the same runtime lookup used by
- * execution.
+ * Actions with `suppressEarlyReply` or `callbackCompletesResponse` promise to
+ * emit the authoritative visible result from their handler callback. A
+ * deterministic call is already the selected action, so it alone owns this
+ * decision. Relevance candidates are only hints before planning; they may
+ * suppress the reply only when every candidate resolves to the same canonical
+ * action. Candidate names may be action similes, so resolve them through the
+ * same runtime lookup used by execution.
  */
 function actionOwnsResponseHandlerEarlyReply(
 	runtime: Pick<IAgentRuntime, "actions">,
 	messageHandler: MessageHandlerResult,
 ): boolean {
 	const actionLookup = buildRuntimeActionLookup(runtime);
+	const ownsReply = (action: Action | undefined): boolean =>
+		action?.suppressEarlyReply === true ||
+		action?.callbackCompletesResponse === true;
 	const deterministicToolCall = messageHandler.plan.deterministicToolCall;
 	if (deterministicToolCall) {
-		return (
-			resolveRuntimeAction(actionLookup, deterministicToolCall.name)
-				?.suppressEarlyReply === true
+		return ownsReply(
+			resolveRuntimeAction(actionLookup, deterministicToolCall.name),
 		);
 	}
 
@@ -5333,7 +5335,29 @@ function actionOwnsResponseHandlerEarlyReply(
 	}
 
 	if (resolvedCandidates.size !== 1) return false;
-	return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
+	return ownsReply(resolvedCandidates.values().next().value);
+}
+
+function successfulActionCallbackOwnsFinalReply(
+	runtime: Pick<IAgentRuntime, "actions">,
+	actionResults: readonly ActionResult[],
+	deliveredVisibleCallbackActions: ReadonlySet<string>,
+): boolean {
+	if (deliveredVisibleCallbackActions.size === 0) return false;
+	const actionLookup = buildRuntimeActionLookup(runtime);
+	return actionResults.some((result) => {
+		if (result.success !== true) return false;
+		const actionName =
+			typeof result.data?.actionName === "string" ? result.data.actionName : "";
+		const action = resolveRuntimeAction(actionLookup, actionName);
+		return (
+			(action?.callbackCompletesResponse === true ||
+				action?.suppressEarlyReply === true) &&
+			deliveredVisibleCallbackActions.has(
+				normalizeActionIdentifier(action?.name ?? actionName),
+			)
+		);
+	});
 }
 
 interface ExecuteV5PlannedToolCallParams {
@@ -6744,10 +6768,55 @@ export async function runV5MessageRuntimeStage1(args: {
 		// number of times before falling back to the planner.
 		const stage1RetryLimit = readStage1EmptyRetryLimit(args.runtime);
 		let stage1RetryCount = 0;
-		let rawMessageHandler = (await args.runtime.useModel(
-			ModelType.RESPONSE_HANDLER,
-			stage1ModelParams,
-		)) as string | GenerateTextResult;
+		const visibleStreamingContext = getStreamingContext();
+		const deferStage1Draft =
+			visibleStreamingContext !== undefined &&
+			args.runtime.actions.some(
+				(action) =>
+					action.suppressEarlyReply === true ||
+					action.callbackCompletesResponse === true,
+			);
+		let bufferedStage1Draft: Array<{
+			chunk: string;
+			messageId?: string;
+			accumulated?: string;
+		}> = [];
+		const callStage1Model = async (): Promise<string | GenerateTextResult> => {
+			if (!deferStage1Draft || !visibleStreamingContext) {
+				return (await args.runtime.useModel(
+					ModelType.RESPONSE_HANDLER,
+					stage1ModelParams,
+				)) as string | GenerateTextResult;
+			}
+			bufferedStage1Draft = [];
+			return (await runWithStreamingContext(
+				{
+					...visibleStreamingContext,
+					onStreamChunk: async (chunk, messageId, accumulated) => {
+						bufferedStage1Draft.push({
+							chunk,
+							...(messageId ? { messageId } : {}),
+							...(accumulated !== undefined ? { accumulated } : {}),
+						});
+					},
+				},
+				() =>
+					args.runtime.useModel(ModelType.RESPONSE_HANDLER, stage1ModelParams),
+			)) as string | GenerateTextResult;
+		};
+		const releaseStage1Draft = async (): Promise<void> => {
+			if (!visibleStreamingContext || bufferedStage1Draft.length === 0) return;
+			const chunks = bufferedStage1Draft;
+			bufferedStage1Draft = [];
+			for (const { chunk, messageId, accumulated } of chunks) {
+				await visibleStreamingContext.onStreamChunk(
+					chunk,
+					messageId,
+					accumulated,
+				);
+			}
+		};
+		let rawMessageHandler = await callStage1Model();
 		let stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		while (
 			stage1RetryCount < stage1RetryLimit &&
@@ -6767,10 +6836,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				},
 				`[message] Stage 1 returned ${stage1RetryReason} — retrying (${stage1RetryCount}/${stage1RetryLimit})`,
 			);
-			rawMessageHandler = (await args.runtime.useModel(
-				ModelType.RESPONSE_HANDLER,
-				stage1ModelParams,
-			)) as string | GenerateTextResult;
+			rawMessageHandler = await callStage1Model();
 			stage1RetryReason = getStage1RetryReason(rawMessageHandler);
 		}
 		const messageHandlerEndedAt = Date.now();
@@ -7091,6 +7157,12 @@ export async function runV5MessageRuntimeStage1(args: {
 				state: args.state,
 			};
 		}
+		const actionOwnsStage1Draft =
+			route.type === "planning_needed" &&
+			actionOwnsResponseHandlerEarlyReply(args.runtime, messageHandler);
+		if (!actionOwnsStage1Draft) {
+			await releaseStage1Draft();
+		}
 
 		if (route.type === "final_reply") {
 			// The simple-context reply IS the answer: Stage 1 emits `replyText` (→
@@ -7168,10 +7240,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
-		const earlyReplyText = actionOwnsResponseHandlerEarlyReply(
-			args.runtime,
-			messageHandler,
-		)
+		const earlyReplyText = actionOwnsStage1Draft
 			? ""
 			: routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
@@ -7490,8 +7559,26 @@ export async function runV5MessageRuntimeStage1(args: {
 		// matches the string the connector actually sent.
 		const deliveredVisibleTexts =
 			args.deliveredVisibleTexts ?? new Set<string>();
+		const deliveredVisibleActionCallbackNames = new Set<string>();
 		const recordingCallback: HandlerCallback | undefined = args.callback
-			? async (content, ...rest) => args.callback?.(content, ...rest) ?? []
+			? async (content, actionName) => {
+					const delivered = (await args.callback?.(content, actionName)) ?? [];
+					if (
+						(typeof content.text === "string" &&
+							content.text.trim().length > 0) ||
+						(content.attachments?.length ?? 0) > 0
+					) {
+						if (
+							typeof actionName === "string" &&
+							actionName.trim().length > 0
+						) {
+							deliveredVisibleActionCallbackNames.add(
+								normalizeActionIdentifier(actionName),
+							);
+						}
+					}
+					return delivered;
+				}
 			: undefined;
 
 		let plannerResult: PlannerLoopResult;
@@ -7643,6 +7730,12 @@ export async function runV5MessageRuntimeStage1(args: {
 			plannerResult.trajectory,
 			exposedPlannerActions,
 		);
+		const actionCallbackCompletedResponse =
+			successfulActionCallbackOwnsFinalReply(
+				args.runtime,
+				actionResults,
+				deliveredVisibleActionCallbackNames,
+			);
 		const finalPlannerState =
 			actionResults.length > 0
 				? withActionResultsForPrompt(plannerState, actionResults)
@@ -7689,7 +7782,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				? stageOneAck ||
 					(ranNonSilentAction ? "on it, working on that now." : "")
 				: preservedAnswerFallback;
-		const effectiveReplyText = plannedText || ackFallback;
+		const effectiveReplyText = actionCallbackCompletedResponse
+			? ""
+			: plannedText || ackFallback;
 		const plannedTextRepeatsEarlyReply =
 			earlyReplySent &&
 			normalizeVisibleTextForDuplicateCheck(effectiveReplyText) ===
@@ -7714,6 +7809,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			);
 		const shouldSendPlannedText =
 			Boolean(effectiveReplyText) &&
+			!actionCallbackCompletedResponse &&
 			!plannedTextRepeatsEarlyReply &&
 			!plannedTextRepeatsActionReply;
 		// Voice-gate provenance (#14873): only the Stage-1 ack has unambiguous

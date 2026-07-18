@@ -6,6 +6,10 @@
  * whose useModel/getMemories/createMemory are vi.fn, no live model or DB.
  */
 import { describe, expect, it, vi } from "vitest";
+import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../../streaming-context";
 import type { Memory } from "../../types/memory";
 import { ModelType } from "../../types/model";
 import { ChannelType, type UUID } from "../../types/primitives";
@@ -201,6 +205,45 @@ describe("parseFactsAndRelationshipsOutput", () => {
 });
 
 describe("runFactsAndRelationshipsStage", () => {
+	it("keeps validation JSON off the visible reply stream", async () => {
+		const runtime = makeRuntime(
+			JSON.stringify({
+				facts: ["the user's birthday is March 5"],
+				relationships: [],
+				thought: "new fact",
+			}),
+		);
+		const visibleChunks: string[] = [];
+		runtime.useModel.mockImplementation(async () => {
+			await getStreamingContext()?.onStreamChunk(
+				'{"facts":["the user birthday is March 5"],"relationships":[]}',
+			);
+			return JSON.stringify({
+				facts: ["the user's birthday is March 5"],
+				relationships: [],
+				thought: "new fact",
+			});
+		});
+
+		await runWithStreamingContext(
+			{
+				onStreamChunk: async (chunk) => {
+					visibleChunks.push(chunk);
+				},
+			},
+			() =>
+				runFactsAndRelationshipsStage({
+					runtime,
+					message: makeMessage(),
+					state: makeState(),
+					extract: { facts: ["the user's birthday is March 5"] },
+				}),
+		);
+
+		expect(runtime.useModel).toHaveBeenCalledOnce();
+		expect(visibleChunks).toEqual([]);
+	});
+
 	it("short-circuits when extract has no candidates", async () => {
 		const runtime = makeRuntime("");
 		const result = await runFactsAndRelationshipsStage({

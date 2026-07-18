@@ -2,19 +2,28 @@
  * Exercises `EvaluatorService.run`: active evaluator sections merge into one
  * structured model call in priority order, invalid sections and processor
  * failures stay isolated, and the schema -> json_object -> plain-JSON fallback
- * ladder (with schema-skip arming) degrades gracefully. Runs against a real
- * AgentRuntime + InMemoryDatabaseAdapter with a stubbed useModel.
+ * ladder (with schema-skip arming) degrades gracefully, and internal reflection
+ * tokens stay off the visible turn stream. Runs against a real AgentRuntime +
+ * InMemoryDatabaseAdapter with a stubbed useModel.
  */
 import { describe, expect, it, vi } from "vitest";
 import { InMemoryDatabaseAdapter } from "../database/inMemoryAdapter";
 import { AgentRuntime } from "../runtime";
+import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../streaming-context";
 import {
 	type Character,
 	type Evaluator,
 	type Memory,
 	ModelType,
 } from "../types";
-import { EVALUATOR_PROMPT_MAX_CHARS, EvaluatorService } from "./evaluator";
+import {
+	EVALUATOR_PROMPT_MAX_CHARS,
+	EvaluatorService,
+	runPostTurnEvaluators,
+} from "./evaluator";
 
 function makeRuntime(): AgentRuntime {
 	const runtime = new AgentRuntime({
@@ -60,6 +69,39 @@ function schema() {
 }
 
 describe("EvaluatorService", () => {
+	it("keeps post-turn evaluator model output off the visible reply stream", async () => {
+		const runtime = makeRuntime();
+		const visibleChunks: string[] = [];
+		const service = {
+			run: vi.fn(async () => {
+				await getStreamingContext()?.onStreamChunk(
+					'{"factMemory":{"ops":[]},"success":{"completed":true}}',
+				);
+				return {
+					skipped: false,
+					activeEvaluators: ["factMemory", "success"],
+					processedEvaluators: ["factMemory", "success"],
+					results: [],
+					errors: [],
+				};
+			}),
+		};
+		runtime.getServiceLoadPromise = vi.fn(async () => service) as never;
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: async (chunk) => {
+					visibleChunks.push(chunk);
+				},
+			},
+			() => runPostTurnEvaluators(runtime, makeMessage()),
+		);
+
+		expect(service.run).toHaveBeenCalledOnce();
+		expect(result?.processedEvaluators).toEqual(["factMemory", "success"]);
+		expect(visibleChunks).toEqual([]);
+	});
+
 	it("merges active evaluator sections into one structured model call", async () => {
 		const runtime = makeRuntime();
 		const processed: string[] = [];

@@ -10,6 +10,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../logger.ts";
 import { isMobilePlatform } from "../runtime-env.ts";
+import { runWithSuppressedModelStream } from "../streaming-context.ts";
 import { setTrajectoryPurpose } from "../trajectory-context.ts";
 import type {
 	ActionResult,
@@ -1041,10 +1042,12 @@ export async function runPostTurnEvaluators(
 		const service = (await runtime.getServiceLoadPromise(
 			EvaluatorService.serviceType,
 		)) as EvaluatorService;
-		return await service.run(message, state, {
-			...options,
-			phase: options.phase ?? "post_turn",
-		});
+		return await runWithSuppressedModelStream(() =>
+			service.run(message, state, {
+				...options,
+				phase: options.phase ?? "post_turn",
+			}),
+		);
 	} catch (error) {
 		logger.debug(
 			{

@@ -15,6 +15,10 @@ import {
 	runV5MessageRuntimeStage1,
 	wrapSingleTurnVisibleCallback,
 } from "../services/message";
+import {
+	getStreamingContext,
+	runWithStreamingContext,
+} from "../streaming-context";
 import type {
 	Action,
 	ActionResult,
@@ -58,6 +62,7 @@ function makeState(): State {
 interface CannedResponse {
 	expectModelType?: string;
 	body: unknown;
+	streamChunks?: string[];
 }
 
 function stage1Response(fields: {
@@ -152,6 +157,9 @@ function makeRuntime(opts: {
 						`Expected ${next.expectModelType} but received ${String(modelType)}`,
 					);
 				}
+				for (const chunk of next?.streamChunks ?? []) {
+					await getStreamingContext()?.onStreamChunk(chunk);
+				}
 				return next?.body;
 			},
 		),
@@ -203,11 +211,14 @@ function makeMockAction(opts: {
 	suppressActionResultClipboard?: boolean;
 	suppressEarlyReply?: boolean;
 	suppressPostActionContinuation?: boolean;
+	callbackCompletesResponse?: boolean;
+	preserveCallbackText?: boolean;
+	similes?: string[];
 }): Action {
 	return {
 		name: opts.name,
 		description: `${opts.name} mock action`,
-		similes: [],
+		similes: opts.similes ?? [],
 		examples: [],
 		parameters: opts.parameters ?? [],
 		validate: async () => true,
@@ -221,6 +232,10 @@ function makeMockAction(opts: {
 		...(opts.suppressPostActionContinuation
 			? { suppressPostActionContinuation: true }
 			: {}),
+		...(opts.callbackCompletesResponse
+			? { callbackCompletesResponse: true }
+			: {}),
+		...(opts.preserveCallbackText ? { preserveCallbackText: true } : {}),
 	} as Action;
 }
 
@@ -883,6 +898,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 	it("keeps the Stage 1 reply when the planner selects a non-owning action from mixed candidates", async () => {
 		let viewCalls = 0;
 		let otherCalls = 0;
+		const streamedDraft: string[] = [];
 		const earlyReply = vi.fn(async () => undefined);
 		const views = makeMockAction({
 			name: "VIEWS",
@@ -904,6 +920,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			responses: [
 				{
 					expectModelType: ModelType.RESPONSE_HANDLER,
+					streamChunks: ["I'll update ", "that now."],
 					body: stage1Response({
 						contexts: ["general"],
 						candidateActionNames: ["VIEWS", "OTHER_ACTION"],
@@ -930,14 +947,23 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 			],
 		});
 
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage("update that resource"),
-			state: makeState(),
-			responseId: RESPONSE_ID,
-			onResponseHandlerEarlyReply: earlyReply,
-		});
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: async (chunk) => {
+					streamedDraft.push(chunk);
+				},
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("update that resource"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+					onResponseHandlerEarlyReply: earlyReply,
+				}),
+		);
 
+		expect(streamedDraft).toEqual(["I'll update ", "that now."]);
 		expect(earlyReply).toHaveBeenCalledOnce();
 		expect(earlyReply).toHaveBeenCalledWith(
 			expect.objectContaining({ text: "I'll update that now." }),
@@ -945,6 +971,195 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(viewCalls).toBe(0);
 		expect(otherCalls).toBe(1);
 		expect(result.kind).toBe("planned_reply");
+	});
+
+	it("lets a callback-completing action own both the streamed Stage 1 draft and final reply", async () => {
+		const streamedDraft: string[] = [];
+		const delivered: string[] = [];
+		const deliveredVisibleTexts = new Set<string>();
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			similes: ["NAVIGATE_TO_VIEW"],
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			callbackCompletesResponse: true,
+			preserveCallbackText: true,
+			handler: async (_runtime, _message, _state, _options, callback) => {
+				const text = "Navigated to Simple Calendar (gui).";
+				await callback?.({ text }, "VIEWS");
+				return {
+					success: true,
+					text,
+					userFacingText: text,
+					verifiedUserFacing: true,
+				};
+			},
+		});
+		const runtime = makeRuntime({
+			actions: [views],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					streamChunks: ["On ", "it."],
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["NAVIGATE_TO_VIEW"],
+						replyText: "On it.",
+						thought: "The calendar needs a view action.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Opening the calendar.",
+						toolCalls: [
+							{
+								id: "view-call",
+								name: "VIEWS",
+								args: { action: "show", view: "simple-calendar" },
+							},
+						],
+					},
+				},
+			],
+		});
+		const callback = vi.fn(async (content: { text?: string }) => {
+			if (content.text) delivered.push(content.text);
+			return [];
+		});
+		const wrappedCallback = wrapSingleTurnVisibleCallback(
+			runtime,
+			makeMessage("can u open calender"),
+			callback,
+			(text) => deliveredVisibleTexts.add(text.toLowerCase()),
+		);
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: async (chunk) => {
+					streamedDraft.push(chunk);
+				},
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("can u open calender"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+					callback: wrappedCallback,
+					deliveredVisibleTexts,
+					onResponseHandlerEarlyReply: earlyReply,
+				}),
+		);
+
+		expect(streamedDraft).toEqual([]);
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(delivered).toEqual(["Navigated to Simple Calendar (gui)."]);
+		expect(callback).toHaveBeenCalledOnce();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent).toBeNull();
+		}
+	});
+
+	it("returns a visible failure when a reply-owning action never delivers its callback", async () => {
+		const streamedDraft: string[] = [];
+		const earlyReply = vi.fn(async () => undefined);
+		const views = makeMockAction({
+			name: "VIEWS",
+			similes: ["NAVIGATE_TO_VIEW"],
+			parameters: [
+				{
+					name: "action",
+					description: "View operation",
+					required: true,
+					schema: { type: "string" },
+				},
+				{
+					name: "view",
+					description: "Registered view id",
+					required: true,
+					schema: { type: "string" },
+				},
+			],
+			suppressEarlyReply: true,
+			suppressPostActionContinuation: true,
+			callbackCompletesResponse: true,
+			handler: async () => ({
+				success: false,
+				text: "Notes could not be opened.",
+				userFacingText: "I couldn't open Notes.",
+				verifiedUserFacing: true,
+				error: "view unavailable",
+			}),
+		});
+		const runtime = makeRuntime({
+			actions: [views],
+			responses: [
+				{
+					expectModelType: ModelType.RESPONSE_HANDLER,
+					streamChunks: ["On it."],
+					body: stage1Response({
+						contexts: ["general"],
+						candidateActionNames: ["NAVIGATE_TO_VIEW"],
+						replyText: "On it.",
+					}),
+				},
+				{
+					expectModelType: ModelType.ACTION_PLANNER,
+					body: {
+						text: "Opening Notes.",
+						toolCalls: [
+							{
+								id: "view-call",
+								name: "VIEWS",
+								args: { action: "show", view: "notes" },
+							},
+						],
+					},
+				},
+			],
+		});
+
+		const result = await runWithStreamingContext(
+			{
+				onStreamChunk: async (chunk) => {
+					streamedDraft.push(chunk);
+				},
+			},
+			() =>
+				runV5MessageRuntimeStage1({
+					runtime,
+					message: makeMessage("switch to notes"),
+					state: makeState(),
+					responseId: RESPONSE_ID,
+					onResponseHandlerEarlyReply: earlyReply,
+				}),
+		);
+
+		expect(streamedDraft).toEqual([]);
+		expect(earlyReply).not.toHaveBeenCalled();
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Notes could not be opened.",
+			);
+		}
 	});
 
 	it("suppresses the Stage 1 reply when a deterministic VIEWS call owns mixed candidates", async () => {
