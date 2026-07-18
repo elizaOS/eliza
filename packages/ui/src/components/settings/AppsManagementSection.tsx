@@ -301,13 +301,20 @@ export function AppsManagementSection() {
           },
         );
         if (!mountedRef.current) return;
+        if (response.ok === false) {
+          setCreateStatus({
+            state: "error",
+            message: response.message ?? "Failed to create app.",
+          });
+          return;
+        }
         setCreateStatus({ state: "idle" });
         setCreateIntent("");
         setCreateEditTarget("");
         setShowCreate(false);
         setActionNotice(
           response.message ?? "App creation started.",
-          response.ok === false ? "error" : "success",
+          "success",
           4500,
         );
         await refresh();
@@ -337,13 +344,20 @@ export function AppsManagementSection() {
           },
         );
         if (!mountedRef.current) return;
+        if (response.ok === false) {
+          setLoadStatus({
+            state: "error",
+            message: response.message ?? "Failed to load directory.",
+          });
+          return;
+        }
         setLoadStatus({ state: "idle" });
         setLoadDirectory("");
         setShowLoad(false);
         const count = response.loaded ?? response.count ?? 0;
         setActionNotice(
           response.message ?? `Loaded ${count} app${count === 1 ? "" : "s"}.`,
-          response.ok === false ? "error" : "success",
+          "success",
           4000,
         );
         await refresh();
@@ -486,7 +500,7 @@ export function AppsManagementSection() {
             ref={createToggleRef}
             type="button"
             variant="default"
-            className="h-9 rounded-md px-3 text-xs"
+            className="min-h-11 rounded-md px-4 text-sm"
             onClick={() => {
               setShowCreate((v) => !v);
               setShowLoad(false);
@@ -501,7 +515,7 @@ export function AppsManagementSection() {
             ref={loadToggleRef}
             type="button"
             variant="outline"
-            className="h-9 rounded-md px-3 text-xs"
+            className="min-h-11 rounded-md px-4 text-sm"
             onClick={() => {
               setShowLoad((v) => !v);
               setShowCreate(false);
@@ -544,7 +558,9 @@ export function AppsManagementSection() {
             })}
             footer={
               createStatus.state === "error" ? (
-                <span className="text-warn">{createStatus.message}</span>
+                <span role="alert" className="text-danger">
+                  {createStatus.message}
+                </span>
               ) : undefined
             }
           >
@@ -610,7 +626,7 @@ export function AppsManagementSection() {
                   {isCreating ? (
                     <span className="inline-flex items-center gap-1">
                       <Loader2
-                        className="h-3.5 w-3.5 animate-spin"
+                        className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
                         aria-hidden
                       />
                       <span>
@@ -653,7 +669,9 @@ export function AppsManagementSection() {
             })}
             footer={
               loadStatus.state === "error" ? (
-                <span className="text-warn">{loadStatus.message}</span>
+                <span role="alert" className="text-danger">
+                  {loadStatus.message}
+                </span>
               ) : undefined
             }
           >
@@ -692,7 +710,7 @@ export function AppsManagementSection() {
                   {isLoading ? (
                     <span className="inline-flex items-center gap-1">
                       <Loader2
-                        className="h-3.5 w-3.5 animate-spin"
+                        className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
                         aria-hidden
                       />
                       <span>
@@ -728,8 +746,15 @@ export function AppsManagementSection() {
 
       {listStatus.state === "loading" ? (
         <SettingsGroup bare>
-          <div className="flex items-center gap-2 px-1 py-3 text-sm text-muted">
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <div
+            className="flex items-center gap-2 px-1 py-3 text-sm text-muted"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2
+              className="h-4 w-4 animate-spin motion-reduce:animate-none"
+              aria-hidden
+            />
             <span>
               {t("settings.sections.apps.loadingApps", {
                 defaultValue: "Loading apps…",
@@ -739,7 +764,19 @@ export function AppsManagementSection() {
         </SettingsGroup>
       ) : listStatus.state === "error" ? (
         <SettingsGroup bare>
-          <p className="py-2 text-sm text-warn">{listStatus.message}</p>
+          <div className="flex flex-wrap items-center gap-3 py-2">
+            <p role="alert" className="text-sm text-danger">
+              {listStatus.message}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 px-4 text-sm"
+              onClick={() => void refresh()}
+            >
+              {t("common.retry", { defaultValue: "Retry" })}
+            </Button>
+          </div>
         </SettingsGroup>
       ) : installed.length === 0 ? (
         <SettingsGroup bare>
