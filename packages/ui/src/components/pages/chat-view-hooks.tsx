@@ -1022,11 +1022,17 @@ export function useChatVoiceController(options: {
   // existing start handler's barge-in branch instead of the stop branch.
   const realtimeOwnsComposer =
     manualRealtimeRequested || voiceSession.realtimeActive;
+  const realtimeIsCapturingSpeech =
+    voiceSession.status === "listening" ||
+    voiceSession.status === "transcribing";
+  const realtimeStartAwaitingActivation =
+    manualRealtimeRequested && !voiceSession.realtimeActive;
   const composerVoice = useMemo(
     () => ({
       isListening:
         voice.isListening ||
-        (realtimeOwnsComposer && !voiceSession.agentSpeaking),
+        realtimeStartAwaitingActivation ||
+        (voiceSession.realtimeActive && realtimeIsCapturingSpeech),
       captureMode: realtimeOwnsComposer
         ? ("compose" as const)
         : voice.captureMode,
@@ -1039,7 +1045,8 @@ export function useChatVoiceController(options: {
       voice.interimTranscript,
       voice.isListening,
       realtimeOwnsComposer,
-      voiceSession.agentSpeaking,
+      realtimeIsCapturingSpeech,
+      realtimeStartAwaitingActivation,
       voiceSession.interimTranscript,
       voiceSession.realtimeActive,
     ],
