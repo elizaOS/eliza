@@ -126,6 +126,7 @@ vi.mock("../../src/services/acp-native-transport.js", () => {
 import {
   AcpService,
   ensureWorkspaceElizaCodeAcp,
+  normalizeClaudeAcpModelId,
 } from "../../src/services/acp-service.js";
 import { InMemorySessionStore } from "../../src/services/session-store.js";
 
@@ -437,6 +438,70 @@ describe("AcpService", () => {
       | Record<string, string>
       | undefined;
     expect(env?.PARALLAX_SESSION_ID).toBe(result.sessionId);
+  });
+
+  it("normalizes Claude ACP model context suffixes on explicit spawn models", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: "native",
+        ELIZA_CLAUDE_ACP_COMMAND: "claude-agent-acp --stdio",
+      }),
+    );
+    await service.start();
+
+    const result = await service.spawnSession({
+      name: "claude-normalized-model",
+      agentType: "claude",
+      model: "claude-opus-4-8[1m]",
+      workdir: "/tmp/acp-test",
+    });
+
+    const session = await service.getSession(result.sessionId);
+    expect(normalizeClaudeAcpModelId(" claude-sonnet-5[200k][1m] ")).toBe(
+      "claude-sonnet-5",
+    );
+    expect(nativeClientMock.instances[0]?.opts.env?.ANTHROPIC_MODEL).toBe(
+      "claude-opus-4-8",
+    );
+    expect(nativeClientMock.instances[0]?.opts.env?.OPENAI_MODEL).toBe(
+      "claude-opus-4-8",
+    );
+    expect(session?.metadata?.spawnModel).toBe("claude-opus-4-8");
+    await service.stop();
+  });
+
+  it("normalizes Claude ACP model context suffixes inherited from config env", async () => {
+    const previous = snapshotEnv([
+      "ELIZA_CLAUDE_MODEL_POWERFUL",
+      "ELIZA_CONFIG_PATH",
+    ]);
+    process.env.ELIZA_CLAUDE_MODEL_POWERFUL = "claude-opus-4-8[1m]";
+    process.env.ELIZA_CONFIG_PATH = join(
+      tmpdir(),
+      "acp-claude-model-config-does-not-exist.json",
+    );
+    try {
+      const service = new AcpService(
+        runtime({
+          ELIZA_ACP_TRANSPORT: "native",
+          ELIZA_CLAUDE_ACP_COMMAND: "claude-agent-acp --stdio",
+        }),
+      );
+      await service.start();
+
+      await service.spawnSession({
+        name: "claude-config-normalized-model",
+        agentType: "claude",
+        workdir: "/tmp/acp-test",
+      });
+
+      expect(nativeClientMock.instances[0]?.opts.env?.ANTHROPIC_MODEL).toBe(
+        "claude-opus-4-8",
+      );
+      await service.stop();
+    } finally {
+      restoreEnv(previous);
+    }
   });
 
   it("pins configured coding git identity over inherited GIT env on CLI spawns", async () => {

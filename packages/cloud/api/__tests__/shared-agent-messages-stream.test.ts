@@ -130,7 +130,11 @@ describe("shared agent messages/stream", () => {
     bridgeStream.mockReset();
     findByIdAndOrg.mockReset();
     resolveSharedAgent.mockResolvedValue({
-      agent: {},
+      agent: {
+        id: AGENT,
+        organization_id: ORG,
+        execution_tier: "shared",
+      },
       agentId: AGENT,
       orgId: ORG,
       agentName: "Eliza",
@@ -291,6 +295,12 @@ describe("shared agent messages/stream", () => {
       organizationId: ORG,
       userId: "user-voice",
     });
+    await fetchImpl.prewarm();
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(bridgeStream).not.toHaveBeenCalled();
+
+    // A failed warmup must not fail the turn: the fetch falls through to the
+    // regular per-turn lookup (best-effort semantics, codex P2).
     const res = await fetchImpl(
       `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
       {
@@ -307,6 +317,70 @@ describe("shared agent messages/stream", () => {
 
     expect(res.status).toBe(200);
     expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(bridgeStream).toHaveBeenCalledTimes(1);
+  });
+
+  test("failed in-flight prewarm falls through to per-turn validation", async () => {
+    const env = {
+      DATABASE_URL: "postgresql://captured.example/eliza",
+      VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service",
+    } as Parameters<typeof createInternalElizaConversationFetchFactory>[0];
+    let createLateFetch!: ReturnType<
+      typeof createInternalElizaConversationFetchFactory
+    >;
+    await runWithCloudBindingsAsync(env, () =>
+      runWithDbCacheAsync(async () => {
+        createLateFetch = createInternalElizaConversationFetchFactory(env);
+      }),
+    );
+
+    // Prewarm rejects while still in flight; the fetch must swallow that and
+    // run the regular tenancy lookup instead of failing the user's turn.
+    let releasePrewarm!: (err: Error) => void;
+    findByIdAndOrg.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          releasePrewarm = reject;
+        }),
+    );
+    findByIdAndOrg.mockResolvedValueOnce({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "user-voice",
+      agent_name: "Voice Agent",
+    });
+    bridgeStream.mockResolvedValue(
+      new Response("event: done\ndata: {}\n\n", {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const fetchImpl = createLateFetch({
+      agentId: AGENT,
+      conversationId: VOICE_CONVERSATION,
+      organizationId: ORG,
+      userId: "user-voice",
+    });
+    const prewarm = fetchImpl.prewarm();
+    const resPromise = fetchImpl(
+      `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Eliza-Organization-Id": ORG,
+          "X-Eliza-User-Id": "user-voice",
+        },
+        body: JSON.stringify({ text: "prewarm failure transcript" }),
+      },
+    );
+    releasePrewarm(new Error("transient db failure"));
+    await prewarm.catch(() => undefined);
+
+    const res = await resPromise;
+    expect(res.status).toBe(200);
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(2);
     expect(bridgeStream).toHaveBeenCalledTimes(1);
   });
 
@@ -433,6 +507,26 @@ describe("shared agent messages/stream", () => {
     expect(res.headers.get("access-control-allow-credentials")).toBe("true");
   });
 
+  test("exposes pre-header phase timing on successful streams", async () => {
+    bridgeStream.mockResolvedValue(
+      new Response('event: done\ndata: {"text":"ok"}\n\n', {
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const res = await postStream({ text: "timed" }, "https://localhost");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("access-control-expose-headers")).toContain(
+      "Server-Timing",
+    );
+    expect(res.headers.get("server-timing")).toContain("scope;dur=");
+    expect(res.headers.get("server-timing")).toContain("body;dur=");
+    expect(res.headers.get("server-timing")).toContain("bridge;dur=");
+    expect(res.headers.get("x-eliza-stream-scope-ms")).not.toBeNull();
+    expect(res.headers.get("x-eliza-stream-bridge-ms")).not.toBeNull();
+  });
+
   test("empty text → 400 (not a stream)", async () => {
     const res = await postStream({ text: "  " });
     expect(res.status).toBe(400);
@@ -465,6 +559,7 @@ describe("shared agent messages/stream", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe(
       "https://localhost",
     );
+    expect(res.headers.get("server-timing")).toContain("bridge;dur=");
     await expect(res.json()).resolves.toEqual({
       success: false,
       error: "Insufficient credits. Required: $0.0500, Available: $0.0000",

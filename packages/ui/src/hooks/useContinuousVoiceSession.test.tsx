@@ -73,6 +73,8 @@ function makeRealtime(
     needsUnlock: false,
     paused: false,
     error: null,
+    fallbackReason: null,
+    reportFallback: vi.fn(),
     speaker: null,
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
@@ -133,6 +135,21 @@ describe("useContinuousVoiceSession", () => {
     expect(result.current.interimTranscript).toBe("rt partial");
     expect(result.current.finalTranscript).toBe("rt final");
     expect(result.current.agentSpeaking).toBe(true);
+  });
+
+  it("keeps the committed transcript visible while the EOT request is thinking", () => {
+    const batch = makeBatch({ interimTranscript: "batch interim" });
+    const realtime = makeRealtime({
+      available: true,
+      active: true,
+      status: "thinking",
+      transcriptPartial: "",
+      transcriptFinal: "committed request",
+    });
+    const { result } = renderHook(() =>
+      useContinuousVoiceSession({ batch, realtime }),
+    );
+    expect(result.current.interimTranscript).toBe("committed request");
   });
 
   it("surfaces realtime autoplay unlock state and action while realtime is active", () => {

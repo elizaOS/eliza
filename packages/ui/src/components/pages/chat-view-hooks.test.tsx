@@ -59,6 +59,8 @@ const realtimeHarness = vi.hoisted(() => {
     needsUnlock: false,
     paused: false,
     error: null as RealtimeVoiceError | null,
+    fallbackReason: null,
+    reportFallback: vi.fn(),
     speaker: null,
     start: vi.fn<() => Promise<RealtimeVoiceStartOutcome>>(async () => ({
       kind: "live",
@@ -514,6 +516,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     }));
     realtimeHarness.state.available = true;
     realtimeHarness.state.active = true;
+    realtimeHarness.state.status = "listening";
     const { result, rerender } = renderHook(() =>
       useChatVoiceController({
         ...baseOptions,
@@ -528,6 +531,14 @@ describe("useChatVoiceController voice playback unlock", () => {
       captureMode: "compose",
     });
 
+    realtimeHarness.state.status = "thinking";
+    await act(async () => {
+      rerender();
+      await Promise.resolve();
+    });
+    expect(result.current.composerVoice.isListening).toBe(false);
+
+    realtimeHarness.state.status = "speaking";
     realtimeHarness.state.agentSpeaking = true;
     await act(async () => {
       rerender();

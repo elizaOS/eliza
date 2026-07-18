@@ -17,7 +17,7 @@ const DENY_ENV_PATTERNS = [
   // Repo-scoped GitHub host credentials must not be injected into sub-agents,
   // including through customCredentials. Registry push uses the dedicated
   // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
-  /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT)$/i,
+  /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT|GH_PAT)$/i,
   // OpenCode's spawn config is runtime-built (buildOpencodeAcpEnv overwrites it
   // AFTER this filter runs). A caller- or host-supplied value would let the
   // spawner inject arbitrary provider config into the child, so it is denied at
@@ -89,6 +89,12 @@ export const SUB_AGENT_PROVIDER_ENV_KEYS = [
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_BASE_URL",
+  // OpenAI twins of the Anthropic proxy/tier forwarding (#16562): a parent on
+  // a third-party OpenAI-compatible endpoint must not spawn children that
+  // silently talk to api.openai.com with default tier models.
+  "OPENAI_BASE_URL",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
   "CEREBRAS_API_KEY",
   "CEREBRAS_BASE_URL",
   "CEREBRAS_MODEL",

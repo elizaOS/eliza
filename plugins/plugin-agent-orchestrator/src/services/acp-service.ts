@@ -342,6 +342,16 @@ function findExecutableOnPath(name: string): string | undefined {
   return undefined;
 }
 
+export function normalizeClaudeAcpModelId(
+  model: string | undefined,
+): string | undefined {
+  const normalized = model
+    ?.trim()
+    .replace(/(?:\s*\[[0-9]+[a-zA-Z]+\])+$/u, "")
+    .trim();
+  return normalized || undefined;
+}
+
 /**
  * Provision the workspace-native ACP executable on first use, crash-safely.
  * Development and self-hosted checkouts deliberately do not require a global
@@ -1666,6 +1676,10 @@ export class AcpService extends Service {
         ...(opts.env ?? {}),
         ...(gitIndexIsolation?.env ?? {}),
       };
+      const spawnModel =
+        agentType === "claude"
+          ? normalizeClaudeAcpModelId(opts.model)
+          : opts.model;
 
       // Multi-account selection: pick the least-used (default) linked subscription
       // for this agent type and inject its credentials into the spawn env so the
@@ -1677,7 +1691,7 @@ export class AcpService extends Service {
       const resolvedAccount = await selectCodingAccount(agentType, {
         sessionKey: id,
         ...(accountStrategy ? { strategy: accountStrategy } : {}),
-        ...(opts.model ? { model: opts.model } : {}),
+        ...(spawnModel ? { model: spawnModel } : {}),
       });
       const customCredentials = resolvedAccount
         ? {
@@ -1728,7 +1742,7 @@ export class AcpService extends Service {
           : {}),
         ...(gitIndexIsolation?.metadata ?? {}),
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
-        ...(opts.model ? { [ACP_METADATA_SPAWN_MODEL]: opts.model } : {}),
+        ...(spawnModel ? { [ACP_METADATA_SPAWN_MODEL]: spawnModel } : {}),
         transportMode: this.transportMode,
         slotClass,
       };
@@ -1773,6 +1787,7 @@ export class AcpService extends Service {
       if (this.transportMode === "native") {
         const result = await this.spawnNativeSession(id, session, {
           ...opts,
+          model: spawnModel,
           env: sessionEnv,
           customCredentials,
         });
@@ -1782,7 +1797,7 @@ export class AcpService extends Service {
               ?.keepAliveAfterComplete === true;
           void this.sendPrompt(id, initialTask ?? "", {
             timeoutMs: resolveInitialTaskPromptTimeoutMs(opts.timeoutMs),
-            model: opts.model,
+            model: spawnModel,
           })
             .catch((err: unknown) => {
               // error-policy:J5 fire-and-forget initial prompt; the underlying
@@ -1807,7 +1822,7 @@ export class AcpService extends Service {
         workdir,
         approvalPreset,
         timeoutMs: opts.timeoutMs,
-        model: opts.model,
+        model: spawnModel,
       });
       args.push(
         ...this.agentCommandArgs(agentType, [
@@ -1826,7 +1841,7 @@ export class AcpService extends Service {
         env: this.buildEnv(
           sessionEnv,
           customCredentials,
-          opts.model,
+          spawnModel,
           agentType,
           id,
         ),
@@ -1862,7 +1877,7 @@ export class AcpService extends Service {
             ?.keepAliveAfterComplete === true;
         void this.sendPrompt(id, initialTask ?? "", {
           timeoutMs: resolveInitialTaskPromptTimeoutMs(opts.timeoutMs),
-          model: opts.model,
+          model: spawnModel,
         })
           .catch((err: unknown) => {
             // error-policy:J5 fire-and-forget initial prompt; the underlying
@@ -1992,6 +2007,10 @@ export class AcpService extends Service {
       }
     }
     const startedAt = Date.now();
+    const promptModel =
+      session.agentType === "claude"
+        ? normalizeClaudeAcpModelId(opts.model)
+        : opts.model;
     if (transportMode === "native") {
       if (this.nativePromptSessionIds.has(sessionId)) {
         throw new Error(`ACP session is already busy: ${sessionId}`);
@@ -2006,7 +2025,12 @@ export class AcpService extends Service {
       this.turnOutputBuffers.set(sessionId, []);
       try {
         await this.store.updateStatus(sessionId, "busy");
-        return await this.sendNativePrompt(session, text, opts, startedAt);
+        return await this.sendNativePrompt(
+          session,
+          text,
+          { ...opts, model: promptModel },
+          startedAt,
+        );
       } catch (err) {
         // error-policy:J2 release the synchronous busy-claim on the pre-prompt
         // error path, then propagate the original error unchanged.
@@ -2020,7 +2044,7 @@ export class AcpService extends Service {
       workdir: session.workdir,
       approvalPreset: session.approvalPreset,
       timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-      model: opts.model,
+      model: promptModel,
     });
     args.push(
       ...this.agentCommandArgs(session.agentType, [
@@ -2050,7 +2074,7 @@ export class AcpService extends Service {
       env: this.buildEnv(
         promptEnv,
         promptCredentials,
-        opts.model,
+        promptModel,
         session.agentType,
         sessionId,
       ),
@@ -4008,8 +4032,12 @@ export class AcpService extends Service {
       if (typeof value === "string") env[canonicalForwardedEnvKey(key)] = value;
     }
     if (model) {
-      env.OPENAI_MODEL = model;
-      if (agentType === "claude") env.ANTHROPIC_MODEL = model;
+      const normalizedModel =
+        agentType === "claude" ? normalizeClaudeAcpModelId(model) : model;
+      if (normalizedModel) env.OPENAI_MODEL = normalizedModel;
+      if (agentType === "claude" && normalizedModel) {
+        env.ANTHROPIC_MODEL = normalizedModel;
+      }
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
     } else if (agentType === "claude") {
       // No per-spawn model: fall back to the app-configured claude coding
@@ -4019,7 +4047,8 @@ export class AcpService extends Service {
       const configured = readConfigEnvKey(
         "ELIZA_CLAUDE_MODEL_POWERFUL",
       )?.trim();
-      if (configured) env.ANTHROPIC_MODEL = configured;
+      const normalizedConfigured = normalizeClaudeAcpModelId(configured);
+      if (normalizedConfigured) env.ANTHROPIC_MODEL = normalizedConfigured;
     }
     if (childSessionId?.trim()) {
       env.PARALLAX_SESSION_ID = childSessionId.trim();

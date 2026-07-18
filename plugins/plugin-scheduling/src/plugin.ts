@@ -23,6 +23,24 @@ import {
   seedRegisteredTaskPacks,
 } from "./scheduled-task/seed-registry.js";
 
+export async function waitForScheduledTaskRunnerService(
+  runtime: IAgentRuntime,
+): Promise<ScheduledTaskRunnerService> {
+  await runtime.initPromise;
+
+  if (!runtime.hasService(ScheduledTaskRunnerService.serviceType)) {
+    // `registerPlugin` awaits `init()` before recording the same plugin's
+    // service classes. When a plugin is loaded after runtime init, the
+    // already-resolved initPromise can resume this seeder one microtask before
+    // the registerPlugin continuation registers ScheduledTaskRunnerService.
+    await Promise.resolve();
+  }
+
+  return (await runtime.getServiceLoadPromise(
+    ScheduledTaskRunnerService.serviceType,
+  )) as ScheduledTaskRunnerService;
+}
+
 export const schedulingPlugin: Plugin = {
   name: "@elizaos/plugin-scheduling",
   description:
@@ -62,9 +80,7 @@ export const schedulingPlugin: Plugin = {
     void runtime.initPromise
       .then(async () => {
         try {
-          await runtime.getServiceLoadPromise(
-            ScheduledTaskRunnerService.serviceType,
-          );
+          await waitForScheduledTaskRunnerService(runtime);
           // Register the built-in fallback pack only when no consumer host has
           // injected deps (e.g. a stock mobile boot without
           // @elizaos/plugin-personal-assistant). When a host is present it owns
