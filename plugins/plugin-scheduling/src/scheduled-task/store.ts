@@ -1,0 +1,466 @@
+/**
+ * Durable SQL-backed ScheduledTask store owned by plugin-scheduling.
+ *
+ * Hosts inject this adapter through `registerScheduledTaskRunnerDeps`, and the
+ * scheduling plugin's default deps use it directly when a runtime database is
+ * available. The row contract mirrors the runner's store interface exactly:
+ * the runner computes `next_fire_at`, while this adapter owns atomic claims,
+ * idempotency lookup, filtering, and state-log retention.
+ */
+import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  ScheduledTaskClaimExpectation,
+  ScheduledTaskClaimResult,
+  ScheduledTaskStore,
+  ScheduledTaskUpsertOptions,
+} from "./runner.js";
+import {
+  executeRawSql,
+  parseJsonRecord,
+  sqlBoolean,
+  sqlInteger,
+  sqlJson,
+  sqlQuote,
+  sqlText,
+  toBoolean,
+  toText,
+} from "./sql.js";
+import type { ScheduledTaskLogStore } from "./state-log.js";
+import type {
+  ScheduledTask,
+  ScheduledTaskFilter,
+  ScheduledTaskLogEntry,
+} from "./types.js";
+
+const SCHEDULING_SCHEMA = "app_scheduling";
+const TASK_TABLE = `${SCHEDULING_SCHEMA}.life_scheduled_tasks`;
+const LOG_TABLE = `${SCHEDULING_SCHEMA}.life_scheduled_task_log`;
+
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+function parseOptionalJsonRecord<T>(value: unknown): T | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && value.length === 0) return undefined;
+  const parsed = parseJsonRecord(value);
+  if (Object.keys(parsed).length === 0) return undefined;
+  return parsed as T;
+}
+
+export function parseScheduledTaskRow(
+  row: Record<string, unknown>,
+): ScheduledTask {
+  const stateRaw = parseJsonRecord(row.state_json);
+  const state: ScheduledTask["state"] = {
+    status: ((stateRaw.status as string) ??
+      "scheduled") as ScheduledTask["state"]["status"],
+    firedAt:
+      typeof stateRaw.firedAt === "string" ? stateRaw.firedAt : undefined,
+    acknowledgedAt:
+      typeof stateRaw.acknowledgedAt === "string"
+        ? stateRaw.acknowledgedAt
+        : undefined,
+    completedAt:
+      typeof stateRaw.completedAt === "string"
+        ? stateRaw.completedAt
+        : undefined,
+    followupCount:
+      typeof stateRaw.followupCount === "number" ? stateRaw.followupCount : 0,
+    lastFollowupAt:
+      typeof stateRaw.lastFollowupAt === "string"
+        ? stateRaw.lastFollowupAt
+        : undefined,
+    pipelineParentId:
+      typeof stateRaw.pipelineParentId === "string"
+        ? stateRaw.pipelineParentId
+        : undefined,
+    lastDecisionLog:
+      typeof stateRaw.lastDecisionLog === "string"
+        ? stateRaw.lastDecisionLog
+        : undefined,
+  };
+  const subjectKind = toText(row.subject_kind, "");
+  const subjectId = toText(row.subject_id, "");
+  const parsedMetadata =
+    parseOptionalJsonRecord<Record<string, unknown>>(row.metadata_json) ?? {};
+  if (
+    typeof row.created_at === "string" &&
+    typeof parsedMetadata.createdAtIso !== "string"
+  ) {
+    parsedMetadata.createdAtIso = row.created_at;
+  }
+  return {
+    taskId: toText(row.id),
+    kind: toText(row.kind) as ScheduledTask["kind"],
+    promptInstructions: toText(row.prompt_instructions),
+    contextRequest: parseOptionalJsonRecord<ScheduledTask["contextRequest"]>(
+      row.context_request_json,
+    ),
+    trigger: parseJsonRecord(row.trigger_json) as ScheduledTask["trigger"],
+    priority: toText(row.priority, "medium") as ScheduledTask["priority"],
+    shouldFire: parseOptionalJsonRecord<ScheduledTask["shouldFire"]>(
+      row.should_fire_json,
+    ),
+    completionCheck: parseOptionalJsonRecord<ScheduledTask["completionCheck"]>(
+      row.completion_check_json,
+    ),
+    escalation: parseOptionalJsonRecord<ScheduledTask["escalation"]>(
+      row.escalation_json,
+    ),
+    output: parseOptionalJsonRecord<ScheduledTask["output"]>(row.output_json),
+    pipeline: parseOptionalJsonRecord<ScheduledTask["pipeline"]>(
+      row.pipeline_json,
+    ),
+    subject:
+      subjectKind && subjectId
+        ? ({
+            kind: subjectKind,
+            id: subjectId,
+          } as ScheduledTask["subject"])
+        : undefined,
+    idempotencyKey:
+      typeof row.idempotency_key === "string" && row.idempotency_key.length > 0
+        ? row.idempotency_key
+        : undefined,
+    respectsGlobalPause: toBoolean(row.respects_global_pause, true),
+    state,
+    source: toText(row.source, "user_chat") as ScheduledTask["source"],
+    createdBy: toText(row.created_by, ""),
+    ownerVisible: toBoolean(row.owner_visible, true),
+    metadata: parsedMetadata,
+    executionProfile:
+      typeof row.execution_profile === "string"
+        ? (row.execution_profile as ScheduledTask["executionProfile"])
+        : undefined,
+  };
+}
+
+export function parseScheduledTaskLogRow(
+  row: Record<string, unknown>,
+): ScheduledTaskLogEntry {
+  return {
+    logId: toText(row.id),
+    taskId: toText(row.task_id),
+    agentId: toText(row.agent_id),
+    occurredAtIso: toText(row.occurred_at),
+    transition: toText(row.transition) as ScheduledTaskLogEntry["transition"],
+    reason: typeof row.reason === "string" ? row.reason : undefined,
+    rolledUp: toBoolean(row.rolled_up, false),
+    detail: parseOptionalJsonRecord<Record<string, unknown>>(row.detail_json),
+  };
+}
+
+export interface SchedulingSqlStoreOptions {
+  runtime: IAgentRuntime;
+  agentId: string;
+}
+
+export function createSchedulingSqlScheduledTaskStore(
+  opts: SchedulingSqlStoreOptions,
+): ScheduledTaskStore {
+  const { runtime, agentId } = opts;
+  return {
+    async upsert(task: ScheduledTask, options?: ScheduledTaskUpsertOptions) {
+      const now = isoNow();
+      const nextFireAtSql =
+        options?.nextFireAtIso === null ||
+        options?.nextFireAtIso === undefined ||
+        options.nextFireAtIso.length === 0
+          ? "NULL"
+          : `${sqlQuote(options.nextFireAtIso)}::timestamptz`;
+      await executeRawSql(
+        runtime,
+        `INSERT INTO ${TASK_TABLE} (
+          id, agent_id, kind, prompt_instructions, context_request_json,
+          trigger_json, priority, should_fire_json, completion_check_json,
+          escalation_json, output_json, pipeline_json, subject_kind, subject_id,
+          idempotency_key, respects_global_pause, state_json, source,
+          created_by, owner_visible, metadata_json, execution_profile,
+          next_fire_at, created_at, updated_at
+        ) VALUES (
+          ${sqlQuote(task.taskId)},
+          ${sqlQuote(agentId)},
+          ${sqlQuote(task.kind)},
+          ${sqlQuote(task.promptInstructions)},
+          ${sqlText(task.contextRequest ? JSON.stringify(task.contextRequest) : null)},
+          ${sqlJson(task.trigger)},
+          ${sqlQuote(task.priority)},
+          ${sqlText(task.shouldFire ? JSON.stringify(task.shouldFire) : null)},
+          ${sqlText(task.completionCheck ? JSON.stringify(task.completionCheck) : null)},
+          ${sqlText(task.escalation ? JSON.stringify(task.escalation) : null)},
+          ${sqlText(task.output ? JSON.stringify(task.output) : null)},
+          ${sqlText(task.pipeline ? JSON.stringify(task.pipeline) : null)},
+          ${sqlText(task.subject?.kind ?? null)},
+          ${sqlText(task.subject?.id ?? null)},
+          ${sqlText(task.idempotencyKey ?? null)},
+          ${sqlBoolean(task.respectsGlobalPause)},
+          ${sqlJson(task.state)},
+          ${sqlQuote(task.source)},
+          ${sqlQuote(task.createdBy)},
+          ${sqlBoolean(task.ownerVisible)},
+          ${sqlJson(task.metadata ?? {})},
+          ${sqlText(task.executionProfile ?? null)},
+          ${nextFireAtSql},
+          ${sqlQuote(now)},
+          ${sqlQuote(now)}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          kind = EXCLUDED.kind,
+          prompt_instructions = EXCLUDED.prompt_instructions,
+          context_request_json = EXCLUDED.context_request_json,
+          trigger_json = EXCLUDED.trigger_json,
+          priority = EXCLUDED.priority,
+          should_fire_json = EXCLUDED.should_fire_json,
+          completion_check_json = EXCLUDED.completion_check_json,
+          escalation_json = EXCLUDED.escalation_json,
+          output_json = EXCLUDED.output_json,
+          pipeline_json = EXCLUDED.pipeline_json,
+          subject_kind = EXCLUDED.subject_kind,
+          subject_id = EXCLUDED.subject_id,
+          idempotency_key = EXCLUDED.idempotency_key,
+          respects_global_pause = EXCLUDED.respects_global_pause,
+          state_json = EXCLUDED.state_json,
+          source = EXCLUDED.source,
+          created_by = EXCLUDED.created_by,
+          owner_visible = EXCLUDED.owner_visible,
+          metadata_json = EXCLUDED.metadata_json,
+          execution_profile = EXCLUDED.execution_profile,
+          next_fire_at = EXCLUDED.next_fire_at,
+          updated_at = ${sqlQuote(now)}`,
+      );
+    },
+    async claimForFire(args: {
+      taskId: string;
+      firedAtIso: string;
+      expected?: ScheduledTaskClaimExpectation;
+    }): Promise<ScheduledTaskClaimResult> {
+      const now = isoNow();
+      const expected = args.expected;
+      const stateGuard = expected
+        ? `AND (state_json::jsonb ->> 'status') = ${sqlQuote(expected.status)}
+            AND ${
+              expected.firedAtIso === null
+                ? `(state_json::jsonb ->> 'firedAt') IS NULL`
+                : `(state_json::jsonb ->> 'firedAt') = ${sqlQuote(expected.firedAtIso)}`
+            }`
+        : `AND (state_json::jsonb ->> 'status') = 'scheduled'`;
+      const rows = await executeRawSql(
+        runtime,
+        `UPDATE ${TASK_TABLE}
+            SET state_json = jsonb_set(
+                                jsonb_set(
+                                  state_json::jsonb,
+                                  '{status}',
+                                  '"fired"'::jsonb,
+                                  true
+                                ),
+                                '{firedAt}',
+                                to_jsonb(${sqlQuote(args.firedAtIso)}::text),
+                                true
+                              )::text,
+                next_fire_at = NULL,
+                updated_at = ${sqlQuote(now)},
+                version = version + 1
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(args.taskId)}
+            ${stateGuard}
+          RETURNING *`,
+      );
+      const row = rows[0];
+      if (!row) return { kind: "raced" };
+      return { kind: "fired", task: parseScheduledTaskRow(row) };
+    },
+    async get(taskId: string) {
+      const rows = await executeRawSql(
+        runtime,
+        `SELECT *
+           FROM ${TASK_TABLE}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(taskId)}
+          LIMIT 1`,
+      );
+      const row = rows[0];
+      return row ? parseScheduledTaskRow(row) : null;
+    },
+    async findByIdempotencyKey(key: string) {
+      const rows = await executeRawSql(
+        runtime,
+        `SELECT *
+           FROM ${TASK_TABLE}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND idempotency_key = ${sqlQuote(key)}
+          LIMIT 1`,
+      );
+      const row = rows[0];
+      return row ? parseScheduledTaskRow(row) : null;
+    },
+    async list(filter?: ScheduledTaskFilter) {
+      const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
+      if (filter?.kind) clauses.push(`kind = ${sqlQuote(filter.kind)}`);
+      if (filter?.subject?.kind) {
+        clauses.push(`subject_kind = ${sqlQuote(filter.subject.kind)}`);
+      }
+      if (filter?.subject?.id) {
+        clauses.push(`subject_id = ${sqlQuote(filter.subject.id)}`);
+      }
+      if (filter?.source) clauses.push(`source = ${sqlQuote(filter.source)}`);
+      if (filter?.ownerVisibleOnly) clauses.push("owner_visible = TRUE");
+      if (filter?.status) {
+        const statusList = (
+          Array.isArray(filter.status) ? filter.status : [filter.status]
+        )
+          .filter((status) => status.length > 0)
+          .map((status) => sqlQuote(status))
+          .join(", ");
+        if (statusList.length > 0) {
+          clauses.push(`(state_json::jsonb ->> 'status') IN (${statusList})`);
+        }
+      }
+      if (filter?.firedSince) {
+        clauses.push(
+          `(state_json::jsonb ->> 'firedAt') >= ${sqlQuote(filter.firedSince)}`,
+        );
+      }
+      const rows = await executeRawSql(
+        runtime,
+        `SELECT *
+           FROM ${TASK_TABLE}
+          WHERE ${clauses.join(" AND ")}
+          ORDER BY created_at ASC`,
+      );
+      return rows.map(parseScheduledTaskRow);
+    },
+    async delete(taskId: string) {
+      await executeRawSql(
+        runtime,
+        `DELETE FROM ${TASK_TABLE}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND id = ${sqlQuote(taskId)}`,
+      );
+      await executeRawSql(
+        runtime,
+        `DELETE FROM ${LOG_TABLE}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND task_id = ${sqlQuote(taskId)}`,
+      );
+    },
+  };
+}
+
+export function createSchedulingSqlScheduledTaskLogStore(
+  opts: SchedulingSqlStoreOptions,
+): ScheduledTaskLogStore {
+  const { runtime, agentId } = opts;
+  return {
+    async append(entry: ScheduledTaskLogEntry) {
+      await executeRawSql(
+        runtime,
+        `INSERT INTO ${LOG_TABLE} (
+          id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+        ) VALUES (
+          ${sqlQuote(entry.logId)},
+          ${sqlQuote(entry.agentId)},
+          ${sqlQuote(entry.taskId)},
+          ${sqlQuote(entry.occurredAtIso)},
+          ${sqlQuote(entry.transition)},
+          ${sqlText(entry.reason ?? null)},
+          ${sqlBoolean(entry.rolledUp)},
+          ${sqlText(entry.detail ? JSON.stringify(entry.detail) : null)}
+        )`,
+      );
+    },
+    async list(args) {
+      const clauses: string[] = [
+        `agent_id = ${sqlQuote(agentId)}`,
+        `task_id = ${sqlQuote(args.taskId)}`,
+      ];
+      if (args.sinceIso) {
+        clauses.push(`occurred_at >= ${sqlQuote(args.sinceIso)}`);
+      }
+      if (args.untilIso) {
+        clauses.push(`occurred_at < ${sqlQuote(args.untilIso)}`);
+      }
+      if (args.excludeRollups) clauses.push("rolled_up = FALSE");
+      const limit =
+        typeof args.limit === "number" && args.limit > 0
+          ? `LIMIT ${sqlInteger(args.limit)}`
+          : "";
+      const rows = await executeRawSql(
+        runtime,
+        `SELECT *
+           FROM ${LOG_TABLE}
+          WHERE ${clauses.join(" AND ")}
+          ORDER BY occurred_at ASC
+          ${limit}`,
+      );
+      return rows.map(parseScheduledTaskLogRow);
+    },
+    async rollupOlderThan(args) {
+      const rows = await executeRawSql(
+        runtime,
+        `SELECT *
+           FROM ${LOG_TABLE}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND rolled_up = FALSE
+            AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
+      );
+      if (rows.length === 0) return { rolledUp: 0, deletedRaw: 0 };
+      const summary = new Map<
+        string,
+        {
+          taskId: string;
+          transition: string;
+          dayIso: string;
+          count: number;
+          firstReason: string | null;
+        }
+      >();
+      for (const row of rows) {
+        const occurredAt = toText(row.occurred_at);
+        const dayIso = occurredAt.slice(0, 10);
+        const key = `${toText(row.task_id)}::${dayIso}::${toText(row.transition)}`;
+        const existing = summary.get(key);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          summary.set(key, {
+            taskId: toText(row.task_id),
+            transition: toText(row.transition),
+            dayIso,
+            count: 1,
+            firstReason: typeof row.reason === "string" ? row.reason : null,
+          });
+        }
+      }
+      await executeRawSql(
+        runtime,
+        `DELETE FROM ${LOG_TABLE}
+          WHERE agent_id = ${sqlQuote(agentId)}
+            AND rolled_up = FALSE
+            AND occurred_at < ${sqlQuote(args.olderThanIso)}`,
+      );
+      let counter = 0;
+      for (const item of summary.values()) {
+        counter += 1;
+        const id = `rollup-${item.taskId}-${item.dayIso}-${item.transition}-${counter}`;
+        await executeRawSql(
+          runtime,
+          `INSERT INTO ${LOG_TABLE} (
+            id, agent_id, task_id, occurred_at, transition, reason, rolled_up, detail_json
+          ) VALUES (
+            ${sqlQuote(id)},
+            ${sqlQuote(agentId)},
+            ${sqlQuote(item.taskId)},
+            ${sqlQuote(`${item.dayIso}T00:00:00.000Z`)},
+            ${sqlQuote(item.transition)},
+            ${sqlText(item.firstReason ?? null)},
+            ${sqlBoolean(true)},
+            ${sqlText(JSON.stringify({ rollupCount: item.count }))}
+          )`,
+        );
+      }
+      return { rolledUp: summary.size, deletedRaw: rows.length };
+    },
+  };
+}

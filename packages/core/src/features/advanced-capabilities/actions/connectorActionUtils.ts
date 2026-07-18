@@ -43,6 +43,28 @@ export function textParam(value: unknown): string | undefined {
 		: undefined;
 }
 
+/** Connector identity is trusted only from the stored Memory envelope. */
+export function trustedConnectorAccountId(message: Memory): string | undefined {
+	const metadata = message.metadata;
+	const accountId =
+		metadata && "accountId" in metadata ? metadata.accountId : undefined;
+	return typeof accountId === "string" && accountId.trim()
+		? accountId.trim()
+		: undefined;
+}
+
+/**
+ * Prefer the connector-authored envelope source. Never pair an envelope account
+ * with the user-facing Content source, where common ids such as "default" could
+ * otherwise be redirected to a different provider.
+ */
+export function trustedConnectorSource(message: Memory): string | undefined {
+	const source = message.metadata?.source;
+	if (typeof source === "string" && source.trim()) return source.trim();
+	if (trustedConnectorAccountId(message)) return undefined;
+	return textParam(message.content.source);
+}
+
 export function boolParam(value: unknown): boolean | undefined {
 	if (typeof value === "boolean") return value;
 	if (typeof value !== "string") return undefined;
@@ -107,12 +129,16 @@ export function buildPostQueryContext(
 	message: Memory,
 	state: State | undefined,
 	source: string | undefined,
+	accountId?: string,
+	account?: PostConnector["account"],
 ): PostConnectorQueryContext {
 	return {
 		runtime,
 		roomId: message.roomId,
 		entityId: message.entityId,
 		source,
+		accountId,
+		account,
 		contexts: getActiveRoutingContextsForTurn(state, message),
 		metadata: {
 			messageText: message.content.text,
@@ -318,6 +344,12 @@ function connectorAliases(connector: {
 	return aliases;
 }
 
+function connectorAccountIds(connector: SelectableConnector): string[] {
+	return [connector.accountId, connector.account?.accountId].filter(
+		(accountId): accountId is string => Boolean(accountId?.trim()),
+	);
+}
+
 function connectorMatchesSource(
 	connector: {
 		source: string;
@@ -342,6 +374,7 @@ type SelectableConnector = {
 	label: string;
 	accountId?: string;
 	account?: { accountId?: string; label?: string; name?: string };
+	accountRouting?: "connector";
 	metadata?: unknown;
 };
 
@@ -351,8 +384,31 @@ function connectorMatchesAccount(
 ): boolean {
 	if (!accountId) return true;
 	const normalized = normalizeConnectorAlias(accountId);
-	return connectorAliases(connector).some(
-		(alias) => normalizeConnectorAlias(alias) === normalized,
+	return (
+		connectorAccountIds(connector).some(
+			(candidate) => normalizeConnectorAlias(candidate) === normalized,
+		) ||
+		(connectorAccountIds(connector).length === 0 &&
+			connector.accountRouting === "connector")
+	);
+}
+
+function selectAccountScopedConnectors<T extends SelectableConnector>(
+	connectors: T[],
+	accountId: string | undefined,
+): T[] {
+	if (!accountId) return connectors;
+	const normalized = normalizeConnectorAlias(accountId);
+	const exact = connectors.filter((connector) =>
+		connectorAccountIds(connector).some(
+			(candidate) => normalizeConnectorAlias(candidate) === normalized,
+		),
+	);
+	if (exact.length > 0) return exact;
+	return connectors.filter(
+		(connector) =>
+			connectorAccountIds(connector).length === 0 &&
+			connector.accountRouting === "connector",
 	);
 }
 
@@ -400,9 +456,11 @@ export function selectConnector<T extends SelectableConnector>(
 			},
 		};
 	}
-	const accountScoped = sourceScoped.filter((connector) =>
-		connectorMatchesAccount(connector, accountId),
-	);
+	const accountScoped = accountId
+		? selectAccountScopedConnectors(sourceScoped, accountId)
+		: sourceScoped.filter((connector) =>
+				connectorMatchesAccount(connector, accountId),
+			);
 	if (accountId && accountScoped.length === 0) {
 		return {
 			result: {

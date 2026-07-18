@@ -101,6 +101,12 @@ import {
 import { buildSkillsManifest } from "./skill-manifest.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
 import {
+  canonicalForwardedEnvKey,
+  forwardableSubAgentEnv as applySubAgentEnvPolicy,
+  isCloudKeyForwardingOptIn,
+  isDeniedSubAgentEnvKey,
+} from "./sub-agent-env-policy.js";
+import {
   appendSubagentStdout,
   isSubagentStdoutLoggingEnabled,
   subagentStdoutLogPath,
@@ -132,6 +138,28 @@ import {
   resolveDiskBudgetConfig,
   type WorkspaceRegistry,
 } from "./workspace-registry.js";
+
+export {
+  canonicalForwardedEnvKey,
+  isDeniedSubAgentEnvKey,
+  isEnvForwardableToSubAgent,
+  shouldForwardEnv,
+} from "./sub-agent-env-policy.js";
+
+/** Resolve the config-backed cloud-key forwarding opt-in for each child spawn. */
+export function isCloudKeyForwardingEnabled(): boolean {
+  return isCloudKeyForwardingOptIn(
+    readConfigEnvKey("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS"),
+  );
+}
+
+/** Preserve the public config-backed helper while delegating policy to a pure module. */
+export function forwardableSubAgentEnv(
+  source: Record<string, string | undefined>,
+  forwardCloudKey = isCloudKeyForwardingEnabled(),
+): Record<string, string> {
+  return applySubAgentEnvPolicy(source, forwardCloudKey);
+}
 
 type RuntimeLike = IAgentRuntime & {
   logger?: Partial<
@@ -390,6 +418,7 @@ const ACP_METADATA_WORKDIR_ROOT = "workdirRoot";
 const ACP_METADATA_GIT_INDEX_FILE = "gitIndexFile";
 const ACP_METADATA_GIT_INDEX_BASE_FILE = "gitIndexBaseFile";
 const ACP_METADATA_GIT_WRAPPER_DIR = "gitWrapperDir";
+const ACP_METADATA_SPAWN_MODEL = "spawnModel";
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 const SESSION_GIT_WRAPPER = `#!/usr/bin/env node
@@ -708,38 +737,15 @@ const CODEX_PER_ACCOUNT_HOME_MARKER = "_codex-home";
 function isCodexSubscriptionHome(home: string | undefined): boolean {
   return Boolean(home?.includes(CODEX_PER_ACCOUNT_HOME_MARKER));
 }
-const DENY_ENV_PATTERNS = [
-  /DISCORD.*TOKEN/i,
-  /TELEGRAM.*TOKEN/i,
-  /SLACK.*TOKEN/i,
-  /BOT.*TOKEN/i,
-  /ELIZA_VAULT_PASSPHRASE/i,
-  // Host-API shell-exec / stdio-MCP auth secret — consumed only by
-  // packages/agent/src/api/*, never by a coding sub-agent. Forwarding it would
-  // hand a child process a credential that re-authorizes arbitrary host command
-  // execution with zero legitimate use for it.
-  /TERMINAL_RUN_TOKEN/i,
-  // Repo-scoped GitHub host credentials must not be injected into sub-agents,
-  // including through customCredentials. Registry push uses the dedicated
-  // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.
-  /^(?:GITHUB_TOKEN|GH_TOKEN|CR_PAT)$/i,
-  // OpenCode's spawn config is runtime-built (buildOpencodeAcpEnv overwrites it
-  // AFTER this filter runs). A caller- or host-supplied value would let the
-  // spawner inject arbitrary provider config into the child, so it is denied at
-  // both intake paths.
-  /^OPENCODE_CONFIG_CONTENT$/i,
-];
 
-/**
- * A key that must never reach a sub-agent, regardless of source — parent
- * process.env forwarding OR caller-supplied customCredentials. Both paths run
- * through this so a spawn request cannot inject a secret (connector bot token,
- * vault passphrase) the deny-list exists to keep out of sub-agents.
- */
-export function isDeniedSubAgentEnvKey(key: string): boolean {
-  return DENY_ENV_PATTERNS.some((pattern) => pattern.test(key));
+function sessionTransportMode(
+  session: SessionInfo,
+  serviceTransportMode: "native" | "cli",
+): "native" | "cli" {
+  const mode = session.metadata?.transportMode;
+  if (mode === "native" || mode === "cli") return mode;
+  return serviceTransportMode;
 }
-
 export const ACP_SUBPROCESS_SERVICE_TYPE =
   CORE_SUB_AGENT_CREDENTIAL_PARENT_CAPABILITY_SERVICE ??
   "ACP_SUBPROCESS_SERVICE";
@@ -943,6 +949,13 @@ export class AcpService extends Service {
     const liveCutoffMs = Date.now() - RECONCILE_LIVE_WINDOW_MS;
     const verdicts = await Promise.all(
       orphaned.map(async (s) => {
+        if (sessionTransportMode(s, this.transportMode) === "native") {
+          // Native ACP process state cannot survive a runtime restart, but the
+          // durable session can. Keep every non-terminal native record intact;
+          // busy states are resumed below, while ready/blocked states reconnect
+          // lazily on their next prompt.
+          return { session: s, alive: true };
+        }
         if (!s.acpxSessionId) return { session: s, alive: false };
         // Probe the real `<acpxSessionId>.json` artifact, not the never-written
         // `.stream.ndjson` (which made every session look dead on restart).
@@ -955,15 +968,11 @@ export class AcpService extends Service {
     const dead = verdicts.filter((v) => !v.alive).map((v) => v.session);
     const live = verdicts.filter((v) => v.alive).map((v) => v.session);
     if (live.length > 0) {
-      this.log(
-        "info",
-        "reconcile: keeping recently-active sessions as-is (acpx stream still writing)",
-        {
-          count: live.length,
-          ids: live.map((s) => s.id.slice(0, 8)),
-          windowMs: RECONCILE_LIVE_WINDOW_MS,
-        },
-      );
+      this.log("info", "reconcile: keeping recoverable sessions as-is", {
+        count: live.length,
+        ids: live.map((s) => s.id.slice(0, 8)),
+        windowMs: RECONCILE_LIVE_WINDOW_MS,
+      });
     }
     if (dead.length === 0) return;
     this.log("info", "reconcile: marking stale orphans errored", {
@@ -1476,13 +1485,12 @@ export class AcpService extends Service {
       if (Number.isFinite(lastActivityMs) && lastActivityMs > liveCutoffMs) {
         continue;
       }
-      // A native transport client is the live session state. Its protocol
-      // session id belongs to the adapter (Codex, Claude, etc.), not to acpx's
-      // on-disk session store, so probing that store would falsely declare a
-      // healthy long-running prompt lost whenever it pauses past the grace
-      // window. Detached CLI sessions have no attached client and still take
-      // the state-artifact recovery path below.
-      if (this.nativeClients.has(s.id)) continue;
+      // Native protocol ids belong to the adapter, not acpx's on-disk store.
+      // This remains true after restart before lazy reconnect, when no live
+      // NativeAcpClient exists yet. Never probe native records as CLI state;
+      // persisted native sessions reconnect on the next prompt (and busy ones
+      // are handled by resumeOrphanedBusySessions).
+      if (sessionTransportMode(s, this.transportMode) === "native") continue;
       const { exists } = await this.acpxSessionStateStat(s.acpxSessionId);
       if (!exists) {
         // Descriptive status, NOT an imperative. The old text literally said
@@ -1737,6 +1745,8 @@ export class AcpService extends Service {
         ...(resolvedAccount ? { account: resolvedAccount.meta } : {}),
         [ORCHESTRATOR_OWNED_ARTIFACTS_METADATA_KEY]:
           this.getOrchestratorOwnedArtifacts(id),
+        ...(opts.model ? { [ACP_METADATA_SPAWN_MODEL]: opts.model } : {}),
+        transportMode: this.transportMode,
         slotClass,
       };
       const session: SessionInfo = {
@@ -1762,7 +1772,9 @@ export class AcpService extends Service {
       // child. Fail-closed refusals (credit-gate / strict no-broker / strict mint
       // failure) throw here; undo the reserved slot so a refused spawn leaves no
       // orphan session record. No-op when gateway mode / lease broker are off.
-      await this.mintSpawnLease(id, agentType, opts.timeoutMs);
+      await this.mintModelLease(id, agentType, opts.timeoutMs, {
+        rollbackSessionOnFailure: true,
+      });
 
       // App-build tasks lose the parent's deploy contract at the spawn boundary.
       // Re-attach it ONCE here, before the transport branch, so BOTH the native
@@ -1984,7 +1996,12 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
-    if (session.acpxSessionId && !this.nativeClients.has(sessionId)) {
+    const transportMode = sessionTransportMode(session, this.transportMode);
+    if (
+      transportMode !== "native" &&
+      session.acpxSessionId &&
+      !this.nativeClients.has(sessionId)
+    ) {
       const exists = await this.hasAcpxSessionState(session.acpxSessionId);
       if (!exists) {
         const message =
@@ -1998,7 +2015,7 @@ export class AcpService extends Service {
       }
     }
     const startedAt = Date.now();
-    if (this.transportMode === "native") {
+    if (transportMode === "native") {
       if (this.nativePromptSessionIds.has(sessionId)) {
         throw new Error(`ACP session is already busy: ${sessionId}`);
       }
@@ -2114,7 +2131,8 @@ export class AcpService extends Service {
 
   async cancelSession(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
-    if (this.transportMode === "native") {
+    const transportMode = sessionTransportMode(session, this.transportMode);
+    if (transportMode === "native") {
       const client = this.nativeClients.get(sessionId);
       if (this.nativePromptSessionIds.has(sessionId)) {
         this.nativeCancelledPromptSessionIds.add(sessionId);
@@ -2157,7 +2175,8 @@ export class AcpService extends Service {
 
   async closeSession(sessionId: string): Promise<void> {
     const session = await this.requireSession(sessionId);
-    if (this.transportMode === "native") {
+    const transportMode = sessionTransportMode(session, this.transportMode);
+    if (transportMode === "native") {
       this.nativeStoppingSessionIds.add(sessionId);
       try {
         await this.stopNativeClient(sessionId);
@@ -2295,18 +2314,27 @@ export class AcpService extends Service {
     let skipped = 0;
     for (const session of sessions) {
       if (!ORPHAN_RESUME_STATUSES.has(session.status)) continue;
-      if (!session.acpxSessionId) {
-        skipped += 1;
-        continue;
-      }
-      const stateOk = await this.hasAcpxSessionState(session.acpxSessionId);
-      if (!stateOk) {
-        skipped += 1;
-        continue;
+      const transportMode = sessionTransportMode(session, this.transportMode);
+      if (transportMode === "native") {
+        if (this.nativeClients.has(session.id)) {
+          skipped += 1;
+          continue;
+        }
+      } else {
+        if (!session.acpxSessionId) {
+          skipped += 1;
+          continue;
+        }
+        const stateOk = await this.hasAcpxSessionState(session.acpxSessionId);
+        if (!stateOk) {
+          skipped += 1;
+          continue;
+        }
       }
       this.log("info", "resuming orphaned sub-agent after restart", {
         sessionId: session.id.slice(0, 8),
         status: session.status,
+        transportMode,
         label:
           typeof session.metadata?.label === "string"
             ? session.metadata.label
@@ -2403,6 +2431,10 @@ export class AcpService extends Service {
       workdir: session.workdir,
       approvalPreset: session.approvalPreset,
       metadata: { ...session.metadata, reattachedFrom: session.id },
+      model:
+        typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"
+          ? session.metadata[ACP_METADATA_SPAWN_MODEL]
+          : undefined,
     });
     await this.store.update(sessionId, {
       status: "stopped",
@@ -2648,64 +2680,18 @@ export class AcpService extends Service {
     session: SessionInfo,
     opts: SpawnOptions,
   ): Promise<SpawnResult> {
-    const command = this.nativeAgentCommand(session.agentType);
-    const createClient = (
-      clientCommand: string,
-      stderr: string[],
-      codexInitialAgentModeOverride?: CodexAcpInitialAgentMode,
-    ) =>
-      new NativeAcpClient({
-        command: clientCommand,
-        cwd: session.workdir,
-        approvalPreset: session.approvalPreset,
-        timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
-        terminal: !this.shouldDisableTerminalCapability(),
-        env: this.buildEnv(
-          opts.env,
-          opts.customCredentials,
-          opts.model,
-          session.agentType,
-          id,
-          codexInitialAgentModeOverride,
-        ),
-        // Auto-inherit the parent runtime's configured MCP servers (config
-        // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
-        // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
-        mcpServers: readConfigMcpServers(),
-        onEvent: (event, protocolSessionId) => {
-          this.handleAcpEvent(
-            event,
-            id,
-            "",
-            Date.now(),
-            false,
-            new Set<string>(),
-          );
-          if (protocolSessionId && protocolSessionId !== id) {
-            void this.store
-              .update(id, { acpxSessionId: protocolSessionId })
-              // error-policy:J7 mapping write runs inside the ACP event
-              // callback and must not throw into the transport, but a swallowed
-              // failure leaves the acpxSessionId unpersisted so later protocol
-              // lookups silently miss the session — report it.
-              .catch((err) =>
-                this.runtime.reportError(
-                  "AcpService.persistAcpxSessionId",
-                  err,
-                  {
-                    sessionId: id,
-                  },
-                ),
-              );
-          }
-        },
-        onStderr: (chunk) => {
-          stderr.push(chunk);
-        },
+    let client: NativeAcpClient | undefined;
+    try {
+      const attached = await this.attachNativeClientWithManagedCodexFallback({
+        sessionId: id,
+        session,
+        env: opts.env,
+        customCredentials: opts.customCredentials,
+        model: opts.model,
+        timeoutMs: opts.timeoutMs,
       });
-    const attachClient = async (client: NativeAcpClient) => {
-      await client.start();
-      const nativeSession = await client.createSession(session.workdir);
+      client = attached.client;
+      const { nativeSession } = attached;
       this.nativeClients.set(id, client);
       await this.store.update(id, {
         status: "ready",
@@ -2722,50 +2708,15 @@ export class AcpService extends Service {
       });
       const updated = await this.store.get(id);
       return toSpawnResult(updated ?? { ...session, status: "ready" });
-    };
-    let stderr: string[] = [];
-    let client = createClient(command, stderr);
-    try {
-      return await attachClient(client);
     } catch (err) {
       // error-policy:J6 best-effort teardown of the failed client; the spawn
       // failure `err` is rethrown/handled below.
-      await client.close().catch(() => undefined);
+      await client?.close().catch(() => undefined);
       // A failed spawn must not leave a closed client registered: the entry is
       // set above before the store writes that can throw here. Idempotent when
       // the failure happened before the set.
       this.nativeClients.delete(id);
-      let message = stderr.join("").trim() || errorMessage(err);
-      const shouldRetryLandlock = this.shouldRetryManagedCodexLandlock(
-        session.agentType,
-        command,
-        message,
-      );
-      if (shouldRetryLandlock) {
-        const fallbackSandboxMode = this.codexNoLandlockSandboxMode();
-        const fallbackMode = this.managedCodexAcpInitialAgentMode(true);
-        this.log(
-          "warn",
-          "Codex ACP Landlock unavailable; retrying with sandbox fallback",
-          {
-            sessionId: id,
-            sandboxMode: fallbackSandboxMode,
-            approvalPolicy:
-              fallbackMode === "agent-full-access" ? "never" : "on-request",
-          },
-        );
-        stderr = [];
-        client = createClient(command, stderr, fallbackMode);
-        try {
-          return await attachClient(client);
-        } catch (retryErr) {
-          // error-policy:J6 best-effort teardown of the failed retry client;
-          // `retryErr` is surfaced as the spawn failure below.
-          await client.close().catch(() => undefined);
-          this.nativeClients.delete(id);
-          message = stderr.join("").trim() || errorMessage(retryErr);
-        }
-      }
+      const message = errorMessage(err);
       await this.store.updateStatus(id, "errored", message);
       this.emitSessionEvent(id, "error", {
         message,
@@ -2775,23 +2726,155 @@ export class AcpService extends Service {
     }
   }
 
+  private createNativeClient(
+    session: SessionInfo,
+    opts: {
+      env?: Record<string, string>;
+      customCredentials?: Record<string, string>;
+      model?: string;
+      timeoutMs?: number;
+      codexInitialAgentModeOverride?: CodexAcpInitialAgentMode;
+      stderr: string[];
+    },
+  ): { client: NativeAcpClient; command: string } {
+    const command = this.nativeAgentCommand(session.agentType);
+    return {
+      command,
+      client: new NativeAcpClient({
+        command,
+        cwd: session.workdir,
+        approvalPreset: session.approvalPreset,
+        timeoutMs: opts.timeoutMs ?? this.sessionTimeoutMs,
+        terminal: !this.shouldDisableTerminalCapability(),
+        env: this.buildEnv(
+          opts.env,
+          opts.customCredentials,
+          opts.model,
+          session.agentType,
+          session.id,
+          opts.codexInitialAgentModeOverride,
+        ),
+        // Auto-inherit the parent runtime's configured MCP servers (config
+        // `mcp.servers`) so the sub-agent gets the same MCP tools. Undefined when
+        // none are configured → the transport falls back to ELIZA_ACP_MCP_SERVERS.
+        mcpServers: readConfigMcpServers(),
+        onEvent: (event, protocolSessionId) => {
+          this.handleAcpEvent(
+            event,
+            session.id,
+            "",
+            Date.now(),
+            false,
+            new Set<string>(),
+          );
+          if (protocolSessionId && protocolSessionId !== session.id) {
+            void this.store
+              .update(session.id, { acpxSessionId: protocolSessionId })
+              // error-policy:J7 mapping write runs inside the ACP event
+              // callback and must not throw into the transport, but a swallowed
+              // failure leaves the acpxSessionId unpersisted so later protocol
+              // lookups silently miss the session — report it.
+              .catch((err) =>
+                this.runtime.reportError(
+                  "AcpService.persistAcpxSessionId",
+                  err,
+                  {
+                    sessionId: session.id,
+                  },
+                ),
+              );
+          }
+        },
+        onStderr: (chunk) => {
+          opts.stderr.push(chunk);
+        },
+      }),
+    };
+  }
+
+  private async attachNativeClientWithManagedCodexFallback(opts: {
+    sessionId: string;
+    session: SessionInfo;
+    env?: Record<string, string>;
+    customCredentials?: Record<string, string>;
+    model?: string;
+    timeoutMs?: number;
+  }): Promise<{
+    client: NativeAcpClient;
+    nativeSession: { sessionId: string; agentSessionId?: string };
+    stderr: string[];
+  }> {
+    let stderr: string[] = [];
+    let { client, command } = this.createNativeClient(opts.session, {
+      env: opts.env,
+      customCredentials: opts.customCredentials,
+      model: opts.model,
+      timeoutMs: opts.timeoutMs,
+      stderr,
+    });
+    try {
+      await client.start();
+      const nativeSession = await client.createSession(opts.session.workdir);
+      return { client, nativeSession, stderr };
+    } catch (err) {
+      // error-policy:J6 best-effort teardown of the failed client; the start
+      // or createSession failure is rethrown or retried below.
+      await client.close().catch(() => undefined);
+      let message = stderr.join("").trim() || errorMessage(err);
+      if (
+        !this.shouldRetryManagedCodexLandlock(
+          opts.session.agentType,
+          command,
+          message,
+        )
+      ) {
+        throw new Error(message);
+      }
+      const fallbackSandboxMode = this.codexNoLandlockSandboxMode();
+      const fallbackMode = this.managedCodexAcpInitialAgentMode(true);
+      this.log(
+        "warn",
+        "Codex ACP Landlock unavailable; retrying with sandbox fallback",
+        {
+          sessionId: opts.sessionId,
+          sandboxMode: fallbackSandboxMode,
+          approvalPolicy:
+            fallbackMode === "agent-full-access" ? "never" : "on-request",
+        },
+      );
+      stderr = [];
+      ({ client, command } = this.createNativeClient(opts.session, {
+        env: opts.env,
+        customCredentials: opts.customCredentials,
+        model: opts.model,
+        timeoutMs: opts.timeoutMs,
+        codexInitialAgentModeOverride: fallbackMode,
+        stderr,
+      }));
+      try {
+        await client.start();
+        const nativeSession = await client.createSession(opts.session.workdir);
+        return { client, nativeSession, stderr };
+      } catch (retryErr) {
+        // error-policy:J6 best-effort teardown of the failed retry client;
+        // `retryErr` is surfaced as the attach failure below.
+        await client.close().catch(() => undefined);
+        message = stderr.join("").trim() || errorMessage(retryErr);
+        throw new Error(message);
+      }
+    }
+  }
+
   private async sendNativePrompt(
     session: SessionInfo,
     text: string,
     opts: SendOptions,
     startedAt: number,
   ): Promise<PromptResult> {
-    const client = this.nativeClients.get(session.id);
-    if (!client) {
-      await this.store.updateStatus(
-        session.id,
-        "errored",
-        "Native ACP client is not attached",
-      );
-      throw new Error(`Native ACP client is not attached: ${session.id}`);
-    }
-    const protocolSessionId =
-      session.acpxSessionId ?? session.agentSessionId ?? session.id;
+    const { client, protocolSessionId } = await this.ensureNativeClientAttached(
+      session,
+      opts,
+    );
     let finalText = "";
     let eventStopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
@@ -2928,6 +3011,83 @@ export class AcpService extends Service {
       this.nativePromptSessionIds.delete(session.id);
       this.nativeCancelledPromptSessionIds.delete(session.id);
       this.nativeStoppingSessionIds.delete(session.id);
+    }
+  }
+
+  private async ensureNativeClientAttached(
+    session: SessionInfo,
+    opts: SendOptions,
+  ): Promise<{ client: NativeAcpClient; protocolSessionId: string }> {
+    const existing = this.nativeClients.get(session.id);
+    if (existing) {
+      return {
+        client: existing,
+        protocolSessionId:
+          session.acpxSessionId ?? session.agentSessionId ?? session.id,
+      };
+    }
+
+    try {
+      await this.mintModelLease(session.id, session.agentType, opts.timeoutMs, {
+        rollbackSessionOnFailure: false,
+      });
+    } catch (err) {
+      // error-policy:J2 context-adding rethrow — reconnect lease refusal must
+      // persist on the existing session before the caller observes the failure.
+      const message = errorMessage(err);
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", {
+        message,
+        ...this.authFailureFields(message, session.agentType),
+      });
+      throw err;
+    }
+    const promptCredentials = await this.accountCredentialsForSession(session);
+    const promptEnv: Record<string, string> = {
+      ...(opts.env ?? {}),
+      ...(this.gitIndexEnvForSession(session) ?? {}),
+    };
+    let client: NativeAcpClient | undefined;
+    try {
+      const attached = await this.attachNativeClientWithManagedCodexFallback({
+        sessionId: session.id,
+        session,
+        env: promptEnv,
+        customCredentials: promptCredentials,
+        model:
+          opts.model ??
+          (typeof session.metadata?.[ACP_METADATA_SPAWN_MODEL] === "string"
+            ? session.metadata[ACP_METADATA_SPAWN_MODEL]
+            : undefined),
+        timeoutMs: opts.timeoutMs,
+      });
+      client = attached.client;
+      const { nativeSession } = attached;
+      this.nativeClients.set(session.id, client);
+      await this.store.update(session.id, {
+        status: "ready",
+        pid: undefined,
+        acpxSessionId: nativeSession.sessionId,
+        agentSessionId: nativeSession.agentSessionId,
+        lastActivityAt: new Date(),
+      });
+      this.emitSessionEvent(session.id, "reconnected", {
+        sessionId: session.id,
+        acpxSessionId: nativeSession.sessionId,
+      });
+      return { client, protocolSessionId: nativeSession.sessionId };
+    } catch (err) {
+      // error-policy:J6 best-effort teardown of a failed restart reattach; the
+      // attach failure itself is persisted and thrown below.
+      await client?.close().catch(() => undefined);
+      this.nativeClients.delete(session.id);
+      const message = errorMessage(err);
+      await this.store.updateStatus(session.id, "errored", message);
+      this.emitSessionEvent(session.id, "error", {
+        message,
+        ...this.authFailureFields(message, session.agentType),
+      });
+      throw new Error(message);
     }
   }
 
@@ -4053,31 +4213,40 @@ export class AcpService extends Service {
   }
 
   /**
-   * Mint a per-spawn model-gateway lease and record it for the session. The
-   * lease TTL equals the task timeout. On a fail-closed refusal (credit-gate,
-   * strict no-broker, or strict mint failure) this throws AND rolls back the
-   * reserved session record so a refused spawn leaves no orphan. No-op (leaves
-   * the static-token path intact) when gateway/broker mode is off.
+   * Mint a model-gateway lease and record it for the session. Fresh spawns pass
+   * `rollbackSessionOnFailure` because the durable record exists only to reserve
+   * capacity until the child starts; reconnects keep the record so history and
+   * retry accounting can show the fail-closed refusal.
    */
-  private async mintSpawnLease(
+  private async mintModelLease(
     sessionId: string,
     agentType: AgentType,
     timeoutMs: number | undefined,
+    options: { rollbackSessionOnFailure: boolean },
   ): Promise<void> {
     const ttlMs = timeoutMs ?? this.sessionTimeoutMs ?? DEFAULT_LEASE_TTL_MS;
     let outcome: Awaited<ReturnType<typeof mintSpawnLease>>;
     try {
       outcome = await mintSpawnLease({ sessionId, agentType, ttlMs });
     } catch (err) {
-      // Fail-closed: drop the reserved slot before surfacing the refusal.
-      // error-policy:J6 best-effort teardown on the fail-closed path; the lease
-      // refusal `err` is rethrown as the spawn failure below.
-      await this.store.delete(sessionId).catch(() => {});
-      this.log("warn", "model-gateway lease refused; spawn blocked", {
-        sessionId,
-        agentType,
-        error: errorMessage(err),
-      });
+      if (options.rollbackSessionOnFailure) {
+        // Fail-closed fresh spawn: drop the reserved slot before surfacing the
+        // refusal.
+        // error-policy:J6 best-effort teardown on the fail-closed path; the
+        // lease refusal `err` is rethrown as the spawn failure below.
+        await this.store.delete(sessionId).catch(() => {});
+      }
+      this.log(
+        "warn",
+        options.rollbackSessionOnFailure
+          ? "model-gateway lease refused; spawn blocked"
+          : "model-gateway lease refused; reconnect blocked",
+        {
+          sessionId,
+          agentType,
+          error: errorMessage(err),
+        },
+      );
       throw err;
     }
     if (outcome.kind === "leased") {
@@ -4447,172 +4616,6 @@ export function isClaudeOAuthSubscriptionToken(
   value: string | undefined,
 ): boolean {
   return value?.startsWith("sk-ant-oat") ?? false;
-}
-
-/**
- * OS-level environment variables a spawned coding agent needs to function.
- * Matched case-insensitively (see `shouldForwardEnv`): the repo runtime is Bun,
- * and Bun on Windows reports these with native casing — `Path`, not `PATH` —
- * so a case-sensitive check would forward NONE of them, leaving the child with
- * no search path (the opencode shim then fails with "'bun' is not recognized").
- * Includes the Windows essentials cmd.exe + Bun + the agent's config/cache
- * resolution rely on, alongside the POSIX names.
- */
-const FORWARDED_SYSTEM_ENV: ReadonlySet<string> = new Set([
-  "PATH",
-  "PATHEXT",
-  "HOME",
-  "USER",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TZ",
-  "TERM",
-  // Windows essentials.
-  "SYSTEMROOT",
-  "WINDIR",
-  "COMSPEC",
-  "SYSTEMDRIVE",
-  "TEMP",
-  "TMP",
-  "USERPROFILE",
-  "HOMEDRIVE",
-  "HOMEPATH",
-  "APPDATA",
-  "LOCALAPPDATA",
-  "PROGRAMDATA",
-  "PROGRAMFILES",
-  "PROGRAMFILES(X86)",
-  "COMMONPROGRAMFILES",
-  "NUMBER_OF_PROCESSORS",
-  "PROCESSOR_ARCHITECTURE",
-  "USERNAME",
-  "USERDOMAIN",
-]);
-
-/**
- * The key a forwarded var is assigned under. OS system vars are canonicalized to
- * their uppercase `FORWARDED_SYSTEM_ENV` form because Bun on Windows reports them
- * with native casing (`Path`, `Pathext`, `SystemRoot`, `ProgramFiles`, …); a
- * child must not inherit two casings of the same var (the winner is undefined on
- * Windows), and JS consumers that read `env.PATH` case-sensitively need the
- * canonical key. Non-system keys (ELIZA_*, API keys, model overrides) keep their
- * original casing.
- */
-export function canonicalForwardedEnvKey(key: string): string {
-  return FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ? key.toUpperCase() : key;
-}
-
-/**
- * Config key that opts a spawn INTO forwarding the owner's raw `ELIZAOS_CLOUD*`
- * creds (the live Cloud API key + URL) into every child env. Default OFF: a
- * sub-agent reaches Cloud through the parent-agent broker instead (`apps.create`
- * / `containers.create` — spend-capped, confirmation-gated), so the owner key
- * never lands in an autonomous child's env where it can leak into files, logs,
- * or artifacts (#14093 had to redact stdout for exactly this class of leak).
- * The one value a self-serving monetized container genuinely needs at RUNTIME
- * (its own upstream cloud bearer) is fetched through the owner-approved,
- * single-use credential bridge, not force-forwarded. Set to `1` only for a flow
- * the broker cannot serve yet.
- */
-const FORWARD_CLOUD_KEY_CONFIG = "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS";
-
-/**
- * Whether the operator opted into forwarding raw `ELIZAOS_CLOUD*` creds into
- * child envs (see {@link FORWARD_CLOUD_KEY_CONFIG}). Reads config-env so a UI or
- * service.env toggle takes effect without a restart; default OFF.
- */
-export function isCloudKeyForwardingEnabled(): boolean {
-  const raw = readConfigEnvKey(FORWARD_CLOUD_KEY_CONFIG)?.trim().toLowerCase();
-  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
-}
-
-/**
- * The per-var forwarding predicate. `forwardCloudKey` (default false) opts a
- * spawn into forwarding the owner's raw `ELIZAOS_CLOUD*` creds — pure so the
- * gate is unit-testable without touching config; `forwardableSubAgentEnv`
- * resolves the flag from config-env once per build.
- */
-export function shouldForwardEnv(
-  key: string,
-  forwardCloudKey = false,
-): boolean {
-  return (
-    FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ||
-    key.startsWith("ACPX_AUTH_") ||
-    key.startsWith("ELIZA_") ||
-    // The live Cloud creds use the ELIZAOS_ prefix (ELIZAOS_CLOUD_API_KEY /
-    // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match.
-    // Broker-first (#14118): a child does NOT get the raw owner key by default —
-    // it registers/deploys via the parent broker (spend-gated) and fetches any
-    // container-runtime secret via the owner-approved credential bridge. Only the
-    // explicit ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS opt-in restores raw forwarding.
-    (forwardCloudKey && key.startsWith("ELIZAOS_CLOUD")) ||
-    // Parent-context bridge session id (ELIZA_HOOK_PORT already passes via the
-    // ELIZA_ prefix). Without this the loopback /api/coding-agents/<id>/* bridge
-    // is unreachable from an ACP-spawned sub-agent.
-    key === "PARALLAX_SESSION_ID" ||
-    [
-      "OPENAI_API_KEY",
-      "ANTHROPIC_API_KEY",
-      "CEREBRAS_API_KEY",
-      "CEREBRAS_BASE_URL",
-      "CEREBRAS_MODEL",
-      "OPENAI_MODEL",
-      "ANTHROPIC_MODEL",
-      "OPENCODE_MODEL",
-      // Claude Code CLI reasoning-effort knob; buildEnv also sets it from the
-      // validated config-env ELIZA_CLAUDE_EFFORT for claude spawns.
-      "CLAUDE_CODE_EFFORT_LEVEL",
-      "OPENCODE_DISABLE_AUTOUPDATE",
-      "OPENCODE_DISABLE_TERMINAL_TITLE",
-      "CODEX_HOME",
-      // Container-registry PUSH credential for app-image builds (docker login
-      // ghcr.io before the deploy contract's docker push). Narrow by design:
-      // these are the dedicated registry-scoped names (a packages:write PAT),
-      // mirrored cloud-side by containersEnv.registryUsername()/registryToken().
-      // The broad GITHUB_TOKEN / GH_TOKEN / CR_PAT stay DENIED — a repo-scoped
-      // host token must never ride into a sub-agent. The canonical
-      // ELIZA_APP_IMAGE_REGISTRY_USERNAME/_TOKEN pair already forwards via the
-      // ELIZA_ prefix above.
-      "GHCR_USERNAME",
-      "GHCR_TOKEN",
-    ].includes(key)
-  );
-}
-
-/**
- * The single forwarding decision buildEnv applies per host env var: the
- * deny-list wins over the allowlist. A few keys (the privileged host secrets in
- * DENY_ENV_PATTERNS) match shouldForwardEnv — e.g. via the broad ELIZA_ prefix —
- * yet must never reach a coding sub-agent, so the deny check runs first.
- */
-export function isEnvForwardableToSubAgent(
-  key: string,
-  forwardCloudKey = false,
-): boolean {
-  if (isDeniedSubAgentEnvKey(key)) return false;
-  return shouldForwardEnv(key, forwardCloudKey);
-}
-
-/**
- * The deny-list-filtered, allowlisted, casing-canonicalized subset of `source`
- * to forward to a coding sub-agent. Pure (no process.env read) so it is unit
- * testable: pass a synthetic env (e.g. `{ Path: "…" }`, the casing Bun reports
- * on Windows) and assert the result is keyed by `PATH`. See
- * `canonicalForwardedEnvKey` for why OS vars are canonicalized.
- */
-export function forwardableSubAgentEnv(
-  source: Record<string, string | undefined>,
-  forwardCloudKey = isCloudKeyForwardingEnabled(),
-): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(source)) {
-    if (typeof value !== "string") continue;
-    if (!isEnvForwardableToSubAgent(key, forwardCloudKey)) continue;
-    out[canonicalForwardedEnvKey(key)] = value;
-  }
-  return out;
 }
 
 function extractSessionId(event: AcpJsonRpcMessage): string | undefined {

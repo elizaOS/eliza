@@ -84,7 +84,14 @@ export type ServerControlFrame =
   | { t: "speaking_start"; traceId: string }
   | { t: "speaking_end"; traceId: string }
   | { t: "interrupted"; reason: "acoustic" | "explicit"; traceId: string }
-  | { t: "error"; code: string; retryable: boolean }
+  | {
+      t: "error";
+      code: string;
+      retryable: boolean;
+      upstreamStatus?: number;
+      upstreamMessage?: string;
+      upstreamSnippet?: string;
+    }
   | { t: "usage"; sttMs: number; ttsChars: number; traceId: string };
 
 export type ProtocolParseResult<T> =

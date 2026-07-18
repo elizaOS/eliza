@@ -14,6 +14,7 @@ import {
 
 import {
   failureToActionResult,
+  fencePreformatted,
   readBoolParam,
   readNumberParam,
   readPositiveIntSetting,
@@ -178,12 +179,15 @@ export async function grepHandler(
     const truncated = headTruncated || result.truncated;
     const text =
       outputLines.length === 0 ? "no matches" : outputLines.join("\n");
+    const callbackText =
+      outputLines.length === 0 ? text : fencePreformatted(text);
 
     coreLogger.debug(
       `${CODING_TOOLS_LOG_PREFIX} GREP pattern=${JSON.stringify(pattern)} mode=${mode} matches=${outputLines.length} truncated=${truncated}`,
     );
 
-    if (callback) await callback({ text, source: "coding-tools" });
+    if (callback)
+      await callback({ text: callbackText, source: "coding-tools" });
 
     return successActionResult(text, {
       matches_count: outputLines.length,

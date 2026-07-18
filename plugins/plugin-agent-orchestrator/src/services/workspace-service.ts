@@ -21,7 +21,10 @@ import { Octokit } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   CredentialService as CredentialServiceInstance,
+  GitCredential,
+  GitCredentialRequest,
   GitHubPatClient as GitHubPatClientInstance,
+  GitProviderAdapter,
   IssueComment,
   IssueInfo,
   IssueState,
@@ -52,6 +55,21 @@ type WorkspaceServiceWithCloneOverride = {
     token?: string,
   ) => Promise<void>;
 };
+
+type GitHubPatProviderClient = Pick<
+  GitHubPatClientInstance,
+  "branchExists" | "createPullRequest"
+>;
+
+interface GitHubRepoParts {
+  owner: string;
+  repo: string;
+}
+
+interface GitHubPatProviderOptions {
+  createClient?: (token: string) => GitHubPatProviderClient;
+  createRequest?: (token: string) => GitHubRequest;
+}
 
 import type { RemotePullRequest } from "./ground-truth-verifier.js";
 import type { ParsedPullRequestLink } from "./pull-request-link.js";
@@ -261,6 +279,80 @@ function isGitHubRepository(repo: string): boolean {
   return false;
 }
 
+function parseGitHubRepository(repo: string): GitHubRepoParts {
+  const normalized = repo.trim().replace(/\.git$/i, "");
+  const match =
+    normalized.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)$/i) ??
+    normalized.match(/^[^@\s]+@github\.com:([^/]+)\/([^/]+)$/i) ??
+    normalized.match(/^github:([^/]+)\/([^/]+)$/i) ??
+    normalized.match(/^([^/]+)\/([^/]+)$/);
+  if (!match) {
+    throw new Error(`Invalid GitHub repository format: ${repo}`);
+  }
+  return { owner: match[1], repo: match[2] };
+}
+
+export function createGitHubPatProvider(
+  options: GitHubPatProviderOptions = {},
+): GitProviderAdapter {
+  const createClient =
+    options.createClient ?? ((token) => new GitHubPatClient({ token }));
+  const createRequest =
+    options.createRequest ??
+    ((token) => {
+      const octokit = new Octokit({ auth: token });
+      return octokit.request.bind(octokit) as GitHubRequest;
+    });
+
+  return {
+    name: "github",
+    getCredentials(_request: GitCredentialRequest): Promise<GitCredential> {
+      return Promise.reject(
+        new Error(
+          "GitHub workspace credentials must be supplied by the workspace request",
+        ),
+      );
+    },
+    revokeCredential(_credentialId: string): Promise<void> {
+      return Promise.resolve();
+    },
+    async createPullRequest(prOptions): Promise<PullRequestInfo> {
+      const { owner, repo } = parseGitHubRepository(prOptions.repo);
+      const client = createClient(prOptions.credential.token);
+      return client.createPullRequest(owner, repo, {
+        title: prOptions.title,
+        body: prOptions.body,
+        head: prOptions.sourceBranch,
+        base: prOptions.targetBranch,
+        draft: prOptions.draft,
+        labels: prOptions.labels,
+        reviewers: prOptions.reviewers,
+      });
+    },
+    async branchExists(
+      repo: string,
+      branch: string,
+      credential: GitCredential,
+    ): Promise<boolean> {
+      const parts = parseGitHubRepository(repo);
+      const client = createClient(credential.token);
+      return client.branchExists(parts.owner, parts.repo, branch);
+    },
+    async getDefaultBranch(
+      repo: string,
+      credential: GitCredential,
+    ): Promise<string> {
+      const parts = parseGitHubRepository(repo);
+      const request = createRequest(credential.token);
+      const response = await request<{ default_branch: string }>(
+        "GET /repos/{owner}/{repo}",
+        { owner: parts.owner, repo: parts.repo },
+      );
+      return response.data.default_branch;
+    },
+  };
+}
+
 // Restrict which transports git may use for these spawns. Blocks `ext`
 // (arbitrary command execution), `file` (local repo disclosure), and the git://
 // daemon (unauthenticated / MITM-able), while keeping the transports real
@@ -453,6 +545,7 @@ export class CodingWorkspaceService {
     this.credentialService = new CredentialService({
       tokenStore: new MemoryTokenStore(),
     });
+    this.credentialService.registerProvider(createGitHubPatProvider());
 
     this.workspaceService = new WorkspaceService({
       config: {

@@ -3,7 +3,7 @@
  * Deterministic unit test of pure helpers; no runtime, no live model.
  */
 import { describe, expect, it } from "vitest";
-import { isDeniedSubAgentEnvKey } from "../../src/services/acp-service.ts";
+import { isDeniedSubAgentEnvKey } from "../../src/services/sub-agent-env-policy.js";
 
 describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
   it("denies connector bot tokens and the vault passphrase regardless of case", () => {
@@ -15,6 +15,8 @@ describe("isDeniedSubAgentEnvKey (customCredentials deny-list)", () => {
       "OPENCODE_CONFIG_CONTENT",
       "ELIZA_VAULT_PASSPHRASE",
       "eliza_vault_passphrase",
+      "TERMINAL_RUN_TOKEN",
+      "ELIZA_TERMINAL_RUN_TOKEN",
     ]) {
       expect(isDeniedSubAgentEnvKey(key)).toBe(true);
     }

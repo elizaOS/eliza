@@ -76,6 +76,9 @@ export interface XAccountCapabilityStatus {
 type XMessageConnectorRegistration = Parameters<
   IAgentRuntime["registerMessageConnector"]
 >[0] & {
+  // Kept explicit while plugin-only typechecks may resolve a previously built
+  // core declaration that predates this typed dispatcher contract.
+  accountRouting?: "connector";
   fetchMessages?: (
     context: MessageConnectorQueryContext,
     params?: {
@@ -95,12 +98,14 @@ interface PostConnectorQueryContext {
   runtime: IAgentRuntime;
   roomId?: UUID;
   source?: string;
+  accountId?: string;
   target?: TargetInfo;
   metadata?: Record<string, unknown>;
 }
 
 interface PostConnectorRegistration {
   source: string;
+  accountRouting?: "connector";
   label?: string;
   description?: string;
   capabilities?: string[];
@@ -544,6 +549,7 @@ export class XService extends Service {
     if (typeof runtime.registerMessageConnector === "function") {
       const registration: XMessageConnectorRegistration = {
         source: "x",
+        accountRouting: "connector",
         label: "X DMs",
         description:
           "X/Twitter direct-message connector. Public tweets remain under X post actions.",
@@ -590,6 +596,7 @@ export class XService extends Service {
 
     withPostConnector.registerPostConnector({
       source: "x",
+      accountRouting: "connector",
       label: "X",
       description:
         "X/Twitter public feed connector for publishing tweets, reading the home/user feed, and searching recent public posts.",
@@ -633,7 +640,7 @@ export class XService extends Service {
       metadata && typeof metadata === "object"
         ? (metadata as Record<string, unknown>)
         : undefined;
-    const accountId = this.resolveAccountId(target, content);
+    const accountId = this.resolveAccountId(target.accountId);
     const client = await this.getTwitterClientForAccount(accountId);
     const recipient = await this.resolveDmRecipient(
       (typeof metadataRecord?.xUserId === "string"
@@ -738,6 +745,7 @@ export class XService extends Service {
     }
 
     const accountId = this.resolveAccountId(
+      context?.accountId,
       context?.target,
       context?.metadata,
       content,
@@ -898,9 +906,10 @@ export class XService extends Service {
   ): Promise<Memory[]> {
     const runtime = context.runtime ?? this.runtime;
     const accountId = this.resolveAccountId(
-      params.target,
+      context.accountId,
       context.target,
       context.metadata,
+      params.target,
     );
     const base = (await this.getTwitterClientForAccount(accountId)).client;
 
@@ -954,7 +963,11 @@ export class XService extends Service {
     }
 
     const runtime = context.runtime ?? this.runtime;
-    const accountId = this.resolveAccountId(context.target, context.metadata);
+    const accountId = this.resolveAccountId(
+      context.accountId,
+      context.target,
+      context.metadata,
+    );
     const base = (await this.getTwitterClientForAccount(accountId)).client;
     const result = await base.fetchSearchTweets(
       query,

@@ -44,17 +44,32 @@ export interface SubscriptionsBrowserGateway {
   getBrowserSession(sessionId: string): Promise<LifeOpsBrowserSession>;
 }
 
+function isBrowserBridgeRouteService(
+  service: unknown,
+): service is BrowserBridgeRouteService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    "listBrowserCompanions" in service &&
+    typeof service.listBrowserCompanions === "function" &&
+    "createBrowserSession" in service &&
+    typeof service.createBrowserSession === "function" &&
+    "getBrowserSession" in service &&
+    typeof service.getBrowserSession === "function"
+  );
+}
+
 function requireBrowserBridgeService(
   runtime: IAgentRuntime,
 ): BrowserBridgeRouteService {
   const service = runtime.getService(BROWSER_BRIDGE_ROUTE_SERVICE_TYPE);
-  if (!service || typeof service !== "object") {
+  if (!isBrowserBridgeRouteService(service)) {
     fail(
       503,
       "Browser bridge service is not registered. Enable the Agent Browser Bridge host plugin before using subscription cancellation in a browser.",
     );
   }
-  return service as unknown as BrowserBridgeRouteService;
+  return service;
 }
 
 /**

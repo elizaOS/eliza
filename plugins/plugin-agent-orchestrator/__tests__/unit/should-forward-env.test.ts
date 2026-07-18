@@ -6,15 +6,29 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalForwardedEnvKey,
   forwardableSubAgentEnv,
+  isCloudKeyForwardingOptIn,
   isEnvForwardableToSubAgent,
+  SUB_AGENT_PROVIDER_ENV_KEYS,
+  SUB_AGENT_SYSTEM_ENV_KEYS,
   shouldForwardEnv,
-} from "../../src/services/acp-service.js";
+} from "../../src/services/sub-agent-env-policy.js";
 
 // Guards buildEnv's sealed-env allowlist. It is an allowlist (anything not
 // matched is denied), so the risk is twofold: a needed var silently dropped, or
 // a secret silently forwarded. The load-bearing case is PARALLAX_SESSION_ID —
 // without it the loopback /api/coding-agents/<id>/* parent-context bridge is
 // unreachable from an ACP-spawned sub-agent (it does NOT ride the ELIZA_ prefix).
+describe("isCloudKeyForwardingOptIn", () => {
+  it("accepts only explicit truthy values", () => {
+    for (const value of ["1", "true", "TRUE", " yes ", "on"]) {
+      expect(isCloudKeyForwardingOptIn(value), value).toBe(true);
+    }
+    for (const value of [undefined, "", "0", "false", "off", "maybe"]) {
+      expect(isCloudKeyForwardingOptIn(value), String(value)).toBe(false);
+    }
+  });
+});
+
 describe("shouldForwardEnv", () => {
   it("forwards PARALLAX_SESSION_ID (the parent-context bridge id)", () => {
     expect(shouldForwardEnv("PARALLAX_SESSION_ID")).toBe(true);
@@ -26,11 +40,10 @@ describe("shouldForwardEnv", () => {
   });
 
   it("forwards the model/auth vars the backends need", () => {
-    expect(shouldForwardEnv("ANTHROPIC_API_KEY")).toBe(true);
-    expect(shouldForwardEnv("OPENAI_API_KEY")).toBe(true);
-    expect(shouldForwardEnv("CEREBRAS_BASE_URL")).toBe(true);
-    expect(shouldForwardEnv("CLAUDE_CODE_EFFORT_LEVEL")).toBe(true);
-    expect(shouldForwardEnv("PATH")).toBe(true);
+    for (const key of SUB_AGENT_PROVIDER_ENV_KEYS) {
+      expect(shouldForwardEnv(key), key).toBe(true);
+      expect(isEnvForwardableToSubAgent(key), key).toBe(true);
+    }
   });
 
   it("forwards ACPX_AUTH_-prefixed vars", () => {
@@ -48,17 +61,9 @@ describe("shouldForwardEnv", () => {
   });
 
   it("forwards the Windows system vars cmd.exe + Bun + the agent need", () => {
-    for (const key of [
-      "PATHEXT",
-      "SystemRoot",
-      "windir",
-      "ComSpec",
-      "TEMP",
-      "USERPROFILE",
-      "APPDATA",
-      "LOCALAPPDATA",
-    ]) {
+    for (const key of SUB_AGENT_SYSTEM_ENV_KEYS) {
       expect(shouldForwardEnv(key)).toBe(true);
+      expect(isEnvForwardableToSubAgent(key)).toBe(true);
     }
   });
 
@@ -115,13 +120,17 @@ describe("shouldForwardEnv", () => {
 // ride the broad ELIZA_ prefix into a sub-agent.
 describe("isEnvForwardableToSubAgent (deny-then-allow)", () => {
   it("strips host secrets even though they match the allowlist", () => {
-    // Each of these IS allowlisted (ELIZA_ prefix / *TOKEN) — the deny-list wins.
+    // Each of these is allowlisted by ELIZA_ or the cloud opt-in, but the
+    // deny-list still wins.
     for (const key of [
       "ELIZA_VAULT_PASSPHRASE",
       "ELIZA_TERMINAL_RUN_TOKEN",
-      "DISCORD_BOT_TOKEN",
+      "ELIZA_DISCORD_TOKEN",
+      "ELIZA_BOT_TOKEN",
+      "ELIZAOS_CLOUD_TERMINAL_RUN_TOKEN",
     ]) {
-      expect(isEnvForwardableToSubAgent(key)).toBe(false);
+      expect(shouldForwardEnv(key, true), key).toBe(true);
+      expect(isEnvForwardableToSubAgent(key, true), key).toBe(false);
     }
   });
 
@@ -135,8 +144,12 @@ describe("isEnvForwardableToSubAgent (deny-then-allow)", () => {
   it("still forwards the bridge id and the vars a sub-agent legitimately needs", () => {
     expect(isEnvForwardableToSubAgent("PARALLAX_SESSION_ID")).toBe(true);
     expect(isEnvForwardableToSubAgent("ELIZA_HOOK_PORT")).toBe(true);
-    expect(isEnvForwardableToSubAgent("ANTHROPIC_API_KEY")).toBe(true);
-    expect(isEnvForwardableToSubAgent("PATH")).toBe(true);
+    for (const key of SUB_AGENT_PROVIDER_ENV_KEYS) {
+      expect(isEnvForwardableToSubAgent(key), key).toBe(true);
+    }
+    for (const key of SUB_AGENT_SYSTEM_ENV_KEYS) {
+      expect(isEnvForwardableToSubAgent(key), key).toBe(true);
+    }
   });
 });
 
@@ -144,11 +157,9 @@ describe("isEnvForwardableToSubAgent (deny-then-allow)", () => {
 // child never inherits two casings of the same var. Non-system keys are untouched.
 describe("canonicalForwardedEnvKey", () => {
   it("uppercases OS system vars regardless of source casing", () => {
-    expect(canonicalForwardedEnvKey("Path")).toBe("PATH");
-    expect(canonicalForwardedEnvKey("path")).toBe("PATH");
-    expect(canonicalForwardedEnvKey("Pathext")).toBe("PATHEXT");
-    expect(canonicalForwardedEnvKey("SystemRoot")).toBe("SYSTEMROOT");
-    expect(canonicalForwardedEnvKey("ProgramFiles")).toBe("PROGRAMFILES");
+    for (const key of SUB_AGENT_SYSTEM_ENV_KEYS) {
+      expect(canonicalForwardedEnvKey(key.toLowerCase()), key).toBe(key);
+    }
   });
 
   it("leaves non-system keys (prefix/allowlist vars) untouched", () => {
@@ -194,13 +205,23 @@ describe("forwardableSubAgentEnv", () => {
     const out = forwardableSubAgentEnv({
       ELIZA_HOOK_PORT: "2138",
       ANTHROPIC_API_KEY: "sk-x",
+      ANTHROPIC_BASE_URL: "http://127.0.0.1:8787/v1",
+      ANTHROPIC_SMALL_MODEL: "proxy-small",
+      ANTHROPIC_MEDIUM_MODEL: "proxy-medium",
+      ANTHROPIC_LARGE_MODEL: "proxy-large",
       ELIZA_VAULT_PASSPHRASE: "secret", // allowlisted by ELIZA_ but deny-listed
+      ELIZA_TERMINAL_RUN_TOKEN: "host-shell-token", // allowlisted by ELIZA_ but deny-listed
       DISCORD_BOT_TOKEN: "nope", // not allowlisted
       MISSING: undefined, // non-string skipped
     });
     expect(out.ELIZA_HOOK_PORT).toBe("2138");
     expect(out.ANTHROPIC_API_KEY).toBe("sk-x");
+    expect(out.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:8787/v1");
+    expect(out.ANTHROPIC_SMALL_MODEL).toBe("proxy-small");
+    expect(out.ANTHROPIC_MEDIUM_MODEL).toBe("proxy-medium");
+    expect(out.ANTHROPIC_LARGE_MODEL).toBe("proxy-large");
     expect(out.ELIZA_VAULT_PASSPHRASE).toBeUndefined();
+    expect(out.ELIZA_TERMINAL_RUN_TOKEN).toBeUndefined();
     expect(out.DISCORD_BOT_TOKEN).toBeUndefined();
     expect("MISSING" in out).toBe(false);
   });

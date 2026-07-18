@@ -57,6 +57,10 @@ import {
 } from "./admission-queue.js";
 import { assignAgentName } from "./agent-name-assignment.js";
 import {
+  extractWriteLedger,
+  verifyClaimedFiles,
+} from "./claimed-file-verification.js";
+import {
   accountMetaFromSessionMetadata,
   assessCodingAccountReadiness,
   type CodingAccountReadiness,
@@ -1926,12 +1930,31 @@ export class OrchestratorTaskService extends Service {
       (ref) => (ref.artifactType === "screenshot" && ref.ref ? [ref.ref] : []),
     );
 
+    // Same claims-vs-proof split for FILE paths (#16523): the captured change
+    // set records every path a mutating tool call TARGETED — including writes
+    // the tool layer rejected — so each claimed path is cross-checked against
+    // the deterministic write ledger folded from the recorded tool events. A
+    // claim with no successful ledger write surfaces fail-closed as
+    // unverified, never silently as "Created". Sessions with no structured
+    // tool ledger (adapter folded results into messages) contribute nothing —
+    // absence of a ledger is not evidence of a phantom claim.
+    const ledgerVerdict = verifyClaimedFiles(
+      changeSet?.changedFiles ?? [],
+      extractWriteLedger(sessionEvents),
+    );
+
     return {
       summary,
       diffSummary,
       toolOutput,
       verifiedUrls,
       mentionedUrls,
+      ...(ledgerVerdict.ledgerObserved
+        ? {
+            ledgerVerifiedFiles: ledgerVerdict.verifiedClaims,
+            unverifiedClaimedFiles: ledgerVerdict.unverifiedClaims,
+          }
+        : {}),
       screenshots: [...new Set(screenshots)],
     };
   }
@@ -3345,6 +3368,38 @@ export class OrchestratorTaskService extends Service {
         return;
       }
       if (parse.present && parse.ok) {
+        // Deterministic claimed-file cross-check (#16523): the envelope's
+        // `filesChanged` are CLAIMS; the session's recorded tool events are
+        // the ledger of what was actually written and how each write ended.
+        // Flag-don't-rewrite: the envelope text/fields the worker produced
+        // stay intact, and unverified claims ride the envelope's existing
+        // marker fields (`artifactsVerified` / `missingArtifacts`) fail-closed
+        // — a claim with no matching successful ledger write can never pass
+        // through as "Created". No model spend.
+        const ledgerVerdict = verifyClaimedFiles(
+          parse.envelope.filesChanged,
+          extractWriteLedger(
+            doc.events.filter(
+              (event) =>
+                event.sessionId === sessionId || event.sessionId === undefined,
+            ),
+          ),
+        );
+        const unverifiedPaths = ledgerVerdict.unverifiedClaims.map(
+          (claim) => claim.path,
+        );
+        const ledgerMarkers =
+          ledgerVerdict.ledgerObserved && unverifiedPaths.length > 0
+            ? {
+                artifactsVerified: false,
+                missingArtifacts: [
+                  ...new Set([
+                    ...(parse.envelope.missingArtifacts ?? []),
+                    ...unverifiedPaths,
+                  ]),
+                ],
+              }
+            : {};
         // Valid contract: stamp the structured fields and feed the judge a
         // contract-grounded evidence string instead of raw prose.
         await this.store.updateTask(taskId, {
@@ -3368,10 +3423,29 @@ export class OrchestratorTaskService extends Service {
               testResults: parse.envelope.testResults,
               acceptanceCriteriaStatus: parse.envelope.acceptanceCriteriaStatus,
               residualRisks: parse.envelope.residualRisks,
+              // Last so the deterministic verdict wins over any self-reported
+              // `artifactsVerified: true` covering a rejected write.
+              ...ledgerMarkers,
             },
           },
         });
         evidence = `${summarizeEnvelope(parse.envelope)}\n\n${evidence}`;
+        if (ledgerVerdict.ledgerObserved && unverifiedPaths.length > 0) {
+          evidence = appendCompletionEvidenceSection(
+            evidence,
+            [
+              "## UNVERIFIED FILE CLAIMS (envelope `filesChanged` with no successful write in the tool ledger)",
+              ...ledgerVerdict.unverifiedClaims.map(
+                (claim) =>
+                  `- ${claim.path} (${
+                    claim.reason === "rejected-write"
+                      ? "the tool layer REJECTED this write"
+                      : "no successful write observed"
+                  })`,
+              ),
+            ].join("\n"),
+          );
+        }
       }
 
       // 3. Independent read-only execution verifier (#8898).

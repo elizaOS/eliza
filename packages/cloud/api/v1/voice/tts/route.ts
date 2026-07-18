@@ -553,12 +553,19 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         1_000_000
       : ttsCost.totalCost;
 
+    // #16425: the client mints one Idempotency-Key per logical utterance and
+    // sends it on BOTH the direct request and the proxy fallback, so a retry
+    // after an ambiguous network outcome replays the committed reservation
+    // instead of charging the utterance twice. Org-scoped inside reserve().
+    const ttsIdempotencyKey = request.headers.get("Idempotency-Key");
+
     try {
       reservation = await creditsService.reserve({
         organizationId: user.organization_id,
         amount: estimatedCost,
         userId: user.id,
         description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
+        ...(ttsIdempotencyKey && { idempotencyKey: ttsIdempotencyKey }),
       });
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
