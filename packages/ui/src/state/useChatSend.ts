@@ -263,6 +263,14 @@ export function isRetryableSendError(err: unknown): boolean {
  * is NOT a connectivity problem — there is no reconnect coming, so waiting is
  * pointless; those keep the existing immediate manual-resend affordance.
  */
+export function resolveAbortRoomId(
+  conversationId: string,
+  knownRoomId: string | null | undefined,
+  cachedRoomId: string | null | undefined,
+): string {
+  return knownRoomId?.trim() || cachedRoomId?.trim() || conversationId;
+}
+
 export function shouldAutoRetryOnReconnect(err: unknown): boolean {
   if (!isRetryableSendError(err)) return false;
   const kind = (err as { kind?: unknown }).kind;
@@ -1438,7 +1446,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       // though the optimistic bubble already painted. A known room id wins;
       // conversation id is the protocol fallback (and is canonical for shared
       // runtime conversations).
-      convRoomId = convRoomId?.trim() || activeConv?.roomId?.trim() || convId;
+      convRoomId = resolveAbortRoomId(convId, convRoomId, activeConv?.roomId);
       if (
         activeConv &&
         (!activeConv.title ||
@@ -2276,7 +2284,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         );
         // Do not block action/inbox sends on a list refresh solely to resolve
         // the abort side-channel room id. See the interactive send path above.
-        convRoomId = convRoomId?.trim() || activeConv?.roomId?.trim() || convId;
+        convRoomId = resolveAbortRoomId(convId, convRoomId, activeConv?.roomId);
         if (
           activeConv &&
           (!activeConv.title ||
