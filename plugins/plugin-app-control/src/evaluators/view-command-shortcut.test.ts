@@ -72,6 +72,8 @@ describe("viewCommandShortcutEvaluator — forces VIEWS on explicit commands", (
 		["go home", "chat"],
 		["open the home dashboard", "chat"],
 		["show me my calendar", "calendar"],
+		["can u open calender", "calendar"],
+		["could you switch to calender please", "calendar"],
 		["muéstrame mi calendario", "calendar"],
 		["abra meu calendário", "calendar"],
 		["öffne meinen kalender", "calendar"],

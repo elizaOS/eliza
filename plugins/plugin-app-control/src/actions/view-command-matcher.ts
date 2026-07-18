@@ -310,6 +310,7 @@ const VIEW_NOUNS: Record<string, readonly string[]> = {
 	],
 	calendar: [
 		"calendar",
+		"calender",
 		"agenda",
 		"schedule",
 		"calendario",
