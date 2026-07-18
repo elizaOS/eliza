@@ -1196,9 +1196,7 @@ export async function handleViewsRoutes(
         )
       : undefined;
     if (layoutViews && layoutPanes?.length !== layoutViews.length) {
-      const resolvedPaneIds = new Set(
-        layoutPanes?.map(({ viewId }) => viewId) ?? [],
-      );
+      const resolvedPaneIds = new Set(layoutPanes?.map(({ viewId }) => viewId));
       const unresolvedViewIds = layoutViews.filter(
         (viewId) => !resolvedPaneIds.has(viewId),
       );
@@ -1256,11 +1254,12 @@ export async function handleViewsRoutes(
         currentViewState = null;
         currentViewRevision = getCurrentViewRevision(scopeId);
       } else {
-        const focusedViewId = remainingViewIds.includes(
-          currentViewState?.viewId ?? "",
-        )
-          ? (currentViewState?.viewId as string)
-          : remainingViewIds[0];
+        const currentFocusedViewId = currentViewState?.viewId;
+        const focusedViewId =
+          currentFocusedViewId &&
+          remainingViewIds.includes(currentFocusedViewId)
+            ? currentFocusedViewId
+            : remainingViewIds[0];
         const focusedPane = currentViewState?.panes?.find(
           (pane) => pane.viewId === focusedViewId,
         );

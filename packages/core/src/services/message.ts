@@ -5323,8 +5323,8 @@ function actionOwnsResponseHandlerEarlyReply(
 		);
 	}
 
-	const candidateNames = messageHandler.plan.candidateActions ?? [];
-	if (candidateNames.length === 0) return false;
+	const candidateNames = messageHandler.plan.candidateActions;
+	if (!candidateNames || candidateNames.length === 0) return false;
 
 	const resolvedCandidates = new Map<string, Action>();
 	for (const name of candidateNames) {
@@ -7560,13 +7560,16 @@ export async function runV5MessageRuntimeStage1(args: {
 		const deliveredVisibleTexts =
 			args.deliveredVisibleTexts ?? new Set<string>();
 		const deliveredVisibleActionCallbackNames = new Set<string>();
-		const recordingCallback: HandlerCallback | undefined = args.callback
+		const actionCallback = args.callback;
+		const recordingCallback: HandlerCallback | undefined = actionCallback
 			? async (content, actionName) => {
-					const delivered = (await args.callback?.(content, actionName)) ?? [];
+					const delivered = await actionCallback(content, actionName);
+					const hasVisibleAttachments =
+						content.attachments !== undefined && content.attachments.length > 0;
 					if (
 						(typeof content.text === "string" &&
 							content.text.trim().length > 0) ||
-						(content.attachments?.length ?? 0) > 0
+						hasVisibleAttachments
 					) {
 						if (
 							typeof actionName === "string" &&

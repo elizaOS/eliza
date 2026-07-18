@@ -141,8 +141,8 @@ export function visiblePanes(
 
   if (view.panes) {
     candidates.push(...view.panes);
-  } else {
-    for (const viewId of view.viewIds ?? []) {
+  } else if (view.viewIds) {
+    for (const viewId of view.viewIds) {
       if (viewId === view.viewId) continue;
       const declared = declaredPanesForId(viewId);
       if (declared.length === 1) candidates.push(declared[0]);
@@ -359,12 +359,11 @@ export function viewScopedNamedActions(
 ): { name: string; description: string }[] {
   if (!viewId) return [];
   const scoped = findDeclaredView(viewId, viewType)?.scopedActions;
-  return (
-    scoped?.map((action) => ({
-      name: action.name,
-      description: action.description,
-    })) ?? []
-  );
+  if (!scoped) return [];
+  return scoped.map((action) => ({
+    name: action.name,
+    description: action.description,
+  }));
 }
 
 /** Operations a view exposes through the shared `VIEWS action=interact` path. */
@@ -373,7 +372,9 @@ export function viewDeclaredCapabilities(
   viewType?: ViewType,
 ): ViewCapability[] {
   if (!viewId) return [];
-  return findDeclaredView(viewId, viewType)?.capabilities ?? [];
+  const capabilities = findDeclaredView(viewId, viewType)?.capabilities;
+  if (!capabilities) return [];
+  return capabilities;
 }
 
 function hasDeclaredAgentSurface(viewId: string, viewType: ViewType): boolean {
@@ -385,7 +386,8 @@ function hasDeclaredAgentSurface(viewId: string, viewType: ViewType): boolean {
 }
 
 function renderCapabilityParams(capability: ViewCapability): string {
-  const params = Object.entries(capability.params ?? {});
+  if (!capability.params) return "";
+  const params = Object.entries(capability.params);
   if (params.length === 0) return "";
   const rendered = params.map(([name, declaration]) => {
     const required = declaration.required ? ", required" : "";
@@ -504,9 +506,16 @@ export function validateViewCoverage(
 export function renderActiveViewContextBlock(view: ActiveViewContext): string {
   const scoped = [...visiblePaneActionNames(view)];
   const panes = visiblePanes(view);
-  const paneElements = panes.flatMap((pane) =>
-    (pane.elements ?? []).map((element) => ({ pane, element })),
-  );
+  const paneElements: Array<{
+    pane: ActiveViewPane;
+    element: ActiveViewElement;
+  }> = [];
+  for (const pane of panes) {
+    if (!pane.elements) continue;
+    for (const element of pane.elements) {
+      paneElements.push({ pane, element });
+    }
+  }
   const canUseAgentSurface =
     panes.some((pane) => hasDeclaredAgentSurface(pane.viewId, pane.viewType)) ||
     paneElements.length > 0;

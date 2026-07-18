@@ -2628,7 +2628,7 @@ export async function generateChatResponse(
       // REPLY is a built-in planner terminal rather than a registered runtime
       // action, so it cannot carry Action metadata of its own.
       normalizeActionName(REPLY_ACTION_NAME),
-      ...(runtime.actions ?? [])
+      ...runtime.actions
         .filter((action) => action.callbackCompletesResponse === true)
         .map((action) => normalizeActionName(action.name))
         .filter(Boolean),

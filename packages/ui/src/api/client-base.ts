@@ -687,8 +687,7 @@ export class ElizaClient {
 
   private static resolveShellClientId(): string {
     const key = Symbol.for("elizaos.ui.client-id");
-    const host = globalThis as unknown as Record<PropertyKey, unknown>;
-    const existing = host[key];
+    const existing = Reflect.get(globalThis, key);
     if (
       typeof existing === "string" &&
       existing.length <= 256 &&
@@ -702,7 +701,7 @@ export class ElizaClient {
     // module instance, so HTTP recovery and the live WebSocket keep addressing
     // the same server-side view scope across hot reloads.
     const generated = ElizaClient.generateClientId();
-    host[key] = generated;
+    Reflect.set(globalThis, key, generated);
     return generated;
   }
 
