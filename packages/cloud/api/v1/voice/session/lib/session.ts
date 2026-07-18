@@ -607,8 +607,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       } else {
         // No speakable output at all (empty LLM reply). The socket was opened
         // speculatively to hide its handshake behind LLM generation, so cancel
-        // the unused context before closing the turn.
-        tts?.cancel("empty_llm_reply");
+        // the unused context before closing the turn. (Read via the class field:
+        // `tts` is only assigned inside closures, so outer-flow narrowing would
+        // otherwise collapse its type to never.)
+        this.ttsStream?.cancel("empty_llm_reply");
         this.finishTurn(traceId);
       }
       // If a phrase was sent, its final continue:false closes the context.
@@ -636,8 +638,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       });
       // The socket is already open because it was prewarmed before the LLM
       // request. Do not leak an idle provider connection when that request or
-      // stream fails before a terminal TTS phrase is sent.
-      tts?.cancel("llm_error");
+      // stream fails before a terminal TTS phrase is sent. finishTurn has not
+      // run yet, so ttsStream still belongs to this turn.
+      this.ttsStream?.cancel("llm_error");
       this.finishTurn(traceId);
     }
   }

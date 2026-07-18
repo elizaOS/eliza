@@ -63,6 +63,7 @@ import {
 import type { LinkedAccountProviderId } from "@elizaos/shared/contracts/service-routing";
 import {
   type AccountPool,
+  configuredAccountStrategyForProvider,
   isAccountSelectableNow,
   type Strategy,
   selectionForProvider,
@@ -81,20 +82,20 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "drain-soonest-reset",
 ]);
 
-/** Last-resort strategy — the ELIZA_CODING_ACCOUNT_STRATEGY env var, else least-used. */
-function getDefaultCodingStrategy(): Strategy {
+/** Optional process-level strategy fallback. */
+function getEnvCodingStrategy(): Strategy | undefined {
   const env =
     typeof process !== "undefined"
       ? process.env.ELIZA_CODING_ACCOUNT_STRATEGY?.trim()
       : undefined;
-  if (!env) return "least-used";
+  if (!env) return undefined;
   if (VALID_CODING_STRATEGIES.has(env as Strategy)) return env as Strategy;
   logger.warn(
     `[coding-account-bridge] ignoring invalid ELIZA_CODING_ACCOUNT_STRATEGY=${JSON.stringify(
       env,
-    )}; using least-used`,
+    )}`,
   );
-  return "least-used";
+  return undefined;
 }
 
 /**
@@ -834,8 +835,10 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
         // chat brain's account, not coding sub-agents.
         const strategy =
           opts?.strategy ??
+          configuredAccountStrategyForProvider(providerId) ??
+          getEnvCodingStrategy() ??
           selectionForProvider(providerId).strategy ??
-          getDefaultCodingStrategy();
+          "least-used";
         const account = await pool.select({
           providerId,
           strategy,
