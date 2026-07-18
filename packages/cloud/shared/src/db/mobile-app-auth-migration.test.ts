@@ -1,5 +1,5 @@
 /**
- * Applies the real mobile App Auth migration to PGlite and proves its
+ * Applies the real mobile App Auth migrations to PGlite and proves their
  * constraints, indexes, idempotence, and credential-revocation foreign key.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -10,6 +10,10 @@ process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV = "test";
 
 const migrationUrl = new URL("./migrations/0177_mobile_app_auth_pkce_grants.sql", import.meta.url);
+const deviceNameMigrationUrl = new URL(
+  "./migrations/0179_mobile_app_auth_device_name.sql",
+  import.meta.url,
+);
 const journalUrl = new URL("./migrations/meta/_journal.json", import.meta.url);
 const APP_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
@@ -42,8 +46,8 @@ async function insertPendingGrant(input: {
   );
 }
 
-async function applyMigration(): Promise<void> {
-  for (const statement of readFileSync(migrationUrl, "utf8").split("--> statement-breakpoint")) {
+async function applyMigration(url: URL): Promise<void> {
+  for (const statement of readFileSync(url, "utf8").split("--> statement-breakpoint")) {
     if (statement.trim()) await dbWrite.execute(statement);
   }
 }
@@ -54,7 +58,8 @@ beforeAll(async () => {
   await dbWrite.execute("CREATE TABLE users (id uuid PRIMARY KEY)");
   await dbWrite.execute("CREATE TABLE apps (id uuid PRIMARY KEY)");
   await dbWrite.execute("CREATE TABLE api_keys (id uuid PRIMARY KEY)");
-  await applyMigration();
+  await applyMigration(migrationUrl);
+  await applyMigration(deviceNameMigrationUrl);
   await dbWrite.execute(`INSERT INTO organizations (id) VALUES ('${ORGANIZATION_ID}')`);
   await dbWrite.execute(`INSERT INTO users (id) VALUES ('${USER_ID}')`);
   await dbWrite.execute(`INSERT INTO apps (id) VALUES ('${APP_ID}')`);
@@ -70,10 +75,14 @@ describe("0177 mobile App Auth PKCE grants migration", () => {
     const journal = JSON.parse(readFileSync(journalUrl, "utf8")) as {
       entries: Array<{ tag: string }>;
     };
-    expect(journal.entries.some((entry) => entry.tag === "0177_mobile_app_auth_pkce_grants")).toBe(
-      true,
+    expect(journal.entries.map((entry) => entry.tag)).toEqual(
+      expect.arrayContaining([
+        "0177_mobile_app_auth_pkce_grants",
+        "0179_mobile_app_auth_device_name",
+      ]),
     );
-    await applyMigration();
+    await applyMigration(migrationUrl);
+    await applyMigration(deviceNameMigrationUrl);
     const table = await dbWrite.execute(
       "SELECT count(*)::int AS count FROM information_schema.tables WHERE table_name = 'mobile_app_auth_grants'",
     );
@@ -140,6 +149,34 @@ describe("0177 mobile App Auth PKCE grants migration", () => {
     const codeHash = "1".repeat(64);
     await insertPendingGrant({ codeHash });
     await expect(insertPendingGrant({ codeHash })).rejects.toThrow();
+  });
+
+  test("stores a bounded recovery label and rejects invalid database writes", async () => {
+    const codeHash = "2".repeat(64);
+    await insertPendingGrant({ codeHash });
+    await dbWrite.execute(
+      `UPDATE mobile_app_auth_grants SET device_name = 'Simulator iPhone'
+       WHERE code_hash = '${codeHash}'`,
+    );
+    const row = await dbWrite.execute(
+      `SELECT device_name FROM mobile_app_auth_grants WHERE code_hash = '${codeHash}'`,
+    );
+    expect(row.rows[0]?.device_name).toBe("Simulator iPhone");
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(
+          `UPDATE mobile_app_auth_grants SET device_name = '' WHERE code_hash = '${codeHash}'`,
+        ),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      Promise.resolve(
+        dbWrite.execute(
+          `UPDATE mobile_app_auth_grants SET device_name = '${"x".repeat(81)}'
+           WHERE code_hash = '${codeHash}'`,
+        ),
+      ),
+    ).rejects.toThrow();
   });
 
   test("clears the grant reference on exact key revocation", async () => {

@@ -10,13 +10,17 @@ export const MOBILE_APP_AUTH_CREDENTIAL_DESCRIPTION_PREFIX = "First-party mobile
 export interface MobileAppAuthCredentialProvenanceInput {
   grantId: string;
   environment: string;
+  deviceName?: string | null;
   clientId: string;
   scopes: readonly string[];
 }
 
 export function buildMobileAppAuthCredentialName(
-  input: Pick<MobileAppAuthCredentialProvenanceInput, "environment" | "grantId">,
+  input: Pick<MobileAppAuthCredentialProvenanceInput, "deviceName" | "environment" | "grantId">,
 ): string {
+  if (input.deviceName) {
+    return `${MOBILE_APP_AUTH_CREDENTIAL_NAME_PREFIX} - ${input.deviceName} - ${input.environment} - ${input.grantId}`;
+  }
   return `${MOBILE_APP_AUTH_CREDENTIAL_NAME_PREFIX} - ${input.environment} - ${input.grantId}`;
 }
 

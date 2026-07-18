@@ -105,6 +105,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: ["key"],
     file: "packages/cloud/api/v1/apis/storage/objects/[...key]/route.ts",
   },
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": {
+    method: "DELETE",
+    path: "/api/v1/app-auth/mobile/credentials/{id}",
+    methodName: "deleteApiV1AppAuthMobileCredentialsById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/credentials/[id]/route.ts",
+  },
   "DELETE /api/v1/apps/{id}": {
     method: "DELETE",
     path: "/api/v1/apps/{id}",
@@ -735,6 +744,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/app-auth/mobile/config/route.ts",
+  },
+  "GET /api/v1/app-auth/mobile/credentials": {
+    method: "GET",
+    path: "/api/v1/app-auth/mobile/credentials",
+    methodName: "getApiV1AppAuthMobileCredentials",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/app-auth/mobile/credentials/route.ts",
   },
   "GET /api/v1/app-auth/session": {
     method: "GET",
@@ -4782,6 +4800,7 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/apis/storage/objects/{key}": {
     key: string | number | readonly (string | number)[];
   };
+  "DELETE /api/v1/app-auth/mobile/credentials/{id}": { id: string | number };
   "DELETE /api/v1/apps/{id}": { id: string | number };
   "DELETE /api/v1/apps/{id}/discord-automation": { id: string | number };
   "DELETE /api/v1/apps/{id}/domains": { id: string | number };
@@ -4880,6 +4899,7 @@ export interface PublicRoutePathParams {
     key: string | number | readonly (string | number)[];
   };
   "GET /api/v1/app-auth/mobile/config": Record<never, never>;
+  "GET /api/v1/app-auth/mobile/credentials": Record<never, never>;
   "GET /api/v1/app-auth/session": Record<never, never>;
   "GET /api/v1/app-credits/balance": Record<never, never>;
   "GET /api/v1/app-credits/verify": Record<never, never>;
@@ -5743,6 +5763,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  deleteApiV1AppAuthMobileCredentialsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
+  ): Promise<TResponse> {
+    return this.call<
+      "DELETE /api/v1/app-auth/mobile/credentials/{id}",
+      TResponse
+    >("DELETE /api/v1/app-auth/mobile/credentials/{id}", options);
+  }
+
   deleteApiV1AppsById<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}">,
   ): Promise<TResponse> {
@@ -6377,6 +6406,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/app-auth/mobile/config", TResponse>(
       "GET /api/v1/app-auth/mobile/config",
+      options,
+    );
+  }
+
+  getApiV1AppAuthMobileCredentials<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/credentials"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/app-auth/mobile/credentials", TResponse>(
+      "GET /api/v1/app-auth/mobile/credentials",
       options,
     );
   }
@@ -10479,6 +10517,15 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/apis/storage/objects/{key}", options);
   }
 
+  deleteApiV1AppAuthMobileCredentialsByIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/app-auth/mobile/credentials/{id}">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "DELETE /api/v1/app-auth/mobile/credentials/{id}",
+      options,
+    );
+  }
+
   deleteApiV1AppsByIdRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}">,
   ): Promise<Response> {
@@ -10945,6 +10992,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/config"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/app-auth/mobile/config", options);
+  }
+
+  getApiV1AppAuthMobileCredentialsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/app-auth/mobile/credentials"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/app-auth/mobile/credentials", options);
   }
 
   getApiV1AppAuthSessionRaw(

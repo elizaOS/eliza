@@ -44,6 +44,7 @@ export const mobileAppAuthGrants = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     environment: text("environment").$type<MobileAppAuthEnvironment>().notNull(),
+    device_name: text("device_name"),
     redirect_uri: text("redirect_uri").notNull(),
     state_hash: text("state_hash").notNull(),
     code_challenge: text("code_challenge").notNull(),

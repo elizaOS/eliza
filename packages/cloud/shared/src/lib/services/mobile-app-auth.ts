@@ -42,6 +42,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const CODE_RE = /^emac_[0-9a-f]{64}$/;
 const PKCE_CHALLENGE_RE = /^[A-Za-z0-9_-]{43}$/;
 const PKCE_VERIFIER_RE = /^[A-Za-z0-9\-._~]{43,128}$/;
+const DEVICE_NAME_RE = /^[^\p{Cc}\p{Cf}]+$/u;
+export const MOBILE_APP_AUTH_DEVICE_NAME_MAX_LENGTH = 80;
 
 export type MobileAppAuthProtocolErrorCode =
   | "authorization_code_expired"
@@ -97,6 +99,7 @@ export interface MobileAppAuthPkceBinding extends MobileAppAuthClientBinding {
   state: string;
   codeChallenge: string;
   codeChallengeMethod: string;
+  deviceName?: string;
 }
 
 export interface MobileAppAuthCredentialResponse {
@@ -194,6 +197,20 @@ export function validateMobileAppAuthPkceBinding(
   if (!PKCE_VERIFIER_RE.test(input.state)) {
     invalid("invalid_request", "Invalid mobile App Auth state");
   }
+  normalizeMobileDeviceName(input.deviceName);
+}
+
+function normalizeMobileDeviceName(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const name = value.trim();
+  if (
+    name.length === 0 ||
+    name.length > MOBILE_APP_AUTH_DEVICE_NAME_MAX_LENGTH ||
+    !DEVICE_NAME_RE.test(name)
+  ) {
+    return invalid("invalid_request", "Invalid mobile device name");
+  }
+  return name;
 }
 
 export function isValidMobileAppAuthCodeVerifier(value: string): boolean {
@@ -243,6 +260,7 @@ export async function issueMobileAppAuthCode(input: {
     user_id: input.userId,
     organization_id: input.organizationId,
     environment: input.registration.environment,
+    device_name: normalizeMobileDeviceName(input.binding.deviceName),
     redirect_uri: input.registration.redirectUri,
     state_hash: sha256Hex(input.binding.state),
     code_challenge: input.binding.codeChallenge,
@@ -272,6 +290,7 @@ async function prepareInactiveCredential(input: {
   const provenance = buildMobileAppAuthCredentialProvenance({
     grantId: input.state.grant.id,
     environment: input.state.grant.environment,
+    deviceName: input.state.grant.device_name,
     clientId: input.state.grant.client_id,
     scopes: input.state.grant.scopes,
   });

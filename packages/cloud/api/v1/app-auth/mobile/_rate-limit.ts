@@ -30,7 +30,7 @@ function mobileGrantAdmissionNamespace(c: AppContext): string {
   return `mobile-app-auth:grant:${c.env.ENVIRONMENT}`;
 }
 
-function mobileAppAuthRateLimit(
+function mobileAppAuthRateLimitConfig(
   operation: "ack" | "config" | "token",
   preset: Pick<RateLimitConfig, "maxRequests" | "windowMs">,
 ): RateLimitConfig {
@@ -43,15 +43,15 @@ function mobileAppAuthRateLimit(
   };
 }
 
-export const MOBILE_APP_AUTH_CONFIG_RATE_LIMIT = mobileAppAuthRateLimit(
+export const MOBILE_APP_AUTH_CONFIG_RATE_LIMIT = mobileAppAuthRateLimitConfig(
   "config",
   RateLimitPresets.STANDARD,
 );
-export const MOBILE_APP_AUTH_TOKEN_RATE_LIMIT = mobileAppAuthRateLimit(
+export const MOBILE_APP_AUTH_TOKEN_RATE_LIMIT = mobileAppAuthRateLimitConfig(
   "token",
   RateLimitPresets.STRICT,
 );
-export const MOBILE_APP_AUTH_ACK_RATE_LIMIT = mobileAppAuthRateLimit(
+export const MOBILE_APP_AUTH_ACK_RATE_LIMIT = mobileAppAuthRateLimitConfig(
   "ack",
   RateLimitPresets.STRICT,
 );
@@ -85,6 +85,59 @@ export function mobileAppAuthGrantAdmissionRateLimits(
   ];
 }
 
+async function adaptMobileAppAuthRateLimitResponse(
+  response: Response,
+): Promise<Response> {
+  const retryAfterHeader = response.headers.get("Retry-After");
+  const retryAfter = retryAfterHeader ? Number(retryAfterHeader) : undefined;
+  const headers = new Headers(response.headers);
+  headers.set("Content-Type", "application/json");
+
+  if (response.status === 429) {
+    return Response.json(
+      {
+        success: false,
+        error: "slow_down",
+        errorDescription: "Too many mobile authorization requests",
+        retryable: true,
+        ...(Number.isFinite(retryAfter) && { retryAfter }),
+      },
+      { status: 429, headers },
+    );
+  }
+  if (response.status === 503) {
+    return Response.json(
+      {
+        success: false,
+        error: "temporarily_unavailable",
+        errorDescription:
+          "Mobile authorization rate limiting is temporarily unavailable",
+        retryable: true,
+        ...(Number.isFinite(retryAfter) && { retryAfter }),
+      },
+      { status: 503, headers },
+    );
+  }
+  return response;
+}
+
+/** Applies the native-auth limiter while retaining the protocol response schema. */
+export function mobileAppAuthRateLimitMiddleware(
+  config: RateLimitConfig,
+  dependencies?: RateLimitDependencies,
+) {
+  const middleware = rateLimit(config, undefined, dependencies);
+  return async (
+    c: AppContext,
+    next: () => Promise<void>,
+  ): Promise<Response | undefined> => {
+    const response = await middleware(c, next);
+    return response instanceof Response
+      ? await adaptMobileAppAuthRateLimitResponse(response)
+      : undefined;
+  };
+}
+
 /**
  * Admit a validated, authenticated approval immediately before it creates a
  * grant. User and IP rejection precede the shared bucket so one abusive
@@ -116,7 +169,9 @@ export async function runMobileAppAuthGrantAdmission(
     )(c, async () => {
       downstream = await apply(index + 1);
     });
-    if (middlewareResponse instanceof Response) return middlewareResponse;
+    if (middlewareResponse instanceof Response) {
+      return await adaptMobileAppAuthRateLimitResponse(middlewareResponse);
+    }
     if (downstream) return downstream;
     throw new MobileAppAuthProtocolError(
       "server_configuration_error",

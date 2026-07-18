@@ -12,6 +12,7 @@ import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeysRepository, type NewApiKey } from "../../db/repositories";
 import { apiKeys } from "../../db/schemas/api-keys";
 import { ForbiddenError } from "../api/cloud-worker-errors";
+import { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "../pricing";
@@ -22,18 +23,14 @@ import {
 } from "./inference-auth-cache";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const MOBILE_API_KEY_PREFIX = "eliza_mobile_";
-const MOBILE_API_KEY_RE = /^eliza_mobile_[0-9a-f]{64}$/;
+
+export { isMobileApiKeySecret, MOBILE_API_KEY_PREFIX } from "../auth/mobile-api-key";
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
 }
 
-export function isMobileApiKeySecret(value: string): boolean {
-  return MOBILE_API_KEY_RE.test(value);
-}
-
-function isUsableMobileApiKey(value: ApiKey | undefined): value is ApiKey {
+function isUsableMobileApiKey(value: ApiKey | undefined): boolean {
   return Boolean(
     value?.is_active &&
       !value.deleted_at &&
@@ -100,6 +97,27 @@ export interface MobileApiKeyRevocationReceipt {
   status: "revoked";
 }
 
+export interface MobileApiKeyAccountRevocationResult {
+  receipt: MobileApiKeyRevocationReceipt;
+  revokedNow: boolean;
+}
+
+export interface MobileApiKeySelfRevocationResult extends MobileApiKeyAccountRevocationResult {
+  userId: string;
+  organizationId: string;
+}
+
+export interface MobileCredentialSummary {
+  id: string;
+  name: string;
+  sourceAppId: string;
+  status: "active" | "expired" | "invalid" | "pending" | "revoked";
+  createdAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
 function mobileRevocationReceipt(value: ApiKey | undefined): MobileApiKeyRevocationReceipt | null {
   if (!value || value.is_active || !value.deleted_at || !isUuid(value.source_app_id)) {
     return null;
@@ -108,6 +126,48 @@ function mobileRevocationReceipt(value: ApiKey | undefined): MobileApiKeyRevocat
     credentialId: value.id,
     revokedAt: new Date(value.deleted_at).toISOString(),
     status: "revoked",
+  };
+}
+
+function mobileSelfRevocationResult(
+  value: ApiKey | undefined,
+  revokedNow: boolean,
+): MobileApiKeySelfRevocationResult | null {
+  const receipt = mobileRevocationReceipt(value);
+  if (!receipt || !value) return null;
+  return {
+    receipt,
+    revokedNow,
+    userId: value.user_id,
+    organizationId: value.organization_id,
+  };
+}
+
+function mobileCredentialSummary(credential: ApiKey, now: Date): MobileCredentialSummary {
+  if (!isUuid(credential.source_app_id)) {
+    throw new ElizaError("Mobile credential is missing its source app identity", {
+      code: "MOBILE_API_KEY_SOURCE_APP_INVALID",
+      context: { credentialId: credential.id },
+      severity: "fatal",
+    });
+  }
+  return {
+    id: credential.id,
+    name: credential.name,
+    sourceAppId: credential.source_app_id,
+    status: credential.deleted_at
+      ? "revoked"
+      : !credential.expires_at || Number.isNaN(credential.expires_at.getTime())
+        ? "invalid"
+        : credential.expires_at <= now
+          ? "expired"
+          : credential.is_active
+            ? "active"
+            : "pending",
+    createdAt: credential.created_at.toISOString(),
+    lastUsedAt: credential.last_used_at?.toISOString() ?? null,
+    expiresAt: credential.expires_at?.toISOString() ?? null,
+    revokedAt: credential.deleted_at?.toISOString() ?? null,
   };
 }
 
@@ -142,8 +202,27 @@ export class ApiKeysService {
     const hash = crypto.createHash("sha256").update(key).digest("hex");
 
     if (isMobileApiKeySecret(key)) {
+      const mobileMissCacheKey = CacheKeys.apiKey.mobileValidationMiss(hash);
+      if (isNegativeApiKeySentinel(await cache.get<unknown>(mobileMissCacheKey))) {
+        return null;
+      }
       const mobileApiKey = await apiKeysRepository.findByHashConsistent(hash);
-      return isUsableMobileApiKey(mobileApiKey) ? mobileApiKey : null;
+      if (mobileApiKey && isUsableMobileApiKey(mobileApiKey)) return mobileApiKey;
+
+      // An inactive row may be activated by ACK, so only immutable misses and
+      // terminal rows are cached. This keeps post-Keychain activation immediate.
+      if (
+        !mobileApiKey ||
+        mobileApiKey.deleted_at ||
+        (mobileApiKey.expires_at && mobileApiKey.expires_at <= new Date())
+      ) {
+        await cache.set(
+          mobileMissCacheKey,
+          API_KEY_NEGATIVE_SENTINEL,
+          API_KEY_NEGATIVE_TTL_SECONDS,
+        );
+      }
+      return null;
     }
 
     const cacheKey = CacheKeys.apiKey.validation(hash.substring(0, 16));
@@ -448,6 +527,59 @@ export class ApiKeysService {
     await apiKeysRepository.delete(id);
   }
 
+  /** Returns safe account-owned mobile credential summaries for recovery UI. */
+  async listMobileCredentialsForAccount(
+    userId: string,
+    organizationId: string,
+    now = new Date(),
+  ): Promise<MobileCredentialSummary[]> {
+    if (!isUuid(userId) || !isUuid(organizationId)) {
+      throw new ElizaError("Mobile credential listing requires a valid account identity", {
+        code: "MOBILE_API_KEY_ACCOUNT_IDENTITY_INVALID",
+        severity: "fatal",
+      });
+    }
+    const credentials = await apiKeysRepository.listMobileByOwnerConsistent(userId, organizationId);
+    return credentials.map((credential) => mobileCredentialSummary(credential, now));
+  }
+
+  /** Revokes one account-owned mobile credential without requiring the lost secret. */
+  async revokeMobileCredentialForAccount(
+    credentialId: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<MobileApiKeyAccountRevocationResult | null> {
+    if (!isUuid(credentialId) || !isUuid(userId) || !isUuid(organizationId)) return null;
+
+    const existing = await apiKeysRepository.findMobileByOwnerConsistent(
+      credentialId,
+      userId,
+      organizationId,
+    );
+    const existingReceipt = mobileRevocationReceipt(existing);
+    if (existingReceipt) return { receipt: existingReceipt, revokedNow: false };
+    if (!existing) return null;
+
+    const tombstone = await apiKeysRepository.tombstoneMobileByOwner(
+      credentialId,
+      userId,
+      organizationId,
+      new Date(),
+    );
+    const receipt = mobileRevocationReceipt(tombstone);
+    if (receipt) return { receipt, revokedNow: true };
+
+    const concurrent = mobileRevocationReceipt(
+      await apiKeysRepository.findMobileByOwnerConsistent(credentialId, userId, organizationId),
+    );
+    if (concurrent) return { receipt: concurrent, revokedNow: false };
+    throw new ElizaError("Account-owned mobile credential could not be tombstoned", {
+      code: "MOBILE_API_KEY_ACCOUNT_REVOCATION_MISMATCH",
+      context: { credentialId },
+      severity: "fatal",
+    });
+  }
+
   /**
    * Revokes a mobile row proven by its secret, including expired/inactive retries.
    * Mobile secrets are excluded from both auth caches, so a cache brownout must
@@ -455,12 +587,12 @@ export class ApiKeysService {
    */
   async revokePresentedMobileCredential(
     secret: string,
-  ): Promise<MobileApiKeyRevocationReceipt | null> {
+  ): Promise<MobileApiKeySelfRevocationResult | null> {
     if (!isMobileApiKeySecret(secret)) return null;
     const keyHash = crypto.createHash("sha256").update(secret).digest("hex");
     const existing = await apiKeysRepository.findByHashConsistent(keyHash);
-    const receipt = mobileRevocationReceipt(existing);
-    if (receipt) return receipt;
+    const existingResult = mobileSelfRevocationResult(existing, false);
+    if (existingResult) return existingResult;
     if (!existing || !isUuid(existing.source_app_id)) return null;
 
     const tombstone = await apiKeysRepository.tombstoneExactMobileCredential(
@@ -469,31 +601,32 @@ export class ApiKeysService {
       new Date(),
     );
     if (!tombstone) {
-      const concurrentReceipt = mobileRevocationReceipt(
+      const concurrentResult = mobileSelfRevocationResult(
         await apiKeysRepository.findByHashConsistent(keyHash),
+        false,
       );
-      if (concurrentReceipt) return concurrentReceipt;
+      if (concurrentResult) return concurrentResult;
       throw new ElizaError("Presented mobile credential could not be tombstoned", {
         code: "MOBILE_API_KEY_EXACT_REVOCATION_MISMATCH",
         context: { credentialId: existing.id },
         severity: "fatal",
       });
     }
-    const persistedReceipt = mobileRevocationReceipt(tombstone);
-    if (!persistedReceipt) {
+    const persistedResult = mobileSelfRevocationResult(tombstone, true);
+    if (!persistedResult) {
       throw new ElizaError("Mobile credential revocation did not persist a tombstone", {
         code: "MOBILE_API_KEY_REVOCATION_RECEIPT_MISSING",
         context: { credentialId: existing.id },
         severity: "fatal",
       });
     }
-    return persistedReceipt;
+    return persistedResult;
   }
 
   /** Revokes only the exact active mobile row proven at the request boundary. */
   async revokeExactMobileCredential(
     credential: Pick<ApiKey, "id" | "key_hash" | "source_app_id">,
-  ): Promise<MobileApiKeyRevocationReceipt> {
+  ): Promise<MobileApiKeySelfRevocationResult> {
     if (
       !isUuid(credential.id) ||
       !/^[0-9a-f]{64}$/i.test(credential.key_hash) ||
@@ -509,10 +642,11 @@ export class ApiKeysService {
       credential.key_hash,
     );
     if (!exact || exact.source_app_id !== credential.source_app_id) {
-      const receipt = mobileRevocationReceipt(
+      const result = mobileSelfRevocationResult(
         await apiKeysRepository.findByHashConsistent(credential.key_hash),
+        false,
       );
-      if (receipt?.credentialId === credential.id) return receipt;
+      if (result?.receipt.credentialId === credential.id) return result;
       throw new ElizaError("Validated mobile credential no longer matches an active key", {
         code: "MOBILE_API_KEY_EXACT_REVOCATION_MISMATCH",
         context: { credentialId: credential.id },
@@ -526,25 +660,28 @@ export class ApiKeysService {
       new Date(),
     );
     if (!tombstone) {
-      const concurrentReceipt = mobileRevocationReceipt(
+      const concurrentResult = mobileSelfRevocationResult(
         await apiKeysRepository.findByHashConsistent(credential.key_hash),
+        false,
       );
-      if (concurrentReceipt?.credentialId === credential.id) return concurrentReceipt;
+      if (concurrentResult?.receipt.credentialId === credential.id) {
+        return concurrentResult;
+      }
       throw new ElizaError("Validated mobile credential no longer matches an active key", {
         code: "MOBILE_API_KEY_EXACT_REVOCATION_MISMATCH",
         context: { credentialId: credential.id },
         severity: "fatal",
       });
     }
-    const receipt = mobileRevocationReceipt(tombstone);
-    if (!receipt) {
+    const result = mobileSelfRevocationResult(tombstone, true);
+    if (!result) {
       throw new ElizaError("Mobile credential revocation did not persist a tombstone", {
         code: "MOBILE_API_KEY_REVOCATION_RECEIPT_MISSING",
         context: { credentialId: credential.id },
         severity: "fatal",
       });
     }
-    return receipt;
+    return result;
   }
 
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {

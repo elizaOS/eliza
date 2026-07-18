@@ -43,6 +43,8 @@ const MOBILE_SECRET = `eliza_mobile_${"b".repeat(64)}`;
 const MOBILE_HASH = createHash("sha256").update(MOBILE_SECRET).digest("hex");
 const MOBILE_CREDENTIAL_ID = "11111111-1111-4111-8111-111111111111";
 const MOBILE_APP_ID = "22222222-2222-4222-8222-222222222222";
+const MOBILE_USER_ID = "33333333-3333-4333-8333-333333333333";
+const MOBILE_ORG_ID = "44444444-4444-4444-8444-444444444444";
 
 function fakeMobileKey(overrides: Partial<ApiKey> = {}): ApiKey {
   return {
@@ -66,6 +68,72 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     spies.push(spy);
     return spy;
   }
+
+  test("authoritative random mobile misses are negative-cached by full hash", async () => {
+    let cached: unknown = null;
+    const lookup = track(
+      spyOn(apiKeysRepository, "findByHashConsistent").mockResolvedValue(undefined),
+    );
+    track(spyOn(cache, "get").mockImplementation(async () => cached));
+    const set = track(
+      spyOn(cache, "set").mockImplementation(async (_key, value) => {
+        cached = value;
+      }),
+    );
+
+    await expect(apiKeysService.validateApiKey(MOBILE_SECRET)).resolves.toBeNull();
+    await expect(apiKeysService.validateApiKey(MOBILE_SECRET)).resolves.toBeNull();
+
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(set).toHaveBeenCalledWith(
+      CacheKeys.apiKey.mobileValidationMiss(MOBILE_HASH),
+      expect.objectContaining({ __none: true }),
+      60,
+    );
+  });
+
+  test("inactive mobile rows are never negative-cached before ACK", async () => {
+    const inactive = fakeMobileKey({ is_active: false });
+    const active = fakeMobileKey({ is_active: true });
+    track(
+      spyOn(apiKeysRepository, "findByHashConsistent")
+        .mockResolvedValueOnce(inactive)
+        .mockResolvedValueOnce(active),
+    );
+    track(spyOn(cache, "get").mockResolvedValue(null));
+    const set = track(spyOn(cache, "set").mockResolvedValue(undefined));
+
+    await expect(apiKeysService.validateApiKey(MOBILE_SECRET)).resolves.toBeNull();
+    await expect(apiKeysService.validateApiKey(MOBILE_SECRET)).resolves.toMatchObject({
+      id: MOBILE_CREDENTIAL_ID,
+      is_active: true,
+    });
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  test("recovery summaries expose a corrupt missing expiry as invalid, never active", async () => {
+    track(
+      spyOn(apiKeysRepository, "listMobileByOwnerConsistent").mockResolvedValue([
+        fakeMobileKey({
+          user_id: MOBILE_USER_ID,
+          organization_id: MOBILE_ORG_ID,
+          name: "Eliza mobile - test device",
+          expires_at: null,
+          created_at: new Date("2026-07-18T12:00:00.000Z"),
+        }),
+      ]),
+    );
+
+    await expect(
+      apiKeysService.listMobileCredentialsForAccount(MOBILE_USER_ID, MOBILE_ORG_ID),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: MOBILE_CREDENTIAL_ID,
+        status: "invalid",
+        expiresAt: null,
+      }),
+    ]);
+  });
 
   test("both deletes confirmed -> resolves quietly", async () => {
     const del = track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
@@ -165,9 +233,14 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     );
 
     await expect(apiKeysService.revokePresentedMobileCredential(MOBILE_SECRET)).resolves.toEqual({
-      credentialId: MOBILE_CREDENTIAL_ID,
-      revokedAt: revokedAt.toISOString(),
-      status: "revoked",
+      receipt: {
+        credentialId: MOBILE_CREDENTIAL_ID,
+        revokedAt: revokedAt.toISOString(),
+        status: "revoked",
+      },
+      revokedNow: false,
+      userId: "user-1",
+      organizationId: "org-1",
     });
     expect(invalidate).not.toHaveBeenCalled();
   });
@@ -194,8 +267,11 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     await expect(
       apiKeysService.revokePresentedMobileCredential(MOBILE_SECRET),
     ).resolves.toMatchObject({
-      credentialId: MOBILE_CREDENTIAL_ID,
-      status: "revoked",
+      receipt: {
+        credentialId: MOBILE_CREDENTIAL_ID,
+        status: "revoked",
+      },
+      revokedNow: false,
     });
     expect(invalidate).not.toHaveBeenCalled();
   });

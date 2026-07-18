@@ -3,19 +3,24 @@
  * The internal app UUID never crosses into the shipped mobile configuration.
  */
 import { Hono } from "hono";
-import { rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   MobileAppAuthProtocolError,
   validateMobileAppAuthClientBinding,
 } from "@/lib/services/mobile-app-auth";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { MOBILE_APP_AUTH_CONFIG_RATE_LIMIT } from "../_rate-limit";
+import {
+  MOBILE_APP_AUTH_CONFIG_RATE_LIMIT,
+  mobileAppAuthRateLimitMiddleware,
+} from "../_rate-limit";
 import { requireRegisteredMobileApp } from "../_registration";
 import { mobileAppAuthErrorResponse } from "../_response";
 import { mobileAppAuthClientBindingSchema } from "../_schemas";
 
 const app = new Hono<AppEnv>();
-app.use("*", rateLimit(MOBILE_APP_AUTH_CONFIG_RATE_LIMIT));
+app.use(
+  "*",
+  mobileAppAuthRateLimitMiddleware(MOBILE_APP_AUTH_CONFIG_RATE_LIMIT),
+);
 
 app.get("/", async (c) => {
   try {

@@ -282,6 +282,34 @@ export async function requireUserWithOrg(c: AppContext): Promise<
   };
 }
 
+/** API-key lifecycle management always requires an interactive user session. */
+export async function requireSessionUserWithOrg(c: AppContext): Promise<
+  AuthedUser & {
+    organization_id: string;
+    organization: NonNullable<AuthedUser["organization"]>;
+  }
+> {
+  const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
+  const bearer = readBearer(c);
+  if (apiKeyHeader || bearer?.startsWith("eliza_")) {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session is required to manage API keys.",
+    );
+  }
+
+  const user = await requireUserWithOrg(c);
+  if (c.get("authMethod") !== "session") {
+    throw new ApiError(
+      401,
+      "session_auth_required",
+      "A signed-in user session is required to manage API keys.",
+    );
+  }
+  return user;
+}
+
 type AuthedUserWithOrg = AuthedUser & {
   organization_id: string;
   organization: NonNullable<AuthedUser["organization"]>;

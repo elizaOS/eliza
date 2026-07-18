@@ -32,6 +32,11 @@
 
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
+import {
+  getPresentedMobileApiKeySecret,
+  isMobileApiKeySecret,
+  mobileApiKeyIngressRateLimitKey,
+} from "@/lib/auth/mobile-api-key";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
@@ -47,6 +52,9 @@ const DEFAULT_AGENT_ROUTER_ORIGIN_HOST = "eliza-production-1.elizacloud.ai";
 /** Non-`running` statuses we auto-resume on (mirrors the pairing endpoint). */
 const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
 const RETRY_AFTER_SECONDS = 5;
+const RATE_LIMIT_WINDOW_SECONDS = 60;
+const GLOBAL_RATE_LIMIT = 600;
+const MOBILE_API_KEY_RATE_LIMIT = 120;
 
 // The origin must produce response HEADERS within this window; the BODY then
 // streams untimed. Mutable only through __dedicatedProxyTestHooks so the
@@ -318,6 +326,111 @@ function withCors(request: Request, response: Response): Response {
   });
 }
 
+function requestIpKey(request: Request): string {
+  const headers = request.headers;
+  const ip =
+    headers.get("cf-connecting-ip") ||
+    headers.get("x-real-ip") ||
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown";
+  return `ip:${ip}`;
+}
+
+function requiresNativeRateLimitBinding(env: Bindings): boolean {
+  return env.NODE_ENV === "production" || env.ENVIRONMENT === "production";
+}
+
+type NativeRateLimitBinding = NonNullable<Bindings["GLOBAL_RATE_LIMITER"]>;
+
+function rateLimitUnavailableResponse(bindingName: string): Response {
+  logger.error("[dedicated-proxy] required ingress limiter unavailable", {
+    bindingName,
+  });
+  const response = Response.json(
+    {
+      success: false,
+      error: "Service temporarily unavailable",
+      code: "rate_limit_unavailable",
+      message: "Rate limiter binding is unavailable; request rejected.",
+    },
+    { status: 503 },
+  );
+  response.headers.set("Retry-After", "30");
+  return response;
+}
+
+function rateLimitExceededResponse(limit: number): Response {
+  const response = Response.json(
+    {
+      success: false,
+      error: "Too many requests",
+      code: "rate_limit_exceeded",
+      message: `Rate limit exceeded. Maximum ${limit} requests per ${RATE_LIMIT_WINDOW_SECONDS} seconds.`,
+      retryAfter: RATE_LIMIT_WINDOW_SECONDS,
+    },
+    { status: 429 },
+  );
+  response.headers.set("X-RateLimit-Limit", String(limit));
+  response.headers.set("X-RateLimit-Policy", "cloudflare-native");
+  response.headers.set("Retry-After", String(RATE_LIMIT_WINDOW_SECONDS));
+  return response;
+}
+
+function mobileCredentialQueryTransportResponse(): Response {
+  const response = Response.json(
+    {
+      success: false,
+      error: "Mobile credential transport is not allowed",
+      code: "mobile_credential_transport_forbidden",
+      message:
+        "Mobile credentials must use an Authorization or X-API-Key header.",
+    },
+    { status: 400 },
+  );
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
+
+async function enforceNativeIngressLimit(options: {
+  env: Bindings;
+  binding: NativeRateLimitBinding | undefined;
+  bindingName: string;
+  key: string;
+  limit: number;
+}): Promise<Response | null> {
+  const { env, binding, bindingName, key, limit } = options;
+  if (!binding) {
+    return requiresNativeRateLimitBinding(env)
+      ? rateLimitUnavailableResponse(bindingName)
+      : null;
+  }
+
+  try {
+    const { success } = await binding.limit({ key });
+    if (success === true) return null;
+    if (success === false) return rateLimitExceededResponse(limit);
+    logger.error(
+      "[dedicated-proxy] ingress limiter returned an invalid decision",
+      {
+        bindingName,
+      },
+    );
+    return requiresNativeRateLimitBinding(env)
+      ? rateLimitUnavailableResponse(bindingName)
+      : null;
+  } catch (error) {
+    // error-policy:J1 the Worker binding boundary returns an observable outage
+    // in deployed environments while local development remains usable.
+    logger.error("[dedicated-proxy] ingress limiter binding failed", {
+      bindingName,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return requiresNativeRateLimitBinding(env)
+      ? rateLimitUnavailableResponse(bindingName)
+      : null;
+  }
+}
+
 function isBridgeHostFallbackEnabled(env: Bindings): boolean {
   return (
     env.AGENT_ROUTER_ALLOW_BRIDGE_HOST_FALLBACK === "true" ||
@@ -355,11 +468,37 @@ async function proxyDedicatedAgent(
   agentId: string,
 ): Promise<Response> {
   try {
-    // 1. Validate the CLOUD token. It rides in the Authorization header for
-    //    HTTP, or as `?token=` for the WebSocket upgrade. No valid token →
-    //    pass through unchanged (web UI assets, the pairing exchange, the
-    //    agent's own token); the container's auth is the backstop.
+    // The UUID-subdomain fast path bypasses bootstrap-app.ts, so it must apply
+    // the same global IP backstop before any credential can trigger DB auth.
+    const globalLimitResponse = await enforceNativeIngressLimit({
+      env,
+      binding: env.GLOBAL_RATE_LIMITER,
+      bindingName: "GLOBAL_RATE_LIMITER",
+      key: `global:${requestIpKey(request)}`,
+      limit: GLOBAL_RATE_LIMIT,
+    });
+    if (globalLimitResponse) return globalLimitResponse;
+
+    // 1. Validate the CLOUD token. Ordinary Cloud tokens retain the existing
+    //    WebSocket query channel; mobile lifecycle credentials are rejected
+    //    there so the proxy never validates or forwards a long-lived secret URL.
+    const rawQueryToken = url.searchParams.get("token")?.trim() || null;
+    if (rawQueryToken && isMobileApiKeySecret(rawQueryToken)) {
+      return mobileCredentialQueryTransportResponse();
+    }
     const queryToken = extractQueryToken(request, url);
+    const mobileSecret = getPresentedMobileApiKeySecret(request);
+    if (mobileSecret) {
+      const mobileLimitResponse = await enforceNativeIngressLimit({
+        env,
+        binding: env.MOBILE_API_KEY_INGRESS_LIMITER,
+        bindingName: "MOBILE_API_KEY_INGRESS_LIMITER",
+        key: mobileApiKeyIngressRateLimitKey(mobileSecret),
+        limit: MOBILE_API_KEY_RATE_LIMIT,
+      });
+      if (mobileLimitResponse) return mobileLimitResponse;
+    }
+
     // Header/cookie auth validates the ORIGINAL request (preserves every
     // existing auth method); a query-only (WS) token validates through a
     // synthetic header request so it takes the exact same path.

@@ -6,7 +6,6 @@ import {
   _resetHonoRateLimitLeases,
   _resetRedisUnavailableFallbackBuckets,
   type RateLimitDependencies,
-  rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { MOBILE_APP_AUTH_CLEANUP_DRAIN_CAPACITY } from "@/lib/services/mobile-app-auth";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
@@ -18,6 +17,7 @@ import {
   MOBILE_APP_AUTH_GRANT_USER_MAX,
   MOBILE_APP_AUTH_TOKEN_RATE_LIMIT,
   mobileAppAuthGrantAdmissionRateLimits,
+  mobileAppAuthRateLimitMiddleware,
   runMobileAppAuthGrantAdmission,
 } from "./_rate-limit";
 
@@ -52,15 +52,24 @@ function makeApp(
   const dependencies = { buildRedisClient };
   app.use(
     "/config",
-    rateLimit(MOBILE_APP_AUTH_CONFIG_RATE_LIMIT, undefined, dependencies),
+    mobileAppAuthRateLimitMiddleware(
+      MOBILE_APP_AUTH_CONFIG_RATE_LIMIT,
+      dependencies,
+    ),
   );
   app.use(
     "/token",
-    rateLimit(MOBILE_APP_AUTH_TOKEN_RATE_LIMIT, undefined, dependencies),
+    mobileAppAuthRateLimitMiddleware(
+      MOBILE_APP_AUTH_TOKEN_RATE_LIMIT,
+      dependencies,
+    ),
   );
   app.use(
     "/ack",
-    rateLimit(MOBILE_APP_AUTH_ACK_RATE_LIMIT, undefined, dependencies),
+    mobileAppAuthRateLimitMiddleware(
+      MOBILE_APP_AUTH_ACK_RATE_LIMIT,
+      dependencies,
+    ),
   );
   app.get("*", (c) => c.json({ success: true }));
   return app;
@@ -89,7 +98,12 @@ describe("mobile App Auth route limiters", () => {
     const retryAfter = Number(denied.headers.get("Retry-After"));
     expect(retryAfter).toBeGreaterThan(0);
     expect(retryAfter).toBeLessThanOrEqual(60);
-    await expect(denied.json()).resolves.toMatchObject({ retryAfter });
+    await expect(denied.json()).resolves.toMatchObject({
+      success: false,
+      error: "slow_down",
+      retryable: true,
+      retryAfter,
+    });
 
     const ack = await app.fetch(request("/ack"), env);
     expect(ack.status).toBe(200);
@@ -217,7 +231,10 @@ describe("mobile App Auth route limiters", () => {
     );
     expect(response.status).toBe(503);
     expect(await response.json()).toMatchObject({
-      code: "rate_limit_unavailable",
+      error: "temporarily_unavailable",
+      errorDescription:
+        "Mobile authorization rate limiting is temporarily unavailable",
+      retryable: true,
       success: false,
     });
   });

@@ -55,7 +55,8 @@ beforeAll(async () => {
   await dbWrite.execute(`CREATE TABLE mobile_app_auth_grants (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), code_hash text NOT NULL UNIQUE,
     app_id uuid NOT NULL, client_id text NOT NULL, user_id uuid NOT NULL,
-    organization_id uuid NOT NULL, environment text NOT NULL, redirect_uri text NOT NULL,
+    organization_id uuid NOT NULL, environment text NOT NULL, device_name text,
+    redirect_uri text NOT NULL,
     state_hash text NOT NULL, code_challenge text NOT NULL,
     code_challenge_method text NOT NULL, scopes jsonb NOT NULL,
     status text NOT NULL DEFAULT 'pending',
@@ -118,7 +119,7 @@ function binding(state = STATE) {
   };
 }
 
-async function issue(now = START) {
+async function issue(now = START, deviceName?: string) {
   return await service.issueMobileAppAuthCode({
     registration,
     userId: USER_ID,
@@ -127,6 +128,7 @@ async function issue(now = START) {
       ...binding(),
       codeChallenge: service.deriveMobileAppAuthS256Challenge(VERIFIER),
       codeChallengeMethod: "S256",
+      deviceName,
     },
     now,
   });
@@ -189,20 +191,28 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
   });
 
   test("consent creates only a short-lived grant and no credential", async () => {
-    const authorization = await issue();
+    const authorization = await issue(START, "Nubs' iPhone");
 
     expect(authorization.code).toMatch(/^emac_[0-9a-f]{64}$/);
     expect(authorization.expiresIn).toBe(300);
     expect(await rowCounts()).toEqual({ grants: 1, keys: 0 });
     const rows = await dbWrite.execute(
-      "SELECT code_hash, state_hash, status, credential_id FROM mobile_app_auth_grants",
+      "SELECT code_hash, state_hash, status, credential_id, device_name FROM mobile_app_auth_grants",
     );
     expect(rows.rows[0]).toMatchObject({
       status: "pending",
       credential_id: null,
+      device_name: "Nubs' iPhone",
     });
     expect(rows.rows[0]?.code_hash).not.toBe(authorization.code);
     expect(rows.rows[0]?.state_hash).not.toBe(STATE);
+  });
+
+  test("consent rejects empty, control-character, and oversized device labels", async () => {
+    for (const deviceName of ["   ", "iPhone\nspoofed", "x".repeat(81)]) {
+      await expectProtocolError(issue(START, deviceName), "invalid_request");
+    }
+    expect(await rowCounts()).toEqual({ grants: 0, keys: 0 });
   });
 
   test("generic API-key CRUD cannot list, manage, mutate, or delete a mobile credential", async () => {
@@ -286,11 +296,21 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
       `UPDATE api_keys SET expires_at = now() - interval '1 second' WHERE id = '${credentialId}'`,
     );
     await expect(apiKeysService.validateApiKey(generated.key)).resolves.toBeNull();
-    await dbWrite.execute(
-      `UPDATE api_keys SET expires_at = now() + interval '1 hour' WHERE id = '${credentialId}'`,
-    );
-    await expect(apiKeysService.validateApiKey(generated.key)).resolves.toMatchObject({
-      id: credentialId,
+    const future = apiKeysService.generateMobileApiKey();
+    const futureCredentialId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+    await apiKeysRepository.create({
+      id: futureCredentialId,
+      name: "Mobile future expiry control",
+      key_hash: future.hash,
+      key_prefix: future.prefix,
+      organization_id: ORGANIZATION_ID,
+      user_id: USER_ID,
+      source_app_id: APP_ID,
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    });
+    await expect(apiKeysService.validateApiKey(future.key)).resolves.toMatchObject({
+      id: futureCredentialId,
     });
   });
 
@@ -455,9 +475,18 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
     expect(concurrentAck).toEqual(acknowledged);
     expect(acknowledged.status).toBe("acknowledged");
 
-    const afterAck = await dbWrite.execute("SELECT id, is_active FROM api_keys");
+    const afterAck = await dbWrite.execute(
+      "SELECT id, is_active, key_ciphertext, key_nonce, key_auth_tag, key_kms_key_id, key_kms_key_version FROM api_keys",
+    );
     expect(afterAck.rows[0]?.id).toBe(first.credentialId);
     expect(afterAck.rows[0]?.is_active).toBe(true);
+    expect(afterAck.rows[0]).toMatchObject({
+      key_ciphertext: null,
+      key_nonce: null,
+      key_auth_tag: null,
+      key_kms_key_id: null,
+      key_kms_key_version: null,
+    });
     expect(await apiKeysService.validateApiKey(first.secret)).toMatchObject({
       id: first.credentialId,
       is_active: true,
@@ -689,8 +718,11 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
     await expect(
       apiKeysService.revokePresentedMobileCredential(exchanged.secret),
     ).resolves.toMatchObject({
-      credentialId: exchanged.credentialId,
-      status: "revoked",
+      receipt: {
+        credentialId: exchanged.credentialId,
+        status: "revoked",
+      },
+      revokedNow: false,
     });
     const jobs = await dbWrite.execute("SELECT api_key_id FROM jobs");
     expect(jobs.rows).toEqual([{ api_key_id: exchanged.credentialId }]);
@@ -747,7 +779,10 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
     expect(await apiKeysService.validateApiKey(exchanged.secret)).toBeNull();
     await expect(
       apiKeysService.revokePresentedMobileCredential(exchanged.secret),
-    ).resolves.toMatchObject({ credentialId: exchanged.credentialId, status: "revoked" });
+    ).resolves.toMatchObject({
+      receipt: { credentialId: exchanged.credentialId, status: "revoked" },
+      revokedNow: false,
+    });
     expect((await dbWrite.execute("SELECT api_key_id FROM jobs")).rows).toEqual([
       { api_key_id: exchanged.credentialId },
     ]);
@@ -863,7 +898,7 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
     expect(preserved.rows).toHaveLength(3);
     for (const row of preserved.rows) {
       expect(row).toMatchObject({ is_active: true, deleted_at: null });
-      expect(row.key_ciphertext).not.toBeNull();
+      expect(row.key_ciphertext).toBeNull();
     }
   });
 
@@ -916,7 +951,7 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
       "SELECT is_active, deleted_at, key_ciphertext FROM api_keys",
     );
     expect(preserved.rows[0]).toMatchObject({ is_active: true, deleted_at: null });
-    expect(preserved.rows[0]?.key_ciphertext).not.toBeNull();
+    expect(preserved.rows[0]?.key_ciphertext).toBeNull();
     expect(await apiKeysService.validateApiKey(exchanged.secret)).toMatchObject({
       id: exchanged.credentialId,
     });
@@ -958,7 +993,7 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
       "SELECT is_active, deleted_at, key_ciphertext FROM api_keys",
     );
     expect(preserved.rows[0]).toMatchObject({ is_active: true, deleted_at: null });
-    expect(preserved.rows[0]?.key_ciphertext).not.toBeNull();
+    expect(preserved.rows[0]?.key_ciphertext).toBeNull();
     expect(await apiKeysService.validateApiKey(exchanged.secret)).toMatchObject({
       id: exchanged.credentialId,
     });
@@ -1046,7 +1081,10 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
     expect(preserved.rows[0]?.key_ciphertext).not.toBeNull();
     await expect(
       apiKeysService.revokePresentedMobileCredential(exchanged.secret),
-    ).resolves.toMatchObject({ credentialId: exchanged.credentialId, status: "revoked" });
+    ).resolves.toMatchObject({
+      receipt: { credentialId: exchanged.credentialId, status: "revoked" },
+      revokedNow: true,
+    });
   });
 
   test("cleanup preserves an inactive credential whose owner no longer matches its grant", async () => {
@@ -1270,7 +1308,10 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
     expect(await rowCounts()).toEqual({ grants: 0, keys: 1 });
     await expect(
       apiKeysService.revokePresentedMobileCredential(exchanged.secret),
-    ).resolves.toMatchObject({ credentialId: exchanged.credentialId, status: "revoked" });
+    ).resolves.toMatchObject({
+      receipt: { credentialId: exchanged.credentialId, status: "revoked" },
+      revokedNow: false,
+    });
   });
 
   test("cleanup drains multiple bounded batches and reports exact remaining work", async () => {
@@ -1410,8 +1451,11 @@ describe("mobile App Auth PKCE lifecycle with real persistence", () => {
       await expect(
         apiKeysService.revokePresentedMobileCredential(exchanged.secret),
       ).resolves.toMatchObject({
-        credentialId: exchanged.credentialId,
-        status: "revoked",
+        receipt: {
+          credentialId: exchanged.credentialId,
+          status: "revoked",
+        },
+        revokedNow: false,
       });
       expect(invalidate).not.toHaveBeenCalled();
     } finally {

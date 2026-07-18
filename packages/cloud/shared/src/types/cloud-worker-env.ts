@@ -45,6 +45,7 @@ export interface Bindings {
   // ---- Cloudflare machine-local protective rate limits ----
   GLOBAL_RATE_LIMITER?: RuntimeRateLimitBinding;
   CHAT_ROUTE_RATE_LIMITER?: RuntimeRateLimitBinding;
+  MOBILE_API_KEY_INGRESS_LIMITER?: RuntimeRateLimitBinding;
 
   // ---- Cloudflare Registrar/DNS ----
   CLOUDFLARE_ACCOUNT_ID?: string;
@@ -370,6 +371,8 @@ export interface Variables {
   traceId: string;
   /** ID of the validated API key, when `authMethod === "api_key"`. */
   apiKeyId?: string;
+  /** Registered app that issued a mobile lifecycle credential. */
+  apiKeySourceAppId?: string;
 }
 
 export type AppEnv = {

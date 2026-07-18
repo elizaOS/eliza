@@ -1247,6 +1247,13 @@
       "when": 1784174400000,
       "tag": "0178_mobile_auth_source_app",
       "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "7",
+      "when": 1784260800000,
+      "tag": "0179_mobile_app_auth_device_name",
+      "breakpoints": true
     }
   ]
 }

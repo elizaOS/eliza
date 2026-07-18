@@ -33,19 +33,57 @@ function readSinglePresentedApiKey(c: AppContext): string | null {
   return headerKey ?? bearerKey;
 }
 
+async function emitSelfRevocationAudit(
+  c: AppContext,
+  result: NonNullable<
+    Awaited<ReturnType<typeof apiKeysService.revokePresentedMobileCredential>>
+  >,
+): Promise<void> {
+  if (!result.revokedNow) return;
+  await getAuditDispatcher()
+    .emit({
+      actor: { type: "user", id: result.userId },
+      action: "api_key.revoke",
+      result: "success",
+      resource: { type: "api_key", id: result.receipt.credentialId },
+      org_id: result.organizationId,
+      request_id: c.get("requestId"),
+      metadata: {
+        key_id: result.receipt.credentialId,
+        reason: "credential_self_revoke",
+      },
+    })
+    .catch((error: unknown) => {
+      // error-policy:J7 audit telemetry cannot resurrect an already-revoked credential.
+      logger.warn("[API Keys] Self-revoke audit emit failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    });
+}
+
 app.delete("/", async (c) => {
   try {
     let credential: Awaited<ReturnType<typeof requireApiKeyCredential>>;
     try {
       credential = await requireApiKeyCredential(c);
     } catch (error) {
-      if (error instanceof ApiError && error.status === 401) {
+      // error-policy:J1 A 401 may be a response-loss retry, while a 503 means
+      // the authentication cache could not establish state. The primary-store
+      // lookup below still requires the exact presented mobile secret before
+      // it can return or create that credential's durable tombstone.
+      if (
+        error instanceof ApiError &&
+        (error.status === 401 || error.status === 503)
+      ) {
         const presented = readSinglePresentedApiKey(c);
-        const receipt =
+        const result =
           presented && isMobileApiKeySecret(presented)
             ? await apiKeysService.revokePresentedMobileCredential(presented)
             : null;
-        if (receipt) return c.json({ success: true, ...receipt });
+        if (result) {
+          await emitSelfRevocationAudit(c, result);
+          return c.json({ success: true, ...result.receipt });
+        }
       }
       throw error;
     }
@@ -62,25 +100,9 @@ app.delete("/", async (c) => {
       throw AuthenticationError("Mobile API key identity could not be proven");
     }
 
-    const receipt =
-      await apiKeysService.revokeExactMobileCredential(credential);
-    await getAuditDispatcher()
-      .emit({
-        actor: { type: "user", id: credential.user_id },
-        action: "api_key.revoke",
-        result: "success",
-        resource: { type: "api_key", id: credential.id },
-        org_id: credential.organization_id,
-        request_id: c.get("requestId"),
-        metadata: { key_id: credential.id, reason: "credential_self_revoke" },
-      })
-      .catch((error: unknown) => {
-        // error-policy:J7 audit telemetry cannot resurrect an already-revoked credential.
-        logger.warn("[API Keys] Self-revoke audit emit failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-    return c.json({ success: true, ...receipt });
+    const result = await apiKeysService.revokeExactMobileCredential(credential);
+    await emitSelfRevocationAudit(c, result);
+    return c.json({ success: true, ...result.receipt });
   } catch (error) {
     // error-policy:J1 HTTP boundary returns a canonical auth or dependency failure.
     logger.error("[API Keys] Current credential self-revoke failed", { error });

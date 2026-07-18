@@ -11,11 +11,13 @@ import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
+import {
+  getPresentedMobileApiKeySecret,
+  mobileApiKeyIngressRateLimitKey,
+} from "@/lib/auth/mobile-api-key";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
 import {
-  getIpKey,
-  getRequestIp,
   rateLimit,
   rateLimitConfigVerdict,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
@@ -148,6 +150,23 @@ function countryFromHeaders(headers: Headers): string | null {
   return null;
 }
 
+/**
+ * Uses Cloudflare's authenticated connecting-IP header when available; the
+ * forwarding headers retain local and non-Cloudflare deployment compatibility.
+ */
+function requestIp(headers: Headers): string | undefined {
+  return (
+    headers.get("cf-connecting-ip") ||
+    headers.get("x-real-ip") ||
+    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    undefined
+  );
+}
+
+function requestIpKey(request: Request): string {
+  return `ip:${requestIp(request.headers) ?? "unknown"}`;
+}
+
 export function createApp(): Hono<AppEnv> {
   // Initialise the global audit dispatcher (auth_events sink + optional
   // console sink) before any route handlers run. Idempotent — safe to
@@ -185,7 +204,7 @@ export function createApp(): Hono<AppEnv> {
         // #10423) without threading them through every call site.
         runWithRequestContext(
           {
-            clientIp: getRequestIp(c),
+            clientIp: requestIp(c.req.raw.headers),
             idempotencyKey:
               c.req.header("idempotency-key") ||
               c.req.header("x-request-id") ||
@@ -332,11 +351,38 @@ export function createApp(): Hono<AppEnv> {
         maxRequests: 600,
         // Namespaced so this backstop counter never collides with a per-route
         // IP-keyed limiter sharing the same `ip:<addr>` key.
-        keyGenerator: (c) => `global:${getIpKey(c)}`,
+        keyGenerator: (c) => `global:${requestIpKey(c.req.raw)}`,
       },
       { bindingName: "GLOBAL_RATE_LIMITER" },
     ),
   );
+
+  // A mobile secret bypasses positive auth caches so revocation is immediate.
+  // Bound each credential before auth to keep primary-consistency validation
+  // from becoming unbounded DB work. The independent global IP limiter above
+  // bounds high-cardinality key spray while clients behind one carrier NAT do
+  // not consume each other's credential bucket.
+  const mobileApiKeyIngressLimit = rateLimit(
+    {
+      windowMs: 60_000,
+      maxRequests: 120,
+      keyGenerator: (c) => {
+        const secret = getPresentedMobileApiKeySecret(c.req.raw);
+        if (!secret) {
+          throw new TypeError("Mobile ingress limiter requires a mobile key");
+        }
+        return mobileApiKeyIngressRateLimitKey(secret);
+      },
+    },
+    { bindingName: "MOBILE_API_KEY_INGRESS_LIMITER" },
+  );
+  app.use("*", async (c, next) => {
+    if (!getPresentedMobileApiKeySecret(c.req.raw)) {
+      await next();
+      return;
+    }
+    return await mobileApiKeyIngressLimit(c, next);
+  });
 
   app.use("*", authMiddleware);
 

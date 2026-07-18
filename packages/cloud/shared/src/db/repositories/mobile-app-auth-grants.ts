@@ -97,6 +97,7 @@ function assertStateIntegrity(state: MobileAppAuthGrantState): void {
   const expectedProvenance = buildMobileAppAuthCredentialProvenance({
     grantId: grant.id,
     environment: grant.environment,
+    deviceName: grant.device_name,
     clientId: grant.client_id,
     scopes: grant.scopes,
   });
@@ -327,12 +328,21 @@ export class MobileAppAuthGrantsRepository {
         const expectedProvenance = buildMobileAppAuthCredentialProvenance({
           grantId: claimedGrant.id,
           environment: claimedGrant.environment,
+          deviceName: claimedGrant.device_name,
           clientId: claimedGrant.client_id,
           scopes: claimedGrant.scopes,
         });
         const [activated] = await tx
           .update(apiKeys)
-          .set({ is_active: true, updated_at: input.now })
+          .set({
+            is_active: true,
+            updated_at: input.now,
+            key_ciphertext: null,
+            key_nonce: null,
+            key_auth_tag: null,
+            key_kms_key_id: null,
+            key_kms_key_version: null,
+          })
           .where(
             and(
               eq(apiKeys.id, input.credentialId),
@@ -522,6 +532,7 @@ export class MobileAppAuthGrantsRepository {
           const expectedProvenance = buildMobileAppAuthCredentialProvenance({
             grantId: grant.id,
             environment: grant.environment,
+            deviceName: grant.device_name,
             clientId: grant.client_id,
             scopes: grant.scopes,
           });

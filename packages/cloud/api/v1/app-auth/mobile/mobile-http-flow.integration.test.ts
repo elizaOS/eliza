@@ -250,6 +250,7 @@ beforeAll(async () => {
       user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
       organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
       environment text NOT NULL,
+      device_name text,
       redirect_uri text NOT NULL,
       state_hash text NOT NULL,
       code_challenge text NOT NULL,
@@ -377,6 +378,7 @@ describe("mobile App Auth real HTTP lifecycle", () => {
         state: STATE,
         codeChallenge,
         codeChallengeMethod: "S256",
+        deviceName: "Simulator iPhone",
       },
       { "user-agent": "Eliza-iOS-integration-test" },
     );

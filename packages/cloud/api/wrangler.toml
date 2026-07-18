@@ -96,11 +96,16 @@ name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615302"
 simple = { limit = 200, period = 60 }
 
+[[ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615303"
+simple = { limit = 120, period = 60 }
+
 # Exact organization limits and non-native route limits use Railway TCP Redis
 # via REDIS_URL (in-Worker SocketRedis, RESP2 over cloudflare:sockets). The
-# global flood backstop and chat API-key gate above use Cloudflare's local
-# protective counters, so Railway connection setup no longer blocks those two
-# outer ingress checks. The exact organization quota remains Redis-backed in
+# global flood backstop, chat API-key gate, and credential-scoped mobile ingress
+# guard use Cloudflare's local protective counters, so Railway setup no longer
+# blocks those three outer ingress checks. The exact organization quota remains Redis-backed in
 # the handler. Upstash REST remains a legacy fallback. Shared-runtime chat
 # history still depends on durable Redis; local dev uses embedded Wadis when
 # unconfigured.
@@ -486,6 +491,11 @@ name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615312"
 simple = { limit = 200, period = 60 }
 
+[[env.staging.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615313"
+simple = { limit = 120, period = 60 }
+
 [env.production]
 name = "eliza-cloud-api-prod"
 # Smart Placement (#15513, prod leg): staging soak showed mode=smart applied
@@ -664,3 +674,8 @@ simple = { limit = 600, period = 60 }
 name = "CHAT_ROUTE_RATE_LIMITER"
 namespace_id = "1615322"
 simple = { limit = 200, period = 60 }
+
+[[env.production.ratelimits]]
+name = "MOBILE_API_KEY_INGRESS_LIMITER"
+namespace_id = "1615323"
+simple = { limit = 120, period = 60 }

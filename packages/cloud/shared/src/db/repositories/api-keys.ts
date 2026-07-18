@@ -1,9 +1,11 @@
 // Persists api keys records for cloud services through the shared DB boundary.
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../helpers";
 import { type ApiKey, apiKeys, type NewApiKey } from "../schemas/api-keys";
 
 export type { ApiKey, NewApiKey };
+
+const MOBILE_RECOVERY_LIST_LIMIT = 100;
 
 /**
  * Repository for API key database operations.
@@ -194,6 +196,67 @@ export class ApiKeysRepository {
         isNotNull(apiKeys.source_app_id),
       ),
     });
+  }
+
+  /** Lists mobile lifecycle credentials from primary storage for account recovery. */
+  async listMobileByOwnerConsistent(userId: string, organizationId: string): Promise<ApiKey[]> {
+    return await dbWrite.query.apiKeys.findMany({
+      where: and(
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        isNotNull(apiKeys.source_app_id),
+      ),
+      orderBy: [desc(apiKeys.created_at)],
+      limit: MOBILE_RECOVERY_LIST_LIMIT,
+    });
+  }
+
+  /** Resolves one mobile credential without revealing whether another owner has it. */
+  async findMobileByOwnerConsistent(
+    id: string,
+    userId: string,
+    organizationId: string,
+  ): Promise<ApiKey | undefined> {
+    return await dbWrite.query.apiKeys.findFirst({
+      where: and(
+        eq(apiKeys.id, id),
+        eq(apiKeys.user_id, userId),
+        eq(apiKeys.organization_id, organizationId),
+        isNotNull(apiKeys.source_app_id),
+      ),
+    });
+  }
+
+  /** Tombstones an account-owned mobile credential and erases recoverable secret bytes. */
+  async tombstoneMobileByOwner(
+    id: string,
+    userId: string,
+    organizationId: string,
+    revokedAt: Date,
+  ): Promise<ApiKey | undefined> {
+    const [tombstone] = await dbWrite
+      .update(apiKeys)
+      .set({
+        is_active: false,
+        deleted_at: revokedAt,
+        updated_at: revokedAt,
+        key_ciphertext: null,
+        key_nonce: null,
+        key_auth_tag: null,
+        key_kms_key_id: null,
+        key_kms_key_version: null,
+      })
+      .where(
+        and(
+          eq(apiKeys.id, id),
+          eq(apiKeys.user_id, userId),
+          eq(apiKeys.organization_id, organizationId),
+          isNull(apiKeys.deleted_at),
+          isNotNull(apiKeys.source_app_id),
+        ),
+      )
+      .returning();
+    return tombstone;
   }
 
   /** Retains only the hash-backed receipt and removes recoverable secret bytes. */
