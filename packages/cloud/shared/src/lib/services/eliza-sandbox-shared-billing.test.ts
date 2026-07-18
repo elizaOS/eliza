@@ -598,7 +598,10 @@ describe("ElizaSandboxService shared runtime billing", () => {
       );
       // Provider setup starts while the independent credit reservation is
       // unresolved, but no Response/model bytes escape before credit approval.
-      await Promise.resolve();
+      for (let attempt = 0; attempt < 50; attempt += 1) {
+        if (runSharedAgentTurnStream.mock.calls.length > 0) break;
+        await delay(1);
+      }
       expect(runSharedAgentTurnStream).toHaveBeenCalledTimes(1);
       expect(await Promise.race([responsePromise, delay(20)])).toBe("timeout");
       finishReservation();
