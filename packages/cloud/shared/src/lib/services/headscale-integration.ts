@@ -51,6 +51,17 @@ export interface PrepareContainerVPNInput {
   agentName?: string;
   organizationId?: string;
   userId?: string;
+  /**
+   * When false, an existing node under the deterministic hostname is RECORDED
+   * (returned as `previousNodeId`) instead of deleted (#16565). Blue/green
+   * upgrade/downgrade set this: the "stale" registration is the LIVE serving
+   * node until the atomic swap commits, and deleting it pre-provision cuts
+   * the agent's mesh route mid-upgrade (its single-use auth key then leaves
+   * the evicted container in a permanent restart loop). Default true — the
+   * plain reprovision path keeps today's reclaim behavior, which guards
+   * `waitForVPNRegistration` from accepting the stale node's IP.
+   */
+  reclaimStaleNode?: boolean;
 }
 
 export class HeadscaleIntegration {
@@ -81,6 +92,10 @@ export class HeadscaleIntegration {
   async prepareContainerVPN(input: PrepareContainerVPNInput): Promise<{
     preAuthKey: string;
     envVars: Record<string, string>;
+    /** The pre-existing node's id when `reclaimStaleNode` is false (#16565):
+     *  the caller excludes it from registration matching and deletes it BY ID
+     *  only after its replacement has taken over. */
+    previousNodeId?: string;
   }> {
     const { agentId } = input;
     logger.info(`[headscale-integration] preparing VPN for agent ${agentId}`);
@@ -94,12 +109,22 @@ export class HeadscaleIntegration {
       // key, otherwise waitForVPNRegistration() could accept the old node's IP
       // before the replacement has joined. Fail closed on lookup/deletion
       // errors so we never route a new sandbox to a stale container.
+      // Blue/green callers pass reclaimStaleNode=false: the same-name node is
+      // the LIVE one, so it is recorded for post-cutover deletion instead.
+      let previousNodeId: string | undefined;
       const existingNode = await this.client.getNodeByNameStrict(tsHostname);
       if (existingNode) {
-        await this.client.deleteNode(existingNode.id);
-        logger.info(
-          `[headscale-integration] removed stale VPN node ${existingNode.id} before reprovisioning ${agentId}`,
-        );
+        if (input.reclaimStaleNode === false) {
+          previousNodeId = existingNode.id;
+          logger.info(
+            `[headscale-integration] preserving live VPN node ${existingNode.id} during blue/green provision for ${agentId}`,
+          );
+        } else {
+          await this.client.deleteNode(existingNode.id);
+          logger.info(
+            `[headscale-integration] removed stale VPN node ${existingNode.id} before reprovisioning ${agentId}`,
+          );
+        }
       }
 
       const preAuthKeyObj = await this.client.createPreAuthKey({
@@ -120,7 +145,11 @@ export class HeadscaleIntegration {
 
       logger.info(`[headscale-integration] VPN prepared for agent ${agentId}`);
 
-      return { preAuthKey: preAuthKeyObj.key, envVars };
+      return {
+        preAuthKey: preAuthKeyObj.key,
+        envVars,
+        ...(previousNodeId ? { previousNodeId } : {}),
+      };
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.error(`[headscale-integration] failed to prepare VPN for ${agentId}:`, msg);
@@ -143,7 +172,14 @@ export class HeadscaleIntegration {
   async waitForVPNRegistration(
     nodeName: string,
     timeoutMs: number = DEFAULT_REGISTRATION_TIMEOUT_MS,
-  ): Promise<string | null> {
+    options?: {
+      /** Ignore this node id when matching by name (#16565): during a
+       *  blue/green overlap the preserved LIVE node shares the hostname, and
+       *  accepting its IP would route the new sandbox to the old container —
+       *  the exact race the reclaim-mode deletion used to guard against. */
+      excludeNodeId?: string;
+    },
+  ): Promise<{ ip: string; nodeId: string } | null> {
     logger.info(
       `[headscale-integration] waiting for VPN registration: ${nodeName} (timeout ${timeoutMs}ms)`,
     );
@@ -155,10 +191,10 @@ export class HeadscaleIntegration {
       try {
         const node = await this.client.getNodeByName(nodeName);
 
-        if (node && node.ipAddresses.length > 0) {
+        if (node && node.ipAddresses.length > 0 && node.id !== options?.excludeNodeId) {
           const ip = node.ipAddresses[0];
           logger.info(`[headscale-integration] VPN registered for ${nodeName}: ${ip}`);
-          return ip;
+          return { ip, nodeId: node.id };
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -196,7 +232,10 @@ export class HeadscaleIntegration {
     logger.info(`[headscale-integration] cleaning up VPN node for ${nodeName}`);
 
     try {
-      const node = await this.client.getNodeByName(nodeName);
+      // Strict lookup (#16565): the lossy variant swallows API errors into
+      // "no node", silently leaking a persistent node. Failures now land in
+      // the catch below — logged, still non-blocking for container deletion.
+      const node = await this.client.getNodeByNameStrict(nodeName);
 
       if (!node) {
         logger.info(
@@ -211,6 +250,23 @@ export class HeadscaleIntegration {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn(`[headscale-integration] error cleaning up VPN for ${nodeName}:`, msg);
       // Do not rethrow because Headscale deletion failures should not block container deletion
+    }
+  }
+
+  /**
+   * Delete a VPN node by its Headscale id — the only safe identifier during a
+   * blue/green overlap, where old and new nodes share the deterministic
+   * hostname (#16565). Best-effort like {@link cleanupContainerVPN}: a
+   * deletion failure must not block the container lifecycle, and an
+   * already-gone node (404) counts as success in the client.
+   */
+  async removeVpnNodeById(nodeId: string): Promise<void> {
+    try {
+      await this.client.deleteNode(nodeId);
+      logger.info(`[headscale-integration] VPN node ${nodeId} removed by id`);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn(`[headscale-integration] error removing VPN node ${nodeId}:`, msg);
     }
   }
 
