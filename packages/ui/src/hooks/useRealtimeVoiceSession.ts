@@ -248,6 +248,10 @@ const LIVE_SESSION_PHASES: ReadonlySet<string> = new Set([
 
 const DEFAULT_READY_TIMEOUT_MS = 15_000;
 
+function normalizeVoiceIdentityId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function fallbackReasonForError(
   error: RealtimeVoiceError,
 ): "consent" | "mint" | "transport" | "unknown" | null {
@@ -345,7 +349,9 @@ export function useRealtimeVoiceSession(
     [],
   );
 
-  const hasIds = Boolean(agentId?.trim()) && Boolean(conversationId?.trim());
+  const normalizedAgentId = normalizeVoiceIdentityId(agentId);
+  const normalizedConversationId = normalizeVoiceIdentityId(conversationId);
+  const hasIds = Boolean(normalizedAgentId) && Boolean(normalizedConversationId);
   const available = flagEnabled && hasIds && !featureDisabled;
 
   const applyServerEventToTranscript = useCallback(
@@ -696,7 +702,7 @@ export function useRealtimeVoiceSession(
   // changes while a start/live session owns the mic, stop the old socket and
   // re-mint against the latest ids. A generation guard prevents rapid thread
   // switches from resurrecting an intermediate identity.
-  const identityKey = `${agentId?.trim() ?? ""}\n${conversationId?.trim() ?? ""}`;
+  const identityKey = `${normalizedAgentId}\n${normalizedConversationId}`;
   const previousIdentityRef = useRef(identityKey);
   useEffect(() => {
     if (previousIdentityRef.current === identityKey) return;
