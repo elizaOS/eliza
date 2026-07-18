@@ -25,6 +25,7 @@ interface MintOverrides {
   downlinkCodecs?: string[];
   status?: number;
   malformed?: boolean;
+  code?: string;
 }
 
 /** A mint fetch that returns the §7.1 shape, tracking each call. */
@@ -40,7 +41,9 @@ function makeMintFetch(overrides: MintOverrides[] = []) {
     n += 1;
     const status = o.status ?? 200;
     if (status !== 200) {
-      return new Response(JSON.stringify({ error: "nope" }), { status });
+      return new Response(JSON.stringify({ error: "nope", code: o.code }), {
+        status,
+      });
     }
     const payload = o.malformed
       ? { sessionId: "", wsUrl: "", token: "" }
@@ -106,6 +109,30 @@ function playbackScriptNodeOf(ctx: FakePlaybackAudioContext) {
 }
 
 describe("voice-session client (real framing/state/barge-in/reconnect)", () => {
+  it("retries a transient post-mint agent_not_found race, then connects", async () => {
+    const mint = makeMintFetch([
+      { status: 404, code: "agent_not_found" },
+      { status: 404, code: "agent_not_found" },
+      {},
+    ]);
+    const ws = makeWsFactory();
+    const client = createVoiceSessionClient({
+      agentId: "11111111-1111-1111-1111-111111111111",
+      conversationId: "22222222-2222-2222-2222-222222222222",
+      getConsentNonce: async () => crypto.randomUUID(),
+      fetch: mint.fetch,
+      webSocketFactory: ws.factory,
+      getUserMedia: fakeGetUserMedia(),
+      createMicAudioContext: () => new FakeMicAudioContext(16_000),
+      createPlaybackAudioContext: () => new FakePlaybackAudioContext(16_000),
+      preLiveRetryDelayMs: 0,
+    });
+
+    await client.start();
+    expect(mint.calls).toHaveLength(3);
+    expect(ws.sockets).toHaveLength(1);
+    await client.stop();
+  });
   it("invokes playback resume before the first mint await consumes user activation", async () => {
     const mint = makeMintFetch();
     const ws = makeWsFactory();

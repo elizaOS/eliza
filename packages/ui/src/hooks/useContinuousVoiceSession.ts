@@ -44,6 +44,10 @@ export interface ContinuousVoiceSessionState {
   agentSpeaking: boolean;
   /** Realtime session paused by a visibility-hide (paused, not broken). */
   paused: boolean;
+  /** Why this interaction fell back to standard voice, retained for UI diagnostics. */
+  realtimeFallbackReason: UseRealtimeVoiceSessionState["fallbackReason"];
+  /** Record an eligibility fallback discovered before realtime start. */
+  reportRealtimeFallback: UseRealtimeVoiceSessionState["reportFallback"];
   /** Typed realtime error, actionable or not (null on the batch path). */
   realtimeError: RealtimeVoiceError | null;
   /** Latency snapshot for the badge (batch — realtime latency is server-side). */
@@ -123,6 +127,8 @@ export function useContinuousVoiceSession(
         ? realtime.agentSpeaking
         : batch.status === "speaking",
       paused: realtimeActive ? realtime.paused : false,
+      realtimeFallbackReason: realtime.fallbackReason,
+      reportRealtimeFallback: realtime.reportFallback,
       realtimeError: realtime.error,
       latency: batch.latency,
       speaker: realtime.speaker ?? batch.speaker,

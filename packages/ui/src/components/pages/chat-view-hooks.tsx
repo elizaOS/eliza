@@ -550,6 +550,8 @@ export function useChatVoiceController(options: {
     [
       chatInput,
       conversationMessages,
+      activeConversationId,
+      realtimeAgentId,
       isComposerLocked,
       startListening,
       stopSpeaking,
@@ -959,10 +961,7 @@ export function useChatVoiceController(options: {
       // must re-enter the realtime branch (start() clears the error); only
       // non-actionable failures (consent/mint, which also latch eligibility
       // off) hand the tap to the batch path as their copy promises.
-      if (
-        voiceSession.realtimeEligible &&
-        (!voiceSession.realtimeError || voiceSession.realtimeError.actionable)
-      ) {
+      if (voiceSession.realtimeEligible) {
         setManualRealtimeIntent(true);
         realtimeStartPendingRef.current = true;
         const latestAssistant =
@@ -979,6 +978,12 @@ export function useChatVoiceController(options: {
           beginBatchVoiceCapture(mode);
         });
         return;
+      }
+      if (
+        isRealtimeVoiceFlagEnabled() &&
+        (!realtimeAgentId || !activeConversationId)
+      ) {
+        voiceSession.reportRealtimeFallback("missing-identity");
       }
       beginBatchVoiceCapture(mode);
     },
