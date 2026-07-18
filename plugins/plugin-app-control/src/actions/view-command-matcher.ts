@@ -850,6 +850,13 @@ const COMPANION_ACTION_TARGETS = new Set([
 	"POSE",
 	"WAVE",
 ]);
+// State questions often contain both "view" and "focus" but ask the agent to
+// describe the renderer; treating them as commands silently navigates away.
+const VIEW_STATE_QUERY_LEAD =
+	/^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(?:what|which|name|identify|tell me|show me (?:what|which))\b/i;
+const VIEW_STATE_QUERY_SURFACE = /\b(?:views?|panes?|screens?|tabs?)\b/i;
+const VIEW_STATE_QUERY_QUALIFIER =
+	/\b(?:focus(?:ed)?|current(?:ly)?|active|visible|primary|other)\b/i;
 
 interface CompiledView {
 	viewId: string;
@@ -891,6 +898,7 @@ export function matchViewCommand(text: string | undefined): string | null {
 	const raw = (text ?? "").trim();
 	if (!raw || raw.length > 160) return null; // commands are short
 	const lower = raw.toLowerCase();
+	if (looksLikeViewStateQuery(lower)) return null;
 	if (looksLikeCompanionActionRequest(lower)) return null;
 	const variants = [lower, stripDiacritics(lower)];
 	for (const { viewId, re } of COMPILED) {
@@ -899,6 +907,14 @@ export function matchViewCommand(text: string | undefined): string | null {
 		}
 	}
 	return null;
+}
+
+function looksLikeViewStateQuery(text: string): boolean {
+	return (
+		VIEW_STATE_QUERY_LEAD.test(text) &&
+		VIEW_STATE_QUERY_SURFACE.test(text) &&
+		VIEW_STATE_QUERY_QUALIFIER.test(text)
+	);
 }
 
 function looksLikeCompanionActionRequest(text: string): boolean {

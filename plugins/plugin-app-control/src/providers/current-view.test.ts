@@ -450,6 +450,32 @@ describe("current_view state provider", () => {
 		expect(r.text).toContain("horizontal layout");
 		expect(r.text).toContain("notes is primary");
 	});
+
+	it("answers focused and visible-view questions from renderer state without inventing a Focus navigation", async () => {
+		h.getCurrentView.mockResolvedValue({
+			viewId: "notes",
+			viewLabel: "Notes",
+			viewPath: "/notes",
+			viewType: "gui",
+			views: ["notes", "simple-calendar"],
+			layout: "horizontal",
+			justSwitched: false,
+			updatedAt: "x",
+		});
+
+		const r = await currentViewProvider.get(
+			runtime,
+			msg(
+				"name the focused view and the other visible view, one short sentence",
+			),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(r.text).toContain("currently viewing the Notes view");
+		expect(r.text).toContain("Visible panes: notes, simple-calendar");
+		expect(r.text).not.toContain("Requested view target: Focus");
+		expect(r.values?.viewSwitchPending).toBeUndefined();
+	});
 });
 /**
  * Current-view provider tests for exposing active renderer state to agent context.

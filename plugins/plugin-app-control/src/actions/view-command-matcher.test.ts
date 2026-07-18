@@ -128,6 +128,32 @@ describe("matchViewCommand — precision (must NOT match)", () => {
 	}
 });
 
+describe("matchViewCommand — view-state questions are not navigation", () => {
+	const questions = [
+		"name the focused view and the other visible view, one short sentence",
+		"which view is focused?",
+		"what is the current view?",
+		"what view is currently visible?",
+		"tell me the active view",
+		"show me which view is focused",
+		"can you tell me which view is currently visible?",
+	];
+
+	for (const text of questions) {
+		it(`"${text}" → null`, () => {
+			expect(matchViewCommand(text)).toBeNull();
+		});
+	}
+
+	it.each([
+		"show the focus view",
+		"switch to focus mode",
+		"open focus",
+	])("keeps an explicit Focus navigation command: %s", (text) => {
+		expect(matchViewCommand(text)).toBe("focus");
+	});
+});
+
 describe("matchViewCommand — does not over-match very long text", () => {
 	it("a long sentence merely mentioning a noun is rejected", () => {
 		expect(
