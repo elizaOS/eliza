@@ -69,10 +69,29 @@ export const currentViewProvider: Provider = {
 			const client = createViewsClient({
 				clientId: readViewClientId(message),
 			});
-			const [current, views] = await Promise.all([
+			const [currentResult, viewsResult] = await Promise.allSettled([
 				client.getCurrentView(),
 				requestedTargetId ? client.listViews() : Promise.resolve(null),
 			]);
+			if (currentResult.status === "rejected") throw currentResult.reason;
+			const current = currentResult.value;
+			const views =
+				viewsResult.status === "fulfilled" ? viewsResult.value : null;
+			if (viewsResult.status === "rejected") {
+				// error-policy:J7 catalog diagnostics must remain observable, while the
+				// independently fetched active view and raw intent still provide useful
+				// routing context for this turn.
+				runtime.reportError("app-control.view-catalog", viewsResult.reason, {
+					messageId: message.id,
+					roomId: message.roomId,
+				});
+				logger.debug(
+					"[current_view] could not canonicalize requested view:",
+					viewsResult.reason instanceof Error
+						? viewsResult.reason.message
+						: String(viewsResult.reason),
+				);
+			}
 			let intentTargetId = requestedTargetId;
 			let intentTargetLabel = requestedTargetId
 				? humanizeViewId(requestedTargetId)
@@ -86,7 +105,12 @@ export const currentViewProvider: Provider = {
 					resolution.kind === "match" &&
 					resolution.view.id === "documents"
 				) {
-					resolution = resolveNavigationView("notes", views);
+					const notesResolution = resolveNavigationView("notes", views);
+					resolution =
+						notesResolution.kind === "match" &&
+						notesResolution.view.id === "documents"
+							? { kind: "none" }
+							: notesResolution;
 				}
 				if (resolution.kind === "match") {
 					intentTargetId = resolution.view.id;

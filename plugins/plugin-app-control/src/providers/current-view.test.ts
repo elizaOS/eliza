@@ -228,6 +228,29 @@ describe("current_view state provider", () => {
 		expect(r.values?.viewSwitchPending).toBe(true);
 	});
 
+	it("does not canonicalize standalone Notes to Documents when Notes is unavailable", async () => {
+		h.listViews.mockResolvedValue(
+			SIMPLE_VIEWS.filter((view) => view.id !== "notes"),
+		);
+		h.getCurrentView.mockResolvedValue({
+			viewId: "documents",
+			viewLabel: "Documents",
+			viewPath: "/documents",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+
+		const r = await currentViewProvider.get(runtime, msg("open notes"), {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(r.text).toContain("Requested view target: Notes");
+		expect(r.text).not.toContain("Requested view target: Documents");
+		expect(r.values?.switchingToViewId).toBe("notes");
+	});
+
 	it("recognizes a completed Notes navigation without leaving a pending target", async () => {
 		h.listViews.mockResolvedValue(SIMPLE_VIEWS);
 		h.getCurrentView.mockResolvedValue({
@@ -343,6 +366,34 @@ describe("current_view state provider", () => {
 		expect(r.text).toBe("");
 		expect(reportError).toHaveBeenCalledWith(
 			"app-control.current-view",
+			error,
+			{ messageId: message.id, roomId: message.roomId },
+		);
+	});
+
+	it("keeps current and raw target context when only the view catalog is unavailable", async () => {
+		const error = new Error("catalog unavailable");
+		h.listViews.mockRejectedValue(error);
+		h.getCurrentView.mockResolvedValue({
+			viewId: "settings",
+			viewLabel: "Settings",
+			viewPath: "/settings",
+			viewType: "gui",
+			updatedAt: "x",
+		});
+		const message = msg("open wallet");
+
+		const r = await currentViewProvider.get(runtime, message, {
+			values: {},
+			data: {},
+			text: "",
+		});
+
+		expect(r.text).toContain("Requested view target: Wallet");
+		expect(r.text).toContain("still on Settings");
+		expect(r.values?.switchingToViewId).toBe("wallet");
+		expect(reportError).toHaveBeenCalledWith(
+			"app-control.view-catalog",
 			error,
 			{ messageId: message.id, roomId: message.roomId },
 		);
