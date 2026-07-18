@@ -358,7 +358,8 @@ export function useRealtimeVoiceSession(
     [],
   );
 
-  const hasIds = Boolean(normalizedAgentId) && Boolean(normalizedConversationId);
+  const hasIds =
+    Boolean(normalizedAgentId) && Boolean(normalizedConversationId);
   const available = flagEnabled && hasIds && !featureDisabled;
 
   const applyServerEventToTranscript = useCallback(
