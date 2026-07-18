@@ -291,6 +291,10 @@ describe("shared agent messages/stream", () => {
       organizationId: ORG,
       userId: "user-voice",
     });
+    await fetchImpl.prewarm();
+    expect(findByIdAndOrg).toHaveBeenCalledTimes(1);
+    expect(bridgeStream).not.toHaveBeenCalled();
+
     const res = await fetchImpl(
       `https://api-staging.elizacloud.ai/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
       {

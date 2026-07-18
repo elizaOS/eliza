@@ -109,6 +109,8 @@ export interface VoiceSessionConfig {
   elizaAuthorization: string;
   elizaModel: string;
   fetchImpl?: typeof fetch;
+  /** Session-start DB/tenancy warmup, injected only by the live Worker route. */
+  prewarmElizaContext?: () => Promise<void>;
 
   // Metering (SEC-15). Server-derived only.
   usageStore: VoiceUsageStore;
@@ -249,6 +251,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     }, msUntilExp);
 
     this.state = "listening";
+    // Warm immutable tenancy/DB context while the user is beginning to speak,
+    // instead of serializing the first Hyperdrive lookup after stt_final. This
+    // is read-only and best-effort; the turn still performs normal validation
+    // if warmup fails or does not finish in time.
+    if (this.config.prewarmElizaContext) {
+      void this.config.prewarmElizaContext().catch(() => undefined);
+    }
     // The session-level trace span id is stable until the first turn mints its own.
     const sessionTrace = this.mintTraceId("session");
     this.currentTraceId = sessionTrace;
