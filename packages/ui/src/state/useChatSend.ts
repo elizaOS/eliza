@@ -263,6 +263,14 @@ export function isRetryableSendError(err: unknown): boolean {
  * is NOT a connectivity problem — there is no reconnect coming, so waiting is
  * pointless; those keep the existing immediate manual-resend affordance.
  */
+export function resolveAbortRoomId(
+  conversationId: string,
+  knownRoomId: string | null | undefined,
+  cachedRoomId: string | null | undefined,
+): string {
+  return knownRoomId?.trim() || cachedRoomId?.trim() || conversationId;
+}
+
 export function shouldAutoRetryOnReconnect(err: unknown): boolean {
   if (!isRetryableSendError(err)) return false;
   const kind = (err as { kind?: unknown }).kind;
@@ -903,28 +911,6 @@ export function useChatSend(deps: UseChatSendDeps) {
     return restored;
   }, [setActionNotice, setChatInput]);
 
-  const resolveConversationRoomId = useCallback(
-    async (
-      conversationId: string,
-      knownRoomId: string | null | undefined,
-    ): Promise<string | null> => {
-      if (knownRoomId?.trim()) return knownRoomId.trim();
-
-      const cachedRoomId = conversationsRef.current
-        .find((conversation) => conversation.id === conversationId)
-        ?.roomId?.trim();
-      if (cachedRoomId) return cachedRoomId;
-
-      const refreshed = await loadConversations();
-      return (
-        refreshed
-          ?.find((conversation) => conversation.id === conversationId)
-          ?.roomId?.trim() ?? null
-      );
-    },
-    [conversationsRef, loadConversations],
-  );
-
   const interruptActiveChatPipeline = useCallback((): string => {
     const restoredQueuedText = resolveQueuedChatSends();
     const activeTurn = activeChatTurnRef.current;
@@ -1454,7 +1440,13 @@ export function useChatSend(deps: UseChatSendDeps) {
       });
 
       const activeConv = conversationsRef.current.find((c) => c.id === convId);
-      convRoomId = await resolveConversationRoomId(convId, convRoomId);
+      // The room id is used only by the optional abort side-channel. Never hold
+      // the primary message POST behind a conversation-list refresh: on Cloud
+      // that extra edge/DB round trip can delay request dispatch by 3-4s even
+      // though the optimistic bubble already painted. A known room id wins;
+      // conversation id is the protocol fallback (and is canonical for shared
+      // runtime conversations).
+      convRoomId = resolveAbortRoomId(convId, convRoomId, activeConv?.roomId);
       if (
         activeConv &&
         (!activeConv.title ||
@@ -2015,7 +2007,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       appendLocalCommandTurn,
       loadConversationMessages,
       loadConversations,
-      resolveConversationRoomId,
       tryHandlePrefixedChatCommand,
       activeConversationIdRef,
       chatAbortRef,
@@ -2291,7 +2282,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         const activeConv = conversationsRef.current.find(
           (c) => c.id === convId,
         );
-        convRoomId = await resolveConversationRoomId(convId, convRoomId);
+        // Do not block action/inbox sends on a list refresh solely to resolve
+        // the abort side-channel room id. See the interactive send path above.
+        convRoomId = resolveAbortRoomId(convId, convRoomId, activeConv?.roomId);
         if (
           activeConv &&
           (!activeConv.title ||

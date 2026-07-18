@@ -32,6 +32,7 @@ import {
   buildSendFailureNotice,
   getSendValidationFailureMessage,
   isRetryableSendError,
+  resolveAbortRoomId,
   UNDELIVERED_TURN_NOTICE,
   type UseChatSendDeps,
   useChatSend,
@@ -2612,5 +2613,19 @@ describe("useChatSend manual resend still works after auto-retry exhausts", () =
     const sentText =
       mocks.client.sendConversationMessageStream.mock.calls[0][1];
     expect(sentText).toBe("hello");
+  });
+});
+
+describe("resolveAbortRoomId", () => {
+  it("resolves synchronously without requiring a conversation refresh", () => {
+    expect(resolveAbortRoomId("conversation-1", " room-known ", "room-cached")).toBe(
+      "room-known",
+    );
+    expect(resolveAbortRoomId("conversation-1", null, " room-cached ")).toBe(
+      "room-cached",
+    );
+    expect(resolveAbortRoomId("conversation-1", null, null)).toBe(
+      "conversation-1",
+    );
   });
 });
