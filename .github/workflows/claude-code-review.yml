@@ -37,8 +37,12 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Run Claude Code Review
+      - name: Run Claude Code Review (advisory)
         id: claude-review
+        # LLM availability must not block deterministic CI or the merge queue.
+        # A successful run still posts review comments; provider failures are
+        # surfaced in this step without failing the advisory job.
+        continue-on-error: true
         uses: anthropics/claude-code-action@12531344451323133b0493233c759991ac61da12
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -89,19 +93,3 @@ jobs:
           # Claude CLI arguments for model and allowed tools
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh api *)"
-
-      # claude-code-action can return exit 0 after posting its own internal-error
-      # comment. Turn that known false-green signal into a failed advisory job.
-      - name: Reject vacuous Claude review success
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          run_started_at=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" --jq .run_started_at)
-          errors=$(gh api --paginate "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.created_at >= \"${run_started_at}\" and .user.login == \"claude\" and (.body | contains(\"Claude encountered an error\"))) | .html_url")
-          if [ -n "$errors" ]; then
-            echo "Claude review posted an internal-error verdict:"
-            printf '%s\n' "$errors"
-            exit 1
-          fi
