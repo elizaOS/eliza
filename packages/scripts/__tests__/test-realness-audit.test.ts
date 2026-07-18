@@ -85,6 +85,31 @@ describe("test-realness-audit", () => {
     expect(failures).toContain("xSkippedTest must stay at 0, found 1");
   });
 
+  test("submodule tests do not affect repository gates", () => {
+    const root = makeRepo();
+    write(
+      root,
+      "plugins/sample/vendor/upstream/.git",
+      "gitdir: ../../../../../.git/modules/upstream\n",
+    );
+    write(
+      root,
+      "plugins/sample/vendor/upstream/phantom.test.ts",
+      `test${todoSuffix}('upstream todo', () => {});`,
+    );
+    write(
+      root,
+      "packages/sample/src/vendor/owned.test.ts",
+      "test('owned vendor integration', () => {});",
+    );
+
+    const result = audit.scanTestRealness({ repoRoot: root });
+    expect(result.summary.byCategory.todoTest).toBe(0);
+    expect(result.files).toEqual([
+      path.join(root, "packages/sample/src/vendor/owned.test.ts"),
+    ]);
+  });
+
   test("report-only categories are inventoried but never fail the gate", () => {
     const root = makeRepo();
     write(
