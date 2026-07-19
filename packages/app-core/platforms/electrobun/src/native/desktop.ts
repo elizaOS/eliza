@@ -303,77 +303,6 @@ const WINDOWS_IDLE_POWERSHELL_SCRIPT = [
   "[int][System.Environment]::TickCount - [int]$info.dwTime",
 ].join(" ");
 
-export interface DesktopNotificationTestRecord {
-  id: string;
-  title: string;
-  body: string | undefined;
-  subtitle: string | undefined;
-  silent: boolean | undefined;
-  recordedAt: string;
-}
-
-const desktopNotificationTestRecords: DesktopNotificationTestRecord[] = [];
-let notificationTestRecorderInstalled = false;
-let nextRecordedNotificationId = 0;
-
-function shouldRecordDesktopNotificationsForTests(): boolean {
-  return process.env.ELIZA_DESKTOP_TEST_BRIDGE_ENABLED === "1";
-}
-
-function recordDesktopNotificationForTests(
-  payload: Omit<DesktopNotificationTestRecord, "id" | "recordedAt">,
-): void {
-  if (!shouldRecordDesktopNotificationsForTests()) return;
-  desktopNotificationTestRecords.push({
-    id: `notification_${++nextRecordedNotificationId}`,
-    ...payload,
-    recordedAt: new Date().toISOString(),
-  });
-  if (desktopNotificationTestRecords.length > 50) {
-    desktopNotificationTestRecords.splice(
-      0,
-      desktopNotificationTestRecords.length - 50,
-    );
-  }
-}
-
-export function installDesktopNotificationTestRecorder(): void {
-  if (!shouldRecordDesktopNotificationsForTests()) return;
-  if (notificationTestRecorderInstalled) return;
-  notificationTestRecorderInstalled = true;
-
-  const originalShowNotification = Utils.showNotification.bind(Utils);
-  const recordableShowNotification = ((payload: {
-    title: string;
-    body?: string;
-    subtitle?: string;
-    silent?: boolean;
-  }) => {
-    originalShowNotification(payload);
-    recordDesktopNotificationForTests({
-      title: payload.title,
-      body: payload.body,
-      subtitle: payload.subtitle,
-      silent: payload.silent,
-    });
-  }) as typeof Utils.showNotification;
-
-  Object.defineProperty(Utils, "showNotification", {
-    configurable: true,
-    value: recordableShowNotification,
-  });
-}
-
-export function readDesktopNotificationTestRecords(): DesktopNotificationTestRecord[] {
-  installDesktopNotificationTestRecorder();
-  return desktopNotificationTestRecords.map((record) => ({ ...record }));
-}
-
-export function clearDesktopNotificationTestRecords(): void {
-  installDesktopNotificationTestRecorder();
-  desktopNotificationTestRecords.length = 0;
-}
-
 // ============================================================================
 // DesktopManager
 // ============================================================================
@@ -1587,11 +1516,11 @@ X-GNOME-Autostart-enabled=true
       silent: options.silent,
     };
 
-    // Electrobun Utils.showNotification — fire-and-forget, no event callbacks.
-    // The test bridge records by wrapping Utils.showNotification itself, so the
-    // packaged e2e fails if this native OS-notification call is removed or
-    // renamed.
-    installDesktopNotificationTestRecorder();
+    // Electrobun Utils.showNotification is fire-and-forget with no callbacks.
+    // Record the canonical diagnostic immediately after the native call. The
+    // authenticated packaged test bridge reads this same DesktopManager state,
+    // so it observes the actual native boundary without monkey-patching the
+    // Electrobun Utils export.
     Utils.showNotification(payload);
 
     this.notificationDiagnostics.push({
