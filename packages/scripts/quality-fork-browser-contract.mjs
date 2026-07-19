@@ -49,8 +49,8 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     `${WORKFLOW_PATH}: browser install must not use --with-deps on self-hosted runners`,
   );
   assert(
-    /^\s*run:\s*bun run test:e2e\s*$/m.test(browserTest),
-    `${WORKFLOW_PATH}: the real homepage browser test must remain enabled`,
+    /^\s*run:\s*bun run test:e2e(?: --workers=[1-9]\d*)?\s*$/m.test(browserTest),
+    `${WORKFLOW_PATH}: the real homepage browser test must remain enabled; only a positive worker cap is allowed`,
   );
   assert(
     workflow.indexOf(install) < workflow.indexOf(browserTest),

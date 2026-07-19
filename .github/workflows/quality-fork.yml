@@ -142,11 +142,11 @@ jobs:
     name: Build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # Fresh attempt #16657 spent 2m44s in setup, 13m45s on the complete
-    # 175-task build, then entered the real 48-test Playwright suite at 16m49s.
-    # Remove the stale Bun-cache fallback below and allow a bounded 30m cold
-    # window for the already-started fail-closed browser suite to complete.
-    timeout-minutes: 30
+    # Fresh attempt 2 completed the 175-task cold build in 16m05s after setup,
+    # then exposed CPU contention in the heavy visual suite: six Playwright
+    # workers produced 22+ retries and 1-4 minute cases. Cap the same complete
+    # 48-test suite at two workers below and retain a finite 40m cold ceiling.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -179,7 +179,10 @@ jobs:
 
       - name: Test homepage downloads
         working-directory: packages/homepage
-        run: bun run test:e2e
+        # The provisioned runner reported six default workers. Heavy animated
+        # visual routes then contended, timed out, and multiplied into retries.
+        # Two workers preserve every test while bounding per-test CPU pressure.
+        run: bun run test:e2e --workers=2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

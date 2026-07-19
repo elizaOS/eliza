@@ -45,10 +45,14 @@ The stale broad Bun-cache restore was measurable negative value: each lane trans
 
 - adds a default-on `cache-bun-install` setup input, preserving existing callers;
 - disables that global Bun-cache transfer only for the two long Quality cold lanes while retaining exact dependency installation, the full Type Check graph, and the real Playwright suite;
-- sets measured finite cold ceilings of **25 minutes** for Type Check and **30 minutes** for Build, rather than filtering work or weakening failure behavior;
-- extends the cache contract to pin the opt-out, full graph, real E2E, and both bounded ceilings.
+- initially set measured finite cold ceilings of **25 minutes** for Type Check and **30 minutes** for Build, rather than filtering work or weakening failure behavior;
+- extends the cache contract to pin the opt-out, full graph, real E2E, and bounded ceilings.
 
-The corrective edit changes `.github/actions/setup-bun-workspace/action.yml`, `.github/workflows/quality-fork.yml`, and the Turbo cache contract beyond the three source snapshots. No product code, typecheck filtering, E2E skipping, or advisory bypass was added.
+Fresh synchronize attempt 2 used a new deterministic Turbo key, so it was another Turbo-cold run rather than a warmed retry. Type Check completed the full graph successfully in **17m05s**. Build setup completed in 59s and all 175 cold build tasks completed in **16m05s**, then the real 48-test homepage suite ran for 12m57s until the 30-minute job ceiling. Its partial log identified the remaining structural issue: Playwright selected six workers for heavy animated/visual pages, causing CPU contention, 1-4 minute cases, and at least 22 retry executions. The suite had reached execution 70 and was still active, not skipped, when canceled.
+
+The follow-up caps Playwright at **two workers** while preserving all 48 tests and fail-closed retries. This reduces per-page CPU contention rather than filtering the suite. The Build ceiling is adjusted to a finite **40 minutes**, providing 23 minutes after the measured cold build for the complete two-worker E2E. The contract pins the two-worker command and 40-minute ceiling. This workflow edit changes the deterministic Turbo key again, requiring a third fresh cold synchronize proof.
+
+The corrective edits change `.github/actions/setup-bun-workspace/action.yml`, `.github/workflows/quality-fork.yml`, and the Turbo cache contract beyond the three source snapshots. No product code, typecheck filtering, E2E skipping, or advisory bypass was added.
 
 ## Deterministic validation
 
@@ -69,7 +73,7 @@ Manual merge review should require all of the following on this integration PR:
 - legacy `claude-review` and `security` stub checks succeed;
 - Security Advisory Gate and `gitleaks` succeed fail-closed;
 - Quality Type Check runs the full graph and completes under its measured 25-minute cold ceiling;
-- Build completes all 175 build tasks, installs Chromium without sudo, and completes the real 48-test homepage E2E under its measured 30-minute cold ceiling;
+- Build completes all 175 build tasks, installs Chromium without sudo, and completes the real 48-test homepage E2E under its measured 40-minute cold ceiling;
 - evidence, coverage, lint, and build gates are green.
 
 This receipt authorizes no auto-merge, admin merge, ruleset bypass, or self-merge.
