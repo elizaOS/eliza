@@ -3060,6 +3060,23 @@ export class OrchestratorTaskService extends Service {
       return undefined;
     }
 
+    // Automatic completion already verifies and stores these exact remote facts
+    // before invoking the model judge. Reuse that verdict when the claimed PR
+    // and file set are unchanged instead of issuing a second GitHub request in
+    // the same validation pass. A manual retry with different evidence or files
+    // misses this identity check and is verified afresh.
+    const recorded = _readGroundTruthVerdict(doc.task.metadata);
+    const claimedPr = extractPullRequestLink(completion)?.url;
+    const normalizedClaimedFiles = [...new Set(claimedFiles)].sort();
+    if (
+      recorded &&
+      recorded.pr.url === claimedPr &&
+      JSON.stringify(recorded.files.claimed) ===
+        JSON.stringify(normalizedClaimedFiles)
+    ) {
+      return recorded;
+    }
+
     const workspace = getCodingWorkspaceService(this.runtime);
     const verdict = await verifyGroundTruth(
       {
