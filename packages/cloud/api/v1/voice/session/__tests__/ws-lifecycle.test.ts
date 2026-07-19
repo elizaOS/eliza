@@ -25,7 +25,10 @@ mock.module("@elizaos/core", () => ({
 
 import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/services/cartesia-sonic-tts";
 import { InMemoryVoiceUsageStore } from "../../../../../shared/src/lib/services/voice-usage-meter";
-import { mintVoiceSessionToken } from "../../../../../shared/src/lib/voice-session/jwt";
+import {
+  mintVoiceSessionToken,
+  VoiceSessionTokenError,
+} from "../../../../../shared/src/lib/voice-session/jwt";
 import type { ServerControlFrame } from "../../../../../shared/src/lib/voice-session/protocol";
 import {
   __resetVoiceSessionRegistryForTests,
@@ -1312,5 +1315,57 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlFrames.find((f) => f.t === "error")?.code).toBe(
       "claim_mismatch",
     );
+  });
+
+  test("store-down hello surfaces a retryable store_unavailable error, close 1013 (#16663)", async () => {
+    const client = new FakeClientSocket();
+    const minted = await mintVoiceSessionToken(CLAIMS);
+    const usageStore = new InMemoryVoiceUsageStore();
+    attachVoiceWsHandler(client, {
+      requestedSessionId: CLAIMS.sessionId,
+      verifyToken: async () => {
+        throw new VoiceSessionTokenError(
+          "voice-session revocation store unavailable: redis down",
+          "store_unavailable",
+        );
+      },
+      buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
+        new VoiceSession({
+          sessionId: claims.sessionId,
+          jti,
+          organizationId: claims.organizationId,
+          userId: claims.userId,
+          agentId: claims.agentId,
+          conversationId: claims.conversationId,
+          tokenExpSeconds,
+          deepgramApiKey: "dg",
+          deepgramWebSocketFactory: () => new FakeFluxSocket(),
+          cartesiaApiKey: "ct",
+          cartesiaVoiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+          cartesiaWebSocketFactory: () => new FakeCartesiaSocket(),
+          elizaEndpoint: "http://x",
+          elizaAuthorization: "Bearer x",
+          elizaModel: "gemma-4-31b",
+          usageStore,
+          usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
+          downlink,
+        }),
+    });
+    client.clientSend(
+      JSON.stringify({
+        t: "hello",
+        token: minted.token,
+        protocol: 1,
+        uplinkCodec: "pcm16",
+        downlinkCodec: "pcm16",
+        sampleRate: 16000,
+      }),
+    );
+    await flush();
+    // Infra outage ≠ bad token: the client must see a retryable error and the
+    // 1013 (try again later) close code, not the terminal 1008 shape.
+    const err = client.controlFrames.find((f) => f.t === "error");
+    expect(err).toMatchObject({ code: "store_unavailable", retryable: true });
+    expect(client.closedWith?.code).toBe(1013);
   });
 });
