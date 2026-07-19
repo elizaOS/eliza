@@ -33,7 +33,7 @@ const previousPublicStatus =
   process.env.ELIZA_ACCOUNT_POOL_PUBLIC_STATUS_ENABLED;
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  getPublicAccountPoolStatus.mockReset();
   process.env.ELIZA_ACCOUNT_POOL_PUBLIC_STATUS_ENABLED = "1";
 });
 
