@@ -30,6 +30,7 @@ const SETTINGS_ROUTE = "/settings";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";
 const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
+const NAVIGATE_VIEW_EVENT = "eliza:navigate:view";
 const NOTIFICATION_TEST_BRIDGE_SYMBOL = "elizaos.ui.notification-store-tests";
 
 test.describe.configure({ mode: "serial" });
@@ -85,13 +86,15 @@ function getRouteNavigationScript(route: string): string {
       `const targetRoute = ${JSON.stringify(route)};`,
       `const settingsSection = ${JSON.stringify(settingsSection)};`,
       `const readCurrentRoute = () => ${getCurrentRouteExpression()};`,
-      `window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
-      `  detail: { section: settingsSection },`,
-      `}));`,
       `const targetHash = "#" + settingsSection;`,
-      `if (window.location.hash !== targetHash) {`,
-      `  window.history.replaceState(null, "", targetHash);`,
-      `  window.dispatchEvent(new HashChangeEvent("hashchange"));`,
+      `if (readCurrentRoute() !== ${JSON.stringify(SETTINGS_ROUTE)} || window.location.hash !== targetHash) {`,
+      `  window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
+      `    detail: { section: settingsSection },`,
+      `  }));`,
+      `  if (window.location.hash !== targetHash) {`,
+      `    window.history.replaceState(null, "", targetHash);`,
+      `    window.dispatchEvent(new HashChangeEvent("hashchange"));`,
+      `  }`,
       `}`,
       `const currentRoute = readCurrentRoute();`,
     ].join("\n");
@@ -100,14 +103,10 @@ function getRouteNavigationScript(route: string): string {
   return [
     `const targetRoute = ${JSON.stringify(route)};`,
     `const readCurrentRoute = () => ${getCurrentRouteExpression()};`,
-    `if (window.location.protocol === "file:") {`,
-    `  const targetHash = "#" + targetRoute;`,
-    `  if (window.location.hash !== targetHash) {`,
-    `    window.location.hash = targetHash;`,
-    `  }`,
-    `} else if (window.location.pathname !== targetRoute) {`,
-    `  window.history.pushState(null, "", targetRoute);`,
-    `  window.dispatchEvent(new Event("popstate"));`,
+    `if (readCurrentRoute() !== targetRoute) {`,
+    `  window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_VIEW_EVENT)}, {`,
+    `    detail: { viewPath: targetRoute },`,
+    `  }));`,
     `}`,
     `const currentRoute = readCurrentRoute();`,
   ].join("\n");
