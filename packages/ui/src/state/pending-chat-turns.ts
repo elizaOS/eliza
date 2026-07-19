@@ -62,6 +62,7 @@ export function persistPendingChatTurn(
   } catch {
     // error-policy:J3 storage can be unavailable; the live send still owns the
     // turn, and the receipt is only a reload recovery aid.
+    return complete;
   }
   return complete;
 }
@@ -76,6 +77,7 @@ export function clearPendingChatTurn(
   } catch {
     // error-policy:J3 storage can be unavailable; an uncleared receipt expires
     // into a draft restore rather than fabricating chat state.
+    return;
   }
 }
 
