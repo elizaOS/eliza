@@ -98,17 +98,14 @@ jobs:
       - name: Run format check
         run: bun run format:check
 
-  typecheck-shards:
-    name: Type Check (${{ matrix.shard }}/${{ strategy.job-total }})
+  typecheck:
+    name: Type Check
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      # Setup consumes most of the cold self-hosted budget. Four deterministic
-      # package-name slices leave enough time for each complete Turbo subgraph.
-      matrix:
-        shard: [0, 1, 2, 3]
+    # Cold self-hosted runs measured 15m22s at the old ceiling while warm
+    # repo-wide typecheck completed in 12m41s. The cache writer repair above
+    # removes the steady-state penalty; 18m is a bounded first-run allowance.
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -136,20 +133,8 @@ jobs:
         working-directory: packages/core
         run: bun run build
 
-      - name: Run typecheck shard
-        run: node packages/scripts/run-typecheck-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }}
-
-  typecheck:
-    name: Type Check
-    if: always() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true))
-    needs: typecheck-shards
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    steps:
-      - name: Require every typecheck shard
-        env:
-          SHARD_RESULT: ${{ needs.typecheck-shards.result }}
-        run: test "$SHARD_RESULT" = success
+      - name: Run typecheck
+        run: bun run typecheck
 
   build:
     name: Build
