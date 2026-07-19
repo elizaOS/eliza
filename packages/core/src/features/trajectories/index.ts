@@ -445,11 +445,6 @@ export * from "./art-format";
 // DATA EXPORT
 // ==========================================
 export * from "./export";
-// ==========================================
-// GAME-KNOWLEDGE REWARDS
-// ==========================================
-export * from "./game-rewards";
-// ==========================================
 // ADVANCED: Manual Instrumentation
 // ==========================================
 export * from "./integration";

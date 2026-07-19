@@ -1,11 +1,11 @@
 /**
  * Runtime wiring for the ScheduledTask spine.
  *
- * Bridges the runner's typed dependencies to the live `IAgentRuntime` /
- * `LifeOpsRepository`: DB-backed task/log stores, the production dispatcher,
- * owner facts, global pause, the LifeOps subject store, and the runtime
- * event → task-fire bridge. The activity-bus view keeps a warn-once
- * diagnostic stand-in until `registerActivitySignalBus` runs in plugin init.
+ * Bridges the runner's typed dependencies to the live `IAgentRuntime`: the
+ * scheduling-owned SQL task/log stores, production dispatcher, owner facts,
+ * global pause, the LifeOps subject store, and the runtime event → task-fire
+ * bridge. The activity-bus view keeps a warn-once diagnostic stand-in until
+ * `registerActivitySignalBus` runs in plugin init.
  */
 
 import crypto from "node:crypto";
@@ -23,12 +23,10 @@ import type {
   ActivitySignalBusView,
   GlobalPauseView,
   OwnerFactsView,
-  ScheduledTask,
   ScheduledTaskDispatcher,
   ScheduledTaskDispatchRecord,
-  ScheduledTaskFilter,
-  ScheduledTaskLogEntry,
   ScheduledTaskLogStore,
+  ScheduledTaskStore,
   SubjectStoreView,
   TaskExecutionProfile,
 } from "@elizaos/plugin-scheduling";
@@ -38,6 +36,8 @@ import {
   createConsolidationRegistry,
   createEscalationLadderRegistry,
   createScheduledTaskRunner,
+  createSchedulingSqlScheduledTaskLogStore,
+  createSchedulingSqlScheduledTaskStore,
   createTaskGateRegistry,
   getAnchorRegistry,
   getScheduledTaskRunner,
@@ -54,7 +54,6 @@ import {
   renderScheduledDispatchTitle,
   type ScheduledTaskRunnerDepsBundle,
   type ScheduledTaskRunnerHandle,
-  type ScheduledTaskStore,
 } from "@elizaos/plugin-scheduling";
 import { assembleMorningBrief } from "../../default-packs/morning-brief.js";
 import { getChannelRegistry } from "../channels/index.js";
@@ -121,76 +120,17 @@ function makeRuntimeSubjectStoreView(
 }
 
 /**
- * Bind the in-memory facade to the LifeOpsRepository SQL methods. Each
- * call routes through the repository so the runner is DB-backed but
- * agnostic about the storage shape.
+ * Bind PA's runner deps to the scheduling-owned SQL store. PA still injects
+ * owner/channel/subject dependencies, but row ownership now belongs to
+ * `@elizaos/plugin-scheduling`.
  */
 function makeRepositoryBackedStores(
   runtime: IAgentRuntime,
   agentId: string,
 ): RepositoryBackedStores {
-  const repo = new LifeOpsRepository(runtime);
   return {
-    store: {
-      async upsert(task: ScheduledTask, options) {
-        await repo.upsertScheduledTask(agentId, task, {
-          nextFireAtIso: options?.nextFireAtIso ?? null,
-        });
-      },
-      async claimForFire({ taskId, firedAtIso, expected }) {
-        return repo.claimScheduledTaskForFire(agentId, {
-          taskId,
-          firedAtIso,
-          ...(expected ? { expected } : {}),
-        });
-      },
-      async get(taskId: string) {
-        return repo.getScheduledTask(agentId, taskId);
-      },
-      async findByIdempotencyKey(key: string) {
-        return repo.getScheduledTaskByIdempotencyKey(agentId, key);
-      },
-      async list(filter?: ScheduledTaskFilter) {
-        const status = filter?.status;
-        const statusList = Array.isArray(status)
-          ? status
-          : status
-            ? [status]
-            : undefined;
-        return repo.listScheduledTasks(agentId, {
-          kind: filter?.kind,
-          status: statusList,
-          subjectKind: filter?.subject?.kind,
-          subjectId: filter?.subject?.id,
-          source: filter?.source,
-          ownerVisibleOnly: filter?.ownerVisibleOnly,
-        });
-      },
-      async delete(taskId: string) {
-        await repo.deleteScheduledTask(agentId, taskId);
-      },
-    },
-    logStore: {
-      async append(entry: ScheduledTaskLogEntry) {
-        await repo.appendScheduledTaskLog(entry);
-      },
-      async list(args) {
-        return repo.listScheduledTaskLog({
-          agentId,
-          taskId: args.taskId,
-          sinceIso: args.sinceIso,
-          untilIso: args.untilIso,
-          excludeRollups: args.excludeRollups,
-          limit: args.limit,
-        });
-      },
-      async rollupOlderThan(args) {
-        return repo.rollupScheduledTaskLog({
-          agentId,
-          olderThanIso: args.olderThanIso,
-        });
-      },
-    },
+    store: createSchedulingSqlScheduledTaskStore({ runtime, agentId }),
+    logStore: createSchedulingSqlScheduledTaskLogStore({ runtime, agentId }),
   };
 }
 
@@ -884,9 +824,9 @@ export function createRuntimeScheduledTaskRunner(
 /**
  * Register PA's production deps as the runner host's injected deps provider on
  * `@elizaos/plugin-scheduling`. Called during PA `init`. First-wins: the spine
- * keeps this provider once set, so PA rows land in `app_lifeops` via the
- * injected repository-backed store even though the runner service itself lives
- * in `@elizaos/plugin-scheduling`.
+ * keeps this provider once set, so PA dispatch/owner deps wrap the
+ * scheduling-owned SQL store while the runner service itself lives in
+ * `@elizaos/plugin-scheduling`.
  */
 export function registerLifeOpsScheduledTaskRunnerDeps(
   runtime: IAgentRuntime,

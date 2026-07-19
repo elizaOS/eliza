@@ -71,6 +71,7 @@ import {
   elizaCodingContainerImageAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
+import { headscaleIntegration } from "./headscale-integration";
 import { applyManagedAgentInferenceEnvDefaults } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { JOB_TYPES } from "./provisioning-job-types";
@@ -86,7 +87,9 @@ import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
   runSharedAgentTurn,
+  runSharedAgentTurnStream,
   type SharedAgentCharacter,
+  type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
@@ -2449,15 +2452,23 @@ export class ElizaSandboxService {
     turn: RunSharedAgentTurnResult,
     estimatedInputTokens: number,
   ): AIUsage {
-    const inputTokens = turn.usage?.inputTokens ?? turn.usage?.promptTokens ?? 0;
-    const outputTokens = turn.usage?.outputTokens ?? turn.usage?.completionTokens ?? 0;
-    const totalTokens = turn.usage?.totalTokens ?? inputTokens + outputTokens;
+    return this.sharedRuntimeBillingUsageForReply(turn.reply, turn.usage, estimatedInputTokens);
+  }
+
+  private sharedRuntimeBillingUsageForReply(
+    reply: string,
+    usage: SharedAgentTurnUsage | undefined,
+    estimatedInputTokens: number,
+  ): AIUsage {
+    const inputTokens = usage?.inputTokens ?? usage?.promptTokens ?? 0;
+    const outputTokens = usage?.outputTokens ?? usage?.completionTokens ?? 0;
+    const totalTokens = usage?.totalTokens ?? inputTokens + outputTokens;
     if (inputTokens > 0 || outputTokens > 0 || totalTokens > 0) {
-      return turn.usage ?? {};
+      return usage ?? {};
     }
     return {
       inputTokens: estimatedInputTokens,
-      outputTokens: estimateInputTokens([{ content: turn.reply }]),
+      outputTokens: estimateInputTokens([{ content: reply }]),
     };
   }
 
@@ -2655,6 +2666,207 @@ export class ElizaSandboxService {
       // Refund the upfront hold on any post-reserve failure, then rethrow.
       await settleReservation(0);
       throw settleError;
+    }
+  }
+
+  private async bridgeSharedMessageStream(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<Response> {
+    const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
+    const text = typeof params.text === "string" ? params.text : "";
+    if (!text.trim()) {
+      return this.createBridgeSseErrorResponse("message.send requires params.text");
+    }
+
+    const channelId = this.stableBridgeChannelId(rec.id, params);
+    const [character, history] = await Promise.all([
+      this.buildSharedRuntimeCharacter(rec),
+      this.loadSharedRuntimeHistory(rec.id, channelId),
+    ]);
+    const billingModel = resolveSharedAgentTurnModel(character.model);
+    const estimatedInputTokens = billingModel
+      ? estimateInputTokens(this.sharedRuntimeBillingPrompt(character, history, text))
+      : 0;
+    const idempotencyKey = `shared-runtime:${rec.id}:${channelId}:${crypto.randomUUID()}`;
+    const requestId = `shared-runtime-${crypto.randomUUID()}`;
+    const billingContext: BillingContext | null = billingModel
+      ? {
+          organizationId: rec.organization_id,
+          userId: rec.user_id,
+          model: billingModel,
+          requestId,
+          description: `Shared runtime turn: ${character.name}`,
+          metadata: {
+            agentId: rec.id,
+            channelId,
+            executionTier: rec.execution_tier,
+            idempotencyKey,
+            prompt: text,
+            runtime: "shared",
+          },
+        }
+      : null;
+    let reservation: CreditReservation | null = null;
+    let reservationSettled = false;
+    const settleReservation = async (
+      actualCost: number,
+    ): Promise<CreditReconciliationResult | null> => {
+      if (!reservation || reservationSettled) return null;
+      reservationSettled = true;
+      return (await reservation.reconcile(actualCost)) ?? null;
+    };
+    if (billingContext) {
+      try {
+        reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+      } catch (error) {
+        // error-policy:J1 boundary translation — no SSE bytes exist before credit
+        // reservation, so the HTTP route can still return the canonical 402.
+        if (error instanceof InsufficientCreditsError) {
+          throw new InsufficientCreditsApiError(
+            `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
+          );
+        }
+        throw error;
+      }
+    }
+
+    try {
+      const turn = await runSharedAgentTurnStream({
+        character,
+        history,
+        message: text,
+      });
+      if (turn.degraded) {
+        await settleReservation(0);
+        return this.createBridgeSseTextResponse(turn.reply ?? "");
+      }
+      const parts = turn.parts;
+      if (!parts) {
+        await settleReservation(0);
+        return this.createBridgeSseErrorResponse("Shared runtime stream did not start");
+      }
+
+      const messageId = crypto.randomUUID();
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start: async (controller) => {
+          let reply = "";
+          let finished = false;
+          try {
+            for await (const part of parts) {
+              if (part.type === "text-delta") {
+                reply += part.text;
+                controller.enqueue(
+                  encoder.encode(
+                    `event: chunk\ndata: ${JSON.stringify({
+                      messageId,
+                      chunk: part.text,
+                      text: part.text,
+                      fullText: reply,
+                      timestamp: Date.now(),
+                    })}\n\n`,
+                  ),
+                );
+                continue;
+              }
+
+              finished = true;
+              const finalReply = part.text.trim() || reply.trim() || "…";
+              const sentAt = Date.now();
+              const nextHistory: SharedTurnMessage[] = [
+                ...history,
+                { role: "user", content: text.trim(), createdAt: sentAt },
+                { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
+              ];
+              await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
+              if (billingContext) {
+                try {
+                  const billing = await billUsage(
+                    billingContext,
+                    this.sharedRuntimeBillingUsageForReply(
+                      finalReply,
+                      part.usage,
+                      estimatedInputTokens,
+                    ),
+                  );
+                  const settlement = await settleReservation(billing.totalCost);
+                  const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+                    type: "chat",
+                    content: finalReply,
+                    prompt: text,
+                  });
+                  if (usageRecord) {
+                    await aiBillingRecordsService
+                      .record({
+                        context: billingContext,
+                        billing,
+                        usageRecord,
+                        idempotencyKey,
+                        reconciliation: settlement,
+                      })
+                      .catch((error) => {
+                        logger.error("[shared-runtime] AI billing audit record failed", {
+                          error: error instanceof Error ? error.message : String(error),
+                          agentId: rec.id,
+                        });
+                      });
+                  }
+                } catch (error) {
+                  // error-policy:J1 billing boundary translation — the user got
+                  // the reply, but a failed meter write must release the hold.
+                  await settleReservation(0);
+                  logger.error("[shared-runtime] billing failed", {
+                    error: error instanceof Error ? error.message : String(error),
+                    agentId: rec.id,
+                  });
+                }
+              }
+              controller.enqueue(
+                encoder.encode(
+                  `event: done\ndata: ${JSON.stringify({ messageId, text: finalReply })}\n\n`,
+                ),
+              );
+            }
+            if (!finished) {
+              await settleReservation(0);
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                ),
+              );
+            }
+          } catch (error) {
+            // error-policy:J1 stream boundary translation — partial SSE streams
+            // cannot become HTTP errors, so emit a terminal error frame.
+            await settleReservation(0);
+            logger.warn("[shared-runtime] stream failed", {
+              error: error instanceof Error ? error.message : String(error),
+              agentId: rec.id,
+            });
+            controller.enqueue(
+              encoder.encode(
+                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
+              ),
+            );
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
+      });
+    } catch (error) {
+      // error-policy:J2 context is added by runSharedAgentTurnStream; the bridge
+      // boundary only owns releasing the reservation before rethrowing.
+      await settleReservation(0);
+      throw error;
     }
   }
 
@@ -3970,24 +4182,8 @@ export class ElizaSandboxService {
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     if (rec.execution_tier === "shared") {
-      const sharedResponse = await this.bridgeSharedMessageSend(rec, rpc);
-      const text = sharedResponse.result?.text;
-      if (typeof text === "string" && text.trim()) {
-        return this.createBridgeSseTextResponse(text);
-      }
-      if (sharedResponse.error) {
-        // A credit-reserve rejection is not a stream failure — no SSE bytes
-        // exist yet, so throw the canonical typed 402 for the route boundary
-        // to translate (messages/stream → 402 JSON; agent stream routes'
-        // errorToResponse / control-plane errorBody map ApiError natively).
-        // Wrapping it in an SSE error frame here would bury a permanent
-        // add-credits condition inside a 200 stream.
-        if (sharedResponse.error.code === BRIDGE_INSUFFICIENT_CREDITS_CODE) {
-          throw new InsufficientCreditsApiError(sharedResponse.error.message);
-        }
-        return this.createBridgeSseErrorResponse(sharedResponse.error.message);
-      }
-      return fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null;
+      const response = await this.bridgeSharedMessageStream(rec, rpc);
+      return response ?? (fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null);
     }
 
     if (!rec.bridge_url) {
@@ -5479,6 +5675,10 @@ export class ElizaSandboxService {
       },
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
       excludeNodeId: oldNodeId,
+      // Preserve the LIVE Headscale node during the overlap (#16565): the
+      // provider records its id as metadata.previousVpnNodeId; it is deleted
+      // by id below only after the atomic swap succeeds.
+      reclaimStaleVpnNode: false,
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -5672,6 +5872,13 @@ export class ElizaSandboxService {
 
     // Old container teardown is best-effort: traffic is already on blue.
     await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // The preserved live node (recorded pre-provision under
+    // reclaimStaleVpnNode=false) is deleted BY ID only now, after the swap —
+    // by-name would be ambiguous with blue sharing the hostname, and every
+    // rolled-back path above deliberately leaves it untouched (#16565).
+    if (blueMeta?.previousVpnNodeId) {
+      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+    }
 
     logger.info("[agent-sandbox] Fleet upgrade completed", {
       agentId,
@@ -5803,6 +6010,10 @@ export class ElizaSandboxService {
       },
       dockerImage: digestPinnedImageRef(rollbackImage, toDigest),
       excludeNodeId: oldNodeId,
+      // Preserve the LIVE Headscale node during the overlap (#16565): the
+      // provider records its id as metadata.previousVpnNodeId; it is deleted
+      // by id below only after the atomic swap succeeds.
+      reclaimStaleVpnNode: false,
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -5997,6 +6208,10 @@ export class ElizaSandboxService {
 
     // Old (post-upgrade) container teardown is best-effort: traffic is on blue.
     await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // Same post-cutover, by-id-only deletion of the preserved node (#16565).
+    if (blueMeta?.previousVpnNodeId) {
+      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+    }
 
     logger.info("[agent-sandbox] Fleet rollback completed", {
       agentId,

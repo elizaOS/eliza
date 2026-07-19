@@ -42,6 +42,7 @@ import {
   requiresDockerHostGateway,
   resolveAgentContainerClass,
   resolveStewardContainerUrl,
+  resolveVpnTeardown,
   shellQuote,
   validateAgentId,
   validateAgentName,
@@ -88,6 +89,10 @@ export interface DockerSandboxMetadata {
    */
   imageDigest: string | null;
   headscaleIp?: string;
+  /** Preserved live node id from a reclaimStaleVpnNode=false provision
+   *  (#16565) — the upgrade orchestrator deletes it BY ID after the atomic
+   *  swap; rolled-back paths must leave it untouched. */
+  previousVpnNodeId?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -103,6 +108,12 @@ interface ContainerMeta {
   agentId: string;
   /** Headscale node name (TS_HOSTNAME) used at registration, for cleanup lookup. */
   tsHostname?: string;
+  /** THIS container's registered Headscale node id (#16565): the only safe
+   *  teardown identifier while a blue/green overlap shares the hostname. */
+  vpnNodeId?: string;
+  /** The preserved live node's id when created with reclaimStaleVpnNode=false
+   *  (#16565); the upgrade orchestrator deletes it by id after cutover. */
+  previousVpnNodeId?: string;
   sshPort: number;
   sshUser: string;
   hostKeyFingerprint?: string;
@@ -1023,6 +1034,8 @@ export class DockerSandboxProvider implements SandboxProvider {
 
     // 4. Optionally prepare Headscale VPN
     let headscaleIp: string | null = null;
+    let previousVpnNodeId: string | undefined;
+    let vpnNodeId: string | undefined;
 
     // Collect VPN env vars separately to avoid mutating the caller's environmentVars
     let vpnEnvVars: Record<string, string> = {};
@@ -1032,8 +1045,12 @@ export class DockerSandboxProvider implements SandboxProvider {
           agentId,
           agentName,
           organizationId,
+          // Blue/green passes false: the same-name node is LIVE and serving;
+          // it is recorded here and deleted by id only after cutover (#16565).
+          reclaimStaleNode: config.reclaimStaleVpnNode !== false,
         });
         vpnEnvVars = vpnSetup.envVars;
+        previousVpnNodeId = vpnSetup.previousNodeId;
         logger.info(`[docker-sandbox] Headscale VPN enabled for ${agentId}`);
       } catch (err) {
         if (headscaleRouteRequired) {
@@ -1456,15 +1473,26 @@ export class DockerSandboxProvider implements SandboxProvider {
           );
         });
       }
-      // Deletes the Headscale pre-auth key if VPN was prepared
+      // Removes blue's Headscale node if VPN was prepared. Preserve-aware
+      // (#16565): when previousVpnNodeId is recorded, blue has NOT registered
+      // yet, so the only node under this hostname is the LIVE preserved one —
+      // a by-name cleanup here would delete it, the exact hole this feature
+      // closes. Nothing of blue's exists in Headscale at this point; its
+      // unused single-use pre-auth key is inert.
       if (headscaleEnabled) {
-        await headscaleIntegration
-          .cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId)
-          .catch((cleanupErr) => {
-            logger.warn(
-              `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
-            );
-          });
+        if (resolveVpnTeardown({ previousVpnNodeId }).kind === "skip-preserved") {
+          logger.info(
+            `[docker-sandbox] Skipping Headscale cleanup during rollback for ${agentId}: preserved live node holds the hostname and blue never registered`,
+          );
+        } else {
+          await headscaleIntegration
+            .cleanupContainerVPN(vpnEnvVars.TS_HOSTNAME ?? agentId)
+            .catch((cleanupErr) => {
+              logger.warn(
+                `[docker-sandbox] Headscale cleanup failed during rollback for ${agentId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+              );
+            });
+        }
       }
       throw new Error(
         `[docker-sandbox] Failed to create container on ${nodeId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1481,6 +1509,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       // Headscale node name (TS_HOSTNAME) the container registered under, so
       // deletion can find and remove the node by the same name it was created with.
       tsHostname: vpnEnvVars.TS_HOSTNAME,
+      previousVpnNodeId,
       sshPort,
       sshUser,
       hostKeyFingerprint,
@@ -1494,7 +1523,7 @@ export class DockerSandboxProvider implements SandboxProvider {
         // inferTailscaleHostname), NOT the bare agentId — Headscale only knows the
         // node by that hostname, so polling by agentId never matched and the node
         // "timed out" registering despite being online.
-        headscaleIp = await headscaleIntegration.waitForVPNRegistration(
+        const registration = await headscaleIntegration.waitForVPNRegistration(
           vpnEnvVars.TS_HOSTNAME ?? agentId,
           // 180s default (env-overridable via VPN_REGISTRATION_TIMEOUT_MS), not
           // a hardcoded 60s: a cold container needs >1 min to boot + register,
@@ -1502,7 +1531,13 @@ export class DockerSandboxProvider implements SandboxProvider {
           // → 404 despite running. Single source of truth lives in
           // headscale-integration so the constant and this call agree.
           DEFAULT_REGISTRATION_TIMEOUT_MS,
+          // During a blue/green overlap the preserved live node shares this
+          // hostname — matching it would route the new sandbox to the OLD
+          // container, the race the reclaim-mode deletion used to guard (#16565).
+          previousVpnNodeId ? { excludeNodeId: previousVpnNodeId } : undefined,
         );
+        headscaleIp = registration?.ip ?? null;
+        vpnNodeId = registration?.nodeId;
         if (headscaleIp) {
           logger.info(
             `[docker-sandbox] Container ${containerName} registered on VPN: ${headscaleIp}`,
@@ -1516,6 +1551,12 @@ export class DockerSandboxProvider implements SandboxProvider {
         logger.warn(
           `[docker-sandbox] VPN registration failed for ${containerName}: ${err instanceof Error ? err.message : String(err)}`,
         );
+      }
+      // Registered node id onto the in-memory meta so teardown can delete
+      // THIS container's node by id — by-name is ambiguous while a blue/green
+      // overlap shares the hostname (#16565).
+      if (vpnNodeId) {
+        meta.vpnNodeId = vpnNodeId;
       }
     }
 
@@ -1572,6 +1613,7 @@ export class DockerSandboxProvider implements SandboxProvider {
       dockerImage: resolvedImage,
       imageDigest,
       headscaleIp: headscaleIp || undefined,
+      previousVpnNodeId,
     };
 
     // Over the headscale mesh the agent-router and the daemon's runtime calls
@@ -1847,17 +1889,30 @@ export class DockerSandboxProvider implements SandboxProvider {
     const headscaleEnv = currentHeadscaleRouteEnv();
     const registeredNodeName = meta.tsHostname;
     if (shouldCleanupHeadscaleVpn(headscaleEnv, registeredNodeName)) {
-      // Delete the node by the hostname it registered under (TS_HOSTNAME), not the
-      // bare agentId — Headscale identifies the node by that name.
-      await withTimeout(
-        headscaleIntegration.cleanupContainerVPN(registeredNodeName),
-        HEADSCALE_CLEANUP_TIMEOUT_MS,
-        "headscale cleanup",
-      ).catch((err) => {
-        logger.warn(
-          `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+      // One pinned decision for every teardown path (#16565): by-id when this
+      // container registered, forbidden by-name in preserve mode where the
+      // only same-name node is the LIVE preserved one, historical by-name for
+      // plain provisions.
+      const teardown = resolveVpnTeardown(meta);
+      const cleanup =
+        teardown.kind === "by-id"
+          ? headscaleIntegration.removeVpnNodeById(teardown.nodeId)
+          : teardown.kind === "by-name"
+            ? headscaleIntegration.cleanupContainerVPN(registeredNodeName)
+            : null;
+      if (cleanup) {
+        await withTimeout(cleanup, HEADSCALE_CLEANUP_TIMEOUT_MS, "headscale cleanup").catch(
+          (err) => {
+            logger.warn(
+              `[docker-sandbox] Headscale cleanup failed for ${meta.agentId}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          },
         );
-      });
+      } else {
+        logger.info(
+          `[docker-sandbox] Skipping Headscale cleanup for ${meta.agentId}: preserved live node holds the hostname and this container never registered`,
+        );
+      }
     }
 
     // Remove from in-memory registry

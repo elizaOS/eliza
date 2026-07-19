@@ -119,7 +119,7 @@ const baseEnv = {
   VOICE_REALTIME_WS_ENABLED: "true",
   DEEPGRAM_API_KEY: "dg",
   CARTESIA_API_KEY: "cartesia",
-  VOICE_REALTIME_CARTESIA_VOICE_ID: "voice",
+  VOICE_REALTIME_CARTESIA_VOICE_ID: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
   VOICE_REALTIME_ELIZA_ENDPOINT: "https://eliza.test/sse",
   VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer service",
 };
@@ -247,6 +247,51 @@ describe("voice-session ws upgrade (happy path)", () => {
     const res = await upgrade();
     expect(res.status).toBe(101);
     expect(attachCalls.length).toBe(1);
+  });
+
+  test("buildSession wires a prewarm-capable scoped Eliza fetch", async () => {
+    const res = await upgrade();
+    expect(res.status).toBe(101);
+    const deps = attachCalls[0].deps as unknown as {
+      buildSession: (args: {
+        claims: Record<string, string>;
+        jti: string;
+        tokenExpSeconds: number;
+        downlink: Record<string, unknown>;
+      }) => {
+        config?: unknown;
+      };
+    };
+    // Construct a REAL VoiceSession through the route's closure. No providers
+    // are dialed at construction time (start() is never called here), so this
+    // exercises the fetchImpl/prewarmElizaContext wiring added for the
+    // session-start tenancy warmup.
+    const session = deps.buildSession({
+      claims: {
+        sessionId: "sess-upgrade-wire",
+        organizationId: "org-1",
+        userId: "user-1",
+        agentId: "agent-1",
+        conversationId: "conv-1",
+      },
+      jti: "jti-upgrade-wire",
+      tokenExpSeconds: Math.floor(Date.now() / 1000) + 60,
+      downlink: {
+        sendControl: () => undefined,
+        sendAudio: () => undefined,
+        close: () => undefined,
+      },
+    }) as unknown as {
+      config: {
+        fetchImpl?: { prewarm?: unknown };
+        prewarmElizaContext?: unknown;
+      };
+    };
+    expect(typeof session.config.fetchImpl).toBe("function");
+    expect(typeof session.config.prewarmElizaContext).toBe("function");
+    expect(session.config.prewarmElizaContext).toBe(
+      (session.config.fetchImpl as { prewarm?: unknown }).prewarm,
+    );
   });
 
   test("returns 503 transport-unavailable when WebSocketPair is absent", async () => {

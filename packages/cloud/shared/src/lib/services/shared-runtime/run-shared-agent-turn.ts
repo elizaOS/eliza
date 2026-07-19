@@ -20,7 +20,7 @@
  *  - route only shared-eligible agents here (see `agent-tier.ts`)
  */
 
-import { generateText } from "ai";
+import { generateText, streamText } from "ai";
 import { CEREBRAS_DEFAULT_TEXT_SMALL_MODEL } from "../../models/catalog";
 import {
   getLanguageModel,
@@ -65,6 +65,18 @@ export interface RunSharedAgentTurnResult {
    */
   degraded: boolean;
   usage?: SharedAgentTurnUsage;
+}
+
+export type SharedAgentTurnStreamPart =
+  | { type: "text-delta"; text: string }
+  | { type: "finish"; text: string; usage?: SharedAgentTurnUsage };
+
+export interface RunSharedAgentTurnStreamResult {
+  model: string;
+  degraded: boolean;
+  reply?: string;
+  history?: SharedTurnMessage[];
+  parts?: AsyncIterable<SharedAgentTurnStreamPart>;
 }
 
 /**
@@ -174,6 +186,80 @@ export async function runSharedAgentTurn(
     // caller (bridgeSharedMessageSend) refunds the credit hold instead of billing.
     throw new Error(
       `[shared-runtime] agent turn failed (agent=${input.character.name}, model=${modelId})`,
+      { cause: error },
+    );
+  }
+}
+
+/**
+ * Start one shared turn and expose provider text deltas as they arrive. The
+ * caller still owns history persistence and billing because it knows the
+ * agent/channel/accounting context; this function only bridges the AI SDK
+ * stream into the shared-runtime turn shape.
+ */
+export async function runSharedAgentTurnStream(
+  input: RunSharedAgentTurnInput,
+): Promise<RunSharedAgentTurnStreamResult> {
+  const message = input.message.trim();
+  const modelId = resolveSharedAgentTurnModel(input.character.model);
+
+  if (!modelId) {
+    const reply = `${input.character.name} is temporarily unavailable (no shared model configured).`;
+    return {
+      reply,
+      history: appendTurn(input.history, message, reply),
+      model: "none",
+      degraded: true,
+    };
+  }
+
+  try {
+    const result = streamText({
+      model: getLanguageModel(modelId),
+      system: buildSystemPrompt(input.character),
+      messages: [
+        ...input.history.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user" as const, content: message },
+      ],
+    });
+
+    const parts = (async function* (): AsyncIterable<SharedAgentTurnStreamPart> {
+      let reply = "";
+      try {
+        for await (const part of result.fullStream) {
+          if (part.type === "text-delta") {
+            reply += part.text;
+            yield { type: "text-delta", text: part.text };
+          }
+          if (part.type === "finish") {
+            yield {
+              type: "finish",
+              text: reply.trim() || "…",
+              usage: part.totalUsage,
+            };
+          }
+        }
+      } catch (error) {
+        // error-policy:J2 context-adding rethrow. Stream failures happen after
+        // the HTTP response may have started, so callers need this failure to
+        // settle the reservation instead of treating a partial answer as billable.
+        throw new Error(
+          `[shared-runtime] streaming agent turn failed (agent=${input.character.name}, model=${modelId})`,
+          { cause: error },
+        );
+      }
+    })();
+
+    return {
+      model: modelId,
+      degraded: false,
+      parts,
+    };
+  } catch (error) {
+    // error-policy:J2 context-adding rethrow. A provider setup failure occurs
+    // before any stream bytes exist and must refund the upfront reservation.
+    throw new Error(
+      `[shared-runtime] streaming agent turn failed (agent=${input.character.name}, model=${modelId})`,
       { cause: error },
     );
   }

@@ -10,7 +10,13 @@ describe("availableToolsProvider", () => {
     );
 
     expect(result.text).toContain("# Native coding tools");
-    for (const tool of ["FILE", "SHELL", "WEB_FETCH", "WEB_SEARCH", "WORKTREE"]) {
+    for (const tool of [
+      "FILE",
+      "SHELL",
+      "WEB_FETCH",
+      "WEB_SEARCH",
+      "WORKTREE",
+    ]) {
       expect(result.text).toContain(`- ${tool}`);
       expect(result.data?.codingTools).toContain(tool);
     }

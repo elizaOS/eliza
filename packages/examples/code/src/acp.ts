@@ -348,5 +348,3 @@ const _connection = new AgentSideConnection(
   }),
   stream,
 );
-
-log("ACP server listening on stdio");

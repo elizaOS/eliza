@@ -5,13 +5,24 @@
 // stubbed so the assertions run against the request the helper builds, not a
 // live server.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchWithCsrf } from "../api/csrf-client";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { getCloudAuthToken } from "../api/client-cloud";
+import { fetchWithCsrf, requestViaAgentTransport } from "../api/csrf-client";
+import { getBootConfig } from "../config/boot-config-store";
 import { resolveApiUrl } from "../utils";
 import { transcribeCloudWav } from "./local-asr-transcribe";
 
+vi.mock("../api/client-cloud", () => ({
+  getCloudAuthToken: vi.fn(() => null),
+}));
+
+vi.mock("../config/boot-config-store", () => ({
+  getBootConfig: vi.fn(() => ({})),
+}));
+
 vi.mock("../api/csrf-client", () => ({
   fetchWithCsrf: vi.fn(),
+  requestViaAgentTransport: vi.fn(),
 }));
 
 vi.mock("../utils", () => ({
@@ -28,7 +39,10 @@ vi.mock("../utils/eliza-globals", () => ({
 
 import { getElizaApiBase } from "../utils/eliza-globals";
 
+const getCloudAuthTokenMock = vi.mocked(getCloudAuthToken);
+const getBootConfigMock = vi.mocked(getBootConfig);
 const fetchWithCsrfMock = vi.mocked(fetchWithCsrf);
+const requestViaAgentTransportMock = vi.mocked(requestViaAgentTransport);
 const resolveApiUrlMock = vi.mocked(resolveApiUrl);
 const getElizaApiBaseMock = vi.mocked(getElizaApiBase);
 
@@ -42,8 +56,12 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
 }
 
 describe("transcribeCloudWav", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getCloudAuthTokenMock.mockReturnValue(null);
+    getBootConfigMock.mockReturnValue({} as ReturnType<typeof getBootConfig>);
+    getElizaApiBaseMock.mockReturnValue(undefined);
+    resolveApiUrlMock.mockImplementation((path) => `http://agent.local${path}`);
   });
 
   it("POSTs the raw WAV bytes to /api/asr/cloud and returns the transcript", async () => {
@@ -66,6 +84,95 @@ describe("transcribeCloudWav", () => {
     expect(init?.body).toBe(wav);
     // Transcript is trimmed.
     expect(text).toBe("hello world");
+  });
+
+  it("discovers the configured cloud Worker and session token by default", async () => {
+    getBootConfigMock.mockReturnValue({
+      cloudApiBase: "https://staging.elizacloud.ai",
+    } as ReturnType<typeof getBootConfig>);
+    getCloudAuthTokenMock.mockReturnValue("stored-session-token");
+    requestViaAgentTransportMock.mockResolvedValue(
+      jsonResponse({ transcript: "default route" }),
+    );
+
+    const text = await transcribeCloudWav(new Uint8Array([1]));
+
+    expect(requestViaAgentTransportMock.mock.calls[0]?.[0]).toBe(
+      "https://staging.elizacloud.ai/api/v1/voice/stt",
+    );
+    expect(
+      requestViaAgentTransportMock.mock.calls[0]?.[1]?.headers,
+    ).toMatchObject({ Authorization: "Bearer stored-session-token" });
+    expect(text).toBe("default route");
+  });
+
+  it("bypasses a dedicated container and posts multipart WAV to the configured cloud Worker", async () => {
+    requestViaAgentTransportMock.mockResolvedValue(
+      jsonResponse({ transcript: "  direct cloud hello " }),
+    );
+    const wav = new Uint8Array([82, 73, 70, 70]);
+
+    const text = await transcribeCloudWav(wav, {
+      configuredCloudOrigin: "https://staging.elizacloud.ai/",
+      cloudSessionToken: "staging-session-token",
+    });
+
+    const [url, init] = requestViaAgentTransportMock.mock.calls[0] ?? [];
+    expect(url).toBe("https://staging.elizacloud.ai/api/v1/voice/stt");
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+    expect(resolveApiUrlMock).not.toHaveBeenCalledWith("/api/asr/cloud");
+    expect(init?.headers).toMatchObject({
+      Accept: "application/json",
+      Authorization: "Bearer staging-session-token",
+    });
+    expect(init?.body).toBeInstanceOf(FormData);
+    expect((init?.body as FormData).get("audio")).toBeInstanceOf(File);
+    expect(text).toBe("direct cloud hello");
+  });
+
+  it("falls back to the dedicated proxy when direct cloud auth is stale", async () => {
+    requestViaAgentTransportMock.mockResolvedValue(
+      jsonResponse({ error: "expired" }, false, 401),
+    );
+    fetchWithCsrfMock.mockResolvedValue(jsonResponse({ text: "proxy rescue" }));
+
+    const text = await transcribeCloudWav(new Uint8Array([1]), {
+      configuredCloudOrigin: "https://staging.elizacloud.ai",
+      cloudSessionToken: "stale-token",
+    });
+
+    expect(requestViaAgentTransportMock).toHaveBeenCalledOnce();
+    expect(resolveApiUrlMock).toHaveBeenCalledWith("/api/asr/cloud");
+    expect(text).toBe("proxy rescue");
+  });
+
+  it("preserves direct cloud application failures without changing principals", async () => {
+    requestViaAgentTransportMock.mockResolvedValue(
+      jsonResponse({ error: "insufficient credits" }, false, 402),
+    );
+
+    await expect(
+      transcribeCloudWav(new Uint8Array([1]), {
+        configuredCloudOrigin: "https://staging.elizacloud.ai",
+        cloudSessionToken: "valid-token",
+      }),
+    ).rejects.toThrow("Cloud ASR 402");
+
+    expect(fetchWithCsrfMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the dedicated proxy when direct cloud auth is unavailable", async () => {
+    fetchWithCsrfMock.mockResolvedValue(jsonResponse({ text: "proxy hello" }));
+
+    await transcribeCloudWav(new Uint8Array([1]), {
+      configuredCloudOrigin: "https://staging.elizacloud.ai",
+      cloudSessionToken: null,
+    });
+
+    expect(resolveApiUrlMock).toHaveBeenCalledWith("/api/asr/cloud");
+    expect(fetchWithCsrfMock.mock.calls[0]?.[0]).toBe(
+      "http://agent.local/api/asr/cloud",
+    );
   });
 
   it("throws on a non-2xx response (fail-loud, no silent empty result)", async () => {
@@ -218,8 +325,12 @@ describe("transcribeCloudWav", () => {
 });
 
 describe("transcribeCloudWav (shared-tier fallback, #15395)", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
+  beforeEach(() => {
+    vi.resetAllMocks();
+    getCloudAuthTokenMock.mockReturnValue(null);
+    getBootConfigMock.mockReturnValue({} as ReturnType<typeof getBootConfig>);
+    getElizaApiBaseMock.mockReturnValue(undefined);
+    resolveApiUrlMock.mockImplementation((path) => `http://agent.local${path}`);
   });
 
   it("targets the v1 /api/v1/voice/stt route with a multipart `audio` File", async () => {

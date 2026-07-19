@@ -953,16 +953,10 @@ export function useChatVoiceController(options: {
   const beginVoiceCapture = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (isComposerLocked) return;
-      // Realtime owns the tap while available and not in a NON-actionable error
-      // state. An actionable error (permission re-granted, transport drop,
-      // connect timeout) advertises "tap the mic to try again" — so that tap
-      // must re-enter the realtime branch (start() clears the error); only
-      // non-actionable failures (consent/mint, which also latch eligibility
-      // off) hand the tap to the batch path as their copy promises.
-      if (
-        voiceSession.realtimeEligible &&
-        (!voiceSession.realtimeError || voiceSession.realtimeError.actionable)
-      ) {
+      // A fallback applies to the failed interaction, not every later mic tap.
+      // Consent, mint, and transport failures keep realtime eligible so the
+      // next explicit gesture probes it again; start() clears the prior error.
+      if (voiceSession.realtimeEligible) {
         setManualRealtimeIntent(true);
         realtimeStartPendingRef.current = true;
         const latestAssistant =
@@ -980,13 +974,21 @@ export function useChatVoiceController(options: {
         });
         return;
       }
+      if (
+        isRealtimeVoiceFlagEnabled() &&
+        (!realtimeAgentId || !activeConversationId)
+      ) {
+        voiceSession.reportRealtimeFallback("missing-identity");
+      }
       beginBatchVoiceCapture(mode);
     },
     [
+      activeConversationId,
       beginBatchVoiceCapture,
       chatInput,
       conversationMessages,
       isComposerLocked,
+      realtimeAgentId,
       stopSpeaking,
       setManualRealtimeIntent,
       voiceSession,
@@ -1022,11 +1024,17 @@ export function useChatVoiceController(options: {
   // existing start handler's barge-in branch instead of the stop branch.
   const realtimeOwnsComposer =
     manualRealtimeRequested || voiceSession.realtimeActive;
+  const realtimeIsCapturingSpeech =
+    voiceSession.status === "listening" ||
+    voiceSession.status === "transcribing";
+  const realtimeStartAwaitingActivation =
+    manualRealtimeRequested && !voiceSession.realtimeActive;
   const composerVoice = useMemo(
     () => ({
       isListening:
         voice.isListening ||
-        (realtimeOwnsComposer && !voiceSession.agentSpeaking),
+        realtimeStartAwaitingActivation ||
+        (voiceSession.realtimeActive && realtimeIsCapturingSpeech),
       captureMode: realtimeOwnsComposer
         ? ("compose" as const)
         : voice.captureMode,
@@ -1039,7 +1047,8 @@ export function useChatVoiceController(options: {
       voice.interimTranscript,
       voice.isListening,
       realtimeOwnsComposer,
-      voiceSession.agentSpeaking,
+      realtimeIsCapturingSpeech,
+      realtimeStartAwaitingActivation,
       voiceSession.interimTranscript,
       voiceSession.realtimeActive,
     ],

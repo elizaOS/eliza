@@ -29,6 +29,11 @@ const trackers = new WeakMap<IAgentRuntime, Set<AbortController>>();
  * Register a fresh `AbortController` with the runtime's in-flight set.
  * Returns a disposer that removes the controller from the set; callers
  * MUST invoke it in the finally block so completed calls are GC'd.
+ *
+ * @deprecated Superseded by the runtime-owned registry in `@elizaos/core`
+ * (`abortInflightInference` / turn-controller). Nothing registers into this
+ * copy — `trackInflight` has no call sites — so aborts through this module
+ * always report `{aborted: 0}`. Will be removed in the next major (#16470).
  */
 export function trackInflight(
   runtime: IAgentRuntime,
@@ -53,6 +58,11 @@ export function trackInflight(
  * Returns `{aborted}` so the caller can emit a structured log line.
  * Idempotent — calling on a runtime with no in-flight work returns
  * `{aborted: 0}` and does nothing.
+ *
+ * @deprecated Superseded by `@elizaos/core`'s runtime-owned registry
+ * (`abortInflightInference`, re-exported from `@elizaos/core` node entry).
+ * This copy is inert — nothing registers into it. Will be removed in the
+ * next major (#16470).
  */
 export function abortInflightInference(runtime: IAgentRuntime): {
   aborted: number;
@@ -72,6 +82,11 @@ export function abortInflightInference(runtime: IAgentRuntime): {
 /**
  * Inspect the current in-flight count without aborting. Used by
  * diagnostics endpoints (e.g. `/api/health` extension) and tests.
+ *
+ * @deprecated Superseded by `@elizaos/core`'s runtime-owned registry
+ * (`abortInflightInference`, re-exported from `@elizaos/core` node entry).
+ * This copy is inert — nothing registers into it. Will be removed in the
+ * next major (#16470).
  */
 export function getInflightInferenceCount(runtime: IAgentRuntime): number {
   return trackers.get(runtime)?.size ?? 0;
@@ -82,6 +97,11 @@ export function getInflightInferenceCount(runtime: IAgentRuntime): number {
  * from production code.
  *
  * @internal
+ *
+ * @deprecated Superseded by `@elizaos/core`'s runtime-owned registry
+ * (`abortInflightInference`, re-exported from `@elizaos/core` node entry).
+ * This copy is inert — nothing registers into it. Will be removed in the
+ * next major (#16470).
  */
 export function __resetInflightInferenceForTests(runtime: IAgentRuntime): void {
   trackers.delete(runtime);

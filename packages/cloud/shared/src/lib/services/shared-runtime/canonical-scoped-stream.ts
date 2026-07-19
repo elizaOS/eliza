@@ -4,6 +4,7 @@
  * shared message body parsing, bridge dispatch, billing failure translation, and
  * SSE/CORS response shape used by HTTP routes and in-process voice turns.
  */
+
 import { InsufficientCreditsError } from "../../api/errors";
 import { logger } from "../../utils/logger";
 import type { BridgeRequest } from "../eliza-sandbox";
@@ -24,17 +25,48 @@ export interface CanonicalScopedStreamRequest {
   conversationId: string;
   body: unknown;
   origin?: string | null;
+  timings?: Record<string, number>;
+}
+
+function nowMs(): number {
+  return performance.now();
+}
+
+function elapsedMs(startedAt: number): number {
+  return Math.round((nowMs() - startedAt) * 10) / 10;
+}
+
+function addStreamTimingHeaders(response: Response, timings: Record<string, number>): Response {
+  const headers = new Headers(response.headers);
+  const entries = Object.entries(timings).filter(([, duration]) => Number.isFinite(duration));
+  if (entries.length) {
+    headers.set(
+      "Server-Timing",
+      entries.map(([phase, duration]) => `${phase};dur=${duration}`).join(", "),
+    );
+    for (const [phase, duration] of entries) {
+      headers.set(`X-Eliza-Stream-${phase}-Ms`, String(duration));
+    }
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 export async function handleCanonicalScopedAgentStream(
   request: CanonicalScopedStreamRequest,
 ): Promise<Response> {
+  const timings = request.timings ?? {};
+  const parseStartedAt = nowMs();
   const text =
     request.body &&
     typeof request.body === "object" &&
     typeof (request.body as { text?: unknown }).text === "string"
       ? (request.body as { text: string }).text
       : "";
+  timings.parse = elapsedMs(parseStartedAt);
   if (!text.trim()) {
     return applyCorsHeaders(
       Response.json({ success: false, error: "text is required" }, { status: 400 }),
@@ -51,46 +83,64 @@ export async function handleCanonicalScopedAgentStream(
   };
 
   let upstream: Response | null;
+  const bridgeStartedAt = nowMs();
   try {
     upstream = await elizaSandboxService.bridgeStream(request.agentId, request.orgId, rpc);
+    timings.bridge = elapsedMs(bridgeStartedAt);
   } catch (error) {
+    timings.bridge = elapsedMs(bridgeStartedAt);
     // error-policy:J1 boundary translation — bridgeStream rejects insufficient
     // credit before any SSE bytes exist, so callers get the canonical 402 JSON.
     if (error instanceof InsufficientCreditsError) {
       logger.warn("[shared-runtime REST] stream send rejected: insufficient credits", {
         agentId: request.agentId,
       });
-      return applyCorsHeaders(
-        Response.json(
-          {
-            success: false,
-            error: error.message,
-            code: "insufficient_credits",
-            retryable: false,
-          },
-          { status: 402 },
+      return addStreamTimingHeaders(
+        applyCorsHeaders(
+          Response.json(
+            {
+              success: false,
+              error: error.message,
+              code: "insufficient_credits",
+              retryable: false,
+            },
+            { status: 402 },
+          ),
+          CORS_METHODS,
+          request.origin,
         ),
-        CORS_METHODS,
-        request.origin,
+        timings,
       );
     }
     throw error;
+  } finally {
+    logger.info("[shared-runtime REST] stream pre-header timing", {
+      agentId: request.agentId,
+      conversationId: request.conversationId,
+      ...timings,
+    });
   }
 
   if (!upstream?.body) {
     const body = `event: error\ndata: ${JSON.stringify({
       message: "Agent produced no streamed response",
     })}\n\n`;
-    return applyCorsHeaders(
-      new Response(body, { headers: STREAM_HEADERS }),
-      CORS_METHODS,
-      request.origin,
+    return addStreamTimingHeaders(
+      applyCorsHeaders(
+        new Response(body, { headers: STREAM_HEADERS }),
+        CORS_METHODS,
+        request.origin,
+      ),
+      timings,
     );
   }
 
-  return applyCorsHeaders(
-    new Response(upstream.body, { headers: STREAM_HEADERS }),
-    CORS_METHODS,
-    request.origin,
+  return addStreamTimingHeaders(
+    applyCorsHeaders(
+      new Response(upstream.body, { headers: STREAM_HEADERS }),
+      CORS_METHODS,
+      request.origin,
+    ),
+    timings,
   );
 }

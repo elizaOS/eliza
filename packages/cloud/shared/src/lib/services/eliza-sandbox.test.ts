@@ -533,6 +533,51 @@ describe("ElizaSandboxService shared runtime bridge", () => {
       }
     },
   );
+
+  test.skipIf(process.platform === "win32")(
+    "returns an SSE completion without persisting when streaming has no configured model",
+    async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const sandbox = sharedSandbox();
+      const findRunningSandboxSpy = spyOn(
+        agentSandboxesRepository,
+        "findRunningSandbox",
+      ).mockResolvedValue(sandbox);
+      const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+      const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+        undefined,
+      );
+
+      try {
+        const response = await runWithCloudBindings(
+          {
+            CEREBRAS_API_KEY: "",
+            OPENAI_API_KEY: "",
+          },
+          () =>
+            new ElizaSandboxService().bridgeStream(sandbox.id, sandbox.organization_id, {
+              jsonrpc: "2.0",
+              id: "shared-stream-turn",
+              method: "message.send",
+              params: { text: " hello " },
+            }),
+        );
+
+        expect(response).toBeInstanceOf(Response);
+        expect(response?.headers.get("content-type")).toContain("text/event-stream");
+        const body = await response?.text();
+        expect(body).toContain("event: chunk");
+        expect(body).toContain("no shared model configured");
+        expect(body).toContain("event: done");
+        expect(historyGetSpy).toHaveBeenCalled();
+        expect(historyUpsertSpy).not.toHaveBeenCalled();
+      } finally {
+        findRunningSandboxSpy.mockRestore();
+        historyGetSpy.mockRestore();
+        historyUpsertSpy.mockRestore();
+      }
+    },
+  );
 });
 
 describe("ElizaSandboxService wake", () => {
@@ -3946,7 +3991,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   }
 
   // A genuine DockerSandboxMetadata for blue — isDockerSandboxMetadata() passes.
-  function blueMetadata(imageDigest: string | null) {
+  function blueMetadata(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       provider: "docker" as const,
       nodeId: "node-new",
@@ -3958,15 +4003,16 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       volumePath: "/var/lib/eliza/agent-new-1",
       dockerImage: DOCKER_IMAGE,
       imageDigest,
+      ...(previousVpnNodeId ? { previousVpnNodeId } : {}),
     };
   }
 
-  function blueHandle(imageDigest: string | null) {
+  function blueHandle(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       sandboxId: "sandbox-new-1",
       bridgeUrl: "https://new-bridge.example",
       healthUrl: "https://new-bridge.example/health",
-      metadata: blueMetadata(imageDigest),
+      metadata: blueMetadata(imageDigest, previousVpnNodeId),
     };
   }
 
@@ -4211,6 +4257,107 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       lockSpy.mockRestore();
       readSpy.mockRestore();
       snapshotSpy.mockRestore();
+    }
+  });
+
+  test("(h1) preserved live VPN node: create gets reclaimStaleVpnNode=false, node deleted BY ID only after the swap (#16565)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { headscaleIntegration } = await import("./headscale-integration");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, create, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST, "old-live-node-7"),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as {
+        snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
+      },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    // Event order: the old node's by-id deletion must come AFTER the swap
+    // commit AND after old-container teardown started — never before.
+    const events: string[] = [];
+    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockImplementation(
+      async (id: string) => {
+        events.push(`vpn-delete:${id}`);
+      },
+    );
+    stopOnSpecificNode.mockImplementation(async () => {
+      events.push("old-teardown");
+    });
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => {
+          events.push("swap-commit");
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+      expect(res.success).toBe(true);
+      // Blue was provisioned in preserve mode.
+      const createConfig = create.mock.calls[0]?.[0] as
+        | { reclaimStaleVpnNode?: boolean }
+        | undefined;
+      expect(createConfig?.reclaimStaleVpnNode).toBe(false);
+      // The preserved node was deleted exactly once, by id, after the swap.
+      expect(removeSpy).toHaveBeenCalledTimes(1);
+      expect(removeSpy).toHaveBeenCalledWith("old-live-node-7");
+      expect(events).toEqual(["swap-commit", "old-teardown", "vpn-delete:old-live-node-7"]);
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+      removeSpy.mockRestore();
+    }
+  });
+
+  test("(h2) rolled-back upgrade never deletes the preserved live node (#16565)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { headscaleIntegration } = await import("./headscale-integration");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST, "old-live-node-7"),
+      checkHealth: async () => false, // blue never comes up → rollback
+    });
+    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockResolvedValue(undefined);
+    try {
+      const res = await new ElizaSandboxService(provider).executeUpgrade(
+        AGENT,
+        ORG,
+        TO_DIGEST,
+        DOCKER_IMAGE,
+        FROM_DIGEST,
+      );
+      expect(res.success).toBe(false);
+      expect(res.rolledBack).toBe(true);
+      // Blue is torn down; the preserved live node is left untouched — the
+      // agent keeps serving on old.
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      expect(removeSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      removeSpy.mockRestore();
     }
   });
 

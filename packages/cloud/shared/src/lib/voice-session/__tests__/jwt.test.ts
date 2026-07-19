@@ -171,7 +171,37 @@ describe("voice-session jwt", () => {
       const minted = await mintVoiceSessionToken(CLAIMS);
       await expect(
         verifyVoiceSessionToken(minted.token, { sessionId: CLAIMS.sessionId }),
-      ).rejects.toMatchObject({ code: "revoked" });
+      ).rejects.toMatchObject({ code: "store_unavailable" });
+    } finally {
+      __setVoiceSessionRevocationStoreForTests(null);
+    }
+  });
+
+  test("a transient revocation read failure does not falsely revoke a fresh token", async () => {
+    let reads = 0;
+    const transient = {
+      async get() {
+        reads += 1;
+        if (reads === 1) throw new Error("stale redis socket");
+        return null;
+      },
+      async set() {
+        return "OK";
+      },
+      async getdel() {
+        return null;
+      },
+      async del() {
+        return 0;
+      },
+    };
+    __setVoiceSessionRevocationStoreForTests(transient as never);
+    try {
+      const minted = await mintVoiceSessionToken(CLAIMS);
+      await expect(
+        verifyVoiceSessionToken(minted.token, { sessionId: CLAIMS.sessionId }),
+      ).resolves.toMatchObject({ jti: minted.jti });
+      expect(reads).toBe(2);
     } finally {
       __setVoiceSessionRevocationStoreForTests(null);
     }

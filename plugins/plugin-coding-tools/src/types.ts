@@ -38,6 +38,7 @@ export type ToolFailureReason =
   | "no_match"
   | "unchanged"
   | "command_failed"
+  | "needs_confirmation"
   | "timeout"
   | "io_error"
   | "internal";

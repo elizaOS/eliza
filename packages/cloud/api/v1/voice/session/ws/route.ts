@@ -4,7 +4,9 @@
  * provider sockets and metering remain closed until that frame is verified.
  */
 import { Hono } from "hono";
+import { hasDbCacheContext } from "@/db/client";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
+import { hasCloudBindingsContext } from "@/lib/runtime/cloud-bindings";
 import {
   createDurableVoiceUsageStore,
   InMemoryVoiceUsageStore,
@@ -21,7 +23,7 @@ import {
 import {
   claimVoiceSessionToken,
   isVoiceSessionTokenRevoked,
-  revokeVoiceSessionToken,
+  verifyVoiceSessionToken,
 } from "@/lib/voice-session/jwt";
 import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
 import {
@@ -29,7 +31,7 @@ import {
   type ServerWebSocketLike,
 } from "@/lib/voice-session/ws-handler";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
-import { createInternalElizaConversationFetch } from "../lib/internal-eliza-conversation-fetch";
+import { createInternalElizaConversationFetchFactory } from "../lib/internal-eliza-conversation-fetch";
 import {
   createWorkerCartesiaFactory,
   createWorkerDeepgramFluxFactory,
@@ -182,14 +184,39 @@ app.get("/", (c) => {
     durableStore && evalCapable ? durableStore : getWorkerFallbackUsageStore();
 
   const maxSessions = resolveMaxSessions(env);
+  // Capture Worker bindings while this upgrade request is live. The returned
+  // factory restores a fresh bindings/DB context for each later WS voice turn.
+  const createScopedElizaFetch = createInternalElizaConversationFetchFactory(
+    c.env as unknown as Bindings,
+  );
   attachVoiceWsHandler(server, {
     requestedSessionId: sessionId,
-    claimToken: (jti, expSeconds) => claimVoiceSessionToken(jti, expSeconds),
+    // Reuse one request-scoped Redis client for verify + single-use claim.
+    // Creating two Railway TCP connections serially put 2-5s on hello->ready
+    // and made abrupt-disconnect recovery contend with teardown traffic.
+    verifyToken: (token, expected, options) =>
+      verifyVoiceSessionToken(token, expected, {
+        ...options,
+        ...(rawRedis ? { store: rawRedis } : {}),
+      }),
+    claimToken: (jti, expSeconds) =>
+      claimVoiceSessionToken(jti, expSeconds, rawRedis ?? undefined),
     // Enforce the per-worker ceiling against the LIVE registry at start time,
     // closing the race where many upgrades pass the earlier route-level check.
     admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
-    buildSession: ({ claims, jti, tokenExpSeconds, downlink }) =>
-      new VoiceSession({
+    buildSession: ({ claims, jti, tokenExpSeconds, downlink }) => {
+      logger.info("[voice-sse-context] websocket callback", {
+        agentId: claims.agentId,
+        cloudBindingsContext: hasCloudBindingsContext(),
+        dbCacheContext: hasDbCacheContext(),
+      });
+      const elizaFetch = createScopedElizaFetch({
+        agentId: claims.agentId,
+        conversationId: claims.conversationId,
+        organizationId: claims.organizationId,
+        userId: claims.userId,
+      });
+      return new VoiceSession({
         sessionId: claims.sessionId,
         jti,
         organizationId: claims.organizationId,
@@ -205,22 +232,18 @@ app.get("/", (c) => {
         elizaEndpoint,
         elizaAuthorization,
         elizaModel: resolveElizaModel(env),
-        fetchImpl: createInternalElizaConversationFetch(
-          c.env as unknown as Bindings,
-          {
-            agentId: claims.agentId,
-            conversationId: claims.conversationId,
-            organizationId: claims.organizationId,
-            userId: claims.userId,
-          },
-        ),
+        fetchImpl: elizaFetch,
+        prewarmElizaContext: elizaFetch.prewarm,
         usageStore,
         usageLimits,
         isRevoked: (jti) => isVoiceSessionTokenRevoked(jti),
-        onTeardownRevoke: (jti, expSeconds) =>
-          revokeVoiceSessionToken(jti, expSeconds),
+        // A successful hello atomically claimed this jti until expiry, so it
+        // cannot be replayed. Avoid a redundant denylist write during abrupt
+        // disconnect: it contended with the immediate replacement hello.
+        // Explicit cross-device revoke and its 400ms poll remain unchanged.
         downlink,
-      }),
+      });
+    },
   });
 
   return new Response(null, {
