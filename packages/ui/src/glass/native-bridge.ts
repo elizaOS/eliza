@@ -49,6 +49,13 @@ export interface NativeGlassRegionState {
   rect?: { x: number; y: number; width: number; height: number };
 }
 
+export interface NativeBackdropOptions {
+  /** Fully resolved renderer-reachable URL. Omit to install only the color. */
+  imageUrl?: string;
+  /** Safe paint shown while the image decodes, or as the cleared backdrop. */
+  color?: string;
+}
+
 interface GlassBridgePlugin {
   attachGlass(options: NativeGlassOptions): Promise<{ attached: boolean }>;
   updateRect(options: {
@@ -58,6 +65,8 @@ interface GlassBridgePlugin {
   detachGlass(options: { id: string }): Promise<void>;
   /** UIGlassContainerEffect merge distance for sibling regions. */
   setGrouping(options: { spacing: number }): Promise<void>;
+  /** Decode and install a wallpaper layer below the WebView. */
+  setBackdrop(options: NativeBackdropOptions): Promise<{ applied: boolean }>;
   isAvailable(): Promise<{ available: boolean }>;
   /**
    * Reads the region's REAL native view state (existence, count, z-order,
@@ -128,6 +137,25 @@ export function isNativeGlassAvailable(): Promise<boolean> {
     }
   })();
   return availability;
+}
+
+/**
+ * Install the native host's wallpaper. A false result is the explicit fallback
+ * signal: callers keep the DOM wallpaper painted and native glass disabled.
+ */
+export async function setNativeBackdrop(
+  options: NativeBackdropOptions,
+): Promise<boolean> {
+  if (!(await isNativeGlassAvailable())) return false;
+  const bridge = glassBridge();
+  if (!bridge) return false;
+  try {
+    return (await bridge.setBackdrop(options)).applied;
+  } catch {
+    // error-policy:J4 capability write — old native shells do not implement
+    // setBackdrop. Keep CSS paint rather than exposing a black transparency.
+    return false;
+  }
 }
 
 /** Test seam: reset memoized plugin + availability between cases. */

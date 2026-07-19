@@ -6,10 +6,31 @@
  * `mode: shader`, an image host for `mode: image`. jsdom render over a seeded
  * store double.
  */
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { resetNativeBackdropForTests } from "../glass/native-backdrop";
+import { resetGlassBridgeForTests } from "../glass/native-bridge";
 import { __setAppValueForTests } from "../state/app-store";
 import { AppBackground } from "./AppBackground";
+
+function installNativeGlassBridge() {
+  const bridge = {
+    attachGlass: vi.fn(async () => ({ attached: true })),
+    updateRect: vi.fn(async () => {}),
+    detachGlass: vi.fn(async () => {}),
+    setGrouping: vi.fn(async () => {}),
+    isAvailable: vi.fn(async () => ({ available: true })),
+    setBackdrop: vi.fn(async () => ({ applied: true })),
+  };
+  (globalThis as { Capacitor?: unknown }).Capacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "ios",
+    registerPlugin: () => bridge,
+  };
+  resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
+  return bridge;
+}
 
 function seed(backgroundConfig: unknown) {
   __setAppValueForTests({
@@ -21,6 +42,9 @@ function seed(backgroundConfig: unknown) {
 afterEach(() => {
   cleanup();
   __setAppValueForTests(null);
+  (globalThis as { Capacitor?: unknown }).Capacitor = undefined;
+  resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
 });
 
 describe("AppBackground", () => {
@@ -92,6 +116,46 @@ describe("AppBackground", () => {
     expect(
       container.querySelector('[data-testid="app-background-shader"]'),
     ).toBeNull();
+  });
+
+  it("pipes an image wallpaper native before removing the DOM paint", async () => {
+    const bridge = installNativeGlassBridge();
+    seed({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+    const { container } = render(<AppBackground />);
+
+    // Safety invariant: CSS remains painted until native confirms the image.
+    expect(
+      container.querySelector('[data-testid="app-background-image"]'),
+    ).not.toBeNull();
+    await waitFor(() => expect(bridge.setBackdrop).toHaveBeenCalledTimes(1));
+    expect(bridge.setBackdrop).toHaveBeenCalledWith({
+      imageUrl: expect.stringMatching(/^https?:\/\//),
+      color: "#160d07",
+    });
+    await waitFor(() =>
+      expect(
+        container.querySelector('[data-testid="app-background-image"]'),
+      ).toBeNull(),
+    );
+    expect(document.documentElement.classList).toContain(
+      "eliza-native-backdrop",
+    );
+    expect(document.documentElement.style.backgroundColor).toBe("transparent");
+  });
+
+  it("keeps shader backgrounds in the CSS tier and clears a stale native image", async () => {
+    const bridge = installNativeGlassBridge();
+    seed({ mode: "shader", color: "#3a1f0d" });
+    const { container } = render(<AppBackground />);
+    await waitFor(() => expect(bridge.setBackdrop).toHaveBeenCalledTimes(1));
+    expect(bridge.setBackdrop).toHaveBeenCalledWith({ color: "#3a1f0d" });
+    expect(
+      container.querySelector('[data-testid="app-background-shader"]'),
+    ).not.toBeNull();
   });
 
   it("always paints the legibility scrim inside the image wallpaper", () => {

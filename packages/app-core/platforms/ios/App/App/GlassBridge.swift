@@ -34,6 +34,7 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "updateRect", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "detachGlass", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setGrouping", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBackdrop", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "getRegionState", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "isAvailable", returnType: CAPPluginReturnPromise),
     ]
@@ -44,6 +45,8 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
     /// next attach (see setGrouping).
     private var groupingSpacing: CGFloat = 0
     private var webViewMadeTransparent = false
+    private var backdropView: UIImageView?
+    private var backdropGeneration = 0
 
     private static var glassSupported: Bool {
         #if compiler(>=6.2) && canImport(UIKit)
@@ -56,6 +59,54 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
 
     @objc public func isAvailable(_ call: CAPPluginCall) {
         call.resolve(["available": Self.glassSupported])
+    }
+
+    /// Host the wallpaper below the WebView so native glass has real pixels to
+    /// sample. The promise resolves true only after an image has decoded and
+    /// been installed; web keeps its DOM wallpaper until that acknowledgement.
+    @objc public func setBackdrop(_ call: CAPPluginCall) {
+        guard Self.glassSupported else {
+            call.resolve(["applied": false])
+            return
+        }
+        let imageUrl = call.getString("imageUrl")
+        let color = call.getString("color").flatMap(Self.color(fromCSSHex:)) ?? .black
+        backdropGeneration += 1
+        let generation = backdropGeneration
+
+        guard let imageUrl else {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, generation == self.backdropGeneration,
+                    let webView = self.webView, let container = webView.superview
+                else {
+                    call.resolve(["applied": false])
+                    return
+                }
+                self.makeWebViewTransparentOnce(webView)
+                self.installBackdrop(image: nil, color: color, in: container, below: webView)
+                call.resolve(["applied": true])
+            }
+            return
+        }
+        guard let url = URL(string: imageUrl), ["http", "https", "capacitor"].contains(url.scheme ?? "") else {
+            call.resolve(["applied": false])
+            return
+        }
+
+        loadBackdropData(url: url) { [weak self] data in
+            DispatchQueue.main.async {
+                guard let self, generation == self.backdropGeneration,
+                    let data, let image = UIImage(data: data),
+                    let webView = self.webView, let container = webView.superview
+                else {
+                    call.resolve(["applied": false])
+                    return
+                }
+                self.makeWebViewTransparentOnce(webView)
+                self.installBackdrop(image: image, color: color, in: container, below: webView)
+                call.resolve(["applied": true])
+            }
+        }
     }
 
     @objc public func attachGlass(_ call: CAPPluginCall) {
@@ -192,6 +243,46 @@ public class GlassBridge: CAPPlugin, CAPBridgedPlugin {
     }
 
     // MARK: - Helpers
+
+    private func installBackdrop(
+        image: UIImage?, color: UIColor, in container: UIView, below webView: UIView
+    ) {
+        let next = UIImageView(frame: webView.frame)
+        next.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        next.contentMode = .scaleAspectFill
+        next.clipsToBounds = true
+        next.backgroundColor = color
+        next.image = image
+        container.insertSubview(next, at: 0)
+        backdropView?.removeFromSuperview()
+        backdropView = next
+    }
+
+    private func loadBackdropData(url: URL, completion: @escaping (Data?) -> Void) {
+        // Capacitor-served public assets live in the app bundle; its custom URL
+        // scheme is a WebView handler, not a URLSession endpoint.
+        if url.scheme == "capacitor" || (url.host == "localhost" && !url.path.hasPrefix("/api/")) {
+            let relative = url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let bundled = Bundle.main.resourceURL?
+                .appendingPathComponent("public", isDirectory: true)
+                .appendingPathComponent(relative)
+            completion(bundled.flatMap { try? Data(contentsOf: $0) })
+            return
+        }
+        guard let webView else {
+            completion(nil)
+            return
+        }
+        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+            var request = URLRequest(url: url)
+            let headers = HTTPCookie.requestHeaderFields(with: cookies)
+            for (key, value) in headers { request.setValue(value, forHTTPHeaderField: key) }
+            URLSession.shared.dataTask(with: request) { data, response, _ in
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                completion((200..<300).contains(status) ? data : nil)
+            }.resume()
+        }
+    }
 
     /// Rects arrive viewport-relative (CSS px == points); offset into the
     /// container's coordinate space by the webview's frame origin.

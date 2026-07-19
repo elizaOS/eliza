@@ -26,7 +26,7 @@ export interface ImageBackgroundProps {
  *    would resolve to `file:///wallpapers` and fail. This is the same
  *    URL-resolution trap `resolveTileImageUrl` handles for launcher hero art.
  */
-function resolveWallpaperUrl(url: string): string {
+export function resolveWallpaperUrl(url: string): string {
   if (
     url.startsWith("data:") ||
     url.startsWith("blob:") ||

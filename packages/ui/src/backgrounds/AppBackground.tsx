@@ -5,12 +5,14 @@
  */
 import type * as React from "react";
 import { lazy, Suspense, useEffect, useState } from "react";
+import { setNativeBackdropActive } from "../glass/native-backdrop";
+import { setNativeBackdrop } from "../glass/native-bridge";
 import type { ShaderConfig } from "../state/ui-preferences";
 import { DEFAULT_BACKGROUND_COLOR } from "../state/ui-preferences";
 import { useBackgroundConfig } from "../state/useBackgroundConfig";
 import { useVoiceSettingsApplyChannel } from "../voice/useVoiceSettingsApplyChannel";
 import { applyRootCanvasPaint } from "./html-canvas-paint";
-import { ImageBackground } from "./ImageBackground";
+import { ImageBackground, resolveWallpaperUrl } from "./ImageBackground";
 import { ShaderBackground } from "./ShaderBackground";
 import { useAppearanceApplyChannel } from "./useAppearanceApplyChannel";
 import { useBackgroundApplyChannel } from "./useBackgroundApplyChannel";
@@ -74,6 +76,7 @@ export function AppBackground({
   visible = true,
 }: AppBackgroundProps = {}): React.JSX.Element | null {
   const { backgroundConfig } = useBackgroundConfig();
+  const [nativeHostedImage, setNativeHostedImage] = useState(false);
   useBackgroundApplyChannel();
   useAppearanceApplyChannel();
   useVoiceSettingsApplyChannel();
@@ -92,6 +95,61 @@ export function AppBackground({
     applyRootCanvasPaint(backgroundConfig);
   }, [backgroundConfig]);
 
+  useEffect(() => {
+    let current = true;
+    document.documentElement.classList.remove("eliza-native-backdrop");
+    setNativeHostedImage(false);
+    setNativeBackdropActive(false);
+
+    const color = backgroundConfig?.color ?? DEFAULT_BACKGROUND_COLOR;
+    if (backgroundConfig?.mode !== "image" || !backgroundConfig.imageUrl) {
+      // Clear a previously hosted image. Shader animation remains web-rendered,
+      // so the glass tier deliberately stays CSS even when this color succeeds.
+      void setNativeBackdrop({ color });
+      return () => {
+        current = false;
+        document.documentElement.classList.remove("eliza-native-backdrop");
+      };
+    }
+
+    const resolved = resolveWallpaperUrl(backgroundConfig.imageUrl);
+    let absolute: string;
+    try {
+      absolute = new URL(
+        resolved,
+        typeof window === "undefined" ? undefined : window.location.href,
+      ).href;
+    } catch {
+      return () => {
+        current = false;
+        document.documentElement.classList.remove("eliza-native-backdrop");
+      };
+    }
+    // blob/data/custom schemes cannot be fetched by the native host. Keep the
+    // existing DOM image and CSS glass rather than manufacturing a black hole.
+    if (!/^(https?:|capacitor:)$/i.test(new URL(absolute).protocol)) {
+      return () => {
+        current = false;
+        document.documentElement.classList.remove("eliza-native-backdrop");
+      };
+    }
+
+    void setNativeBackdrop({ imageUrl: absolute, color }).then((applied) => {
+      if (!current || !applied) return;
+      setNativeHostedImage(true);
+      setNativeBackdropActive(true);
+      document.documentElement.classList.add("eliza-native-backdrop");
+      // The root canvas mirror is itself a WebView pixel. Once native owns the
+      // image it must become transparent too, not merely the ImageBackground.
+      document.documentElement.style.backgroundImage = "none";
+      document.documentElement.style.backgroundColor = "transparent";
+    });
+    return () => {
+      current = false;
+      document.documentElement.classList.remove("eliza-native-backdrop");
+    };
+  }, [backgroundConfig]);
+
   if (!visible) return null;
   // Defensive: the app store can return a non-object slice before the provider
   // seeds it (e.g. the test fallback proxy). Fall back to the default shader.
@@ -101,7 +159,9 @@ export function AppBackground({
       : null;
   const color = config?.color ?? DEFAULT_BACKGROUND_COLOR;
   if (config?.mode === "image" && config.imageUrl) {
-    return <ImageBackground imageUrl={config.imageUrl} />;
+    return nativeHostedImage ? null : (
+      <ImageBackground imageUrl={config.imageUrl} />
+    );
   }
   if (config?.mode === "glsl" && config.shader) {
     // Key by source so a replacement shader remounts (fresh compile attempt +

@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useNativeBackdropActive } from "./native-backdrop";
 import { isNativeGlassAvailable } from "./native-bridge";
 
 /**
@@ -41,15 +42,19 @@ function cssTier(): GlassTier {
 }
 
 export function useNativeGlass(): GlassTier {
-  const [tier, setTier] = useState<GlassTier>(cssTier);
+  const fallbackTier = cssTier();
+  const [available, setAvailable] = useState(false);
+  const backdropActive = useNativeBackdropActive();
   useEffect(() => {
     let alive = true;
-    void isNativeGlassAvailable().then((available) => {
-      if (alive && available) setTier("native");
+    void isNativeGlassAvailable().then((next) => {
+      if (alive) setAvailable(next);
     });
     return () => {
       alive = false;
     };
   }, []);
-  return tier;
+  // The capability alone is insufficient: native material lives below the
+  // WebView and would reveal black until the image wallpaper is native too.
+  return available && backdropActive ? "native" : fallbackTier;
 }

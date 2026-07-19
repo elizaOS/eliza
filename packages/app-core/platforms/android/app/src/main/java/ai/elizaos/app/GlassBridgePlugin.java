@@ -28,13 +28,17 @@ package ai.elizaos.app;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Build;
 import android.view.View;
 import android.view.ViewGroup;
+import android.webkit.CookieManager;
 import android.webkit.WebView;
+import android.widget.ImageView;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -42,8 +46,15 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /** Native material regions behind the WebView; see the file header. */
 @CapacitorPlugin(name = "GlassBridge")
@@ -60,6 +71,10 @@ public class GlassBridgePlugin extends Plugin {
     private final Map<String, View> regions = new HashMap<>();
     private float groupingSpacing = 0f;
     private boolean webViewMadeTransparent = false;
+    private ImageView backdropView;
+    private View.OnLayoutChangeListener backdropLayoutListener;
+    private final AtomicInteger backdropGeneration = new AtomicInteger();
+    private final ExecutorService backdropLoader = Executors.newSingleThreadExecutor();
 
     private static boolean glassSupported() {
         return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S;
@@ -70,6 +85,51 @@ public class GlassBridgePlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("available", glassSupported());
         call.resolve(result);
+    }
+
+    /**
+     * Decode and install the current wallpaper below the WebView. The web side
+     * keeps painting CSS until {@code applied:true}, so a load error can never
+     * expose the activity window as a black region.
+     */
+    @PluginMethod
+    public void setBackdrop(PluginCall call) {
+        if (!glassSupported()) {
+            resolveApplied(call, false);
+            return;
+        }
+        String imageUrl = call.getString("imageUrl");
+        Integer parsedColor = parseCssHexColor(call.getString("color"));
+        int color = parsedColor != null ? parsedColor : Color.BLACK;
+        int generation = backdropGeneration.incrementAndGet();
+        Activity activity = getActivity();
+        if (activity == null) {
+            resolveApplied(call, false);
+            return;
+        }
+        if (imageUrl == null) {
+            activity.runOnUiThread(() -> installBackdrop(
+                    call, generation, null, color));
+            return;
+        }
+        URI uri;
+        try {
+            uri = URI.create(imageUrl);
+        } catch (IllegalArgumentException exception) {
+            resolveApplied(call, false);
+            return;
+        }
+        String scheme = uri.getScheme();
+        if (!("http".equals(scheme) || "https".equals(scheme)
+                || "capacitor".equals(scheme))) {
+            resolveApplied(call, false);
+            return;
+        }
+        backdropLoader.execute(() -> {
+            Bitmap bitmap = loadBackdropBitmap(activity, uri);
+            activity.runOnUiThread(() -> installBackdrop(
+                    call, generation, bitmap, color));
+        });
     }
 
     @PluginMethod
@@ -312,6 +372,99 @@ public class GlassBridgePlugin extends Plugin {
         // the backdrop, mirroring the iOS glass rim.
         drawable.setStroke(1, light ? 0x1A000000 : 0x1FFFFFFF);
         return drawable;
+    }
+
+    private void installBackdrop(
+            PluginCall call, int generation, Bitmap bitmap, int color) {
+        if (generation != backdropGeneration.get()) {
+            resolveApplied(call, false);
+            return;
+        }
+        if (call.getString("imageUrl") != null && bitmap == null) {
+            resolveApplied(call, false);
+            return;
+        }
+        WebView webView = bridge.getWebView();
+        ViewGroup container = webView != null ? (ViewGroup) webView.getParent() : null;
+        if (webView == null || container == null) {
+            resolveApplied(call, false);
+            return;
+        }
+        Activity activity = getActivity();
+        if (activity == null) {
+            resolveApplied(call, false);
+            return;
+        }
+        makeWebViewTransparentOnce(webView);
+        ImageView next = new ImageView(activity);
+        next.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        next.setBackgroundColor(color);
+        next.setImageBitmap(bitmap);
+        ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
+                webView.getWidth(), webView.getHeight());
+        next.setLayoutParams(params);
+        next.setX(webView.getX());
+        next.setY(webView.getY());
+        container.addView(next, 0);
+        if (backdropLayoutListener != null) {
+            webView.removeOnLayoutChangeListener(backdropLayoutListener);
+        }
+        if (backdropView != null && backdropView.getParent() instanceof ViewGroup) {
+            ((ViewGroup) backdropView.getParent()).removeView(backdropView);
+        }
+        backdropView = next;
+        backdropLayoutListener = (view, left, top, right, bottom,
+                oldLeft, oldTop, oldRight, oldBottom) -> {
+            ViewGroup.LayoutParams layout = next.getLayoutParams();
+            layout.width = right - left;
+            layout.height = bottom - top;
+            next.setLayoutParams(layout);
+            next.setX(view.getX());
+            next.setY(view.getY());
+        };
+        webView.addOnLayoutChangeListener(backdropLayoutListener);
+        resolveApplied(call, true);
+    }
+
+    private Bitmap loadBackdropBitmap(Activity activity, URI uri) {
+        String path = uri.getPath() != null ? uri.getPath() : "";
+        boolean bundled = "capacitor".equals(uri.getScheme())
+                || ("localhost".equals(uri.getHost()) && !path.startsWith("/api/"));
+        try {
+            if (bundled) {
+                String asset = "public/" + path.replaceFirst("^/+", "");
+                try (InputStream stream = activity.getAssets().open(asset)) {
+                    return BitmapFactory.decodeStream(stream);
+                }
+            }
+            HttpURLConnection connection = (HttpURLConnection) new URL(uri.toString())
+                    .openConnection();
+            connection.setConnectTimeout(10_000);
+            connection.setReadTimeout(20_000);
+            String cookie = CookieManager.getInstance().getCookie(uri.toString());
+            if (cookie != null && !cookie.isEmpty()) {
+                connection.setRequestProperty("Cookie", cookie);
+            }
+            connection.connect();
+            if (connection.getResponseCode() < 200
+                    || connection.getResponseCode() >= 300) {
+                connection.disconnect();
+                return null;
+            }
+            try (InputStream stream = connection.getInputStream()) {
+                return BitmapFactory.decodeStream(stream);
+            } finally {
+                connection.disconnect();
+            }
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private static void resolveApplied(PluginCall call, boolean applied) {
+        JSObject result = new JSObject();
+        result.put("applied", applied);
+        call.resolve(result);
     }
 
     private void makeWebViewTransparentOnce(WebView webView) {

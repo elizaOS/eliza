@@ -4,12 +4,22 @@ export {
   GlassStyles,
   GlassSurface,
   type GlassSurfaceProps,
+  type NativeGlassAnchorOptions,
+  useNativeGlassAnchor,
 } from "./GlassSurface";
+export {
+  isNativeBackdropActive,
+  resetNativeBackdropForTests,
+  setNativeBackdropActive,
+  useNativeBackdropActive,
+} from "./native-backdrop";
 export {
   glassBridge,
   isNativeGlassAvailable,
+  type NativeBackdropOptions,
   type NativeGlassOptions,
   resetGlassBridgeForTests,
+  setNativeBackdrop,
 } from "./native-bridge";
 export {
   GLASS_BANNER_FILL,

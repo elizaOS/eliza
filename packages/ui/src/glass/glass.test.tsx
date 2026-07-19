@@ -9,8 +9,17 @@
  */
 
 import { cleanup, render, waitFor } from "@testing-library/react";
+import { useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { GlassStyles, GlassSurface } from "./GlassSurface";
+import {
+  GlassStyles,
+  GlassSurface,
+  useNativeGlassAnchor,
+} from "./GlassSurface";
+import {
+  resetNativeBackdropForTests,
+  setNativeBackdropActive,
+} from "./native-backdrop";
 import { resetGlassBridgeForTests } from "./native-bridge";
 import {
   GLASS_RECIPES,
@@ -45,10 +54,12 @@ function installCapacitor(
       return bridge as unknown as T;
     },
   };
+  setNativeBackdropActive(true);
 }
 
 beforeEach(() => {
   resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
   // jsdom has no ResizeObserver; the anchor effect uses it for rect sync.
   if (typeof globalThis.ResizeObserver === "undefined") {
     globalThis.ResizeObserver = class {
@@ -63,6 +74,7 @@ afterEach(() => {
   cleanup();
   (globalThis as CapGlobal).Capacitor = undefined;
   resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
 });
 
 describe("glass tokens", () => {
@@ -116,6 +128,12 @@ describe("glass tokens", () => {
   });
 });
 
+function AnchorHarness({ enabled }: { enabled: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const tier = useNativeGlassAnchor(ref, { enabled });
+  return <div ref={ref} data-testid="anchor" data-glass-tier={tier} />;
+}
+
 describe("GlassSurface", () => {
   it("renders the variant class and a css tier off-native", () => {
     const { getByTestId } = render(
@@ -159,6 +177,31 @@ describe("GlassSurface", () => {
     await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(1));
     unmount();
     await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledTimes(1));
+  });
+
+  it("detaches native material and restores CSS immediately when an anchor starts dragging", async () => {
+    const bridge = fakeBridge();
+    installCapacitor(bridge);
+    const { getByTestId, rerender } = render(<AnchorHarness enabled />);
+    await waitFor(() =>
+      expect(getByTestId("anchor").dataset.glassTier).toBe("native"),
+    );
+    await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(1));
+
+    rerender(<AnchorHarness enabled={false} />);
+    expect(getByTestId("anchor").dataset.glassTier).toBe("css-frosted");
+    await waitFor(() => expect(bridge.detachGlass).toHaveBeenCalledTimes(1));
+  });
+
+  it("falls back to CSS when native attach rejects instead of leaving a transparent hole", async () => {
+    const bridge = fakeBridge({
+      attachGlass: vi.fn(async () => ({ attached: false })),
+    });
+    installCapacitor(bridge);
+    const { getByTestId } = render(<AnchorHarness enabled />);
+    await waitFor(() =>
+      expect(getByTestId("anchor").dataset.glassTier).toBe("css-frosted"),
+    );
   });
 
   it("stays on the css tier when the plugin reports unavailable", async () => {

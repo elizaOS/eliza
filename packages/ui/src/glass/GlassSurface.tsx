@@ -20,7 +20,7 @@
  */
 
 import type * as React from "react";
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import {
   LiquidGlassRefractionDefs,
   liquidGlassRimCss,
@@ -82,28 +82,43 @@ export interface GlassSurfaceProps
 }
 
 /** Anchor/unanchor the native material to this element's rect. */
-function useNativeAnchor(
-  ref: React.RefObject<HTMLDivElement | null>,
-  tier: GlassTier,
-  interactive: boolean,
-): void {
+export interface NativeGlassAnchorOptions {
+  /** False detaches native material and returns a CSS tier immediately. */
+  enabled?: boolean;
+  interactive?: boolean;
+}
+
+/**
+ * Anchor native material to any stable element. Bridge rejection is an honest
+ * CSS fallback, never a transparent element over a missing native view.
+ */
+export function useNativeGlassAnchor(
+  ref: React.RefObject<HTMLElement | null>,
+  { enabled = true, interactive = false }: NativeGlassAnchorOptions = {},
+): GlassTier {
+  const tier = useNativeGlass();
   const regionId = useId();
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
-    if (tier !== "native") return;
+    if (tier !== "native" || !enabled) return;
     const el = ref.current;
     const bridge = glassBridge();
     if (!el || !bridge) return;
+    setFailed(false);
     const radius = Number.parseFloat(getComputedStyle(el).borderRadius) || 12;
     const rectOf = () => {
       const r = el.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height };
     };
-    void bridge.attachGlass({
-      id: regionId,
-      rect: rectOf(),
-      cornerRadius: radius,
-      interactive,
-    });
+    void bridge
+      .attachGlass({
+        id: regionId,
+        rect: rectOf(),
+        cornerRadius: radius,
+        interactive,
+      })
+      .then((result) => setFailed(!result.attached))
+      .catch(() => setFailed(true));
     const sync = () => void bridge.updateRect({ id: regionId, rect: rectOf() });
     const observer = new ResizeObserver(sync);
     observer.observe(el);
@@ -113,7 +128,8 @@ function useNativeAnchor(
       window.removeEventListener("resize", sync);
       void bridge.detachGlass({ id: regionId });
     };
-  }, [tier, interactive, ref, regionId]);
+  }, [tier, enabled, interactive, ref, regionId]);
+  return tier === "native" && (!enabled || failed) ? "css-frosted" : tier;
 }
 
 export function GlassSurface({
@@ -123,9 +139,8 @@ export function GlassSurface({
   children,
   ...rest
 }: GlassSurfaceProps): React.JSX.Element {
-  const tier = useNativeGlass();
   const ref = useRef<HTMLDivElement>(null);
-  useNativeAnchor(ref, tier, interactive);
+  const tier = useNativeGlassAnchor(ref, { interactive });
   return (
     <div
       {...rest}

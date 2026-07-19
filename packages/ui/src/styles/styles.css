@@ -136,6 +136,15 @@ html.eliza-chat-overlay-shell #root {
   background: transparent;
 }
 
+/* A native image backdrop has been decoded and installed below the WebView.
+   Every web canvas layer must become transparent together; hiding only the DOM
+   ImageBackground would leave body/#root's launch color as an opaque black hole. */
+html.eliza-native-backdrop,
+html.eliza-native-backdrop body,
+html.eliza-native-backdrop #root {
+  background: transparent;
+}
+
 html.eliza-chat-overlay-shell #root {
   pointer-events: none;
 }

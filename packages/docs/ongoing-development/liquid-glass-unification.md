@@ -27,14 +27,18 @@ chat sheet and notification cards used it, each with hand-tuned numbers.
   document (App root, next to `AppBackground`).
 - **`useNativeGlass`** — the tier probe: `native` → `css-refraction`
   (Chromium `@supports (backdrop-filter: url(#x))`) → `css-frosted`
-  (universal). Resolves synchronously to a CSS tier and upgrades to native
-  async — no flash, no layout shift.
+  (universal). Resolves synchronously to a CSS tier and upgrades only after
+  both the plugin capability probe and native image-wallpaper acknowledgement
+  succeed. A shader, unsupported URL, decode failure, or old shell stays CSS,
+  so a transparent WebView region can never expose a black window.
 - **`native-bridge.ts` + `GlassBridge.swift` + `GlassBridgePlugin.java`** —
   real native material on both mobile platforms, one JS API. The Swift plugin
   (`packages/app-core/platforms/ios/App/App/GlassBridge.swift`, same
   registration pattern as `ElizaKeyboardBridge`) attaches a
   `UIVisualEffectView(UIGlassEffect)` **below the webview**, anchored to a
-  web-reported rect, and flips the webview transparent on first attach. Gated
+  web-reported rect. `setBackdrop({ imageUrl?, color? })` installs an image or
+  solid host layer below the WebView first; both platforms reuse WebView cookies
+  for `/api/media/<sha256>` and acknowledge only after image decode. Gated
   `#if compiler(>=6.2)` + `if #available(iOS 26, *)`. The Java plugin
   (`packages/app-core/platforms/android/.../GlassBridgePlugin.java`,
   registered in `MainActivity`) mirrors the API with a Material
@@ -73,13 +77,13 @@ Findings that shaped this (2026-07 research):
 | Surface | State |
 | --- | --- |
 | Notification cards | already on the liquid-glass optical stack (shade v4) |
-| Chat sheet | already on sheet-tier numbers; tokens now canonical in `glass/tokens.ts` |
+| Chat sheet | native material at settled inset detents over native-hosted image wallpaper; detaches to CSS blur for every active drag; full bleed stays opaque |
 | + menu (chat composer) | migrated — `DropdownMenuContent glass` → `menu` variant |
 | Other dropdowns/popovers (slash menu, config selects) | pending — same `glass` prop |
 | ViewHeader back button / pills | pending — `pill` variant |
 | NotificationBanners (toasts) | pending — `banner` variant |
 | `HOME_GLASS_CLASS` / `WALLPAPER_GLASS` family | pending consolidation into tokens |
-| Native tier wiring (attach pill/sheet regions) | plugin + probe shipped on iOS AND Android (device e2e: `packages/app/test/android/glass-bridge.android.spec.ts`); surface adoption blocked on native-hosted wallpaper — design + workplan in #15891 |
+| Native tier wiring (wallpaper + stable regions) | `setBackdrop` and chat-sheet rest anchoring shipped on iOS + Android; Android device spec covers real native wallpaper/material lifecycle; iOS/Android attended capture and GPU/battery traces remain the release-verification gate for #15891 |
 
 Each pending row is a small mechanical PR: swap the hand-rolled recipe for a
 variant, delete the local numbers, screenshot before/after.

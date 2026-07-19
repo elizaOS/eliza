@@ -62,6 +62,7 @@ import {
   TOUCH_TAP_MOVE_SLOP as OUTSIDE_SHEET_TAP_SLOP,
   useRafCoalescer,
 } from "../../gestures";
+import { useNativeGlassAnchor } from "../../glass/GlassSurface";
 import {
   GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
@@ -4744,6 +4745,22 @@ export function ContinuousChatOverlay({
     return null;
   }, [firstRunOpen, messages]);
 
+  // Native material is anchored only after the release spring has settled.
+  // An active drag detaches it and immediately restores CSS blur, keeping every
+  // finger-tracked frame off the JS-to-native bridge. Full bleed remains opaque.
+  const nativeSheetTier = useNativeGlassAnchor(
+    panelRef as React.RefObject<HTMLElement | null>,
+    {
+      enabled:
+        sheetOpen &&
+        !isDragging &&
+        !fullBleed &&
+        !restoreDragging &&
+        !firstRunOpen,
+    },
+  );
+  const nativeInsetSheet = nativeSheetTier === "native";
+
   return (
     <motion.div
       ref={overlayRef}
@@ -4946,6 +4963,7 @@ export function ContinuousChatOverlay({
           data-revealed={threadPresented ? "true" : "false"}
           data-chat-state={chatState}
           data-header-shown={headerVisible ? "true" : "false"}
+          data-glass-tier={nativeSheetTier}
           // The active conversation id + its position in the most-recent-first
           // list, surfaced so flows like the tutorial can observe a new-chat or a
           // swipe-between-chats without reaching into controller internals.
@@ -4958,6 +4976,8 @@ export function ContinuousChatOverlay({
           // maxHeight keeps it from spilling off the top (thread scrolls instead).
           style={{
             ...CHAT_PANEL_THEME,
+            // Native anchor reads this computed radius when the sheet settles.
+            borderRadius: morphRadius,
             // Morph-driven cap: the inset ceiling at rest, growing to the
             // full-bleed ceiling in lock-step with the shape morph (see
             // panelCapH) so an over-pull grows 1:1 under the finger.
@@ -5032,17 +5052,20 @@ export function ContinuousChatOverlay({
               // fieldset, not the orange app theme behind. Full-bleed stays fully
               // opaque (it covers the whole screen — there is nothing to see
               // through, and the blur would be wasted battery).
-              backgroundColor: firstRunOpen
-                ? "transparent"
-                : fullBleed
-                  ? "var(--bg)"
-                  : GLASS_SHEET_FILL,
-              backdropFilter: fullBleed
-                ? undefined
-                : GLASS_SHEET_BACKDROP_FILTER,
-              WebkitBackdropFilter: fullBleed
-                ? undefined
-                : GLASS_SHEET_BACKDROP_FILTER,
+              backgroundColor:
+                firstRunOpen || nativeInsetSheet
+                  ? "transparent"
+                  : fullBleed
+                    ? "var(--bg)"
+                    : GLASS_SHEET_FILL,
+              backdropFilter:
+                fullBleed || nativeInsetSheet
+                  ? undefined
+                  : GLASS_SHEET_BACKDROP_FILTER,
+              WebkitBackdropFilter:
+                fullBleed || nativeInsetSheet
+                  ? undefined
+                  : GLASS_SHEET_BACKDROP_FILTER,
               // Liquid-glass bevel: a bright top-left rim over a soft
               // bottom-right shade so the frosted edge catches light like a real
               // glass slab. Only on the inset sheet — full-bleed has no edge to
@@ -5085,6 +5108,9 @@ export function ContinuousChatOverlay({
               chat committed to edge-to-edge full-bleed. */}
           <span className="sr-only" data-testid="chat-maximized-probe">
             {`chat-maximized:${fullBleed ? "true" : "false"}`}
+          </span>
+          <span className="sr-only" data-testid="chat-glass-tier-probe">
+            {`chat-glass-tier:${nativeSheetTier}`}
           </span>
           {firstRunProbe ? (
             <span className="sr-only" data-testid="onboarding-state-probe">

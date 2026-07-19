@@ -20,6 +20,7 @@ type RegionState = {
 
 type GlassPlugin = {
   isAvailable(): Promise<{ available: boolean }>;
+  setBackdrop(o: unknown): Promise<{ applied: boolean }>;
   attachGlass(o: unknown): Promise<{ attached: boolean }>;
   updateRect(o: unknown): Promise<void>;
   detachGlass(o: unknown): Promise<void>;
@@ -101,6 +102,10 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     if (!plugin) return { error: "GlassBridge plugin not registered" } as const;
     (window as unknown as { __glass: GlassPlugin }).__glass = plugin;
     const availability = await plugin.isAvailable();
+    const backdrop = await plugin.setBackdrop({
+      imageUrl: new URL("/wallpapers/canopy.webp", window.location.href).href,
+      color: "#002244",
+    });
     // Bright saturated tint so the pixel capture proves the panel is OUR
     // native material, not the window background.
     const attach = await plugin.attachGlass({
@@ -122,6 +127,7 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
     const afterReattach = await plugin.getRegionState({ id: "e2e-probe" });
     return {
       availability,
+      backdrop,
       attach,
       reattach,
       afterAttach,
@@ -132,6 +138,7 @@ test("GlassBridge native-view lifecycle, boundary validation, and rendered pixel
   if ("error" in boot) throw new Error(String(boot.error));
 
   expect(boot.availability.available).toBe(expectedAvailable);
+  expect(boot.backdrop.applied).toBe(expectedAvailable);
   expect(boot.attach.attached).toBe(expectedAvailable);
   expect(boot.reattach.attached).toBe(expectedAvailable);
   if (!expectedAvailable) return; // pre-31 device: CSS tier, nothing to render
