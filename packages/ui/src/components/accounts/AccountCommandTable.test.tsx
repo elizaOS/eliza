@@ -209,11 +209,12 @@ describe("AccountCommandTable", () => {
     expect(onReauthenticate).toHaveBeenCalledWith(reauthAccount);
   });
 
-  it("dims disabled rows and forwards enabled toggles through onPatch", () => {
+  it("marks disabled rows without lowering descendant contrast and forwards enabled toggles", () => {
     const onPatch = vi.fn().mockResolvedValue(undefined);
     renderTable([account({ id: "off", enabled: false })], { onPatch });
     const row = screen.getByTestId("account-row-off");
-    expect(row.className).toContain("opacity-55");
+    expect(row.className).toContain("bg-bg-accent/20");
+    expect(row.className).not.toContain("opacity-");
     fireEvent.click(within(row).getByRole("checkbox"));
     expect(onPatch).toHaveBeenCalledWith("off", { enabled: true });
   });
