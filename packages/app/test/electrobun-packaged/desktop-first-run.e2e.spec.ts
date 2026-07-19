@@ -148,6 +148,9 @@ async function launchHarness(args: {
     launcherPath: launcherPath as string,
     apiBase: args.apiBase,
     extraEnv: {
+      // Startup auth and first-run are full-shell surfaces; the default
+      // bottom-bar path intentionally bypasses StartupScreen.
+      ELIZA_DESKTOP_BOTTOM_BAR: "0",
       ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER: "1",
     },
   });
@@ -232,8 +235,13 @@ test("packaged desktop pairing auth redeems a code and reaches auth/me", async (
             return { ok: false, error: "pairing input not found" };
           }
           input.focus();
-          input.value = ${cssString(pairingCode)};
-          input.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: ${cssString(pairingCode)} }));
+          const prototype = input instanceof HTMLTextAreaElement
+            ? window.HTMLTextAreaElement.prototype
+            : window.HTMLInputElement.prototype;
+          const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+          if (!setter) return { ok: false, error: "no native value setter" };
+          setter.call(input, ${cssString(pairingCode)});
+          input.dispatchEvent(new Event("input", { bubbles: true }));
           const button = Array.from(document.querySelectorAll("button"))
             .find((el) => /submit|pair|activate/i.test(el.textContent || ""));
           if (!(button instanceof HTMLButtonElement)) {
