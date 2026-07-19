@@ -99,21 +99,16 @@ jobs:
         run: bun run format:check
 
   typecheck-shards:
-    name: Type Check (${{ matrix.scope }})
+    name: Type Check (${{ matrix.shard }}/${{ strategy.job-total }})
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 15
     strategy:
       fail-fast: false
+      # Setup consumes most of the cold self-hosted budget. Four deterministic
+      # package-name slices leave enough time for each complete Turbo subgraph.
       matrix:
-        include:
-          # Every root workspace glob is under packages/ or plugins/. Keep the
-          # two cold-cache graphs independent so full typecheck coverage fits
-          # the fork runner budget without increasing the timeout.
-          - scope: packages
-            filter: ./packages/**
-          - scope: plugins
-            filter: ./plugins/**
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -142,9 +137,7 @@ jobs:
         run: bun run build
 
       - name: Run typecheck shard
-        env:
-          TYPECHECK_FILTER: ${{ matrix.filter }}
-        run: NODE_OPTIONS='--max-old-space-size=8192' node packages/scripts/run-turbo.mjs run typecheck --concurrency=8 --filter="$TYPECHECK_FILTER"
+        run: node packages/scripts/run-typecheck-shard.mjs ${{ matrix.shard }} ${{ strategy.job-total }}
 
   typecheck:
     name: Type Check
