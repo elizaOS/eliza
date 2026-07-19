@@ -196,9 +196,43 @@ describe("ci-turbo-cache-contract", () => {
       /^  typecheck:\s*$([\s\S]*?)(?=^  build:\s*$)/m,
     )?.[0];
     expect(typecheckJob).toBeDefined();
-    expect(typecheckJob).toMatch(/timeout-minutes:\s*18/);
+    expect(typecheckJob).toMatch(/timeout-minutes:\s*25/);
     expect(typecheckJob).toMatch(/run:\s*bun run typecheck/);
     expect(typecheckJob).not.toMatch(/continue-on-error|\|\| true/);
+  });
+
+  test("the long cold lanes avoid stale Bun fallback restores", () => {
+    const workflow = readFileSync(
+      join(REAL_REPO_ROOT, ".github", "workflows", "quality-fork.yml"),
+      "utf8",
+    );
+    const typecheckJob = workflow.match(
+      /^  typecheck:\s*$([\s\S]*?)(?=^  build:\s*$)/m,
+    )?.[0];
+    const buildJob = workflow.match(
+      /^  build:\s*$([\s\S]*?)(?=^  elizaos-cli-global-smoke:\s*$)/m,
+    )?.[0];
+    expect(typecheckJob).toMatch(/cache-bun-install:\s*["']false["']/);
+    expect(buildJob).toMatch(/cache-bun-install:\s*["']false["']/);
+    expect(buildJob).toMatch(/timeout-minutes:\s*30/);
+    expect(buildJob).toMatch(/run:\s*bun run build/);
+    expect(buildJob).toMatch(/run:\s*bun run test:e2e/);
+    expect(buildJob).not.toMatch(/continue-on-error|\|\| true/);
+
+    const setup = readFileSync(
+      join(
+        REAL_REPO_ROOT,
+        ".github",
+        "actions",
+        "setup-bun-workspace",
+        "action.yml",
+      ),
+      "utf8",
+    );
+    expect(setup).toMatch(/cache-bun-install:[\s\S]*default:\s*["']true["']/);
+    expect(setup).toMatch(
+      /name:\s*Cache Bun install[\s\S]*if:\s*\$\{\{\s*inputs\.cache-bun-install == ["']true["']\s*\}\}/,
+    );
   });
 
   test("the real repo satisfies the contract (shim pinned, no mixing)", () => {

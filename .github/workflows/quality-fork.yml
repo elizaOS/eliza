@@ -102,10 +102,11 @@ jobs:
     name: Type Check
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # Cold self-hosted runs measured 15m22s at the old ceiling while warm
-    # repo-wide typecheck completed in 12m41s. The cache writer repair above
-    # removes the steady-state penalty; 18m is a bounded first-run allowance.
-    timeout-minutes: 18
+    # Fresh attempt #16657 measured 4m15s of setup (including a wasteful 2m50s
+    # stale 1.6 GiB Bun-cache fallback restore) plus 13m28s of still-running
+    # full-graph typecheck. Skip that stale restore below and retain a finite
+    # 25m cold ceiling for the unfiltered graph; warm runs remain much faster.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -121,6 +122,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          cache-bun-install: "false"
 
       # @elizaos/core's package.json points "main"/"types" at dist/ files
       # that don't exist until the build runs. Plugins that resolve core
@@ -140,7 +142,11 @@ jobs:
     name: Build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 20
+    # Fresh attempt #16657 spent 2m44s in setup, 13m45s on the complete
+    # 175-task build, then entered the real 48-test Playwright suite at 16m49s.
+    # Remove the stale Bun-cache fallback below and allow a bounded 30m cold
+    # window for the already-started fail-closed browser suite to complete.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -156,6 +162,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
+          cache-bun-install: "false"
 
       - name: Build
         run: bun run build

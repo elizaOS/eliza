@@ -34,6 +34,13 @@ inputs:
     description: "Whether to run the repo postinstall step explicitly"
     required: false
     default: "true"
+  cache-bun-install:
+    description: >-
+      Whether to restore/save the global Bun install cache. Disable this for
+      cold-path jobs when a broad multi-gigabyte fallback restore costs more
+      than fetching the lockfile's actual dependency set.
+    required: false
+    default: "true"
   skip-avatar-clone:
     description: "Set SKIP_AVATAR_CLONE=1 for postinstall"
     required: false
@@ -295,11 +302,12 @@ runs:
         bun-version: ${{ inputs.bun-version }}
 
     - name: Cache Bun install
-      # Cache the Bun install store on every OS, Linux included (#12338). A miss
-      # just means no speedup and a cache write failure is non-fatal, so this is
-      # additive: worst case a cold Linux runner behaves exactly as before while
-      # warm runners skip re-downloading the dependency tarballs. Pinned by SHA
-      # (no floating @v5) to avoid the Bun/cache-action drift #12338 targets.
+      # Cache the Bun install store on every OS, Linux included (#12338). Long
+      # cold-path jobs can opt out: attempt 1 on #16657 missed the exact key,
+      # then spent 2m50s (Type Check) / 2m04s (Build) restoring a stale 1.6 GiB
+      # fallback before a sub-minute install. Pinned by SHA (no floating @v5)
+      # to avoid the Bun/cache-action drift #12338 targets.
+      if: ${{ inputs.cache-bun-install == 'true' }}
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
       with:
         path: ~/.bun/install/cache
