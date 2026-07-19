@@ -27,6 +27,24 @@ runs:
         path: .turbo
 `;
 
+const WORKSPACE_SETUP_YAML = `name: "Setup Bun Workspace"
+runs:
+  using: "composite"
+  steps:
+    - name: Compute deterministic Turbo cache key
+      id: turbo-key
+      shell: bash
+      run: node packages/scripts/turbo-cache-key.mjs --github-output
+    - name: Restore and save Turbo cache
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: .turbo
+        key: turbo-\${{ runner.os }}-\${{ steps.turbo-key.outputs.turbo_cache_key }}-\${{ github.job }}
+        restore-keys: |
+          turbo-\${{ runner.os }}-\${{ steps.turbo-key.outputs.turbo_cache_key }}-
+          turbo-\${{ runner.os }}-
+`;
+
 const CLEAN_ADOPTER = `name: Clean adopter
 on: [workflow_dispatch]
 jobs:
@@ -51,15 +69,26 @@ jobs:
       - run: bun run build
 `;
 
-function buildRepo({ shim = SHIM_YAML, workflows = {} }) {
+function buildRepo({
+  shim = SHIM_YAML,
+  workspaceSetup = WORKSPACE_SETUP_YAML,
+  workflows = {},
+}) {
   const root = mkdtempSync(join(tmpdir(), "turbo-cache-contract-"));
   mkdirSync(join(root, ".github", "actions", "turbo-cache-github"), {
+    recursive: true,
+  });
+  mkdirSync(join(root, ".github", "actions", "setup-bun-workspace"), {
     recursive: true,
   });
   mkdirSync(join(root, ".github", "workflows"), { recursive: true });
   writeFileSync(
     join(root, ".github", "actions", "turbo-cache-github", "action.yml"),
     shim,
+  );
+  writeFileSync(
+    join(root, ".github", "actions", "setup-bun-workspace", "action.yml"),
+    workspaceSetup,
   );
   for (const [name, content] of Object.entries(workflows)) {
     writeFileSync(join(root, ".github", "workflows", name), content);
@@ -116,6 +145,36 @@ describe("ci-turbo-cache-contract", () => {
     try {
       expect(() => runContract(root)).toThrow(
         /shim must not wire the SaaS remote cache/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when workspace setup nests the cache shim", () => {
+    const nestedSetup = WORKSPACE_SETUP_YAML.replace(
+      /    - name: Restore and save Turbo cache[\s\S]*$/,
+      "    - uses: ./.github/actions/turbo-cache-github\n",
+    );
+    const root = buildRepo({ workspaceSetup: nestedSetup });
+    try {
+      expect(() => runContract(root)).toThrow(
+        /must not nest the Turbo cache shim/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("fails when concurrent lanes share one immutable primary key", () => {
+    const unscopedSetup = WORKSPACE_SETUP_YAML.replace(
+      "-${{ github.job }}",
+      "",
+    );
+    const root = buildRepo({ workspaceSetup: unscopedSetup });
+    try {
+      expect(() => runContract(root)).toThrow(
+        /primary cache key must be lane-scoped with github.job/,
       );
     } finally {
       rmSync(root, { recursive: true, force: true });
