@@ -119,9 +119,6 @@ export function findSimulator(target) {
 }
 
 export function ensureSimulatorBooted() {
-  if (process.platform !== "darwin") {
-    throw new Error("iOS cloud onboarding requires macOS with xcrun simctl.");
-  }
   const target = val("--device") ?? process.env.ELIZA_IOS_SIMULATOR_UDID;
   if (!target) {
     throw new Error(
@@ -382,12 +379,13 @@ export async function main() {
       "Set ELIZA_DEVICE_CLOUD_ONBOARDING_LIVE=1 to run against real Eliza Cloud.",
     );
   }
+  const modes = modesToRun();
   const { appId } = readAppIdentity();
   const udid = ensureSimulatorBooted();
   fs.rmSync(resultRoot, { force: true, recursive: true });
   fs.mkdirSync(resultRoot, { recursive: true });
   const privateKey = e2eWalletPrivateKey();
-  for (const mode of modesToRun()) {
+  for (const mode of modes) {
     await runMode({ udid, appId, mode, privateKey });
   }
 }
