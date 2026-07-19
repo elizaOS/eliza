@@ -69,6 +69,11 @@ import type {
 import { reportComposerActivity } from "../../chat/report-composer-activity";
 import { CHAT_PREFILL_EVENT, ELIZA_BACK_INTENT_EVENT } from "../../events";
 import {
+  resetNativeBackdropForTests,
+  setNativeBackdropActive,
+} from "../../glass/native-backdrop";
+import { resetGlassBridgeForTests } from "../../glass/native-bridge";
+import {
   GLASS_SHEET_BACKDROP_FILTER,
   GLASS_SHEET_FILL,
 } from "../../glass/tokens";
@@ -112,6 +117,9 @@ afterEach(() => {
   // Search-jump tests seed the AppContext store with spies; clear it so the
   // inert test-fallback proxy backs every other test again.
   __setAppValueForTests(null);
+  (globalThis as { Capacitor?: unknown }).Capacitor = undefined;
+  resetGlassBridgeForTests();
+  resetNativeBackdropForTests();
 });
 
 function makeController(
@@ -248,6 +256,34 @@ describe("ContinuousChatOverlay", () => {
     expect(surface.style.backdropFilter).toBe(GLASS_SHEET_BACKDROP_FILTER);
     expect(surface.style.backdropFilter).not.toMatch(/saturate|brightness/);
     expect(surface.style.backgroundColor).toBe(GLASS_SHEET_FILL);
+  });
+
+  it("adopts native glass only for the settled open sheet after wallpaper acknowledgement", async () => {
+    const bridge = {
+      attachGlass: vi.fn(async () => ({ attached: true })),
+      updateRect: vi.fn(async () => {}),
+      detachGlass: vi.fn(async () => {}),
+      setGrouping: vi.fn(async () => {}),
+      setBackdrop: vi.fn(async () => ({ applied: true })),
+      isAvailable: vi.fn(async () => ({ available: true })),
+    };
+    (globalThis as { Capacitor?: unknown }).Capacitor = {
+      isNativePlatform: () => true,
+      getPlatform: () => "ios",
+      registerPlugin: () => bridge,
+    };
+    resetGlassBridgeForTests();
+    setNativeBackdropActive(true);
+
+    render(<ContinuousChatOverlay controller={makeController()} />);
+    fireEvent.focus(screen.getByLabelText("message"));
+
+    const sheet = screen.getByTestId("chat-sheet");
+    const surface = screen.getByTestId("chat-sheet-surface");
+    await waitFor(() => expect(sheet.dataset.glassTier).toBe("native"));
+    await waitFor(() => expect(bridge.attachGlass).toHaveBeenCalledTimes(1));
+    expect(surface.style.backgroundColor).toBe("transparent");
+    expect(surface.style.backdropFilter).toBe("");
   });
 
   it("reports typing start and pause from the real composer draft", () => {

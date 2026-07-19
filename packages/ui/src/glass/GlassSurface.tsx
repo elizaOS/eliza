@@ -120,11 +120,12 @@ export function useNativeGlassAnchor(
       .then((result) => setFailed(!result.attached))
       .catch(() => setFailed(true));
     const sync = () => void bridge.updateRect({ id: regionId, rect: rectOf() });
-    const observer = new ResizeObserver(sync);
-    observer.observe(el);
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sync);
+    observer?.observe(el);
     window.addEventListener("resize", sync);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener("resize", sync);
       void bridge.detachGlass({ id: regionId });
     };
