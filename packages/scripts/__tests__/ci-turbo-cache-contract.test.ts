@@ -4,7 +4,13 @@
 // Also runs the shipped contract against the real repo so the guard stays true
 // as the migration proceeds. Deterministic — no workflow is executed.
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -179,6 +185,20 @@ describe("ci-turbo-cache-contract", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("the fork typecheck keeps full coverage with a bounded cold-cache allowance", () => {
+    const workflow = readFileSync(
+      join(REAL_REPO_ROOT, ".github", "workflows", "quality-fork.yml"),
+      "utf8",
+    );
+    const typecheckJob = workflow.match(
+      /^  typecheck:\s*$([\s\S]*?)(?=^  build:\s*$)/m,
+    )?.[0];
+    expect(typecheckJob).toBeDefined();
+    expect(typecheckJob).toMatch(/timeout-minutes:\s*18/);
+    expect(typecheckJob).toMatch(/run:\s*bun run typecheck/);
+    expect(typecheckJob).not.toMatch(/continue-on-error|\|\| true/);
   });
 
   test("the real repo satisfies the contract (shim pinned, no mixing)", () => {
