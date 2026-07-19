@@ -37,6 +37,11 @@ jobs:
 function buildRepo(workflow = WORKFLOW) {
   const root = mkdtempSync(join(tmpdir(), "quality-fork-typecheck-contract-"));
   mkdirSync(join(root, ".github", "workflows"), { recursive: true });
+  mkdirSync(join(root, "packages", "scripts"), { recursive: true });
+  writeFileSync(
+    join(root, "packages", "scripts", "run-typecheck-shard.mjs"),
+    "const filter = (name) => `--filter=${name}...`;\n",
+  );
   writeFileSync(
     join(root, ".github", "workflows", "quality-fork.yml"),
     workflow,
