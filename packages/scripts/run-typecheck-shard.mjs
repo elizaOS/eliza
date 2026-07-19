@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-/** Run one deterministic, full-coverage slice of the workspace typecheck. */
-import { globSync, readFileSync } from "node:fs";
+/** Run one deterministic, full-coverage slice of Turbo's workspace graph. */
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -14,32 +14,31 @@ export function partitionNames(names, shardCount) {
   );
 }
 
+export function parseTurboPackageNames(json) {
+  const parsed = JSON.parse(json);
+  const items = parsed?.packages?.items;
+  if (!Array.isArray(items)) {
+    throw new Error("turbo ls JSON did not contain packages.items");
+  }
+  const names = items.map((item) => item?.name).filter(Boolean);
+  if (names.length !== items.length) {
+    throw new Error("turbo ls returned a workspace package without a name");
+  }
+  return names;
+}
+
 export function discoverWorkspaceNames(root = repoRoot) {
-  const rootPackage = JSON.parse(
-    readFileSync(resolve(root, "package.json"), "utf8"),
-  );
-  const patterns = rootPackage.workspaces ?? [];
-  const manifests = new Set();
-
-  for (const pattern of patterns.filter((item) => !item.startsWith("!"))) {
-    for (const manifest of globSync(`${pattern}/package.json`, { cwd: root })) {
-      manifests.add(manifest);
-    }
-  }
-  for (const pattern of patterns.filter((item) => item.startsWith("!"))) {
-    for (const manifest of globSync(`${pattern.slice(1)}/package.json`, {
-      cwd: root,
-    })) {
-      manifests.delete(manifest);
-    }
-  }
-
-  return [...manifests].map((manifest) => {
-    const pkg = JSON.parse(readFileSync(resolve(root, manifest), "utf8"));
-    if (!pkg.name)
-      throw new Error(`${manifest}: workspace package has no name`);
-    return pkg.name;
+  const turbo = resolve(root, "node_modules/.bin/turbo");
+  if (!existsSync(turbo)) throw new Error(`Turbo binary not found at ${turbo}`);
+  const result = spawnSync(turbo, ["ls", "--output=json"], {
+    cwd: root,
+    encoding: "utf8",
   });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`turbo ls failed (${result.status}): ${result.stderr}`);
+  }
+  return parseTurboPackageNames(result.stdout);
 }
 
 export function selectShard(names, shardIndex, shardCount) {
@@ -73,7 +72,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
   console.log(
-    `[typecheck-shard] shard ${shardIndex + 1}/${shardCount}: ${selected.length} workspace packages`,
+    `[typecheck-shard] shard ${shardIndex + 1}/${shardCount}: ${selected.length} Turbo workspace packages`,
   );
   const result = spawnSync(
     process.execPath,

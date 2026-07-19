@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const { runContract } = await import(
   new URL("../quality-fork-typecheck-contract.mjs", import.meta.url).href
 );
-const { discoverWorkspaceNames, partitionNames, selectShard } = await import(
+const { parseTurboPackageNames, partitionNames, selectShard } = await import(
   new URL("../run-typecheck-shard.mjs", import.meta.url).href
 );
 const REAL_REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
@@ -66,30 +66,23 @@ describe("quality-fork-typecheck-contract", () => {
     expect(partitionNames([...names].reverse(), 4)).toEqual(partitions);
   });
 
-  test("workspace discovery expands nested globs and honors exclusions", () => {
-    const root = mkdtempSync(join(tmpdir(), "typecheck-workspaces-"));
-    try {
-      for (const [path, name] of [
-        ["packages/a", "a"],
-        ["packages/nested/b", "b"],
-        ["packages/excluded", "x"],
-      ]) {
-        mkdirSync(join(root, path), { recursive: true });
-        writeFileSync(
-          join(root, path, "package.json"),
-          JSON.stringify({ name }),
-        );
-      }
-      writeFileSync(
-        join(root, "package.json"),
+  test("uses Turbo's authoritative workspace graph", () => {
+    expect(
+      parseTurboPackageNames(
         JSON.stringify({
-          workspaces: ["packages/*", "packages/*/*", "!packages/excluded"],
+          packages: {
+            count: 2,
+            items: [
+              { name: "@scope/a", path: "packages/a" },
+              { name: "@scope/b", path: "plugins/b" },
+            ],
+          },
         }),
-      );
-      expect(discoverWorkspaceNames(root).sort()).toEqual(["a", "b"]);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
+      ),
+    ).toEqual(["@scope/a", "@scope/b"]);
+    expect(() => parseTurboPackageNames('{"packages":[]}')).toThrow(
+      /packages.items/,
+    );
   });
 
   test("rejects an invalid shard boundary", () => {
