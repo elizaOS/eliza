@@ -27,7 +27,10 @@ import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/servic
 import { InMemoryVoiceUsageStore } from "../../../../../shared/src/lib/services/voice-usage-meter";
 import { mintVoiceSessionToken } from "../../../../../shared/src/lib/voice-session/jwt";
 import type { ServerControlFrame } from "../../../../../shared/src/lib/voice-session/protocol";
-import { __resetVoiceSessionRegistryForTests } from "../../../../../shared/src/lib/voice-session/session-registry";
+import {
+  __resetVoiceSessionRegistryForTests,
+  getVoiceSessionRegistry,
+} from "../../../../../shared/src/lib/voice-session/session-registry";
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 import { attachVoiceWsHandler } from "../../../../../shared/src/lib/voice-session/ws-handler";
 import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
@@ -896,6 +899,31 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(aborted).toBe(true);
     expect(client.controlTypes()).toContain("interrupted");
+  });
+
+  test("abrupt mid-turn disconnect synchronously reaps the registry before replacement hello", async () => {
+    const source = new FakeClientSocket();
+    await connectSession({
+      client: source,
+      fetchImpl: makeSseFetch(["still generating"], { hang: true }),
+    });
+    const sourceFlux = FakeFluxSocket.instances.at(-1)!;
+    sourceFlux.emitTurn("StartOfTurn");
+    sourceFlux.emitTurn("EndOfTurn", "disconnect me");
+    await flush();
+    expect(getVoiceSessionRegistry().size()).toBe(1);
+
+    source.clientClose();
+    expect(getVoiceSessionRegistry().size()).toBe(0);
+    expect(sourceFlux.closed).toBe(true);
+
+    const replacement = new FakeClientSocket();
+    await connectSession({
+      client: replacement,
+      fetchImpl: makeSseFetch(["recovered."]),
+    });
+    expect(replacement.controlTypes()).toContain("ready");
+    expect(getVoiceSessionRegistry().size()).toBe(1);
   });
 
   test("bye tears down providers, unregisters, closes cleanly, and revokes the bootstrap token", async () => {
