@@ -85,6 +85,7 @@ const {
   requireAdmin,
   requireApiKeyCredential,
   requireCronSecret,
+  requireSessionUserWithOrg,
   requireUser,
   requireUserOrApiKey,
   requireUserOrApiKeyWithOrg,
@@ -469,6 +470,74 @@ describe("Workers API-key auth", () => {
       status: 403,
       code: "access_denied",
     });
+  });
+
+  test("API-key org auth resolves the key owner, records context, and tracks usage", async () => {
+    validateBehavior = async () => ({
+      id: "key-1",
+      user_id: "user-1",
+      organization_id: "org-1",
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    });
+    userBehavior = async () => activeUser();
+    const c = contextWithApiKey("eliza_live_key");
+
+    await expect(requireUserOrApiKeyWithOrg(c as never)).resolves.toMatchObject({
+      id: "user-1",
+      organization_id: "org-1",
+    });
+    expect(c.get("authMethod")).toBe("api_key");
+    expect(c.get("apiKeyId")).toBe("key-1");
+    expect(c.executionCtx.waitUntil).toHaveBeenCalled();
+  });
+
+  test("API-key org auth rejects missing, inactive, and organizationless owners", async () => {
+    validateBehavior = async () => ({
+      id: "key-1",
+      user_id: "user-1",
+      organization_id: "org-1",
+      is_active: true,
+      expires_at: new Date(Date.now() + 60_000),
+    });
+
+    userBehavior = async () => null;
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({ status: 401 });
+
+    userBehavior = async () => activeUser({ is_active: false });
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({ status: 403 });
+
+    userBehavior = async () => activeUser({ organization_id: null, organization: null });
+    await expect(
+      requireUserOrApiKeyWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  test("session-only API-key management rejects API keys and accepts cached sessions", async () => {
+    await expect(
+      requireSessionUserWithOrg(contextWithApiKey("eliza_live_key") as never),
+    ).rejects.toMatchObject({
+      status: 401,
+      code: "session_auth_required",
+    });
+
+    const c = contextWithHeaders({});
+    c.set("user", activeUser());
+    c.set("authMethod", "session");
+    await expect(requireSessionUserWithOrg(c as never)).resolves.toMatchObject({
+      organization_id: "org-1",
+    });
+  });
+
+  test("getCurrentUser caches null when no Steward token is present", async () => {
+    const c = contextWithHeaders({});
+    await expect(getCurrentUser(c as never)).resolves.toBeNull();
+    await expect(getCurrentUser(c as never)).resolves.toBeNull();
+    expect(c.get("user")).toBeNull();
   });
 
   test("checks cron secrets from bearer or x-cron-secret headers", () => {

@@ -51,6 +51,7 @@ mock.module("./api-keys", () => ({
       usageCalls++;
     },
   },
+  isMobileApiKeySecret: () => false,
 }));
 
 const { resolveInferenceAuthContext } = await import("./inference-auth-context");

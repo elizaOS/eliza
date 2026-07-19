@@ -266,6 +266,27 @@ describe("AppsRepository.update", () => {
 });
 
 describe("AppsRepository staged deletion", () => {
+  test("repository direct update refuses deactivation without credential revocation", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const created = await createApp({
+      name: "Direct Deactivate Guard",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+    });
+
+    await expect(appsRepository.update(created.id, { is_active: false })).rejects.toThrow(
+      "deactivation must use updateWithMobileAuthRevocation",
+    );
+    await expect(appsRepository.prepareDeleteWithMobileAuthRevocation(FRESH_UUID)).resolves.toEqual(
+      {
+        app: undefined,
+        revokedKeyHashes: [],
+      },
+    );
+    await expect(appsRepository.finalizeDelete(FRESH_UUID)).resolves.toBeUndefined();
+  });
+
   test("revocation tombstone then finalization removes the row and evicts the cache", async () => {
     expect(pgliteReady).toBe(true);
     const { organizationId, userId } = await seedOrgAndUser();
@@ -400,6 +421,167 @@ describe("AppsRepository staged deletion", () => {
 
     expect(await appsRepository.findById(created.id)).toBeUndefined();
     expect(await apiKeysRepository.findByIdConsistent(apiKeyId)).toBeUndefined();
+  });
+});
+
+describe("AppsService usage and management wrappers", () => {
+  test("usage tracking logs request, app usage, and per-user usage when an API key resolves", async () => {
+    expect(pgliteReady).toBe(true);
+    const app = {
+      id: "11111111-1111-4111-8111-111111111111",
+      slug: "usage-wrapper",
+    } as App;
+    const getByApiKeyId = spyOn(appsService, "getByApiKeyId").mockResolvedValue(app);
+    const incrementUsage = spyOn(appsService, "incrementUsage").mockResolvedValue(undefined);
+    const trackUsage = spyOn(appsService, "trackUsage").mockResolvedValue(undefined);
+    const logRequest = spyOn(appsRepository, "logRequest").mockResolvedValue(undefined as never);
+
+    try {
+      await appsService.trackUsageByApiKey("apikey-123456789", "1.25", {
+        userId: "22222222-2222-4222-8222-222222222222",
+        requestType: "chat",
+      });
+      await appsService.trackDetailedRequest("apikey-123456789", {
+        requestType: "chat",
+        source: "ios",
+        userId: "22222222-2222-4222-8222-222222222222",
+        inputTokens: 10,
+        outputTokens: 20,
+        creditsUsed: "2.50",
+        metadata: { platform: "ios" },
+      });
+
+      expect(getByApiKeyId).toHaveBeenCalledTimes(2);
+      expect(incrementUsage).toHaveBeenCalledWith(app.id, "1.25");
+      expect(incrementUsage).toHaveBeenCalledWith(app.id, "2.50");
+      expect(trackUsage).toHaveBeenCalledWith(
+        app.id,
+        "22222222-2222-4222-8222-222222222222",
+        "2.50",
+        { requestType: "chat" },
+      );
+      expect(logRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_id: app.id,
+          request_type: "chat",
+          source: "ios",
+          credits_used: "2.50",
+        }),
+      );
+    } finally {
+      logRequest.mockRestore();
+      trackUsage.mockRestore();
+      incrementUsage.mockRestore();
+      getByApiKeyId.mockRestore();
+    }
+  });
+
+  test("page views, analytics wrappers, origins, and API-key regeneration delegate cleanly", async () => {
+    expect(pgliteReady).toBe(true);
+    const app = {
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "Delegated App",
+      slug: "delegated-app",
+      app_url: "https://delegated.example",
+      allowed_origins: ["https://extra.example"],
+      api_key_id: "old-key",
+      organization_id: "44444444-4444-4444-8444-444444444444",
+      created_by_user_id: "55555555-5555-4555-8555-555555555555",
+      is_active: true,
+    } as App;
+    const logRequest = spyOn(appsRepository, "logRequest").mockResolvedValue(undefined as never);
+    const incrementUsage = spyOn(appsService, "incrementUsage").mockResolvedValue(undefined);
+    const findById = spyOn(appsRepository, "findById").mockResolvedValue(app);
+    const getRequestStats = spyOn(appsRepository, "getRequestStats").mockResolvedValue([] as never);
+    const getRecentRequests = spyOn(appsRepository, "getRecentRequests").mockResolvedValue(
+      [] as never,
+    );
+    const getTopVisitors = spyOn(appsRepository, "getTopVisitors").mockResolvedValue([] as never);
+    const getRequestsOverTime = spyOn(appsRepository, "getRequestsOverTime").mockResolvedValue(
+      [] as never,
+    );
+    const listAppUsers = spyOn(appsRepository, "listAppUsers").mockResolvedValue([] as never);
+    const getAnalytics = spyOn(appsRepository, "getAnalytics").mockResolvedValue({} as never);
+    const getTotalStats = spyOn(appsRepository, "getTotalStats").mockResolvedValue({
+      totalRequests: 0,
+      totalUsers: 0,
+      totalCreditsUsed: "0.00",
+    });
+    const managedDomains = await import("../../../lib/services/managed-domains");
+    const listVerifiedOrigins = spyOn(
+      managedDomains.managedDomainsService,
+      "listVerifiedAppOrigins",
+    ).mockResolvedValue(["https://custom.example"]);
+    const deleteKey = spyOn(apiKeysService, "delete").mockResolvedValue(undefined);
+    const createKey = spyOn(apiKeysService, "create").mockResolvedValue({
+      apiKey: { id: "new-key" },
+      plainKey: "eliza_new_plain",
+    } as never);
+    const updateApp = spyOn(appsRepository, "update").mockResolvedValue(app);
+
+    try {
+      await appsService.trackPageView(app.id, {
+        pageUrl: "https://delegated.example/page",
+        referrer: "https://referrer.example",
+        source: "ios",
+        metadata: { variant: "cloud" },
+      });
+      expect(logRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          app_id: app.id,
+          request_type: "pageview",
+          metadata: expect.objectContaining({ variant: "cloud" }),
+        }),
+      );
+
+      await expect(appsService.getRequestStats(app.id)).resolves.toEqual([]);
+      await expect(appsService.getRecentRequests(app.id)).resolves.toEqual([]);
+      await expect(appsService.getTopVisitors(app.id)).resolves.toEqual([]);
+      await expect(
+        appsService.getRequestsOverTime(app.id, "daily", new Date(), new Date()),
+      ).resolves.toEqual([]);
+      await expect(appsService.getAppUsers(app.id)).resolves.toEqual([]);
+      await expect(
+        appsService.getAnalytics(app.id, "daily", new Date(), new Date()),
+      ).resolves.toEqual({});
+      await expect(appsService.getTotalStats(app.id)).resolves.toEqual({
+        totalRequests: 0,
+        totalUsers: 0,
+        totalCreditsUsed: "0.00",
+      });
+      await expect(appsService.getAllowedOrigins(app)).resolves.toEqual([
+        "https://delegated.example",
+        "https://extra.example",
+        "https://custom.example",
+      ]);
+      await expect(appsService.validateOrigin(app.id, "https://custom.example")).resolves.toBe(
+        true,
+      );
+      await expect(appsService.regenerateApiKey(app.id)).resolves.toBe("eliza_new_plain");
+      expect(deleteKey).toHaveBeenCalledWith("old-key");
+      expect(createKey).toHaveBeenCalledWith(
+        expect.objectContaining({
+          organization_id: app.organization_id,
+          user_id: app.created_by_user_id,
+        }),
+      );
+      expect(updateApp).toHaveBeenCalledWith(app.id, { api_key_id: "new-key" });
+    } finally {
+      updateApp.mockRestore();
+      createKey.mockRestore();
+      deleteKey.mockRestore();
+      listVerifiedOrigins.mockRestore();
+      getTotalStats.mockRestore();
+      getAnalytics.mockRestore();
+      listAppUsers.mockRestore();
+      getRequestsOverTime.mockRestore();
+      getTopVisitors.mockRestore();
+      getRecentRequests.mockRestore();
+      getRequestStats.mockRestore();
+      findById.mockRestore();
+      incrementUsage.mockRestore();
+      logRequest.mockRestore();
+    }
   });
 });
 
@@ -1146,5 +1328,82 @@ describe("AppAnalyticsService session analytics from app_requests", () => {
     ]);
     expect(analytics.funnel.steps.map((step) => step.sessions)).toEqual([2, 1]);
     expect(analytics.funnel.steps[1]?.conversionFromStartPercent).toBe(50);
+  });
+});
+
+describe("AppsRepository request analytics", () => {
+  test("reads app identity, request filters, aggregates, and visitors from real rows", async () => {
+    expect(pgliteReady).toBe(true);
+    const { organizationId, userId } = await seedOrgAndUser();
+    const apiKeyId = crypto.randomUUID();
+    const app = await createApp({
+      name: "Request Analytics",
+      organization_id: organizationId,
+      created_by_user_id: userId,
+      api_key_id: apiKeyId,
+      app_url: "https://request-analytics.example",
+      website_url: "https://request-analytics.example/site",
+      logo_url: "https://request-analytics.example/logo.png",
+      allowed_origins: ["https://request-analytics.example"],
+    });
+
+    await expect(appsRepository.findByApiKeyId(apiKeyId)).resolves.toMatchObject({ id: app.id });
+    await expect(appsRepository.findActiveApprovedById(app.id)).resolves.toEqual({
+      id: app.id,
+      name: app.name,
+    });
+    await expect(appsRepository.findPublicInfoById(app.id)).resolves.toMatchObject({
+      id: app.id,
+      app_url: "https://request-analytics.example",
+      is_active: true,
+      is_approved: true,
+    });
+    await expect(appsRepository.isSlugAvailable(app.slug)).resolves.toBe(false);
+
+    const start = new Date("2026-07-18T00:00:00.000Z");
+    const end = new Date("2026-07-19T00:00:00.000Z");
+    await appsRepository.logRequest({
+      app_id: app.id,
+      request_type: "chat",
+      source: "ios",
+      ip_address: "203.0.113.10",
+      user_id: userId,
+      credits_used: "1.25",
+      response_time_ms: 42,
+      status: "success",
+      created_at: new Date("2026-07-18T12:00:00.000Z"),
+    });
+    await appsRepository.logRequest({
+      app_id: app.id,
+      request_type: "chat",
+      source: "ios",
+      ip_address: null,
+      user_id: null,
+      credits_used: "0.75",
+      response_time_ms: 20,
+      status: "error",
+      created_at: new Date("2026-07-18T13:00:00.000Z"),
+    });
+
+    await expect(
+      appsRepository.getRecentRequests(app.id, {
+        requestType: "chat",
+        source: "ios",
+        startDate: start,
+        endDate: end,
+      }),
+    ).resolves.toMatchObject({ total: 2 });
+    await expect(appsRepository.getRequestStats(app.id, start, end)).resolves.toMatchObject({
+      totalRequests: 2,
+      uniqueIps: 1,
+      uniqueUsers: 1,
+      byType: { chat: 2 },
+      bySource: { ios: 2 },
+      byStatus: { success: 1, error: 1 },
+    });
+    await expect(appsRepository.getTopVisitors(app.id, 2, start, end)).resolves.toEqual([
+      expect.objectContaining({ ip: "203.0.113.10", requestCount: 1 }),
+      expect.objectContaining({ ip: "unknown", requestCount: 1 }),
+    ]);
   });
 });

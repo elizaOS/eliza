@@ -135,6 +135,288 @@ describe("apiKeysService.invalidateCache fails closed (#13417)", () => {
     ]);
   });
 
+  test("recovery summaries preserve active, pending, expired, and revoked states", async () => {
+    const now = new Date("2026-07-18T12:00:00.000Z");
+    track(
+      spyOn(apiKeysRepository, "listMobileByOwnerConsistent").mockResolvedValue([
+        fakeMobileKey({
+          id: "11111111-1111-4111-8111-111111111111",
+          user_id: MOBILE_USER_ID,
+          organization_id: MOBILE_ORG_ID,
+          name: "Active device",
+          is_active: true,
+          created_at: new Date("2026-07-18T11:00:00.000Z"),
+          expires_at: new Date("2026-07-18T13:00:00.000Z"),
+        }),
+        fakeMobileKey({
+          id: "22222222-2222-4222-8222-222222222222",
+          user_id: MOBILE_USER_ID,
+          organization_id: MOBILE_ORG_ID,
+          name: "Pending device",
+          is_active: false,
+          created_at: new Date("2026-07-18T10:00:00.000Z"),
+          expires_at: new Date("2026-07-18T13:00:00.000Z"),
+        }),
+        fakeMobileKey({
+          id: "33333333-3333-4333-8333-333333333333",
+          user_id: MOBILE_USER_ID,
+          organization_id: MOBILE_ORG_ID,
+          name: "Expired device",
+          is_active: true,
+          created_at: new Date("2026-07-18T09:00:00.000Z"),
+          expires_at: new Date("2026-07-18T11:00:00.000Z"),
+        }),
+        fakeMobileKey({
+          id: "44444444-4444-4444-8444-444444444444",
+          user_id: MOBILE_USER_ID,
+          organization_id: MOBILE_ORG_ID,
+          name: "Revoked device",
+          is_active: false,
+          created_at: new Date("2026-07-18T08:00:00.000Z"),
+          deleted_at: new Date("2026-07-18T11:30:00.000Z"),
+          expires_at: new Date("2026-07-18T13:00:00.000Z"),
+        }),
+      ]),
+    );
+
+    await expect(
+      apiKeysService.listMobileCredentialsForAccount(MOBILE_USER_ID, MOBILE_ORG_ID, now),
+    ).resolves.toEqual([
+      expect.objectContaining({ name: "Active device", status: "active" }),
+      expect.objectContaining({ name: "Pending device", status: "pending" }),
+      expect.objectContaining({ name: "Expired device", status: "expired" }),
+      expect.objectContaining({
+        name: "Revoked device",
+        status: "revoked",
+        revokedAt: "2026-07-18T11:30:00.000Z",
+      }),
+    ]);
+  });
+
+  test("ordinary API-key validation uses cache, replica, primary fallback, and negative cache", async () => {
+    const ordinary = {
+      ...fakeKey(),
+      id: "55555555-5555-4555-8555-555555555555",
+      organization_id: MOBILE_ORG_ID,
+      user_id: MOBILE_USER_ID,
+      key_prefix: "eliza_ordin",
+      source_app_id: null,
+    } as ApiKey;
+    let cacheValue: unknown = null;
+    track(spyOn(cache, "get").mockImplementation(async () => cacheValue));
+    const set = track(
+      spyOn(cache, "set").mockImplementation(async (_key, value) => {
+        cacheValue = value;
+      }),
+    );
+    const del = track(spyOn(cache, "del").mockResolvedValue(undefined));
+    const replica = track(
+      spyOn(apiKeysRepository, "findActiveByHash").mockResolvedValueOnce(undefined),
+    );
+    const primary = track(
+      spyOn(apiKeysRepository, "findActiveByHashConsistent").mockResolvedValueOnce(ordinary),
+    );
+
+    await expect(apiKeysService.validateApiKey("eliza_ordinary")).resolves.toBe(ordinary);
+    await expect(apiKeysService.validateApiKey("eliza_ordinary")).resolves.toBe(ordinary);
+    expect(replica).toHaveBeenCalledTimes(1);
+    expect(primary).toHaveBeenCalledTimes(1);
+
+    cacheValue = { id: "not-a-uuid", key_hash: 123 };
+    replica.mockResolvedValueOnce(undefined);
+    primary.mockResolvedValueOnce(undefined);
+    await expect(apiKeysService.validateApiKey("eliza_missing")).resolves.toBeNull();
+    expect(del).toHaveBeenCalled();
+    expect(set).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ __none: true }),
+      60,
+    );
+    await expect(apiKeysService.validateApiKey("eliza_missing")).resolves.toBeNull();
+  });
+
+  test("account-owned mobile revocation is idempotent and owner-scoped", async () => {
+    const revokedAt = new Date("2026-07-18T12:00:00.000Z");
+    const active = fakeMobileKey({
+      user_id: MOBILE_USER_ID,
+      organization_id: MOBILE_ORG_ID,
+    });
+    const tombstone = fakeMobileKey({
+      user_id: MOBILE_USER_ID,
+      organization_id: MOBILE_ORG_ID,
+      is_active: false,
+      deleted_at: revokedAt,
+    });
+    track(
+      spyOn(apiKeysRepository, "findMobileByOwnerConsistent")
+        .mockResolvedValueOnce(active)
+        .mockResolvedValueOnce(tombstone)
+        .mockResolvedValueOnce(undefined),
+    );
+    const tombstoneByOwner = track(
+      spyOn(apiKeysRepository, "tombstoneMobileByOwner").mockResolvedValueOnce(tombstone),
+    );
+
+    await expect(
+      apiKeysService.revokeMobileCredentialForAccount(
+        MOBILE_CREDENTIAL_ID,
+        MOBILE_USER_ID,
+        MOBILE_ORG_ID,
+      ),
+    ).resolves.toEqual({
+      receipt: {
+        credentialId: MOBILE_CREDENTIAL_ID,
+        revokedAt: revokedAt.toISOString(),
+        status: "revoked",
+      },
+      revokedNow: true,
+    });
+    expect(tombstoneByOwner).toHaveBeenCalledWith(
+      MOBILE_CREDENTIAL_ID,
+      MOBILE_USER_ID,
+      MOBILE_ORG_ID,
+      expect.any(Date),
+    );
+
+    await expect(
+      apiKeysService.revokeMobileCredentialForAccount(
+        MOBILE_CREDENTIAL_ID,
+        MOBILE_USER_ID,
+        MOBILE_ORG_ID,
+      ),
+    ).resolves.toEqual({
+      receipt: expect.objectContaining({ credentialId: MOBILE_CREDENTIAL_ID }),
+      revokedNow: false,
+    });
+    await expect(
+      apiKeysService.revokeMobileCredentialForAccount("not-a-uuid", MOBILE_USER_ID, MOBILE_ORG_ID),
+    ).resolves.toBeNull();
+    await expect(
+      apiKeysService.revokeMobileCredentialForAccount(
+        MOBILE_CREDENTIAL_ID,
+        MOBILE_USER_ID,
+        MOBILE_ORG_ID,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  test("generic update and delete reject mobile-owned credentials before mutation", async () => {
+    track(spyOn(apiKeysRepository, "findByIdConsistent").mockResolvedValue(fakeMobileKey()));
+    const update = track(spyOn(apiKeysRepository, "update").mockResolvedValue(undefined));
+    const repoDelete = track(spyOn(apiKeysRepository, "delete").mockResolvedValue(undefined));
+
+    await expect(apiKeysService.update(MOBILE_CREDENTIAL_ID, { is_active: false })).rejects.toThrow(
+      /mobile-issued/i,
+    );
+    await expect(apiKeysService.delete(MOBILE_CREDENTIAL_ID)).rejects.toThrow(/mobile-issued/i);
+    expect(update).not.toHaveBeenCalled();
+    expect(repoDelete).not.toHaveBeenCalled();
+  });
+
+  test("simple service wrappers delegate and mobile keys keep their distinct prefix", async () => {
+    const mobile = apiKeysService.generateMobileApiKey();
+    expect(mobile.key).toStartWith("eliza_mobile_");
+
+    const getById = track(spyOn(apiKeysRepository, "findById").mockResolvedValue(fakeKey()));
+    const getManageable = track(
+      spyOn(apiKeysRepository, "findManageableById").mockResolvedValue(fakeKey()),
+    );
+    const listOrg = track(spyOn(apiKeysRepository, "listByOrganization").mockResolvedValue([]));
+    const listUser = track(spyOn(apiKeysRepository, "listByUser").mockResolvedValue([]));
+    const increment = track(spyOn(apiKeysRepository, "incrementUsage").mockResolvedValue());
+
+    await expect(apiKeysService.getById("key-1")).resolves.toMatchObject({ id: "key-1" });
+    await expect(apiKeysService.getManageableById("key-1")).resolves.toMatchObject({
+      id: "key-1",
+    });
+    await expect(apiKeysService.listByOrganization("org-1")).resolves.toEqual([]);
+    await expect(apiKeysService.listByUser("user-1")).resolves.toEqual([]);
+    await expect(apiKeysService.incrementUsage("key-1")).resolves.toBeUndefined();
+    await expect(apiKeysService.incrementUsageDebounced("key-1")).resolves.toBeUndefined();
+
+    expect(getById).toHaveBeenCalledWith("key-1");
+    expect(getManageable).toHaveBeenCalledWith("key-1");
+    expect(listOrg).toHaveBeenCalledWith("org-1");
+    expect(listUser).toHaveBeenCalledWith("user-1");
+    expect(increment).toHaveBeenCalled();
+  });
+
+  test("default-key self-heal validates inputs and reports strict provisioner failures", async () => {
+    await expect(apiKeysService.provisionDefaultApiKey("", MOBILE_ORG_ID)).rejects.toThrow(
+      /invalid userid/i,
+    );
+    await expect(apiKeysService.ensureUserHasApiKey("", MOBILE_ORG_ID)).resolves.toBeUndefined();
+
+    const provision = track(
+      spyOn(apiKeysService, "provisionDefaultApiKey").mockRejectedValue(
+        new Error("primary insert failed"),
+      ),
+    );
+    await expect(
+      apiKeysService.ensureUserHasApiKey(MOBILE_USER_ID, MOBILE_ORG_ID),
+    ).resolves.toBeUndefined();
+    expect(provision).toHaveBeenCalledWith(MOBILE_USER_ID, MOBILE_ORG_ID);
+  });
+
+  test("agent and user deactivation flows invalidate every ordinary key they touch", async () => {
+    const userKey = { ...fakeKey(), organization_id: MOBILE_ORG_ID, is_active: true } as ApiKey;
+    const otherOrgKey = {
+      ...fakeKey(),
+      key_hash: "c".repeat(64),
+      organization_id: "55555555-5555-4555-8555-555555555555",
+      is_active: true,
+    } as ApiKey;
+    const invalidate = track(spyOn(apiKeysService, "invalidateCache").mockResolvedValue());
+    const findNamed = track(
+      spyOn(apiKeysRepository, "findByUserAndName").mockResolvedValue([userKey]),
+    );
+    const deactivateNamed = track(
+      spyOn(apiKeysRepository, "deactivateUserKeysByName").mockResolvedValue(),
+    );
+    const listByUser = track(
+      spyOn(apiKeysRepository, "listByUser").mockResolvedValue([userKey, otherOrgKey]),
+    );
+    const deactivateOrg = track(
+      spyOn(apiKeysRepository, "deactivateByUserAndOrganization").mockResolvedValue(),
+    );
+    const revokeForAgent = track(spyOn(apiKeysService, "revokeForAgent").mockResolvedValue());
+    const create = track(
+      spyOn(apiKeysService, "create").mockResolvedValue({
+        apiKey: userKey,
+        plainKey: "eliza_agent_plain",
+      }),
+    );
+
+    await expect(
+      apiKeysService.deactivateUserKeysByName("user-1", "Default API Key"),
+    ).resolves.toBeUndefined();
+    await expect(
+      apiKeysService.deactivateByUserAndOrganization("user-1", MOBILE_ORG_ID),
+    ).resolves.toBeUndefined();
+    await expect(
+      apiKeysService.createForAgent({
+        organizationId: MOBILE_ORG_ID,
+        userId: MOBILE_USER_ID,
+        agentSandboxId: "sandbox-1",
+      }),
+    ).resolves.toEqual({ apiKey: userKey, plainKey: "eliza_agent_plain" });
+
+    expect(findNamed).toHaveBeenCalledWith("user-1", "Default API Key");
+    expect(deactivateNamed).toHaveBeenCalledWith("user-1", "Default API Key");
+    expect(listByUser).toHaveBeenCalledWith("user-1");
+    expect(deactivateOrg).toHaveBeenCalledWith("user-1", MOBILE_ORG_ID);
+    expect(invalidate).toHaveBeenCalledWith(userKey.key_hash);
+    expect(invalidate).not.toHaveBeenCalledWith(otherOrgKey.key_hash);
+    expect(revokeForAgent).toHaveBeenCalledWith("sandbox-1");
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "agent-sandbox:sandbox-1",
+        organization_id: MOBILE_ORG_ID,
+        user_id: MOBILE_USER_ID,
+      }),
+    );
+  });
+
   test("both deletes confirmed -> resolves quietly", async () => {
     const del = track(spyOn(cache, "delConfirmed").mockResolvedValue(true));
     await expect(apiKeysService.invalidateCache(KEY_HASH)).resolves.toBeUndefined();

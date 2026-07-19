@@ -488,6 +488,7 @@ export class AppsRepository {
     data: Partial<NewApp>,
     now = new Date(),
   ): Promise<AppMobileAuthRevocationMutation> {
+    /* global-scope: by-id revocation transaction; AppsService authorizes org ownership before calling. */
     if (data.is_active !== false && data.is_approved !== false) {
       throw new ElizaError(
         "Mobile credential revocation requires app deactivation or de-approval",
@@ -556,6 +557,7 @@ export class AppsRepository {
     id: string,
     now = new Date(),
   ): Promise<AppMobileAuthRevocationMutation> {
+    /* global-scope: by-id deletion tombstone transaction; AppsService authorizes org ownership before calling. */
     const mutation = await dbWrite.transaction(async (tx) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       let inactive = existing;
@@ -608,6 +610,7 @@ export class AppsRepository {
 
   /** Permanently removes only an app whose mobile authorization is already revoked. */
   async finalizeDelete(id: string): Promise<App | undefined> {
+    /* global-scope: by-id final delete; AppsService calls this only after owned revocation/teardown. */
     const deleted = await dbWrite.transaction(async (tx) => {
       const [existing] = await tx.select().from(apps).where(eq(apps.id, id)).for("update");
       if (!existing) return undefined;
