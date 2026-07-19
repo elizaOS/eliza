@@ -35,7 +35,7 @@ type EmbeddingEndpoint = {
 // safe buffer at the conventional ~4 chars/token estimate.
 const MAX_EMBEDDING_CHARS = 8_000 * 4;
 
-function validateDimension(dimension: number): VectorDimension {
+export function validateEmbeddingDimension(dimension: number): VectorDimension {
   const validDimensions = Object.values(VECTOR_DIMS) as number[];
   if (!validDimensions.includes(dimension)) {
     throw new Error(
@@ -263,7 +263,7 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
-  const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
+  const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
 
   const text = extractText(params);
   if (text === null) {
@@ -299,7 +299,7 @@ export async function handleBatchTextEmbedding(
     return [];
   }
 
-  const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
+  const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
 
   const prepared = texts.map((text, i) => {
     if (typeof text !== "string" || text.trim().length === 0) {

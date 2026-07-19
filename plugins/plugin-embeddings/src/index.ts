@@ -23,7 +23,11 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 
-import { handleBatchTextEmbedding, handleTextEmbedding } from "./models/embedding";
+import {
+  handleBatchTextEmbedding,
+  handleTextEmbedding,
+  validateEmbeddingDimension,
+} from "./models/embedding";
 import {
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
@@ -80,7 +84,7 @@ export const embeddingsPlugin: Plugin = {
     }
     // Validate the dimension up-front so a misconfiguration surfaces at boot,
     // not on the first embedding call.
-    getEmbeddingDimensions(runtime);
+    validateEmbeddingDimension(getEmbeddingDimensions(runtime));
     if (!getEmbeddingBaseURL(runtime)) {
       logger.warn(
         "[Embeddings] EMBEDDING_API_KEY is set but EMBEDDING_BASE_URL is not — " +
