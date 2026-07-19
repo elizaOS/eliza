@@ -6,4 +6,6 @@
  * here so changed-file coverage executes the canonical native boundary rather
  * than replacing it with a browser notification double.
  */
+// biome-ignore lint/correctness/noUnusedImports: Explicitly classifies this coverage entrypoint for the Vitest lane.
+import {} from "vitest";
 import "../platforms/electrobun/src/native/desktop-window.test";
