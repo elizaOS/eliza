@@ -83,7 +83,7 @@ if (!result.success) {
 
 console.log("📝 Generating TypeScript declarations...");
 // Override rootDir to src so declarations land directly in dist/ rather than nested under the monorepo rootDir
-await $`tsc --emitDeclarationOnly --declaration --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
+await $`tsc6 --emitDeclarationOnly --declaration --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
 
 await import(new URL("./dist/local-inference-routes.js", import.meta.url).href);
 await import(new URL("./dist/voice-wake.js", import.meta.url).href);

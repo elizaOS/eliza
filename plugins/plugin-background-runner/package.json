@@ -37,9 +37,9 @@
     "INSTALL.md"
   ],
   "scripts": {
-    "build": "tsc --noCheck -p tsconfig.json",
-    "dev": "tsc --watch",
-    "typecheck": "tsgo --noEmit",
+    "build": "tsc6 --noCheck -p tsconfig.json",
+    "dev": "tsc6 --watch",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:unit": "bun test __tests__/unit/",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -82,6 +82,7 @@
     "@biomejs/biome": "2.5.4",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "publishConfig": {

@@ -1,35 +1,36 @@
 #!/usr/bin/env node
 /**
  * Audit the build / typecheck compiler model (issue #9626, TL;DR #3 + "two
- * compilers"). The repo's chosen model is: **tsgo checks, tsc only emits.**
+ * compilers"). The repo's chosen model is: **stable tsc checks, compatibility tsc6 emits.**
  *
  * This script flags drift from that model across every workspace package:
- *   1. A `build` that runs a full `tsc` type-check (declaration emit WITHOUT
+ *   1. A `build` that runs a full `tsc6` type-check (declaration emit WITHOUT
  *      `--noCheck`) while a separate `typecheck` already checks the same source
  *      — a redundant second full type-check.
- *   2. A `typecheck` that uses `tsc` instead of the standard `tsgo`.
+ *   2. A `typecheck` that uses compatibility `tsc6` instead of stable `tsc`.
  *   3. A no-op `typecheck` (`tsc --noEmit --noCheck` checks nothing).
  *
  * Exits non-zero on any un-allowlisted violation so it can gate CI / `verify`.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveBuildModelExceptions } from "./lib/script-metadata.mjs";
+import { resolveWorkspacePackageDirs } from "./lib/workspace-package-dirs.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
 );
-const WORKSPACE_GLOBS = ["packages", "plugins"];
+const rootPackage = JSON.parse(
+  readFileSync(path.join(repoRoot, "package.json"), "utf8"),
+);
+const workspaceGlobs = rootPackage.workspaces;
 
-// Deliberate, documented exceptions to the "tsgo checks, tsc emits" model. Each
-// package opts in via `elizaos.scripts.buildModel` in its own package.json (e.g.
-// @elizaos/core / plugin-streaming keep a full build type-check for byte-stable
-// declaration emit; plugin-personal-assistant stays on `tsc` for typecheck
-// pending a tsgo fix, #9626). Resolved through the discovery
-// seam so no package names live in this file.
+// Deliberate, documented exceptions to the stable-native checker model. Build
+// and declaration emit may remain on TypeScript 6 while stable native checks
+// resolve through the @typescript/native package alias.
 const ALLOW = resolveBuildModelExceptions({ repoRoot });
 
 const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
@@ -74,40 +75,7 @@ const CUSTOM_PLUGIN_BUILD_ALLOW = new Map([
 ]);
 
 function listPackageDirs() {
-  const dirs = [];
-  for (const glob of WORKSPACE_GLOBS) {
-    const base = path.join(repoRoot, glob);
-    let entries;
-    try {
-      entries = readdirSync(base, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const ent of entries) {
-      if (!ent.isDirectory()) continue;
-      const dir = path.join(base, ent.name);
-      try {
-        statSync(path.join(dir, "package.json"));
-        dirs.push(dir);
-      } catch {
-        // nested workspace (e.g. packages/feed/packages/*) — descend one level
-        try {
-          const nestedBase = path.join(dir, "packages");
-          for (const nested of readdirSync(nestedBase, {
-            withFileTypes: true,
-          })) {
-            if (!nested.isDirectory()) continue;
-            const ndir = path.join(nestedBase, nested.name);
-            try {
-              statSync(path.join(ndir, "package.json"));
-              dirs.push(ndir);
-            } catch {}
-          }
-        } catch {}
-      }
-    }
-  }
-  return dirs;
+  return resolveWorkspacePackageDirs(repoRoot, workspaceGlobs);
 }
 
 function walkBuildFiles(base, out = []) {
@@ -160,9 +128,9 @@ function nearestPackageName(filePath) {
   return null;
 }
 
-/** A tsc invocation that emits declarations and does NOT skip the type-check. */
+/** A compatibility tsc6 invocation that emits and does not skip checking. */
 function isFullTscEmit(script) {
-  if (!/\btsc\b/.test(script)) return false;
+  if (!/\btsc6\b/.test(script)) return false;
   const emits =
     /--emitDeclarationOnly|--declaration\b/.test(script) ||
     /(?:^|[\s"',])(?:-p|--project)(?:[\s"',]+)tsconfig/.test(script);
@@ -170,13 +138,27 @@ function isFullTscEmit(script) {
   if (/--noCheck/.test(script)) return false;
   // `--noEmit` means a pure check (no emit) — UNLESS it's `--noEmit false`,
   // which re-enables emit to override a tsconfig `noEmit: true`. So
-  // `tsc --emitDeclarationOnly --noEmit false` (no --noCheck) is still a full
-  // type-check that emits, and must be flagged.
+  // `tsc6 --emitDeclarationOnly --noEmit false` (no --noCheck) is still a
+  // full type-check that emits, and must be flagged.
   if (/--noEmit\b(?!\s+false)/.test(script)) return false;
   return true;
 }
 
 const violations = [];
+if (rootPackage.devDependencies?.["@typescript/native-preview"]) {
+  violations.push("root still depends on retired @typescript/native-preview");
+}
+if (
+  !/^npm:typescript@\^?7\./.test(
+    rootPackage.devDependencies?.["@typescript/native"] ?? "",
+  )
+) {
+  violations.push("root @typescript/native alias is not stable TypeScript 7");
+}
+if (!rootPackage.devDependencies?.["@typescript/typescript6"]) {
+  violations.push("root is missing the TypeScript 6 compatibility package");
+}
+
 const turbo = JSON.parse(
   readFileSync(path.join(repoRoot, "turbo.json"), "utf8"),
 );
@@ -200,7 +182,22 @@ for (const dir of listPackageDirs()) {
   const scripts = pkg.scripts ?? {};
   const build = scripts.build ?? "";
   const typecheck = scripts.typecheck ?? "";
-  const hasSeparateTypecheck = /\btsgo\b|\btsc\b/.test(typecheck);
+  const hasSeparateTypecheck = /\btsc6?\b/.test(typecheck);
+  const nativeTypeScript =
+    pkg.dependencies?.["@typescript/native"] ??
+    pkg.devDependencies?.["@typescript/native"];
+
+  if (/\btsgo\b/.test(typecheck)) {
+    violations.push(`${name}: typecheck still invokes retired tsgo`);
+  }
+  if (
+    /\btsc\b/.test(typecheck) &&
+    !/^npm:typescript@\^?7\./.test(nativeTypeScript ?? "")
+  ) {
+    violations.push(
+      `${name}: native typecheck does not declare the stable @typescript/native alias`,
+    );
+  }
 
   if (
     isFullTscEmit(build) &&
@@ -208,11 +205,11 @@ for (const dir of listPackageDirs()) {
     !ALLOW.doubleCheck.has(name)
   ) {
     violations.push(
-      `${name}: build double-type-checks (add --noCheck to its tsc emit) — ${build.trim()}`,
+      `${name}: build double-type-checks (add --noCheck to its tsc6 emit) — ${build.trim()}`,
     );
   } else if (hasSeparateTypecheck && !ALLOW.doubleCheck.has(name)) {
-    // The build script may delegate to a build.ts/build.mjs that runs tsc
-    // internally — inspect those files for a tsc emit without --noCheck.
+    // A build script may delegate to build.ts/build.mjs, so inspect it for a
+    // compatibility declaration emit that omits --noCheck.
     for (const buildFile of ["build.ts", "build.mjs"]) {
       if (!new RegExp(`\\b${buildFile.replace(".", "\\.")}\\b`).test(build))
         continue;
@@ -226,27 +223,26 @@ for (const dir of listPackageDirs()) {
         if (/^\s*(\/\/|\*)/.test(line)) continue; // skip comments
         if (isFullTscEmit(line)) {
           violations.push(
-            `${name}: ${buildFile} runs a full tsc type-check (add --noCheck) — ${line.trim()}`,
+            `${name}: ${buildFile} runs a full tsc6 type-check (add --noCheck) — ${line.trim()}`,
           );
           break;
         }
       }
     }
   }
-  if (/\btsc --noEmit\b/.test(typecheck) && /--noCheck/.test(typecheck)) {
+  if (/\btsc6? --noEmit\b/.test(typecheck) && /--noCheck/.test(typecheck)) {
     violations.push(
       `${name}: typecheck is a no-op (\`tsc --noEmit --noCheck\` checks nothing)`,
     );
   } else if (
-    /\btsc\b/.test(typecheck) &&
+    /\btsc6\b/.test(typecheck) &&
     /--noEmit/.test(typecheck) &&
-    !/\btsgo\b/.test(typecheck) &&
     !ALLOW.tscTypecheck.has(name)
   ) {
-    // `tsc -b` (project-references build) is a deliberately different mode and
-    // is intentionally not flagged here — only the `tsc --noEmit` checker form.
+    // `tsc6 -b` is a deliberately different mode. Only compatibility
+    // `tsc6 --noEmit` is a checker-model violation here.
     violations.push(
-      `${name}: typecheck uses tsc --noEmit, not tsgo — ${typecheck.trim()}`,
+      `${name}: typecheck uses compatibility tsc6 --noEmit, not stable tsc — ${typecheck.trim()}`,
     );
   }
 }
@@ -260,7 +256,7 @@ for (const file of listBuildFiles()) {
       if (/^\s*(\/\/|\*)/.test(line)) continue;
       if (isFullTscEmit(line)) {
         violations.push(
-          `${rel}: build script runs declaration emit without --noCheck — ${line.trim()}`,
+          `${rel}: build script runs tsc6 declaration emit without --noCheck — ${line.trim()}`,
         );
         break;
       }
@@ -292,7 +288,7 @@ if (violations.length > 0) {
   );
   for (const v of violations) console.error(`  ✗ ${v}`);
   console.error(
-    "\nModel: tsgo checks, tsc emits. Add --noCheck to emit-only tsc builds; use tsgo for typecheck.",
+    "\nModel: stable tsc checks, compatibility tsc6 emits. Add --noCheck to emit-only tsc6 builds; use tsc for typecheck.",
   );
   process.exit(1);
 }

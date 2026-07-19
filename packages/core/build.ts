@@ -64,8 +64,8 @@ export function getTimer() {
 }
 
 function resolveTscBin(): string {
-	const workspaceTsc = join(process.cwd(), "../../node_modules/.bin/tsc");
-	return existsSync(workspaceTsc) ? workspaceTsc : "tsc";
+	const workspaceTsc = join(process.cwd(), "../../node_modules/.bin/tsc6");
+	return existsSync(workspaceTsc) ? workspaceTsc : "tsc6";
 }
 
 async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {

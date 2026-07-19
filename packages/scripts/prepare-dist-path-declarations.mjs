@@ -15,9 +15,9 @@ const localTsc = path.join(
   repoRoot,
   "node_modules",
   ".bin",
-  process.platform === "win32" ? "tsc.cmd" : "tsc",
+  process.platform === "win32" ? "tsc6.cmd" : "tsc6",
 );
-const tsc = existsSync(localTsc) ? localTsc : "tsc";
+const tsc = existsSync(localTsc) ? localTsc : "tsc6";
 
 const emits = [
   {

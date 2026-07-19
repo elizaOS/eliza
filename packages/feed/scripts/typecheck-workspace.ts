@@ -107,7 +107,7 @@ if (needsAgentDeclarations) {
       "bun",
       [
         "run",
-        "tsc",
+        "tsc6",
         "-p",
         "packages/agents",
         "--emitDeclarationOnly",
@@ -140,7 +140,7 @@ if (needsApiDeclarations) {
       "bun",
       [
         "run",
-        "tsc",
+        "tsc6",
         "-p",
         "packages/api",
         "--emitDeclarationOnly",
@@ -170,7 +170,7 @@ if (needsA2aDeclarations) {
       "bun",
       [
         "run",
-        "tsc",
+        "tsc6",
         "-p",
         "packages/a2a",
         "--emitDeclarationOnly",
@@ -208,7 +208,7 @@ if (needsCliDeclarationDependencies) {
     await new Promise<void>((resolvePromise, rejectPromise) => {
       const child = spawn(
         "bun",
-        ["run", "tsc", "-p", workspace, "--emitDeclarationOnly", "--noCheck"],
+        ["run", "tsc6", "-p", workspace, "--emitDeclarationOnly", "--noCheck"],
         { cwd: ROOT, stdio: "inherit", env: process.env },
       );
       child.on("error", rejectPromise);

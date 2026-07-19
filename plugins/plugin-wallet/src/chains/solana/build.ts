@@ -62,7 +62,7 @@ async function build(): Promise<void> {
   console.log(`✅ Built ${esmResult.outputs.length} file(s)`);
 
   console.log("📝 Generating TypeScript declarations...");
-  const tscProcess = Bun.spawn(["bunx", "tsc", "-p", "tsconfig.build.json", "--noCheck"], {
+  const tscProcess = Bun.spawn(["bunx", "tsc6", "-p", "tsconfig.build.json", "--noCheck"], {
     stdout: "inherit",
     stderr: "inherit",
   });
