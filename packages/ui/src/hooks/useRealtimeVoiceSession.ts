@@ -68,7 +68,11 @@ export type RealtimeVoiceStartOutcome =
   | { kind: "unavailable" };
 
 export type RealtimeVoiceFallbackReason =
-  "consent" | "mint" | "transport" | "unknown" | "missing-identity";
+  | "consent"
+  | "mint"
+  | "transport"
+  | "unknown"
+  | "missing-identity";
 
 /** Consent-nonce source. Returns null when consent could not be issued. */
 export type MintConsentNonce = () => Promise<string | null>;
@@ -718,8 +722,8 @@ export function useRealtimeVoiceSession(
 
     const shouldRestart = Boolean(
       identityRestartPendingRef.current ||
-      clientRef.current ||
-      startingRef.current,
+        clientRef.current ||
+        startingRef.current,
     );
     if (!shouldRestart) return;
 
