@@ -150,6 +150,10 @@ const electrobunMock = vi.hoisted(() => {
     setDockIconVisible: vi.fn(),
     isDockIconVisible: vi.fn(() => true),
   };
+  const ContextMenu = {
+    on: vi.fn(),
+    showContextMenu: vi.fn(),
+  };
   const GlobalShortcut = {
     isRegistered: vi.fn(() => false),
     register: vi.fn(),
@@ -162,6 +166,7 @@ const electrobunMock = vi.hoisted(() => {
     browserWindowInstances,
     trayInstances,
     BrowserWindow,
+    ContextMenu,
     GlobalShortcut,
     Tray,
     Utils,
@@ -206,9 +211,7 @@ vi.mock("electrobun/bun", () => {
         runtime: "test",
       })),
     },
-    ContextMenu: {
-      on: vi.fn(),
-    },
+    ContextMenu: electrobunMock.ContextMenu,
     GlobalShortcut: electrobunMock.GlobalShortcut,
     Screen: {
       getAllDisplays: vi.fn(() => []),
@@ -696,8 +699,58 @@ describe("DesktopManager notifications", () => {
     resetDesktopManagerForTesting();
   });
 
-  it("maps notification options to Utils.showNotification and returns monotonic ids", async () => {
+  it("covers callback and native context-menu boundaries used beside notifications", async () => {
     const manager = new DesktopManager();
+    const sent = vi.fn();
+    const openSettings = vi.fn();
+    const openSurface = vi.fn(async () => ({ id: "surface-1" }));
+    const openApp = vi.fn(async () => ({ id: "app-1" }));
+    manager.setSendToWebview(sent);
+    manager.setOpenSettingsCallback(openSettings);
+    manager.setOpenSurfaceWindowCallback(openSurface);
+    manager.setOpenAppWindowCallback(openApp);
+    manager.setManagedWindowAlwaysOnTopCallback(() => true);
+    manager.setOpenExternalHandler(async () => true);
+    manager.setRequestQuitCallback(async () => undefined);
+    manager.setRestoreMainWindowCallback(async () => undefined);
+
+    manager.openSettings("notifications");
+    expect(openSettings).toHaveBeenCalledWith("notifications");
+    expect(await manager.openSurfaceWindow("chat")).toEqual({ id: "surface-1" });
+    expect(await manager.openAppWindow({ title: "App", path: "/app" })).toEqual({ id: "app-1" });
+    expect(manager.setManagedWindowAlwaysOnTop("surface-1", true)).toBe(true);
+
+    const context = manager as unknown as { handleNativeContextMenuClick(event: unknown): void };
+    for (const action of ["ask-agent", "quote-in-chat", "create-skill", "save-as-command"]) {
+      context.handleNativeContextMenuClick({ data: { action, data: { text: "selected" } } });
+    }
+    expect(sent).toHaveBeenCalledTimes(4);
+    context.handleNativeContextMenuClick({ data: {} });
+    context.handleNativeContextMenuClick({ data: { action: "ask-agent", data: { text: "" } } });
+    expect(await manager.showSelectionContextMenu({ text: "   " })).toEqual({ shown: false });
+    expect(await manager.showSelectionContextMenu({ text: " selected " })).toEqual({ shown: true });
+    expect(electrobunMock.ContextMenu.showContextMenu).toHaveBeenCalledWith([
+      expect.objectContaining({ action: "ask-agent", data: { text: "selected" } }),
+      expect.objectContaining({ action: "quote-in-chat" }),
+      expect.objectContaining({ action: "create-skill" }),
+      expect.objectContaining({ action: "save-as-command" }),
+      { type: "separator" },
+      expect.objectContaining({ action: "copy-selection" }),
+    ]);
+
+    manager.setOpenAppWindowCallback(null);
+    manager.setManagedWindowAlwaysOnTopCallback(null);
+    manager.setOpenExternalHandler(null);
+    manager.setRequestQuitCallback(null);
+    manager.setRestoreMainWindowCallback(null);
+    manager.clearMainWindow();
+    expect(await manager.openAppWindow({ title: "None", path: "/none" })).toBeNull();
+  });
+
+  it("observes native notification delivery at the canonical DesktopManager boundary", async () => {
+    const manager = new DesktopManager();
+    // Exercise the real Utils boundary used by packaged Electrobun, never a
+    // browser Notification substitute or a monkey-patched diagnostics recorder.
 
     await expect(
       manager.showNotification({
