@@ -5,8 +5,31 @@ import cloudApiWorker, {
   getFrontendAliasProxyTarget,
   getFrontendAliasSyntheticResponse,
   getHostedFrontendServeRewrite,
+  isCanonicalInferencePath,
+  isThinInferenceEnabled,
   redirectFrontendHost,
 } from "./index";
+
+describe("thin inference entry dispatch", () => {
+  test("is rollback-safe and disabled unless explicitly true", () => {
+    expect(isThinInferenceEnabled({})).toBe(false);
+    expect(
+      isThinInferenceEnabled({ THIN_INFERENCE_ENTRY_ENABLED: "false" }),
+    ).toBe(false);
+    expect(
+      isThinInferenceEnabled({ THIN_INFERENCE_ENTRY_ENABLED: "true" }),
+    ).toBe(true);
+  });
+
+  test("matches only the exact canonical chat completions route", () => {
+    expect(isCanonicalInferencePath("/api/v1/chat/completions")).toBe(true);
+    expect(isCanonicalInferencePath("/api/v1/chat/completions/")).toBe(false);
+    expect(isCanonicalInferencePath("/api/v1/chat/completions/admin")).toBe(
+      false,
+    );
+    expect(isCanonicalInferencePath("/api/v1/embeddings")).toBe(false);
+  });
+});
 
 describe("getHostedFrontendServeRewrite (managed frontend hosting)", () => {
   const env = { ELIZA_FRONTEND_HOST_SUFFIX: "sites.elizacloud.ai" };
