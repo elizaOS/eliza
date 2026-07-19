@@ -93,4 +93,129 @@ describe("GET /api/health database liveness", () => {
     });
     pglite = null;
   });
+
+  it("distinguishes transient database errors from terminal liveness failures", async () => {
+    const runtime = {
+      adapter: {
+        getRawConnection: () => ({
+          async query() {
+            throw new Error("temporary network timeout");
+          },
+        }),
+      },
+      plugins: [{ name: "sql" }],
+      getModel: () => undefined,
+    } as unknown as AgentRuntime;
+
+    const transient = makeContext(runtime);
+    await expect(handleHealthRoutes(transient.ctx)).resolves.toBe(true);
+
+    expect(transient.responses[0].status).toBe(200);
+    expect(transient.responses[0].data).toMatchObject({
+      ready: true,
+      database: "transient_error",
+      databaseLiveness: {
+        ok: false,
+        status: "transient_error",
+        terminal: false,
+        message: "temporary network timeout",
+      },
+    });
+  });
+
+  it("returns non-ready health without a runtime and includes configured connectors", async () => {
+    const { ctx, responses } = makeContext(null);
+    ctx.state.config = {
+      connectors: {
+        discord: { enabled: true },
+        slack: { enabled: false },
+      },
+    } as unknown as ElizaConfig;
+    ctx.state.agentState = "starting";
+    ctx.state.plugins = [
+      { enabled: true, configured: true },
+      { enabled: false, configured: true, loadError: "boom" },
+    ];
+
+    await expect(handleHealthRoutes(ctx)).resolves.toBe(true);
+
+    expect(responses[0].status).toBe(200);
+    expect(responses[0].data).toMatchObject({
+      ready: false,
+      canRespond: false,
+      runtime: "not_initialized",
+      database: "unknown",
+      plugins: { loaded: 1, failed: 1 },
+      connectors: { discord: "configured" },
+      databaseLiveness: { ok: false, status: "unknown", terminal: false },
+    });
+  });
+
+  it("serves status and runtime introspection without treating optional health as fatal", async () => {
+    const circular: Record<string, unknown> = { name: "loop" };
+    circular.self = circular;
+    const runtime = {
+      agentId: "agent-id",
+      character: { name: "Debug Agent" },
+      plugins: [{ name: "plugin-a" }, { id: "plugin-b" }],
+      actions: [{ name: "act" }],
+      providers: [{ serviceType: "provider-kind" }],
+      evaluators: [() => undefined],
+      services: new Map([
+        [
+          "runtime",
+          [
+            circular,
+            new Map([["k", { nested: true }]]),
+            new Set(["a", "b"]),
+            Buffer.from("abcdef"),
+            new Error("diagnostic"),
+          ],
+        ],
+      ]),
+      getModel: () => undefined,
+      adapter: {
+        getRawConnection: () => ({
+          async query() {
+            return [{ "?column?": 1 }];
+          },
+        }),
+      },
+    } as unknown as AgentRuntime;
+
+    const status = makeContext(runtime);
+    status.ctx.pathname = "/api/status";
+    await expect(handleHealthRoutes(status.ctx)).resolves.toBe(true);
+    expect(status.responses[0].data).toMatchObject({
+      state: "running",
+      agentName: "test-agent",
+      cloud: {
+        connectionStatus: "disconnected",
+        cloudProvisioned: false,
+        hasApiKey: false,
+      },
+    });
+
+    const debug = makeContext(runtime);
+    debug.ctx.pathname = "/api/runtime";
+    debug.ctx.url = new URL(
+      "http://127.0.0.1/api/runtime?depth=5&maxArrayLength=3&maxObjectEntries=10&maxStringLength=64",
+    );
+    await expect(handleHealthRoutes(debug.ctx)).resolves.toBe(true);
+
+    expect(debug.responses[0].data).toMatchObject({
+      runtimeAvailable: true,
+      meta: {
+        agentId: "agent-id",
+        agentName: "Debug Agent",
+        pluginCount: 2,
+        actionCount: 1,
+        providerCount: 1,
+        evaluatorCount: 1,
+        serviceTypeCount: 1,
+        serviceCount: 5,
+      },
+    });
+    expect(debug.responses[0].data).toHaveProperty("sections.runtime");
+  });
 });

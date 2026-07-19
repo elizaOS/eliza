@@ -1678,6 +1678,76 @@ describe("ElizaSandboxService heartbeat", () => {
       enqueueSpy.mockRestore();
     }
   });
+
+  test("database-liveness restart budget is isolated per agent record", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const exhausted: AgentSandbox = {
+      ...customSandbox(),
+      id: "11111111-1111-4111-8111-111111111111",
+      error_count: 3,
+      error_message: `[db-liveness-restart] count=3 at=${new Date(Date.now() - 20 * 60_000).toISOString()} reason=PGlite is closed`,
+    };
+    const fresh: AgentSandbox = {
+      ...customSandbox(),
+      id: "22222222-2222-4222-8222-222222222222",
+      error_count: 3,
+      error_message: "unrelated launch failures",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async (agentId) => (agentId === exhausted.id ? exhausted : fresh),
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
+      async () =>
+        ({
+          created: true,
+          job: { id: "job-agent-isolated" },
+        }) as never,
+    );
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          databaseLiveness: {
+            ok: false,
+            status: "terminal_error",
+            terminal: true,
+            message: "PGlite is closed",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    try {
+      await expect(
+        new ElizaSandboxService().heartbeat(exhausted.id, exhausted.organization_id),
+      ).resolves.toBe(false);
+      await expect(
+        new ElizaSandboxService().heartbeat(fresh.id, fresh.organization_id),
+      ).resolves.toBe(false);
+
+      expect(updateSpy).toHaveBeenCalledTimes(2);
+      expect(updateSpy.mock.calls[0][1]).toMatchObject({
+        status: "error",
+        error_count: 3,
+      });
+      expect(updateSpy.mock.calls[1][1]).toMatchObject({
+        error_count: 1,
+      });
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      expect(enqueueSpy).toHaveBeenCalledWith({
+        agentId: fresh.id,
+        organizationId: fresh.organization_id,
+        userId: fresh.user_id,
+      });
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
 });
 
 // Stale-tailnet-IP reconciliation (heartbeat + recoverDisconnected). Agent
