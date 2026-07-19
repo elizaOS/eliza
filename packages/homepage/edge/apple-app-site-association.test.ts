@@ -101,6 +101,9 @@ describe("eliza.app AASA edge Worker", () => {
           },
         ],
       },
+      webcredentials: {
+        apps: ["25877RY2EH.ai.elizaos.app"],
+      },
     });
   });
 
@@ -285,11 +288,37 @@ describe("eliza.app AASA edge Worker", () => {
       "applinks components differ from the reviewed legacy routes plus /auth/callback",
     );
 
-    const webCredentials = JSON.parse(associationBody);
-    webCredentials.webcredentials = {
+    const wrongWebCredentials = JSON.parse(associationBody);
+    wrongWebCredentials.webcredentials.apps = ["ATTACKER.ai.elizaos.app"];
+    expect(
+      validateAsCanonicalOrigin(JSON.stringify(wrongWebCredentials)),
+    ).toContain(
+      "webcredentials does not bind exactly 25877RY2EH.ai.elizaos.app",
+    );
+
+    const missingWebCredentials = JSON.parse(associationBody);
+    delete missingWebCredentials.webcredentials;
+    expect(
+      validateAsCanonicalOrigin(JSON.stringify(missingWebCredentials)),
+    ).toEqual(
+      expect.arrayContaining([
+        "webcredentials contains unreviewed fields",
+        "webcredentials does not bind exactly 25877RY2EH.ai.elizaos.app",
+        "association contains unreviewed top-level services or fields",
+      ]),
+    );
+
+    const extraWebCredentialField = JSON.parse(associationBody);
+    extraWebCredentialField.webcredentials.passwords = true;
+    expect(
+      validateAsCanonicalOrigin(JSON.stringify(extraWebCredentialField)),
+    ).toContain("webcredentials contains unreviewed fields");
+
+    const extraService = JSON.parse(associationBody);
+    extraService.activitycontinuation = {
       apps: ["25877RY2EH.ai.elizaos.app"],
     };
-    expect(validateAsCanonicalOrigin(JSON.stringify(webCredentials))).toContain(
+    expect(validateAsCanonicalOrigin(JSON.stringify(extraService))).toContain(
       "association contains unreviewed top-level services or fields",
     );
   });
@@ -614,23 +643,20 @@ describe("eliza.app AASA edge Worker", () => {
     );
 
     const unreviewedDomain = entitlements.replace(
-      "<string>applinks:eliza.app</string>",
-      "<string>applinks:eliza.app</string>\n\t\t<string>webcredentials:eliza.app</string>",
+      "<string>webcredentials:eliza.app</string>",
+      "<string>webcredentials:attacker.example</string>",
     );
     const entitlementFailures = validateReleaseAppConfiguration({
       project,
       entitlements: unreviewedDomain,
     });
     expect(entitlementFailures).toContain(
-      "App entitlements must contain exactly the applinks:eliza.app associated domain",
-    );
-    expect(entitlementFailures).toContain(
-      "App entitlements must not claim unreviewed webcredentials",
+      "App entitlements must contain exactly the applinks and webcredentials eliza.app domains",
     );
 
     const duplicateAssociatedDomains = entitlements.replace(
       "</dict>",
-      "\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n\t\t<string>applinks:eliza.app</string>\n\t</array>\n</dict>",
+      "\t<key>com.apple.developer.associated-domains</key>\n\t<array>\n\t\t<string>applinks:eliza.app</string>\n\t\t<string>webcredentials:eliza.app</string>\n\t</array>\n</dict>",
     );
     expect(
       validateReleaseAppConfiguration({
@@ -638,7 +664,7 @@ describe("eliza.app AASA edge Worker", () => {
         entitlements: duplicateAssociatedDomains,
       }),
     ).toContain(
-      "App entitlements must contain exactly the applinks:eliza.app associated domain",
+      "App entitlements must contain exactly the applinks and webcredentials eliza.app domains",
     );
   });
 
