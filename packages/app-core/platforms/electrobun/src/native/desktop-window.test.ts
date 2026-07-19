@@ -126,7 +126,9 @@ const electrobunMock = vi.hoisted(() => {
   });
   const Utils = {
     clipboard: {},
-    clipboardAvailableFormats: vi.fn(() => ["text/plain"]),
+    clipboardAvailableFormats: vi.fn<() => string[] | null>(() => [
+      "text/plain",
+    ]),
     clipboardClear: vi.fn(),
     clipboardReadImage: vi.fn(() => new Uint8Array([1])),
     clipboardReadText: vi.fn(() => "copied text"),
@@ -718,8 +720,20 @@ describe("DesktopManager notifications", () => {
     const manager = new DesktopManager();
     const sent = vi.fn();
     const openSettings = vi.fn();
-    const openSurface = vi.fn(async () => ({ id: "surface-1" }));
-    const openApp = vi.fn(async () => ({ id: "app-1" }));
+    const openSurface = vi.fn(async () => ({
+      id: "surface-1",
+      surface: "chat",
+      title: "Chat",
+      singleton: true,
+      alwaysOnTop: false,
+    }));
+    const openApp = vi.fn(async () => ({
+      id: "app-1",
+      surface: "app",
+      title: "App",
+      singleton: false,
+      alwaysOnTop: false,
+    }));
     manager.setSendToWebview(sent);
     manager.setOpenSettingsCallback(openSettings);
     manager.setOpenSurfaceWindowCallback(openSurface);
@@ -731,12 +745,13 @@ describe("DesktopManager notifications", () => {
 
     manager.openSettings("notifications");
     expect(openSettings).toHaveBeenCalledWith("notifications");
-    expect(await manager.openSurfaceWindow("chat")).toEqual({
+    expect(await manager.openSurfaceWindow("chat")).toMatchObject({
       id: "surface-1",
+      surface: "chat",
     });
-    expect(await manager.openAppWindow({ title: "App", path: "/app" })).toEqual(
-      { id: "app-1" },
-    );
+    expect(
+      await manager.openAppWindow({ title: "App", path: "/app" }),
+    ).toMatchObject({ id: "app-1", surface: "app" });
     expect(manager.setManagedWindowAlwaysOnTop("surface-1", true)).toBe(true);
 
     const context = manager as unknown as {
