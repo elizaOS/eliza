@@ -550,8 +550,6 @@ export function useChatVoiceController(options: {
     [
       chatInput,
       conversationMessages,
-      activeConversationId,
-      realtimeAgentId,
       isComposerLocked,
       startListening,
       stopSpeaking,
@@ -955,12 +953,9 @@ export function useChatVoiceController(options: {
   const beginVoiceCapture = useCallback(
     (mode: Exclude<VoiceCaptureMode, "idle"> = "compose") => {
       if (isComposerLocked) return;
-      // Realtime owns the tap while available and not in a NON-actionable error
-      // state. An actionable error (permission re-granted, transport drop,
-      // connect timeout) advertises "tap the mic to try again" — so that tap
-      // must re-enter the realtime branch (start() clears the error); only
-      // non-actionable failures (consent/mint, which also latch eligibility
-      // off) hand the tap to the batch path as their copy promises.
+      // A fallback applies to the failed interaction, not every later mic tap.
+      // Consent, mint, and transport failures keep realtime eligible so the
+      // next explicit gesture probes it again; start() clears the prior error.
       if (voiceSession.realtimeEligible) {
         setManualRealtimeIntent(true);
         realtimeStartPendingRef.current = true;
@@ -988,10 +983,12 @@ export function useChatVoiceController(options: {
       beginBatchVoiceCapture(mode);
     },
     [
+      activeConversationId,
       beginBatchVoiceCapture,
       chatInput,
       conversationMessages,
       isComposerLocked,
+      realtimeAgentId,
       stopSpeaking,
       setManualRealtimeIntent,
       voiceSession,

@@ -71,6 +71,7 @@ import {
   elizaCodingContainerImageAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
+import { headscaleIntegration } from "./headscale-integration";
 import { applyManagedAgentInferenceEnvDefaults } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { JOB_TYPES } from "./provisioning-job-types";
@@ -5674,6 +5675,10 @@ export class ElizaSandboxService {
       },
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
       excludeNodeId: oldNodeId,
+      // Preserve the LIVE Headscale node during the overlap (#16565): the
+      // provider records its id as metadata.previousVpnNodeId; it is deleted
+      // by id below only after the atomic swap succeeds.
+      reclaimStaleVpnNode: false,
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -5867,6 +5872,13 @@ export class ElizaSandboxService {
 
     // Old container teardown is best-effort: traffic is already on blue.
     await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // The preserved live node (recorded pre-provision under
+    // reclaimStaleVpnNode=false) is deleted BY ID only now, after the swap —
+    // by-name would be ambiguous with blue sharing the hostname, and every
+    // rolled-back path above deliberately leaves it untouched (#16565).
+    if (blueMeta?.previousVpnNodeId) {
+      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+    }
 
     logger.info("[agent-sandbox] Fleet upgrade completed", {
       agentId,
@@ -5998,6 +6010,10 @@ export class ElizaSandboxService {
       },
       dockerImage: digestPinnedImageRef(rollbackImage, toDigest),
       excludeNodeId: oldNodeId,
+      // Preserve the LIVE Headscale node during the overlap (#16565): the
+      // provider records its id as metadata.previousVpnNodeId; it is deleted
+      // by id below only after the atomic swap succeeds.
+      reclaimStaleVpnNode: false,
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -6192,6 +6208,10 @@ export class ElizaSandboxService {
 
     // Old (post-upgrade) container teardown is best-effort: traffic is on blue.
     await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // Same post-cutover, by-id-only deletion of the preserved node (#16565).
+    if (blueMeta?.previousVpnNodeId) {
+      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+    }
 
     logger.info("[agent-sandbox] Fleet rollback completed", {
       agentId,
