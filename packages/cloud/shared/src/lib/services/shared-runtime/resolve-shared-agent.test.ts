@@ -65,11 +65,13 @@ describe("resolveSharedAgent", () => {
   test("uses the overlapped org lookup to resolve a shared agent", async () => {
     findByIdAndOrg.mockResolvedValue(agent());
 
-    await expect(resolveSharedAgent(contextWithAgentId("agent-1") as never)).resolves.toMatchObject({
-      agentId: "agent-1",
-      orgId: "org-1",
-      agentName: "Shared Agent",
-    });
+    await expect(resolveSharedAgent(contextWithAgentId("agent-1") as never)).resolves.toMatchObject(
+      {
+        agentId: "agent-1",
+        orgId: "org-1",
+        agentName: "Shared Agent",
+      },
+    );
     expect(findByIdAndOrg).toHaveBeenCalledWith("agent-1", "org-1");
   });
 
@@ -82,10 +84,12 @@ describe("resolveSharedAgent", () => {
       }),
     );
 
-    await expect(resolveSharedAgent(contextWithAgentId("agent-1") as never)).resolves.toMatchObject({
-      agentName: "Eliza",
-      agentId: "agent-1",
-    });
+    await expect(resolveSharedAgent(contextWithAgentId("agent-1") as never)).resolves.toMatchObject(
+      {
+        agentName: "Eliza",
+        agentId: "agent-1",
+      },
+    );
   });
 
   test("rejects non-shared agents outside the bootstrap window", async () => {
@@ -104,9 +108,11 @@ describe("resolveSharedAgent", () => {
   });
 
   test("returns 404 when no org-scoped agent exists", async () => {
-    await expect(resolveSharedAgent(contextWithAgentId("agent-missing") as never)).resolves.toEqual({
-      error: "Agent not found",
-      status: 404,
-    });
+    await expect(resolveSharedAgent(contextWithAgentId("agent-missing") as never)).resolves.toEqual(
+      {
+        error: "Agent not found",
+        status: 404,
+      },
+    );
   });
 });

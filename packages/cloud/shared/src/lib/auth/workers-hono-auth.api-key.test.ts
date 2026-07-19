@@ -454,9 +454,11 @@ describe("Workers API-key auth", () => {
     });
     userBehavior = async () => activeUser();
     adminBehavior = async () => ({ isAdmin: true, role: "support" });
-    await expect(requireAdmin(contextWithApiKey("eliza_live_key") as never)).resolves.toMatchObject({
-      role: "support",
-    });
+    await expect(requireAdmin(contextWithApiKey("eliza_live_key") as never)).resolves.toMatchObject(
+      {
+        role: "support",
+      },
+    );
 
     adminBehavior = async () => {
       throw new Error("admin db unavailable");
@@ -470,7 +472,10 @@ describe("Workers API-key auth", () => {
   test("checks cron secrets from bearer or x-cron-secret headers", () => {
     expect(() =>
       requireCronSecret(
-        contextWithHeaders({ authorization: "Bearer cron-ok" }, { CRON_SECRET: "cron-ok" }) as never,
+        contextWithHeaders(
+          { authorization: "Bearer cron-ok" },
+          { CRON_SECRET: "cron-ok" },
+        ) as never,
       ),
     ).not.toThrow();
     expect(() =>
