@@ -17,6 +17,21 @@ import {
 import { shellLocalStorage } from "../surface-realm-channel";
 
 /**
+ * Mirrors the write channel's `tryPersistBrowserStorage` shape: report whether
+ * the removal took, swallowing only storage-access failures.
+ */
+function tryRemoveFromStorage(remove: () => void): boolean {
+  try {
+    remove();
+    return true;
+  } catch (_storageError) {
+    // error-policy:J3 hardened settings can disable storage; a store we cannot
+    // touch also cannot be re-adopted from, so the purge goal still holds.
+    return false;
+  }
+}
+
+/**
  * Remove the durable pair token from BOTH storages the write channel targets.
  * Storage-scoped on purpose — the live bearer/boot-config are left alone so
  * in-flight requests are not broken; the auth wall renders next and the next
@@ -25,17 +40,12 @@ import { shellLocalStorage } from "../surface-realm-channel";
  * shellSessionStorage wrapper).
  */
 export function clearCloudPairApiToken(): void {
-  try {
+  tryRemoveFromStorage(() => {
     shellLocalStorage.removeItem(CLOUD_PAIR_LOCAL_STORAGE_KEY);
-  } catch (_storageError) {
-    // error-policy:J3 hardened settings can disable storage; nothing persisted
-    // means nothing to re-adopt.
-  }
-  try {
+  });
+  tryRemoveFromStorage(() => {
     if (typeof window !== "undefined") {
       window.sessionStorage.removeItem(CLOUD_PAIR_SESSION_STORAGE_KEY);
     }
-  } catch (_storageError) {
-    // error-policy:J3 same as above for the session copy.
-  }
+  });
 }
