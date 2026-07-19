@@ -4883,3 +4883,88 @@ describe("ElizaSandboxService updateAgentProfile / updateAgentEnvironment", () =
     }
   });
 });
+
+describe("snapshot hydration budgets (#16639)", () => {
+  const prevRaw = process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES;
+
+  afterEach(() => {
+    if (prevRaw === undefined) delete process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES;
+    else process.env.ELIZA_SNAPSHOT_MAX_RAW_BYTES = prevRaw;
+  });
+
+  function streamedResponse(body: string): Response {
+    // A real streaming body so the budget is enforced chunk-by-chunk.
+    const bytes = new TextEncoder().encode(body);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const chunk = 64 * 1024;
+        for (let i = 0; i < bytes.length; i += chunk) {
+          controller.enqueue(bytes.subarray(i, i + chunk));
+        }
+        controller.close();
+      },
+    });
+    return new Response(stream, { status: 200 });
+  }
+
+  test("a body past the raw budget is rejected while streaming — never retained", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    const oversized = "x".repeat(2 * 1024 * 1024);
+    await expect(readBodyWithinBudget(streamedResponse(oversized), 1024 * 1024)).rejects.toThrow(
+      "raw hydration budget",
+    );
+  });
+
+  test("a body within budget streams through intact", async () => {
+    const { readBodyWithinBudget } = await import("./eliza-sandbox.ts?actual");
+    const body = JSON.stringify({ ok: true });
+    expect(await readBodyWithinBudget(streamedResponse(body), 1024)).toBe(body);
+  });
+
+  test("file-count and expanded-byte budgets fail closed before retention", async () => {
+    const { assertSnapshotExpandedBudgets } = await import("./eliza-sandbox.ts?actual");
+    // Within budget: passes.
+    assertSnapshotExpandedBudgets({
+      memories: [],
+      config: {},
+      workspaceFiles: { "a.txt": "hello" },
+    });
+    // File-count breach via workspaceFiles.
+    const manyFiles: Record<string, string> = {};
+    for (let i = 0; i < 5_001; i++) manyFiles[`f${i}.txt`] = "x";
+    expect(() =>
+      assertSnapshotExpandedBudgets({ memories: [], config: {}, workspaceFiles: manyFiles }),
+    ).toThrow("file budget");
+    // Expanded-byte breach via the manifest's DECLARED size (the counter
+    // takes max(declared, decoded), so neither side of a lying manifest can
+    // under-count) — no giant test allocation needed.
+    expect(() =>
+      assertSnapshotExpandedBudgets({
+        memories: [],
+        config: {},
+        workspaceFiles: {},
+        manifest: {
+          schemaVersion: 1,
+          format: "elizaos.agent-backup",
+          createdAt: "2026-07-19T00:00:00Z",
+          agentId: "a",
+          components: {
+            database: { kind: "none", sha256: "s" },
+            media: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+            vault: { kind: "file-set", rootLabel: "state-dir", files: [], sha256: "s" },
+            character: { runtimeCharacter: {}, sha256: "s" },
+            stateFiles: {
+              kind: "file-set",
+              rootLabel: "state-dir",
+              files: [
+                { path: "big.bin", sha256: "s", size: 500 * 1024 * 1024, bytesBase64: "AAAA" },
+              ],
+              sha256: "s",
+            },
+          },
+          integrity: { componentHashes: {} },
+        },
+      }),
+    ).toThrow("expanded byte budget");
+  });
+});
