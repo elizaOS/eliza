@@ -4,6 +4,36 @@ import com.getcapacitor.JSObject
 
 internal object TalkModeAndroidBridgeContract {
     const val FINAL_TRANSCRIPT_DEDUP_WINDOW_MS = 2000L
+    const val LOCAL_INFERENCE_TIMEOUT_MS = 180_000
+
+    fun localInferenceRequestPayload(
+        body: String,
+        authorization: String?
+    ): Map<String, Any?> {
+        val headers = linkedMapOf(
+            "Content-Type" to "application/json",
+            "Accept" to "audio/wav"
+        )
+        authorization?.takeIf { it.isNotBlank() }?.let {
+            headers["Authorization"] = it
+        }
+        return mapOf(
+            "method" to "POST",
+            "path" to "/api/tts/local-inference",
+            "headers" to headers,
+            "body" to body,
+            "timeoutMs" to LOCAL_INFERENCE_TIMEOUT_MS
+        )
+    }
+
+    fun selectAgentServiceClass(
+        serviceClassNames: List<String>,
+        appPackageName: String
+    ): String? {
+        val expected = "$appPackageName.ElizaAgentService"
+        return serviceClassNames.firstOrNull { it == expected }
+            ?: serviceClassNames.firstOrNull { it.endsWith(".ElizaAgentService") }
+    }
 
     fun audioFramesStartedPayload(
         sampleRate: Int,
