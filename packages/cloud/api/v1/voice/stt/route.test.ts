@@ -557,7 +557,7 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
     });
 
     const res = await app.request(falseLength, undefined, {
-      ...whisperEnv,
+      ...(whisperEnv as unknown as Record<string, string>),
       VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes + 1),
     } as never);
 
@@ -577,7 +577,7 @@ describe("POST /api/v1/voice/stt — shared upload validation gates", () => {
     });
 
     const res = await app.request(exact, undefined, {
-      ...whisperEnv,
+      ...(whisperEnv as unknown as Record<string, string>),
       VOICE_STT_MAX_MULTIPART_BYTES: String(bodyBytes),
     } as never);
 
