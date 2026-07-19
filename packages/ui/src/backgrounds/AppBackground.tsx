@@ -102,7 +102,11 @@ export function AppBackground({
     setNativeBackdropActive(false);
 
     const color = backgroundConfig?.color ?? DEFAULT_BACKGROUND_COLOR;
-    if (backgroundConfig?.mode !== "image" || !backgroundConfig.imageUrl) {
+    if (
+      !visible ||
+      backgroundConfig?.mode !== "image" ||
+      !backgroundConfig.imageUrl
+    ) {
       // Clear a previously hosted image. Shader animation remains web-rendered,
       // so the glass tier deliberately stays CSS even when this color succeeds.
       void setNativeBackdrop({ color });
@@ -148,7 +152,7 @@ export function AppBackground({
       current = false;
       document.documentElement.classList.remove("eliza-native-backdrop");
     };
-  }, [backgroundConfig]);
+  }, [backgroundConfig, visible]);
 
   if (!visible) return null;
   // Defensive: the app store can return a non-object slice before the provider

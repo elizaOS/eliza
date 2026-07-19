@@ -244,6 +244,21 @@ describe("AppBackground", () => {
     ).toBeNull();
   });
 
+  it("clears native wallpaper too when the visual layer is hidden", async () => {
+    const bridge = installNativeGlassBridge();
+    seed({
+      mode: "image",
+      color: "#160d07",
+      imageUrl: "/wallpapers/canopy.webp",
+    });
+    render(<AppBackground visible={false} />);
+    await waitFor(() => expect(bridge.setBackdrop).toHaveBeenCalledTimes(1));
+    expect(bridge.setBackdrop).toHaveBeenCalledWith({ color: "#160d07" });
+    expect(document.documentElement.classList).not.toContain(
+      "eliza-native-backdrop",
+    );
+  });
+
   it("mirrors an image background onto the ROOT canvas so the strip shows the wallpaper, not #160d07", () => {
     // The canvas-propagation cure (device r8): the ROOT element's background
     // paints the always-full-screen viewport canvas, immune to the collapsed
