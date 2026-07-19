@@ -472,10 +472,20 @@ describe("voice-session WS lifecycle", () => {
 
     // Cartesia defaults to a 3000ms server aggregation window; the realtime
     // session must cap it so already-aggregated clauses start synthesis fast.
+    // Select generation requests POSITIVELY (anything carrying a transcript);
+    // filtering on the capped field itself would let a request that dropped
+    // the cap vanish from the assertion instead of failing it (#16667).
     const cartesia = FakeCartesiaSocket.instances.at(-1)!;
     const requests = cartesia.sent
-      .map((entry) => JSON.parse(entry) as { max_buffer_delay_ms?: number })
-      .filter((entry) => entry.max_buffer_delay_ms !== undefined);
+      .map(
+        (entry) =>
+          JSON.parse(entry) as {
+            transcript?: string;
+            cancel?: boolean;
+            max_buffer_delay_ms?: number;
+          },
+      )
+      .filter((entry) => typeof entry.transcript === "string");
     expect(requests.length).toBeGreaterThan(0);
     for (const request of requests) {
       expect(request.max_buffer_delay_ms).toBe(250);
