@@ -60,7 +60,6 @@ class TalkModePlugin : Plugin() {
         private const val TAG = "TalkMode"
         private const val DEFAULT_MODEL_ID = "eleven_flash_v2_5"
         private const val DEFAULT_OUTPUT_FORMAT = "pcm_24000"
-        private const val LOCAL_INFERENCE_TTS_URL = "http://127.0.0.1:31337/api/tts/local-inference"
         // Abstract-namespace UDS of ElizaBionicInferenceServer (the bionic app
         // process that has libelizainference loaded). Kept in sync with
         // BIONIC_INFERENCE_SOCKET_NAME in ElizaAgentService.
@@ -1245,19 +1244,9 @@ class TalkModePlugin : Plugin() {
         if (streamAndPlayBionicKokoroTts(text, directive)) {
             return@withContext
         }
-        val conn = openLocalInferenceTtsConnection()
-        activePcmConnection = conn
+        val response = requestLocalInferenceTts(buildLocalInferenceTtsPayload(text, directive))
         try {
-            val payload = buildLocalInferenceTtsPayload(text, directive)
-            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-
-            val code = conn.responseCode
-            if (code >= 400) {
-                val errBody = conn.errorStream?.readBytes()?.toString(Charsets.UTF_8) ?: ""
-                throw IllegalStateException("Local inference TTS error: $code $errBody")
-            }
-
-            BufferedInputStream(conn.inputStream).use { input ->
+            BufferedInputStream(ByteArrayInputStream(response)).use { input ->
                 val format = readWavPcmFormat(input)
                 val track = createPcmAudioTrack(format)
                 pcmTrack = track
@@ -1286,10 +1275,6 @@ class TalkModePlugin : Plugin() {
             }
         } finally {
             cleanupPcmTrack()
-            if (activePcmConnection === conn) {
-                activePcmConnection = null
-            }
-            conn.disconnect()
         }
     }
 
@@ -1380,22 +1365,56 @@ class TalkModePlugin : Plugin() {
         }
     }
 
-    private fun openLocalInferenceTtsConnection(): HttpURLConnection {
+    /**
+     * Route the fallback Kokoro request through the app-owned local-agent IPC
+     * boundary. Production Android does not expose the embedded agent on TCP;
+     * ElizaAgentService translates this request to its abstract UDS protocol.
+     */
+    private fun requestLocalInferenceTts(body: String): ByteArray {
         val tokenFile = File(context.filesDir, "auth/local-agent-token")
         val token = tokenFile.takeIf { it.isFile }?.readText()?.trim().orEmpty()
         if (token.isEmpty()) {
             throw IllegalStateException("Local agent auth token is missing")
         }
+        val serviceClassName = resolveAgentServiceClassName()
+            ?: throw IllegalStateException("ElizaAgentService is not registered")
+        val request = JSONObject(
+            TalkModeAndroidBridgeContract.localInferenceRequestPayload(
+                body = body,
+                authorization = "Bearer $token"
+            )
+        )
+        val serviceClass = Class.forName(serviceClassName)
+        val bridge = serviceClass.getMethod("requestLocalAgent", String::class.java)
+        val raw = bridge.invoke(null, request.toString()) as? String
+            ?: throw IllegalStateException("ElizaAgentService.requestLocalAgent returned null")
+        val response = JSONObject(raw)
+        val status = response.optInt("status", 0)
+        if (status !in 200..299) {
+            throw IllegalStateException(
+                "Local inference TTS error: $status ${response.optString("body", "")}".trim()
+            )
+        }
+        val encoded = response.optString("bodyBase64", "")
+        if (response.optString("bodyEncoding", "") != "base64" || encoded.isEmpty()) {
+            throw IllegalStateException("Local inference TTS returned no binary audio body")
+        }
+        return Base64.decode(encoded, Base64.DEFAULT)
+    }
 
-        val conn = URL(LOCAL_INFERENCE_TTS_URL).openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.connectTimeout = 30_000
-        conn.readTimeout = 180_000
-        conn.setRequestProperty("Authorization", "Bearer $token")
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", "audio/wav")
-        conn.doOutput = true
-        return conn
+    private fun resolveAgentServiceClassName(): String? {
+        val packageName = context.packageName
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.packageManager.getPackageInfo(
+                packageName,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_SERVICES.toLong())
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            context.packageManager.getPackageInfo(packageName, PackageManager.GET_SERVICES)
+        }
+        val serviceNames = packageInfo.services?.mapNotNull { it.name } ?: emptyList()
+        return TalkModeAndroidBridgeContract.selectAgentServiceClass(serviceNames, packageName)
     }
 
     private fun buildLocalInferenceTtsPayload(text: String, directive: JSObject?): String {
