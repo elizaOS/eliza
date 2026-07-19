@@ -23,7 +23,7 @@ import {
 import {
   claimVoiceSessionToken,
   isVoiceSessionTokenRevoked,
-  revokeVoiceSessionToken,
+  verifyVoiceSessionToken,
 } from "@/lib/voice-session/jwt";
 import { getVoiceSessionRegistry } from "@/lib/voice-session/session-registry";
 import {
@@ -191,7 +191,16 @@ app.get("/", (c) => {
   );
   attachVoiceWsHandler(server, {
     requestedSessionId: sessionId,
-    claimToken: (jti, expSeconds) => claimVoiceSessionToken(jti, expSeconds),
+    // Reuse one request-scoped Redis client for verify + single-use claim.
+    // Creating two Railway TCP connections serially put 2-5s on hello->ready
+    // and made abrupt-disconnect recovery contend with teardown traffic.
+    verifyToken: (token, expected, options) =>
+      verifyVoiceSessionToken(token, expected, {
+        ...options,
+        ...(rawRedis ? { store: rawRedis } : {}),
+      }),
+    claimToken: (jti, expSeconds) =>
+      claimVoiceSessionToken(jti, expSeconds, rawRedis ?? undefined),
     // Enforce the per-worker ceiling against the LIVE registry at start time,
     // closing the race where many upgrades pass the earlier route-level check.
     admitSession: () => getVoiceSessionRegistry().size() < maxSessions,
@@ -228,8 +237,10 @@ app.get("/", (c) => {
         usageStore,
         usageLimits,
         isRevoked: (jti) => isVoiceSessionTokenRevoked(jti),
-        onTeardownRevoke: (jti, expSeconds) =>
-          revokeVoiceSessionToken(jti, expSeconds),
+        // A successful hello atomically claimed this jti until expiry, so it
+        // cannot be replayed. Avoid a redundant denylist write during abrupt
+        // disconnect: it contended with the immediate replacement hello.
+        // Explicit cross-device revoke and its 400ms poll remain unchanged.
         downlink,
       });
     },

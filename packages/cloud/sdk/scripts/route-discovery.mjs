@@ -149,6 +149,162 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function visitCodeCharacters(source, startIndex, visitor) {
+  let quote = null;
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+
+  for (let index = startIndex; index < source.length; index += 1) {
+    const character = source[index];
+    const nextCharacter = source[index + 1];
+
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
+      continue;
+    }
+    if (blockComment) {
+      if (character === "*" && nextCharacter === "/") {
+        blockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (character === "/" && nextCharacter === "/") {
+      lineComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === "/" && nextCharacter === "*") {
+      blockComment = true;
+      index += 1;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === "`") {
+      quote = character;
+      continue;
+    }
+
+    const result = visitor(character, index);
+    if (result !== undefined) return result;
+  }
+
+  return undefined;
+}
+
+function readCallExpression(source, openParenIndex) {
+  let depth = 0;
+  const closeParenIndex = visitCodeCharacters(
+    source,
+    openParenIndex,
+    (character, index) => {
+      if (character === "(") {
+        depth += 1;
+      } else if (character === ")") {
+        depth -= 1;
+        if (depth === 0) return index;
+      }
+      return undefined;
+    },
+  );
+
+  return source.slice(
+    openParenIndex,
+    closeParenIndex === undefined ? undefined : closeParenIndex + 1,
+  );
+}
+
+function splitCallArguments(callSource) {
+  const argumentsSource = callSource.slice(1, -1);
+  const argumentsList = [];
+  let argumentStart = 0;
+  let depth = 0;
+  visitCodeCharacters(argumentsSource, 0, (character, index) => {
+    if (character === "(" || character === "[" || character === "{") {
+      depth += 1;
+    } else if (character === ")" || character === "]" || character === "}") {
+      depth -= 1;
+    } else if (character === "," && depth === 0) {
+      argumentsList.push(argumentsSource.slice(argumentStart, index).trim());
+      argumentStart = index + 1;
+    }
+    return undefined;
+  });
+
+  argumentsList.push(argumentsSource.slice(argumentStart).trim());
+  return argumentsList;
+}
+
+function stripComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n\r]*/g, "");
+}
+
+function simpleArrowResponse(handlerSource) {
+  const arrowIndex = handlerSource.indexOf("=>");
+  if (arrowIndex === -1) return null;
+
+  let body = stripComments(handlerSource.slice(arrowIndex + 2)).trim();
+  body = body.replace(/,\s*$/, "").trim();
+
+  if (body.startsWith("{") && body.endsWith("}")) {
+    const statements = body.slice(1, -1).trim();
+    const returnMatch = statements.match(/^return\s+([\s\S]*?);?$/);
+    if (!returnMatch) return null;
+    body = returnMatch[1].trim();
+  }
+
+  return body.replace(/;\s*$/, "").trim();
+}
+
+// Dynamic all-method routers must stay discoverable, so only a sole direct 405
+// response is classified as the method-not-allowed sentinel used after handlers.
+function isMethodNotAllowedCatchAll(callSource) {
+  const callArguments = splitCallArguments(callSource);
+  if (callArguments.at(-1) === "") callArguments.pop();
+  if (callArguments.length !== 2 || !/^(["'])\*\1$/.test(callArguments[0])) {
+    return false;
+  }
+
+  const handlerSource = callArguments[1];
+  const response = simpleArrowResponse(handlerSource);
+  if (!response) return false;
+
+  const honoResponse = response.match(
+    /^(?:await\s+)?[A-Za-z_$][\w$]*\.(?:body|json|text)\s*\(/,
+  );
+  if (honoResponse) {
+    const openParenIndex = honoResponse[0].lastIndexOf("(");
+    const callSource = readCallExpression(response, openParenIndex);
+    const trailingSource = response.slice(openParenIndex + callSource.length);
+    const responseArguments = splitCallArguments(callSource);
+    return trailingSource.trim() === "" && responseArguments[1] === "405";
+  }
+
+  const nativeResponse = response.match(/^(?:await\s+)?new\s+Response\s*\(/);
+  if (nativeResponse) {
+    const openParenIndex = nativeResponse[0].lastIndexOf("(");
+    const callSource = readCallExpression(response, openParenIndex);
+    const trailingSource = response.slice(openParenIndex + callSource.length);
+    const responseArguments = splitCallArguments(callSource);
+    return (
+      trailingSource.trim() === "" &&
+      /^\{\s*status\s*:\s*405\s*,?\s*\}$/.test(responseArguments[1] ?? "")
+    );
+  }
+
+  return false;
+}
+
 function extractHonoAppNames(source) {
   return Array.from(source.matchAll(HONO_APP_DECL_RE), (match) => match[1]);
 }
@@ -162,12 +318,19 @@ function extractHonoMethods(source) {
       `\\b${escapedName}\\s*\\.\\s*(get|post|put|patch|delete)\\s*\\(`,
       "gi",
     );
-    const allRe = new RegExp(`\\b${escapedName}\\s*\\.\\s*all\\s*\\(`, "i");
+    const allRe = new RegExp(`\\b${escapedName}\\s*\\.\\s*all\\s*\\(`, "gi");
 
     for (const match of source.matchAll(methodRe)) {
       methods.add(match[1].toUpperCase());
     }
-    if (allRe.test(source)) {
+    const supportsAllMethods = Array.from(source.matchAll(allRe)).some(
+      (match) => {
+        const openParenIndex = (match.index ?? 0) + match[0].lastIndexOf("(");
+        const callSource = readCallExpression(source, openParenIndex);
+        return !isMethodNotAllowedCatchAll(callSource);
+      },
+    );
+    if (supportsAllMethods) {
       for (const method of HONO_ALL_METHODS) {
         methods.add(method);
       }
