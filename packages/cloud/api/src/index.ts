@@ -71,7 +71,7 @@ async function dispatchInference(
   request: Request,
   env: AppEnv["Bindings"],
   ctx: ExecutionContext,
-): Promise<Response> | null {
+): Promise<Response | null> {
   if (
     !isThinInferenceEnabled(env) ||
     !isCanonicalInferencePath(new URL(request.url).pathname)
