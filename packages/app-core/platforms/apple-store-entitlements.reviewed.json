@@ -110,9 +110,12 @@
           "appReviewJustification": "Required for Screen Time and website blocking features exposed through the iOS app and extension."
         },
         "com.apple.developer.associated-domains": {
-          "arrayStringPatterns": ["^applinks:eliza\\.app$"],
+          "arrayStringPatterns": [
+            "^applinks:eliza\\.app$",
+            "^webcredentials:eliza\\.app$"
+          ],
           "reviewSensitive": true,
-          "appReviewJustification": "Required for the reviewed production Universal Link host used by native app association. The exact host is pinned so additional domains require a new review."
+          "appReviewJustification": "Required for the reviewed production Universal Link host and ASWebAuthenticationSession HTTPS callback. Apple requires the exact callback host to be associated through web credentials; both services remain pinned to eliza.app so additional domains require a new review."
         },
         "com.apple.security.application-groups": {
           "arrayStringPatterns": ["^group\\.[A-Za-z0-9.-]+$"],

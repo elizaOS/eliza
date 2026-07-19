@@ -101,6 +101,7 @@ export class VoiceSessionTokenError extends Error {
       | "invalid_input"
       | "invalid_token"
       | "revoked"
+      | "store_unavailable"
       | "claim_mismatch",
   ) {
     super(message);
@@ -207,7 +208,7 @@ function readClaim(payload: Record<string, unknown>, key: string): string {
 export async function verifyVoiceSessionToken(
   token: string,
   expected?: Partial<VoiceSessionTokenClaims>,
-  options?: { now?: () => number },
+  options?: { now?: () => number; store?: CompatibleRedis },
 ): Promise<VoiceSessionTokenVerifyResult> {
   if (!isVoiceSessionJwtConfigured()) {
     throw new VoiceSessionTokenError(
@@ -271,7 +272,7 @@ export async function verifyVoiceSessionToken(
     }
   }
 
-  if (await isVoiceSessionTokenRevoked(jti)) {
+  if (await readVoiceSessionRevocation(jti, options?.store)) {
     throw new VoiceSessionTokenError("voice-session token has been revoked", "revoked");
   }
 
@@ -346,12 +347,33 @@ export async function revokeVoiceSessionToken(jti: string, expSeconds?: number):
  * token is treated as revoked (never `catch -> allow`). When no store is
  * configured, revocation is genuinely unsupported and this returns false.
  */
-export async function isVoiceSessionTokenRevoked(jti: string): Promise<boolean> {
-  const redis = getRedis();
+async function readVoiceSessionRevocation(jti: string, store?: CompatibleRedis): Promise<boolean> {
+  const redis = store ?? getRedis();
   if (!redis) return false;
+  let lastError: unknown;
+  // SocketRedis already bounds each operation. One immediate retry on the same
+  // request-scoped client recovers a stale Railway TCP connection without
+  // turning an infrastructure timeout into a false `revoked` result for a
+  // freshly minted random jti. Persistent failures still reject fail-closed.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const value = await redis.get(revocationKey(jti));
+      return value !== null && value !== undefined;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw new VoiceSessionTokenError(
+    `voice-session revocation store unavailable: ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
+    "store_unavailable",
+  );
+}
+
+export async function isVoiceSessionTokenRevoked(jti: string): Promise<boolean> {
   try {
-    const value = await redis.get(revocationKey(jti));
-    return value !== null && value !== undefined;
+    return await readVoiceSessionRevocation(jti);
   } catch (error) {
     logger.error(
       `[voice-session-jwt] revocation check failed (fail-closed): ${
@@ -439,8 +461,12 @@ function claimKey(jti: string): string {
  * registry supersede is the only guard (single-worker dev), so we return true;
  * production requires Redis for cross-worker single-use enforcement.
  */
-export async function claimVoiceSessionToken(jti: string, expSeconds: number): Promise<boolean> {
-  const redis = getRedis();
+export async function claimVoiceSessionToken(
+  jti: string,
+  expSeconds: number,
+  store?: CompatibleRedis,
+): Promise<boolean> {
+  const redis = store ?? getRedis();
   if (!redis) return true;
   const nowSeconds = Math.floor(Date.now() / 1000);
   const ttl = Math.min(Math.max(Math.ceil(expSeconds - nowSeconds), 1), MAX_REVOCATION_TTL_SECONDS);
