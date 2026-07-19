@@ -142,11 +142,10 @@ jobs:
     name: Build
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    # Fresh attempt 2 completed the 175-task cold build in 16m05s after setup,
-    # then exposed CPU contention in the heavy visual suite: six Playwright
-    # workers produced 22+ retries and 1-4 minute cases. Cap the same complete
-    # 48-test suite at two workers below and retain a finite 40m cold ceiling.
-    timeout-minutes: 40
+    # Fresh attempt 3 completed the entire two-worker suite and failed closed
+    # on three bounded mobile visual diffs in 25m38s total. Retain the complete
+    # 48-test suite and a finite 32m ceiling, a measured 25% cold-run margin.
+    timeout-minutes: 32
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:

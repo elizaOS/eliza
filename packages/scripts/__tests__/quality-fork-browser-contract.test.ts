@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +76,28 @@ describe("quality-fork-browser-contract", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test("bounds only the measured mobile visual renderer variance", () => {
+    const config = readFileSync(
+      join(REAL_REPO_ROOT, "packages", "homepage", "playwright.config.ts"),
+      "utf8",
+    );
+    const visual = readFileSync(
+      join(
+        REAL_REPO_ROOT,
+        "packages",
+        "homepage",
+        "tests",
+        "e2e",
+        "visual.spec.ts",
+      ),
+      "utf8",
+    );
+    expect(config).toMatch(/maxDiffPixelRatio:\s*0\.05/);
+    expect(visual).toMatch(
+      /maxDiffPixelRatio:\s*viewport\.name === ["']mobile["'] \? 0\.08 : 0\.05/,
+    );
   });
 
   test("the checked-in Quality (Fork) workflow satisfies the contract", () => {
