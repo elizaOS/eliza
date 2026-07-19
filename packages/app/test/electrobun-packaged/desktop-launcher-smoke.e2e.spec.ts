@@ -168,6 +168,10 @@ test("packaged desktop launcher: store flips the rail (data-page + AX probe) non
       tempRoot,
       launcherPath: launcherPath as string,
       apiBase: api.baseUrl,
+      // This spec exercises the canonical inline `/views` route. The default
+      // desktop process is the chromeless chat bar; launcher-window spawning
+      // has separate coverage and cannot be inspected through main-window/eval.
+      extraEnv: { ELIZA_DESKTOP_BOTTOM_BAR: "0" },
     });
     await harness.start({
       bridgeHealthTimeoutMs: 300_000,
@@ -182,8 +186,8 @@ test("packaged desktop launcher: store flips the rail (data-page + AX probe) non
       30_000,
     );
 
-    // Mount the HomeLauncherSurface (the resting desktop shell is the chromeless
-    // bottom bar; the launcher half mounts on the canonical /views route).
+    // Mount the HomeLauncherSurface in the full shell; the launcher half lives
+    // on the canonical /views route.
     const activeHarness = harness;
     await mountLauncherSurface(activeHarness);
     await expect

@@ -298,10 +298,7 @@ async function openRouteAndWait(
             ?.getAttribute("data-agent-id")
             ?.replace(/^section-/, "") ?? null,
         voiceSectionActive: Boolean(
-          window.location.hash === "#voice" &&
-            document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
-        ) || Boolean(
-          document.querySelector('[data-agent-id="section-voice"][aria-current="page"]'),
+          document.querySelector('[data-testid="voice-section-continuous-row"]'),
         ),
         rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
         bodyText: (document.body?.innerText || "")
@@ -321,8 +318,8 @@ async function openRouteAndWait(
       current.selector === selector &&
       current.found &&
       (route === SETTINGS_MEDIA_ROUTE
-        ? current.hash === "#voice" &&
-          current.activeSettingsSection === "voice" &&
+        ? current.route === SETTINGS_ROUTE &&
+          current.hash === "#voice" &&
           current.voiceSectionActive
         : current.route === route),
     {
@@ -363,10 +360,7 @@ async function waitForMediaSettingsRoute(
               ?.getAttribute("data-agent-id")
               ?.replace(/^section-/, "") ?? null,
           voiceSectionActive: Boolean(
-            window.location.hash === "#voice" &&
-              document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
-          ) || Boolean(
-            document.querySelector('[data-agent-id="section-voice"][aria-current="page"]'),
+            document.querySelector('[data-testid="voice-section-continuous-row"]'),
           ),
           rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
           bodyText: (document.body?.innerText || "")
@@ -384,8 +378,8 @@ async function waitForMediaSettingsRoute(
     (current) =>
       current.ok &&
       current.shellReady &&
+      current.route === SETTINGS_ROUTE &&
       current.hash === "#voice" &&
-      current.activeSettingsSection === "voice" &&
       current.voiceSectionActive,
     {
       timeout: 20_000,
