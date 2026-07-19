@@ -22,6 +22,21 @@ import {
   exchangeCloudPairToken,
   persistCloudPairApiToken,
 } from "../components/auth/CloudPairRelay";
+import { scrubPersistedAgentProfileTokens } from "./agent-profiles";
+import { clearCloudPairApiToken } from "./cloud-pair-token";
+import { scrubPersistedActiveServerToken } from "./persistence";
+
+/**
+ * Boot adoption (packages/app main.tsx) stamps the pair token into two MORE
+ * persistent stores (active-server record, agent profiles). A purge that only
+ * removes the source key would leave those copies at rest, so the three clears
+ * travel together.
+ */
+function defaultClearStalePairCredentials(): void {
+  clearCloudPairApiToken();
+  scrubPersistedActiveServerToken();
+  scrubPersistedAgentProfileTokens();
+}
 
 const MAX_PAIRING_WAIT_MS = 120_000;
 const DEFAULT_RETRY_AFTER_MS = 5_000;
@@ -69,6 +84,13 @@ export interface RunAgentSessionRecoveryDeps {
   exchangePairToken?: (token: string) => Promise<string>;
   /** Injected API-key persistence (tests). Defaults to CloudPairRelay's persistence. */
   persistPairApiToken?: (apiToken: string) => void;
+  /**
+   * Purge the durable pair token + its at-rest copies when the pairing mint
+   * itself answers 401/403 (#16666). This is the SECOND 401 — the first
+   * (`/api/auth/me`) merely triggers recovery — so staleness is proven and the
+   * next boot must not re-adopt the dead credential. Injected in tests.
+   */
+  clearStalePairCredentials?: () => void;
   /** Optional callback after an in-process pair succeeds. */
   onPairedInProcess?: (apiToken: string) => void | Promise<void>;
 }
@@ -126,6 +148,7 @@ export async function runAgentSessionRecovery(
     exchangePairToken = (token: string) =>
       exchangeCloudPairToken(token, { cloudApiBase }),
     persistPairApiToken = persistCloudPairApiToken,
+    clearStalePairCredentials = defaultClearStalePairCredentials,
     onPairedInProcess,
     fetchFn = fetch,
     sleepFn = realSleep,
@@ -163,7 +186,13 @@ export async function runAgentSessionRecovery(
     }
 
     if (res.status === 401 || res.status === 403) {
-      // No valid cloud session after all, let the wall stand.
+      // No valid cloud session after all, let the wall stand. This is proof of
+      // staleness (the mint itself refused), so purge the durable pair token
+      // and its at-rest copies — otherwise the next boot re-adopts the dead
+      // credential and loops here forever (#16666). Network-shaped failures
+      // (fetch throw, timeout, 5xx) deliberately do NOT reach this branch: an
+      // offline PWA relaunch must keep its still-valid token.
+      clearStalePairCredentials();
       return {
         ok: false,
         reason: "unauthorized",

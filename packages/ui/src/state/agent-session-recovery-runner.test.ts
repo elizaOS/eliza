@@ -109,16 +109,77 @@ describe("runAgentSessionRecovery", () => {
       .fn()
       .mockResolvedValue(jsonResponse(401, { error: "unauthorized" }));
     const navigate = vi.fn();
+    const clearStalePairCredentials = vi.fn();
 
     const result = await runAgentSessionRecovery({
       ...baseDeps,
       fetchFn: fetchFn as unknown as typeof fetch,
       navigate,
+      clearStalePairCredentials,
     });
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("unauthorized");
     expect(navigate).not.toHaveBeenCalled();
+    // The mint itself refused: staleness is proven, the durable pair token and
+    // its at-rest copies must be purged so the next boot cannot re-adopt the
+    // dead credential (#16666).
+    expect(clearStalePairCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it("purges stale pair credentials on 403 exactly like 401 (#16666)", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(403, { error: "forbidden" }));
+    const clearStalePairCredentials = vi.fn();
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      navigate: vi.fn(),
+      clearStalePairCredentials,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("unauthorized");
+    expect(clearStalePairCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it("does NOT purge pair credentials on a network-shaped failure (#16666)", async () => {
+    // An offline PWA relaunch is the exact scenario the durable key exists
+    // for: a fetch throw must never be treated as proof of staleness. The
+    // runner folds it into reason "error" — never "unauthorized".
+    const fetchFn = vi.fn().mockRejectedValue(new Error("offline"));
+    const clearStalePairCredentials = vi.fn();
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      navigate: vi.fn(),
+      clearStalePairCredentials,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("error");
+    expect(clearStalePairCredentials).not.toHaveBeenCalled();
+  });
+
+  it("does NOT purge pair credentials on a 5xx mint failure (#16666)", async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValue(jsonResponse(500, { error: "boom" }));
+    const clearStalePairCredentials = vi.fn();
+
+    const result = await runAgentSessionRecovery({
+      ...baseDeps,
+      fetchFn: fetchFn as unknown as typeof fetch,
+      navigate: vi.fn(),
+      clearStalePairCredentials,
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("error");
+    expect(clearStalePairCredentials).not.toHaveBeenCalled();
   });
 
   it("does not loop forever: gives up with not-ready after the deadline", async () => {
