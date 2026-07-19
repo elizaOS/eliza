@@ -87,6 +87,8 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 
 vi.mock("./hooks/useAuthStatus", () => ({
+  isAuthenticatedNow: () => false,
+  subscribeAuthStatus: () => () => undefined,
   useAuthStatus: () => ({
     state: { phase: "loading" },
     refetch: vi.fn(),
