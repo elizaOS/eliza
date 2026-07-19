@@ -41,26 +41,27 @@ interface SurfaceRead {
 }
 
 /**
- * Route the shell to `/apps` so `HomeScreenMount` mounts the HomeLauncherSurface
- * (App.tsx maps the apps tab to the launcher half). Belt-and-suspenders: set the
- * hash AND push + fire popstate so whichever navigation mode the packaged shell
- * uses picks it up.
+ * Route the shell to `/views`, the canonical Home/Launcher surface. `/apps`
+ * is the My Apps destination and intentionally does not mount this rail. Drive
+ * the shell's public navigation event instead of raw History: active surfaces
+ * are denied direct path-changing history writes by the surface-realm guard.
  */
 async function mountLauncherSurface(
   harness: PackagedDesktopHarness,
 ): Promise<void> {
-  await harness.eval<EvalResult<Record<string, never>>>(`(() => {
+  const result = await harness.eval<EvalResult<Record<string, never>>>(`(() => {
     try {
-      try { window.location.hash = "#/apps"; } catch (_) {}
-      try {
-        window.history.pushState(null, "", "/apps");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      } catch (_) {}
+      window.dispatchEvent(new CustomEvent("eliza:navigate:view", {
+        detail: { viewPath: "/views" },
+      }));
       return { ok: true };
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
   })()`);
+  if (!result.ok) {
+    throw new Error(`mountLauncherSurface eval failed: ${result.error}`);
+  }
 }
 
 /** Read the observable surface state (mount + data-page + AX probe text). */
@@ -182,14 +183,14 @@ test("packaged desktop launcher: store flips the rail (data-page + AX probe) non
     );
 
     // Mount the HomeLauncherSurface (the resting desktop shell is the chromeless
-    // bottom bar; the launcher half mounts on the /apps route).
+    // bottom bar; the launcher half mounts on the canonical /views route).
     const activeHarness = harness;
     await mountLauncherSurface(activeHarness);
     await expect
       .poll(async () => (await readSurface(activeHarness)).mounted, {
         timeout: 30_000,
         message:
-          "Expected HomeLauncherSurface to mount after routing to /apps.",
+          "Expected HomeLauncherSurface to mount after routing to /views.",
       })
       .toBe(true);
 
