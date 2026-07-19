@@ -874,6 +874,9 @@ export function useChatVoiceController(options: {
   // contract the tap path's tests lock in).
   const [realtimeFellBack, setRealtimeFellBack] = useState(false);
   useEffect(() => {
+    // The mode value itself is the reset trigger — reading it here keeps the
+    // dependency real for the linter.
+    void continuousMode;
     setRealtimeFellBack(false);
   }, [continuousMode]);
 

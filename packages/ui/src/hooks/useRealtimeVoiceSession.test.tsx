@@ -370,7 +370,9 @@ describe("useRealtimeVoiceSession", () => {
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
     expect(result.current.available).toBe(true);
-    let startOutcome: Awaited<ReturnType<typeof result.current.start>> | undefined;
+    let startOutcome:
+      | Awaited<ReturnType<typeof result.current.start>>
+      | undefined;
     await act(async () => {
       startOutcome = await result.current.start();
       await flushAsync();
@@ -391,7 +393,9 @@ describe("useRealtimeVoiceSession", () => {
     const { options } = makeOptions({ mintStatus: 503 });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
-    let startOutcome: Awaited<ReturnType<typeof result.current.start>> | undefined;
+    let startOutcome:
+      | Awaited<ReturnType<typeof result.current.start>>
+      | undefined;
     await act(async () => {
       startOutcome = await result.current.start();
       await flushAsync();
@@ -525,7 +529,9 @@ describe("useRealtimeVoiceSession", () => {
     const { options, mint } = makeOptions({ consentNonce: null });
     const { result } = renderHook(() => useRealtimeVoiceSession(options));
 
-    let startOutcome: Awaited<ReturnType<typeof result.current.start>> | undefined;
+    let startOutcome:
+      | Awaited<ReturnType<typeof result.current.start>>
+      | undefined;
     await act(async () => {
       startOutcome = await result.current.start();
       await flushAsync();
