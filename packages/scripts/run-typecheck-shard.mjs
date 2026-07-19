@@ -81,7 +81,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       "run",
       "typecheck",
       "--concurrency=8",
-      ...selected.map((name) => `--filter=${name}`),
+      // Include each selected package's dependency closure. Several workspace
+      // packages resolve sibling types from dist/, so a bare package filter can
+      // expose false missing-module errors that the full graph materializes.
+      ...selected.map((name) => `--filter=${name}...`),
     ],
     {
       cwd: repoRoot,

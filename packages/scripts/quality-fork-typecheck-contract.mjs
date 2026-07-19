@@ -17,6 +17,10 @@ function assert(condition, message) {
 
 export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
   const workflow = readFileSync(resolve(repoRoot, WORKFLOW_PATH), "utf8");
+  const shardRunner = readFileSync(
+    resolve(repoRoot, "packages/scripts/run-typecheck-shard.mjs"),
+    "utf8",
+  );
   const rootPackage = JSON.parse(
     readFileSync(resolve(repoRoot, "package.json"), "utf8"),
   );
@@ -38,6 +42,10 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
       workflow,
     ),
     `${WORKFLOW_PATH}: each matrix lane must invoke the deterministic shard runner`,
+  );
+  assert(
+    /`--filter=\$\{name\}\.\.\.`/.test(shardRunner),
+    "run-typecheck-shard.mjs: each slice must include package dependency closures",
   );
   assert(
     /^\s*typecheck:\s*$[\s\S]*?^\s*name:\s*Type Check\s*$[\s\S]*?^\s*needs:\s*typecheck-shards\s*$/m.test(
