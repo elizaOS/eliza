@@ -2,6 +2,24 @@ import { describe, expect, test } from "bun:test";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { createInferenceApp } from "./inference-app";
 
+interface AuthErrorBody {
+  error: {
+    message: string;
+    type: string;
+  };
+}
+
+interface NotFoundBody {
+  success: false;
+  error: string;
+  code: string;
+}
+
+interface RateLimitErrorBody {
+  error: string;
+  code: string;
+}
+
 const executionCtx = {
   waitUntil: () => undefined,
   passThroughOnException: () => undefined,
@@ -38,7 +56,8 @@ describe("chat-only inference application", () => {
     );
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     expect(response.headers.get("x-ratelimit-limit")).toBe("200");
-    expect(await response.json()).toEqual({
+    const body = (await response.json()) as AuthErrorBody;
+    expect(body).toEqual({
       error: {
         message: "Authentication required",
         type: "authentication_error",
@@ -63,5 +82,52 @@ describe("chat-only inference application", () => {
     expect(response.headers.get("access-control-allow-methods")).toContain(
       "POST",
     );
+  });
+
+  test("keeps non-chat routes outside the thin app surface", async () => {
+    const response = await createInferenceApp().fetch(
+      new Request("https://api.elizacloud.ai/api/v1/embeddings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "embedding-model", input: "hi" }),
+      }),
+      env,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(404);
+    const body = (await response.json()) as NotFoundBody;
+    expect(body).toEqual({
+      success: false,
+      error: "Not found",
+      code: "resource_not_found",
+    });
+  });
+
+  test("fails closed when production rate limiting is explicitly misconfigured", async () => {
+    const response = await createInferenceApp().fetch(
+      new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "gemma-4-31b",
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+      {
+        ...env,
+        ENVIRONMENT: "production",
+        NODE_ENV: "production",
+        REDIS_RATE_LIMITING: "true",
+      },
+      executionCtx,
+    );
+
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as RateLimitErrorBody;
+    expect(body).toEqual({
+      error: "Rate limiting misconfigured",
+      code: "RATE_LIMIT_UNAVAILABLE",
+    });
   });
 });

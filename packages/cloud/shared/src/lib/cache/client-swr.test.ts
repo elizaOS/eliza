@@ -235,4 +235,22 @@ describe("CacheClient memory-backend contracts", () => {
     });
     expect(calls).toBe(1);
   });
+
+  test("singleflight initializes the lock owner id lazily and reuses it", async () => {
+    const cache = await makeCache();
+    const inspectedCache = cache as unknown as { instanceId: string | null };
+    expect(inspectedCache.instanceId).toBeNull();
+
+    expect(await cache.getOrSet("ct:lazy-id:a", 60, async () => "a", { singleflight: true })).toBe(
+      "a",
+    );
+    const firstInstanceId = inspectedCache.instanceId;
+    expect(typeof firstInstanceId).toBe("string");
+    expect(firstInstanceId?.length).toBeGreaterThan(0);
+
+    expect(await cache.getOrSet("ct:lazy-id:b", 60, async () => "b", { singleflight: true })).toBe(
+      "b",
+    );
+    expect(inspectedCache.instanceId).toBe(firstInstanceId);
+  });
 });

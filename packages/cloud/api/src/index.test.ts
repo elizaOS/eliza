@@ -1,5 +1,6 @@
 // Exercises cloud API src index.test behavior with deterministic Worker route fixtures.
 import { describe, expect, test } from "bun:test";
+import type { AppEnv } from "@/types/cloud-worker-env";
 import cloudApiWorker, {
   getFrontendAliasApiProxyTarget,
   getFrontendAliasProxyTarget,
@@ -11,6 +12,20 @@ import cloudApiWorker, {
 } from "./index";
 
 describe("thin inference entry dispatch", () => {
+  const executionCtx = {
+    waitUntil: () => undefined,
+    passThroughOnException: () => undefined,
+  } as unknown as ExecutionContext;
+
+  const thinInferenceEnv = {
+    ENVIRONMENT: "test",
+    NODE_ENV: "test",
+    REDIS_RATE_LIMITING: "false",
+    CACHE_ENABLED: "false",
+    THIN_INFERENCE_ENTRY_ENABLED: "true",
+    BLOB: {},
+  } as unknown as AppEnv["Bindings"];
+
   test("is rollback-safe and disabled unless explicitly true", () => {
     expect(isThinInferenceEnabled({})).toBe(false);
     expect(
@@ -28,6 +43,43 @@ describe("thin inference entry dispatch", () => {
       false,
     );
     expect(isCanonicalInferencePath("/api/v1/embeddings")).toBe(false);
+  });
+
+  test("dispatches canonical chat requests through the thin app when enabled", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api.elizacloud.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "gemma-4-31b",
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+      thinInferenceEnv,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("x-eliza-inference-path")).toBe("thin");
+    expect(response.headers.get("server-timing")).toContain("entry_dispatch");
+  });
+
+  test("dispatches OpenAI-compatible chat rewrites through the thin app", async () => {
+    const response = await cloudApiWorker.fetch(
+      new Request("https://api.elizacloud.ai/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "gemma-4-31b",
+          messages: [{ role: "user", content: "hi" }],
+        }),
+      }),
+      thinInferenceEnv,
+      executionCtx,
+    );
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("x-eliza-inference-path")).toBe("thin");
   });
 });
 
