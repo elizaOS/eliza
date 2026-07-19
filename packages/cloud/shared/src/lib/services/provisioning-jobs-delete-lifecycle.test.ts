@@ -15,7 +15,7 @@
  * error path (incrementAttempt). Pure spy-based, no DB.
  */
 
-import { describe, expect, spyOn, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 
 import { jobsRepository } from "../../db/repositories/jobs";
 import type { Job } from "../../db/schemas/jobs";
@@ -103,6 +103,20 @@ function withClaimedJob(type: ProvisioningJobType, extraData: Record<string, unk
   };
 }
 
+/** #16639: these suites exercise the snapshot EXECUTION path, which the
+ *  fail-closed lane belt short-circuits unless the gate is exactly enabled.
+ *  Armed per-suite with restore (never module-wide — composed/shared-process
+ *  runs share the env); the gate itself is pinned in
+ *  provisioning-jobs-snapshot-gate.test.ts. */
+function armSnapshotGate(): () => void {
+  const prev = process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
+  process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = "true";
+  return () => {
+    if (prev === undefined) delete process.env.ELIZA_SNAPSHOT_JOBS_ENABLED;
+    else process.env.ELIZA_SNAPSHOT_JOBS_ENABLED = prev;
+  };
+}
+
 describe("ProvisioningJobService — Agent-not-found is a terminal no-op", () => {
   const cases: Array<{
     name: string;
@@ -127,6 +141,7 @@ describe("ProvisioningJobService — Agent-not-found is a terminal no-op", () =>
         success: false,
         error: "Agent not found",
       } as never);
+      const disarmGate = c.type === JOB_TYPES.AGENT_SNAPSHOT ? armSnapshotGate() : () => {};
       try {
         const res = await provisioningJobService.processPendingJobs(1, { jobTypes: [c.type] });
         expect(res.claimed).toBe(1);
@@ -139,6 +154,7 @@ describe("ProvisioningJobService — Agent-not-found is a terminal no-op", () =>
         // …and NEVER counted as a failed attempt.
         expect(ctx.incrementSpy).not.toHaveBeenCalled();
       } finally {
+        disarmGate();
         svcSpy.mockRestore();
         ctx.restore();
       }
@@ -197,6 +213,15 @@ describe("ProvisioningJobService — retryable readiness transport does not burn
 });
 
 describe("ProvisioningJobService — auto snapshot of an idle agent is a terminal SKIP", () => {
+  // #16639: every case in this suite drives the gated snapshot lane.
+  let disarmGate: () => void = () => {};
+  beforeEach(() => {
+    disarmGate = armSnapshotGate();
+  });
+  afterEach(() => {
+    disarmGate();
+  });
+
   test("auto + 'Sandbox is not running' → completed-as-skipped, no retry", async () => {
     const ctx = withClaimedJob(JOB_TYPES.AGENT_SNAPSHOT, { snapshotType: "auto" });
     const svcSpy = spyOn(elizaSandboxService, "executeSnapshot").mockResolvedValue({
