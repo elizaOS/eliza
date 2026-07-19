@@ -67,12 +67,19 @@ describe("deterministic canaries", () => {
 });
 
 describe("deterministic security check outcomes", () => {
-  it("requires a real successful gitleaks outcome", () => {
+  it("requires only a real successful gitleaks outcome", () => {
     assert.equal(evaluate([]).passed, false);
-    assert.equal(evaluate([{ name: "gitleaks", conclusion: "success" }]).passed, true);
+    assert.deepEqual(
+      evaluate([
+        { name: "gitleaks", conclusion: "success" },
+        { name: "claude-review", conclusion: "failure" },
+        { name: "security", conclusion: "failure" },
+      ]),
+      { waiting: [], failed: [], passed: true },
+    );
   });
 
-  it("fails every non-success terminal conclusion", () => {
+  it("fails every non-success terminal conclusion for gitleaks only", () => {
     for (const conclusion of [
       "failure",
       "cancelled",
