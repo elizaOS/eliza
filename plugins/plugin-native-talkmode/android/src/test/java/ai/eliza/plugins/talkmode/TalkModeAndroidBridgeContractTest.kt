@@ -2,10 +2,53 @@ package ai.eliza.plugins.talkmode
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TalkModeAndroidBridgeContractTest {
+    @Test
+    fun `local inference TTS request targets app IPC route instead of loopback TCP`() {
+        val payload = TalkModeAndroidBridgeContract.localInferenceRequestPayload(
+            body = "{\"text\":\"hello\"}",
+            authorization = "Bearer secret"
+        )
+
+        assertEquals("POST", payload["method"])
+        assertEquals("/api/tts/local-inference", payload["path"])
+        assertEquals(180_000, payload["timeoutMs"])
+        assertEquals(
+            mapOf(
+                "Content-Type" to "application/json",
+                "Accept" to "audio/wav",
+                "Authorization" to "Bearer secret"
+            ),
+            payload["headers"]
+        )
+        assertFalse(payload.values.any { it.toString().contains("127.0.0.1:31337") })
+    }
+
+    @Test
+    fun `agent service selection accepts app service and rejects unrelated services`() {
+        assertEquals(
+            "ai.elizaos.app.ElizaAgentService",
+            TalkModeAndroidBridgeContract.selectAgentServiceClass(
+                listOf(
+                    "other.package.ElizaAgentService",
+                    "ai.elizaos.app.OtherService",
+                    "ai.elizaos.app.ElizaAgentService"
+                ),
+                "ai.elizaos.app"
+            )
+        )
+        assertNull(
+            TalkModeAndroidBridgeContract.selectAgentServiceClass(
+                listOf("ai.elizaos.app.OtherService"),
+                "ai.elizaos.app"
+            )
+        )
+    }
+
     @Test
     fun `audio frame capture start payload preserves lifecycle fields`() {
         val payload = TalkModeAndroidBridgeContract.audioFramesStartedPayload(
