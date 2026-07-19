@@ -145,6 +145,9 @@ jobs:
         with:
           submodules: false
 
+      - name: Preflight visual reviewer credentials and credits
+        run: node scripts/ai-qa/reviewer-preflight.mjs
+
       - name: Free disk space for browser smoke
         run: |
           set -euxo pipefail
@@ -185,7 +188,7 @@ jobs:
         run: bun run --cwd packages/app build:web
 
       - name: Drive + record + vision-review the full walkthrough (live)
-        run: bun run --cwd packages/app test:e2e:walkthrough:live
+        run: bun run --cwd packages/app test:e2e:walkthrough:live -- --reviewer-preflighted
 
       - name: Upload walkthrough screenshots + recording + verdicts
         if: ${{ always() }}
