@@ -762,9 +762,9 @@ export function useChatSend(deps: UseChatSendDeps) {
     void prewarmSharedChatScope(client).catch((error) => {
       // Best-effort only. Send still runs the unchanged authoritative auth gate,
       // so a prewarm outage must not disable or alter normal error semantics.
-      logger.debug("[chat] shared scope prewarm failed", {
+      logger.debug({
         error: error instanceof Error ? error.message : String(error),
-      });
+      }, "[chat] shared scope prewarm failed");
     });
   }, [chatScopePrewarmBase]);
 
