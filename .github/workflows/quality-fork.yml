@@ -26,7 +26,10 @@ jobs:
     name: Lint
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 10
+    # Fresh Turbo-cold attempt 5 was still linting successfully when the old
+    # 10m ceiling canceled it at 10m26s. Keep every ratchet/lint/format step and
+    # allow a finite 15m cold window; attempt 4 completed the same lane in 8m30s.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:

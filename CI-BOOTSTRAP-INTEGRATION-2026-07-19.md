@@ -58,7 +58,9 @@ Fresh synchronize attempt 4 provided the required Quality proof: the full Type C
 
 The separate changed-file coverage lane then exposed a classifier defect: `packages/homepage/tests/e2e/visual.spec.ts` imports `playwright/test` without the optional `@` prefix and lives under `tests/e2e/`, but the classifier recognized only `@playwright/test` and singular `test/e2e/`. It incorrectly sent the Playwright suite to `bun test`, which correctly rejected `test.describe()` outside Playwright. The final classifier correction excludes both `test/e2e/` and `tests/e2e/` dedicated lanes and recognizes both `playwright/test` import forms. Its registered fail-closed self-test now proves a real `packages/homepage/tests/e2e/visual.spec.ts` cannot enter either Bun or Vitest coverage buckets. The dedicated Quality Build remains responsible for executing the complete suite.
 
-This classifier/self-test change requires one final synchronize run for coverage and aggregate-gate proof. The corrective edits change `.github/actions/setup-bun-workspace/action.yml`, `.github/workflows/quality-fork.yml`, `packages/homepage/tests/e2e/visual.spec.ts`, the coverage classifier, and focused contracts beyond the three source snapshots. No typecheck filtering, E2E skipping, screenshot removal, or advisory bypass was added.
+Synchronize attempt 5 proved the classifier correction: changed-file coverage passed, including the registered Node classifier self-test, while the Playwright spec remained solely in its dedicated Quality lane. That fresh Turbo-cold Quality run then exposed the last finite ceiling: Lint was still processing unchanged package lint tasks when the old 10-minute job timeout canceled it at 10m26s. Attempt 4 completed the identical full lane in 8m30s. The workflow now keeps every ratchet, lint, and format step and sets a measured **15-minute** cold allowance. A tenth cache/Quality contract test pins the complete lane and rejects error suppression.
+
+This final timeout/contract change requires one last synchronize run for complete aggregate-gate proof. The corrective edits change `.github/actions/setup-bun-workspace/action.yml`, `.github/workflows/quality-fork.yml`, `packages/homepage/tests/e2e/visual.spec.ts`, the coverage classifier, and focused contracts beyond the three source snapshots. No typecheck filtering, lint filtering, E2E skipping, screenshot removal, or advisory bypass was added.
 
 ## Deterministic validation
 
@@ -67,6 +69,7 @@ This classifier/self-test change requires one final synchronize run for coverage
 - `node --check` on the gate and both focused test files: **passed**.
 - Initial `bun test packages/scripts/__tests__/ci-turbo-cache-contract.test.ts`: **8 passed, 0 failed**.
 - Corrective cold-path contract after attempt 1: **9 passed, 0 failed**.
+- Final complete-lint/cold-path contract: **10 passed, 0 failed**.
 - Initial `bun test packages/scripts/__tests__/quality-fork-browser-contract.test.ts`: **4 passed, 0 failed**.
 - Final browser/visual contract after measured cold runs: **5 passed, 0 failed**.
 - `actionlint v1.7.12` with `.github/actionlint.yaml` on all three modified workflows: **passed**.
