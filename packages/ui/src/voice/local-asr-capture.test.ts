@@ -86,8 +86,9 @@ async function createFakeRecorder(
   vi.stubGlobal("window", { AudioContext: FakeAudioContext });
 
   const recorder = await startLocalAsrRecorder(options);
-  if (!context) throw new Error("fake AudioContext was not created");
-  return { recorder, context, trackStop };
+  const createdContext = context as RecorderFakeAudioContext | null;
+  if (!createdContext) throw new Error("fake AudioContext was not created");
+  return { recorder, context: createdContext, trackStop };
 }
 
 function emitMonoFrame(
