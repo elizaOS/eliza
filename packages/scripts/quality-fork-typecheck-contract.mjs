@@ -21,17 +21,6 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     readFileSync(resolve(repoRoot, "package.json"), "utf8"),
   );
   const workspaces = rootPackage.workspaces ?? [];
-  const uncovered = workspaces.filter((pattern) => {
-    const normalized = pattern.startsWith("!") ? pattern.slice(1) : pattern;
-    return (
-      !normalized.startsWith("packages/") && !normalized.startsWith("plugins/")
-    );
-  });
-
-  assert(
-    uncovered.length === 0,
-    `package.json: Quality (Fork) typecheck shards do not cover workspace glob(s): ${uncovered.join(", ")}`,
-  );
   assert(
     /^\s*typecheck-shards:\s*$/m.test(workflow),
     `${WORKFLOW_PATH}: missing parallel typecheck-shards job`,
@@ -40,17 +29,15 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     /^\s*fail-fast:\s*false\s*$/m.test(workflow),
     `${WORKFLOW_PATH}: typecheck shards must all run to preserve coverage`,
   );
-  for (const filter of ["./packages/**", "./plugins/**"]) {
-    assert(
-      workflow.includes(`filter: ${filter}`),
-      `${WORKFLOW_PATH}: missing full-coverage shard filter ${filter}`,
-    );
-  }
   assert(
-    /run:\s*NODE_OPTIONS=.*run-turbo\.mjs run typecheck[^\n]*--filter="\$TYPECHECK_FILTER"/.test(
+    /^\s*shard:\s*\[0, 1, 2, 3\]\s*$/m.test(workflow),
+    `${WORKFLOW_PATH}: must retain four deterministic cold-cache shards`,
+  );
+  assert(
+    /run:\s*node packages\/scripts\/run-typecheck-shard\.mjs \$\{\{ matrix\.shard \}\} \$\{\{ strategy\.job-total \}\}/.test(
       workflow,
     ),
-    `${WORKFLOW_PATH}: each shard must run the real Turbo typecheck with its matrix filter`,
+    `${WORKFLOW_PATH}: each matrix lane must invoke the deterministic shard runner`,
   );
   assert(
     /^\s*typecheck:\s*$[\s\S]*?^\s*name:\s*Type Check\s*$[\s\S]*?^\s*needs:\s*typecheck-shards\s*$/m.test(
@@ -65,7 +52,7 @@ export function runContract(repoRoot = DEFAULT_REPO_ROOT) {
     `${WORKFLOW_PATH}: Type Check summary must fail closed on shard failure`,
   );
 
-  return { workspaces: workspaces.length, filters: 2 };
+  return { workspaces: workspaces.length, shards: 4 };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
