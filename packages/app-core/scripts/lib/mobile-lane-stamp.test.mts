@@ -11,6 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  androidRuntimeEnvOverrideMismatches,
   evaluateIosLocalLaneRuntime,
   evaluateStagedIosSideloadBundle,
   isLocalAgentRuntimeMode,
@@ -47,6 +48,13 @@ const POLICIES = {
     iosRuntimeMode: null,
     androidRuntimeMode: "cloud",
     runtimeExecutionMode: "cloud",
+  },
+  "android-cloud-hybrid": {
+    buildVariant: "direct",
+    capacitorTarget: "android",
+    iosRuntimeMode: null,
+    androidRuntimeMode: "cloud-hybrid",
+    runtimeExecutionMode: "local-yolo",
   },
 } as const;
 
@@ -104,6 +112,19 @@ describe("resolveExpectedRendererStamp", () => {
     ).toBe("cloud");
   });
 
+  it("android-cloud-hybrid stamps direct/android/cloud-hybrid while executing local-yolo natively", () => {
+    expect(
+      resolveExpectedRendererStamp({
+        policy: POLICIES["android-cloud-hybrid"],
+        env: {},
+      }),
+    ).toEqual({
+      variant: "direct",
+      capacitorTarget: "android",
+      runtimeMode: "cloud-hybrid",
+    });
+  });
+
   it("a leaked iOS VITE mode shadows the android mode on android lanes (vite plugin ?? precedence)", () => {
     // The renderer-build-manifest vite plugin reads
     // VITE_ELIZA_IOS_RUNTIME_MODE ?? VITE_ELIZA_ANDROID_RUNTIME_MODE ?? ELIZA_RUNTIME_MODE;
@@ -134,6 +155,77 @@ describe("resolveExpectedRendererStamp", () => {
     expect(
       resolveExpectedRendererStamp({ policy: noModes, env: {} }).runtimeMode,
     ).toBeNull();
+  });
+});
+
+describe("androidRuntimeEnvOverrideMismatches", () => {
+  it("does not apply to non-Android lanes", () => {
+    expect(
+      androidRuntimeEnvOverrideMismatches({
+        platform: "ios",
+        policy: POLICIES.ios,
+        env: {
+          VITE_ELIZA_ANDROID_RUNTIME_MODE: "cloud",
+          RUNTIME_MODE: "cloud",
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("accepts Android runtime env when it matches the explicit target", () => {
+    expect(
+      androidRuntimeEnvOverrideMismatches({
+        platform: "android-cloud-hybrid",
+        policy: POLICIES["android-cloud-hybrid"],
+        env: {
+          VITE_ELIZA_ANDROID_RUNTIME_MODE: "cloud-hybrid",
+          ELIZA_RUNTIME_MODE: "local-yolo",
+          RUNTIME_MODE: "local-yolo",
+          LOCAL_RUNTIME_MODE: "local-yolo",
+          VITE_ELIZA_RUNTIME_MODE: "local-yolo",
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("rejects a leaked iOS renderer mode that would override Android stamp provenance", () => {
+    expect(
+      androidRuntimeEnvOverrideMismatches({
+        platform: "android-cloud-hybrid",
+        policy: POLICIES["android-cloud-hybrid"],
+        env: { VITE_ELIZA_IOS_RUNTIME_MODE: "cloud" },
+      }),
+    ).toEqual([
+      "VITE_ELIZA_IOS_RUNTIME_MODE='cloud' must be unset for Android lanes",
+    ]);
+  });
+
+  it("rejects leaked cloud-only renderer mode in the Android cloud-hybrid lane", () => {
+    expect(
+      androidRuntimeEnvOverrideMismatches({
+        platform: "android-cloud-hybrid",
+        policy: POLICIES["android-cloud-hybrid"],
+        env: { VITE_ELIZA_ANDROID_RUNTIME_MODE: "cloud" },
+      }),
+    ).toEqual([
+      "VITE_ELIZA_ANDROID_RUNTIME_MODE='cloud' does not match this lane's 'cloud-hybrid'",
+    ]);
+  });
+
+  it("rejects leaked execution runtime-mode variables from another Android lane", () => {
+    expect(
+      androidRuntimeEnvOverrideMismatches({
+        platform: "android-cloud",
+        policy: POLICIES["android-cloud"],
+        env: {
+          ELIZA_RUNTIME_MODE: "local-yolo",
+          RUNTIME_MODE: "local-yolo",
+        },
+      }),
+    ).toEqual([
+      "ELIZA_RUNTIME_MODE='local-yolo' does not match this lane's 'cloud'",
+      "RUNTIME_MODE='local-yolo' does not match this lane's 'cloud'",
+    ]);
   });
 });
 

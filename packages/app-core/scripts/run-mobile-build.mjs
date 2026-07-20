@@ -6,11 +6,14 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-sms-gateway|android-cloud|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-cloud-hybrid|android-sms-gateway|android-cloud|android-cloud-debug|android-system|ios|ios-local|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
  *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
+ *   - android-cloud-hybrid
+ *                     Sideload-only debug APK with the on-device agent runtime
+ *                     bundled and a cloud-hybrid renderer. NOT Play-Store-shippable.
  *   - android-cloud   Play-Store-compliant release AAB thin client backed by
  *                     Eliza Cloud. No on-device agent, no default-role
  *                     activities, no system-only permissions.
@@ -77,6 +80,7 @@ import {
   mtpSliceReuse,
 } from "./lib/mobile-build-decisions.mjs";
 import {
+  androidRuntimeEnvOverrideMismatches,
   evaluateIosLocalLaneRuntime,
   rendererLaneStampMismatches,
   resolveExpectedRendererStamp,
@@ -986,7 +990,8 @@ export function resolveMobileBuildPolicy(platform) {
   const capacitorTarget =
     platform === "android-system" ||
     platform === "android-cloud" ||
-    platform === "android-cloud-debug"
+    platform === "android-cloud-debug" ||
+    platform === "android-cloud-hybrid"
       ? "android"
       : platform === "ios-overlay" || platform === "ios-local"
         ? "ios"
@@ -999,9 +1004,11 @@ export function resolveMobileBuildPolicy(platform) {
   const androidRuntimeMode =
     platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
-      : platform === "android" || platform === "android-system"
-        ? "local"
-        : null;
+      : platform === "android-cloud-hybrid"
+        ? "cloud-hybrid"
+        : platform === "android" || platform === "android-system"
+          ? "local"
+          : null;
   const iosRuntimeMode =
     platform === "ios-local"
       ? "local"
@@ -1013,7 +1020,9 @@ export function resolveMobileBuildPolicy(platform) {
   const runtimeExecutionMode =
     platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
-      : platform === "android" || platform === "android-system"
+      : platform === "android" ||
+          platform === "android-system" ||
+          platform === "android-cloud-hybrid"
         ? "local-yolo"
         : platform === "ios-local"
           ? "local-safe"
@@ -1027,7 +1036,7 @@ export function resolveMobileBuildPolicy(platform) {
   const releaseAuthority =
     platform === "android-cloud"
       ? "google-play"
-      : platform === "android"
+      : platform === "android" || platform === "android-cloud-hybrid"
         ? "github-release-android-package-installer"
         : platform === "android-system"
           ? "aosp-ota"
@@ -1051,6 +1060,18 @@ export function resolveMobileBuildPolicy(platform) {
 
 async function buildWeb(platform) {
   const lanePolicy = resolveMobileBuildPolicy(platform);
+  const androidEnvMismatches = androidRuntimeEnvOverrideMismatches({
+    platform,
+    policy: lanePolicy,
+    env: process.env,
+  });
+  if (androidEnvMismatches.length > 0) {
+    throw new Error(
+      `[mobile-build] Refusing leaked Android runtime-mode env for target '${platform}':\n` +
+        `${formatMobileWebDistProblems(androidEnvMismatches)}\n` +
+        `Unset the leaked variable or use the matching Android target.`,
+    );
+  }
   const laneExpected = resolveExpectedRendererStamp({
     policy: lanePolicy,
     env: process.env,
@@ -1233,6 +1254,18 @@ async function buildWeb(platform) {
  */
 async function ensureRendererDistMatchesLane(platform) {
   const policy = resolveMobileBuildPolicy(platform);
+  const androidEnvMismatches = androidRuntimeEnvOverrideMismatches({
+    platform,
+    policy,
+    env: process.env,
+  });
+  if (androidEnvMismatches.length > 0) {
+    throw new Error(
+      `[mobile-build] Refusing leaked Android runtime-mode env before Capacitor sync for target '${platform}':\n` +
+        `${formatMobileWebDistProblems(androidEnvMismatches)}\n` +
+        `Unset the leaked variable or use the matching Android target.`,
+    );
+  }
   const expected = resolveExpectedRendererStamp({
     policy,
     env: process.env,
