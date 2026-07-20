@@ -3983,6 +3983,22 @@ export async function startEliza(
     applySandboxCharacterFromEnv(config);
     sandboxRouteAgentId = resolveSandboxRouteAgentId();
   }
+
+  // 3b. Canonical file boot (sovereign identity): when configured via
+  // ELIZA_CANONICAL_BOOT_ROOT / ELIZA_CANONICAL_BOOT_MANIFEST, read the
+  // operator's allowlisted files (SOUL.md, IDENTITY.md, AGENTS.md, USER.md,
+  // the memory system + handoff, awareness, playbook, channel guide) directly
+  // from disk, hash each file into the boot log, and compose their exact
+  // contents onto the primary agent's system prompt. This replaces a stale
+  // JSON shadow copy as the identity source of truth. Fails loudly if a file
+  // marked required is missing. Inert when the env vars are absent.
+  {
+    const { applyCanonicalFileBootToConfig } = await import(
+      "./canonical-file-boot.ts"
+    );
+    applyCanonicalFileBootToConfig(config);
+  }
+
   const character = buildCharacterFromConfig(config);
 
   // Pin the runtime agent id to the platform character_id so the gateways can
