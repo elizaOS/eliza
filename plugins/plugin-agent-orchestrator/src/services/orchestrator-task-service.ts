@@ -161,7 +161,9 @@ import {
   type OrchestratorTaskStatus,
   type OrchestratorTaskUsage,
   RETRY_BUDGET_EPOCH_METADATA_KEY,
+  RETRY_BUDGET_SESSION_METADATA_KEY,
   readRetryBudgetEpoch,
+  readRetryBudgetFirstSessionId,
   resolveStateLostRespawnCap,
   resolveTaskTransition,
   stateLostRespawnUnderCap,
@@ -2211,12 +2213,19 @@ export class OrchestratorTaskService extends Service {
     // lineage) must not count, or a restarted task re-fails on its first blip
     // (#14104). Absent epoch → every session counts (pre-restart lifetime).
     const budgetEpoch = readRetryBudgetEpoch(doc.task.metadata);
+    const firstBudgetSessionId = readRetryBudgetFirstSessionId(
+      doc.task.metadata,
+    );
+    const firstBudgetSessionIndex = firstBudgetSessionId
+      ? doc.sessions.findIndex((s) => s.sessionId === firstBudgetSessionId)
+      : -1;
+    const budgetSessions =
+      firstBudgetSessionIndex >= 0
+        ? doc.sessions.slice(firstBudgetSessionIndex)
+        : doc.sessions.filter((s) => s.spawnedAt >= budgetEpoch);
     const erroredSessionIds = new Set(
-      doc.sessions
-        .filter(
-          (s) =>
-            SESSION_ERROR_STATUSES.has(s.status) && s.spawnedAt >= budgetEpoch,
-        )
+      budgetSessions
+        .filter((s) => SESSION_ERROR_STATUSES.has(s.status))
         .map((s) => s.sessionId),
     );
     erroredSessionIds.add(sessionId);
@@ -4149,10 +4158,20 @@ export class OrchestratorTaskService extends Service {
         [RETRY_BUDGET_EPOCH_METADATA_KEY]: Date.now(),
       },
     });
-    await this.spawnAgentForTask(taskId, {
+    const restartedDetail = await this.spawnAgentForTask(taskId, {
       ...input.agent,
       task: instruction,
     });
+    const firstRestartedSessionId = restartedDetail?.sessions.at(-1)?.sessionId;
+    if (firstRestartedSessionId) {
+      const afterSpawn = await this.store.getTask(taskId);
+      await this.store.updateTask(taskId, {
+        metadata: {
+          ...afterSpawn?.task.metadata,
+          [RETRY_BUDGET_SESSION_METADATA_KEY]: firstRestartedSessionId,
+        },
+      });
+    }
     if (input.stopActive !== false) await this.stopActiveSessions(doc);
     if (planRevision) {
       await this.store.updateTask(taskId, { currentPlan: planRevision.plan });
