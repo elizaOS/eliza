@@ -25,6 +25,7 @@ import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
 import { getWalletIntelligenceSources } from "../sources/registry";
+import { SolanaParsedTransaction } from "../helius";
 import {
   SupportedChain,
   WalletBalance,
@@ -40,8 +41,8 @@ export interface WalletPipelineInput {
   recentTransactions: WalletRecentTransaction[];
   oldestTransactionId?: string;
   oldestTransactionTimestamp?: number;
-  firstParsedTransaction: unknown;
-  parsedTransactions: unknown[];
+  firstParsedTransaction: SolanaParsedTransaction | null;
+  parsedTransactions: SolanaParsedTransaction[];
   tokenPrices: Record<string, number>;
 }
 
