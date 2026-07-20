@@ -34,6 +34,7 @@ import {
   createConversationForFirstSend,
   getSendValidationFailureMessage,
   isRetryableSendError,
+  prewarmSharedChatScope,
   resolveAbortRoomId,
   UNDELIVERED_TURN_NOTICE,
   type UseChatSendDeps,
@@ -2781,6 +2782,26 @@ describe("createConversationForFirstSend", () => {
 
     expect(createConversation).toHaveBeenCalledWith(undefined, { lang: "en" });
     expect(result.conversation).toEqual(conversation);
+  });
+});
+
+describe("prewarmSharedChatScope", () => {
+  it("warms the authenticated status gate for a selected shared Cloud agent", async () => {
+    const getStatus = vi.fn(async () => ({ status: "running" }));
+    await prewarmSharedChatScope({
+      getBaseUrl: () => SHARED_BASE,
+      getStatus,
+    } as never);
+    expect(getStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not probe a dedicated agent base", async () => {
+    const getStatus = vi.fn();
+    await prewarmSharedChatScope({
+      getBaseUrl: () => DEDICATED_BASE,
+      getStatus,
+    } as never);
+    expect(getStatus).not.toHaveBeenCalled();
   });
 });
 
