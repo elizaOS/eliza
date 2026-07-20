@@ -83,8 +83,8 @@ export function buildInvestorTimeline(
 
     keyChanges: changes.slice(0, 5),
 
-    suggestedInvestorAction:
-      "This report presents observed changes for informational purposes. The interpretation and any resulting decision remain with the user.",
+    investorInterpretation:
+      "This report summarises observed changes between the two investigations. It explains the observed on-chain evidence and how the wallet has changed over time. The findings are provided for informational purposes and should not be interpreted as financial, legal, or investment advice.",
 
     limitations: [
       "The comparison currently evaluates risk score changes only.",
