@@ -37,22 +37,12 @@ function walk(dir, root, out = []) {
   // scan of hundreds of complete checkouts on multi-lane hosts.
   if (dir !== root && existsSync(path.join(dir, ".git"))) return out;
 
-  let entries;
-  try {
-    entries = readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return out;
-  }
+  const entries = readdirSync(dir, { withFileTypes: true });
 
   for (const entry of entries) {
     if (ignoredDirs.has(entry.name)) continue;
     const fullPath = path.join(dir, entry.name);
-    let stat;
-    try {
-      stat = lstatSync(fullPath);
-    } catch {
-      continue;
-    }
+    const stat = lstatSync(fullPath);
     if (stat.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
       walk(fullPath, root, out);
