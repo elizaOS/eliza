@@ -75,8 +75,18 @@ export function classifyDestructiveCommand(
       /^[A-Za-z_][A-Za-z0-9_]*=/.test(argv[i] as string)
     )
       i += 1;
-    const bin = (argv[i] ?? "").split("/").pop() ?? "";
+    const bin = ((argv[i] ?? "").split(/[\\/]/).pop() ?? "").toLowerCase();
     const rest = argv.slice(i + 1);
+
+    if (bin === "remove-item") {
+      const recursive = rest.some(
+        (arg) => arg.toLowerCase() === "-recurse" || arg.toLowerCase() === "-r",
+      );
+      if (recursive) {
+        const targets = rest.filter((arg) => !arg.startsWith("-"));
+        return { destructive: true, reason: "recursive delete", targets };
+      }
+    }
 
     if (bin === "rm") {
       const recursive = rest.some((a) => RECURSIVE_RM_FLAG.test(a));

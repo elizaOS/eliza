@@ -20,6 +20,13 @@ describe("classifyDestructiveCommand — fires", () => {
     const v = classifyDestructiveCommand("ls && rm -rf ./data");
     expect(v.destructive).toBe(true);
   });
+  it("PowerShell Remove-Item -Recurse", () => {
+    const v = classifyDestructiveCommand(
+      'Remove-Item -Recurse -Force "$env:TEMP\\old-project"',
+    );
+    expect(v.destructive).toBe(true);
+    expect(v.reason).toBe("recursive delete");
+  });
   it("forced glob delete", () => {
     expect(
       classifyDestructiveCommand("rm -f /var/log/app/*.log").destructive,

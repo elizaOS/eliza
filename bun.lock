@@ -2884,6 +2884,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/auth": "workspace:*",
+        "@octokit/core": "^7.0.6",
         "@octokit/rest": "^22.0.0",
         "@smithers-orchestrator/engine": "0.28.0",
         "coding-agent-adapters": "0.16.3",
