@@ -86,9 +86,12 @@ concurrency:
   # by ref allowed a feature-branch dispatch and a develop push to interleave
   # their API, console, and app jobs against the same staging resources. PR
   # previews remain isolated per PR and cancel superseded preview runs.
-  # The v3 suffix retires the prior per-ref groups without inheriting a wedged
-  # pending run; cancel stale deploys instead of rejecting environment gates.
-  group: cloud-cf-deploy-v3-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
+  # The v4 suffix retires the wedged v3 groups: a stale 2026-05-15 queued run
+  # (25907128646) wedged v3-staging admission, so dispatched staging deploys sat
+  # pending with zero jobs while cancel and force-cancel both returned HTTP 500.
+  # Same retirement pattern as v2 -> v3; cancel stale deploys instead of
+  # rejecting environment gates.
+  group: cloud-cf-deploy-v4-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || (((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging') }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Default to least privilege. Override per-job where needed.
