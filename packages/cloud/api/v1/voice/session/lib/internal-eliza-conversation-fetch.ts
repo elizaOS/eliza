@@ -159,6 +159,8 @@ async function dispatchInternalElizaConversationFetch(
     );
   }
   if (
+    headers.get("X-Eliza-Agent-Id") !== claims.agentId ||
+    headers.get("X-Eliza-Conversation-Id") !== claims.conversationId ||
     headers.get("X-Eliza-Organization-Id") !== claims.organizationId ||
     headers.get("X-Eliza-User-Id") !== claims.userId
   ) {
@@ -194,6 +196,7 @@ async function dispatchInternalElizaConversationFetch(
     agentId: claims.agentId,
     orgId: claims.organizationId,
     conversationId: claims.conversationId,
+    userId: claims.userId,
     body,
     origin: headers.get("origin"),
   });
