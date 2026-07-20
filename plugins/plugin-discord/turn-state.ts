@@ -86,7 +86,13 @@ export function discordTurnId(
 	runtime: Pick<IAgentRuntime, "agentId">,
 	platformMessageId: string,
 ): UUID {
-	return createUniqueUuid(runtime, `discord-turn:${platformMessageId}`) as UUID;
+	// `createUniqueUuid` types its first arg as the full IAgentRuntime but only
+	// reads `agentId`; we keep the narrow Pick on this function's public surface
+	// (trivially constructible in unit tests) and satisfy the call structurally.
+	return createUniqueUuid(
+		runtime as Pick<IAgentRuntime, "agentId"> as IAgentRuntime,
+		`discord-turn:${platformMessageId}`,
+	) as UUID;
 }
 
 function decodeTurnRecord(memory: Memory): DiscordTurnRecord | null {
