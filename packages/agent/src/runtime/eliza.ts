@@ -1055,6 +1055,49 @@ export async function configureLocalEmbeddingPlugin(
   );
 }
 
+/**
+ * Populate the LOCAL_EMBEDDING_* / EMBEDDING_PROVIDER env from config +
+ * hardware preset EARLY — before the deferred-boot ensureEmbeddingDimension()
+ * probe and the bundled-document seed — but ONLY when local embeddings are the
+ * intended backend for this configuration.
+ *
+ * Root cause it addresses (#16630 follow-up): configureLocalEmbeddingPlugin()
+ * is otherwise only reached via warmEmbeddingModel(), which startEmbeddingWarmup()
+ * fires fire-and-forget AFTER the deferred embedding-dimension probe. During that
+ * window EMBEDDING_PROVIDER is unset, so a remote TEXT_EMBEDDING handler (e.g.
+ * Google text-embedding-004) wins the probe, 404s on an incompatible API
+ * version, and the runtime never fails back to the local model — breaking
+ * memory embedding writes and bundled-document seeding.
+ *
+ * Guard: shouldWarmupLocalEmbeddingModel() returns false when local embeddings
+ * are disabled or Eliza Cloud embeddings are explicitly configured, so this is a
+ * no-op in those setups and never forces local env over an intended cloud path.
+ * The underlying env writes use setEnvIfMissing (idempotent), so a later
+ * warmEmbeddingModel() call is unaffected. Best-effort: any failure is logged
+ * and swallowed so it can never block or crash the deferred boot phase.
+ *
+ * @internal Exported for regression coverage.
+ */
+export async function configureLocalEmbeddingEnvEarlyIfNeeded(
+  config?: ElizaConfig,
+): Promise<void> {
+  if (process.env.NODE_ENV === "test") return;
+  if (isMobilePlatform() || isBundledMobileRuntime()) return;
+  try {
+    const li = await getPluginLocalEmbedding();
+    if (!li) return;
+    const { shouldWarmupLocalEmbeddingModel } = await import(
+      /* @vite-ignore */ "@elizaos/plugin-local-inference/runtime"
+    );
+    if (!shouldWarmupLocalEmbeddingModel()) return;
+    await configureLocalEmbeddingPlugin({} as Plugin, config);
+  } catch (err) {
+    logger.warn(
+      `[eliza] Early local-embedding env configuration failed (deferred warmup will retry): ${formatError(err)}`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -5228,6 +5271,19 @@ export async function startEliza(
     // ensureEmbeddingDimension() is public, idempotent, and self-guarding (it
     // no-ops when no TEXT_EMBEDDING handler is registered, e.g. cloud-proxied
     // agents), so this is safe on every boot path.
+    //
+    // BEFORE the probe, populate the LOCAL_EMBEDDING_* / EMBEDDING_PROVIDER env
+    // for local-primary configurations (#16630 follow-up). warmEmbeddingModel()
+    // — which owns configureLocalEmbeddingPlugin() today — is fired
+    // fire-and-forget by startEmbeddingWarmup() AFTER this block, so without
+    // this early call the probe (and the bundled-document seed right below it)
+    // runs while EMBEDDING_PROVIDER is unset. A remote provider (e.g. Google
+    // text-embedding-004) then wins the probe and 404s, permanently choosing
+    // the remote route and dropping local-primary. Configuring the env here is
+    // idempotent (setEnvIfMissing) and gated on shouldWarmupLocalEmbeddingModel
+    // so it never forces local env when local embeddings are disabled or Eliza
+    // Cloud embeddings are explicitly configured.
+    await configureLocalEmbeddingEnvEarlyIfNeeded(config);
     try {
       await runtime.ensureEmbeddingDimension();
     } catch (err) {
