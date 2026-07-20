@@ -31,7 +31,9 @@ const appState = vi.hoisted(() => ({
   startupPhase: "first-run-required",
 }));
 
-const notificationMock = vi.hoisted(() => ({ init: vi.fn(async () => undefined) }));
+const notificationMock = vi.hoisted(() => ({
+  init: vi.fn(async () => undefined),
+}));
 
 vi.mock("./state/notifications/notification-store", () => ({
   initNotifications: notificationMock.init,
