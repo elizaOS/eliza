@@ -1,6 +1,7 @@
 /** Exercises run mobile build android targets behavior with deterministic app-core test fixtures. */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -134,12 +135,44 @@ describe("Android mobile build target table", () => {
     expect(packageJson.scripts["build:android:cloud-hybrid"]).toBe(
       "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-hybrid",
     );
-    expect(runMobileBuildSource).toContain(
-      'target !== "android-cloud-hybrid"',
-    );
+    expect(runMobileBuildSource).toContain('target !== "android-cloud-hybrid"');
     expect(runMobileBuildSource).toContain(
       'await runAndroidBuild("android-cloud-hybrid")',
     );
+
+    const fixtureRoot = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-android-cloud-hybrid-cli-"),
+    );
+    const sdkRoot = path.join(fixtureRoot, "android-sdk");
+    const javaHome = path.join(fixtureRoot, "jdk-21");
+    fs.mkdirSync(sdkRoot);
+    fs.mkdirSync(javaHome);
+    fs.writeFileSync(path.join(javaHome, "release"), 'JAVA_VERSION="21"\n');
+
+    try {
+      const result = spawnSync(
+        process.execPath,
+        [path.join(scriptsDir, "run-mobile-build.mjs"), "android-cloud-hybrid"],
+        {
+          cwd: scriptsDir,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            ANDROID_HOME: sdkRoot,
+            ANDROID_SDK_ROOT: sdkRoot,
+            JAVA_HOME: javaHome,
+            VITE_ELIZA_IOS_RUNTIME_MODE: "cloud",
+          },
+        },
+      );
+
+      expect(result.status).toBe(1);
+      expect(`${result.stdout}\n${result.stderr}`).toContain(
+        "Refusing leaked Android runtime-mode env for target 'android-cloud-hybrid'",
+      );
+    } finally {
+      fs.rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   it("fails loudly for unknown public Android targets", () => {
