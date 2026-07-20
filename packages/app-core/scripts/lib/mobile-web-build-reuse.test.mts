@@ -156,6 +156,27 @@ describe("mobileWebDistReuseStatus", () => {
     );
   });
 
+  it("does not reuse a cloud-only Android bundle for the cloud-hybrid lane", () => {
+    const { appDir } = makeAppDist({
+      variant: "direct",
+      capacitorTarget: "android",
+      runtimeMode: "cloud",
+    });
+
+    const status = mobileWebDistReuseStatus({
+      appDir,
+      repoRoot: tmp,
+      expectedVariant: "direct",
+      expectedTarget: "android",
+      expectedRuntimeMode: "cloud-hybrid",
+    });
+
+    expect(status.reusable).toBe(false);
+    expect(status.problems).toContain(
+      "dist built for runtime mode 'cloud' but this build targets 'cloud-hybrid'",
+    );
+  });
+
   it("does not reuse a dist with no runtime mode when the lane bakes one", () => {
     const { appDir } = makeAppDist({
       variant: "direct",

@@ -72,6 +72,74 @@ export function resolveExpectedRendererStamp({ policy, env = {} }) {
   return { variant, capacitorTarget, runtimeMode };
 }
 
+function normalizeEnvMode(value) {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function collectModeMismatches({ env, expectations }) {
+  const mismatches = [];
+  for (const [key, expected] of expectations) {
+    const actual = normalizeEnvMode(env[key]);
+    if (actual != null && actual !== expected) {
+      mismatches.push(
+        `${key}=${describeStampValue(actual)} does not match this lane's ${describeStampValue(expected)}`,
+      );
+    }
+  }
+  return mismatches;
+}
+
+/**
+ * Android lanes set their renderer/runtime modes from the explicit target.
+ * Leftover shell exports from another Android lane are rejected before reuse or
+ * build so a stale `VITE_ELIZA_ANDROID_RUNTIME_MODE=cloud` cannot silently
+ * convert the cloud-hybrid/local-agent lane into a cloud-only bundle.
+ *
+ * @param {{ platform: string,
+ *           policy: { androidRuntimeMode: string|null,
+ *                     runtimeExecutionMode: string|null },
+ *           env?: Record<string, string|undefined> }} opts
+ * @returns {string[]}
+ */
+export function androidRuntimeEnvOverrideMismatches({
+  platform,
+  policy,
+  env = {},
+}) {
+  if (!platform.startsWith("android")) return [];
+  if (!policy || typeof policy !== "object") {
+    throw new Error("androidRuntimeEnvOverrideMismatches: policy is required");
+  }
+  const expectations = [];
+  const mismatches = [];
+  const leakedIosMode = normalizeEnvMode(env.VITE_ELIZA_IOS_RUNTIME_MODE);
+  if (leakedIosMode != null) {
+    mismatches.push(
+      `VITE_ELIZA_IOS_RUNTIME_MODE=${describeStampValue(leakedIosMode)} must be unset for Android lanes`,
+    );
+  }
+  if (policy.androidRuntimeMode != null) {
+    expectations.push([
+      "VITE_ELIZA_ANDROID_RUNTIME_MODE",
+      policy.androidRuntimeMode,
+    ]);
+  }
+  if (policy.runtimeExecutionMode != null) {
+    for (const key of [
+      "ELIZA_RUNTIME_MODE",
+      "RUNTIME_MODE",
+      "LOCAL_RUNTIME_MODE",
+      "VITE_ELIZA_RUNTIME_MODE",
+    ]) {
+      expectations.push([key, policy.runtimeExecutionMode]);
+    }
+  }
+  mismatches.push(...collectModeMismatches({ env, expectations }));
+  return mismatches;
+}
+
 function describeStampValue(value) {
   return value == null ? "(unset)" : `'${value}'`;
 }
