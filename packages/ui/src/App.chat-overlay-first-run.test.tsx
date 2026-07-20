@@ -21,13 +21,21 @@
  *    chrome-free, so plain web `?shellMode=chat-overlay` loads are unaffected.
  */
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import type * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const appState = vi.hoisted(() => ({
+  authPhase: "loading",
   firstRunComplete: false,
   startupPhase: "first-run-required",
+}));
+
+const notificationMock = vi.hoisted(() => ({ init: vi.fn(async () => undefined) }));
+
+vi.mock("./state/notifications/notification-store", () => ({
+  initNotifications: notificationMock.init,
+  seedDevNotificationsIfEmpty: vi.fn(async () => undefined),
 }));
 
 const conductorMock = vi.hoisted(() => ({
@@ -87,8 +95,10 @@ vi.mock("./hooks/useAvailableViews", () => ({
 }));
 
 vi.mock("./hooks/useAuthStatus", () => ({
+  isAuthenticatedNow: () => false,
+  subscribeAuthStatus: () => () => undefined,
   useAuthStatus: () => ({
-    state: { phase: "loading" },
+    state: { phase: appState.authPhase },
     refetch: vi.fn(),
   }),
 }));
@@ -255,6 +265,7 @@ describe("App chat-overlay first-run composition", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/?shellMode=chat-overlay");
     conductorMock.mount.mockClear();
+    notificationMock.init.mockClear();
   });
 
   afterEach(() => {
@@ -296,6 +307,18 @@ describe("App chat-overlay first-run composition", () => {
     expect(
       container.querySelector('[data-shell-content-region="true"]'),
     ).toBeNull();
+  });
+
+  it("boots WebSocket notification ingress outside startup and auth early returns", async () => {
+    window.history.replaceState(null, "", "/");
+    appState.firstRunComplete = true;
+    appState.startupPhase = "polling-backend";
+    appState.authPhase = "loading";
+
+    const startupGate = render(<App />);
+    expect(startupGate.getByTestId("startup-screen")).toBeTruthy();
+    await waitFor(() => expect(notificationMock.init).toHaveBeenCalledOnce());
+    startupGate.unmount();
   });
 
   it("keeps the conductor mounted but UNGATED by App once first-run completes (hook self-gates)", () => {
