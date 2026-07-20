@@ -9,6 +9,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  renameSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -94,8 +95,18 @@ export function buildAggregate(
 
 export function writeReport(report: AggregateReport, filePath: string): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, JSON.stringify(report, null, 2), "utf-8");
+  writeFileAtomic(filePath, `${JSON.stringify(report, null, 2)}\n`);
   logger.info(`[scenario-runner] wrote report → ${filePath}`);
+}
+
+export function writeFileAtomic(filePath: string, body: string): void {
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = path.join(
+    path.dirname(filePath),
+    `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`,
+  );
+  writeFileSync(tmpPath, body, "utf-8");
+  renameSync(tmpPath, filePath);
 }
 
 function scenarioReportFileName(id: string, index: number): string {
@@ -110,17 +121,16 @@ export function writeReportBundle(
   mkdirSync(reportDir, { recursive: true });
 
   const matrixPath = path.join(reportDir, "matrix.json");
-  writeFileSync(matrixPath, JSON.stringify(report, null, 2), "utf-8");
+  writeFileAtomic(matrixPath, `${JSON.stringify(report, null, 2)}\n`);
 
   report.scenarios.forEach((scenarioReport, index) => {
     const scenarioPath = path.join(
       reportDir,
       scenarioReportFileName(scenarioReport.id, index),
     );
-    writeFileSync(
+    writeFileAtomic(
       scenarioPath,
-      JSON.stringify(scenarioReport, null, 2),
-      "utf-8",
+      `${JSON.stringify(scenarioReport, null, 2)}\n`,
     );
   });
 
@@ -509,11 +519,10 @@ export function writeScenarioRunViewer(
     runDir,
     options.nativeJsonlPath,
   );
-  writeFileSync(viewerIndex, scenarioViewerHtml(), "utf-8");
-  writeFileSync(
+  writeFileAtomic(viewerIndex, scenarioViewerHtml());
+  writeFileAtomic(
     viewerData,
     `window.SCENARIO_RUN_DATA = ${JSON.stringify(payload)};\n`,
-    "utf-8",
   );
   logger.info(`[scenario-runner] wrote run viewer → ${viewerIndex}`);
   return {
