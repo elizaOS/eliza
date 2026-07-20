@@ -2,36 +2,9 @@ import {
   getSolanaParsedTransactions,
 } from "./helius";
 import { requireBlockchainConnector } from "./chains/registry";
-import { analyzeWalletActivity } from "./analyzers/activity";
-import { analyzeWalletAge } from "./analyzers/walletAge";
-import { analyzeWalletFunding } from "./analyzers/funding";
-import { analyzeWalletPortfolio } from "./analyzers/portfolio";
 import { getSolanaTokenPrices } from "./providers/priceProvider";
-import { analyzeWalletRisk } from "./analyzers/risk";
-import { analyzeWalletWhaleStatus } from "./analyzers/whale";
-import { analyzeWalletDeFi } from "./analyzers/defi";
-import { analyzeWalletBehavior } from "./analyzers/behavior";
-import { analyzeWalletCaseSummary } from "./analyzers/caseSummary";
-import { analyzeWalletEvidence } from "./analyzers/evidence";
-import { analyzeWalletEvidenceRecords } from "./analyzers/evidenceRecords";
-import { analyzeWalletExposure } from "./analyzers/exposure";
-import { analyzeWalletRelationships } from "./analyzers/relationships";
-import { analyzeWalletTrust } from "./analyzers/trust";
-import { analyzeInvestigationReplay } from "./analyzers/investigationReplay";
-import { analyzeWalletDisplayScores } from "./analyzers/display";
-import { analyzeExecutiveVerdict } from "./analyzers/executiveVerdict";
-import { analyzeWalletCustodyProfile } from "./analyzers/custody";
-import { analyzeWalletCompliance } from "./analyzers/compliance";
-import { analyzeWalletTransactionRisk } from "./analyzers/transactionRisk";
-import { analyzeWalletDecision } from "./analyzers/decision";
-import { analyzeWalletAssessment } from "./analyzers/assessment";
-import { analyzeWalletIntelligenceBrief } from "./analyzers/intelligenceBrief";
-import { analyzeWalletSmartMoney } from "./analyzers/smartMoney";
-import { analyzeInvestigationReport } from "./analyzers/investigationReport";
-import { analyzeInvestigationNarrative } from "./analyzers/investigationNarrative";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
 import { runWalletPipeline } from "./pipeline/walletPipeline";
-import { getWalletIntelligenceSources } from "./sources/registry";
 import {
   SupportedChain,
   WalletBalance,
@@ -232,219 +205,47 @@ const tokenHoldings: WalletTokenHolding[] =
           : "success",
     }),
   );
-       const activity = analyzeWalletActivity(recentTransactions);
-        const age = analyzeWalletAge(
-  oldestKnownTransaction.transactionId,
-  oldestKnownTransaction.timestamp,
-);
-
-        const funding = analyzeWalletFunding(
-  chain,
-  walletAddress,
-  firstParsedTransaction,
-);
-
-const portfolio = analyzeWalletPortfolio(
-  walletBalance,
-  tokenHoldings,
-  tokenPrices,
-);
-
-const risk = analyzeWalletRisk(
-  balance.sol,
-  activity,
-);
-
-const whale = analyzeWalletWhaleStatus(
-  portfolio,
-  age,
-  activity,
-  funding,
-  risk,
-);
-
-const defi = analyzeWalletDeFi(parsedTransactions);
-
-const behavior = analyzeWalletBehavior(
-  activity,
-  age,
- defi,
-  whale,
-  risk,
-);
-
-const exposure = analyzeWalletExposure(
-  walletAddress,
-  funding,
-);
-
-const relationships = analyzeWalletRelationships(
-  funding,
-);
-
-const custodyProfile = analyzeWalletCustodyProfile(
-  activity,
-  funding,
-  relationships,
-);
-
-const complianceScreening = analyzeWalletCompliance(
-  exposure,
-);
-
-const intelligenceSources =
-  getWalletIntelligenceSources();
-
-const trust = analyzeWalletTrust(
-  age,
-  activity,
-  funding,
-  exposure,
-  risk,
-);
-
-const display = analyzeWalletDisplayScores(
-  risk,
-  trust,
-  exposure,
-  whale,
-);
-
-const caseSummary = analyzeWalletCaseSummary(
-  age,
-  risk,
-  whale,
-  defi,
-  behavior,
-);
-
-const transactionRisk =
-  analyzeWalletTransactionRisk(
-    risk,
-    trust,
-    exposure,
-    complianceScreening,
-    caseSummary,
-  );
-
-const {
-  recommendation:
-    _legacyTransactionRiskRecommendation,
-  ...transactionRiskAssessment
-} = transactionRisk;
-
-const smartMoney =
-  analyzeWalletSmartMoney(
-    age,
-    activity,
-    defi,
-    portfolio,
-    whale,
-    trust,
-  );
-
-const investigationReplay = analyzeInvestigationReplay(
-  portfolio,
-  activity,
-  age,
-  funding,
-  defi,
-  exposure,
-  relationships,
-  risk,
-  whale,
-  trust,
-);
-
-const evidenceRecords =
-  analyzeWalletEvidenceRecords(
-    walletAddress,
-    activity,
-    age,
-    funding,
-    portfolio,
-    defi,
-    exposure,
-    relationships,
-    complianceScreening,
-    custodyProfile,
-    risk,
-    whale,
-    smartMoney,
-    transactionRisk,
-  );
-
-const decision = analyzeWalletDecision(
-  evidenceRecords,
-  risk,
-  trust,
-  exposure,
-  transactionRisk,
-);
-
-const assessment = analyzeWalletAssessment(
-  risk,
-  trust,
-  exposure,
-  transactionRisk,
-  evidenceRecords,
-);
-
-const intelligenceBrief =
-  analyzeWalletIntelligenceBrief(
-    assessment,
-    evidenceRecords,
-  );
-
-const evidence = analyzeWalletEvidence(
-  evidenceRecords,
-);
-
-const executiveVerdict = analyzeExecutiveVerdict(
-  display,
-  behavior,
-  caseSummary,
-  evidence,
-  exposure,
-  risk,
-  trust,
-  decision,
-);
-
-const investigationReport =
-  analyzeInvestigationReport(
-    chain,
-    walletAddress,
-    executiveVerdict,
-    caseSummary,
-    decision,
-    evidenceRecords,
-  );
-
-const investigationNarrative =
-  analyzeInvestigationNarrative(
-    executiveVerdict,
-    caseSummary,
-    trust,
-    decision,
-    evidenceRecords,
-  );
-
-  const pipeline = runWalletPipeline({
+       const pipeline = runWalletPipeline({
   chain,
   address: walletAddress,
   balance: walletBalance,
   tokenHoldings,
   recentTransactions,
-  oldestTransactionId: oldestKnownTransaction.transactionId,
-  oldestTransactionTimestamp: oldestKnownTransaction.timestamp,
+  oldestTransactionId:
+    oldestKnownTransaction.transactionId,
+  oldestTransactionTimestamp:
+    oldestKnownTransaction.timestamp,
   firstParsedTransaction,
   parsedTransactions,
   tokenPrices,
 });
 
-void pipeline;
-
+const {
+  activity,
+  age,
+  funding,
+  portfolio,
+  risk,
+  whale,
+  defi,
+  behavior,
+  exposure,
+  relationships,
+  custodyProfile,
+  complianceScreening,
+  intelligenceSources,
+  trust,
+  display,
+  transactionRiskAssessment,
+  smartMoney,
+  investigationReplay,
+  evidenceRecords,
+  assessment,
+  intelligenceBrief,
+  evidence,
+  executiveVerdict,
+} = pipeline;
+        
   const investigation = createWalletInvestigation({
   chain,
   address: walletAddress,
