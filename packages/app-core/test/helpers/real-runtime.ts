@@ -482,6 +482,18 @@ export async function createRealTestRuntime(
 
     await runtime.initialize();
 
+    // `initialize()` resolves the service-start barrier, but the service starts
+    // kicked off by `registerPlugin()` still complete asynchronously. This
+    // helper promises callers a fully initialized runtime, and integration
+    // tests call synchronous service accessors immediately after it returns.
+    // Drain services declared by the explicitly requested plugins in plugin
+    // order so those accessors cannot race the registration microtask.
+    for (const plugin of options?.plugins ?? []) {
+      for (const service of plugin.services ?? []) {
+        await runtime.getServiceLoadPromise(service.serviceType);
+      }
+    }
+
     // Eagerly start the OptimizedPromptService so the planner-loop's
     // synchronous `runtime.getService('optimized_prompt')` call hits an
     // already-instantiated service. Without this the service is registered
