@@ -21,7 +21,10 @@ vi.mock("../../state/notifications/push-registration", () => ({
 vi.mock("../../state/shell-surface-store", () => ({ goHome: mocks.goHome }));
 
 import { OPEN_NOTIFICATION_CENTER_EVENT } from "../../events";
-import { NotificationsDataBoot, NotificationsShellBoot } from "./notifications-boot";
+import {
+  NotificationsDataBoot,
+  NotificationsShellBoot,
+} from "./notifications-boot";
 
 afterEach(() => {
   cleanup();
