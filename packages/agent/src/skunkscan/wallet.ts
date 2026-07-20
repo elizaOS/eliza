@@ -30,6 +30,7 @@ import { analyzeWalletSmartMoney } from "./analyzers/smartMoney";
 import { analyzeInvestigationReport } from "./analyzers/investigationReport";
 import { analyzeInvestigationNarrative } from "./analyzers/investigationNarrative";
 import { createWalletInvestigation } from "./investigations/walletIntegration";
+import { runWalletPipeline } from "./pipeline/walletPipeline";
 import { getWalletIntelligenceSources } from "./sources/registry";
 import {
   SupportedChain,
@@ -428,6 +429,21 @@ const investigationNarrative =
     decision,
     evidenceRecords,
   );
+
+  const pipeline = runWalletPipeline({
+  chain,
+  address: walletAddress,
+  balance: walletBalance,
+  tokenHoldings,
+  recentTransactions,
+  oldestTransactionId: oldestKnownTransaction.transactionId,
+  oldestTransactionTimestamp: oldestKnownTransaction.timestamp,
+  firstParsedTransaction,
+  parsedTransactions,
+  tokenPrices,
+});
+
+void pipeline;
 
   const investigation = createWalletInvestigation({
   chain,
