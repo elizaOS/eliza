@@ -1856,7 +1856,16 @@ describe("destructive-bulk confirm gate", () => {
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.destructive_reason).toBe("recursive delete");
   });
+});
 
+// The gate *classification* above short-circuits before any shell runs, so it
+// is platform-agnostic and runs everywhere. The cases below deliberately let
+// the command through to REAL host execution to prove the gate opened; their
+// `rm -rf /tmp/...` / `ls /tmp` fixtures are POSIX-only and cannot execute on
+// the PowerShell host shell (`rm -rf`/`/tmp` are not valid there), so they are
+// gated to POSIX like the rest of the real-command-execution suites in this
+// file. The gate-open path is covered equivalently on the Linux/macOS runs.
+describeIfPosix("destructive-bulk confirm gate (POSIX execution)", () => {
   it("runs the same command when confirm=true", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(

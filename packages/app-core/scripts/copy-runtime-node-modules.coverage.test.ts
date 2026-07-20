@@ -17,6 +17,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -59,7 +60,16 @@ function writeManifest(
 }
 
 beforeEach(() => {
-  tmpDir = mkdtempSync(path.join(tmpdir(), "copy-runtime-cov-"));
+  // `os.tmpdir()` on Windows returns the 8.3 short form
+  // (`C:\Users\RUNNER~1\...`), while the module under test canonicalizes its
+  // resolved directories via `fs.realpathSync.native` (long form,
+  // `C:\Users\runneradmin\...`). Canonicalize the fixture root up front so the
+  // expected paths built from `tmpDir` compare against the same real path the
+  // implementation returns. On POSIX the tmpdir is already canonical, so this
+  // is a no-op there.
+  tmpDir = realpathSync.native(
+    mkdtempSync(path.join(tmpdir(), "copy-runtime-cov-")),
+  );
 });
 
 afterEach(() => {

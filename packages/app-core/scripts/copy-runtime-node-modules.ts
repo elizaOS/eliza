@@ -721,7 +721,15 @@ export function shouldKeepPackageRelativePath(
   if (packageName === "ffprobe-static") {
     const ffprobeMatch = normalizedPath.match(/^bin\/([^/]+)\/([^/]+)(?:\/|$)/);
     if (ffprobeMatch) {
-      return matchesRuntimeVariant(`${ffprobeMatch[1]}-${ffprobeMatch[2]}`);
+      // Forward the caller-supplied target so an explicit (os, arch) is honored
+      // rather than silently falling back to process.platform/arch. Without
+      // this, evaluating a `linux/x64` ffprobe variant on a Windows host wrongly
+      // dropped it (win32 !== linux) even when the caller asked about linux.
+      return matchesRuntimeVariant(
+        `${ffprobeMatch[1]}-${ffprobeMatch[2]}`,
+        targetOS,
+        targetArch,
+      );
     }
   }
 
