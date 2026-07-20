@@ -19,6 +19,7 @@ import {
   type UUID,
   type World,
 } from "@elizaos/core";
+import { sql } from "drizzle-orm";
 import { drizzle, type PgliteDatabase } from "drizzle-orm/pglite";
 import { BaseDrizzleAdapter } from "../base";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "../schema/embedding";
@@ -123,7 +124,16 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const managerWithState = this.manager as PGliteClientManager & {
       isInitialized?: () => boolean;
     };
-    return !this.manager.isShuttingDown() && managerWithState.isInitialized() === true;
+    if (this.manager.isShuttingDown() || managerWithState.isInitialized() !== true) {
+      return false;
+    }
+    try {
+      await this.db.execute(sql`SELECT 1`);
+      return true;
+    } catch {
+      // error-policy:J4 readiness probe returns explicit unavailable state
+      return false;
+    }
   }
 
   async close() {

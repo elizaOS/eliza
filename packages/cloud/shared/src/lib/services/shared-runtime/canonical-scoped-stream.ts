@@ -23,6 +23,7 @@ export interface CanonicalScopedStreamRequest {
   agentId: string;
   orgId: string;
   conversationId: string;
+  userId?: string;
   body: unknown;
   origin?: string | null;
   timings?: Record<string, number>;
@@ -79,7 +80,11 @@ export async function handleCanonicalScopedAgentStream(
     jsonrpc: "2.0",
     id: crypto.randomUUID(),
     method: "message.send",
-    params: { text, roomId: request.conversationId },
+    params: {
+      text,
+      roomId: request.conversationId,
+      ...(request.userId ? { userId: request.userId, source: "voice" } : {}),
+    },
   };
 
   let upstream: Response | null;

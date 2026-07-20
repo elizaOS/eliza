@@ -1,30 +1,41 @@
 /**
  * TEXT_EMBEDDING and TEXT_EMBEDDING_BATCH handlers: POST to an OpenAI-compatible
- * `${EMBEDDING_BASE_URL}/embeddings` with raw fetch (no @ai-sdk), validate the
- * returned vector width against the configured VECTOR_DIMS dimension, and emit a
- * MODEL_USED event. Input is capped at MAX_EMBEDDING_CHARS. Registered by the
- * plugin in ../index.ts; see the package CLAUDE.md for the routing priority.
+ * `${EMBEDDING_BASE_URL}/embeddings` with raw fetch (no @ai-sdk), optionally
+ * retry one configured fallback endpoint, validate the returned vector width
+ * against the configured VECTOR_DIMS dimension, and emit a MODEL_USED event.
+ * Input is capped at MAX_EMBEDDING_CHARS. Registered by the plugin in
+ * ../index.ts; see the package CLAUDE.md for the routing priority.
  */
 import type { IAgentRuntime, TextEmbeddingParams } from "@elizaos/core";
 import { logger, ModelType, VECTOR_DIMS } from "@elizaos/core";
 
 import type { EmbeddingResponse } from "../types";
 import {
-  getAuthHeader,
+  getEmbeddingApiKey,
   getEmbeddingBaseURL,
   getEmbeddingDimensions,
+  getEmbeddingFallbackApiKey,
+  getEmbeddingFallbackBaseURL,
+  getEmbeddingFallbackModel,
   getEmbeddingModel,
+  getEndpointAuthHeader,
   getSetting,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
 type VectorDimension = (typeof VECTOR_DIMS)[keyof typeof VECTOR_DIMS];
+type EmbeddingEndpoint = {
+  role: "primary" | "fallback";
+  baseURL: string;
+  apiKey: string | undefined;
+  model: string;
+};
 
 // OpenAI embedding models support up to 8191 tokens per input; 8000 provides a
 // safe buffer at the conventional ~4 chars/token estimate.
 const MAX_EMBEDDING_CHARS = 8_000 * 4;
 
-function validateDimension(dimension: number): VectorDimension {
+export function validateEmbeddingDimension(dimension: number): VectorDimension {
   const validDimensions = Object.values(VECTOR_DIMS) as number[];
   if (!validDimensions.includes(dimension)) {
     throw new Error(
@@ -71,6 +82,28 @@ function requireBaseURL(runtime: IAgentRuntime): string {
   return baseURL.replace(/\/+$/, "");
 }
 
+function getEmbeddingEndpoints(runtime: IAgentRuntime): EmbeddingEndpoint[] {
+  const primary: EmbeddingEndpoint = {
+    role: "primary",
+    baseURL: requireBaseURL(runtime),
+    apiKey: getEmbeddingApiKey(runtime),
+    model: getEmbeddingModel(runtime),
+  };
+  const fallbackBaseURL = getEmbeddingFallbackBaseURL(runtime);
+  if (!fallbackBaseURL) {
+    return [primary];
+  }
+  return [
+    primary,
+    {
+      role: "fallback",
+      baseURL: fallbackBaseURL.replace(/\/+$/, ""),
+      apiKey: getEmbeddingFallbackApiKey(runtime),
+      model: getEmbeddingFallbackModel(runtime),
+    },
+  ];
+}
+
 function truncate(text: string): string {
   if (text.length <= MAX_EMBEDDING_CHARS) {
     return text;
@@ -98,22 +131,60 @@ async function requestEmbeddings(
   input: string | string[],
   embeddingDimension: VectorDimension
 ): Promise<number[][]> {
-  const baseURL = requireBaseURL(runtime);
-  const embeddingModel = getEmbeddingModel(runtime);
-  const url = `${baseURL}/embeddings`;
+  const endpoints = getEmbeddingEndpoints(runtime);
   const expectedCount = Array.isArray(input) ? input.length : 1;
+  const failures: string[] = [];
 
-  logger.debug(`[Embeddings] POST ${url} model=${embeddingModel}`);
+  for (const endpoint of endpoints) {
+    try {
+      return await requestEmbeddingsFromEndpoint(
+        runtime,
+        endpoint,
+        input,
+        embeddingDimension,
+        expectedCount
+      );
+    } catch (error) {
+      failures.push(`${endpoint.role} ${endpoint.baseURL}: ${formatFailure(error)}`);
+      if (endpoint.role === "primary" && endpoints.length > 1) {
+        logger.warn(
+          { error },
+          "[Embeddings] Primary embedding endpoint failed; retrying fallback endpoint"
+        );
+        continue;
+      }
+      const label = endpoints.length > 1 ? "Embedding endpoints failed" : "Embedding API error";
+      throw new Error(`${label}: ${failures.join(" | ")}`, { cause: error });
+    }
+  }
+
+  throw new Error(`Embedding endpoints failed: ${failures.join(" | ")}`);
+}
+
+function formatFailure(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function requestEmbeddingsFromEndpoint(
+  runtime: IAgentRuntime,
+  endpoint: EmbeddingEndpoint,
+  input: string | string[],
+  embeddingDimension: VectorDimension,
+  expectedCount: number
+): Promise<number[][]> {
+  const url = `${endpoint.baseURL}/embeddings`;
+
+  logger.debug(`[Embeddings] POST ${url} model=${endpoint.model} role=${endpoint.role}`);
 
   // @trajectory-allow Embeddings return numeric retrieval vectors, not generative LLM text.
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      ...getAuthHeader(runtime),
+      ...getEndpointAuthHeader(runtime, endpoint.apiKey),
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: embeddingModel,
+      model: endpoint.model,
       input,
       ...(hasExplicitDimensions(runtime) ? { dimensions: embeddingDimension } : {}),
     }),
@@ -125,7 +196,7 @@ async function requestEmbeddings(
     // throw, so fall back to a placeholder for the message only.
     const errorText = await response.text().catch(() => "Unknown error");
     throw new Error(
-      `Embedding API error: ${response.status} ${response.statusText} - ${errorText}`
+      `${endpoint.role} embedding API HTTP ${response.status} ${response.statusText} - ${errorText}`
     );
   }
 
@@ -133,7 +204,7 @@ async function requestEmbeddings(
 
   if (!Array.isArray(data.data) || data.data.length !== expectedCount) {
     throw new Error(
-      `Embedding API returned ${
+      `${endpoint.role} embedding API returned ${
         Array.isArray(data.data) ? data.data.length : "non-array"
       } vectors, expected ${expectedCount}`
     );
@@ -146,7 +217,9 @@ async function requestEmbeddings(
     const idx = typeof item.index === "number" ? item.index : undefined;
     if (idx === undefined || !Number.isInteger(idx) || idx < 0 || idx >= expectedCount) {
       throw new Error(
-        `Embedding API returned out-of-range index ${String(item.index)} (expected 0..${expectedCount - 1})`
+        `${endpoint.role} embedding API returned out-of-range index ${String(
+          item.index
+        )} (expected 0..${expectedCount - 1})`
       );
     }
     // A repeated index passes the count check above yet leaves another slot as
@@ -154,12 +227,12 @@ async function requestEmbeddings(
     // 8: throw, never hand back a fabricated/undefined vector).
     if (vectors[idx] !== undefined) {
       throw new Error(
-        `Embedding API returned duplicate index ${idx}; a vector slot would be left unfilled`
+        `${endpoint.role} embedding API returned duplicate index ${idx}; a vector slot would be left unfilled`
       );
     }
     if (!Array.isArray(item.embedding) || item.embedding.length !== embeddingDimension) {
       throw new Error(
-        `Embedding dimension mismatch: got ${
+        `${endpoint.role} embedding dimension mismatch: got ${
           Array.isArray(item.embedding) ? item.embedding.length : "non-array"
         }, expected ${embeddingDimension}. Check EMBEDDING_DIMENSIONS / EMBEDDING_MODEL.`
       );
@@ -190,7 +263,7 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null
 ): Promise<number[]> {
-  const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
+  const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
 
   const text = extractText(params);
   if (text === null) {
@@ -226,7 +299,7 @@ export async function handleBatchTextEmbedding(
     return [];
   }
 
-  const embeddingDimension = validateDimension(getEmbeddingDimensions(runtime));
+  const embeddingDimension = validateEmbeddingDimension(getEmbeddingDimensions(runtime));
 
   const prepared = texts.map((text, i) => {
     if (typeof text !== "string" || text.trim().length === 0) {

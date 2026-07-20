@@ -173,6 +173,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private turnCounter = 0;
   private currentTraceId: string | null = null;
   private currentVoiceTurnId: string | null = null;
+  private activeSttTurn = false;
   private llmAbort: AbortController | null = null;
   private phrase: PhraseAggregator | null = null;
   private turnSttMs = 0;
@@ -415,6 +416,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         if (this.state === "speaking" || this.state === "thinking") {
           this.interrupt("acoustic");
         }
+        this.activeSttTurn = true;
         this.state = "transcribing";
         break;
       }
@@ -436,6 +438,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         break;
       }
       case "end-of-turn": {
+        if (!this.activeSttTurn) return;
+        this.activeSttTurn = false;
         // A missing transcript commits as "" on purpose: commitTurn's empty-
         // final path still reports+resets the turn's metered usage and clears
         // the turn id, which skipping the commit would leak into the next turn.

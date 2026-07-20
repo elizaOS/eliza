@@ -115,6 +115,8 @@ function postVoiceServiceStream(body: unknown) {
       headers: {
         Authorization: "Bearer voice-service",
         "Content-Type": "application/json",
+        "X-Eliza-Agent-Id": AGENT,
+        "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
         "X-Eliza-Organization-Id": ORG,
         "X-Eliza-User-Id": "user-voice",
       },
@@ -190,6 +192,8 @@ describe("shared agent messages/stream", () => {
       params: {
         text: "voice transcript",
         roomId: "conv-voice-service",
+        userId: "user-voice",
+        source: "voice",
       },
     });
   });
@@ -228,6 +232,8 @@ describe("shared agent messages/stream", () => {
           Authorization: "Bearer voice-service",
           "Content-Type": "application/json",
           "X-Service-Key": "Bearer voice-service",
+          "X-Eliza-Agent-Id": AGENT,
+          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
           "X-Eliza-Organization-Id": ORG,
           "X-Eliza-User-Id": "user-voice",
         },
@@ -244,6 +250,8 @@ describe("shared agent messages/stream", () => {
       params: {
         text: "adapter transcript",
         roomId: VOICE_CONVERSATION,
+        userId: "user-voice",
+        source: "voice",
       },
     });
   });
@@ -308,6 +316,8 @@ describe("shared agent messages/stream", () => {
         headers: {
           Authorization: "Bearer voice-service",
           "Content-Type": "application/json",
+          "X-Eliza-Agent-Id": AGENT,
+          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
           "X-Eliza-Organization-Id": ORG,
           "X-Eliza-User-Id": "user-voice",
         },
@@ -369,6 +379,8 @@ describe("shared agent messages/stream", () => {
         headers: {
           Authorization: "Bearer voice-service",
           "Content-Type": "application/json",
+          "X-Eliza-Agent-Id": AGENT,
+          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
           "X-Eliza-Organization-Id": ORG,
           "X-Eliza-User-Id": "user-voice",
         },
@@ -412,6 +424,8 @@ describe("shared agent messages/stream", () => {
           Authorization: "Bearer voice-service",
           "Content-Type": "application/json",
           "X-Service-Key": "Bearer voice-service",
+          "X-Eliza-Agent-Id": AGENT,
+          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
           "X-Eliza-Organization-Id": ORG,
           "X-Eliza-User-Id": "different-user",
         },
@@ -426,6 +440,97 @@ describe("shared agent messages/stream", () => {
       error: "Agent not found",
       code: "agent_not_found",
     });
+  });
+
+  test("voice service credential rejects missing structural voice identity", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "user-voice",
+      agent_name: "Voice Agent",
+    });
+
+    const res = await voiceServiceApp.request(
+      `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Eliza-Organization-Id": ORG,
+          "X-Eliza-User-Id": "user-voice",
+        },
+        body: JSON.stringify({ text: "do not persist" }),
+      },
+      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
+    );
+
+    expect(res.status).toBe(404);
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+  });
+
+  test("voice service credential rejects mismatched conversation identity", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "user-voice",
+      agent_name: "Voice Agent",
+    });
+
+    const res = await voiceServiceApp.request(
+      `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Eliza-Agent-Id": AGENT,
+          "X-Eliza-Conversation-Id": "wrong-conversation",
+          "X-Eliza-Organization-Id": ORG,
+          "X-Eliza-User-Id": "user-voice",
+        },
+        body: JSON.stringify({ text: "do not persist" }),
+      },
+      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
+    );
+
+    expect(res.status).toBe(404);
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
+  });
+
+  test("voice service credential rejects mismatched agent identity", async () => {
+    findByIdAndOrg.mockResolvedValue({
+      id: AGENT,
+      organization_id: ORG,
+      user_id: "user-voice",
+      agent_name: "Voice Agent",
+    });
+
+    const res = await voiceServiceApp.request(
+      `/api/v1/eliza/agents/${AGENT}/api/conversations/${VOICE_CONVERSATION}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer voice-service",
+          "Content-Type": "application/json",
+          "X-Eliza-Agent-Id": "wrong-agent",
+          "X-Eliza-Conversation-Id": VOICE_CONVERSATION,
+          "X-Eliza-Organization-Id": ORG,
+          "X-Eliza-User-Id": "user-voice",
+        },
+        body: JSON.stringify({ text: "do not persist" }),
+      },
+      { VOICE_REALTIME_ELIZA_AUTHORIZATION: "Bearer voice-service" },
+    );
+
+    expect(res.status).toBe(404);
+    expect(resolveSharedAgent).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    expect(bridgeStream).not.toHaveBeenCalled();
   });
 
   test("voice service credential rejects an agent outside the scoped user or org before persistence", async () => {
