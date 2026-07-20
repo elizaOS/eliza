@@ -150,10 +150,13 @@ export interface InvestorWalletChangeReport {
    */
   keyChanges: InvestorWalletChange[];
 
-  /**
-   * Clear next step written for an individual investor.
+   /**
+   * Plain-language interpretation of the findings.
+   *
+   * This explains what the observed changes mean without making
+   * recommendations or providing financial advice.
    */
-  suggestedInvestorAction: string;
+  investorInterpretation: string;
 
   limitations: string[];
 }
