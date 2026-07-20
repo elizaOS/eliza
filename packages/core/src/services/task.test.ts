@@ -360,6 +360,18 @@ describe("TaskService tick re-arm", () => {
 			code: "TASK_TICK_FAILED",
 			context: {
 				failureCodes: ["TASK_WORKER_MISSING", "TASK_PREFLIGHT_INVALID"],
+				failures: [
+					{
+						code: "TASK_WORKER_MISSING",
+						taskId: "missing-worker",
+						taskName: "MISSING",
+					},
+					{
+						code: "TASK_PREFLIGHT_INVALID",
+						taskId: "bad-preflight",
+						taskName: "BAD_PREFLIGHT",
+					},
+				],
 			},
 		});
 		expect(execute).toHaveBeenCalledTimes(1);
