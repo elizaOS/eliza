@@ -480,7 +480,7 @@ export function AccountCommandTable({
                   data-active={isActive ? "true" : undefined}
                   className={cn(
                     "border-b border-border/25 transition-colors last:border-b-0 hover:bg-bg-accent/25",
-                    !account.enabled && "opacity-55",
+                    !account.enabled && "bg-bg-accent/20",
                     isActive && "bg-accent/5",
                   )}
                 >
