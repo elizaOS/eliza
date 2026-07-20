@@ -38,10 +38,7 @@ import type { ICompatRuntime } from "../types.ts";
 // messages-durable-turn.test.ts; kept local so each test file stays runnable
 // in isolation.
 import { randomUUID } from "node:crypto";
-import {
-	ChannelType,
-	type Content,
-} from "@elizaos/core";
+import { ChannelType, type Content } from "@elizaos/core";
 import { ChannelType as DiscordChannelType } from "discord.js";
 import { vi } from "vitest";
 import type { IDiscordService } from "../types.ts";
