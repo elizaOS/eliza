@@ -907,33 +907,14 @@ async function seedReturningInstallState(
             error: "Desktop renderer did not expose an API base while seeding returning-install state.",
           };
         }
-        const label = (() => {
-          try {
-            return new URL(apiBase).host || apiBase;
-          } catch {
-            return apiBase;
-          }
-        })();
-        localStorage.removeItem("elizaos:first-run:force-fresh");
-        localStorage.setItem("eliza:first-run-complete", "1");
-        localStorage.setItem("eliza:setup:step", "activate");
-        localStorage.setItem("eliza:ui-shell-mode", "native");
-        localStorage.setItem(
-          "elizaos:active-server",
-          JSON.stringify({
-            id: \`remote:\${apiBase}\`,
-            kind: "remote",
-            label,
-            apiBase,
-          }),
-        );
-        return {
-          ok: true,
-          firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-          setupStep: localStorage.getItem("eliza:setup:step"),
-          uiShellMode: localStorage.getItem("eliza:ui-shell-mode"),
-          activeServer: localStorage.getItem("elizaos:active-server"),
-        };
+        const bridge = window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__;
+        if (!bridge || typeof bridge.seedReturningInstallState !== "function") {
+          return {
+            ok: false,
+            error: "Packaged shell storage test bridge is unavailable.",
+          };
+        }
+        return bridge.seedReturningInstallState(apiBase);
       } catch (error) {
         return {
           ok: false,
