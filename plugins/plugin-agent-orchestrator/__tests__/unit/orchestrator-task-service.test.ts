@@ -20,6 +20,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { AcpService } from "../../src/services/acp-service.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
 import {
@@ -166,7 +167,8 @@ function runtime(
   settings: Record<string, string> = {},
 ): IAgentRuntime {
   return {
-    getService: () => acp ?? null,
+    getService: (type: string) =>
+      type === AcpService.serviceType ? (acp ?? null) : null,
     getSetting: (key: string) => settings[key],
     reportError: vi.fn(),
     logger: {
@@ -205,8 +207,11 @@ function runtimeWithWorkspace(
   useModel?: IAgentRuntime["useModel"],
 ): IAgentRuntime {
   return {
-    getService: (type: string) =>
-      type === CodingWorkspaceService.serviceType ? workspace : (acp ?? null),
+    getService: (type: string) => {
+      if (type === CodingWorkspaceService.serviceType) return workspace;
+      if (type === AcpService.serviceType) return acp ?? null;
+      return null;
+    },
     getSetting: () => undefined,
     useModel,
     reportError: vi.fn(),
@@ -878,16 +883,25 @@ describe("OrchestratorTaskService — lifecycle", () => {
   });
 
   it("auto-spawns a coding agent when a message is posted with no session live", async () => {
+    const prevHome = process.env.HOME;
+    const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "ots-home-"));
+    process.env.HOME = tempHome;
     const acp = new FakeAcp();
     const service = makeService(acp);
-    const { id } = await service.createTask(createInput());
-    const result = must(await service.postUserMessage(id, "hello"), "post");
-    // Parity: messaging a task with no live agent "just works" — it spawns one
-    // (the default vendored opencode backend) to act on the message, rather than
-    // silently recording it with nowhere to go.
-    expect(result.forwardedTo).toEqual(["auto-spawned"]);
-    expect(acp.spawnArgs).toHaveLength(1);
-    expect(acp.sent).toHaveLength(0);
+    try {
+      const { id } = await service.createTask(createInput());
+      const result = must(await service.postUserMessage(id, "hello"), "post");
+      // Parity: messaging a task with no live agent "just works" — it spawns one
+      // (the default vendored opencode backend) to act on the message, rather than
+      // silently recording it with nowhere to go.
+      expect(result.forwardedTo).toEqual(["auto-spawned"]);
+      expect(acp.spawnArgs).toHaveLength(1);
+      expect(acp.sent).toHaveLength(0);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME;
+      else process.env.HOME = prevHome;
+      fs.rmSync(tempHome, { recursive: true, force: true });
+    }
   });
 
   it("reports ACP-unavailable auto-spawn failure when no session is live", async () => {
@@ -2122,7 +2136,9 @@ describe("OrchestratorTaskService — store degradation resilience (#11641)", ()
   } {
     const warn = vi.fn();
     const rt = {
-      getService: () => acp ?? null,
+      getService: (type: string) =>
+        type === AcpService.serviceType ? (acp ?? null) : null,
+      getSetting: () => undefined,
       reportError: vi.fn(),
       logger: { debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() },
     } as never as IAgentRuntime;
