@@ -29,6 +29,7 @@ import { analyzeWalletIntelligenceBrief } from "./analyzers/intelligenceBrief";
 import { analyzeWalletSmartMoney } from "./analyzers/smartMoney";
 import { analyzeInvestigationReport } from "./analyzers/investigationReport";
 import { analyzeInvestigationNarrative } from "./analyzers/investigationNarrative";
+import { buildWalletInvestigation } from "./investigations/builder";
 import { getWalletIntelligenceSources } from "./sources/registry";
 import {
   SupportedChain,
@@ -427,6 +428,26 @@ const investigationNarrative =
     decision,
     evidenceRecords,
   );
+
+  const investigation = buildWalletInvestigation({
+  chain,
+  address: walletAddress,
+  walletAnalysis: {
+    executiveVerdict,
+    assessment,
+    intelligenceBrief,
+    evidence,
+    evidenceRecords,
+    risk,
+    trust,
+    portfolio,
+    whale,
+    funding,
+    activity,
+  },
+});
+
+void investigation;
         
         return {
           chain,
