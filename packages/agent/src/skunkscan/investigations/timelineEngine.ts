@@ -5,6 +5,8 @@ import {
 
 import { InvestigationCase } from "./types";
 
+import { compareRisk } from "./comparators/riskComparator";
+
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random()
     .toString(36)
@@ -19,8 +21,14 @@ export interface BuildTimelineInput {
 export function buildInvestorTimeline(
   input: BuildTimelineInput,
 ): InvestorWalletChangeReport {
-
   const changes: InvestorWalletChange[] = [];
+
+  changes.push(
+    ...compareRisk(
+      input.previous,
+      input.current,
+    ),
+  );
 
   return {
     reportId: generateId("timeline"),
@@ -46,28 +54,42 @@ export function buildInvestorTimeline(
     urgency: "none",
 
     headline:
-      "Comparison report generated.",
+      changes.length > 0
+        ? "Changes were detected between the two investigations."
+        : "No significant changes were detected.",
 
     summary:
-      "No comparison rules have been executed yet.",
+      changes.length > 0
+        ? `The comparison engine detected ${changes.length} investor-relevant change(s).`
+        : "The comparison engine did not detect any investor-relevant changes.",
 
     changes,
 
-    positiveChangeCount: 0,
+    positiveChangeCount: changes.filter(
+      (change) => change.impact === "positive",
+    ).length,
 
-    negativeChangeCount: 0,
+    negativeChangeCount: changes.filter(
+      (change) => change.impact === "negative",
+    ).length,
 
-    informationalChangeCount: 0,
+    informationalChangeCount: changes.filter(
+      (change) => change.impact === "informational",
+    ).length,
 
-    criticalChangeCount: 0,
+    criticalChangeCount: changes.filter(
+      (change) => change.severity === "critical",
+    ).length,
 
-    keyChanges: [],
+    keyChanges: changes.slice(0, 5),
 
     suggestedInvestorAction:
-      "Review the observed changes and perform your own due diligence before making investment decisions.",
+      "This report presents observed changes for informational purposes. The interpretation and any resulting decision remain with the user.",
 
     limitations: [
-      "Comparison rules have not yet been implemented.",
+      "The comparison currently evaluates risk score changes only.",
+      "The findings are based on the on-chain information available during the two investigations.",
+      "Wallet ownership, intent, and off-chain activity cannot be determined from blockchain data alone.",
     ],
   };
 }
