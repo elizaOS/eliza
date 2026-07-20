@@ -5,7 +5,7 @@
  * so the cloud route can replay the direct attempt's committed reservation —
  * plus the handler's auth/validation/success/error envelope.
  */
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "vitest";
 import type http from "node:http";
 import { handleCloudTtsPreviewRoute } from "./server-cloud-tts";
 
