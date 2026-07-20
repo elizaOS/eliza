@@ -8,6 +8,35 @@
  * Bitcoin and future blockchain connectors.
  */
 
+/**
+ * Version of the universal Investigation Engine data structure.
+ *
+ * This is separate from the application version so stored investigations
+ * can be migrated safely when the investigation schema changes.
+ */
+export type InvestigationSchemaVersion = "1.0";
+
+/**
+ * Describes how an investigation was created.
+ */
+export type InvestigationOrigin =
+  | "api"
+  | "web_app"
+  | "scheduled"
+  | "manual"
+  | "system"
+  | "unknown";
+
+/**
+ * Describes the type of investigation execution.
+ */
+export type InvestigationRunType =
+  | "initial"
+  | "refresh"
+  | "reanalysis"
+  | "comparison"
+  | "unknown";
+
 export type InvestigationStatus =
   | "draft"
   | "active"
@@ -71,6 +100,24 @@ export type InvestigationConfidenceLevel =
   | "medium"
   | "high"
   | "unknown";
+
+/**
+ * Metadata describing one execution of an investigation.
+ *
+ * This supports investigation refreshes, reanalysis, historical comparison,
+ * performance monitoring and future persistent investigation storage.
+ */
+export interface InvestigationExecution {
+  runId: string;
+  runType: InvestigationRunType;
+  startedAt: string;
+  completedAt?: string;
+  durationMs?: number;
+  successful: boolean;
+  errorMessage?: string;
+  engineVersion?: string;
+  metadata?: Record<string, unknown>;
+}
 
 /**
  * A wallet, transaction, token, entity or other object being investigated.
@@ -138,6 +185,8 @@ export interface InvestigationAuditEvent {
   action:
     | "investigation_created"
     | "investigation_updated"
+    | "investigation_refreshed"
+    | "investigation_reanalyzed"
     | "status_changed"
     | "subject_added"
     | "subject_removed"
@@ -159,6 +208,24 @@ export interface InvestigationCase {
   title: string;
   description?: string;
 
+  /**
+   * Version of the InvestigationCase data schema.
+   */
+  schemaVersion?: InvestigationSchemaVersion;
+
+  /**
+   * Revision number of this investigation.
+   *
+   * Revision 1 represents the initial investigation. The number increases
+   * whenever the investigation is refreshed or materially updated.
+   */
+  revision?: number;
+
+  /**
+   * Describes where the investigation request originated.
+   */
+  origin?: InvestigationOrigin;
+
   status: InvestigationStatus;
   priority: InvestigationPriority;
 
@@ -168,12 +235,22 @@ export interface InvestigationCase {
   notes: InvestigationNote[];
   auditTrail: InvestigationAuditEvent[];
 
+  /**
+   * Historical execution records for the investigation.
+   */
+  executions?: InvestigationExecution[];
+
   tags: string[];
 
   createdBy: string;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
+
+  /**
+   * Most recent successful investigation execution time.
+   */
+  lastRunAt?: string;
 
   metadata?: Record<string, unknown>;
 }
@@ -187,6 +264,7 @@ export interface CreateInvestigationInput {
   priority?: InvestigationPriority;
   createdBy?: string;
   tags?: string[];
+  origin?: InvestigationOrigin;
 }
 
 /**
@@ -197,10 +275,15 @@ export interface InvestigationSummary {
   status: InvestigationStatus;
   priority: InvestigationPriority;
 
+  schemaVersion?: InvestigationSchemaVersion;
+  revision?: number;
+  origin?: InvestigationOrigin;
+
   subjectCount: number;
   evidenceCount: number;
   findingCount: number;
   noteCount: number;
+  executionCount?: number;
 
   criticalFindingCount: number;
   highFindingCount: number;
@@ -209,4 +292,5 @@ export interface InvestigationSummary {
 
   createdAt: string;
   updatedAt: string;
+  lastRunAt?: string;
 }
