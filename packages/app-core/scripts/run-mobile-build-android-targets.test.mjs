@@ -14,6 +14,10 @@ import {
 const websiteBlockerSettings = "include ':elizaos-capacitor-websiteblocker'";
 const scriptsDir = path.dirname(fileURLToPath(import.meta.url));
 const appPackageJsonPath = path.resolve(scriptsDir, "../../app/package.json");
+const runMobileBuildSource = fs.readFileSync(
+  path.resolve(scriptsDir, "run-mobile-build.mjs"),
+  "utf8",
+);
 
 describe("Android mobile build target table", () => {
   it("keeps one descriptor per public Android target", () => {
@@ -105,11 +109,17 @@ describe("Android mobile build target table", () => {
     });
   });
 
-  it("exposes a first-class package script for the Android cloud-hybrid target", () => {
+  it("exposes and dispatches a first-class Android cloud-hybrid target", () => {
     const packageJson = JSON.parse(fs.readFileSync(appPackageJsonPath, "utf8"));
 
     expect(packageJson.scripts["build:android:cloud-hybrid"]).toBe(
       "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud-hybrid",
+    );
+    expect(runMobileBuildSource).toContain(
+      'target !== "android-cloud-hybrid"',
+    );
+    expect(runMobileBuildSource).toContain(
+      'await runAndroidBuild("android-cloud-hybrid")',
     );
   });
 
