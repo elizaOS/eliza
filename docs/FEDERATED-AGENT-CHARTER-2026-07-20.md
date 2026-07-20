@@ -1,6 +1,6 @@
 # Federated Agent Fleet Charter
 
-**Status:** implementation-ready proposal, manual merge only
+**Status:** R2 implementation-ready proposal, manual merge only
 
 **Version:** `1.0.0-proposal.1`
 
@@ -109,15 +109,15 @@ Each registered agent MUST declare:
 - authorized pillars and maximum concurrent claims
 - registration signer and status
 
-Two sessions with the same `agentId` are the same reviewer and owner. Renaming `[sol-orch]` does not create independence. Team agents MAY share a team, but only a separately registered agent outside the implementation owner's `independenceGroup` counts as independent review.
+Two sessions with the same `agentId` are the same reviewer and owner. Renaming `[sol-orch]` does not create independence. Two registered agents may share a team for implementation, but independent review requires a reviewer outside both the implementation owner's team and independence group. The review receipt's asserted `independenceGroup` is informational until it is matched against signed registry facts.
 
 ## 4. Authority layers
 
 | Layer | Owns | Must not own |
 | --- | --- | --- |
 | Human owner/maintainer | objectives, risk acceptance, sensitive approvals, emergency override, merge authority policy | hidden implementation state |
-| Work registry | canonical `workId`, lifecycle, pillar, accountable owners, dependency graph | execution replay, merge execution |
-| Lease registry | TTL claims, generations, conflict decisions, handoffs, zombie recovery | deciding code quality |
+| Work registry | canonical `workId`, aliases, lifecycle, pillar, accountable owners, dependency graph | execution replay, merge execution |
+| Lease registry | TTL claims, resource-scoped generations, conflict decisions, handoffs, zombie recovery | deciding code quality |
 | Smithers | durable execution frames, attempts, resume, fork, replay, node outputs | issue assignment, forge claims, PR creation, merge decisions |
 | Eliza task/trajectory services | task semantics and model/action evidence | forge landing authority |
 | Forge adapter | issues, branches, PRs, reviews, checks, protected refs | canonical cross-forge identity |
@@ -234,7 +234,7 @@ Policy may shorten TTLs. TTLs longer than 120 minutes require a reason and human
 
 ### 6.3 Atomic acquisition and fencing
 
-Acquisition MUST be compare-and-set against all overlapping active leases. A successful response returns:
+Acquisition MUST be compare-and-set against all overlapping active leases and the resource fence for every normalized resource in the lease set. A successful response returns:
 
 ```json
 {
@@ -246,7 +246,7 @@ Acquisition MUST be compare-and-set against all overlapping active leases. A suc
 }
 ```
 
-Every protected mutation includes `claimId` and `generation`. On renewal, generation remains stable. On release, expiry, cancellation, transfer, or reclamation, the next acquisition increments generation. A write with an old generation returns `409 stale_fence`.
+Every protected mutation includes `claimId` and `generation`, and the registry checks that pair against the current resource fence. On renewal, generation remains stable. On release, expiry, cancellation, transfer, or reclamation, the next acquisition increments the resource-scoped generation with a single CAS transaction. A write with an old generation returns `409 stale_fence`, including a worker that reacquired a different claim after its old fence expired.
 
 No expiry is inferred from a client clock. The lease registry's clock is authoritative. Conformance fixtures use explicit timestamps so tests are deterministic.
 
@@ -308,11 +308,12 @@ Dispatch algorithm:
 
 1. Resolve duplicate/superseded aliases to the surviving `workId`.
 2. Reject self-cycles and cycles among hard edges `requires`, `blocks`, and `stacks_on`.
-3. Topologically order hard dependencies, tie-breaking lexicographically by `workId`.
-4. Add computed collision edges from normalized claim scopes and current PR changed paths.
-5. A node is `dispatchable` only if all hard predecessors are terminal-success, no foreign blocking lease exists, all required accountability classes have one owner, and a target branch is known.
-6. Disjoint nodes may run in parallel. Shared package overlap is warning-level only if file scopes are disjoint and no shared contract is being changed.
-7. If two active nodes collide, the earlier valid lease wins. For equal acquisition timestamps, the lexicographically smaller `claimId` wins. The loser becomes `blocked_collision` and is offered review or disjoint follow-up work.
+3. Canonicalize hard edge endpoints before cycle detection and ordering: `A requires B` means `B -> A`; `A blocks B` means `A -> B`; `A stacks_on B` means `B -> A`.
+4. Topologically order hard dependencies, tie-breaking lexicographically by `workId`.
+5. Add computed collision edges from normalized claim scopes and current PR changed paths.
+6. A node is `dispatchable` only if all hard predecessors are terminal-success, no foreign blocking lease exists, all required accountability classes have one owner, and a target branch is known.
+7. Disjoint nodes may run in parallel. Shared package overlap is warning-level only if file scopes are disjoint and no shared contract is being changed.
+8. If two active nodes collide, the earlier valid lease wins. For equal acquisition timestamps, the lexicographically smaller `claimId` wins. The loser becomes `blocked_collision` and is offered review or disjoint follow-up work.
 
 The graph MUST be recomputed before branch creation, before push, when opening or updating a PR, before integration, and before merge.
 
@@ -342,8 +343,8 @@ Allowed transitions are listed in the schema. A forge board may mirror these usi
 A handoff is a two-phase transfer:
 
 1. `offered`: current owner freezes writes and records current branch head, Smithers frame, test/evidence state, dirty-work checkpoint, unresolved risks, next action, and leases proposed for transfer.
-2. `accepted`: successor confirms the expected heads and acquires new lease generations.
-3. `completed`: old claims release and graph ownership changes atomically.
+2. `accepted`: successor confirms the expected heads and prepares new lease generations without write authority until completion.
+3. `completed`: old claims release, resource fences increment, new claims activate, and graph ownership changes in one atomic swap.
 
 If the successor does not accept before `handoff.expiresAt`, the offer expires and the old owner either renews or releases. A comment saying "you take it" is not a handoff.
 
@@ -410,6 +411,7 @@ A valid review receipt MUST bind:
 The reviewer MUST NOT:
 
 - be the implementation accountable owner,
+- share the implementation owner's team,
 - share the implementation owner's independence group,
 - have authored commits in the reviewed head range,
 - hold an active write lease over reviewed scope.
@@ -427,7 +429,7 @@ Merge policy resolves in this order:
 5. queue policy
 6. work-owner preference
 
-Only an actor with `mergeAuthority` for the target branch may merge. The implementation owner never gains merge authority from a work lease. Merge Steward may execute a merge only after policy is true on freshly fetched forge facts and it holds the merge-lane worker lease.
+Only an actor with an unexpired, signed `mergeAuthority` grant for the target branch may merge. The grant names signer, scope, epoch, approval, expiry, and revocation state. The implementation owner never gains merge authority from a work lease. Merge Steward may execute a merge only after policy is true on freshly fetched forge facts and it holds the merge-lane worker lease.
 
 Governance and workflow documents, including this charter and `.github/FLEET.md`, are manual merge only.
 
@@ -445,7 +447,7 @@ HITL approval is mandatory for:
 - exceptions to evidence, review, or lease policy
 - Forgejo authority cutover or dual-write enablement
 
-Approval records MUST name the exact action, environment, commit, diff/risk digest, allowed actor, expiry, and whether approval is one-shot. An approval for one command, head SHA, or deployment does not authorize a later mutation.
+Approval records MUST name the exact action, environment, commit, diff/risk digest, allowed actor, authorized human deciders, expiry, and whether approval is one-shot. `decidedBy` MUST be one of `allowedHumanIds`. One-shot approval consumption occurs atomically in the same transaction as the protected mutation. An approval for one command, head SHA, or deployment does not authorize a later mutation.
 
 Emergency override requires a human, a reason, an expiry, affected resources, and an incident `workId`. It may reclaim leases but cannot make red required checks green or erase audit records.
 
@@ -457,7 +459,7 @@ Mapping:
 
 | Charter object | GitHub implementation now |
 | --- | --- |
-| work registry | GitHub issue plus Project 12 item; `workId` in issue body/field |
+| work registry | repository-global registry adapter with GitHub issue/Project aliases; Project 12 is only the Launch QA mirror where applicable |
 | lifecycle | Project 12 Status field |
 | accountable owner | `Claimed by` field plus signed issue receipt |
 | claim lease | external lease registry or Merge Steward DB; labels/comments are mirrors |
@@ -471,6 +473,7 @@ Mapping:
 The adapter MUST:
 
 - use GitHub node IDs or repo plus number as aliases, never as cross-forge identity by themselves,
+- preserve original `workId` across duplicates, moved board cards, branch retries, and forge migration,
 - read Project 12 and Discussion state before dispatch,
 - post concise claim/handoff/release mirrors with `workId`, owner, expiry, and claim ID,
 - reconcile mirrors from the lease registry, not infer leases from old comments,
@@ -481,15 +484,17 @@ The adapter MUST:
 
 Forgejo rehearsal is read-only or disposable while GitHub remains authoritative. The current Eliza Hub package is implementation source, not evidence of an operated service.
 
-Merge Steward's permitted boundary:
+Merge Steward's migration boundary:
 
 - before implementation: preflight, conflict graph, reservations, registration facts
 - after PR submission: PR facts, checks, integration train, merge receipt
+- retained Steward state: reservations, landing receipts, branch-protection facts, queue observations, forge mutation receipts
+- deprecated Steward state: macro task scheduling, replayable node attempts, long-running agent work cycles that duplicate Smithers frames
 - never: independently replay or schedule Smithers implementation nodes
 
-Smithers IDs and Eliza task IDs are correlations inside a steward run receipt. Steward run/node tables MUST NOT become a second macro workflow runtime.
+Smithers IDs and Eliza task IDs are correlations inside a Steward landing receipt. Steward run/node tables MUST NOT become a second macro workflow runtime. A Smithers external-write frame and a Steward/forge mutation share one idempotency key, so replay can observe or deduplicate the mutation but cannot perform it twice.
 
-Cutover requires one signed `authorityEpoch` record:
+Cutover requires an append-only, signed `authorityEpochs[]` history and one active `authorityEpoch` record:
 
 ```json
 {
@@ -498,10 +503,12 @@ Cutover requires one signed `authorityEpoch` record:
   "writeAuthority": "forgejo",
   "effectiveAt": "2026-08-01T00:00:00.000Z",
   "githubMode": "read_mirror",
+  "forgejoMode": "write",
   "forgejoBaseUrl": "https://git.example.org",
   "approvedBy": ["human:owner", "human:ops"],
   "rollbackUntil": "2026-08-08T00:00:00.000Z",
-  "evidenceDigest": "sha256:..."
+  "evidenceDigest": "sha256:...",
+  "signatures": [{ "signer": "human:owner", "signature": "sig_..." }]
 }
 ```
 
@@ -516,7 +523,7 @@ Before cutover, prove:
 - one branch to PR to checks to dry-run merge receipt
 - stale head, red check, missing review, missing reservation, replayed webhook, and concurrent merge-lane denial
 
-There is no automatic bidirectional issue/PR synchronization. During migration, reconcile immutable commit SHA and `workId`, alert on divergence, and write only to the authority named by the active epoch.
+There is no automatic bidirectional issue/PR synchronization. During migration, reconcile immutable commit SHA and `workId`, alert on divergence, and write only to the authority named by the active epoch. Delayed writes carrying a stale epoch are denied even if their underlying forge token is still valid.
 
 ## 13. Required service API
 
@@ -594,7 +601,7 @@ An implementation conforms only if it passes equivalent deterministic tests for:
 19. one active forge write authority per epoch
 20. GitHub/Forgejo mirror divergence detection
 
-The checked-in test covers the schema, accountability, graph, claim expiry, fencing, review independence, sensitive gates, authority epochs, and terminal-claim invariants without network or wall-clock dependence.
+The checked-in test executes all 20 requirements independently, validates the canonical fixture with Draft 2020-12 JSON Schema, and includes 14 `GAP:` negative regressions for the R2 review findings. It covers canonical IDs and aliases, signed identity facts, resource-scoped fencing and CAS, handoffs, dependency direction, independent review, HITL consumption, merge authority, Smithers/Steward idempotency, signed authority epochs, stale write denial, and mirror divergence without network or wall-clock dependence.
 
 ## 15. Adoption plan
 
@@ -650,5 +657,3 @@ This proposal chooses:
 It deliberately does not choose a hosted JJ platform. Local `jj` MAY provide source rewind for Smithers forks, while GitHub or Forgejo stores shared Git refs. Rewinding source does not undo external side effects.
 
 [sol-orch]
-
-Co-authored-by: wakesync <shadow@shad0w.xyz>
