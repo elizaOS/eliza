@@ -21,6 +21,12 @@ export function createInvestigation(
 
     description: input.description,
 
+    schemaVersion: "1.0",
+
+    revision: 1,
+
+    origin: input.origin ?? "system",
+
     status: "draft",
 
     priority: input.priority ?? "medium",
@@ -43,6 +49,16 @@ export function createInvestigation(
       },
     ],
 
+    executions: [
+      {
+        runId: generateId("run"),
+        runType: "initial",
+        startedAt: now,
+        completedAt: now,
+        successful: true,
+      },
+    ],
+
     tags: input.tags ?? [],
 
     createdBy: input.createdBy ?? "system",
@@ -50,5 +66,7 @@ export function createInvestigation(
     createdAt: now,
 
     updatedAt: now,
+
+    lastRunAt: now,
   };
 }
