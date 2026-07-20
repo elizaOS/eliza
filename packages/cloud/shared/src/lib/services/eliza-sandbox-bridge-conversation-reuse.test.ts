@@ -231,3 +231,192 @@ describe("bridgeStream conversation reuse", () => {
     expect(creates(calls)).toHaveLength(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// bridgeStream fallback ladder: when the conversation-stream route is
+// unavailable (persistent 404), bridgeStream must degrade through the
+// OpenAI-compat SSE path, then the central-channel path, then the no-reply
+// fallback text. These are the downstream legs of the same entry point whose
+// conversation-reuse behavior this PR changes, so they are exercised here
+// through the real bridgeStream (mocked network) rather than in isolation.
+// ---------------------------------------------------------------------------
+
+type LadderFetchOptions = {
+  // conversation stream POST status (default 404 → forces the ladder)
+  streamStatus?: number;
+  // /v1/chat/completions response (status + json body); default 404 → skip.
+  // `"throw"` makes the fetch reject so bridgeStream's compat leg catches and
+  // proceeds to the central-channel leg (a 404 here returns null and short-
+  // circuits bridgeStream, so a throw is required to reach central-channel).
+  openai?: { status: number; body: unknown } | "throw";
+  // ensureRuntimeAgentStarted result for the central-channel leg
+  runtimeAgent?: { id: string; name?: string } | null;
+  // central-channel POST status (default 404 → route unavailable)
+  centralPostStatus?: number;
+  // messages the central-channel poll GET returns (first attempt)
+  centralPollMessages?: unknown[];
+};
+
+function makeLadderDeps(runtimeAgent: { id: string; name?: string } | null | undefined) {
+  return {
+    getAgentApiEndpoint: async (_rec: unknown, path: string) => `https://bridge.example${path}`,
+    getAgentJsonHeaders: () => ({ "content-type": "application/json" }),
+    listRuntimeAgents: async () => ({ supported: false, agents: [] }),
+    selectRuntimeAgent: () => undefined,
+    isRuntimeAgentReady: () => false,
+    ensureRuntimeAgentStarted: async () => runtimeAgent ?? null,
+  } as never;
+}
+
+function installLadderFetch(options: LadderFetchOptions) {
+  const calls: FetchCall[] = [];
+  const fetchMock = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input.toString();
+    const method = (init?.method ?? "GET").toUpperCase();
+    const body = typeof init?.body === "string" ? init.body : "";
+    calls.push({ url, method, body });
+
+    if (url.endsWith("/api/conversations") && method === "POST") {
+      return conversationCreateResponse("conv-1");
+    }
+    if (url.includes("/messages/stream") && method === "POST") {
+      return new Response("", { status: options.streamStatus ?? 404 });
+    }
+    if (url.endsWith("/v1/chat/completions") && method === "POST") {
+      const o = options.openai ?? { status: 404, body: {} };
+      if (o === "throw") throw new Error("openai-compat unreachable");
+      return new Response(JSON.stringify(o.body), {
+        status: o.status,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.includes("/central-channels/") && method === "POST") {
+      return new Response(JSON.stringify({ data: { id: "msg-1" } }), {
+        status: options.centralPostStatus ?? 404,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.includes("/central-channels/") && method === "GET") {
+      return new Response(JSON.stringify({ messages: options.centralPollMessages ?? [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("", { status: 404 });
+  });
+  globalThis.fetch = fetchMock as never;
+  return { calls };
+}
+
+async function readSse(response: Response | null): Promise<string> {
+  if (!response?.body) return "";
+  return response.text();
+}
+
+describe("bridgeStream fallback ladder (conversation route unavailable)", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("degrades to the OpenAI-compat SSE path and streams its reply", async () => {
+    const svc = new ElizaSandboxBridgeService(makeLadderDeps(null));
+    const { calls } = installLadderFetch({
+      openai: {
+        status: 200,
+        body: { model: "eliza", choices: [{ message: { content: "compat reply" } }] },
+      },
+    });
+
+    const res = await svc.bridgeStream("agent-1", "org-1", streamRpc("room-A"));
+    const sse = await readSse(res);
+
+    expect(res).not.toBeNull();
+    expect(sse).toContain("compat reply");
+    // It really went through /v1/chat/completions after the 404 stream.
+    expect(calls.some((c) => c.url.endsWith("/v1/chat/completions"))).toBe(true);
+  });
+
+  test("OpenAI-compat error status yields an SSE error frame", async () => {
+    const svc = new ElizaSandboxBridgeService(makeLadderDeps(null));
+    installLadderFetch({
+      openai: { status: 500, body: { error: { message: "upstream boom" } } },
+    });
+
+    const res = await svc.bridgeStream("agent-1", "org-1", streamRpc("room-A"));
+    const sse = await readSse(res);
+
+    expect(sse).toContain("event: error");
+    expect(sse).toContain("upstream boom");
+  });
+
+  test("falls through to the central-channel path and returns the polled agent reply", async () => {
+    const svc = new ElizaSandboxBridgeService(
+      makeLadderDeps({ id: "11111111-1111-4111-8111-111111111111", name: "Sol" }),
+    );
+    const { calls } = installLadderFetch({
+      openai: "throw", // compat leg unreachable → reach central-channel
+      centralPostStatus: 200,
+      centralPollMessages: [
+        { id: "m-user", role: "user", text: "hi" },
+        { id: "m-agent", isAgent: true, text: "central reply" },
+      ],
+    });
+
+    const res = await svc.bridgeStream("agent-1", "org-1", streamRpc("room-A"));
+    const sse = await readSse(res);
+
+    expect(sse).toContain("central reply");
+    expect(calls.some((c) => c.url.includes("/central-channels/") && c.method === "POST")).toBe(
+      true,
+    );
+    expect(calls.some((c) => c.url.includes("/central-channels/") && c.method === "GET")).toBe(
+      true,
+    );
+  });
+
+  test("emits the exact-words no-reply fallback when every transport is unavailable", async () => {
+    // openai throws AND the central-channel POST 404s (route unavailable →
+    // BridgeRouteUnavailableError, caught) so bridgeStream reaches the
+    // exact-words no-reply fallback. A runtime agent must exist, else central
+    // returns an error response that short-circuits before the fallback.
+    const svc = new ElizaSandboxBridgeService(
+      makeLadderDeps({ id: "22222222-2222-4222-8222-222222222222", name: "Sol" }),
+    );
+    installLadderFetch({
+      openai: "throw",
+      centralPostStatus: 404,
+    });
+
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: 1,
+      method: "message.send",
+      params: {
+        // buildBridgeNoReplyFallbackText parses this exact-words directive.
+        text: 'Please reply with exact words: "pong"',
+        source: "voice",
+        roomId: "room-A",
+      },
+    };
+    const res = await svc.bridgeStream("agent-1", "org-1", rpc);
+    const sse = await readSse(res);
+
+    expect(sse).toContain("pong");
+  });
+
+  test("returns null when there is no reply and no fallback text", async () => {
+    // openai 404 short-circuits bridgeStream to null (no central-channel leg),
+    // and empty text means there is no fallback string either.
+    const svc = new ElizaSandboxBridgeService(makeLadderDeps(null));
+    installLadderFetch({ openai: { status: 404, body: {} } });
+
+    const rpc = {
+      jsonrpc: "2.0" as const,
+      id: 1,
+      method: "message.send",
+      params: { text: "", source: "voice", roomId: "room-A" }, // empty text → no fallback
+    };
+    const res = await svc.bridgeStream("agent-1", "org-1", rpc);
+    expect(res).toBeNull();
+  });
+});
