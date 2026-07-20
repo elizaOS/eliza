@@ -9,12 +9,23 @@ import { defineConfig } from "vitest/config";
  * anywhere — a vacuous skip on the crypto-payments money path. This config
  * runs it for real against in-process PGlite.
  *
+ * `default-eliza-character.test.ts` is also listed: it imports from "vitest",
+ * so the changed-file coverage lane (run-changed-vitest-coverage.mjs) routes
+ * it through this config whenever a PR touches it. Vitest treats CLI file
+ * arguments as filters against `include`, so a file absent from `include` can
+ * never match — the lane exits "No test files found" (code 1) and hard-fails
+ * the coverage gate for any PR touching that test. It already runs under the
+ * bun lane; double execution is the only cost of listing it here.
+ *
  * Do NOT set `passWithNoTests`: if the include glob ever matches nothing, the
  * lane must red rather than silently pass.
  */
 export default defineConfig({
   test: {
-    include: ["src/lib/services/__tests__/direct-wallet-payments.integration.test.ts"],
+    include: [
+      "src/lib/services/__tests__/direct-wallet-payments.integration.test.ts",
+      "src/lib/utils/default-eliza-character.test.ts",
+    ],
     environment: "node",
     testTimeout: 120_000,
     hookTimeout: 120_000,

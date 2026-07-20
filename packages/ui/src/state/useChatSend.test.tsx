@@ -28,6 +28,7 @@ import {
   NAVIGATE_VIEW_EVENT,
 } from "../events";
 import type { LoadConversationMessagesResult } from "./internal";
+import { listPendingChatTurns } from "./pending-chat-turns";
 import {
   buildSendFailureNotice,
   createConversationForFirstSend,
@@ -222,6 +223,7 @@ describe("useChatSend stop handling", () => {
       reason: "ui-chat-stop",
     });
     mocks.client.stopCodingAgent.mockResolvedValue(undefined);
+    window.localStorage.clear();
   });
 
   it("aborts the backend turn using the latest conversation room id when Stop is clicked", async () => {
@@ -451,6 +453,60 @@ describe("useChatSend stop handling", () => {
     );
     expect(assistantMessages).toHaveLength(1);
     expect(assistantMessages[0].id).toBe("server-asst-1");
+  });
+
+  it("keeps the pending-turn receipt when page teardown aborts an active send", async () => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const view = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = view.result.current.sendChatText("survive reload", {
+        conversationId: "conv-1",
+      });
+      await started.promise;
+    });
+    expect(listPendingChatTurns("conv-1")).toHaveLength(1);
+
+    view.unmount();
+    await act(async () => {
+      await sendPromise;
+    });
+
+    expect(listPendingChatTurns("conv-1")).toMatchObject([
+      { conversationId: "conv-1", text: "survive reload" },
+    ]);
+  });
+
+  it("clears the pending-turn receipt after an explicit Stop", async () => {
+    const started = deferred();
+    mockStreamingUntilAbort(started);
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("stop settles", {
+        conversationId: "conv-1",
+      });
+      await started.promise;
+    });
+    expect(listPendingChatTurns("conv-1")).toHaveLength(1);
+
+    await act(async () => {
+      result.current.handleChatStop();
+      await sendPromise;
+    });
+
+    expect(listPendingChatTurns("conv-1")).toHaveLength(0);
   });
 });
 
@@ -960,6 +1016,76 @@ describe("useChatSend streaming-frame coalescing (text + status + tool)", () => 
       historyReload.resolve({ ok: true });
       await sendPromise;
     });
+  });
+
+  it("does not project a prior conversation's token, status, tool, completion, or reconcile into the active transcript", async () => {
+    let onTokenCb!: (t: string, a?: string) => void;
+    let onStatusCb!: (s: ChatTurnStatus) => void;
+    let onToolCb!: (e: ChatToolCallEvent) => void;
+    let resolveStream!: (v: { text: string; completed: boolean }) => void;
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      (
+        _id: string,
+        _text: string,
+        onToken: (t: string, a?: string) => void,
+        _channelType: string,
+        _signal: AbortSignal,
+        _images: unknown,
+        _metadata: unknown,
+        onStatus: (s: ChatTurnStatus) => void,
+        onTool: (e: ChatToolCallEvent) => void,
+      ) => {
+        onTokenCb = onToken;
+        onStatusCb = onStatus;
+        onToolCb = onTool;
+        return new Promise((resolve) => {
+          resolveStream = resolve;
+        });
+      },
+    );
+    const convBMessages: ConversationMessage[] = [
+      {
+        id: "b-user",
+        role: "user",
+        text: "B stays visible",
+        timestamp: 10,
+      },
+    ];
+    const deps = makeDeps({
+      activeConversationId: "conv-A",
+      conversations: [conversation("conv-A", "room-A")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise!: Promise<void>;
+    await act(async () => {
+      sendPromise = result.current.sendChatText("A send", {
+        conversationId: "conv-A",
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    deps.activeConversationIdRef.current = "conv-B";
+    deps.conversationMessagesRef.current = convBMessages;
+    act(() => {
+      onTokenCb("A leaked token", "A leaked token");
+      onStatusCb({ kind: "running_tool", toolName: "search" });
+      onToolCb({ phase: "call", callId: "call-A", toolName: "search" });
+    });
+    flushRaf();
+
+    await act(async () => {
+      resolveStream({ text: "A final reply", completed: true });
+      await sendPromise;
+    });
+
+    expect(deps.conversationMessagesRef.current).toEqual(convBMessages);
+    expect(deps.setServerTurnStatus).not.toHaveBeenCalledWith({
+      kind: "running_tool",
+      toolName: "search",
+    });
+    expect(deps.loadConversationMessages).not.toHaveBeenCalledWith("conv-A");
   });
 });
 
