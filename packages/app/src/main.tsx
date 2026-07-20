@@ -476,7 +476,7 @@ function applyCloudPairSessionToken(): void {
     }
     if (token) {
       try {
-        window.localStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
+        shellLocalStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
