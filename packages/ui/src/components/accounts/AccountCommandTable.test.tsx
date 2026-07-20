@@ -183,7 +183,9 @@ describe("AccountCommandTable", () => {
     expect(screen.getByText("Leases")).toBeTruthy();
     const row = screen.getByTestId("account-row-a");
     expect(within(row).getByText("3")).toBeTruthy();
-    expect(within(row).getByText("served last")).toBeTruthy();
+    expect(within(row).getByText("served last").className).toContain(
+      "text-accent",
+    );
   });
 
   it("renders the reauth CTA only for accounts needing repair", () => {
@@ -197,7 +199,7 @@ describe("AccountCommandTable", () => {
     const okRow = screen.getByTestId("account-row-ok");
     const reRow = screen.getByTestId("account-row-re");
     expect(within(okRow).queryByText("Reauth")).toBeNull();
-    expect(within(reRow).getByText("Reauth")).toBeTruthy();
+    expect(within(reRow).getByText("Reauth").className).toContain("text-bg");
   });
 
   it("invokes onReauthenticate with the account via the existing repair flow", () => {
