@@ -158,8 +158,12 @@ jobs:
     runs-on: ${{ fromJSON(vars.CLOUD_CF_MIGRATE_RUNNER_JSON || '["ubuntu-latest"]') }}
     # Job-level concurrency groups are repo-wide, so this also serializes
     # against an explicitly dispatched legacy cloud-deploy-backend migration.
+    # The v2 suffix retires the un-versioned group: the same stale 2026-05-15
+    # queued run (25907128646) that wedged the workflow-level v3 group also
+    # pins cloud-db-migrate-staging, so migration jobs sat pending forever
+    # while cancel/force-cancel returned HTTP 500 (see #16705).
     concurrency:
-      group: cloud-db-migrate-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
+      group: cloud-db-migrate-v2-${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
       cancel-in-progress: false
     environment: ${{ ((github.event_name == 'workflow_dispatch' && inputs.environment == 'production') || github.ref == 'refs/heads/main') && 'production' || 'staging' }}
     timeout-minutes: 10
