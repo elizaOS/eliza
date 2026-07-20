@@ -10,7 +10,7 @@
 import { createRequire } from "node:module";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError } from "@elizaos/core";
-import { Octokit } from "@octokit/rest";
+import type { Octokit as OctokitInstance } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   GitHubPatClient as GitHubPatClientInstance,
@@ -27,6 +27,21 @@ import type { ParsedPullRequestLink } from "./pull-request-link.js";
 const { GitHubPatClient, OAuthDeviceFlow } = createRequire(import.meta.url)(
   "git-workspace-service",
 ) as typeof import("git-workspace-service");
+
+// Lazy @octokit/rest loader (see workspace-service.ts for rationale): a static
+// top-level ESM import forces symlink-preserving resolvers to eagerly resolve
+// octokit's transitive graph at module-load and fail. Defer to first use.
+let cachedOctokitCtor: typeof OctokitInstance | undefined;
+function loadOctokit(): typeof OctokitInstance {
+  if (!cachedOctokitCtor) {
+    cachedOctokitCtor = (
+      createRequire(import.meta.url)(
+        "@octokit/rest",
+      ) as typeof import("@octokit/rest")
+    ).Octokit;
+  }
+  return cachedOctokitCtor;
+}
 
 /**
  * Callback for surfacing auth prompts to the user.
@@ -89,6 +104,7 @@ export type GitHubRequest = <T>(
 ) => Promise<GitHubResponse<T>>;
 
 function createGitHubRequest(token: string): GitHubRequest {
+  const Octokit = loadOctokit();
   const octokit = new Octokit({ auth: token });
   return octokit.request.bind(octokit) as GitHubRequest;
 }

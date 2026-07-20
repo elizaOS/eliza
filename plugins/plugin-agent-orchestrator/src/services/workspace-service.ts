@@ -17,7 +17,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { ElizaError, logger } from "@elizaos/core";
-import { Octokit } from "@octokit/rest";
+import type { Octokit as OctokitInstance } from "@octokit/rest";
 import type {
   CreateIssueOptions,
   CredentialService as CredentialServiceInstance,
@@ -42,6 +42,24 @@ const {
 } = createRequire(import.meta.url)(
   "git-workspace-service",
 ) as typeof import("git-workspace-service");
+
+// Load @octokit/rest lazily via createRequire (matching git-workspace-service
+// above) rather than a static ESM import. @octokit/rest's transitive graph
+// (@octokit/core et al) is only reachable through the package store's realpath;
+// a static top-level ESM import forces bundlers/test resolvers that preserve
+// symlinks to resolve those transitives eagerly at module-load and fail. The
+// GitHub provider is an optional integration, so defer the load to first use.
+let cachedOctokitCtor: typeof OctokitInstance | undefined;
+function loadOctokit(): typeof OctokitInstance {
+  if (!cachedOctokitCtor) {
+    cachedOctokitCtor = (
+      createRequire(import.meta.url)(
+        "@octokit/rest",
+      ) as typeof import("@octokit/rest")
+    ).Octokit;
+  }
+  return cachedOctokitCtor;
+}
 
 type CloneOverrideWorkspace = {
   path: string;
@@ -300,6 +318,7 @@ export function createGitHubPatProvider(
   const createRequest =
     options.createRequest ??
     ((token) => {
+      const Octokit = loadOctokit();
       const octokit = new Octokit({ auth: token });
       return octokit.request.bind(octokit) as GitHubRequest;
     });
@@ -1121,6 +1140,7 @@ export class CodingWorkspaceService {
   }
 
   private createGitHubRequest(token: string): GitHubRequest {
+    const Octokit = loadOctokit();
     const octokit = new Octokit({ auth: token });
     return octokit.request.bind(octokit) as GitHubRequest;
   }
