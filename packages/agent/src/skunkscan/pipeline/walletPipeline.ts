@@ -43,9 +43,9 @@ export function runWalletPipeline(
   );
 
   const funding = analyzeWalletFunding(
-    input.chain,
-    input.address,
-    input.firstParsedTransaction as any,
+  input.chain,
+  input.address,
+  input.firstParsedTransaction,
   );
 
   const portfolio = analyzeWalletPortfolio(
@@ -68,7 +68,7 @@ export function runWalletPipeline(
   );
 
   const defi = analyzeWalletDeFi(
-    input.parsedTransactions as any,
+  input.parsedTransactions,
   );
 
   const behavior = analyzeWalletBehavior(
