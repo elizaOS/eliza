@@ -37,13 +37,15 @@ function labelForApiBase(apiBase: string): string {
   }
 }
 
-function readSeededState(): ReturningInstallSeedResult {
+function readSeededState(win: Window): ReturningInstallSeedResult {
+  // `shellLocalStorage` is a write-only privilege channel (no `getItem`); reads
+  // are unguarded, so read the seeded keys back off the global directly.
   return {
     ok: true,
-    firstRunComplete: shellLocalStorage.getItem("eliza:first-run-complete"),
-    setupStep: shellLocalStorage.getItem("eliza:setup:step"),
-    uiShellMode: shellLocalStorage.getItem("eliza:ui-shell-mode"),
-    activeServer: shellLocalStorage.getItem("elizaos:active-server"),
+    firstRunComplete: win.localStorage.getItem("eliza:first-run-complete"),
+    setupStep: win.localStorage.getItem("eliza:setup:step"),
+    uiShellMode: win.localStorage.getItem("eliza:ui-shell-mode"),
+    activeServer: win.localStorage.getItem("elizaos:active-server"),
   };
 }
 
@@ -64,7 +66,7 @@ export function seedReturningInstallStateForPackagedTests(
       apiBase,
     }),
   );
-  return readSeededState();
+  return readSeededState(win);
 }
 
 export function installPackagedShellStorageTestBridge(win = window): boolean {
