@@ -29,3 +29,9 @@ packages/cloud/shared/src/lib/services/sandbox-provider-types.ts
 # is merged into the plugin coverage lane.
 plugins/plugin-agent-orchestrator/src/services/smithers-task-runner.ts
 plugins/plugin-workflow/src/services/smithers-runtime.ts
+
+# Renderer composition entrypoint: the app Vitest coverage policy collects only
+# `src/**/*.ts`, not TSX entrypoints, and importing this file boots the full UI.
+# Product behavior is covered by packaged desktop acceptance; focused helpers
+# still require changed Vitest coverage. Remove if TSX entrypoints enter LCOV.
+packages/app/src/main.tsx
