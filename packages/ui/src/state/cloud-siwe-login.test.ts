@@ -278,4 +278,101 @@ describe("e2e wallet + SIWE login", () => {
     ).rejects.toThrow(/verify failed: 401/);
     expect(window.localStorage.getItem("steward_session_token")).toBeNull();
   });
+
+  it("retries a transient 503 nonce store outage, then completes the handshake", async () => {
+    window.localStorage.setItem(E2E_WALLET_KEY_STORAGE_KEY, PRIVATE_KEY);
+    await installE2eWalletIfRequested();
+    let nonceCalls = 0;
+    const verified: { message?: string } = {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/siwe/nonce")) {
+          nonceCalls += 1;
+          // First two attempts hit a Redis-backed nonce-store outage.
+          if (nonceCalls < 3) {
+            return new Response(
+              JSON.stringify({
+                error: "Nonce storage unavailable",
+                code: "nonce_storage_unavailable",
+              }),
+              { status: 503, headers: { "content-type": "application/json" } },
+            );
+          }
+          return new Response(JSON.stringify(NONCE_RESPONSE), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.endsWith("/api/auth/siwe/verify")) {
+          verified.message = (
+            JSON.parse(String(init?.body)) as { message: string }
+          ).message;
+          return new Response(
+            JSON.stringify({ apiKey: "eliza_test_api_key", address: "0x" }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    const apiKey = await siweLoginWithInjectedWallet("https://api.test");
+    expect(apiKey).toBe("eliza_test_api_key");
+    expect(nonceCalls).toBe(3);
+    expect(verified.message).toContain(`Nonce: ${NONCE_RESPONSE.nonce}`);
+    expect(window.localStorage.getItem("steward_session_token")).toBe(
+      "eliza_test_api_key",
+    );
+  });
+
+  it("does NOT retry a deterministic 4xx nonce rejection", async () => {
+    window.localStorage.setItem(E2E_WALLET_KEY_STORAGE_KEY, PRIVATE_KEY);
+    await installE2eWalletIfRequested();
+    let nonceCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/siwe/nonce")) {
+          nonceCalls += 1;
+          return new Response("bad request", { status: 400 });
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    await expect(
+      siweLoginWithInjectedWallet("https://api.test"),
+    ).rejects.toThrow(/nonce request failed: 400/);
+    expect(nonceCalls).toBe(1);
+    expect(window.localStorage.getItem("steward_session_token")).toBeNull();
+  });
+
+  it("surfaces the failure after exhausting nonce retries on a sustained outage", async () => {
+    window.localStorage.setItem(E2E_WALLET_KEY_STORAGE_KEY, PRIVATE_KEY);
+    await installE2eWalletIfRequested();
+    let nonceCalls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/api/auth/siwe/nonce")) {
+          nonceCalls += 1;
+          return new Response(
+            JSON.stringify({ code: "nonce_storage_unavailable" }),
+            { status: 503, headers: { "content-type": "application/json" } },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      }),
+    );
+
+    await expect(
+      siweLoginWithInjectedWallet("https://api.test"),
+    ).rejects.toThrow(/nonce request failed: 503/);
+    expect(nonceCalls).toBe(3);
+    expect(window.localStorage.getItem("steward_session_token")).toBeNull();
+  });
 });
