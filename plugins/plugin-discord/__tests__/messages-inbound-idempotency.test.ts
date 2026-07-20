@@ -36,7 +36,9 @@ interface RuntimeHarness {
 	handleCalls: () => number;
 }
 
-function makeRuntime(): RuntimeHarness {
+function makeRuntime(options?: {
+	failFirstHandleBeforePersistence?: boolean;
+}): RuntimeHarness {
 	const memories = new Map<string, Memory>();
 	const sends: Sent[] = [];
 	let handleCalls = 0;
@@ -67,6 +69,9 @@ function makeRuntime(): RuntimeHarness {
 				callback: (content: Content) => Promise<unknown>,
 			) => {
 				handleCalls += 1;
+				if (options?.failFirstHandleBeforePersistence && handleCalls === 1) {
+					throw new Error("generation failed before inbound persistence");
+				}
 				if (message.id && !memories.has(message.id)) {
 					await runtime.createMemory(message, "messages");
 				}
@@ -188,19 +193,20 @@ describe("Discord inbound durable idempotency", () => {
 	});
 
 	it("suppresses a duplicate after manager reconstruction when inbound memory was persisted", async () => {
+		const messageId = "666000000000000001";
 		const harness = makeRuntime();
 		const channel = makeDmChannel(harness.sends);
 		const firstService = makeDiscordService({ user: { id: CLIENT_ID } });
 		const firstManager = new MessageManager(firstService, harness.runtime);
 
-		await firstManager.handleMessage(makeInbound(channel));
+		await firstManager.handleMessage(makeInbound(channel, messageId));
 
 		const secondService = makeDiscordService({ user: { id: CLIENT_ID } });
 		const reconstructedManager = new MessageManager(
 			secondService,
 			harness.runtime,
 		);
-		await reconstructedManager.handleMessage(makeInbound(channel));
+		await reconstructedManager.handleMessage(makeInbound(channel, messageId));
 
 		expect(firstService.buildMemoryFromMessage).toHaveBeenCalledTimes(1);
 		expect(secondService.buildMemoryFromMessage).toHaveBeenCalledTimes(1);
@@ -208,14 +214,15 @@ describe("Discord inbound durable idempotency", () => {
 		expect(harness.sends).toHaveLength(1);
 		expect(harness.runtime.logger.debug).toHaveBeenCalledWith(
 			expect.objectContaining({
-				messageId: DISCORD_MESSAGE_ID,
-				memoryId: makeInboundMemory(DISCORD_MESSAGE_ID).id,
+				messageId,
+				memoryId: makeInboundMemory(messageId).id,
 			}),
 			"Skipping already persisted Discord inbound message",
 		);
 	});
 
 	it("allows a reconstructed manager to retry when the first delivery failed before persistence", async () => {
+		const messageId = "666000000000000002";
 		const harness = makeRuntime();
 		const channel = makeDmChannel(harness.sends);
 		const failingService = makeDiscordService(
@@ -226,25 +233,26 @@ describe("Discord inbound durable idempotency", () => {
 		);
 		const firstManager = new MessageManager(failingService, harness.runtime);
 
-		await firstManager.handleMessage(makeInbound(channel));
+		await firstManager.handleMessage(makeInbound(channel, messageId));
 
 		const retryService = makeDiscordService({ user: { id: CLIENT_ID } });
 		const reconstructedManager = new MessageManager(
 			retryService,
 			harness.runtime,
 		);
-		await reconstructedManager.handleMessage(makeInbound(channel));
+		await reconstructedManager.handleMessage(makeInbound(channel, messageId));
 
 		expect(failingService.buildMemoryFromMessage).toHaveBeenCalledTimes(1);
 		expect(retryService.buildMemoryFromMessage).toHaveBeenCalledTimes(1);
 		expect(harness.handleCalls()).toBe(1);
 		expect(harness.sends).toHaveLength(1);
 		expect(
-			harness.memories.has(makeInboundMemory(DISCORD_MESSAGE_ID).id as string),
+			harness.memories.has(makeInboundMemory(messageId).id as string),
 		).toBe(true);
 	});
 
 	it("releases the same-process duplicate guard when processing fails before persistence", async () => {
+		const messageId = "666000000000000003";
 		const harness = makeRuntime();
 		const channel = makeDmChannel(harness.sends);
 		const buildMemoryFromMessage = vi
@@ -259,11 +267,28 @@ describe("Discord inbound durable idempotency", () => {
 		);
 		const manager = new MessageManager(service, harness.runtime);
 
-		await manager.handleMessage(makeInbound(channel));
-		await manager.handleMessage(makeInbound(channel));
+		await manager.handleMessage(makeInbound(channel, messageId));
+		await manager.handleMessage(makeInbound(channel, messageId));
 
 		expect(buildMemoryFromMessage).toHaveBeenCalledTimes(2);
 		expect(harness.handleCalls()).toBe(1);
 		expect(harness.sends).toHaveLength(1);
+	});
+	it("retries in the same manager when generation fails before inbound persistence", async () => {
+		const messageId = "666000000000000004";
+		const harness = makeRuntime({ failFirstHandleBeforePersistence: true });
+		const channel = makeDmChannel(harness.sends);
+		const service = makeDiscordService({ user: { id: CLIENT_ID } });
+		const manager = new MessageManager(service, harness.runtime);
+
+		await manager.handleMessage(makeInbound(channel, messageId));
+		await manager.handleMessage(makeInbound(channel, messageId));
+
+		expect(service.buildMemoryFromMessage).toHaveBeenCalledTimes(2);
+		expect(harness.handleCalls()).toBe(2);
+		expect(harness.sends).toHaveLength(2);
+		expect(
+			harness.memories.has(makeInboundMemory(messageId).id as string),
+		).toBe(true);
 	});
 });

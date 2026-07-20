@@ -796,6 +796,37 @@ export class MessageManager {
 		}
 	}
 
+	private async releaseMessageProcessingIfInboundNotPersisted(
+		messageId: string | undefined,
+		inboundMemoryId: UUID | undefined,
+	): Promise<boolean> {
+		let inboundMemoryCommitted = false;
+		if (inboundMemoryId) {
+			try {
+				inboundMemoryCommitted =
+					!!(await this.runtime.getMemoryById(inboundMemoryId));
+			} catch (persistenceCheckError) {
+				this.runtime.logger.warn(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						messageId,
+						memoryId: inboundMemoryId,
+						error:
+							persistenceCheckError instanceof Error
+								? persistenceCheckError.message
+								: String(persistenceCheckError),
+					},
+					"Could not verify Discord inbound persistence after failure",
+				);
+			}
+		}
+		if (!inboundMemoryCommitted) {
+			this.releaseMessageProcessing(messageId);
+		}
+		return inboundMemoryCommitted;
+	}
+
 	/**
 	 * Handles incoming Discord messages and processes them accordingly.
 	 *
@@ -1835,6 +1866,13 @@ export class MessageManager {
 							: "I hit a provider issue while generating the reply. Please retry.",
 					);
 				}
+				if (!inboundMemoryCommitted) {
+					inboundMemoryCommitted =
+						await this.releaseMessageProcessingIfInboundNotPersisted(
+							message.id,
+							inboundMemoryId,
+						);
+				}
 				return;
 			} finally {
 				if (generationTimeoutHandle) {
@@ -1848,28 +1886,12 @@ export class MessageManager {
 				await finalizePendingDraft();
 			}
 		} catch (error) {
-			if (!inboundMemoryCommitted && inboundMemoryId) {
-				try {
-					inboundMemoryCommitted =
-						!!(await this.runtime.getMemoryById(inboundMemoryId));
-				} catch (persistenceCheckError) {
-					this.runtime.logger.warn(
-						{
-							src: "plugin:discord",
-							agentId: this.runtime.agentId,
-							messageId: message.id,
-							memoryId: inboundMemoryId,
-							error:
-								persistenceCheckError instanceof Error
-									? persistenceCheckError.message
-									: String(persistenceCheckError),
-						},
-						"Could not verify Discord inbound persistence after failure",
-					);
-				}
-			}
 			if (!inboundMemoryCommitted) {
-				this.releaseMessageProcessing(message.id);
+				inboundMemoryCommitted =
+					await this.releaseMessageProcessingIfInboundNotPersisted(
+						message.id,
+						inboundMemoryId,
+					);
 			}
 			this.runtime.logger.error(
 				{
