@@ -8624,6 +8624,7 @@ export async function main(argv = process.argv.slice(2)) {
   const target = argv[0];
   if (
     target !== "android" &&
+    target !== "android-cloud-hybrid" &&
     target !== "android-sms-gateway" &&
     target !== "android-cloud" &&
     target !== "android-cloud-audit" &&
@@ -8640,6 +8641,8 @@ export async function main(argv = process.argv.slice(2)) {
   }
   if (target === "android") {
     await buildAndroid();
+  } else if (target === "android-cloud-hybrid") {
+    await runAndroidBuild("android-cloud-hybrid");
   } else if (target === "android-sms-gateway") {
     await buildAndroidSmsGateway();
   } else if (target === "android-cloud") {
