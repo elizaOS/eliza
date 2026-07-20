@@ -101,6 +101,24 @@
         "default": "text-embedding-3-small",
         "sensitive": false
       },
+      "EMBEDDING_FALLBACK_BASE_URL": {
+        "type": "string",
+        "description": "Optional fallback OpenAI-compatible /embeddings base URL. Used once when the primary endpoint fails with a network, HTTP, or response-shape error. Does not activate the plugin by itself.",
+        "required": false,
+        "sensitive": false
+      },
+      "EMBEDDING_FALLBACK_API_KEY": {
+        "type": "string",
+        "description": "Bearer token for the fallback embedding endpoint. Omit for fallback servers that need no auth.",
+        "required": false,
+        "sensitive": true
+      },
+      "EMBEDDING_FALLBACK_MODEL": {
+        "type": "string",
+        "description": "Fallback embedding model identifier. Defaults to EMBEDDING_MODEL when unset. The fallback result must still match EMBEDDING_DIMENSIONS.",
+        "required": false,
+        "sensitive": false
+      },
       "EMBEDDING_DIMENSIONS": {
         "type": "string",
         "description": "Vector width. Must be one of 384, 512, 768, 1024, 1536, 2048, 3072. Keep this stable for the lifetime of a database — changing it invalidates stored vectors.",
