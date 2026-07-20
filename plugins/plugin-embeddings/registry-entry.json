@@ -34,6 +34,32 @@
       "placeholder": "e.g., text-embedding-3-small",
       "advanced": false
     },
+    "EMBEDDING_FALLBACK_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Fallback Base Url",
+      "help": "Optional fallback OpenAI-compatible /embeddings base URL. Used once when the primary endpoint fails with a network, HTTP, or response-shape error. Does not activate the plugin by itself.",
+      "placeholder": "e.g., https://api.openai.com/v1",
+      "advanced": true
+    },
+    "EMBEDDING_FALLBACK_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Embedding Fallback Api Key",
+      "help": "Bearer token for the fallback embedding endpoint. Omit for fallback servers that need no auth.",
+      "advanced": true
+    },
+    "EMBEDDING_FALLBACK_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Fallback Model",
+      "help": "Fallback embedding model identifier. Defaults to EMBEDDING_MODEL when unset. The fallback result must still match EMBEDDING_DIMENSIONS.",
+      "placeholder": "e.g., text-embedding-3-small",
+      "advanced": true
+    },
     "EMBEDDING_DIMENSIONS": {
       "type": "number",
       "required": false,
