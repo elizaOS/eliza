@@ -3,6 +3,14 @@ name: Build Android
 on:
   workflow_dispatch:
     inputs:
+      build_target:
+        description: "Android renderer/runtime lane"
+        required: true
+        type: choice
+        default: android
+        options:
+          - android
+          - android-cloud-hybrid
       upload_to_release:
         description: "Upload APK/AAB to latest GitHub release"
         required: false
@@ -150,7 +158,17 @@ jobs:
 
       - name: Prepare Android platform
         working-directory: ${{ env.APP_DIR }}
-        run: bun run build:android
+        env:
+          ANDROID_BUILD_TARGET: ${{ inputs.build_target || 'android' }}
+        run: |
+          case "$ANDROID_BUILD_TARGET" in
+            android) bun run build:android ;;
+            android-cloud-hybrid) bun run build:android:cloud-hybrid ;;
+            *)
+              echo "::error::unsupported Android build target: $ANDROID_BUILD_TARGET" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Run Android developer-install preflight
         working-directory: ${{ env.APP_DIR }}
@@ -228,12 +246,39 @@ jobs:
             | xargs -0 sha256sum > "${{ env.ANDROID_DIR }}/app/build/outputs/SHA256SUMS.txt"
           cat "${{ env.ANDROID_DIR }}/app/build/outputs/SHA256SUMS.txt"
 
-      - name: Upload debug APK artifact
-        if: github.event_name == 'workflow_dispatch'
+      - name: Prepare cloud-hybrid APK artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.build_target == 'android-cloud-hybrid'
+        env:
+          SOURCE_APK: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          ARTIFACT_BASENAME: eliza-android-cloud-hybrid-${{ github.sha }}
+        run: |
+          set -euo pipefail
+          install -m 0644 "$SOURCE_APK" "$RUNNER_TEMP/$ARTIFACT_BASENAME.apk"
+          {
+            echo "repository=${{ github.repository }}"
+            echo "commit=${{ github.sha }}"
+            echo "build_target=android-cloud-hybrid"
+            echo "build_command=bun run build:android:cloud-hybrid"
+            echo "java_version=21"
+          } > "$RUNNER_TEMP/$ARTIFACT_BASENAME.provenance.txt"
+
+      - name: Upload standard debug APK artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.build_target == 'android'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: eliza-android-debug
           path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload cloud-hybrid debug APK artifact
+        if: github.event_name == 'workflow_dispatch' && inputs.build_target == 'android-cloud-hybrid'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: eliza-android-cloud-hybrid-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/eliza-android-cloud-hybrid-${{ github.sha }}.apk
+            ${{ runner.temp }}/eliza-android-cloud-hybrid-${{ github.sha }}.provenance.txt
           if-no-files-found: error
           retention-days: 7
 

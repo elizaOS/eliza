@@ -119,6 +119,28 @@ describe("Android native build authority", () => {
     );
   });
 
+  test("dispatches the explicit cloud-hybrid target without changing the standard lane", () => {
+    expect(consumer).toMatch(
+      /build_target:\n[\s\S]*?default: android\n[\s\S]*?options:\n\s+- android\n\s+- android-cloud-hybrid/,
+    );
+    expect(consumer).toContain("android) bun run build:android ;;");
+    expect(consumer).toContain(
+      "android-cloud-hybrid) bun run build:android:cloud-hybrid ;;",
+    );
+    expect(consumer).toContain(
+      "if: github.event_name == 'workflow_dispatch' && inputs.build_target == 'android'",
+    );
+    expect(consumer).toContain("name: eliza-android-debug");
+    expect(consumer).toContain(
+      "name: eliza-android-cloud-hybrid-${{ github.sha }}",
+    );
+    expect(consumer).toContain(
+      "eliza-android-cloud-hybrid-${{ github.sha }}.apk",
+    );
+    expect(consumer).toContain("build_command=bun run build:android:cloud-hybrid");
+    expect(consumer).toContain("java_version=21");
+  });
+
   test("removes uncalled scaffolds without replacing mobile or Apple authorities", () => {
     const retired = [
       ...["ios", "linux", "macos"].map(
