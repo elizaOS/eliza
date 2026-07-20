@@ -1,0 +1,269 @@
+import { analyzeWalletActivity } from "../analyzers/activity";
+import { analyzeWalletAge } from "../analyzers/walletAge";
+import { analyzeWalletAssessment } from "../analyzers/assessment";
+import { analyzeWalletBehavior } from "../analyzers/behavior";
+import { analyzeWalletCaseSummary } from "../analyzers/caseSummary";
+import { analyzeWalletCompliance } from "../analyzers/compliance";
+import { analyzeWalletCustodyProfile } from "../analyzers/custody";
+import { analyzeWalletDecision } from "../analyzers/decision";
+import { analyzeWalletDeFi } from "../analyzers/defi";
+import { analyzeWalletDisplayScores } from "../analyzers/display";
+import { analyzeWalletEvidence } from "../analyzers/evidence";
+import { analyzeWalletEvidenceRecords } from "../analyzers/evidenceRecords";
+import { analyzeExecutiveVerdict } from "../analyzers/executiveVerdict";
+import { analyzeWalletExposure } from "../analyzers/exposure";
+import { analyzeWalletFunding } from "../analyzers/funding";
+import { analyzeWalletIntelligenceBrief } from "../analyzers/intelligenceBrief";
+import { analyzeInvestigationNarrative } from "../analyzers/investigationNarrative";
+import { analyzeInvestigationReplay } from "../analyzers/investigationReplay";
+import { analyzeInvestigationReport } from "../analyzers/investigationReport";
+import { analyzeWalletPortfolio } from "../analyzers/portfolio";
+import { analyzeWalletRelationships } from "../analyzers/relationships";
+import { analyzeWalletRisk } from "../analyzers/risk";
+import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
+import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
+import { analyzeWalletTrust } from "../analyzers/trust";
+import { analyzeWalletWhaleStatus } from "../analyzers/whale";
+import { getWalletIntelligenceSources } from "../sources/registry";
+import {
+  WalletPipelineInput,
+  WalletPipelineOutput,
+} from "./types";
+
+export function runWalletPipeline(
+  input: WalletPipelineInput,
+): WalletPipelineOutput {
+  const activity = analyzeWalletActivity(
+    input.recentTransactions,
+  );
+
+  const age = analyzeWalletAge(
+    input.oldestTransactionId,
+    input.oldestTransactionTimestamp,
+  );
+
+  const funding = analyzeWalletFunding(
+    input.chain,
+    input.address,
+    input.firstParsedTransaction as any,
+  );
+
+  const portfolio = analyzeWalletPortfolio(
+    input.balance,
+    input.tokenHoldings,
+    input.tokenPrices,
+  );
+
+  const risk = analyzeWalletRisk(
+    input.balance.nativeAmount,
+    activity,
+  );
+
+  const whale = analyzeWalletWhaleStatus(
+    portfolio,
+    age,
+    activity,
+    funding,
+    risk,
+  );
+
+  const defi = analyzeWalletDeFi(
+    input.parsedTransactions as any,
+  );
+
+  const behavior = analyzeWalletBehavior(
+    activity,
+    age,
+    defi,
+    whale,
+    risk,
+  );
+
+  const exposure = analyzeWalletExposure(
+    input.address,
+    funding,
+  );
+
+  const relationships = analyzeWalletRelationships(
+    funding,
+  );
+
+  const custodyProfile = analyzeWalletCustodyProfile(
+    activity,
+    funding,
+    relationships,
+  );
+
+  const complianceScreening = analyzeWalletCompliance(
+    exposure,
+  );
+
+  const intelligenceSources =
+    getWalletIntelligenceSources();
+
+  const trust = analyzeWalletTrust(
+    age,
+    activity,
+    funding,
+    exposure,
+    risk,
+  );
+
+  const display = analyzeWalletDisplayScores(
+    risk,
+    trust,
+    exposure,
+    whale,
+  );
+
+  const caseSummary = analyzeWalletCaseSummary(
+    age,
+    risk,
+    whale,
+    defi,
+    behavior,
+  );
+
+  const transactionRisk = analyzeWalletTransactionRisk(
+    risk,
+    trust,
+    exposure,
+    complianceScreening,
+    caseSummary,
+  );
+
+  const {
+    recommendation: _legacyTransactionRiskRecommendation,
+    ...transactionRiskAssessment
+  } = transactionRisk;
+
+  void _legacyTransactionRiskRecommendation;
+
+  const smartMoney = analyzeWalletSmartMoney(
+    age,
+    activity,
+    defi,
+    portfolio,
+    whale,
+    trust,
+  );
+
+  const investigationReplay =
+    analyzeInvestigationReplay(
+      portfolio,
+      activity,
+      age,
+      funding,
+      defi,
+      exposure,
+      relationships,
+      risk,
+      whale,
+      trust,
+    );
+
+  const evidenceRecords =
+    analyzeWalletEvidenceRecords(
+      input.address,
+      activity,
+      age,
+      funding,
+      portfolio,
+      defi,
+      exposure,
+      relationships,
+      complianceScreening,
+      custodyProfile,
+      risk,
+      whale,
+      smartMoney,
+      transactionRisk,
+    );
+
+  const decision = analyzeWalletDecision(
+    evidenceRecords,
+    risk,
+    trust,
+    exposure,
+    transactionRisk,
+  );
+
+  const assessment = analyzeWalletAssessment(
+    risk,
+    trust,
+    exposure,
+    transactionRisk,
+    evidenceRecords,
+  );
+
+  const intelligenceBrief =
+    analyzeWalletIntelligenceBrief(
+      assessment,
+      evidenceRecords,
+    );
+
+  const evidence = analyzeWalletEvidence(
+    evidenceRecords,
+  );
+
+  const executiveVerdict = analyzeExecutiveVerdict(
+    display,
+    behavior,
+    caseSummary,
+    evidence,
+    exposure,
+    risk,
+    trust,
+    decision,
+  );
+
+  const investigationReport =
+    analyzeInvestigationReport(
+      input.chain,
+      input.address,
+      executiveVerdict,
+      caseSummary,
+      decision,
+      evidenceRecords,
+    );
+
+  const investigationNarrative =
+    analyzeInvestigationNarrative(
+      executiveVerdict,
+      caseSummary,
+      trust,
+      decision,
+      evidenceRecords,
+    );
+
+  return {
+    activity,
+    age,
+    funding,
+    portfolio,
+    risk,
+    whale,
+    defi,
+    behavior,
+    exposure,
+    relationships,
+    custodyProfile,
+    complianceScreening,
+    intelligenceSources,
+    trust,
+    display,
+    caseSummary,
+    transactionRisk,
+    transactionRiskAssessment,
+    smartMoney,
+    investigationReplay,
+    evidenceRecords,
+    decision,
+    assessment,
+    intelligenceBrief,
+    evidence,
+    executiveVerdict,
+    investigationReport,
+    investigationNarrative,
+  };
+}
