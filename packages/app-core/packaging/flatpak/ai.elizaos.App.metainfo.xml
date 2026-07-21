@@ -64,7 +64,7 @@
   </screenshots>
 
   <releases>
-    <release version="2.0.0-beta.0" date="2026-05-05">
+    <release version="2.0.4" date="2026-07-20">
       <description>
         <p>Beta Flatpak release of elizaOS App.</p>
       </description>

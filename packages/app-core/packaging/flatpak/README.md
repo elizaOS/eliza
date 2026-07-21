@@ -13,8 +13,16 @@ manifest on review. Power users who want host-Ollama, docker reach, and
 EXECUTE_CODE want the direct manifest (or, equivalently, the AppImage /
 .deb / .rpm builds).
 
-The build is selected by the `ELIZA_BUILD_VARIANT` env var at build time —
-see `bun run build:flatpak` (`packages/app-core/scripts/build-flatpak.mjs`).
+The build driver compiles `packages/shared` and `packages/agent` from the
+current checkout, materializes the agent's complete runtime dependency closure,
+and verifies the staged CLI before invoking `flatpak-builder`. It patches the
+staged agent package metadata to the root release version, so `--version`
+identifies the source revision being packaged instead of an older published npm
+release. Neither manifest runs npm or accesses the network from a build command.
+
+Select the build with `ELIZA_BUILD_VARIANT` or the package scripts in
+`packages/app-core/package.json`. The generated runtime, Flatpak repository,
+and bundle live under the ignored root `dist-flatpak/` directory.
 
 ## Sandbox philosophy (store variant)
 
@@ -87,18 +95,24 @@ corresponding portal — do NOT add a raw `--device=` or `--socket=` rule.
 sudo apt install flatpak flatpak-builder        # Debian / Ubuntu
 sudo dnf install flatpak flatpak-builder        # Fedora
 
+# Use the repository-pinned Node 24.15.0 and Bun 1.3.14 toolchain. The build
+# driver rejects a different Node version before staging release content.
+
 # Install the runtime + SDK once.
 flatpak install --user flathub org.freedesktop.Platform//24.08
 flatpak install --user flathub org.freedesktop.Sdk//24.08
 
-# Build the store variant.
-ELIZA_BUILD_VARIANT=store bun run build:flatpak
+# From the repository root, install the frozen workspace and build either
+# current-source variant.
+bun install --frozen-lockfile --ignore-scripts
+bun run --cwd packages/app-core build:flatpak:store
+bun run --cwd packages/app-core build:flatpak:direct
 
-# Or call flatpak-builder directly.
-cd packages/app-core/packaging/flatpak
-flatpak-builder --user --install --force-clean build-dir ai.elizaos.App.store.yml
+# Stage and validate the current-source runtime without requiring Flatpak.
+bun run --cwd packages/app-core build:flatpak -- --stage-only
 
 # Run.
+flatpak --user install --reinstall dist-flatpak/elizaos-app.flatpak
 flatpak run ai.elizaos.App --version
 flatpak run ai.elizaos.App start
 
@@ -113,20 +127,23 @@ flatpak info --show-permissions ai.elizaos.App
 
 When you're ready to submit the store variant to Flathub:
 
-1. **Vendor the npm tree as offline sources.** Flathub's build
-   infrastructure does not allow network access during `build`. The
-   `test-flatpak.yml` CI workflow regenerates `node-sources.json` on
-   every run via `./generate-sources.sh` and uploads it as the
-   `flatpak-node-sources` artifact. To refresh the committed copy
-   locally (Linux only):
+1. **Publish the generated runtime closure as an immutable source archive.**
+   `ai.elizaos.App.store.yml` intentionally consumes the local
+   `dist-flatpak/runtime` directory for repository CI and side-loaded builds.
+   Flathub cannot see that generated directory. From a clean, signed release
+   checkout, stage the native-architecture closure, archive it without changing
+   paths, publish it at an immutable URL, and replace the local `type: dir`
+   source in the Flathub repository with a `type: archive` source carrying its
+   SHA-256:
    ```bash
-   ./generate-sources.sh        # writes node-sources.json next to this README
+   bun install --frozen-lockfile --ignore-scripts
+   bun run --cwd packages/app-core build:flatpak -- --stage-only
+   tar -C dist-flatpak/runtime -cJf elizaos-flatpak-runtime.tar.xz .
+   sha256sum elizaos-flatpak-runtime.tar.xz
    ```
-   Or download the CI artifact from the most recent successful
-   `Test Flatpak Build` workflow run on `develop` and drop it next to
-   this README. Once `node-sources.json` is committed, the manifest can
-   build offline (`npm install -g --offline`) and the
-   `build-options.build-args: --share=network` shim is no longer needed.
+   Publish one archive per supported architecture. The pinned Node archives are
+   already remote, checksummed Flatpak sources; all build commands remain
+   offline.
 2. **Replace screenshot URLs** in `ai.elizaos.App.metainfo.xml`. Three
    placeholder `<screenshot>` entries currently point at
    `https://app.elizacloud.ai/screenshots/{dashboard,onboarding,plugins}.png`

@@ -184,7 +184,7 @@ check "rules is executable" test -x "$SCRIPT_DIR/debian/rules"
 check "postinst is executable" test -x "$SCRIPT_DIR/debian/postinst"
 check "Control has Package field" grep -q "^Package: elizaos-app" "$SCRIPT_DIR/debian/control"
 check "Control has Depends" grep -q "Depends:" "$SCRIPT_DIR/debian/control"
-check "Control includes native shared-library dependencies" grep -q '\${shlibs:Depends}' "$SCRIPT_DIR/debian/control"
+check "Control includes native shared-library dependencies" grep -Fq "\${shlibs:Depends}" "$SCRIPT_DIR/debian/control"
 check "Changelog has version" grep -q "elizaos-app (" "$SCRIPT_DIR/debian/changelog"
 check "Compat level 13" grep -q "debhelper-compat (= 13)" "$SCRIPT_DIR/debian/control"
 check "Source format 3.0 quilt" grep -q "3.0 (quilt)" "$SCRIPT_DIR/debian/source/format"
@@ -240,6 +240,7 @@ check_file "Desktop entry" "$SCRIPT_DIR/flatpak/ai.elizaos.App.desktop"
 check_file "Metainfo XML" "$SCRIPT_DIR/flatpak/ai.elizaos.App.metainfo.xml"
 check_file "Direct wrapper" "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.sh"
 check_file "Store wrapper" "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.store.sh"
+check_file "Current-source build driver" "$REPO_ROOT/packages/app-core/scripts/build-flatpak.mjs"
 
 # Validate YAML
 if python_has_module yaml; then
@@ -261,6 +262,18 @@ check "Has app-id" grep -q "^app-id: ai.elizaos.App" "$SCRIPT_DIR/flatpak/ai.eli
 check "Has runtime" grep -q "runtime: org.freedesktop" "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
 check "Desktop entry has Exec" grep -q "^Exec=" "$SCRIPT_DIR/flatpak/ai.elizaos.App.desktop"
 check "Metainfo has app-id" grep -q "ai.elizaos.App" "$SCRIPT_DIR/flatpak/ai.elizaos.App.metainfo.xml"
+check "Direct manifest bundles pinned Node runtime" grep -q 'node-v24.15.0-linux' "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
+check "Store manifest bundles pinned Node runtime" grep -q 'node-v24.15.0-linux' "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check "Direct manifest consumes current-source runtime" grep -q 'path: ../../../../dist-flatpak/runtime' "$SCRIPT_DIR/flatpak/ai.elizaos.App.yml"
+check "Store manifest consumes current-source runtime" grep -q 'path: ../../../../dist-flatpak/runtime' "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check "Flatpak manifests do not install a published npm package" bash -c "! grep -q 'npm install.*elizaos' '$SCRIPT_DIR/flatpak/'*.yml"
+check "Flatpak build commands do not request network" bash -c "! grep -q 'build-args:' '$SCRIPT_DIR/flatpak/'*.yml"
+check "Direct wrapper starts built agent" grep -q '/packages/agent/dist/bin.js' "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.sh"
+check "Store wrapper starts built agent" grep -q '/packages/agent/dist/bin.js' "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.store.sh"
+check "Flatpak driver materializes runtime closure" grep -q 'copy-runtime-node-modules.ts' "$REPO_ROOT/packages/app-core/scripts/build-flatpak.mjs"
+check "Flatpak driver supports stage-only validation" grep -q -- '--stage-only' "$REPO_ROOT/packages/app-core/scripts/build-flatpak.mjs"
+check "Obsolete npm source generator removed" test ! -e "$SCRIPT_DIR/flatpak/generate-sources.sh"
+check "Obsolete npm source manifest removed" test ! -e "$SCRIPT_DIR/flatpak/node-sources.json"
 
 # Store manifest sandbox lockdown — these grants would defeat the
 # Flathub posture, so the manifest must NOT contain them.

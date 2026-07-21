@@ -2,9 +2,16 @@ name: Test Flatpak Build
 
 on:
   pull_request:
-    branches: [main]
+    branches: [develop]
     paths:
       - 'packages/app-core/packaging/flatpak/**'
+      - 'packages/app-core/scripts/build-flatpak.mjs'
+      - 'packages/app-core/scripts/copy-runtime-node-modules.ts'
+      - 'packages/app-core/scripts/copy-runtime-node-modules.coverage.test.ts'
+      - 'packages/agent/**'
+      - 'packages/shared/**'
+      - 'package.json'
+      - 'bun.lock'
       - '.github/workflows/test-flatpak.yml'
   workflow_dispatch:
 
@@ -20,17 +27,31 @@ jobs:
   build:
     name: Build & Validate Flatpak
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
       - name: Install Flatpak tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder appstream-util
+          sudo apt-get install -y appstream-util desktop-file-utils file flatpak flatpak-builder
           flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install -y --user flathub org.freedesktop.Platform//24.08
           flatpak install -y --user flathub org.freedesktop.Sdk//24.08
+
+      - name: Install frozen workspace
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Validate AppStream metadata
         working-directory: packages/app-core/packaging/flatpak
@@ -39,52 +60,40 @@ jobs:
       - name: Validate desktop entry
         run: desktop-file-validate packages/app-core/packaging/flatpak/ai.elizaos.App.desktop
 
-      # Offline-mode prep: generate node-sources.json on every PR so we
-      # catch regressions in the generator pipeline before they show up
-      # in a Flathub submission. Non-fatal for now — the manifest still
-      # uses `npm install -g` over the build-time network share.
-      - name: Install flatpak-node-generator
-        id: install-fng
-        continue-on-error: true
-        run: pipx install flatpak-node-generator || pip install --user flatpak-node-generator
-
-      - name: Generate offline node sources
-        if: steps.install-fng.outcome == 'success'
-        id: gen-sources
-        continue-on-error: true
-        working-directory: packages/app-core/packaging/flatpak
-        run: |
-          chmod +x generate-sources.sh
-          ./generate-sources.sh
-          test -s node-sources.json
-
-      - name: Upload node-sources.json
-        if: steps.gen-sources.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: flatpak-node-sources
-          path: packages/app-core/packaging/flatpak/node-sources.json
-          retention-days: 30
-
       - name: Build Flatpak
-        working-directory: packages/app-core/packaging/flatpak
-        run: |
-          flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
-
-      - name: Create bundle
-        working-directory: packages/app-core/packaging/flatpak
-        run: flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+        run: bun run --cwd packages/app-core build:flatpak:direct
 
       - name: Install and test
-        working-directory: packages/app-core/packaging/flatpak
         run: |
-          flatpak --user install -y elizaos-app.flatpak
-          flatpak run ai.elizaos.App --version || echo "Version check completed"
-          flatpak run ai.elizaos.App --help || echo "Help check completed"
+          set -euo pipefail
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")"
+          export EXPECTED_VERSION
+          flatpak --user install --reinstall -y dist-flatpak/elizaos-app.flatpak
+          test "$(flatpak run ai.elizaos.App --version)" = "$EXPECTED_VERSION"
+          test "$(flatpak run --command=node ai.elizaos.App --version)" = "v24.15.0"
+          flatpak run ai.elizaos.App --help | tee /tmp/elizaos-flatpak-help.txt
+          grep -q 'Usage:' /tmp/elizaos-flatpak-help.txt
+          grep -q 'Commands:' /tmp/elizaos-flatpak-help.txt
+          flatpak run --command=cat ai.elizaos.App \
+            /app/lib/elizaos-app/flatpak-runtime.json > /tmp/flatpak-runtime.json
+          node -e '
+            const fs = require("node:fs");
+            const metadata = JSON.parse(fs.readFileSync("/tmp/flatpak-runtime.json", "utf8"));
+            if (metadata.version !== process.env.EXPECTED_VERSION) throw new Error("wrong staged version");
+            if (metadata.runtimeNode !== "v24.15.0") throw new Error("wrong staged Node runtime");
+            if (metadata.sourceDirty) throw new Error("release runtime came from a dirty checkout");
+            if (metadata.sourceRevision !== process.env.GITHUB_SHA) throw new Error("wrong source revision");
+          '
+
+      - name: Checksum bundle
+        run: sha256sum dist-flatpak/elizaos-app.flatpak > dist-flatpak/elizaos-app.flatpak.sha256
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: flatpak-test-bundle
-          path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
+          path: |
+            dist-flatpak/elizaos-app.flatpak
+            dist-flatpak/elizaos-app.flatpak.sha256
+            dist-flatpak/runtime/flatpak-runtime.json
           retention-days: 7

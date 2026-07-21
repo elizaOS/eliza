@@ -374,47 +374,45 @@ sudo dnf install flatpak flatpak-builder
 2. **Install the SDK**:
 
 ```bash
-flatpak install flathub org.freedesktop.Platform//23.08
-flatpak install flathub org.freedesktop.Sdk//23.08
+flatpak install flathub org.freedesktop.Platform//24.08
+flatpak install flathub org.freedesktop.Sdk//24.08
 ```
 
 3. **Create a Flathub account** (for Flathub distribution):
    - Submit at https://github.com/flathub/flathub/issues/new
    - Or self-host a Flatpak repo
 
-### 5.2 Update SHA256 Hashes
+### 5.2 Verify Runtime Pins
 
-Before building, you need the actual SHA256 hashes for the Node.js binaries:
+The manifests pin Node.js 24.15.0 for both supported architectures. Verify the
+committed hashes against Node's signed release checksum list when updating the
+runtime:
 
 ```bash
 # x86_64
-curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-x64.tar.xz" -o node-x64.tar.xz
+curl -fsSL "https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-x64.tar.xz" -o node-x64.tar.xz
 shasum -a 256 node-x64.tar.xz
-# Replace PLACEHOLDER_SHA256_X64 in the manifest
 
 # ARM64
-curl -fsSL "https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-arm64.tar.xz" -o node-arm64.tar.xz
+curl -fsSL "https://nodejs.org/dist/v24.15.0/node-v24.15.0-linux-arm64.tar.xz" -o node-arm64.tar.xz
 shasum -a 256 node-arm64.tar.xz
-# Replace PLACEHOLDER_SHA256_ARM64 in the manifest
 ```
 
 ### 5.3 Build the Flatpak
 
 ```bash
-cd packaging/flatpak
-
-# Build
-flatpak-builder --repo=repo build-dir ai.elizaos.App.yml
-
-# Create a bundle for testing
-flatpak build-bundle repo eliza.flatpak ai.elizaos.App
+# From the repository root, stage the current source and build the direct
+# release bundle. The store command uses the locked-down Flathub posture.
+bun install --frozen-lockfile --ignore-scripts
+bun run --cwd packages/app-core build:flatpak:direct
+bun run --cwd packages/app-core build:flatpak:store
 ```
 
 ### 5.4 Test Locally
 
 ```bash
 # Install from local bundle
-flatpak --user install eliza.flatpak
+flatpak --user install --reinstall dist-flatpak/elizaos-app.flatpak
 
 # Run
 flatpak run ai.elizaos.App --version

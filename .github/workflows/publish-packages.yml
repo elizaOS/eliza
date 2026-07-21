@@ -390,70 +390,84 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     permissions:
       contents: write  # gh release upload
+      id-token: write
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: recursive
 
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: "1.3.14"
+
       - name: Install Flatpak tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y flatpak flatpak-builder
+          sudo apt-get install -y file flatpak flatpak-builder
           flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install -y --user flathub org.freedesktop.Platform//24.08
           flatpak install -y --user flathub org.freedesktop.Sdk//24.08
 
-      - name: Wait for npm package version
-        run: |
-          set -euo pipefail
-          VERSION="${{ needs.prepare.outputs.npm_version }}"
-          for attempt in $(seq 1 30); do
-            if curl -fsS "https://registry.npmjs.org/elizaos/${VERSION}" >/dev/null; then
-              echo "Found elizaos@${VERSION} on npm"
-              exit 0
-            fi
-            echo "elizaos@${VERSION} is not visible on npm yet (attempt ${attempt}/30); waiting..."
-            sleep 20
-          done
-          echo "::error::elizaos@${VERSION} was not visible on npm before Flatpak build"
-          exit 1
+      - name: Install frozen workspace
+        run: bun install --frozen-lockfile --ignore-scripts
 
-      - name: Prepare Flatpak release manifest
+      - name: Validate Flatpak release metadata
         run: |
           set -euo pipefail
-          VERSION="${{ needs.prepare.outputs.npm_version }}"
-          TODAY="$(date -u +%F)"
-          MANIFEST="packages/app-core/packaging/flatpak/ai.elizaos.App.yml"
+          VERSION="${{ needs.prepare.outputs.version }}"
           METAINFO="packages/app-core/packaging/flatpak/ai.elizaos.App.metainfo.xml"
-
-          sed -i -E \
-            "s#npm install -g elizaos(@[^[:space:]]+)? --prefix=/app --ignore-scripts#npm install -g elizaos@${VERSION} --prefix=/app --ignore-scripts#" \
-            "$MANIFEST"
-          sed -i -E \
-            "s#<release version=\"[^\"]+\" date=\"[^\"]+\">#<release version=\"${VERSION}\" date=\"${TODAY}\">#" \
-            "$METAINFO"
-
-          grep -n "npm install -g elizaos" "$MANIFEST"
-          grep -n "<release version" "$METAINFO" | head -1
+          test "$(node -p "require('./package.json').version")" = "$VERSION"
+          grep -F "<release version=\"${VERSION}\"" "$METAINFO"
 
       - name: Build Flatpak
-        working-directory: packages/app-core/packaging/flatpak
-        run: |
-          flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
-          flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+        run: bun run --cwd packages/app-core build:flatpak:direct
 
       - name: Test Flatpak
-        working-directory: packages/app-core/packaging/flatpak
         run: |
-          flatpak --user install -y elizaos-app.flatpak
-          flatpak run ai.elizaos.App --version || echo "Version check completed"
+          set -euo pipefail
+          EXPECTED_VERSION="${{ needs.prepare.outputs.version }}"
+          export EXPECTED_VERSION
+          flatpak --user install --reinstall -y dist-flatpak/elizaos-app.flatpak
+          test "$(flatpak run ai.elizaos.App --version)" = "$EXPECTED_VERSION"
+          test "$(flatpak run --command=node ai.elizaos.App --version)" = "v24.15.0"
+          flatpak run ai.elizaos.App --help | tee /tmp/elizaos-flatpak-help.txt
+          grep -q 'Usage:' /tmp/elizaos-flatpak-help.txt
+          grep -q 'Commands:' /tmp/elizaos-flatpak-help.txt
+          flatpak run --command=cat ai.elizaos.App \
+            /app/lib/elizaos-app/flatpak-runtime.json > /tmp/flatpak-runtime.json
+          node -e '
+            const fs = require("node:fs");
+            const metadata = JSON.parse(fs.readFileSync("/tmp/flatpak-runtime.json", "utf8"));
+            if (metadata.version !== process.env.EXPECTED_VERSION) throw new Error("wrong staged version");
+            if (metadata.runtimeNode !== "v24.15.0") throw new Error("wrong staged Node runtime");
+            if (metadata.sourceDirty) throw new Error("release runtime came from a dirty checkout");
+            if (metadata.sourceRevision !== process.env.GITHUB_SHA) throw new Error("wrong source revision");
+          '
+
+      - name: Checksum Flatpak bundle
+        run: sha256sum dist-flatpak/elizaos-app.flatpak > dist-flatpak/elizaos-app.flatpak.sha256
+
+      - name: Attest Flatpak build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: dist-flatpak/elizaos-app.flatpak
 
       - name: Upload Flatpak bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: flatpak-bundle
-          path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
+          path: |
+            dist-flatpak/elizaos-app.flatpak
+            dist-flatpak/elizaos-app.flatpak.sha256
+            dist-flatpak/runtime/flatpak-runtime.json
           retention-days: 90
 
       - name: Attach Flatpak to GitHub Release
@@ -465,7 +479,10 @@ jobs:
             echo "::error::No GitHub release found for $TAG; cannot attach Flatpak artifact."
             exit 1
           fi
-          gh release upload "$TAG" packages/app-core/packaging/flatpak/elizaos-app.flatpak --clobber
+          gh release upload "$TAG" \
+            dist-flatpak/elizaos-app.flatpak \
+            dist-flatpak/elizaos-app.flatpak.sha256 \
+            --clobber
 
   # ── Summary ────────────────────────────────────────────────────────────
   publish-summary:
