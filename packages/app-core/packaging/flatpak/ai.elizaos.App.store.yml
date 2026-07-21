@@ -7,8 +7,8 @@
 # user-granted portal-mediated paths.
 #
 # When you want the unrestricted, power-user experience that mirrors the
-# AppImage / .deb / .rpm distribution (full $HOME access, host shell, host
-# Ollama, docker, etc.), use `ai.elizaos.App.yml` instead. That manifest is
+# AppImage / .deb / .rpm distribution (full $HOME access and runtime-local
+# execution), use `ai.elizaos.App.yml` instead. That manifest is
 # the "direct" variant and is NOT acceptable on Flathub — Flathub reviewers
 # will reject `--filesystem=home` and similar host-escape sockets.
 #

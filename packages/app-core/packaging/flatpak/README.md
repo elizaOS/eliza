@@ -6,12 +6,14 @@ app-id, but with very different sandbox postures.
 | Variant | Manifest | Wrapper | Posture | Distribution |
 |---------|----------|---------|---------|--------------|
 | **Store** (Flathub) | `ai.elizaos.App.store.yml` | `elizaos-app-wrapper.store.sh` | Locked-down sandbox, no host escape | Flathub |
-| **Direct** (power-user) | `ai.elizaos.App.yml` | `elizaos-app-wrapper.sh` | Full `$HOME` access, host shell reach, EXECUTE_CODE permitted | Self-hosted repo, side-loaded bundles |
+| **Direct** (power-user) | `ai.elizaos.App.yml` | `elizaos-app-wrapper.sh` | Full `$HOME`, shared network, runtime-local execution | Self-hosted repo, side-loaded bundles |
 
 Pick the variant that matches the audience. Flathub will reject the direct
-manifest on review. Power users who want host-Ollama, docker reach, and
-EXECUTE_CODE want the direct manifest (or, equivalently, the AppImage /
-.deb / .rpm builds).
+manifest on review. Power users who want home-directory access, host-network
+services such as Ollama, and runtime-local code execution want the direct
+manifest. Host CLI and Docker access require the AppImage, `.deb`, or `.rpm`;
+the direct Flatpak does not grant the host-spawn portal or mount the Docker
+socket.
 
 The build driver compiles `packages/shared` and `packages/agent` from the
 current checkout, materializes the agent's complete runtime dependency closure,
@@ -65,9 +67,8 @@ and gates off:
   the runtime reports the disablement explicitly so users see "local
   agent execution disabled in this build" instead of opaque ENOENT).
 - The `EXECUTE_CODE` action.
-- Host-Ollama discovery (no `127.0.0.1:11434` reach — the sandbox sees
-  its own loopback, not the host's, so Ollama-on-host wouldn't work
-  even if we tried).
+- Host-Ollama discovery. Store builds keep inference on managed routing even
+  though network access remains available for cloud APIs and the dashboard.
 
 Hosting flips to the cloud-only routing: the agent talks to Eliza Cloud
 for inference, plugin registry, app deploys, billing, and any other
@@ -169,9 +170,9 @@ When you're ready to submit the store variant to Flathub:
 ## Direct variant
 
 The direct manifest (`ai.elizaos.App.yml`) keeps the existing
-`--filesystem=home` posture so power users who self-host a Flatpak repo
-or side-load a bundle get the same experience as the AppImage / .deb /
-.rpm builds. It does NOT set `ELIZA_BUILD_VARIANT=store`, so the
-runtime exposes the full coding-agent surface.
+`--filesystem=home` posture and does not set `ELIZA_BUILD_VARIANT=store`, so
+runtime-local coding actions remain enabled. It still runs inside Flatpak:
+host binaries and the Docker socket are not exposed. Use the AppImage, `.deb`,
+or `.rpm` when the agent must invoke host-installed developer tools.
 
 Don't submit this manifest to Flathub. It will fail review.

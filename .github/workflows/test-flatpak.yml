@@ -74,6 +74,9 @@ jobs:
           flatpak run ai.elizaos.App --help | tee /tmp/elizaos-flatpak-help.txt
           grep -q 'Usage:' /tmp/elizaos-flatpak-help.txt
           grep -q 'Commands:' /tmp/elizaos-flatpak-help.txt
+          flatpak run --command=node ai.elizaos.App \
+            --input-type=module \
+            --eval 'await import("/app/lib/elizaos-app/node_modules/@elizaos/plugin-elizacloud/dist/node/index.node.js")'
           flatpak run --command=cat ai.elizaos.App \
             /app/lib/elizaos-app/flatpak-runtime.json > /tmp/flatpak-runtime.json
           node -e '
