@@ -48,12 +48,11 @@ import {
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
-  IOS_FULL_BUN_SMOKE_FAILURE_RE,
+  runIosFullBunSmokeIfRequested,
 } from "@elizaos/app-core";
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
-  primeIosFullBunRuntime,
 } from "@elizaos/app-core/api/ios-local-agent-transport";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
@@ -192,6 +191,7 @@ import { runEmbedHandshake } from "./embed-bootstrap";
 import { installMainWindowFirstRunBootPatches } from "./first-run-boot-patches";
 import { registerAppHostExternalImporters } from "./host-externals";
 import { runIosAttachmentSmokeIfRequested } from "./ios-attachment-smoke";
+import { runIosFullBunEntrypoint } from "./ios-full-bun-entrypoint";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
@@ -202,6 +202,7 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
@@ -394,8 +395,6 @@ const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
-const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
-const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_ONBOARDING_SMOKE_REQUEST_KEY = "eliza:ios-onboarding-smoke:request";
 const IOS_ONBOARDING_SMOKE_RESULT_KEY = "eliza:ios-onboarding-smoke:result";
 const IOS_CLOUD_ONBOARDING_SMOKE_REQUEST_KEY =
@@ -413,10 +412,6 @@ const IOS_MIXED_CONTENT_SMOKE_REQUEST_KEY =
 const IOS_MIXED_CONTENT_SMOKE_RESULT_KEY =
   "eliza:ios-mixed-content-smoke:result";
 const IOS_ONBOARDING_SMOKE_TIMEOUT_MS = 120_000;
-const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
-const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
-const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
-  "In one short sentence, confirm the iOS full Bun local backend is running.";
 const CLOUD_PAIR_SESSION_TOKEN_KEY = "eliza:cloud-pair:api-token";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
@@ -426,7 +421,6 @@ let mobileAgentTunnelListener: PluginListenerHandle | null = null;
 let mobileAgentTunnelStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
 let keyboardListenersRegistered = false;
-let iosFullBunSmokeStarted = false;
 let iosOnboardingSmokeStarted = false;
 let iosCloudOnboardingSmokeStarted = false;
 let iosOnboardingRelaunchSmokeStarted = false;
@@ -476,7 +470,7 @@ function applyCloudPairSessionToken(): void {
     }
     if (token) {
       try {
-        window.localStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
+        shellLocalStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
@@ -535,6 +529,7 @@ installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 applyCloudPairSessionToken();
 applyRuntimeChooserOverrideFromUrl();
+installPackagedShellStorageTestBridge();
 
 // Branded AOSP/ElizaOS device images ARE the agent: pre-seed the on-device
 // agent as the startup target on first frame. Stock-phone sideload builds
@@ -747,12 +742,6 @@ function logNativePluginUnavailable(pluginName: string, error: unknown): void {
   );
 }
 
-async function writeIosFullBunSmokeResult(
-  result: Record<string, unknown>,
-): Promise<void> {
-  await writeIosPreferenceSmokeResult(IOS_FULL_BUN_SMOKE_RESULT_KEY, result);
-}
-
 async function writeIosOnboardingSmokeResult(
   result: Record<string, unknown>,
 ): Promise<void> {
@@ -865,23 +854,6 @@ async function boundedPreferenceGet(key: string): Promise<string | null> {
     // error-policy:J7 smoke-harness preference probe — a blocked Preferences
     // bridge must not wedge the smoke; the poll loop retries
     return null;
-  }
-}
-
-function renderIosFullBunSmokeStatus(message: string): void {
-  try {
-    document.body.innerHTML = "";
-    const container = document.createElement("main");
-    container.style.cssText =
-      "min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f7f8fa;color:#101114;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;text-align:center;";
-    const text = document.createElement("div");
-    text.style.cssText = "max-width:360px;font-size:16px;line-height:1.45;";
-    text.textContent = message;
-    container.appendChild(text);
-    document.body.appendChild(container);
-  } catch {
-    // error-policy:J7 smoke diagnostics are best-effort — a failed status
-    // render must not kill the smoke run
   }
 }
 
@@ -1593,606 +1565,6 @@ async function runIosOnboardingRelaunchSmokeIfRequested(): Promise<boolean> {
     }
     await boundedPreferenceWrite(() =>
       Preferences.remove({ key: IOS_ONBOARDING_RELAUNCH_SMOKE_REQUEST_KEY }),
-    );
-  }
-  return true;
-}
-
-async function fetchIosFullBunSmokeJson<T>(
-  label: string,
-  path: string,
-  init?: RequestInit,
-  timeoutMs = IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
-): Promise<T> {
-  const headers = new Headers(init?.headers);
-  if (!headers.has("accept")) headers.set("accept", "application/json");
-  let status: number | undefined;
-  let text: string | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    window.setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  await Promise.race([
-    (async () => {
-      const response = await fetch(path, { ...init, headers });
-      status = response.status;
-      text = await response.text();
-    })(),
-    timeout,
-  ]);
-  if (typeof status !== "number" || typeof text !== "string") {
-    throw new Error(`${label} did not return a complete response`);
-  }
-  if (status < 200 || status >= 300) {
-    throw new Error(`${label} returned HTTP ${status}: ${text.slice(0, 500)}`);
-  }
-  try {
-    return JSON.parse(text) as T;
-  } catch (error) {
-    // error-policy:J2 context-adding rethrow
-    throw new Error(
-      `${label} returned invalid JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error },
-    );
-  }
-}
-
-async function fetchIosFullBunSmokeText(
-  label: string,
-  path: string,
-  init?: RequestInit,
-  timeoutMs = IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
-): Promise<string> {
-  const headers = new Headers(init?.headers);
-  let status: number | undefined;
-  let text: string | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    window.setTimeout(() => {
-      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  await Promise.race([
-    (async () => {
-      const response = await fetch(path, { ...init, headers });
-      status = response.status;
-      text = await response.text();
-    })(),
-    timeout,
-  ]);
-  if (typeof status !== "number" || typeof text !== "string") {
-    throw new Error(`${label} did not return a complete response`);
-  }
-  if (status < 200 || status >= 300) {
-    throw new Error(`${label} returned HTTP ${status}: ${text.slice(0, 500)}`);
-  }
-  return text;
-}
-
-function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} did not return an object`);
-  }
-  const response = value as { status?: unknown; body?: unknown };
-  const status = typeof response.status === "number" ? response.status : 0;
-  const body = typeof response.body === "string" ? response.body : "";
-  if (status < 200 || status >= 300) {
-    throw new Error(`${label} returned HTTP ${status}: ${body.slice(0, 500)}`);
-  }
-  try {
-    return JSON.parse(body) as T;
-  } catch (error) {
-    // error-policy:J2 context-adding rethrow
-    throw new Error(
-      `${label} returned invalid JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error },
-    );
-  }
-}
-
-function assertSmokeObject(
-  value: unknown,
-  label: string,
-): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} did not return an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function assertSmokeArray(value: unknown, label: string): unknown[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} did not return an array`);
-  }
-  return value;
-}
-
-async function withIosFullBunSmokeTimeout<T>(
-  label: string,
-  timeoutMs: number,
-  operation: Promise<T>,
-): Promise<T> {
-  return Promise.race([
-    operation,
-    new Promise<never>((_resolve, reject) => {
-      window.setTimeout(() => {
-        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-    }),
-  ]);
-}
-
-async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
-  if (iosFullBunSmokeStarted) return true;
-  let requested = false;
-  let requestSource: "localStorage" | "preferences" | null = null;
-  try {
-    requested =
-      window.localStorage.getItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY) === "1";
-    if (requested) {
-      requestSource = "localStorage";
-    }
-  } catch {
-    // error-policy:J3 unavailable storage reads as "not requested"; the
-    // Preferences read below still serves the simulator harness
-    requested = false;
-  }
-  try {
-    if (!requested) {
-      requested =
-        (await boundedPreferenceGet(IOS_FULL_BUN_SMOKE_REQUEST_KEY)) === "1";
-      if (requested) {
-        requestSource = "preferences";
-      }
-    }
-  } catch {
-    // error-policy:J4 Preferences unavailable — keep the localStorage
-    // result from the storage bridge hydration
-  }
-  if (!requested) return false;
-  iosFullBunSmokeStarted = true;
-  try {
-    shellLocalStorage.setItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
-  } catch {
-    // error-policy:J6 best-effort echo — Preferences can request the smoke
-    // before localStorage is hydrated
-  }
-  renderIosFullBunSmokeStatus("Running iOS full Bun backend smoke...");
-  window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__ = (event) => {
-    void writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      ...event,
-    });
-  };
-
-  await writeIosFullBunSmokeResult({
-    ok: false,
-    phase: "running",
-    step: "request-observed",
-    requestSource,
-    location: window.location.href,
-    hasNativeRequest:
-      typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function",
-    startedAt: new Date().toISOString(),
-  });
-
-  try {
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "bridge-installed",
-      hasNativeRequest:
-        typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function",
-    });
-
-    const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
-    primeIosFullBunRuntime(ElizaBunRuntime);
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "plugin-imported",
-      hasNativeRequest:
-        typeof window.__ELIZA_BRIDGE__?.iosLocalAgentRequest === "function",
-    });
-
-    const started = await withIosFullBunSmokeTimeout(
-      "ElizaBunRuntime.start",
-      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
-      ElizaBunRuntime.start({
-        engine: "bun",
-        argv: [
-          "bun",
-          "--no-install",
-          "public/agent/agent-bundle.js",
-          "ios-bridge",
-          "--stdio",
-        ],
-        env: {
-          ELIZA_PLATFORM: "ios",
-          ELIZA_MOBILE_PLATFORM: "ios",
-          ELIZA_IOS_LOCAL_BACKEND: "1",
-          ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
-          ELIZA_IOS_FULL_BUN_SMOKE: "1",
-          ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
-          ELIZA_VAULT_BACKEND: "file",
-          ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
-          ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP: "1",
-          ELIZA_HEADLESS: "1",
-          ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
-          LOG_LEVEL: "error",
-        },
-      }),
-    );
-    if (!started.ok) {
-      throw new Error(
-        started.error ?? "ElizaBunRuntime.start returned ok=false",
-      );
-    }
-
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "runtime-started",
-      start: started,
-    });
-
-    const status = await withIosFullBunSmokeTimeout(
-      "ElizaBunRuntime.getStatus",
-      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
-      ElizaBunRuntime.getStatus(),
-    );
-    if (!status.ready || status.engine !== "bun") {
-      throw new Error(
-        `ElizaBunRuntime status was ready=${String(status.ready)} engine=${status.engine ?? "unknown"}`,
-      );
-    }
-
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "status-ok",
-      runtimeStatus: status,
-    });
-
-    const bridgeStatus = await withIosFullBunSmokeTimeout(
-      "ElizaBunRuntime.call(status)",
-      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
-      ElizaBunRuntime.call({
-        method: "status",
-        args: { timeoutMs: 120_000 },
-      }),
-    );
-
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "bridge-status-ok",
-      runtimeStatus: status,
-      bridgeStatus: bridgeStatus.result,
-    });
-
-    const directHealthResponse = await withIosFullBunSmokeTimeout(
-      "ElizaBunRuntime.call(http_request /api/health)",
-      60_000,
-      ElizaBunRuntime.call({
-        method: "http_request",
-        args: {
-          method: "GET",
-          path: "/api/health",
-          headers: { accept: "application/json" },
-          timeoutMs: 60_000,
-        },
-      }),
-    );
-    const directHealth = parseIosFullBunSmokeHttpJson<{
-      ready?: unknown;
-      runtime?: unknown;
-    }>("Direct full Bun bridge /api/health", directHealthResponse.result);
-    if (directHealth.ready !== true || directHealth.runtime !== "ok") {
-      throw new Error(
-        `Direct full Bun bridge /api/health returned unexpected body: ${JSON.stringify(directHealth)}`,
-      );
-    }
-
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "direct-health-ok",
-      runtimeStatus: status,
-      bridgeStatus: bridgeStatus.result,
-      directHealth,
-    });
-
-    const fetchHealth = await fetchIosFullBunSmokeJson<{
-      ready?: unknown;
-      runtime?: unknown;
-    }>("WebView fetch bridge /api/health", "/api/health");
-    if (fetchHealth.ready !== true || fetchHealth.runtime !== "ok") {
-      throw new Error(
-        `WebView fetch bridge /api/health returned unexpected body: ${JSON.stringify(fetchHealth)}`,
-      );
-    }
-
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "health-ok",
-      runtimeStatus: status,
-      bridgeStatus: bridgeStatus.result,
-      fetchHealth,
-    });
-
-    const localInferenceHub = await fetchIosFullBunSmokeJson<
-      Record<string, unknown>
-    >(
-      "WebView fetch bridge /api/local-inference/hub",
-      "/api/local-inference/hub",
-      undefined,
-      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
-    );
-    assertSmokeArray(localInferenceHub.catalog, "local-inference hub catalog");
-    const hubInstalled = assertSmokeArray(
-      localInferenceHub.installed,
-      "local-inference hub installed",
-    );
-    assertSmokeObject(localInferenceHub.active, "local-inference hub active");
-    assertSmokeObject(
-      localInferenceHub.assignments,
-      "local-inference hub assignments",
-    );
-
-    const localInferenceProviders = await fetchIosFullBunSmokeJson<
-      Record<string, unknown>
-    >(
-      "WebView fetch bridge /api/local-inference/providers",
-      "/api/local-inference/providers",
-    );
-    const providerList = assertSmokeArray(
-      localInferenceProviders.providers,
-      "local-inference providers",
-    );
-    const capacitorProvider = providerList
-      .map((provider) =>
-        assertSmokeObject(provider, "local-inference provider"),
-      )
-      .find((provider) => provider.id === "capacitor-llama");
-    if (!capacitorProvider) {
-      throw new Error(
-        "local-inference providers did not include capacitor-llama",
-      );
-    }
-    const slots = assertSmokeArray(
-      capacitorProvider.registeredSlots,
-      "capacitor-llama registeredSlots",
-    );
-    if (!slots.includes("TEXT_SMALL") || !slots.includes("TEXT_LARGE")) {
-      throw new Error("capacitor-llama did not register TEXT_SMALL/TEXT_LARGE");
-    }
-
-    const localInferenceDevice = await fetchIosFullBunSmokeJson<
-      Record<string, unknown>
-    >(
-      "WebView fetch bridge /api/local-inference/device",
-      "/api/local-inference/device",
-      undefined,
-      30_000,
-    );
-    if (
-      localInferenceDevice.enabled !== true ||
-      localInferenceDevice.connected !== true ||
-      localInferenceDevice.transport !== "bun-host-ipc"
-    ) {
-      throw new Error(
-        `local-inference native bridge returned unexpected status: ${JSON.stringify(localInferenceDevice)}`,
-      );
-    }
-    assertSmokeArray(
-      localInferenceDevice.devices,
-      "local-inference device list",
-    );
-
-    if (hubInstalled.length === 0) {
-      throw new Error(
-        "local-inference hub had no installed Eliza-1 GGUF model; full-Bun smoke requires a staged local model",
-      );
-    }
-
-    const firstInstalled = assertSmokeObject(
-      hubInstalled[0],
-      "local-inference installed model",
-    );
-    if (typeof firstInstalled.id !== "string" || !firstInstalled.id) {
-      throw new Error("local-inference installed model was missing id");
-    }
-    const activatedModel = await fetchIosFullBunSmokeJson<
-      Record<string, unknown>
-    >(
-      "WebView fetch bridge POST /api/local-inference/active",
-      "/api/local-inference/active",
-      {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ modelId: firstInstalled.id }),
-      },
-      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
-    );
-    if (
-      activatedModel.status !== "ready" ||
-      typeof activatedModel.modelPath !== "string" ||
-      !activatedModel.modelPath
-    ) {
-      throw new Error(
-        `local-inference active model did not become ready: ${JSON.stringify(activatedModel)}`,
-      );
-    }
-
-    const [
-      localInferenceActive,
-      localInferenceInstalled,
-      localInferenceRouting,
-    ] = await Promise.all([
-      fetchIosFullBunSmokeJson<Record<string, unknown>>(
-        "WebView fetch bridge /api/local-inference/active",
-        "/api/local-inference/active",
-      ),
-      fetchIosFullBunSmokeJson<Record<string, unknown>>(
-        "WebView fetch bridge /api/local-inference/installed",
-        "/api/local-inference/installed",
-      ),
-      fetchIosFullBunSmokeJson<Record<string, unknown>>(
-        "WebView fetch bridge /api/local-inference/routing",
-        "/api/local-inference/routing",
-      ),
-    ]);
-    assertSmokeArray(
-      localInferenceInstalled.models,
-      "local-inference installed models",
-    );
-    assertSmokeArray(
-      localInferenceRouting.registrations,
-      "local-inference routing registrations",
-    );
-    assertSmokeObject(
-      localInferenceRouting.preferences,
-      "local-inference routing preferences",
-    );
-
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "local-inference-ok",
-      runtimeStatus: status,
-      bridgeStatus: bridgeStatus.result,
-      directHealth,
-      fetchHealth,
-      localInference: {
-        hub: localInferenceHub,
-        providers: localInferenceProviders,
-        device: localInferenceDevice,
-        activatedModel,
-        active: localInferenceActive,
-        installed: localInferenceInstalled,
-        routing: localInferenceRouting,
-      },
-    });
-
-    const created = await fetchIosFullBunSmokeJson<{
-      conversation?: { id?: unknown };
-    }>("WebView fetch bridge POST /api/conversations", "/api/conversations", {
-      method: "POST",
-      headers: {
-        accept: "application/json",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ title: "iOS Full Bun Smoke" }),
-    });
-    const conversationId = created.conversation?.id;
-    if (typeof conversationId !== "string" || !conversationId) {
-      throw new Error("full Bun conversation create did not return an id");
-    }
-
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "running",
-      step: "conversation-created",
-      runtimeStatus: status,
-      bridgeStatus: bridgeStatus.result,
-      fetchHealth,
-      conversationId,
-    });
-
-    const sendMessage = await fetchIosFullBunSmokeJson<Record<string, unknown>>(
-      "WebView fetch bridge POST /api/conversations/:id/messages",
-      `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-      {
-        method: "POST",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
-          channelType: "DM",
-          source: "ios-local",
-          metadata: { smoke: "ios-full-bun" },
-        }),
-      },
-      IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS,
-    );
-    const streamMessage = await fetchIosFullBunSmokeText(
-      "WebView fetch bridge POST /api/conversations/:id/messages/stream",
-      `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
-      {
-        method: "POST",
-        headers: {
-          accept: "text/event-stream",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
-          channelType: "DM",
-          source: "ios-local",
-          metadata: { smoke: "ios-full-bun-stream" },
-        }),
-      },
-      IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS,
-    );
-    if (
-      !streamMessage.includes('"type":"done"') ||
-      IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage)
-    ) {
-      throw new Error(
-        `full Bun conversation stream returned unusable SSE: ${streamMessage.slice(0, 500)}`,
-      );
-    }
-
-    await writeIosFullBunSmokeResult({
-      ok: true,
-      phase: "complete",
-      finishedAt: new Date().toISOString(),
-      runtimeStatus: status,
-      bridgeStatus: bridgeStatus.result,
-      fetchHealth,
-      localInference: {
-        hub: localInferenceHub,
-        providers: localInferenceProviders,
-        device: localInferenceDevice,
-        activatedModel,
-        active: localInferenceActive,
-        installed: localInferenceInstalled,
-        routing: localInferenceRouting,
-      },
-      conversationId,
-      sendMessage,
-      streamMessage,
-    });
-  } catch (error) {
-    // error-policy:J1 smoke boundary — the failure is written to the
-    // harness result sink
-    await writeIosFullBunSmokeResult({
-      ok: false,
-      phase: "failed",
-      finishedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : String(error),
-    });
-  } finally {
-    delete window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__;
-    try {
-      shellLocalStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
-    } catch {
-      // error-policy:J6 best-effort cleanup — Preferences removal below is
-      // authoritative
-    }
-    await boundedPreferenceWrite(() =>
-      Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY }),
     );
   }
   return true;
@@ -3733,6 +3105,21 @@ async function main(): Promise<void> {
   // call is made. No-op (and never throws) off the /embed route.
   await runEmbedHandshake({ client });
 
+  // The headless device gate owns the WebView when requested, so resolve it
+  // before route/plugin initialization can add unrelated work or early exits.
+  if (
+    await runIosFullBunEntrypoint({
+      isIOS,
+      initializeStorageBridge,
+      initializeCapacitorBridge,
+      installNativeRequestBridge: installIosLocalAgentNativeRequestBridge,
+      installFetchBridge: installIosLocalAgentFetchBridge,
+      runSmoke: runIosFullBunSmokeIfRequested,
+    })
+  ) {
+    return;
+  }
+
   const appWindowSlug = window.location.pathname.startsWith("/apps/")
     ? window.location.pathname.slice("/apps/".length).split("/")[0]
     : resolveAppWindowSlug();
@@ -3779,22 +3166,6 @@ async function main(): Promise<void> {
   // is only consumed at the per-platform await sites further down; load
   // failure resolves null there (never gates mounting the app).
   const voiceModuleReady = startVoiceModuleLoad();
-
-  // The iOS full-Bun backend smoke is a headless QA gate that must run BEFORE
-  // any window-shell / popout routing — some shell routes return before the
-  // main boot path, so wiring the smoke only into the main path left it
-  // structurally unreachable on those routes and its request flag silently
-  // no-op'd. Run it (and the iOS local-agent bridges it needs) up front; when
-  // requested it takes over the WebView and returns.
-  if (isIOS) {
-    await initializeStorageBridge();
-    initializeCapacitorBridge();
-    installIosLocalAgentNativeRequestBridge();
-    installIosLocalAgentFetchBridge();
-    if (await runIosFullBunSmokeIfRequested()) {
-      return;
-    }
-  }
 
   if (isPopoutWindow()) {
     injectPopoutApiBase();

@@ -46,25 +46,22 @@ describe("getDefaultElizaCharacterData", () => {
     expect(reply).not.toContain("i don't have anything from last month");
   });
 
-  test("never injects a web-search service that cannot start", async () => {
-    // WebSearchService.initialize() throws unless runtime.getSetting() can see
-    // a Google key, and the runtime only injects those keys for the
-    // request-level webSearchEnabled toggle (buildSettings in
-    // lib/eliza/runtime/settings.ts) — never from this character. Prove that
-    // with the real service against exactly what this character's settings
-    // make visible: the service cannot start from character settings alone.
+  test("web-search service starts keyless from this character's settings", async () => {
+    // WebSearchService no longer requires a Google key to start: without one
+    // it serves the keyless MCP path (Parallel → Exa). Prove the service
+    // starts from exactly what this character's settings make visible, so an
+    // injected plugin can never be a dead "Service start failed" logger.
     const settings = character.settings as Record<string, unknown>;
     const runtimeStub = {
       getSetting: (key: string) => (settings[key] as string | undefined) ?? null,
     } as unknown as IAgentRuntime;
-    await expect(WebSearchService.start(runtimeStub)).rejects.toThrow(/GOOGLE_API_KEY/);
+    const service = await WebSearchService.start(runtimeStub);
+    expect(service.capabilityDescription).toContain("keyless");
 
-    // Therefore the character must not carry the settings key that makes the
-    // agent loader inject @elizaos/plugin-web-search — same code path
-    // AgentLoader.resolvePlugins uses — or every runtime creation logs a
-    // "Service start failed" error for a dead plugin. Web search still works
-    // for this character via the request-level toggle, which injects the
-    // plugin and the keys together.
+    // Plugin injection stays request-scoped: the character itself still must
+    // not carry the settings key that makes AgentLoader.resolvePlugins inject
+    // @elizaos/plugin-web-search — the request-level webSearchEnabled toggle
+    // owns that decision.
     expect(getConditionalPlugins(settings)).not.toContain("@elizaos/plugin-web-search");
   });
 

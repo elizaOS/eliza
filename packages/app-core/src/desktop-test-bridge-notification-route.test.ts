@@ -1,8 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-const diagnostics = [
-  { title: "Build finished", body: "Ready", timestamp: 42 },
-];
+const diagnostics = [{ title: "Build finished", body: "Ready", timestamp: 42 }];
 const clearNotificationDiagnostics = vi.fn(() => diagnostics.splice(0));
 const getNotificationDiagnostics = vi.fn(() => [...diagnostics]);
 const desktop = {
@@ -62,7 +60,9 @@ describe("desktop test bridge notification observation route", () => {
 
   it("keeps authenticated bridge control ingress live", async () => {
     const headers = { Authorization: `Bearer ${TOKEN}` };
-    expect(await (await fetch(`${BASE_URL}/health`, { headers })).json()).toEqual({ ok: true });
+    expect(
+      await (await fetch(`${BASE_URL}/health`, { headers })).json(),
+    ).toEqual({ ok: true });
     expect((await fetch(`${BASE_URL}/state`, { headers })).status).toBe(200);
 
     const invalidEval = await fetch(`${BASE_URL}/main-window/eval`, {
@@ -79,7 +79,14 @@ describe("desktop test bridge notification observation route", () => {
     expect(await evaluated.json()).toEqual({ result: "ran:1 + 1" });
 
     for (const action of ["show", "focus", "minimize"]) {
-      expect((await fetch(`${BASE_URL}/main-window/${action}`, { method: "POST", headers })).status).toBe(200);
+      expect(
+        (
+          await fetch(`${BASE_URL}/main-window/${action}`, {
+            method: "POST",
+            headers,
+          })
+        ).status,
+      ).toBe(200);
     }
   });
 

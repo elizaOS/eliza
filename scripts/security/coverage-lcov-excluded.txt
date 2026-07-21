@@ -29,3 +29,23 @@ packages/cloud/shared/src/lib/services/sandbox-provider-types.ts
 # is merged into the plugin coverage lane.
 plugins/plugin-agent-orchestrator/src/services/smithers-task-runner.ts
 plugins/plugin-workflow/src/services/smithers-runtime.ts
+
+# Renderer composition entrypoint: the app Vitest coverage policy collects only
+# `src/**/*.ts`, not TSX entrypoints, and importing this file boots the full UI.
+# Product behavior is covered by packaged desktop acceptance; focused helpers
+# still require changed Vitest coverage. Remove if TSX entrypoints enter LCOV.
+packages/app/src/main.tsx
+
+# Public `@elizaos/agent` barrel: a pure re-export surface (`export *` /
+# `export { ... } from ...`) whose own executable code is only the four lazy
+# cloud-route wrappers. Its transitive graph re-exports the already-excluded
+# `api/server.ts` and `runtime/eliza.ts` entrypoints AND `export *`s
+# `./api/index.ts`, which pulls unbuilt sibling plugin dists
+# (@elizaos/plugin-app-manager, etc.). The changed-files coverage lane runs
+# BEFORE the workspace build, so those dist entrypoints are absent and the
+# barrel cannot be imported in-process to instrument (same class as the two
+# entrypoints it re-exports). The retention logic this stack added lives in
+# runtime/memory-retention*.ts and runtime/eliza-plugin.ts, which ARE unit-
+# tested for real. Remove this line if the barrel's export graph stops
+# transitively requiring built plugin dists in the pre-build coverage lane.
+packages/agent/src/index.ts

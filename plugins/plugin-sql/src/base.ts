@@ -249,6 +249,7 @@ function isDuplicateKeyError(error: unknown): boolean {
   return false;
 }
 
+import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
@@ -1879,13 +1880,19 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       const tsvector = sql`to_tsvector('english', ${document})`;
       const tsquery = sql`websearch_to_tsquery('english', ${foldedQuery})`;
       const ftsRankExpr = sql<number>`ts_rank_cd(${tsvector}, ${tsquery})`;
+      const allowLexicalFallback = !usesWebsearchSyntax(params.query);
       // `similarity()` only exists when pg_trgm is installed; degrade to 0 so the
       // ORDER BY and DTO carry a real (extension-absent) signal, not a fake rank.
-      const trigramExpr = trigramAvailable
-        ? sql<number>`GREATEST(similarity(${document}, ${foldedQuery}), word_similarity(${foldedQuery}, ${document}))`
-        : sql<number>`0`;
-      const trigramMatch = trigramAvailable
-        ? sql`NOT EXISTS (
+      const trigramExpr =
+        trigramAvailable && allowLexicalFallback
+          ? sql<number>`GREATEST(similarity(${document}, ${foldedQuery}), word_similarity(${foldedQuery}, ${document}))`
+          : sql<number>`0`;
+      const literalMatch = allowLexicalFallback
+        ? sql`${document} LIKE eliza_search_like_pattern(${params.query})`
+        : sql`FALSE`;
+      const trigramMatch =
+        trigramAvailable && allowLexicalFallback
+          ? sql`NOT EXISTS (
             SELECT 1
             FROM unnest(regexp_split_to_array(${foldedQuery}, '[[:space:]]+')) AS query_terms(term)
             WHERE query_terms.term <> ''
@@ -1894,14 +1901,14 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
                 OR word_similarity(query_terms.term, ${document}) >= 0.45
               )
           )`
-        : sql`FALSE`;
+          : sql`FALSE`;
 
       const conditions = [
         eq(memoryTable.type, tableName),
         eq(memoryTable.agentId, this.agentId),
         inArray(memoryTable.roomId, params.roomIds),
         ...timeConditions,
-        sql`(${tsvector} @@ ${tsquery} OR ${document} LIKE eliza_search_like_pattern(${params.query}) OR ${trigramMatch})`,
+        sql`(${tsvector} @@ ${tsquery} OR ${literalMatch} OR ${trigramMatch})`,
       ];
 
       let rows: Array<{

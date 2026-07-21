@@ -64,8 +64,8 @@ export function getTimer() {
 }
 
 function resolveTscBin(): string {
-	const workspaceTsc = join(process.cwd(), "../../node_modules/.bin/tsc");
-	return existsSync(workspaceTsc) ? workspaceTsc : "tsc";
+	const workspaceTsc = join(process.cwd(), "../../node_modules/.bin/tsc6");
+	return existsSync(workspaceTsc) ? workspaceTsc : "tsc6";
 }
 
 async function withCoreBuildLock<T>(build: () => Promise<T>): Promise<T> {
@@ -746,11 +746,13 @@ const sharedConfig = {
 /**
  * Build for Node.js environment
  */
-async function buildNode() {
+export async function buildNode(
+	runnerFactory: typeof createBuildRunner = createBuildRunner,
+) {
 	console.log("🔨 Building for Node.js...");
 	const startTime = Date.now();
 
-	const runNode = createBuildRunner({
+	const runNode = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
 			entrypoints: [`${TS_SRC}/index.node.ts`, `${TS_SRC}/roles.ts`],
@@ -775,11 +777,13 @@ async function buildNode() {
 /**
  * Build for browser environment
  */
-async function buildBrowser() {
+export async function buildBrowser(
+	runnerFactory: typeof createBuildRunner = createBuildRunner,
+) {
 	console.log("🌐 Building for Browser...");
 	const startTime = Date.now();
 
-	const runBrowser = createBuildRunner({
+	const runBrowser = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
 			entrypoints: [`${TS_SRC}/index.browser.ts`, `${TS_SRC}/roles.ts`],
@@ -811,11 +815,13 @@ async function buildBrowser() {
 /**
  * Build for edge runtimes (Vercel Edge, Cloudflare Workers, Deno Deploy)
  */
-async function buildEdge() {
+export async function buildEdge(
+	runnerFactory: typeof createBuildRunner = createBuildRunner,
+) {
 	console.log("⚡ Building for Edge...");
 	const startTime = Date.now();
 
-	const runEdge = createBuildRunner({
+	const runEdge = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
 			entrypoints: [`${TS_SRC}/index.edge.ts`],
@@ -840,11 +846,13 @@ async function buildEdge() {
 /**
  * Build testing module (Node.js only)
  */
-async function buildTesting() {
+export async function buildTesting(
+	runnerFactory: typeof createBuildRunner = createBuildRunner,
+) {
 	console.log("🧪 Building testing module...");
 	const startTime = Date.now();
 
-	const runTesting = createBuildRunner({
+	const runTesting = runnerFactory({
 		...sharedConfig,
 		buildOptions: {
 			entrypoints: [
@@ -869,15 +877,25 @@ async function buildTesting() {
 	console.log(`✅ Testing module build complete in ${duration}s`);
 }
 
-async function buildNodeOnly() {
+export async function buildNodeOnly(
+	options: {
+		argv?: string[];
+		runnerFactory?: typeof createBuildRunner;
+		generateDeclarations?: () => Promise<void>;
+	} = {},
+) {
 	console.log("🚀 Starting Node-only build process for @elizaos/core");
 	const totalStart = Date.now();
 
-	const skipTesting = process.argv.includes("--skip-testing");
-	const tasks: Array<Promise<void>> = [buildNode()];
-	if (!skipTesting) tasks.push(buildTesting());
+	const argv = options.argv ?? process.argv;
+	const runnerFactory = options.runnerFactory ?? createBuildRunner;
+	const generateDeclarations =
+		options.generateDeclarations ?? generateTypeScriptDeclarations;
+	const skipTesting = argv.includes("--skip-testing");
+	const tasks: Array<Promise<void>> = [buildNode(runnerFactory)];
+	if (!skipTesting) tasks.push(buildTesting(runnerFactory));
 	await Promise.all(tasks);
-	await generateTypeScriptDeclarations();
+	await generateDeclarations();
 
 	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
 	console.log(`\n🎉 Node-only build complete in ${totalDuration}s`);
@@ -886,17 +904,30 @@ async function buildNodeOnly() {
 /**
  * Build for both targets
  */
-async function buildAll() {
+export async function buildAll(
+	options: {
+		runnerFactory?: typeof createBuildRunner;
+		generateDeclarations?: () => Promise<void>;
+	} = {},
+) {
 	console.log("🚀 Starting dual build process for @elizaos/core");
 	const totalStart = Date.now();
+	const runnerFactory = options.runnerFactory ?? createBuildRunner;
+	const generateDeclarations =
+		options.generateDeclarations ?? generateTypeScriptDeclarations;
 
 	// Build JS in parallel first
-	await Promise.all([buildNode(), buildBrowser(), buildEdge(), buildTesting()]);
+	await Promise.all([
+		buildNode(runnerFactory),
+		buildBrowser(runnerFactory),
+		buildEdge(runnerFactory),
+		buildTesting(runnerFactory),
+	]);
 
 	// Generate TypeScript declarations AFTER JS builds complete
 	// This prevents race conditions where buildNode() might clean dist/node
 	// after generateTypeScriptDeclarations() creates the index.d.ts file
-	await generateTypeScriptDeclarations();
+	await generateDeclarations();
 
 	const totalDuration = ((Date.now() - totalStart) / 1000).toFixed(2);
 	console.log(`\n🎉 All builds complete in ${totalDuration}s`);
@@ -925,7 +956,7 @@ async function buildAll() {
  * Bare-directory specifiers (e.g. `"./foo"` where `foo/` is a directory) are
  * rewritten to `"./foo/index.js"` so NodeNext can follow them.
  */
-async function fixDtsExtensions(rootDir: string): Promise<void> {
+export async function fixDtsExtensions(rootDir: string): Promise<void> {
 	const path = await import("node:path");
 	const fs = await import("node:fs/promises");
 
@@ -1049,7 +1080,7 @@ async function fixDtsExtensions(rootDir: string): Promise<void> {
 /**
  * Generate TypeScript declarations for all entry points
  */
-async function generateTypeScriptDeclarations() {
+export async function generateTypeScriptDeclarations() {
 	const fs = await import("node:fs/promises");
 	const { $ } = await import("bun");
 

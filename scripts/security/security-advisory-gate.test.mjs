@@ -31,7 +31,7 @@ describe("security advisory classification", () => {
       "scripts/auth/check.cjs",
       "packages/wallet/src/index.ts",
       ".github/workflows/release.yml",
-      "packages/db/migrations/001.sql.ts",
+      "packages/db/migrations/001.sql",
       "services/payment/Dockerfile",
       "services/oauth/.env.example",
     ]) {

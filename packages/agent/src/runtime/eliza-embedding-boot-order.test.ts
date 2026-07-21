@@ -74,6 +74,9 @@ describe("runDeferredBoot embedding-dimension ordering (#8769)", () => {
   const waveIdx = body.indexOf(
     "await preregisterCorePluginsInDependencyWaves({",
   );
+  const earlyLocalEnvIdx = body.indexOf(
+    "await configureLocalEmbeddingEnvEarlyIfNeeded(config);",
+  );
   const probeIdx = body.indexOf("await runtime.ensureEmbeddingDimension();");
   const seedIdx = body.indexOf("await seedBundledDocumentsIfEnabled();");
 
@@ -95,6 +98,21 @@ describe("runDeferredBoot embedding-dimension ordering (#8769)", () => {
     // to dim1536 before any bundled-doc embedding is written, so the inserts are
     // not dropped on a dimension mismatch.
     expect(probeIdx).toBeLessThan(seedIdx);
+  });
+
+  it("configures local-embedding env BEFORE the dimension probe (#16630 follow-up fix a)", () => {
+    // Root cause: warmEmbeddingModel() (which owns configureLocalEmbeddingPlugin)
+    // is fired fire-and-forget by startEmbeddingWarmup() AFTER this probe, so
+    // without an early call EMBEDDING_PROVIDER is unset here and a remote handler
+    // (e.g. Google text-embedding-004) wins the probe and 404s, permanently
+    // choosing the remote route. The early guarded config must therefore run
+    // before both the probe and the bundled-doc seed.
+    expect(
+      earlyLocalEnvIdx,
+      "early local-embedding env config must run in runDeferredBoot",
+    ).toBeGreaterThan(-1);
+    expect(earlyLocalEnvIdx).toBeLessThan(probeIdx);
+    expect(earlyLocalEnvIdx).toBeLessThan(seedIdx);
   });
 });
 

@@ -2,10 +2,12 @@
  * Composed real-PGlite lane for `src/base.ts` — imports every hermetic
  * integration suite so the changed-file coverage gate can execute the
  * adapter's actual behavioral matrix (real DDL, real queries, real vectors)
- * against a `BaseDrizzleAdapter` change. The `.real.test.ts` filename filter
- * keeps these suites out of the gate individually; each one is in-process
- * PGlite via `createIsolatedTestDatabase` with no network or credentials, so
- * composing them here trades no hermeticity for real coverage.
+ * against a `BaseDrizzleAdapter` change. Direct policy assertions complement
+ * the database matrix for query-shape decisions made before SQL execution.
+ * The `.real.test.ts` filename filter keeps these suites out of the gate
+ * individually; each one is in-process PGlite via
+ * `createIsolatedTestDatabase` with no network or credentials, so composing
+ * them here trades no hermeticity for real coverage.
  *
  * Runs only under `vitest.harness.config.ts` (the default package config never
  * includes plugin-root `__tests__/`), so the fast PR lane is unchanged.
@@ -13,6 +15,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { usesWebsearchSyntax } from "../src/message-search";
 import "../src/__tests__/integration/advanced-memory-storage.real.test.ts";
 import "../src/__tests__/integration/agent.real.test.ts";
 import "../src/__tests__/integration/base-adapter-methods.real.test.ts";
@@ -61,5 +64,27 @@ describe("base-adapter harness lane composition", () => {
       )
       .sort();
     expect(imported).toEqual(onDisk);
+  });
+});
+
+describe("structured websearch query classification", () => {
+  it.each([
+    '"alpha beta"',
+    "alpha -far",
+    "-excluded",
+    "alpha OR zephyr",
+    "alpha\tor\tzephyr",
+  ])("preserves structural semantics for %s", (query) => {
+    expect(usesWebsearchSyntax(query)).toBe(true);
+  });
+
+  it.each([
+    "alpha beta",
+    "quarterly-budget",
+    "word-or-word",
+    "orphan",
+    "-",
+  ])("keeps lexical fallback for %s", (query) => {
+    expect(usesWebsearchSyntax(query)).toBe(false);
   });
 });
