@@ -108,10 +108,30 @@ export async function verifyStewardEmailSignInCode(
   email: string,
   code: string,
 ): Promise<StewardAuthResult | StewardMfaRequiredResult> {
-  return (await request(options, "/auth/email/code/verify", {
+  const data = await request(options, "/auth/email/code/verify", {
     email,
     code,
-  })) as unknown as StewardAuthResult | StewardMfaRequiredResult;
+  });
+  return narrowEmailVerifyResult(data);
+}
+
+// Discriminate the verify response into the SDK union at runtime instead of a
+// blind `as unknown as` double-cast. StewardMfaRequiredResult carries
+// `mfaRequired: true`; StewardAuthResult carries a string `token`. Anything else
+// is a malformed response and surfaces as a 502 like the other endpoints here.
+function narrowEmailVerifyResult(
+  data: Record<string, unknown>,
+): StewardAuthResult | StewardMfaRequiredResult {
+  if (data.mfaRequired === true) {
+    return data as StewardMfaRequiredResult;
+  }
+  if (typeof data.token === "string") {
+    return data as StewardAuthResult;
+  }
+  throw new StewardEmailLoginError(
+    "Steward email code verification response was malformed.",
+    502,
+  );
 }
 
 export async function pollStewardEmailSignInStatus(
