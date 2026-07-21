@@ -18,14 +18,63 @@ export type SolanaOldestSignatureResult = {
   reachedOldestKnownTransaction: boolean;
 };
 
+export type SolanaParsedNativeTransfer = {
+  fromUserAccount?: string;
+  toUserAccount?: string;
+  amount?: number;
+};
+
+export type SolanaParsedTokenTransfer = {
+  fromUserAccount?: string;
+  toUserAccount?: string;
+  fromTokenAccount?: string;
+  toTokenAccount?: string;
+  tokenAmount?: number;
+  mint?: string;
+};
+
+export type SolanaParsedTokenBalanceChange = {
+  userAccount?: string;
+  tokenAccount?: string;
+  mint?: string;
+  rawTokenAmount?: {
+    tokenAmount?: string;
+    decimals?: number;
+  };
+};
+
+export type SolanaParsedAccountData = {
+  account?: string;
+  nativeBalanceChange?: number;
+  tokenBalanceChanges?: SolanaParsedTokenBalanceChange[];
+};
+
+export type SolanaParsedInstruction = {
+  accounts?: string[];
+  data?: string;
+  programId?: string;
+  innerInstructions?: SolanaParsedInstruction[];
+};
+
 export type SolanaParsedTransaction = {
+  description?: string;
+  type?: string;
+  source?: string;
+  fee?: number;
+  feePayer?: string;
   signature?: string;
+  slot?: number;
   timestamp?: number;
-  nativeTransfers?: Array<{
-    fromUserAccount?: string;
-    toUserAccount?: string;
-    amount?: number;
-  }>;
+
+  nativeTransfers?: SolanaParsedNativeTransfer[];
+  tokenTransfers?: SolanaParsedTokenTransfer[];
+  accountData?: SolanaParsedAccountData[];
+
+  transactionError?: {
+    error?: unknown;
+  } | null;
+
+  instructions?: SolanaParsedInstruction[];
 };
 
 function getHeliusApiKey(): string {
