@@ -72,6 +72,7 @@
     "git-workspace-service": "0.4.5"
   },
   "dependencies": {
+    "@octokit/core": "^7.0.6",
     "@octokit/rest": "^22.0.0",
     "@smithers-orchestrator/engine": "0.28.0",
     "coding-agent-adapters": "0.16.3",

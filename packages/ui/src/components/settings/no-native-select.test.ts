@@ -39,17 +39,16 @@ function listTsxFiles(dir: string): string[] {
 describe("settings controls: no native <select>", () => {
   const files = [...listTsxFiles(settingsRoot), ...extraGuardedFiles];
 
-  it.each(files.map((f) => relative(settingsRoot, f)))(
-    "%s uses canonical settings controls, not a raw <select>",
-    (relPath) => {
-      const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
-      expect(
-        source.includes("<select"),
-        `${relPath} hand-rolls a native <select>. Use SettingsSelectRow ` +
-          `(Radix sheet select) or SettingsSegmentedRow (segmented control) ` +
-          `from ./settings-agent-rows instead — they are themed, 44px-touch, ` +
-          `and agent-addressable.`,
-      ).toBe(false);
-    },
-  );
+  it.each(
+    files.map((f) => relative(settingsRoot, f)),
+  )("%s uses canonical settings controls, not a raw <select>", (relPath) => {
+    const source = readFileSync(resolve(settingsRoot, relPath), "utf8");
+    expect(
+      source.includes("<select"),
+      `${relPath} hand-rolls a native <select>. Use SettingsSelectRow ` +
+        `(Radix sheet select) or SettingsSegmentedRow (segmented control) ` +
+        `from ./settings-agent-rows instead — they are themed, 44px-touch, ` +
+        `and agent-addressable.`,
+    ).toBe(false);
+  });
 });

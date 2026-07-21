@@ -43,7 +43,7 @@
         "zod": "^4.4.3",
       },
       "devDependencies": {
-        "@biomejs/biome": "2.5.4",
+        "@biomejs/biome": "2.5.1",
         "@capacitor/core": "8.4.0",
         "@elizaos-benchmarks/lib": "workspace:*",
         "@elizaos/agent": "workspace:*",
@@ -3000,6 +3000,7 @@
       "version": "2.0.3-beta.7",
       "dependencies": {
         "@elizaos/auth": "workspace:*",
+        "@octokit/core": "^7.0.6",
         "@octokit/rest": "^22.0.0",
         "@smithers-orchestrator/engine": "0.28.0",
         "coding-agent-adapters": "0.16.3",

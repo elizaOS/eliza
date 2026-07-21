@@ -71,7 +71,7 @@
 		"dist"
 	],
 	"devDependencies": {
-	  "@typescript/native": "npm:typescript@^7.0.2",
+		"@typescript/native": "npm:typescript@^7.0.2",
 		"@testing-library/react": "^16.3.2",
 		"@types/react": "^19.0.0",
 		"@types/react-dom": "^19.0.0",

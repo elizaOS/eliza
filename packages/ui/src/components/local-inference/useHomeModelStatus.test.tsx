@@ -113,20 +113,21 @@ afterEach(() => {
 });
 
 describe("useHomeModelStatus", () => {
-  it.each(["loading", "cloud", "remote"] as const)(
-    "does not poll local inference while runtime mode is %s",
-    async (mode) => {
-      setRuntimeMode(mode);
+  it.each([
+    "loading",
+    "cloud",
+    "remote",
+  ] as const)("does not poll local inference while runtime mode is %s", async (mode) => {
+    setRuntimeMode(mode);
 
-      const { result } = renderHook(() => useHomeModelStatus());
+    const { result } = renderHook(() => useHomeModelStatus());
 
-      await waitFor(() => {
-        expect(result.current.kind).toBe("not-required");
-      });
-      expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
-      expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
-    },
-  );
+    await waitFor(() => {
+      expect(result.current.kind).toBe("not-required");
+    });
+    expect(clientMock.getLocalInferenceHub).not.toHaveBeenCalled();
+    expect(eventSourceMock.openEventSource).not.toHaveBeenCalled();
+  });
 
   it("polls local inference for local runtime mode", async () => {
     renderHook(() => useHomeModelStatus());

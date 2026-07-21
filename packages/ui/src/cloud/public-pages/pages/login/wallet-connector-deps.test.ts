@@ -50,17 +50,16 @@ describe("wallet sign-in connector peer dependencies", () => {
   };
   const declared = { ...pkg.dependencies, ...pkg.devDependencies };
 
-  it.each(RUNTIME_LAZY_CONNECTOR_DEPS)(
-    "declares %s so the no-injected-wallet EVM fallback resolves at click-time (#15600)",
-    (dep) => {
-      expect(
-        declared[dep],
-        `${dep} must be a declared dependency of @elizaos/ui — wagmi/RainbowKit ` +
-          `dynamically imports it on the no-wallet EVM path; dropping it resurrects ` +
-          `the "Could not resolve ${dep}" click-time dead-end (#15600 / #15608).`,
-      ).toBeTruthy();
-    },
-  );
+  it.each(
+    RUNTIME_LAZY_CONNECTOR_DEPS,
+  )("declares %s so the no-injected-wallet EVM fallback resolves at click-time (#15600)", (dep) => {
+    expect(
+      declared[dep],
+      `${dep} must be a declared dependency of @elizaos/ui — wagmi/RainbowKit ` +
+        `dynamically imports it on the no-wallet EVM path; dropping it resurrects ` +
+        `the "Could not resolve ${dep}" click-time dead-end (#15600 / #15608).`,
+    ).toBeTruthy();
+  });
 
   // The wallet modal stylesheets live in the host CSS entry (see the header).
   // jsdom cannot see an unstyled portal, so pin the @imports statically.
@@ -72,15 +71,14 @@ describe("wallet sign-in connector peer dependencies", () => {
   const cloudCssEntryPath = resolve(here, "../../../../cloud-ui/index.css");
   const cloudCssEntry = readFileSync(cloudCssEntryPath, "utf8");
 
-  it.each(WALLET_MODAL_STYLESHEETS)(
-    "cloud-ui/index.css imports %s so the wallet modals render styled (#15600)",
-    (sheet) => {
-      expect(
-        cloudCssEntry.includes(`@import "${sheet}";`),
-        `cloud-ui/index.css must \`@import "${sheet}"\` — steward-wallet-providers ` +
-          `is CSS-import-free by design, so dropping this import leaves the wallet ` +
-          `modal unstyled (the Solana modal renders invisible, #15600).`,
-      ).toBe(true);
-    },
-  );
+  it.each(
+    WALLET_MODAL_STYLESHEETS,
+  )("cloud-ui/index.css imports %s so the wallet modals render styled (#15600)", (sheet) => {
+    expect(
+      cloudCssEntry.includes(`@import "${sheet}";`),
+      `cloud-ui/index.css must \`@import "${sheet}"\` — steward-wallet-providers ` +
+        `is CSS-import-free by design, so dropping this import leaves the wallet ` +
+        `modal unstyled (the Solana modal renders invisible, #15600).`,
+    ).toBe(true);
+  });
 });

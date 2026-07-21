@@ -284,7 +284,7 @@
     "packages/feed/tools/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.1",
     "@capacitor/core": "8.4.0",
     "@elizaos-benchmarks/lib": "workspace:*",
     "@elizaos/agent": "workspace:*",
