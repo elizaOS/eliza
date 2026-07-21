@@ -172,16 +172,6 @@ function escapeIlikeLiteral(value: string): string {
   return value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_");
 }
 
-/**
- * Quotes, leading-minus terms, and standalone ORs carry structural meaning in
- * `websearch_to_tsquery`. Literal and trigram fallbacks cannot preserve that
- * structure, so they must not be OR-ed into those queries. Interior hyphens
- * remain ordinary text for attachment names, ticket IDs, and similar tokens.
- */
-function usesWebsearchSyntax(value: string): boolean {
-  return value.includes('"') || /(^|\s)-(?=\S)/.test(value) || /(^|\s)or(?=\s|$)/i.test(value);
-}
-
 function isMessageSearchObjectsMissing(error: unknown): boolean {
   const seen = new Set<unknown>();
   let current: unknown = error;
@@ -259,6 +249,7 @@ function isDuplicateKeyError(error: unknown): boolean {
   return false;
 }
 
+import { usesWebsearchSyntax } from "./message-search";
 import type { DatabaseBackend, DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
