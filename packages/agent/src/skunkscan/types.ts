@@ -637,11 +637,15 @@ export type WalletRelationship = {
 
 export type WalletRelationshipSummary = {
   relationshipCount: number;
+
   evidenceConfidence: "low" | "medium" | "high";
+
   confidenceAnalysis?: WalletConfidenceAnalysis;
+
   relationships: WalletRelationship[];
-  evidenceConfidence: "low" | "medium" | "high";
+
   confidence: "low" | "medium" | "high";
+
   notes: string[];
 };
 
