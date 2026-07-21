@@ -101,6 +101,27 @@ describe("ERROR_REPORTED escalation handler", () => {
     expect(spy).toHaveBeenCalledTimes(1);
   });
 
+  it("never escalates internal scheduler-plumbing codes into owner chat (SHADOW-ACCOUNT-DEBUG)", async () => {
+    const spy = vi
+      .spyOn(EscalationService, "startEscalation")
+      .mockResolvedValue({} as never);
+    const runtime = {} as IAgentRuntime;
+    // Threshold 1: a single quiet-code report would escalate if not filtered.
+    const tracker = new ErrorEscalationTracker(1, 10 * 60 * 1000);
+    const handler = createErrorReportedEscalationHandler(runtime, tracker, 10);
+
+    // The exact loop that narrated into Shadow's chat 9x.
+    await handler(payload("TASK_WORKER_MISSING"));
+    await handler(payload("TASK_TICK_FAILED"));
+    await handler(payload("TASK_QUERY_FAILED"));
+    await handler(payload("TASK_ORPHAN_QUARANTINE_FAILED"));
+    expect(spy).not.toHaveBeenCalled();
+
+    // A real, non-quiet code still escalates on the same tracker.
+    await handler(payload("DB_DOWN"));
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
   it("does not re-enter reportError when escalation fails", async () => {
     vi.spyOn(EscalationService, "startEscalation").mockRejectedValue(
       new Error("send failed"),
