@@ -38,6 +38,7 @@ export function analyzeWalletDeFi(
           programId: protocol.programId,
           protocol: protocol.name,
           category: protocol.category,
+          reputation: protocol.reputation,
           interactionCount: 1,
         });
       }
