@@ -14,6 +14,7 @@
 
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
 import { isInsufficientCreditsError } from "../../api/credit-detection.ts";
+import { probeRuntimeDatabaseLiveness } from "../../api/database-liveness.ts";
 import type { HealthCheck, HealthCheckResult } from "./types.ts";
 
 const LOG_PREFIX = "[runtime-ops:health-checks]";
@@ -22,21 +23,11 @@ const LOG_PREFIX = "[runtime-ops:health-checks]";
 // Runtime guards — keep us off `any` while accommodating partial typings.
 // ---------------------------------------------------------------------------
 
-interface DbAdapterLike {
-  isReady?: () => Promise<boolean>;
-}
-
 interface ServiceRegistryLike {
   getRegisteredServiceTypes?: () => readonly string[];
   getServiceRegistrationStatus?: (
     serviceType: string,
   ) => "pending" | "registering" | "registered" | "failed" | "unknown";
-}
-
-function getDbAdapter(runtime: AgentRuntime): DbAdapterLike | null {
-  const adapter = runtime.adapter;
-  if (adapter == null || typeof adapter !== "object") return null;
-  return adapter as DbAdapterLike;
 }
 
 function asServiceRegistry(runtime: AgentRuntime): ServiceRegistryLike {
@@ -132,27 +123,13 @@ export const dbConnectionCheck: HealthCheck = {
   required: true,
   timeoutMs: 1500,
   async run(runtime: AgentRuntime): Promise<HealthCheckResult> {
-    const adapter = getDbAdapter(runtime);
-    if (!adapter) {
-      // Runtime without a database adapter (rare but supported) — pass.
-      return { ok: true };
-    }
-    if (typeof adapter.isReady !== "function") {
-      // Older adapter without isReady — best-effort pass; don't block on
-      // a missing API surface we cannot probe.
-      return { ok: true };
-    }
-    try {
-      const ready = await adapter.isReady();
-      if (ready === true) return { ok: true };
-      return { ok: false, reason: "adapter.isReady() returned false" };
-    } catch (err) {
-      return {
-        ok: false,
-        reason: `adapter.isReady() threw: ${describeError(err)}`,
-        cause: err,
-      };
-    }
+    const liveness = await probeRuntimeDatabaseLiveness(runtime);
+    if (liveness.ok) return { ok: true };
+    if (liveness.status === "unknown") return { ok: true };
+    return {
+      ok: false,
+      reason: `${liveness.status}: ${liveness.message ?? "database probe failed"}`,
+    };
   },
 };
 

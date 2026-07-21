@@ -5,7 +5,7 @@
  * semantics stay deterministic and cheap enough for the unit lane.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
@@ -16,6 +16,7 @@ import {
   parseArgs,
   runCli,
 } from "./cli.ts";
+import { writeReport as writeReportToDisk } from "./reporter.ts";
 import type { AggregateReport, ScenarioReport } from "./types.ts";
 
 const ENV_KEYS = [
@@ -298,5 +299,128 @@ describe("scenario-runner CLI", () => {
       runDir,
       { nativeJsonlPath: nativePath },
     );
+  });
+
+  it("refreshes aggregate evidence after every completed scenario and keeps the final report equivalent to the last checkpoint", async () => {
+    writeScenario(tempDir, "cli-first");
+    writeScenario(tempDir, "cli-second");
+    const runDir = path.join(tempDir, "run");
+    const reportPath = path.join(tempDir, "report.json");
+    const dependencies = createDependencies(() => "passed");
+
+    const code = await runCli(
+      [
+        "run",
+        tempDir,
+        "--run-dir",
+        runDir,
+        "--runId",
+        "checkpoint-run",
+        "--report",
+        reportPath,
+      ],
+      dependencies,
+    );
+
+    expect(code).toBe(0);
+    const reportWrites = vi
+      .mocked(dependencies.writeReport)
+      .mock.calls.filter(([, filePath]) => filePath === reportPath)
+      .map(([report]) => report);
+    expect(
+      reportWrites.map((report) => report.scenarios.map((s) => s.id)),
+    ).toEqual([
+      ["cli-first"],
+      ["cli-first", "cli-second"],
+      ["cli-first", "cli-second"],
+    ]);
+    expect(reportWrites.at(-1)).toEqual(reportWrites.at(-2));
+    // Expensive derived artifacts are rebuilt once at deterministic finalization,
+    // not by every incremental checkpoint.
+    expect(dependencies.writeScenarioRunViewer).toHaveBeenCalledTimes(1);
+    expect(dependencies.exportScenarioNativeJsonl).toHaveBeenCalledTimes(0);
+  });
+
+  it("stops after a graceful interrupt only after checkpointing the completed scenario", async () => {
+    writeScenario(tempDir, "cli-alpha-signal");
+    writeScenario(tempDir, "cli-beta-after-signal");
+    const runDir = path.join(tempDir, "run");
+    const reportPath = path.join(tempDir, "report.json");
+    const dependencies = createDependencies(() => "passed", {
+      runScenario: vi.fn(async (scenario) => {
+        const report = scenarioReport(scenario.id, "passed");
+        process.emit("SIGTERM", "SIGTERM");
+        return report;
+      }),
+      writeReport: writeReportToDisk,
+    });
+
+    const code = await runCli(
+      [
+        "run",
+        tempDir,
+        "--run-dir",
+        runDir,
+        "--runId",
+        "interrupted-run",
+        "--report",
+        reportPath,
+      ],
+      dependencies,
+    );
+
+    expect(code).toBe(1);
+    expect(dependencies.runScenario).toHaveBeenCalledTimes(1);
+    const recoveredReport = JSON.parse(
+      readFileSync(reportPath, "utf8"),
+    ) as AggregateReport;
+    expect(recoveredReport.scenarios.map((s) => s.id)).toEqual([
+      "cli-alpha-signal",
+    ]);
+    const recoveredRunMatrix = JSON.parse(
+      readFileSync(path.join(runDir, "matrix.json"), "utf8"),
+    ) as AggregateReport;
+    expect(recoveredRunMatrix).toEqual(recoveredReport);
+    expect(stderr).toContain("checkpoint evidence reflects exactly");
+  });
+
+  it("redacts sensitive keyed values before writing checkpoint reports", async () => {
+    writeScenario(tempDir, "cli-secret");
+    const reportPath = path.join(tempDir, "report.json");
+    const dependencies = createDependencies(() => "passed", {
+      runScenario: vi.fn(async (scenario) => ({
+        ...scenarioReport(scenario.id, "passed"),
+        turns: [
+          {
+            name: "api",
+            kind: "api",
+            responseText: "ok",
+            responseBody: { token: "secret-token-value" },
+            actionsCalled: [],
+            durationMs: 1,
+            failedAssertions: [],
+          },
+        ],
+        actionsCalled: [
+          {
+            name: "SECRET_ACTION",
+            result: {
+              data: { authorization: "Bearer secret-token-value" },
+              success: true,
+            },
+          } as never,
+        ],
+      })),
+    });
+
+    const code = await runCli(
+      ["run", tempDir, "--report", reportPath],
+      dependencies,
+    );
+
+    expect(code).toBe(0);
+    const persisted = vi.mocked(dependencies.writeReport).mock.calls.at(-1)?.[0];
+    expect(JSON.stringify(persisted)).not.toContain("secret-token-value");
+    expect(JSON.stringify(persisted)).toContain("[REDACTED]");
   });
 });

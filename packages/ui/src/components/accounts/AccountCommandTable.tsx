@@ -480,7 +480,7 @@ export function AccountCommandTable({
                   data-active={isActive ? "true" : undefined}
                   className={cn(
                     "border-b border-border/25 transition-colors last:border-b-0 hover:bg-bg-accent/25",
-                    !account.enabled && "opacity-55",
+                    !account.enabled && "bg-bg-accent/20",
                     isActive && "bg-accent/5",
                   )}
                 >
@@ -642,7 +642,7 @@ export function AccountCommandTable({
                           {lease?.activeLeaseCount ?? 0}
                         </span>
                         {lease?.servedLastRequest ? (
-                          <span className="text-[9px] uppercase tracking-wider text-accent-muted">
+                          <span className="text-[9px] uppercase tracking-wider text-accent">
                             {t("accounts.table.leases.servedLast", {
                               defaultValue: "served last",
                             })}
@@ -757,7 +757,7 @@ export function AccountCommandTable({
                           size="sm"
                           disabled={rowSaving}
                           onClick={() => onReauthenticate(account)}
-                          className="h-7 gap-1 px-2 text-[11px]"
+                          className="h-7 gap-1 px-2 text-[11px] text-bg"
                         >
                           <KeyRound className="h-3 w-3" aria-hidden />
                           {account.source === "oauth"

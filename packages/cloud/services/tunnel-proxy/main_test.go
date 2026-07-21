@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"strconv"
 	"testing"
 	"time"
@@ -63,6 +64,31 @@ func TestTargetHostForRequest(t *testing.T) {
 	}
 	if want := label + ".tunnel.eliza.local"; target != want {
 		t.Fatalf("target host = %q, want %q", target, want)
+	}
+}
+
+func TestForwardedHostPreservesOriginalPublicHost(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://eliza-staging-1.elizacloud.ai/pair", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "eliza-staging-1.elizacloud.ai"
+	req.Header.Set("X-Forwarded-Host", "agent-id.staging.elizacloud.ai")
+
+	if got, want := forwardedHost(req), "agent-id.staging.elizacloud.ai"; got != want {
+		t.Fatalf("forwardedHost() = %q, want %q", got, want)
+	}
+}
+
+func TestForwardedHostFallsBackToRequestHost(t *testing.T) {
+	req, err := http.NewRequest("GET", "https://tunnel.elizacloud.ai/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Host = "tunnel.elizacloud.ai"
+
+	if got, want := forwardedHost(req), "tunnel.elizacloud.ai"; got != want {
+		t.Fatalf("forwardedHost() = %q, want %q", got, want)
 	}
 }
 

@@ -9,6 +9,7 @@ import {
   appendBridgeCallbackContent,
   type BridgeMessageResult,
   bridgeResultText,
+  checkRuntimeDatabaseLiveness,
 } from "./cloud-agent-shared";
 
 describe("cloud-agent bridge callback results", () => {
@@ -38,5 +39,66 @@ describe("cloud-agent bridge callback results", () => {
 
     expect(bridgeResultText(result)).toBe("(no response)");
     expect(result.failureKind).toBe("no_response");
+  });
+});
+
+describe("cloud-agent database liveness", () => {
+  it("classifies a real queryable closed-PGlite error as terminal", async () => {
+    await expect(
+      checkRuntimeDatabaseLiveness({
+        adapter: {
+          getRawConnection: () => ({
+            async query() {
+              throw new Error("PGlite is closed");
+            },
+          }),
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: "terminal_error",
+      terminal: true,
+      message: "PGlite is closed",
+    });
+  });
+
+  it("preserves terminal closure from a DB handle even when isReady collapses it", async () => {
+    await expect(
+      checkRuntimeDatabaseLiveness({
+        adapter: {
+          isReady: async () => false,
+          db: {
+            async execute() {
+              throw new Error("Database is shutting down - operation rejected");
+            },
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: "terminal_error",
+      terminal: true,
+    });
+  });
+
+  it("classifies bounded non-terminal probe failures separately", async () => {
+    await expect(
+      checkRuntimeDatabaseLiveness({
+        adapter: {
+          async getConnection() {
+            return {
+              async execute() {
+                throw new Error("probe timeout");
+              },
+            };
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: "transient_error",
+      terminal: false,
+      message: "probe timeout",
+    });
   });
 });

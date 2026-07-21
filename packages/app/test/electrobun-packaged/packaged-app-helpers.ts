@@ -89,15 +89,6 @@ export interface DesktopWindowBounds {
   height: number;
 }
 
-export interface DesktopNotificationRecord {
-  id: string;
-  title: string;
-  body: string | undefined;
-  subtitle: string | undefined;
-  silent: boolean | undefined;
-  recordedAt: string;
-}
-
 interface PackagedStartOptions {
   bridgeHealthTimeoutMs?: number;
   shellReadyTimeoutMs?: number;
@@ -653,6 +644,7 @@ export class PackagedDesktopHarness {
   readonly launcherPath: string;
   readonly apiBase: string;
   readonly partition: string;
+  readonly extraEnv: NodeJS.ProcessEnv;
   appEnv: NodeJS.ProcessEnv;
   process: ChildProcess | null = null;
   logs: PackagedProcessLogs | null = null;
@@ -674,6 +666,7 @@ export class PackagedDesktopHarness {
     this.launcherPath = args.launcherPath;
     this.apiBase = args.apiBase;
     this.partition = `persist:packaged-regression-${randomUUID()}`;
+    this.extraEnv = { ...args.extraEnv };
     this.appEnv = createPackagedDesktopEnv({
       baseEnv: process.env,
       apiBase: args.apiBase,
@@ -684,8 +677,8 @@ export class PackagedDesktopHarness {
       appData: this.appDataDir,
       localAppData: this.localAppDataDir,
     });
-    if (args.extraEnv) {
-      this.appEnv = { ...this.appEnv, ...args.extraEnv };
+    if (Object.keys(this.extraEnv).length > 0) {
+      this.appEnv = { ...this.appEnv, ...this.extraEnv };
     }
   }
 
@@ -854,6 +847,9 @@ export class PackagedDesktopHarness {
       appData: this.appDataDir,
       localAppData: this.localAppDataDir,
     });
+    if (Object.keys(this.extraEnv).length > 0) {
+      this.appEnv = { ...this.appEnv, ...this.extraEnv };
+    }
 
     // Short delay to let the OS release the old process's resources (ports,
     // file handles, WebKit caches) before spawning the next instance.
@@ -897,25 +893,6 @@ export class PackagedDesktopHarness {
   async getState(): Promise<DesktopTestBridgeState> {
     return await fetchJson<DesktopTestBridgeState>(`${this.bridgeUrl}/state`, {
       headers: { Authorization: `Bearer ${this.bridgeToken}` },
-    });
-  }
-
-  async getNotifications(): Promise<DesktopNotificationRecord[]> {
-    const response = await fetchJson<{
-      notifications: DesktopNotificationRecord[];
-    }>(`${this.bridgeUrl}/notifications`, {
-      headers: { Authorization: `Bearer ${this.bridgeToken}` },
-    });
-    return response.notifications;
-  }
-
-  async clearNotifications(): Promise<void> {
-    await fetchJson<{ ok: boolean }>(`${this.bridgeUrl}/notifications`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${this.bridgeToken}`,
-        "Content-Type": "application/json",
-      },
     });
   }
 
