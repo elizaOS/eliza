@@ -7,6 +7,8 @@ import { InvestigationCase } from "./types";
 
 import { compareRisk } from "./comparators/riskComparator";
 
+import { compareRisk } from "./comparators/riskComparator";
+
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random()
     .toString(36)
@@ -21,14 +23,44 @@ export interface BuildTimelineInput {
 export function buildInvestorTimeline(
   input: BuildTimelineInput,
 ): InvestorWalletChangeReport {
+  
   const changes: InvestorWalletChange[] = [];
 
-  changes.push(
-    ...compareRisk(
-      input.previous,
-      input.current,
-    ),
-  );
+const riskComparison = compareRiskScore(
+  input.previous,
+  input.current,
+);
+
+for (const result of riskComparison.results) {
+  changes.push({
+    id: result.id,
+
+    category: result.category,
+
+    title: result.title,
+
+    description: result.summary,
+
+    direction: result.direction,
+
+    impact: result.impact,
+
+    severity: result.severity,
+
+    previousValue: result.previousValue,
+
+    currentValue: result.currentValue,
+
+    absoluteChange: result.absoluteChange,
+
+    percentageChange: result.percentageChange,
+
+    investorMeaning:
+      result.investorInterpretation,
+
+    detectedAt: result.detectedAt,
+  });
+}
 
   return {
     reportId: generateId("timeline"),
