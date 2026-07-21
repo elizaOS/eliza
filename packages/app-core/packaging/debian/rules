@@ -74,6 +74,9 @@ override_dh_dwz:
 override_dh_strip:
 	dh_strip -Xusr/lib/elizaos-app
 
+override_dh_strip_nondeterminism:
+	dh_strip_nondeterminism -Xusr/lib/elizaos-app/node_modules -Xusr/lib/elizaos-app/node
+
 override_dh_auto_clean:
 	cd "$(REPO_ROOT)" && node packages/scripts/rm-path-recursive.mjs packages/app-core/dist packages/agent/dist
 	dh_auto_clean

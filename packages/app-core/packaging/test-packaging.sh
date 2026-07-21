@@ -195,6 +195,7 @@ check "Debian rejects dangling runtime links" grep -q -- "-xtype l" "$SCRIPT_DIR
 check "Debian rejects foreign-architecture ELF files" grep -q 'foreign-architecture ELF' "$SCRIPT_DIR/debian/rules"
 check "Debian stages agent package metadata" grep -q 'packages/agent/package.json' "$SCRIPT_DIR/debian/rules"
 check "Debian preserves vendored native binaries" grep -q 'dh_strip -Xusr/lib/elizaos-app' "$SCRIPT_DIR/debian/rules"
+check "Debian skips vendored runtime normalization" grep -q 'dh_strip_nondeterminism -Xusr/lib/elizaos-app/node_modules' "$SCRIPT_DIR/debian/rules"
 check "Debian bundles pinned Node runtime" grep -q 'NODE_VERSION := 24.15.0' "$SCRIPT_DIR/debian/rules"
 check "Debian verifies Node runtime checksum" grep -q 'sha256sum --check --strict' "$SCRIPT_DIR/debian/rules"
 
