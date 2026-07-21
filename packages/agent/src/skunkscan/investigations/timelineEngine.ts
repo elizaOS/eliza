@@ -5,9 +5,7 @@ import {
 
 import { InvestigationCase } from "./types";
 
-import { compareRisk } from "./comparators/riskComparator";
-
-import { compareRisk } from "./comparators/riskComparator";
+import { compareRiskScore } from "./comparators/riskComparison";
 
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random()
