@@ -127,8 +127,8 @@ const SOLANA_PROTOCOLS: Readonly<Record<string, SolanaProtocol>> = {
   // Lending & Staking
   // =========================
 
-  "KLend2g3yuBZtprx8aV8BrmVnyXWm2U4LQ6mQk2J3Jm": {
-    programId: "KLend2g3yuBZtprx8aV8BrmVnyXWm2U4LQ6mQk2J3Jm",
+  "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD": {
+    programId: "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD",
     name: "Kamino",
     category: "lending",
     reputation: "high",
