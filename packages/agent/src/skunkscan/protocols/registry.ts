@@ -110,7 +110,7 @@ const SOLANA_PROTOCOLS: Readonly<Record<string, SolanaProtocol>> = {
     tags: ["dex", "orderbook", "trading"],
   },
 
-  "9xQeWvG816bUx9EPjHmaT23yvVMuYkM7s4M6mQjJxL8": {
+    "9xQeWvG816bUx9EPjHmaT23yvVMuYkM7s4M6mQjJxL8": {
     programId: "9xQeWvG816bUx9EPjHmaT23yvVMuYkM7s4M6mQjJxL8",
     name: "Serum",
     category: "dex",
@@ -121,6 +121,62 @@ const SOLANA_PROTOCOLS: Readonly<Record<string, SolanaProtocol>> = {
     website: "https://projectserum.com",
     notes: "Historical protocol retained for forensic analysis.",
     tags: ["dex", "orderbook", "historical"],
+  },
+
+  // =========================
+  // Lending & Staking
+  // =========================
+
+  "KLend2g3yuBZtprx8aV8BrmVnyXWm2U4LQ6mQk2J3Jm": {
+    programId: "KLend2g3yuBZtprx8aV8BrmVnyXWm2U4LQ6mQk2J3Jm",
+    name: "Kamino",
+    category: "lending",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://kamino.finance",
+    notes: "Lending, borrowing and vault protocol.",
+    tags: ["lending", "borrowing", "vaults"],
+  },
+
+  "Marginfi111111111111111111111111111111111": {
+    programId: "Marginfi111111111111111111111111111111111",
+    name: "Marginfi",
+    category: "lending",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://marginfi.com",
+    notes: "Solana lending protocol.",
+    tags: ["lending", "borrowing"],
+  },
+
+  "Marinade111111111111111111111111111111111": {
+    programId: "Marinade111111111111111111111111111111111",
+    name: "Marinade",
+    category: "staking",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://marinade.finance",
+    notes: "Liquid staking protocol.",
+    tags: ["staking", "liquid-staking"],
+  },
+
+  "Jito11111111111111111111111111111111111111": {
+    programId: "Jito11111111111111111111111111111111111111",
+    name: "Jito",
+    category: "staking",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://jito.network",
+    notes: "Liquid staking and MEV ecosystem.",
+    tags: ["staking", "liquid-staking", "mev"],
   },
 };
 
