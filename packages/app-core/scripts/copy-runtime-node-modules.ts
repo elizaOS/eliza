@@ -181,11 +181,18 @@ const ARCH_ALIASES = new Map<string, string>([
   ["all", "universal"],
   ["amd64", "x64"],
   ["arm", "arm"],
+  ["armhf", "arm"],
   ["arm64", "arm64"],
   ["armv7", "arm"],
   ["armv7l", "arm"],
   ["i386", "ia32"],
   ["ia32", "ia32"],
+  ["loong64", "loong64"],
+  ["mips64el", "mips64el"],
+  ["ppc64", "ppc64"],
+  ["riscv64", "riscv64"],
+  ["riscv64d", "riscv64"],
+  ["s390x", "s390x"],
   ["universal", "universal"],
   ["universal2", "universal"],
   ["x64", "x64"],
@@ -627,6 +634,7 @@ function getRuntimeVariantConstraints(variant: string): {
 } {
   const tokens = variant
     .toLowerCase()
+    .replace(/x86[_-]64/g, "x64")
     .split(/[^a-z0-9]+/)
     .filter(Boolean);
   let os: string | null = null;
@@ -726,6 +734,45 @@ export function shouldKeepPackageRelativePath(
         targetOS,
         targetArch,
       );
+    }
+  }
+
+  if (packageName === "fb-dotslash") {
+    const dotslashMatch = normalizedPath.match(/^bin\/([^/]+)(?:\/|$)/);
+    if (dotslashMatch && dotslashMatch[1] !== "dotslash") {
+      const variant = dotslashMatch[1]
+        .replace("linux-musl.", "linux-")
+        .replace("macos", "darwin-universal")
+        .replace("windows-arm64", "win32-arm64")
+        .replace("windows", "win32-x64")
+        .replaceAll("_", "-");
+      return matchesRuntimeVariant(variant, targetOS, targetArch);
+    }
+  }
+
+  if (packageName === "hermes-compiler") {
+    const hermesMatch = normalizedPath.match(/^hermesc\/([^/]+)-bin(?:\/|$)/);
+    if (hermesMatch) {
+      const variants: Record<string, string> = {
+        linux64: "linux-x64",
+        osx: "darwin-universal",
+        win64: "win32-x64",
+      };
+      return matchesRuntimeVariant(
+        variants[hermesMatch[1]] ?? hermesMatch[1],
+        targetOS,
+        targetArch,
+      );
+    }
+  }
+
+  if (packageName?.startsWith("@msgpackr-extract/msgpackr-extract-linux-")) {
+    const libcMatch = normalizedPath.match(/\.(glibc|musl)\.node$/);
+    if (libcMatch && normalizeTargetOS(targetOS) === "linux") {
+      const currentLibc = detectCurrentLibc();
+      if (currentLibc) {
+        return currentLibc === libcMatch[1];
+      }
     }
   }
 

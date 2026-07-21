@@ -45,8 +45,13 @@ jobs:
         with:
           bun-version: "canary"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24.15.0"
+
       - name: Install dependencies
-        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: bun run build
@@ -68,6 +73,9 @@ jobs:
           if [ ! -L debian ]; then
             ln -sfn packaging/debian debian
           fi
+          VERSION=$(node -p "require('../../package.json').version")
+          DEB_VERSION="${VERSION//-/~}-1"
+          sed -i "1s/([^)]*)/($DEB_VERSION)/" packaging/debian/changelog
           dpkg-buildpackage -us -uc -b -d
           rm -f debian
 
@@ -107,6 +115,20 @@ jobs:
             esac
           done < lintian.log
           echo "lintian exit code: $LINTIAN_EXIT (annotations only; not failing build)"
+
+      - name: Install and verify .deb runtime
+        if: steps.find_deb.outputs.deb_path != ''
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION=$(node -p "require('./package.json').version")
+          sudo apt-get install -y "${{ steps.find_deb.outputs.deb_path }}"
+          ACTUAL_VERSION=$(elizaos-app --version)
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "ERROR: installed Debian CLI reported '$ACTUAL_VERSION', expected '$EXPECTED_VERSION'" >&2
+            exit 1
+          fi
+          test "$(/usr/lib/elizaos-app/node/bin/node --version)" = "v24.15.0"
+          elizaos-app --help >/dev/null
 
       - name: Upload lintian log
         if: always() && steps.find_deb.outputs.deb_path != ''

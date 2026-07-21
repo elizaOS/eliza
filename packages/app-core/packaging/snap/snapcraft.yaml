@@ -46,7 +46,7 @@ apps:
       - browser-support
       - password-manager-service
     environment:
-      PATH: $SNAP/node/bin:$SNAP/usr/bin:$SNAP/bin:$PATH
+      PATH: $SNAP/bun/bin:$SNAP/node/bin:$SNAP/usr/bin:$SNAP/bin:$PATH
       NODE_PATH: $SNAP/lib/elizaos-app/node_modules
       HOME: $SNAP_USER_DATA
       ELIZAOS_APP_DATA_DIR: $SNAP_USER_COMMON/.elizaos-app
@@ -61,16 +61,26 @@ parts:
     plugin: nil
     override-build: |
       set -eu
-      NODE_VERSION="22.12.0"
+      NODE_VERSION="24.15.0"
       ARCH=$(dpkg --print-architecture)
       case "$ARCH" in
-        amd64) NODE_ARCH="x64" ;;
-        arm64) NODE_ARCH="arm64" ;;
+        amd64)
+          NODE_ARCH="x64"
+          NODE_SHA256="472655581fb851559730c48763e0c9d3bc25975c59d518003fc0849d3e4ba0f6"
+          ;;
+        arm64)
+          NODE_ARCH="arm64"
+          NODE_SHA256="f3d5a797b5d210ce8e2cb265544c8e482eaedcb8aa409a8b46da7e8595d0dda0"
+          ;;
         *) echo "Unsupported arch: $ARCH"; exit 1 ;;
       esac
 
-      curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
-        | tar xJ --strip-components=1 -C "$CRAFT_PART_INSTALL"
+      NODE_ARCHIVE="$CRAFT_PART_BUILD/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz"
+      curl --fail --location --proto '=https' --tlsv1.2 \
+        "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+        --output "$NODE_ARCHIVE"
+      printf '%s  %s\n' "$NODE_SHA256" "$NODE_ARCHIVE" | sha256sum --check --strict
+      tar xJf "$NODE_ARCHIVE" --strip-components=1 -C "$CRAFT_PART_INSTALL"
 
       export PATH="$CRAFT_PART_INSTALL/bin:$PATH"
 
@@ -78,6 +88,9 @@ parts:
       "$CRAFT_PART_INSTALL/bin/npm" --version
     organize:
       "*": node/
+    build-packages:
+      - curl
+      - xz-utils
 
   bun:
     plugin: nil
@@ -304,7 +317,7 @@ parts:
 
       # Install dependencies — skip postinstall to avoid ensure-bundled-workspaces
       # trying to build the (now-removed) plugin-agent-orchestrator from source.
-      bun install --ignore-scripts
+      bun install --frozen-lockfile --ignore-scripts
 
       # app-core still carries compatibility re-exports for wallet route
       # helpers that live in plugin-wallet. The snap workspace rewrite keeps
@@ -318,7 +331,7 @@ parts:
       ln -s ../../plugins/plugin-wallet node_modules/@elizaos/plugin-wallet
       ln -s ../../../../plugins/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
 
-      # `bun install --ignore-scripts` skips the npm bun package postinstall,
+      # `bun install --frozen-lockfile --ignore-scripts` skips the npm bun package postinstall,
       # leaving node_modules/bun/bin/bun as a non-executable JS shim. Turbo
       # package builds can then fail with "Exec format error" when they spawn
       # that package binary instead of the staged Bun runtime.
@@ -524,9 +537,33 @@ parts:
       cp packages/agent/package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent/"
       cp package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/"
       cp plugins.json "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      node -e 'const fs=require("node:fs"); const root=JSON.parse(fs.readFileSync("package.json")); const target=process.argv[1]; const agent=JSON.parse(fs.readFileSync(target)); agent.version=root.version; fs.writeFileSync(target, JSON.stringify(agent, null, 2) + "\n");' \
+        "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent/package.json"
 
-      # Copy node_modules for runtime
-      cp -r node_modules "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      # Bun's workspace entries are links back into packages/*, so copying the
+      # install tree verbatim creates dangling links after the snap relocates.
+      # The shared runtime copier materializes the platform-specific dependency
+      # graph and verifies every required package entry before it can ship.
+      node --import tsx packages/app-core/scripts/copy-runtime-node-modules.ts \
+        --scan-dir packages/agent/dist \
+        --target-dist "$CRAFT_PART_INSTALL/lib/elizaos-app"
+
+      dangling_runtime_link="$(find "$CRAFT_PART_INSTALL/lib/elizaos-app/node_modules" -xtype l -print -quit)"
+      if [ -n "$dangling_runtime_link" ]; then
+        echo "ERROR: staged snap runtime contains dangling link: $dangling_runtime_link" >&2
+        exit 1
+      fi
+
+      case "$(dpkg --print-architecture)" in
+        amd64) EXPECTED_ELF="x86-64" ;;
+        arm64) EXPECTED_ELF="ARM aarch64" ;;
+        *) echo "ERROR: unsupported snap runtime architecture: $(dpkg --print-architecture)" >&2; exit 1 ;;
+      esac
+      FOREIGN_ELF="$(find "$CRAFT_PART_INSTALL/lib/elizaos-app" -type f -exec file {} + | awk -v expected="$EXPECTED_ELF" 'index($0, "ELF") && !index($0, expected) { print; exit }')"
+      if [ -n "$FOREIGN_ELF" ]; then
+        echo "ERROR: staged snap runtime contains a foreign-architecture ELF: $FOREIGN_ELF" >&2
+        exit 1
+      fi
 
       # Copy additional runtime files
       for dir in src scripts skills patches; do
@@ -550,7 +587,6 @@ parts:
       fi
 
       exec "$SNAP/node/bin/node" \
-        --import "$SNAP/lib/elizaos-app/node_modules/tsx/dist/loader.mjs" \
         "$SNAP/lib/elizaos-app/packages/agent/dist/bin.js" \
         "$@"
       WRAPPER
@@ -558,6 +594,7 @@ parts:
 
     build-packages:
       - curl
+      - file
       - git
       - build-essential
     stage-packages:
