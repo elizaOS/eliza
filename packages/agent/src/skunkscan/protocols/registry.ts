@@ -1,5 +1,6 @@
 export type SolanaProtocol = {
   programId: string;
+
   name: string;
 
   category:
@@ -10,12 +11,27 @@ export type SolanaProtocol = {
     | "liquidity"
     | "bridge"
     | "nft"
+    | "perpetuals"
+    | "yield"
+    | "launchpad"
+    | "stablecoin"
+    | "infrastructure"
     | "other";
 
   reputation:
     | "high"
     | "medium"
     | "unknown";
+
+  verified: boolean;
+
+  custodial: boolean;
+
+  deprecated: boolean;
+
+  website?: string;
+
+  notes?: string;
 };
 
 const SOLANA_PROTOCOLS: Record<string, SolanaProtocol> = {
