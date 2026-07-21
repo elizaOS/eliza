@@ -8,6 +8,7 @@
 
 import * as crypto from "node:crypto";
 import * as http from "node:http";
+import { sql } from "drizzle-orm";
 import restartExitCodeDefinition from "../../shared/src/restart-exit-code.json" with {
   type: "json",
 };
@@ -94,6 +95,128 @@ type BridgeCallbackContent = {
   text?: unknown;
   failureKind?: unknown;
 };
+
+export type DatabaseLivenessPayload = {
+  status: "ok" | "unknown" | "transient_error" | "terminal_error";
+  ok: boolean;
+  terminal: boolean;
+  message?: string;
+};
+
+export interface AgentRuntimeAdapterLike {
+  isReady?: () => Promise<boolean>;
+  getRawConnection?: () => { query(sql: string): Promise<unknown> };
+  getConnection?: () => Promise<unknown>;
+  db?: unknown;
+}
+
+export interface RuntimeWithDatabaseLiveness {
+  adapter?: AgentRuntimeAdapterLike;
+  checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
+}
+
+const TERMINAL_DATABASE_LIVENESS_PATTERNS = [
+  /pglite is closed/i,
+  /database is shutting down/i,
+  /operation rejected/i,
+  /cannot query.*closed/i,
+  /closed database/i,
+] as const;
+
+function describeDatabaseProbeError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    // error-policy:J3 diagnostic formatting fallback for non-serializable input
+    return String(error);
+  }
+}
+
+function isTerminalDatabaseProbeError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const message =
+      current instanceof Error
+        ? current.message
+        : typeof current === "string"
+          ? current
+          : "";
+    if (
+      TERMINAL_DATABASE_LIVENESS_PATTERNS.some((pattern) =>
+        pattern.test(message),
+      )
+    ) {
+      return true;
+    }
+    current =
+      current instanceof Error
+        ? (current as Error & { cause?: unknown }).cause
+        : typeof current === "object" && current !== null && "cause" in current
+          ? (current as { cause?: unknown }).cause
+          : null;
+  }
+  return false;
+}
+
+async function probeDatabaseHandle(handle: unknown): Promise<void> {
+  if (handle && typeof handle === "object") {
+    const queryable = handle as { query?: unknown };
+    if (typeof queryable.query === "function") {
+      await (queryable.query as (sql: string) => Promise<unknown>)("SELECT 1");
+      return;
+    }
+    const executable = handle as { execute?: unknown };
+    if (typeof executable.execute === "function") {
+      await (executable.execute as (query: unknown) => Promise<unknown>)(
+        sql`SELECT 1`,
+      );
+      return;
+    }
+  }
+  throw new Error("database connection does not expose query or execute");
+}
+
+export async function checkRuntimeDatabaseLiveness(
+  runtime: RuntimeWithDatabaseLiveness | null,
+): Promise<DatabaseLivenessPayload> {
+  if (!runtime) return { status: "unknown", ok: false, terminal: false };
+  if (typeof runtime.checkDatabaseLiveness === "function") {
+    return runtime.checkDatabaseLiveness();
+  }
+  const adapter = runtime.adapter;
+  if (!adapter) return { status: "unknown", ok: true, terminal: false };
+  try {
+    if (typeof adapter.getRawConnection === "function") {
+      await probeDatabaseHandle(adapter.getRawConnection());
+    } else if (typeof adapter.getConnection === "function") {
+      await probeDatabaseHandle(await adapter.getConnection());
+    } else if (adapter.db) {
+      // Probe the handle before isReady(). PGlite's readiness method returns a
+      // boolean and would otherwise erase the terminal `PGlite is closed`
+      // error that the supervisor needs in order to recover the container.
+      await probeDatabaseHandle(adapter.db);
+    } else if (typeof adapter.isReady === "function") {
+      const ready = await adapter.isReady();
+      if (!ready) throw new Error("adapter.isReady() returned false");
+    } else {
+      throw new Error("database adapter exposes no liveness probe surface");
+    }
+    return { status: "ok", ok: true, terminal: false };
+  } catch (error) {
+    // error-policy:J4 health probe translates database failure into liveness state
+    const terminal = isTerminalDatabaseProbeError(error);
+    return {
+      status: terminal ? "terminal_error" : "transient_error",
+      ok: false,
+      terminal,
+      message: describeDatabaseProbeError(error),
+    };
+  }
+}
 
 export function appendBridgeCallbackContent(
   result: BridgeMessageResult,
@@ -191,6 +314,7 @@ interface AgentRuntime {
   ) => Promise<BridgeMessageResult>;
   getMemories: () => Array<Record<string, unknown>>;
   getConfig: () => Record<string, unknown>;
+  checkDatabaseLiveness?: () => Promise<DatabaseLivenessPayload>;
 }
 
 // ─── Main entry ─────────────────────────────────────────────────────────
@@ -555,6 +679,7 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         },
         getMemories: () => state.memories,
         getConfig: () => state.config,
+        checkDatabaseLiveness: () => checkRuntimeDatabaseLiveness(runtime),
       };
 
       logger.info("elizaOS runtime initialized with real agent");
@@ -614,11 +739,12 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
   /** Consider the runtime hung if no activity for 10 minutes after init. */
   const HUNG_RUNTIME_THRESHOLD_MS = 10 * 60_000;
 
-  const healthServer = http.createServer((req, res) => {
+  const healthServer = http.createServer(async (req, res) => {
     if (
       req.method === "GET" &&
       (req.url === "/health" || req.url === "/api/health")
     ) {
+      const databaseLiveness = await checkRuntimeDatabaseLiveness(agentRuntime);
       const lastActivityAge =
         Date.now() - new Date(state.lastActivityAt).getTime();
       const possiblyHung =
@@ -627,7 +753,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         lastActivityAge > HUNG_RUNTIME_THRESHOLD_MS;
 
       let status: string;
-      if (!agentRuntime) {
+      if (databaseLiveness.terminal) {
+        status = "unhealthy";
+      } else if (!agentRuntime) {
         status = "initializing";
       } else if (possiblyHung) {
         status = "possibly_hung";
@@ -635,7 +763,9 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
         status = "healthy";
       }
 
-      res.writeHead(200, { "Content-Type": "application/json" });
+      res.writeHead(databaseLiveness.terminal ? 503 : 200, {
+        "Content-Type": "application/json",
+      });
       res.end(
         JSON.stringify({
           status,
@@ -644,6 +774,8 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           lastActivityAt: state.lastActivityAt,
           memoryUsage: process.memoryUsage().rss,
           runtimeReady: agentRuntime !== null,
+          database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+          databaseLiveness,
         }),
       );
       return;
@@ -827,16 +959,24 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
       }
 
       if (rpc.method === "status.get") {
+        const databaseLiveness =
+          await checkRuntimeDatabaseLiveness(agentRuntime);
         res.writeHead(200);
         res.end(
           JSON.stringify({
             jsonrpc: "2.0",
             id: rpc.id,
             result: {
-              status: agentRuntime ? "running" : "initializing",
+              status: databaseLiveness.terminal
+                ? "unhealthy"
+                : agentRuntime
+                  ? "running"
+                  : "initializing",
               uptime: process.uptime(),
               memoriesCount: state.memories.length,
               startedAt: state.startedAt,
+              database: databaseLiveness.ok ? "ok" : databaseLiveness.status,
+              databaseLiveness,
             },
           }),
         );

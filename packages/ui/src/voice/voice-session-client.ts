@@ -186,6 +186,10 @@ export interface VoiceSessionClientOptions {
    * re-mints a fresh token, never reuses the old one.
    */
   maxReconnects?: number;
+  /** Bounded attempts for transient failures before the first socket opens. */
+  preLiveMaxAttempts?: number;
+  /** Backoff base for pre-live retries. Attempt n waits base * n. */
+  preLiveRetryDelayMs?: number;
 }
 
 type ConnectionPhase = "idle" | "connecting" | "open" | "closing" | "closed";
@@ -226,6 +230,8 @@ export function createVoiceSessionClient(
   const preferredUplink = options.uplinkCodec ?? DEFAULT_UPLINK_CODEC;
   const preferredDownlink = options.downlinkCodec ?? DEFAULT_DOWNLINK_CODEC;
   const maxReconnects = options.maxReconnects ?? 2;
+  const preLiveMaxAttempts = Math.max(1, options.preLiveMaxAttempts ?? 3);
+  const preLiveRetryDelayMs = Math.max(0, options.preLiveRetryDelayMs ?? 500);
 
   let state: VoiceSessionMachineState = { ...INITIAL_VOICE_SESSION_STATE };
   let connPhase: ConnectionPhase = "idle";
@@ -282,7 +288,16 @@ export function createVoiceSessionClient(
     }
   };
 
-  async function mint(generation: number): Promise<VoiceSessionMintResponse> {
+  const waitForRetry = async (attempt: number, generation: number) => {
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, preLiveRetryDelayMs * attempt),
+    );
+    assertLifecycleCurrent(generation);
+  };
+
+  async function mintOnce(
+    generation: number,
+  ): Promise<VoiceSessionMintResponse> {
     let consentNonce: string | null;
     try {
       consentNonce = await options.getConsentNonce();
@@ -300,21 +315,38 @@ export function createVoiceSessionClient(
       );
     }
 
-    const res = await doFetch(mintPath, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      signal: lifecycleAbort?.signal,
-      body: JSON.stringify({
-        agentId: options.agentId,
-        conversationId: options.conversationId,
-        transport: "websocket",
-        consentNonce,
-      }),
-    });
+    let res: Response;
+    try {
+      res = await doFetch(mintPath, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        signal: lifecycleAbort?.signal,
+        body: JSON.stringify({
+          agentId: options.agentId,
+          conversationId: options.conversationId,
+          transport: "websocket",
+          consentNonce,
+        }),
+      });
+    } catch (cause) {
+      assertLifecycleCurrent(generation);
+      throw new VoiceSessionMintError(
+        0,
+        "voice session mint transport failed",
+        undefined,
+        cause,
+      );
+    }
     assertLifecycleCurrent(generation);
     if (!res.ok) {
-      // 404 => flag off; caller falls back to batch. Surface as a typed error.
-      throw new VoiceSessionMintError(res.status);
+      let code: string | undefined;
+      try {
+        const body = (await res.json()) as { code?: unknown };
+        if (typeof body.code === "string") code = body.code;
+      } catch {
+        // The body is diagnostic only; status still drives fallback.
+      }
+      throw new VoiceSessionMintError(res.status, undefined, code);
     }
     const json = (await res.json()) as unknown;
     assertLifecycleCurrent(generation);
@@ -328,6 +360,26 @@ export function createVoiceSessionClient(
       void ignoredError;
     }
     return json;
+  }
+
+  async function mint(generation: number): Promise<VoiceSessionMintResponse> {
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= preLiveMaxAttempts; attempt += 1) {
+      try {
+        return await mintOnce(generation);
+      } catch (error) {
+        assertLifecycleCurrent(generation);
+        const typed = error instanceof Error ? error : new Error(String(error));
+        lastError = typed;
+        const retryable =
+          (typed instanceof VoiceSessionMintError && typed.isTransient) ||
+          typed instanceof VoiceSessionConsentError;
+        if (!retryable || attempt >= preLiveMaxAttempts) throw typed;
+        mark(`prelive_retry(${attempt})`, state.traceId);
+        await waitForRetry(attempt, generation);
+      }
+    }
+    throw lastError ?? new Error("voice session mint failed");
   }
 
   function sendControl(frame: Parameters<typeof encodeClientControl>[0]): void {
@@ -814,13 +866,25 @@ export class VoiceSessionMintError extends Error {
   constructor(
     readonly status: number,
     message?: string,
+    readonly code?: string,
+    options?: unknown,
   ) {
-    super(message ?? `voice session mint failed (${status})`);
+    super(
+      message ?? `voice session mint failed (${status})`,
+      options === undefined ? undefined : { cause: options },
+    );
     this.name = "VoiceSessionMintError";
   }
 
-  /** True when the realtime feature is off; the caller should use batch. */
+  /** True for an actual feature-off 404, not the post-create visibility race. */
   get isFeatureDisabled(): boolean {
-    return this.status === 404;
+    return this.status === 404 && this.code !== "agent_not_found";
+  }
+
+  /** Safe bounded retries before the realtime transport owns the mic. */
+  get isTransient(): boolean {
+    return (
+      this.status === 0 || this.status >= 500 || this.code === "agent_not_found"
+    );
   }
 }

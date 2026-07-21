@@ -55,8 +55,11 @@ describe("InMemoryVoiceUsageStore", () => {
 });
 
 describe("RedisVoiceUsageStore", () => {
-  test("does not misclassify the non-Lua mock client as durable", () => {
+  test("selects SocketRedis as durable for REDIS_URL but not the non-Lua mock", () => {
     expect(createDurableVoiceUsageStore({ MOCK_REDIS: "1" })).toBeNull();
+    expect(createDurableVoiceUsageStore({ REDIS_URL: "redis://127.0.0.1:6379" })).toBeInstanceOf(
+      RedisVoiceUsageStore,
+    );
   });
 
   test("uses one atomic script with day-scoped org and user keys", async () => {
@@ -104,6 +107,21 @@ describe("RedisVoiceUsageStore", () => {
       userDailyMinutes: 5,
     });
     expect(decision).toMatchObject({ allowed: false, scope: "user", usedMinutes: 4.5 });
+  });
+
+  test("fails closed on malformed script responses instead of fabricating success", async () => {
+    const redis: AtomicVoiceUsageRedis = {
+      async eval() {
+        return [1, 0, "not-a-counter", 1_000_000];
+      },
+    };
+    const store = new RedisVoiceUsageStore(redis, () => Date.UTC(2026, 6, 10));
+    await expect(
+      store.checkAndRecord({ organizationId: "org", userId: "user" }, 1, {
+        organizationDailyMinutes: 10,
+        userDailyMinutes: 5,
+      }),
+    ).rejects.toThrow("invalid response");
   });
 });
 

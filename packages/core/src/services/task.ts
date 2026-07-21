@@ -504,7 +504,18 @@ export class TaskService extends Service {
 		if (failures.length > 0) {
 			throw new ElizaError(`${failures.length} scheduled task failure(s)`, {
 				code: "TASK_TICK_FAILED",
-				context: { failureCodes: failures.map((failure) => failure.code) },
+				context: {
+					failureCodes: failures.map((failure) => failure.code),
+					failures: failures.map((failure) => ({
+						code: failure.code,
+						...(typeof failure.context?.taskId === "string"
+							? { taskId: failure.context.taskId }
+							: {}),
+						...(typeof failure.context?.taskName === "string"
+							? { taskName: failure.context.taskName }
+							: {}),
+					})),
+				},
 				cause: new AggregateError(failures),
 				severity: failures.some((failure) => failure.severity === "fatal")
 					? "fatal"

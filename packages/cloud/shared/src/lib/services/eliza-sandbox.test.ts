@@ -31,6 +31,7 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
 import { DockerSSHClient } from "./docker-ssh";
+import { provisioningJobService } from "./provisioning-jobs";
 import { resolveSandboxContainerLaunchConfig } from "./sandbox-container-launch-config";
 import type { SandboxProvider } from "./sandbox-provider-types";
 
@@ -524,6 +525,51 @@ describe("ElizaSandboxService shared runtime bridge", () => {
             transport: "shared-runtime",
           },
         });
+        expect(historyGetSpy).toHaveBeenCalled();
+        expect(historyUpsertSpy).not.toHaveBeenCalled();
+      } finally {
+        findRunningSandboxSpy.mockRestore();
+        historyGetSpy.mockRestore();
+        historyUpsertSpy.mockRestore();
+      }
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
+    "returns an SSE completion without persisting when streaming has no configured model",
+    async () => {
+      const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+      const sandbox = sharedSandbox();
+      const findRunningSandboxSpy = spyOn(
+        agentSandboxesRepository,
+        "findRunningSandbox",
+      ).mockResolvedValue(sandbox);
+      const historyGetSpy = spyOn(sharedRuntimeHistoryRepository, "get").mockResolvedValue([]);
+      const historyUpsertSpy = spyOn(sharedRuntimeHistoryRepository, "upsert").mockResolvedValue(
+        undefined,
+      );
+
+      try {
+        const response = await runWithCloudBindings(
+          {
+            CEREBRAS_API_KEY: "",
+            OPENAI_API_KEY: "",
+          },
+          () =>
+            new ElizaSandboxService().bridgeStream(sandbox.id, sandbox.organization_id, {
+              jsonrpc: "2.0",
+              id: "shared-stream-turn",
+              method: "message.send",
+              params: { text: " hello " },
+            }),
+        );
+
+        expect(response).toBeInstanceOf(Response);
+        expect(response?.headers.get("content-type")).toContain("text/event-stream");
+        const body = await response?.text();
+        expect(body).toContain("event: chunk");
+        expect(body).toContain("no shared model configured");
+        expect(body).toContain("event: done");
         expect(historyGetSpy).toHaveBeenCalled();
         expect(historyUpsertSpy).not.toHaveBeenCalled();
       } finally {
@@ -1392,6 +1438,314 @@ describe("ElizaSandboxService heartbeat", () => {
     } finally {
       findSpy.mockRestore();
       updateSpy.mockRestore();
+    }
+  });
+
+  test("terminal database liveness failure enqueues a bounded restart", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox = customSandbox();
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
+      async () =>
+        ({
+          created: true,
+          job: { id: "job-db-liveness-restart" },
+        }) as never,
+    );
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          status: "unhealthy",
+          database: "terminal_error",
+          databaseLiveness: {
+            ok: false,
+            status: "terminal_error",
+            terminal: true,
+            message: "PGlite is closed",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(false);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      const [, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
+      expect(patch.error_count).toBe(1);
+      expect(String(patch.error_message)).toContain("[db-liveness-restart]");
+      expect(enqueueSpy).toHaveBeenCalledWith({
+        agentId: sandbox.id,
+        organizationId: sandbox.organization_id,
+        userId: sandbox.user_id,
+      });
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("transient database liveness failures do not enqueue an immediate restart", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox: AgentSandbox = {
+      ...customSandbox(),
+      last_heartbeat_at: new Date(Date.now() - 30_000),
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
+      async () =>
+        ({
+          created: true,
+          job: { id: "job-should-not-start" },
+        }) as never,
+    );
+    globalThis.fetch = mock(async () =>
+      Response.json({
+        status: "healthy",
+        database: "transient_error",
+        databaseLiveness: {
+          ok: false,
+          status: "transient_error",
+          terminal: false,
+          message: "temporary probe timeout",
+        },
+      }),
+    );
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(false);
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(enqueueSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("unrelated error_count does not consume the database-liveness restart budget", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox: AgentSandbox = {
+      ...customSandbox(),
+      error_count: 9,
+      error_message: "tailnet reconciliation failures",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
+      async () =>
+        ({
+          created: true,
+          job: { id: "job-db-budget-isolated" },
+        }) as never,
+    );
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          databaseLiveness: {
+            ok: false,
+            status: "terminal_error",
+            terminal: true,
+            message: "PGlite is closed",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(false);
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      const [, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
+      expect(patch.error_count).toBe(1);
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("database-liveness restart cooldown suppresses duplicate enqueue", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox: AgentSandbox = {
+      ...customSandbox(),
+      error_count: 1,
+      error_message: `[db-liveness-restart] count=1 at=${new Date().toISOString()} reason=PGlite is closed`,
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
+      async () =>
+        ({
+          created: true,
+          job: { id: "job-duplicate" },
+        }) as never,
+    );
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          databaseLiveness: {
+            ok: false,
+            status: "terminal_error",
+            terminal: true,
+            message: "Database is shutting down - operation rejected",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(false);
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(enqueueSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("database-liveness restart budget exhausts to error instead of looping", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const sandbox: AgentSandbox = {
+      ...customSandbox(),
+      error_count: 3,
+      error_message: `[db-liveness-restart] count=3 at=${new Date(Date.now() - 20 * 60_000).toISOString()} reason=PGlite is closed`,
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async () => sandbox,
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
+      async () =>
+        ({
+          created: true,
+          job: { id: "job-budget-exhausted" },
+        }) as never,
+    );
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          databaseLiveness: {
+            ok: false,
+            status: "terminal_error",
+            terminal: true,
+            message: "PGlite is closed",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    try {
+      const ok = await new ElizaSandboxService().heartbeat(sandbox.id, sandbox.organization_id);
+      expect(ok).toBe(false);
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      const [, patch] = updateSpy.mock.calls[0] as [string, Record<string, unknown>];
+      expect(patch.status).toBe("error");
+      expect(patch.error_count).toBe(3);
+      expect(String(patch.error_message)).toContain("budget-exhausted");
+      expect(enqueueSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
+    }
+  });
+
+  test("database-liveness restart budget is isolated per agent record", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const exhausted: AgentSandbox = {
+      ...customSandbox(),
+      id: "11111111-1111-4111-8111-111111111111",
+      error_count: 3,
+      error_message: `[db-liveness-restart] count=3 at=${new Date(Date.now() - 20 * 60_000).toISOString()} reason=PGlite is closed`,
+    };
+    const fresh: AgentSandbox = {
+      ...customSandbox(),
+      id: "22222222-2222-4222-8222-222222222222",
+      error_count: 3,
+      error_message: "unrelated launch failures",
+    };
+    const findSpy = spyOn(agentSandboxesRepository, "findRunningSandbox").mockImplementation(
+      async (agentId) => (agentId === exhausted.id ? exhausted : fresh),
+    );
+    const updateSpy = spyOn(agentSandboxesRepository, "update").mockImplementation(
+      async () => undefined as never,
+    );
+    const enqueueSpy = spyOn(provisioningJobService, "enqueueAgentRestartOnce").mockImplementation(
+      async () =>
+        ({
+          created: true,
+          job: { id: "job-agent-isolated" },
+        }) as never,
+    );
+    globalThis.fetch = mock(async () =>
+      Response.json(
+        {
+          databaseLiveness: {
+            ok: false,
+            status: "terminal_error",
+            terminal: true,
+            message: "PGlite is closed",
+          },
+        },
+        { status: 503 },
+      ),
+    );
+
+    try {
+      await expect(
+        new ElizaSandboxService().heartbeat(exhausted.id, exhausted.organization_id),
+      ).resolves.toBe(false);
+      await expect(
+        new ElizaSandboxService().heartbeat(fresh.id, fresh.organization_id),
+      ).resolves.toBe(false);
+
+      expect(updateSpy).toHaveBeenCalledTimes(2);
+      expect(updateSpy.mock.calls[0][1]).toMatchObject({
+        status: "error",
+        error_count: 3,
+      });
+      expect(updateSpy.mock.calls[1][1]).toMatchObject({
+        error_count: 1,
+      });
+      expect(enqueueSpy).toHaveBeenCalledTimes(1);
+      expect(enqueueSpy).toHaveBeenCalledWith({
+        agentId: fresh.id,
+        organizationId: fresh.organization_id,
+        userId: fresh.user_id,
+      });
+    } finally {
+      findSpy.mockRestore();
+      updateSpy.mockRestore();
+      enqueueSpy.mockRestore();
     }
   });
 });
@@ -3946,7 +4300,7 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
   }
 
   // A genuine DockerSandboxMetadata for blue — isDockerSandboxMetadata() passes.
-  function blueMetadata(imageDigest: string | null) {
+  function blueMetadata(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       provider: "docker" as const,
       nodeId: "node-new",
@@ -3958,15 +4312,16 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       volumePath: "/var/lib/eliza/agent-new-1",
       dockerImage: DOCKER_IMAGE,
       imageDigest,
+      ...(previousVpnNodeId ? { previousVpnNodeId } : {}),
     };
   }
 
-  function blueHandle(imageDigest: string | null) {
+  function blueHandle(imageDigest: string | null, previousVpnNodeId?: string) {
     return {
       sandboxId: "sandbox-new-1",
       bridgeUrl: "https://new-bridge.example",
       healthUrl: "https://new-bridge.example/health",
-      metadata: blueMetadata(imageDigest),
+      metadata: blueMetadata(imageDigest, previousVpnNodeId),
     };
   }
 
@@ -4211,6 +4566,107 @@ describe("ElizaSandboxService.executeUpgrade blue/green rollback + CAS guard (LA
       lockSpy.mockRestore();
       readSpy.mockRestore();
       snapshotSpy.mockRestore();
+    }
+  });
+
+  test("(h1) preserved live VPN node: create gets reclaimStaleVpnNode=false, node deleted BY ID only after the swap (#16565)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { headscaleIntegration } = await import("./headscale-integration");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, create, stopOnSpecificNode } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST, "old-live-node-7"),
+      checkHealth: async () => true,
+    });
+    const svc = new ElizaSandboxService(provider);
+    const lockSpy = spyOn(
+      svc as unknown as { lockLifecycle: (...a: unknown[]) => Promise<void> },
+      "lockLifecycle",
+    ).mockResolvedValue(undefined);
+    const readSpy = spyOn(
+      svc as unknown as {
+        getAgentForLifecycleMutation: (...a: unknown[]) => Promise<AgentSandbox | undefined>;
+      },
+      "getAgentForLifecycleMutation",
+    ).mockResolvedValue(agent);
+    const snapshotSpy = spyOn(
+      svc as unknown as {
+        snapshot: (...a: unknown[]) => Promise<{ success: boolean }>;
+      },
+      "snapshot",
+    ).mockResolvedValue({ success: true });
+    // Event order: the old node's by-id deletion must come AFTER the swap
+    // commit AND after old-container teardown started — never before.
+    const events: string[] = [];
+    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockImplementation(
+      async (id: string) => {
+        events.push(`vpn-delete:${id}`);
+      },
+    );
+    stopOnSpecificNode.mockImplementation(async () => {
+      events.push("old-teardown");
+    });
+    upgradeTransactionImpl = async (fn) => {
+      const tx: UpgradeTx = {
+        execute: async () => {
+          events.push("swap-commit");
+          return { rows: [{ id: AGENT }] };
+        },
+      };
+      return fn(tx);
+    };
+    try {
+      const res = await svc.executeUpgrade(AGENT, ORG, TO_DIGEST, DOCKER_IMAGE, FROM_DIGEST);
+      expect(res.success).toBe(true);
+      // Blue was provisioned in preserve mode.
+      const createConfig = create.mock.calls[0]?.[0] as
+        | { reclaimStaleVpnNode?: boolean }
+        | undefined;
+      expect(createConfig?.reclaimStaleVpnNode).toBe(false);
+      // The preserved node was deleted exactly once, by id, after the swap.
+      expect(removeSpy).toHaveBeenCalledTimes(1);
+      expect(removeSpy).toHaveBeenCalledWith("old-live-node-7");
+      expect(events).toEqual(["swap-commit", "old-teardown", "vpn-delete:old-live-node-7"]);
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      lockSpy.mockRestore();
+      readSpy.mockRestore();
+      snapshotSpy.mockRestore();
+      removeSpy.mockRestore();
+    }
+  });
+
+  test("(h2) rolled-back upgrade never deletes the preserved live node (#16565)", async () => {
+    const { ElizaSandboxService } = await import("./eliza-sandbox.ts?actual");
+    const { headscaleIntegration } = await import("./headscale-integration");
+    const agent = liveAgentRow();
+    const findSpy = spyOn(agentSandboxesRepository, "findByIdAndOrg").mockResolvedValue(agent);
+    const nodeSpy = spyOn(dockerNodesRepository, "findByNodeId").mockResolvedValue(oldNode());
+    const { provider, stop } = await makeDockerProvider({
+      create: async () => blueHandle(TO_DIGEST, "old-live-node-7"),
+      checkHealth: async () => false, // blue never comes up → rollback
+    });
+    const removeSpy = spyOn(headscaleIntegration, "removeVpnNodeById").mockResolvedValue(undefined);
+    try {
+      const res = await new ElizaSandboxService(provider).executeUpgrade(
+        AGENT,
+        ORG,
+        TO_DIGEST,
+        DOCKER_IMAGE,
+        FROM_DIGEST,
+      );
+      expect(res.success).toBe(false);
+      expect(res.rolledBack).toBe(true);
+      // Blue is torn down; the preserved live node is left untouched — the
+      // agent keeps serving on old.
+      expect(stop).toHaveBeenCalledWith("sandbox-new-1");
+      expect(removeSpy).not.toHaveBeenCalled();
+    } finally {
+      findSpy.mockRestore();
+      nodeSpy.mockRestore();
+      removeSpy.mockRestore();
     }
   });
 

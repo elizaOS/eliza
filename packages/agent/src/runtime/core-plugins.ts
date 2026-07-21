@@ -325,6 +325,10 @@ export const LEAN_CHAT_EXCLUDED_PLUGINS: readonly string[] = [
   "agent-orchestrator",
   "@elizaos/plugin-agent-orchestrator",
   "@elizaos/plugin-gitpathologist",
+  // Cloud-container operator defaults (pty terminal + BYO-subscription CLI
+  // inference) are coding surfaces a chat-only agent never uses.
+  "@elizaos/plugin-pty",
+  "@elizaos/plugin-cli-inference",
   // Cloud chat agents route models to Eliza Cloud (plugin-elizacloud), which
   // serves TEXT_EMBEDDING via the fast 1536-dim cloud endpoint. plugin-local-
   // inference otherwise wins the TEXT_EMBEDDING registration with an on-device

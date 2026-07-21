@@ -19,6 +19,7 @@ const ENV_KEYS = [
   "ELIZA_DESKTOP_RUNTIME_MODE",
   "ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT",
   "ELIZA_DESKTOP_TEST_API_BASE",
+  "ELIZA_DESKTOP_TEST_BRIDGE_ENABLED",
   "ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER",
   "ELIZA_STARTUP_SESSION_ID",
   "ELIZA_STARTUP_STATE_FILE",
@@ -103,6 +104,17 @@ describe("api-base-owner", () => {
 
     expect(injected).toContain(
       "window.__ELIZA_DESKTOP_TEST_ENABLE_RUNTIME_CHOOSER__=true;",
+    );
+    expect(injected).not.toContain("apiBase:");
+  });
+
+  it("injects the packaged desktop test bridge marker only when requested", () => {
+    process.env.ELIZA_DESKTOP_TEST_BRIDGE_ENABLED = "1";
+
+    const injected = injectIntoHtml("<html><head></head><body></body></html>");
+
+    expect(injected).toContain(
+      "window.__ELIZA_DESKTOP_TEST_BRIDGE_ENABLED__=true;",
     );
     expect(injected).not.toContain("apiBase:");
   });

@@ -242,6 +242,9 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
       configurable: true,
     });
   }
+  function cliService(): AcpService {
+    return new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "cli" }));
+  }
   function stubSendPrompt(service: AcpService) {
     const calls: Array<{ sessionId: string; text: string }> = [];
     const stub = vi.fn(async (sessionId: string, text: string) => {
@@ -265,7 +268,7 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
 
   it("resumes sessions in busy/tool_running/running with intact state", async () => {
     await withSessionState(async (root) => {
-      const service = new AcpService(runtime());
+      const service = cliService();
       pointStateRootAt(service, root);
       const calls = stubSendPrompt(service);
       const store = getStore(service);
@@ -308,7 +311,7 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
 
   it("skips idle sessions (ready/blocked/authenticating)", async () => {
     await withSessionState(async (root) => {
-      const service = new AcpService(runtime());
+      const service = cliService();
       pointStateRootAt(service, root);
       const calls = stubSendPrompt(service);
       const store = getStore(service);
@@ -345,7 +348,7 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
 
   it("skips terminal sessions (stopped/errored/cancelled/completed)", async () => {
     await withSessionState(async (root) => {
-      const service = new AcpService(runtime());
+      const service = cliService();
       pointStateRootAt(service, root);
       const calls = stubSendPrompt(service);
       const store = getStore(service);
@@ -374,7 +377,7 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
 
   it("skips busy sessions missing acpxSessionId", async () => {
     await withSessionState(async (root) => {
-      const service = new AcpService(runtime());
+      const service = cliService();
       pointStateRootAt(service, root);
       const calls = stubSendPrompt(service);
       const store = getStore(service);
@@ -394,7 +397,7 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
 
   it("skips busy sessions whose acpx state file is missing", async () => {
     await withSessionState(async (root) => {
-      const service = new AcpService(runtime());
+      const service = cliService();
       pointStateRootAt(service, root);
       const calls = stubSendPrompt(service);
       const store = getStore(service);
@@ -415,7 +418,7 @@ describe("AcpService.resumeOrphanedBusySessions", () => {
 
   it("returns zeros when there are no sessions at all", async () => {
     await withSessionState(async (root) => {
-      const service = new AcpService(runtime());
+      const service = cliService();
       pointStateRootAt(service, root);
       stubSendPrompt(service);
 

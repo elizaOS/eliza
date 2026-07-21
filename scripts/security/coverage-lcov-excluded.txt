@@ -16,3 +16,22 @@
 # absent until the Rolldown issue is fixed.
 packages/agent/src/api/server.ts
 packages/agent/src/runtime/eliza.ts
+
+# Interface/type-only module: zero executable statements, so neither bun nor
+# vitest emits an LCOV record for it (#16565 touched its SandboxCreateConfig
+# doc surface). Delete this entry if the file ever gains runtime code.
+packages/cloud/shared/src/lib/services/sandbox-provider-types.ts
+
+# These adapters intentionally execute generated Smithers worker programs in a
+# separate Bun process. The parent Vitest LCOV collector cannot instrument the
+# worker source embedded in these files, even though their focused subprocess
+# lifecycle suites execute the paths end to end. Remove once child-process LCOV
+# is merged into the plugin coverage lane.
+plugins/plugin-agent-orchestrator/src/services/smithers-task-runner.ts
+plugins/plugin-workflow/src/services/smithers-runtime.ts
+
+# Renderer composition entrypoint: the app Vitest coverage policy collects only
+# `src/**/*.ts`, not TSX entrypoints, and importing this file boots the full UI.
+# Product behavior is covered by packaged desktop acceptance; focused helpers
+# still require changed Vitest coverage. Remove if TSX entrypoints enter LCOV.
+packages/app/src/main.tsx

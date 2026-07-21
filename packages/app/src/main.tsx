@@ -202,6 +202,7 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
@@ -457,34 +458,52 @@ function getWindowUrlSearchParams(): URLSearchParams {
 
 function applyCloudPairSessionToken(): void {
   if (typeof window === "undefined") return;
+  let token: string | null = null;
   try {
-    const token = window.sessionStorage
-      .getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)
-      ?.trim();
-    if (!token) return;
-    client.setToken(token);
-    const apiBase = isDedicatedCloudAgentBase(window.location.origin)
-      ? window.location.origin
-      : getBootConfig().apiBase?.trim();
-    if (!isDedicatedCloudAgentBase(apiBase)) return;
-    const agentId = dedicatedCloudAgentIdFromBase(apiBase);
-    const activeServer = createPersistedActiveServer({
-      kind: "cloud",
-      ...(agentId ? { id: `cloud:${agentId}` } : {}),
-      apiBase,
-      accessToken: token,
-    });
-    savePersistedActiveServer(activeServer);
-    upsertAndActivateAgentProfile({
-      kind: "cloud",
-      label: activeServer.label,
-      ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
-      accessToken: token,
-    });
+    token =
+      window.localStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() || null;
   } catch {
-    // error-policy:J4 sessionStorage can be unavailable in hardened browser
-    // contexts — the pairing token is simply not adopted
+    // error-policy:J4 localStorage can be unavailable in hardened browser
+    // contexts — sessionStorage remains the compatibility handoff.
   }
+  if (!token) {
+    try {
+      token =
+        window.sessionStorage.getItem(CLOUD_PAIR_SESSION_TOKEN_KEY)?.trim() ||
+        null;
+    } catch {
+      // error-policy:J4 sessionStorage can be unavailable in hardened browser
+      // contexts — the pairing token is simply not adopted.
+    }
+    if (token) {
+      try {
+        shellLocalStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
+      } catch {
+        // error-policy:J4 migration is best-effort; the same-tab token still
+        // authenticates this launch.
+      }
+    }
+  }
+  if (!token) return;
+  client.setToken(token);
+  const apiBase = isDedicatedCloudAgentBase(window.location.origin)
+    ? window.location.origin
+    : getBootConfig().apiBase?.trim();
+  if (!isDedicatedCloudAgentBase(apiBase)) return;
+  const agentId = dedicatedCloudAgentIdFromBase(apiBase);
+  const activeServer = createPersistedActiveServer({
+    kind: "cloud",
+    ...(agentId ? { id: `cloud:${agentId}` } : {}),
+    apiBase,
+    accessToken: token,
+  });
+  savePersistedActiveServer(activeServer);
+  upsertAndActivateAgentProfile({
+    kind: "cloud",
+    label: activeServer.label,
+    ...(activeServer.apiBase ? { apiBase: activeServer.apiBase } : {}),
+    accessToken: token,
+  });
 }
 
 /**
@@ -517,6 +536,7 @@ installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 applyCloudPairSessionToken();
 applyRuntimeChooserOverrideFromUrl();
+installPackagedShellStorageTestBridge();
 
 // Branded AOSP/ElizaOS device images ARE the agent: pre-seed the on-device
 // agent as the startup target on first frame. Stock-phone sideload builds

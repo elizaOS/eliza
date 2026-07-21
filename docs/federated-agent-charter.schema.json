@@ -1,0 +1,811 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.ai/schemas/federated-agent-charter-v1.json",
+  "title": "Federated Agent Fleet Snapshot",
+  "description": "Provider-neutral coordination snapshot for the Federated Agent Fleet Charter 1.0 proposal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "charterVersion",
+    "registryNow",
+    "authorityEpoch",
+    "authorityEpochs",
+    "teams",
+    "agents",
+    "workItems",
+    "lifecycleTransitions",
+    "resourceFences",
+    "claims",
+    "graphEdges",
+    "handoffs",
+    "evidence",
+    "reviews",
+    "approvals",
+    "mergeAuthorities",
+    "mirrorStates",
+    "smithersExternalWriteReceipts"
+  ],
+  "properties": {
+    "charterVersion": { "const": "1.0.0-proposal.1" },
+    "registryNow": { "$ref": "#/$defs/dateTime" },
+    "authorityEpoch": { "$ref": "#/$defs/authorityEpoch" },
+    "authorityEpochs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/authorityEpoch" }
+    },
+    "teams": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/team" }
+    },
+    "agents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/agent" }
+    },
+    "workItems": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/workItem" }
+    },
+    "lifecycleTransitions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/lifecycleTransition" }
+    },
+    "resourceFences": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resourceFence" }
+    },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "graphEdges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/graphEdge" }
+    },
+    "handoffs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/handoff" }
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/evidenceReceipt" }
+    },
+    "reviews": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/reviewReceipt" }
+    },
+    "approvals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/approval" }
+    },
+    "mergeAuthorities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mergeAuthority" }
+    },
+    "mirrorStates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/mirrorState" }
+    },
+    "smithersExternalWriteReceipts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/smithersExternalWriteReceipt" }
+    }
+  },
+  "$defs": {
+    "dateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "workId": {
+      "type": "string",
+      "pattern": "^work:v1:(github|forgejo|internal):[^:]+:(issue|discussion|task|incident|release):[^:]+$"
+    },
+    "teamId": {
+      "type": "string",
+      "pattern": "^team:v1:[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+$"
+    },
+    "agentId": {
+      "type": "string",
+      "pattern": "^agent:v1:[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+$"
+    },
+    "humanId": {
+      "type": "string",
+      "pattern": "^human:[A-Za-z0-9_.-]+$"
+    },
+    "actorId": {
+      "type": "string",
+      "pattern": "^(agent:v1:[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+|human:[A-Za-z0-9_.-]+)$"
+    },
+    "sessionId": {
+      "type": "string",
+      "pattern": "^session:v1:agent:v1:[A-Za-z0-9_.-]+:[A-Za-z0-9_.-]+:.+$"
+    },
+    "team": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["teamId", "displayName", "status"],
+      "properties": {
+        "teamId": { "$ref": "#/$defs/teamId" },
+        "displayName": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["active", "suspended", "retired"] }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agentId",
+        "teamId",
+        "displayTag",
+        "independenceGroup",
+        "forgePrincipals",
+        "runtimePrincipal",
+        "capabilities",
+        "authorizedPillars",
+        "maxConcurrentClaims",
+        "status",
+        "registeredBy"
+      ],
+      "properties": {
+        "agentId": { "$ref": "#/$defs/agentId" },
+        "teamId": { "$ref": "#/$defs/teamId" },
+        "displayTag": { "type": "string", "pattern": "^\\[[a-z0-9][a-z0-9-]{1,62}\\]$" },
+        "independenceGroup": { "type": "string", "minLength": 1 },
+        "forgePrincipals": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "runtimePrincipal": { "type": "string", "minLength": 1 },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "authorizedPillars": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/pillar" },
+          "uniqueItems": true
+        },
+        "maxConcurrentClaims": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "status": { "enum": ["active", "suspended", "retired"] },
+        "registeredBy": { "$ref": "#/$defs/humanId" }
+      }
+    },
+    "pillar": {
+      "enum": [
+        "core-runtime",
+        "agent-orchestration",
+        "cloud-control-plane",
+        "cloud-inference",
+        "app-web",
+        "app-native",
+        "connectors",
+        "identity-auth",
+        "payments-money",
+        "schema-data",
+        "ci-build-release",
+        "security",
+        "quality-evidence",
+        "docs-governance",
+        "forge-landing"
+      ]
+    },
+    "failureClass": {
+      "enum": [
+        "requirements",
+        "implementation",
+        "test_evidence",
+        "security",
+        "migration_schema",
+        "money",
+        "runtime_operations",
+        "deployment",
+        "merge",
+        "human_acceptance",
+        "incident_command"
+      ]
+    },
+    "accountabilityEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["failureClass"],
+      "oneOf": [
+        { "required": ["accountableAgentId"] },
+        { "required": ["accountableTeamId"] },
+        { "required": ["accountableHumanId"] }
+      ],
+      "properties": {
+        "failureClass": { "$ref": "#/$defs/failureClass" },
+        "accountableAgentId": { "$ref": "#/$defs/agentId" },
+        "accountableTeamId": { "$ref": "#/$defs/teamId" },
+        "accountableHumanId": { "$ref": "#/$defs/humanId" },
+        "contributors": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "workState": {
+      "enum": [
+        "proposed",
+        "ready",
+        "claimed",
+        "in_progress",
+        "blocked_dependency",
+        "blocked_collision",
+        "needs_agent_review",
+        "needs_human_review",
+        "merge_ready",
+        "merging",
+        "done",
+        "cancelled"
+      ]
+    },
+    "workItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workId",
+        "title",
+        "repoId",
+        "pillar",
+        "state",
+        "targetBranch",
+        "accountability",
+        "sensitiveClasses",
+        "aliases"
+      ],
+      "properties": {
+        "workId": { "$ref": "#/$defs/workId" },
+        "parentWorkId": { "$ref": "#/$defs/workId" },
+        "title": { "type": "string", "minLength": 1 },
+        "repoId": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "pillar": { "$ref": "#/$defs/pillar" },
+        "state": { "$ref": "#/$defs/workState" },
+        "targetBranch": { "type": "string", "minLength": 1 },
+        "paths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "packages": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "aliases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "accountability": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/accountabilityEntry" }
+        },
+        "sensitiveClasses": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/failureClass" },
+          "uniqueItems": true
+        },
+        "smithersRunId": { "type": ["string", "null"] },
+        "elizaTaskId": { "type": ["string", "null"] },
+        "trajectoryId": { "type": ["string", "null"] },
+        "branchRef": { "type": ["string", "null"] },
+        "pullRequestRefs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    },
+    "lifecycleTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workId", "from", "to", "actorId", "at", "receiptId"],
+      "properties": {
+        "workId": { "$ref": "#/$defs/workId" },
+        "from": { "$ref": "#/$defs/workState" },
+        "to": { "$ref": "#/$defs/workState" },
+        "actorId": { "$ref": "#/$defs/actorId" },
+        "at": { "$ref": "#/$defs/dateTime" },
+        "receiptId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "claimResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "work",
+            "issue",
+            "pull_request",
+            "branch",
+            "path",
+            "package",
+            "pillar",
+            "environment",
+            "physical_device",
+            "database",
+            "secret_set",
+            "runner_pool",
+            "release_train",
+            "merge_lane"
+          ]
+        },
+        "id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "resourceFence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceKey", "currentGeneration", "updatedAt"],
+      "properties": {
+        "resourceKey": { "type": "string", "minLength": 1 },
+        "currentGeneration": { "type": "integer", "minimum": 1 },
+        "updatedAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claimId",
+        "workId",
+        "repoId",
+        "ownerAgentId",
+        "ownerSessionId",
+        "resources",
+        "mode",
+        "status",
+        "generation",
+        "acquiredAt",
+        "renewedAt",
+        "expiresAt",
+        "progressRevision"
+      ],
+      "properties": {
+        "claimId": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" },
+        "workId": { "$ref": "#/$defs/workId" },
+        "repoId": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "ownerAgentId": { "$ref": "#/$defs/agentId" },
+        "ownerSessionId": { "$ref": "#/$defs/sessionId" },
+        "resources": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/claimResource" }
+        },
+        "mode": { "enum": ["exclusive", "shared_read", "shared_write", "review"] },
+        "status": { "enum": ["active", "suspect", "released", "expired", "cancelled", "reclaimed"] },
+        "generation": { "type": "integer", "minimum": 1 },
+        "acquiredAt": { "$ref": "#/$defs/dateTime" },
+        "renewedAt": { "$ref": "#/$defs/dateTime" },
+        "expiresAt": { "$ref": "#/$defs/dateTime" },
+        "progressRevision": { "type": "integer", "minimum": 0 },
+        "noProgressRenewals": { "type": "integer", "minimum": 0 },
+        "releasedAt": { "$ref": "#/$defs/dateTime" },
+        "releaseReason": { "type": "string", "minLength": 1 },
+        "predecessorClaimId": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" }
+      }
+    },
+    "graphEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fromWorkId", "toWorkId", "type"],
+      "properties": {
+        "fromWorkId": { "$ref": "#/$defs/workId" },
+        "toWorkId": { "$ref": "#/$defs/workId" },
+        "type": {
+          "enum": [
+            "requires",
+            "blocks",
+            "duplicates",
+            "supersedes",
+            "stacks_on",
+            "shares_contract_with",
+            "collides_path",
+            "collides_package",
+            "collides_lever",
+            "reviews",
+            "hands_off_to"
+          ]
+        },
+        "source": { "enum": ["declared", "computed", "forge", "human"] },
+        "evidenceId": { "type": "string", "pattern": "^evidence_[A-Za-z0-9_-]+$" }
+      }
+    },
+    "handoffGeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "previousGeneration", "generation"],
+      "properties": {
+        "claimId": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" },
+        "previousGeneration": { "type": "integer", "minimum": 1 },
+        "generation": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "handoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "handoffId",
+        "workId",
+        "fromAgentId",
+        "toAgentId",
+        "expectedBranchHead",
+        "smithersRunId",
+        "lastCompletedFrame",
+        "evidenceReceiptId",
+        "transferClaimIds",
+        "newClaimGenerations",
+        "risks",
+        "nextAction",
+        "status",
+        "offeredAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "handoffId": { "type": "string", "pattern": "^handoff_[A-Za-z0-9_-]+$" },
+        "workId": { "$ref": "#/$defs/workId" },
+        "fromAgentId": { "$ref": "#/$defs/agentId" },
+        "toAgentId": { "$ref": "#/$defs/agentId" },
+        "expectedBranchHead": { "$ref": "#/$defs/sha" },
+        "acceptedBranchHead": { "$ref": "#/$defs/sha" },
+        "smithersRunId": { "type": "string", "minLength": 1 },
+        "lastCompletedFrame": { "type": "string", "minLength": 1 },
+        "evidenceReceiptId": { "type": "string", "pattern": "^evidence_[A-Za-z0-9_-]+$" },
+        "transferClaimIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" },
+          "uniqueItems": true
+        },
+        "newClaimGenerations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/handoffGeneration" }
+        },
+        "risks": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "nextAction": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["offered", "accepted", "completed", "expired", "cancelled"] },
+        "offeredAt": { "$ref": "#/$defs/dateTime" },
+        "acceptedAt": { "$ref": "#/$defs/dateTime" },
+        "completedAt": { "$ref": "#/$defs/dateTime" },
+        "expiresAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "commandResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "exitCode", "startedAt", "finishedAt", "artifactDigest"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "exitCode": { "type": "integer" },
+        "startedAt": { "$ref": "#/$defs/dateTime" },
+        "finishedAt": { "$ref": "#/$defs/dateTime" },
+        "artifactDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "claimFenceUse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["claimId", "generation"],
+      "properties": {
+        "claimId": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" },
+        "generation": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "evidenceReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidenceId",
+        "workId",
+        "producerAgentId",
+        "producerSessionId",
+        "baseSha",
+        "headSha",
+        "level",
+        "claimFences",
+        "commands",
+        "knownFailures",
+        "redactions",
+        "createdAt"
+      ],
+      "properties": {
+        "evidenceId": { "type": "string", "pattern": "^evidence_[A-Za-z0-9_-]+$" },
+        "workId": { "$ref": "#/$defs/workId" },
+        "producerAgentId": { "$ref": "#/$defs/agentId" },
+        "producerSessionId": { "$ref": "#/$defs/sessionId" },
+        "baseSha": { "$ref": "#/$defs/sha" },
+        "headSha": { "$ref": "#/$defs/sha" },
+        "level": { "enum": ["E0", "E1", "E2", "E3", "E4"] },
+        "claimFences": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/claimFenceUse" }
+        },
+        "smithers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runId", "nodeId", "attempt"],
+          "properties": {
+            "runId": { "type": "string", "minLength": 1 },
+            "nodeId": { "type": "string", "minLength": 1 },
+            "attempt": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "environmentDigest": { "$ref": "#/$defs/digest" },
+        "commands": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/commandResult" }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/digest" },
+          "uniqueItems": true
+        },
+        "negativeCases": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "knownFailures": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "redactions": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "createdAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "reviewReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewId",
+        "workId",
+        "reviewerAgentId",
+        "independenceGroup",
+        "pullRequestRef",
+        "baseSha",
+        "headSha",
+        "reviewedPaths",
+        "failureClasses",
+        "verdict",
+        "evidenceIds",
+        "reviewedCommitAuthorAgentIds",
+        "activeWriteClaimIdsAtReview",
+        "createdAt"
+      ],
+      "properties": {
+        "reviewId": { "type": "string", "pattern": "^review_[A-Za-z0-9_-]+$" },
+        "workId": { "$ref": "#/$defs/workId" },
+        "reviewerAgentId": { "$ref": "#/$defs/agentId" },
+        "independenceGroup": { "type": "string", "minLength": 1 },
+        "pullRequestRef": { "type": "string", "minLength": 1 },
+        "baseSha": { "$ref": "#/$defs/sha" },
+        "headSha": { "$ref": "#/$defs/sha" },
+        "reviewedPaths": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "failureClasses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/failureClass" },
+          "uniqueItems": true
+        },
+        "verdict": { "enum": ["approve", "request_changes", "abstain"] },
+        "findings": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidenceIds": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^evidence_[A-Za-z0-9_-]+$" },
+          "uniqueItems": true
+        },
+        "reviewedCommitAuthorAgentIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/agentId" },
+          "uniqueItems": true
+        },
+        "activeWriteClaimIdsAtReview": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^claim_[A-Za-z0-9_-]+$" },
+          "uniqueItems": true
+        },
+        "createdAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "approvalId",
+        "workId",
+        "failureClasses",
+        "action",
+        "environment",
+        "headSha",
+        "riskDigest",
+        "status",
+        "allowedActorId",
+        "allowedHumanIds",
+        "requestedAt",
+        "expiresAt",
+        "oneShot"
+      ],
+      "properties": {
+        "approvalId": { "type": "string", "pattern": "^approval_[A-Za-z0-9_-]+$" },
+        "workId": { "$ref": "#/$defs/workId" },
+        "failureClasses": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/failureClass" },
+          "uniqueItems": true
+        },
+        "action": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 },
+        "headSha": { "$ref": "#/$defs/sha" },
+        "riskDigest": { "$ref": "#/$defs/digest" },
+        "status": { "enum": ["requested", "approved", "denied", "expired", "consumed"] },
+        "allowedActorId": { "$ref": "#/$defs/actorId" },
+        "allowedHumanIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/humanId" },
+          "uniqueItems": true
+        },
+        "decidedBy": { "$ref": "#/$defs/humanId" },
+        "requestedAt": { "$ref": "#/$defs/dateTime" },
+        "decidedAt": { "$ref": "#/$defs/dateTime" },
+        "expiresAt": { "$ref": "#/$defs/dateTime" },
+        "oneShot": { "type": "boolean" },
+        "consumedAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "mergeAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mergeAuthorityId",
+        "repoId",
+        "targetBranch",
+        "actorId",
+        "scope",
+        "epoch",
+        "signer",
+        "approvalId",
+        "status",
+        "grantedAt",
+        "expiresAt"
+      ],
+      "properties": {
+        "mergeAuthorityId": { "type": "string", "pattern": "^merge_auth_[A-Za-z0-9_-]+$" },
+        "repoId": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "targetBranch": { "type": "string", "minLength": 1 },
+        "actorId": { "$ref": "#/$defs/actorId" },
+        "scope": { "type": "string", "minLength": 1 },
+        "epoch": { "type": "integer", "minimum": 1 },
+        "signer": { "$ref": "#/$defs/humanId" },
+        "approvalId": { "type": "string", "pattern": "^approval_[A-Za-z0-9_-]+$" },
+        "status": { "enum": ["active", "expired", "revoked"] },
+        "grantedAt": { "$ref": "#/$defs/dateTime" },
+        "expiresAt": { "$ref": "#/$defs/dateTime" },
+        "revokedAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "mirrorState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoId",
+        "authority",
+        "mirror",
+        "authorityHeadSha",
+        "mirrorHeadSha",
+        "authorityWorkId",
+        "mirrorWorkId",
+        "observedAt"
+      ],
+      "properties": {
+        "repoId": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "authority": { "enum": ["github", "forgejo"] },
+        "mirror": { "enum": ["github", "forgejo"] },
+        "authorityHeadSha": { "$ref": "#/$defs/sha" },
+        "mirrorHeadSha": { "$ref": "#/$defs/sha" },
+        "authorityWorkId": { "$ref": "#/$defs/workId" },
+        "mirrorWorkId": { "$ref": "#/$defs/workId" },
+        "observedAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "smithersExternalWriteReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frameId",
+        "workId",
+        "idempotencyKey",
+        "targetSystem",
+        "mutation",
+        "status",
+        "recordedAt"
+      ],
+      "properties": {
+        "frameId": { "type": "string", "minLength": 1 },
+        "workId": { "$ref": "#/$defs/workId" },
+        "idempotencyKey": { "type": "string", "minLength": 1 },
+        "targetSystem": { "enum": ["github", "forgejo", "merge-steward", "deploy", "device"] },
+        "mutation": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["recorded", "deduplicated", "failed"] },
+        "recordedAt": { "$ref": "#/$defs/dateTime" }
+      }
+    },
+    "authorityEpochSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signer", "signature"],
+      "properties": {
+        "signer": { "$ref": "#/$defs/humanId" },
+        "signature": { "type": "string", "minLength": 1 }
+      }
+    },
+    "authorityEpoch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repoId",
+        "epoch",
+        "writeAuthority",
+        "effectiveAt",
+        "githubMode",
+        "forgejoMode",
+        "approvedBy",
+        "evidenceDigest",
+        "signatures"
+      ],
+      "properties": {
+        "repoId": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+        "epoch": { "type": "integer", "minimum": 1 },
+        "writeAuthority": { "enum": ["github", "forgejo"] },
+        "effectiveAt": { "$ref": "#/$defs/dateTime" },
+        "githubMode": { "enum": ["write", "read_mirror", "off"] },
+        "forgejoMode": { "enum": ["write", "read_mirror", "disposable", "off"] },
+        "forgejoBaseUrl": { "type": "string", "format": "uri" },
+        "approvedBy": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/humanId" },
+          "uniqueItems": true
+        },
+        "rollbackUntil": { "$ref": "#/$defs/dateTime" },
+        "evidenceDigest": { "$ref": "#/$defs/digest" },
+        "signatures": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/authorityEpochSignature" }
+        }
+      }
+    }
+  }
+}
