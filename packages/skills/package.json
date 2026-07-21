@@ -32,15 +32,15 @@
   },
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
-    "build": "tsc --noCheck -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "build": "tsc6 --noCheck -p tsconfig.build.json",
+    "dev": "tsc6 -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "bun test ./test",
     "prepublishOnly": "bun run clean && bun run build",
     "lint": "bunx @biomejs/biome check --write ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
     "format": "bunx @biomejs/biome format --write ./src package.json",
     "format:check": "bunx @biomejs/biome format ./src package.json",
-    "typecheck": "tsgo --noEmit -p tsconfig.build.json"
+    "typecheck": "tsc --noEmit -p tsconfig.build.json"
   },
   "files": [
     "dist",
@@ -71,6 +71,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3"
   },
   "publishConfig": {

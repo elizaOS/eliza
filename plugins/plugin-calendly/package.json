@@ -33,9 +33,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false --noCheck",
+    "build": "tsup src/index.ts --format esm --clean && tsc6 --declaration --emitDeclarationOnly --noEmit false --noCheck",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
@@ -51,6 +51,7 @@
   "devDependencies": {
     "@types/node": "24.12.2",
     "tsup": "8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "4.1.10"
   },

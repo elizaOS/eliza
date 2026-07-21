@@ -5,13 +5,13 @@
   "description": "Reminder delivery + escalation data layer for elizaOS agents: owns the app_reminders schema (reminder plans, per-channel delivery attempts, escalation states) carved out of @elizaos/plugin-personal-assistant, with a non-destructive migration from app_lifeops. The delivery/escalation engine is host-wired during the decomposition.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "bunx tsc --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
+    "build:types": "bunx tsc6 --noCheck -p tsconfig.build.json && node ../../packages/scripts/rewrite-dist-relative-imports-node-esm.mjs",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
@@ -70,6 +70,7 @@
     "@biomejs/biome": "2.5.4",
     "@types/node": "^25.0.6",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   }

@@ -15,18 +15,26 @@ const rmPathRecursive = fileURLToPath(
   new URL("../../../../../packages/scripts/rm-path-recursive.mjs", import.meta.url)
 );
 
-async function runBuild(): Promise<boolean> {
+export async function runBuild(
+  options: {
+    build?: typeof Bun.build;
+    emitDeclarations?: () => Promise<{ exitCode: number; stderr: Uint8Array }>;
+    exists?: typeof existsSync;
+    remove?: () => Promise<unknown>;
+  } = {}
+): Promise<boolean> {
   console.log("Building @elizaos/plugin-wallet evm chain...");
 
   const distDir = join(process.cwd(), "dist");
+  const exists = options.exists ?? existsSync;
 
-  if (existsSync(distDir)) {
-    await Bun.$`node ${rmPathRecursive} ${distDir}`;
+  if (exists(distDir)) {
+    await (options.remove ?? (() => Bun.$`node ${rmPathRecursive} ${distDir}`))();
   }
 
   await mkdir(distDir, { recursive: true });
 
-  const result = await Bun.build({
+  const result = await (options.build ?? Bun.build)({
     entrypoints: ["./index.ts"],
     outdir: distDir,
     target: "node",
@@ -66,9 +74,11 @@ async function runBuild(): Promise<boolean> {
   console.log(`Build successful: ${result.outputs.length} files generated`);
 
   console.log("Generating TypeScript declarations...");
-  const tscResult = await Bun.$`cd ${process.cwd()} && bun x tsc -p tsconfig.build.json --noCheck`
-    .quiet()
-    .nothrow();
+  const tscResult = await (
+    options.emitDeclarations ??
+    (() =>
+      Bun.$`cd ${process.cwd()} && bun x tsc6 -p tsconfig.build.json --noCheck`.quiet().nothrow())
+  )();
 
   if (tscResult.exitCode !== 0) {
     console.warn("Warning: TypeScript declaration generation had issues:");
@@ -76,7 +86,7 @@ async function runBuild(): Promise<boolean> {
   }
 
   const indexDtsPath = join(distDir, "index.d.ts");
-  if (!existsSync(indexDtsPath)) {
+  if (!exists(indexDtsPath)) {
     await writeFile(
       indexDtsPath,
       `export * from "./index";
@@ -90,11 +100,13 @@ export { default } from "./index";
   return true;
 }
 
-runBuild()
-  .then((ok) => {
-    if (!ok) process.exit(1);
-  })
-  .catch((error) => {
-    console.error("Build script error:", error);
-    process.exit(1);
-  });
+if (import.meta.main) {
+  runBuild()
+    .then((ok) => {
+      if (!ok) process.exit(1);
+    })
+    .catch((error) => {
+      console.error("Build script error:", error);
+      process.exit(1);
+    });
+}
