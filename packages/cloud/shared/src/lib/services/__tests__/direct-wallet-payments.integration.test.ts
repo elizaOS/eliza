@@ -22,22 +22,14 @@ import {
 } from "../direct-wallet-payer-proof";
 
 // This integration test relies on Vitest-only module-mock plumbing
-// (`vi.mock(id, async () => ({ ...await vi.importActual<T>(id), ...overrides }))`)
-// which bun-test's `vi` shim does NOT implement (`vi.importActual` is
-// undefined under bun). The repo currently invokes `bun test` for the
-// cloud unit suite, so when this file is picked up the top-level
-// `vi.mock` factories throw at module-load time and crash the whole
-// unit job.
-//
-// Skip the suite cleanly when running under bun-test. Vitest (run on a
-// developer's box with `vitest run`) still exercises the full integration
-// path. The on-chain verify layer is the only thing that the mocks gate,
-// so skipping under bun-test does not reduce coverage in CI — the same
-// state-machine paths are exercised by other integration suites that use
-// real test fixtures rather than vi.mock.
+// (`vi.doMock(id, async () => ({ ...await vi.importActual<T>(id), ...overrides }))`)
+// which bun-test's `vi` shim does not implement (`vi.importActual` is
+// undefined under bun). Register non-hoisted mocks only under Vitest, before
+// the service's dynamic import in `beforeAll`; bun-test selects a skipped
+// suite without invoking unsupported mock plumbing. The dedicated Vitest lane
+// runs all 40 state-machine cases in CI against real in-process PGlite.
 const SUPPORTS_VITEST_MOCK_API =
-  typeof (vi as unknown as { importActual?: unknown }).importActual === "function";
-const d = SUPPORTS_VITEST_MOCK_API ? describe : describe.skip;
+  typeof vi.importActual === "function" && typeof vi.doMock === "function";
 
 // --- Required env BEFORE any imports of cloud/shared/db ---------------------
 // PGlite in-process; receive addresses for all three networks so config is
@@ -85,7 +77,7 @@ interface FakeTx {
 const chainTxs = new Map<string, FakeTx>();
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("viem", async () => {
+  vi.doMock("viem", async () => {
     const actual = (await vi.importActual("viem")) as typeof import("viem");
     return {
       ...actual,
@@ -175,7 +167,7 @@ if (SUPPORTS_VITEST_MOCK_API) {
 
 // BNB price oracle — fixed quote so the math is predictable.
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("../bnb-price-oracle", async () => {
+  vi.doMock("../bnb-price-oracle", async () => {
     const Decimal = (await import("decimal.js")).default;
     return {
       getBnbUsdQuote: vi.fn(async () => ({
@@ -194,21 +186,15 @@ interface SolanaTestState {
   parsedTxOverride: unknown;
 }
 
-// Shared via globalThis instead of vi.hoisted: vitest's mock-hoisting
-// transform mis-emits a `vi.hoisted(...)` call that sits in expression
-// position (missing statement terminator → parse failure), which used to
-// make this whole file unparseable under vitest. The mock factories only
-// touch this state lazily (inside stub method bodies), so plain module
-// state reached through globalThis is safe under hoisting.
-const solanaStateHost = globalThis as { __dwpSolanaTestState?: SolanaTestState };
-solanaStateHost.__dwpSolanaTestState ??= {
+// `doMock` is deliberately non-hoisted, so its factories can close over the
+// mutable state that each Solana verification case controls.
+const solanaTestState: SolanaTestState = {
   ataOwnerOverride: null,
   parsedTxOverride: null,
 };
-const solanaTestState = solanaStateHost.__dwpSolanaTestState;
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("@solana/spl-token", async () => {
+  vi.doMock("@solana/spl-token", async () => {
     const actual = (await vi.importActual(
       "@solana/spl-token",
     )) as typeof import("@solana/spl-token");
@@ -231,7 +217,7 @@ if (SUPPORTS_VITEST_MOCK_API) {
 }
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("@solana/web3.js", async () => {
+  vi.doMock("@solana/web3.js", async () => {
     const actual = (await vi.importActual("@solana/web3.js")) as typeof import("@solana/web3.js");
     return {
       ...actual,
@@ -256,7 +242,7 @@ const creditsLedger: Array<{
 }> = [];
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("../credits", () => ({
+  vi.doMock("../credits", () => ({
     creditsService: {
       async addCredits(params: {
         organizationId: string;
@@ -285,7 +271,7 @@ if (SUPPORTS_VITEST_MOCK_API) {
 }
 
 if (SUPPORTS_VITEST_MOCK_API) {
-  vi.mock("../invoices", () => ({
+  vi.doMock("../invoices", () => ({
     invoicesService: {
       async getByStripeInvoiceId() {
         return undefined;
@@ -388,7 +374,7 @@ async function trustPayerProof(payment: { id: string; metadata: unknown }) {
 // Tests
 // ---------------------------------------------------------------------------
 
-d.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
+describe.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
   "DirectWalletPaymentsService (PGlite integration)",
   () => {
     test("createPayment for BSC native BNB locks price quote and computes wei", async () => {

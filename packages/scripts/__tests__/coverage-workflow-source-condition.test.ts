@@ -34,6 +34,48 @@ test("changed Vitest coverage tests use package-aware source configuration", () 
   );
 });
 
+test("cloud/shared coverage resolves the real plugin-sql node source before builds", async () => {
+  const { default: config } = await import("../../cloud/shared/vitest.config");
+  const aliases = config.resolve?.alias;
+  expect(Array.isArray(aliases)).toBe(true);
+  if (!Array.isArray(aliases)) {
+    throw new Error(
+      "Expected cloud/shared Vitest aliases to use the ordered array form",
+    );
+  }
+
+  const pluginSqlAlias = aliases.find(
+    (entry) =>
+      typeof entry === "object" &&
+      entry !== null &&
+      "find" in entry &&
+      entry.find instanceof RegExp &&
+      entry.find.test("@elizaos/plugin-sql"),
+  );
+  expect(pluginSqlAlias).toBeDefined();
+  if (!pluginSqlAlias || typeof pluginSqlAlias !== "object") {
+    throw new Error("Expected an exact @elizaos/plugin-sql source alias");
+  }
+  if (
+    !("find" in pluginSqlAlias) ||
+    !(pluginSqlAlias.find instanceof RegExp) ||
+    !("replacement" in pluginSqlAlias)
+  ) {
+    throw new Error(
+      "Expected the plugin-sql alias to use a RegExp and replacement path",
+    );
+  }
+  expect(pluginSqlAlias.find.source).toBe("^@elizaos\\/plugin-sql$");
+  expect(pluginSqlAlias.find.flags).toBe("");
+  expect(pluginSqlAlias.find.test("@elizaos/plugin-sql/schema")).toBe(false);
+  expect(pluginSqlAlias.replacement).toBe(
+    fileURLToPath(
+      new URL("../../../plugins/plugin-sql/src/index.node.ts", import.meta.url),
+    ),
+  );
+  expect(config.test?.pool).toBe("threads");
+});
+
 test("Node is available before changed-source classification", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   const setupNode = workflow.indexOf(
