@@ -2465,6 +2465,37 @@ function ensureWorkspaceRuntimeEntriesBuilt(
   }
 }
 
+function ensureResolvedWorkspaceRuntimeEntriesBuilt(
+  packageName: string,
+  resolved: ResolvedPackage,
+): void {
+  if (
+    !isWorkspacePackageSourceDir(resolved.sourceDir) ||
+    !workspacePackageNeedsRuntimeBuild(resolved.packageJsonPath)
+  ) {
+    return;
+  }
+  if (!packageHasBuildScript(resolved.packageJsonPath)) {
+    throw new Error(
+      `[runtime-copy] ${packageName} is missing required runtime entries and has no build script`,
+    );
+  }
+
+  console.log(
+    `[runtime-copy] building transitive ${packageName} workspace runtime entries`,
+  );
+  execFileSync(resolveBunCommand(), ["run", "build"], {
+    cwd: resolved.sourceDir,
+    env: { ...process.env, FORCE_COLOR: "0" },
+    stdio: "inherit",
+  });
+  if (workspacePackageNeedsRuntimeBuild(resolved.packageJsonPath)) {
+    throw new Error(
+      `[runtime-copy] ${packageName} build completed without producing its required runtime entries`,
+    );
+  }
+}
+
 // Post-copy assertion: missingAlwaysBundled catches resolve failures, but
 // can't catch a transitive-walk filter silently skipping a CORE plugin or
 // pruneCopiedPackageDir removing a load-bearing package.json or entrypoint.
@@ -2641,6 +2672,10 @@ function main(): void {
         missingDiscovered.delete(name);
         continue;
       }
+      // Initial discovery cannot see workspace packages referenced only by a
+      // plugin's manifest. Build each resolved workspace before copying it so
+      // transitive exports cannot land as package metadata without their dist.
+      ensureResolvedWorkspaceRuntimeEntriesBuilt(name, resolved);
 
       const resolvedVersion = getPackageVersion(resolved.packageJsonPath);
       const copyTargetNodeModules = selectCopyTargetNodeModules({

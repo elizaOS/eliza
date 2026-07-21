@@ -1,3 +1,10 @@
+elizaos-app (2.0.4-1) unstable; urgency=medium
+
+  * Package the current-source agent and its materialized Linux runtime closure.
+  * Bundle and checksum the required Node.js runtime.
+
+ -- elizaos <dev@app.elizaos.ai>  Mon, 20 Jul 2026 00:00:00 +0000
+
 elizaos-app (2.0.0~beta0-1) unstable; urgency=medium
 
   * Initial Debian packaging

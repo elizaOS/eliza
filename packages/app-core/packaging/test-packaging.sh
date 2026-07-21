@@ -217,6 +217,13 @@ fi
 
 check "Has name field" grep -q "^name: elizaos-app" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has version field" grep -q "^version:" "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Snap manifest version matches the repository" node -e '
+const fs = require("node:fs");
+const expected = require(process.argv[1]).version;
+const manifest = fs.readFileSync(process.argv[2], "utf8");
+const actual = manifest.match(/^version:\s*"?([^"\n]+)"?\s*$/m)?.[1];
+if (actual !== expected) process.exit(1);
+' "$REPO_ROOT/package.json" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has confinement set" grep -q "^confinement:" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has base" grep -q "^base: core22" "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Has apps section" grep -q "^apps:" "$SCRIPT_DIR/snap/snapcraft.yaml"
@@ -229,6 +236,9 @@ check "Snap launcher avoids source loader" bash -c "! grep -q 'tsx/dist/loader.m
 check "Snap stages agent package metadata" grep -q 'packages/agent/package.json' "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Snap bundles pinned Node runtime" grep -q 'NODE_VERSION="24.15.0"' "$SCRIPT_DIR/snap/snapcraft.yaml"
 check "Snap verifies Node runtime checksum" grep -q 'sha256sum --check --strict' "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Snap bundles pinned Bun runtime" grep -q 'BUN_VERSION="1.3.14"' "$SCRIPT_DIR/snap/snapcraft.yaml"
+check "Snap avoids mutable Bun release URL" bash -c "! grep -q 'releases/latest' '$SCRIPT_DIR/snap/snapcraft.yaml'"
+check "Snap reduced workspace does not request an impossible frozen install" bash -c "! grep -q 'bun install --frozen-lockfile' '$SCRIPT_DIR/snap/snapcraft.yaml'"
 
 echo ""
 
@@ -273,6 +283,7 @@ check "Direct wrapper starts built agent" grep -q '/packages/agent/dist/bin.js' 
 check "Store wrapper starts built agent" grep -q '/packages/agent/dist/bin.js' "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.store.sh"
 check "Flatpak driver materializes runtime closure" grep -q 'copy-runtime-node-modules.ts' "$REPO_ROOT/packages/app-core/scripts/build-flatpak.mjs"
 check "Flatpak driver supports stage-only validation" grep -q -- '--stage-only' "$REPO_ROOT/packages/app-core/scripts/build-flatpak.mjs"
+check "Runtime copier builds transitive workspace entries" grep -q 'ensureResolvedWorkspaceRuntimeEntriesBuilt(name, resolved)' "$REPO_ROOT/packages/app-core/scripts/copy-runtime-node-modules.ts"
 check "Obsolete npm source generator removed" test ! -e "$SCRIPT_DIR/flatpak/generate-sources.sh"
 check "Obsolete npm source manifest removed" test ! -e "$SCRIPT_DIR/flatpak/node-sources.json"
 
@@ -315,6 +326,13 @@ check "Has Debian job" grep -q "build-deb:" "$WORKFLOW"
 check "Has Flatpak job" grep -q "build-flatpak:" "$WORKFLOW"
 check "Has summary job" grep -q "publish-summary:" "$WORKFLOW"
 check "Uses trusted publishing" grep -q "id-token: write" "$WORKFLOW"
+check "Publishing pins Bun release" grep -q 'bun-version: "1.3.14"' "$WORKFLOW"
+check "Publishing uses Node 24 for Debian" grep -q 'setup_24.x' "$WORKFLOW"
+check "Publishing fails closed on packaged version" grep -Fq "test \"\$(elizaos-app --version)\" = \"\$EXPECTED_VERSION\"" "$WORKFLOW"
+
+DEBIAN_WORKFLOW="$REPO_ROOT/.github/workflows/build-debian-package.yml"
+check_file "build-debian-package.yml" "$DEBIAN_WORKFLOW"
+check "Debian workflow pins Bun release" grep -q 'bun-version: "1.3.14"' "$DEBIAN_WORKFLOW"
 
 echo ""
 

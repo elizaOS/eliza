@@ -1,5 +1,5 @@
 name: elizaos-app
-version: "2.0.0-beta.0"
+version: "2.0.4"
 summary: Personal AI assistant built on elizaOS
 description: |
   elizaOS App is a personal AI assistant you run on your own devices, built on
@@ -96,20 +96,33 @@ parts:
     plugin: nil
     override-build: |
       set -eu
+      BUN_VERSION="1.3.14"
       ARCH=$(dpkg --print-architecture)
       case "$ARCH" in
-        amd64) BUN_ARCH="x64" ;;
-        arm64) BUN_ARCH="aarch64" ;;
+        amd64)
+          BUN_ARCH="x64"
+          BUN_SHA256="951ee2aee855f08595aeec6225226a298d3fea83a3dcd6465c09cbccdf7e848f"
+          ;;
+        arm64)
+          BUN_ARCH="aarch64"
+          BUN_SHA256="a27ffb63a8310375836e0d6f668ae17fa8d8d18b88c37c821c65331973a19a3b"
+          ;;
         *) echo "Unsupported arch: $ARCH"; exit 1 ;;
       esac
 
-      curl -fsSL "https://github.com/oven-sh/bun/releases/latest/download/bun-linux-${BUN_ARCH}.zip" -o /tmp/bun.zip
-      unzip -o /tmp/bun.zip -d /tmp/bun-extract
+      BUN_ARCHIVE="$CRAFT_PART_BUILD/bun-linux-${BUN_ARCH}.zip"
+      BUN_EXTRACT_DIR="$CRAFT_PART_BUILD/bun-extract"
+      curl --fail --location --proto '=https' --tlsv1.2 \
+        "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-${BUN_ARCH}.zip" \
+        --output "$BUN_ARCHIVE"
+      printf '%s  %s\n' "$BUN_SHA256" "$BUN_ARCHIVE" | sha256sum --check --strict
+      mkdir -p "$BUN_EXTRACT_DIR"
+      unzip -o "$BUN_ARCHIVE" -d "$BUN_EXTRACT_DIR"
       mkdir -p "$CRAFT_PART_INSTALL/bun/bin"
-      cp /tmp/bun-extract/bun-linux-${BUN_ARCH}/bun "$CRAFT_PART_INSTALL/bun/bin/bun"
+      cp "$BUN_EXTRACT_DIR/bun-linux-${BUN_ARCH}/bun" "$CRAFT_PART_INSTALL/bun/bin/bun"
       chmod +x "$CRAFT_PART_INSTALL/bun/bin/bun"
       ln -sf bun "$CRAFT_PART_INSTALL/bun/bin/bunx"
-      "$CRAFT_PART_INSTALL/bun/bin/bun" --version
+      test "$("$CRAFT_PART_INSTALL/bun/bin/bun" --version)" = "$BUN_VERSION"
     build-packages:
       - unzip
       - curl
@@ -315,9 +328,11 @@ parts:
       # above. Force Bun to resolve against the patched manifests.
       rm -f bun.lock
 
-      # Install dependencies — skip postinstall to avoid ensure-bundled-workspaces
-      # trying to build the (now-removed) plugin-agent-orchestrator from source.
-      bun install --frozen-lockfile --ignore-scripts
+      # The build intentionally rewrites the workspace graph above, so the
+      # committed full-repository lockfile cannot describe this reduced tree.
+      # Skip postinstall to avoid rebuilding removed workspaces; package and
+      # toolchain inputs used by the shipped closure are validated below.
+      bun install --ignore-scripts
 
       # app-core still carries compatibility re-exports for wallet route
       # helpers that live in plugin-wallet. The snap workspace rewrite keeps
@@ -331,7 +346,7 @@ parts:
       ln -s ../../plugins/plugin-wallet node_modules/@elizaos/plugin-wallet
       ln -s ../../../../plugins/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
 
-      # `bun install --frozen-lockfile --ignore-scripts` skips the npm bun package postinstall,
+      # `bun install --ignore-scripts` skips the npm bun package postinstall,
       # leaving node_modules/bun/bin/bun as a non-executable JS shim. Turbo
       # package builds can then fail with "Exec format error" when they spawn
       # that package binary instead of the staged Bun runtime.
