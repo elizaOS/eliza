@@ -177,18 +177,35 @@ export interface ResolvedRetentionConfig extends RetentionPolicy {
 export function resolveRetentionConfig(
   get: (key: string) => string | undefined,
 ): ResolvedRetentionConfig {
+  return resolveRetentionConfigWithPrefix(get, "ELIZA_MEMORY_RETENTION");
+}
+
+/**
+ * Generic resolver shared by every table-scoped retention subsystem. Reads the
+ * same four bound keys under a caller-chosen prefix so a second surface (logs,
+ * central_messages, ...) gets an INDEPENDENT, separately-defaulted-OFF config
+ * without duplicating the parse/fail-safe logic.
+ *
+ * Keys read (all optional; absent/blank/non-positive => bound disabled):
+ *   - `${prefix}_DAYS`
+ *   - `${prefix}_MAX_ROWS_PER_ROOM`
+ *   - `${prefix}_MAX_DELETE_PER_SWEEP`
+ *   - `${prefix}_INTERVAL_MINUTES`
+ */
+export function resolveRetentionConfigWithPrefix(
+  get: (key: string) => string | undefined,
+  prefix: string,
+): ResolvedRetentionConfig {
   return {
-    retentionDays: positiveNumberOrUndefined(
-      get("ELIZA_MEMORY_RETENTION_DAYS"),
-    ),
+    retentionDays: positiveNumberOrUndefined(get(`${prefix}_DAYS`)),
     maxRowsPerRoom: positiveNumberOrUndefined(
-      get("ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM"),
+      get(`${prefix}_MAX_ROWS_PER_ROOM`),
     ),
     maxDeletePerSweep: positiveNumberOrUndefined(
-      get("ELIZA_MEMORY_RETENTION_MAX_DELETE_PER_SWEEP"),
+      get(`${prefix}_MAX_DELETE_PER_SWEEP`),
     ),
     intervalMinutes: positiveNumberOrUndefined(
-      get("ELIZA_MEMORY_RETENTION_INTERVAL_MINUTES"),
+      get(`${prefix}_INTERVAL_MINUTES`),
     ),
   };
 }

@@ -91,6 +91,7 @@ import { registerTriggerTaskWorker } from "../triggers/runtime.ts";
 import { migrateWorkbenchScheduleTags } from "../triggers/workbench-migration.ts";
 import { setCustomActionsRuntime } from "./custom-actions.ts";
 import { registerErrorEscalation } from "./error-escalation.ts";
+import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
 
 export type ElizaPluginConfig = {
@@ -168,6 +169,11 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // ELIZA_MEMORY_RETENTION_MAX_ROWS_PER_ROOM is set — the mechanism that
       // keeps the append-only memory store from filling the disk.
       MemoryRetentionService as ServiceClass,
+      // Bounded retention for the append-only logs table (empirically the
+      // biggest growth surface). Registers always but stays a no-op unless
+      // ELIZA_LOGS_RETENTION_DAYS or ELIZA_LOGS_RETENTION_MAX_ROWS_PER_ROOM is
+      // set. Independent config + adapter from the memory sweep above.
+      LogsRetentionService as ServiceClass,
       ApprovalService as ServiceClass,
       // OWNER_BIND_VERIFY: backend authority for the connector /eliza-pair
       // commands. Registered here (before connector plugins start) so the
