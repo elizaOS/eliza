@@ -11,7 +11,7 @@
     "check:release-data": "node ../app-core/scripts/check-homepage-release-data.mjs",
     "test": "bun test tests/smoke.node.test.mjs tests/contact.test.ts edge/apple-app-site-association.test.ts",
     "test:aasa-edge": "bun run typecheck:aasa-edge && bun test edge/apple-app-site-association.test.ts",
-    "typecheck:aasa-edge": "bunx --package typescript@6.0.3 tsc6 --noEmit -p edge/tsconfig.json",
+    "typecheck:aasa-edge": "bunx --package typescript@6.0.3 tsc --noEmit -p edge/tsconfig.json",
     "deploy:aasa-edge": "bunx wrangler@4.100.0 deploy --config wrangler-aasa.toml --strict",
     "test:e2e": "node ../app-core/scripts/write-homepage-release-data.mjs && playwright test",
     "test:audit": "node ../app-core/scripts/write-homepage-release-data.mjs && playwright test tests/e2e/aesthetic-audit.spec.ts && playwright test tests/e2e/contact-sheet-capture.spec.ts && node scripts/generate-contact-sheet.mjs",
