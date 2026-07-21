@@ -93,6 +93,26 @@
       "import": "./dist/config/brand-env-aliases.js",
       "default": "./dist/config/brand-env-aliases.js"
     },
+    "./config/boot-config": {
+      "types": "./dist/config/boot-config.d.ts",
+      "eliza-source": {
+        "types": "./src/config/boot-config.ts",
+        "import": "./src/config/boot-config.ts",
+        "default": "./src/config/boot-config.ts"
+      },
+      "import": "./dist/config/boot-config.js",
+      "default": "./dist/config/boot-config.js"
+    },
+    "./config/boot-config-store": {
+      "types": "./dist/config/boot-config-store.d.ts",
+      "eliza-source": {
+        "types": "./src/config/boot-config-store.ts",
+        "import": "./src/config/boot-config-store.ts",
+        "default": "./src/config/boot-config-store.ts"
+      },
+      "import": "./dist/config/boot-config-store.js",
+      "default": "./dist/config/boot-config-store.js"
+    },
     "./dev-settings-banner-style": {
       "types": "./dist/dev-settings-banner-style.d.ts",
       "import": "./dist/dev-settings-banner-style.js",
