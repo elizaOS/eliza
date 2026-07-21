@@ -349,6 +349,26 @@ describe("test-realness-audit", () => {
     );
   });
 
+  test("--check fails closed when submodule boundary metadata cannot be read", () => {
+    const root = makeRepo();
+    git(root, "init", "--quiet");
+    fs.mkdirSync(path.join(root, ".gitmodules"));
+    write(
+      root,
+      "packages/sample/plain.test.ts",
+      "import { test } from 'vitest';\ntest('plain', () => {});\n",
+    );
+
+    const result = spawnSync(
+      "node",
+      [SCRIPT_PATH, "--repo-root", root, "--check"],
+      { encoding: "utf8" },
+    );
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("listSubmodules");
+  });
+
   test("comments do not register as focused tests", () => {
     const root = makeRepo();
     write(
