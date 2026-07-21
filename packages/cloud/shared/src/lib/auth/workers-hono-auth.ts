@@ -247,46 +247,89 @@ export async function requireUserWithOrg(c: AppContext): Promise<
   };
 }
 
-export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<
-  AuthedUser & {
-    organization_id: string;
-    organization: NonNullable<AuthedUser["organization"]>;
+type AuthedUserWithOrg = AuthedUser & {
+  organization_id: string;
+  organization: NonNullable<AuthedUser["organization"]>;
+};
+
+async function authenticateApiKeyWithOrg<T>(
+  c: AppContext,
+  apiKey: string,
+  orgLookup?: (organizationId: string) => Promise<T>,
+): Promise<{ user: AuthedUserWithOrg; orgLookupResult?: T }> {
+  const { apiKeysService } = await import("../services/api-keys");
+  const validated = await validateApiKeyOrServiceUnavailable(apiKey);
+  if (!validated) throw AuthenticationError("Invalid or expired API key");
+  if (!validated.is_active) throw ForbiddenError("API key is inactive");
+  if (validated.expires_at && new Date(validated.expires_at) < new Date()) {
+    throw AuthenticationError("API key has expired");
   }
-> {
+
+  const { usersService } = await import("../services/users");
+  // The key has already passed authoritative validation, including its stored
+  // organization id. Start the independent org-scoped resource read now rather
+  // than serializing another cold Hyperdrive trip behind user/org hydration.
+  const orgLookupPromise = orgLookup?.(validated.organization_id).then(
+    (value) => ({ ok: true as const, value }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const user = await usersService.getWithOrganization(validated.user_id);
+  if (!user) throw AuthenticationError("User associated with API key not found");
+  if (!user.is_active) throw ForbiddenError("User account is inactive");
+  if (!user.organization?.is_active) throw ForbiddenError("Organization is inactive");
+  if (!user.organization_id) {
+    throw ForbiddenError("This feature requires a full account. Please sign up to continue.");
+  }
+  // Never let the parallel lookup's key scope substitute for current user/org
+  // membership. A stale/malformed key row falls back to the hydrated user's org,
+  // preserving the old scope gate rather than changing authorization semantics.
+  let orgLookupResult: T | undefined;
+  if (user.organization_id !== validated.organization_id) {
+    await orgLookupPromise;
+    orgLookupResult = orgLookup ? await orgLookup(user.organization_id) : undefined;
+  } else {
+    const orgLookupOutcome = orgLookupPromise ? await orgLookupPromise : undefined;
+    if (orgLookupOutcome && !orgLookupOutcome.ok) throw orgLookupOutcome.error;
+    orgLookupResult = orgLookupOutcome?.value;
+  }
+
+  trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
+  const authed = toAuthedUser(user) as AuthedUserWithOrg;
+  c.set("user", authed);
+  c.set("authMethod", "api_key");
+  c.set("apiKeyId", validated.id);
+  return { user: authed, orgLookupResult };
+}
+
+function readApiKeyCredential(c: AppContext): string | null {
   const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
   const bearer = readBearer(c);
   const elizaBearer = bearer && bearer.startsWith("eliza_") ? bearer : null;
-  const apiKey = apiKeyHeader || elizaBearer;
+  return apiKeyHeader || elizaBearer;
+}
 
-  if (apiKey) {
-    const { apiKeysService } = await import("../services/api-keys");
-    const validated = await validateApiKeyOrServiceUnavailable(apiKey);
-    if (!validated) throw AuthenticationError("Invalid or expired API key");
-    if (!validated.is_active) throw ForbiddenError("API key is inactive");
-    if (validated.expires_at && new Date(validated.expires_at) < new Date()) {
-      throw AuthenticationError("API key has expired");
-    }
-    const { usersService } = await import("../services/users");
-    const user = await usersService.getWithOrganization(validated.user_id);
-    if (!user) throw AuthenticationError("User associated with API key not found");
-    if (!user.is_active) throw ForbiddenError("User account is inactive");
-    if (!user.organization?.is_active) throw ForbiddenError("Organization is inactive");
-    if (!user.organization_id) {
-      throw ForbiddenError("This feature requires a full account. Please sign up to continue.");
-    }
-    trackApiKeyUsage(c, validated.id, () => apiKeysService.incrementUsageDebounced(validated.id));
-    const authed = toAuthedUser(user);
-    c.set("user", authed);
-    c.set("authMethod", "api_key");
-    // Expose the validated key id for downstream attribution/audit.
-    c.set("apiKeyId", validated.id);
-    return authed as AuthedUser & {
-      organization_id: string;
-      organization: NonNullable<AuthedUser["organization"]>;
-    };
-  }
-
+export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<AuthedUserWithOrg> {
+  const apiKey = readApiKeyCredential(c);
+  if (apiKey) return (await authenticateApiKeyWithOrg(c, apiKey)).user;
   return requireUserWithOrg(c);
+}
+
+/**
+ * Authenticate exactly like `requireUserOrApiKeyWithOrg`, while allowing an
+ * independent organization-scoped read to overlap API-key user/org hydration.
+ * Session auth still performs the lookup only after the session is authorized.
+ */
+export async function requireUserOrApiKeyWithOrgLookup<T>(
+  c: AppContext,
+  orgLookup: (organizationId: string) => Promise<T>,
+): Promise<{ user: AuthedUserWithOrg; orgLookupResult: T }> {
+  const apiKey = readApiKeyCredential(c);
+  if (apiKey) {
+    const result = await authenticateApiKeyWithOrg(c, apiKey, orgLookup);
+    return { user: result.user, orgLookupResult: result.orgLookupResult as T };
+  }
+  const user = await requireUserWithOrg(c);
+  return { user, orgLookupResult: await orgLookup(user.organization_id) };
 }
 
 export async function requireUserOrApiKey(c: AppContext): Promise<AuthedUser> {

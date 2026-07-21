@@ -31,8 +31,10 @@ vi.mock("@google/genai", () => ({
 }));
 
 import {
+  DEFAULT_GOOGLE_EMBEDDING_MODEL,
   createGoogleGenAI,
   getApiKey,
+  getEmbeddingModel,
   getLargeModel,
   getResponseHandlerModel,
   getSmallModel,
@@ -111,5 +113,21 @@ describe("Google GenAI config", () => {
     );
 
     expect(mocks.googleGenAI).toHaveBeenCalledWith({ apiKey: "test-key" });
+  });
+
+  it("defaults the embedding model to a v1beta-valid id, not the 404-ing text-embedding-004", () => {
+    // Regression: the historical default text-embedding-004 404s on the current
+    // v1beta embedContent route. The default must be a currently-served id.
+    expect(DEFAULT_GOOGLE_EMBEDDING_MODEL).toBe("gemini-embedding-001");
+    expect(DEFAULT_GOOGLE_EMBEDDING_MODEL).not.toBe("text-embedding-004");
+    expect(getEmbeddingModel(runtimeWith({}))).toBe("gemini-embedding-001");
+  });
+
+  it("honors an explicit GOOGLE_EMBEDDING_MODEL override over the default", () => {
+    expect(
+      getEmbeddingModel(
+        runtimeWith({ GOOGLE_EMBEDDING_MODEL: " text-embedding-004 " }),
+      ),
+    ).toBe("text-embedding-004");
   });
 });

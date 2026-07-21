@@ -100,8 +100,90 @@ class BridgeRouteUnavailableError extends Error {
   }
 }
 
+/**
+ * How long a session-scoped bridge conversation id is trusted before we force a
+ * fresh create. A voice session reuses one conversation across turns (stable
+ * `roomId`); without a TTL a long-lived process would pin a conversation id that
+ * the sandbox may have GC'd or that belongs to a since-restarted agent. 30 min
+ * comfortably covers a live voice session while bounding staleness/memory.
+ */
+const BRIDGE_CONVERSATION_TTL_MS = 30 * 60 * 1000;
+
+type BridgeConversationCacheEntry = {
+  conversationId: string;
+  createdAt: number;
+};
+
 export class ElizaSandboxBridgeService {
+  /**
+   * Session-scoped conversation reuse. A voice turn used to POST
+   * `/api/conversations` on EVERY turn (a serialized round-trip on the
+   * first-token critical path) AND started a brand-new conversation each time,
+   * losing prior-turn context. We cache the created conversation id keyed by the
+   * stable session identity `(agentId, orgId, roomId)`: the first turn creates,
+   * subsequent turns reuse (no create round-trip, context preserved). A stale id
+   * (sandbox restarted / conversation expired → 404 on the stream POST) evicts
+   * the entry and recreates exactly once. Only the streaming voice path uses
+   * this cache; one-shot REST callers keep their create-per-call behavior.
+   */
+  private readonly bridgeConversationCache = new Map<string, BridgeConversationCacheEntry>();
+
   constructor(private readonly deps: BridgeServiceDeps) {}
+
+  private bridgeConversationCacheKey(
+    agentId: string,
+    orgId: string,
+    params: Record<string, unknown>,
+  ): string | null {
+    const roomId =
+      typeof params.roomId === "string" && params.roomId.trim() ? params.roomId.trim() : null;
+    // No stable room => no session to key on; fall back to create-per-call.
+    if (!roomId) return null;
+    return `${agentId}\u0000${orgId}\u0000${roomId}`;
+  }
+
+  /**
+   * Return a reusable conversation id for this session, creating (and caching)
+   * one only on the first turn or after a forced invalidation. `forceNew` skips
+   * and overwrites any cached entry (used for the create-once stale recovery).
+   * When there is no stable session key (no roomId) this always creates.
+   */
+  private async getOrCreateBridgeConversation(
+    agentId: string,
+    orgId: string,
+    rec: AgentSandbox,
+    params: Record<string, unknown>,
+    options?: { forceNew?: boolean },
+  ): Promise<string> {
+    const key = this.bridgeConversationCacheKey(agentId, orgId, params);
+    if (!key) {
+      return this.createBridgeConversation(rec, params);
+    }
+
+    if (!options?.forceNew) {
+      const cached = this.bridgeConversationCache.get(key);
+      if (cached && Date.now() - cached.createdAt < BRIDGE_CONVERSATION_TTL_MS) {
+        return cached.conversationId;
+      }
+      if (cached) {
+        // Expired by TTL: drop and recreate below.
+        this.bridgeConversationCache.delete(key);
+      }
+    }
+
+    const conversationId = await this.createBridgeConversation(rec, params);
+    this.bridgeConversationCache.set(key, { conversationId, createdAt: Date.now() });
+    return conversationId;
+  }
+
+  private invalidateBridgeConversation(
+    agentId: string,
+    orgId: string,
+    params: Record<string, unknown>,
+  ): void {
+    const key = this.bridgeConversationCacheKey(agentId, orgId, params);
+    if (key) this.bridgeConversationCache.delete(key);
+  }
 
   async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
@@ -159,23 +241,49 @@ export class ElizaSandboxBridgeService {
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     try {
-      const conversationId = await this.createBridgeConversation(rec, params);
-      const bridgeEndpoint = await this.deps.getAgentApiEndpoint(
-        rec,
-        `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
-      );
-      const res = await fetch(bridgeEndpoint, {
-        method: "POST",
-        headers: this.deps.getAgentJsonHeaders(rec),
-        body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
-        signal: AbortSignal.timeout(120_000),
-      });
-      if (res.ok) return this.normalizeBridgeSseResponse(res);
-      if (res.status !== 404) {
+      // Reuse this session's conversation across turns; create only on the first
+      // turn. A cached id that the sandbox has since dropped answers 404 on the
+      // stream POST — evict and recreate exactly once before falling through to
+      // the compatibility ladder.
+      let forcedFreshConversation = false;
+      for (;;) {
+        const conversationId = await this.getOrCreateBridgeConversation(
+          agentId,
+          orgId,
+          rec,
+          params,
+          {
+            forceNew: forcedFreshConversation,
+          },
+        );
+        const bridgeEndpoint = await this.deps.getAgentApiEndpoint(
+          rec,
+          `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
+        );
+        const res = await fetch(bridgeEndpoint, {
+          method: "POST",
+          headers: this.deps.getAgentJsonHeaders(rec),
+          body: JSON.stringify(this.buildBridgeConversationMessageBody(params)),
+          signal: AbortSignal.timeout(120_000),
+        });
+        if (res.ok) return this.normalizeBridgeSseResponse(res);
+        if (res.status === 404) {
+          // Stale/expired cached conversation id: evict and retry once with a
+          // freshly created conversation. If the retry (or a create-per-call
+          // session) still 404s, the route genuinely doesn't exist — stop and
+          // fall through to the compatibility ladder below.
+          if (!forcedFreshConversation) {
+            this.invalidateBridgeConversation(agentId, orgId, params);
+            forcedFreshConversation = true;
+            continue;
+          }
+          break;
+        }
         logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
           agentId,
           status: res.status,
         });
+        break;
       }
     } catch (error) {
       if (!(error instanceof BridgeRouteUnavailableError)) {
@@ -185,6 +293,8 @@ export class ElizaSandboxBridgeService {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+      // A create failure invalidates any cached id so the next turn retries clean.
+      this.invalidateBridgeConversation(agentId, orgId, params);
     }
 
     try {
