@@ -7,10 +7,11 @@
  * multi-word non-adjacent (`websearch_to_tsquery`), case/accent/apostrophe
  * folding, partial-word + typo (trigram), stemming, code metacharacters treated
  * literally, URL/emoji/CJK substrings, quoted phrase vs bare-term semantics,
- * near-duplicate deterministic ordering, attachment-filename indexing, deleted-
- * row exclusion, room access-scoping, and corpus-wide recall of a hit far older
- * than any recency window on a multi-thousand-row corpus. Default harness is
- * PGlite (WASM, in-process); set `POSTGRES_URL` to run against real Postgres.
+ * websearch operator isolation from fuzzy fallbacks, near-duplicate deterministic
+ * ordering, attachment-filename indexing, deleted-row exclusion, room access-
+ * scoping, and corpus-wide recall of a hit far older than any recency window on
+ * a multi-thousand-row corpus. Default harness is PGlite (WASM, in-process); set
+ * `POSTGRES_URL` to run against real Postgres.
  */
 import { ChannelType, type Entity, type Room, type UUID, type World } from "@elizaos/core";
 import { sql } from "drizzle-orm";
@@ -126,6 +127,7 @@ describe("searchMessages FTS + trigram (real DB)", () => {
     await seed(roomA, "北京 is the capital of China", "assistant");
     await seed(roomA, "the exact phrase alpha beta lives here", "user");
     await seed(roomA, "alpha appears alone and beta appears far away later", "assistant");
+    await seed(roomA, "alpah or zephry are deliberately misspelled", "user");
     await seed(roomA, "here is the file you asked for", "user", [
       {
         title: "quarterly-budget-2026.xlsx",
@@ -197,12 +199,24 @@ describe("searchMessages FTS + trigram (real DB)", () => {
     expect((await searchTexts("北京")).some((t) => t.includes("北京"))).toBe(true);
   });
 
-  it("10. quoted phrase vs OR", async () => {
+  it("10. quoted phrase stays adjacent while bare terms may be non-adjacent", async () => {
     const phrase = await searchTexts('"alpha beta"');
     expect(phrase.some((t) => t.includes("exact phrase alpha beta"))).toBe(true);
     expect(phrase.some((t) => t.includes("appears alone and beta appears far away"))).toBe(false);
     const bare = await searchTexts("alpha beta");
     expect(bare.some((t) => t.includes("exact phrase alpha beta"))).toBe(true);
+    expect(bare.some((t) => t.includes("appears alone and beta appears far away"))).toBe(true);
+  });
+
+  it("10b. negation and OR are not relaxed by the fuzzy fallback", async () => {
+    const negated = await searchTexts("alpha -far");
+    expect(negated.some((t) => t.includes("exact phrase alpha beta"))).toBe(true);
+    expect(negated.some((t) => t.includes("appears alone and beta appears far away"))).toBe(false);
+
+    const union = await searchTexts("alpha OR zephyr");
+    expect(union.some((t) => t.includes("exact phrase alpha beta"))).toBe(true);
+    expect(union.some((t) => t.includes("duplicate marker zephyr"))).toBe(true);
+    expect(union.some((t) => t.includes("deliberately misspelled"))).toBe(false);
   });
 
   it("11. near-duplicates all returned, deterministically ordered by recency then id", async () => {
