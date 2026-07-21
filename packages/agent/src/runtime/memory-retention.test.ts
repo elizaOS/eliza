@@ -243,8 +243,10 @@ function makeService(
   ) as MemoryRetentionService;
   // @ts-expect-error assign protected runtime for the test harness
   svc.runtime = runtime;
-  // @ts-expect-error call private init to resolve config (no timers unless active + start())
-  svc.config = resolveRetentionConfig((k) => settings[k] ?? process.env[k]);
+  // @ts-expect-error assign private retentionConfig to resolve config (no timers unless active + start())
+  svc.retentionConfig = resolveRetentionConfig(
+    (k) => settings[k] ?? process.env[k],
+  );
   return svc;
 }
 
