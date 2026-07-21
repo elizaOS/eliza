@@ -32,6 +32,8 @@ export type SolanaProtocol = {
   website?: string;
 
   notes?: string;
+
+  tags: string[];
 };
 
 const SOLANA_PROTOCOLS: Record<string, SolanaProtocol> = {
