@@ -5,6 +5,13 @@
  * default route turns an interactive turn into a 2-6s stall — the measured
  * bimodal 5-10s warm-stall promotion blocker (LATENCY-STALL-2026-07-20).
  *
+ * COLD-PATH stall-B fix (COLDPATH-FIX-2026-07-21): the default budget is now
+ * ZERO, not one. #16713's single-retry cap still cost a ~2s `initialDelayInMs`
+ * sleep that retried the SAME dead Cerebras upstream. The interactive turn now
+ * routes through `getInteractiveCerebrasLanguageModel`, whose middleware fails
+ * over to OpenRouter INSTANTLY (no backoff) on a transient 5xx — so the SDK's
+ * sleeping retry is redundant and additive, and the healthy default is 0.
+ *
  * These tests drive the REAL exported functions with `ai`'s generateText /
  * streamText stubbed to CAPTURE the options object, proving the bounded
  * `maxRetries` is actually passed through on both the non-stream and stream
@@ -18,6 +25,7 @@ let lastStreamOptions: Record<string, unknown> | null = null;
 
 mock.module("../../providers/language-model", () => ({
   getLanguageModel: () => ({ __sentinel: "model" }),
+  getInteractiveCerebrasLanguageModel: () => ({ __sentinel: "interactive-model" }),
   hasLanguageModelProviderConfigured: () => providerConfigured,
 }));
 
@@ -43,9 +51,9 @@ const { runSharedAgentTurn, runSharedAgentTurnStream, SHARED_TURN_MAX_RETRIES } 
 // resolveSharedTurnMaxRetries is not exported (module-load-time constant); we
 // re-derive the same clamp here to pin its contract without widening the API.
 function clampExpectation(raw: string | undefined): number {
-  if (raw === undefined || raw.trim() === "") return 1;
+  if (raw === undefined || raw.trim() === "") return 0;
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed < 0) return 1;
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
   return Math.min(parsed, 2);
 }
 
@@ -65,10 +73,10 @@ afterEach(() => {
 });
 
 describe("shared-runtime turn retry budget", () => {
-  test("default budget is a single bounded retry (not the SDK default of 2)", () => {
+  test("default budget is ZERO SDK backoff (the instant-failover wrapper owns resilience)", () => {
     // With no SHARED_TURN_MAX_RETRIES env set in the test process, the resolved
-    // constant is 1: one fast heal attempt, capping worst-case added latency to
-    // a single ~2s backoff instead of the ~6s (2s+4s) two-retry default.
+    // constant is 0: the interactive model wrapper fails over to a healthy
+    // provider instantly on a 5xx, so the SDK's ~2s sleeping retry is redundant.
     expect(SHARED_TURN_MAX_RETRIES).toBe(clampExpectation(process.env.SHARED_TURN_MAX_RETRIES));
     expect(SHARED_TURN_MAX_RETRIES).toBeLessThanOrEqual(2);
     expect(SHARED_TURN_MAX_RETRIES).toBeGreaterThanOrEqual(0);
@@ -84,6 +92,8 @@ describe("shared-runtime turn retry budget", () => {
     expect(lastGenerateOptions?.maxRetries).toBe(SHARED_TURN_MAX_RETRIES);
     // The bound must never silently regress to the SDK default that caused the stall.
     expect(lastGenerateOptions?.maxRetries).toBeLessThanOrEqual(1);
+    // Healthy default is zero SDK backoff on the interactive path.
+    expect(lastGenerateOptions?.maxRetries).toBe(0);
   });
 
   test("runSharedAgentTurnStream passes the bounded maxRetries to streamText", async () => {
@@ -101,20 +111,21 @@ describe("shared-runtime turn retry budget", () => {
     expect(lastStreamOptions).not.toBeNull();
     expect(lastStreamOptions?.maxRetries).toBe(SHARED_TURN_MAX_RETRIES);
     expect(lastStreamOptions?.maxRetries).toBeLessThanOrEqual(1);
+    expect(lastStreamOptions?.maxRetries).toBe(0);
   });
 });
 
 describe("resolveSharedTurnMaxRetries clamp contract (re-derived)", () => {
   test.each([
-    [undefined, 1],
-    ["", 1],
-    ["   ", 1],
+    [undefined, 0],
+    ["", 0],
+    ["   ", 0],
     ["0", 0],
     ["1", 1],
     ["2", 2],
     ["5", 2], // clamped down: can never exceed the SDK default it bounds
-    ["-1", 1], // negative -> fall back to safe default
-    ["abc", 1], // unparseable -> safe default
+    ["-1", 0], // negative -> fall back to safe (zero-backoff) default
+    ["abc", 0], // unparseable -> safe (zero-backoff) default
   ])("SHARED_TURN_MAX_RETRIES=%p resolves to %p", (raw, expected) => {
     expect(clampExpectation(raw as string | undefined)).toBe(expected);
   });

@@ -77,7 +77,7 @@
     "migrate:generate": "cd src && drizzle-kit generate",
     "dev": "cd src && bun --hot build.ts",
     "test": "cd src && vitest run",
-    "typecheck": "tsgo --noEmit -p src/tsconfig.json",
+    "typecheck": "tsc --noEmit -p src/tsconfig.json",
     "lint": "cd src && bun run lint",
     "lint:check": "cd src && bun run lint:check",
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs src/dist .turbo",
@@ -103,6 +103,7 @@
     "@types/ws": "^8.18.1",
     "dotenv": "^17.2.3",
     "drizzle-kit": "^0.31.8",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },

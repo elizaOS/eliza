@@ -7,7 +7,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsc --noCheck -p tsconfig.build.json",
+    "build": "tsc6 --noCheck -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
     "test": "vitest run --config ./vitest.config.ts"
@@ -30,6 +30,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.1",
     "@types/node": "^25.0.6",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },

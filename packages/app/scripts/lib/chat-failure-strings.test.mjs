@@ -40,6 +40,10 @@ const iosRuntimeBridgePath = path.resolve(
   here,
   "../../../app-core/src/platform/ios-runtime-bridge.ts",
 );
+const appCoreBrowserPath = path.resolve(
+  here,
+  "../../../app-core/src/browser.ts",
+);
 const appMainPath = path.resolve(here, "../../src/main.tsx");
 
 // The exact hand-authored classifier sources that lived inline in
@@ -93,9 +97,15 @@ describe("chat-failure-strings single source of truth (#13687)", () => {
 
   it("browser/runtime smoke checks consume the generated TypeScript artifact", () => {
     const bridge = fs.readFileSync(iosRuntimeBridgePath, "utf8");
+    const browser = fs.readFileSync(appCoreBrowserPath, "utf8");
     const appMain = fs.readFileSync(appMainPath, "utf8");
     expect(bridge).toContain('from "./chat-failure-strings.generated"');
-    expect(appMain).toContain("IOS_FULL_BUN_SMOKE_FAILURE_RE");
+    expect(bridge).toContain("IOS_FULL_BUN_SMOKE_FAILURE_RE");
+    expect(browser).toContain("runIosFullBunSmokeIfRequested");
+    expect(appMain).toContain("runIosFullBunSmokeIfRequested");
+    expect(appMain).not.toContain(
+      "async function runIosFullBunSmokeIfRequested",
+    );
     expect(bridge).not.toContain("backend is not running|local backend");
     expect(appMain).not.toContain("something went wrong|<think");
   });

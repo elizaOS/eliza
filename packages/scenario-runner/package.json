@@ -63,7 +63,7 @@
   "scripts": {
     "clean": "node ../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
-    "build": "tsc --noCheck -p tsconfig.build.json",
+    "build": "tsc6 --noCheck -p tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
     "test:deterministic:e2e": "SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/cli.ts run test/scenarios --lane pr-deterministic --report-dir ../../reports/scenarios/pr-deterministic --run-dir ../../reports/scenarios/pr-deterministic",
     "test:corpus:pr:e2e": "TZ=UTC SCENARIO_USE_LLM_PROXY=1 SCENARIO_LLM_PROXY_STRICT=1 bun --conditions eliza-source --tsconfig-override ../../tsconfig.json src/cli.ts run ../test/scenarios --lane pr-deterministic --report-dir ../../reports/scenarios/pr-deterministic-corpus --run-dir ../../reports/scenarios/pr-deterministic-corpus",
@@ -76,7 +76,7 @@
     "test:real-service:voice": "node scripts/real-service-voice-e2e.mjs",
     "format": "bunx @biomejs/biome format --write package.json",
     "format:check": "bunx @biomejs/biome format package.json",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@elizaos/agent": "workspace:*",
@@ -109,6 +109,7 @@
   },
   "devDependencies": {
     "@elizaos/test-harness": "workspace:*",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
