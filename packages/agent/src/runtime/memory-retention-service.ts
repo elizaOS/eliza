@@ -61,6 +61,24 @@ export interface RetentionAdapter {
   deleteManyMemories(ids: string[]): Promise<void>;
 }
 
+/**
+ * Structural guard: narrow the runtime's `adapter` (typed as the broad
+ * IDatabaseAdapter) to the {@link RetentionAdapter} surface the sweep needs.
+ * Runtime-checks the two methods it calls so a non-conforming adapter is a
+ * clean skip rather than a throw — and lets us narrow without an unsafe cast.
+ */
+function asRetentionAdapter(adapter: unknown): RetentionAdapter | null {
+  if (!adapter || typeof adapter !== "object") return null;
+  const candidate = adapter as Partial<RetentionAdapter>;
+  if (
+    typeof candidate.getMemories !== "function" ||
+    typeof candidate.deleteManyMemories !== "function"
+  ) {
+    return null;
+  }
+  return candidate as RetentionAdapter;
+}
+
 export interface SweepResult {
   partition: string;
   scanned: number;
@@ -148,8 +166,8 @@ export class MemoryRetentionService extends Service {
     this.sweeping = true;
     const results: SweepResult[] = [];
     try {
-      const adapter = this.runtime.adapter as unknown as RetentionAdapter;
-      if (!adapter || typeof adapter.getMemories !== "function") {
+      const adapter = asRetentionAdapter(this.runtime.adapter);
+      if (!adapter) {
         logger.warn(
           "[memory-retention] adapter missing getMemories, skipping sweep",
         );
