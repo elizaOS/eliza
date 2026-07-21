@@ -85,7 +85,9 @@ export function runWalletPipeline(
   );
 
   const relationships = analyzeWalletRelationships(
-    funding,
+  funding,
+  input.address,
+  input.parsedTransactions,
   );
 
   const custodyProfile = analyzeWalletCustodyProfile(
