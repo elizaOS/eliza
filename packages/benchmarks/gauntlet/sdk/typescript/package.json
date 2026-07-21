@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc6",
     "clean": "rm -rf dist",
     "test": "bun test tests",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -27,6 +27,7 @@
     "@solana/web3.js": "1.98.4"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "@types/node": "^24.0.0"
   }

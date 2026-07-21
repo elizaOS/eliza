@@ -308,6 +308,24 @@ function readApiKeyCredential(c: AppContext): string | null {
   return apiKeyHeader || elizaBearer;
 }
 
+/**
+ * The 16-char key-hash prefix that identifies the CURRENT request's API-key
+ * credential for the shared-agent scope cache (COLDPATH-FIX-2026-07-21), or
+ * null when the request is not API-key authenticated (session/JWT/cookie).
+ *
+ * Same sha256 + 16-char-prefix derivation the api-key validation cache uses, so
+ * the scope cache is keyed by the exact same credential identity. Returns null
+ * (never a hash of an empty string) when there is no API key, so callers scope
+ * their cache ONLY on the API-key path and fall back to the authoritative gate
+ * everywhere else. Import kept local (crypto) so this stays a pure derivation.
+ */
+export async function apiKeyScopeHashPrefix(c: AppContext): Promise<string | null> {
+  const apiKey = readApiKeyCredential(c);
+  if (!apiKey) return null;
+  const { createHash } = await import("node:crypto");
+  return createHash("sha256").update(apiKey).digest("hex").substring(0, 16);
+}
+
 export async function requireUserOrApiKeyWithOrg(c: AppContext): Promise<AuthedUserWithOrg> {
   const apiKey = readApiKeyCredential(c);
   if (apiKey) return (await authenticateApiKeyWithOrg(c, apiKey)).user;

@@ -1,3 +1,9 @@
+/**
+ * Manages UserDefaults state shared by iOS simulator smoke harnesses and the
+ * Capacitor renderer. Pre-launch seeding uses the simulator defaults service;
+ * post-launch polling prefers the app-written plist because cfprefsd can retain
+ * a stale compatibility alias after Capacitor updates its prefixed key.
+ */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -31,6 +37,79 @@ export function preferenceNativeKeys(key) {
   return [`CapacitorStorage.${key}`, key];
 }
 
+/**
+ * Writes a string through the booted simulator's defaults service. Writing a
+ * host filesystem plist does not reliably update the simulator's cfprefsd
+ * domain, even when the path points inside the app data container.
+ */
+export function writeIosDefaultsString(
+  { udid, bundleId, key, value },
+  execute = execText,
+) {
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    execute("xcrun", [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "write",
+      bundleId,
+      nativeKey,
+      "-string",
+      value,
+    ]);
+  }
+}
+
+/** Returns the first Capacitor-compatible string stored in the simulator domain. */
+export function readIosDefaultsString(
+  { udid, bundleId, key },
+  execute = execText,
+) {
+  for (const nativeKey of preferenceNativeKeys(key)) {
+    const value = execute(
+      "xcrun",
+      ["simctl", "spawn", udid, "defaults", "read", bundleId, nativeKey],
+      { optional: true },
+    );
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+/**
+ * Reads the app-owned preference plist before consulting cfprefsd. Capacitor
+ * writes the prefixed key from inside the running app, so this is the freshest
+ * post-launch observation when the raw alias seeded by the host is still cached.
+ */
+export function readIosPreferenceString(
+  { udid, bundleId, key },
+  { execute = execText, fileExists = fs.existsSync } = {},
+) {
+  const domainPath = prefsDomainPath(udid, bundleId, execute);
+  const plist = domainPath ? `${domainPath}.plist` : null;
+  if (plist && fileExists(plist)) {
+    const json = execute("plutil", ["-convert", "json", "-o", "-", plist], {
+      optional: true,
+    });
+    if (json) {
+      try {
+        const values = JSON.parse(json);
+        if (values && typeof values === "object" && !Array.isArray(values)) {
+          for (const nativeKey of preferenceNativeKeys(key)) {
+            const value = values[nativeKey];
+            if (typeof value === "string") return value;
+          }
+        }
+      } catch {
+        // error-policy:J3 a concurrently replaced plist is explicitly unreadable;
+        // the simulator defaults fallback below remains an independent source.
+      }
+    }
+  }
+  return readIosDefaultsString({ udid, bundleId, key }, execute);
+}
+
 export function shouldClearIosSmokePreferenceKey(key, options = {}) {
   const normalized = stripCapacitorPrefix(String(key));
   if (EXACT_SMOKE_KEYS.has(normalized)) return true;
@@ -62,6 +141,7 @@ function execText(command, args, options = {}) {
   try {
     return execFileSync(command, args, {
       cwd: options.cwd,
+      env: process.env,
       encoding: "utf8",
       stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
       input: options.input,
@@ -72,16 +152,16 @@ function execText(command, args, options = {}) {
   }
 }
 
-function appDataContainer(udid, bundleId) {
-  return execText(
+function appDataContainer(udid, bundleId, execute = execText) {
+  return execute(
     "xcrun",
     ["simctl", "get_app_container", udid, bundleId, "data"],
     { optional: true },
   );
 }
 
-function prefsDomainPath(udid, bundleId) {
-  const container = appDataContainer(udid, bundleId);
+function prefsDomainPath(udid, bundleId, execute = execText) {
+  const container = appDataContainer(udid, bundleId, execute);
   if (!container) return null;
   return path.join(container, "Library", "Preferences", bundleId);
 }

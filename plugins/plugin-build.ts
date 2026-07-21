@@ -119,26 +119,24 @@ const REWRITE_DIST_IMPORTS = resolve(
 );
 
 /**
- * Absolute path to the workspace `tsc` JS entry. Resolved via node module
- * resolution so it works regardless of the node_modules layout — a fresh CI
- * checkout, a hoisted/symlinked install, or a git worktree that borrows a
- * parent's node_modules — instead of assuming a fixed `../node_modules/...`
- * offset (which is absent in a worktree). `buildPlugin` runs it as
- * `node ${TSC_BIN}`, so it needs no `node_modules/.bin` on PATH: `Bun.$`
- * resolves commands from the bun process's startup PATH, which a bare
- * `bun test` step does not extend (only `bun run` does).
+ * Absolute path to the TypeScript 6 compatibility compiler used for
+ * declaration emit. Typechecks use stable TypeScript 7's native `tsc`, while
+ * emit stays byte-compatible until its compiler API and output are validated.
  */
 const TSC_BIN = (() => {
   try {
-    return createRequire(import.meta.url).resolve("typescript/bin/tsc");
+    return createRequire(import.meta.url).resolve(
+      "@typescript/typescript6/bin/tsc6",
+    );
   } catch {
     return resolve(
       import.meta.dir,
       "..",
       "node_modules",
-      "typescript",
+      "@typescript",
+      "typescript6",
       "bin",
-      "tsc",
+      "tsc6",
     );
   }
 })();

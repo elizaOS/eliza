@@ -50,12 +50,13 @@
         "format": "bunx @biomejs/biome format --write .",
         "format:check": "bunx @biomejs/biome format .",
         "test": "vitest run --config vitest.config.ts",
-        "typecheck": "tsgo --noEmit -p tsconfig.json"
+        "typecheck": "tsc --noEmit -p tsconfig.json"
     },
     "devDependencies": {
         "@biomejs/biome": "2.5.4",
         "@types/node": "^22.19.17",
         "tsup": "^8.5.1",
+        "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0"
     },
