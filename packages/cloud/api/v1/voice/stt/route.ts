@@ -1,4 +1,8 @@
-// Handles v1 cloud API v1 voice stt route traffic with route-local auth expectations.
+/**
+ * Cloud voice transcription route for multipart audio uploads. The request
+ * body is size-gated before auth and multipart parsing so rejected uploads do
+ * not spend provider, billing, or signature-parsing work.
+ */
 import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -50,6 +54,12 @@ const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
 const DEEPGRAM_PRERECORDED_URL = "https://api.deepgram.com/v1/listen";
 const DEEPGRAM_PRERECORDED_MODEL = "nova-3";
 const STT_PRICING_PROXY_MODEL = "elevenlabs/scribe_v1";
+const DEFAULT_MAX_MULTIPART_BODY_BYTES = 25 * 1024 * 1024;
+const MAX_MULTIPART_BODY_BYTES_ENV = "VOICE_STT_MAX_MULTIPART_BYTES";
+const OVERSIZED_MULTIPART_RESPONSE = {
+  error: "STT multipart request body too large",
+  maxBytes: DEFAULT_MAX_MULTIPART_BODY_BYTES,
+};
 
 const SUPPORTED_MIME_TYPES = [
   "audio/mp3",
@@ -198,6 +208,135 @@ function parseDeepgramTranscription(
   };
 }
 
+function parseSttMultipartBodyLimit(env: AppEnv["Bindings"]): number {
+  const configured = env.VOICE_STT_MAX_MULTIPART_BYTES;
+  if (configured === undefined) {
+    return DEFAULT_MAX_MULTIPART_BODY_BYTES;
+  }
+
+  const parsed = Number(configured);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(
+      `${MAX_MULTIPART_BODY_BYTES_ENV} must be a positive integer`,
+    );
+  }
+  return parsed;
+}
+
+function oversizedMultipartResponse(maxBytes: number): Response {
+  return Response.json(
+    {
+      ...OVERSIZED_MULTIPART_RESPONSE,
+      maxBytes,
+    },
+    { status: 413 },
+  );
+}
+
+function parseTrustworthyContentLength(request: Request): number | null {
+  const raw = request.headers.get("content-length");
+  if (!raw) return null;
+  if (!/^\d+$/.test(raw.trim())) return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function headersForBufferedRequest(request: Request): Headers {
+  const headers = new Headers(request.headers);
+  headers.delete("content-length");
+  return headers;
+}
+
+function cancelUploadBodyBestEffort(
+  body: ReadableStream<Uint8Array>,
+  label: string,
+): void {
+  const reportFailure = (error: unknown) => {
+    // error-policy:J6 best-effort teardown for an upload already rejected.
+    logger.warn("[Voice STT API] Failed to cancel oversized upload body", {
+      errorType: error instanceof Error ? error.name : "unknown",
+      label,
+    });
+  };
+  try {
+    body.cancel().catch(reportFailure);
+  } catch (error) {
+    reportFailure(error);
+  }
+}
+
+function cancelUploadReaderBestEffort(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): void {
+  const reportFailure = (error: unknown) => {
+    // error-policy:J6 best-effort teardown for an upload already rejected.
+    logger.warn("[Voice STT API] Failed to cancel oversized upload reader", {
+      errorType: error instanceof Error ? error.name : "unknown",
+    });
+  };
+  try {
+    reader.cancel().catch(reportFailure);
+  } catch (error) {
+    reportFailure(error);
+  }
+}
+
+async function readRequestWithMultipartLimit(
+  request: Request,
+  maxBytes: number,
+): Promise<Request | Response> {
+  const declaredLength = parseTrustworthyContentLength(request);
+  if (declaredLength !== null && declaredLength > maxBytes) {
+    if (request.body) {
+      cancelUploadBodyBestEffort(request.body, "content-length-precheck");
+    }
+    return oversizedMultipartResponse(maxBytes);
+  }
+
+  const bufferedHeaders = headersForBufferedRequest(request);
+
+  if (!request.body) {
+    const buffer = await request.arrayBuffer();
+    if (buffer.byteLength > maxBytes) {
+      return oversizedMultipartResponse(maxBytes);
+    }
+    return new Request(request.url, {
+      body: buffer,
+      headers: bufferedHeaders,
+      method: request.method,
+    });
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    received += value.byteLength;
+    if (received > maxBytes) {
+      cancelUploadReaderBestEffort(reader);
+      return oversizedMultipartResponse(maxBytes);
+    }
+    chunks.push(value);
+  }
+
+  const body = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return new Request(request.url, {
+    body,
+    headers: bufferedHeaders,
+    method: request.method,
+  });
+}
+
 /**
  * POST /api/v1/voice/stt
  * Converts speech to text using the voice transcription service.
@@ -211,6 +350,32 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
 
   try {
+    let multipartBodyLimit: number;
+    try {
+      multipartBodyLimit = parseSttMultipartBodyLimit(env);
+    } catch (error) {
+      // error-policy:J1 boundary translation for pre-auth operator config.
+      logger.error(
+        "[Voice STT API] Invalid multipart body limit configuration",
+        {
+          errorType: error instanceof Error ? error.name : "unknown",
+        },
+      );
+      return Response.json(
+        { error: "Speech-to-text service is misconfigured" },
+        { status: 500 },
+      );
+    }
+
+    const sizeCheckedRequest = await readRequestWithMultipartLimit(
+      request,
+      multipartBodyLimit,
+    );
+    if (sizeCheckedRequest instanceof Response) {
+      return sizeCheckedRequest;
+    }
+    request = sizeCheckedRequest;
+
     const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
 
     const contentType = request.headers.get("content-type") ?? "";

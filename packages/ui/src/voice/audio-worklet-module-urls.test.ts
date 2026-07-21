@@ -31,24 +31,24 @@ const modules = [
 ] as const;
 
 describe("AudioWorklet module assets", () => {
-  it.each(modules)("uses a CSP-compatible URL for $processorName", ({
-    url,
-    fileName,
-  }) => {
-    expect(url).not.toMatch(/^(?:blob|data):/);
-    expect(new URL(url).pathname).toContain(`/worklets/${fileName}`);
-  });
+  it.each(modules)(
+    "uses a CSP-compatible URL for $processorName",
+    ({ url, fileName }) => {
+      expect(url).not.toMatch(/^(?:blob|data):/);
+      expect(new URL(url).pathname).toContain(`/worklets/${fileName}`);
+    },
+  );
 
-  it.each(modules)("ships the $processorName processor as a static module", ({
-    fileName,
-    processorName,
-  }) => {
-    const source = readFileSync(
-      resolve(voiceDirectory, "worklets", fileName),
-      "utf8",
-    );
-    expect(source).toContain(`registerProcessor("${processorName}"`);
-  });
+  it.each(modules)(
+    "ships the $processorName processor as a static module",
+    ({ fileName, processorName }) => {
+      const source = readFileSync(
+        resolve(voiceDirectory, "worklets", fileName),
+        "utf8",
+      );
+      expect(source).toContain(`registerProcessor("${processorName}"`);
+    },
+  );
 
   it("prevents Vite from inlining worklets and copies them into package dist", () => {
     const moduleUrlSource = readFileSync(moduleUrlSourcePath, "utf8");

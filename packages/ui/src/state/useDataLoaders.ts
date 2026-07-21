@@ -60,6 +60,7 @@ import {
   type LoadConversationMessagesResult,
   shouldKeepConversationMessage,
 } from "./internal";
+import { clearSettledPendingChatTurns } from "./pending-chat-turns";
 
 // ── Helpers (module-level, no React deps) ────────────────────────────
 
@@ -544,6 +545,7 @@ export function useDataLoaders(deps: DataLoadersDeps) {
             activeConversationIdRef.current === convId,
         );
         cacheConversationMessages(convId, serverMessages);
+        clearSettledPendingChatTurns(convId, serverMessages);
         greetingFiredRef.current =
           hasConversationBootstrapMessage(nextMessages);
         conversationMessagesRef.current = nextMessages;

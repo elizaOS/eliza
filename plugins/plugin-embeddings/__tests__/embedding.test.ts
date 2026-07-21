@@ -37,6 +37,15 @@ function mockEmbeddingsResponse(vectors: number[][]): Response {
   } as unknown as Response;
 }
 
+function mockHttpError(status: number, statusText: string, body: string): Response {
+  return {
+    ok: false,
+    status,
+    statusText,
+    text: async () => body,
+  } as unknown as Response;
+}
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
@@ -78,6 +87,97 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     expect(body.model).toBe("text-embedding-3-small");
   });
 
+  it("uses the primary endpoint without touching fallback when primary succeeds", async () => {
+    const expected = vectorOf(1536);
+    const fetchMock = vi.fn(async () => mockEmbeddingsResponse([expected]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    const result = await handleTextEmbedding(
+      createRuntime({
+        EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1",
+        EMBEDDING_FALLBACK_API_KEY: "fallback-key",
+        EMBEDDING_FALLBACK_MODEL: "fallback-model",
+      }),
+      { text: "hello world" }
+    );
+
+    expect(result).toEqual(expected);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://embeddings.example/v1/embeddings");
+    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer test-key");
+    expect(JSON.parse(init.body as string).model).toBe("text-embedding-3-small");
+  });
+
+  it("retries once against fallback when the primary endpoint fails", async () => {
+    const expected = vectorOf(1536);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockHttpError(503, "Service Unavailable", "local warming"))
+      .mockResolvedValueOnce(mockEmbeddingsResponse([expected]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    const result = await handleTextEmbedding(
+      createRuntime({
+        EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1/",
+        EMBEDDING_FALLBACK_API_KEY: "fallback-key",
+        EMBEDDING_FALLBACK_MODEL: "fallback-model",
+      }),
+      { text: "hello world" }
+    );
+
+    expect(result).toEqual(expected);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [fallbackUrl, fallbackInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(fallbackUrl).toBe("https://fallback.example/v1/embeddings");
+    expect((fallbackInit.headers as Record<string, string>).Authorization).toBe(
+      "Bearer fallback-key"
+    );
+    const body = JSON.parse(fallbackInit.body as string);
+    expect(body.model).toBe("fallback-model");
+    expect(body.input).toBe("hello world");
+  });
+
+  it("throws when the fallback response width differs from EMBEDDING_DIMENSIONS", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(mockHttpError(502, "Bad Gateway", "primary down"))
+      .mockResolvedValueOnce(mockEmbeddingsResponse([vectorOf(768)]));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(
+      handleTextEmbedding(
+        createRuntime({
+          EMBEDDING_DIMENSIONS: "1536",
+          EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1",
+        }),
+        { text: "hi" }
+      )
+    ).rejects.toThrow(/fallback embedding dimension mismatch: got 768, expected 1536/i);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws with primary and fallback context when both endpoints fail", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("connect ECONNREFUSED"))
+      .mockResolvedValueOnce(mockHttpError(401, "Unauthorized", "bad fallback key"));
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
+
+    await expect(
+      handleTextEmbedding(
+        createRuntime({
+          EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1",
+          EMBEDDING_FALLBACK_API_KEY: "fallback-key",
+        }),
+        { text: "hi" }
+      )
+    ).rejects.toThrow(
+      /Embedding endpoints failed: primary https:\/\/embeddings\.example\/v1: connect ECONNREFUSED \| fallback https:\/\/fallback\.example\/v1: fallback embedding API HTTP 401 Unauthorized - bad fallback key/
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("omits the dimensions field when EMBEDDING_DIMENSIONS is not explicitly set", async () => {
     const fetchMock = vi.fn(async () => mockEmbeddingsResponse([vectorOf(1536)]));
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as unknown as typeof fetch);
@@ -114,6 +214,19 @@ describe("plugin-embeddings handleTextEmbedding", () => {
     await expect(handleTextEmbedding(createRuntime(), { text: "   " })).rejects.toThrow(
       /empty text/i
     );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not fallback for malformed caller input", async () => {
+    const fetchMock = vi.fn();
+    vi.spyOn(globalThis, "fetch").mockImplementation(fetchMock as typeof fetch);
+
+    await expect(
+      handleTextEmbedding(
+        createRuntime({ EMBEDDING_FALLBACK_BASE_URL: "https://fallback.example/v1" }),
+        { text: "   " }
+      )
+    ).rejects.toThrow(/empty text/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

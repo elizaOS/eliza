@@ -202,6 +202,7 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
   type SideEffectAppModuleLoader,
@@ -476,7 +477,7 @@ function applyCloudPairSessionToken(): void {
     }
     if (token) {
       try {
-        window.localStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
+        shellLocalStorage.setItem(CLOUD_PAIR_SESSION_TOKEN_KEY, token);
       } catch {
         // error-policy:J4 migration is best-effort; the same-tab token still
         // authenticates this launch.
@@ -535,6 +536,7 @@ installLocalProviderCloudPreferencePatch(client);
 installDesktopPermissionsClientPatch(client);
 applyCloudPairSessionToken();
 applyRuntimeChooserOverrideFromUrl();
+installPackagedShellStorageTestBridge();
 
 // Branded AOSP/ElizaOS device images ARE the agent: pre-seed the on-device
 // agent as the startup target on first frame. Stock-phone sideload builds

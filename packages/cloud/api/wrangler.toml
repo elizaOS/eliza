@@ -263,6 +263,8 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   ATLASCLOUD_BASE_URL                Optional AtlasCloud API base URL override
 #   BIRDEYE_API_KEY                    Birdeye defi/price proxy key
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
+#   VOICE_STT_MAX_MULTIPART_BYTES      Optional STT multipart body cap in bytes
+#                                      (default 25 MiB, invalid values fail closed)
 #   HF_TOKEN                           HuggingFace token for the /api/v1/hf-proxy/* route
 #       (gated eliza-1 bundle downloads; clients never hold an HF key)
 #   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)

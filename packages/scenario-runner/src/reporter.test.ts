@@ -15,6 +15,7 @@ import {
   buildAggregate,
   printStdoutSummary,
   sumTrajectoryCostUsd,
+  writeFileAtomic,
   writeReportBundle,
   writeScenarioRunViewer,
 } from "./reporter.ts";
@@ -307,6 +308,19 @@ describe("scenario report aggregation", () => {
     ]);
     expect(existsSync(path.join(outDir, "001-todos_create_basic.json"))).toBe(
       true,
+    );
+  });
+
+  it("replaces existing evidence files atomically without leaving temp files", () => {
+    const outDir = makeTempDir("scenario-atomic-");
+    const target = path.join(outDir, "matrix.json");
+    writeFileSync(target, "previous", "utf-8");
+
+    writeFileAtomic(target, "replacement");
+
+    expect(readFileSync(target, "utf8")).toBe("replacement");
+    expect(readdirSync(outDir).filter((name) => name.endsWith(".tmp"))).toEqual(
+      [],
     );
   });
 

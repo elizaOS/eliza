@@ -24,6 +24,10 @@ import {
 } from "react";
 import type { ImageAttachment } from "../api";
 import { shellLocalStorage } from "../surface-realm-channel";
+import {
+  clearPendingChatTurn,
+  listPendingChatTurns,
+} from "./pending-chat-turns";
 
 /**
  * The message the composer is currently replying to. Set by the per-row Reply
@@ -210,6 +214,34 @@ export function useChatComposerDraftPersistence({
     if (saved !== null) {
       setChatInput(saved);
     }
+  }, [activeConversationId, setChatInput]);
+
+  useEffect(() => {
+    if (!activeConversationId) return;
+    const receipts = listPendingChatTurns(activeConversationId);
+    if (receipts.length === 0) return;
+    const receipt = receipts[0];
+    if (!receipt) return;
+    const restore = (): void => {
+      const stillPending = listPendingChatTurns(activeConversationId).some(
+        (pending) => pending.clientMessageId === receipt.clientMessageId,
+      );
+      if (!stillPending) return;
+      if (readChatDraft(activeConversationId) !== null) {
+        clearPendingChatTurn(activeConversationId, receipt.clientMessageId);
+        return;
+      }
+      writeChatDraft(activeConversationId, receipt.text);
+      setChatInput(receipt.text);
+      clearPendingChatTurn(activeConversationId, receipt.clientMessageId);
+    };
+    const delay = Math.max(0, receipt.restoreAt - Date.now());
+    if (delay === 0) {
+      restore();
+      return;
+    }
+    const timer = window.setTimeout(restore, delay);
+    return () => window.clearTimeout(timer);
   }, [activeConversationId, setChatInput]);
 
   // Persist on change (debounced).

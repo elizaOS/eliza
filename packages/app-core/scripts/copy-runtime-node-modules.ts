@@ -93,6 +93,26 @@ const PACKAGED_DEPENDENCY_SKIPS = new Map<string, Set<string>>([
   // which ships @octokit/rest@22 at the runtime root. Re-copying the private
   // Bun fallback produces tar-unsafe nested paths on Windows.
   ["git-workspace-service", new Set(["@octokit/rest"])],
+  // @smithers-orchestrator/aws declares the AWS cloud-orchestration clients
+  // (CodeBuild, ECS, CloudWatch Logs) as optionalDependencies for its
+  // server-side sandbox runners. Those APIs are never exercised by the
+  // packaged desktop app, yet the optional-dependency walk drags in their
+  // full private @aws-sdk trees. client-codebuild in particular nests a
+  // credential-provider chain
+  // (client-codebuild → credential-provider-node → credential-provider-sso →
+  //  nested-clients → dist-es/submodules/sso-oidc/...) whose relative paths
+  // exceed the Electrobun self-extractor tar-safe limit and hard-fail
+  // assertTarSafeRuntimePaths. @aws-sdk/client-s3 stays bundled because it is
+  // already hoisted at the runtime root (see ALWAYS_HOISTED_PACKAGES) and is
+  // consumed broadly; only the unused infra clients are dropped here.
+  [
+    "@smithers-orchestrator/aws",
+    new Set([
+      "@aws-sdk/client-codebuild",
+      "@aws-sdk/client-ecs",
+      "@aws-sdk/client-cloudwatch-logs",
+    ]),
+  ],
 ]);
 const RUNTIME_COPY_PRUNED_DIR_NAMES = new Set([
   ".git",
@@ -194,7 +214,7 @@ function isRequiredRuntimeDocDirectory(entryPath: string): boolean {
   );
 }
 
-function parseArgs(argv: string[]): Options {
+export function parseArgs(argv: string[]): Options {
   const opts: Record<string, string> = {};
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -255,7 +275,7 @@ function readRuntimeCopyLockOwnerPid(lockDir: string): number | null {
   }
 }
 
-function recursiveRemoveErrorDetail(error: unknown): string {
+export function recursiveRemoveErrorDetail(error: unknown): string {
   if (error && typeof error === "object") {
     const output = error as {
       message?: string;
@@ -426,7 +446,7 @@ function addWorkspacePackageCandidate(
   existing.push(resolved);
 }
 
-function readWorkspacePatterns(packageJsonPath: string): string[] {
+export function readWorkspacePatterns(packageJsonPath: string): string[] {
   type WorkspaceManifest = {
     workspaces?: string[] | { packages?: string[] };
   };
@@ -446,7 +466,10 @@ function readWorkspacePatterns(packageJsonPath: string): string[] {
   return [];
 }
 
-function expandWorkspacePattern(baseDir: string, pattern: string): string[] {
+export function expandWorkspacePattern(
+  baseDir: string,
+  pattern: string,
+): string[] {
   const normalized = pattern.split(/[\\/]+/).filter(Boolean);
   const results: string[] = [];
 
@@ -1004,7 +1027,7 @@ function copyPackageDirSync(
   }
 }
 
-function copyPackageDir(
+export function copyPackageDir(
   name: string,
   sourceDir: string,
   targetNodeModules: string,
@@ -1030,7 +1053,7 @@ function copyPackageDir(
   return true;
 }
 
-function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
+export function shouldSkipPackagedAppCoreEntry(relativeEntry: string): boolean {
   return (
     relativeEntry === "packaging" ||
     relativeEntry.startsWith("packaging/") ||
@@ -1351,7 +1374,10 @@ function rewriteQuotedJsSpecifier(
     .replaceAll(`'${oldSpecifier}'`, `'${newSpecifier}'`);
 }
 
-function visitFiles(rootDir: string, visit: (filePath: string) => void): void {
+export function visitFiles(
+  rootDir: string,
+  visit: (filePath: string) => void,
+): void {
   if (!fs.existsSync(rootDir)) {
     return;
   }
@@ -1397,7 +1423,7 @@ function relativeJsSpecifier(fromDir: string, toFile: string): string {
   return specifier;
 }
 
-function patchCopiedElevenLabsTarSafePaths(
+export function patchCopiedElevenLabsTarSafePaths(
   packageDir: string,
   rootDestDir: string,
 ): void {
@@ -2435,7 +2461,7 @@ export function assertRequiredBundledPackagesLanded(
   );
 }
 
-function assertTarSafeRuntimePaths(targetDist: string): void {
+export function assertTarSafeRuntimePaths(targetDist: string): void {
   const unsafe: string[] = [];
 
   const visit = (currentDir: string): void => {

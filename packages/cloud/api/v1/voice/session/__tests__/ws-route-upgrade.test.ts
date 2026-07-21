@@ -33,7 +33,6 @@ const realWsHandlerExports = { ...realWsHandler };
 
 const attachCalls: Array<Record<string, unknown>> = [];
 let registrySize = 0;
-let evalCapableRedis = true;
 let durableStoreValue: unknown = { kind: "durable" };
 let binaryTypeWritable = true;
 
@@ -101,11 +100,11 @@ mock.module(`${sharedRoot}/lib/services/voice-usage-meter.ts`, usageMeterStub);
 
 mock.module("@/lib/cache/redis-factory", () => ({
   ...realRedisFactoryExports,
-  buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
+  buildRedisClient: () => ({ eval: () => undefined }),
 }));
 mock.module(`${sharedRoot}/lib/cache/redis-factory.ts`, () => ({
   ...realRedisFactoryExports,
-  buildRedisClient: () => (evalCapableRedis ? { eval: () => undefined } : {}),
+  buildRedisClient: () => ({ eval: () => undefined }),
 }));
 
 // NOTE: we do NOT mock `../lib/session`. Mocking VoiceSession would clobber it
@@ -142,7 +141,6 @@ const originalWebSocketPair = (globalThis as { WebSocketPair?: unknown })
 beforeEach(() => {
   attachCalls.length = 0;
   registrySize = 0;
-  evalCapableRedis = true;
   durableStoreValue = { kind: "durable" };
   binaryTypeWritable = true;
   (globalThis as { WebSocketPair?: unknown }).WebSocketPair = class {
@@ -209,6 +207,28 @@ function upgrade(env: Record<string, string> = {}) {
   );
 }
 
+function buildCapturedSession(): { config: Record<string, unknown> } {
+  const deps = attachCalls[0].deps as {
+    buildSession: (args: Record<string, unknown>) => unknown;
+  };
+  return deps.buildSession({
+    claims: {
+      sessionId: "sess-upgrade-wire",
+      organizationId: "org-1",
+      userId: "user-1",
+      agentId: "agent-1",
+      conversationId: "conv-1",
+    },
+    jti: "jti-upgrade-wire",
+    tokenExpSeconds: Math.floor(Date.now() / 1000) + 60,
+    downlink: {
+      sendControl: () => undefined,
+      sendAudio: () => undefined,
+      close: () => undefined,
+    },
+  }) as { config: Record<string, unknown> };
+}
+
 describe("voice-session ws upgrade (happy path)", () => {
   test("mints the socket pair, accepts the server, and returns a 101 with the client socket", async () => {
     const res = await upgrade();
@@ -219,27 +239,18 @@ describe("voice-session ws upgrade (happy path)", () => {
     expect(server.binaryType).toBe("arraybuffer");
   });
 
-  test("prefers the durable usage store when Redis is eval-capable", async () => {
-    evalCapableRedis = true;
+  test("prefers the durable usage store when the factory provides one", async () => {
     durableStoreValue = { kind: "durable" };
     const res = await upgrade();
     expect(res.status).toBe(101);
-    // The buildSession closure ran (invoked by the ws-handler stub) without throwing.
-    expect(attachCalls.length).toBe(1);
-  });
-
-  test("falls back to the in-memory store when Redis has no eval (Railway TCP)", async () => {
-    evalCapableRedis = false;
-    const res = await upgrade();
-    expect(res.status).toBe(101);
-    expect(attachCalls.length).toBe(1);
+    expect(buildCapturedSession().config.usageStore).toBe(durableStoreValue);
   });
 
   test("falls back to the in-memory store when no durable store is available", async () => {
     durableStoreValue = null;
     const res = await upgrade();
     expect(res.status).toBe(101);
-    expect(attachCalls.length).toBe(1);
+    expect(buildCapturedSession().config.usageStore).not.toBeNull();
   });
 
   test("still upgrades when the live registry is under the ceiling; admitSession reflects it", async () => {
@@ -252,41 +263,9 @@ describe("voice-session ws upgrade (happy path)", () => {
   test("buildSession wires a prewarm-capable scoped Eliza fetch", async () => {
     const res = await upgrade();
     expect(res.status).toBe(101);
-    const deps = attachCalls[0].deps as unknown as {
-      buildSession: (args: {
-        claims: Record<string, string>;
-        jti: string;
-        tokenExpSeconds: number;
-        downlink: Record<string, unknown>;
-      }) => {
-        config?: unknown;
-      };
-    };
     // Construct a REAL VoiceSession through the route's closure. No providers
-    // are dialed at construction time (start() is never called here), so this
-    // exercises the fetchImpl/prewarmElizaContext wiring added for the
-    // session-start tenancy warmup.
-    const session = deps.buildSession({
-      claims: {
-        sessionId: "sess-upgrade-wire",
-        organizationId: "org-1",
-        userId: "user-1",
-        agentId: "agent-1",
-        conversationId: "conv-1",
-      },
-      jti: "jti-upgrade-wire",
-      tokenExpSeconds: Math.floor(Date.now() / 1000) + 60,
-      downlink: {
-        sendControl: () => undefined,
-        sendAudio: () => undefined,
-        close: () => undefined,
-      },
-    }) as unknown as {
-      config: {
-        fetchImpl?: { prewarm?: unknown };
-        prewarmElizaContext?: unknown;
-      };
-    };
+    // are dialed at construction time (start() is never called here).
+    const session = buildCapturedSession();
     expect(typeof session.config.fetchImpl).toBe("function");
     expect(typeof session.config.prewarmElizaContext).toBe("function");
     expect(session.config.prewarmElizaContext).toBe(

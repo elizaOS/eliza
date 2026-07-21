@@ -86,6 +86,38 @@ export interface RunSharedAgentTurnStreamResult {
  */
 const DEFAULT_SHARED_MODEL = CEREBRAS_DEFAULT_TEXT_SMALL_MODEL;
 
+/**
+ * Retry budget for the shared-runtime (Tier 0) chat turn.
+ *
+ * WHY THIS IS NOT THE AI-SDK DEFAULT (2): the shared turn is the interactive
+ * chat / voice hot path with a sub-1.5s TTFT budget, and it runs the Cerebras
+ * default route with NO cross-provider fallback (`withRateLimitFailFast` only
+ * short-circuits 429; 5xx/network keep the SDK's retry). The AI SDK's default
+ * exponential backoff is `initialDelayInMs=2000, backoffFactor=2`, so a single
+ * transient Cerebras 5xx/network blip costs +2s (1 retry) or +6s (2 retries)
+ * of pure sleep BEFORE the turn can succeed or surface. That is the exact
+ * bimodal 5-10s warm-stall signature measured on staging (fast turns ~1s;
+ * stalled turns ~5s single-retry / ~7-9s double-retry) — a promotion blocker.
+ *
+ * Capping to ONE retry preserves resilience to a single transient blip (the
+ * common case a retry actually heals) while bounding the worst-case added
+ * latency to a single ~2s backoff instead of ~6s, and lets a persistent
+ * upstream failure surface fast to the caller's refund/degrade path rather
+ * than hanging the interactive turn. Tunable via `SHARED_TURN_MAX_RETRIES`
+ * for ops without a redeploy; clamped to [0, 2] so it can never exceed the
+ * SDK default it is here to bound.
+ */
+function resolveSharedTurnMaxRetries(
+  raw: string | undefined = process.env.SHARED_TURN_MAX_RETRIES,
+): number {
+  if (raw === undefined || raw.trim() === "") return 1;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return 1;
+  return Math.min(parsed, 2);
+}
+
+export const SHARED_TURN_MAX_RETRIES = resolveSharedTurnMaxRetries();
+
 /** Token counts the shared-runtime billing path consumes (input/output/total). */
 export interface SharedAgentTurnUsage {
   promptTokens?: number;
@@ -163,6 +195,9 @@ export async function runSharedAgentTurn(
   try {
     const { text, usage } = await generateText({
       model: getLanguageModel(modelId),
+      // Bound the interactive-turn retry backoff (see SHARED_TURN_MAX_RETRIES):
+      // the SDK default (2) turns a transient upstream blip into a 2-6s stall.
+      maxRetries: SHARED_TURN_MAX_RETRIES,
       system: buildSystemPrompt(input.character),
       messages: [
         ...input.history.map((m) => ({ role: m.role, content: m.content })),
@@ -216,6 +251,9 @@ export async function runSharedAgentTurnStream(
   try {
     const result = streamText({
       model: getLanguageModel(modelId),
+      // Bound the interactive-turn retry backoff (see SHARED_TURN_MAX_RETRIES):
+      // the SDK default (2) turns a transient upstream blip into a 2-6s stall.
+      maxRetries: SHARED_TURN_MAX_RETRIES,
       system: buildSystemPrompt(input.character),
       messages: [
         ...input.history.map((m) => ({ role: m.role, content: m.content })),
