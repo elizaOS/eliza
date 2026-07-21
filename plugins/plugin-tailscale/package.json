@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -60,6 +60,7 @@
     "@biomejs/biome": "2.5.4",
     "@types/node": "^25.6.0",
     "tsup": "^8.5.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   },

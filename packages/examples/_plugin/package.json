@@ -55,6 +55,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react-swc": "^4.2.2",
     "tailwindcss-animate": "^1.0.7",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.4"
   },
@@ -64,7 +65,7 @@
     "clean": "rm -rf dist",
     "lint": "bunx @biomejs/biome check --write --unsafe ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test:smoke": "bun run test.ts",
     "test:component": "bunx vitest run src/__tests__/integration.test.ts",
     "test:e2e": "bunx vitest run src/e2e/plugin-starter.e2e.test.ts",
