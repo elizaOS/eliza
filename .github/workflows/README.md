@@ -136,7 +136,7 @@ in the `changes` job, #13617):
    the whole workflow falls back to hosted — one flip unblocks the entire queue
    instead of per-PR admin-bypass. Keep the runner-agnostic step hardening (no
    `sudo`-only install/cleanup) so lanes run on either runner type.
-2. **Post-merge quality parity.** `merge-quality-gate` runs the same lint /
+2. **Post-merge quality parity.** `merge-quality-gate` runs the same read-only lint /
    `format:check` / repo-wide `typecheck` / gitleaks secret scan that guard
    `main`, and `ci-ok` needs it on develop `push`. The pre-merge
    `develop-pr.yml` lint job runs `format:check`, and the stable aggregate waits
@@ -397,7 +397,7 @@ publishes.
 
 1. Check if tests pass locally: `bun run test`
 2. Check formatting: `bun run format:check`
-3. Check linting: `bun run lint`
+3. Check linting without rewriting the checkout: `bun run lint:check`
 
 ### Release Failures
 

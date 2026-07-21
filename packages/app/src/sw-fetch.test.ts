@@ -133,24 +133,25 @@ describe("sw.js fetch handler — auth navigation branch", () => {
     fetchImpl = vi.fn(() => Promise.resolve({ __from: "fetch" }));
   });
 
-  it.each(
-    AUTH_URLS,
-  )("takes over the response to consume the preload for %s", async (url) => {
-    const handler = loadFetchListener(caches, fetchImpl);
-    const preload = { __from: "preload" };
-    const event = makeNavEvent(url, preload);
+  it.each(AUTH_URLS)(
+    "takes over the response to consume the preload for %s",
+    async (url) => {
+      const handler = loadFetchListener(caches, fetchImpl);
+      const preload = { __from: "preload" };
+      const event = makeNavEvent(url, preload);
 
-    handler(event);
+      handler(event);
 
-    // Regression guard: before the fix this branch returned without
-    // respondWith, leaving event.preloadResponse unconsumed.
-    expect(event.respondWith).toHaveBeenCalledTimes(1);
-    await expect(event.responsePromise).resolves.toBe(preload);
-    // The preload already carried the network response, so no direct fetch.
-    expect(fetchImpl).not.toHaveBeenCalled();
-    // Never touch Cache Storage on the auth path — no cached shell served.
-    expect(cacheCalls).toEqual([]);
-  });
+      // Regression guard: before the fix this branch returned without
+      // respondWith, leaving event.preloadResponse unconsumed.
+      expect(event.respondWith).toHaveBeenCalledTimes(1);
+      await expect(event.responsePromise).resolves.toBe(preload);
+      // The preload already carried the network response, so no direct fetch.
+      expect(fetchImpl).not.toHaveBeenCalled();
+      // Never touch Cache Storage on the auth path — no cached shell served.
+      expect(cacheCalls).toEqual([]);
+    },
+  );
 
   it("falls back to a live fetch when no preload was issued", async () => {
     const handler = loadFetchListener(caches, fetchImpl);

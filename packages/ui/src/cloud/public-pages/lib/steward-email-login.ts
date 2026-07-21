@@ -50,6 +50,72 @@ function string(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function isStewardUser(value: unknown): value is StewardAuthResult["user"] {
+  const user = object(value);
+  if (!user || typeof user.id !== "string") return false;
+  if (user.email !== null && typeof user.email !== "string") return false;
+  if (
+    user.walletAddress !== undefined &&
+    typeof user.walletAddress !== "string"
+  ) {
+    return false;
+  }
+  if (
+    user.walletChain !== undefined &&
+    user.walletChain !== "ethereum" &&
+    user.walletChain !== "solana"
+  ) {
+    return false;
+  }
+  if (user.isGuest !== undefined && typeof user.isGuest !== "boolean") {
+    return false;
+  }
+  if (
+    user.guestExpiresAt !== undefined &&
+    user.guestExpiresAt !== null &&
+    typeof user.guestExpiresAt !== "string"
+  ) {
+    return false;
+  }
+  if (user.tenantId !== undefined && typeof user.tenantId !== "string") {
+    return false;
+  }
+  return (
+    user.alreadyUpgraded === undefined ||
+    typeof user.alreadyUpgraded === "boolean"
+  );
+}
+
+function isStewardAuthResult(value: unknown): value is StewardAuthResult {
+  const data = object(value);
+  return (
+    data !== null &&
+    typeof data.token === "string" &&
+    typeof data.refreshToken === "string" &&
+    typeof data.expiresIn === "number" &&
+    Number.isFinite(data.expiresIn) &&
+    isStewardUser(data.user)
+  );
+}
+
+type StewardMfaPayload = Pick<
+  StewardMfaRequiredResult,
+  "mfaRequired" | "mfa" | "user"
+>;
+
+function isStewardMfaPayload(value: unknown): value is StewardMfaPayload {
+  const data = object(value);
+  const mfa = object(data?.mfa);
+  return (
+    data?.mfaRequired === true &&
+    mfa !== null &&
+    (mfa.type === "totp" || mfa.type === "sms" || mfa.type === "passkey") &&
+    typeof mfa.challengeId === "string" &&
+    typeof mfa.expiresAt === "string" &&
+    isStewardUser(data.user)
+  );
+}
+
 async function request(
   options: StewardEmailLoginOptions,
   path: string,
@@ -79,7 +145,14 @@ async function request(
       string(nested?.code) ?? string(payload?.code),
     );
   }
-  return object(payload?.data) ?? payload ?? {};
+  const data = object(payload?.data) ?? payload;
+  if (!data) {
+    throw new StewardEmailLoginError(
+      "Steward email sign-in response was malformed.",
+      502,
+    );
+  }
+  return data;
 }
 
 export async function startStewardEmailLogin(
@@ -108,10 +181,25 @@ export async function verifyStewardEmailSignInCode(
   email: string,
   code: string,
 ): Promise<StewardAuthResult | StewardMfaRequiredResult> {
-  return (await request(options, "/auth/email/code/verify", {
+  const data = await request(options, "/auth/email/code/verify", {
     email,
     code,
-  })) as unknown as StewardAuthResult | StewardMfaRequiredResult;
+  });
+  if (isStewardAuthResult(data)) {
+    return data;
+  }
+  if (isStewardMfaPayload(data)) {
+    return {
+      ok: true,
+      mfaRequired: true,
+      mfa: data.mfa,
+      user: data.user,
+    };
+  }
+  throw new StewardEmailLoginError(
+    "Steward email sign-in response was malformed.",
+    502,
+  );
 }
 
 export async function pollStewardEmailSignInStatus(

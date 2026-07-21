@@ -25,23 +25,20 @@
  * egress sever on the sovereign candidate, token/session resume against the
  * real gateway, and wall-clock reconnect timing.
  */
-import { EventEmitter } from "node:events";
-import type { Memory, UUID } from "@elizaos/core";
-import { createUniqueUuid } from "@elizaos/core";
-import type { Message as DiscordMessage } from "discord.js";
-import { describe, expect, it } from "vitest";
-import { MessageManager } from "../messages.ts";
-import type { ICompatRuntime } from "../types.ts";
 
 // Reuse the proven durable-harness building blocks rather than re-deriving
 // store semantics. These helpers are structurally identical to the ones in
 // messages-durable-turn.test.ts; kept local so each test file stays runnable
 // in isolation.
 import { randomUUID } from "node:crypto";
-import { ChannelType, type Content } from "@elizaos/core";
+import { EventEmitter } from "node:events";
+import type { Memory, UUID } from "@elizaos/core";
+import { ChannelType, type Content, createUniqueUuid } from "@elizaos/core";
+import type { Message as DiscordMessage } from "discord.js";
 import { ChannelType as DiscordChannelType } from "discord.js";
-import { vi } from "vitest";
-import type { IDiscordService } from "../types.ts";
+import { describe, expect, it, vi } from "vitest";
+import { MessageManager } from "../messages.ts";
+import type { ICompatRuntime, IDiscordService } from "../types.ts";
 
 const AGENT_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee" as UUID;
 const AUTHOR_ID = "555000111222333444";

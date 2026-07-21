@@ -791,8 +791,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       // No entry in chainTxs => transient "not found". One pass bumps verify_attempts.
       await service.processBroadcastBatch(env);
       const row1 = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row1?.status).toBe("broadcast");
-      const attempts1 = Number((row1?.metadata as Record<string, unknown>).verify_attempts ?? 0);
+      expect(row1).toBeDefined();
+      if (!row1) {
+        throw new Error("Expected the broadcast payment row after verification retry");
+      }
+      expect(row1.status).toBe("broadcast");
+      const attempts1 = Number((row1.metadata as Record<string, unknown>).verify_attempts ?? 0);
       expect(attempts1).toBeGreaterThanOrEqual(1);
 
       // Jump straight to MAX-1 to keep the test fast, then one more pass should
@@ -839,11 +843,15 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
 
       expect(stats.failed).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("failed_chain");
-      expect((row?.metadata as Record<string, unknown>).failure_reason).toMatch(
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the failed native-payment row");
+      }
+      expect(row.status).toBe("failed_chain");
+      expect((row.metadata as Record<string, unknown>).failure_reason).toMatch(
         /below the expected floor/,
       );
-      expect(Number((row?.metadata as Record<string, unknown>).verify_attempts ?? 0)).toBe(0);
+      expect(Number((row.metadata as Record<string, unknown>).verify_attempts ?? 0)).toBe(0);
     });
 
     test("Solana confirmPayment rejects when receiving ATA owner mismatches treasury", async () => {
@@ -959,8 +967,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const stats = await service.processBroadcastBatch(env);
       expect(stats.failed).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("failed_chain");
-      expect((row?.metadata as Record<string, unknown>).failure_reason).toMatch(/failed/i);
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the reverted payment row");
+      }
+      expect(row.status).toBe("failed_chain");
+      expect((row.metadata as Record<string, unknown>).failure_reason).toMatch(/failed/i);
     });
 
     test("processBroadcastBatch leaves payment in broadcast on transient (not-found) failure", async () => {
@@ -1093,8 +1105,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       expect(stats.failed).toBe(0);
       expect(stats.stillPending).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("broadcast");
-      expect(Number((row?.metadata as Record<string, unknown>).verify_attempts)).toBe(61);
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the pending payment row after an RPC failure");
+      }
+      expect(row.status).toBe("broadcast");
+      expect(Number((row.metadata as Record<string, unknown>).verify_attempts)).toBe(61);
     });
 
     test("processBroadcastBatch marks failed_chain immediately on sender-mismatch (terminal)", async () => {
@@ -1131,8 +1147,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
       const stats = await service.processBroadcastBatch(env);
       expect(stats.failed).toBe(1);
       const row = await dbWrite.query.cryptoPayments.findFirst();
-      expect(row?.status).toBe("failed_chain");
-      expect(String((row?.metadata as Record<string, unknown>).failure_reason)).toMatch(
+      expect(row).toBeDefined();
+      if (!row) {
+        throw new Error("Expected the sender-mismatch payment row");
+      }
+      expect(row.status).toBe("failed_chain");
+      expect(String((row.metadata as Record<string, unknown>).failure_reason)).toMatch(
         /sender does not match the proven payer/i,
       );
       expect(creditsLedger).toHaveLength(0);
@@ -1173,8 +1193,12 @@ d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
         const stats = await service.processBroadcastBatch(env);
         expect(stats.failed).toBe(1);
         const row = await dbWrite.query.cryptoPayments.findFirst();
-        expect(row?.status).toBe("failed_chain");
-        expect(String((row?.metadata as Record<string, unknown>).failure_reason)).toMatch(
+        expect(row).toBeDefined();
+        if (!row) {
+          throw new Error("Expected the failed Solana payment row");
+        }
+        expect(row.status).toBe("failed_chain");
+        expect(String((row.metadata as Record<string, unknown>).failure_reason)).toMatch(
           /was not confirmed successfully/i,
         );
         expect(creditsLedger).toHaveLength(0);

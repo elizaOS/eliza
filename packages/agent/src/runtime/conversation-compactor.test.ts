@@ -491,9 +491,13 @@ describe("CompactBench deterministic state fragments", () => {
     expect(content).toContain("schedule Friday deploy");
     expect(content).toContain("primary_subject: Ramon Ramirez");
     expect(content).toContain("Ramon Ramirez: primary_subject");
+    const state = out.stats.extra?.state;
+    expect(state).toBeDefined();
+    if (!state) {
+      throw new Error("Expected structured-state compaction statistics");
+    }
     expect(
-      (out.stats.extra?.state as { forbidden_behaviors?: string[] })
-        .forbidden_behaviors,
+      (state as { forbidden_behaviors?: string[] }).forbidden_behaviors,
     ).toContain("schedule Friday deploy");
   });
 

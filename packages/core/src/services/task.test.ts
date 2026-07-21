@@ -623,9 +623,10 @@ describe("TaskService orphaned-task self-heal (missing worker)", () => {
 		});
 		// updateTask always fails -> pause never persists, but the id is still
 		// marked quarantined so we don't renarrate every tick.
-		(runtime as { updateTask: IAgentRuntime["updateTask"] }).updateTask = (async () => {
-			throw new Error("db write down");
-		}) as IAgentRuntime["updateTask"];
+		(runtime as { updateTask: IAgentRuntime["updateTask"] }).updateTask =
+			(async () => {
+				throw new Error("db write down");
+			}) as IAgentRuntime["updateTask"];
 
 		service = (await TaskService.start(runtime)) as TaskService;
 

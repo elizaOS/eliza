@@ -5,8 +5,8 @@
  * package tests under the root config can resolve absent dist entrypoints and
  * bypass package-specific aliases or setup. Each group runs in isolation, and
  * the per-group LCOV reports are then union-merged into a single
- * `coverage/vitest/lcov.info` (see {@link mergeLcovReports}) so the gate sees
- * one record per file across every group that executed it.
+ * `coverage/vitest/lcov.info` (see {@link mergeAndRemoveLcovReports}) so the
+ * gate sees one record per file across every group that executed it.
  *
  * Two path-resolution rules make nested and specialty configs runnable:
  * `*.harness.test.ts` files prefer the repo's `vitest.harness.config.ts`
@@ -18,9 +18,10 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mergeAndRemoveLcovReports } from "./merge-lcov-reports.mjs";
 
 const CONFIG_NAMES = [
   "vitest.config.ts",
@@ -164,59 +165,6 @@ export function normalizeLcovReport(repoRoot, baseDir, reportDir) {
   writeFileSync(lcovPath, normalized);
 }
 
-/**
- * Union-merge normalized LCOV reports: per file, a line counts as hit when ANY
- * report hit it. The coverage gate latches a failure on EVERY report occurrence
- * of a changed file below the threshold, so feeding it one merged record per
- * file — instead of one low record per group that merely LOADED the file plus
- * one high record from the group that exercised it — is what makes multi-group
- * coverage mean "covered anywhere in the changed-test run".
- */
-export function mergeLcovReports(reportPaths, mergedPath) {
-  const files = new Map();
-  for (const reportPath of reportPaths) {
-    if (!existsSync(reportPath)) continue;
-    let current = null;
-    for (const line of readFileSync(reportPath, "utf8").split("\n")) {
-      if (line.startsWith("SF:")) {
-        current = line.slice("SF:".length);
-        if (!files.has(current)) files.set(current, new Map());
-      } else if (line.startsWith("DA:") && current) {
-        const [lineNo, hits] = line.slice("DA:".length).split(",");
-        const parsedLine = Number(lineNo);
-        const parsedHits = Number(hits);
-        if (!Number.isFinite(parsedLine) || !Number.isFinite(parsedHits)) {
-          continue;
-        }
-        const lineHits = files.get(current);
-        lineHits.set(
-          parsedLine,
-          Math.max(lineHits.get(parsedLine) ?? 0, parsedHits),
-        );
-      } else if (line === "end_of_record") {
-        current = null;
-      }
-    }
-  }
-
-  const out = ["TN:"];
-  for (const [sourceFile, lineHits] of [...files.entries()].sort(
-    ([left], [right]) => left.localeCompare(right),
-  )) {
-    out.push(`SF:${sourceFile}`);
-    const sortedLines = [...lineHits.entries()].sort(
-      ([left], [right]) => left - right,
-    );
-    let hit = 0;
-    for (const [lineNo, hits] of sortedLines) {
-      out.push(`DA:${lineNo},${hits}`);
-      if (hits > 0) hit++;
-    }
-    out.push(`LF:${sortedLines.length}`, `LH:${hit}`, "end_of_record");
-  }
-  writeFileSync(mergedPath, `${out.join("\n")}\n`);
-}
-
 export function runChangedVitestCoverage(repoRoot, testFiles) {
   const groups = groupChangedVitestTests(repoRoot, testFiles);
   for (const group of groups) {
@@ -270,13 +218,10 @@ export function runChangedVitestCoverage(repoRoot, testFiles) {
     path.join(group.reportDir, "lcov.info"),
   );
   if (groupReports.length > 0) {
-    mergeLcovReports(
+    mergeAndRemoveLcovReports(
       groupReports,
       path.join(path.resolve(repoRoot), "coverage", "vitest", "lcov.info"),
     );
-    for (const reportPath of groupReports) {
-      if (existsSync(reportPath)) unlinkSync(reportPath);
-    }
   }
 }
 

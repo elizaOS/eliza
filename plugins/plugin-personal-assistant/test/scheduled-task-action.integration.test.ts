@@ -59,7 +59,8 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(created?.success).toBe(true);
-    const createdTask = (created?.data as { task?: ScheduledTask }).task;
+    const createdTask = (created?.data as { task?: ScheduledTask } | undefined)
+      ?.task;
     expect(createdTask?.kind).toBe("reminder");
     expect(createdTask?.state.status).toBe("scheduled");
     const taskId = createdTask?.taskId;
@@ -75,7 +76,9 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(listed?.success).toBe(true);
-    const tasks = (listed?.data as { tasks?: ScheduledTask[] }).tasks ?? [];
+    const tasks = (listed?.data as { tasks?: ScheduledTask[] } | undefined)
+      ?.tasks;
+    if (!tasks) throw new Error("list did not return scheduled tasks");
     expect(tasks.some((task) => task.taskId === taskId)).toBe(true);
 
     // snooze 30m
@@ -88,7 +91,8 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(snoozed?.success).toBe(true);
-    const snoozedTask = (snoozed?.data as { task?: ScheduledTask }).task;
+    const snoozedTask = (snoozed?.data as { task?: ScheduledTask } | undefined)
+      ?.task;
     expect(snoozedTask?.state.lastDecisionLog).toMatch(/snoozed until/);
 
     // complete
@@ -101,7 +105,9 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(completed?.success).toBe(true);
-    const completedTask = (completed?.data as { task?: ScheduledTask }).task;
+    const completedTask = (
+      completed?.data as { task?: ScheduledTask } | undefined
+    )?.task;
     expect(completedTask?.state.status).toBe("completed");
   });
 
@@ -152,7 +158,9 @@ describe("SCHEDULED_TASK action", () => {
       "INVALID_SCHEDULED_TASK",
     );
     expect(
-      JSON.stringify((result?.data as { issues?: string[] }).issues),
+      JSON.stringify(
+        (result?.data as { issues?: string[] } | undefined)?.issues,
+      ),
     ).toContain("not_registered");
 
     const listed = await scheduledTaskAction.handler?.(
@@ -163,7 +171,8 @@ describe("SCHEDULED_TASK action", () => {
       undefined,
       [],
     );
-    const tasks = (listed?.data as { tasks?: ScheduledTask[] }).tasks ?? [];
+    const tasks = (listed?.data as { tasks?: ScheduledTask[] } | undefined)
+      ?.tasks;
     expect(tasks).toHaveLength(0);
   });
 

@@ -13,31 +13,18 @@ const workflowPath = fileURLToPath(
 test("changed Bun coverage tests use eliza-source workspace exports", () => {
   const workflow = readFileSync(workflowPath, "utf8");
   expect(workflow).toMatch(
-    /bun test --conditions=eliza-source "\$\{shared_tests\[@\]\}" --coverage/,
-  );
-  expect(workflow).toContain(
-    "packages/cloud/api/v1/voice/session/__tests__/harness-real-server.test.ts",
-  );
-  expect(workflow).toContain(
-    "packages/tools/voice-evidence-harness/src/cli-run.test.ts",
-  );
-  expect(workflow).toMatch(
-    /bun test --conditions=eliza-source "\$\{process_isolated_tests\[\$index\]\}" --coverage/,
+    /bun test --conditions=eliza-source "\$\{changed_tests\[\$index\]\}" --coverage/,
   );
 });
 
-test("Bun suites with conflicting process-global module mocks run separately", () => {
+test("every changed Bun suite gets a fresh process for module-mock isolation", () => {
   const workflow = readFileSync(workflowPath, "utf8");
-  const isolatedSuites = [
-    "packages/cloud/api/__tests__/malformed-json-body-routes.test.ts",
-    "packages/cloud/shared/src/lib/auth-inference-api-key.test.ts",
-    "packages/cloud/shared/src/lib/services/inference-auth-context.test.ts",
-    "packages/cloud/shared/src/lib/services/inference-hot-path-benchmark.test.ts",
-  ];
-
-  for (const suite of isolatedSuites) {
-    expect(workflow).toContain(suite);
-  }
+  expect(workflow).toContain(`for index in "\${!changed_tests[@]}"; do`);
+  expect(workflow).toMatch(
+    /merge-lcov-reports[.]mjs --remove-inputs coverage\/bun\/lcov[.]info "\$\{isolated_lcov_files\[@\]\}"/,
+  );
+  expect(workflow).not.toContain("shared_tests");
+  expect(workflow).not.toContain("process_isolated_tests");
 });
 
 test("changed Vitest coverage tests use package-aware source configuration", () => {
@@ -58,6 +45,6 @@ test("Node is available before changed-source classification", () => {
   expect(workflow).toContain(
     "uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
   );
-  expect(workflow).toContain("node-version: ${{ env.NODE_VERSION }}");
+  expect(workflow).toContain(`node-version: \${{ env.NODE_VERSION }}`);
   expect(setupNode).toBeLessThan(determineChanged);
 });

@@ -232,7 +232,12 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     ).rejects.toThrow("Insufficient credit balance for the budget increase");
 
     expect(deduct).toHaveBeenCalledTimes(1);
-    expect((deduct.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    const deductCall = deduct.mock.calls[0];
+    expect(deductCall).toBeDefined();
+    if (!deductCall) {
+      throw new Error("Expected the budget-increase credit deduction call");
+    }
+    expect((deductCall[0] as { amount: number }).amount).toBeCloseTo(110, 9);
     // Fail-closed: the increase is charged BEFORE the platform push, so the
     // platform must never have been called.
     expect(providerUpdate).not.toHaveBeenCalled();
@@ -275,8 +280,15 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     // rejected — net zero, no leak.
     expect(deduct).toHaveBeenCalledTimes(1);
     expect(refund).toHaveBeenCalledTimes(1);
-    expect((deduct.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
-    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    const deductCall = deduct.mock.calls[0];
+    const refundCall = refund.mock.calls[0];
+    expect(deductCall).toBeDefined();
+    expect(refundCall).toBeDefined();
+    if (!deductCall || !refundCall) {
+      throw new Error("Expected matching deduction and refund calls");
+    }
+    expect((deductCall[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    expect((refundCall[0] as { amount: number }).amount).toBeCloseTo(110, 9);
   });
 
   test("#11800 budget INCREASE refunds and reverts provider if serialized account cap check loses a race", async () => {
@@ -318,8 +330,15 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
 
     expect(deduct).toHaveBeenCalledTimes(1);
     expect(refund).toHaveBeenCalledTimes(1);
-    expect((deduct.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
-    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    const deductCall = deduct.mock.calls[0];
+    const refundCall = refund.mock.calls[0];
+    expect(deductCall).toBeDefined();
+    expect(refundCall).toBeDefined();
+    if (!deductCall || !refundCall) {
+      throw new Error("Expected raced budget deduction and compensation calls");
+    }
+    expect((deductCall[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    expect((refundCall[0] as { amount: number }).amount).toBeCloseTo(110, 9);
     expect(providerUpdate).toHaveBeenCalledTimes(2);
     expect(providerUpdate.mock.calls[0]?.[2]).toMatchObject({ budgetAmount: 200 });
     expect(providerUpdate.mock.calls[1]?.[2]).toEqual({ budgetAmount: 100 });
@@ -372,7 +391,12 @@ describe("updateCampaign — reconciles the credit hold on a budget change", () 
     // bypassed.
     expect(deduct).toHaveBeenCalledTimes(1);
     expect(refund).toHaveBeenCalledTimes(1);
-    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(110, 9);
+    const refundCall = refund.mock.calls[0];
+    expect(refundCall).toBeDefined();
+    if (!refundCall) {
+      throw new Error("Expected a refund for the corrupt spend-cap failure");
+    }
+    expect((refundCall[0] as { amount: number }).amount).toBeCloseTo(110, 9);
     expect(providerUpdate).toHaveBeenCalledTimes(2);
     expect(providerUpdate.mock.calls[1]?.[2]).toEqual({ budgetAmount: 100 });
   });
@@ -471,11 +495,19 @@ describe("updateCampaign — budget DECREASE refunds only unused + is atomic (#1
     expect(claim.mock.calls[0]?.[2]).toBe("110");
     // credits_allocated is written as newBudget*markup (11), NOT clamped to spend
     // — so the markup derived at delete (allocated/budget) stays correct.
-    expect((claim.mock.calls[0]?.[3] as { credits_allocated?: string }).credits_allocated).toBe(
-      "11",
-    );
+    const claimCall = claim.mock.calls[0];
+    expect(claimCall).toBeDefined();
+    if (!claimCall) {
+      throw new Error("Expected the allocation-decrease claim call");
+    }
+    expect((claimCall[3] as { credits_allocated?: string }).credits_allocated).toBe("11");
     expect(refund).toHaveBeenCalledTimes(1);
-    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(22, 9);
+    const refundCall = refund.mock.calls[0];
+    expect(refundCall).toBeDefined();
+    if (!refundCall) {
+      throw new Error("Expected the unused allocation refund call");
+    }
+    expect((refundCall[0] as { amount: number }).amount).toBeCloseTo(22, 9);
   });
 
   test("decrease with NO spend refunds the full freed amount", async () => {
@@ -509,7 +541,12 @@ describe("updateCampaign — budget DECREASE refunds only unused + is atomic (#1
 
     // freed = 110 - 11 = 99, unused = 110 (nothing spent) → refund the full 99.
     expect(refund).toHaveBeenCalledTimes(1);
-    expect((refund.mock.calls[0]?.[0] as { amount: number }).amount).toBeCloseTo(99, 9);
+    const refundCall = refund.mock.calls[0];
+    expect(refundCall).toBeDefined();
+    if (!refundCall) {
+      throw new Error("Expected the full freed-allocation refund call");
+    }
+    expect((refundCall[0] as { amount: number }).amount).toBeCloseTo(99, 9);
   });
 
   test("delete racing a decrease refunds from the CLAIMED row — total refunded never exceeds the allocation", async () => {
@@ -555,7 +592,12 @@ describe("updateCampaign — budget DECREASE refunds only unused + is atomic (#1
     expect(refund).toHaveBeenCalledTimes(2);
     // The delete must refund only the still-allocated 11 from the claimed row —
     // pre-fix it refunded the snapshot's full 110 (209 total on 110 charged).
-    expect((refund.mock.calls[1]?.[0] as { amount: number }).amount).toBeCloseTo(11, 9);
+    const deleteRefundCall = refund.mock.calls[1];
+    expect(deleteRefundCall).toBeDefined();
+    if (!deleteRefundCall) {
+      throw new Error("Expected the delete refund call after the raced decrease");
+    }
+    expect((deleteRefundCall[0] as { amount: number }).amount).toBeCloseTo(11, 9);
     const totalRefunded = refund.mock.calls.reduce(
       (sum, call) => sum + (call[0] as { amount: number }).amount,
       0,

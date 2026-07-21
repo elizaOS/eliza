@@ -15,11 +15,11 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { mergeLcovReports } from "../merge-lcov-reports.mjs";
 import {
   findNearestPackageDir,
   findNearestVitestConfig,
   groupChangedVitestTests,
-  mergeLcovReports,
   normalizeLcovReport,
 } from "../run-changed-vitest-coverage.mjs";
 

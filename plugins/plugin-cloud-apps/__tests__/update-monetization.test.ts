@@ -9,6 +9,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setListApps,
   setUpdateMonetization,
@@ -137,7 +138,10 @@ describe("UPDATE_MONETIZATION", () => {
       cb.fn,
     );
     expect(tracked.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("out_of_range");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("out_of_range");
     expect(cb.calls[0]?.text?.toLowerCase()).toContain("out of range");
   });
 
@@ -151,7 +155,10 @@ describe("UPDATE_MONETIZATION", () => {
       captureCallback().fn,
     );
     expect(tracked.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("out_of_range");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("out_of_range");
   });
 
   it("asks what to change when nothing is parseable", async () => {
@@ -164,7 +171,10 @@ describe("UPDATE_MONETIZATION", () => {
       captureCallback().fn,
     );
     expect(tracked.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("no_change");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_change");
   });
 
   it("degrades gracefully with no Cloud API key", async () => {
@@ -175,7 +185,10 @@ describe("UPDATE_MONETIZATION", () => {
       undefined,
       captureCallback().fn,
     );
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("surfaces a monetization API error", async () => {
@@ -188,7 +201,10 @@ describe("UPDATE_MONETIZATION", () => {
       captureCallback().fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 
   it("invalidates the CLOUD_APPS provider cache after a successful change", async () => {

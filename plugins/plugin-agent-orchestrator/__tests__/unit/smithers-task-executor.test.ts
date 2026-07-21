@@ -108,21 +108,21 @@ describe("SmithersTaskExecutor", () => {
     ).rejects.toThrow("agent failed");
   });
 
-  it.each([
-    "cancelled",
-    "stopped",
-  ])("throws when a turn is %s", async (stopReason) => {
-    const acp = new FakeAcp({ stopReason });
-    const executor = new SmithersTaskExecutor(acp);
-    await expect(
-      executor.runTurn({ taskId: "t", runId: "t", turn: 1, prompt: "P" }),
-    ).rejects.toMatchObject({
-      code:
-        stopReason === "cancelled"
-          ? "ACP_TASK_PROMPT_CANCELLED"
-          : "ACP_TASK_PROMPT_STOPPED",
-    });
-  });
+  it.each(["cancelled", "stopped"])(
+    "throws when a turn is %s",
+    async (stopReason) => {
+      const acp = new FakeAcp({ stopReason });
+      const executor = new SmithersTaskExecutor(acp);
+      await expect(
+        executor.runTurn({ taskId: "t", runId: "t", turn: 1, prompt: "P" }),
+      ).rejects.toMatchObject({
+        code:
+          stopReason === "cancelled"
+            ? "ACP_TASK_PROMPT_CANCELLED"
+            : "ACP_TASK_PROMPT_STOPPED",
+      });
+    },
+  );
 
   it("uses injected approval/submit callbacks", async () => {
     const acp = new FakeAcp();

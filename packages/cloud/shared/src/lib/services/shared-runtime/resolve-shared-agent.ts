@@ -101,9 +101,7 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
   // (#SHADOW-ACCOUNT-DEBUG). Whichever credential the request carries wins;
   // requests carrying neither skip the cache and hit the authoritative gate.
   const apiKeyPrefix = await apiKeyScopeHashPrefix(c).catch(() => null);
-  const sessionPrefix = apiKeyPrefix
-    ? null
-    : await sessionScopeHashPrefix(c).catch(() => null);
+  const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c).catch(() => null);
   const isSessionScope = apiKeyPrefix == null && sessionPrefix != null;
   const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
   const scopeCacheKey = scopeKeyPrefix
@@ -154,13 +152,11 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
       isSessionScope && typeof user.steward_id === "string"
         ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
         : { orgId: user.organization_id, agent };
-    void cache
-      .set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve)
-      .catch((error) => {
-        logger.debug("[resolveSharedAgent] scope cache write failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+    void cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve).catch((error) => {
+      logger.debug("[resolveSharedAgent] scope cache write failed", {
+        error: error instanceof Error ? error.message : String(error),
       });
+    });
   }
 
   return { agent, agentId, orgId: user.organization_id, agentName: agent.agent_name ?? "Eliza" };

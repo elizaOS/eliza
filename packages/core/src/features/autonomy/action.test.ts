@@ -42,25 +42,25 @@ function runtimeWithAdmin(captured: Memory[]): IAgentRuntime {
 }
 
 describe("escalateAction", () => {
-	it.each([
-		"owner",
-		"third_party",
-	] as const)("returns an unsupported-target result for %s escalation", async (action) => {
-		const result = await escalateAction.handler(
-			{} as IAgentRuntime,
-			{} as Memory,
-			undefined,
-			{ parameters: { action } },
-		);
+	it.each(["owner", "third_party"] as const)(
+		"returns an unsupported-target result for %s escalation",
+		async (action) => {
+			const result = await escalateAction.handler(
+				{} as IAgentRuntime,
+				{} as Memory,
+				undefined,
+				{ parameters: { action } },
+			);
 
-		expect(result.success).toBe(false);
-		expect(result.data).toMatchObject({
-			actionName: "ESCALATE",
-			action,
-			errorCode: "unsupported_escalation_target",
-		});
-		expect(result.text).toContain("not supported");
-	});
+			expect(result.success).toBe(false);
+			expect(result.data).toMatchObject({
+				actionName: "ESCALATE",
+				action,
+				errorCode: "unsupported_escalation_target",
+			});
+			expect(result.text).toContain("not supported");
+		},
+	);
 
 	it("sends the model-authored escalation message when provided", async () => {
 		const captured: Memory[] = [];
