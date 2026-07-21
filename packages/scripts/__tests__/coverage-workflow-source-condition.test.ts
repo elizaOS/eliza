@@ -32,6 +32,17 @@ test("changed Vitest coverage tests use package-aware source configuration", () 
   expect(workflow).toMatch(
     /node packages\/scripts\/run-changed-vitest-coverage[.]mjs "\$\{changed_tests\[@\]\}"/,
   );
+  const runner = readFileSync(
+    fileURLToPath(
+      new URL("../run-changed-vitest-coverage.mjs", import.meta.url),
+    ),
+    "utf8",
+  );
+  expect(runner).toContain("vitest.changed-coverage.config.ts");
+  expect(runner).toContain("ELIZA_CHANGED_VITEST_CONFIG: group.configPath");
+  expect(runner).toContain(
+    "ELIZA_CHANGED_VITEST_REPO_ROOT: path.resolve(repoRoot)",
+  );
 });
 
 test("cloud/shared coverage resolves the real plugin-sql node source before builds", async () => {

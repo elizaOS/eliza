@@ -3,8 +3,11 @@
  *
  * The coverage gate executes before workspace builds, so combining unrelated
  * package tests under the root config can resolve absent dist entrypoints and
- * bypass package-specific aliases or setup. Each group runs in isolation, and
- * the per-group LCOV reports are then union-merged into a single
+ * bypass package-specific aliases or setup. A coverage-only wrapper preserves
+ * each package config while appending the complete workspace source-alias set.
+ * Package aliases stay first so their test stubs and platform shims retain
+ * precedence. Each group runs in isolation, and the per-group LCOV reports are
+ * then union-merged into a single
  * `coverage/vitest/lcov.info` (see {@link mergeAndRemoveLcovReports}) so the
  * gate sees one record per file across every group that executed it.
  *
@@ -44,6 +47,9 @@ const HARNESS_TEST_SUFFIXES = [".harness.test.ts", ".harness.test.tsx"];
 // `vitest.electrobun.config.ts`; prefer it for any test under that sub-tree.
 const ELECTROBUN_CONFIG_NAME = "vitest.electrobun.config.ts";
 const ELECTROBUN_DIR_SEGMENT = `${path.sep}platforms${path.sep}electrobun${path.sep}`;
+const CHANGED_COVERAGE_CONFIG = fileURLToPath(
+  new URL("./vitest.changed-coverage.config.ts", import.meta.url),
+);
 
 const normalize = (value) => value.split(path.sep).join("/");
 
@@ -175,7 +181,7 @@ export function runChangedVitestCoverage(repoRoot, testFiles) {
         "run",
         ...group.tests,
         "--config",
-        group.configPath,
+        CHANGED_COVERAGE_CONFIG,
         "--coverage",
         "--coverage.reporter=lcov",
         // Package configs carry whole-suite global thresholds. This lane runs
@@ -196,7 +202,11 @@ export function runChangedVitestCoverage(repoRoot, testFiles) {
         // scripts invoke nested configs from the package root, and relative
         // `include` patterns resolve against the cwd.
         cwd: group.packageDir,
-        env: process.env,
+        env: {
+          ...process.env,
+          ELIZA_CHANGED_VITEST_CONFIG: group.configPath,
+          ELIZA_CHANGED_VITEST_REPO_ROOT: path.resolve(repoRoot),
+        },
         stdio: "inherit",
       },
     );
