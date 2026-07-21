@@ -86,9 +86,11 @@ describe("applySandboxCharacterFromEnv", () => {
     const out = applySandboxCharacterFromEnv(config, {
       ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({ name: "Nyx", system: "x" }),
     });
-    const agents = (out as {
-      agents: { list: unknown[]; defaults?: { temperature: number } };
-    }).agents;
+    const agents = (
+      out as {
+        agents: { list: unknown[]; defaults?: { temperature: number } };
+      }
+    ).agents;
     expect(agents.defaults?.temperature).toBe(0.3);
     expect(agents.list).toHaveLength(1);
   });

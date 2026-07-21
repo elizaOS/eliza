@@ -117,21 +117,21 @@ describe("PermissionRegistry", () => {
   // supplied only by @elizaos/plugin-personal-assistant (#12660): with the
   // central stub gone, an unloaded plugin means no prober, and check/request
   // must throw here rather than silently reporting the old "granted".
-  it.each([
-    "calendar",
-    "website-blocking",
-  ] as const)("throws for check() / request() when no prober is registered (%s)", async (id) => {
-    const persistence = new InMemoryPersistence();
-    const registry = makeRegistry(persistence);
-    const pattern = new RegExp(`no prober registered for ${id}`);
-    await expect(registry.check(id)).rejects.toThrow(pattern);
-    await expect(
-      registry.request(id, {
-        reason: "x",
-        feature: { app: "app", action: "act" },
-      }),
-    ).rejects.toThrow(pattern);
-  });
+  it.each(["calendar", "website-blocking"] as const)(
+    "throws for check() / request() when no prober is registered (%s)",
+    async (id) => {
+      const persistence = new InMemoryPersistence();
+      const registry = makeRegistry(persistence);
+      const pattern = new RegExp(`no prober registered for ${id}`);
+      await expect(registry.check(id)).rejects.toThrow(pattern);
+      await expect(
+        registry.request(id, {
+          reason: "x",
+          feature: { app: "app", action: "act" },
+        }),
+      ).rejects.toThrow(pattern);
+    },
+  );
 
   it("updates state and stamps lastRequested + lastBlockedFeature on request()", async () => {
     const persistence = new InMemoryPersistence();
