@@ -117,4 +117,32 @@ describe("Google GenAI embeddings", () => {
       "Google GenAI API returned no embedding",
     );
   });
+
+  it("fails closed with one clear, model-named error on a 404 NOT_FOUND (no infinite retry spam)", async () => {
+    // Regression for the text-embedding-004 v1beta 404: the raw SDK 404 must be
+    // converted into a single actionable error naming the model and the
+    // GOOGLE_EMBEDDING_MODEL escape hatch, not re-propagated verbatim on every
+    // call.
+    mocks.embedContent.mockRejectedValue(
+      new Error(
+        "got status: 404 NOT_FOUND. models/text-embedding-004 is not found for API version v1beta",
+      ),
+    );
+
+    const promise = handleTextEmbedding(createRuntime(), "hello");
+    await expect(promise).rejects.toThrow(
+      "is not available on the current API version (404 NOT_FOUND)",
+    );
+    await expect(promise).rejects.toThrow("gemini-embedding-001");
+    // Exactly one call: the handler does not retry a 404 internally.
+    expect(mocks.embedContent).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not rewrite non-404 provider errors", async () => {
+    mocks.embedContent.mockRejectedValue(new Error("503 UNAVAILABLE"));
+
+    await expect(handleTextEmbedding(createRuntime(), "hello")).rejects.toThrow(
+      "503 UNAVAILABLE",
+    );
+  });
 });

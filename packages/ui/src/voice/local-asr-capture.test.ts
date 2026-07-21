@@ -16,6 +16,113 @@ import {
   startLocalAsrRecorder,
 } from "./local-asr-capture";
 
+type FakeAudioProcessEvent = {
+  inputBuffer: {
+    length: number;
+    numberOfChannels: number;
+    getChannelData(channel: number): Float32Array;
+  };
+};
+
+type FakeAudioProcessHandler = (event: FakeAudioProcessEvent) => void;
+
+class FakeAudioNode {
+  connect = vi.fn();
+  disconnect = vi.fn();
+}
+
+class FakeScriptProcessor extends FakeAudioNode {
+  onaudioprocess: FakeAudioProcessHandler | null = null;
+}
+
+class FakeAnalyserNode extends FakeAudioNode {
+  fftSize = 0;
+  smoothingTimeConstant = 0;
+}
+
+class RecorderFakeAudioContext {
+  readonly sampleRate: number;
+  state: AudioContextState = "running";
+  destination = {};
+  processor = new FakeScriptProcessor();
+  close = vi.fn().mockResolvedValue(undefined);
+  resume = vi.fn().mockResolvedValue(undefined);
+  createMediaStreamSource = vi.fn(() => new FakeAudioNode());
+  createScriptProcessor = vi.fn(() => this.processor);
+  createAnalyser = vi.fn(() => new FakeAnalyserNode());
+
+  constructor(sampleRate: number) {
+    this.sampleRate = sampleRate;
+  }
+}
+
+async function createFakeRecorder(
+  sampleRate: number,
+  options: Parameters<typeof startLocalAsrRecorder>[0] = {
+    autoStop: {
+      startGraceMs: 0,
+      minSpeechMs: 0,
+      silenceMs: 10_000,
+      speechRmsThreshold: 0.5,
+      speechPeakThreshold: 0.5,
+    },
+  },
+) {
+  const trackStop = vi.fn();
+  const stream = {
+    getTracks: () => [{ stop: trackStop }],
+    getAudioTracks: () => [{ stop: trackStop }],
+  } as unknown as MediaStream;
+  const getUserMedia = vi.fn().mockResolvedValue(stream);
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+
+  let context: RecorderFakeAudioContext | null = null;
+  class FakeAudioContext extends RecorderFakeAudioContext {
+    constructor() {
+      super(sampleRate);
+      context = this;
+    }
+  }
+  vi.stubGlobal("window", { AudioContext: FakeAudioContext });
+
+  const recorder = await startLocalAsrRecorder(options);
+  const createdContext = context as RecorderFakeAudioContext | null;
+  if (!createdContext) throw new Error("fake AudioContext was not created");
+  return { recorder, context: createdContext, trackStop };
+}
+
+function emitMonoFrame(
+  context: RecorderFakeAudioContext,
+  samples: Float32Array,
+): void {
+  const handler = context.processor.onaudioprocess;
+  if (!handler) throw new Error("recorder process handler was not installed");
+  handler({
+    inputBuffer: {
+      length: samples.length,
+      numberOfChannels: 1,
+      getChannelData: () => samples,
+    },
+  });
+}
+
+function constantFrame(length: number, value: number): Float32Array {
+  const frame = new Float32Array(length);
+  frame.fill(value);
+  return frame;
+}
+
+function expectSamplesClose(
+  samples: Float32Array,
+  start: number,
+  length: number,
+  value: number,
+): void {
+  for (let index = start; index < start + length; index += 1) {
+    expect(samples[index]).toBeCloseTo(value, 3);
+  }
+}
+
 describe("local ASR capture", () => {
   it("detects truly silent PCM before sending it to ASR", () => {
     const pcm = new Float32Array(16000);
@@ -118,6 +225,118 @@ describe("local ASR capture", () => {
       shouldBuffer: true,
       shouldStop: false,
     });
+  });
+});
+
+describe("startLocalAsrRecorder auto-stop pre-roll", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("prepends only the newest bounded 200ms of 16k PCM when speech starts", async () => {
+    const { recorder, context } = await createFakeRecorder(16_000);
+
+    emitMonoFrame(context, constantFrame(1000, 0.01));
+    emitMonoFrame(context, constantFrame(1000, 0.02));
+    emitMonoFrame(context, constantFrame(1000, 0.03));
+    emitMonoFrame(context, constantFrame(1000, 0.04));
+    emitMonoFrame(context, constantFrame(1000, 0.05));
+    emitMonoFrame(context, new Float32Array([0.8, -0.8]));
+
+    const pcm = decodeMonoPcm16Wav(await recorder.stop());
+
+    expect(pcm.length).toBe(3202);
+    expectSamplesClose(pcm, 0, 200, 0.02);
+    expectSamplesClose(pcm, 200, 1000, 0.03);
+    expectSamplesClose(pcm, 1200, 1000, 0.04);
+    expectSamplesClose(pcm, 2200, 1000, 0.05);
+    expect(pcm[3200]).toBeCloseTo(0.8, 3);
+    expect(pcm[3201]).toBeCloseTo(-0.8, 3);
+  });
+
+  it("prepends only the newest bounded 200ms of 48k PCM in frame order", async () => {
+    const { recorder, context } = await createFakeRecorder(48_000);
+
+    emitMonoFrame(context, constantFrame(4096, 0.01));
+    emitMonoFrame(context, constantFrame(4096, 0.02));
+    emitMonoFrame(context, constantFrame(4096, 0.03));
+    emitMonoFrame(context, new Float32Array([0.7]));
+
+    const pcm = decodeMonoPcm16Wav(await recorder.stop());
+
+    expect(pcm.length).toBe(9601);
+    expectSamplesClose(pcm, 0, 1408, 0.01);
+    expectSamplesClose(pcm, 1408, 4096, 0.02);
+    expectSamplesClose(pcm, 5504, 4096, 0.03);
+    expect(pcm[9600]).toBeCloseTo(0.7, 3);
+  });
+
+  it("prepends the pre-roll once, then buffers later speech normally", async () => {
+    const { recorder, context } = await createFakeRecorder(16_000);
+
+    emitMonoFrame(context, constantFrame(600, 0.02));
+    emitMonoFrame(context, constantFrame(600, 0.03));
+    emitMonoFrame(context, new Float32Array([0.75]));
+    emitMonoFrame(context, new Float32Array([0.65]));
+
+    const pcm = decodeMonoPcm16Wav(await recorder.stop());
+
+    expect(pcm.length).toBe(1202);
+    expectSamplesClose(pcm, 0, 600, 0.02);
+    expectSamplesClose(pcm, 600, 600, 0.03);
+    expect(pcm[1200]).toBeCloseTo(0.75, 3);
+    expect(pcm[1201]).toBeCloseTo(0.65, 3);
+  });
+
+  it("does not promote no-speech pre-roll into a stopped capture", async () => {
+    const { recorder, context } = await createFakeRecorder(16_000);
+
+    emitMonoFrame(context, constantFrame(5000, 0.02));
+
+    await expect(recorder.stop()).rejects.toThrow(
+      "No microphone audio was captured for local ASR",
+    );
+  });
+
+  it("clears pending pre-roll on cancel so later frames cannot leak into stop", async () => {
+    const { recorder, context, trackStop } = await createFakeRecorder(16_000);
+
+    emitMonoFrame(context, constantFrame(1000, 0.02));
+    recorder.cancel();
+
+    expect(context.processor.onaudioprocess).toBeNull();
+    await expect(recorder.stop()).rejects.toThrow(
+      "No microphone audio was captured for local ASR",
+    );
+    expect(trackStop).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears buffered PCM on stop and ignores frames after teardown", async () => {
+    const { recorder, context } = await createFakeRecorder(16_000);
+
+    emitMonoFrame(context, constantFrame(100, 0.02));
+    emitMonoFrame(context, new Float32Array([0.8]));
+
+    const firstPcm = decodeMonoPcm16Wav(await recorder.stop());
+
+    expect(firstPcm.length).toBe(101);
+    expect(context.processor.onaudioprocess).toBeNull();
+    await expect(recorder.stop()).rejects.toThrow(
+      "No microphone audio was captured for local ASR",
+    );
+  });
+
+  it("leaves non-auto-stop captures buffering every frame unchanged", async () => {
+    const { recorder, context } = await createFakeRecorder(16_000, {});
+
+    emitMonoFrame(context, constantFrame(2, 0.01));
+    emitMonoFrame(context, new Float32Array([0.8]));
+
+    const pcm = decodeMonoPcm16Wav(await recorder.stop());
+
+    expect(pcm.length).toBe(3);
+    expectSamplesClose(pcm, 0, 2, 0.01);
+    expect(pcm[2]).toBeCloseTo(0.8, 3);
   });
 });
 

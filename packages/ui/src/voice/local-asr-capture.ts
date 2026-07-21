@@ -134,6 +134,35 @@ function concatPcm(chunks: Float32Array[]): Float32Array {
   return out;
 }
 
+function appendBoundedPcmFrame(
+  chunks: Float32Array[],
+  frame: Float32Array,
+  maxSamples: number,
+): void {
+  if (maxSamples <= 0) return;
+
+  chunks.push(frame);
+  let retainedSamples = 0;
+  for (let index = chunks.length - 1; index >= 0; index -= 1) {
+    const chunk = chunks[index];
+    if (!chunk) continue;
+    const nextRetainedSamples = retainedSamples + chunk.length;
+    if (nextRetainedSamples <= maxSamples) {
+      retainedSamples = nextRetainedSamples;
+      continue;
+    }
+
+    const keepFromChunk = maxSamples - retainedSamples;
+    if (keepFromChunk > 0) {
+      chunks[index] = chunk.slice(chunk.length - keepFromChunk);
+      chunks.splice(0, index);
+    } else {
+      chunks.splice(0, index + 1);
+    }
+    return;
+  }
+}
+
 function writeAscii(view: DataView, offset: number, value: string): void {
   for (let index = 0; index < value.length; index += 1) {
     view.setUint8(offset + index, value.charCodeAt(index));
@@ -185,6 +214,7 @@ export function isSilentPcmAudio(pcm: Float32Array): boolean {
  * 0.003 to 0.012 and the peak gate from 0.012 to 0.048.
  */
 export const POST_TTS_ECHO_THRESHOLD_MULTIPLIER = 4;
+const AUTO_STOP_PRE_ROLL_MS = 200;
 
 export const DEFAULT_LOCAL_ASR_AUTO_STOP: LocalAsrAutoStopConfig = {
   startGraceMs: 250,
@@ -491,10 +521,15 @@ export async function startLocalAsrRecorder(
   analyser.smoothingTimeConstant = 0.8;
   source.connect(analyser);
   const chunks: Float32Array[] = [];
+  const preRollChunks: Float32Array[] = [];
+  const preRollMaxSamples = Math.round(
+    (context.sampleRate * AUTO_STOP_PRE_ROLL_MS) / 1000,
+  );
   let stopped = false;
   let autoStopRequested = false;
   let firstChunkTraced = false;
   const autoStopDetector = createLocalAsrAutoStopDetector(options.autoStop);
+  let preRollPromoted = !autoStopDetector;
 
   processor.onaudioprocess = (event) => {
     if (stopped) return;
@@ -521,7 +556,14 @@ export async function startLocalAsrRecorder(
       shouldStop: false,
     };
     if (autoStopUpdate.shouldBuffer) {
+      if (!preRollPromoted) {
+        chunks.push(...preRollChunks);
+        preRollChunks.length = 0;
+        preRollPromoted = true;
+      }
       chunks.push(mono);
+    } else if (!preRollPromoted) {
+      appendBoundedPcmFrame(preRollChunks, mono, preRollMaxSamples);
     }
     if (autoStopUpdate.shouldStop && !autoStopRequested && options.onAutoStop) {
       autoStopRequested = true;
@@ -533,7 +575,9 @@ export async function startLocalAsrRecorder(
   processor.connect(context.destination);
 
   const cleanup = async () => {
+    if (stopped) return;
     stopped = true;
+    preRollChunks.length = 0;
     processor.onaudioprocess = null;
     try {
       analyser?.disconnect();
@@ -566,12 +610,15 @@ export async function startLocalAsrRecorder(
       const sampleRate = context.sampleRate;
       await cleanup();
       const pcm = concatPcm(chunks);
+      chunks.length = 0;
       if (pcm.length === 0) {
         throw new Error("No microphone audio was captured for local ASR");
       }
       return encodeMonoPcm16Wav(pcm, sampleRate);
     },
     cancel() {
+      chunks.length = 0;
+      preRollChunks.length = 0;
       void cleanup();
     },
   };

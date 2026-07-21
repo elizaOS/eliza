@@ -6,7 +6,7 @@ import {
   agentSandboxesRepository,
 } from "../../../db/repositories/agent-sandboxes";
 import type { AppEnv } from "../../../types/cloud-worker-env";
-import { requireUserOrApiKeyWithOrg } from "../../auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrgLookup } from "../../auth/workers-hono-auth";
 import { isDedicatedBootstrapWindow } from "./dedicated-bootstrap";
 
 export type ResolvedSharedAgent =
@@ -28,10 +28,11 @@ export type ResolvedSharedAgent =
  * leaves read; each caller takes what it needs.
  */
 export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSharedAgent> {
-  const user = await requireUserOrApiKeyWithOrg(c);
   const agentId = c.req.param("agentId");
   if (!agentId) return { error: "Missing agent id", status: 400 };
-  const agent = await agentSandboxesRepository.findByIdAndOrg(agentId, user.organization_id);
+  const { user, orgLookupResult: agent } = await requireUserOrApiKeyWithOrgLookup(c, (orgId) =>
+    agentSandboxesRepository.findByIdAndOrg(agentId, orgId),
+  );
   if (!agent) return { error: "Agent not found", status: 404 };
   if (agent.execution_tier !== "shared" && !isDedicatedBootstrapWindow(agent)) {
     return { error: "Not a shared-runtime agent", status: 404 };
