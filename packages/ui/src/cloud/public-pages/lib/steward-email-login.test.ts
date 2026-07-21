@@ -112,6 +112,44 @@ describe("steward email sign-in adapter", () => {
     );
   });
 
+  it("narrows an MFA-required verify response to the MFA union arm", async () => {
+    const mfaBody = {
+      ok: true,
+      mfaRequired: true,
+      mfa: {
+        type: "totp",
+        challengeId: "mfa-challenge",
+        expiresAt: "2026-07-17T12:10:00.000Z",
+      },
+      user: { id: "user-1" },
+    };
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse(mfaBody));
+
+    await expect(
+      verifyStewardEmailSignInCode(
+        { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
+        "person@example.com",
+        "123456",
+      ),
+    ).resolves.toMatchObject({ mfaRequired: true });
+  });
+
+  it("rejects a malformed verify response with a 502 instead of a blind cast", async () => {
+    // Neither `token` nor `mfaRequired` present: the old `as unknown as` would
+    // have returned this garbage as a session. The narrowing must fail closed.
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ ok: true, data: { unexpected: 1 } }));
+
+    await expect(
+      verifyStewardEmailSignInCode(
+        { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
+        "person@example.com",
+        "123456",
+      ),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+
   it("polls status without returning a session", async () => {
     const fetchImpl = vi
       .fn()
