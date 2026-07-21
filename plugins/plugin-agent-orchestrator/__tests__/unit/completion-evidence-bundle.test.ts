@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AcpService } from "../../src/services/acp-service.js";
 import { classifyToolOutput } from "../../src/services/completion-evidence.js";
 import { OrchestratorTaskService } from "../../src/services/orchestrator-task-service.js";
 import { OrchestratorTaskStore } from "../../src/services/orchestrator-task-store.js";
@@ -111,7 +112,9 @@ function runtime(
   useModel: (modelType: unknown, params: unknown) => Promise<string>,
 ): IAgentRuntime {
   return {
-    getService: () => acp,
+    getService: (type: string) =>
+      type === AcpService.serviceType ? acp : null,
+    getSetting: () => undefined,
     useModel,
     logger: {
       debug: vi.fn(),

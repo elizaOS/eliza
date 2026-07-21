@@ -25,8 +25,9 @@ import {
   loadAllScenarios,
   validateScenarioCorpus,
 } from "./loader.ts";
+import { redactForScenarioReport } from "./redaction.ts";
 import { shouldOptInScenarioTrajectoryLogging } from "./trajectory-opt-in.ts";
-import type { ScenarioReport } from "./types.ts";
+import type { AggregateReport, ScenarioReport } from "./types.ts";
 
 const SCENARIO_LANES: readonly ScenarioLane[] = [
   "pr-deterministic",
@@ -85,6 +86,115 @@ export interface CliDependencies {
   createScenarioRuntime: ScenarioRuntimeFactoryModule["createScenarioRuntime"];
   shouldUseDeterministicLlmProxy: ScenarioRuntimeFactoryModule["shouldUseDeterministicLlmProxy"];
   exportScenarioNativeJsonl: NativeExportModule["exportScenarioNativeJsonl"];
+}
+
+type EvidencePaths = {
+  reportPath?: string;
+  reportDir?: string;
+  runDir?: string;
+  nativeJsonlPath?: string;
+};
+
+function scenarioOutcomeMaps(reports: readonly ScenarioReport[]): {
+  outcomes: Map<string, ScenarioReport["status"]>;
+  judgeScores: Map<string, number>;
+  tiers: Map<string, string>;
+} {
+  const outcomes = new Map(
+    reports.map((report) => [report.id, report.status] as const),
+  );
+  const judgeScores = new Map<string, number>();
+  const tiers = new Map<string, string>();
+  for (const report of reports) {
+    if (typeof report.judgeScore === "number") {
+      judgeScores.set(report.id, report.judgeScore);
+    }
+    if (typeof report.tier === "string") {
+      tiers.set(report.id, report.tier);
+    }
+  }
+  return { outcomes, judgeScores, tiers };
+}
+
+function attachArtifactPaths(
+  aggregate: AggregateReport,
+  paths: EvidencePaths,
+): void {
+  if (!paths.runDir) return;
+  const viewerIndex = path.join(paths.runDir, "viewer", "index.html");
+  const viewerData = path.join(paths.runDir, "viewer", "data.js");
+  aggregate.artifactPaths = {
+    runDir: paths.runDir,
+    matrixJson: path.join(paths.runDir, "matrix.json"),
+    viewerIndex,
+    viewerData,
+    ...(paths.nativeJsonlPath
+      ? {
+          nativeJsonl: paths.nativeJsonlPath,
+          nativeManifest: scenarioNativeManifestPath(paths.nativeJsonlPath),
+        }
+      : {}),
+  };
+}
+
+function writeScenarioEvidence(params: {
+  aggregate: AggregateReport;
+  reports: readonly ScenarioReport[];
+  paths: EvidencePaths;
+  finalize: boolean;
+  dependencies: Pick<
+    CliDependencies,
+    | "exportScenarioNativeJsonl"
+    | "writeReport"
+    | "writeReportBundle"
+    | "writeScenarioRunViewer"
+  >;
+}): void {
+  const { aggregate, reports, paths, finalize, dependencies } = params;
+  const persistedAggregate = redactForScenarioReport(
+    aggregate,
+  ) as AggregateReport;
+
+  // Checkpoints deliberately write only the bounded evidence needed for crash
+  // recovery. Native export and the viewer scan every recorded trajectory, and
+  // a full report bundle rewrites every preceding scenario, so doing those on
+  // every iteration would make a long run quadratic. Finalization regenerates
+  // those derived artifacts deterministically from the same aggregate.
+  if (finalize && paths.nativeJsonlPath && paths.runDir) {
+    const { outcomes, judgeScores, tiers } = scenarioOutcomeMaps(reports);
+    dependencies.exportScenarioNativeJsonl(
+      paths.runDir,
+      paths.nativeJsonlPath,
+      outcomes,
+      judgeScores,
+      tiers,
+    );
+  }
+  attachArtifactPaths(persistedAggregate, paths);
+  if (finalize && paths.runDir) {
+    dependencies.writeScenarioRunViewer(persistedAggregate, paths.runDir, {
+      nativeJsonlPath: paths.nativeJsonlPath,
+    });
+  }
+  if (paths.reportPath) {
+    dependencies.writeReport(persistedAggregate, paths.reportPath);
+  }
+  if (paths.reportDir) {
+    if (finalize) {
+      dependencies.writeReportBundle(persistedAggregate, paths.reportDir);
+    } else {
+      dependencies.writeReport(
+        persistedAggregate,
+        path.join(paths.reportDir, "matrix.json"),
+      );
+    }
+  }
+  if (paths.runDir) {
+    dependencies.writeReport(
+      persistedAggregate,
+      path.join(paths.runDir, "matrix.json"),
+    );
+  }
 }
 
 function scenarioNativeManifestPath(
@@ -413,8 +523,49 @@ export async function runCli(
   })();
 
   const reports: ScenarioReport[] = [];
+  let interruptedSignal: NodeJS.Signals | undefined;
+  const onInterrupt = (signal: NodeJS.Signals): void => {
+    interruptedSignal = signal;
+    process.stderr.write(
+      `[eliza-scenarios] received ${signal}; finishing the current scenario, writing checkpoint evidence, then stopping.\n`,
+    );
+  };
+  process.once("SIGINT", onInterrupt);
+  process.once("SIGTERM", onInterrupt);
+  const evidencePaths: EvidencePaths = {
+    reportPath: parsed.reportPath,
+    reportDir: parsed.reportDir,
+    runDir: effectiveRunDir,
+    nativeJsonlPath: parsed.exportNativePath,
+  };
+  let latestAggregate: AggregateReport | undefined;
+  const writeCheckpoint = (): AggregateReport => {
+    const checkpoint = buildAggregate(
+      reports,
+      providerName,
+      startedAtIso,
+      new Date().toISOString(),
+      effectiveRunId,
+      effectiveRunDir,
+    );
+    writeScenarioEvidence({
+      aggregate: checkpoint,
+      reports,
+      paths: evidencePaths,
+      finalize: false,
+      dependencies: {
+        exportScenarioNativeJsonl,
+        writeReport,
+        writeReportBundle,
+        writeScenarioRunViewer,
+      },
+    });
+    latestAggregate = checkpoint;
+    return checkpoint;
+  };
   try {
     for (const { scenario } of loaded) {
+      if (interruptedSignal) break;
       logger.info(`[eliza-scenarios] ▶ ${scenario.id}`);
       // Surface scenario id to the recorder via env so trajectories are
       // tagged with the right scenarioId without changing internal APIs.
@@ -428,85 +579,46 @@ export async function runCli(
       logger.info(
         `[eliza-scenarios] ${report.status === "passed" ? "✓" : report.status === "skipped" ? "∼" : "✗"} ${scenario.id} ${report.status} (${report.durationMs}ms)${report.skipReason ? ` — ${report.skipReason}` : ""}`,
       );
+      writeCheckpoint();
     }
   } finally {
+    process.off("SIGINT", onInterrupt);
+    process.off("SIGTERM", onInterrupt);
     await cleanup();
   }
 
-  const completedAtIso = new Date().toISOString();
-  const aggregate = buildAggregate(
-    reports,
-    providerName,
-    startedAtIso,
-    completedAtIso,
-    effectiveRunId,
-    // Sum real per-trajectory spend from <runDir>/trajectories/ so
-    // matrix.json's totalCostUsd reflects the run instead of a hardcoded 0.
-    effectiveRunDir,
-  );
-
-  if (parsed.exportNativePath && effectiveRunDir) {
-    // Convert the recorded per-turn trajectory JSON under <runDir>/trajectories/
-    // into canonical eliza_native_v1 model-boundary rows for the eliza-1
-    // training corpus (see packages/training/docs/dataset/CANONICAL_RECORD.md).
-    // The training prep script runs the mandatory privacy filter on every row.
-    // Thread each scenario's assertion outcome so failed/regressed trajectories
-    // are stamped status="failed" and routed to rating="repair"/weight=0 instead
-    // of being exported as gold-weight training data.
-    const scenarioOutcomes = new Map(
-      reports.map((report) => [report.id, report.status] as const),
-    );
-    // Thread the numeric judge score (minimum across judged turns + rubric
-    // final checks) so rows carry metadata.judge_score for reward-weighted
-    // training (#8795).
-    const scenarioJudgeScores = new Map<string, number>();
-    const scenarioTiers = new Map<string, string>();
-    for (const report of reports) {
-      if (typeof report.judgeScore === "number") {
-        scenarioJudgeScores.set(report.id, report.judgeScore);
-      }
-      if (typeof report.tier === "string") {
-        scenarioTiers.set(report.id, report.tier);
-      }
-    }
-    exportScenarioNativeJsonl(
+  const aggregate =
+    latestAggregate ??
+    buildAggregate(
+      reports,
+      providerName,
+      startedAtIso,
+      new Date().toISOString(),
+      effectiveRunId,
+      // Sum real per-trajectory spend from <runDir>/trajectories/ so
+      // matrix.json's totalCostUsd reflects the run instead of a hardcoded 0.
       effectiveRunDir,
-      parsed.exportNativePath,
-      scenarioOutcomes,
-      scenarioJudgeScores,
-      scenarioTiers,
     );
-  }
-  if (effectiveRunDir) {
-    const viewerIndex = path.join(effectiveRunDir, "viewer", "index.html");
-    const viewerData = path.join(effectiveRunDir, "viewer", "data.js");
-    aggregate.artifactPaths = {
-      runDir: effectiveRunDir,
-      matrixJson: path.join(effectiveRunDir, "matrix.json"),
-      viewerIndex,
-      viewerData,
-      ...(parsed.exportNativePath
-        ? {
-            nativeJsonl: parsed.exportNativePath,
-            nativeManifest: scenarioNativeManifestPath(parsed.exportNativePath),
-          }
-        : {}),
-    };
-    writeScenarioRunViewer(aggregate, effectiveRunDir, {
-      nativeJsonlPath: parsed.exportNativePath,
-    });
-  }
-  if (parsed.reportPath) {
-    writeReport(aggregate, parsed.reportPath);
-  }
-  if (parsed.reportDir) {
-    writeReportBundle(aggregate, parsed.reportDir);
-  }
-  if (effectiveRunDir) {
-    // Drop the matrix.json next to trajectories/ so the aggregator can find it.
-    writeReport(aggregate, path.join(effectiveRunDir, "matrix.json"));
-  }
+  writeScenarioEvidence({
+    aggregate,
+    reports,
+    paths: evidencePaths,
+    finalize: true,
+    dependencies: {
+      exportScenarioNativeJsonl,
+      writeReport,
+      writeReportBundle,
+      writeScenarioRunViewer,
+    },
+  });
   printStdoutSummary(aggregate);
+
+  if (interruptedSignal) {
+    process.stderr.write(
+      `[eliza-scenarios] stopped after ${reports.length}/${loaded.length} completed scenario(s) because ${interruptedSignal} was received; checkpoint evidence reflects exactly the completed scenarios.\n`,
+    );
+    return 1;
+  }
 
   // SKIP_REASON guard: if any scenarios skipped and no SKIP_REASON is set, fail.
   const skipReason = (process.env.SKIP_REASON ?? "").trim();

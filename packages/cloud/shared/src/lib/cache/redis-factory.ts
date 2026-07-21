@@ -37,11 +37,27 @@ interface CompatibleRedisPipeline {
 // the same public surface. This avoids a double cast (which hid pipeline drift)
 // without adding a third overloaded class to the Upstash union. Override the
 // pipeline class itself because its private fields are intentionally nominal.
+export interface EvalCapableRedis {
+  eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown>;
+}
+
 type CompatibleSocketRedis = Pick<
   SocketRedis,
-  Exclude<Extract<keyof SocketRedis, keyof MockSocketRedis>, "pipeline">
-> & { pipeline(): CompatibleRedisPipeline };
+  Exclude<Extract<keyof SocketRedis, keyof MockSocketRedis>, "pipeline" | "eval">
+> & {
+  pipeline(): CompatibleRedisPipeline;
+  // The in-memory factory client intentionally has no Lua support. Keeping the
+  // capability optional makes that limitation visible instead of hiding it
+  // behind a cast at the durable-store boundary.
+  eval?: EvalCapableRedis["eval"];
+};
 export type CompatibleRedis = CompatibleSocketRedis | UpstashRedis;
+
+export function supportsRedisEval(
+  redis: CompatibleRedis,
+): redis is CompatibleRedis & EvalCapableRedis {
+  return typeof redis.eval === "function";
+}
 
 export interface RedisFactoryEnv {
   REDIS_URL?: string;
