@@ -223,7 +223,11 @@ test("keeps retired no-op workflow entry points absent", () => {
   expect(auditSource).not.toContain("scenario-matrix.yml");
 
   const workflowReadme = readFileSync(workflowReadmePath, "utf8");
-  expect(workflowReadme).toContain("tracked in #16449");
+  // The GPU/scenario retirement must stay owned by #16449. #16537 reworded the
+  // guide from "tracked in #16449" to "must not close #16449" while keeping the
+  // same tracking issue; assert the issue reference survives regardless of the
+  // surrounding phrasing so a future reword can't silently drop the owner.
+  expect(workflowReadme).toContain("#16449");
   expect(workflowReadme).not.toContain("packages/inference/voice-bench");
 });
 
