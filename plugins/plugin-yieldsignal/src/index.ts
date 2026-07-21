@@ -6,7 +6,8 @@ export { fetchYieldSignal, type YieldSignalAsset } from "./client.js";
 
 export const yieldSignalPlugin: Plugin = {
   name: "yieldsignal",
-  description: "Paid (x402) real-time USDC/WETH lending yield signal on Base, signed and EAS-attested on-chain.",
+  description:
+    "Paid (x402) real-time USDC/WETH lending yield signal on Base, signed and EAS-attested on-chain.",
   actions: [getYieldSignalAction],
 };
 

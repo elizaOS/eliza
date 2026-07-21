@@ -5,6 +5,28 @@ const YIELDSIGNAL_BASE_URL = "https://yieldsignal.vercel.app";
 
 export type YieldSignalAsset = "USDC" | "WETH";
 
+/** One protocol's reading inside a signal response. */
+export interface YieldSignalRate {
+  protocol: string;
+  apyBps: number;
+  weightedApyBps: number;
+  source: string;
+  asOf: string;
+}
+
+/**
+ * Shape of a YieldSignal response body. Typed concretely (rather than
+ * `unknown`) so the action can hand it to elizaOS's `ActionResult.data`
+ * (`ProviderDataRecord`) without a cast.
+ */
+export interface YieldSignalResponse {
+  asset: YieldSignalAsset;
+  bestProtocol: string;
+  gapBps: number;
+  rates: YieldSignalRate[];
+  asOf: string;
+}
+
 /**
  * Real-time, risk-weighted USDC/WETH lending APY across Aave, Compound,
  * Morpho, Moonwell, Euler and Fluid on Base — sold per-call via x402
@@ -17,12 +39,29 @@ export type YieldSignalAsset = "USDC" | "WETH";
  * (`/agent-card.json`) and periodically publishes EAS attestations of past
  * readings on Base mainnet (`/track-record`). See https://yieldsignal.vercel.app.
  */
-export async function fetchYieldSignal(asset: YieldSignalAsset): Promise<unknown> {
+export async function fetchYieldSignal(
+  asset: YieldSignalAsset,
+): Promise<YieldSignalResponse> {
   const client = new CdpX402Client();
-  const fetchWithPayment = wrapFetchWithPayment(fetch, client);
-  const res = await fetchWithPayment(`${YIELDSIGNAL_BASE_URL}/signal/${asset.toLowerCase()}-base-yield`);
+  // `CdpX402Client` extends `x402Client`, which is exactly what
+  // `wrapFetchWithPayment` accepts. The narrow here only exists because in a
+  // workspace install the two packages can resolve *different copies* of
+  // `@x402/core` (e.g. bun linking cdp-sdk's `@x402/core` to an older minor
+  // than the one @x402/fetch pulls), which makes the two `x402Client` types
+  // structurally diverge even though `CdpX402Client` fulfils the payment
+  // contract at runtime (verified end-to-end against production). Kept to this
+  // single boundary and typed via the function's own parameter type — not `any`.
+  const fetchWithPayment = wrapFetchWithPayment(
+    fetch,
+    client as unknown as Parameters<typeof wrapFetchWithPayment>[1],
+  );
+  const res = await fetchWithPayment(
+    `${YIELDSIGNAL_BASE_URL}/signal/${asset.toLowerCase()}-base-yield`,
+  );
   if (!res.ok) {
-    throw new Error(`YieldSignal request failed: ${res.status} ${await res.text()}`);
+    throw new Error(
+      `YieldSignal request failed: ${res.status} ${await res.text()}`,
+    );
   }
-  return res.json();
+  return res.json() as Promise<YieldSignalResponse>;
 }
