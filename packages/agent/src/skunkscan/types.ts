@@ -621,11 +621,20 @@ export type WalletExposureSummary = {
   notes: string[];
 };
 
+export type WalletRelationshipDirection =
+  | "incoming"
+  | "outgoing"
+  | "bidirectional"
+  | "unknown";
+
 export type WalletRelationship = {
   address: string;
+
   relationship:
     | "funder"
+    | "sender"
     | "receiver"
+    | "counterparty"
     | "exchange"
     | "bridge"
     | "known_wallet";
@@ -633,6 +642,28 @@ export type WalletRelationship = {
   label?: string | null;
 
   confidence: "low" | "medium" | "high";
+
+  direction?: WalletRelationshipDirection;
+
+  interactionCount?: number;
+
+  incomingTransferCount?: number;
+
+  outgoingTransferCount?: number;
+
+  firstInteractionAt?: number | null;
+
+  lastInteractionAt?: number | null;
+
+  totalNativeAmountReceived?: number;
+
+  totalNativeAmountSent?: number;
+
+  transactionSignatures?: string[];
+
+  evidenceReasons?: string[];
+
+  limitations?: string[];
 };
 
 export type WalletRelationshipSummary = {
