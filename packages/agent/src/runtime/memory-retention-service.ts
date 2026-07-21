@@ -78,7 +78,7 @@ export class MemoryRetentionService extends Service {
   private timer: ReturnType<typeof setInterval> | null = null;
   private startTimer: ReturnType<typeof setTimeout> | null = null;
   private sweeping = false;
-  private config: ResolvedRetentionConfig = {};
+  private retentionConfig: ResolvedRetentionConfig = {};
 
   static async start(runtime: IAgentRuntime): Promise<MemoryRetentionService> {
     const svc = new MemoryRetentionService(runtime);
@@ -87,7 +87,7 @@ export class MemoryRetentionService extends Service {
   }
 
   private init(): void {
-    this.config = resolveRetentionConfig((key) => {
+    this.retentionConfig = resolveRetentionConfig((key) => {
       const fromSettings = this.runtime.getSetting(key);
       if (fromSettings !== undefined && fromSettings !== null) {
         return String(fromSettings);
@@ -95,7 +95,7 @@ export class MemoryRetentionService extends Service {
       return process.env[key];
     });
 
-    if (!policyIsActive(this.config)) {
+    if (!policyIsActive(this.retentionConfig)) {
       logger.info(
         "[memory-retention] no active bound (retentionDays/maxRowsPerRoom unset) — retention DISABLED",
       );
@@ -103,9 +103,9 @@ export class MemoryRetentionService extends Service {
     }
 
     const intervalMinutes =
-      this.config.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES;
+      this.retentionConfig.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES;
     logger.info(
-      `[memory-retention] enabled: retentionDays=${this.config.retentionDays ?? "off"} maxRowsPerRoom=${this.config.maxRowsPerRoom ?? "off"} maxDeletePerSweep=${this.config.maxDeletePerSweep ?? "none"} intervalMinutes=${intervalMinutes}`,
+      `[memory-retention] enabled: retentionDays=${this.retentionConfig.retentionDays ?? "off"} maxRowsPerRoom=${this.retentionConfig.maxRowsPerRoom ?? "off"} maxDeletePerSweep=${this.retentionConfig.maxDeletePerSweep ?? "none"} intervalMinutes=${intervalMinutes}`,
     );
 
     // First sweep after a short delay (don't block boot), then on cadence.
@@ -143,7 +143,7 @@ export class MemoryRetentionService extends Service {
       );
       return [];
     }
-    if (!policyIsActive(this.config)) return [];
+    if (!policyIsActive(this.retentionConfig)) return [];
 
     this.sweeping = true;
     const results: SweepResult[] = [];
@@ -158,7 +158,7 @@ export class MemoryRetentionService extends Service {
 
       // A running per-sweep budget so the global maxDeletePerSweep is shared
       // across partitions (not applied fresh per partition).
-      let budget = this.config.maxDeletePerSweep;
+      let budget = this.retentionConfig.maxDeletePerSweep;
 
       for (const partition of RETENTION_PARTITIONS) {
         if (budget !== undefined && budget <= 0) {
@@ -203,8 +203,8 @@ export class MemoryRetentionService extends Service {
         const plan = planRetention(
           retainable,
           {
-            retentionDays: this.config.retentionDays,
-            maxRowsPerRoom: this.config.maxRowsPerRoom,
+            retentionDays: this.retentionConfig.retentionDays,
+            maxRowsPerRoom: this.retentionConfig.maxRowsPerRoom,
             maxDeletePerSweep: budget,
           },
           Date.now(),
