@@ -250,6 +250,14 @@ export {
   shouldUseSandboxExecution,
 } from "./runtime/local-execution-mode.ts";
 export {
+  LOGS_RETENTION_PREFIX,
+  LOGS_RETENTION_SERVICE,
+  type LogsRetentionAdapter,
+  LogsRetentionService,
+  type LogsSweepResult,
+  resolveLogsRetentionService,
+} from "./runtime/logs-retention-service.ts";
+export {
   planRetention,
   policyIsActive,
   type ResolvedRetentionConfig,
@@ -257,6 +265,7 @@ export {
   type RetentionPlan,
   type RetentionPolicy,
   resolveRetentionConfig,
+  resolveRetentionConfigWithPrefix,
 } from "./runtime/memory-retention.ts";
 export {
   MEMORY_RETENTION_SERVICE,

@@ -19,6 +19,7 @@
 import { AgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElizaPlugin } from "./eliza-plugin.ts";
+import { LogsRetentionService } from "./logs-retention-service.ts";
 import { MemoryRetentionService } from "./memory-retention-service.ts";
 
 /** Assert the plugin declares an `init` hook and return it (no non-null `!`). */
@@ -74,6 +75,19 @@ describe("createElizaPlugin — structure & service wiring", () => {
     expect(plugin.services).toContain(MemoryRetentionService);
     expect((plugin.services ?? []).map((s) => s.serviceType)).toContain(
       MemoryRetentionService.serviceType,
+    );
+  });
+
+  it("registers LogsRetentionService (the append-only logs-table bound)", () => {
+    const plugin = createElizaPlugin({ workspaceDir: "/tmp/ws", agentId: "u" });
+    expect(plugin.services).toContain(LogsRetentionService);
+    expect((plugin.services ?? []).map((s) => s.serviceType)).toContain(
+      LogsRetentionService.serviceType,
+    );
+    // Two distinct, independently-configured subsystems (memories vs logs),
+    // not the same service double-counted.
+    expect(MemoryRetentionService.serviceType).not.toBe(
+      LogsRetentionService.serviceType,
     );
   });
 
