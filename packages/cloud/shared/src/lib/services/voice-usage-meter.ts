@@ -1,4 +1,9 @@
-import { buildRedisClient, type RedisFactoryEnv } from "../cache/redis-factory";
+import {
+  buildRedisClient,
+  type EvalCapableRedis,
+  type RedisFactoryEnv,
+  supportsRedisEval,
+} from "../cache/redis-factory";
 
 const DAY_MS = 86_400_000;
 const COUNTER_SCALE = 1_000_000;
@@ -101,9 +106,7 @@ export class InMemoryVoiceUsageStore implements VoiceUsageStore {
   }
 }
 
-export interface AtomicVoiceUsageRedis {
-  eval(script: string, keys: string[], args: Array<string | number>): Promise<unknown>;
-}
+export interface AtomicVoiceUsageRedis extends EvalCapableRedis {}
 
 const RELEASE_LUA = `
 for _, key in ipairs(KEYS) do
@@ -156,10 +159,20 @@ export class RedisVoiceUsageStore implements VoiceUsageStore {
       ],
       [requested, orgLimit, userLimit, ttlSeconds],
     );
-    if (!Array.isArray(raw) || raw.length < 4) {
+    if (!Array.isArray(raw) || raw.length !== 4) {
       throw new Error("Voice usage store returned an invalid response");
     }
     const [allowed, deniedScope, orgRaw, userRaw] = raw.map(Number);
+    if (
+      ![allowed, deniedScope, orgRaw, userRaw].every(Number.isFinite) ||
+      (allowed !== 0 && allowed !== 1) ||
+      (allowed === 1 && deniedScope !== 0) ||
+      (allowed === 0 && deniedScope !== 1 && deniedScope !== 2) ||
+      orgRaw < 0 ||
+      userRaw < 0
+    ) {
+      throw new Error("Voice usage store returned an invalid response");
+    }
     const orgUsed = orgRaw / COUNTER_SCALE;
     const userUsed = userRaw / COUNTER_SCALE;
     if (allowed === 1) {
@@ -207,7 +220,7 @@ export function createDurableVoiceUsageStore(
   // not Lua. Local/tests use the isolate-safe in-memory store instead.
   if (env.MOCK_REDIS === "1") return null;
   const redis = buildRedisClient(env);
-  return redis ? new RedisVoiceUsageStore(redis as AtomicVoiceUsageRedis, now) : null;
+  return redis && supportsRedisEval(redis) ? new RedisVoiceUsageStore(redis, now) : null;
 }
 
 export type ByteRateDecision = {

@@ -384,10 +384,22 @@ type AgentRuntimeHealthPayload = {
   ready?: unknown;
   runtime?: unknown;
   database?: unknown;
+  databaseLiveness?: {
+    status?: unknown;
+    ok?: unknown;
+    terminal?: unknown;
+    message?: unknown;
+  } | null;
   plugins?: { failed?: unknown } | null;
   agentState?: unknown;
   startup?: { lastError?: unknown } | null;
 };
+
+type BridgeHealthProbeResult =
+  | { ok: true; kind: "healthy" }
+  | { ok: false; kind: "transient"; reason: string }
+  | { ok: false; kind: "terminal-db"; reason: string }
+  | { ok: false; kind: "unreachable"; reason: string };
 
 export interface SnapshotResult {
   success: boolean;
@@ -431,6 +443,10 @@ const RECONCILE_SSH_CMD_TIMEOUT_MS = 15_000;
 // escalates to `disconnected` so the recovery cycle's reprovision self-heal
 // still fires — an unreachable paid agent must never look "running" forever.
 const IP_RECONCILE_MAX_UNRESOLVED_CYCLES = 3;
+const DB_LIVENESS_RESTART_MARKER = "[db-liveness-restart]";
+const DB_LIVENESS_RESTART_BUDGET = 3;
+const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
+const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
 const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
 /**
  * Hydration budgets (#16639): the worker heap died buffering unbounded
@@ -4672,9 +4688,14 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return false;
 
-    const reachable = await this.probeBridgeHealth(rec);
+    const probe = await this.probeBridgeHealthDetailed(rec);
 
-    if (!reachable) {
+    if (probe.kind === "terminal-db") {
+      await this.handleTerminalDatabaseLivenessFailure(rec, probe.reason);
+      return false;
+    }
+
+    if (!probe.ok) {
       // Hysteresis: one failed cycle is not enough to evict. last_heartbeat_at
       // is bumped only on success, so its age is how long the agent has been
       // continuously unreachable. Stay running inside the grace window (the next
@@ -4688,6 +4709,7 @@ export class ElizaSandboxService {
         logger.warn("[agent-sandbox] Heartbeat miss within grace window, keeping running", {
           agentId,
           downForMs,
+          reason: probe.reason,
         });
         return false;
       }
@@ -4732,6 +4754,7 @@ export class ElizaSandboxService {
       logger.warn("[agent-sandbox] Heartbeat failed past grace window, marking disconnected", {
         agentId,
         downForMs,
+        reason: probe.reason,
         reconcileOutcome: reconcile.outcome,
       });
       await agentSandboxesRepository.update(rec.id, {
@@ -4765,8 +4788,21 @@ export class ElizaSandboxService {
   private async probeBridgeHealth(
     rec: Pick<AgentSandbox, "id" | "environment_vars" | "bridge_url">,
   ): Promise<boolean> {
-    if (!rec.bridge_url) return false;
+    return (await this.probeBridgeHealthDetailed(rec)).ok;
+  }
+
+  private async probeBridgeHealthDetailed(
+    rec: Pick<AgentSandbox, "id" | "environment_vars" | "bridge_url">,
+  ): Promise<BridgeHealthProbeResult> {
+    if (!rec.bridge_url) {
+      return { ok: false, kind: "unreachable", reason: "missing bridge_url" };
+    }
     const endpoint = new URL("/api/health", rec.bridge_url).toString();
+    let lastFailure: BridgeHealthProbeResult = {
+      ok: false,
+      kind: "unreachable",
+      reason: "bridge health probe failed",
+    };
     for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS));
@@ -4777,8 +4813,16 @@ export class ElizaSandboxService {
           headers: this.getAgentJsonHeaders(rec),
           signal: AbortSignal.timeout(10_000),
         });
-        if (res.ok) return true;
+        const classified = await this.classifyBridgeHealthResponse(res);
+        if (classified.ok) return classified;
+        lastFailure = classified;
+        if (classified.kind === "terminal-db") return classified;
       } catch (error) {
+        lastFailure = {
+          ok: false,
+          kind: "unreachable",
+          reason: error instanceof Error ? error.message : String(error),
+        };
         logger.debug("[agent-sandbox] Bridge health probe attempt failed, retrying", {
           agentId: rec.id,
           attempt,
@@ -4786,7 +4830,122 @@ export class ElizaSandboxService {
         });
       }
     }
-    return false;
+    return lastFailure;
+  }
+
+  private async classifyBridgeHealthResponse(res: Response): Promise<BridgeHealthProbeResult> {
+    let payload: AgentRuntimeHealthPayload | null = null;
+    try {
+      payload = (await res.clone().json()) as AgentRuntimeHealthPayload;
+    } catch {
+      // error-policy:J3 malformed health JSON is an explicit unreachable probe result
+      payload = null;
+    }
+    const databaseLiveness = payload?.databaseLiveness;
+    const terminal =
+      databaseLiveness?.terminal === true ||
+      databaseLiveness?.status === "terminal_error" ||
+      payload?.database === "terminal_error";
+    if (terminal) {
+      return {
+        ok: false,
+        kind: "terminal-db",
+        reason:
+          typeof databaseLiveness?.message === "string"
+            ? databaseLiveness.message
+            : "database liveness probe reported terminal failure",
+      };
+    }
+    const transient =
+      databaseLiveness?.status === "transient_error" || payload?.database === "transient_error";
+    if (transient) {
+      return {
+        ok: false,
+        kind: "transient",
+        reason:
+          typeof databaseLiveness?.message === "string"
+            ? databaseLiveness.message
+            : "database liveness probe reported transient failure",
+      };
+    }
+    if (res.ok) return { ok: true, kind: "healthy" };
+    return {
+      ok: false,
+      kind: "unreachable",
+      reason: `/api/health returned ${res.status}`,
+    };
+  }
+
+  private parseDatabaseLivenessRestartMarker(message: string | null): {
+    count: number;
+    at: number | null;
+  } {
+    if (!message?.includes(DB_LIVENESS_RESTART_MARKER)) {
+      return { count: 0, at: null };
+    }
+    const countMatch = message.match(/count=(\d+)/);
+    const atMatch = message.match(/at=([0-9TZ:.-]+)/);
+    const parsedAt = atMatch ? Date.parse(atMatch[1]) : Number.NaN;
+    return {
+      count: countMatch ? Number(countMatch[1]) : 0,
+      at: Number.isFinite(parsedAt) ? parsedAt : null,
+    };
+  }
+
+  private async handleTerminalDatabaseLivenessFailure(
+    rec: AgentSandbox,
+    reason: string,
+  ): Promise<void> {
+    const marker = this.parseDatabaseLivenessRestartMarker(rec.error_message);
+    const now = Date.now();
+    // Keep this budget scoped to DB-liveness recovery. error_count is shared
+    // with unrelated reconciliation paths and must not consume this budget.
+    // An old DB-liveness episode also ages out so an agent is not permanently
+    // barred from automatic recovery after three failures over its lifetime.
+    const markerAge = marker.at === null ? null : now - marker.at;
+    const markerActive =
+      markerAge !== null && markerAge >= 0 && markerAge < DB_LIVENESS_RESTART_BUDGET_WINDOW_MS;
+    const count = markerActive ? marker.count : 0;
+    if (markerActive && markerAge !== null && markerAge < DB_LIVENESS_RESTART_COOLDOWN_MS) {
+      logger.warn("[agent-sandbox] Terminal database liveness failure inside restart cooldown", {
+        agentId: rec.id,
+        count,
+        reason,
+      });
+      return;
+    }
+    if (count >= DB_LIVENESS_RESTART_BUDGET) {
+      await agentSandboxesRepository.update(rec.id, {
+        status: "error",
+        error_count: count,
+        error_message: `${DB_LIVENESS_RESTART_MARKER} budget-exhausted count=${count} at=${new Date(now).toISOString()} reason=${reason}`,
+      });
+      logger.error("[agent-sandbox] Terminal database liveness restart budget exhausted", {
+        agentId: rec.id,
+        count,
+        reason,
+      });
+      return;
+    }
+
+    const nextCount = count + 1;
+    await agentSandboxesRepository.update(rec.id, {
+      error_count: nextCount,
+      error_message: `${DB_LIVENESS_RESTART_MARKER} count=${nextCount} at=${new Date(now).toISOString()} reason=${reason}`,
+    });
+    const { provisioningJobService } = await import("./provisioning-jobs");
+    const result = await provisioningJobService.enqueueAgentRestartOnce({
+      agentId: rec.id,
+      organizationId: rec.organization_id,
+      userId: rec.user_id,
+    });
+    logger.warn("[agent-sandbox] Enqueued restart for terminal database liveness failure", {
+      agentId: rec.id,
+      jobId: result.job.id,
+      created: result.created,
+      count: nextCount,
+      reason,
+    });
   }
 
   /**

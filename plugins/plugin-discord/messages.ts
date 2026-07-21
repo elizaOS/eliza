@@ -563,9 +563,33 @@ export async function createDiscordMessageMemoryOnce(
 		platformMessageId?: string;
 	} = { operation: "discord-message-persist" },
 ): Promise<Memory | null> {
+	const result = await persistDiscordMessageMemoryOnce(
+		runtime,
+		memory,
+		context,
+	);
+	return result.memory;
+}
+
+interface DiscordMessageMemoryPersistenceResult {
+	memory: Memory;
+	created: boolean;
+}
+
+async function persistDiscordMessageMemoryOnce(
+	runtime: Pick<
+		IAgentRuntime,
+		"agentId" | "createMemory" | "getMemoryById" | "logger"
+	>,
+	memory: Memory,
+	context: {
+		operation: string;
+		platformMessageId?: string;
+	} = { operation: "discord-message-persist" },
+): Promise<DiscordMessageMemoryPersistenceResult> {
 	if (!memory.id) {
 		const id = await runtime.createMemory(memory, "messages");
-		return { ...memory, id };
+		return { memory: { ...memory, id }, created: true };
 	}
 
 	const existing = await runtime.getMemoryById(memory.id);
@@ -580,11 +604,11 @@ export async function createDiscordMessageMemoryOnce(
 			},
 			"Skipping duplicate Discord message memory",
 		);
-		return existing;
+		return { memory: existing, created: false };
 	}
 
 	await runtime.createMemory(memory, "messages");
-	return memory;
+	return { memory, created: true };
 }
 
 /** Options handed to `User.send` when delivering a Discord DM reply. */
@@ -710,14 +734,44 @@ export class MessageManager {
 		);
 	}
 
-	private async persistInboundMemory(memory: Memory): Promise<void> {
+	private async persistInboundMemory(
+		memory: Memory,
+		platformMessageId?: string,
+	): Promise<"created" | "existing" | "missing-id"> {
 		if (!memory.id) {
-			return;
+			return "missing-id";
 		}
 
-		await createDiscordMessageMemoryOnce(this.runtime, memory, {
+		const result = await persistDiscordMessageMemoryOnce(this.runtime, memory, {
 			operation: "discord-inbound",
+			platformMessageId,
 		});
+		return result.created ? "created" : "existing";
+	}
+
+	private async hasPersistedInboundMemory(
+		memory: Memory,
+		platformMessageId?: string,
+	): Promise<boolean> {
+		if (!memory.id) {
+			return false;
+		}
+
+		const existing = await this.runtime.getMemoryById(memory.id);
+		if (!existing) {
+			return false;
+		}
+
+		this.runtime.logger.debug(
+			{
+				src: "plugin:discord",
+				agentId: this.runtime.agentId,
+				messageId: platformMessageId,
+				memoryId: memory.id,
+			},
+			"Skipping already persisted Discord inbound message",
+		);
+		return true;
 	}
 
 	private markMessageAsProcessing(messageId: string): boolean {
@@ -734,6 +788,43 @@ export class MessageManager {
 
 		this.recentlyProcessedMessageIds.set(messageId, now);
 		return true;
+	}
+
+	private releaseMessageProcessing(messageId: string | undefined): void {
+		if (messageId) {
+			this.recentlyProcessedMessageIds.delete(messageId);
+		}
+	}
+
+	private async releaseMessageProcessingIfInboundNotPersisted(
+		messageId: string | undefined,
+		inboundMemoryId: UUID | undefined,
+	): Promise<boolean> {
+		let inboundMemoryCommitted = false;
+		if (inboundMemoryId) {
+			try {
+				inboundMemoryCommitted =
+					!!(await this.runtime.getMemoryById(inboundMemoryId));
+			} catch (persistenceCheckError) {
+				this.runtime.logger.warn(
+					{
+						src: "plugin:discord",
+						agentId: this.runtime.agentId,
+						messageId,
+						memoryId: inboundMemoryId,
+						error:
+							persistenceCheckError instanceof Error
+								? persistenceCheckError.message
+								: String(persistenceCheckError),
+					},
+					"Could not verify Discord inbound persistence after failure",
+				);
+			}
+		}
+		if (!inboundMemoryCommitted) {
+			this.releaseMessageProcessing(messageId);
+		}
+		return inboundMemoryCommitted;
 	}
 
 	/**
@@ -855,6 +946,8 @@ export class MessageManager {
 				? message.id
 				: undefined;
 		const strictModeShouldProcess = isDM || isBotDirectlyAddressed;
+		let inboundMemoryCommitted = false;
+		let inboundMemoryId: UUID | undefined;
 
 		const userName = message.author.bot
 			? `${message.author.username}#${message.author.discriminator}`
@@ -1006,6 +1099,7 @@ export class MessageManager {
 				);
 				return;
 			}
+			inboundMemoryId = newMessage.id;
 
 			await this.runtime.ensureConnection({
 				entityId: newMessage.entityId,
@@ -1033,11 +1127,20 @@ export class MessageManager {
 				},
 			});
 
+			if (await this.hasPersistedInboundMemory(newMessage, message.id)) {
+				inboundMemoryCommitted = true;
+				return;
+			}
+
 			if (
 				!this.discordSettings.autoReply ||
 				lifeOpsPassiveConnectorsEnabled(this.runtime)
 			) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
 				this.runtime.logger.debug(
 					{
 						src: "plugin:discord",
@@ -1050,7 +1153,11 @@ export class MessageManager {
 			}
 
 			if (ignoresOtherTarget) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
 				this.runtime.logger.debug(
 					{
 						src: "plugin:discord",
@@ -1063,7 +1170,11 @@ export class MessageManager {
 			}
 
 			if (strictModeEnabled && !strictModeShouldProcess) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
 				this.runtime.logger.debug(
 					{
 						src: "plugin:discord",
@@ -1088,7 +1199,11 @@ export class MessageManager {
 
 			const canSendResult = canSendMessage(message.channel);
 			if (!canSendResult.canSend) {
-				await this.persistInboundMemory(newMessage);
+				const inboundPersistence = await this.persistInboundMemory(
+					newMessage,
+					message.id,
+				);
+				inboundMemoryCommitted = inboundPersistence !== "missing-id";
 				return this.runtime.logger.warn(
 					{
 						src: "plugin:discord",
@@ -1751,6 +1866,13 @@ export class MessageManager {
 							: "I hit a provider issue while generating the reply. Please retry.",
 					);
 				}
+				if (!inboundMemoryCommitted) {
+					inboundMemoryCommitted =
+						await this.releaseMessageProcessingIfInboundNotPersisted(
+							message.id,
+							inboundMemoryId,
+						);
+				}
 				return;
 			} finally {
 				if (generationTimeoutHandle) {
@@ -1764,6 +1886,13 @@ export class MessageManager {
 				await finalizePendingDraft();
 			}
 		} catch (error) {
+			if (!inboundMemoryCommitted) {
+				inboundMemoryCommitted =
+					await this.releaseMessageProcessingIfInboundNotPersisted(
+						message.id,
+						inboundMemoryId,
+					);
+			}
 			this.runtime.logger.error(
 				{
 					src: "plugin:discord",

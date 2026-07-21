@@ -243,6 +243,11 @@ try {
   );
   write(
     dir,
+    "packages/homepage/tests/e2e/visual.spec.ts",
+    "import { test } from 'playwright/test';\ntest('visual', () => {});\n",
+  );
+  write(
+    dir,
     "packages/demo/src/driver.real.test.ts",
     "import { test } from 'vitest';\ntest('real driver', () => {});\n",
   );
@@ -305,6 +310,18 @@ try {
       assert.ok(
         !out.vitest_tests.includes("packages/demo/test/e2e/flow.test.ts"),
         `e2e-dir test leaked into vitest lane: ${out.vitest_tests.join(",")}`,
+      );
+      assert.ok(
+        !out.bun_tests.includes(
+          "packages/homepage/tests/e2e/visual.spec.ts",
+        ),
+        `Playwright spec leaked into bun lane: ${out.bun_tests.join(",")}`,
+      );
+      assert.ok(
+        !out.vitest_tests.includes(
+          "packages/homepage/tests/e2e/visual.spec.ts",
+        ),
+        `Playwright spec leaked into vitest lane: ${out.vitest_tests.join(",")}`,
       );
     },
   );

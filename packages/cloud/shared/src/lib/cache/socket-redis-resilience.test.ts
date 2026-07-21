@@ -22,6 +22,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { createServer, type Socket as NetSocket, type Server } from "node:net";
+import { RedisVoiceUsageStore } from "../services/voice-usage-meter";
 import { SocketRedis } from "./socket-redis";
 
 const servers: Server[] = [];
@@ -124,6 +125,67 @@ describe("SocketRedis connection resilience", () => {
     expect(await redis.get("fresh")).toBeNull();
     expect(connections).toBe(2);
 
+    await redis.quit();
+  });
+
+  test("voice admission fails closed on outage and recovers on a fresh connection", async () => {
+    let connections = 0;
+    const server = createServer((socket: NetSocket) => {
+      connections += 1;
+      if (connections === 1) {
+        socket.once("data", () => socket.destroy());
+        return;
+      }
+      socket.once("data", () => socket.write("*4\r\n:1\r\n:0\r\n:1000000\r\n:1000000\r\n"));
+    });
+    const port = await listen(server);
+    const redis = new SocketRedis(`redis://127.0.0.1:${port}`);
+    const store = new RedisVoiceUsageStore(redis, () => Date.UTC(2026, 6, 10));
+    const identity = { organizationId: "org", userId: "user" };
+    const limits = { organizationDailyMinutes: 10, userDailyMinutes: 5 };
+
+    await expect(store.checkAndRecord(identity, 1, limits)).rejects.toThrow();
+    await expect(store.checkAndRecord(identity, 1, limits)).resolves.toMatchObject({
+      allowed: true,
+      organizationUsedMinutes: 1,
+      userUsedMinutes: 1,
+    });
+    expect(connections).toBe(2);
+
+    await redis.quit();
+  });
+
+  test("serializes EVAL in Upstash order and decodes nested RESP arrays", async () => {
+    let request = "";
+    const server = createServer((socket: NetSocket) => {
+      socket.once("data", (chunk) => {
+        request = chunk.toString("utf8");
+        socket.write("*3\r\n:1\r\n*2\r\n$3\r\norg\r\n$4\r\nuser\r\n$-1\r\n");
+      });
+    });
+    const port = await listen(server);
+    const redis = new SocketRedis(`redis://127.0.0.1:${port}`);
+
+    expect(await redis.eval("return 1", ["org", "user"], [7, "arg"])).toEqual([
+      1,
+      ["org", "user"],
+      null,
+    ]);
+    expect(request).toBe(
+      "*7\r\n$4\r\nEVAL\r\n$8\r\nreturn 1\r\n$1\r\n2\r\n$3\r\norg\r\n$4\r\nuser\r\n$1\r\n7\r\n$3\r\narg\r\n",
+    );
+
+    await redis.quit();
+  });
+
+  test("propagates an error nested inside an EVAL response", async () => {
+    const server = createServer((socket: NetSocket) => {
+      socket.once("data", () => socket.write("*2\r\n:1\r\n-ERR script failed\r\n"));
+    });
+    const port = await listen(server);
+    const redis = new SocketRedis(`redis://127.0.0.1:${port}`);
+
+    await expect(redis.eval("return 1", [], [])).rejects.toThrow("ERR script failed");
     await redis.quit();
   });
 });
