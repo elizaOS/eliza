@@ -23,3 +23,9 @@ packages/eliza-hub/deployment/hetzner-staging/scripts/steward-evidence.mjs
 packages/eliza-hub/deployment/hetzner-staging/scripts/storage-evidence.mjs
 packages/eliza-hub/services/merge-steward/scripts/sync-openapi-production-evidence-schema.mjs
 packages/eliza-hub/services/merge-steward/src/cli.js
+
+# ACP stdio entrypoint is exercised via spawned runtime contract tests; importing it in-process starts the protocol server.
+packages/examples/code/src/acp.ts
+
+# The cloud-shared package test wrapper is exercised by a spawned real-process contract suite; importing it starts the test runner.
+packages/cloud/shared/scripts/run-bun-tests.mjs

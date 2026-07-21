@@ -73,10 +73,11 @@
   },
   "dependencies": {
     "@octokit/rest": "^22.0.0",
+    "@smithers-orchestrator/engine": "0.28.0",
     "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.21.1",
-    "smithers-orchestrator": "0.26.1",
+    "smithers-orchestrator": "0.28.0",
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
@@ -89,6 +90,7 @@
     "@types/node": "^25.2.3",
     "bun-types": "1.3.14",
     "git-workspace-service": "0.4.5",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
@@ -99,7 +101,7 @@
     "format:check": "bunx @biomejs/biome format .",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
     "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:e2e:manual": "node tests/e2e/acp-codex-smoke.mjs",

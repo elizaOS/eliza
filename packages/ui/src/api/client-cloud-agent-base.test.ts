@@ -13,6 +13,7 @@ import {
   buildCloudSharedAgentApiBase,
   buildDedicatedCloudAgentApiBase,
   dedicatedCloudAgentIdFromBase,
+  directCloudSharedAgentIdFromBase,
   isCloudAgentsCollectionBase,
   isElizaCloudControlPlaneAgentlessBase,
 } from "../utils/cloud-agent-base";
@@ -173,6 +174,22 @@ describe("cloud-agent-base helpers", () => {
     expect(
       dedicatedCloudAgentIdFromBase("https://agent-123.staging.elizacloud.ai"),
     ).toBe("agent-123");
+  });
+
+  it("directCloudSharedAgentIdFromBase extracts REST and legacy bridge agent ids", () => {
+    expect(
+      directCloudSharedAgentIdFromBase(
+        "https://api.elizacloud.ai/api/v1/eliza/agents/agent-123",
+      ),
+    ).toBe("agent-123");
+    expect(
+      directCloudSharedAgentIdFromBase(
+        "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent%20id/bridge",
+      ),
+    ).toBe("agent id");
+    expect(
+      directCloudSharedAgentIdFromBase("https://agent-123.elizacloud.ai"),
+    ).toBeNull();
   });
 
   it("isCloudAgentsCollectionBase flags blank/bare/collection bases", () => {

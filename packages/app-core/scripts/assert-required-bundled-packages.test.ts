@@ -335,6 +335,37 @@ describe("assertRequiredBundledPackagesLanded", () => {
     ).toBe(false);
   });
 
+  it("drops the smithers-orchestrator AWS infra clients but keeps client-s3", () => {
+    // client-codebuild nests a credential-provider chain whose relative paths
+    // exceed the Electrobun self-extractor tar-safe limit; ecs/cloudwatch-logs
+    // are the same class of unused cloud-orchestration client. They must be
+    // skipped from the packaged desktop runtime bundle.
+    for (const client of [
+      "@aws-sdk/client-codebuild",
+      "@aws-sdk/client-ecs",
+      "@aws-sdk/client-cloudwatch-logs",
+    ]) {
+      expect(
+        shouldSkipPackagedDependency("@smithers-orchestrator/aws", client),
+      ).toBe(true);
+    }
+    // client-s3 is hoisted at the runtime root and consumed broadly, so it
+    // must stay bundled.
+    expect(
+      shouldSkipPackagedDependency(
+        "@smithers-orchestrator/aws",
+        "@aws-sdk/client-s3",
+      ),
+    ).toBe(false);
+    // The skip is scoped to the smithers requester only.
+    expect(
+      shouldSkipPackagedDependency(
+        "@elizaos/plugin-agent-orchestrator",
+        "@aws-sdk/client-codebuild",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps lucide-react as a runtime dependency", () => {
     const packageRoot = path.join(tmpDir, "icon-consumer");
     mkdirSync(packageRoot, { recursive: true });

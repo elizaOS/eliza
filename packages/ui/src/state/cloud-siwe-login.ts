@@ -119,6 +119,73 @@ async function readBody(res: Response): Promise<string> {
   }
 }
 
+/** Bounded pre-signature nonce attempts before surfacing the failure. */
+const NONCE_MAX_ATTEMPTS = 3;
+/** Backoff between nonce attempts: 500ms then 1000ms (1.5s total worst case). */
+const NONCE_RETRY_BASE_DELAY_MS = 500;
+
+/**
+ * Fetch the SIWE nonce with bounded retry on *transient* failures.
+ *
+ * The nonce leg is Redis-backed and fails CLOSED: when the cloud's nonce store
+ * is briefly unreachable it returns `503 nonce_storage_unavailable` (unlike
+ * rate-limiting, which fails open). A single un-retried fetch turns that
+ * momentary blip into a hard, user-visible login failure — the same transient
+ * class the downstream voice-session mint already retries (#16627). Mirror that
+ * bounded policy here so the auth leg upstream of voice is not the weak link.
+ *
+ * Retryable: network/transport error (no response) and any 5xx (503 included).
+ * Non-retryable: 4xx — a real, deterministic rejection the user must see now.
+ * Runs entirely before any wallet signature, so retrying is side-effect free;
+ * each attempt consumes a fresh server nonce.
+ */
+async function fetchSiweNonce(base: string): Promise<SiweNonceResponse> {
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= NONCE_MAX_ATTEMPTS; attempt += 1) {
+    let nonceRes: Response;
+    try {
+      nonceRes = await fetch(`${base}/api/auth/siwe/nonce`, {
+        headers: { accept: "application/json" },
+      });
+    } catch (error) {
+      // Transport failure (offline, DNS, TLS, aborted): transient, retry.
+      lastError =
+        error instanceof Error
+          ? error
+          : new Error(
+              `Eliza Cloud SIWE nonce request failed: ${String(error)}`,
+            );
+      if (attempt >= NONCE_MAX_ATTEMPTS) break;
+      await new Promise((resolve) =>
+        setTimeout(resolve, NONCE_RETRY_BASE_DELAY_MS * attempt),
+      );
+      continue;
+    }
+    if (!nonceRes.ok) {
+      const body = await readBody(nonceRes);
+      const failure = new Error(
+        `Eliza Cloud SIWE nonce request failed: ${nonceRes.status} ${body}`,
+      );
+      // Only 5xx is transient (e.g. 503 nonce_storage_unavailable). A 4xx is a
+      // deterministic rejection — surface it immediately, do not retry.
+      if (nonceRes.status < 500 || attempt >= NONCE_MAX_ATTEMPTS) throw failure;
+      lastError = failure;
+      await new Promise((resolve) =>
+        setTimeout(resolve, NONCE_RETRY_BASE_DELAY_MS * attempt),
+      );
+      continue;
+    }
+    const nonce: unknown = await nonceRes.json();
+    if (!isNonceResponse(nonce)) {
+      throw new Error("Eliza Cloud SIWE nonce response was malformed.");
+    }
+    return nonce;
+  }
+  throw (
+    lastError ?? new Error("Eliza Cloud SIWE nonce request failed: exhausted")
+  );
+}
+
 /**
  * Run the SIWE handshake through the injected wallet and persist the verified
  * session. Resolves the API key on success; null when no provider is injected
@@ -147,18 +214,7 @@ export async function siweLoginWithInjectedWallet(
   const address = getAddress(rawAddress);
 
   const base = cloudApiBase.replace(/\/+$/, "");
-  const nonceRes = await fetch(`${base}/api/auth/siwe/nonce`, {
-    headers: { accept: "application/json" },
-  });
-  if (!nonceRes.ok) {
-    throw new Error(
-      `Eliza Cloud SIWE nonce request failed: ${nonceRes.status} ${await readBody(nonceRes)}`,
-    );
-  }
-  const nonce: unknown = await nonceRes.json();
-  if (!isNonceResponse(nonce)) {
-    throw new Error("Eliza Cloud SIWE nonce response was malformed.");
-  }
+  const nonce = await fetchSiweNonce(base);
 
   const message = buildSiweMessage({
     domain: nonce.domain,

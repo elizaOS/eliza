@@ -1,0 +1,252 @@
+/**
+ * Shared-runtime resolver coverage proves cold-scope hydration stays on the
+ * org-scoped auth path while preserving the shared-tier and bootstrap-window
+ * routing boundaries consumed by the Cloud agent REST adapter.
+ *
+ * COLDPATH-FIX-2026-07-21 also pins the short-TTL scope cache: a fresh session's
+ * FIRST cold hit runs the full authoritative gate and populates the cache; the
+ * SECOND hit skips the cold user/org+agent Hyperdrive waves BUT still re-runs the
+ * revoke-invalidated credential validation and the org-match check, so a revoked
+ * or re-scoped key can never be served a stale agent, and a non-shared/bootstrap
+ * agent is never cached.
+ */
+
+import { beforeEach, describe, expect, mock, test } from "bun:test";
+
+const requireUserOrApiKeyWithOrgLookup = mock(
+  async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
+    user: { organization_id: "org-1" },
+    orgLookupResult: await lookup("org-1"),
+  }),
+);
+const findByIdAndOrg = mock(async () => null);
+
+// Scope-cache key derivation for the CURRENT request. Default: an API-key
+// request whose hash-prefix is stable, so hit/miss can be exercised.
+let scopeHashPrefixBehavior: () => Promise<string | null> = async () => "keyhashpref0000";
+const apiKeyScopeHashPrefix = mock(() => scopeHashPrefixBehavior());
+
+mock.module("../../auth/workers-hono-auth", () => ({
+  requireUserOrApiKeyWithOrgLookup,
+  apiKeyScopeHashPrefix,
+}));
+
+mock.module("../../../db/repositories/agent-sandboxes", () => ({
+  agentSandboxesRepository: {
+    findByIdAndOrg,
+  },
+}));
+
+// In-memory cache double: records reads/writes so the tests can assert the
+// second cold hit skips the DB waves and the not-OK shapes are never cached.
+const cacheStore = new Map<string, unknown>();
+const cacheGet = mock(async (key: string) => (cacheStore.has(key) ? cacheStore.get(key) : null));
+const cacheSet = mock(async (key: string, value: unknown) => {
+  cacheStore.set(key, value);
+});
+mock.module("../../cache/client", () => ({
+  cache: { get: cacheGet, set: cacheSet },
+}));
+
+// validateApiKey double for the cache-HIT re-validation gate.
+let validateBehavior: () => Promise<unknown> = async () => ({
+  is_active: true,
+  organization_id: "org-1",
+  expires_at: null,
+});
+const validateApiKey = mock(() => validateBehavior());
+mock.module("../../services/api-keys", () => ({
+  apiKeysService: { validateApiKey },
+}));
+
+mock.module("../../utils/logger", () => ({
+  logger: { debug: () => {}, warn: () => {}, error: () => {}, info: () => {} },
+}));
+
+const { resolveSharedAgent } = await import("./resolve-shared-agent");
+
+function contextWithAgentId(agentId?: string, headers: Record<string, string> = {}) {
+  const lower: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) lower[k.toLowerCase()] = v;
+  return {
+    req: {
+      param: (name: string) => (name === "agentId" ? agentId : undefined),
+      header: (name: string) => lower[name.toLowerCase()],
+    },
+  };
+}
+
+// A request carrying an API key so the scope-cache HIT path (which re-validates
+// the presented key) can run end to end.
+function apiKeyContext(agentId?: string) {
+  return contextWithAgentId(agentId, { "X-API-Key": "eliza_testkey" });
+}
+
+function agent(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "agent-1",
+    organization_id: "org-1",
+    execution_tier: "shared",
+    status: "running",
+    bridge_url: null,
+    agent_name: "Shared Agent",
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  requireUserOrApiKeyWithOrgLookup.mockClear();
+  findByIdAndOrg.mockClear();
+  findByIdAndOrg.mockResolvedValue(null);
+  cacheGet.mockClear();
+  cacheSet.mockClear();
+  validateApiKey.mockClear();
+  cacheStore.clear();
+  scopeHashPrefixBehavior = async () => "keyhashpref0000";
+  validateBehavior = async () => ({ is_active: true, organization_id: "org-1", expires_at: null });
+});
+
+describe("resolveSharedAgent", () => {
+  test("returns 400 without auth or repository work when the route param is missing", async () => {
+    await expect(resolveSharedAgent(contextWithAgentId() as never)).resolves.toEqual({
+      error: "Missing agent id",
+      status: 400,
+    });
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+  });
+
+  test("uses the overlapped org lookup to resolve a shared agent", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toMatchObject({
+      agentId: "agent-1",
+      orgId: "org-1",
+      agentName: "Shared Agent",
+    });
+    expect(findByIdAndOrg).toHaveBeenCalledWith("agent-1", "org-1");
+  });
+
+  test("allows a dedicated agent only during its first bootstrap window", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({
+        execution_tier: "dedicated-lazy",
+        status: "provisioning",
+        agent_name: null,
+      }),
+    );
+
+    await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toMatchObject({
+      agentName: "Eliza",
+      agentId: "agent-1",
+    });
+  });
+
+  test("rejects non-shared agents outside the bootstrap window", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({
+        execution_tier: "dedicated-lazy",
+        status: "running",
+        bridge_url: "https://agent.example.test",
+      }),
+    );
+
+    await expect(resolveSharedAgent(apiKeyContext("agent-1") as never)).resolves.toEqual({
+      error: "Not a shared-runtime agent",
+      status: 404,
+    });
+  });
+
+  test("returns 404 when no org-scoped agent exists", async () => {
+    await expect(resolveSharedAgent(apiKeyContext("agent-missing") as never)).resolves.toEqual({
+      error: "Agent not found",
+      status: 404,
+    });
+  });
+});
+
+describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
+  test("first cold hit runs the full gate and populates the cache", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+    // Cached bundle carries the org + agent so the next hit skips the DB waves.
+    const [, cachedValue] = cacheSet.mock.calls[0];
+    expect(cachedValue).toMatchObject({ orgId: "org-1" });
+  });
+
+  test("second cold-session hit skips the user/org+agent DB waves", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    // Populate.
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+    findByIdAndOrg.mockClear();
+
+    // Second hit: served from cache. The expensive cold path must NOT run.
+    const result = await resolveSharedAgent(apiKeyContext("agent-1") as never);
+
+    expect(result).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    // The credential was STILL re-validated on the hit (revoke gate preserved).
+    expect(validateApiKey).toHaveBeenCalled();
+  });
+
+  test("a revoked key on a cache hit falls back to the full gate (never served stale)", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    // Key revoked between turns: validation now returns inactive.
+    validateBehavior = async () => ({
+      is_active: false,
+      organization_id: "org-1",
+      expires_at: null,
+    });
+
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    // Fell back to the authoritative gate rather than serving the cached agent.
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a re-scoped key (different org) on a cache hit does not read another org's agent", async () => {
+    findByIdAndOrg.mockResolvedValue(agent());
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    // Key moved to a different org (detach): the cached org no longer matches.
+    validateBehavior = async () => ({
+      is_active: true,
+      organization_id: "org-2",
+      expires_at: null,
+    });
+
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+
+  test("a dedicated-bootstrap agent is never cached (time-sensitive eligibility)", async () => {
+    findByIdAndOrg.mockResolvedValue(
+      agent({ execution_tier: "dedicated-lazy", status: "provisioning" }),
+    );
+
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    // Served (bootstrap window) but NOT written to the scope cache.
+    expect(cacheSet).not.toHaveBeenCalled();
+  });
+
+  test("session/JWT requests (no api key hash) never touch the scope cache", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    expect(cacheGet).not.toHaveBeenCalled();
+    expect(cacheSet).not.toHaveBeenCalled();
+    // Authoritative gate still ran.
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+});

@@ -249,7 +249,10 @@ describe("account health mutation lifecycle", () => {
 
     const inserted = account("inserted", { priority: 4 });
     await pool.upsert(inserted);
-    expect(pool.get("inserted", "anthropic-subscription")).toEqual(inserted);
+    expect(pool.get("inserted", "anthropic-subscription")).toEqual({
+      ...inserted,
+      prioritySource: "generated",
+    });
     expect(pool.list("anthropic-subscription")).toHaveLength(4);
 
     await pool.deleteMetadata("anthropic-subscription", "inserted");

@@ -27,7 +27,10 @@ import type { CartesiaWebSocketLike } from "../../../../../shared/src/lib/servic
 import { InMemoryVoiceUsageStore } from "../../../../../shared/src/lib/services/voice-usage-meter";
 import { mintVoiceSessionToken } from "../../../../../shared/src/lib/voice-session/jwt";
 import type { ServerControlFrame } from "../../../../../shared/src/lib/voice-session/protocol";
-import { __resetVoiceSessionRegistryForTests } from "../../../../../shared/src/lib/voice-session/session-registry";
+import {
+  __resetVoiceSessionRegistryForTests,
+  getVoiceSessionRegistry,
+} from "../../../../../shared/src/lib/voice-session/session-registry";
 import { installVoiceSessionTestSigningKey } from "../../../../../shared/src/lib/voice-session/test-signing";
 import { attachVoiceWsHandler } from "../../../../../shared/src/lib/voice-session/ws-handler";
 import type { DeepgramFluxWebSocket } from "../../stt/providers/deepgram-flux";
@@ -282,6 +285,7 @@ const CLAIMS = {
 async function connectSession(opts: {
   client: FakeClientSocket;
   fetchImpl: typeof fetch;
+  prewarmElizaContext?: () => Promise<void>;
 }): Promise<{ sessionId: string }> {
   const minted = await mintVoiceSessionToken(CLAIMS);
   const usageStore = new InMemoryVoiceUsageStore();
@@ -306,6 +310,9 @@ async function connectSession(opts: {
         elizaAuthorization: "Bearer eliza-server",
         elizaModel: "gemma-4-31b",
         fetchImpl: opts.fetchImpl,
+        ...(opts.prewarmElizaContext
+          ? { prewarmElizaContext: opts.prewarmElizaContext }
+          : {}),
         usageStore,
         usageLimits: { organizationDailyMinutes: 600, userDailyMinutes: 120 },
         downlink,
@@ -403,6 +410,35 @@ describe("voice-session WS lifecycle", () => {
     expect(client.controlTypes()).toContain("usage");
   });
 
+  test("duplicate final events for one semantic turn dispatch and persist exactly once", async () => {
+    const requests: Array<{ body: unknown }> = [];
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: (async (url: string, init?: RequestInit) => {
+        requests.push({
+          body: JSON.parse(String(init?.body)),
+        });
+        return makeCanonicalChunkFetch(["Only once."])(url, init);
+      }) as unknown as typeof fetch,
+    });
+
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "hello agent");
+    flux.emitTurn("EndOfTurn", "hello agent");
+    await flush();
+    await flush();
+
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      body: { text: "hello agent" },
+    });
+    expect(
+      client.controlFrames.filter((frame) => frame.t === "stt_final"),
+    ).toHaveLength(1);
+  });
+
   test("hello -> ready -> full turn produces stt_final, llm_first_text, speaking, usage", async () => {
     const client = new FakeClientSocket();
     await connectSession({
@@ -435,6 +471,150 @@ describe("voice-session WS lifecycle", () => {
     expect(client.audioFrames.length).toBeGreaterThan(0);
     expect(client.controlTypes()).toContain("speaking_end");
     expect(client.controlTypes()).toContain("usage");
+  });
+
+  test("prewarms Eliza tenancy context when the live session starts", async () => {
+    let prewarmCalls = 0;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["ok."]),
+      prewarmElizaContext: async () => {
+        prewarmCalls += 1;
+      },
+    });
+    expect(client.controlTypes()).toContain("ready");
+    expect(prewarmCalls).toBe(1);
+  });
+
+  test("caps Cartesia server-side buffer delay for realtime voice", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A short answer."]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer briefly");
+    await flush();
+    await flush();
+
+    // Cartesia defaults to a 3000ms server aggregation window; the realtime
+    // session must cap it so already-aggregated clauses start synthesis fast.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map((entry) => JSON.parse(entry) as { max_buffer_delay_ms?: number })
+      .filter((entry) => entry.max_buffer_delay_ms !== undefined);
+    expect(requests.length).toBeGreaterThan(0);
+    for (const request of requests) {
+      expect(request.max_buffer_delay_ms).toBe(250);
+    }
+  });
+
+  test("prewarms Cartesia as soon as the response turn starts", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["A short answer."]),
+    });
+
+    const before = FakeCartesiaSocket.instances.length;
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer briefly");
+
+    // Socket creation is synchronous at turn start, before any asynchronous LLM
+    // delta is consumed, so its handshake overlaps model generation.
+    expect(FakeCartesiaSocket.instances.length).toBe(before + 1);
+    await flush();
+    await flush();
+  });
+
+  test("empty LLM reply cancels the prewarmed Cartesia context", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch([]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "say nothing");
+    await flush();
+    await flush();
+
+    // The socket was opened speculatively at turn start; with no speakable
+    // output it must be cancelled (closed) rather than leaked, and the turn
+    // still closes out with a usage frame.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    expect(cartesia.closed).toBe(true);
+    expect(client.controlTypes()).toContain("usage");
+    expect(client.controlTypes()).not.toContain("speaking_start");
+  });
+
+  test("starts TTS after 24 chars before an unpunctuated LLM stream completes", async () => {
+    let aborted = false;
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(
+        ["This answer starts speaking now and keeps going"],
+        {
+          hang: true,
+          onAbort: () => {
+            aborted = true;
+          },
+        },
+      ),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "answer quickly");
+    await flush();
+    await flush();
+
+    // No punctuation or stream-end was delivered, but the voice-specific
+    // clause ceiling must already have sent a continuation phrase to Cartesia.
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests.length).toBeGreaterThan(0);
+    expect(requests[0]?.continue).toBe(true);
+    expect(client.controlTypes()).toContain("speaking_start");
+
+    client.clientSend(JSON.stringify({ t: "barge_in" }));
+    await flush();
+    expect(aborted).toBe(true);
+  });
+
+  test("starts TTS from a phrase prefix while retaining a non-empty terminal suffix", async () => {
+    const client = new FakeClientSocket();
+    await connectSession({
+      client,
+      fetchImpl: makeSseFetch(["Sunlight reaches Earth quickly."]),
+    });
+    const flux = FakeFluxSocket.instances.at(-1)!;
+    flux.emitTurn("StartOfTurn");
+    flux.emitTurn("EndOfTurn", "tell me about sunlight");
+    await flush();
+    await flush();
+
+    const cartesia = FakeCartesiaSocket.instances.at(-1)!;
+    const requests = cartesia.sent
+      .map(
+        (entry) =>
+          JSON.parse(entry) as { transcript?: string; continue?: boolean },
+      )
+      .filter((entry) => entry.transcript);
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    expect(requests.map((request) => request.transcript).join("")).toBe(
+      "Sunlight reaches Earth quickly.",
+    );
+    expect(requests[0]?.continue).toBe(true);
+    expect(requests.at(-1)?.continue).toBe(false);
   });
 
   test("canonical chunk/done SSE frames are parsed into speakable LLM text", async () => {
@@ -748,6 +928,31 @@ describe("voice-session WS lifecycle", () => {
     await flush();
     expect(aborted).toBe(true);
     expect(client.controlTypes()).toContain("interrupted");
+  });
+
+  test("abrupt mid-turn disconnect synchronously reaps the registry before replacement hello", async () => {
+    const source = new FakeClientSocket();
+    await connectSession({
+      client: source,
+      fetchImpl: makeSseFetch(["still generating"], { hang: true }),
+    });
+    const sourceFlux = FakeFluxSocket.instances.at(-1)!;
+    sourceFlux.emitTurn("StartOfTurn");
+    sourceFlux.emitTurn("EndOfTurn", "disconnect me");
+    await flush();
+    expect(getVoiceSessionRegistry().size()).toBe(1);
+
+    source.clientClose();
+    expect(getVoiceSessionRegistry().size()).toBe(0);
+    expect(sourceFlux.closed).toBe(true);
+
+    const replacement = new FakeClientSocket();
+    await connectSession({
+      client: replacement,
+      fetchImpl: makeSseFetch(["recovered."]),
+    });
+    expect(replacement.controlTypes()).toContain("ready");
+    expect(getVoiceSessionRegistry().size()).toBe(1);
   });
 
   test("bye tears down providers, unregisters, closes cleanly, and revokes the bootstrap token", async () => {

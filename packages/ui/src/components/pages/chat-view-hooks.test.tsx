@@ -39,11 +39,12 @@ import {
 
 type RealtimeHarnessState = Omit<
   UseRealtimeVoiceSessionState,
-  "start" | "stop" | "bargeIn" | "unlock"
+  "start" | "stop" | "bargeIn" | "unlock" | "reportFallback"
 > & {
-  start: ReturnType<
-    typeof vi.fn<() => Promise<RealtimeVoiceStartOutcome>>
+  reportFallback: ReturnType<
+    typeof vi.fn<UseRealtimeVoiceSessionState["reportFallback"]>
   >;
+  start: ReturnType<typeof vi.fn<() => Promise<RealtimeVoiceStartOutcome>>>;
   stop: ReturnType<typeof vi.fn<() => Promise<void>>>;
   bargeIn: ReturnType<typeof vi.fn<() => void>>;
   unlock: ReturnType<typeof vi.fn<() => Promise<void>>>;
@@ -61,6 +62,8 @@ const realtimeHarness = vi.hoisted(() => {
     needsUnlock: false,
     paused: false,
     error: null as RealtimeVoiceError | null,
+    fallbackReason: null,
+    reportFallback: vi.fn(),
     speaker: null,
     start: vi.fn<() => Promise<RealtimeVoiceStartOutcome>>(async () => ({
       kind: "live",
@@ -185,6 +188,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     realtimeHarness.state.agentSpeaking = false;
     realtimeHarness.state.needsUnlock = false;
     realtimeHarness.state.error = null;
+    realtimeHarness.state.reportFallback.mockClear();
     realtimeHarness.state.start.mockReset();
     realtimeHarness.state.start.mockResolvedValue({ kind: "live" });
     realtimeHarness.state.stop.mockClear();
@@ -257,7 +261,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(voiceState.startListening).not.toHaveBeenCalled();
   });
 
-  it("hands the mic tap to batch after a NON-actionable error (copy promises standard voice)", async () => {
+  it("retries realtime on the next mic tap after a non-actionable fallback", async () => {
     realtimeHarness.state.available = true;
     realtimeHarness.state.error = {
       kind: "consent" as const,
@@ -278,8 +282,8 @@ describe("useChatVoiceController voice playback unlock", () => {
       await Promise.resolve();
     });
 
-    expect(realtimeHarness.state.start).not.toHaveBeenCalled();
-    expect(voiceState.startListening).toHaveBeenCalledTimes(1);
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+    expect(voiceState.startListening).not.toHaveBeenCalled();
   });
 
   it("routes the primary mic to realtime when the force-armed session is available", async () => {
@@ -349,6 +353,9 @@ describe("useChatVoiceController voice playback unlock", () => {
 
     expect(realtimeHarness.state.start).not.toHaveBeenCalled();
     expect(voiceState.startListening).toHaveBeenCalledTimes(1);
+    expect(realtimeHarness.state.reportFallback).toHaveBeenCalledWith(
+      "missing-identity",
+    );
   });
 
   it("does not fall back to batch after realtime has owned the mic", async () => {
@@ -519,6 +526,7 @@ describe("useChatVoiceController voice playback unlock", () => {
     }));
     realtimeHarness.state.available = true;
     realtimeHarness.state.active = true;
+    realtimeHarness.state.status = "listening";
     const { result, rerender } = renderHook(() =>
       useChatVoiceController({
         ...baseOptions,
@@ -533,6 +541,14 @@ describe("useChatVoiceController voice playback unlock", () => {
       captureMode: "compose",
     });
 
+    realtimeHarness.state.status = "thinking";
+    await act(async () => {
+      rerender();
+      await Promise.resolve();
+    });
+    expect(result.current.composerVoice.isListening).toBe(false);
+
+    realtimeHarness.state.status = "speaking";
     realtimeHarness.state.agentSpeaking = true;
     await act(async () => {
       rerender();
@@ -559,6 +575,37 @@ describe("useChatVoiceController voice playback unlock", () => {
       expect.objectContaining({ disabled: true, mode: "vad-gated" }),
     );
     expect(continuousHarness.state.resume).not.toHaveBeenCalled();
+  });
+
+  it("releases the batch engine when the toggle-driven auto-start falls back to batch (#16661)", async () => {
+    // The mint-404 shape: feature-disabled resolves fallback-to-batch WITHOUT
+    // setting error and keeps `available` true — the latch must release the
+    // realtime want so hands-free keeps working via batch.
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.start.mockResolvedValueOnce({
+      kind: "fallback-to-batch",
+      reason: "mint",
+    });
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        continuousMode: "vad-gated",
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await waitFor(() =>
+      expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1),
+    );
+    // Batch passive capture re-enables — hands-free stays alive.
+    await waitFor(() =>
+      expect(useContinuousChatMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ disabled: false, mode: "vad-gated" }),
+      ),
+    );
+    // The released want must not re-trigger an auto-start loop.
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
   });
 
   it("falls back to the batch path after realtime becomes unavailable", () => {

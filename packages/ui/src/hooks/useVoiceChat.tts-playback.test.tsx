@@ -22,11 +22,11 @@ vi.mock("../api/csrf-client", () => ({
     requestViaAgentTransport(...args),
 }));
 
-import { globalAudioCache } from "../voice/voice-chat-types";
 import {
   DEFAULT_BOOT_CONFIG,
   setBootConfig,
 } from "../config/boot-config-store";
+import { globalAudioCache } from "../voice/voice-chat-types";
 import {
   __resetDirectCloudTtsFallbackWarnings,
   useVoiceChat,

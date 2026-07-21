@@ -16,6 +16,7 @@ export const APPLE_CDN_AASA_URL =
   "https://app-site-association.cdn-apple.com/a/v1/eliza.app";
 export const MAX_AASA_BYTES = 128 * 1024;
 export const RELEASE_APP_ID = "25877RY2EH.ai.elizaos.app";
+export const RELEASE_WEBCREDENTIAL_APPS = [RELEASE_APP_ID];
 export const RELEASE_APPLINK_COMPONENTS = [
   { "/": "/auth/callback" },
   { "/": "/chat*" },
@@ -81,10 +82,27 @@ function validateAssociationSemantics(association) {
     failures.push("applinks contains unreviewed fields");
   }
   if (
+    !association?.webcredentials ||
+    !isDeepStrictEqual(Object.keys(association.webcredentials).sort(), ["apps"])
+  ) {
+    failures.push("webcredentials contains unreviewed fields");
+  }
+  if (
+    !isDeepStrictEqual(
+      association?.webcredentials?.apps,
+      RELEASE_WEBCREDENTIAL_APPS,
+    )
+  ) {
+    failures.push(`webcredentials does not bind exactly ${RELEASE_APP_ID}`);
+  }
+  if (
     !association ||
     typeof association !== "object" ||
     Array.isArray(association) ||
-    !isDeepStrictEqual(Object.keys(association).sort(), ["applinks"])
+    !isDeepStrictEqual(Object.keys(association).sort(), [
+      "applinks",
+      "webcredentials",
+    ])
   ) {
     failures.push(
       "association contains unreviewed top-level services or fields",
@@ -187,13 +205,15 @@ export function validateReleaseAppConfiguration({ project, entitlements }) {
         (match) => match[1],
       )
     : [];
-  if (!isDeepStrictEqual(domains, ["applinks:eliza.app"])) {
+  if (
+    !isDeepStrictEqual(domains, [
+      "applinks:eliza.app",
+      "webcredentials:eliza.app",
+    ])
+  ) {
     failures.push(
-      "App entitlements must contain exactly the applinks:eliza.app associated domain",
+      "App entitlements must contain exactly the applinks and webcredentials eliza.app domains",
     );
-  }
-  if (entitlements.includes("webcredentials:")) {
-    failures.push("App entitlements must not claim unreviewed webcredentials");
   }
   return failures;
 }

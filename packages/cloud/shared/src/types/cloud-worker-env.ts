@@ -101,6 +101,12 @@ export interface Bindings {
    * different hosted model for a deployment.
    */
   WHISPER_STT_MODEL?: string;
+  /**
+   * Positive integer byte cap for the whole STT multipart request, including
+   * MIME boundaries and field overhead. Unset defaults to 25 MiB; invalid
+   * values fail the STT route closed instead of weakening the upload guard.
+   */
+  VOICE_STT_MAX_MULTIPART_BYTES?: string;
 
   // ---- Realtime voice-session WebSocket (Phase 1, flag-gated) ----
   /**

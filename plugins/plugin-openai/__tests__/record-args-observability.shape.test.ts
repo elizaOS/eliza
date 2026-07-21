@@ -231,8 +231,9 @@ describe("#13111 strict-safe record/map tool args", () => {
 });
 
 /**
- * response_format still uses plain schema sanitization: it is not a tool-call
- * contract and has no returned arguments to reverse-map.
+ * Ordinary response_format schemas still use plain schema sanitization: unlike
+ * the planner envelope, they are not a tool-call contract and have no returned
+ * arguments to reverse-map.
  */
 describe("response_format schema sanitization stays closed", () => {
   it("still closes a map with no tool transform", () => {

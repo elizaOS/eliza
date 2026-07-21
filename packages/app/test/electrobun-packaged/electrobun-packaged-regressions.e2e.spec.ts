@@ -30,6 +30,7 @@ const SETTINGS_ROUTE = "/settings";
 const SETTINGS_MEDIA_ROUTE = "/settings/voice";
 const PLUGINS_ROUTE = "/apps/plugins";
 const NAVIGATE_SETTINGS_EVENT = "eliza:navigate:settings";
+const NAVIGATE_VIEW_EVENT = "eliza:navigate:view";
 const NOTIFICATION_TEST_BRIDGE_SYMBOL = "elizaos.ui.notification-store-tests";
 
 test.describe.configure({ mode: "serial" });
@@ -85,13 +86,15 @@ function getRouteNavigationScript(route: string): string {
       `const targetRoute = ${JSON.stringify(route)};`,
       `const settingsSection = ${JSON.stringify(settingsSection)};`,
       `const readCurrentRoute = () => ${getCurrentRouteExpression()};`,
-      `window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
-      `  detail: { section: settingsSection },`,
-      `}));`,
       `const targetHash = "#" + settingsSection;`,
-      `if (window.location.hash !== targetHash) {`,
-      `  window.history.replaceState(null, "", targetHash);`,
-      `  window.dispatchEvent(new HashChangeEvent("hashchange"));`,
+      `if (readCurrentRoute() !== ${JSON.stringify(SETTINGS_ROUTE)} || window.location.hash !== targetHash) {`,
+      `  window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_SETTINGS_EVENT)}, {`,
+      `    detail: { section: settingsSection },`,
+      `  }));`,
+      `  if (window.location.hash !== targetHash) {`,
+      `    window.history.replaceState(null, "", targetHash);`,
+      `    window.dispatchEvent(new HashChangeEvent("hashchange"));`,
+      `  }`,
       `}`,
       `const currentRoute = readCurrentRoute();`,
     ].join("\n");
@@ -100,14 +103,10 @@ function getRouteNavigationScript(route: string): string {
   return [
     `const targetRoute = ${JSON.stringify(route)};`,
     `const readCurrentRoute = () => ${getCurrentRouteExpression()};`,
-    `if (window.location.protocol === "file:") {`,
-    `  const targetHash = "#" + targetRoute;`,
-    `  if (window.location.hash !== targetHash) {`,
-    `    window.location.hash = targetHash;`,
-    `  }`,
-    `} else if (window.location.pathname !== targetRoute) {`,
-    `  window.history.pushState(null, "", targetRoute);`,
-    `  window.dispatchEvent(new Event("popstate"));`,
+    `if (readCurrentRoute() !== targetRoute) {`,
+    `  window.dispatchEvent(new CustomEvent(${JSON.stringify(NAVIGATE_VIEW_EVENT)}, {`,
+    `    detail: { viewPath: targetRoute },`,
+    `  }));`,
     `}`,
     `const currentRoute = readCurrentRoute();`,
   ].join("\n");
@@ -299,10 +298,7 @@ async function openRouteAndWait(
             ?.getAttribute("data-agent-id")
             ?.replace(/^section-/, "") ?? null,
         voiceSectionActive: Boolean(
-          window.location.hash === "#voice" &&
-            document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
-        ) || Boolean(
-          document.querySelector('[data-agent-id="section-voice"][aria-current="page"]'),
+          document.querySelector('[data-testid="voice-section-continuous-row"]'),
         ),
         rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
         bodyText: (document.body?.innerText || "")
@@ -322,8 +318,8 @@ async function openRouteAndWait(
       current.selector === selector &&
       current.found &&
       (route === SETTINGS_MEDIA_ROUTE
-        ? current.hash === "#voice" &&
-          current.activeSettingsSection === "voice" &&
+        ? current.route === SETTINGS_ROUTE &&
+          current.hash === "#voice" &&
           current.voiceSectionActive
         : current.route === route),
     {
@@ -364,10 +360,7 @@ async function waitForMediaSettingsRoute(
               ?.getAttribute("data-agent-id")
               ?.replace(/^section-/, "") ?? null,
           voiceSectionActive: Boolean(
-            window.location.hash === "#voice" &&
-              document.querySelector(${JSON.stringify(SETTINGS_SELECTOR)}),
-          ) || Boolean(
-            document.querySelector('[data-agent-id="section-voice"][aria-current="page"]'),
+            document.querySelector('[data-testid="voice-section-continuous-row"]'),
           ),
           rootHtmlLength: document.getElementById("root")?.innerHTML.length ?? 0,
           bodyText: (document.body?.innerText || "")
@@ -385,8 +378,8 @@ async function waitForMediaSettingsRoute(
     (current) =>
       current.ok &&
       current.shellReady &&
+      current.route === SETTINGS_ROUTE &&
       current.hash === "#voice" &&
-      current.activeSettingsSection === "voice" &&
       current.voiceSectionActive,
     {
       timeout: 20_000,
@@ -914,33 +907,14 @@ async function seedReturningInstallState(
             error: "Desktop renderer did not expose an API base while seeding returning-install state.",
           };
         }
-        const label = (() => {
-          try {
-            return new URL(apiBase).host || apiBase;
-          } catch {
-            return apiBase;
-          }
-        })();
-        localStorage.removeItem("elizaos:first-run:force-fresh");
-        localStorage.setItem("eliza:first-run-complete", "1");
-        localStorage.setItem("eliza:setup:step", "activate");
-        localStorage.setItem("eliza:ui-shell-mode", "native");
-        localStorage.setItem(
-          "elizaos:active-server",
-          JSON.stringify({
-            id: \`remote:\${apiBase}\`,
-            kind: "remote",
-            label,
-            apiBase,
-          }),
-        );
-        return {
-          ok: true,
-          firstRunComplete: localStorage.getItem("eliza:first-run-complete"),
-          setupStep: localStorage.getItem("eliza:setup:step"),
-          uiShellMode: localStorage.getItem("eliza:ui-shell-mode"),
-          activeServer: localStorage.getItem("elizaos:active-server"),
-        };
+        const bridge = window.__ELIZA_PACKAGED_SHELL_STORAGE_TEST__;
+        if (!bridge || typeof bridge.seedReturningInstallState !== "function") {
+          return {
+            ok: false,
+            error: "Packaged shell storage test bridge is unavailable.",
+          };
+        }
+        return bridge.seedReturningInstallState(apiBase);
       } catch (error) {
         return {
           ok: false,

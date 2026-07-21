@@ -71,6 +71,7 @@ import {
   elizaCodingContainerImageAdvisoryLockSql,
   elizaProvisionAdvisoryLockSql,
 } from "./eliza-provision-lock";
+import { headscaleIntegration } from "./headscale-integration";
 import { applyManagedAgentInferenceEnvDefaults } from "./managed-eliza-config";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { JOB_TYPES } from "./provisioning-job-types";
@@ -86,7 +87,9 @@ import {
   type RunSharedAgentTurnResult,
   resolveSharedAgentTurnModel,
   runSharedAgentTurn,
+  runSharedAgentTurnStream,
   type SharedAgentCharacter,
+  type SharedAgentTurnUsage,
   type SharedTurnMessage,
 } from "./shared-runtime/run-shared-agent-turn";
 import { applyPooledCredentialsToBootstrapEnv } from "./team-credential-pool/bootstrap-env";
@@ -381,10 +384,22 @@ type AgentRuntimeHealthPayload = {
   ready?: unknown;
   runtime?: unknown;
   database?: unknown;
+  databaseLiveness?: {
+    status?: unknown;
+    ok?: unknown;
+    terminal?: unknown;
+    message?: unknown;
+  } | null;
   plugins?: { failed?: unknown } | null;
   agentState?: unknown;
   startup?: { lastError?: unknown } | null;
 };
+
+type BridgeHealthProbeResult =
+  | { ok: true; kind: "healthy" }
+  | { ok: false; kind: "transient"; reason: string }
+  | { ok: false; kind: "terminal-db"; reason: string }
+  | { ok: false; kind: "unreachable"; reason: string };
 
 export interface SnapshotResult {
   success: boolean;
@@ -428,6 +443,10 @@ const RECONCILE_SSH_CMD_TIMEOUT_MS = 15_000;
 // escalates to `disconnected` so the recovery cycle's reprovision self-heal
 // still fires — an unreachable paid agent must never look "running" forever.
 const IP_RECONCILE_MAX_UNRESOLVED_CYCLES = 3;
+const DB_LIVENESS_RESTART_MARKER = "[db-liveness-restart]";
+const DB_LIVENESS_RESTART_BUDGET = 3;
+const DB_LIVENESS_RESTART_COOLDOWN_MS = 10 * 60_000;
+const DB_LIVENESS_RESTART_BUDGET_WINDOW_MS = 60 * 60_000;
 const SNAPSHOT_FETCH_TIMEOUT_MS = 120_000;
 const SNAPSHOT_RESTORE_TIMEOUT_MS = 120_000;
 const UPGRADE_RUNTIME_HEALTH_GATE_TIMEOUT_MS = 30_000;
@@ -2449,15 +2468,23 @@ export class ElizaSandboxService {
     turn: RunSharedAgentTurnResult,
     estimatedInputTokens: number,
   ): AIUsage {
-    const inputTokens = turn.usage?.inputTokens ?? turn.usage?.promptTokens ?? 0;
-    const outputTokens = turn.usage?.outputTokens ?? turn.usage?.completionTokens ?? 0;
-    const totalTokens = turn.usage?.totalTokens ?? inputTokens + outputTokens;
+    return this.sharedRuntimeBillingUsageForReply(turn.reply, turn.usage, estimatedInputTokens);
+  }
+
+  private sharedRuntimeBillingUsageForReply(
+    reply: string,
+    usage: SharedAgentTurnUsage | undefined,
+    estimatedInputTokens: number,
+  ): AIUsage {
+    const inputTokens = usage?.inputTokens ?? usage?.promptTokens ?? 0;
+    const outputTokens = usage?.outputTokens ?? usage?.completionTokens ?? 0;
+    const totalTokens = usage?.totalTokens ?? inputTokens + outputTokens;
     if (inputTokens > 0 || outputTokens > 0 || totalTokens > 0) {
-      return turn.usage ?? {};
+      return usage ?? {};
     }
     return {
       inputTokens: estimatedInputTokens,
-      outputTokens: estimateInputTokens([{ content: turn.reply }]),
+      outputTokens: estimateInputTokens([{ content: reply }]),
     };
   }
 
@@ -2655,6 +2682,207 @@ export class ElizaSandboxService {
       // Refund the upfront hold on any post-reserve failure, then rethrow.
       await settleReservation(0);
       throw settleError;
+    }
+  }
+
+  private async bridgeSharedMessageStream(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<Response> {
+    const params = rpc.params && typeof rpc.params === "object" ? rpc.params : {};
+    const text = typeof params.text === "string" ? params.text : "";
+    if (!text.trim()) {
+      return this.createBridgeSseErrorResponse("message.send requires params.text");
+    }
+
+    const channelId = this.stableBridgeChannelId(rec.id, params);
+    const [character, history] = await Promise.all([
+      this.buildSharedRuntimeCharacter(rec),
+      this.loadSharedRuntimeHistory(rec.id, channelId),
+    ]);
+    const billingModel = resolveSharedAgentTurnModel(character.model);
+    const estimatedInputTokens = billingModel
+      ? estimateInputTokens(this.sharedRuntimeBillingPrompt(character, history, text))
+      : 0;
+    const idempotencyKey = `shared-runtime:${rec.id}:${channelId}:${crypto.randomUUID()}`;
+    const requestId = `shared-runtime-${crypto.randomUUID()}`;
+    const billingContext: BillingContext | null = billingModel
+      ? {
+          organizationId: rec.organization_id,
+          userId: rec.user_id,
+          model: billingModel,
+          requestId,
+          description: `Shared runtime turn: ${character.name}`,
+          metadata: {
+            agentId: rec.id,
+            channelId,
+            executionTier: rec.execution_tier,
+            idempotencyKey,
+            prompt: text,
+            runtime: "shared",
+          },
+        }
+      : null;
+    let reservation: CreditReservation | null = null;
+    let reservationSettled = false;
+    const settleReservation = async (
+      actualCost: number,
+    ): Promise<CreditReconciliationResult | null> => {
+      if (!reservation || reservationSettled) return null;
+      reservationSettled = true;
+      return (await reservation.reconcile(actualCost)) ?? null;
+    };
+    if (billingContext) {
+      try {
+        reservation = await reserveCredits(billingContext, estimatedInputTokens, 500);
+      } catch (error) {
+        // error-policy:J1 boundary translation — no SSE bytes exist before credit
+        // reservation, so the HTTP route can still return the canonical 402.
+        if (error instanceof InsufficientCreditsError) {
+          throw new InsufficientCreditsApiError(
+            `Insufficient credits. Required: $${error.required.toFixed(4)}, Available: $${error.available.toFixed(4)}`,
+          );
+        }
+        throw error;
+      }
+    }
+
+    try {
+      const turn = await runSharedAgentTurnStream({
+        character,
+        history,
+        message: text,
+      });
+      if (turn.degraded) {
+        await settleReservation(0);
+        return this.createBridgeSseTextResponse(turn.reply ?? "");
+      }
+      const parts = turn.parts;
+      if (!parts) {
+        await settleReservation(0);
+        return this.createBridgeSseErrorResponse("Shared runtime stream did not start");
+      }
+
+      const messageId = crypto.randomUUID();
+      const encoder = new TextEncoder();
+      const stream = new ReadableStream<Uint8Array>({
+        start: async (controller) => {
+          let reply = "";
+          let finished = false;
+          try {
+            for await (const part of parts) {
+              if (part.type === "text-delta") {
+                reply += part.text;
+                controller.enqueue(
+                  encoder.encode(
+                    `event: chunk\ndata: ${JSON.stringify({
+                      messageId,
+                      chunk: part.text,
+                      text: part.text,
+                      fullText: reply,
+                      timestamp: Date.now(),
+                    })}\n\n`,
+                  ),
+                );
+                continue;
+              }
+
+              finished = true;
+              const finalReply = part.text.trim() || reply.trim() || "…";
+              const sentAt = Date.now();
+              const nextHistory: SharedTurnMessage[] = [
+                ...history,
+                { role: "user", content: text.trim(), createdAt: sentAt },
+                { role: "assistant", content: finalReply, createdAt: sentAt + 1 },
+              ];
+              await this.saveSharedRuntimeHistory(rec.id, channelId, nextHistory);
+              if (billingContext) {
+                try {
+                  const billing = await billUsage(
+                    billingContext,
+                    this.sharedRuntimeBillingUsageForReply(
+                      finalReply,
+                      part.usage,
+                      estimatedInputTokens,
+                    ),
+                  );
+                  const settlement = await settleReservation(billing.totalCost);
+                  const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+                    type: "chat",
+                    content: finalReply,
+                    prompt: text,
+                  });
+                  if (usageRecord) {
+                    await aiBillingRecordsService
+                      .record({
+                        context: billingContext,
+                        billing,
+                        usageRecord,
+                        idempotencyKey,
+                        reconciliation: settlement,
+                      })
+                      .catch((error) => {
+                        logger.error("[shared-runtime] AI billing audit record failed", {
+                          error: error instanceof Error ? error.message : String(error),
+                          agentId: rec.id,
+                        });
+                      });
+                  }
+                } catch (error) {
+                  // error-policy:J1 billing boundary translation — the user got
+                  // the reply, but a failed meter write must release the hold.
+                  await settleReservation(0);
+                  logger.error("[shared-runtime] billing failed", {
+                    error: error instanceof Error ? error.message : String(error),
+                    agentId: rec.id,
+                  });
+                }
+              }
+              controller.enqueue(
+                encoder.encode(
+                  `event: done\ndata: ${JSON.stringify({ messageId, text: finalReply })}\n\n`,
+                ),
+              );
+            }
+            if (!finished) {
+              await settleReservation(0);
+              controller.enqueue(
+                encoder.encode(
+                  `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream ended without completion" })}\n\n`,
+                ),
+              );
+            }
+          } catch (error) {
+            // error-policy:J1 stream boundary translation — partial SSE streams
+            // cannot become HTTP errors, so emit a terminal error frame.
+            await settleReservation(0);
+            logger.warn("[shared-runtime] stream failed", {
+              error: error instanceof Error ? error.message : String(error),
+              agentId: rec.id,
+            });
+            controller.enqueue(
+              encoder.encode(
+                `event: error\ndata: ${JSON.stringify({ message: "Shared runtime stream failed" })}\n\n`,
+              ),
+            );
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
+      });
+    } catch (error) {
+      // error-policy:J2 context is added by runSharedAgentTurnStream; the bridge
+      // boundary only owns releasing the reservation before rethrowing.
+      await settleReservation(0);
+      throw error;
     }
   }
 
@@ -3970,24 +4198,8 @@ export class ElizaSandboxService {
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     if (rec.execution_tier === "shared") {
-      const sharedResponse = await this.bridgeSharedMessageSend(rec, rpc);
-      const text = sharedResponse.result?.text;
-      if (typeof text === "string" && text.trim()) {
-        return this.createBridgeSseTextResponse(text);
-      }
-      if (sharedResponse.error) {
-        // A credit-reserve rejection is not a stream failure — no SSE bytes
-        // exist yet, so throw the canonical typed 402 for the route boundary
-        // to translate (messages/stream → 402 JSON; agent stream routes'
-        // errorToResponse / control-plane errorBody map ApiError natively).
-        // Wrapping it in an SSE error frame here would bury a permanent
-        // add-credits condition inside a 200 stream.
-        if (sharedResponse.error.code === BRIDGE_INSUFFICIENT_CREDITS_CODE) {
-          throw new InsufficientCreditsApiError(sharedResponse.error.message);
-        }
-        return this.createBridgeSseErrorResponse(sharedResponse.error.message);
-      }
-      return fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null;
+      const response = await this.bridgeSharedMessageStream(rec, rpc);
+      return response ?? (fallbackText ? this.createBridgeSseTextResponse(fallbackText) : null);
     }
 
     if (!rec.bridge_url) {
@@ -4361,9 +4573,14 @@ export class ElizaSandboxService {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) return false;
 
-    const reachable = await this.probeBridgeHealth(rec);
+    const probe = await this.probeBridgeHealthDetailed(rec);
 
-    if (!reachable) {
+    if (probe.kind === "terminal-db") {
+      await this.handleTerminalDatabaseLivenessFailure(rec, probe.reason);
+      return false;
+    }
+
+    if (!probe.ok) {
       // Hysteresis: one failed cycle is not enough to evict. last_heartbeat_at
       // is bumped only on success, so its age is how long the agent has been
       // continuously unreachable. Stay running inside the grace window (the next
@@ -4377,6 +4594,7 @@ export class ElizaSandboxService {
         logger.warn("[agent-sandbox] Heartbeat miss within grace window, keeping running", {
           agentId,
           downForMs,
+          reason: probe.reason,
         });
         return false;
       }
@@ -4421,6 +4639,7 @@ export class ElizaSandboxService {
       logger.warn("[agent-sandbox] Heartbeat failed past grace window, marking disconnected", {
         agentId,
         downForMs,
+        reason: probe.reason,
         reconcileOutcome: reconcile.outcome,
       });
       await agentSandboxesRepository.update(rec.id, {
@@ -4454,8 +4673,21 @@ export class ElizaSandboxService {
   private async probeBridgeHealth(
     rec: Pick<AgentSandbox, "id" | "environment_vars" | "bridge_url">,
   ): Promise<boolean> {
-    if (!rec.bridge_url) return false;
+    return (await this.probeBridgeHealthDetailed(rec)).ok;
+  }
+
+  private async probeBridgeHealthDetailed(
+    rec: Pick<AgentSandbox, "id" | "environment_vars" | "bridge_url">,
+  ): Promise<BridgeHealthProbeResult> {
+    if (!rec.bridge_url) {
+      return { ok: false, kind: "unreachable", reason: "missing bridge_url" };
+    }
     const endpoint = new URL("/api/health", rec.bridge_url).toString();
+    let lastFailure: BridgeHealthProbeResult = {
+      ok: false,
+      kind: "unreachable",
+      reason: "bridge health probe failed",
+    };
     for (let attempt = 0; attempt < HEARTBEAT_PROBE_ATTEMPTS; attempt++) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, HEARTBEAT_PROBE_RETRY_MS));
@@ -4466,8 +4698,16 @@ export class ElizaSandboxService {
           headers: this.getAgentJsonHeaders(rec),
           signal: AbortSignal.timeout(10_000),
         });
-        if (res.ok) return true;
+        const classified = await this.classifyBridgeHealthResponse(res);
+        if (classified.ok) return classified;
+        lastFailure = classified;
+        if (classified.kind === "terminal-db") return classified;
       } catch (error) {
+        lastFailure = {
+          ok: false,
+          kind: "unreachable",
+          reason: error instanceof Error ? error.message : String(error),
+        };
         logger.debug("[agent-sandbox] Bridge health probe attempt failed, retrying", {
           agentId: rec.id,
           attempt,
@@ -4475,7 +4715,122 @@ export class ElizaSandboxService {
         });
       }
     }
-    return false;
+    return lastFailure;
+  }
+
+  private async classifyBridgeHealthResponse(res: Response): Promise<BridgeHealthProbeResult> {
+    let payload: AgentRuntimeHealthPayload | null = null;
+    try {
+      payload = (await res.clone().json()) as AgentRuntimeHealthPayload;
+    } catch {
+      // error-policy:J3 malformed health JSON is an explicit unreachable probe result
+      payload = null;
+    }
+    const databaseLiveness = payload?.databaseLiveness;
+    const terminal =
+      databaseLiveness?.terminal === true ||
+      databaseLiveness?.status === "terminal_error" ||
+      payload?.database === "terminal_error";
+    if (terminal) {
+      return {
+        ok: false,
+        kind: "terminal-db",
+        reason:
+          typeof databaseLiveness?.message === "string"
+            ? databaseLiveness.message
+            : "database liveness probe reported terminal failure",
+      };
+    }
+    const transient =
+      databaseLiveness?.status === "transient_error" || payload?.database === "transient_error";
+    if (transient) {
+      return {
+        ok: false,
+        kind: "transient",
+        reason:
+          typeof databaseLiveness?.message === "string"
+            ? databaseLiveness.message
+            : "database liveness probe reported transient failure",
+      };
+    }
+    if (res.ok) return { ok: true, kind: "healthy" };
+    return {
+      ok: false,
+      kind: "unreachable",
+      reason: `/api/health returned ${res.status}`,
+    };
+  }
+
+  private parseDatabaseLivenessRestartMarker(message: string | null): {
+    count: number;
+    at: number | null;
+  } {
+    if (!message?.includes(DB_LIVENESS_RESTART_MARKER)) {
+      return { count: 0, at: null };
+    }
+    const countMatch = message.match(/count=(\d+)/);
+    const atMatch = message.match(/at=([0-9TZ:.-]+)/);
+    const parsedAt = atMatch ? Date.parse(atMatch[1]) : Number.NaN;
+    return {
+      count: countMatch ? Number(countMatch[1]) : 0,
+      at: Number.isFinite(parsedAt) ? parsedAt : null,
+    };
+  }
+
+  private async handleTerminalDatabaseLivenessFailure(
+    rec: AgentSandbox,
+    reason: string,
+  ): Promise<void> {
+    const marker = this.parseDatabaseLivenessRestartMarker(rec.error_message);
+    const now = Date.now();
+    // Keep this budget scoped to DB-liveness recovery. error_count is shared
+    // with unrelated reconciliation paths and must not consume this budget.
+    // An old DB-liveness episode also ages out so an agent is not permanently
+    // barred from automatic recovery after three failures over its lifetime.
+    const markerAge = marker.at === null ? null : now - marker.at;
+    const markerActive =
+      markerAge !== null && markerAge >= 0 && markerAge < DB_LIVENESS_RESTART_BUDGET_WINDOW_MS;
+    const count = markerActive ? marker.count : 0;
+    if (markerActive && markerAge !== null && markerAge < DB_LIVENESS_RESTART_COOLDOWN_MS) {
+      logger.warn("[agent-sandbox] Terminal database liveness failure inside restart cooldown", {
+        agentId: rec.id,
+        count,
+        reason,
+      });
+      return;
+    }
+    if (count >= DB_LIVENESS_RESTART_BUDGET) {
+      await agentSandboxesRepository.update(rec.id, {
+        status: "error",
+        error_count: count,
+        error_message: `${DB_LIVENESS_RESTART_MARKER} budget-exhausted count=${count} at=${new Date(now).toISOString()} reason=${reason}`,
+      });
+      logger.error("[agent-sandbox] Terminal database liveness restart budget exhausted", {
+        agentId: rec.id,
+        count,
+        reason,
+      });
+      return;
+    }
+
+    const nextCount = count + 1;
+    await agentSandboxesRepository.update(rec.id, {
+      error_count: nextCount,
+      error_message: `${DB_LIVENESS_RESTART_MARKER} count=${nextCount} at=${new Date(now).toISOString()} reason=${reason}`,
+    });
+    const { provisioningJobService } = await import("./provisioning-jobs");
+    const result = await provisioningJobService.enqueueAgentRestartOnce({
+      agentId: rec.id,
+      organizationId: rec.organization_id,
+      userId: rec.user_id,
+    });
+    logger.warn("[agent-sandbox] Enqueued restart for terminal database liveness failure", {
+      agentId: rec.id,
+      jobId: result.job.id,
+      created: result.created,
+      count: nextCount,
+      reason,
+    });
   }
 
   /**
@@ -5479,6 +5834,10 @@ export class ElizaSandboxService {
       },
       dockerImage: digestPinnedImageRef(dockerImage, toDigest),
       excludeNodeId: oldNodeId,
+      // Preserve the LIVE Headscale node during the overlap (#16565): the
+      // provider records its id as metadata.previousVpnNodeId; it is deleted
+      // by id below only after the atomic swap succeeds.
+      reclaimStaleVpnNode: false,
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -5672,6 +6031,13 @@ export class ElizaSandboxService {
 
     // Old container teardown is best-effort: traffic is already on blue.
     await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // The preserved live node (recorded pre-provision under
+    // reclaimStaleVpnNode=false) is deleted BY ID only now, after the swap —
+    // by-name would be ambiguous with blue sharing the hostname, and every
+    // rolled-back path above deliberately leaves it untouched (#16565).
+    if (blueMeta?.previousVpnNodeId) {
+      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+    }
 
     logger.info("[agent-sandbox] Fleet upgrade completed", {
       agentId,
@@ -5803,6 +6169,10 @@ export class ElizaSandboxService {
       },
       dockerImage: digestPinnedImageRef(rollbackImage, toDigest),
       excludeNodeId: oldNodeId,
+      // Preserve the LIVE Headscale node during the overlap (#16565): the
+      // provider records its id as metadata.previousVpnNodeId; it is deleted
+      // by id below only after the atomic swap succeeds.
+      reclaimStaleVpnNode: false,
     };
 
     let blueHandle: Awaited<ReturnType<typeof provider.create>>;
@@ -5997,6 +6367,10 @@ export class ElizaSandboxService {
 
     // Old (post-upgrade) container teardown is best-effort: traffic is on blue.
     await provider.stopOnSpecificNode(oldNode, oldContainerName, 30);
+    // Same post-cutover, by-id-only deletion of the preserved node (#16565).
+    if (blueMeta?.previousVpnNodeId) {
+      await headscaleIntegration.removeVpnNodeById(blueMeta.previousVpnNodeId);
+    }
 
     logger.info("[agent-sandbox] Fleet rollback completed", {
       agentId,
