@@ -115,18 +115,21 @@ export async function verifyStewardEmailSignInCode(
   return narrowEmailVerifyResult(data);
 }
 
-// Discriminate the verify response into the SDK union at runtime instead of a
-// blind `as unknown as` double-cast. StewardMfaRequiredResult carries
-// `mfaRequired: true`; StewardAuthResult carries a string `token`. Anything else
-// is a malformed response and surfaces as a 502 like the other endpoints here.
+// Discriminate the verify response into the SDK union at runtime before
+// casting. StewardMfaRequiredResult carries `mfaRequired: true`;
+// StewardAuthResult carries a string `token`. The `as unknown as` step is
+// required because the SDK types don't structurally overlap with
+// Record<string, unknown> (TS2352); the runtime guards above are what make the
+// narrowing sound. Anything else is a malformed response and surfaces as a 502
+// like the other endpoints here.
 function narrowEmailVerifyResult(
   data: Record<string, unknown>,
 ): StewardAuthResult | StewardMfaRequiredResult {
   if (data.mfaRequired === true) {
-    return data as StewardMfaRequiredResult;
+    return data as unknown as StewardMfaRequiredResult;
   }
   if (typeof data.token === "string") {
-    return data as StewardAuthResult;
+    return data as unknown as StewardAuthResult;
   }
   throw new StewardEmailLoginError(
     "Steward email code verification response was malformed.",
