@@ -482,6 +482,38 @@ export async function createRealTestRuntime(
 
     await runtime.initialize();
 
+    // Boot barrier: services register asynchronously. `registerPlugin` fires a
+    // fire-and-forget `_ensureServiceStarted` for each declared service that
+    // awaits `initPromise` before running the service's `start()`, and some
+    // starts do real async work (e.g. @elizaos/plugin-scheduling's
+    // ScheduledTaskRunnerService runs the durable-scheduling table migration
+    // added in #16574). `runtime.initialize()` can resolve one or more
+    // microtasks BEFORE those starts finish registering. Production never
+    // observes this because every caller reaches a service only after boot
+    // settles; tests, however, synchronously call e.g.
+    // `getScheduledTaskRunner(...)` immediately after this helper returns and
+    // intermittently hit "<service> is not registered". Await the load promise
+    // for every service declared by the caller-provided plugins so the harness
+    // hands back a runtime whose declared services are live, exactly as
+    // production boots them. Failures are non-fatal: a service that fails to
+    // start surfaces at the call site with its real error, and services that
+    // are intentionally optional in a given test stay best-effort.
+    for (const plugin of options?.plugins ?? []) {
+      for (const service of plugin.services ?? []) {
+        const serviceType = (
+          service as unknown as { serviceType?: string }
+        ).serviceType;
+        if (!serviceType) continue;
+        try {
+          await runtime.getServiceLoadPromise(serviceType);
+        } catch (err) {
+          logger.debug(
+            `[real-runtime] declared service '${serviceType}' from ${plugin.name} did not start during boot barrier: ${err}`,
+          );
+        }
+      }
+    }
+
     // Eagerly start the OptimizedPromptService so the planner-loop's
     // synchronous `runtime.getService('optimized_prompt')` call hits an
     // already-instantiated service. Without this the service is registered

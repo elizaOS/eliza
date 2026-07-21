@@ -1,66 +1,29 @@
 name: Security Review
 
+# Bootstrap stub for the retired automatic Anthropic security review. Keep this
+# workflow and job name stable until repository rules no longer require
+# `security`. Deterministic security enforcement remains in gitleaks and the
+# Security Advisory Gate. PR #16634 proposes an agent-review replacement;
+# enabling it is a separate, manually reviewed policy change.
 on:
-  # Keep an advisory check available on every PR head. The conditional required
-  # gate only waits for it on security labels/paths, but labels and draft-ready
-  # transitions must be able to start a previously absent review.
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
-
-  # Allow manual security scans
+    types: [opened, ready_for_review, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
 
-# Cancel previous runs for the same PR
 concurrency:
   group: security-review-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# Default to least privilege. Override per-job where needed.
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   security:
-    # A skipped advisory is rejected by Security Advisory Gate. Keep these
-    # ordinary-PR exclusions, but never report a vacuous successful review.
-    if: |
-      github.event.pull_request.draft != true &&
-      !contains(github.event.pull_request.title, '[skip-security]') &&
-      github.actor != 'cursor[bot]' &&
-      github.actor != 'dependabot[bot]'
-
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
-    timeout-minutes: 15
-    permissions:
-      contents: read
-      pull-requests: write
-      security-events: write
-    env:
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
+    name: security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 1
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 2
-
-      - name: Require Claude Security Review credentials
-        run: test -n "$ANTHROPIC_API_KEY"
-
-      - name: Run Claude Security Review
-        # Pinned to SHA for supply chain security.
-        uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        with:
-          claude-api-key: ${{ env.ANTHROPIC_API_KEY }}
-          comment-pr: true
-          upload-results: true
-          claudecode-timeout: 30
-
-          # Exclude non-critical directories
-          exclude-directories: "node_modules,dist,coverage,.turbo,.next,docs"
-
-          # Use Opus 4.5 for deeper security analysis
-          claude-model: claude-opus-4-7
+      - name: Report advisory security review disabled
+        run: |
+          echo "Automatic Anthropic security review is disabled."
+          echo "Deterministic gitleaks enforcement remains active."
+          echo "PR #16634 proposes a replacement; activation is separate."

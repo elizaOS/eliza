@@ -96,6 +96,20 @@ export function getEmbeddingModel(runtime: IAgentRuntime): string {
   return getSetting(runtime, "EMBEDDING_MODEL") ?? "text-embedding-3-small";
 }
 
+export function getEmbeddingFallbackBaseURL(runtime: IAgentRuntime): string | undefined {
+  const baseURL = getSetting(runtime, "EMBEDDING_FALLBACK_BASE_URL");
+  return baseURL && baseURL.trim() !== "" ? baseURL.trim() : undefined;
+}
+
+export function getEmbeddingFallbackApiKey(runtime: IAgentRuntime): string | undefined {
+  const apiKey = getSetting(runtime, "EMBEDDING_FALLBACK_API_KEY");
+  return apiKey && apiKey.trim() !== "" ? apiKey.trim() : undefined;
+}
+
+export function getEmbeddingFallbackModel(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "EMBEDDING_FALLBACK_MODEL") ?? getEmbeddingModel(runtime);
+}
+
 export function getEmbeddingDimensions(runtime: IAgentRuntime): number {
   return getNumericSetting(runtime, "EMBEDDING_DIMENSIONS", 1536);
 }
@@ -116,6 +130,20 @@ export function getAuthHeader(runtime: IAgentRuntime): Record<string, string> {
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
+/**
+ * Auth header for a specific endpoint. Browser builds suppress direct bearer
+ * tokens unless the request goes through the configured server-side proxy.
+ */
+export function getEndpointAuthHeader(
+  runtime: IAgentRuntime,
+  apiKey: string | undefined
+): Record<string, string> {
+  if (isBrowser() && !getSetting(runtime, "EMBEDDING_BROWSER_URL")) {
+    return {};
+  }
+  return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
+}
+
 /** True when the operator has opted in by configuring a URL or a key. */
 export function hasEmbeddingConfig(runtime: IAgentRuntime): boolean {
   return Boolean(getEmbeddingBaseURL(runtime) || getEmbeddingApiKey(runtime));
@@ -127,9 +155,10 @@ export function hasEmbeddingConfig(runtime: IAgentRuntime): boolean {
  */
 export function logResolvedConfig(runtime: IAgentRuntime): void {
   const baseURL = getEmbeddingBaseURL(runtime);
+  const fallbackBaseURL = getEmbeddingFallbackBaseURL(runtime);
   logger.info(
     `[Embeddings] model=${getEmbeddingModel(runtime)} dimensions=${getEmbeddingDimensions(
       runtime
-    )} endpoint=${baseURL ?? "(unset)"}`
+    )} endpoint=${baseURL ?? "(unset)"} fallback=${fallbackBaseURL ?? "(unset)"}`
   );
 }

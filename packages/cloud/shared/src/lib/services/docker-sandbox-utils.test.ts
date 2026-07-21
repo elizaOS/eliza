@@ -1,5 +1,10 @@
 // Exercises docker sandbox utils behavior with deterministic cloud-shared lib fixtures.
-import { describe, expect, test } from "vitest";
+// bun:test, not vitest: this package runs unit lanes under bun
+// (scripts/run-bun-tests.mjs); its vitest config includes ONLY the
+// direct-wallet integration test, and the coverage-gate classifier routes
+// test files by their runner import — a vitest import here would send this
+// lane to a vitest invocation whose filter matches nothing (exit 1).
+import { describe, expect, test } from "bun:test";
 import {
   allocatePort,
   buildAgentContainerLabelArgs,
@@ -16,6 +21,7 @@ import {
   requiresDockerHostGateway,
   resolveAgentContainerClass,
   resolveStewardContainerUrl,
+  resolveVpnTeardown,
   shellQuote,
   validateAgentId,
   validateContainerName,
@@ -217,5 +223,30 @@ describe("agent container labels", () => {
     // Embedded single quote must be escaped, not break out of the quoting.
     expect(flags[2]).toContain(`'"'"'`);
     expect(flags[3]).toBe("--label 'ai.elizaos.container-class=test'");
+  });
+});
+
+describe("resolveVpnTeardown (#16565)", () => {
+  test("a registered id always wins — the only unambiguous deletion handle", () => {
+    expect(resolveVpnTeardown({ vpnNodeId: "blue-3", previousVpnNodeId: "old-7" })).toEqual({
+      kind: "by-id",
+      nodeId: "blue-3",
+    });
+    expect(resolveVpnTeardown({ vpnNodeId: "blue-3" })).toEqual({
+      kind: "by-id",
+      nodeId: "blue-3",
+    });
+  });
+
+  test("preserve mode with no registered id forbids by-name deletion — the same-name node is the LIVE one", () => {
+    // The review-blocking hole: container-start failure or required-registration
+    // timeout while the old node is preserved must never resolve to by-name.
+    expect(resolveVpnTeardown({ previousVpnNodeId: "old-7" })).toEqual({
+      kind: "skip-preserved",
+    });
+  });
+
+  test("plain provisions without an id keep the historical by-name cleanup", () => {
+    expect(resolveVpnTeardown({})).toEqual({ kind: "by-name" });
   });
 });

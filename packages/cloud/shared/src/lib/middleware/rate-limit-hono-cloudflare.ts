@@ -20,7 +20,8 @@ export interface RateLimitConfig {
   maxRequests: number;
   keyGenerator?: (c: AppContext) => string;
   /**
-   * Use an in-isolate fallback bucket when Redis throws at request time.
+   * Use an in-isolate fallback bucket when Redis cannot be constructed or
+   * throws at request time.
    * This is weaker than the shared Redis limiter because every Worker isolate
    * has its own map, but it keeps low-risk login/session paths throttled during
    * a Redis outage instead of choosing between total outage and unlimited
@@ -208,6 +209,7 @@ interface LocalFallbackBucket {
 }
 
 const redisUnavailableFallbackBuckets = new Map<string, LocalFallbackBucket>();
+const REDIS_UNAVAILABLE_FALLBACK_MAX_KEYS = 4096;
 
 const HONO_RATE_LIMIT_LEASE_TTL_MS = 5_000;
 const HONO_RATE_LIMIT_LEASE_MAX_KEYS = 4096;
@@ -317,6 +319,26 @@ function fallbackHeadersConfig(config: RateLimitConfig): RateLimitConfig {
   };
 }
 
+function makeRoomForRedisUnavailableFallback(now: number): void {
+  if (redisUnavailableFallbackBuckets.size < REDIS_UNAVAILABLE_FALLBACK_MAX_KEYS) {
+    return;
+  }
+  for (const [key, bucket] of redisUnavailableFallbackBuckets) {
+    if (bucket.resetAt <= now) redisUnavailableFallbackBuckets.delete(key);
+  }
+  if (redisUnavailableFallbackBuckets.size < REDIS_UNAVAILABLE_FALLBACK_MAX_KEYS) {
+    return;
+  }
+
+  // Map iteration order is the access order maintained below. Bounding the
+  // degraded store is more important than retaining one cold IP bucket when a
+  // Redis outage and high-cardinality traffic coincide.
+  const leastRecentlyUsedKey = redisUnavailableFallbackBuckets.keys().next().value;
+  if (leastRecentlyUsedKey !== undefined) {
+    redisUnavailableFallbackBuckets.delete(leastRecentlyUsedKey);
+  }
+}
+
 function checkRedisUnavailableFallback(
   key: string,
   config: RateLimitConfig,
@@ -326,8 +348,16 @@ function checkRedisUnavailableFallback(
   if (!fallback) return fallOpenResult(config);
   const bucketKey = `${fallback.namespace}:${key}`;
   const current = redisUnavailableFallbackBuckets.get(bucketKey);
-  const bucket =
-    current && current.resetAt > now ? current : { count: 0, resetAt: now + fallback.windowMs };
+  let bucket: LocalFallbackBucket;
+  if (current && current.resetAt > now) {
+    bucket = current;
+    // Delete + reinsert below so the map's first entry remains the LRU key.
+    redisUnavailableFallbackBuckets.delete(bucketKey);
+  } else {
+    if (current) redisUnavailableFallbackBuckets.delete(bucketKey);
+    makeRoomForRedisUnavailableFallback(now);
+    bucket = { count: 0, resetAt: now + fallback.windowMs };
+  }
   bucket.count += 1;
   redisUnavailableFallbackBuckets.set(bucketKey, bucket);
   const allowed = bucket.count <= fallback.maxRequests;
@@ -483,19 +513,84 @@ export function rateLimit(
       }
     }
 
-    const redis = dependencies?.buildRedisClient
-      ? dependencies.buildRedisClient(env)
-      : getRedis(env);
+    let redis: CompatibleRedis | null = null;
+    let redisConstructionFailure: { error: unknown } | undefined;
+    try {
+      redis = dependencies?.buildRedisClient ? dependencies.buildRedisClient(env) : getRedis(env);
+    } catch (error) {
+      // error-policy:J1 middleware boundary applies the route's declared unavailable-store policy.
+      redisConstructionFailure = { error };
+    }
+    const key = (config.keyGenerator ?? getDefaultKey)(c);
     if (!redis) {
+      if (effectiveConfig.redisUnavailableFallback) {
+        logger.warn("[RateLimit] Redis client unavailable; using local fallback limiter", {
+          error:
+            redisConstructionFailure?.error instanceof Error
+              ? redisConstructionFailure.error.message
+              : redisConstructionFailure
+                ? String(redisConstructionFailure.error)
+                : undefined,
+        });
+        const fallbackResult = checkRedisUnavailableFallback(key, effectiveConfig);
+        const fallbackConfig = fallbackHeadersConfig(effectiveConfig);
+        const headers = rateLimitHeaders(fallbackConfig, fallbackResult, "redis-unavailable-local");
+        if (!fallbackResult.allowed) {
+          return c.json(
+            {
+              success: false,
+              error: "Too many requests",
+              code: "rate_limit_exceeded" as const,
+              message: `Rate limit exceeded. Maximum ${fallbackConfig.maxRequests} requests per ${Math.ceil(
+                fallbackConfig.windowMs / 1000,
+              )} seconds.`,
+              retryAfter: fallbackResult.retryAfter,
+            },
+            429,
+            { ...headers, "Retry-After": String(fallbackResult.retryAfter ?? 60) },
+          );
+        }
+        await next();
+        applyRateLimitHeaders(c, headers);
+        return;
+      }
+      if (effectiveConfig.failClosed) {
+        logger.error("[RateLimit] Redis client unavailable on fail-closed route; rejecting", {
+          error:
+            redisConstructionFailure?.error instanceof Error
+              ? redisConstructionFailure.error.message
+              : redisConstructionFailure
+                ? String(redisConstructionFailure.error)
+                : "Redis client is not configured",
+        });
+        return c.json(
+          {
+            success: false,
+            error: "Service temporarily unavailable",
+            code: "rate_limit_unavailable" as const,
+            message: "Rate limiter backing store is unavailable; request rejected.",
+          },
+          503,
+          { "Retry-After": "30" },
+        );
+      }
+      const policy = redisConstructionFailure ? "redis-unavailable" : "fall-open";
+      if (redisConstructionFailure) {
+        logger.warn("[RateLimit] Redis client construction failed; falling open", {
+          error:
+            redisConstructionFailure.error instanceof Error
+              ? redisConstructionFailure.error.message
+              : String(redisConstructionFailure.error),
+        });
+      }
       await next();
       applyRateLimitHeaders(
         c,
-        rateLimitHeaders(effectiveConfig, fallOpenResult(effectiveConfig), "fall-open"),
+        rateLimitHeaders(effectiveConfig, fallOpenResult(effectiveConfig), policy),
       );
       return;
     }
 
-    const key = (config.keyGenerator ?? getDefaultKey)(c);
     let result: CheckResult;
     let policy = "redis";
     let headersConfig = effectiveConfig;
@@ -632,4 +727,7 @@ export const RateLimitPresets = {
 export { getDefaultKey, getIpKey, getRequestIp };
 export const _multiplier = multiplier;
 export const _resetRedisUnavailableFallbackBuckets = () => redisUnavailableFallbackBuckets.clear();
+export const _redisUnavailableFallbackBucketCount = () => redisUnavailableFallbackBuckets.size;
+export const _redisUnavailableFallbackMaxKeys = REDIS_UNAVAILABLE_FALLBACK_MAX_KEYS;
+export const _checkRedisUnavailableFallback = checkRedisUnavailableFallback;
 export const _resetHonoRateLimitLeases = () => honoRateLimitLeases.clear();

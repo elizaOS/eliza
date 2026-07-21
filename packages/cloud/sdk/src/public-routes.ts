@@ -141,15 +141,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/frontend/[deploymentId]/route.ts",
   },
-  "DELETE /api/v1/apps/{id}/generate-image": {
-    method: "DELETE",
-    path: "/api/v1/apps/{id}/generate-image",
-    methodName: "deleteApiV1AppsByIdGenerateImage",
-    responseMode: "json",
-    pathParams: ["id"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
-  },
   "DELETE /api/v1/apps/{id}/telegram-automation": {
     method: "DELETE",
     path: "/api/v1/apps/{id}/telegram-automation",
@@ -304,33 +295,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/gallery/[id]/route.ts",
   },
-  "DELETE /api/v1/generate-image": {
-    method: "DELETE",
-    path: "/api/v1/generate-image",
-    methodName: "deleteApiV1GenerateImage",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-image/route.ts",
-  },
-  "DELETE /api/v1/generate-music": {
-    method: "DELETE",
-    path: "/api/v1/generate-music",
-    methodName: "deleteApiV1GenerateMusic",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-music/route.ts",
-  },
-  "DELETE /api/v1/generate-video": {
-    method: "DELETE",
-    path: "/api/v1/generate-video",
-    methodName: "deleteApiV1GenerateVideo",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-video/route.ts",
-  },
   "DELETE /api/v1/marketing/inventory/{slotId}": {
     method: "DELETE",
     path: "/api/v1/marketing/inventory/{slotId}",
@@ -376,6 +340,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: ["path"],
     file: "packages/cloud/api/v1/proxy/birdeye/[...path]/route.ts",
   },
+  "DELETE /api/v1/sessions/{id}": {
+    method: "DELETE",
+    path: "/api/v1/sessions/{id}",
+    methodName: "deleteApiV1SessionsById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/sessions/[id]/route.ts",
+  },
   "DELETE /api/v1/telegram/disconnect": {
     method: "DELETE",
     path: "/api/v1/telegram/disconnect",
@@ -403,15 +376,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/twitter/disconnect/route.ts",
   },
-  "DELETE /api/v1/user/avatar": {
-    method: "DELETE",
-    path: "/api/v1/user/avatar",
-    methodName: "deleteApiV1UserAvatar",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/user/avatar/route.ts",
-  },
   "DELETE /api/v1/voice/{id}": {
     method: "DELETE",
     path: "/api/v1/voice/{id}",
@@ -420,6 +384,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/voice/[id]/route.ts",
+  },
+  "DELETE /api/v1/web-push/subscriptions": {
+    method: "DELETE",
+    path: "/api/v1/web-push/subscriptions",
+    methodName: "deleteApiV1WebPushSubscriptions",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/web-push/subscriptions/route.ts",
   },
   "DELETE /api/v1/whatsapp/disconnect": {
     method: "DELETE",
@@ -969,15 +942,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id", "[...path]"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/frontend/preview/[[...path]]/route.ts",
-  },
-  "GET /api/v1/apps/{id}/generate-image": {
-    method: "GET",
-    path: "/api/v1/apps/{id}/generate-image",
-    methodName: "getApiV1AppsByIdGenerateImage",
-    responseMode: "json",
-    pathParams: ["id"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
   },
   "GET /api/v1/apps/{id}/monetization": {
     method: "GET",
@@ -1665,33 +1629,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/gallery/stats/route.ts",
   },
-  "GET /api/v1/generate-image": {
-    method: "GET",
-    path: "/api/v1/generate-image",
-    methodName: "getApiV1GenerateImage",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-image/route.ts",
-  },
-  "GET /api/v1/generate-music": {
-    method: "GET",
-    path: "/api/v1/generate-music",
-    methodName: "getApiV1GenerateMusic",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-music/route.ts",
-  },
-  "GET /api/v1/generate-video": {
-    method: "GET",
-    path: "/api/v1/generate-video",
-    methodName: "getApiV1GenerateVideo",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-video/route.ts",
-  },
   "GET /api/v1/hf-proxy/{path}": {
     method: "GET",
     path: "/api/v1/hf-proxy/{path}",
@@ -1863,6 +1800,33 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/marketing/inventory/serve/route.ts",
   },
+  "GET /api/v1/marketing/pr": {
+    method: "GET",
+    path: "/api/v1/marketing/pr",
+    methodName: "getApiV1MarketingPr",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/marketing/pr/route.ts",
+  },
+  "GET /api/v1/marketing/pr/{releaseId}": {
+    method: "GET",
+    path: "/api/v1/marketing/pr/{releaseId}",
+    methodName: "getApiV1MarketingPrByReleaseId",
+    responseMode: "json",
+    pathParams: ["releaseId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/marketing/pr/[releaseId]/route.ts",
+  },
+  "GET /api/v1/marketing/pr/{releaseId}/coverage": {
+    method: "GET",
+    path: "/api/v1/marketing/pr/{releaseId}/coverage",
+    methodName: "getApiV1MarketingPrByReleaseIdCoverage",
+    responseMode: "json",
+    pathParams: ["releaseId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/marketing/pr/[releaseId]/coverage/route.ts",
+  },
   "GET /api/v1/mcps": {
     method: "GET",
     path: "/api/v1/mcps",
@@ -1880,6 +1844,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["mcpId"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/mcps/[mcpId]/route.ts",
+  },
+  "GET /api/v1/me/mfa": {
+    method: "GET",
+    path: "/api/v1/me/mfa",
+    methodName: "getApiV1MeMfa",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/me/mfa/route.ts",
   },
   "GET /api/v1/models": {
     method: "GET",
@@ -2034,6 +2007,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/route.ts",
   },
+  "GET /api/v1/pii-scrub/jobs/{id}": {
+    method: "GET",
+    path: "/api/v1/pii-scrub/jobs/{id}",
+    methodName: "getApiV1PiiScrubJobsById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/pii-scrub/jobs/[id]/route.ts",
+  },
   "GET /api/v1/pricing/summary": {
     method: "GET",
     path: "/api/v1/pricing/summary",
@@ -2123,6 +2105,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/sensitive-requests/[id]/route.ts",
+  },
+  "GET /api/v1/sessions": {
+    method: "GET",
+    path: "/api/v1/sessions",
+    methodName: "getApiV1Sessions",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/sessions/route.ts",
   },
   "GET /api/v1/solana/assets/{address}": {
     method: "GET",
@@ -2241,15 +2232,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/user/route.ts",
   },
-  "GET /api/v1/user/avatar": {
-    method: "GET",
-    path: "/api/v1/user/avatar",
-    methodName: "getApiV1UserAvatar",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/user/avatar/route.ts",
-  },
   "GET /api/v1/user/wallets": {
     method: "GET",
     path: "/api/v1/user/wallets",
@@ -2312,6 +2294,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/voice/list/route.ts",
+  },
+  "GET /api/v1/voice/session/ws": {
+    method: "GET",
+    path: "/api/v1/voice/session/ws",
+    methodName: "getApiV1VoiceSessionWs",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/voice/session/ws/route.ts",
   },
   "GET /api/v1/whatsapp/status": {
     method: "GET",
@@ -2385,6 +2376,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/elevenlabs/voices/[id]/route.ts",
   },
+  "PATCH /api/v1/advertising/accounts/{id}": {
+    method: "PATCH",
+    path: "/api/v1/advertising/accounts/{id}",
+    methodName: "patchApiV1AdvertisingAccountsById",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/advertising/accounts/[id]/route.ts",
+  },
   "PATCH /api/v1/advertising/audience-segments/{id}": {
     method: "PATCH",
     path: "/api/v1/advertising/audience-segments/{id}",
@@ -2438,15 +2438,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id", "domain", "recordId"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/domains/[domain]/dns/[recordId]/route.ts",
-  },
-  "PATCH /api/v1/apps/{id}/generate-image": {
-    method: "PATCH",
-    path: "/api/v1/apps/{id}/generate-image",
-    methodName: "patchApiV1AppsByIdGenerateImage",
-    responseMode: "json",
-    pathParams: ["id"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
   },
   "PATCH /api/v1/connections/{platform}": {
     method: "PATCH",
@@ -2512,33 +2503,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/google/calendar/events/[eventId]/route.ts",
   },
-  "PATCH /api/v1/generate-image": {
-    method: "PATCH",
-    path: "/api/v1/generate-image",
-    methodName: "patchApiV1GenerateImage",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-image/route.ts",
-  },
-  "PATCH /api/v1/generate-music": {
-    method: "PATCH",
-    path: "/api/v1/generate-music",
-    methodName: "patchApiV1GenerateMusic",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-music/route.ts",
-  },
-  "PATCH /api/v1/generate-video": {
-    method: "PATCH",
-    path: "/api/v1/generate-video",
-    methodName: "patchApiV1GenerateVideo",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-video/route.ts",
-  },
   "PATCH /api/v1/marketing/inventory/{slotId}": {
     method: "PATCH",
     path: "/api/v1/marketing/inventory/{slotId}",
@@ -2547,6 +2511,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["slotId"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/marketing/inventory/[slotId]/route.ts",
+  },
+  "PATCH /api/v1/marketing/pr/{releaseId}": {
+    method: "PATCH",
+    path: "/api/v1/marketing/pr/{releaseId}",
+    methodName: "patchApiV1MarketingPrByReleaseId",
+    responseMode: "json",
+    pathParams: ["releaseId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/marketing/pr/[releaseId]/route.ts",
   },
   "PATCH /api/v1/proxy/birdeye/{path}": {
     method: "PATCH",
@@ -2565,15 +2538,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/user/route.ts",
-  },
-  "PATCH /api/v1/user/avatar": {
-    method: "PATCH",
-    path: "/api/v1/user/avatar",
-    methodName: "patchApiV1UserAvatar",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/user/avatar/route.ts",
   },
   "PATCH /api/v1/user/email": {
     method: "PATCH",
@@ -3686,6 +3650,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/suspend/route.ts",
   },
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier": {
+    method: "POST",
+    path: "/api/v1/eliza/agents/{agentId}/upgrade-tier",
+    methodName: "postApiV1ElizaAgentsByAgentIdUpgradeTier",
+    responseMode: "json",
+    pathParams: ["agentId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/eliza/agents/[agentId]/upgrade-tier/route.ts",
+  },
   "POST /api/v1/eliza/agents/{agentId}/wake": {
     method: "POST",
     path: "/api/v1/eliza/agents/{agentId}/wake",
@@ -3893,6 +3866,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/generate-prompts/route.ts",
   },
+  "POST /api/v1/generate-sfx": {
+    method: "POST",
+    path: "/api/v1/generate-sfx",
+    methodName: "postApiV1GenerateSfx",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/generate-sfx/route.ts",
+  },
   "POST /api/v1/generate-video": {
     method: "POST",
     path: "/api/v1/generate-video",
@@ -3982,6 +3964,33 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/marketing/inventory/click/route.ts",
+  },
+  "POST /api/v1/marketing/pr": {
+    method: "POST",
+    path: "/api/v1/marketing/pr",
+    methodName: "postApiV1MarketingPr",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/marketing/pr/route.ts",
+  },
+  "POST /api/v1/marketing/pr/{releaseId}/cancel": {
+    method: "POST",
+    path: "/api/v1/marketing/pr/{releaseId}/cancel",
+    methodName: "postApiV1MarketingPrByReleaseIdCancel",
+    responseMode: "json",
+    pathParams: ["releaseId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/marketing/pr/[releaseId]/cancel/route.ts",
+  },
+  "POST /api/v1/marketing/pr/{releaseId}/submit": {
+    method: "POST",
+    path: "/api/v1/marketing/pr/{releaseId}/submit",
+    methodName: "postApiV1MarketingPrByReleaseIdSubmit",
+    responseMode: "json",
+    pathParams: ["releaseId"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/marketing/pr/[releaseId]/submit/route.ts",
   },
   "POST /api/v1/mcps": {
     method: "POST",
@@ -4099,6 +4108,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["id"],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/payment-requests/[id]/expire/route.ts",
+  },
+  "POST /api/v1/pii-scrub/jobs": {
+    method: "POST",
+    path: "/api/v1/pii-scrub/jobs",
+    methodName: "postApiV1PiiScrubJobs",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/pii-scrub/jobs/route.ts",
   },
   "POST /api/v1/proxy/birdeye/{path}": {
     method: "POST",
@@ -4397,6 +4415,33 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/voice/clone/route.ts",
   },
+  "POST /api/v1/voice/session": {
+    method: "POST",
+    path: "/api/v1/voice/session",
+    methodName: "postApiV1VoiceSession",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/voice/session/route.ts",
+  },
+  "POST /api/v1/voice/session/{id}/revoke": {
+    method: "POST",
+    path: "/api/v1/voice/session/{id}/revoke",
+    methodName: "postApiV1VoiceSessionByIdRevoke",
+    responseMode: "json",
+    pathParams: ["id"],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/voice/session/[id]/revoke/route.ts",
+  },
+  "POST /api/v1/voice/session/consent": {
+    method: "POST",
+    path: "/api/v1/voice/session/consent",
+    methodName: "postApiV1VoiceSessionConsent",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/voice/session/consent/route.ts",
+  },
   "POST /api/v1/voice/stt": {
     method: "POST",
     path: "/api/v1/voice/stt",
@@ -4414,6 +4459,15 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: [],
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/voice/tts/route.ts",
+  },
+  "POST /api/v1/web-push/subscriptions": {
+    method: "POST",
+    path: "/api/v1/web-push/subscriptions",
+    methodName: "postApiV1WebPushSubscriptions",
+    responseMode: "json",
+    pathParams: [],
+    catchAllPathParams: [],
+    file: "packages/cloud/api/v1/web-push/subscriptions/route.ts",
   },
   "POST /api/v1/whatsapp/connect": {
     method: "POST",
@@ -4586,15 +4640,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: [],
     file: "packages/cloud/api/v1/apps/[id]/database/route.ts",
   },
-  "PUT /api/v1/apps/{id}/generate-image": {
-    method: "PUT",
-    path: "/api/v1/apps/{id}/generate-image",
-    methodName: "putApiV1AppsByIdGenerateImage",
-    responseMode: "json",
-    pathParams: ["id"],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/apps/[id]/generate-image/route.ts",
-  },
   "PUT /api/v1/apps/{id}/monetization": {
     method: "PUT",
     path: "/api/v1/apps/{id}/monetization",
@@ -4640,33 +4685,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     catchAllPathParams: ["path"],
     file: "packages/cloud/api/v1/eliza/agents/[agentId]/api/wallet/[...path]/route.ts",
   },
-  "PUT /api/v1/generate-image": {
-    method: "PUT",
-    path: "/api/v1/generate-image",
-    methodName: "putApiV1GenerateImage",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-image/route.ts",
-  },
-  "PUT /api/v1/generate-music": {
-    method: "PUT",
-    path: "/api/v1/generate-music",
-    methodName: "putApiV1GenerateMusic",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-music/route.ts",
-  },
-  "PUT /api/v1/generate-video": {
-    method: "PUT",
-    path: "/api/v1/generate-video",
-    methodName: "putApiV1GenerateVideo",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/generate-video/route.ts",
-  },
   "PUT /api/v1/mcps/{mcpId}": {
     method: "PUT",
     path: "/api/v1/mcps/{mcpId}",
@@ -4684,15 +4702,6 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
     pathParams: ["path"],
     catchAllPathParams: ["path"],
     file: "packages/cloud/api/v1/proxy/birdeye/[...path]/route.ts",
-  },
-  "PUT /api/v1/user/avatar": {
-    method: "PUT",
-    path: "/api/v1/user/avatar",
-    methodName: "putApiV1UserAvatar",
-    responseMode: "json",
-    pathParams: [],
-    catchAllPathParams: [],
-    file: "packages/cloud/api/v1/user/avatar/route.ts",
   },
 } as const;
 
@@ -4748,7 +4757,6 @@ export interface PublicRoutePathParams {
     id: string | number;
     deploymentId: string | number;
   };
-  "DELETE /api/v1/apps/{id}/generate-image": { id: string | number };
   "DELETE /api/v1/apps/{id}/telegram-automation": { id: string | number };
   "DELETE /api/v1/apps/{id}/twitter-automation": { id: string | number };
   "DELETE /api/v1/blooio/disconnect": Record<never, never>;
@@ -4773,9 +4781,6 @@ export interface PublicRoutePathParams {
   };
   "DELETE /api/v1/files/{id}": { id: string | number };
   "DELETE /api/v1/gallery/{id}": { id: string | number };
-  "DELETE /api/v1/generate-image": Record<never, never>;
-  "DELETE /api/v1/generate-music": Record<never, never>;
-  "DELETE /api/v1/generate-video": Record<never, never>;
   "DELETE /api/v1/marketing/inventory/{slotId}": { slotId: string | number };
   "DELETE /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "DELETE /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
@@ -4783,11 +4788,12 @@ export interface PublicRoutePathParams {
   "DELETE /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
+  "DELETE /api/v1/sessions/{id}": { id: string | number };
   "DELETE /api/v1/telegram/disconnect": Record<never, never>;
   "DELETE /api/v1/twilio/disconnect": Record<never, never>;
   "DELETE /api/v1/twitter/disconnect": Record<never, never>;
-  "DELETE /api/v1/user/avatar": Record<never, never>;
   "DELETE /api/v1/voice/{id}": { id: string | number };
+  "DELETE /api/v1/web-push/subscriptions": Record<never, never>;
   "DELETE /api/v1/whatsapp/disconnect": Record<never, never>;
   "GET /api/elevenlabs/voices": Record<never, never>;
   "GET /api/elevenlabs/voices/{id}": { id: string | number };
@@ -4877,7 +4883,6 @@ export interface PublicRoutePathParams {
     id: string | number;
     "[...path]": string | number;
   };
-  "GET /api/v1/apps/{id}/generate-image": { id: string | number };
   "GET /api/v1/apps/{id}/monetization": { id: string | number };
   "GET /api/v1/apps/{id}/promote": { id: string | number };
   "GET /api/v1/apps/{id}/promote/analytics": { id: string | number };
@@ -4988,9 +4993,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/gallery": Record<never, never>;
   "GET /api/v1/gallery/explore": Record<never, never>;
   "GET /api/v1/gallery/stats": Record<never, never>;
-  "GET /api/v1/generate-image": Record<never, never>;
-  "GET /api/v1/generate-music": Record<never, never>;
-  "GET /api/v1/generate-video": Record<never, never>;
   "GET /api/v1/hf-proxy/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -5040,8 +5042,14 @@ export interface PublicRoutePathParams {
     slotId: string | number;
   };
   "GET /api/v1/marketing/inventory/serve": Record<never, never>;
+  "GET /api/v1/marketing/pr": Record<never, never>;
+  "GET /api/v1/marketing/pr/{releaseId}": { releaseId: string | number };
+  "GET /api/v1/marketing/pr/{releaseId}/coverage": {
+    releaseId: string | number;
+  };
   "GET /api/v1/mcps": Record<never, never>;
   "GET /api/v1/mcps/{mcpId}": { mcpId: string | number };
+  "GET /api/v1/me/mfa": Record<never, never>;
   "GET /api/v1/models": Record<never, never>;
   "GET /api/v1/models/{model}": {
     model: string | number | readonly (string | number)[];
@@ -5061,6 +5069,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/oauth/token/{platform}": { platform: string | number };
   "GET /api/v1/payment-requests": Record<never, never>;
   "GET /api/v1/payment-requests/{id}": { id: string | number };
+  "GET /api/v1/pii-scrub/jobs/{id}": { id: string | number };
   "GET /api/v1/pricing/summary": Record<never, never>;
   "GET /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
@@ -5073,6 +5082,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/referrals": Record<never, never>;
   "GET /api/v1/remote/sessions": Record<never, never>;
   "GET /api/v1/sensitive-requests/{id}": { id: string | number };
+  "GET /api/v1/sessions": Record<never, never>;
   "GET /api/v1/solana/assets/{address}": { address: string | number };
   "GET /api/v1/solana/methods": Record<never, never>;
   "GET /api/v1/solana/token-accounts/{address}": { address: string | number };
@@ -5086,7 +5096,6 @@ export interface PublicRoutePathParams {
   "GET /api/v1/twitter/status": Record<never, never>;
   "GET /api/v1/twitter/token": Record<never, never>;
   "GET /api/v1/user": Record<never, never>;
-  "GET /api/v1/user/avatar": Record<never, never>;
   "GET /api/v1/user/wallets": Record<never, never>;
   "GET /api/v1/video/featured": Record<never, never>;
   "GET /api/v1/video/usage": Record<never, never>;
@@ -5094,6 +5103,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/voice/{id}": { id: string | number };
   "GET /api/v1/voice/jobs": Record<never, never>;
   "GET /api/v1/voice/list": Record<never, never>;
+  "GET /api/v1/voice/session/ws": Record<never, never>;
   "GET /api/v1/whatsapp/status": Record<never, never>;
   "GET /api/v1/x/dms/digest": Record<never, never>;
   "GET /api/v1/x/feed": Record<never, never>;
@@ -5102,6 +5112,7 @@ export interface PublicRoutePathParams {
   "GET /api/v1/x402/requests": Record<never, never>;
   "GET /api/v1/x402/requests/{id}": { id: string | number };
   "PATCH /api/elevenlabs/voices/{id}": { id: string | number };
+  "PATCH /api/v1/advertising/accounts/{id}": { id: string | number };
   "PATCH /api/v1/advertising/audience-segments/{id}": { id: string | number };
   "PATCH /api/v1/advertising/campaigns/{id}": { id: string | number };
   "PATCH /api/v1/advertising/creatives/{id}": { id: string | number };
@@ -5112,7 +5123,6 @@ export interface PublicRoutePathParams {
     domain: string | number;
     recordId: string | number;
   };
-  "PATCH /api/v1/apps/{id}/generate-image": { id: string | number };
   "PATCH /api/v1/connections/{platform}": { platform: string | number };
   "PATCH /api/v1/containers/{id}": { id: string | number };
   "PATCH /api/v1/discord/connections/{id}": { id: string | number };
@@ -5127,15 +5137,12 @@ export interface PublicRoutePathParams {
   "PATCH /api/v1/eliza/google/calendar/events/{eventId}": {
     eventId: string | number;
   };
-  "PATCH /api/v1/generate-image": Record<never, never>;
-  "PATCH /api/v1/generate-music": Record<never, never>;
-  "PATCH /api/v1/generate-video": Record<never, never>;
   "PATCH /api/v1/marketing/inventory/{slotId}": { slotId: string | number };
+  "PATCH /api/v1/marketing/pr/{releaseId}": { releaseId: string | number };
   "PATCH /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
   "PATCH /api/v1/user": Record<never, never>;
-  "PATCH /api/v1/user/avatar": Record<never, never>;
   "PATCH /api/v1/user/email": Record<never, never>;
   "PATCH /api/v1/voice/{id}": { id: string | number };
   "POST /api/elevenlabs/stt": Record<never, never>;
@@ -5307,6 +5314,9 @@ export interface PublicRoutePathParams {
   "POST /api/v1/eliza/agents/{agentId}/snapshot": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/stream": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/suspend": { agentId: string | number };
+  "POST /api/v1/eliza/agents/{agentId}/upgrade-tier": {
+    agentId: string | number;
+  };
   "POST /api/v1/eliza/agents/{agentId}/wake": { agentId: string | number };
   "POST /api/v1/eliza/agents/{agentId}/write": { agentId: string | number };
   "POST /api/v1/eliza/discord/gateway-agent": Record<never, never>;
@@ -5332,6 +5342,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/generate-image": Record<never, never>;
   "POST /api/v1/generate-music": Record<never, never>;
   "POST /api/v1/generate-prompts": Record<never, never>;
+  "POST /api/v1/generate-sfx": Record<never, never>;
   "POST /api/v1/generate-video": Record<never, never>;
   "POST /api/v1/marketing/influencers": Record<never, never>;
   "POST /api/v1/marketing/influencers/bookings": Record<never, never>;
@@ -5352,6 +5363,13 @@ export interface PublicRoutePathParams {
   };
   "POST /api/v1/marketing/inventory": Record<never, never>;
   "POST /api/v1/marketing/inventory/click": Record<never, never>;
+  "POST /api/v1/marketing/pr": Record<never, never>;
+  "POST /api/v1/marketing/pr/{releaseId}/cancel": {
+    releaseId: string | number;
+  };
+  "POST /api/v1/marketing/pr/{releaseId}/submit": {
+    releaseId: string | number;
+  };
   "POST /api/v1/mcps": Record<never, never>;
   "POST /api/v1/mcps/{mcpId}/publish": { mcpId: string | number };
   "POST /api/v1/messages": Record<never, never>;
@@ -5365,6 +5383,7 @@ export interface PublicRoutePathParams {
   "POST /api/v1/payment-requests": Record<never, never>;
   "POST /api/v1/payment-requests/{id}/cancel": { id: string | number };
   "POST /api/v1/payment-requests/{id}/expire": { id: string | number };
+  "POST /api/v1/pii-scrub/jobs": Record<never, never>;
   "POST /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
@@ -5400,8 +5419,12 @@ export interface PublicRoutePathParams {
   "POST /api/v1/user/wallets/provision": Record<never, never>;
   "POST /api/v1/user/wallets/rpc": Record<never, never>;
   "POST /api/v1/voice/clone": Record<never, never>;
+  "POST /api/v1/voice/session": Record<never, never>;
+  "POST /api/v1/voice/session/{id}/revoke": { id: string | number };
+  "POST /api/v1/voice/session/consent": Record<never, never>;
   "POST /api/v1/voice/stt": Record<never, never>;
   "POST /api/v1/voice/tts": Record<never, never>;
+  "POST /api/v1/web-push/subscriptions": Record<never, never>;
   "POST /api/v1/whatsapp/connect": Record<never, never>;
   "POST /api/v1/whatsapp/disconnect": Record<never, never>;
   "POST /api/v1/x/dms/conversations/send": Record<never, never>;
@@ -5426,7 +5449,6 @@ export interface PublicRoutePathParams {
   "PUT /api/v1/apps/{id}": { id: string | number };
   "PUT /api/v1/apps/{id}/characters": { id: string | number };
   "PUT /api/v1/apps/{id}/database": { id: string | number };
-  "PUT /api/v1/apps/{id}/generate-image": { id: string | number };
   "PUT /api/v1/apps/{id}/monetization": { id: string | number };
   "PUT /api/v1/billing/settings": Record<never, never>;
   "PUT /api/v1/connections/{platform}": { platform: string | number };
@@ -5437,14 +5459,10 @@ export interface PublicRoutePathParams {
     agentId: string | number;
     path: string | number | readonly (string | number)[];
   };
-  "PUT /api/v1/generate-image": Record<never, never>;
-  "PUT /api/v1/generate-music": Record<never, never>;
-  "PUT /api/v1/generate-video": Record<never, never>;
   "PUT /api/v1/mcps/{mcpId}": { mcpId: string | number };
   "PUT /api/v1/proxy/birdeye/{path}": {
     path: string | number | readonly (string | number)[];
   };
-  "PUT /api/v1/user/avatar": Record<never, never>;
 }
 
 export interface PublicRouteBaseCallOptions
@@ -5721,15 +5739,6 @@ export class ElizaCloudPublicRoutesClient {
     >("DELETE /api/v1/apps/{id}/frontend/{deploymentId}", options);
   }
 
-  deleteApiV1AppsByIdGenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/generate-image">,
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/apps/{id}/generate-image", TResponse>(
-      "DELETE /api/v1/apps/{id}/generate-image",
-      options,
-    );
-  }
-
   deleteApiV1AppsByIdTelegramAutomation<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/telegram-automation">,
   ): Promise<TResponse> {
@@ -5888,33 +5897,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  deleteApiV1GenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/generate-image"> = {},
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/generate-image", TResponse>(
-      "DELETE /api/v1/generate-image",
-      options,
-    );
-  }
-
-  deleteApiV1GenerateMusic<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/generate-music"> = {},
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/generate-music", TResponse>(
-      "DELETE /api/v1/generate-music",
-      options,
-    );
-  }
-
-  deleteApiV1GenerateVideo<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/generate-video"> = {},
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/generate-video", TResponse>(
-      "DELETE /api/v1/generate-video",
-      options,
-    );
-  }
-
   deleteApiV1MarketingInventoryBySlotId<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/marketing/inventory/{slotId}">,
   ): Promise<TResponse> {
@@ -5960,6 +5942,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  deleteApiV1SessionsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/sessions/{id}">,
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/sessions/{id}", TResponse>(
+      "DELETE /api/v1/sessions/{id}",
+      options,
+    );
+  }
+
   deleteApiV1TelegramDisconnect<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/telegram/disconnect"> = {},
   ): Promise<TResponse> {
@@ -5987,20 +5978,20 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  deleteApiV1UserAvatar<TResponse = unknown>(
-    options: PublicRouteCallOptions<"DELETE /api/v1/user/avatar"> = {},
-  ): Promise<TResponse> {
-    return this.call<"DELETE /api/v1/user/avatar", TResponse>(
-      "DELETE /api/v1/user/avatar",
-      options,
-    );
-  }
-
   deleteApiV1VoiceById<TResponse = unknown>(
     options: PublicRouteCallOptions<"DELETE /api/v1/voice/{id}">,
   ): Promise<TResponse> {
     return this.call<"DELETE /api/v1/voice/{id}", TResponse>(
       "DELETE /api/v1/voice/{id}",
+      options,
+    );
+  }
+
+  deleteApiV1WebPushSubscriptions<TResponse = unknown>(
+    options: PublicRouteCallOptions<"DELETE /api/v1/web-push/subscriptions"> = {},
+  ): Promise<TResponse> {
+    return this.call<"DELETE /api/v1/web-push/subscriptions", TResponse>(
+      "DELETE /api/v1/web-push/subscriptions",
       options,
     );
   }
@@ -6555,15 +6546,6 @@ export class ElizaCloudPublicRoutesClient {
       "GET /api/v1/apps/{id}/frontend/preview/{[...path]}",
       TResponse
     >("GET /api/v1/apps/{id}/frontend/preview/{[...path]}", options);
-  }
-
-  getApiV1AppsByIdGenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/generate-image">,
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/apps/{id}/generate-image", TResponse>(
-      "GET /api/v1/apps/{id}/generate-image",
-      options,
-    );
   }
 
   getApiV1AppsByIdMonetization<TResponse = unknown>(
@@ -7255,33 +7237,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  getApiV1GenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/generate-image"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/generate-image", TResponse>(
-      "GET /api/v1/generate-image",
-      options,
-    );
-  }
-
-  getApiV1GenerateMusic<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/generate-music"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/generate-music", TResponse>(
-      "GET /api/v1/generate-music",
-      options,
-    );
-  }
-
-  getApiV1GenerateVideo<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/generate-video"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/generate-video", TResponse>(
-      "GET /api/v1/generate-video",
-      options,
-    );
-  }
-
   getApiV1HfProxyByPath<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/hf-proxy/{path}">,
   ): Promise<TResponse> {
@@ -7453,6 +7408,33 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1MarketingPr<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/marketing/pr"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/marketing/pr", TResponse>(
+      "GET /api/v1/marketing/pr",
+      options,
+    );
+  }
+
+  getApiV1MarketingPrByReleaseId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/marketing/pr/{releaseId}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/marketing/pr/{releaseId}", TResponse>(
+      "GET /api/v1/marketing/pr/{releaseId}",
+      options,
+    );
+  }
+
+  getApiV1MarketingPrByReleaseIdCoverage<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/marketing/pr/{releaseId}/coverage">,
+  ): Promise<TResponse> {
+    return this.call<
+      "GET /api/v1/marketing/pr/{releaseId}/coverage",
+      TResponse
+    >("GET /api/v1/marketing/pr/{releaseId}/coverage", options);
+  }
+
   getApiV1Mcps<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/mcps"> = {},
   ): Promise<TResponse> {
@@ -7467,6 +7449,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/mcps/{mcpId}", TResponse>(
       "GET /api/v1/mcps/{mcpId}",
+      options,
+    );
+  }
+
+  getApiV1MeMfa<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/me/mfa", TResponse>(
+      "GET /api/v1/me/mfa",
       options,
     );
   }
@@ -7624,6 +7615,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  getApiV1PiiScrubJobsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/pii-scrub/jobs/{id}">,
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/pii-scrub/jobs/{id}", TResponse>(
+      "GET /api/v1/pii-scrub/jobs/{id}",
+      options,
+    );
+  }
+
   getApiV1PricingSummary<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/pricing/summary"> = {},
   ): Promise<TResponse> {
@@ -7710,6 +7710,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/sensitive-requests/{id}", TResponse>(
       "GET /api/v1/sensitive-requests/{id}",
+      options,
+    );
+  }
+
+  getApiV1Sessions<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/sessions"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/sessions", TResponse>(
+      "GET /api/v1/sessions",
       options,
     );
   }
@@ -7831,15 +7840,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  getApiV1UserAvatar<TResponse = unknown>(
-    options: PublicRouteCallOptions<"GET /api/v1/user/avatar"> = {},
-  ): Promise<TResponse> {
-    return this.call<"GET /api/v1/user/avatar", TResponse>(
-      "GET /api/v1/user/avatar",
-      options,
-    );
-  }
-
   getApiV1UserWallets<TResponse = unknown>(
     options: PublicRouteCallOptions<"GET /api/v1/user/wallets"> = {},
   ): Promise<TResponse> {
@@ -7899,6 +7899,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"GET /api/v1/voice/list", TResponse>(
       "GET /api/v1/voice/list",
+      options,
+    );
+  }
+
+  getApiV1VoiceSessionWs<TResponse = unknown>(
+    options: PublicRouteCallOptions<"GET /api/v1/voice/session/ws"> = {},
+  ): Promise<TResponse> {
+    return this.call<"GET /api/v1/voice/session/ws", TResponse>(
+      "GET /api/v1/voice/session/ws",
       options,
     );
   }
@@ -7975,6 +7984,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  patchApiV1AdvertisingAccountsById<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PATCH /api/v1/advertising/accounts/{id}">,
+  ): Promise<TResponse> {
+    return this.call<"PATCH /api/v1/advertising/accounts/{id}", TResponse>(
+      "PATCH /api/v1/advertising/accounts/{id}",
+      options,
+    );
+  }
+
   patchApiV1AdvertisingAudienceSegmentsById<TResponse = unknown>(
     options: PublicRouteCallOptions<"PATCH /api/v1/advertising/audience-segments/{id}">,
   ): Promise<TResponse> {
@@ -8027,15 +8045,6 @@ export class ElizaCloudPublicRoutesClient {
       "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}",
       TResponse
     >("PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}", options);
-  }
-
-  patchApiV1AppsByIdGenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/apps/{id}/generate-image">,
-  ): Promise<TResponse> {
-    return this.call<"PATCH /api/v1/apps/{id}/generate-image", TResponse>(
-      "PATCH /api/v1/apps/{id}/generate-image",
-      options,
-    );
   }
 
   patchApiV1ConnectionsByPlatform<TResponse = unknown>(
@@ -8106,38 +8115,20 @@ export class ElizaCloudPublicRoutesClient {
     >("PATCH /api/v1/eliza/google/calendar/events/{eventId}", options);
   }
 
-  patchApiV1GenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/generate-image"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PATCH /api/v1/generate-image", TResponse>(
-      "PATCH /api/v1/generate-image",
-      options,
-    );
-  }
-
-  patchApiV1GenerateMusic<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/generate-music"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PATCH /api/v1/generate-music", TResponse>(
-      "PATCH /api/v1/generate-music",
-      options,
-    );
-  }
-
-  patchApiV1GenerateVideo<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/generate-video"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PATCH /api/v1/generate-video", TResponse>(
-      "PATCH /api/v1/generate-video",
-      options,
-    );
-  }
-
   patchApiV1MarketingInventoryBySlotId<TResponse = unknown>(
     options: PublicRouteCallOptions<"PATCH /api/v1/marketing/inventory/{slotId}">,
   ): Promise<TResponse> {
     return this.call<"PATCH /api/v1/marketing/inventory/{slotId}", TResponse>(
       "PATCH /api/v1/marketing/inventory/{slotId}",
+      options,
+    );
+  }
+
+  patchApiV1MarketingPrByReleaseId<TResponse = unknown>(
+    options: PublicRouteCallOptions<"PATCH /api/v1/marketing/pr/{releaseId}">,
+  ): Promise<TResponse> {
+    return this.call<"PATCH /api/v1/marketing/pr/{releaseId}", TResponse>(
+      "PATCH /api/v1/marketing/pr/{releaseId}",
       options,
     );
   }
@@ -8156,15 +8147,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"PATCH /api/v1/user", TResponse>(
       "PATCH /api/v1/user",
-      options,
-    );
-  }
-
-  patchApiV1UserAvatar<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PATCH /api/v1/user/avatar"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PATCH /api/v1/user/avatar", TResponse>(
-      "PATCH /api/v1/user/avatar",
       options,
     );
   }
@@ -9278,6 +9260,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1ElizaAgentsByAgentIdUpgradeTier<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/upgrade-tier">,
+  ): Promise<TResponse> {
+    return this.call<
+      "POST /api/v1/eliza/agents/{agentId}/upgrade-tier",
+      TResponse
+    >("POST /api/v1/eliza/agents/{agentId}/upgrade-tier", options);
+  }
+
   postApiV1ElizaAgentsByAgentIdWake<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/wake">,
   ): Promise<TResponse> {
@@ -9488,6 +9479,15 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1GenerateSfx<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/generate-sfx"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/generate-sfx", TResponse>(
+      "POST /api/v1/generate-sfx",
+      options,
+    );
+  }
+
   postApiV1GenerateVideo<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/generate-video"> = {},
   ): Promise<TResponse> {
@@ -9589,6 +9589,33 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/marketing/inventory/click", TResponse>(
       "POST /api/v1/marketing/inventory/click",
+      options,
+    );
+  }
+
+  postApiV1MarketingPr<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/marketing/pr"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/marketing/pr", TResponse>(
+      "POST /api/v1/marketing/pr",
+      options,
+    );
+  }
+
+  postApiV1MarketingPrByReleaseIdCancel<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/marketing/pr/{releaseId}/cancel">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/marketing/pr/{releaseId}/cancel", TResponse>(
+      "POST /api/v1/marketing/pr/{releaseId}/cancel",
+      options,
+    );
+  }
+
+  postApiV1MarketingPrByReleaseIdSubmit<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/marketing/pr/{releaseId}/submit">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/marketing/pr/{releaseId}/submit", TResponse>(
+      "POST /api/v1/marketing/pr/{releaseId}/submit",
       options,
     );
   }
@@ -9706,6 +9733,15 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/payment-requests/{id}/expire", TResponse>(
       "POST /api/v1/payment-requests/{id}/expire",
+      options,
+    );
+  }
+
+  postApiV1PiiScrubJobs<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/pii-scrub/jobs"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/pii-scrub/jobs", TResponse>(
+      "POST /api/v1/pii-scrub/jobs",
       options,
     );
   }
@@ -10007,6 +10043,33 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
+  postApiV1VoiceSession<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/voice/session"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/voice/session", TResponse>(
+      "POST /api/v1/voice/session",
+      options,
+    );
+  }
+
+  postApiV1VoiceSessionByIdRevoke<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/voice/session/{id}/revoke">,
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/voice/session/{id}/revoke", TResponse>(
+      "POST /api/v1/voice/session/{id}/revoke",
+      options,
+    );
+  }
+
+  postApiV1VoiceSessionConsent<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/voice/session/consent"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/voice/session/consent", TResponse>(
+      "POST /api/v1/voice/session/consent",
+      options,
+    );
+  }
+
   postApiV1VoiceStt<TResponse = unknown>(
     options: PublicRouteCallOptions<"POST /api/v1/voice/stt"> = {},
   ): Promise<TResponse> {
@@ -10020,6 +10083,15 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/voice/tts"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/voice/tts", options);
+  }
+
+  postApiV1WebPushSubscriptions<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/web-push/subscriptions"> = {},
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/web-push/subscriptions", TResponse>(
+      "POST /api/v1/web-push/subscriptions",
+      options,
+    );
   }
 
   postApiV1WhatsappConnect<TResponse = unknown>(
@@ -10193,15 +10265,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  putApiV1AppsByIdGenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/generate-image">,
-  ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/apps/{id}/generate-image", TResponse>(
-      "PUT /api/v1/apps/{id}/generate-image",
-      options,
-    );
-  }
-
   putApiV1AppsByIdMonetization<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/monetization">,
   ): Promise<TResponse> {
@@ -10247,33 +10310,6 @@ export class ElizaCloudPublicRoutesClient {
     >("PUT /api/v1/eliza/agents/{agentId}/api/wallet/{path}", options);
   }
 
-  putApiV1GenerateImage<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/generate-image"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/generate-image", TResponse>(
-      "PUT /api/v1/generate-image",
-      options,
-    );
-  }
-
-  putApiV1GenerateMusic<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/generate-music"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/generate-music", TResponse>(
-      "PUT /api/v1/generate-music",
-      options,
-    );
-  }
-
-  putApiV1GenerateVideo<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/generate-video"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/generate-video", TResponse>(
-      "PUT /api/v1/generate-video",
-      options,
-    );
-  }
-
   putApiV1McpsByMcpId<TResponse = unknown>(
     options: PublicRouteCallOptions<"PUT /api/v1/mcps/{mcpId}">,
   ): Promise<TResponse> {
@@ -10288,15 +10324,6 @@ export class ElizaCloudPublicRoutesClient {
   ): Promise<TResponse> {
     return this.call<"PUT /api/v1/proxy/birdeye/{path}", TResponse>(
       "PUT /api/v1/proxy/birdeye/{path}",
-      options,
-    );
-  }
-
-  putApiV1UserAvatar<TResponse = unknown>(
-    options: PublicRouteCallOptions<"PUT /api/v1/user/avatar"> = {},
-  ): Promise<TResponse> {
-    return this.call<"PUT /api/v1/user/avatar", TResponse>(
-      "PUT /api/v1/user/avatar",
       options,
     );
   }
@@ -10404,12 +10431,6 @@ export class ElizaCloudPublicRoutesClient {
       "DELETE /api/v1/apps/{id}/frontend/{deploymentId}",
       options,
     );
-  }
-
-  deleteApiV1AppsByIdGenerateImageRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/apps/{id}/generate-image">,
-  ): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/apps/{id}/generate-image", options);
   }
 
   deleteApiV1AppsByIdTelegramAutomationRaw(
@@ -10532,24 +10553,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/gallery/{id}", options);
   }
 
-  deleteApiV1GenerateImageRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/generate-image"> = {},
-  ): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/generate-image", options);
-  }
-
-  deleteApiV1GenerateMusicRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/generate-music"> = {},
-  ): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/generate-music", options);
-  }
-
-  deleteApiV1GenerateVideoRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/generate-video"> = {},
-  ): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/generate-video", options);
-  }
-
   deleteApiV1MarketingInventoryBySlotIdRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/marketing/inventory/{slotId}">,
   ): Promise<Response> {
@@ -10580,6 +10583,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/proxy/birdeye/{path}", options);
   }
 
+  deleteApiV1SessionsByIdRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/sessions/{id}">,
+  ): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/sessions/{id}", options);
+  }
+
   deleteApiV1TelegramDisconnectRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/telegram/disconnect"> = {},
   ): Promise<Response> {
@@ -10598,16 +10607,16 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("DELETE /api/v1/twitter/disconnect", options);
   }
 
-  deleteApiV1UserAvatarRaw(
-    options: PublicRouteCallOptions<"DELETE /api/v1/user/avatar"> = {},
-  ): Promise<Response> {
-    return this.callRaw("DELETE /api/v1/user/avatar", options);
-  }
-
   deleteApiV1VoiceByIdRaw(
     options: PublicRouteCallOptions<"DELETE /api/v1/voice/{id}">,
   ): Promise<Response> {
     return this.callRaw("DELETE /api/v1/voice/{id}", options);
+  }
+
+  deleteApiV1WebPushSubscriptionsRaw(
+    options: PublicRouteCallOptions<"DELETE /api/v1/web-push/subscriptions"> = {},
+  ): Promise<Response> {
+    return this.callRaw("DELETE /api/v1/web-push/subscriptions", options);
   }
 
   deleteApiV1WhatsappDisconnectRaw(
@@ -11007,12 +11016,6 @@ export class ElizaCloudPublicRoutesClient {
       "GET /api/v1/apps/{id}/frontend/preview/{[...path]}",
       options,
     );
-  }
-
-  getApiV1AppsByIdGenerateImageRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/apps/{id}/generate-image">,
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/apps/{id}/generate-image", options);
   }
 
   getApiV1AppsByIdMonetizationRaw(
@@ -11513,24 +11516,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/gallery/stats", options);
   }
 
-  getApiV1GenerateImageRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/generate-image"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/generate-image", options);
-  }
-
-  getApiV1GenerateMusicRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/generate-music"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/generate-music", options);
-  }
-
-  getApiV1GenerateVideoRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/generate-video"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/generate-video", options);
-  }
-
   getApiV1HfProxyByPathRaw(
     options: PublicRouteCallOptions<"GET /api/v1/hf-proxy/{path}">,
   ): Promise<Response> {
@@ -11666,6 +11651,27 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/marketing/inventory/serve", options);
   }
 
+  getApiV1MarketingPrRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/marketing/pr"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/marketing/pr", options);
+  }
+
+  getApiV1MarketingPrByReleaseIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/marketing/pr/{releaseId}">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/marketing/pr/{releaseId}", options);
+  }
+
+  getApiV1MarketingPrByReleaseIdCoverageRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/marketing/pr/{releaseId}/coverage">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "GET /api/v1/marketing/pr/{releaseId}/coverage",
+      options,
+    );
+  }
+
   getApiV1McpsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/mcps"> = {},
   ): Promise<Response> {
@@ -11676,6 +11682,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/mcps/{mcpId}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/mcps/{mcpId}", options);
+  }
+
+  getApiV1MeMfaRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/me/mfa"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/me/mfa", options);
   }
 
   getApiV1ModelsRaw(
@@ -11780,6 +11792,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/payment-requests/{id}", options);
   }
 
+  getApiV1PiiScrubJobsByIdRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/pii-scrub/jobs/{id}">,
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/pii-scrub/jobs/{id}", options);
+  }
+
   getApiV1PricingSummaryRaw(
     options: PublicRouteCallOptions<"GET /api/v1/pricing/summary"> = {},
   ): Promise<Response> {
@@ -11838,6 +11856,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/sensitive-requests/{id}">,
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/sensitive-requests/{id}", options);
+  }
+
+  getApiV1SessionsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/sessions"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/sessions", options);
   }
 
   getApiV1SolanaAssetsByAddressRaw(
@@ -11918,12 +11942,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("GET /api/v1/user", options);
   }
 
-  getApiV1UserAvatarRaw(
-    options: PublicRouteCallOptions<"GET /api/v1/user/avatar"> = {},
-  ): Promise<Response> {
-    return this.callRaw("GET /api/v1/user/avatar", options);
-  }
-
   getApiV1UserWalletsRaw(
     options: PublicRouteCallOptions<"GET /api/v1/user/wallets"> = {},
   ): Promise<Response> {
@@ -11964,6 +11982,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"GET /api/v1/voice/list"> = {},
   ): Promise<Response> {
     return this.callRaw("GET /api/v1/voice/list", options);
+  }
+
+  getApiV1VoiceSessionWsRaw(
+    options: PublicRouteCallOptions<"GET /api/v1/voice/session/ws"> = {},
+  ): Promise<Response> {
+    return this.callRaw("GET /api/v1/voice/session/ws", options);
   }
 
   getApiV1WhatsappStatusRaw(
@@ -12014,6 +12038,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("PATCH /api/elevenlabs/voices/{id}", options);
   }
 
+  patchApiV1AdvertisingAccountsByIdRaw(
+    options: PublicRouteCallOptions<"PATCH /api/v1/advertising/accounts/{id}">,
+  ): Promise<Response> {
+    return this.callRaw("PATCH /api/v1/advertising/accounts/{id}", options);
+  }
+
   patchApiV1AdvertisingAudienceSegmentsByIdRaw(
     options: PublicRouteCallOptions<"PATCH /api/v1/advertising/audience-segments/{id}">,
   ): Promise<Response> {
@@ -12054,12 +12084,6 @@ export class ElizaCloudPublicRoutesClient {
       "PATCH /api/v1/apps/{id}/domains/{domain}/dns/{recordId}",
       options,
     );
-  }
-
-  patchApiV1AppsByIdGenerateImageRaw(
-    options: PublicRouteCallOptions<"PATCH /api/v1/apps/{id}/generate-image">,
-  ): Promise<Response> {
-    return this.callRaw("PATCH /api/v1/apps/{id}/generate-image", options);
   }
 
   patchApiV1ConnectionsByPlatformRaw(
@@ -12113,28 +12137,16 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  patchApiV1GenerateImageRaw(
-    options: PublicRouteCallOptions<"PATCH /api/v1/generate-image"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PATCH /api/v1/generate-image", options);
-  }
-
-  patchApiV1GenerateMusicRaw(
-    options: PublicRouteCallOptions<"PATCH /api/v1/generate-music"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PATCH /api/v1/generate-music", options);
-  }
-
-  patchApiV1GenerateVideoRaw(
-    options: PublicRouteCallOptions<"PATCH /api/v1/generate-video"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PATCH /api/v1/generate-video", options);
-  }
-
   patchApiV1MarketingInventoryBySlotIdRaw(
     options: PublicRouteCallOptions<"PATCH /api/v1/marketing/inventory/{slotId}">,
   ): Promise<Response> {
     return this.callRaw("PATCH /api/v1/marketing/inventory/{slotId}", options);
+  }
+
+  patchApiV1MarketingPrByReleaseIdRaw(
+    options: PublicRouteCallOptions<"PATCH /api/v1/marketing/pr/{releaseId}">,
+  ): Promise<Response> {
+    return this.callRaw("PATCH /api/v1/marketing/pr/{releaseId}", options);
   }
 
   patchApiV1ProxyBirdeyeByPathRaw(
@@ -12147,12 +12159,6 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PATCH /api/v1/user"> = {},
   ): Promise<Response> {
     return this.callRaw("PATCH /api/v1/user", options);
-  }
-
-  patchApiV1UserAvatarRaw(
-    options: PublicRouteCallOptions<"PATCH /api/v1/user/avatar"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PATCH /api/v1/user/avatar", options);
   }
 
   patchApiV1UserEmailRaw(
@@ -12992,6 +12998,15 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/eliza/agents/{agentId}/suspend", options);
   }
 
+  postApiV1ElizaAgentsByAgentIdUpgradeTierRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/upgrade-tier">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/eliza/agents/{agentId}/upgrade-tier",
+      options,
+    );
+  }
+
   postApiV1ElizaAgentsByAgentIdWakeRaw(
     options: PublicRouteCallOptions<"POST /api/v1/eliza/agents/{agentId}/wake">,
   ): Promise<Response> {
@@ -13136,6 +13151,12 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/generate-prompts", options);
   }
 
+  postApiV1GenerateSfxRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/generate-sfx"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/generate-sfx", options);
+  }
+
   postApiV1GenerateVideoRaw(
     options: PublicRouteCallOptions<"POST /api/v1/generate-video"> = {},
   ): Promise<Response> {
@@ -13209,6 +13230,30 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/marketing/inventory/click"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/marketing/inventory/click", options);
+  }
+
+  postApiV1MarketingPrRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/marketing/pr"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/marketing/pr", options);
+  }
+
+  postApiV1MarketingPrByReleaseIdCancelRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/marketing/pr/{releaseId}/cancel">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/marketing/pr/{releaseId}/cancel",
+      options,
+    );
+  }
+
+  postApiV1MarketingPrByReleaseIdSubmitRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/marketing/pr/{releaseId}/submit">,
+  ): Promise<Response> {
+    return this.callRaw(
+      "POST /api/v1/marketing/pr/{releaseId}/submit",
+      options,
+    );
   }
 
   postApiV1McpsRaw(
@@ -13287,6 +13332,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/payment-requests/{id}/expire">,
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/payment-requests/{id}/expire", options);
+  }
+
+  postApiV1PiiScrubJobsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/pii-scrub/jobs"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/pii-scrub/jobs", options);
   }
 
   postApiV1ProxyBirdeyeByPathRaw(
@@ -13487,6 +13538,24 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("POST /api/v1/voice/clone", options);
   }
 
+  postApiV1VoiceSessionRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/voice/session"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/voice/session", options);
+  }
+
+  postApiV1VoiceSessionByIdRevokeRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/voice/session/{id}/revoke">,
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/voice/session/{id}/revoke", options);
+  }
+
+  postApiV1VoiceSessionConsentRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/voice/session/consent"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/voice/session/consent", options);
+  }
+
   postApiV1VoiceSttRaw(
     options: PublicRouteCallOptions<"POST /api/v1/voice/stt"> = {},
   ): Promise<Response> {
@@ -13497,6 +13566,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/voice/tts"> = {},
   ): Promise<Response> {
     return this.callRaw("POST /api/v1/voice/tts", options);
+  }
+
+  postApiV1WebPushSubscriptionsRaw(
+    options: PublicRouteCallOptions<"POST /api/v1/web-push/subscriptions"> = {},
+  ): Promise<Response> {
+    return this.callRaw("POST /api/v1/web-push/subscriptions", options);
   }
 
   postApiV1WhatsappConnectRaw(
@@ -13619,12 +13694,6 @@ export class ElizaCloudPublicRoutesClient {
     return this.callRaw("PUT /api/v1/apps/{id}/database", options);
   }
 
-  putApiV1AppsByIdGenerateImageRaw(
-    options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/generate-image">,
-  ): Promise<Response> {
-    return this.callRaw("PUT /api/v1/apps/{id}/generate-image", options);
-  }
-
   putApiV1AppsByIdMonetizationRaw(
     options: PublicRouteCallOptions<"PUT /api/v1/apps/{id}/monetization">,
   ): Promise<Response> {
@@ -13661,24 +13730,6 @@ export class ElizaCloudPublicRoutesClient {
     );
   }
 
-  putApiV1GenerateImageRaw(
-    options: PublicRouteCallOptions<"PUT /api/v1/generate-image"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PUT /api/v1/generate-image", options);
-  }
-
-  putApiV1GenerateMusicRaw(
-    options: PublicRouteCallOptions<"PUT /api/v1/generate-music"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PUT /api/v1/generate-music", options);
-  }
-
-  putApiV1GenerateVideoRaw(
-    options: PublicRouteCallOptions<"PUT /api/v1/generate-video"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PUT /api/v1/generate-video", options);
-  }
-
   putApiV1McpsByMcpIdRaw(
     options: PublicRouteCallOptions<"PUT /api/v1/mcps/{mcpId}">,
   ): Promise<Response> {
@@ -13689,11 +13740,5 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"PUT /api/v1/proxy/birdeye/{path}">,
   ): Promise<Response> {
     return this.callRaw("PUT /api/v1/proxy/birdeye/{path}", options);
-  }
-
-  putApiV1UserAvatarRaw(
-    options: PublicRouteCallOptions<"PUT /api/v1/user/avatar"> = {},
-  ): Promise<Response> {
-    return this.callRaw("PUT /api/v1/user/avatar", options);
   }
 }

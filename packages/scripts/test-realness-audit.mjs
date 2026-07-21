@@ -143,8 +143,16 @@ function* walkFiles(dir) {
   for (const entry of entries) {
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-      yield* walkFiles(path.join(dir, entry.name));
+      const childDir = path.join(dir, entry.name);
+      if (
+        SKIP_DIRS.has(entry.name) ||
+        // Checked-out Git submodules carry their own .git marker. Their tests
+        // are governed upstream and must not affect this repository's gates.
+        fs.existsSync(path.join(childDir, ".git"))
+      ) {
+        continue;
+      }
+      yield* walkFiles(childDir);
       continue;
     }
     if (entry.isFile() && isTestFile(entry.name)) {
