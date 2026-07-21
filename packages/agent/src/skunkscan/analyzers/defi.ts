@@ -4,20 +4,20 @@ import {
   WalletDeFiSummary,
 } from "../types";
 
+import { SolanaParsedTransaction } from "../helius";
+
 export function analyzeWalletDeFi(
-  parsedTransactions: any[],
+  parsedTransactions: SolanaParsedTransaction[],
 ): WalletDeFiSummary {
   const protocolMap = new Map<string, WalletDeFiProtocol>();
 
   for (const transaction of parsedTransactions) {
     const instructions =
-      transaction?.transaction?.message?.instructions ?? [];
+    transaction.instructions ?? [];
 
     for (const instruction of instructions) {
       const programId =
-        instruction?.programId ??
-        instruction?.programIdIndex ??
-        null;
+      instruction.programId ?? null;
 
       if (typeof programId !== "string") {
         continue;
