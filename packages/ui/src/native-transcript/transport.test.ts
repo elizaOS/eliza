@@ -7,6 +7,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ChatToolCallEvent } from "../api";
 import {
+  createNativeChatTranscriptTurnPublisher,
+  isNativeChatFailureRetryable,
   publishNativeAgentText,
   publishNativeToolState,
 } from "./chat-event-adapter";
@@ -101,8 +103,8 @@ describe("native transcript producer transport", () => {
     };
     publishNativeToolState(tool, "t1");
 
-    const first = (dispatch.mock.calls[0]?.[0] as CustomEvent).detail;
-    const second = (dispatch.mock.calls[1]?.[0] as CustomEvent).detail;
+    const first = (dispatch.mock.calls[0][0] as CustomEvent).detail;
+    const second = (dispatch.mock.calls[1][0] as CustomEvent).detail;
     expect(first.events[0]).toMatchObject({
       type: "agent.text",
       messageId: "m1",
@@ -117,5 +119,53 @@ describe("native transcript producer transport", () => {
       seq: 2,
     });
     dispatch.mockRestore();
+  });
+
+  it.each([
+    ["provider_issue", true],
+    ["rate_limited", true],
+    ["local_inference", true],
+    ["no_provider", false],
+    ["insufficient_credits", false],
+  ] as const)("maps %s retryability truthfully", (failureKind, retryable) => {
+    expect(isNativeChatFailureRetryable(failureKind)).toBe(retryable);
+  });
+
+  it("keeps primary and replay snapshots on one stable logical turn", () => {
+    const seen: unknown[] = [];
+    const listener = (event: Event) => {
+      seen.push(...(event as CustomEvent<{ events: unknown[] }>).detail.events);
+    };
+    window.addEventListener(NATIVE_TRANSCRIPT_RENDERER_EVENT, listener);
+    try {
+      const turn = createNativeChatTranscriptTurnPublisher({
+        enabled: true,
+        turnId: "turn-1",
+        messageId: "message-1",
+      });
+      turn.publishUserFinal("hello", 1);
+      turn.publishAgentText("hel");
+      turn.publishAgentText("hel");
+      turn.publishAgentText("hello");
+      turn.publishTerminal({
+        text: "hello",
+        streamedText: "hello",
+        completed: true,
+      });
+
+      const agentEvents = seen.filter(
+        (event): event is { type: string; messageId: string; final: boolean } =>
+          Boolean(event) &&
+          typeof event === "object" &&
+          (event as { type?: unknown }).type === "agent.text",
+      );
+      expect(agentEvents).toHaveLength(3);
+      expect(new Set(agentEvents.map((event) => event.messageId))).toEqual(
+        new Set(["message-1"]),
+      );
+      expect(agentEvents.at(-1)?.final).toBe(true);
+    } finally {
+      window.removeEventListener(NATIVE_TRANSCRIPT_RENDERER_EVENT, listener);
+    }
   });
 });

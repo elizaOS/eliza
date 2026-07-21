@@ -20,6 +20,14 @@ import type {
 } from "../api";
 import { StreamGenerationError } from "../api/client-base";
 import { CLOUD_HANDOFF_PHASE_EVENT, NAVIGATE_VIEW_EVENT } from "../events";
+import type {
+  TranscriptEvent,
+  TranscriptEventStream,
+} from "../native-transcript";
+import {
+  NATIVE_TRANSCRIPT_RENDERER_EVENT,
+  resetNativeTranscriptSequenceForTests,
+} from "../native-transcript/transport";
 import type { LoadConversationMessagesResult } from "./internal";
 import { listPendingChatTurns } from "./pending-chat-turns";
 import {
@@ -42,6 +50,22 @@ function dispatchHandoffPhase(phase: string): void {
       detail: { agentId: "agent-123", phase },
     }),
   );
+}
+
+function captureNativeTranscript(): {
+  events: TranscriptEvent[];
+  stop: () => void;
+} {
+  const events: TranscriptEvent[] = [];
+  const listener = (event: Event): void => {
+    events.push(...(event as CustomEvent<TranscriptEventStream>).detail.events);
+  };
+  window.addEventListener(NATIVE_TRANSCRIPT_RENDERER_EVENT, listener);
+  return {
+    events,
+    stop: () =>
+      window.removeEventListener(NATIVE_TRANSCRIPT_RENDERER_EVENT, listener),
+  };
 }
 
 const mocks = vi.hoisted(() => ({
@@ -639,6 +663,205 @@ describe("useChatSend 404 recovery", () => {
     expect(
       remaining.some((m) => m.role === "assistant" && !m.text.trim()),
     ).toBe(false);
+  });
+});
+
+describe("useChatSend native VOICE_DM transcript production", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.client.getBaseUrl.mockReturnValue("");
+    resetNativeTranscriptSequenceForTests();
+  });
+
+  it("mirrors primary tokens, tools, and the terminal snapshot", async () => {
+    const capture = captureNativeTranscript();
+    try {
+      mocks.client.sendConversationMessageStream.mockImplementation(
+        async (
+          _id: string,
+          _text: string,
+          onToken: (token: string, accumulatedText?: string) => void,
+          _channelType: string,
+          _signal: AbortSignal | undefined,
+          _images: unknown,
+          _metadata: unknown,
+          _onStatus: unknown,
+          onTool: (event: ChatToolCallEvent) => void,
+        ) => {
+          onToken("Hello", "Hello");
+          onTool({
+            phase: "result",
+            callId: "tool-1",
+            toolName: "SEARCH",
+            result: { ok: true },
+          });
+          return { text: "Hello", completed: true };
+        },
+      );
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      const { result } = renderHook(() => useChatSend(deps));
+
+      await act(async () => {
+        await result.current.sendChatText("hi", {
+          conversationId: "conv-1",
+          channelType: "VOICE_DM",
+        });
+      });
+
+      expect(capture.events.map((event) => event.type)).toEqual([
+        "stt.final",
+        "agent.text",
+        "tool.state",
+        "agent.text",
+      ]);
+      const agentEvents = capture.events.filter(
+        (event) => event.type === "agent.text",
+      );
+      expect(new Set(agentEvents.map((event) => event.messageId)).size).toBe(1);
+      expect(agentEvents.at(-1)?.final).toBe(true);
+    } finally {
+      capture.stop();
+    }
+  });
+
+  it("marks remediation gates non-retryable", async () => {
+    const capture = captureNativeTranscript();
+    try {
+      mocks.client.sendConversationMessageStream.mockRejectedValue(
+        new StreamGenerationError({
+          message: "no provider configured",
+          failureKind: "no_provider",
+        }),
+      );
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      const { result } = renderHook(() => useChatSend(deps));
+
+      await act(async () => {
+        await result.current.sendChatText("hi", {
+          conversationId: "conv-1",
+          channelType: "VOICE_DM",
+        });
+      });
+
+      expect(capture.events.find((event) => event.type === "error")).toEqual(
+        expect.objectContaining({
+          type: "error",
+          code: "no_provider",
+          retryable: false,
+        }),
+      );
+    } finally {
+      capture.stop();
+    }
+  });
+
+  it("mirrors a user abort as one turn cancellation", async () => {
+    const capture = captureNativeTranscript();
+    try {
+      const started = deferred();
+      mockStreamingUntilAbort(started);
+      mocks.client.abortConversationTurn.mockResolvedValue({ aborted: true });
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      const { result } = renderHook(() => useChatSend(deps));
+      let sendPromise: Promise<void> | undefined;
+      await act(async () => {
+        sendPromise = result.current.sendChatText("hi", {
+          conversationId: "conv-1",
+          channelType: "VOICE_DM",
+        });
+        await started.promise;
+      });
+      act(() => result.current.handleChatStop());
+      await act(async () => {
+        await sendPromise;
+      });
+
+      const cancellations = capture.events.filter(
+        (event) => event.type === "cancel",
+      );
+      expect(cancellations).toHaveLength(1);
+      expect(cancellations[0]).toEqual(
+        expect.objectContaining({ reason: "aborted", scope: "turn" }),
+      );
+    } finally {
+      capture.stop();
+    }
+  });
+
+  it("uses stable rows and full callbacks for a 404 recreate replay", async () => {
+    const capture = captureNativeTranscript();
+    try {
+      mocks.client.sendConversationMessageStream
+        .mockRejectedValueOnce(http404())
+        .mockImplementationOnce(
+          async (
+            _id: string,
+            _text: string,
+            onToken: (token: string, accumulatedText?: string) => void,
+            _channelType: string,
+            _signal: AbortSignal | undefined,
+            _images: unknown,
+            _metadata: unknown,
+            _onStatus: unknown,
+            onTool: (event: ChatToolCallEvent) => void,
+          ) => {
+            onToken("replayed", "replayed");
+            onTool({
+              phase: "call",
+              callId: "tool-replay",
+              toolName: "SEARCH",
+              args: { q: "test" },
+            });
+            return { text: "replayed", completed: true };
+          },
+        );
+      mocks.client.createConversation.mockResolvedValue({
+        conversation: conversation("conv-new", "room-new"),
+      });
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      const { result } = renderHook(() => useChatSend(deps));
+
+      await act(async () => {
+        await result.current.sendChatText("hi", {
+          conversationId: "conv-1",
+          channelType: "VOICE_DM",
+        });
+      });
+
+      expect(
+        capture.events.filter((event) => event.type === "stt.final"),
+      ).toHaveLength(1);
+      const agentEvents = capture.events.filter(
+        (event) => event.type === "agent.text",
+      );
+      expect(new Set(agentEvents.map((event) => event.messageId)).size).toBe(1);
+      expect(agentEvents.at(-1)?.final).toBe(true);
+      expect(
+        capture.events.some(
+          (event) =>
+            event.type === "tool.state" && event.callId === "tool-replay",
+        ),
+      ).toBe(true);
+      expect(
+        capture.events.some(
+          (event) => event.type === "error" && event.code === "not-found",
+        ),
+      ).toBe(false);
+    } finally {
+      capture.stop();
+    }
   });
 });
 
