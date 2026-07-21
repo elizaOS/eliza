@@ -36,7 +36,7 @@ export type SolanaProtocol = {
   tags: string[];
 };
 
-const SOLANA_PROTOCOLS: Record<string, SolanaProtocol> = {
+const SOLANA_PROTOCOLS: Readonly<Record<string, SolanaProtocol>> = {
   JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5NtH2K7QJ: {
   programId: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5NtH2K7QJ",
   name: "Jupiter",
