@@ -56,6 +56,14 @@ import {
   storePendingOAuthReturnTo,
 } from "../../lib/login-return-to";
 import {
+  pollStewardEmailSignInStatus,
+  type StewardEmailLoginChallenge,
+  StewardEmailLoginError,
+  type StewardEmailLoginStatus,
+  startStewardEmailLogin,
+  verifyStewardEmailSignInCode,
+} from "../../lib/steward-email-login";
+import {
   buildStewardOAuthAuthorizeUrl,
   buildStewardOAuthRedirectUri,
   consumeStewardPkceVerifier,
@@ -95,6 +103,12 @@ const PLAYWRIGHT_TEST_AUTH_ENABLED =
     process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true");
 
 type AuthStep = "idle" | "loading" | "email-sent" | "otp-entry" | "success";
+type EmailCheckState =
+  | "pending"
+  | "approved"
+  | "expired"
+  | "locked"
+  | "invalid";
 
 function persistStewardToken(token: string): void {
   writeStoredStewardToken(token);
@@ -150,7 +164,7 @@ function requireCompletedAuth(
   result: StewardAuthResult | StewardMfaRequiredResult,
 ): StewardAuthResult {
   if ("mfaRequired" in result) {
-    throw new Error("MFA required — not yet supported in this client.");
+    throw new Error("MFA required. This client does not support it yet.");
   }
   return result;
 }
@@ -241,6 +255,51 @@ function getCallbackReasonMessage(
   }
 }
 
+const EMAIL_RESEND_COOLDOWN_MS = 30_000;
+const EMAIL_STATUS_POLL_MS = 3_000;
+
+function sanitizeOneTimeCode(value: string): string {
+  return value.replace(/[^0-9]/g, "").slice(0, 6);
+}
+
+function challengeExpiresAtMs(challenge: StewardEmailLoginChallenge): number {
+  if (typeof challenge.expiresAt === "number") {
+    return challenge.expiresAt < 10_000_000_000
+      ? challenge.expiresAt * 1000
+      : challenge.expiresAt;
+  }
+  const parsed = Date.parse(challenge.expiresAt);
+  return Number.isFinite(parsed) ? parsed : Date.now();
+}
+
+function mapChallengeStatus(status: StewardEmailLoginStatus): EmailCheckState {
+  switch (status) {
+    case "consumed":
+      return "approved";
+    case "expired":
+    case "locked":
+    case "invalid":
+      return status;
+    case "pending":
+      return "pending";
+  }
+}
+
+function describeEmailLoginError(error: unknown, fallback: string): string {
+  if (error instanceof StewardEmailLoginError) {
+    if (error.status === 429) {
+      return "Too many attempts. Wait a moment before trying again.";
+    }
+    if (error.status === 401 || error.status === 403) {
+      return "That code was not accepted. Check the email and try again.";
+    }
+    if (error.status === 410) {
+      return "That sign-in email expired or was already used. Request a new email.";
+    }
+  }
+  return getErrorMessage(error, fallback);
+}
+
 let cachedStewardProviders: StewardProviders | null = null;
 let stewardProvidersPromise: Promise<StewardProviders> | null = null;
 
@@ -273,6 +332,13 @@ export default function StewardLoginSection() {
 
   const [email, setEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailChallenge, setEmailChallenge] =
+    useState<StewardEmailLoginChallenge | null>(null);
+  const [emailCheckState, setEmailCheckState] =
+    useState<EmailCheckState>("pending");
+  const [resendRemainingSeconds, setResendRemainingSeconds] = useState(0);
+  const [resendAvailableAt, setResendAvailableAt] = useState(0);
   const [step, setStep] = useState<AuthStep>("idle");
   const [loading, setLoading] = useState<Provider | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -485,6 +551,76 @@ export default function StewardLoginSection() {
     navigate(qs ? `${pathname}?${qs}` : pathname, { replace: true });
   }, [pathname, searchParams, navigate, t]);
 
+  useEffect(() => {
+    if (
+      step !== "email-sent" ||
+      !emailChallenge?.challengeId ||
+      !emailChallenge.pollSecret
+    ) {
+      return;
+    }
+    if (emailCheckState !== "pending") return;
+
+    const { challengeId, pollSecret } = emailChallenge;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      try {
+        const status = await pollStewardEmailSignInStatus(
+          { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
+          challengeId,
+          pollSecret,
+        );
+        if (cancelled) return;
+        const mapped = mapChallengeStatus(status);
+        setEmailCheckState(mapped);
+        if (mapped !== "pending") return;
+      } catch (pollError) {
+        if (!cancelled) {
+          setError(
+            describeEmailLoginError(
+              pollError,
+              "Could not check that sign-in email. You can still enter the code.",
+            ),
+          );
+        }
+      }
+      if (!cancelled) {
+        timer = setTimeout(poll, EMAIL_STATUS_POLL_MS);
+      }
+    };
+
+    timer = setTimeout(poll, EMAIL_STATUS_POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [emailChallenge, emailCheckState, step, stewardApiUrl]);
+
+  useEffect(() => {
+    if (step !== "email-sent" || !emailChallenge) {
+      setResendRemainingSeconds(0);
+      return;
+    }
+
+    const update = () => {
+      const resendMs = Math.max(0, resendAvailableAt - Date.now());
+      const expiryMs = Math.max(
+        0,
+        challengeExpiresAtMs(emailChallenge) - Date.now(),
+      );
+      if (expiryMs === 0 && emailCheckState === "pending") {
+        setEmailCheckState("expired");
+      }
+      setResendRemainingSeconds(Math.ceil(resendMs / 1000));
+    };
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [emailChallenge, emailCheckState, resendAvailableAt, step]);
+
   async function handleSuccess(token: string, refreshToken?: string | null) {
     persistStewardToken(token);
     await syncStewardSessionCookie(token, refreshToken);
@@ -578,13 +714,57 @@ export default function StewardLoginSection() {
     setLoading("email");
     setError(null);
     try {
-      await auth.signInWithEmail(email.trim());
+      const challenge = await startStewardEmailLogin(
+        { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
+        email.trim(),
+      );
+      setEmailChallenge(challenge);
+      setEmailCode("");
+      setEmailCheckState("pending");
+      setResendAvailableAt(Date.now() + EMAIL_RESEND_COOLDOWN_MS);
       setStep("email-sent");
       setLoading(null);
     } catch (e: unknown) {
-      setError(getErrorMessage(e, "Failed to send"));
+      setError(describeEmailLoginError(e, "Failed to send sign-in email."));
       setLoading(null);
     }
+  }
+
+  async function handleVerifyEmailCode() {
+    const code = sanitizeOneTimeCode(emailCode);
+    if (code.length !== 6) {
+      setError("Enter the six-digit code from your email.");
+      return;
+    }
+    setLoading("email");
+    setError(null);
+    try {
+      const result = await verifyStewardEmailSignInCode(
+        { baseUrl: stewardApiUrl, tenantId: STEWARD_TENANT_ID },
+        email.trim(),
+        code,
+      );
+      if ("mfaRequired" in result) {
+        throw new Error(
+          "Additional verification is required to finish signing in.",
+        );
+      }
+      await handleSuccess(result.token, result.refreshToken);
+    } catch (e: unknown) {
+      setError(
+        describeEmailLoginError(e, "That code did not work. Try again."),
+      );
+      setLoading(null);
+    }
+  }
+
+  function cancelEmailLogin() {
+    setStep("idle");
+    setEmailChallenge(null);
+    setEmailCode("");
+    setEmailCheckState("pending");
+    setError(null);
+    setLoading(null);
   }
 
   async function handleOAuth(provider: StewardOAuthProvider) {
@@ -605,7 +785,7 @@ export default function StewardLoginSection() {
       if (!storeStewardPkceVerifier(pkce.verifier)) {
         authWindow?.close();
         setError(
-          "Could not start sign-in — browser storage is unavailable. Enable cookies / site data and try again.",
+          "Could not start sign-in. Browser storage is unavailable. Enable cookies / site data and try again.",
         );
         setLoading(null);
         return;
@@ -678,32 +858,152 @@ export default function StewardLoginSection() {
   }
 
   if (step === "email-sent") {
+    const hasCompanionCode = Boolean(
+      emailChallenge?.challengeId && emailChallenge.pollSecret,
+    );
+    const resendDisabled = loading !== null || resendRemainingSeconds > 0;
+    const checkEmailTitle =
+      emailCheckState === "approved"
+        ? "Link approved"
+        : emailCheckState === "expired"
+          ? "Email expired"
+          : emailCheckState === "locked"
+            ? "Too many attempts"
+            : emailCheckState === "invalid"
+              ? "Email no longer valid"
+              : "Check your email";
+    const checkEmailMessage =
+      emailCheckState === "approved"
+        ? "That link was used. For security, request a fresh email to sign in on this device."
+        : emailCheckState === "expired"
+          ? "That sign-in email expired. Request a new email to continue."
+          : emailCheckState === "locked"
+            ? "Too many attempts were made. Request a new email in a moment."
+            : emailCheckState === "invalid"
+              ? "That sign-in email is no longer valid. Request a new email to continue."
+              : hasCompanionCode
+                ? "Open the link on this device or enter the six-digit code we sent."
+                : "Check your inbox and open the magic link to sign in.";
+
     return (
       <div className="space-y-4 py-4 text-center">
         <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-accent-subtle text-accent">
           <EmailIcon />
         </div>
-        <p className="text-txt-strong">
-          {t("cloud.login.magicLinkSent", {
-            defaultValue: "Magic link sent to",
-          })}{" "}
-          <strong className="font-semibold">{email}</strong>
-        </p>
-        <p className="text-sm text-muted">
-          {t("cloud.login.magicLinkHint", {
-            defaultValue: "Check your inbox and click the link to sign in.",
-          })}
-        </p>
+        <div className="space-y-1">
+          <p className="text-base font-semibold text-txt-strong">
+            {checkEmailTitle}
+          </p>
+          <p className="text-sm text-muted">
+            <strong className="font-semibold text-txt">{email}</strong>
+          </p>
+        </div>
+        <p className="text-sm text-muted">{checkEmailMessage}</p>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {hasCompanionCode && (
+          <div className="space-y-2">
+            <label
+              htmlFor="email-sign-in-code"
+              className="block text-left text-sm font-medium text-txt"
+            >
+              {t("cloud.login.emailCode.label", {
+                defaultValue: "Six-digit code",
+              })}
+            </label>
+            <Input
+              id="email-sign-in-code"
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              maxLength={6}
+              placeholder="123456"
+              aria-describedby="email-sign-in-code-hint"
+              value={emailCode}
+              onChange={(e) =>
+                setEmailCode(sanitizeOneTimeCode(e.target.value))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleVerifyEmailCode();
+              }}
+              disabled={loading !== null || emailCheckState !== "pending"}
+              className="w-full min-h-touch rounded-md border border-input bg-bg-elevated px-4 py-3 text-center text-2xl font-semibold tracking-[0.45em] text-txt outline-none transition-colors placeholder:tracking-normal placeholder:text-muted hover:border-border-strong disabled:opacity-50"
+            />
+            <p
+              id="email-sign-in-code-hint"
+              className="text-left text-xs text-muted"
+            >
+              {t("cloud.login.emailCode.hint", {
+                defaultValue:
+                  "Use only the current email. A new email replaces the old code.",
+              })}
+            </p>
+          </div>
+        )}
+
+        {hasCompanionCode && (
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={handleVerifyEmailCode}
+            disabled={
+              loading !== null ||
+              emailCode.length !== 6 ||
+              emailCheckState !== "pending"
+            }
+            className="flex w-full min-h-touch items-center justify-center gap-2 rounded-md bg-accent px-4 py-3 font-semibold text-accent-foreground transition-[background-color,transform] hover:bg-accent-hover active:scale-[0.99] disabled:pointer-events-none disabled:opacity-50"
+          >
+            {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
+            {t("cloud.login.emailCode.verify", {
+              defaultValue: "Verify code",
+            })}
+          </Button>
+        )}
+
+        {hasCompanionCode && emailCheckState === "pending" && (
+          <p className="text-xs text-muted" role="status">
+            {t("cloud.login.emailStatus.pending", {
+              defaultValue: "Waiting for the link or code.",
+            })}
+          </p>
+        )}
+
+        {emailCheckState === "approved" && (
+          <p className="text-xs text-muted" role="status">
+            {t("cloud.login.emailStatus.approved", {
+              defaultValue:
+                "The link was approved elsewhere. This device was not signed in.",
+            })}
+          </p>
+        )}
+
+        <Button
+          variant="ghost"
+          type="button"
+          className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+          onClick={handleEmail}
+          disabled={resendDisabled}
+        >
+          {resendRemainingSeconds > 0
+            ? `Resend in ${resendRemainingSeconds}s`
+            : t("cloud.login.emailCode.resend", {
+                defaultValue: "Resend email",
+              })}
+        </Button>
         <Button
           variant="ghost"
           type="button"
           className="inline-flex min-h-touch items-center rounded-md px-3 text-sm font-medium text-muted transition-colors hover:text-txt active:scale-[0.98]"
-          onClick={() => {
-            setStep("idle");
-            setLoading(null);
-          }}
+          onClick={cancelEmailLogin}
         >
-          ← {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
+          {t("cloud.login.backToLogin", { defaultValue: "Back to login" })}
         </Button>
       </div>
     );

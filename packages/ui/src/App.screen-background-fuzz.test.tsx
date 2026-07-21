@@ -48,6 +48,7 @@ import { stubOfflineAppFetch } from "../test/offline-app-fetch";
 vi.mock("./utils/with-timeout", () => ({
   withTimeout: <T,>(promise: Promise<T>): Promise<T> => promise,
 }));
+
 import { getShaderPreset } from "./backgrounds/shader-presets";
 import { BACKGROUND_APPLY_EVENT } from "./backgrounds/useBackgroundApplyChannel";
 import type { BuiltinTab } from "./navigation";

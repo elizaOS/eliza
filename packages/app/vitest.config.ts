@@ -30,6 +30,81 @@ export default defineConfig({
   root: here,
   resolve: {
     ...baseConfig.resolve,
+    alias: [
+      {
+        // Entrypoint tests exercise the shipped iOS bridge import in source mode;
+        // the changed-test lane intentionally builds core only, so they cannot
+        // depend on a pre-existing app-core dist directory.
+        find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
+        replacement: path.join(
+          here,
+          "../app-core/src/api/ios-local-agent-transport.ts",
+        ),
+      },
+      {
+        // Vite resolves this browser-safe dynamic import from source as well;
+        // matching that boundary keeps fresh entrypoint tests independent of
+        // plugin-blocker's generated dist directory.
+        find: /^@elizaos\/plugin-blocker\/native$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-blocker/src/native.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/cloud-ui$/,
+        replacement: path.join(here, "../cloud-ui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/cloud-ui\/(.+)$/,
+        replacement: path.join(here, "../cloud-ui/src/$1"),
+      },
+      {
+        find: /^@elizaos\/app-model-tester$/,
+        replacement: path.join(
+          here,
+          "../../plugins/app-model-tester/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-task-coordinator\/register$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-task-coordinator/src/register.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-appblocker$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-appblocker/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-llama$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-llama/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-mobile-agent-bridge$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-mobile-agent-bridge/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-websiteblocker$/,
+        replacement: path.join(
+          here,
+          "../../plugins/plugin-native-websiteblocker/src/index.ts",
+        ),
+      },
+      ...(Array.isArray(baseConfig.resolve?.alias)
+        ? baseConfig.resolve.alias
+        : []),
+    ],
   },
   test: {
     ...baseConfig.test,
@@ -37,5 +112,9 @@ export default defineConfig({
     setupFiles: [path.join(here, "test/setup.ts")],
     include: ["src/**/*.test.{ts,tsx}", "test/**/*.test.{ts,tsx}"],
     exclude: unitExcludes,
+    coverage: {
+      ...baseConfig.test?.coverage,
+      include: ["src/**/*.{ts,tsx}"],
+    },
   },
 });

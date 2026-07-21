@@ -25,7 +25,7 @@ const RM_RECURSIVE_SCRIPT = join(
   "rm-path-recursive.mjs"
 );
 
-function rmRecursive(targetPath: string) {
+export function rmRecursive(targetPath: string) {
   const result = spawnSync(process.execPath, [RM_RECURSIVE_SCRIPT, targetPath], {
     stdio: "inherit",
   });
@@ -34,7 +34,7 @@ function rmRecursive(targetPath: string) {
   }
 }
 
-function listDeclarationFiles(dir: string): string[] {
+export function listDeclarationFiles(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
   return entries.flatMap((entry) => {
     const entryPath = join(dir, entry.name);
@@ -46,7 +46,7 @@ function listDeclarationFiles(dir: string): string[] {
   });
 }
 
-function resolveDeclarationSpecifier(fileDir: string, specifier: string): string {
+export function resolveDeclarationSpecifier(fileDir: string, specifier: string): string {
   if (!(specifier.startsWith("./") || specifier.startsWith("../"))) {
     return specifier;
   }
@@ -67,7 +67,7 @@ function resolveDeclarationSpecifier(fileDir: string, specifier: string): string
   return specifier;
 }
 
-async function normalizeDeclarationSpecifiers(filePath: string): Promise<void> {
+export async function normalizeDeclarationSpecifiers(filePath: string): Promise<void> {
   const original = await readFile(filePath, "utf8");
   const fileDir = dirname(filePath);
   const next = original
@@ -83,16 +83,7 @@ async function normalizeDeclarationSpecifiers(filePath: string): Promise<void> {
   }
 }
 
-if (existsSync(DIST)) {
-  rmRecursive(DIST);
-}
-mkdirSync(DIST, { recursive: true });
-mkdirSync(join(DIST, "node"), { recursive: true });
-mkdirSync(join(DIST, "browser"), { recursive: true });
-mkdirSync(join(DIST, "cjs"), { recursive: true });
-mkdirSync(join(DIST, "drizzle"), { recursive: true });
-
-const nodeExternals = [
+export const nodeExternals = [
   "dotenv",
   "@reflink/reflink",
   "@node-llama-cpp",
@@ -113,108 +104,137 @@ const nodeExternals = [
   "drizzle-orm/neon-http",
 ];
 
-console.log("Building Node.js ESM bundle...");
-await build({
-  entrypoints: [join(ROOT, "index.ts")],
-  outdir: join(DIST, "node"),
-  target: "node",
-  format: "esm",
-  splitting: false,
-  sourcemap: "linked",
-  minify: false,
-  external: nodeExternals,
-  naming: {
-    entry: "index.node.js",
-  },
-});
+export async function buildPluginSql(
+  options: {
+    build?: typeof build;
+    remove?: typeof rmRecursive;
+    emitDeclarations?: () => Promise<unknown>;
+    normalizeDeclarations?: typeof normalizeDeclarationSpecifiers;
+  } = {}
+): Promise<void> {
+  const runBuild = options.build ?? build;
+  const remove = options.remove ?? rmRecursive;
+  const normalizeDeclarations = options.normalizeDeclarations ?? normalizeDeclarationSpecifiers;
 
-console.log("Building Browser ESM bundle...");
-await build({
-  entrypoints: [join(ROOT, "index.browser.ts")],
-  outdir: join(DIST, "browser"),
-  target: "browser",
-  format: "esm",
-  splitting: false,
-  sourcemap: "linked",
-  minify: false,
-  external: [
-    "@elizaos/core",
-    "@electric-sql/pglite",
-    "@electric-sql/pglite/vector",
-    "@electric-sql/pglite/contrib/fuzzystrmatch",
-    "drizzle-orm",
-    "drizzle-orm/pglite",
-  ],
-  naming: {
-    entry: "index.browser.js",
-  },
-});
+  if (existsSync(DIST)) {
+    remove(DIST);
+  }
+  mkdirSync(DIST, { recursive: true });
+  mkdirSync(join(DIST, "node"), { recursive: true });
+  mkdirSync(join(DIST, "browser"), { recursive: true });
+  mkdirSync(join(DIST, "cjs"), { recursive: true });
+  mkdirSync(join(DIST, "drizzle"), { recursive: true });
 
-console.log("Building CJS bundle...");
-await build({
-  entrypoints: [join(ROOT, "index.ts")],
-  outdir: join(DIST, "cjs"),
-  target: "node",
-  format: "cjs",
-  splitting: false,
-  sourcemap: "linked",
-  minify: false,
-  external: nodeExternals,
-  naming: {
-    entry: "index.node.cjs",
-  },
-});
+  console.log("Building Node.js ESM bundle...");
+  await runBuild({
+    entrypoints: [join(ROOT, "index.ts")],
+    outdir: join(DIST, "node"),
+    target: "node",
+    format: "esm",
+    splitting: false,
+    sourcemap: "linked",
+    minify: false,
+    external: nodeExternals,
+    naming: {
+      entry: "index.node.js",
+    },
+  });
 
-console.log("Generating TypeScript declarations...");
-{
-  const { $ } = await import("bun");
-  await $`tsc --noCheck --project tsconfig.build.node.json`.quiet();
+  console.log("Building Browser ESM bundle...");
+  await runBuild({
+    entrypoints: [join(ROOT, "index.browser.ts")],
+    outdir: join(DIST, "browser"),
+    target: "browser",
+    format: "esm",
+    splitting: false,
+    sourcemap: "linked",
+    minify: false,
+    external: [
+      "@elizaos/core",
+      "@electric-sql/pglite",
+      "@electric-sql/pglite/vector",
+      "@electric-sql/pglite/contrib/fuzzystrmatch",
+      "drizzle-orm",
+      "drizzle-orm/pglite",
+    ],
+    naming: {
+      entry: "index.browser.js",
+    },
+  });
+
+  console.log("Building CJS bundle...");
+  await runBuild({
+    entrypoints: [join(ROOT, "index.ts")],
+    outdir: join(DIST, "cjs"),
+    target: "node",
+    format: "cjs",
+    splitting: false,
+    sourcemap: "linked",
+    minify: false,
+    external: nodeExternals,
+    naming: {
+      entry: "index.node.cjs",
+    },
+  });
+
+  console.log("Generating TypeScript declarations...");
+  await (
+    options.emitDeclarations ??
+    (async () => {
+      const { $ } = await import("bun");
+      await $`tsc6 --noCheck --project tsconfig.build.node.json`.quiet();
+    })
+  )();
+
+  // Ensure declaration entry points
+  const reexportNode = `export * from '../index.node.js';\nexport { default } from '../index.node.js';\n`;
+  const reexportBrowser = `export * from '../index.browser.js';\nexport { default } from '../index.browser.js';\n`;
+  const reexportRoot = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`;
+  const reexportRootRuntime = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\n`;
+
+  await writeFile(join(DIST, "node", "index.d.ts"), reexportNode);
+  await writeFile(join(DIST, "node", "index.node.d.ts"), reexportNode);
+  await writeFile(join(DIST, "browser", "index.d.ts"), reexportBrowser);
+  await writeFile(join(DIST, "browser", "index.browser.d.ts"), reexportBrowser);
+  await writeFile(join(DIST, "cjs", "index.d.ts"), reexportNode);
+  await writeFile(join(DIST, "cjs", "index.node.d.cts"), reexportNode);
+  await writeFile(join(DIST, "index.d.ts"), reexportRoot);
+  await writeFile(join(DIST, "index.js"), reexportRootRuntime);
+  await writeFile(
+    join(DIST, "drizzle", "index.d.ts"),
+    `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, type SQL, sql } from 'drizzle-orm';\n`
+  );
+  await writeFile(
+    join(DIST, "drizzle", "index.js"),
+    `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';\n`
+  );
+  // `@elizaos/plugin-sql/schema` is consumed at runtime by the bundled
+  // `@elizaos/app-core` (e.g. `auth-store.js` reads `authIdentityTable`,
+  // `authSessionTable`, etc. from this subpath). The Bun bundle output only
+  // emits a single `node/index.node.js`, but the subpath import has to
+  // resolve to a runtime JS file. Emit a small shim that re-exports the
+  // schema from the bundled root so the consumer doesn't need to know the
+  // internal layout.
+  //
+  // `dist/schema/` is otherwise only created as a side effect of the `tsc`
+  // declaration emit above. Create it explicitly so this write never depends on
+  // that incidental ordering — under parallel turbo builds a partial or contended
+  // tsc emit could leave the directory absent and crash this step with
+  // `ENOENT ... src/dist/schema/index.js`.
+  mkdirSync(join(DIST, "schema"), { recursive: true });
+  await writeFile(join(DIST, "schema", "index.js"), `export * from '../node/index.node.js';\n`);
+  await appendFile(
+    join(DIST, "index.node.d.ts"),
+    `\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`
+  );
+
+  for (const filePath of listDeclarationFiles(DIST)) {
+    await normalizeDeclarations(filePath);
+  }
+
+  console.log("Build complete!");
 }
 
-// Ensure declaration entry points
-const reexportNode = `export * from '../index.node.js';\nexport { default } from '../index.node.js';\n`;
-const reexportBrowser = `export * from '../index.browser.js';\nexport { default } from '../index.browser.js';\n`;
-const reexportRoot = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`;
-const reexportRootRuntime = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\n`;
-
-await writeFile(join(DIST, "node", "index.d.ts"), reexportNode);
-await writeFile(join(DIST, "node", "index.node.d.ts"), reexportNode);
-await writeFile(join(DIST, "browser", "index.d.ts"), reexportBrowser);
-await writeFile(join(DIST, "browser", "index.browser.d.ts"), reexportBrowser);
-await writeFile(join(DIST, "cjs", "index.d.ts"), reexportNode);
-await writeFile(join(DIST, "cjs", "index.node.d.cts"), reexportNode);
-await writeFile(join(DIST, "index.d.ts"), reexportRoot);
-await writeFile(join(DIST, "index.js"), reexportRootRuntime);
-await writeFile(
-  join(DIST, "drizzle", "index.d.ts"),
-  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, type SQL, sql } from 'drizzle-orm';\n`
-);
-await writeFile(
-  join(DIST, "drizzle", "index.js"),
-  `export { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, ne, or, sql } from 'drizzle-orm';\n`
-);
-// `@elizaos/plugin-sql/schema` is consumed at runtime by the bundled
-// `@elizaos/app-core` (e.g. `auth-store.js` reads `authIdentityTable`,
-// `authSessionTable`, etc. from this subpath). The Bun bundle output only
-// emits a single `node/index.node.js`, but the subpath import has to
-// resolve to a runtime JS file. Emit a small shim that re-exports the
-// schema from the bundled root so the consumer doesn't need to know the
-// internal layout.
-//
-// `dist/schema/` is otherwise only created as a side effect of the `tsc`
-// declaration emit above. Create it explicitly so this write never depends on
-// that incidental ordering — under parallel turbo builds a partial or contended
-// tsc emit could leave the directory absent and crash this step with
-// `ENOENT ... src/dist/schema/index.js`.
-mkdirSync(join(DIST, "schema"), { recursive: true });
-await writeFile(join(DIST, "schema", "index.js"), `export * from '../node/index.node.js';\n`);
-await appendFile(
-  join(DIST, "index.node.d.ts"),
-  `\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`
-);
-
-for (const filePath of listDeclarationFiles(DIST)) {
-  await normalizeDeclarationSpecifiers(filePath);
+if (import.meta.main) {
+  await buildPluginSql();
 }
-
-console.log("Build complete!");
