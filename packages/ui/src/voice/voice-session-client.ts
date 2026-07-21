@@ -31,6 +31,8 @@
  * through fakes — not stubs of the client itself.
  */
 
+import { publishNativeTranscriptEvent } from "../native-transcript/transport";
+import { publishVoiceServerTranscriptEvent } from "../native-transcript/voice-event-adapter";
 import type { VoiceContinuousStatus } from "./voice-chat-types";
 import {
   type MicAudioContextLike,
@@ -445,12 +447,20 @@ export function createVoiceSessionClient(
 
     setState(applyServerEvent(state, event));
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
+    publishVoiceServerTranscriptEvent(event);
     options.onServerEvent?.(event);
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
 
     switch (event.t) {
       case "ready":
         mark("ready", event.traceId);
+        if (reconnectsUsed > 0) {
+          publishNativeTranscriptEvent({
+            type: "reconnect",
+            phase: "restored",
+            attempt: reconnectsUsed,
+          });
+        }
         // Client-owned: begin capture, then listening.
         void startCapture(generation, socket);
         break;
@@ -666,6 +676,11 @@ export function createVoiceSessionClient(
     generation: number,
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
+    publishNativeTranscriptEvent({
+      type: "reconnect",
+      phase: "lost",
+      attempt: reconnectsUsed + 1,
+    });
     // Stop capture (a dead socket must not keep the mic hot) but KEEP playback
     // context so an autoplay unlock survives the reconnect.
     await teardownMic();

@@ -204,6 +204,7 @@ import {
   createMobileLifecycle,
   type MobileLifecycle,
 } from "./mobile-lifecycle";
+import { installNativeTranscriptPlatformBridge } from "./native-transcript-bridge";
 import { installPackagedShellStorageTestBridge } from "./packaged-shell-storage-test-bridge";
 import {
   SIDE_EFFECT_APP_MODULE_LOADERS,
@@ -1586,6 +1587,7 @@ async function initializeAgent(): Promise<void> {
 async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
+  installNativeTranscriptPlatformBridge();
   void runIosFullBunSmokeIfRequested();
   void runIosOnboardingSmokeIfRequested();
   void runIosCloudOnboardingSmokeIfRequested();

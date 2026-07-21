@@ -6,6 +6,10 @@
  */
 
 export {
+  publishNativeAgentText,
+  publishNativeToolState,
+} from "./chat-event-adapter";
+export {
   type AgentTextEvent,
   type AgentTranscriptItem,
   type AgentTurnStatus,
@@ -59,3 +63,14 @@ export {
   type TranscriptEventViewProps,
   useTranscriptEvents,
 } from "./TranscriptEventView";
+export {
+  NATIVE_TRANSCRIPT_RENDERER_EVENT,
+  type NativeTranscriptEventInput,
+  publishNativeTranscriptEvent,
+  publishNativeTranscriptEvents,
+  resetNativeTranscriptSequenceForTests,
+} from "./transport";
+export {
+  nativeTranscriptInputFromVoiceServerEvent,
+  publishVoiceServerTranscriptEvent,
+} from "./voice-event-adapter";

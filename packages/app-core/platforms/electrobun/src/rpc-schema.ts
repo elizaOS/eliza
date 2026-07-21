@@ -1541,6 +1541,14 @@ export type ElizaDesktopRPCSchema = {
         params: DesktopHttpRequestOptions;
         response: DesktopHttpRequestResult;
       };
+      nativeTranscriptPublishStream: {
+        params: { schema: string; events: unknown[] };
+        response: { view: unknown; rejectedIndexes: number[] };
+      };
+      nativeTranscriptReadViewModel: {
+        params: undefined;
+        response: { view: unknown };
+      };
       localAgentRequest: {
         params: LocalAgentRequestOptions;
         response: LocalAgentRequestResult;

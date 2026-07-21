@@ -36,6 +36,11 @@ import {
   CLOUD_HANDOFF_PHASE_EVENT,
   type CloudHandoffPhaseDetail,
 } from "../events";
+import {
+  publishNativeAgentText,
+  publishNativeToolState,
+} from "../native-transcript/chat-event-adapter";
+import { publishNativeTranscriptEvent } from "../native-transcript/transport";
 import type { Tab } from "../navigation";
 import { directCloudSharedAgentIdFromBase } from "../utils/cloud-agent-base";
 import {
@@ -1166,6 +1171,15 @@ export function useChatSend(deps: UseChatSendDeps) {
       const userMsgId = `temp-${clientMessageId}`;
       const assistantMsgId = `temp-resp-${clientMessageId}`;
 
+      if (channelType === "VOICE_DM") {
+        publishNativeTranscriptEvent({
+          type: "stt.final",
+          turnId: clientMessageId,
+          text,
+          at: now,
+        });
+      }
+
       // Paint the accepted turn before conversation creation / room discovery.
       // Those calls can take seconds on a cold cloud agent; clearing the composer
       // first and waiting to add this row made the user's message look lost.
@@ -1344,6 +1358,14 @@ export function useChatSend(deps: UseChatSendDeps) {
                 : mergeStreamingText(streamedAssistantText, token);
             if (nextText === streamedAssistantText) return;
             streamedAssistantText = nextText;
+            if (channelType === "VOICE_DM") {
+              publishNativeAgentText({
+                messageId: assistantMsgId,
+                turnId: clientMessageId,
+                text: nextText,
+                final: false,
+              });
+            }
             if (isConversationCommitActive(convId)) {
               setChatFirstTokenReceived(true);
             }
@@ -1363,7 +1385,12 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Inline tool-call steps → the turn's tool rows (call → result/error),
           // merged by callId so one row flips running → settled (#13535).
           // Coalesced into the current transport burst with the text + status.
-          (event) => scheduleToolEvent(convId, assistantMsgId, event),
+          (event) => {
+            scheduleToolEvent(convId, assistantMsgId, event);
+            if (channelType === "VOICE_DM") {
+              publishNativeToolState(event, clientMessageId);
+            }
+          },
           // Stable idempotency key for this logical turn.
           clientMessageId,
         );
@@ -1371,6 +1398,33 @@ export function useChatSend(deps: UseChatSendDeps) {
         // Commit any token parked by the throttle before the terminal
         // drop/complete/fail/interrupt — no streamed tokens may be lost.
         flushStreamingText();
+
+        if (channelType === "VOICE_DM") {
+          const finalText = data.text || streamedAssistantText;
+          if (finalText) {
+            publishNativeAgentText({
+              messageId: assistantMsgId,
+              turnId: clientMessageId,
+              text: finalText,
+              final: data.completed !== false,
+            });
+          }
+          if (data.failureKind) {
+            publishNativeTranscriptEvent({
+              type: "error",
+              code: data.failureKind,
+              retryable: true,
+            });
+          }
+          if (data.completed === false) {
+            publishNativeTranscriptEvent({
+              type: "cancel",
+              scope: "turn",
+              turnId: clientMessageId,
+              reason: "generation-incomplete",
+            });
+          }
+        }
 
         if (data.userMessageId) {
           applyStreamingModificationForConversation(convId, {
@@ -1489,6 +1543,14 @@ export function useChatSend(deps: UseChatSendDeps) {
         flushStreamingText();
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
+          if (channelType === "VOICE_DM") {
+            publishNativeTranscriptEvent({
+              type: "cancel",
+              scope: "turn",
+              turnId: clientMessageId,
+              reason: "aborted",
+            });
+          }
           dropEmptyAssistantPlaceholder(convId, assistantMsgId);
           return;
         }

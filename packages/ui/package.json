@@ -278,6 +278,11 @@
       "import": "./dist/native-transcript/index.js",
       "default": "./dist/native-transcript/index.js"
     },
+    "./native-transcript/core": {
+      "types": "./dist/native-transcript/core.d.ts",
+      "import": "./dist/native-transcript/core.js",
+      "default": "./dist/native-transcript/core.js"
+    },
     "./navigation": {
       "types": "./dist/navigation/index.d.ts",
       "import": "./dist/navigation/index.js",

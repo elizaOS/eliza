@@ -1,8 +1,8 @@
 /**
  * Pure fold from the append-only `eliza.native-transcript/v1` event log to the
  * ordered render model. This reducer IS the contract's behavioral spec — the
- * golden fixture asserts every shell (web here; iOS/Android native next) folds
- * to the exact same {@link TranscriptViewModel}.
+ * golden fixture asserts every shell's independent reducer folds to the exact
+ * same {@link TranscriptViewModel}.
  *
  * The four cross-bridge guarantees, all decided from structural fields only:
  *   - Dedupe: `seq` is unique per stream, so a repeated `seq` is a no-op.
