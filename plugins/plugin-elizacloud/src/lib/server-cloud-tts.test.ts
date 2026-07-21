@@ -38,6 +38,27 @@ function fakeReq(
   } as unknown as http.IncomingMessage;
 }
 
+/**
+ * Models the bare agent server after `attachJsonBodyIfPresent`
+ * (packages/agent/src/api/runtime-plugin-routes.ts) has already consumed the
+ * stream for a JSON request: `req.body`/`req.rawBody` are populated and the
+ * underlying stream is drained (iterating it yields zero bytes). #16348.
+ */
+function fakeReqPreParsed(
+  parsed: Record<string, unknown>,
+  headers: Record<string, string> = {},
+): http.IncomingMessage {
+  return {
+    headers,
+    body: parsed,
+    rawBody: JSON.stringify(parsed),
+    // Stream already drained upstream → yields nothing on re-read.
+    async *[Symbol.asyncIterator]() {
+      // no chunks
+    },
+  } as unknown as http.IncomingMessage;
+}
+
 function fakeRes(): {
   res: http.ServerResponse;
   state: {
@@ -110,6 +131,41 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
     expect(upstream.length).toBeGreaterThanOrEqual(1);
     expect(upstream[0].headers["Idempotency-Key"]).toBe("utt-abc");
     expect(upstream[0].body).toMatchObject({ text: "bill me once" });
+  });
+
+  test("honors a host pre-parsed JSON body when the stream is already drained (#16348)", async () => {
+    const { res, state } = fakeRes();
+    await handleCloudTtsPreviewRoute(
+      fakeReqPreParsed(
+        { text: "pre-parsed on the bare server" },
+        { "content-type": "application/json" },
+      ),
+      res,
+    );
+
+    expect(state.statusCode).toBe(200);
+    expect(upstream.length).toBeGreaterThanOrEqual(1);
+    expect(upstream[0].body).toMatchObject({
+      text: "pre-parsed on the bare server",
+    });
+  });
+
+  test("pre-parsed body still forwards modelId/voiceId and the idempotency key (#16348)", async () => {
+    const { res, state } = fakeRes();
+    await handleCloudTtsPreviewRoute(
+      fakeReqPreParsed(
+        { text: "hi", modelId: "m-9", voiceId: "v-3" },
+        {
+          "content-type": "application/json",
+          "idempotency-key": "utt-preparsed",
+        },
+      ),
+      res,
+    );
+
+    expect(state.statusCode).toBe(200);
+    expect(upstream[0].headers["Idempotency-Key"]).toBe("utt-preparsed");
+    expect(upstream[0].body).toMatchObject({ text: "hi" });
   });
 
   test("no incoming key → no Idempotency-Key header upstream (unchanged shape)", async () => {
