@@ -93,7 +93,9 @@ interface JournalEntry {
   supersedesFactId?: string;
 }
 
-function resolveWriteRoot(config: CanonicalMemoryWritebackConfig): string | undefined {
+function resolveWriteRoot(
+  config: CanonicalMemoryWritebackConfig,
+): string | undefined {
   const root = config.writeRoot ?? process.env.CANONICAL_MEMORY_WRITE_ROOT;
   if (!root || root.trim() === "") return undefined;
   return path.resolve(root);
@@ -124,7 +126,9 @@ function formatEntry(entry: JournalEntry): string {
     entry.supersedesFactId ? ` supersedes:${entry.supersedesFactId}` : ""
   } -->`;
   const prov = `provenance: ${entry.provenance.source} user=${entry.provenance.userId}${
-    entry.provenance.conversationRef ? ` ref=${entry.provenance.conversationRef}` : ""
+    entry.provenance.conversationRef
+      ? ` ref=${entry.provenance.conversationRef}`
+      : ""
   } at=${entry.provenance.recordedAt}`;
   const label = entry.supersedesFactId ? "CORRECTION" : "FACT";
   return `\n${meta}\n- **${label}:** ${entry.text}\n  - ${prov}\n`;
@@ -134,7 +138,10 @@ function formatEntry(entry: JournalEntry): string {
  * Atomically write `content` to `filePath` via same-directory temp + rename.
  * A crash between write and rename leaves the previous file intact.
  */
-async function writeFileAtomic(filePath: string, content: string): Promise<void> {
+async function writeFileAtomic(
+  filePath: string,
+  content: string,
+): Promise<void> {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
   const tmp = path.join(dir, `.${path.basename(filePath)}.${randomUUID()}.tmp`);
@@ -147,10 +154,7 @@ async function writeFileAtomic(filePath: string, content: string): Promise<void>
   }
 }
 
-function deny(
-  reason: WritebackDenialReason,
-  audit: string,
-): WritebackResult {
+function deny(reason: WritebackDenialReason, audit: string): WritebackResult {
   logger.warn(`[canonical-memory-writeback] denied (${reason}): ${audit}`);
   return { ok: false, denialReason: reason, auditReason: audit };
 }
@@ -226,7 +230,10 @@ export async function recordCanonicalFact(
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
   }
 
-  if (existing.includes(`${FACT_MARKER}${factId} `) || existing.includes(`${FACT_MARKER}${factId} -->`)) {
+  if (
+    existing.includes(`${FACT_MARKER}${factId} `) ||
+    existing.includes(`${FACT_MARKER}${factId} -->`)
+  ) {
     return { ok: true, outcome: "duplicate", factId, file: authz.absPath };
   }
 
@@ -234,10 +241,15 @@ export async function recordCanonicalFact(
     factId,
     text: fact.text.trim(),
     provenance: { ...fact.provenance, recordedAt: now.toISOString() },
-    ...(fact.supersedesFactId ? { supersedesFactId: fact.supersedesFactId } : {}),
+    ...(fact.supersedesFactId
+      ? { supersedesFactId: fact.supersedesFactId }
+      : {}),
   };
 
-  const header = existing === "" ? `# ${relPath.replace(/^memory\//, "").replace(/\.md$/, "")}\n` : "";
+  const header =
+    existing === ""
+      ? `# ${relPath.replace(/^memory\//, "").replace(/\.md$/, "")}\n`
+      : "";
   await writeFileAtomic(authz.absPath, existing + header + formatEntry(entry));
   return { ok: true, outcome: "appended", factId, file: authz.absPath };
 }
@@ -250,7 +262,9 @@ export async function recordCanonicalFact(
 export async function readCanonicalFacts(
   day: Date,
   config: CanonicalMemoryWritebackConfig = {},
-): Promise<Array<{ factId: string; supersedesFactId?: string; supersededBy?: string }>> {
+): Promise<
+  Array<{ factId: string; supersedesFactId?: string; supersededBy?: string }>
+> {
   const relPath = dailyFileRelPath(day);
   const authz = authorizeWrite(relPath, config);
   if (!authz.ok) return [];
@@ -260,7 +274,11 @@ export async function readCanonicalFacts(
   } catch {
     return [];
   }
-  const out: Array<{ factId: string; supersedesFactId?: string; supersededBy?: string }> = [];
+  const out: Array<{
+    factId: string;
+    supersedesFactId?: string;
+    supersededBy?: string;
+  }> = [];
   const re = /<!-- fact:([0-9a-zA-Z_-]+)(?: supersedes:([0-9a-zA-Z_-]+))? -->/g;
   for (const m of content.matchAll(re)) {
     out.push({ factId: m[1], ...(m[2] ? { supersedesFactId: m[2] } : {}) });
