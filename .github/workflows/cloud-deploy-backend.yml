@@ -57,7 +57,11 @@ jobs:
     # legacy migration against the canonical migrate-db gate in
     # cloud-cf-deploy.yml (#11208).
     concurrency:
-      group: cloud-db-migrate-${{ needs.determine-env.outputs.environment }}
+      # v2 suffix matches cloud-cf-deploy.yml: the un-versioned group is pinned
+      # by a stale 2026-05-15 queued run (25907128646) that cannot be cancelled
+      # (HTTP 500). Both workflows must share the same group name so canonical
+      # and legacy migrations still serialize against each other.
+      group: cloud-db-migrate-v2-${{ needs.determine-env.outputs.environment }}
       cancel-in-progress: false
     environment: ${{ needs.determine-env.outputs.environment }}
     timeout-minutes: 10

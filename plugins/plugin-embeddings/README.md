@@ -26,6 +26,8 @@ Only the embedding slots — nothing else (no text/image/audio, no actions/provi
 
 Both use raw `fetch` (no `@ai-sdk` dependency) to POST to `${EMBEDDING_BASE_URL}/embeddings`.
 
+When `EMBEDDING_FALLBACK_BASE_URL` is set, a primary network, HTTP, or response-shape failure is retried once against the fallback endpoint. Malformed caller input and invalid local config still throw before any fallback attempt. Primary and fallback results are both validated against the same configured `EMBEDDING_DIMENSIONS`; a fallback vector with the wrong width is rejected.
+
 ### Priority
 
 Registered at `priority: 1`:
@@ -49,10 +51,14 @@ All variables are read via `runtime.getSetting(key)` first, then `process.env`, 
 | `EMBEDDING_BASE_URL` | _(none)_ | OpenAI-compatible `/embeddings` base URL. **Required** for real embedding calls — no default endpoint. |
 | `EMBEDDING_API_KEY` | _(none)_ | Bearer token. Omit for local servers that need no auth. |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Model id sent as the request `model` field. |
+| `EMBEDDING_FALLBACK_BASE_URL` | _(none)_ | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once when the primary endpoint fails. Does not activate the plugin by itself. |
+| `EMBEDDING_FALLBACK_API_KEY` | _(none)_ | Bearer token for the fallback endpoint. Omit for fallback servers that need no auth. |
+| `EMBEDDING_FALLBACK_MODEL` | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
 | `EMBEDDING_DIMENSIONS` | `1536` | Vector width (see below). Sent as the request `dimensions` field when explicitly set. |
 | `EMBEDDING_BROWSER_URL` | _(none)_ | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent only when this is set, keeping the key off the client. |
 
 Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` activates the plugin.
+Fallback-only settings do **not** activate it and cannot replace a missing primary base URL.
 
 ### Supported dimensions
 
@@ -84,6 +90,17 @@ Local TEI / Infinity / vLLM server (no auth):
 ```
 EMBEDDING_BASE_URL=http://localhost:8080/v1
 EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+EMBEDDING_DIMENSIONS=384
+```
+
+Local primary with remote fallback:
+
+```
+EMBEDDING_BASE_URL=http://localhost:8080/v1
+EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+EMBEDDING_FALLBACK_BASE_URL=https://api.openai.com/v1
+EMBEDDING_FALLBACK_API_KEY=sk-...
+EMBEDDING_FALLBACK_MODEL=text-embedding-3-small
 EMBEDDING_DIMENSIONS=384
 ```
 

@@ -66,20 +66,20 @@ describe("deterministic canaries", () => {
   });
 });
 
-describe("security advisory outcomes", () => {
-  it("requires both real successful job outcomes", () => {
-    assert.equal(evaluate([{ name: "security", conclusion: "success" }]).passed, false);
-    assert.equal(evaluate([
-      { name: "security", conclusion: "success" },
-      { name: "claude-review", conclusion: "skipped" },
-    ]).passed, false);
-    assert.equal(evaluate([
-      { name: "security", conclusion: "success" },
-      { name: "claude-review", conclusion: "success" },
-    ]).passed, true);
+describe("deterministic security check outcomes", () => {
+  it("requires only a real successful gitleaks outcome", () => {
+    assert.equal(evaluate([]).passed, false);
+    assert.deepEqual(
+      evaluate([
+        { name: "gitleaks", conclusion: "success" },
+        { name: "claude-review", conclusion: "failure" },
+        { name: "security", conclusion: "failure" },
+      ]),
+      { waiting: [], failed: [], passed: true },
+    );
   });
 
-  it("fails every non-success terminal conclusion", () => {
+  it("fails every non-success terminal conclusion for gitleaks only", () => {
     for (const conclusion of [
       "failure",
       "cancelled",
@@ -89,33 +89,26 @@ describe("security advisory outcomes", () => {
       "action_required",
       "stale",
     ]) {
-      const state = evaluate([
-        { name: "security", conclusion },
-        { name: "claude-review", conclusion: "success" },
-      ]);
-      assert.deepEqual(state.failed, ["security"], conclusion);
+      const state = evaluate([{ name: "gitleaks", conclusion }]);
+      assert.deepEqual(state.failed, ["gitleaks"], conclusion);
       assert.equal(state.passed, false);
     }
   });
 
   it("waits for missing and nonterminal checks", () => {
-    assert.deepEqual(evaluate([]).waiting, ["security", "claude-review"]);
+    assert.deepEqual(evaluate([]).waiting, ["gitleaks"]);
     assert.deepEqual(
-      evaluate([
-        { name: "security", conclusion: null },
-        { name: "claude-review", conclusion: "success" },
-      ]).waiting,
-      ["security"],
+      evaluate([{ name: "gitleaks", conclusion: null }]).waiting,
+      ["gitleaks"],
     );
   });
 
   it("uses the newest check run for a repeated context", () => {
     const state = evaluate([
-      { name: "security", conclusion: null },
-      { name: "security", conclusion: "success" },
-      { name: "claude-review", conclusion: "success" },
+      { name: "gitleaks", conclusion: null },
+      { name: "gitleaks", conclusion: "success" },
     ]);
-    assert.deepEqual(state.waiting, ["security"]);
+    assert.deepEqual(state.waiting, ["gitleaks"]);
     assert.equal(state.passed, false);
   });
 });

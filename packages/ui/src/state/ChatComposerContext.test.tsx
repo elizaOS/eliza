@@ -16,6 +16,11 @@ import {
   useChatComposerDraftPersistence,
   writeChatDraft,
 } from "./ChatComposerContext.hooks";
+import {
+  clearPendingChatTurn,
+  PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS,
+  persistPendingChatTurn,
+} from "./pending-chat-turns";
 
 function DraftHarness({
   activeConversationId,
@@ -186,5 +191,64 @@ describe("ChatComposerContext draft persistence", () => {
     );
 
     expect(setChatInput).toHaveBeenLastCalledWith("next");
+  });
+
+  it("restores an unsettled pending send to the composer after the bounded reload window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-19T00:00:00.000Z"));
+    const setChatInput = vi.fn();
+
+    persistPendingChatTurn({
+      conversationId: "conversation-1",
+      clientMessageId: "client-1",
+      text: "reload-safe message",
+      sentAt: Date.now(),
+    });
+
+    render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput=""
+        setChatInput={setChatInput}
+      />,
+    );
+
+    expect(setChatInput).not.toHaveBeenCalledWith("reload-safe message");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS);
+    });
+
+    expect(setChatInput).toHaveBeenCalledWith("reload-safe message");
+    expect(readChatDraft("conversation-1")).toBe("reload-safe message");
+  });
+
+  it("does not restore a pending send after server truth clears its receipt", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-19T00:00:00.000Z"));
+    const setChatInput = vi.fn();
+
+    persistPendingChatTurn({
+      conversationId: "conversation-1",
+      clientMessageId: "client-1",
+      text: "already settled",
+      sentAt: Date.now(),
+    });
+
+    render(
+      <DraftHarness
+        activeConversationId="conversation-1"
+        chatInput=""
+        setChatInput={setChatInput}
+      />,
+    );
+    clearPendingChatTurn("conversation-1", "client-1");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PENDING_CHAT_TURN_SETTLE_TIMEOUT_MS);
+    });
+
+    expect(setChatInput).not.toHaveBeenCalledWith("already settled");
+    expect(readChatDraft("conversation-1")).toBeNull();
   });
 });

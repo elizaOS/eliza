@@ -36,10 +36,22 @@ const CONFIG_NAMES = [
 const HARNESS_CONFIG_NAME = "vitest.harness.config.ts";
 const HARNESS_TEST_SUFFIXES = [".harness.test.ts", ".harness.test.tsx"];
 
+// The Electrobun desktop shell lives under platforms/electrobun as an isolated
+// sub-tree. The owning app-core config deliberately excludes
+// `platforms/electrobun/**` (its suites need the electrobun/bun stub alias), so
+// grouping one there exits "no test files found". The platform carries its own
+// `vitest.electrobun.config.ts`; prefer it for any test under that sub-tree.
+const ELECTROBUN_CONFIG_NAME = "vitest.electrobun.config.ts";
+const ELECTROBUN_DIR_SEGMENT = `${path.sep}platforms${path.sep}electrobun${path.sep}`;
+
 const normalize = (value) => value.split(path.sep).join("/");
 
 function isHarnessTest(testFile) {
   return HARNESS_TEST_SUFFIXES.some((suffix) => testFile.endsWith(suffix));
+}
+
+function isElectrobunTest(absoluteTest) {
+  return normalize(absoluteTest).includes(normalize(ELECTROBUN_DIR_SEGMENT));
 }
 
 export function findNearestVitestConfig(repoRoot, testFile) {
@@ -54,9 +66,12 @@ export function findNearestVitestConfig(repoRoot, testFile) {
     throw new Error(`Changed test escapes the repository: ${testFile}`);
   }
 
-  const configNames = isHarnessTest(absoluteTest)
-    ? [HARNESS_CONFIG_NAME, ...CONFIG_NAMES]
-    : CONFIG_NAMES;
+  let configNames = CONFIG_NAMES;
+  if (isHarnessTest(absoluteTest)) {
+    configNames = [HARNESS_CONFIG_NAME, ...CONFIG_NAMES];
+  } else if (isElectrobunTest(absoluteTest)) {
+    configNames = [ELECTROBUN_CONFIG_NAME, ...CONFIG_NAMES];
+  }
 
   let directory = path.dirname(absoluteTest);
   while (true) {

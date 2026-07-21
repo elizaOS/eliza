@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+// Companion route-matrix coverage for App's full-shell path. The focused
+// notification ingress assertion lives in App.chat-overlay-first-run.test.tsx.
 
 /**
  * Fuzz test for the screen / background color invariant across view switching.

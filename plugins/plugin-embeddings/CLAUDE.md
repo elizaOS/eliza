@@ -17,7 +17,7 @@ It registers **only the embedding slots** — no text/image/audio handlers, no a
 | `ModelType.TEXT_EMBEDDING` | `handleTextEmbedding` | `src/models/embedding.ts` |
 | `ModelType.TEXT_EMBEDDING_BATCH` | `handleBatchTextEmbedding` | `src/models/embedding.ts` |
 
-Both POST `{ model, input, ...(explicit dimensions ? { dimensions } : {}) }` to `` `${EMBEDDING_BASE_URL}/embeddings` `` using raw `fetch` (no `@ai-sdk` dependency), parse the OpenAI-compatible response, validate the returned width against the configured dimension, and emit a `MODEL_USED` event.
+Both POST `{ model, input, ...(explicit dimensions ? { dimensions } : {}) }` to `` `${EMBEDDING_BASE_URL}/embeddings` `` using raw `fetch` (no `@ai-sdk` dependency), parse the OpenAI-compatible response, validate the returned width against the configured dimension, and emit a `MODEL_USED` event. When `EMBEDDING_FALLBACK_BASE_URL` is configured, primary network/HTTP/shape failures retry once against the fallback endpoint; malformed caller input and invalid local config throw before fallback. Primary and fallback vectors must both match the same `EMBEDDING_DIMENSIONS`.
 
 ### Registration priority
 
@@ -78,10 +78,14 @@ All read via `getSetting(runtime, key)` (runtime/character config first, then `p
 | `EMBEDDING_BASE_URL` | one-of* | — | Base URL of an OpenAI-compatible `/embeddings` endpoint. No default — unset throws. |
 | `EMBEDDING_API_KEY` | one-of* | — | Bearer token for the endpoint. Omit for local servers needing no auth. |
 | `EMBEDDING_MODEL` | no | `text-embedding-3-small` | Model id sent as the request `model` field. |
+| `EMBEDDING_FALLBACK_BASE_URL` | no | — | Optional fallback OpenAI-compatible `/embeddings` base URL. Used once after a primary network/HTTP/shape failure. Does not activate the plugin by itself. |
+| `EMBEDDING_FALLBACK_API_KEY` | no | — | Bearer token for the fallback endpoint. Omit for fallback servers needing no auth. |
+| `EMBEDDING_FALLBACK_MODEL` | no | `EMBEDDING_MODEL` | Model id sent to the fallback endpoint. Its returned vectors must still match `EMBEDDING_DIMENSIONS`. |
 | `EMBEDDING_DIMENSIONS` | no | `1536` | Vector width. When explicitly set, sent as the request `dimensions` field. |
 | `EMBEDDING_BROWSER_URL` | no | — | Browser-only server-side proxy URL. In a browser build the `Authorization` header is sent **only** when this is set, keeping the key server-side. |
 
 \* Setting **either** `EMBEDDING_BASE_URL` or `EMBEDDING_API_KEY` is what activates the plugin. For real (non-probe) embedding calls a `EMBEDDING_BASE_URL` is required or the handler throws.
+Fallback-only settings are inert until the primary plugin opt-in and primary base URL are configured.
 
 ### Supported dimensions
 

@@ -131,7 +131,7 @@ async function resolvePluginRoot(): Promise<string> {
  */
 function createTaskScript(): string {
   return String.raw`
-    import { Smithers } from 'smithers-orchestrator';
+    import { Smithers } from '@smithers-orchestrator/engine';
     import { Effect, Schema } from 'effect';
     import { createInterface } from 'node:readline/promises';
 
@@ -219,9 +219,9 @@ function createTaskScript(): string {
 
       const built = wf.from(wf.sequence(...nodes));
       // Select the storage backend based on the provider field threaded through
-      // the payload. Feature-detect non-sqlite APIs: smithers-orchestrator@0.22.0
-      // does not yet expose Smithers.postgres / Smithers.pglite; if the method is
-      // absent we degrade to sqlite so old and new builds both work correctly.
+      // the payload. Smithers 0.28 exposes all three builder storage layers;
+      // keep the feature check so malformed provider configuration still falls
+      // back to the local sqlite store rather than failing a coding task.
       const dbConfig = payload.dbConfig ?? {};
       const provider = dbConfig.provider ?? 'sqlite';
       let smithersLayer;
