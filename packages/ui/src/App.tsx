@@ -75,7 +75,10 @@ import { HomePill } from "./components/shell/HomePill";
 import { HomeScreen, type HomeTileTarget } from "./components/shell/HomeScreen";
 import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import { NotificationBanners } from "./components/shell/NotificationBanners";
-import { NotificationsShellBoot } from "./components/shell/notifications-boot";
+import {
+  NotificationsDataBoot,
+  NotificationsShellBoot,
+} from "./components/shell/notifications-boot";
 import { ShellControllerProvider } from "./components/shell/ShellControllerContext";
 import { useShellControllerContext } from "./components/shell/ShellControllerContext.hooks";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
@@ -2028,7 +2031,7 @@ function HomeScreenMount({
   );
 }
 
-export function App() {
+function AppContent() {
   const {
     startupError,
     startupCoordinator,
@@ -3053,5 +3056,14 @@ export function App() {
         ) : null}
       </ShellControllerProvider>
     </BugReportProvider>
+  );
+}
+
+export function App() {
+  return (
+    <>
+      <NotificationsDataBoot />
+      <AppContent />
+    </>
   );
 }

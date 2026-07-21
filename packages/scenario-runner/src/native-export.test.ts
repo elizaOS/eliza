@@ -2,6 +2,7 @@
 import {
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -611,6 +612,51 @@ describe("exportScenarioNativeJsonl", () => {
         skippedFiles: 0,
         rows: 0,
       });
+    } finally {
+      rmSync(runDir, { recursive: true, force: true });
+    }
+  });
+
+  it("writes the jsonl, manifest, and privacy attestation atomically with no leftover temp files", () => {
+    const runDir = mkdtempSync(path.join(tmpdir(), "scenario-native-atomic-"));
+    try {
+      const trajDir = path.join(runDir, "trajectories", "agent-test");
+      mkdirSync(trajDir, { recursive: true });
+      writeFileSync(
+        path.join(trajDir, "tj-test-1.json"),
+        JSON.stringify(syntheticTrajectory()),
+        "utf-8",
+      );
+
+      const outPath = path.join(runDir, "native.jsonl");
+      const manifestPath = path.join(runDir, "native.manifest.json");
+      const attestationPath = path.join(
+        runDir,
+        "native.privacy-attestation.json",
+      );
+
+      const count = exportScenarioNativeJsonl(runDir, outPath);
+      expect(count).toBe(1);
+
+      // Every output now lands via writeFileAtomic (temp file + rename). The
+      // rename must consume the temp file, so no `.native.*.tmp` sidecar may
+      // survive in the output directory. A leftover temp would mean a
+      // writeFileSync path slipped back in or the rename never fired.
+      const leftovers = readdirSync(runDir).filter((entry) =>
+        entry.endsWith(".tmp"),
+      );
+      expect(leftovers).toEqual([]);
+
+      // The atomically-renamed files carry the fully-written final content.
+      const rows = readFileSync(outPath, "utf-8").trim().split("\n");
+      expect(rows).toHaveLength(1);
+      expect(JSON.parse(rows[0] as string).format).toBe("eliza_native_v1");
+      expect(JSON.parse(readFileSync(manifestPath, "utf-8")).counts.rows).toBe(
+        1,
+      );
+      expect(JSON.parse(readFileSync(attestationPath, "utf-8")).passed).toBe(
+        true,
+      );
     } finally {
       rmSync(runDir, { recursive: true, force: true });
     }
