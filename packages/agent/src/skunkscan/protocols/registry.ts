@@ -1,3 +1,5 @@
+import { SOLANA_DEX_PROTOCOLS } from "./solana/dex";
+
 export type SolanaProtocol = {
   programId: string;
 
@@ -35,8 +37,6 @@ export type SolanaProtocol = {
 
   tags: string[];
 };
-
-import { SOLANA_DEX_PROTOCOLS } from "./solana/dex";
 
 const SOLANA_PROTOCOLS: Readonly<Record<string, SolanaProtocol>> = {
   ...SOLANA_DEX_PROTOCOLS,
