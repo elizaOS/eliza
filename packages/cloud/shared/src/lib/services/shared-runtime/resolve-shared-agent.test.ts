@@ -15,7 +15,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 const requireUserOrApiKeyWithOrgLookup = mock(
   async <T>(_: unknown, lookup: (organizationId: string) => Promise<T>) => ({
-    user: { organization_id: "org-1" },
+    user: { organization_id: "org-1", steward_id: "steward-user-1" },
     orgLookupResult: await lookup("org-1"),
   }),
 );
@@ -26,9 +26,21 @@ const findByIdAndOrg = mock(async () => null);
 let scopeHashPrefixBehavior: () => Promise<string | null> = async () => "keyhashpref0000";
 const apiKeyScopeHashPrefix = mock(() => scopeHashPrefixBehavior());
 
+// Session-path derivation (#SHADOW-ACCOUNT-DEBUG). Default null => API-key path
+// unless a test opts into the session shape.
+let sessionHashPrefixBehavior: () => Promise<string | null> = async () => null;
+const sessionScopeHashPrefix = mock(() => sessionHashPrefixBehavior());
+let sessionRevalidateBehavior: (cachedStewardUserId: string) => Promise<boolean> = async () =>
+  true;
+const revalidateSessionScope = mock((_: unknown, cachedStewardUserId: string) =>
+  sessionRevalidateBehavior(cachedStewardUserId),
+);
+
 mock.module("../../auth/workers-hono-auth", () => ({
   requireUserOrApiKeyWithOrgLookup,
   apiKeyScopeHashPrefix,
+  sessionScopeHashPrefix,
+  revalidateSessionScope,
 }));
 
 mock.module("../../../db/repositories/agent-sandboxes", () => ({
@@ -102,7 +114,11 @@ beforeEach(() => {
   cacheSet.mockClear();
   validateApiKey.mockClear();
   cacheStore.clear();
+  sessionScopeHashPrefix.mockClear();
+  revalidateSessionScope.mockClear();
   scopeHashPrefixBehavior = async () => "keyhashpref0000";
+  sessionHashPrefixBehavior = async () => null;
+  sessionRevalidateBehavior = async () => true;
   validateBehavior = async () => ({ is_active: true, organization_id: "org-1", expires_at: null });
 });
 
@@ -239,8 +255,9 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
     expect(cacheSet).not.toHaveBeenCalled();
   });
 
-  test("session/JWT requests (no api key hash) never touch the scope cache", async () => {
+  test("a request carrying NEITHER an api key nor a session never touches the scope cache", async () => {
     scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => null;
     findByIdAndOrg.mockResolvedValue(agent());
 
     await resolveSharedAgent(contextWithAgentId("agent-1") as never);
@@ -248,5 +265,77 @@ describe("resolveSharedAgent scope cache (COLDPATH-FIX-2026-07-21)", () => {
     expect(cacheSet).not.toHaveBeenCalled();
     // Authoritative gate still ran.
     expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("resolveSharedAgent SESSION scope cache (SHADOW-ACCOUNT-DEBUG)", () => {
+  // Shadow's own account authenticates by steward JWT / cookie, not an API key,
+  // so the API-key-only scope cache used to skip him entirely -> he paid the
+  // cold user/org+agent Hyperdrive waves on EVERY turn (the felt 3-4s warm AND
+  // cold). These pin the session-keyed cache that closes that gap.
+
+  test("first cold session hit runs the full gate and caches with the steward user id", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+    expect(cacheSet).toHaveBeenCalledTimes(1);
+    const [cacheKey, cachedValue] = cacheSet.mock.calls[0];
+    // Session key is namespaced with `s:` so it can't collide with an api-key hash.
+    expect(String(cacheKey)).toContain("s:sesshashpref0000");
+    expect(cachedValue).toMatchObject({
+      orgId: "org-1",
+      stewardUserId: "steward-user-1",
+    });
+  });
+
+  test("second session hit skips the cold DB waves after re-verifying the JWT", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    // Populate.
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+    findByIdAndOrg.mockClear();
+
+    // Second hit: served from cache, no user/org+agent hydration.
+    const result = await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    expect(result).toMatchObject({ agentId: "agent-1", orgId: "org-1" });
+    expect(requireUserOrApiKeyWithOrgLookup).not.toHaveBeenCalled();
+    expect(findByIdAndOrg).not.toHaveBeenCalled();
+    // But the credential gate STILL ran (JWT re-verified against the cached user).
+    expect(revalidateSessionScope).toHaveBeenCalledTimes(1);
+    expect(revalidateSessionScope.mock.calls[0][1]).toBe("steward-user-1");
+  });
+
+  test("a session hit whose token no longer verifies falls back to the full gate", async () => {
+    scopeHashPrefixBehavior = async () => null;
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    requireUserOrApiKeyWithOrgLookup.mockClear();
+
+    // Token now invalid / re-issued for a different user.
+    sessionRevalidateBehavior = async () => false;
+    await resolveSharedAgent(contextWithAgentId("agent-1") as never);
+    // Not served from cache -> authoritative gate re-ran.
+    expect(requireUserOrApiKeyWithOrgLookup).toHaveBeenCalledTimes(1);
+  });
+
+  test("the api-key path is preferred over session when both are present", async () => {
+    // Both derivations available; api-key wins, session cache is not consulted.
+    scopeHashPrefixBehavior = async () => "keyhashpref0000";
+    sessionHashPrefixBehavior = async () => "sesshashpref0000";
+    findByIdAndOrg.mockResolvedValue(agent());
+
+    await resolveSharedAgent(apiKeyContext("agent-1") as never);
+    const [cacheKey] = cacheSet.mock.calls[0];
+    expect(String(cacheKey)).not.toContain("s:");
+    expect(revalidateSessionScope).not.toHaveBeenCalled();
   });
 });
