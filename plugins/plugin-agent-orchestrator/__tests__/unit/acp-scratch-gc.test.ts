@@ -316,8 +316,16 @@ describe("startup GC reclaims orphaned scratch dirs", () => {
     const id = UUID_KILL;
     const workdir = join(ROOT, `task-${id}`);
     await makeDir(workdir);
-    await store.create(session(id, workdir, "running"));
-    const service = makeService(store);
+    await store.create({
+      ...session(id, workdir, "running"),
+      lastActivityAt: new Date(Date.now() - 5 * 60_000),
+      metadata: {
+        isolatedWorkdir: true,
+        workdirRoot: ROOT,
+        transportMode: "cli",
+      },
+    });
+    const service = makeService(store, { ELIZA_ACP_TRANSPORT: "cli" });
 
     await service.start();
     try {

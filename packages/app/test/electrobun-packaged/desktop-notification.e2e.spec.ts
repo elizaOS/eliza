@@ -3,7 +3,7 @@
  *
  * Drives the real packaged renderer notification store through the mock API's
  * WebSocket `agent_event` stream and verifies the Bun-side native bridge called
- * `Utils.showNotification` via the authenticated desktop test bridge recorder.
+ * `Utils.showNotification` via canonical DesktopManager diagnostics.
  */
 
 import fs from "node:fs/promises";
@@ -13,14 +13,10 @@ import type { AgentNotification } from "@elizaos/core";
 import { expect, test } from "@playwright/test";
 import { type MockApiServer, startMockApiServer } from "./mock-api";
 import {
-  type DesktopNotificationRecord,
+  type DesktopNotificationDiagnostic,
   PackagedDesktopHarness,
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
-
-type EvalOk<T> = T & { ok: true };
-type EvalErr = { ok: false; error: string };
-type EvalResult<T> = EvalOk<T> | EvalErr;
 
 function notification(
   id: string,
@@ -37,37 +33,15 @@ function notification(
   };
 }
 
-async function readRendererFocusState(
-  harness: PackagedDesktopHarness,
-): Promise<{ visibilityState: string; hasFocus: boolean }> {
-  const result = await harness.eval<
-    EvalResult<{ visibilityState: string; hasFocus: boolean }>
-  >(`(() => {
-    try {
-      return {
-        ok: true,
-        visibilityState: document.visibilityState,
-        hasFocus: document.hasFocus(),
-      };
-    } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : String(e) };
-    }
-  })()`);
-  if (!result.ok) {
-    throw new Error(`readRendererFocusState eval failed: ${result.error}`);
-  }
-  return result;
-}
-
 async function waitForNativeNotification(
   harness: PackagedDesktopHarness,
   title: string,
-): Promise<DesktopNotificationRecord> {
-  let records: DesktopNotificationRecord[] = [];
+): Promise<DesktopNotificationDiagnostic> {
+  let records: DesktopNotificationDiagnostic[] = [];
   await expect
     .poll(
       async () => {
-        records = await harness.getNotifications();
+        records = await harness.readNotifications();
         return records.some((record) => record.title === title);
       },
       {
@@ -167,17 +141,10 @@ test("packaged desktop notifications reach native OS bridge when backgrounded or
       "Expected packaged desktop window to be focused before urgent notification.",
       30_000,
     );
-    await expect
-      .poll(
-        async () => (await readRendererFocusState(activeHarness)).hasFocus,
-        {
-          timeout: 30_000,
-          message:
-            "Expected the packaged renderer document to report focus before urgent notification.",
-        },
-      )
-      .toBe(true);
-
+    // DesktopManager focus is the packaged/native contract. Chromium's
+    // document.hasFocus() remains false under headless Xvfb even after the real
+    // Electrobun window reports focused, so it is not a valid native readiness
+    // signal and must not gate notification observation.
     const urgent = notification("focused-urgent", "urgent");
     broadcastNotification(api, urgent, 2);
     const urgentRecord = await waitForNativeNotification(

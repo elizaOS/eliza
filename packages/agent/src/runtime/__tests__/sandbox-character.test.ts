@@ -61,6 +61,38 @@ describe("applySandboxCharacterFromEnv", () => {
     expect((out as { agents: { list: unknown[] } }).agents.list).toEqual([]);
   });
 
+  it("treats an absent config.agents as an empty list (no empty-object sludge)", () => {
+    // Regression for the typed-optional read of config.agents: when the field
+    // is entirely absent the injected character must still land at list[0]
+    // without materializing intermediate `?? {}` objects (ratchet #9940).
+    const config = {} as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({ name: "Nyx", system: "x" }),
+    });
+    const agents = (out as { agents: { list: Array<Record<string, unknown>> } })
+      .agents;
+    expect(Array.isArray(agents.list)).toBe(true);
+    expect(agents.list).toHaveLength(1);
+    expect(agents.list[0]?.name).toBe("Nyx");
+    expect(agents.list[0]?.default).toBe(true);
+  });
+
+  it("preserves sibling keys on config.agents while replacing the list", () => {
+    // The typed-optional path spreads the existing agents object; sibling
+    // settings (e.g. defaults) must survive the character injection.
+    const config = {
+      agents: { list: [], defaults: { temperature: 0.3 } },
+    } as never;
+    const out = applySandboxCharacterFromEnv(config, {
+      ELIZA_AGENT_CHARACTER_JSON: JSON.stringify({ name: "Nyx", system: "x" }),
+    });
+    const agents = (out as {
+      agents: { list: unknown[]; defaults?: { temperature: number } };
+    }).agents;
+    expect(agents.defaults?.temperature).toBe(0.3);
+    expect(agents.list).toHaveLength(1);
+  });
+
   it("falls back to AGENT_NAME when the character has no name", () => {
     const config = {} as never;
     const out = applySandboxCharacterFromEnv(config, {
