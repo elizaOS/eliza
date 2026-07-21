@@ -1,5 +1,3 @@
-import { defineConfig } from "vitest/config";
-
 /**
  * Vitest lane for cloud/shared suites that require the Vitest-only module-mock
  * API (`vi.mock` + `vi.importActual`), which bun-test's `vi` shim does not
@@ -20,7 +18,15 @@ import { defineConfig } from "vitest/config";
  * Do NOT set `passWithNoTests`: if the include glob ever matches nothing, the
  * lane must red rather than silently pass.
  */
+import { defineConfig } from "vitest/config";
+
 export default defineConfig({
+  resolve: {
+    // This lane runs before workspace builds in changed-file coverage. Prefer
+    // workspace TypeScript exports so transitive cloud schemas can resolve
+    // @elizaos/plugin-sql without depending on an absent dist directory.
+    conditions: ["eliza-source"],
+  },
   test: {
     include: [
       "src/lib/services/__tests__/direct-wallet-payments.integration.test.ts",

@@ -314,49 +314,42 @@ const ATTACKER_KEY = "0x8b3a350cf5c34c9194ca3a9d8b542a7d542a20a6039b332cf98b472c
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let service: typeof import("../direct-wallet-payments").directWalletPaymentsService;
 let closeDb: () => Promise<void>;
-let pgliteAvailable = true;
 
 const env = process.env as Record<string, string>;
 
 beforeAll(async () => {
-  try {
-    const dbClient = await import("../../../db/client");
-    const schemas = await import("../../../db/schemas/crypto-payments");
-    const svc = await import("../direct-wallet-payments");
-    dbWrite = dbClient.dbWrite;
-    closeDb = dbClient.closeDatabaseConnectionsForTests;
-    void schemas.cryptoPayments;
-    service = svc.directWalletPaymentsService;
+  const dbClient = await import("../../../db/client");
+  const schemas = await import("../../../db/schemas/crypto-payments");
+  const svc = await import("../direct-wallet-payments");
+  dbWrite = dbClient.dbWrite;
+  closeDb = dbClient.closeDatabaseConnectionsForTests;
+  void schemas.cryptoPayments;
+  service = svc.directWalletPaymentsService;
 
-    // Create only the table we need. uuid_generate_v4 isn't available in PGlite
-    // without an extension; gen_random_uuid is built-in.
-    await dbWrite.execute(`
-      CREATE TABLE IF NOT EXISTS crypto_payments (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        organization_id uuid NOT NULL,
-        user_id uuid,
-        payment_address text NOT NULL,
-        token_address text,
-        token text NOT NULL,
-        network text NOT NULL,
-        expected_amount text NOT NULL,
-        received_amount text,
-        credits_to_add text NOT NULL,
-        transaction_hash text,
-        block_number text,
-        status text NOT NULL,
-        created_at timestamp NOT NULL DEFAULT now(),
-        updated_at timestamp NOT NULL DEFAULT now(),
-        confirmed_at timestamp,
-        expires_at timestamp NOT NULL,
-        metadata jsonb DEFAULT '{}'::jsonb
-      )
-    `);
-  } catch (error) {
-    pgliteAvailable = false;
-    // eslint-disable-next-line no-console
-    console.warn("[direct-wallet-payments test] PGlite unavailable, skipping:", error);
-  }
+  // Create only the table we need. uuid_generate_v4 isn't available in PGlite
+  // without an extension; gen_random_uuid is built-in.
+  await dbWrite.execute(`
+    CREATE TABLE IF NOT EXISTS crypto_payments (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL,
+      user_id uuid,
+      payment_address text NOT NULL,
+      token_address text,
+      token text NOT NULL,
+      network text NOT NULL,
+      expected_amount text NOT NULL,
+      received_amount text,
+      credits_to_add text NOT NULL,
+      transaction_hash text,
+      block_number text,
+      status text NOT NULL,
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now(),
+      confirmed_at timestamp,
+      expires_at timestamp NOT NULL,
+      metadata jsonb DEFAULT '{}'::jsonb
+    )
+  `);
 }, 240_000);
 
 afterAll(async () => {
@@ -395,7 +388,7 @@ async function trustPayerProof(payment: { id: string; metadata: unknown }) {
 // Tests
 // ---------------------------------------------------------------------------
 
-d.skipIf(!process.env.DATABASE_URL || !pgliteAvailable)(
+d.skipIf(!process.env.DATABASE_URL || !SUPPORTS_VITEST_MOCK_API)(
   "DirectWalletPaymentsService (PGlite integration)",
   () => {
     test("createPayment for BSC native BNB locks price quote and computes wei", async () => {
