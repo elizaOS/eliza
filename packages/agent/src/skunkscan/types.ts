@@ -682,7 +682,9 @@ export type WalletRelationshipSummary = {
 
 export type WalletDeFiProtocol = {
   programId: string;
+
   protocol: string;
+
   category:
     | "dex"
     | "dex_aggregator"
@@ -692,6 +694,12 @@ export type WalletDeFiProtocol = {
     | "bridge"
     | "nft"
     | "other";
+
+  reputation:
+    | "high"
+    | "medium"
+    | "unknown";
+
   interactionCount: number;
 };
 
