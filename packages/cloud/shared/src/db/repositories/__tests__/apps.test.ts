@@ -492,16 +492,28 @@ describe("AppsService usage and management wrappers", () => {
     const logRequest = spyOn(appsRepository, "logRequest").mockResolvedValue(undefined as never);
     const incrementUsage = spyOn(appsService, "incrementUsage").mockResolvedValue(undefined);
     const findById = spyOn(appsRepository, "findById").mockResolvedValue(app);
-    const getRequestStats = spyOn(appsRepository, "getRequestStats").mockResolvedValue([] as never);
+    const emptyRequestStats = {
+      totalRequests: 0,
+      uniqueIps: 0,
+      uniqueUsers: 0,
+      byType: {},
+      bySource: {},
+      byStatus: {},
+      totalCredits: "0",
+      avgResponseTime: null,
+    };
+    const getRequestStats = spyOn(appsRepository, "getRequestStats").mockResolvedValue(
+      emptyRequestStats,
+    );
     const getRecentRequests = spyOn(appsRepository, "getRecentRequests").mockResolvedValue(
-      [] as never,
+      { requests: [], total: 0 },
     );
     const getTopVisitors = spyOn(appsRepository, "getTopVisitors").mockResolvedValue([] as never);
     const getRequestsOverTime = spyOn(appsRepository, "getRequestsOverTime").mockResolvedValue(
       [] as never,
     );
     const listAppUsers = spyOn(appsRepository, "listAppUsers").mockResolvedValue([] as never);
-    const getAnalytics = spyOn(appsRepository, "getAnalytics").mockResolvedValue({} as never);
+    const getAnalytics = spyOn(appsRepository, "getAnalytics").mockResolvedValue([]);
     const getTotalStats = spyOn(appsRepository, "getTotalStats").mockResolvedValue({
       totalRequests: 0,
       totalUsers: 0,
@@ -534,8 +546,11 @@ describe("AppsService usage and management wrappers", () => {
         }),
       );
 
-      await expect(appsService.getRequestStats(app.id)).resolves.toEqual([]);
-      await expect(appsService.getRecentRequests(app.id)).resolves.toEqual([]);
+      await expect(appsService.getRequestStats(app.id)).resolves.toEqual(emptyRequestStats);
+      await expect(appsService.getRecentRequests(app.id)).resolves.toEqual({
+        requests: [],
+        total: 0,
+      });
       await expect(appsService.getTopVisitors(app.id)).resolves.toEqual([]);
       await expect(
         appsService.getRequestsOverTime(app.id, "daily", new Date(), new Date()),
@@ -543,7 +558,7 @@ describe("AppsService usage and management wrappers", () => {
       await expect(appsService.getAppUsers(app.id)).resolves.toEqual([]);
       await expect(
         appsService.getAnalytics(app.id, "daily", new Date(), new Date()),
-      ).resolves.toEqual({});
+      ).resolves.toEqual([]);
       await expect(appsService.getTotalStats(app.id)).resolves.toEqual({
         totalRequests: 0,
         totalUsers: 0,

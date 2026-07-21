@@ -143,6 +143,7 @@ beforeEach(() => {
   stewardTokenBehavior = async () => null;
   playwrightTokenBehavior = () => null;
   adminBehavior = async () => ({ isAdmin: false, role: null });
+  validateApiKey.mockClear();
   getWithOrganization.mockClear();
   getByStewardId.mockClear();
   verifyStewardTokenCached.mockClear();

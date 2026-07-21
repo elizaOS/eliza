@@ -155,6 +155,67 @@ describe("ApiKeysRepository mobile credential boundaries", () => {
     });
   });
 
+  test("ordinary key reads, active filtering, updates, and deactivation use real rows", async () => {
+    const activeId = await insertKey({
+      name: "ordinary-active-key",
+      createdAtSql: "now()",
+    });
+    const expiredId = await insertKey({
+      name: "ordinary-expired-key",
+      createdAtSql: "now() - interval '2 days'",
+    });
+    await dbWrite.execute(sql`
+      UPDATE api_keys
+      SET expires_at = now() - interval '1 hour'
+      WHERE id = ${expiredId}
+    `);
+
+    const active = await apiKeysRepository.findById(activeId);
+    expect(active).toMatchObject({ id: activeId, name: "ordinary-active-key" });
+    await expect(apiKeysRepository.findByHash(active!.key_hash)).resolves.toMatchObject({
+      id: activeId,
+    });
+    await expect(apiKeysRepository.findActiveByHash(active!.key_hash)).resolves.toMatchObject({
+      id: activeId,
+    });
+    await expect(
+      apiKeysRepository.findActiveByHashConsistent(active!.key_hash),
+    ).resolves.toMatchObject({ id: activeId });
+
+    const expired = await apiKeysRepository.findByIdConsistent(expiredId);
+    expect(expired).toMatchObject({ id: expiredId });
+    await expect(apiKeysRepository.findActiveByHash(expired!.key_hash)).resolves.toBeUndefined();
+    await expect(
+      apiKeysRepository.findActiveByHashConsistent(expired!.key_hash),
+    ).resolves.toBeUndefined();
+    await expect(
+      apiKeysRepository.findByUserAndName(USER_ID, "ordinary-active-key"),
+    ).resolves.toEqual([expect.objectContaining({ id: activeId })]);
+    await expect(apiKeysRepository.findByName("ordinary-active-key")).resolves.toEqual([
+      expect.objectContaining({ id: activeId }),
+    ]);
+    await expect(apiKeysRepository.listByUser(USER_ID)).resolves.toHaveLength(2);
+
+    await expect(
+      apiKeysRepository.update(activeId, { description: "rotated" }),
+    ).resolves.toMatchObject({
+      id: activeId,
+      description: "rotated",
+    });
+    await apiKeysRepository.incrementUsage(activeId);
+    await expect(apiKeysRepository.findByIdConsistent(activeId)).resolves.toMatchObject({
+      usage_count: 1,
+    });
+
+    await apiKeysRepository.deactivateUserKeysByName(USER_ID, "ordinary-active-key");
+    await expect(apiKeysRepository.findByIdConsistent(activeId)).resolves.toMatchObject({
+      is_active: false,
+    });
+    const deleted = await apiKeysRepository.deleteByName("ordinary-active-key");
+    expect(deleted).toEqual([expect.objectContaining({ id: activeId })]);
+    await expect(apiKeysRepository.findByIdConsistent(activeId)).resolves.toBeUndefined();
+  });
+
   test("mobile owner recovery lists, resolves, and tombstones only scoped credentials", async () => {
     const credentialId = "33333333-3333-4333-8333-333333333333";
     const sourceAppId = "44444444-4444-4444-8444-444444444444";
