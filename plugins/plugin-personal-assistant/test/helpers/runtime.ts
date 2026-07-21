@@ -120,6 +120,9 @@ export async function createLifeOpsTestRuntime(
     // The ScheduledTaskRunnerService + the generic scheduled-task route now
     // live in the always-loaded @elizaos/plugin-scheduling. Load it alongside
     // PA (as the real runtime does) so PA's injected deps have a runner host.
+    // createRealTestRuntime awaits each declared plugin service's load promise
+    // after init (its boot barrier), so the runner host is live before this
+    // helper returns, so callers can synchronously reach getScheduledTaskRunner.
     const { schedulingPlugin } = await import("@elizaos/plugin-scheduling");
     const result = await createRealTestRuntime({
       ...options,
