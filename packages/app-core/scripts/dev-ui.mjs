@@ -791,6 +791,26 @@ async function isAgentReadyNow(port) {
   }
 }
 
+// A hot-reload bounce SIGTERMs the runtime, and the runtime owns every live
+// coding sub-agent — restarting mid-run kills their sessions ("Database is
+// shutting down" errors observed live). Defer the bounce while any ACP
+// session is busy; the next source change after the sessions drain restarts
+// onto the newest code anyway. Fail-open: an unreachable API never blocks
+// the reload (the health gate above already covers not-ready).
+async function hasBusyAcpSessions(port) {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}/api/coding-agents`, {
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!resp.ok) return false;
+    const body = await resp.json().catch(() => null);
+    const sessions = Array.isArray(body) ? body : (body?.sessions ?? []);
+    return sessions.some((s) => s?.status === "busy" || s?.status === "running");
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Orphan cleanup (startup only) — never kills arbitrary Bun; PID/name-wide pkill is avoided.
 // Only processes whose command line ties them to this repo or Eliza workspace dirs.
@@ -1359,6 +1379,12 @@ if (uiOnly) {
         }
         void (async () => {
           if (!(await isAgentReadyNow(API_PORT))) return;
+          if (await hasBusyAcpSessions(API_PORT)) {
+            console.log(
+              `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — deferred: a coding sub-agent session is busy (reload would kill it)`)}`,
+            );
+            return;
+          }
           console.log(
             `\n  ${green(logPrefix)} ${dim(`Source change (${relPath}) — reloading agent…`)}`,
           );
