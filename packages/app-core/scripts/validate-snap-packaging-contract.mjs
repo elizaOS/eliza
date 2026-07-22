@@ -52,6 +52,8 @@ const SNAP_BUILD_ACTION =
   "snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79";
 const UPLOAD_ARTIFACT_ACTION =
   "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
+const DOWNLOAD_ARTIFACT_ACTION =
+  "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c";
 const SBOM_ACTION =
   "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610";
 const ATTEST_ACTION =
@@ -76,6 +78,9 @@ const AGGREGATE_STORE_CREDENTIALS_EXPRESSION =
   "$" + "{{ secrets.SNAP_STORE_CREDENTIALS }}";
 const MATRIX_RUNNER_EXPRESSION = "$" + "{{ matrix.runner }}";
 const MATRIX_ARCH_EXPRESSION = "$" + "{{ matrix.arch }}";
+const PR_HEAD_OR_TRIGGER_SHA_EXPRESSION =
+  "$" +
+  "{{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}";
 const SHELL_VERSION_EXPANSION = "$" + "{VERSION}";
 const SHELL_GRADE_EXPANSION = "$" + "{SNAP_GRADE}";
 
@@ -350,9 +355,11 @@ function validateSnapBuildJob(
     uploadStepName,
     uploadRetention,
     attestationCondition,
+    attestationInBuild = true,
     publish,
     allowedExtraSteps = [],
     expectedCheckoutRef,
+    expectedSourceRevision,
   },
 ) {
   if (expectedNeeds === undefined) {
@@ -385,13 +392,20 @@ function validateSnapBuildJob(
     buildJob.permissions,
     `${label} permissions`,
   );
-  invariant(
-    permissions.contents === "read" &&
-      permissions["id-token"] === "write" &&
-      permissions.attestations === "write" &&
-      Object.keys(permissions).length === 3,
-    `${label} must grant only read contents plus OIDC attestation permissions`,
-  );
+  if (attestationInBuild) {
+    invariant(
+      permissions.contents === "read" &&
+        permissions["id-token"] === "write" &&
+        permissions.attestations === "write" &&
+        Object.keys(permissions).length === 3,
+      `${label} must grant only read contents plus OIDC attestation permissions`,
+    );
+  } else {
+    invariant(
+      permissions.contents === "read" && Object.keys(permissions).length === 1,
+      `${label} must grant only read contents permissions`,
+    );
+  }
   validateArchitectureMatrix(buildJob, label);
   invariant(Array.isArray(buildJob.steps), `${label} steps must be a list`);
   const steps = buildJob.steps;
@@ -406,18 +420,19 @@ function validateSnapBuildJob(
     "Record builder and base provenance",
     "Extract snap filesystem for SBOM",
     "Generate Snap SBOM",
-    "Attest Snap build provenance",
     uploadStepName,
     "Upload Snap diagnostics after failure",
     ...allowedExtraSteps,
   ]);
+  if (attestationInBuild) allowedStepNames.add("Attest Snap build provenance");
   if (publish) allowedStepNames.add("Publish to Snap Store");
   const seenStepNames = new Set();
 
   const allowedConditions = new Map([
-    ["Attest Snap build provenance", attestationCondition],
     ["Upload Snap diagnostics after failure", "failure()"],
   ]);
+  if (attestationInBuild)
+    allowedConditions.set("Attest Snap build provenance", attestationCondition);
   if (publish)
     allowedConditions.set("Publish to Snap Store", publish.condition);
   for (const [index, stepValue] of steps.entries()) {
@@ -461,7 +476,7 @@ function validateSnapBuildJob(
   } else {
     invariant(
       checkoutInputs.ref === expectedCheckoutRef,
-      `${label} checkout must use the requested release tag`,
+      `${label} checkout must use the expected source ref`,
     );
   }
 
@@ -606,6 +621,12 @@ function validateSnapBuildJob(
     provenanceEnv.SNAP_PATH === SNAP_OUTPUT_EXPRESSION,
     `${label} provenance must consume the built artifact output`,
   );
+  if (expectedSourceRevision !== undefined) {
+    invariant(
+      provenanceEnv.EXPECTED_SOURCE_REVISION === expectedSourceRevision,
+      `${label} provenance must receive the expected source revision`,
+    );
+  }
   const provenanceLines = activeScriptLines(
     provenance.run,
     `${label} provenance script`,
@@ -614,6 +635,17 @@ function validateSnapBuildJob(
     provenanceLines[0] === "set -euo pipefail",
     `${label} provenance must start fail closed`,
   );
+  if (expectedSourceRevision !== undefined) {
+    requireOrderedLines(
+      provenanceLines,
+      [
+        'SOURCE_REVISION="$(git rev-parse HEAD)"',
+        'test "$SOURCE_REVISION" = "$EXPECTED_SOURCE_REVISION"',
+        `printf 'source_revision=%s\\n' "$SOURCE_REVISION"`,
+      ],
+      `${label} source provenance`,
+    );
+  }
   for (const required of [
     "snap version",
     "snapcraft version",
@@ -682,17 +714,20 @@ function validateSnapBuildJob(
     `${label} SBOM upload must remain in the combined artifact`,
   );
 
-  const attestation = findUniqueStep(steps, "Attest Snap build provenance");
-  invariant(
-    attestation.uses === ATTEST_ACTION,
-    `${label} attestation action must be commit-pinned`,
-  );
-  invariant(
-    requireRecord(attestation.with, `${label} attestation inputs`)[
-      "subject-path"
-    ] === SNAP_OUTPUT_EXPRESSION,
-    `${label} attestation must cover the built artifact`,
-  );
+  let attestation;
+  if (attestationInBuild) {
+    attestation = findUniqueStep(steps, "Attest Snap build provenance");
+    invariant(
+      attestation.uses === ATTEST_ACTION,
+      `${label} attestation action must be commit-pinned`,
+    );
+    invariant(
+      requireRecord(attestation.with, `${label} attestation inputs`)[
+        "subject-path"
+      ] === SNAP_OUTPUT_EXPRESSION,
+      `${label} attestation must cover the built artifact`,
+    );
+  }
 
   const upload = findUniqueStep(steps, uploadStepName);
   invariant(
@@ -735,16 +770,9 @@ function validateSnapBuildJob(
     `${label} early failures may lack diagnostics but must remain visible`,
   );
 
-  const ordered = [
-    build,
-    verify,
-    install,
-    provenance,
-    extract,
-    sbom,
-    attestation,
-    upload,
-  ];
+  const ordered = [build, verify, install, provenance, extract, sbom];
+  if (attestation) ordered.push(attestation);
+  ordered.push(upload);
   if (publish) {
     const publishStep = findUniqueStep(steps, "Publish to Snap Store");
     invariant(
@@ -772,6 +800,129 @@ function validateSnapBuildJob(
         index === 0 || steps.indexOf(step) > steps.indexOf(ordered[index - 1]),
     ),
     `${label} build, proof, provenance, SBOM, attestation, upload, and publish must preserve dataflow order`,
+  );
+}
+
+function validateTrustedSnapAttestationJob(job) {
+  const label = "attest-snap job";
+  invariant(job.needs === "build-snap", `${label} must need build-snap`);
+  invariant(
+    job.if === "github.event_name != 'pull_request'",
+    `${label} must never run for pull requests`,
+  );
+  invariant(
+    job["runs-on"] === "ubuntu-24.04",
+    `${label} must run on the pinned trusted runner image`,
+  );
+  invariant(
+    job["timeout-minutes"] === 10,
+    `${label} must time out after 10 minutes`,
+  );
+  invariant(
+    !Object.hasOwn(job, "continue-on-error"),
+    `${label} must be blocking`,
+  );
+  for (const forbidden of ["container", "services", "defaults"]) {
+    invariant(
+      !Object.hasOwn(job, forbidden),
+      `${label} must not define ${forbidden}`,
+    );
+  }
+
+  const permissions = requireRecord(job.permissions, `${label} permissions`);
+  invariant(
+    permissions.contents === "read" &&
+      permissions["id-token"] === "write" &&
+      permissions.attestations === "write" &&
+      Object.keys(permissions).length === 3,
+    `${label} must grant only read contents plus OIDC attestation permissions`,
+  );
+
+  const strategy = requireRecord(job.strategy, `${label} strategy`);
+  invariant(
+    strategy["fail-fast"] === false,
+    `${label} must preserve per-architecture diagnostics`,
+  );
+  invariant(
+    !Object.hasOwn(strategy, "max-parallel"),
+    `${label} must not suppress an architecture`,
+  );
+  const matrix = requireRecord(strategy.matrix, `${label} matrix`);
+  requireExactStringArray(
+    requireOwn(matrix, "arch", `${label} matrix`),
+    ["amd64", "arm64"],
+    `${label} architectures`,
+  );
+  invariant(
+    Object.keys(matrix).length === 1,
+    `${label} matrix may define only arch`,
+  );
+
+  invariant(Array.isArray(job.steps), `${label} steps must be a list`);
+  invariant(job.steps.length === 3, `${label} must contain exactly 3 steps`);
+  const download = findUniqueStep(job.steps, "Download tested snap artifact");
+  const verify = findUniqueStep(job.steps, "Verify attestation subject");
+  const attest = findUniqueStep(
+    job.steps,
+    "Attest tested Snap build provenance",
+  );
+  invariant(
+    job.steps[0] === download &&
+      job.steps[1] === verify &&
+      job.steps[2] === attest,
+    `${label} must download, verify, then attest the tested artifact`,
+  );
+  for (const step of job.steps) {
+    requireStepExecution(step, `${label} step '${step.name}'`);
+  }
+
+  invariant(
+    download.uses === DOWNLOAD_ARTIFACT_ACTION,
+    `${label} download action must be commit-pinned`,
+  );
+  const artifactDir = `snap-artifact/${MATRIX_ARCH_EXPRESSION}`;
+  const downloadInputs = requireRecord(
+    download.with,
+    `${label} download inputs`,
+  );
+  invariant(
+    downloadInputs.name === `snap-${MATRIX_ARCH_EXPRESSION}` &&
+      downloadInputs.path === artifactDir &&
+      Object.keys(downloadInputs).length === 2,
+    `${label} must download only the tested architecture artifact`,
+  );
+
+  const verifyEnv = requireRecord(verify.env, `${label} verify environment`);
+  invariant(
+    verifyEnv.ARTIFACT_DIR === artifactDir &&
+      verifyEnv.EXPECTED_ARCH === MATRIX_ARCH_EXPRESSION &&
+      Object.keys(verifyEnv).length === 2,
+    `${label} verification must be bound to the matrix artifact`,
+  );
+  requireExactScript(
+    verify.run,
+    [
+      "set -euo pipefail",
+      `mapfile -t SNAP_FILES < <(find "$ARTIFACT_DIR" -maxdepth 1 -type f -name '*.snap' -print)`,
+      `test "\${#SNAP_FILES[@]}" -eq 1`,
+      'test -f "$ARTIFACT_DIR/snap-evidence/$EXPECTED_ARCH/SHA256SUMS"',
+      '(cd "$ARTIFACT_DIR" && sha256sum --check --strict "snap-evidence/$EXPECTED_ARCH/SHA256SUMS")',
+    ],
+    `${label} verification step`,
+  );
+
+  invariant(
+    attest.uses === ATTEST_ACTION,
+    `${label} attestation action must be commit-pinned`,
+  );
+  const attestInputs = requireRecord(
+    attest.with,
+    `${label} attestation inputs`,
+  );
+  invariant(
+    attestInputs["subject-path"] === `${artifactDir}/*.snap` &&
+      Object.keys(attestInputs).length === 1,
+    `${label} attestation must cover only the verified architecture artifact`,
   );
 }
 
@@ -814,12 +965,20 @@ export function validateSnapWorkflowSource(
     expectedPrepareScript: EXPECTED_PREPARE_SCRIPT,
     uploadStepName: "Upload snap artifact",
     uploadRetention: 30,
-    attestationCondition: "github.event_name != 'pull_request'",
+    attestationInBuild: false,
+    expectedCheckoutRef: PR_HEAD_OR_TRIGGER_SHA_EXPRESSION,
+    expectedSourceRevision: PR_HEAD_OR_TRIGGER_SHA_EXPRESSION,
     allowedExtraSteps: [
       "Free disk space on runner",
       "Normalize runner root ownership for snapd",
     ],
   });
+  validateTrustedSnapAttestationJob(
+    requireRecord(
+      requireOwn(jobs, "attest-snap", "Snap workflow jobs"),
+      "attest-snap job",
+    ),
+  );
 }
 
 export function validateSnapPublishWorkflowSource(
@@ -1206,6 +1365,25 @@ export function validateSnapManifestSource(
     "Snapcraft frozen install must run before the workspace is pruned",
   );
 
+  const runtimeCopyIndex = activeLines.indexOf(
+    "node --import tsx packages/app-core/scripts/copy-runtime-node-modules.ts \\",
+  );
+  const runtimeTypesCleanupIndexes = activeLines
+    .map((line, index) =>
+      line === 'node "$RM_PATH_RECURSIVE" node_modules/@types' ? index : -1,
+    )
+    .filter((index) => index >= 0);
+  const finalBuildTypesCleanupIndex = activeLines.lastIndexOf(
+    'node "$RM_PATH_RECURSIVE" "$SNAP_BUILD_TYPES_DIR"',
+  );
+  invariant(
+    runtimeCopyIndex >= 0 &&
+      runtimeTypesCleanupIndexes.length === 1 &&
+      runtimeTypesCleanupIndexes[0] > runtimeCopyIndex &&
+      finalBuildTypesCleanupIndex > runtimeTypesCleanupIndexes[0],
+    "Snapcraft declaration inputs must remain available until the transitive runtime closure is materialized",
+  );
+
   const forbiddenAcquisition = [
     [/\bnpm\s+(?:view|install|ci|add)\b/, "npm acquisition"],
     [/\bnpx\b/, "npx acquisition"],
@@ -1273,6 +1451,7 @@ export function validateInstalledSnapSmokeSource(source) {
     [
       "amd64) EXPECTED_NODE_ARCH=x64 ;;",
       "arm64) EXPECTED_NODE_ARCH=arm64 ;;",
+      'EVIDENCE_DIR="$(realpath "$EVIDENCE_DIR")"',
       'if "$@" >"$stdout_file" 2>"$stderr_file"; then',
       "command_status=0",
       "command_status=$?",

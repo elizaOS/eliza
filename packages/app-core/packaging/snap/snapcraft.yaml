@@ -509,9 +509,6 @@ parts:
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
         --filter=@elizaos/scenario-runner
-      node "$RM_PATH_RECURSIVE" node_modules/@types
-      node "$RM_PATH_RECURSIVE" "$SNAP_BUILD_TYPES_DIR"
-
       # Install into snap
       mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app"
       mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent"
@@ -539,6 +536,13 @@ parts:
       node --import tsx packages/app-core/scripts/copy-runtime-node-modules.ts \
         --scan-dir packages/agent/dist \
         --target-dist "$CRAFT_PART_INSTALL/lib/elizaos-app"
+
+      # The runtime copier can build a transitive workspace entry that was not
+      # part of Turbo's initial filter set, so keep declaration inputs until the
+      # dependency closure is fully materialized. They are never copied into the
+      # runtime payload, and are removed from the source tree immediately after.
+      node "$RM_PATH_RECURSIVE" node_modules/@types
+      node "$RM_PATH_RECURSIVE" "$SNAP_BUILD_TYPES_DIR"
 
       dangling_runtime_link="$(find "$CRAFT_PART_INSTALL/lib/elizaos-app/node_modules" -xtype l -print -quit)"
       if [ -n "$dangling_runtime_link" ]; then

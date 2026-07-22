@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
@@ -64,6 +66,8 @@ jobs:
         run: bun run --cwd packages/app-core build:flatpak:direct
 
       - name: Install and test
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           EXPECTED_VERSION="$(node -p "require('./package.json').version")"
@@ -85,11 +89,12 @@ jobs:
             if (metadata.version !== process.env.EXPECTED_VERSION) throw new Error("wrong staged version");
             if (metadata.runtimeNode !== "v24.15.0") throw new Error("wrong staged Node runtime");
             if (metadata.sourceDirty) throw new Error("release runtime came from a dirty checkout");
-            if (metadata.sourceRevision !== process.env.GITHUB_SHA) throw new Error("wrong source revision");
+            if (metadata.sourceRevision !== process.env.EXPECTED_SOURCE_REVISION) throw new Error("wrong source revision");
           '
 
       - name: Checksum bundle
-        run: sha256sum dist-flatpak/elizaos-app.flatpak > dist-flatpak/elizaos-app.flatpak.sha256
+        working-directory: dist-flatpak
+        run: sha256sum elizaos-app.flatpak > elizaos-app.flatpak.sha256
 
       - name: Upload bundle artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

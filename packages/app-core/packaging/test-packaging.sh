@@ -77,6 +77,100 @@ python_has_module() {
   python3 -c "import ${module}" >/dev/null 2>&1
 }
 
+validate_linux_verification_workflows() {
+  python3 - \
+    "$REPO_ROOT/.github/workflows/test-flatpak.yml" \
+    "$REPO_ROOT/.github/workflows/build-debian-package.yml" <<'PY'
+from pathlib import Path
+import sys
+import yaml
+
+
+def load_workflow(path):
+    return yaml.load(Path(path).read_text(), Loader=yaml.BaseLoader)
+
+
+def step_named(job, name):
+    return next(step for step in job["steps"] if step.get("name") == name)
+
+
+expected_source = "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+
+flatpak = load_workflow(sys.argv[1])
+flatpak_build = flatpak["jobs"]["build"]
+assert step_named(flatpak_build, "Checkout")["with"]["ref"] == expected_source
+assert (
+    step_named(flatpak_build, "Install and test")["env"]["EXPECTED_SOURCE_REVISION"]
+    == expected_source
+)
+flatpak_checksum = step_named(flatpak_build, "Checksum bundle")
+assert flatpak_checksum["working-directory"] == "dist-flatpak"
+assert flatpak_checksum["run"] == "sha256sum elizaos-app.flatpak > elizaos-app.flatpak.sha256"
+
+debian = load_workflow(sys.argv[2])
+debian_pr = debian["on"]["pull_request"]
+assert debian_pr["branches"] == ["develop"]
+required_paths = {
+    "packages/app-core/packaging/debian/**",
+    "packages/app-core/scripts/copy-runtime-node-modules.ts",
+    "packages/agent/**",
+    "plugins/**",
+    ".github/workflows/build-debian-package.yml",
+}
+assert required_paths.issubset(set(debian_pr["paths"]))
+
+build = debian["jobs"]["build-deb"]
+assert step_named(build, "Checkout")["with"]["ref"] == expected_source
+assert build["runs-on"] == "${{ matrix.runner }}"
+assert build["permissions"] == {"contents": "read"}
+assert all("attest" not in step.get("uses", "") for step in build["steps"])
+assert build["strategy"]["fail-fast"] == "false"
+assert build["strategy"]["matrix"]["include"] == [
+    {"arch": "amd64", "node_arch": "x64", "runner": "ubuntu-24.04"},
+    {"arch": "arm64", "node_arch": "arm64", "runner": "ubuntu-24.04-arm"},
+]
+assert (
+    step_named(build, "Upload .deb artifact")["with"]["name"]
+    == "elizaos-debian-package-${{ matrix.arch }}"
+)
+
+collect = debian["jobs"]["collect-deb"]
+assert collect["needs"] == "build-deb"
+assert collect["runs-on"] == "ubuntu-24.04"
+assert collect["permissions"] == {"contents": "read"}
+assert (
+    step_named(collect, "Download native Debian packages")["with"]["pattern"]
+    == "elizaos-debian-package-*"
+)
+assert (
+    step_named(collect, "Upload combined Debian artifact")["with"]["name"]
+    == "elizaos-debian-package"
+)
+
+attest = debian["jobs"]["attest-deb"]
+assert attest["needs"] == "collect-deb"
+assert attest["if"] == "github.event_name != 'pull_request'"
+assert attest["permissions"] == {
+    "contents": "read",
+    "id-token": "write",
+    "attestations": "write",
+}
+assert (
+    step_named(attest, "Download combined Debian artifact")["with"]["name"]
+    == "elizaos-debian-package"
+)
+
+release = debian["jobs"]["release-deb"]
+assert release["needs"] == ["collect-deb", "attest-deb"]
+assert release["if"] == "github.event_name == 'release'"
+assert release["permissions"] == {"contents": "write"}
+assert (
+    step_named(release, "Download combined Debian artifact")["with"]["name"]
+    == "elizaos-debian-package"
+)
+PY
+}
+
 # ── Header ───────────────────────────────────────────────────────────────────
 echo ""
 bold "╔══════════════════════════════════════╗"
@@ -339,6 +433,11 @@ check "Publishing fails closed on packaged version" grep -Fq "test \"\$(elizaos-
 DEBIAN_WORKFLOW="$REPO_ROOT/.github/workflows/build-debian-package.yml"
 check_file "build-debian-package.yml" "$DEBIAN_WORKFLOW"
 check "Debian workflow pins Bun release" grep -q 'bun-version: "1.3.14"' "$DEBIAN_WORKFLOW"
+if python_has_module yaml; then
+  check "Linux package verification uses exact-head architecture contracts" validate_linux_verification_workflows
+elif command -v python3 &>/dev/null; then
+  skip "Linux package verification workflow contracts" "pyyaml not installed"
+fi
 
 SNAP_WORKFLOW="$REPO_ROOT/.github/workflows/snap-build-test.yml"
 check_file "snap-build-test.yml" "$SNAP_WORKFLOW"

@@ -3,6 +3,19 @@ name: Build elizaOS Debian Package
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'packages/app-core/packaging/debian/**'
+      - 'packages/app-core/scripts/copy-runtime-node-modules.ts'
+      - 'packages/agent/**'
+      - 'packages/core/**'
+      - 'packages/shared/**'
+      - 'plugins/**'
+      - 'package.json'
+      - 'plugins.json'
+      - 'bun.lock'
+      - '.github/workflows/build-debian-package.yml'
   release:
     types: [created]
 
@@ -12,22 +25,28 @@ permissions:
 
 jobs:
   build-deb:
-    runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
+    name: Build & verify .deb (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            node_arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            node_arch: arm64
+            runner: ubuntu-24.04-arm
 
     permissions:
-      # contents: write covers the existing softprops/action-gh-release
-      # release upload + checkout.
-      # id-token + attestations are required by
-      # actions/attest-build-provenance@v4 to mint a Sigstore-signed
-      # SLSA build provenance for the .deb via GitHub OIDC.
-      contents: write
-      id-token: write
-      attestations: write
+      contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Debian build tools
         run: |
@@ -84,13 +103,17 @@ jobs:
         id: find_deb
         run: |
           set -euo pipefail
-          DEB=$(find . -maxdepth 3 -name "*.deb" | head -1)
+          DEB=$(find . -maxdepth 3 -type f -name "*.deb" -print -quit)
           if [ -z "$DEB" ]; then
             echo "ERROR: no .deb file produced after dpkg-buildpackage"
             exit 1
           fi
-          sha256sum "$DEB" > "${DEB}.sha256"
-          DEB_SHA256=$(cut -d' ' -f1 "${DEB}.sha256")
+          case "$DEB" in
+            *_${{ matrix.arch }}.deb) ;;
+            *) echo "ERROR: package '$DEB' does not match native architecture '${{ matrix.arch }}'" >&2; exit 1 ;;
+          esac
+          DEB_SHA256=$(sha256sum "$DEB" | cut -d' ' -f1)
+          printf '%s  %s\n' "$DEB_SHA256" "$(basename "$DEB")" > "${DEB}.sha256"
           DEB_SIZE=$(stat --format="%s" "$DEB")
           echo "deb_path=$DEB" >> "$GITHUB_OUTPUT"
           echo "deb_sha256=$DEB_SHA256" >> "$GITHUB_OUTPUT"
@@ -129,52 +152,32 @@ jobs:
             exit 1
           fi
           test "$(/usr/lib/elizaos-app/node/bin/node --version)" = "v24.15.0"
+          test "$(/usr/lib/elizaos-app/node/bin/node -p 'process.arch')" = "${{ matrix.node_arch }}"
           elizaos-app --help >/dev/null
 
       - name: Upload lintian log
         if: always() && steps.find_deb.outputs.deb_path != ''
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: elizaos-debian-lintian-log
+          name: elizaos-debian-lintian-log-${{ matrix.arch }}
           path: lintian.log
           if-no-files-found: ignore
           retention-days: 30
 
-      - name: Attest SLSA build provenance for .deb
-        # Mints a Sigstore-signed in-toto/SLSA provenance attestation
-        # tied to this repo + workflow + commit, via GitHub OIDC.
-        # No long-lived secrets. Users verify with:
-        #   gh attestation verify <deb-file> --owner elizaOS
-        if: steps.find_deb.outputs.deb_path != ''
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
-        with:
-          subject-path: ${{ steps.find_deb.outputs.deb_path }}
-
       - name: Upload .deb artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: elizaos-debian-package
+          name: elizaos-debian-package-${{ matrix.arch }}
           path: |
             **/*.deb
             **/*.deb.sha256
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload to GitHub Release
-        if: (github.event_name == 'release') && steps.find_deb.outputs.deb_path != ''
-        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
-        with:
-          files: |
-            **/*.deb
-            **/*.deb.sha256
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Write .deb metadata to summary
         run: |
           {
-            echo "## elizaOS Debian Package"
+            echo "## elizaOS Debian Package (${{ matrix.arch }})"
             echo "| Field | Value |"
             echo "| ----- | ----- |"
             if [ -n "${{ steps.find_deb.outputs.deb_path }}" ]; then
@@ -185,3 +188,90 @@ jobs:
               echo "| Status | not produced (packaging/debian may not be present yet) |"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+  collect-deb:
+    name: Collect verified Debian packages
+    needs: build-deb
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Download native Debian packages
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: elizaos-debian-package-*
+          path: deb-output
+          merge-multiple: true
+
+      - name: Verify complete native package set
+        run: |
+          set -euo pipefail
+          cd deb-output
+          for arch in amd64 arm64; do
+            DEB=$(find . -type f -name "*_${arch}.deb" -print -quit)
+            if [ -z "$DEB" ]; then
+              echo "ERROR: missing ${arch} Debian package" >&2
+              exit 1
+            fi
+            test -s "$DEB"
+            test -s "${DEB}.sha256"
+            DEB_DIR=$(dirname "$DEB")
+            DEB_CHECKSUM=$(basename "${DEB}.sha256")
+            (cd "$DEB_DIR" && sha256sum --check --strict "$DEB_CHECKSUM")
+          done
+
+      - name: Upload combined Debian artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: elizaos-debian-package
+          path: deb-output/
+          if-no-files-found: error
+          retention-days: 30
+
+  attest-deb:
+    name: Attest verified Debian packages
+    needs: collect-deb
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download combined Debian artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: elizaos-debian-package
+          path: deb-output
+
+      - name: Attest SLSA build provenance for verified packages
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: deb-output/**/*.deb
+
+  release-deb:
+    name: Upload verified Debian packages to release
+    needs: [collect-deb, attest-deb]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download combined Debian artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: elizaos-debian-package
+          path: deb-output
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228
+        with:
+          files: |
+            deb-output/**/*.deb
+            deb-output/**/*.deb.sha256
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

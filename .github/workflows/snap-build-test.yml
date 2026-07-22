@@ -22,8 +22,6 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
-      id-token: write
-      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -52,6 +50,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           # Skip submodules entirely. The snap build uses the committed lock
           # with `bun install --frozen-lockfile --ignore-scripts` and
           # `SKIP_NATIVE_PLUGINS=1`, so it never reads from any of the
@@ -152,11 +151,15 @@ jobs:
         env:
           SNAP_PATH: ${{ steps.snapcraft.outputs.snap }}
           EVIDENCE_DIR: snap-evidence/${{ matrix.arch }}
+          EXPECTED_SOURCE_REVISION: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           test -f "$SNAP_PATH"
           mkdir -p "$EVIDENCE_DIR"
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$EXPECTED_SOURCE_REVISION"
           {
+            printf 'source_revision=%s\n' "$SOURCE_REVISION"
             printf 'github_sha=%s\n' "$GITHUB_SHA"
             printf 'runner_arch=%s\n' "$RUNNER_ARCH"
             printf 'runner_os=%s\n' "$RUNNER_OS"
@@ -196,12 +199,6 @@ jobs:
           upload-artifact: false
           upload-release-assets: false
 
-      - name: Attest Snap build provenance
-        if: github.event_name != 'pull_request'
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
-        with:
-          subject-path: ${{ steps.snapcraft.outputs.snap }}
-
       - name: Upload snap artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -220,3 +217,41 @@ jobs:
           path: snap-evidence/${{ matrix.arch }}/
           if-no-files-found: warn
           retention-days: 30
+
+  attest-snap:
+    name: Attest Snap (${{ matrix.arch }})
+    needs: build-snap
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+
+    steps:
+      - name: Download tested snap artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: snap-${{ matrix.arch }}
+          path: snap-artifact/${{ matrix.arch }}
+
+      - name: Verify attestation subject
+        env:
+          ARTIFACT_DIR: snap-artifact/${{ matrix.arch }}
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          mapfile -t SNAP_FILES < <(find "$ARTIFACT_DIR" -maxdepth 1 -type f -name '*.snap' -print)
+          test "${#SNAP_FILES[@]}" -eq 1
+          test -f "$ARTIFACT_DIR/snap-evidence/$EXPECTED_ARCH/SHA256SUMS"
+          (cd "$ARTIFACT_DIR" && sha256sum --check --strict "snap-evidence/$EXPECTED_ARCH/SHA256SUMS")
+
+      - name: Attest tested Snap build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373
+        with:
+          subject-path: snap-artifact/${{ matrix.arch }}/*.snap

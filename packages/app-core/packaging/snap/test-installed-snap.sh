@@ -21,6 +21,7 @@ case "$EXPECTED_ARCH" in
 esac
 
 mkdir -p "$EVIDENCE_DIR"
+EVIDENCE_DIR="$(realpath "$EVIDENCE_DIR")"
 SNAP_PATH="$(realpath "$SNAP_PATH")"
 RUNTIME_PID=""
 CLEAN_CWD=""

@@ -85,6 +85,29 @@ describe("Snap build workflow contract", () => {
     );
   });
 
+  it("rejects a pull-request merge ref in place of the exact source head", () => {
+    const mutated = mutateYaml(workflowSource, (workflow) => {
+      jobStep(workflow, "build-snap", "Checkout").with.ref =
+        githubExpression("github.sha");
+    });
+    expect(() => validateSnapWorkflowSource(mutated)).toThrow(
+      /must use the expected source ref/,
+    );
+  });
+
+  it("rejects provenance that is not bound to the exact source head", () => {
+    const mutated = mutateYaml(workflowSource, (workflow) => {
+      delete jobStep(
+        workflow,
+        "build-snap",
+        "Record builder and base provenance",
+      ).env.EXPECTED_SOURCE_REVISION;
+    });
+    expect(() => validateSnapWorkflowSource(mutated)).toThrow(
+      /must receive the expected source revision/,
+    );
+  });
+
   it.each([
     ["job dependency", (job) => (job.needs = "optional")],
     ["job condition", (job) => (job.if = githubExpression("false"))],
@@ -97,6 +120,34 @@ describe("Snap build workflow contract", () => {
       mutateJob(workflow.jobs["build-snap"]);
     });
     expect(() => validateSnapWorkflowSource(mutated)).toThrow();
+  });
+
+  it("rejects OIDC or attestation permissions on pull-request build steps", () => {
+    const mutated = mutateYaml(workflowSource, (workflow) => {
+      workflow.jobs["build-snap"].permissions["id-token"] = "write";
+      workflow.jobs["build-snap"].permissions.attestations = "write";
+    });
+    expect(() => validateSnapWorkflowSource(mutated)).toThrow(
+      /must grant only read contents permissions/,
+    );
+  });
+
+  it("rejects a privileged attestation job that can run for pull requests", () => {
+    const mutated = mutateYaml(workflowSource, (workflow) => {
+      delete workflow.jobs["attest-snap"].if;
+    });
+    expect(() => validateSnapWorkflowSource(mutated)).toThrow(
+      /must never run for pull requests/,
+    );
+  });
+
+  it("rejects attestation that is not downstream of tested artifacts", () => {
+    const mutated = mutateYaml(workflowSource, (workflow) => {
+      workflow.jobs["attest-snap"].needs = "optional";
+    });
+    expect(() => validateSnapWorkflowSource(mutated)).toThrow(
+      /must need build-snap/,
+    );
   });
 
   it("rejects a custom shell that masks the generated script status", () => {
@@ -199,9 +250,11 @@ describe("Snap build workflow contract", () => {
     [
       "attestation of an unbound glob",
       (workflow) => {
-        jobStep(workflow, "build-snap", "Attest Snap build provenance").with[
-          "subject-path"
-        ] = "*.snap";
+        jobStep(
+          workflow,
+          "attest-snap",
+          "Attest tested Snap build provenance",
+        ).with["subject-path"] = "*.snap";
       },
     ],
   ])("rejects provenance bypass: %s", (_label, mutateWorkflow) => {
@@ -449,6 +502,17 @@ describe("Snapcraft hermetic dependency contract", () => {
       /must execute at top level/,
     ],
     [
+      "declaration inputs removed before transitive runtime materialization",
+      (source) =>
+        source
+          .replace('      node "$RM_PATH_RECURSIVE" node_modules/@types\n', "")
+          .replace(
+            "      # Install into snap\n",
+            '      node "$RM_PATH_RECURSIVE" node_modules/@types\n\n      # Install into snap\n',
+          ),
+      /declaration inputs must remain available/,
+    ],
+    [
       "reordered lock verification",
       (source) =>
         source.replace(
@@ -562,6 +626,12 @@ describe("Installed Snap smoke contract", () => {
       "writable working directory",
       (source) =>
         source.replace('chmod 0555 "$CLEAN_CWD"', 'chmod 0755 "$CLEAN_CWD"'),
+      /must execute/,
+    ],
+    [
+      "relative evidence paths after changing directories",
+      (source) =>
+        source.replace('EVIDENCE_DIR="$(realpath "$EVIDENCE_DIR")"', "true"),
       /must execute/,
     ],
     [
