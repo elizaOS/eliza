@@ -37,6 +37,61 @@ function isElectrobunHost(): boolean {
 }
 
 /**
+ * When a NEW service worker reaches `installed` while an existing controller is
+ * present, a fresh renderer was just deployed. The new SW's own `activate`
+ * already skips-waiting + claims + navigates windows, but wiring the client side
+ * of the update makes the transition immediate and observable: tell the waiting
+ * worker to take over (SKIP_WAITING), then reload once it becomes the controller.
+ * Guarded so the FIRST install (no prior controller) does NOT reload — that is a
+ * normal first paint, not an update (CONVERSATIONS-500-2026-07-22 fix #1).
+ */
+function wireServiceWorkerUpdateReload(
+  registration: ServiceWorkerRegistration,
+): void {
+  let reloading = false;
+  const reloadOnControllerChange = () => {
+    if (reloading) return;
+    reloading = true;
+    // The new worker is now controlling this page → load the new renderer.
+    globalThis.location.reload();
+  };
+
+  const trackInstalling = (worker: ServiceWorker | null) => {
+    if (!worker) return;
+    worker.addEventListener("statechange", () => {
+      // A worker reaching `installed` with an existing controller = an UPDATE
+      // (not the first install). Ask it to activate immediately.
+      if (worker.state === "installed" && navigator.serviceWorker.controller) {
+        try {
+          worker.postMessage({ type: "SKIP_WAITING" });
+        } catch {
+          /* postMessage unsupported — the SW's own skipWaiting still runs */
+        }
+      }
+    });
+  };
+
+  // A worker already waiting at registration time (installed between sessions).
+  if (registration.waiting && navigator.serviceWorker.controller) {
+    try {
+      registration.waiting.postMessage({ type: "SKIP_WAITING" });
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  registration.addEventListener("updatefound", () => {
+    trackInstalling(registration.installing);
+  });
+
+  // Reload exactly once when control passes to the new worker.
+  navigator.serviceWorker.addEventListener(
+    "controllerchange",
+    reloadOnControllerChange,
+  );
+}
+
+/**
  * Register /sw.js with scope "/" in production web builds only.
  * Safe to call unconditionally — bails out when the environment is unsuitable.
  */
@@ -55,6 +110,9 @@ export function registerViewServiceWorker(): void {
       // `.scope` off it would throw and masquerade as a registration error.
       if (!registration) return;
       console.info("[SW] Registered, scope:", registration.scope);
+      // Auto-reload into a new renderer when a deploy ships a new worker
+      // (the per-deploy build rev makes sw.js byte-change so this actually fires).
+      wireServiceWorkerUpdateReload(registration);
     })
     // error-policy:J4 the service worker is a PWA enhancement — the app
     // works without it; the failure is logged for triage
