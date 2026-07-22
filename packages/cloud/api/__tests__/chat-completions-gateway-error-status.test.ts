@@ -26,13 +26,14 @@ describe("chat/completions gateway error status classification", () => {
     expect(getRecoverableProviderErrorStatus(gatewayError(name))).toBe(status);
   });
 
-  test.each([
-    400, 404, 429,
-  ] as const)("plain gateway error preserves statusCode %i", (status) => {
-    expect(
-      getRecoverableProviderErrorStatus(gatewayError("GatewayError", status)),
-    ).toBe(status);
-  });
+  test.each([400, 404, 429] as const)(
+    "plain gateway error preserves statusCode %i",
+    (status) => {
+      expect(
+        getRecoverableProviderErrorStatus(gatewayError("GatewayError", status)),
+      ).toBe(status);
+    },
+  );
 
   test("gateway infrastructure failures still fall through to provider-configuration handling", () => {
     expect(

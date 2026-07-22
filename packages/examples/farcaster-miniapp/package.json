@@ -5,14 +5,14 @@
   "description": "ElizaOS Multi-chain Trading Platform - Farcaster Mini App",
   "scripts": {
     "dev": "bun --bun vite",
-    "build": "tsc && bun --bun vite build",
+    "build": "tsc6 && bun --bun vite build",
     "clean": "rm -rf dist",
     "preview": "bun --bun vite preview",
     "start": "node server.js",
     "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format ."
   },
@@ -29,6 +29,7 @@
     "@types/react": "^19.2.3",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "5.8.3",
     "vite": "^8.0.8"
   }

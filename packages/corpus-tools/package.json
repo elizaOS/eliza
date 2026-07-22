@@ -16,8 +16,9 @@
     "corpus:scrub": "bun src/cli.ts scrub",
     "corpus:verify": "bun src/cli.ts verify",
     "test": "node ../scripts/run-vitest.mjs run --config ./vitest.config.ts",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "bunx @biomejs/biome check src fixtures",
+    "lint:check": "bunx @biomejs/biome check src fixtures",
     "lint:fix": "bunx @biomejs/biome check --write src fixtures",
     "format": "bunx @biomejs/biome format --write src fixtures",
     "format:check": "bunx @biomejs/biome format src fixtures"
@@ -27,6 +28,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@^7.0.2",
     "@types/node": "^24.0.0"
   },
   "elizaos": {

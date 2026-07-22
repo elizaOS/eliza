@@ -201,6 +201,11 @@ vi.mock("@elizaos/app-core", () =>
       };
       return map[feature] ?? false;
     },
+    buildLocalizedTrayMenu: vi.fn(() => []),
+    DesktopSurfaceNavigationRuntime: class {},
+    DesktopTrayRuntime: class {},
+    DetachedShellRoot: vi.fn(),
+    runIosFullBunSmokeIfRequested: vi.fn(async () => false),
   }),
 );
 

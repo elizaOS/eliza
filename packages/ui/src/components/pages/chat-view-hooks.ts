@@ -866,11 +866,26 @@ export function useChatVoiceController(options: {
     setManualRealtimeRequested(requested);
   }, []);
 
+  // Latched when a toggle-driven auto-start resolved `fallback-to-batch`
+  // (#16661): a feature-disabled mint 404 sets no error and keeps `available`
+  // true, so without this latch `realtimeWanted` would stay true forever —
+  // batch capture disabled, start-pending ref stuck, hands-free dead. The
+  // latch clears on the next mode toggle (the same retry-on-next-interaction
+  // contract the tap path's tests lock in).
+  const [realtimeFellBack, setRealtimeFellBack] = useState(false);
+  useEffect(() => {
+    // The mode value itself is the reset trigger — reading it here keeps the
+    // dependency real for the linter.
+    void continuousMode;
+    setRealtimeFellBack(false);
+  }, [continuousMode]);
+
   const realtimeWanted =
     (continuousMode !== "off" || manualRealtimeRequested) &&
     !isComposerLocked &&
     realtime.available &&
-    !realtime.error;
+    !realtime.error &&
+    !realtimeFellBack;
 
   // The batch continuous-chat engine. While the realtime WS session is the
   // active mic, the batch passive capture must NOT also run (double mic / double
@@ -918,7 +933,15 @@ export function useChatVoiceController(options: {
       !realtimeStartPendingRef.current
     ) {
       realtimeStartPendingRef.current = true;
-      void realtimeStartRef.current();
+      // Mirror of the tap path's outcome contract (#16661): a
+      // fallback-to-batch outcome releases the realtime want so the batch
+      // continuous engine re-enables itself (its bring-up keys off
+      // `disabled`), instead of stranding hands-free behind a latched want.
+      void realtimeStartRef.current().then((outcome) => {
+        if (outcome.kind !== "fallback-to-batch") return;
+        realtimeStartPendingRef.current = false;
+        setRealtimeFellBack(true);
+      });
     } else if (
       !realtimeWanted &&
       // A no-longer-wanted session must also be cancelled while it is still
@@ -1098,7 +1121,10 @@ export function useGameModalMessages(options: {
   const previousCompanionCutoffTsRef = useRef(companionMessageCutoffTs);
   const previousGameModalVisibleMsgsRef = useRef<ConversationMessage[]>([]);
   const previousActiveConversationIdRef = useRef(activeConversationId);
-  const [companionNowMs, setCompanionNowMs] = useState(() => Date.now());
+  // Initialized to 0 (not Date.now()) to keep the render pass deterministic; the
+  // companion tick effect below seeds the real clock via setCompanionNowMs(Date.now())
+  // the moment a carryover exists, before companionNowMs is ever compared.
+  const [companionNowMs, setCompanionNowMs] = useState(0);
   const [companionCarryover, setCompanionCarryover] =
     useState<CompanionCarryoverState | null>(null);
   const docVisible = useDocumentVisibility();

@@ -9,7 +9,7 @@
     "benchmark:server": "node --import tsx src/server.ts",
     "normalize-capture": "node --import tsx scripts/normalize-eliza-capture.ts",
     "test": "vitest run",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "bun run typecheck"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
   "devDependencies": {
     "@types/node": "25.6.2",
     "tsx": "^4.21.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   }

@@ -577,6 +577,37 @@ describe("useChatVoiceController voice playback unlock", () => {
     expect(continuousHarness.state.resume).not.toHaveBeenCalled();
   });
 
+  it("releases the batch engine when the toggle-driven auto-start falls back to batch (#16661)", async () => {
+    // The mint-404 shape: feature-disabled resolves fallback-to-batch WITHOUT
+    // setting error and keeps `available` true — the latch must release the
+    // realtime want so hands-free keeps working via batch.
+    realtimeHarness.state.available = true;
+    realtimeHarness.state.start.mockResolvedValueOnce({
+      kind: "fallback-to-batch",
+      reason: "mint",
+    });
+    renderHook(() =>
+      useChatVoiceController({
+        ...baseOptions,
+        continuousMode: "vad-gated",
+        realtimeAgentId: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        getRealtimeConsentNonce: vi.fn(async () => "nonce-1"),
+      }),
+    );
+
+    await waitFor(() =>
+      expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1),
+    );
+    // Batch passive capture re-enables — hands-free stays alive.
+    await waitFor(() =>
+      expect(useContinuousChatMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ disabled: false, mode: "vad-gated" }),
+      ),
+    );
+    // The released want must not re-trigger an auto-start loop.
+    expect(realtimeHarness.state.start).toHaveBeenCalledTimes(1);
+  });
+
   it("falls back to the batch path after realtime becomes unavailable", () => {
     realtimeHarness.state.available = true;
     const { rerender } = renderHook(
@@ -644,6 +675,24 @@ describe("chat-view hook helpers", () => {
       "three",
     ]);
     expect(result.current.gameModalCarryoverOpacity).toBe(0);
+  });
+
+  it("renders a deterministic initial companion clock (no render-time Date.now)", () => {
+    // companionNowMs seeds to 0, not Date.now(), so the first render is identical
+    // regardless of wall clock. With no carryover the opacity is a stable 0.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2031-01-01T00:00:00Z"));
+    const { result } = renderHook(() =>
+      useGameModalMessages({
+        activeConversationId: "conversation-1",
+        companionMessageCutoffTs: 0,
+        isGameModal: true,
+        visibleMsgs: [message("only", 5)],
+      }),
+    );
+    expect(result.current.companionCarryover).toBeNull();
+    expect(result.current.gameModalCarryoverOpacity).toBe(0);
+    vi.useRealTimers();
   });
 
   it("carries prior messages when the companion cutoff advances", () => {

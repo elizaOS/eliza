@@ -10,6 +10,10 @@ import { describe, expect, it } from "vitest";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const templateDir = resolve(here, "../../templates/min-plugin");
+const rootPackageJson = JSON.parse(
+  readFileSync(resolve(templateDir, "../../../../package.json"), "utf8"),
+) as { devDependencies: Record<string, string> };
+const canonicalBiomeVersion = rootPackageJson.devDependencies["@biomejs/biome"];
 
 describe("min-plugin build contract", () => {
   it("uses an emitting build config and requires the loadable build step", () => {
@@ -26,8 +30,12 @@ describe("min-plugin build contract", () => {
 
     expect(packageJson.scripts?.build).toContain("tsconfig.build.json");
     expect(packageJson.scripts?.lint).toBe("biome check src/");
+    expect(packageJson.scripts?.["lint:check"]).toBe("biome check src/");
     expect(packageJson.scripts?.lint).not.toContain("||");
-    expect(packageJson.devDependencies?.["@biomejs/biome"]).toBe("2.5.1");
+    expect(packageJson.scripts?.["lint:check"]).not.toContain("||");
+    expect(packageJson.devDependencies?.["@biomejs/biome"]).toBe(
+      canonicalBiomeVersion,
+    );
     expect(buildConfig.compilerOptions).toMatchObject({
       noEmit: false,
       outDir: "dist",

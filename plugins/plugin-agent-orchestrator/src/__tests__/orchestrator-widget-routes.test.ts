@@ -138,17 +138,20 @@ describe("orchestrator widget routes", () => {
   it.each([
     ["/api/orchestrator/pause-all", "pauseAll", "paused"],
     ["/api/orchestrator/resume-all", "resumeAll", "resumed"],
-  ])("serves %s as an explicit mutation", async (url, operation, responseKey) => {
-    const h = harness(url, "POST");
-    await handleOrchestratorRoutes(
-      h.req as never,
-      h.res as never,
-      url,
-      h.ctx as never,
-    );
-    expect(h.service[operation as keyof typeof h.service]).toHaveBeenCalled();
-    expect(JSON.parse(h.chunks.join(""))).toEqual({ [responseKey]: 2 });
-  });
+  ])(
+    "serves %s as an explicit mutation",
+    async (url, operation, responseKey) => {
+      const h = harness(url, "POST");
+      await handleOrchestratorRoutes(
+        h.req as never,
+        h.res as never,
+        url,
+        h.ctx as never,
+      );
+      expect(h.service[operation as keyof typeof h.service]).toHaveBeenCalled();
+      expect(JSON.parse(h.chunks.join(""))).toEqual({ [responseKey]: 2 });
+    },
+  );
 
   it("returns task detail and a not-found boundary", async () => {
     const h = harness("/api/orchestrator/tasks/task-1");

@@ -9,6 +9,7 @@ import {
   keyedRuntime,
   makeApp,
   makeMessage,
+  requireDefined,
   resetSdk,
   setListApps,
   setUpdateApp,
@@ -107,7 +108,10 @@ describe("UPDATE_APP", () => {
     expect(updates.calls[0]?.patch).toEqual({ name: "Zephyr" });
     expect(result?.success).toBe(true);
     expect(cb.calls[0]?.text).toContain("Zephyr");
-    expect((result?.data as { updated: string[] }).updated).toEqual(["name"]);
+    expect(
+      (requireDefined(result, "action result").data as { updated: string[] })
+        .updated,
+    ).toEqual(["name"]);
   });
 
   it("updates a description", async () => {
@@ -136,7 +140,10 @@ describe("UPDATE_APP", () => {
       cb.fn,
     );
     expect(updates.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("invalid_url");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("invalid_url");
   });
 
   it("asks what to change when no field is parseable", async () => {
@@ -150,7 +157,10 @@ describe("UPDATE_APP", () => {
       cb.fn,
     );
     expect(updates.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("no_change");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_change");
   });
 
   it("returns not-found for an unknown app", async () => {
@@ -164,7 +174,10 @@ describe("UPDATE_APP", () => {
       cb.fn,
     );
     expect(updates.calls).toHaveLength(0);
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
   });
 
   it("degrades gracefully with no Cloud API key", async () => {
@@ -177,7 +190,10 @@ describe("UPDATE_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   it("surfaces an update API error", async () => {
@@ -191,7 +207,10 @@ describe("UPDATE_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("error");
   });
 
   it("invalidates the CLOUD_APPS provider cache after a successful update", async () => {

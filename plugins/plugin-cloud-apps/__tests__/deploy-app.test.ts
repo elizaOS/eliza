@@ -10,6 +10,7 @@ import {
   makeApp,
   makeRoomMessage,
   memoryRuntime,
+  requireDefined,
   resetSdk,
   setDeployApp,
   setGetApp,
@@ -99,10 +100,12 @@ describe("DEPLOY_APP", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect((result?.data as { phase: string }).phase).toBe("ready");
-    expect((result?.data as { url: string }).url).toBe(
-      "https://acme.elizacloud.ai",
-    );
+    expect(
+      (requireDefined(result, "action result").data as { phase: string }).phase,
+    ).toBe("ready");
+    expect(
+      (requireDefined(result, "action result").data as { url: string }).url,
+    ).toBe("https://acme.elizacloud.ai");
     const finalReply = cb.calls[cb.calls.length - 1]?.text ?? "";
     expect(finalReply).toContain("live at https://acme.elizacloud.ai");
   });
@@ -131,7 +134,9 @@ describe("DEPLOY_APP", () => {
     );
 
     expect(result?.success).toBe(false);
-    expect((result?.data as { phase: string }).phase).toBe("unreachable");
+    expect(
+      (requireDefined(result, "action result").data as { phase: string }).phase,
+    ).toBe("unreachable");
     const reply = cb.calls[cb.calls.length - 1]?.text ?? "";
     expect(reply.toLowerCase()).not.toContain("is live at");
     expect(reply.toLowerCase()).toContain("isn't answering");
@@ -160,7 +165,9 @@ describe("DEPLOY_APP", () => {
     );
 
     expect(result?.success).toBe(false);
-    expect((result?.data as { phase: string }).phase).toBe("error");
+    expect(
+      (requireDefined(result, "action result").data as { phase: string }).phase,
+    ).toBe("error");
     expect(cb.calls[cb.calls.length - 1]?.text).toContain("failed");
   });
 
@@ -180,7 +187,10 @@ describe("DEPLOY_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("not_found");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("not_found");
   });
 
   it("degrades gracefully with no Cloud API key", async () => {
@@ -193,7 +203,10 @@ describe("DEPLOY_APP", () => {
       cb.fn,
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { reason: string }).reason).toBe("no_key");
+    expect(
+      (requireDefined(result, "action result").data as { reason: string })
+        .reason,
+    ).toBe("no_key");
   });
 
   describe("facts cache (idempotent)", () => {
@@ -220,19 +233,33 @@ describe("DEPLOY_APP", () => {
         undefined,
         captureCallback().fn,
       );
-      expect((first?.data as { factWritten: boolean }).factWritten).toBe(true);
-      expect((first?.data as { factUpdated: boolean }).factUpdated).toBe(false);
+      expect(
+        (requireDefined(first, "first result").data as { factWritten: boolean })
+          .factWritten,
+      ).toBe(true);
+      expect(
+        (requireDefined(first, "first result").data as { factUpdated: boolean })
+          .factUpdated,
+      ).toBe(false);
       expect(runtime.__facts).toHaveLength(1);
       expect(runtime.__facts[0]?.content.text).toContain("Acme Bot");
       expect(runtime.__facts[0]?.content.text).toContain(
         "https://acme.elizacloud.ai",
       );
-      expect((runtime.__facts[0]?.metadata as { source?: string }).source).toBe(
-        APP_DEPLOY_FACT_SOURCE,
-      );
-      expect((runtime.__facts[0]?.metadata as { appId?: string }).appId).toBe(
-        "id-acme",
-      );
+      expect(
+        (
+          requireDefined(runtime.__facts[0], "deploy fact").metadata as {
+            source?: string;
+          }
+        ).source,
+      ).toBe(APP_DEPLOY_FACT_SOURCE);
+      expect(
+        (
+          requireDefined(runtime.__facts[0], "deploy fact").metadata as {
+            appId?: string;
+          }
+        ).appId,
+      ).toBe("id-acme");
 
       const second = await deployAppAction.handler(
         runtime,
@@ -241,7 +268,13 @@ describe("DEPLOY_APP", () => {
         undefined,
         captureCallback().fn,
       );
-      expect((second?.data as { factUpdated: boolean }).factUpdated).toBe(true);
+      expect(
+        (
+          requireDefined(second, "second result").data as {
+            factUpdated: boolean;
+          }
+        ).factUpdated,
+      ).toBe(true);
       // Still exactly one fact — no duplicate for the same app.id.
       expect(runtime.__facts).toHaveLength(1);
     });

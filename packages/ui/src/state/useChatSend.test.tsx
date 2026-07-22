@@ -2102,6 +2102,71 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
   });
 });
 
+describe("useChatSend — sendActionMessage cold-open defers the create like the fixed send path (#16665)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Complete the send cleanly so the cold-open create path is the only
+    // thing under test (a resolved stream, no notice, no retry).
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "ok",
+      completed: true,
+    } as never);
+  });
+
+  it("skips the redundant client.createConversation round trip on a shared-agent base", async () => {
+    // Shared base: the server POST handler ignores the body, so
+    // createConversationForFirstSend synthesizes the canonical record locally.
+    mocks.client.getBaseUrl.mockReturnValue(SHARED_BASE);
+    // Cold open: no active conversation, so sendActionMessage takes the create
+    // branch (`if (!convId)`).
+    const deps = makeDeps({
+      activeConversationId: null,
+      conversations: [],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("run the report");
+    });
+
+    // The bug: sendActionMessage used to call client.createConversation here,
+    // re-introducing the exact cold Worker/Hyperdrive round trip #16619 removed
+    // from the ordinary send path. It must now be zero on a shared base.
+    expect(mocks.client.createConversation).not.toHaveBeenCalled();
+    // The synthesized shared conversation is adopted as active (id === agentId).
+    expect(deps.setActiveConversationId).toHaveBeenCalledWith("agent-123");
+    // No failure notice on the happy path.
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+
+  it("still creates on a dedicated base and forwards the action title to the REST fallback", async () => {
+    // Dedicated base: no shared-agent id, so the real REST create runs and the
+    // action title must reach it.
+    mocks.client.getBaseUrl.mockReturnValue(DEDICATED_BASE);
+    mocks.client.createConversation.mockResolvedValue({
+      conversation: conversation("conv-new", "room-new"),
+    });
+    const deps = makeDeps({
+      activeConversationId: null,
+      conversations: [],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("run the report");
+    });
+
+    expect(mocks.client.createConversation).toHaveBeenCalledTimes(1);
+    // Title forwarded as the first arg; language options as the second.
+    expect(mocks.client.createConversation).toHaveBeenCalledWith(
+      "run the report",
+      { lang: "en" },
+    );
+    expect(deps.setActiveConversationId).toHaveBeenCalledWith("conv-new");
+    expect(deps.setActionNotice).not.toHaveBeenCalled();
+  });
+});
+
 describe("useChatSend — structured SSE error surfaces the gate (#10231)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
