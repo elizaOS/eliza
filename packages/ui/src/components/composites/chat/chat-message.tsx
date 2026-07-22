@@ -778,7 +778,7 @@ export const ChatMessage = memo(function ChatMessage({
               handleCancelEditing();
             }}
             disabled={savingEdit}
-            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="h-11 w-11 rounded-none bg-transparent p-0 text-white/60 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30"
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -797,7 +797,7 @@ export const ChatMessage = memo(function ChatMessage({
               void handleSaveEdit();
             }}
             disabled={editSaveDisabled}
-            className="h-7 w-7 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30 pointer-coarse:h-11 pointer-coarse:w-11"
+            className="h-11 w-11 rounded-none bg-transparent p-0 text-white/80 transition-[color,transform] duration-150 hover:bg-transparent hover:text-white active:scale-95 active:bg-transparent disabled:text-white/30"
           >
             {savingEdit ? (
               <LoaderCircle
@@ -1081,11 +1081,9 @@ export const ChatMessage = memo(function ChatMessage({
         <MessageRowContent
           className={cn(
             "relative flex flex-col",
-            // Fine pointers reserve the exact 20px rail height, so revealing
-            // actions never reflows the transcript. Coarse pointers retain
-            // 44px hit targets but overlap four pixels at each edge of a 36px
-            // lane, keeping touch access generous without opening a large gap.
-            hasActionLane && "pb-5 pointer-coarse:pb-9",
+            // Reserve the certified 44px action lane whether hidden or visible,
+            // so revealing controls never reflows or overlaps another message.
+            hasActionLane && "pb-11",
             isFirstRun
               ? "max-w-[22rem] items-start"
               : isUser
@@ -1158,8 +1156,8 @@ export const ChatMessage = memo(function ChatMessage({
               className={cn(
                 "absolute z-10 min-w-0",
                 isUser
-                  ? "-bottom-1 right-0 origin-top-right pointer-coarse:-bottom-2"
-                  : "bottom-0 left-0 origin-top-left pointer-coarse:-bottom-1",
+                  ? "bottom-0 right-0 origin-top-right"
+                  : "bottom-0 left-0 origin-top-left",
               )}
             >
               <MessageRowFooter className="flex items-center p-0 text-white/70">

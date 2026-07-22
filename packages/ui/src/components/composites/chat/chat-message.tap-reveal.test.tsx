@@ -87,8 +87,8 @@ describe("ChatMessage tap-to-reveal vs transcript scroll", () => {
     });
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.className).toContain("absolute");
-    expect(actions.parentElement?.className).toContain("pointer-coarse:pb-9");
-    expect(actions.className).toContain("pointer-coarse:-bottom-1");
+    expect(actions.parentElement?.className).toContain("pb-11");
+    expect(actions.className).toContain("bottom-0");
 
     fireEvent.click(bubble);
     expect(actions.getAttribute("aria-hidden")).toBe("false");

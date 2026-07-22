@@ -181,6 +181,69 @@ describe("generateChatResponse usage reporting", () => {
     expect(result.actionCallbackHistory).toBeUndefined();
   });
 
+  it("marks an exact raw internal action result as machine-only transcript content", async () => {
+    const inventory =
+      "available_views:\n  count: 1\n  notes,Notes,gui,/notes,yes";
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: { text: inventory },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              text: inventory,
+              transcriptVisibility: "internal",
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("list views"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.responseContent?.transcriptVisibility).toBe("internal");
+  });
+
+  it("keeps a user-facing summary visible when it differs from the raw internal result", async () => {
+    const inventory =
+      "available_views:\n  count: 1\n  notes,Notes,gui,/notes,yes";
+    const runtime = createRuntime({
+      messageService: {
+        handleMessage: vi.fn(async () => ({
+          didRespond: true,
+          responseContent: { text: "Notes is available." },
+          responseMessages: [],
+          actionResults: [
+            {
+              success: true,
+              text: inventory,
+              transcriptVisibility: "internal",
+            },
+          ],
+        })),
+      } as NonNullable<AgentRuntime["messageService"]>,
+    });
+
+    const result = await generateChatResponse(
+      runtime,
+      createChatMessage("which views are available?"),
+      "Chat Agent",
+      { timeoutDuration: 5_000 },
+    );
+
+    expect(result.text).toBe("Notes is available.");
+    expect(result.transcriptVisibility).toBeUndefined();
+    expect(result.responseContent?.transcriptVisibility).toBeUndefined();
+  });
+
   it("fails closed when a model returns an unexecuted action payload", async () => {
     const runtime = createRuntime({
       actions: [{ name: "SENSITIVE_ACTION" }],

@@ -1,17 +1,15 @@
 /**
- * Round-trip coverage for the chat `failureKind` so the renderer's
- * provider/credits/no-provider gate + Retry button survive a turn:
+ * Round-trip coverage for structured assistant-turn metadata so transcript
+ * visibility, provider gates, and account-connect affordances survive live and
+ * restored delivery through the same conversation route boundaries.
  *
- *  (a) GET /api/conversations/:id/messages re-emits `failureKind` for a
+ *  (a) GET /api/conversations/:id/messages re-emits structured fields for a
  *      persisted failed assistant turn (from `content.failureKind` on the live
  *      result OR `metadata.chatFailureKind` from markSyntheticChatFailureContent).
- *  (b) The streaming `done` frame includes `failureKind` when a NON-throwing
+ *  (b) The streaming `done` frame includes the fields when a NON-throwing
  *      result carries one (e.g. a canned provider-issue phrase folded into the
  *      reply), mirroring the error branch.
- *  (c) The non-streaming JSON response includes `failureKind` likewise.
- *
- * Before the fix the GET mapping dropped the field entirely (full-replace wiped
- * the gate) and both success writers omitted it.
+ *  (c) The non-streaming JSON response includes the fields likewise.
  */
 
 import http from "node:http";
@@ -112,7 +110,10 @@ import type {
   ConversationRouteContext,
   ConversationRouteState,
 } from "../conversation-routes.ts";
-import { handleConversationRoutes } from "../conversation-routes.ts";
+import {
+  buildPersistedAssistantContent,
+  handleConversationRoutes,
+} from "../conversation-routes.ts";
 
 const AGENT_ID = stringToUuid("agent-1") as UUID;
 const USER_ID = stringToUuid("user-1") as UUID;
@@ -357,6 +358,90 @@ describe("conversation failureKind round-trip", () => {
 
     const payload = captured.payload as { failureKind?: string };
     expect(payload.failureKind).toBe("insufficient_credits");
+  });
+});
+
+describe("conversation transcriptVisibility round-trip", () => {
+  beforeEach(() => {
+    generateResult = {};
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("copies the classified response content into the persisted assistant turn", () => {
+    expect(
+      buildPersistedAssistantContent("available_views:\n  count: 1", {
+        transcriptVisibility: "internal",
+        responseContent: {
+          text: "available_views:\n  count: 1",
+        },
+      }),
+    ).toMatchObject({ transcriptVisibility: "internal" });
+  });
+
+  it("GET /messages re-emits an internal classification from persisted content", async () => {
+    const state = createState([
+      userMemory(),
+      assistantMemory({
+        text: "available_views:\n  count: 1",
+        transcriptVisibility: "internal",
+      }),
+    ]);
+    const { ctx, captured } = createCtx(
+      "GET",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as {
+      messages: Array<{ role: string; transcriptVisibility?: string }>;
+    };
+    const assistant = payload.messages.find(
+      (message) => message.role === "assistant",
+    );
+    expect(assistant?.transcriptVisibility).toBe("internal");
+  });
+
+  it("streaming `done` carries the internal classification", async () => {
+    generateResult = { transcriptVisibility: "internal" };
+    const state = createState();
+    const { ctx, record } = createCtx(
+      "POST",
+      "/api/conversations/conv-1/messages/stream",
+      state,
+    );
+
+    const done = handleConversationRoutes(ctx);
+    for (let i = 0; i < 12; i++)
+      await new Promise((resolve) => setImmediate(resolve));
+    await done;
+
+    const doneFrame = record.writes.find((write) =>
+      write.includes('"type":"done"'),
+    );
+    expect(doneFrame).toBeDefined();
+    const parsed = JSON.parse(
+      (doneFrame as string).replace(/^data: /, "").trim(),
+    ) as { transcriptVisibility?: string };
+    expect(parsed.transcriptVisibility).toBe("internal");
+  });
+
+  it("non-streaming JSON carries the internal classification", async () => {
+    generateResult = { transcriptVisibility: "internal" };
+    const state = createState();
+    const { ctx, captured } = createCtx(
+      "POST",
+      "/api/conversations/conv-1/messages",
+      state,
+    );
+
+    await handleConversationRoutes(ctx);
+
+    const payload = captured.payload as { transcriptVisibility?: string };
+    expect(payload.transcriptVisibility).toBe("internal");
   });
 });
 

@@ -61,8 +61,10 @@ describe("ChatMessage glass inline edit controls", () => {
     expect(save.getAttribute("aria-label")).toBe("Send");
     expect(cancel.textContent).toBe("");
     expect(save.textContent).toBe("");
-    expect(cancel.className).toContain("pointer-coarse:h-11");
-    expect(save.className).toContain("pointer-coarse:h-11");
+    expect(cancel.className).toContain("h-11");
+    expect(cancel.className).toContain("w-11");
+    expect(save.className).toContain("h-11");
+    expect(save.className).toContain("w-11");
   });
 
   it("restores the message action icons after Cancel", () => {

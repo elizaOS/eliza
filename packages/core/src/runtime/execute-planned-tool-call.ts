@@ -154,6 +154,9 @@ export function projectActionResultForClipboard(
 	return {
 		success: result.success,
 		...(result.text !== undefined ? { text: result.text } : {}),
+		...(result.transcriptVisibility !== undefined
+			? { transcriptVisibility: result.transcriptVisibility }
+			: {}),
 		...(result.userFacingText !== undefined
 			? { userFacingText: result.userFacingText }
 			: {}),

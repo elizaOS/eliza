@@ -528,6 +528,30 @@ describe("chat route helper coverage", () => {
       getRecentVisibleAssistantMemoryTextSince(runtime, roomId, 1_000),
     ).resolves.toBe("Already persisted");
   });
+
+  it("does not return internal assistant memory as a visible retry reply", async () => {
+    const roomId = stringToUuid("internal-retry-room");
+    const internalMemory = createMessageMemory({
+      id: stringToUuid("internal-assistant"),
+      roomId,
+      entityId: stringToUuid("streaming-agent"),
+      content: {
+        text: "available_views:\n- id: notes",
+        transcriptVisibility: "internal",
+      },
+    });
+    internalMemory.createdAt = 2_000;
+    const runtime = createRuntime({
+      getMemories: vi.fn(async () => [internalMemory]),
+    });
+
+    await expect(
+      hasRecentVisibleAssistantMemorySince(runtime, roomId, 1_000),
+    ).resolves.toBe(false);
+    await expect(
+      getRecentVisibleAssistantMemoryTextSince(runtime, roomId, 1_000),
+    ).resolves.toBeNull();
+  });
 });
 
 describe("generateChatResponse token streaming", () => {

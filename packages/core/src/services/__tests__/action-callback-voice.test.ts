@@ -13,15 +13,13 @@ import { ModelType } from "../../types";
 import { stringToUuid } from "../../utils";
 import { wrapSingleTurnVisibleCallback } from "../message";
 
-type RegisteredModelHandler = Parameters<AgentRuntime["registerModel"]>[1];
-
 interface DeliveredCallback {
 	content: Content;
 	actionName: string | undefined;
 }
 
 function createRuntime(
-	modelHandler: RegisteredModelHandler,
+	modelHandler: Parameters<AgentRuntime["registerModel"]>[1],
 	actions: Action[] = [],
 ): AgentRuntime {
 	const runtime = new AgentRuntime({

@@ -759,7 +759,7 @@ describe("useChatSend always streams (#9174)", () => {
     expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves text and attachments added while the view preflight is pending", async () => {
+  it("preserves a changed draft and new attachments while view preflight is pending", async () => {
     const viewPublished = deferred<Response>();
     mocks.client.rawRequest.mockImplementationOnce(() => viewPublished.promise);
     mocks.client.sendConversationMessageStream.mockResolvedValue({
@@ -797,8 +797,8 @@ describe("useChatSend always streams (#9174)", () => {
       expect(mocks.client.rawRequest).toHaveBeenCalledTimes(1);
     });
 
-    // The composer remains live during the preflight. Appending text keeps the
-    // original prefix visible; adding another attachment extends the same list.
+    // The composer remains live during preflight. A changed draft cannot be
+    // separated reliably from the claimed snapshot, so it stays intact.
     deps.chatInputRef.current = "add a note and draft the next one";
     deps.chatPendingImagesRef.current = [claimedImage, laterImage];
 
@@ -811,10 +811,53 @@ describe("useChatSend always streams (#9174)", () => {
     const sendArgs = mocks.client.sendConversationMessageStream.mock.calls[0];
     expect(sendArgs[1]).toBe("add a note");
     expect(sendArgs[5]).toEqual([claimedImage]);
-    expect(deps.chatInputRef.current).toBe("and draft the next one");
+    expect(deps.chatInputRef.current).toBe("add a note and draft the next one");
     expect(deps.chatPendingImagesRef.current).toEqual([laterImage]);
-    expect(deps.setChatInput).toHaveBeenCalledWith("and draft the next one");
+    expect(deps.setChatInput).toHaveBeenCalledWith(
+      "add a note and draft the next one",
+    );
     expect(deps.setChatPendingImages).toHaveBeenCalledWith([laterImage]);
+  });
+
+  it("does not strip a claimed prefix from an in-place draft edit", async () => {
+    const viewPublished = deferred<Response>();
+    mocks.client.rawRequest.mockImplementationOnce(() => viewPublished.promise);
+    mocks.client.sendConversationMessageStream.mockResolvedValue({
+      text: "Done.",
+      completed: true,
+    });
+    setAuthoritativeShellViewState({
+      viewId: "notes",
+      viewPath: "/notes",
+      viewType: "gui",
+    });
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    deps.chatInputRef.current = "Hi";
+    const { result } = renderHook(() => useChatSend(deps));
+
+    let sendPromise: Promise<void> | undefined;
+    act(() => {
+      sendPromise = result.current.handleChatSend();
+    });
+    await vi.waitFor(() => {
+      expect(mocks.client.rawRequest).toHaveBeenCalledTimes(1);
+    });
+
+    deps.chatInputRef.current = "History";
+
+    await act(async () => {
+      viewPublished.resolve(new Response("{}", { status: 200 }));
+      await sendPromise;
+    });
+
+    expect(mocks.client.sendConversationMessageStream.mock.calls[0][1]).toBe(
+      "Hi",
+    );
+    expect(deps.chatInputRef.current).toBe("History");
+    expect(deps.setChatInput).toHaveBeenCalledWith("History");
   });
 
   it("claims a composer preflight once when Send is pressed twice", async () => {
@@ -1888,6 +1931,39 @@ describe("useChatSend empty-reply failure surfacing (#10231)", () => {
     );
     expect(assistant.length).toBe(0);
   });
+
+  it("drops a streamed assistant draft as soon as the terminal event classifies it internal", async () => {
+    const inventory =
+      "available_views:\n  count: 1\n  notes,Notes,gui,/notes,yes";
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (_conversationId, _text, onToken) => {
+        onToken(inventory, inventory);
+        return {
+          text: inventory,
+          completed: true,
+          transcriptVisibility: "internal",
+        };
+      },
+    );
+
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendChatText("list views", {
+        conversationId: "conv-1",
+      });
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.role === "assistant",
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("buildSendFailureNotice (#10231)", () => {
@@ -2393,6 +2469,36 @@ describe("useChatSend — user turn sent during agent warm-up is never evicted (
       ),
     ).toBe(true);
     expect(undeliveredTurns(deps)).toHaveLength(1);
+  });
+
+  it("sendActionMessage removes an internal streamed draft at terminal reconciliation", async () => {
+    const inventory =
+      "available_views:\n  count: 1\n  notes,Notes,gui,/notes,yes";
+    mocks.client.sendConversationMessageStream.mockImplementation(
+      async (_conversationId, _text, onToken) => {
+        onToken(inventory, inventory);
+        return {
+          text: inventory,
+          completed: true,
+          transcriptVisibility: "internal",
+        };
+      },
+    );
+    const deps = makeDeps({
+      activeConversationId: "conv-1",
+      conversations: [conversation("conv-1", "room-1")],
+    });
+    const { result } = renderHook(() => useChatSend(deps));
+
+    await act(async () => {
+      await result.current.sendActionMessage("list views");
+    });
+
+    expect(
+      deps.conversationMessagesRef.current.some(
+        (message) => message.role === "assistant",
+      ),
+    ).toBe(false);
   });
 });
 

@@ -31,12 +31,6 @@ import {
 
 const THREAD_LENGTH = 450;
 
-interface InboxMessagesRequest {
-  limit?: number;
-  roomId?: string;
-  roomSource?: string;
-}
-
 function seedMessages(count: number): ConversationMessage[] {
   const now = Date.now();
   const msgs: ConversationMessage[] = [];
@@ -54,9 +48,15 @@ function seedMessages(count: number): ConversationMessage[] {
 
 const seeded = seedMessages(THREAD_LENGTH);
 const inboxClient = vi.hoisted(() => ({
-  getInboxMessages: vi.fn(async (_request?: InboxMessagesRequest) => ({
-    messages: [] as ConversationMessage[],
-  })),
+  getInboxMessages: vi.fn(
+    async (_request?: {
+      limit?: number;
+      roomId?: string;
+      roomSource?: string;
+    }) => ({
+      messages: [] as ConversationMessage[],
+    }),
+  ),
   sendInboxMessage: vi.fn(async () => ({
     message: {
       id: "inbox-2",

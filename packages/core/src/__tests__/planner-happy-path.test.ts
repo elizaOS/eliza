@@ -973,7 +973,7 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(result.kind).toBe("planned_reply");
 	});
 
-	it("lets a callback-completing action own both the streamed Stage 1 draft and final reply", async () => {
+	it("lets callbackCompletesResponse own the streamed Stage 1 draft and final reply independently", async () => {
 		const streamedDraft: string[] = [];
 		const delivered: string[] = [];
 		const deliveredVisibleTexts = new Set<string>();
@@ -995,7 +995,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 					schema: { type: "string" },
 				},
 			],
-			suppressEarlyReply: true,
 			suppressPostActionContinuation: true,
 			callbackCompletesResponse: true,
 			preserveCallbackText: true,

@@ -4,7 +4,11 @@
  * parameter and result envelopes. Consumed by planner-loop, the evaluator, and
  * the message handler that drives them.
  */
-import type { EvaluationResult } from "../types/components";
+import type {
+	ActionResult,
+	EvaluationResult,
+	ProviderDataRecord,
+} from "../types/components";
 import type { ContextObject } from "../types/context-object";
 import type {
 	ChatMessage,
@@ -96,6 +100,8 @@ export interface PlannerToolResult {
 	 * shown to the user verbatim must set `userFacingText` separately.
 	 */
 	text?: string;
+	/** Machine-only raw output that must not render as assistant prose. */
+	transcriptVisibility?: "internal";
 	/**
 	 * Optional user-facing projection of the tool's output. When set,
 	 * the planner-loop's terminal-FINISH fallback may use this as the
@@ -138,8 +144,8 @@ export interface PlannerToolResult {
 	 * clean final message.
 	 */
 	summary?: string;
-	data?: Record<string, unknown>;
-	error?: unknown;
+	data?: ProviderDataRecord;
+	error?: ActionResult["error"];
 	continueChain?: boolean;
 }
 

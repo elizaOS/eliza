@@ -62,9 +62,8 @@ describe("ChatMessage desktop hover action plate", () => {
 
     expect(actions.getAttribute("aria-hidden")).toBe("true");
     expect(actions.className).toContain("absolute");
-    expect(content?.className).toContain("pb-5");
-    expect(content?.className).toContain("pointer-coarse:pb-9");
-    expect(actions.className).toContain("pointer-coarse:-bottom-1");
+    expect(content?.className).toContain("pb-11");
+    expect(actions.className).toContain("bottom-0");
     expect(message.className).toContain("mb-0");
     expect(surface.className).not.toContain("bg-black/55");
 

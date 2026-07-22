@@ -599,7 +599,6 @@ async function rewriteDirectActionCallbackText(args: {
 }): Promise<string> {
   const text = args.text.trim();
   if (!text) return args.text;
-  const fallback = () => args.text;
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
       prompt: [
@@ -633,7 +632,7 @@ async function rewriteDirectActionCallbackText(args: {
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
     const response =
       typeof parsed.response === "string" ? parsed.response.trim() : "";
-    return response && response !== text ? response : fallback();
+    return response && response !== text ? response : args.text;
   } catch (err) {
     args.runtime.logger.debug(
       {
@@ -643,7 +642,7 @@ async function rewriteDirectActionCallbackText(args: {
       },
       "[eliza-api] Direct action callback voice rewrite failed",
     );
-    return fallback();
+    return args.text;
   }
 }
 
@@ -800,6 +799,8 @@ export interface AccountConnectRequest {
 export interface ChatGenerationResult {
   text: string;
   agentName: string;
+  /** Machine-only final text that must not render as assistant prose. */
+  transcriptVisibility?: "internal";
   /** The agent's internal reasoning for this turn, when the model emitted one. */
   thought?: string;
   noResponseReason?: "ignored";
@@ -1524,6 +1525,19 @@ function summarizeRuntimeActionResults(
     .slice(-8);
 }
 
+function resolveFinalTranscriptVisibility(
+  finalText: string,
+  actionResults: readonly ActionResult[] | undefined,
+): "internal" | undefined {
+  if (!finalText || !actionResults) return undefined;
+  return actionResults.some(
+    (result) =>
+      result.transcriptVisibility === "internal" && result.text === finalText,
+  )
+    ? "internal"
+    : undefined;
+}
+
 function pickInsufficientCreditsChatReply(): string {
   return INSUFFICIENT_CREDITS_CHAT_REPLY;
 }
@@ -2100,10 +2114,15 @@ export async function getRecentVisibleAssistantMemoryTextSince(
 
     const persistedAssistantTurn = recent
       .filter((memory) => {
-        const contentText = (memory.content as { text?: string })?.text?.trim();
+        const content = memory.content as {
+          text?: string;
+          transcriptVisibility?: "internal";
+        };
+        const contentText = content.text?.trim();
         const createdAt = memory.createdAt ?? 0;
         return (
           memory.entityId === runtime.agentId &&
+          content.transcriptVisibility !== "internal" &&
           Boolean(contentText) &&
           createdAt >= sinceMs - slackMs
         );
@@ -3159,20 +3178,29 @@ export async function generateChatResponse(
           (normalizedResponseText || responseText || "(no response)"))
         : normalizedResponseText;
 
+    const transcriptVisibility = resolveFinalTranscriptVisibility(
+      finalText,
+      result?.actionResults,
+    );
+
     const responseMessages = Array.isArray(result?.responseMessages)
       ? result.responseMessages.map((entry) => ({
           ...(entry.id ? { id: entry.id } : {}),
           ...(entry.content ? { content: entry.content } : {}),
         }))
       : [];
-    const responseContent =
+    const responseContent: Content | null =
       result?.responseContent && typeof result.responseContent === "object"
         ? ({
             ...result.responseContent,
             text: finalText,
+            transcriptVisibility,
           } satisfies Content)
         : finalText
-          ? ({ text: finalText } satisfies Content)
+          ? ({
+              text: finalText,
+              ...(transcriptVisibility ? { transcriptVisibility } : {}),
+            } satisfies Content)
           : null;
     const responseRecord = responseContent as
       | (Record<string, unknown> & {
@@ -3218,6 +3246,7 @@ export async function generateChatResponse(
     return {
       text: finalText,
       agentName,
+      ...(transcriptVisibility ? { transcriptVisibility } : {}),
       ...(thought ? { thought } : {}),
       ...(intentionalNoResponse
         ? { noResponseReason: "ignored" as const }

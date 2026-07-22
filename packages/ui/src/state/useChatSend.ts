@@ -69,28 +69,17 @@ const CONTEXT_ROUTING_METADATA_KEY = "__responseContext";
 const SHELL_VIEW_SYNC_FAILURE_NOTICE =
   "Couldn't sync the current view with the agent — your message wasn't sent. Try again.";
 
-async function synchronizeShellViewBeforeTurn(): Promise<void> {
-  await ensureAuthoritativeShellViewState();
-}
-
-interface ComposerPreflightClaimState {
-  nextNonce: number;
-  activeNonce: number | null;
-}
-
 /**
  * Remove a successfully-sent snapshot without erasing edits made while its
- * view-context preflight was pending. Appended text is the only edit that can
- * be separated safely: any other mutation leaves the current draft intact.
+ * view-context preflight was pending. String equality is the only safe signal
+ * that the live draft still represents the claimed snapshot; a matching prefix
+ * can also be an in-place edit and must remain untouched.
  */
 function consumeClaimedComposerText(
   currentInput: string,
   claimedInput: string,
 ): string {
   if (currentInput === claimedInput) return "";
-  if (currentInput.startsWith(claimedInput)) {
-    return currentInput.slice(claimedInput.length).trimStart();
-  }
   return currentInput;
 }
 
@@ -822,7 +811,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         // A false result is the designed compatibility path for runtimes that do
         // not expose the view registry (404/501); only thrown transport/server
         // failures prevent this turn from being planned against stale context.
-        await synchronizeShellViewBeforeTurn();
+        await ensureAuthoritativeShellViewState();
         return true;
       } catch (error) {
         // error-policy:J4 the draft/turn remains available for an explicit retry,
@@ -867,7 +856,10 @@ export function useChatSend(deps: UseChatSendDeps) {
   // from submitting the same still-visible draft twice without changing the
   // queue's deliberate ability to accept a later, newly-authored message while
   // an earlier turn is streaming.
-  const composerPreflightClaimRef = useRef<ComposerPreflightClaimState>({
+  const composerPreflightClaimRef = useRef<{
+    nextNonce: number;
+    activeNonce: number | null;
+  }>({
     nextNonce: 0,
     activeNonce: null,
   });
@@ -941,6 +933,77 @@ export function useChatSend(deps: UseChatSendDeps) {
       applyStreamingTextModification(setConversationMessages, modification);
     },
     [isConversationCommitActive, setConversationMessages],
+  );
+
+  const reconcileTerminalStream = useCallback(
+    (
+      conversationId: string | null,
+      assistantMessageId: string,
+      streamedAssistantText: string,
+      data: Awaited<ReturnType<typeof client.sendConversationMessageStream>>,
+      options: {
+        includeReasoning: boolean;
+        includeAccountConnect: boolean;
+      },
+    ): string | null => {
+      if (data.transcriptVisibility === "internal") {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "drop",
+        });
+      } else if (!data.text.trim()) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          ...(data.failureKind
+            ? { mode: "fail", failureKind: data.failureKind }
+            : { mode: "drop" }),
+        });
+      } else if (
+        shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
+        (options.includeReasoning && Boolean(data.reasoning))
+      ) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "complete",
+          fullText: data.text,
+          ...(data.failureKind ? { failureKind: data.failureKind } : {}),
+          ...(options.includeAccountConnect && data.accountConnect
+            ? { accountConnect: data.accountConnect }
+            : {}),
+          ...(options.includeReasoning && data.reasoning
+            ? { reasoning: data.reasoning }
+            : {}),
+        });
+      } else if (data.failureKind) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "fail",
+          failureKind: data.failureKind,
+        });
+      } else if (options.includeAccountConnect && data.accountConnect) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "complete",
+          fullText: data.text,
+          accountConnect: data.accountConnect,
+        });
+      }
+
+      const interruptedPartial =
+        data.transcriptVisibility !== "internal" &&
+        !data.completed &&
+        streamedAssistantText.trim()
+          ? data.text.trim() || streamedAssistantText
+          : null;
+      if (interruptedPartial) {
+        applyStreamingModificationForConversation(conversationId, {
+          messageId: assistantMessageId,
+          mode: "interrupt",
+        });
+      }
+      return interruptedPartial;
+    },
+    [applyStreamingModificationForConversation],
   );
 
   const setServerTurnStatusForConversation = useCallback(
@@ -1775,58 +1838,13 @@ export function useChatSend(deps: UseChatSendDeps) {
         // drop/complete/fail/interrupt — no streamed tokens may be lost.
         flushStreamingText();
 
-        if (!data.text.trim()) {
-          if (data.failureKind) {
-            // Empty reply but the server flagged a failure class — surface the
-            // gate UI (e.g. "Connect a provider") instead of silently dropping
-            // the turn. The failure branch below is an `else if`, unreachable
-            // once the text is empty, so it must be handled here.
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "fail",
-              failureKind: data.failureKind,
-            });
-          } else {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "drop",
-            });
-          }
-        } else if (
-          shouldApplyFinalStreamText(streamedAssistantText, data.text) ||
-          data.reasoning
-        ) {
-          applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "complete",
-            fullText: data.text,
-            ...(data.failureKind ? { failureKind: data.failureKind } : {}),
-            ...(data.accountConnect
-              ? { accountConnect: data.accountConnect }
-              : {}),
-            ...(data.reasoning ? { reasoning: data.reasoning } : {}),
-          });
-        } else if (data.failureKind) {
-          // Streaming text already matched but the server flagged a failure
-          // class — stamp it on the assistant turn so the renderer can swap
-          // in the gate UI (e.g. "Connect a provider").
-          applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "fail",
-            failureKind: data.failureKind,
-          });
-        } else if (data.accountConnect) {
-          // Streaming text already matched but the server flagged a
-          // "connect another account" request — stamp it (via complete, which
-          // carries accountConnect) so the renderer swaps in the
-          // AccountConnectBlock while keeping the already-streamed text.
-          applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "complete",
-            fullText: data.text,
-            accountConnect: data.accountConnect,
-          });
-        }
+        const interruptedPartial = reconcileTerminalStream(
+          convId,
+          assistantMsgId,
+          streamedAssistantText,
+          data,
+          { includeReasoning: true, includeAccountConnect: true },
+        );
         if (data.usage) {
           setChatLastUsage({
             promptTokens: data.usage.promptTokens,
@@ -1834,21 +1852,6 @@ export function useChatSend(deps: UseChatSendDeps) {
             totalTokens: data.usage.totalTokens,
             model: data.usage.model,
             updatedAt: Date.now(),
-          });
-        }
-
-        // A stopped / dropped turn keeps a partial reply the user was watching.
-        // Snapshot it BEFORE the reload below (which full-replaces local state
-        // with the server's copy) so it can be re-attached if the server never
-        // persisted it.
-        const interruptedPartial =
-          !data.completed && streamedAssistantText.trim()
-            ? data.text.trim() || streamedAssistantText
-            : null;
-        if (interruptedPartial) {
-          applyStreamingModificationForConversation(convId, {
-            messageId: assistantMsgId,
-            mode: "interrupt",
           });
         }
 
@@ -2084,26 +2087,13 @@ export function useChatSend(deps: UseChatSendDeps) {
             // Commit any throttle-parked token before the terminal modification.
             flushStreamingText();
 
-            if (!retryData.text.trim()) {
-              applyStreamingModificationForConversation(conversation.id, {
-                messageId: replayAssistantId,
-                ...(retryData.failureKind
-                  ? { mode: "fail", failureKind: retryData.failureKind }
-                  : { mode: "drop" }),
-              });
-            } else {
-              applyStreamingModificationForConversation(conversation.id, {
-                messageId: replayAssistantId,
-                mode: "complete",
-                fullText: retryData.text,
-                ...(retryData.failureKind
-                  ? { failureKind: retryData.failureKind }
-                  : {}),
-                ...(retryData.reasoning
-                  ? { reasoning: retryData.reasoning }
-                  : {}),
-              });
-            }
+            reconcileTerminalStream(
+              conversation.id,
+              replayAssistantId,
+              replayStreamedText,
+              retryData,
+              { includeReasoning: true, includeAccountConnect: true },
+            );
           } catch (replayErr) {
             // The re-seed above replaced the whole thread, so the ORIGINAL
             // placeholder id is gone — dropping it was a no-op that left the
@@ -2287,6 +2277,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     [
       appendLocalCommandTurn,
       applyStreamingModificationForConversation,
+      reconcileTerminalStream,
       loadConversationMessages,
       loadConversations,
       tryHandlePrefixedChatCommand,
@@ -2719,52 +2710,15 @@ export function useChatSend(deps: UseChatSendDeps) {
             setActionNotice(message, "error", 8_000);
           });
 
-          if (!data.text.trim()) {
-            if (data.failureKind) {
-              // Empty reply but the server flagged a failure class — surface the
-              // gate UI instead of silently dropping the turn (the failure
-              // branch below is an `else if`, unreachable once the text is
-              // empty). Mirrors the non-terminal handler above.
-              applyStreamingModificationForConversation(convId, {
-                messageId: assistantMsgId,
-                mode: "fail",
-                failureKind: data.failureKind,
-              });
-            } else {
-              applyStreamingModificationForConversation(convId, {
-                messageId: assistantMsgId,
-                mode: "drop",
-              });
-            }
-          } else if (
-            shouldApplyFinalStreamText(streamedAssistantText, data.text)
-          ) {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "complete",
-              fullText: data.text,
-              ...(data.failureKind ? { failureKind: data.failureKind } : {}),
-            });
-          } else if (data.failureKind) {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "fail",
-              failureKind: data.failureKind,
-            });
-          }
-
-          // Snapshot a stopped/dropped partial before the reload below so it can
-          // survive a full-replace the server's copy lacks (see runQueuedChatSend).
-          const interruptedPartial =
-            !data.completed && streamedAssistantText.trim()
-              ? data.text.trim() || streamedAssistantText
-              : null;
-          if (interruptedPartial) {
-            applyStreamingModificationForConversation(convId, {
-              messageId: assistantMsgId,
-              mode: "interrupt",
-            });
-          }
+          // This path intentionally does not render rich reasoning or account
+          // connection blocks; it only carries the action-triggered reply.
+          const interruptedPartial = reconcileTerminalStream(
+            convId,
+            assistantMsgId,
+            streamedAssistantText,
+            data,
+            { includeReasoning: false, includeAccountConnect: false },
+          );
 
           // Keep the visible thread authoritative when the server stores
           // additional action-generated messages during a successful send.
@@ -2855,6 +2809,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       loadConversations,
       pollCloudCredits,
       applyStreamingModificationForConversation,
+      reconcileTerminalStream,
       restoreEvictedUserTurn,
       dropEmptyAssistantPlaceholder,
       reattachInterruptedPartial,

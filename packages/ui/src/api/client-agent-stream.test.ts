@@ -15,7 +15,7 @@ describe("ElizaClient agent streaming transport", () => {
         done: false,
         value: encoder.encode(
           'data: {"type":"token","text":"hi","fullText":"hi"}\n\n' +
-            'data: {"type":"done","fullText":"hi","agentName":"Eliza"}\n\n',
+            'data: {"type":"done","fullText":"hi","agentName":"Eliza","transcriptVisibility":"internal"}\n\n',
         ),
       })
       .mockRejectedValueOnce(new Error("read after terminal event"));
@@ -43,6 +43,7 @@ describe("ElizaClient agent streaming transport", () => {
       text: "hi",
       agentName: "Eliza",
       completed: true,
+      transcriptVisibility: "internal",
     });
     expect(onToken).toHaveBeenCalledWith("hi", "hi");
     expect(read).toHaveBeenCalledTimes(1);

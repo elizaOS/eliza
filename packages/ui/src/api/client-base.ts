@@ -81,6 +81,7 @@ type StreamChatEvent = {
   type?: string;
   text?: string;
   fullText?: string;
+  transcriptVisibility?: "internal";
   agentName?: string;
   message?: string;
   thought?: string;
@@ -208,6 +209,7 @@ type StreamChatState = {
   deltaProtocol: boolean;
   fullText: string;
   doneText: string | null;
+  doneTranscriptVisibility: "internal" | undefined;
   doneAgentName: string | null;
   doneThought: string | null;
   doneNoResponseReason: "ignored" | null;
@@ -320,6 +322,9 @@ function applyStreamChatDoneEvent(
 ): boolean {
   state.receivedDone = true;
   if (typeof parsed.fullText === "string") state.doneText = parsed.fullText;
+  if (parsed.transcriptVisibility === "internal") {
+    state.doneTranscriptVisibility = parsed.transcriptVisibility;
+  }
   if (typeof parsed.agentName === "string" && parsed.agentName.trim()) {
     state.doneAgentName = parsed.agentName;
   }
@@ -1837,6 +1842,7 @@ export class ElizaClient {
     text: string;
     agentName: string;
     completed: boolean;
+    transcriptVisibility?: "internal";
     reasoning?: string;
     noResponseReason?: "ignored";
     usage?: ChatTokenUsage;
@@ -1892,6 +1898,7 @@ export class ElizaClient {
       deltaProtocol: true,
       fullText: "",
       doneText: null,
+      doneTranscriptVisibility: undefined,
       doneAgentName: null,
       doneThought: null,
       doneNoResponseReason: null,
@@ -2035,6 +2042,9 @@ export class ElizaClient {
       text: resolvedText,
       agentName: streamState.doneAgentName ?? "Eliza",
       completed: streamState.receivedDone,
+      ...(streamState.doneTranscriptVisibility
+        ? { transcriptVisibility: streamState.doneTranscriptVisibility }
+        : {}),
       ...(streamState.doneThought
         ? { reasoning: streamState.doneThought }
         : {}),

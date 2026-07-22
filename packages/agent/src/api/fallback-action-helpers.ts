@@ -36,8 +36,7 @@ async function rewriteFallbackActionText(args: {
   const text = args.text.trim();
   if (!text) return args.text;
   if (args.preserveCallbackText === true) return args.text;
-  const fallback = () => args.text;
-  if (typeof args.runtime.useModel !== "function") return fallback();
+  if (typeof args.runtime.useModel !== "function") return args.text;
 
   try {
     const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, {
@@ -72,7 +71,7 @@ async function rewriteFallbackActionText(args: {
     const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
     const response =
       typeof parsed.response === "string" ? parsed.response.trim() : "";
-    return response && response !== text ? response : fallback();
+    return response && response !== text ? response : args.text;
   } catch (err) {
     args.runtime.logger.debug(
       {
@@ -82,7 +81,7 @@ async function rewriteFallbackActionText(args: {
       },
       "[eliza-api] Fallback action voice rewrite failed",
     );
-    return fallback();
+    return args.text;
   }
 }
 

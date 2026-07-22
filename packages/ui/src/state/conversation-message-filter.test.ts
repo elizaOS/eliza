@@ -52,11 +52,12 @@ describe("shouldKeepConversationMessage", () => {
     ).toBe(true);
   });
 
-  it("drops an internal VIEWS inventory restored as fallback text", () => {
+  it("drops assistant output explicitly classified as internal", () => {
     expect(
       shouldKeepConversationMessage(
         msg({
           text: "available_views:\ncalendar\nnotes",
+          transcriptVisibility: "internal",
           actionName: "VIEWS",
           actionCallbackHistory: ["available_views:", "calendar", "notes"],
         }),
@@ -75,7 +76,7 @@ describe("shouldKeepConversationMessage", () => {
     ).toBe(true);
   });
 
-  it("drops a persisted VIEWS inventory envelope that lacks action metadata", () => {
+  it("does not infer visibility from inventory-shaped prose", () => {
     expect(
       shouldKeepConversationMessage(
         msg({
@@ -89,7 +90,7 @@ describe("shouldKeepConversationMessage", () => {
           ].join("\n"),
         }),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("keeps a real reply even when it also carries action callbacks", () => {

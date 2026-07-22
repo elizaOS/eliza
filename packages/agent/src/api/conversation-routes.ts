@@ -965,7 +965,10 @@ export function buildPersistedAssistantContent(
   result:
     | Pick<
         ChatGenerationResult,
-        "actionCallbackHistory" | "responseContent" | "responseMessages"
+        | "actionCallbackHistory"
+        | "responseContent"
+        | "responseMessages"
+        | "transcriptVisibility"
       >
     | null
     | undefined,
@@ -987,16 +990,22 @@ export function buildPersistedAssistantContent(
   const actionCallbackHistory = normalizeActionCallbackHistory(
     result?.actionCallbackHistory,
   );
+  const transcriptVisibility =
+    result?.transcriptVisibility === "internal"
+      ? ("internal" as const)
+      : undefined;
 
   return responseContent || responseMessageContent
     ? {
         ...(responseMessageContent ?? {}),
         ...(responseContent ?? {}),
         text,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       }
     : {
         text,
+        ...(transcriptVisibility ? { transcriptVisibility } : {}),
         ...(actionCallbackHistory.length > 0 ? { actionCallbackHistory } : {}),
       };
 }
@@ -1248,6 +1257,7 @@ type ConversationRouteMessageRecord = {
   role: "assistant" | "user";
   text: string;
   timestamp: number;
+  transcriptVisibility?: "internal";
   attachments?: SerializedMessageAttachment[];
   source?: string;
   actionName?: string;
@@ -1973,6 +1983,10 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
+          const transcriptVisibility =
+            content.transcriptVisibility === "internal"
+              ? ("internal" as const)
+              : undefined;
           // The failed assistant turn carries its classification on the live
           // result (`content.failureKind`) or, for synthetic fallbacks, on
           // `metadata.chatFailureKind` (markSyntheticChatFailureContent). Round
@@ -2023,6 +2037,7 @@ export async function handleConversationRoutes(
             role,
             text,
             timestamp: m.createdAt ?? 0,
+            ...(transcriptVisibility ? { transcriptVisibility } : {}),
             ...(attachments ? { attachments } : {}),
             ...(topics && topics.length > 0 ? { topics } : {}),
             source: normalizedSource,
@@ -2786,6 +2801,9 @@ export async function handleConversationRoutes(
             type: "done",
             fullText: resolvedText,
             agentName: result.agentName,
+            ...(result.transcriptVisibility
+              ? { transcriptVisibility: result.transcriptVisibility }
+              : {}),
             ...(result.thought ? { thought: result.thought } : {}),
             ...(result.usage ? { usage: result.usage } : {}),
             ...(result.actionResults?.length
@@ -3151,6 +3169,9 @@ export async function handleConversationRoutes(
         json(res, {
           text: resolvedText,
           agentName: result.agentName,
+          ...(result.transcriptVisibility
+            ? { transcriptVisibility: result.transcriptVisibility }
+            : {}),
           ...(result.actionResults?.length
             ? { actionResults: result.actionResults }
             : {}),

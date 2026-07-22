@@ -5299,11 +5299,24 @@ function listAvailableContextsForRole(
 }
 
 /**
+ * Whether action policy delegates visible-response ownership to its handler.
+ *
+ * The two flags remain distinct public contracts: `suppressEarlyReply`
+ * controls speculative Stage 1 delivery, while `callbackCompletesResponse`
+ * lets transports settle after a visible callback. Inside the message loop,
+ * either contract requires model-authored output to yield to that callback.
+ */
+function actionHandlerOwnsVisibleResponse(action: Action | undefined): boolean {
+	return (
+		action?.suppressEarlyReply === true ||
+		action?.callbackCompletesResponse === true
+	);
+}
+
+/**
  * Whether a routed action has claimed the pre-planner reply boundary.
  *
- * Actions with `suppressEarlyReply` or `callbackCompletesResponse` promise to
- * emit the authoritative visible result from their handler callback. A
- * deterministic call is already the selected action, so it alone owns this
+ * A deterministic call is already the selected action, so it alone owns this
  * decision. Relevance candidates are only hints before planning; they may
  * suppress the reply only when every candidate resolves to the same canonical
  * action. Candidate names may be action similes, so resolve them through the
@@ -5314,12 +5327,9 @@ function actionOwnsResponseHandlerEarlyReply(
 	messageHandler: MessageHandlerResult,
 ): boolean {
 	const actionLookup = buildRuntimeActionLookup(runtime);
-	const ownsReply = (action: Action | undefined): boolean =>
-		action?.suppressEarlyReply === true ||
-		action?.callbackCompletesResponse === true;
 	const deterministicToolCall = messageHandler.plan.deterministicToolCall;
 	if (deterministicToolCall) {
-		return ownsReply(
+		return actionHandlerOwnsVisibleResponse(
 			resolveRuntimeAction(actionLookup, deterministicToolCall.name),
 		);
 	}
@@ -5336,7 +5346,9 @@ function actionOwnsResponseHandlerEarlyReply(
 	}
 
 	if (resolvedCandidates.size !== 1) return false;
-	return ownsReply(resolvedCandidates.values().next().value);
+	return actionHandlerOwnsVisibleResponse(
+		resolvedCandidates.values().next().value,
+	);
 }
 
 function successfulActionCallbackOwnsFinalReply(
@@ -5352,8 +5364,7 @@ function successfulActionCallbackOwnsFinalReply(
 			typeof result.data?.actionName === "string" ? result.data.actionName : "";
 		const action = resolveRuntimeAction(actionLookup, actionName);
 		return (
-			(action?.callbackCompletesResponse === true ||
-				action?.suppressEarlyReply === true) &&
+			actionHandlerOwnsVisibleResponse(action) &&
 			deliveredVisibleCallbackActions.has(
 				normalizeActionIdentifier(action?.name ?? actionName),
 			)
@@ -6065,6 +6076,7 @@ export function subPlannerResultToPlannerToolResult(
 		// sees the completed steps. Falls back to the user-facing text when the
 		// sub-planner executed no discrete steps.
 		text: diagnosticText.length > 0 ? diagnosticText : userFacingText,
+		transcriptVisibility: lastStep?.result?.transcriptVisibility,
 		userFacingText,
 		data,
 		error: lastStep?.result?.error,
@@ -6215,20 +6227,9 @@ function collectPreviousActionResults(
 		const actionName = step.toolCall.name;
 		const action = actionsByName.get(normalizeActionIdentifier(actionName));
 		if (shouldSuppressActionResultClipboard(action, step.result)) {
-			results.push({
-				success: step.result.success,
-				...(step.result.text !== undefined ? { text: step.result.text } : {}),
-				...(step.result.userFacingText !== undefined
-					? { userFacingText: step.result.userFacingText }
-					: {}),
-				...(step.result.verifiedUserFacing !== undefined
-					? { verifiedUserFacing: step.result.verifiedUserFacing }
-					: {}),
-				data: { actionName },
-				...(step.result.continueChain !== undefined
-					? { continueChain: step.result.continueChain }
-					: {}),
-			});
+			results.push(
+				projectActionResultForClipboard(action, step.result, actionName),
+			);
 			continue;
 		}
 		const plannerData = step.result.data;
@@ -6262,6 +6263,9 @@ function collectPreviousActionResults(
 		results.push({
 			success: step.result.success,
 			...(step.result.text !== undefined ? { text: step.result.text } : {}),
+			...(step.result.transcriptVisibility !== undefined
+				? { transcriptVisibility: step.result.transcriptVisibility }
+				: {}),
 			...(step.result.userFacingText !== undefined
 				? { userFacingText: step.result.userFacingText }
 				: {}),
@@ -6772,11 +6776,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		const visibleStreamingContext = getStreamingContext();
 		const deferStage1Draft =
 			visibleStreamingContext !== undefined &&
-			args.runtime.actions.some(
-				(action) =>
-					action.suppressEarlyReply === true ||
-					action.callbackCompletesResponse === true,
-			);
+			args.runtime.actions.some(actionHandlerOwnsVisibleResponse);
 		let bufferedStage1Draft: Array<{
 			chunk: string;
 			messageId?: string;
@@ -9108,8 +9108,7 @@ async function rewriteActionCallbackInCharacter(args: {
 	actionName?: string;
 	text: string;
 }): Promise<string | null> {
-	const fallback = () => args.text;
-	if (typeof args.runtime.useModel !== "function") return fallback();
+	if (typeof args.runtime.useModel !== "function") return args.text;
 	const character = args.runtime.character;
 	const characterVoice = {
 		name: character?.name,
@@ -9156,9 +9155,9 @@ async function rewriteActionCallbackInCharacter(args: {
 		} | null;
 		const response =
 			typeof parsed?.response === "string" ? parsed.response.trim() : "";
-		if (!response || response === args.text) return fallback();
-		if (parseJSONObjectFromText(response)) return fallback();
-		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || fallback();
+		if (!response || response === args.text) return args.text;
+		if (parseJSONObjectFromText(response)) return args.text;
+		return response.replace(/^["'`]+|["'`]+$/g, "").trim() || args.text;
 	} catch (error) {
 		args.runtime.logger.debug(
 			{
@@ -9168,7 +9167,7 @@ async function rewriteActionCallbackInCharacter(args: {
 			},
 			"Failed to rewrite action callback in character voice",
 		);
-		return fallback();
+		return args.text;
 	}
 }
 

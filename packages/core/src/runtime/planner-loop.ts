@@ -2374,7 +2374,7 @@ async function executeQueuedToolCall(params: {
 	} catch (error) {
 		result = {
 			success: false,
-			error,
+			error: error instanceof Error ? error : String(error),
 		};
 	}
 	const endedAt = Date.now();
@@ -4003,7 +4003,7 @@ export function actionResultToPlannerToolResult(
 	result: ActionResult,
 	options: { summary?: string } = {},
 ): PlannerToolResult {
-	const data: Record<string, unknown> = {};
+	const data: ProviderDataRecord = {};
 	if (result.data) {
 		Object.assign(data, result.data as ProviderDataRecord);
 	}
@@ -4013,6 +4013,7 @@ export function actionResultToPlannerToolResult(
 	const plannerResult: PlannerToolResult = {
 		success: result.success,
 		text: result.text,
+		transcriptVisibility: result.transcriptVisibility,
 		userFacingText: result.userFacingText,
 		verifiedUserFacing: result.verifiedUserFacing,
 		data: Object.keys(data).length > 0 ? data : undefined,

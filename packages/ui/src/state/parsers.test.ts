@@ -279,10 +279,23 @@ describe("parseConversationMessageEvent", () => {
       text: "hi",
       timestamp: 10,
       source: "discord",
+      transcriptVisibility: "internal",
       actionCallbackHistory: ["a", "", "  ", "b", 5],
     });
     expect(parsed?.source).toBe("discord");
+    expect(parsed?.transcriptVisibility).toBe("internal");
     expect(parsed?.actionCallbackHistory).toEqual(["a", "b"]);
+  });
+
+  it("ignores unknown transcript visibility values", () => {
+    const parsed = parseConversationMessageEvent({
+      id: "m1",
+      role: "assistant",
+      text: "hi",
+      timestamp: 10,
+      transcriptVisibility: "private",
+    });
+    expect(parsed?.transcriptVisibility).toBeUndefined();
   });
 
   it("validates reactions (drops empty emoji / non-positive count) and users", () => {

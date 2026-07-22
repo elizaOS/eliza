@@ -1,12 +1,12 @@
 /**
  * Exercises the message service's planner-action de-duplication
  * (stripReplyWhenActionOwnsTurn) and sub-planner result collapse
- * (subPlannerResultToPlannerToolResult): REPLY/alias dedupe, continueChain
- * propagation from a terminal sub-action, and multi-step aggregation into the
- * umbrella result. Runs against a stub runtime (actions + logger) — fully
- * deterministic.
+ * (subPlannerResultToPlannerToolResult): REPLY/alias dedupe, terminal result
+ * metadata propagation, and multi-step aggregation into the umbrella result.
+ * Runs against a stub runtime (actions + logger) — fully deterministic.
  */
 import { describe, expect, it, vi } from "vitest";
+import { actionResultToPlannerToolResult } from "../runtime/planner-loop.ts";
 import {
 	stripReplyWhenActionOwnsTurn,
 	subPlannerResultToPlannerToolResult,
@@ -60,6 +60,25 @@ describe("stripReplyWhenActionOwnsTurn", () => {
 });
 
 describe("subPlannerResultToPlannerToolResult", () => {
+	it("preserves transcript visibility across top-level and sub-planner projections", () => {
+		expect(
+			actionResultToPlannerToolResult({
+				success: true,
+				text: "machine inventory",
+				transcriptVisibility: "internal",
+			}).transcriptVisibility,
+		).toBe("internal");
+		expect(
+			subPlannerResultToPlannerToolResult(
+				subResult({
+					success: true,
+					text: "machine inventory",
+					transcriptVisibility: "internal",
+				}),
+			).transcriptVisibility,
+		).toBe("internal");
+	});
+
 	it("propagates continueChain:false from the terminal sub-action", () => {
 		// A fire-and-forget sub-action (e.g. TASKS_SPAWN_AGENT) returns
 		// continueChain:false. Without propagating it through the umbrella
