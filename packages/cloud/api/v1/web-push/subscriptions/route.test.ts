@@ -156,19 +156,22 @@ describe("POST /api/v1/web-push/subscriptions", () => {
     ["private 172.16.x", "https://172.16.0.1/abc"],
     ["link-local metadata", "https://169.254.169.254/latest/meta-data"],
     ["*.internal", "https://redis.internal/abc"],
-  ])("rejects a %s endpoint (SSRF guard) with 400", async (_label, endpoint) => {
-    upsertMock.mockClear();
-    const res = await app.request("/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        agentId: VALID_AGENT,
-        subscription: { endpoint, keys: { p256dh: "a", auth: "b" } },
-      }),
-    });
-    expect(res.status).toBe(400);
-    expect(upsertMock).not.toHaveBeenCalled();
-  });
+  ])(
+    "rejects a %s endpoint (SSRF guard) with 400",
+    async (_label, endpoint) => {
+      upsertMock.mockClear();
+      const res = await app.request("/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          agentId: VALID_AGENT,
+          subscription: { endpoint, keys: { p256dh: "a", auth: "b" } },
+        }),
+      });
+      expect(res.status).toBe(400);
+      expect(upsertMock).not.toHaveBeenCalled();
+    },
+  );
 
   test.each([
     ["Apple push", "https://web.push.apple.com/abc123"],

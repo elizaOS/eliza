@@ -108,9 +108,18 @@ describe("resolveDiscordExchange", () => {
     expect(body).toContain("client_secret=");
 
     // User request: bearer the freshly minted access token, never the secret.
-    expect(calls[1].url).toBe(USER_URL);
-    const authHeader = (calls[1].init?.headers as Record<string, string>)
-      .Authorization;
+    const userCall = calls[1];
+    expect(userCall).toBeDefined();
+    if (!userCall) {
+      throw new Error("Expected Discord's user endpoint to be called");
+    }
+    expect(userCall.url).toBe(USER_URL);
+    const headers = userCall.init?.headers;
+    expect(headers).toBeDefined();
+    if (!headers) {
+      throw new Error("Expected the Discord user request to include headers");
+    }
+    const authHeader = (headers as Record<string, string>).Authorization;
     expect(authHeader).toBe("Bearer access-abc");
   });
 

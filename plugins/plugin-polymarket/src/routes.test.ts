@@ -70,32 +70,32 @@ describe("handlePolymarketRoute trading boundary", () => {
     });
   });
 
-  it.each([
-    "GET",
-    "POST",
-  ])("returns 501 for %s /api/polymarket/orders", async (method) => {
-    const res = createResponse();
+  it.each(["GET", "POST"])(
+    "returns 501 for %s /api/polymarket/orders",
+    async (method) => {
+      const res = createResponse();
 
-    await expect(
-      handlePolymarketRoute(
-        createRequest("/api/polymarket/orders"),
-        res,
-        "/api/polymarket/orders",
-        method,
-      ),
-    ).resolves.toBe(true);
+      await expect(
+        handlePolymarketRoute(
+          createRequest("/api/polymarket/orders"),
+          res,
+          "/api/polymarket/orders",
+          method,
+        ),
+      ).resolves.toBe(true);
 
-    expect(res.statusCode).toBe(501);
-    expect(res.json()).toEqual({
-      enabled: false,
-      reason:
-        "Trading and order management are disabled in this app integration. Configure a signed CLOB execution path before enabling these routes.",
-      requiredForTrading: [
-        "POLYMARKET_PRIVATE_KEY",
-        "CLOB_API_KEY",
-        "CLOB_API_SECRET",
-        "CLOB_API_PASSPHRASE",
-      ],
-    });
-  });
+      expect(res.statusCode).toBe(501);
+      expect(res.json()).toEqual({
+        enabled: false,
+        reason:
+          "Trading and order management are disabled in this app integration. Configure a signed CLOB execution path before enabling these routes.",
+        requiredForTrading: [
+          "POLYMARKET_PRIVATE_KEY",
+          "CLOB_API_KEY",
+          "CLOB_API_SECRET",
+          "CLOB_API_PASSPHRASE",
+        ],
+      });
+    },
+  );
 });

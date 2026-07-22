@@ -325,8 +325,12 @@ describe("SCHEDULED_TASKS promotion + alias normalization", () => {
       NOOP_CALLBACK,
     );
     expect(result?.success).toBe(true);
-    expect((result?.data as Record<string, unknown>).action).toBe("list");
-    expect((result?.data as Record<string, unknown>).subaction).toBe("list");
+    expect((result?.data as Record<string, unknown> | undefined)?.action).toBe(
+      "list",
+    );
+    expect(
+      (result?.data as Record<string, unknown> | undefined)?.subaction,
+    ).toBe("list");
     expect(stubParent.handler).toHaveBeenCalledTimes(1);
   });
 
@@ -362,7 +366,9 @@ describe("SCHEDULED_TASKS promotion + alias normalization", () => {
         NOOP_CALLBACK,
       );
       expect(result?.success).toBe(true);
-      expect((result?.data as Record<string, unknown>).subaction).toBe("list");
+      expect(
+        (result?.data as Record<string, unknown> | undefined)?.subaction,
+      ).toBe("list");
     }
   });
 });

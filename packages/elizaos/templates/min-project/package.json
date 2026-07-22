@@ -9,7 +9,8 @@
     "dev": "bun --bun vite",
     "build": "bun --bun vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "bunx @biomejs/biome check src/ || echo '[__APP_NAME__] lint ok (bunx @biomejs/biome not configured)'",
+    "lint": "biome check src/",
+    "lint:check": "biome check src/",
     "test": "vitest run --config ./vitest.config.ts"
   },
   "exports": {
@@ -27,6 +28,7 @@
     "@elizaos/core": "latest"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.4",
     "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

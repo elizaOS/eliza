@@ -41,19 +41,20 @@ function moduleSource(name: string): string {
 }
 
 describe("TEE confidential-module secret hygiene (A9)", () => {
-  it.each(
-    CONFIDENTIAL_MODULES,
-  )("%s never emits secret material to an off-domain sink", (moduleName) => {
-    const source = moduleSource(moduleName);
-    const offenders: string[] = [];
-    source.split("\n").forEach((line, index) => {
-      const code = line.replace(/\/\/.*$/, ""); // ignore line comments
-      if (SINK.test(code) && SECRET_MATERIAL.test(code)) {
-        offenders.push(`${moduleName}:${index + 1}: ${line.trim()}`);
-      }
-    });
-    expect(offenders, offenders.join("\n")).toEqual([]);
-  });
+  it.each(CONFIDENTIAL_MODULES)(
+    "%s never emits secret material to an off-domain sink",
+    (moduleName) => {
+      const source = moduleSource(moduleName);
+      const offenders: string[] = [];
+      source.split("\n").forEach((line, index) => {
+        const code = line.replace(/\/\/.*$/, ""); // ignore line comments
+        if (SINK.test(code) && SECRET_MATERIAL.test(code)) {
+          offenders.push(`${moduleName}:${index + 1}: ${line.trim()}`);
+        }
+      });
+      expect(offenders, offenders.join("\n")).toEqual([]);
+    },
+  );
 
   it("the scanned modules still exist (guards against silent skips on rename)", () => {
     for (const moduleName of CONFIDENTIAL_MODULES) {
@@ -109,19 +110,20 @@ function stripCommentsAndStrings(line: string): string {
 }
 
 describe("TEE off-device serializer secret-scope hygiene (A9)", () => {
-  it.each(
-    OFF_DEVICE_SERIALIZERS,
-  )("%s never references a TEE secret scope", (relativePath) => {
-    const source = relativeSource(relativePath);
-    const offenders: string[] = [];
-    source.split("\n").forEach((line, index) => {
-      const code = stripCommentsAndStrings(line);
-      if (SECRET_SCOPE.test(code)) {
-        offenders.push(`${relativePath}:${index + 1}: ${line.trim()}`);
-      }
-    });
-    expect(offenders, offenders.join("\n")).toEqual([]);
-  });
+  it.each(OFF_DEVICE_SERIALIZERS)(
+    "%s never references a TEE secret scope",
+    (relativePath) => {
+      const source = relativeSource(relativePath);
+      const offenders: string[] = [];
+      source.split("\n").forEach((line, index) => {
+        const code = stripCommentsAndStrings(line);
+        if (SECRET_SCOPE.test(code)) {
+          offenders.push(`${relativePath}:${index + 1}: ${line.trim()}`);
+        }
+      });
+      expect(offenders, offenders.join("\n")).toEqual([]);
+    },
+  );
 
   it("the scanned serializer modules still exist (guards against silent skips on rename)", () => {
     for (const relativePath of OFF_DEVICE_SERIALIZERS) {

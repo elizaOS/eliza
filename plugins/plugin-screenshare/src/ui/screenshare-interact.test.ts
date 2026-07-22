@@ -143,7 +143,9 @@ describe("interact screenshare-input — all dispatch types", () => {
     });
     const call = fetchCalls.find((c) => c.url.endsWith("/input"));
     expect(
-      (call?.init?.headers as Record<string, string>)["X-Screenshare-Token"],
+      (call?.init?.headers as Record<string, string> | undefined)?.[
+        "X-Screenshare-Token"
+      ],
     ).toBe("t1");
   });
 });

@@ -137,9 +137,16 @@ describe("SSE streaming bypass", () => {
       headers: { Accept: "text/event-stream" },
       body: "{}",
     });
-    expect(res?.body).not.toBeNull();
+    expect(res).toBeDefined();
+    if (!res) {
+      throw new Error("Expected the native cloud transport response");
+    }
+    expect(res.body).not.toBeNull();
+    if (!res.body) {
+      throw new Error("Expected the native cloud transport response body");
+    }
 
-    const reader = (res?.body as ReadableStream<Uint8Array>).getReader();
+    const reader = (res.body as ReadableStream<Uint8Array>).getReader();
     const decoder = new TextDecoder();
 
     // The first chunk is readable BEFORE 'b' is enqueued — proving the transport

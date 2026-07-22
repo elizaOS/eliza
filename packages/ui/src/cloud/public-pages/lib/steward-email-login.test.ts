@@ -85,7 +85,12 @@ describe("steward email sign-in adapter", () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({
         ok: true,
-        data: { token: "session-token", refreshToken: "refresh-token" },
+        data: {
+          token: "session-token",
+          refreshToken: "refresh-token",
+          expiresIn: 900,
+          user: { id: "user-1", email: "person@example.com" },
+        },
       }),
     );
 
@@ -98,6 +103,8 @@ describe("steward email sign-in adapter", () => {
     ).resolves.toEqual({
       token: "session-token",
       refreshToken: "refresh-token",
+      expiresIn: 900,
+      user: { id: "user-1", email: "person@example.com" },
     });
 
     expect(fetchImpl).toHaveBeenCalledWith(
@@ -110,6 +117,60 @@ describe("steward email sign-in adapter", () => {
         }),
       }),
     );
+  });
+
+  it("rejects a successful response that does not satisfy the auth contract", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        data: { token: "session-token", refreshToken: "refresh-token" },
+      }),
+    );
+
+    await expect(
+      verifyStewardEmailSignInCode(
+        { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
+        "person@example.com",
+        "123456",
+      ),
+    ).rejects.toMatchObject({
+      status: 502,
+      message: "Steward email sign-in response was malformed.",
+    });
+  });
+
+  it("normalizes a nested MFA challenge after the response envelope is unwrapped", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({
+        ok: true,
+        data: {
+          mfaRequired: true,
+          mfa: {
+            type: "totp",
+            challengeId: "mfa-1",
+            expiresAt: "2026-07-21T22:00:00.000Z",
+          },
+          user: { id: "user-1", email: "person@example.com" },
+        },
+      }),
+    );
+
+    await expect(
+      verifyStewardEmailSignInCode(
+        { baseUrl: "/steward", tenantId: "elizacloud", fetchImpl },
+        "person@example.com",
+        "123456",
+      ),
+    ).resolves.toEqual({
+      ok: true,
+      mfaRequired: true,
+      mfa: {
+        type: "totp",
+        challengeId: "mfa-1",
+        expiresAt: "2026-07-21T22:00:00.000Z",
+      },
+      user: { id: "user-1", email: "person@example.com" },
+    });
   });
 
   it("polls status without returning a session", async () => {

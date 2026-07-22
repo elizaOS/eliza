@@ -172,6 +172,11 @@
     "reason": "voice live-matrix cells declare which fused-ASR / native wake-word / transcript plugins each cell exercises"
   },
   {
+    "file": "scripts/cuda-continuity.mjs",
+    "tokens": ["plugins/plugin-local-inference"],
+    "reason": "CUDA continuity proves the plugin-local-inference native llama.cpp gitlink and runtime harness at the exact candidate commit"
+  },
+  {
     "file": "scripts/check-even-research-audit.mjs",
     "tokens": ["plugins/plugin-facewear"],
     "reason": "gates that the facewear plugin's research checkouts, docs, and implemented surface files are present"

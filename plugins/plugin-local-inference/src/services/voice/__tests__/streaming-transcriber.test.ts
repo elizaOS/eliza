@@ -514,18 +514,14 @@ describe("readStreamingAsrEnabledFromEnv", () => {
 		expect(readStreamingAsrEnabledFromEnv({})).toBe(true);
 	});
 
-	it.each([
-		"0",
-		"false",
-		"off",
-		"no",
-		"FALSE",
-		" Off ",
-	])("disables on %j", (raw) => {
-		expect(
-			readStreamingAsrEnabledFromEnv({ ELIZA_VOICE_STREAMING_ASR: raw }),
-		).toBe(false);
-	});
+	it.each(["0", "false", "off", "no", "FALSE", " Off "])(
+		"disables on %j",
+		(raw) => {
+			expect(
+				readStreamingAsrEnabledFromEnv({ ELIZA_VOICE_STREAMING_ASR: raw }),
+			).toBe(false);
+		},
+	);
 
 	it.each(["1", "true", "on", "yes"])("stays enabled on %j", (raw) => {
 		expect(

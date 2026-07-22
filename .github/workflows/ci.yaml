@@ -134,8 +134,8 @@ jobs:
       - name: Check format
         run: bun run format:check
 
-      - name: Run lint
-        run: bun run lint
+      - name: Run lint (read-only)
+        run: bun run lint:check
 
       # UI render-time determinism gate. Fails on NEW Date.now()/Math.random()/
       # crypto.randomUUID()/locale-defaulted toLocale* in a component/hook render

@@ -36,7 +36,12 @@ afterEach(() => {
 
 function lastTimeout(): number {
   const call = execFileSyncMock.mock.calls.at(-1);
-  return (call?.[2] as { timeout: number }).timeout;
+  expect(call).toBeDefined();
+  if (!call) throw new Error("Expected an execFileSync call");
+  const options = call[2];
+  expect(options).toBeDefined();
+  if (!options) throw new Error("Expected execFileSync options");
+  return (options as { timeout: number }).timeout;
 }
 
 describe("runCommand PowerShell spawn-timeout floor", () => {

@@ -324,15 +324,16 @@ describe("static view-capability audit (#8798)", () => {
   // Per-view: registration density holds. A cosmetic (zero-control) view
   // trivially satisfies it; a control-bearing view must meet the proportional
   // minimum. Fails iff controls>0 AND registrations < ceil(controls / cap).
-  it.each(
-    coverage,
-  )("$viewId — registers agent elements proportional to its controls", (c: ViewCoverage) => {
-    expect(
-      meetsRegistrationDensity(c),
-      `view "${c.viewId}" ships ${c.controls} control(s) but only ` +
-        `${c.agentRegistrations} agent registration(s) (needs >= ${c.requiredRegistrations})`,
-    ).toBe(true);
-  });
+  it.each(coverage)(
+    "$viewId — registers agent elements proportional to its controls",
+    (c: ViewCoverage) => {
+      expect(
+        meetsRegistrationDensity(c),
+        `view "${c.viewId}" ships ${c.controls} control(s) but only ` +
+          `${c.agentRegistrations} agent registration(s) (needs >= ${c.requiredRegistrations})`,
+      ).toBe(true);
+    },
+  );
 
   // Positive control — prove the density gate has teeth, exercising the SAME
   // measureSource + meetsRegistrationDensity the real audit uses (no parallel

@@ -95,8 +95,9 @@ describe("PAYMENTS action integration", () => {
       },
     );
     expect(addResult?.success).toBe(true);
-    const addedSource = (addResult?.data as { source?: LifeOpsPaymentSource })
-      .source;
+    const addedSource = (
+      addResult?.data as { source?: LifeOpsPaymentSource } | undefined
+    )?.source;
     expect(addedSource?.kind).toBe("manual");
     expect(addedSource?.label).toBe("Chase Checking");
     expect(addedSource?.institution).toBe("Chase");
@@ -110,10 +111,11 @@ describe("PAYMENTS action integration", () => {
       { parameters: { subaction: "list_sources" } },
     );
     expect(listResult?.success).toBe(true);
-    const sources =
-      (listResult?.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
+    const sources = (
+      listResult?.data as { sources?: LifeOpsPaymentSource[] } | undefined
+    )?.sources;
     expect(sources).toHaveLength(1);
-    expect(sources[0]?.id).toBe(addedSource?.id);
+    expect(sources?.[0]?.id).toBe(addedSource?.id);
   });
 
   it("import_csv inserts transactions and dedupes on re-import", async () => {
@@ -132,9 +134,11 @@ describe("PAYMENTS action integration", () => {
         },
       },
     );
-    const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
-      ?.id as string;
+    const sourceId = (
+      add?.data as { source?: LifeOpsPaymentSource } | undefined
+    )?.source?.id;
     expect(sourceId).toBeTruthy();
+    if (!sourceId) throw new Error("add_source did not return a source id");
 
     const firstImport = await runPaymentsHandler(
       runtime,
@@ -150,10 +154,10 @@ describe("PAYMENTS action integration", () => {
     );
     expect(firstImport?.success).toBe(true);
     const firstResult = (
-      firstImport?.data as {
-        result?: { inserted: number; skipped: number };
-      }
-    ).result;
+      firstImport?.data as
+        | { result?: { inserted: number; skipped: number } }
+        | undefined
+    )?.result;
     expect(firstResult?.inserted).toBe(3);
     expect(firstResult?.skipped).toBe(0);
 
@@ -166,8 +170,10 @@ describe("PAYMENTS action integration", () => {
       },
     );
     const reResult = (
-      reImport?.data as { result?: { inserted: number; skipped: number } }
-    ).result;
+      reImport?.data as
+        | { result?: { inserted: number; skipped: number } }
+        | undefined
+    )?.result;
     expect(reResult?.inserted).toBe(0);
     expect(reResult?.skipped).toBe(3);
 
@@ -177,10 +183,14 @@ describe("PAYMENTS action integration", () => {
       undefined,
       { parameters: { subaction: "list_transactions", sourceId } },
     );
-    const txns =
-      (listTxn?.data as { transactions?: LifeOpsPaymentTransaction[] })
-        .transactions ?? [];
+    const txns = (
+      listTxn?.data as
+        | { transactions?: LifeOpsPaymentTransaction[] }
+        | undefined
+    )?.transactions;
     expect(txns).toHaveLength(3);
+    if (!txns)
+      throw new Error("list_transactions omitted its transaction list");
     const merchants = txns.map((t) => t.merchantRaw).sort();
     expect(merchants).toEqual(["Netflix", "Starbucks", "Whole Foods"]);
   });
@@ -197,8 +207,10 @@ describe("PAYMENTS action integration", () => {
         parameters: { subaction: "add_source", kind: "manual", label: "Daily" },
       },
     );
-    const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
-      ?.id as string;
+    const sourceId = (
+      add?.data as { source?: LifeOpsPaymentSource } | undefined
+    )?.source?.id;
+    if (!sourceId) throw new Error("add_source did not return a source id");
 
     await runPaymentsHandler(
       runtime,
@@ -221,13 +233,15 @@ describe("PAYMENTS action integration", () => {
     );
     expect(dashboard?.success).toBe(true);
     const dash = (
-      dashboard?.data as {
-        dashboard?: {
-          sources: LifeOpsPaymentSource[];
-          spending: { totalSpendUsd: number; transactionCount: number };
-        };
-      }
-    ).dashboard;
+      dashboard?.data as
+        | {
+            dashboard?: {
+              sources: LifeOpsPaymentSource[];
+              spending: { totalSpendUsd: number; transactionCount: number };
+            };
+          }
+        | undefined
+    )?.dashboard;
     expect(dash?.sources).toHaveLength(1);
     expect(dash?.spending.transactionCount).toBe(3);
     expect(dash?.spending.totalSpendUsd).toBeGreaterThan(0);
@@ -249,8 +263,10 @@ describe("PAYMENTS action integration", () => {
         },
       },
     );
-    const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
-      ?.id as string;
+    const sourceId = (
+      add?.data as { source?: LifeOpsPaymentSource } | undefined
+    )?.source?.id;
+    if (!sourceId) throw new Error("add_source did not return a source id");
 
     const remove = await runPaymentsHandler(
       runtime,
@@ -266,8 +282,9 @@ describe("PAYMENTS action integration", () => {
       undefined,
       { parameters: { subaction: "list_sources" } },
     );
-    const sources =
-      (list?.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
+    const sources = (
+      list?.data as { sources?: LifeOpsPaymentSource[] } | undefined
+    )?.sources;
     expect(sources).toHaveLength(0);
   });
 
@@ -282,7 +299,7 @@ describe("PAYMENTS action integration", () => {
       { parameters: { subaction: "add_source" } },
     );
     expect(result?.success).toBe(false);
-    expect((result?.data as { error?: string }).error).toBe(
+    expect((result?.data as { error?: string } | undefined)?.error).toBe(
       "MISSING_SOURCE_FIELDS",
     );
   });

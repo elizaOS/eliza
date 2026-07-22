@@ -360,14 +360,28 @@ export async function seedGuiViewScaffold({
 		"devDependencies",
 		"package.json",
 	);
+	const biomeVersion = requiredStringField(
+		devDependencies,
+		"@biomejs/biome",
+		"package.json.devDependencies",
+	);
+	if (!/^\d+\.\d+\.\d+$/.test(biomeVersion)) {
+		throw new ElizaError(
+			"package.json.devDependencies.@biomejs/biome must pin an exact semantic version",
+			{
+				code: "VIEW_SCAFFOLD_BIOME_VERSION_REQUIRED",
+				context: { biomeVersion },
+			},
+		);
+	}
 
 	scripts.build =
 		"tsc --noCheck -p tsconfig.build.json && vite build --config vite.config.views.ts";
 	scripts["build:views"] = "vite build --config vite.config.views.ts";
 	scripts.lint = "biome check src/ tests/";
+	scripts["lint:check"] = "biome check src/ tests/";
 	dependencies.react = "^19.0.0";
 	dependencies["react-dom"] = "^19.0.0";
-	devDependencies["@biomejs/biome"] = "2.5.1";
 	devDependencies["@types/react"] = "^19.0.0";
 	devDependencies["@types/react-dom"] = "^19.0.0";
 	devDependencies.vite = "^8.0.0";

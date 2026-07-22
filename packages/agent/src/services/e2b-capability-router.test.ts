@@ -616,67 +616,67 @@ describe("E2BRemoteCapabilityRouterService", () => {
     });
   });
 
-  it.each([
-    "eliza-cloud",
-    "home",
-  ] as const)("routes %s through the remote runner HTTP sandbox contract", async (provider) => {
-    const server = await startRemoteRunnerHttpServer();
-    try {
-      const service = new E2BRemoteCapabilityRouterService(
-        makeRuntime(),
-        makeConfig({
-          provider,
-          apiKey: undefined,
-          remoteHttpBaseUrl: server.baseUrl,
-          remoteHttpToken: "token",
-          agentRunners: ["codex", "claude-code", "opencode"],
-        }),
-      );
+  it.each(["eliza-cloud", "home"] as const)(
+    "routes %s through the remote runner HTTP sandbox contract",
+    async (provider) => {
+      const server = await startRemoteRunnerHttpServer();
+      try {
+        const service = new E2BRemoteCapabilityRouterService(
+          makeRuntime(),
+          makeConfig({
+            provider,
+            apiKey: undefined,
+            remoteHttpBaseUrl: server.baseUrl,
+            remoteHttpToken: "token",
+            agentRunners: ["codex", "claude-code", "opencode"],
+          }),
+        );
 
-      const list = await service.fs.list({
-        path: "/repo",
-        includeHidden: true,
-      });
-      const read = await service.fs.readText({ path: "/repo/README.md" });
-      const write = await service.fs.writeText({
-        path: "/repo/out.txt",
-        text: "ok",
-      });
-      const command = await service.pty.runCommand({
-        command: "echo",
-        args: ["hello"],
-        cwd: "/repo",
-      });
-      const git = await service.git.commandRun({
-        root: "/repo",
-        args: ["status", "--short"],
-      });
+        const list = await service.fs.list({
+          path: "/repo",
+          includeHidden: true,
+        });
+        const read = await service.fs.readText({ path: "/repo/README.md" });
+        const write = await service.fs.writeText({
+          path: "/repo/out.txt",
+          text: "ok",
+        });
+        const command = await service.pty.runCommand({
+          command: "echo",
+          args: ["hello"],
+          cwd: "/repo",
+        });
+        const git = await service.git.commandRun({
+          root: "/repo",
+          args: ["status", "--short"],
+        });
 
-      expect(list.entries.map((item) => item.kind)).toEqual([
-        "directory",
-        "file",
-      ]);
-      expect(read.text).toBe("text:/workspace/README.md");
-      expect(write).toEqual({ path: "/workspace/out.txt", bytesWritten: 2 });
-      expect(command).toMatchObject({ exitCode: 0, timedOut: false });
-      expect(command.output).toContain("echo");
-      expect(git.operation.status).toBe("completed");
-      expect(git.operation.stdout).toContain("git");
-      expect(server.calls.map((call) => call.pathname)).toEqual([
-        "/v1/health",
-        "/v1/fs/entries",
-        "/v1/fs/file",
-        "/v1/fs/file",
-        "/v1/processes/run",
-        "/v1/processes/run",
-      ]);
-      expect(
-        server.calls.every((call) => call.authorization === "Bearer token"),
-      ).toBe(true);
-    } finally {
-      await server.close();
-    }
-  });
+        expect(list.entries.map((item) => item.kind)).toEqual([
+          "directory",
+          "file",
+        ]);
+        expect(read.text).toBe("text:/workspace/README.md");
+        expect(write).toEqual({ path: "/workspace/out.txt", bytesWritten: 2 });
+        expect(command).toMatchObject({ exitCode: 0, timedOut: false });
+        expect(command.output).toContain("echo");
+        expect(git.operation.status).toBe("completed");
+        expect(git.operation.stdout).toContain("git");
+        expect(server.calls.map((call) => call.pathname)).toEqual([
+          "/v1/health",
+          "/v1/fs/entries",
+          "/v1/fs/file",
+          "/v1/fs/file",
+          "/v1/processes/run",
+          "/v1/processes/run",
+        ]);
+        expect(
+          server.calls.every((call) => call.authorization === "Bearer token"),
+        ).toBe(true);
+      } finally {
+        await server.close();
+      }
+    },
+  );
 
   it("provisions an Eliza Cloud coding container before using the remote runner HTTP contract", async () => {
     const server = startElizaCloudProvisioningServer();

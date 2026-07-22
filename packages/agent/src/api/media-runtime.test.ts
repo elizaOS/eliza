@@ -490,9 +490,18 @@ describe("mediaFileRoute", () => {
       params: { filename: fileName },
       method: "GET",
     } as never);
-    expect(result?.status).toBe(200);
-    expect(Buffer.isBuffer(result?.body)).toBe(true);
-    expect((result?.body as Buffer).equals(bytes)).toBe(true);
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error("Expected the media route handler to return a result");
+    }
+    expect(result.status).toBe(200);
+    expect(Buffer.isBuffer(result.body)).toBe(true);
+    if (!Buffer.isBuffer(result.body)) {
+      throw new Error(
+        "Expected the media route handler to return a Buffer body",
+      );
+    }
+    expect(result.body.equals(bytes)).toBe(true);
   });
 
   it("404s a missing file", async () => {
@@ -517,10 +526,21 @@ describe("mediaFileRoute", () => {
       method: "GET",
       headers: { range: "bytes=3-6" },
     } as never);
-    expect(result?.status).toBe(206);
-    expect(result?.headers?.["Content-Range"]).toBe("bytes 3-6/10");
-    expect(result?.headers?.["Accept-Ranges"]).toBe("bytes");
-    expect((result?.body as Buffer).equals(Buffer.from("3456"))).toBe(true);
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error(
+        "Expected the media route handler to return a range result",
+      );
+    }
+    expect(result.status).toBe(206);
+    expect(result.headers?.["Content-Range"]).toBe("bytes 3-6/10");
+    expect(result.headers?.["Accept-Ranges"]).toBe("bytes");
+    if (!Buffer.isBuffer(result.body)) {
+      throw new Error(
+        "Expected the media range response to contain a Buffer body",
+      );
+    }
+    expect(result.body.equals(Buffer.from("3456"))).toBe(true);
   });
 
   it("serves the full 200 when no Range header is present", async () => {
@@ -533,10 +553,19 @@ describe("mediaFileRoute", () => {
       method: "GET",
       headers: {},
     } as never);
-    expect(result?.status).toBe(200);
-    expect(result?.headers?.["Accept-Ranges"]).toBe("bytes");
-    expect((result?.body as Buffer).equals(Buffer.from("full-body"))).toBe(
-      true,
-    );
+    expect(result).toBeDefined();
+    if (!result) {
+      throw new Error(
+        "Expected the media route handler to return a full response",
+      );
+    }
+    expect(result.status).toBe(200);
+    expect(result.headers?.["Accept-Ranges"]).toBe("bytes");
+    if (!Buffer.isBuffer(result.body)) {
+      throw new Error(
+        "Expected the full media response to contain a Buffer body",
+      );
+    }
+    expect(result.body.equals(Buffer.from("full-body"))).toBe(true);
   });
 });

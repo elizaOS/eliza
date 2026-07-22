@@ -263,14 +263,17 @@ describe("CLI session completion with real persistence", () => {
   test.each([
     ["different-user", OTHER_USER_ID],
     ["ownerless", null],
-  ])("rejects %s sessions without exposing key metadata", async (sessionId, owner) => {
-    await seedSession(sessionId, owner);
-    const response = await complete(sessionId);
-    expect(response.status).toBe(400);
-    expect(JSON.stringify(await response.json())).toContain(
-      "Session already authenticated or expired",
-    );
-  });
+  ])(
+    "rejects %s sessions without exposing key metadata",
+    async (sessionId, owner) => {
+      await seedSession(sessionId, owner);
+      const response = await complete(sessionId);
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(await response.json())).toContain(
+        "Session already authenticated or expired",
+      );
+    },
+  );
 
   test("rolls back the session claim when API-key insertion fails", async () => {
     await seedPendingSession("insert-failure");
@@ -312,16 +315,19 @@ describe("CLI session completion with real persistence", () => {
       "mismatched-key-owner",
       `UPDATE api_keys SET user_id = '${OTHER_USER_ID}' WHERE id = '${API_KEY_ID}'`,
     ],
-  ])("fails closed for authenticated session integrity defect: %s", async (sessionId, mutation) => {
-    await seedSession(sessionId, USER_ID);
-    await dbWrite.execute(mutation);
+  ])(
+    "fails closed for authenticated session integrity defect: %s",
+    async (sessionId, mutation) => {
+      await seedSession(sessionId, USER_ID);
+      await dbWrite.execute(mutation);
 
-    const response = await complete(sessionId);
-    expect(response.status).toBe(500);
-    const body = (await response.json()) as Record<string, unknown>;
-    expect(body.success).not.toBe(true);
-    expect(JSON.stringify(body)).not.toContain("eliza_cli");
-  });
+      const response = await complete(sessionId);
+      expect(response.status).toBe(500);
+      const body = (await response.json()) as Record<string, unknown>;
+      expect(body.success).not.toBe(true);
+      expect(JSON.stringify(body)).not.toContain("eliza_cli");
+    },
+  );
 
   test("rejects a missing session", async () => {
     const response = await complete("missing");
