@@ -311,14 +311,14 @@ jobs:
       contents: read
     steps:
       - name: Checkout trusted release tooling
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.authorize.outputs.tooling_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout exact source without Git credentials
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           path: release-source
@@ -409,14 +409,14 @@ jobs:
       candidate_artifact: ${{ needs.candidate.outputs.artifact_name }}-finalized
     steps:
       - name: Checkout trusted release tooling
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.authorize.outputs.tooling_sha }}
           fetch-depth: 0
           persist-credentials: false
 
       - name: Checkout exact source for final tag
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           path: release-source
