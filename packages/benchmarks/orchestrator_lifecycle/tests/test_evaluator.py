@@ -50,14 +50,32 @@ def _result(
     )
 
 
-def test_typed_cancel_event_passes_cancel_checks() -> None:
+def _capture_params(*arguments: dict[str, object]) -> dict[str, object]:
+    return {
+        "lifecycle_results": [
+            {
+                "name": "TASKS",
+                "arguments": item,
+                "result": {
+                    "captured": True,
+                    "effect": "not_executed",
+                    "sequence": sequence,
+                    "tool": "TASKS",
+                },
+            }
+            for sequence, item in enumerate(arguments)
+        ]
+    }
+
+
+def test_cancel_event_and_nonempty_outcome_report_pass_cancel_checks() -> None:
     evaluator = LifecycleEvaluator()
     scenario = _scenario(
         [
             ScenarioTurn(
                 actor="user",
                 message="Cancel the task now.",
-                expected_behaviors=["cancel_task", "confirm_cancel_effect"],
+                expected_behaviors=["cancel_task", "report_cancel_outcome"],
             )
         ]
     )
@@ -65,14 +83,114 @@ def test_typed_cancel_event_passes_cancel_checks() -> None:
         scenario,
         [
             TurnRecord(
-                reply_text="Done — I shut the work down.",
+                reply_text="I captured the request; no side effect was executed.",
                 actions=["TASKS"],
+                params=_capture_params({"action": "cancel"}),
                 events=["cancel"],
             )
         ],
     )
     assert result.passed
     assert result.score == 1.0
+
+
+def test_cancel_outcome_report_does_not_require_a_success_claim() -> None:
+    evaluator = LifecycleEvaluator()
+    scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Cancel the task now.",
+                expected_behaviors=["cancel_task", "report_cancel_outcome"],
+            )
+        ]
+    )
+
+    result = evaluator.evaluate_scenario(
+        scenario,
+        [
+            TurnRecord(
+                reply_text="I requested cancellation, but no matching task was found.",
+                actions=["TASKS"],
+                params=_capture_params({"action": "cancel"}),
+                events=["cancel"],
+            )
+        ],
+    )
+
+    assert result.passed
+    assert result.score == 1.0
+
+
+def test_cancel_outcome_requires_exact_shared_capture_result() -> None:
+    evaluator = LifecycleEvaluator()
+    scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Cancel the task now.",
+                expected_behaviors=["cancel_task", "report_cancel_outcome"],
+            )
+        ]
+    )
+
+    missing = evaluator.evaluate_scenario(
+        scenario,
+        [TurnRecord(reply_text="I cancelled it.", events=["cancel"])],
+    )
+    spoofed = evaluator.evaluate_scenario(
+        scenario,
+        [
+            TurnRecord(
+                reply_text="I cancelled it.",
+                events=["cancel"],
+                params={
+                    "lifecycle_results": [
+                        {
+                            "name": "TASKS",
+                            "arguments": {"action": "cancel"},
+                            "result": {
+                                "captured": True,
+                                "effect": "executed",
+                                "sequence": 0,
+                                "tool": "TASKS",
+                            },
+                        }
+                    ]
+                },
+            )
+        ],
+    )
+    wrong_sequence = evaluator.evaluate_scenario(
+        scenario,
+        [
+            TurnRecord(
+                reply_text="I captured cancellation.",
+                events=["cancel"],
+                params={
+                    "lifecycle_results": [
+                        {
+                            "name": "TASKS",
+                            "arguments": {"action": "cancel"},
+                            "result": {
+                                "captured": True,
+                                "effect": "not_executed",
+                                "sequence": 1,
+                                "tool": "TASKS",
+                            },
+                        }
+                    ]
+                },
+            )
+        ],
+    )
+
+    assert not missing.passed
+    assert "missing:report_cancel_outcome@turn0" in missing.violations
+    assert not spoofed.passed
+    assert "missing:report_cancel_outcome@turn0" in spoofed.violations
+    assert not wrong_sequence.passed
+    assert "missing:cancel_task@turn0" in wrong_sequence.violations
 
 
 def test_scenario_result_carries_category() -> None:
@@ -90,7 +208,13 @@ def test_scenario_result_carries_category() -> None:
     )
     result = evaluator.evaluate_scenario(
         scenario,
-        [TurnRecord(reply_text="Still working.", events=["status_query"])],
+        [
+            TurnRecord(
+                reply_text="Still working.",
+                params=_capture_params({"action": "list_agents"}),
+                events=["status_query"],
+            )
+        ],
     )
     assert result.category == "status"
 
@@ -133,7 +257,7 @@ def test_coached_keyword_reply_without_events_fails() -> None:
             ScenarioTurn(
                 actor="user",
                 message="Cancel the task now.",
-                expected_behaviors=["cancel_task", "confirm_cancel_effect"],
+                expected_behaviors=["cancel_task", "report_cancel_outcome"],
             )
         ]
     )
@@ -153,6 +277,121 @@ def test_coached_keyword_reply_without_events_fails() -> None:
     assert not result.passed
     assert result.score == 0.0
     assert "missing:cancel_task@turn0" in result.violations
+
+
+def test_positive_lifecycle_checks_reject_raw_event_labels() -> None:
+    evaluator = LifecycleEvaluator()
+    cases = (
+        ("spawn_subagent", "spawn"),
+        ("report_active_subagent_status", "status_query"),
+        ("ack_scope_change", "send"),
+        ("apply_scope_change_to_task", "send"),
+        ("pause_task", "pause"),
+        ("resume_task", "resume"),
+        ("cancel_task", "cancel"),
+        ("report_cancel_outcome", "cancel"),
+        ("final_summary_to_stakeholder", "share"),
+    )
+    for behavior, event in cases:
+        scenario = _scenario(
+            [
+                ScenarioTurn(
+                    actor="user",
+                    message="Exercise one lifecycle behavior.",
+                    expected_behaviors=[behavior],
+                )
+            ]
+        )
+        record = TurnRecord(reply_text="Done.", actions=["TASKS"], events=[event])
+
+        result = evaluator.evaluate_scenario(scenario, [record])
+
+        assert result.score == 0.0, behavior
+        assert f"missing:{behavior}@turn0" in result.violations
+
+
+def test_spawn_requires_exact_action_and_nonempty_task_capture() -> None:
+    evaluator = LifecycleEvaluator()
+    scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Delegate this work.",
+                expected_behaviors=["spawn_subagent"],
+            )
+        ]
+    )
+    missing_task = TurnRecord(
+        params=_capture_params({"action": "spawn_agent", "task": "  "}),
+        events=["spawn"],
+    )
+    wrong_action = TurnRecord(
+        params=_capture_params({"action": "list_agents", "task": "Do work"}),
+        events=["spawn"],
+    )
+    valid = TurnRecord(
+        params=_capture_params({"action": "create", "task": "Do work"}),
+        events=["spawn"],
+    )
+
+    assert not evaluator.evaluate_scenario(scenario, [missing_task]).passed
+    assert not evaluator.evaluate_scenario(scenario, [wrong_action]).passed
+    assert evaluator.evaluate_scenario(scenario, [valid]).passed
+
+
+def test_scope_change_requires_nonempty_update_capture() -> None:
+    evaluator = LifecycleEvaluator()
+    scenario = _scenario(
+        [
+            ScenarioTurn(
+                actor="user",
+                message="Change scope: prioritize tests.",
+                expected_behaviors=[
+                    "ack_scope_change",
+                    "apply_scope_change_to_task",
+                ],
+            )
+        ]
+    )
+    empty_send = TurnRecord(
+        reply_text="Understood.",
+        params=_capture_params({"action": "send", "input": "  "}),
+        events=["send"],
+    )
+    empty_resume = TurnRecord(
+        reply_text="Understood.",
+        params=_capture_params({"action": "control", "controlAction": "resume"}),
+        events=["resume"],
+    )
+    valid_send = TurnRecord(
+        reply_text="Understood.",
+        params=_capture_params({"action": "send", "input": "Prioritize tests first."}),
+        events=["send"],
+    )
+    valid_resume = TurnRecord(
+        reply_text="Understood.",
+        params=_capture_params(
+            {
+                "action": "control",
+                "controlAction": "resume",
+                "instruction": "Prioritize tests first.",
+            }
+        ),
+        events=["resume"],
+    )
+    valid_reopen = TurnRecord(
+        reply_text="Understood.",
+        params=_capture_params(
+            {"action": "reopen", "instruction": "Prioritize tests first."}
+        ),
+        events=["resume"],
+    )
+
+    assert not evaluator.evaluate_scenario(scenario, [empty_send]).passed
+    assert not evaluator.evaluate_scenario(scenario, [empty_resume]).passed
+    assert evaluator.evaluate_scenario(scenario, [valid_send]).passed
+    assert evaluator.evaluate_scenario(scenario, [valid_resume]).passed
+    assert evaluator.evaluate_scenario(scenario, [valid_reopen]).passed
 
 
 def test_per_turn_isolation_event_in_turn1_does_not_satisfy_turn2() -> None:
@@ -184,8 +423,19 @@ def test_per_turn_isolation_event_in_turn1_does_not_satisfy_turn2() -> None:
     assert "missing:ack_scope_change@turn1" in result.violations
     # And the correct per-turn events pass.
     good = [
-        TurnRecord(reply_text="Stopped for now.", events=["pause"]),
-        TurnRecord(reply_text="Back underway.", events=["resume", "send"]),
+        TurnRecord(
+            reply_text="Stopped for now.",
+            params=_capture_params({"action": "control", "controlAction": "pause"}),
+            events=["pause"],
+        ),
+        TurnRecord(
+            reply_text="Back underway.",
+            params=_capture_params(
+                {"action": "control", "controlAction": "resume"},
+                {"action": "send", "input": "Prioritize tests first."},
+            ),
+            events=["resume", "send"],
+        ),
     ]
     assert evaluator.evaluate_scenario(scenario, good).passed
 
@@ -239,6 +489,7 @@ def test_status_report_must_be_grounded_in_registry() -> None:
 
     grounded = TurnRecord(
         reply_text="Collection finished, analysis underway.",
+        params=_capture_params({"action": "list_agents"}),
         events=["status_query"],
     )
     assert evaluator.evaluate_scenario(scenario, [grounded]).passed
@@ -349,7 +600,8 @@ def test_final_summary_requires_grounding_event() -> None:
 
     grounded = TurnRecord(
         reply_text="Here is the wrap-up: delivered X, open risk Y.",
-        events=["status_query"],
+        params=_capture_params({"action": "share", "taskId": "task-1"}),
+        events=["share"],
     )
     assert evaluator.evaluate_scenario(scenario, [grounded]).passed
 
@@ -381,7 +633,14 @@ def test_summary_metric_reports_real_rate_never_overall_fallback() -> None:
         category="completion_summary",
     )
     cancel_pass = evaluator.evaluate_scenario(
-        cancel_scenario, [TurnRecord(reply_text="Shut down.", events=["cancel"])]
+        cancel_scenario,
+        [
+            TurnRecord(
+                reply_text="Cancellation captured.",
+                params=_capture_params({"action": "cancel"}),
+                events=["cancel"],
+            )
+        ],
     )
     summary_fail = evaluator.evaluate_scenario(
         summary_scenario,
@@ -413,6 +672,7 @@ def test_category_metrics_use_scenario_metadata_not_id_substrings() -> None:
         [
             TurnRecord(
                 reply_text="Collection finished, analysis underway.",
+                params=_capture_params({"action": "list_agents"}),
                 events=["status_query"],
             )
         ],
@@ -435,7 +695,14 @@ def test_compute_metrics_aggregates_pass_rate() -> None:
         scenario_id="cancel_task",
     )
     good = evaluator.evaluate_scenario(
-        scenario, [TurnRecord(reply_text="Shut down.", events=["cancel"])]
+        scenario,
+        [
+            TurnRecord(
+                reply_text="Cancellation captured.",
+                params=_capture_params({"action": "cancel"}),
+                events=["cancel"],
+            )
+        ],
     )
     bad = evaluator.evaluate_scenario(scenario, [TurnRecord(reply_text="ok")])
     metrics = evaluator.compute_metrics([good, bad])

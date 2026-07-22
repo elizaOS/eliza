@@ -58,7 +58,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
           fetch-depth: 0
@@ -168,7 +168,7 @@ jobs:
     timeout-minutes: 5
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'comment-cleanup')
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
           fetch-depth: 0
@@ -199,7 +199,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
 
@@ -253,7 +253,7 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
           # `audit:test-realness` compares touched tests against origin/develop.
@@ -326,7 +326,7 @@ jobs:
       - name: Test realness ratchet
         run: bun run audit:test-realness
 
-  # `bun run lint` is intentionally separate from the static scans above: the
+  # `bun run lint:check` is intentionally separate from the static scans above: the
   # Turbo lint task depends on selected package builds, so it needs the normal
   # build-enabled workspace setup rather than the lean no-postinstall path.
   develop-lint-gate:
@@ -334,10 +334,10 @@ jobs:
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE == 'false' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           submodules: false
-          # Full history so `turbo run lint --affected` can resolve the PR's
+          # Full history so `turbo run lint:check --affected` can resolve the PR's
           # merge base (#12341); on a shallow clone turbo safely degrades to
           # linting the whole graph.
           fetch-depth: 0
@@ -362,12 +362,12 @@ jobs:
       # push/merge_group lint the whole graph (exhaustive + turbo cache seeding).
       # Turbo re-derives per-task hashes, so affected scoping never under-lints a
       # genuinely changed package (#12341).
-      - name: Run lint (affected — PR)
+      - name: Run lint check (affected — PR)
         if: github.event_name == 'pull_request'
-        run: node packages/scripts/run-turbo.mjs run lint --affected
+        run: node packages/scripts/run-turbo.mjs run lint:check --affected
         env:
           TURBO_SCM_BASE: ${{ github.event.pull_request.base.sha }}
 
-      - name: Run lint (full — push/merge_group)
+      - name: Run lint check (full — push/merge_group)
         if: github.event_name != 'pull_request'
-        run: bun run lint
+        run: bun run lint:check

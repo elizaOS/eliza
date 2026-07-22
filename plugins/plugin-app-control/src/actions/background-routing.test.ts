@@ -144,14 +144,17 @@ describe("BACKGROUND stays on the planner surface for undo/redo/reset follow-ups
 		],
 		["Undo the background change.", ["RESET_SETTINGS"]],
 		["revert the wallpaper", ["UPDATE_SETTINGS"]],
-	])("keeps BACKGROUND exposed for %j under a settings narrow", (messageText, candidateActions) => {
-		const { tiered } = routeTurn({
-			messageText,
-			candidateActions,
-			selectedContexts: ["settings"],
-		});
-		expect(exposedParents(tiered)).toContain("BACKGROUND");
-	});
+	])(
+		"keeps BACKGROUND exposed for %j under a settings narrow",
+		(messageText, candidateActions) => {
+			const { tiered } = routeTurn({
+				messageText,
+				candidateActions,
+				selectedContexts: ["settings"],
+			});
+			expect(exposedParents(tiered)).toContain("BACKGROUND");
+		},
+	);
 
 	it("keeps BACKGROUND exposed when Stage-1 names background-scoped candidates", () => {
 		// A live model that DOES stay on-topic emits names like these; the

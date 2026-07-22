@@ -7,8 +7,8 @@ Web Shopping, Card Game, Householding, and Web Browsing. Registered in the suite
 ## Run
 
 ```bash
-# Direct, from this directory — mock runtime (no API keys)
-python -m elizaos_agentbench.cli run --output ./benchmark_results
+# Explicit fixture smoke — all eight adapters, no API keys
+python -m elizaos_agentbench.cli run --data-mode fixture --runtime mock --output ./benchmark_results
 
 # Direct — Eliza TS bridge runtime
 python -m elizaos_agentbench.cli run --runtime bridge --output ./benchmark_results
@@ -24,7 +24,7 @@ python -m benchmarks.orchestrator run --benchmarks agentbench --provider <p> --m
 
 ```bash
 # Mock runtime runs without any external dependencies or API keys
-python -m elizaos_agentbench.cli run --runtime mock --max-tasks 2 --output /tmp/ab-smoke
+python -m elizaos_agentbench.cli run --data-mode fixture --runtime mock --max-tasks 2 --output /tmp/ab-smoke
 
 # Dry-run preflight (allows zero-task environments)
 python -m elizaos_agentbench.cli run --dry-run --allow-empty --output /tmp/ab-dry
@@ -59,6 +59,10 @@ pytest elizaos_agentbench/tests/test_upstream_scoring.py -v  # scoring contracts
 
 - Results write to `./benchmark_results/` (or `--output` path): `agentbench-results.json`,
   `agentbench-report.md`, `agentbench-detailed.json`.
+- Full `--env all` resolves the exact eight-environment corpus (1,264 test
+  tasks; 13,904 with edge expansion) for count/validation, then exits
+  unsupported before model calls until Avalon, ALFWorld, WebShop, and Mind2Web
+  runtime parity exists. Explicit environment selections are diagnostic only.
 - Scored by `_score_from_agentbench_json` in `registry/scores.py`.
 - Compare against the public leaderboard: <https://llmbench.ai/agent/data>.
 - KG environment needs `AGENTBENCH_KG_SPARQL_URL` for full SPARQL backend (Virtuoso).

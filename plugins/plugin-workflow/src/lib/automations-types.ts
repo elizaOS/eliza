@@ -372,6 +372,12 @@ export interface AutomationItem {
   schedules: TriggerSummary[];
   room?: AutomationRoomBinding | null;
   lastExecution?: AutomationLastExecution;
+  executionFetchError?: string;
+}
+
+export interface AutomationExecutionFetchError {
+  workflowId: string;
+  error: string;
 }
 
 export interface AutomationSummary {
@@ -387,4 +393,5 @@ export interface AutomationListResponse {
   summary: AutomationSummary;
   workflowStatus: unknown;
   workflowFetchError: string | null;
+  executionFetchErrors: AutomationExecutionFetchError[];
 }

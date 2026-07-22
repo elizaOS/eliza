@@ -36,6 +36,12 @@ plugins/plugin-workflow/src/services/smithers-runtime.ts
 # still require changed Vitest coverage. Remove if TSX entrypoints enter LCOV.
 packages/app/src/main.tsx
 
+# Scaffolding asset copied into generated projects: importing it in the
+# repository boots a React application rather than exercising the CLI template
+# contract, so it cannot appear in the package's in-process LCOV. The real
+# generated-project build and Biome contracts cover this asset end to end.
+packages/elizaos/templates/min-project/src/index.tsx
+
 # Public `@elizaos/agent` barrel: a pure re-export surface (`export *` /
 # `export { ... } from ...`) whose own executable code is only the four lazy
 # cloud-route wrappers. Its transitive graph re-exports the already-excluded
@@ -49,3 +55,12 @@ packages/app/src/main.tsx
 # tested for real. Remove this line if the barrel's export graph stops
 # transitively requiring built plugin dists in the pre-build coverage lane.
 packages/agent/src/index.ts
+
+# CI check-script (UI-determinism classifier), not a shippable product module
+# and never imported by any Vitest/Bun suite, so it structurally cannot appear
+# in the changed-files LCOV report. It is exercised for real by its own
+# `--self-test` (package.json `audit:ui-determinism:self-test`) plus the full
+# `audit:ui-determinism` run in the Quality/Develop gate lane, both of which
+# assert the classifier's behavior directly. Delete this entry if the script is
+# ever refactored so its logic lives in a Vitest-instrumented module.
+packages/scripts/audit-ui-determinism.mjs

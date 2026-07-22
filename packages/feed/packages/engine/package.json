@@ -36,7 +36,7 @@
     "@feed/pack-default": "workspace:*",
     "@feed/shared": "workspace:*",
     "@fal-ai/client": "^1.8.1",
-    "hono": "4.12.25",
+    "hono": "4.12.27",
     "xml2js": "^0.6.2"
   },
   "peerDependencies": {

@@ -338,6 +338,9 @@ vi.mock("./components/character/CharacterEditor", () => ({
 vi.mock("./components/pages/LauncherSurface", () => ({
   LauncherSurface: () => <div data-testid="launcher-surface" />,
 }));
+vi.mock("./widgets/WidgetHost", () => ({
+  WidgetHost: () => <div data-testid="home-widget-host" />,
+}));
 vi.mock("./components/settings/SecretsManagerSection", () => ({
   VaultModal: () => null,
 }));

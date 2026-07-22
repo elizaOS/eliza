@@ -136,7 +136,7 @@ ElizaClient.prototype.generateWorkflowDefinition = async function (
       method: "POST",
       body: JSON.stringify(request),
     },
-    { timeoutMs: 120_000 },
+    { timeoutMs: 330_000 },
   );
 };
 
@@ -154,7 +154,7 @@ ElizaClient.prototype.resolveWorkflowClarification = async function (
       method: "POST",
       body: JSON.stringify(request),
     },
-    { timeoutMs: 120_000 },
+    { timeoutMs: 330_000 },
   );
 };
 
@@ -196,9 +196,17 @@ ElizaClient.prototype.runWorkflowDefinition = async function (
 ): Promise<WorkflowExecution> {
   const result = await this.fetch<{
     execution?: WorkflowExecution;
-  }>(`/api/workflow/workflows/${encodeURIComponent(id)}/run`, {
-    method: "POST",
-  });
+  }>(
+    `/api/workflow/workflows/${encodeURIComponent(id)}/run`,
+    {
+      method: "POST",
+    },
+    // The run route returns the completed execution synchronously. Smithers
+    // workflows can legitimately outlive the generic 10-second JSON budget;
+    // aborting only the client makes a successful server run look failed and
+    // encourages an unsafe duplicate retry.
+    { timeoutMs: 11 * 60_000 },
+  );
   if (!result.execution) {
     throw new Error("Workflow run response did not include an execution.");
   }

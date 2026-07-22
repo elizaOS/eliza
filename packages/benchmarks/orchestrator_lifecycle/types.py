@@ -16,7 +16,7 @@ class BehaviorTag(str, Enum):
     PAUSE_TASK = "pause_task"
     RESUME_TASK = "resume_task"
     CANCEL_TASK = "cancel_task"
-    CONFIRM_CANCEL = "confirm_cancel_effect"
+    REPORT_CANCEL_OUTCOME = "report_cancel_outcome"
     FINAL_SUMMARY = "final_summary_to_stakeholder"
 
 
@@ -41,10 +41,10 @@ class Scenario:
 class TurnRecord:
     """What the agent actually did on one user turn.
 
-    ``events`` are the typed lifecycle events extracted from the planner's
-    selected actions + params (see ``events.extract_lifecycle_events``);
-    ``reply_text`` is the user-facing prose. The evaluator scores these —
-    never keyword matches on the prose.
+    ``events`` normalize the planner's selected actions and params for
+    forbidden-operation checks. Positive lifecycle checks use the exact shared
+    capture-only result in ``params``; ``reply_text`` supplies only structural
+    reply/question signals, never keyword matches.
     """
 
     reply_text: str = ""

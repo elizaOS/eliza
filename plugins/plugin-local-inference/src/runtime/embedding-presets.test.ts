@@ -31,15 +31,20 @@ describe("embedding preset hardware selection", () => {
 		["cuda", "linux"],
 		["vulkan", "linux"],
 		["metal", "darwin"],
-	] as const)("uses an accelerated preset when a %s backend is detected", (backend, platform) => {
-		const hardware = probe({
-			platform,
-			gpu: { backend, totalVramGb: 8, freeVramGb: 7 },
-		});
+	] as const)(
+		"uses an accelerated preset when a %s backend is detected",
+		(backend, platform) => {
+			const hardware = probe({
+				platform,
+				gpu: { backend, totalVramGb: 8, freeVramGb: 7 },
+			});
 
-		expect(selectEmbeddingTierFromHardware(hardware)).toBe("standard");
-		expect(selectEmbeddingPresetFromHardware(hardware).gpuLayers).toBe("auto");
-	});
+			expect(selectEmbeddingTierFromHardware(hardware)).toBe("standard");
+			expect(selectEmbeddingPresetFromHardware(hardware).gpuLayers).toBe(
+				"auto",
+			);
+		},
+	);
 
 	it("keeps CPU fallback when no accelerator is detected", () => {
 		expect(selectEmbeddingPresetFromHardware(probe()).gpuLayers).toBe(0);

@@ -68,17 +68,14 @@ describe("real ContactsWeb parser contract", () => {
   describe("ContactsWeb itself enforces the documented 1..500 limit", () => {
     // Hit the real parser directly (bypassing loadContactsState's pre-clamp) to
     // prove the upstream contract these consumers depend on still holds.
-    it.each([
-      0,
-      -1,
-      501,
-      Number.POSITIVE_INFINITY,
-      Number.NaN,
-    ])("rejects out-of-range limit %s", async (limit) => {
-      await expect(realWeb.listContacts({ limit })).rejects.toThrow(
-        "limit must be between 1 and 500",
-      );
-    });
+    it.each([0, -1, 501, Number.POSITIVE_INFINITY, Number.NaN])(
+      "rejects out-of-range limit %s",
+      async (limit) => {
+        await expect(realWeb.listContacts({ limit })).rejects.toThrow(
+          "limit must be between 1 and 500",
+        );
+      },
+    );
 
     it("returns the empty {contacts:[]} web shape for valid queries", async () => {
       await expect(

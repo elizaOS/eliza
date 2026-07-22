@@ -72,8 +72,10 @@
     "git-workspace-service": "0.4.5"
   },
   "dependencies": {
+    "@octokit/core": "^7.0.6",
     "@octokit/rest": "^22.0.0",
-    "@smithers-orchestrator/engine": "0.28.0",
+    "universal-user-agent": "^7.0.3",
+    "@smithers-orchestrator/engine": "0.29.0",
     "coding-agent-adapters": "0.16.3",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.21.1",
@@ -81,7 +83,7 @@
     "@elizaos/auth": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.4",
+    "@biomejs/biome": "2.5.5",
     "@electric-sql/pglite": "^0.4.0",
     "@elizaos/core": "workspace:*",
     "@elizaos/logger": "workspace:*",

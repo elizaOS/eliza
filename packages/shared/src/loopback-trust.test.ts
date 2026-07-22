@@ -73,16 +73,12 @@ describe("isLoopbackRemoteAddress", () => {
     expect(isLoopbackRemoteAddress(addr)).toBe(true);
   });
 
-  it.each([
-    "10.0.0.8",
-    "203.0.113.9",
-    "",
-    null,
-    undefined,
-    "192.168.1.1",
-  ])("rejects non-loopback peer %s", (addr) => {
-    expect(isLoopbackRemoteAddress(addr)).toBe(false);
-  });
+  it.each(["10.0.0.8", "203.0.113.9", "", null, undefined, "192.168.1.1"])(
+    "rejects non-loopback peer %s",
+    (addr) => {
+      expect(isLoopbackRemoteAddress(addr)).toBe(false);
+    },
+  );
 });
 
 describe("proxyClientHeaderBlocksLocalTrust", () => {

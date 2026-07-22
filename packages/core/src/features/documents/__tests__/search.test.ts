@@ -511,34 +511,34 @@ describe("DocumentService.searchDocuments", () => {
 				([modelType]) => modelType === ModelType.TEXT_EMBEDDING,
 			).length;
 
-		it.each([
-			"vector",
-			"hybrid",
-		] as const)("%s mode threads turnMessageId so the in-run recall embed adopts the search embed — one round-trip", async (mode) => {
-			const { rt, startRun } = buildEmbedCountingRuntime();
-			const svc = buildService(rt);
-			const text = "what is the escalation policy?";
+		it.each(["vector", "hybrid"] as const)(
+			"%s mode threads turnMessageId so the in-run recall embed adopts the search embed — one round-trip",
+			async (mode) => {
+				const { rt, startRun } = buildEmbedCountingRuntime();
+				const svc = buildService(rt);
+				const text = "what is the escalation policy?";
 
-			await svc.searchDocuments(
-				makeMessage(text),
-				{ roomId: "room-1" as UUID },
-				mode,
-				undefined,
-				{ turnMessageId: TURN_MESSAGE_ID },
-			);
-			expect(rt.searchMemories).toHaveBeenCalled();
-			expect(embedCallCount(rt)).toBe(1);
+				await svc.searchDocuments(
+					makeMessage(text),
+					{ roomId: "room-1" as UUID },
+					mode,
+					undefined,
+					{ turnMessageId: TURN_MESSAGE_ID },
+				);
+				expect(rt.searchMemories).toHaveBeenCalled();
+				expect(embedCallCount(rt)).toBe(1);
 
-			// In-run recall caller (prefetch) presents the same messageId → adopts
-			// the search's pre-run vector instead of re-embedding.
-			startRun();
-			const vector = await embedRecallQuery(
-				rt as unknown as Parameters<typeof embedRecallQuery>[0],
-				text,
-				{ messageId: TURN_MESSAGE_ID },
-			);
-			expect(vector).toEqual([0.1, 0.2, 0.3]);
-			expect(embedCallCount(rt)).toBe(1);
-		});
+				// In-run recall caller (prefetch) presents the same messageId → adopts
+				// the search's pre-run vector instead of re-embedding.
+				startRun();
+				const vector = await embedRecallQuery(
+					rt as unknown as Parameters<typeof embedRecallQuery>[0],
+					text,
+					{ messageId: TURN_MESSAGE_ID },
+				);
+				expect(vector).toEqual([0.1, 0.2, 0.3]);
+				expect(embedCallCount(rt)).toBe(1);
+			},
+		);
 	});
 });

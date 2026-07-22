@@ -82,7 +82,7 @@ const VALID_CODING_STRATEGIES = new Set<Strategy>([
   "drain-soonest-reset",
 ]);
 
-/** Optional process-level strategy fallback. */
+/** Optional coding-only operator override from ELIZA_CODING_ACCOUNT_STRATEGY. */
 function getEnvCodingStrategy(): Strategy | undefined {
   const env =
     typeof process !== "undefined"
@@ -93,7 +93,7 @@ function getEnvCodingStrategy(): Strategy | undefined {
   logger.warn(
     `[coding-account-bridge] ignoring invalid ELIZA_CODING_ACCOUNT_STRATEGY=${JSON.stringify(
       env,
-    )}`,
+    )}; using the provider default`,
   );
   return undefined;
 }
@@ -828,11 +828,12 @@ function makeBridge(pool: AccountPool): CodingAgentSelectorBridge {
       if (candidates.length === 0) return null;
       for (const providerId of candidates) {
         // Explicit caller override > the app's per-provider
-        // config.accountStrategies (same live selectionForProvider read the
-        // anthropic/subscription bridges use, so the rotation-strategy picker
-        // steers coding spawns too) > ELIZA_CODING_ACCOUNT_STRATEGY env >
-        // least-used. Strategy only — the llmText route's accountIds pin the
-        // chat brain's account, not coding sub-agents.
+        // config.accountStrategies > ELIZA_CODING_ACCOUNT_STRATEGY env > the
+        // provider default (Anthropic drains expiring weekly windows; other
+        // providers fall back to least-used). The configured-only read is
+        // deliberate: otherwise Anthropic's built-in default would make the
+        // coding-only env override unreachable. Strategy only — the llmText
+        // route's accountIds pin the chat brain's account, not coding agents.
         const strategy =
           opts?.strategy ??
           configuredAccountStrategyForProvider(providerId) ??

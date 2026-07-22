@@ -36,7 +36,10 @@ export function resolveEnvFile(startDir: string = process.cwd()): string {
 
 export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
   const envPath = resolveEnvFile();
-  if (existsSync(envPath)) {
+  const dotenvDisabled =
+    process.env.ELIZA_BENCH_DISABLE_DOTENV === "1" ||
+    process.env.ELIZA_BENCH_SUBSCRIPTION_CHAT_ONLY === "1";
+  if (!dotenvDisabled && existsSync(envPath)) {
     dotenv.config({ path: envPath });
   }
 

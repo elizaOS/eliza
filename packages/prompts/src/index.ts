@@ -741,6 +741,7 @@ Never simple when message:
 - changes/persists/updates/remembers settings/preferences/identity/persona/response style/future behavior; select settings + relevant context
 
 Domain routing (when context is available):
+- explicit workflow lifecycle (create/list/show/get/edit/activate/deactivate/run/delete/revisions/executions) -> automation + candidateActions=["WORKFLOW"] + parentActionHints=["WORKFLOW"]. WORKFLOW is the canonical direct action; never hint PAGE_DELEGATE, WORKFLOW_CREATE, or CREATE_WORKFLOW for these requests.
 - morning/night/daily check-ins -> tasks; add automation only schedule/cadence asked
 - relationship cadence ("follow up with David", "last talked to Alice", "how long since I spoke with Sam") -> contacts; one-off dated call/text todo -> tasks
 - explicit phone/call/dial third party -> phone + contacts; not calendar just because appointment mentioned
@@ -843,8 +844,9 @@ rules:
 - matching owner life-management tool exists => call it before terminal answer. Calendar creates/updates/conflict checks -> CALENDAR; reminders/alarms/todos/routines/goals/scheduled tasks -> OWNER_REMINDERS/OWNER_ALARMS/OWNER_TODOS/OWNER_ROUTINES/OWNER_GOALS/SCHEDULED_TASKS. A conflict, clarification, preview, confirmation request, or fail-closed no-op belongs in the tool result, not bare messageToUser.
 - task already complete from prior tool result or next step truly needs user speech => no toolCalls, set messageToUser
 - never say "saved", "logged", "scheduled", "sent", "updated", or "done" unless an actual tool result this turn proves it
-- to call a tool, return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"} or native toolCalls; never prose
-- owner goal save/create/update/review when OWNER_GOALS is exposed => return {"action":"OWNER_GOALS","parameters":{"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } },"thought":"..."} rather than messageToUser
+- native toolCalls: pass each argument as a direct field in that tool's args object exactly as its schema declares; never nest arguments under \`parameters\` unless the tool schema itself declares a \`parameters\` field
+- plain-JSON fallback only (when native tool calls are unavailable): return exactly {"action":"TOOL_NAME","parameters":{...},"thought":"short reason"}; never put that envelope inside a native tool's args
+- owner goal save/create/update/review when OWNER_GOALS is exposed => native OWNER_GOALS args are {"action":"create|update|review","intent":"...","title":"...","confirmed":true|false,"details":{"description":"...","successCriteria":{"summary":"..."},"supportStrategy":{"summary":"..."} } }; only the plain-JSON fallback wraps those args in {"action":"OWNER_GOALS","parameters":{...},"thought":"..."}; never use messageToUser
 - never invent tool names, connector names, providers, ids, benchmark ids
 
 return:

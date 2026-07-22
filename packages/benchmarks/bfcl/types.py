@@ -96,6 +96,34 @@ MEMORY_CATEGORIES: list[BFCLCategory] = [
 
 AGENTIC_CATEGORIES: list[BFCLCategory] = WEB_SEARCH_CATEGORIES + MEMORY_CATEGORIES
 
+# The automatic comparison campaign is pinned to the last BFCL v3 scoring
+# corpus published in the official Hugging Face dataset. Retired REST/SQL and
+# v4 agentic files are intentionally outside this profile.
+BFCL_V3_DATASET_REVISION = "61fc0608cfd831fcfbbaa676ebdfef0ed963eeda"
+BFCL_V3_SCORING_CATEGORY_COUNTS: dict[BFCLCategory, int] = {
+    BFCLCategory.SIMPLE: 400,
+    BFCLCategory.JAVA: 100,
+    BFCLCategory.JAVASCRIPT: 50,
+    BFCLCategory.MULTIPLE: 200,
+    BFCLCategory.PARALLEL: 200,
+    BFCLCategory.PARALLEL_MULTIPLE: 200,
+    BFCLCategory.IRRELEVANCE: 240,
+    BFCLCategory.LIVE_SIMPLE: 258,
+    BFCLCategory.LIVE_MULTIPLE: 1053,
+    BFCLCategory.LIVE_PARALLEL: 16,
+    BFCLCategory.LIVE_PARALLEL_MULTIPLE: 24,
+    BFCLCategory.LIVE_RELEVANCE: 18,
+    BFCLCategory.LIVE_IRRELEVANCE: 882,
+    BFCLCategory.MULTI_TURN_BASE: 200,
+    BFCLCategory.MULTI_TURN_MISS_FUNC: 200,
+    BFCLCategory.MULTI_TURN_MISS_PARAM: 200,
+    BFCLCategory.MULTI_TURN_LONG_CONTEXT: 200,
+}
+BFCL_V3_SCORING_CATEGORIES: list[BFCLCategory] = list(
+    BFCL_V3_SCORING_CATEGORY_COUNTS
+)
+BFCL_V3_SCORING_CASE_COUNT = sum(BFCL_V3_SCORING_CATEGORY_COUNTS.values())
+
 # Categories that require network/external services to evaluate executably.
 # These are marked SKIPPED_NO_CREDENTIALS (and excluded from the accuracy
 # denominator) unless the runner is started with `enable_network=True`.
@@ -317,8 +345,10 @@ class BFCLConfig:
     # Dataset settings
     use_huggingface: bool = True
     huggingface_dataset: str = "gorilla-llm/Berkeley-Function-Calling-Leaderboard"
+    dataset_revision: str = BFCL_V3_DATASET_REVISION
     version: str = "v3"  # BFCL version ("v3" or "v4")
     sample_seed: int = 0
+    require_complete_dataset: bool = False
 
     # Reporting
     save_detailed_logs: bool = True

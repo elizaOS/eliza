@@ -27,6 +27,12 @@ class TestExecutableRuntime:
         assert len(results) == 1
         assert '"result": 2.0' in results[0]
 
+    def test_math_api_logarithm_uses_declared_standard_library_runtime(self) -> None:
+        rt = ExecutableRuntime(involved_classes=["MathAPI"], initial_config={})
+        result = rt._instances["MathAPI"].logarithm(value=8, base=2, precision=20)
+
+        assert float(result["result"]) == pytest.approx(3.0)
+
     def test_network_gated_class_raises_by_default(self) -> None:
         """WebSearchAPI requires network and must NOT silently succeed."""
         with pytest.raises(RuntimeNetworkRequired):

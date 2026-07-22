@@ -11,6 +11,7 @@ import {
   FakeElizaCloudClient,
   keyedRuntime,
   makeMessage,
+  requireDefined,
   resetSdk,
   setCreateBooking,
   setListInfluencers,
@@ -138,7 +139,11 @@ describe("BOOK_INFLUENCER (two-phase money confirm)", () => {
       captureCallback().callback,
     );
     expect(
-      (ask?.data as { confirmationRequired?: boolean }).confirmationRequired,
+      (
+        requireDefined(ask, "confirmation result").data as {
+          confirmationRequired?: boolean;
+        }
+      ).confirmationRequired,
     ).toBe(true);
     expect(calls).toBe(0);
 

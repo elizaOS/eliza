@@ -17,6 +17,8 @@ the in-process plugin used to do via its action handlers.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 import time
@@ -32,16 +34,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _response_markers(response: object) -> set[str]:
-    """Collect normalized action/command markers from a bridge response."""
+def _structured_response_markers(response: object) -> set[str]:
+    """Collect normalized action/command markers from structured response fields."""
     markers = {str(action).upper() for action in getattr(response, "actions", [])}
-    text = str(getattr(response, "text", "") or "")
-    if text:
-        for match in re.findall(r"[A-Za-z_]+", text):
-            normalized = match.upper()
-            if "EXPERIENCE" in normalized or normalized in {"REMEMBER", "SAVE"}:
-                markers.add(normalized)
-
     params = getattr(response, "params", {})
     if isinstance(params, dict):
         candidates = [params]
@@ -54,6 +49,31 @@ def _response_markers(response: object) -> set[str]:
                 if isinstance(value, str) and value.strip():
                     markers.add(value.strip().upper())
     return markers
+
+
+def _record_requested(response: object) -> bool:
+    """Require an explicit record command instead of treating prose as a tool call."""
+    markers = _structured_response_markers(response)
+    if markers.intersection({"RECORD_EXPERIENCE", "REMEMBER", "SAVE"}):
+        return True
+
+    text = str(getattr(response, "text", "") or "")
+    negative_recording = any(
+        phrase in text.lower()
+        for phrase in (
+            "do not remember",
+            "don't remember",
+            "should not remember",
+            "shouldn't remember",
+            "do not save",
+            "don't save",
+            "cannot save",
+            "can't save",
+        )
+    )
+    return not negative_recording and bool(
+        re.search(r"\bRECORD_EXPERIENCE\b", text, flags=re.IGNORECASE)
+    )
 
 
 def _experience_modules():
@@ -87,8 +107,16 @@ class ElizaExperienceConfig:
     num_background_experiences: int = 100
     domains: list[str] = field(
         default_factory=lambda: [
-            "coding", "shell", "network", "database", "security",
-            "ai", "devops", "testing", "documentation", "performance",
+            "coding",
+            "shell",
+            "network",
+            "database",
+            "security",
+            "ai",
+            "devops",
+            "testing",
+            "documentation",
+            "performance",
         ]
     )
     seed: int = 42
@@ -124,6 +152,17 @@ class ElizaBridgeExperienceRunner:
     ) -> dict[str, object]:
         if not self._initialized:
             self.initialize()
+
+        if self.config.num_learning_scenarios <= 0:
+            raise ValueError("num_learning_scenarios must be positive")
+        if self.config.num_retrieval_queries <= 0:
+            raise ValueError("num_retrieval_queries must be positive")
+        if self.config.num_background_experiences < 0:
+            raise ValueError("num_background_experiences cannot be negative")
+        if not self.config.top_k_values or any(
+            k <= 0 for k in self.config.top_k_values
+        ):
+            raise ValueError("top_k_values must contain positive integers")
 
         mods = _experience_modules()
         ExperienceService = mods["ExperienceService"]
@@ -176,10 +215,7 @@ class ElizaBridgeExperienceRunner:
                 f"The result was: {scenario.problem_result}. "
                 f"Please remember that: {scenario.learned_experience.learning}"
             )
-            try:
-                self._client.reset(task_id=f"learn-{i}", benchmark="experience")
-            except Exception as exc:
-                logger.debug("reset failed: %s", exc)
+            self._client.reset(task_id=f"learn-{i}", benchmark="experience")
 
             response = self._client.send_message(
                 text=(
@@ -198,28 +234,8 @@ class ElizaBridgeExperienceRunner:
                 },
             )
             recorded = False
-            markers = _response_markers(response)
             response_text = response.text or ""
-            response_lower = response_text.lower()
-            negative_recording = any(
-                phrase in response_lower
-                for phrase in (
-                    "do not remember",
-                    "don't remember",
-                    "should not remember",
-                    "shouldn't remember",
-                    "do not save",
-                    "don't save",
-                    "cannot save",
-                    "can't save",
-                )
-            )
-            if (
-                "RECORD_EXPERIENCE" in markers
-                or "REMEMBER" in markers
-                or ("SAVE" in markers and not negative_recording)
-                or (bool(response_text.strip()) and not negative_recording)
-            ):
+            if _record_requested(response):
                 exp = svc.record_experience(
                     agent_id="bench-agent",
                     context=scenario.problem_context,
@@ -234,31 +250,60 @@ class ElizaBridgeExperienceRunner:
                 recorded_ids.append(exp.id)
                 recorded = True
                 learning_successes += 1
-            learning_records.append({
-                "scenario_query": scenario.similar_query,
-                "domain": scenario.expected_domain,
-                "response_text": response_text,
-                "experience_recorded": recorded,
-                "latency_ms": (time.time() - t0) * 1000,
-            })
+            learning_records.append(
+                {
+                    "scenario_query": scenario.similar_query,
+                    "domain": scenario.expected_domain,
+                    "response_text": response_text,
+                    "experience_recorded": recorded,
+                    "latency_ms": (time.time() - t0) * 1000,
+                }
+            )
 
         if progress_callback:
             progress_callback("Learning", len(scenarios), len(scenarios))
 
         # ---- Phase 2: retrieval ----
+        retrieval_scenarios = [
+            scenarios[index % len(scenarios)]
+            for index in range(self.config.num_retrieval_queries)
+        ]
+        workload_payload = {
+            "learning": [
+                {
+                    "problem_context": scenario.problem_context,
+                    "problem_action": scenario.problem_action,
+                    "problem_result": scenario.problem_result,
+                    "learning": scenario.learned_experience.learning,
+                    "similar_query": scenario.similar_query,
+                    "expected_domain": scenario.expected_domain,
+                    "expected_learning_keywords": list(
+                        scenario.expected_learning_keywords
+                    ),
+                }
+                for scenario in scenarios
+            ],
+            "retrieval_order": [
+                scenario.similar_query for scenario in retrieval_scenarios
+            ],
+        }
+        workload_sha256 = hashlib.sha256(
+            json.dumps(
+                workload_payload,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
         retrieval_records: list[dict[str, object]] = []
-        for i, scenario in enumerate(scenarios):
+        for i, scenario in enumerate(retrieval_scenarios):
             if progress_callback:
-                progress_callback("Retrieval", i, len(scenarios))
+                progress_callback("Retrieval", i, len(retrieval_scenarios))
             t0 = time.time()
             retrieval_message = (
                 f"I'm facing a similar problem: {scenario.similar_query}. "
                 f"Do you recall any past experiences that could help?"
             )
-            try:
-                self._client.reset(task_id=f"retrieve-{i}", benchmark="experience")
-            except Exception as exc:
-                logger.debug("reset failed: %s", exc)
+            self._client.reset(task_id=f"retrieve-{i}", benchmark="experience")
 
             query_results = svc.query_experiences(
                 ExperienceQuery(query=scenario.similar_query, limit=5)
@@ -269,15 +314,8 @@ class ElizaBridgeExperienceRunner:
             ]
             response = self._client.send_message(
                 text=(
-                    # P2b fix (keyword-echo): the experience rubric grades
-                    # `agent_keyword_incorporation_rate` by checking whether
-                    # the recalled-experience keywords appear verbatim in the
-                    # agent's response. Eliza was recalling the right memory
-                    # but paraphrasing it (e.g. saying "I tried connection
-                    # pooling" instead of repeating the recorded phrase),
-                    # scoring 0.0 vs hermes 1.0. The hermes prompt is shorter
-                    # and the model defaults to quoting; eliza needs an
-                    # explicit instruction to surface the original phrasing.
+                    # The incorporation metric matches exact source keywords,
+                    # so the prompt must preserve the recorded phrasing.
                     f"The user is asking about a problem they're facing. "
                     f"Recall any relevant past experiences from memory and respond.\n\n"
                     f"IMPORTANT: When you recall a past experience, quote the "
@@ -313,21 +351,29 @@ class ElizaBridgeExperienceRunner:
             if scenario.expected_learning_keywords and query_results:
                 for exp in query_results:
                     text = f"{exp.context} {exp.learning}".lower()
-                    if any(kw.lower() in text for kw in scenario.expected_learning_keywords):
+                    if any(
+                        kw.lower() in text for kw in scenario.expected_learning_keywords
+                    ):
                         relevant_found = True
                         break
-            retrieval_records.append({
-                "query": scenario.similar_query,
-                "domain": scenario.expected_domain,
-                "response_text": response.text or "",
-                "keywords_in_response": keywords_in_response,
-                "relevant_experience_found": relevant_found,
-                "experiences_retrieved": len(query_results),
-                "latency_ms": (time.time() - t0) * 1000,
-            })
+            retrieval_records.append(
+                {
+                    "query": scenario.similar_query,
+                    "domain": scenario.expected_domain,
+                    "response_text": response.text or "",
+                    "keywords_in_response": keywords_in_response,
+                    "relevant_experience_found": relevant_found,
+                    "experiences_retrieved": len(query_results),
+                    "latency_ms": (time.time() - t0) * 1000,
+                }
+            )
 
         if progress_callback:
-            progress_callback("Retrieval", len(scenarios), len(scenarios))
+            progress_callback(
+                "Retrieval",
+                len(retrieval_scenarios),
+                len(retrieval_scenarios),
+            )
 
         # ---- Phase 3: direct service comparison ----
         n_scenarios = max(len(scenarios), 1)
@@ -369,19 +415,41 @@ class ElizaBridgeExperienceRunner:
         )
 
         result_dict: dict[str, object] = {
+            "schema_version": 2,
+            "complete": True,
             "mode": "eliza_bridge",
+            "harness": "eliza",
+            "publishable_three_harness": False,
+            "config": {
+                "num_learning_scenarios": self.config.num_learning_scenarios,
+                "num_retrieval_queries": self.config.num_retrieval_queries,
+                "num_background_experiences": self.config.num_background_experiences,
+                "domains": list(self.config.domains),
+                "seed": self.config.seed,
+                "top_k_values": list(self.config.top_k_values),
+            },
+            "workload_sha256": workload_sha256,
+            "expected_learning_scenarios": self.config.num_learning_scenarios,
+            "attempted_learning_scenarios": len(learning_records),
+            "completed_learning_scenarios": len(learning_records),
+            "expected_retrieval_queries": self.config.num_retrieval_queries,
+            "attempted_retrieval_queries": len(retrieval_records),
+            "completed_retrieval_queries": len(retrieval_records),
+            "background_experiences": self.config.num_background_experiences,
             "total_experiences": svc.experience_count,
             "eliza_agent": {
                 "learning_success_rate": learning_successes / n_scenarios,
                 "total_experiences_recorded": len(recorded_ids),
                 "total_experiences_in_service": svc.experience_count,
                 "avg_learning_latency_ms": (
-                    sum(r["latency_ms"] for r in learning_records) / max(len(learning_records), 1)
+                    sum(r["latency_ms"] for r in learning_records)
+                    / max(len(learning_records), 1)
                 ),
                 "agent_recall_rate": agent_recall_hits / n_retrieval,
                 "agent_keyword_incorporation_rate": agent_keyword_hits / n_retrieval,
                 "avg_retrieval_latency_ms": (
-                    sum(r["latency_ms"] for r in retrieval_records) / max(len(retrieval_records), 1)
+                    sum(r["latency_ms"] for r in retrieval_records)
+                    / max(len(retrieval_records), 1)
                 ),
                 "direct_recall_rate": direct_recall_hits / n_scenarios,
                 "direct_mrr": direct_mrr_sum / n_scenarios,

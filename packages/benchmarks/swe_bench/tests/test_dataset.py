@@ -36,6 +36,18 @@ class TestSWEBenchDataset:
             == "SWE-bench/SWE-bench_Multilingual"
         )
 
+    def test_official_sources_are_revision_pinned_with_exact_counts(self) -> None:
+        expected_counts = {
+            SWEBenchVariant.FULL: 2294,
+            SWEBenchVariant.LITE: 300,
+            SWEBenchVariant.VERIFIED: 500,
+            SWEBenchVariant.MULTILINGUAL: 300,
+        }
+        for variant, count in expected_counts.items():
+            source = SWEBenchDataset.DATASET_SOURCES[variant]
+            assert len(source.revision) == 40
+            assert source.expected_test_count == count
+
     def test_get_instances_not_loaded(self) -> None:
         """Test getting instances before loading raises error."""
         dataset = SWEBenchDataset()
@@ -64,8 +76,13 @@ class TestSWEBenchDatasetIntegration:
         dataset = SWEBenchDataset(variant=SWEBenchVariant.LITE)
         await dataset.load()
 
-        assert len(dataset) > 0
-        assert len(dataset) <= 300  # Lite has ~300 instances
+        assert len(dataset) == 300
+        assert dataset.provenance["revision"] == (
+            "69611d31007e1c6731db8bd5b5c3f2d33f5bab6e"
+        )
+        assert dataset.provenance["actual_count"] == 300
+        assert dataset.snapshot_path is not None
+        assert dataset.snapshot_path.is_file()
 
     @pytest.mark.asyncio
     async def test_get_by_repo(self) -> None:

@@ -100,21 +100,21 @@ describe("dispatchRoute captured response finalization", () => {
     expect(Buffer.from(result.bodyBase64, "base64")).toEqual(bytes);
   });
 
-  it.each([
-    true,
-    false,
-  ])("keeps binary bodies as buffers when inProcess=%s", async (inProcess) => {
-    const bytes = Buffer.from([0xff, 0xfe, 0x00, 0x41]);
-    const runtime = runtimeWithHandler((response) => {
-      response.setHeader("content-type", "application/octet-stream");
-      response.end(bytes);
-    });
+  it.each([true, false])(
+    "keeps binary bodies as buffers when inProcess=%s",
+    async (inProcess) => {
+      const bytes = Buffer.from([0xff, 0xfe, 0x00, 0x41]);
+      const runtime = runtimeWithHandler((response) => {
+        response.setHeader("content-type", "application/octet-stream");
+        response.end(bytes);
+      });
 
-    const result = await dispatch(runtime, inProcess);
+      const result = await dispatch(runtime, inProcess);
 
-    expect(Buffer.isBuffer(result?.body)).toBe(true);
-    expect(result?.body).toEqual(bytes);
-  });
+      expect(Buffer.isBuffer(result?.body)).toBe(true);
+      expect(result?.body).toEqual(bytes);
+    },
+  );
 
   it("does not let a charset parameter reclassify binary media as text", async () => {
     // The original substring classifier matched `charset` and decoded these

@@ -24,14 +24,8 @@ logger = logging.getLogger(__name__)
 class Mind2WebEvaluator:
     """Evaluator for Mind2Web benchmark."""
 
-    def __init__(self, *, strict_element_match: bool = False) -> None:
-        """Initialize evaluator.
-
-        Args:
-            strict_element_match: If True, require exact backend_node_id match.
-                                  If False, allow fuzzy matching on attributes.
-        """
-        self.strict_element_match = strict_element_match
+    def __init__(self) -> None:
+        """Initialize the evaluator with the upstream exact-ID scoring contract."""
 
     def evaluate_task(
         self,
@@ -182,35 +176,9 @@ class Mind2WebEvaluator:
         if not predicted_id:
             return False
 
-        target = ground_truth.target_element
-        if target is None:
-            return False
-
-        # Strict match: exact backend_node_id
-        if self.strict_element_match:
-            return predicted_id == target.backend_node_id
-
-        # Fuzzy match: check if predicted_id matches backend_node_id or key attributes
-        if predicted_id == target.backend_node_id:
-            return True
-
-        # Check against all positive candidates
-        for candidate in ground_truth.pos_candidates:
-            if predicted_id == candidate.backend_node_id:
-                return True
-
-            # Check if predicted_id matches any attribute value (id, name, class, etc.)
-            for attr_value in candidate.attributes.values():
-                if predicted_id == attr_value:
-                    return True
-
-                # Partial match for CSS selectors
-                if predicted_id.startswith("#") and attr_value == predicted_id[1:]:
-                    return True
-                if predicted_id.startswith(".") and predicted_id[1:] in attr_value:
-                    return True
-
-        return False
+        return predicted_id in {
+            candidate.backend_node_id for candidate in ground_truth.pos_candidates
+        }
 
     def _check_value(
         self, predicted: str, ground_truth: str, operation: Mind2WebOperation
@@ -222,22 +190,10 @@ class Mind2WebEvaluator:
         if not ground_truth:
             return True  # No expected value
 
-        # Normalize for comparison
-        pred_norm = predicted.strip().lower()
-        gt_norm = ground_truth.strip().lower()
-
-        # Exact match
-        if pred_norm == gt_norm:
-            return True
-
-        if not pred_norm:
-            return False
-
-        # Substring match (predicted contains ground truth)
-        if gt_norm in pred_norm or pred_norm in gt_norm:
-            return True
-
-        return False
+        # Upstream declares the action correct only when token-set F1 is 1.0.
+        # With the operation scored separately, that is equivalent to exact
+        # equality of the case-sensitive value-token sets.
+        return set(predicted.strip().split()) == set(ground_truth.strip().split())
 
     def compute_aggregate_metrics(
         self, results: list[Mind2WebResult]

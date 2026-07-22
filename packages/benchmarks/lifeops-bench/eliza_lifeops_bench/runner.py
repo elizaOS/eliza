@@ -293,6 +293,8 @@ def _with_discriminator_alias(
             kwargs[target_field] = "manage"
             return Action(name=action.name, kwargs=kwargs)
         raw = kwargs.get("action")
+        if action.name == "MESSAGE" and target_field == "operation":
+            raw = kwargs.get("subaction", raw)
         if isinstance(raw, str):
             candidate = aliases.get(raw, raw)
             if candidate in allowed:
@@ -316,8 +318,8 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "read_with_contact. Use source=gmail for email."
     ),
     "ENTITY": (
-        "Manage people and identity records. Use subaction=add, set_identity, "
-        "log_interaction, or list."
+        "Manage people and identity records. Use subaction=create, add, update, "
+        "set_identity, set_relationship, log_interaction, or list."
     ),
     "LIFE_CREATE": (
         "Create a life record. Required: subaction='create', title:str, kind='definition', "
@@ -430,7 +432,19 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
     # P1-5: `create` is the canonical TS subaction; `add` is the legacy alias
     # retained for scenario-corpus compatibility. `create_contact` covers the
     # ENTITY_CREATE_CONTACT promoted form some agents emit.
-    "ENTITY": ("subaction", ["create", "add", "create_contact", "set_identity", "log_interaction", "list"]),
+    "ENTITY": (
+        "subaction",
+        [
+            "create",
+            "add",
+            "create_contact",
+            "update",
+            "set_identity",
+            "set_relationship",
+            "log_interaction",
+            "list",
+        ],
+    ),
     "LIFE_CREATE": ("subaction", ["create"]),
     "LIFE_UPDATE": ("subaction", ["update"]),
     "LIFE_DELETE": ("subaction", ["delete"]),
@@ -438,7 +452,6 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
     "LIFE_SKIP": ("subaction", ["skip"]),
     "LIFE_SNOOZE": ("subaction", ["snooze"]),
     "LIFE_REVIEW": ("subaction", ["review"]),
-    "LIFE_UPDATE": ("subaction", ["update"]),
     "SCHEDULED_TASK_UPDATE": ("subaction", ["update"]),
     "SCHEDULED_TASK_SNOOZE": ("subaction", ["snooze"]),
     # All six spellings used across scenarios, scorer, and TS backend:
@@ -1678,9 +1691,64 @@ def _u_entity(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]
             primary_email=email,
             phones=[kw["phone"]] if kw.get("phone") else [],
             relationship=kw.get("relationship", "acquaintance"),
+            notes=kw.get("notes"),
+            priority_flag=kw.get("priorityFlag") or kw.get("priority_flag"),
         )
         world.add(EntityKind.CONTACT, contact)
         return {"id": contact.id}
+    if sub == "update":
+        contact_id = kw.get("entityId") or kw.get("id")
+        existing = world.contacts.get(contact_id) if isinstance(contact_id, str) else None
+        display_name = kw.get("name") or kw.get("displayName")
+        if existing is None and isinstance(display_name, str) and display_name:
+            matches = [
+                contact
+                for contact in world.contacts.values()
+                if contact.display_name.casefold() == display_name.casefold()
+            ]
+            if len(matches) > 1:
+                raise ValueError(
+                    f"ENTITY/update name is ambiguous: {display_name!r}"
+                )
+            existing = matches[0] if matches else None
+        created = existing is None
+        if existing is None:
+            if not isinstance(display_name, str) or not display_name:
+                raise KeyError("ENTITY/update needs entityId/id or a non-empty name")
+            parts = display_name.split(maxsplit=1)
+            contact_id = (
+                contact_id
+                if isinstance(contact_id, str) and contact_id
+                else _synthetic_id("contact_auto", {"n": display_name})
+            )
+            existing = Contact(
+                id=contact_id,
+                display_name=display_name,
+                given_name=parts[0],
+                family_name=parts[1] if len(parts) > 1 else "",
+                primary_email=f"{contact_id}@example.test",
+            )
+            world.add(EntityKind.CONTACT, existing)
+        patches: dict[str, Any] = {}
+        if isinstance(display_name, str) and display_name:
+            parts = display_name.split(maxsplit=1)
+            patches.update(
+                display_name=display_name,
+                given_name=parts[0],
+                family_name=parts[1] if len(parts) > 1 else "",
+            )
+        if "notes" in kw:
+            patches["notes"] = kw["notes"]
+        if "priorityFlag" in kw or "priority_flag" in kw:
+            patches["priority_flag"] = kw.get("priorityFlag") or kw.get("priority_flag")
+        if "importance" in kw:
+            patches["importance"] = int(kw["importance"])
+        if "tags" in kw:
+            patches["tags"] = list(kw["tags"])
+        if not patches:
+            raise ValueError("ENTITY/update contains no supported contact fields")
+        updated = world.update(EntityKind.CONTACT, existing.id, **patches)
+        return {"id": updated.id, "created": created}
     if sub == "set_identity":
         contact_id = _required(kw, "entityId", action=name, sub=sub)
         platform = kw.get("platform")
@@ -1703,6 +1771,55 @@ def _u_entity(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]
             patches["display_name"] = kw["displayName"]
         updated = world.update(EntityKind.CONTACT, contact_id, **patches)
         return {"id": updated.id}
+    if sub == "set_relationship":
+        contact_id = _required(kw, "toEntityId", action=name, sub=sub)
+        relationship_type = _required(kw, "relationshipType", action=name, sub=sub)
+        if not isinstance(contact_id, str) or not contact_id:
+            raise ValueError("ENTITY/set_relationship toEntityId must be a non-empty string")
+        if not isinstance(relationship_type, str) or not relationship_type:
+            raise ValueError(
+                "ENTITY/set_relationship relationshipType must be a non-empty string"
+            )
+        relationship = {
+            "family_of": "family",
+            "co_parent_of": "family",
+            "friend_of": "friend",
+            "colleague_of": "work",
+            "acquaintance_of": "acquaintance",
+        }.get(relationship_type)
+        if relationship is None:
+            raise ValueError(
+                f"ENTITY/set_relationship unsupported relationshipType={relationship_type!r}"
+            )
+        existing = world.contacts.get(contact_id)
+        created = existing is None
+        if existing is None:
+            display_name = contact_id.rsplit("-", maxsplit=1)[-1].replace("_", " ").title()
+            parts = display_name.split(maxsplit=1)
+            existing = Contact(
+                id=contact_id,
+                display_name=display_name,
+                given_name=parts[0],
+                family_name=parts[1] if len(parts) > 1 else "",
+                primary_email=f"{contact_id}@example.test",
+            )
+            world.add(EntityKind.CONTACT, existing)
+        metadata = kw.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            raise ValueError("ENTITY/set_relationship metadata must be an object")
+        updated = world.update(
+            EntityKind.CONTACT,
+            existing.id,
+            relationship=relationship,
+            relationship_type=relationship_type,
+            relationship_evidence=kw.get("evidence"),
+            relationship_metadata=dict(metadata),
+        )
+        return {
+            "id": updated.id,
+            "relationshipType": relationship_type,
+            "created": created,
+        }
     if sub in {"log_interaction", "list"}:
         # No interaction-log entity in LifeWorld; treat list/log_interaction
         # as read-only no-ops so state hash matches.
@@ -2871,6 +2988,69 @@ def _replay_ground_truth(scenario: Scenario, world_factory: WorldFactory) -> str
     return state_hash(expected_world)
 
 
+def _workload_sha256(scenarios: list[Scenario], seeds: int) -> str:
+    """Fingerprint the exact authored workload and seed expansion for publication."""
+    payload = {
+        "schema_version": 1,
+        "seeds_per_scenario": seeds,
+        "scenarios": [
+            {
+                "id": scenario.id,
+                "name": scenario.name,
+                "domain": scenario.domain.value,
+                "mode": scenario.mode.value,
+                "persona": {
+                    "id": scenario.persona.id,
+                    "name": scenario.persona.name,
+                    "traits": scenario.persona.traits,
+                    "background": scenario.persona.background,
+                    "communication_style": scenario.persona.communication_style,
+                    "patience_turns": scenario.persona.patience_turns,
+                },
+                "instruction": scenario.instruction,
+                "ground_truth_actions": [
+                    {"name": action.name, "kwargs": action.kwargs}
+                    for action in scenario.ground_truth_actions
+                ],
+                "required_outputs": scenario.required_outputs,
+                "first_question_fallback": (
+                    {
+                        "canned_answer": scenario.first_question_fallback.canned_answer,
+                        "applies_when": scenario.first_question_fallback.applies_when,
+                    }
+                    if scenario.first_question_fallback is not None
+                    else None
+                ),
+                "world_seed": scenario.world_seed,
+                "max_turns": scenario.max_turns,
+                "description": scenario.description,
+                "now_iso": scenario.now_iso,
+                "success_criteria": scenario.success_criteria,
+                "world_assertions": scenario.world_assertions,
+                "disruptions": [
+                    {
+                        "at_turn": disruption.at_turn,
+                        "kind": disruption.kind,
+                        "payload": disruption.payload,
+                        "note_for_user": disruption.note_for_user,
+                    }
+                    for disruption in scenario.disruptions
+                ],
+                "expected_world_mutation": scenario.expected_world_mutation,
+                "tier": scenario.tier,
+            }
+            for scenario in scenarios
+        ],
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 class LifeOpsBenchRunner:
     """Orchestrates LifeOpsBench runs across a set of scenarios.
 
@@ -2901,6 +3081,10 @@ class LifeOpsBenchRunner:
             raise ValueError("LifeOpsBenchRunner requires agent_fn or agent_factory")
         if world_factory is None:
             raise ValueError("LifeOpsBenchRunner requires world_factory")
+        if concurrency <= 0:
+            raise ValueError("LifeOpsBenchRunner concurrency must be positive")
+        if seeds <= 0:
+            raise ValueError("LifeOpsBenchRunner seeds must be positive")
         self.agent_fn = agent_fn
         self.agent_factory = agent_factory
         self.world_factory = world_factory
@@ -2960,8 +3144,19 @@ class LifeOpsBenchRunner:
             and (mode is None or s.mode == mode)
         ]
         if not scenarios:
-            logger.warning(
-                "No scenarios matched filters (domain=%s, mode=%s)", domain, mode
+            raise ValueError(
+                "No LifeOpsBench scenarios matched filters "
+                f"(domain={domain}, mode={mode})"
+            )
+
+        expected_keys = [
+            (scenario.id, scenario.world_seed + seed_offset)
+            for scenario in scenarios
+            for seed_offset in range(self.seeds)
+        ]
+        if len(set(expected_keys)) != len(expected_keys):
+            raise ValueError(
+                "LifeOpsBench workload contains duplicate (scenario_id, seed) pairs"
             )
 
         semaphore = asyncio.Semaphore(self.concurrency)
@@ -2972,6 +3167,12 @@ class LifeOpsBenchRunner:
                 tasks.append(self._run_one_guarded(semaphore, scenario, seed))
 
         results = await asyncio.gather(*tasks)
+        completed_keys = [(result.scenario_id, result.seed) for result in results]
+        if completed_keys != expected_keys:
+            raise RuntimeError(
+                "LifeOpsBench completed workload does not match the scheduled "
+                f"workload: expected={expected_keys!r}, completed={completed_keys!r}"
+            )
         scenarios_by_id = {s.id: s for s in scenarios}
         bench_result = compile_benchmark_result(
             list(results),
@@ -2987,6 +3188,18 @@ class LifeOpsBenchRunner:
         bench_result.agent_cost_usd = self._agent_spent_usd
         bench_result.eval_cost_usd = self._eval_spent_usd
         bench_result.total_cost_usd = self._agent_spent_usd + self._eval_spent_usd
+        bench_result.expected_run_count = len(expected_keys)
+        bench_result.completed_run_count = len(completed_keys)
+        bench_result.successful_run_count = sum(
+            result.error is None
+            and result.terminated_reason not in {"error", "timeout", "cost_exceeded"}
+            for result in results
+        )
+        bench_result.complete = (
+            bench_result.completed_run_count == bench_result.expected_run_count
+            and bench_result.successful_run_count == bench_result.expected_run_count
+        )
+        bench_result.workload_sha256 = _workload_sha256(scenarios, self.seeds)
         return bench_result
 
     async def _run_one_guarded(
@@ -3477,6 +3690,22 @@ class LifeOpsBenchRunner:
         output_dir: str = "lifeops_bench_results",
     ) -> str:
         """Serialize a BenchmarkResult to JSON under `output_dir` and return the path."""
+        if not result.complete:
+            raise RuntimeError(
+                "refusing to publish incomplete LifeOpsBench result: "
+                f"successful={result.successful_run_count}/"
+                f"{result.expected_run_count}, completed={result.completed_run_count}"
+            )
+        if (
+            result.expected_run_count <= 0
+            or result.completed_run_count != result.expected_run_count
+            or result.successful_run_count != result.expected_run_count
+            or not re.fullmatch(r"[0-9a-f]{64}", result.workload_sha256)
+        ):
+            raise RuntimeError(
+                "refusing to publish LifeOpsBench result with invalid completeness "
+                "or workload provenance"
+            )
         os.makedirs(output_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(result.model_name)).strip("-") or "model"

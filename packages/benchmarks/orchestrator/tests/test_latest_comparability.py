@@ -79,12 +79,12 @@ def _code_agent_row(
     return row
 
 
-def test_latest_comparability_allows_close_matching_scores(tmp_path: Path) -> None:
+def test_latest_comparability_allows_different_scores_for_aligned_rows(tmp_path: Path) -> None:
     latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_json(latest / "index.json", _index("woobench"))
-    _write_json(latest / "woobench__eliza.json", _row("woobench", "eliza", 0.80))
-    _write_json(latest / "woobench__hermes.json", _row("woobench", "hermes", 0.82))
-    _write_json(latest / "woobench__openclaw.json", _row("woobench", "openclaw", 0.84))
+    _write_json(latest / "woobench__eliza.json", _row("woobench", "eliza", 0.0))
+    _write_json(latest / "woobench__hermes.json", _row("woobench", "hermes", 0.5))
+    _write_json(latest / "woobench__openclaw.json", _row("woobench", "openclaw", 1.0))
 
     report = validate_latest_comparability(tmp_path, tolerance=0.08)
 
@@ -105,7 +105,7 @@ def test_latest_comparability_flags_missing_required_rows(tmp_path: Path) -> Non
     assert report.findings[0].value == "openclaw"
 
 
-def test_latest_comparability_flags_mixed_signatures_and_score_spread(
+def test_latest_comparability_flags_mixed_recorded_cohorts(
     tmp_path: Path,
 ) -> None:
     latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
@@ -113,6 +113,24 @@ def test_latest_comparability_flags_mixed_signatures_and_score_spread(
     eliza = _row("mt_bench", "eliza", 0.1, "cmp-a")
     hermes = _row("mt_bench", "hermes", 0.9, "cmp-a")
     openclaw = _row("mt_bench", "openclaw", 0.9, "cmp-b")
+    _write_json(latest / "mt_bench__eliza.json", eliza)
+    _write_json(latest / "mt_bench__hermes.json", hermes)
+    _write_json(latest / "mt_bench__openclaw.json", openclaw)
+
+    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+
+    reasons = {finding.reason for finding in report.findings}
+    assert reasons == {"mixed_comparison_signatures"}
+
+
+def test_latest_comparability_flags_config_drift_hidden_by_recorded_cohort(
+    tmp_path: Path,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_json(latest / "index.json", _index("mt_bench"))
+    eliza = _row("mt_bench", "eliza", 0.1, "cmp-a")
+    hermes = _row("mt_bench", "hermes", 0.9, "cmp-a")
+    openclaw = _row("mt_bench", "openclaw", 0.9, "cmp-a")
     openclaw["extra_config"] = {"question_set": "different"}
     _write_json(latest / "mt_bench__eliza.json", eliza)
     _write_json(latest / "mt_bench__hermes.json", hermes)
@@ -121,11 +139,37 @@ def test_latest_comparability_flags_mixed_signatures_and_score_spread(
     report = validate_latest_comparability(tmp_path, tolerance=0.08)
 
     reasons = {finding.reason for finding in report.findings}
-    assert "mixed_comparison_signatures" in reasons
-    assert "score_spread_exceeds_tolerance" in reasons
+    assert reasons == {"mixed_comparison_signatures"}
 
 
-def test_latest_comparability_allows_known_harness_specific_score_spread(
+def test_latest_comparability_requires_one_subscription_cohort(
+    tmp_path: Path,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_json(latest / "index.json", _index("mt_bench"))
+    for agent, run_group_id in (
+        ("eliza", "rg-first"),
+        ("hermes", "rg-first"),
+        ("openclaw", "rg-second"),
+    ):
+        row = _row("mt_bench", agent, 0.5)
+        row.update(
+            {
+                "provider": "claude-subscription",
+                "model": "claude-opus-4-6",
+                "run_group_id": run_group_id,
+            }
+        )
+        _write_json(latest / f"mt_bench__{agent}.json", row)
+
+    report = validate_latest_comparability(tmp_path)
+
+    assert {finding.reason for finding in report.findings} == {
+        "subscription_rows_not_single_cohort"
+    }
+
+
+def test_latest_comparability_allows_score_spread_for_every_benchmark(
     tmp_path: Path,
 ) -> None:
     latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
@@ -158,14 +202,14 @@ def test_latest_comparability_ignores_unsupported_harnesses(tmp_path: Path) -> N
     assert report.ok
 
 
-def test_latest_comparability_uses_relative_tolerance_for_large_scores(
+def test_latest_comparability_does_not_use_tolerance_for_large_scores(
     tmp_path: Path,
 ) -> None:
     latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_json(latest / "index.json", _index("vending_bench"))
     _write_json(latest / "vending_bench__eliza.json", _row("vending_bench", "eliza", 582.5))
-    _write_json(latest / "vending_bench__hermes.json", _row("vending_bench", "hermes", 579.12))
-    _write_json(latest / "vending_bench__openclaw.json", _row("vending_bench", "openclaw", 582.75))
+    _write_json(latest / "vending_bench__hermes.json", _row("vending_bench", "hermes", 10.0))
+    _write_json(latest / "vending_bench__openclaw.json", _row("vending_bench", "openclaw", 1_000.0))
 
     report = validate_latest_comparability(tmp_path, tolerance=0.08)
 

@@ -279,9 +279,13 @@ describe("seedBundledDocuments", () => {
     const documentRow = [...harness.memories.values()].find(
       (m) => (m.metadata as Record<string, unknown>).type === "document",
     );
-    expect(documentRow?.content.text).toBe("Rewritten help topic.");
+    expect(documentRow).toBeDefined();
+    if (!documentRow) {
+      throw new Error("Expected the rewritten document memory to exist");
+    }
+    expect(documentRow.content.text).toBe("Rewritten help topic.");
     expect(
-      (documentRow?.metadata as Record<string, unknown>).bundledDocumentVersion,
+      (documentRow.metadata as Record<string, unknown>).bundledDocumentVersion,
     ).toBe(base.version + 1);
   });
 });

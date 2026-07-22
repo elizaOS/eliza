@@ -483,85 +483,85 @@ describe("SwarmCoordinatorService", () => {
       terminal: { stopReason: "error" },
       reportedMessage: "ACP verification retry ended with stopReason error",
     },
-  ])("escalates and closes the session when a verification retry resolves with $failure", async ({
-    terminal,
-    reportedMessage,
-  }) => {
-    const acp = {
-      ...makeAcpStub({
-        agentType: "codex",
-        workdir: "/tmp/plugin-view",
-        metadata: {
-          onVerificationFail: "retry",
-          maxRetries: 2,
-          retryCount: 0,
-          validator: {
-            service: "app-verification",
-            method: "verifyPlugin",
-            params: { pluginName: "proof-view" },
+  ])(
+    "escalates and closes the session when a verification retry resolves with $failure",
+    async ({ terminal, reportedMessage }) => {
+      const acp = {
+        ...makeAcpStub({
+          agentType: "codex",
+          workdir: "/tmp/plugin-view",
+          metadata: {
+            onVerificationFail: "retry",
+            maxRetries: 2,
+            retryCount: 0,
+            validator: {
+              service: "app-verification",
+              method: "verifyPlugin",
+              params: { pluginName: "proof-view" },
+            },
           },
+        }),
+        updateSessionMetadata: vi.fn(async () => {}),
+        sendPrompt: vi.fn(async () => ({
+          sessionId: "sess-plugin-retry-error",
+          response: "",
+          finalText: "",
+          durationMs: 5,
+          exitCode: 1,
+          ...terminal,
+        })),
+        stopSession: vi.fn(async () => {}),
+      };
+      const verification = {
+        verifyPlugin: vi.fn(async () => ({
+          verdict: "fail",
+          checks: [{ kind: "test", passed: false }],
+        })),
+      };
+      const runtime = makeRuntime({
+        [AcpService.serviceType]: acp,
+        "app-verification": verification,
+      });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+      const received: SwarmEvent[] = [];
+      coordinator.subscribe((event) => received.push(event));
+
+      acp.emit("sess-plugin-retry-error", "task_complete", {
+        response:
+          'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(acp.updateSessionMetadata).toHaveBeenCalledWith(
+        "sess-plugin-retry-error",
+        { retryCount: 1 },
+      );
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({
+        type: "escalation",
+        sessionId: "sess-plugin-retry-error",
+        data: {
+          summary: "App verification failed: test",
+          verification: { verdict: "fail" },
         },
-      }),
-      updateSessionMetadata: vi.fn(async () => {}),
-      sendPrompt: vi.fn(async () => ({
-        sessionId: "sess-plugin-retry-error",
-        response: "",
-        finalText: "",
-        durationMs: 5,
-        exitCode: 1,
-        ...terminal,
-      })),
-      stopSession: vi.fn(async () => {}),
-    };
-    const verification = {
-      verifyPlugin: vi.fn(async () => ({
-        verdict: "fail",
-        checks: [{ kind: "test", passed: false }],
-      })),
-    };
-    const runtime = makeRuntime({
-      [AcpService.serviceType]: acp,
-      "app-verification": verification,
-    });
-    const coordinator = await SwarmCoordinatorService.start(runtime);
-    const received: SwarmEvent[] = [];
-    coordinator.subscribe((event) => received.push(event));
-
-    acp.emit("sess-plugin-retry-error", "task_complete", {
-      response:
-        'PLUGIN_CREATE_DONE {"pluginName":"proof-view","files":["src/index.ts"],"tests":{"passed":1,"failed":0},"lint":"ok","typecheck":"ok"}',
-    });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(acp.updateSessionMetadata).toHaveBeenCalledWith(
-      "sess-plugin-retry-error",
-      { retryCount: 1 },
-    );
-    expect(received).toHaveLength(1);
-    expect(received[0]).toMatchObject({
-      type: "escalation",
-      sessionId: "sess-plugin-retry-error",
-      data: {
-        summary: "App verification failed: test",
-        verification: { verdict: "fail" },
-      },
-    });
-    expect(runtime.reportError).toHaveBeenCalledWith(
-      "SwarmCoordinator.retryCustomValidator",
-      expect.objectContaining({
-        code: "ACP_VERIFICATION_RETRY_FAILED",
-        message: reportedMessage,
-      }),
-      {
-        sessionId: "sess-plugin-retry-error",
-        retry: 1,
-        maxRetries: 2,
-      },
-    );
-    expect(acp.stopSession).toHaveBeenCalledTimes(1);
-    expect(acp.stopSession).toHaveBeenCalledWith("sess-plugin-retry-error");
-    await coordinator.stop();
-  });
+      });
+      expect(runtime.reportError).toHaveBeenCalledWith(
+        "SwarmCoordinator.retryCustomValidator",
+        expect.objectContaining({
+          code: "ACP_VERIFICATION_RETRY_FAILED",
+          message: reportedMessage,
+        }),
+        {
+          sessionId: "sess-plugin-retry-error",
+          retry: 1,
+          maxRetries: 2,
+        },
+      );
+      expect(acp.stopSession).toHaveBeenCalledTimes(1);
+      expect(acp.stopSession).toHaveBeenCalledWith("sess-plugin-retry-error");
+      await coordinator.stop();
+    },
+  );
 
   it("keeps the session alive through fail-retry-pass and stops after the final verdict", async () => {
     const order: string[] = [];
@@ -749,63 +749,63 @@ describe("SwarmCoordinatorService", () => {
       method: "destroyEverything",
       rendered: "destroyEverything",
     },
-  ])("terminally escalates and closes a $label validator method", async ({
-    method,
-    rendered,
-  }) => {
-    const acp = {
-      ...makeAcpStub({
-        agentType: "codex",
-        workdir: "/tmp/wd",
-        metadata: {
-          label: "build-site",
-          validator: {
-            service: "app-verification",
-            method,
-            params: { appName: "demo-app" },
+  ])(
+    "terminally escalates and closes a $label validator method",
+    async ({ method, rendered }) => {
+      const acp = {
+        ...makeAcpStub({
+          agentType: "codex",
+          workdir: "/tmp/wd",
+          metadata: {
+            label: "build-site",
+            validator: {
+              service: "app-verification",
+              method,
+              params: { appName: "demo-app" },
+            },
+          },
+        }),
+        stopSession: vi.fn(async () => undefined),
+      };
+      const runtime = makeRuntime({ [AcpService.serviceType]: acp });
+      const coordinator = await SwarmCoordinatorService.start(runtime);
+      const received: SwarmEvent[] = [];
+      coordinator.subscribe((event) => received.push(event));
+
+      acp.emit("sess-invalid-validator", "task_complete", {});
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({
+        type: "escalation",
+        sessionId: "sess-invalid-validator",
+        data: {
+          summary: `Unsupported app-verification validator method: ${rendered}`,
+          verification: {
+            source: "custom-validator",
+            validator: {
+              service: "app-verification",
+              method: rendered,
+            },
+            verdict: "fail",
           },
         },
-      }),
-      stopSession: vi.fn(async () => undefined),
-    };
-    const runtime = makeRuntime({ [AcpService.serviceType]: acp });
-    const coordinator = await SwarmCoordinatorService.start(runtime);
-    const received: SwarmEvent[] = [];
-    coordinator.subscribe((event) => received.push(event));
-
-    acp.emit("sess-invalid-validator", "task_complete", {});
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(received).toHaveLength(1);
-    expect(received[0]).toMatchObject({
-      type: "escalation",
-      sessionId: "sess-invalid-validator",
-      data: {
-        summary: `Unsupported app-verification validator method: ${rendered}`,
-        verification: {
-          source: "custom-validator",
-          validator: {
-            service: "app-verification",
-            method: rendered,
-          },
-          verdict: "fail",
-        },
-      },
-    });
-    expect(runtime.reportError).toHaveBeenCalledWith(
-      "SwarmCoordinator.runCustomValidatorAndDispatch",
-      expect.objectContaining({
-        code: "APP_VERIFICATION_VALIDATOR_METHOD_INVALID",
-      }),
-      { sessionId: "sess-invalid-validator", suppliedMethod: rendered },
-    );
-    expect(acp.stopSession).toHaveBeenCalledOnce();
-    expect(acp.stopSession).toHaveBeenCalledWith("sess-invalid-validator");
-    expect(coordinator.tasks.get("sess-invalid-validator")).toMatchObject({
-      status: "escalation",
-    });
-    await coordinator.stop();
-  });
+      });
+      expect(runtime.reportError).toHaveBeenCalledWith(
+        "SwarmCoordinator.runCustomValidatorAndDispatch",
+        expect.objectContaining({
+          code: "APP_VERIFICATION_VALIDATOR_METHOD_INVALID",
+        }),
+        { sessionId: "sess-invalid-validator", suppliedMethod: rendered },
+      );
+      expect(acp.stopSession).toHaveBeenCalledOnce();
+      expect(acp.stopSession).toHaveBeenCalledWith("sess-invalid-validator");
+      expect(coordinator.tasks.get("sess-invalid-validator")).toMatchObject({
+        status: "escalation",
+      });
+      await coordinator.stop();
+    },
+  );
 
   it("invokes the agent-decision callback for blocking events", async () => {
     const acp = makeAcpStub({

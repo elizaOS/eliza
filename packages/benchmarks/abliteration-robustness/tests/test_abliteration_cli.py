@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import importlib
+import sys
+from types import ModuleType
+
+import pytest
 
 
 cli = importlib.import_module("benchmarks.abliteration-robustness.cli")
@@ -88,3 +92,54 @@ def test_main_count_scenarios_does_not_require_out(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert '"base": 3' in output
     assert '"edge": 30' in output
+
+
+def test_huggingface_loader_pins_revision_and_records_provenance(monkeypatch) -> None:
+    calls = []
+
+    class Dataset(list):
+        _fingerprint = "fixture-fingerprint"
+
+    module = ModuleType("datasets")
+
+    def load_dataset(*args, **kwargs):  # noqa: ANN001, ANN202
+        calls.append((args, kwargs))
+        return Dataset([{"text": "one"}, {"text": "two"}])
+
+    module.load_dataset = load_dataset  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "datasets", module)
+
+    prompts, provenance = cli._load_prompts_from_hf(
+        cli.DEFAULT_DATASET,
+        cli.DEFAULT_DATASET_REVISION,
+        "test",
+        None,
+    )
+
+    assert prompts == ["one", "two"]
+    assert calls == [
+        (
+            (cli.DEFAULT_DATASET,),
+            {"split": "test", "revision": cli.DEFAULT_DATASET_REVISION},
+        )
+    ]
+    assert provenance["raw_rows"] == 2
+    assert provenance["fingerprint"] == "fixture-fingerprint"
+
+
+def test_huggingface_loader_propagates_data_failure(monkeypatch) -> None:
+    module = ModuleType("datasets")
+
+    def load_dataset(*_args, **_kwargs):  # noqa: ANN202
+        raise OSError("dataset unavailable")
+
+    module.load_dataset = load_dataset  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "datasets", module)
+
+    with pytest.raises(OSError, match="dataset unavailable"):
+        cli._load_prompts_from_hf(
+            cli.DEFAULT_DATASET,
+            cli.DEFAULT_DATASET_REVISION,
+            "test",
+            None,
+        )

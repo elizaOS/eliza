@@ -20,6 +20,7 @@ requiring the TS server to register dynamic per-test actions.
 from __future__ import annotations
 
 import logging
+import os
 import time
 from typing import TYPE_CHECKING
 
@@ -128,6 +129,7 @@ class ElizaADHDBenchRunner:
                 scenario_ids=self.config.scenario_ids,
                 include_memory_scenarios=is_full,
                 include_planning_scenarios=is_full,
+                include_edge_scenarios=self.config.include_edge_scenarios,
             )
             if not scenarios:
                 logger.warning("No scenarios match filters for config '%s'", config_name)
@@ -165,7 +167,8 @@ class ElizaADHDBenchRunner:
                 "duration_ms": duration_ms,
                 "total_scenarios": len(all_results),
                 "model": self.config.model_name,
-                "provider": "eliza",
+                "provider": os.environ.get("BENCHMARK_MODEL_PROVIDER", "eliza"),
+                "harness": os.environ.get("BENCHMARK_HARNESS", "eliza"),
             },
             results=all_results,
             scaling_curves=scaling_curves,
@@ -226,11 +229,9 @@ class ElizaADHDBenchRunner:
         scenario_start = time.time()
         task_id = f"adhdbench-{config_name}-{scale_point.label}-{scenario.id}"
 
-        # Reset bench session per scenario
-        try:
-            self._client.reset(task_id=task_id, benchmark="adhdbench")
-        except Exception as exc:
-            logger.debug("Eliza reset failed (continuing): %s", exc)
+        # Session isolation is part of the scored workload. Continuing after a
+        # failed reset would leak prior-scenario state into this result.
+        self._client.reset(task_id=task_id, benchmark="adhdbench")
 
         turn_results: list[TurnResult] = []
         error: str | None = None
@@ -268,6 +269,8 @@ class ElizaADHDBenchRunner:
                     history=history,
                 )
             except Exception as exc:
+                # error-policy:J1 The scenario boundary records the failed cell;
+                # the CLI rejects any report containing one after all cells run.
                 error = f"Turn {turn_idx} raised {type(exc).__name__}: {exc}"
                 logger.error("%s turn %d failed: %s", scenario.id, turn_idx, exc)
                 turn_result = TurnResult(

@@ -202,7 +202,7 @@ describe("ci-turbo-cache-contract", () => {
       "audit:focused-tests",
       "audit:test-realness",
       "audit:type-duplication:self-test",
-      "bun run lint",
+      "bun run lint:check",
       "bun run format:check",
     ]) {
       expect(lintJob).toContain(command);

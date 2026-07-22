@@ -10,19 +10,28 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import logging
 import math
 import os
+import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+try:
+    from benchmarks.action_calling_contract import score_action_calling_case
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+    from benchmarks.action_calling_contract import score_action_calling_case
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
+)
 log = logging.getLogger("action-calling")
 
 PACKAGES_ROOT = Path(__file__).resolve().parents[2]
@@ -38,9 +47,21 @@ OPENAI_COMPAT_BASE_URLS = {
     "cerebras": "https://api.cerebras.ai/v1",
 }
 
-PLANNER_STAGES = {"planner", "message_handler", "agent_trace", "tool_call", "mcp_tool_call"}
+PLANNER_STAGES = {
+    "planner",
+    "message_handler",
+    "agent_trace",
+    "tool_call",
+    "mcp_tool_call",
+}
 TERMINAL_TOOL_NAMES = {"REPLY", "IGNORE", "STOP", "NONE"}
 HARNESS_NAMES = {"eliza", "hermes", "openclaw", "smithers"}
+ACTION_CALLING_CONTRACT_VERSION = "structured-output-tool-v2"
+STRUCTURED_OUTPUT_TOOL_DESCRIPTION = (
+    "Submit the structured object requested by the user. Put every requested "
+    "field directly in this tool's arguments."
+)
+_SOURCE_SCHEMA_RE = re.compile(r"<schema>\s*(.*?)\s*</schema>", re.DOTALL)
 
 EDGE_VARIANTS: tuple[tuple[str, str], ...] = (
     (
@@ -102,25 +123,28 @@ def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _json_args(value: Any) -> dict[str, Any]:
+def _json_args(value: Any) -> Any:
+    if value is None:
+        return {}
     if isinstance(value, dict):
         return value
     if isinstance(value, str) and value.strip():
         try:
-            parsed = json.loads(value)
+            return json.loads(value)
         except json.JSONDecodeError:
-            return {"value": value}
-        return parsed if isinstance(parsed, dict) else {"value": parsed}
-    return {}
+            return value
+    return value
 
 
 def _tool_name(call: Mapping[str, Any]) -> str:
     fn = _as_dict(call.get("function"))
-    name = call.get("name") or call.get("tool_name") or call.get("tool") or fn.get("name")
+    name = (
+        call.get("name") or call.get("tool_name") or call.get("tool") or fn.get("name")
+    )
     return str(name or "").strip()
 
 
-def _tool_args(call: Mapping[str, Any]) -> dict[str, Any]:
+def _tool_args(call: Mapping[str, Any]) -> Any:
     fn = _as_dict(call.get("function"))
     return _json_args(
         call.get("args")
@@ -150,10 +174,14 @@ def _normalize_tool_spec(tool: Mapping[str, Any]) -> dict[str, Any] | None:
     if not isinstance(name, str) or not name.strip():
         return None
     description = tool.get("description") or fn.get("description") or ""
-    parameters = tool.get("parameters") or fn.get("parameters") or {
-        "type": "object",
-        "properties": {},
-    }
+    parameters = (
+        tool.get("parameters")
+        or fn.get("parameters")
+        or {
+            "type": "object",
+            "properties": {},
+        }
+    )
     return {
         "type": "function",
         "function": {
@@ -226,13 +254,19 @@ def _record_messages(record: Mapping[str, Any]) -> list[dict[str, str]]:
         }
     ]
     raw_messages = record.get("messages")
-    if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
+    if isinstance(raw_messages, Sequence) and not isinstance(
+        raw_messages, (str, bytes)
+    ):
         for message in raw_messages:
             if not isinstance(message, Mapping):
                 continue
             role = message.get("role")
             content = message.get("content")
-            if role in {"user", "assistant"} and isinstance(content, str) and content.strip():
+            if (
+                role in {"user", "assistant"}
+                and isinstance(content, str)
+                and content.strip()
+            ):
                 messages.append({"role": str(role), "content": content})
     else:
         current = _as_dict(record.get("currentMessage"))
@@ -242,20 +276,203 @@ def _record_messages(record: Mapping[str, Any]) -> list[dict[str, str]]:
     return messages
 
 
-def _load_cases(test_file: Path, limit: int) -> list[ExpectedCase]:
+def _is_object_schema(value: object) -> bool:
+    return isinstance(value, Mapping) and (
+        value.get("type") == "object" or isinstance(value.get("properties"), Mapping)
+    )
+
+
+def _schema_from_example(value: object) -> dict[str, Any]:
+    """Infer only JSON value shapes; copying example values would leak answers."""
+
+    if isinstance(value, Mapping):
+        properties = {
+            str(key): _schema_from_example(item) for key, item in value.items()
+        }
+        return {
+            "type": "object",
+            "properties": properties,
+            "required": list(properties),
+            "additionalProperties": False,
+        }
+    if isinstance(value, list):
+        item_schemas: list[dict[str, Any]] = []
+        for item in value:
+            schema = _schema_from_example(item)
+            if schema not in item_schemas:
+                item_schemas.append(schema)
+        if not item_schemas:
+            items: dict[str, Any] = {}
+        elif len(item_schemas) == 1:
+            items = item_schemas[0]
+        else:
+            items = {"anyOf": item_schemas}
+        return {"type": "array", "items": items}
+    if isinstance(value, bool):
+        return {"type": "boolean"}
+    if isinstance(value, int):
+        return {"type": "integer"}
+    if isinstance(value, float):
+        return {"type": "number"}
+    if value is None:
+        return {"type": "null"}
+    if isinstance(value, str):
+        return {"type": "string"}
+    raise ValueError(f"cannot infer JSON Schema for {type(value).__name__}")
+
+
+def _structured_output_schema(record: Mapping[str, Any]) -> tuple[dict[str, Any], str]:
+    raw_messages = record.get("messages")
+    system_messages = (
+        [
+            message.get("content")
+            for message in raw_messages
+            if isinstance(message, Mapping)
+            and message.get("role") == "system"
+            and isinstance(message.get("content"), str)
+        ]
+        if isinstance(raw_messages, Sequence)
+        and not isinstance(raw_messages, (str, bytes))
+        else []
+    )
+    matches = [
+        match
+        for content in system_messages
+        for match in _SOURCE_SCHEMA_RE.findall(content)
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"expected one source <schema> block, found {len(matches)}")
+    try:
+        source_schema = json.loads(matches[0])
+    except json.JSONDecodeError as exc:
+        raise ValueError("source <schema> block is invalid JSON") from exc
+    if not isinstance(source_schema, dict):
+        raise ValueError("source <schema> block is not an object")
+    if _is_object_schema(source_schema):
+        return copy.deepcopy(source_schema), "direct_json_schema"
+    if len(source_schema) == 1:
+        wrapped = next(iter(source_schema.values()))
+        if _is_object_schema(wrapped):
+            return copy.deepcopy(dict(wrapped)), "wrapped_json_schema"
+    inferred = _schema_from_example(source_schema)
+    if not _is_object_schema(inferred):
+        raise ValueError("inferred structured-output schema is not an object")
+    return inferred, "inferred_from_answer_shape"
+
+
+def _is_opaque_hermes_tasks_contract(
+    record: Mapping[str, Any],
+    tools: Sequence[Mapping[str, Any]],
+    expected_calls: Sequence[Mapping[str, Any]],
+) -> bool:
+    source = _as_dict(record.get("source"))
+    if (
+        source.get("dataset") != "hermes-fc-v1"
+        or source.get("normalizer") != "hermes_fc"
+    ):
+        return False
+    if len(tools) != 1 or len(expected_calls) != 1:
+        return False
+    function = _as_dict(tools[0].get("function"))
+    parameters = _as_dict(function.get("parameters"))
+    expected = expected_calls[0]
+    expected_arguments = expected.get("arguments")
+    return (
+        function.get("name") == "TASKS"
+        and parameters.get("type") == "object"
+        and parameters.get("properties") == {}
+        and parameters.get("additionalProperties") is True
+        and expected.get("name") == "TASKS"
+        and isinstance(expected_arguments, dict)
+        and set(expected_arguments) == {"tool", "arguments"}
+        and isinstance(expected_arguments.get("tool"), str)
+        and expected_arguments.get("arguments") == {}
+    )
+
+
+def _recover_opaque_tasks_contract(
+    record: dict[str, Any],
+    tools: list[dict[str, Any]],
+    expected_calls: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Recover the structured-output contract discarded by legacy normalization."""
+
+    if not _is_opaque_hermes_tasks_contract(record, tools, expected_calls):
+        return record, tools, expected_calls
+    planner = _as_dict(_as_dict(record.get("output")).get("planner"))
+    planner_text = planner.get("text")
+    if not isinstance(planner_text, str) or not planner_text.strip():
+        raise ValueError("opaque TASKS record has no planner text")
+    try:
+        expected_arguments = json.loads(planner_text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("opaque TASKS planner text is invalid JSON") from exc
+    if not isinstance(expected_arguments, dict) or not expected_arguments:
+        raise ValueError("opaque TASKS planner text is not a non-empty object")
+    parameters, schema_source = _structured_output_schema(record)
+    properties = parameters.get("properties")
+    if not isinstance(properties, Mapping):
+        raise ValueError("recovered TASKS schema has no object properties")
+    missing_properties = sorted(set(expected_arguments) - set(properties))
+    if missing_properties:
+        raise ValueError(
+            "recovered TASKS schema omits expected properties: "
+            + ", ".join(missing_properties)
+        )
+
+    recovered_record = copy.deepcopy(record)
+    metadata = _as_dict(recovered_record.get("metadata")).copy()
+    metadata["action_calling_contract"] = {
+        "version": ACTION_CALLING_CONTRACT_VERSION,
+        "recovered_from": "output.planner.text",
+        "schema_source": schema_source,
+    }
+    recovered_record["metadata"] = metadata
+    recovered_call: dict[str, Any] = {
+        "name": "TASKS",
+        "arguments": expected_arguments,
+    }
+    call_id = expected_calls[0].get("id")
+    if isinstance(call_id, str) and call_id:
+        recovered_call["id"] = call_id
+    return (
+        recovered_record,
+        [
+            {
+                "type": "function",
+                "function": {
+                    "name": "TASKS",
+                    "description": STRUCTURED_OUTPUT_TOOL_DESCRIPTION,
+                    "parameters": parameters,
+                },
+            }
+        ],
+        [recovered_call],
+    )
+
+
+def _load_cases(test_file: Path, limit: int | None) -> list[ExpectedCase]:
     out: list[ExpectedCase] = []
     with test_file.open("r", encoding="utf-8") as f:
-        for line in f:
+        for line_number, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
                 continue
             try:
                 record = json.loads(line)
-            except json.JSONDecodeError:
-                continue
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"invalid action-calling JSON in {test_file}:{line_number}"
+                ) from exc
             if not isinstance(record, dict):
-                continue
-            stage = str(record.get("stage") or _as_dict(record.get("metadata")).get("task_type") or "")
+                raise ValueError(
+                    f"action-calling record {test_file}:{line_number} is not an object"
+                )
+            stage = str(
+                record.get("stage")
+                or _as_dict(record.get("metadata")).get("task_type")
+                or ""
+            )
             if stage and stage not in PLANNER_STAGES:
                 continue
             tools = _record_tools(record)
@@ -263,18 +480,118 @@ def _load_cases(test_file: Path, limit: int) -> list[ExpectedCase]:
             messages = _record_messages(record)
             if not tools or not expected or len(messages) < 2:
                 continue
-            out.append(ExpectedCase(record=record, messages=messages, tools=tools, expected_calls=expected))
-            if len(out) >= limit:
+            try:
+                record, tools, expected = _recover_opaque_tasks_contract(
+                    record, tools, expected
+                )
+            except ValueError as exc:
+                record_id = str(record.get("id") or f"line-{line_number}")
+                raise ValueError(
+                    f"action-calling contract recovery failed for {record_id}: {exc}"
+                ) from exc
+            out.append(
+                ExpectedCase(
+                    record=record,
+                    messages=messages,
+                    tools=tools,
+                    expected_calls=expected,
+                )
+            )
+            if limit is not None and len(out) >= limit:
                 break
     return out
 
 
+def _resolve_test_file(requested: str | Path, *, provider: str) -> Path:
+    """Resolve the dataset without letting live runs become smoke runs."""
+    requested_path = Path(requested).expanduser()
+    if requested_path.exists():
+        return requested_path.resolve()
+
+    default_path = DEFAULT_TEST.expanduser().resolve(strict=False)
+    if requested_path.resolve(strict=False) == default_path:
+        if provider.strip().lower() == "mock" and SMOKE_TEST.exists():
+            return SMOKE_TEST.resolve()
+        raise SystemExit(
+            "official action-calling corpus is missing at "
+            f"{default_path}; live harness runs do not fall back to the smoke "
+            "fixture. Stage the corpus or pass an explicit --test-file."
+        )
+    raise SystemExit(f"action-calling dataset does not exist: {requested_path}")
+
+
+def _dataset_identity(test_file: Path) -> dict[str, str | int]:
+    """Hash the exact bytes consumed so results identify their corpus."""
+    resolved = test_file.resolve(strict=True)
+    digest = hashlib.sha256()
+    row_count = 0
+    with resolved.open("rb") as stream:
+        for line in stream:
+            digest.update(line)
+            if line.strip():
+                row_count += 1
+    return {
+        "resolved_path": str(resolved),
+        "sha256": digest.hexdigest(),
+        "row_count": row_count,
+    }
+
+
+def _case_manifest_sha256(cases: Sequence[ExpectedCase]) -> str:
+    manifest = [
+        {
+            "id": _case_id(case, index),
+            "messages": case.messages,
+            "tools": case.tools,
+            "expected_calls": case.expected_calls,
+        }
+        for index, case in enumerate(cases)
+    ]
+    canonical = json.dumps(
+        manifest, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _case_id_manifest_sha256(cases: Sequence[ExpectedCase]) -> str:
+    identifiers = sorted(_case_id(case, index) for index, case in enumerate(cases))
+    return hashlib.sha256("\n".join(identifiers).encode("utf-8")).hexdigest()
+
+
+def _contract_provenance(
+    base_cases: Sequence[ExpectedCase], evaluated_cases: Sequence[ExpectedCase]
+) -> dict[str, Any]:
+    schema_sources: dict[str, int] = {}
+    recovered_count = 0
+    for case in base_cases:
+        marker = _as_dict(
+            _as_dict(case.record.get("metadata")).get("action_calling_contract")
+        )
+        if marker.get("version") != ACTION_CALLING_CONTRACT_VERSION:
+            continue
+        recovered_count += 1
+        source = str(marker.get("schema_source") or "unknown")
+        schema_sources[source] = schema_sources.get(source, 0) + 1
+    return {
+        "contract_version": ACTION_CALLING_CONTRACT_VERSION,
+        "recovered_opaque_tasks_contract_count": recovered_count,
+        "recovered_schema_sources": dict(sorted(schema_sources.items())),
+        "base_case_manifest_sha256": _case_manifest_sha256(base_cases),
+        "evaluated_case_manifest_sha256": _case_manifest_sha256(evaluated_cases),
+        "evaluated_case_id_manifest_sha256": _case_id_manifest_sha256(evaluated_cases),
+    }
+
+
 def _case_id(case: ExpectedCase, fallback: int) -> str:
-    raw_id = case.record.get("id") or _as_dict(case.record.get("metadata")).get("source_dataset")
+    raw_id = case.record.get("id") or _as_dict(case.record.get("metadata")).get(
+        "source_dataset"
+    )
     return str(raw_id or f"case-{fallback}").strip()
 
 
-def _append_to_last_user_message(messages: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
+def _append_to_last_user_message(
+    messages: list[dict[str, str]], suffix: str
+) -> list[dict[str, str]]:
     updated = [dict(message) for message in messages]
     for index in range(len(updated) - 1, -1, -1):
         if updated[index].get("role") == "user":
@@ -283,15 +600,19 @@ def _append_to_last_user_message(messages: list[dict[str, str]], suffix: str) ->
     return updated
 
 
-def _expanded_case(case: ExpectedCase, base_id: str, variant_id: str, suffix: str) -> ExpectedCase:
+def _expanded_case(
+    case: ExpectedCase, base_id: str, variant_id: str, suffix: str
+) -> ExpectedCase:
     record = copy.deepcopy(case.record)
     record["id"] = f"{base_id}--edge-{variant_id}"
     metadata = _as_dict(record.get("metadata")).copy()
-    metadata.update({
-        "base_id": base_id,
-        "edge_variant": variant_id,
-        "scenario_expansion": "action-calling-edge-v1",
-    })
+    metadata.update(
+        {
+            "base_id": base_id,
+            "edge_variant": variant_id,
+            "scenario_expansion": "action-calling-edge-v1",
+        }
+    )
     record["metadata"] = metadata
     return ExpectedCase(
         record=record,
@@ -322,11 +643,13 @@ def _validate_cases(cases: list[ExpectedCase]) -> list[str]:
             errors.append(f"{case_id}: missing tools")
         if not case.expected_calls:
             errors.append(f"{case_id}: missing expected tool calls")
-        if not any(message.get("role") == "user" and message.get("content") for message in case.messages):
+        if not any(
+            message.get("role") == "user" and message.get("content")
+            for message in case.messages
+        ):
             errors.append(f"{case_id}: missing user message")
         valid_tool_names = {
-            str(_as_dict(tool.get("function")).get("name") or "")
-            for tool in case.tools
+            str(_as_dict(tool.get("function")).get("name") or "") for tool in case.tools
         }
         for call in case.expected_calls:
             name = str(call.get("name") or "")
@@ -359,13 +682,33 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
     p.add_argument("--test-file", default=str(DEFAULT_TEST))
-    p.add_argument("--max-examples", type=int, default=100)
+    p.add_argument("--max-examples", type=int, default=None)
+    p.add_argument(
+        "--expected-examples",
+        type=int,
+        default=None,
+        help="required loaded base-case count before optional scenario expansion",
+    )
     p.add_argument("--max-new-tokens", type=int, default=512)
     p.add_argument("--temperature", type=float, default=0.0)
-    p.add_argument("--tool-choice", choices=("auto", "required", "none"), default="auto")
-    p.add_argument("--expand-scenarios", action="store_true", help="add 10 edge variants per loaded case")
-    p.add_argument("--count-scenarios", action="store_true", help="print loaded scenario counts and exit")
-    p.add_argument("--validate-scenarios", action="store_true", help="validate loaded scenarios and exit")
+    p.add_argument(
+        "--tool-choice", choices=("auto", "required", "none"), default="auto"
+    )
+    p.add_argument(
+        "--expand-scenarios",
+        action="store_true",
+        help="add 10 edge variants per loaded case",
+    )
+    p.add_argument(
+        "--count-scenarios",
+        action="store_true",
+        help="print loaded scenario counts and exit",
+    )
+    p.add_argument(
+        "--validate-scenarios",
+        action="store_true",
+        help="validate loaded scenarios and exit",
+    )
     p.add_argument("--out", default=None)
     return p
 
@@ -374,10 +717,14 @@ def _selected_harness(provider: str) -> str:
     if provider.strip().lower() == "mock":
         return ""
     env_harness = (
-        os.environ.get("ELIZA_BENCH_HARNESS")
-        or os.environ.get("BENCHMARK_HARNESS")
-        or ""
-    ).strip().lower()
+        (
+            os.environ.get("ELIZA_BENCH_HARNESS")
+            or os.environ.get("BENCHMARK_HARNESS")
+            or ""
+        )
+        .strip()
+        .lower()
+    )
     if env_harness in HARNESS_NAMES:
         return env_harness
     provider = provider.strip().lower()
@@ -392,10 +739,14 @@ def _ensure_adapter_path(dirname: str) -> None:
 
 def _harness_model_provider(args: argparse.Namespace) -> str:
     provider = (
-        os.environ.get("BENCHMARK_MODEL_PROVIDER")
-        or os.environ.get("ELIZA_PROVIDER")
-        or args.provider
-    ).strip().lower()
+        (
+            os.environ.get("BENCHMARK_MODEL_PROVIDER")
+            or os.environ.get("ELIZA_PROVIDER")
+            or args.provider
+        )
+        .strip()
+        .lower()
+    )
     return "cerebras" if provider in HARNESS_NAMES else provider
 
 
@@ -419,14 +770,10 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
         _ensure_adapter_path("hermes-adapter")
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
-        # Default to the venv-free in_process bridge (same as standard/_base.py):
-        # the one-shot subprocess mode needs ~/.eliza/agents/hermes-agent-src/.venv,
-        # which is not provisioned for the direct openai-compatible harness path.
         client = HermesClient(
             provider=provider,
             model=model,
             base_url=args.base_url,
-            mode=(os.environ.get("HERMES_MODE") or "in_process").strip() or "in_process",
         )
         client.wait_until_ready(timeout=120)
         return client
@@ -438,7 +785,6 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
             provider=provider,
             model=model,
             base_url=args.base_url,
-            direct_openai_compatible=True,
         )
         client.wait_until_ready(timeout=120)
         return client
@@ -479,7 +825,12 @@ def _make_client(args: argparse.Namespace):
     if not base_url:
         raise SystemExit(f"--base-url required for {provider} provider")
     api_key_env = args.api_key_env
-    if api_key_env == "OPENAI_API_KEY" and provider in {"groq", "openrouter", "anthropic", "cerebras"}:
+    if api_key_env == "OPENAI_API_KEY" and provider in {
+        "groq",
+        "openrouter",
+        "anthropic",
+        "cerebras",
+    }:
         api_key_env = {
             "anthropic": "ANTHROPIC_API_KEY",
             "groq": "GROQ_API_KEY",
@@ -498,14 +849,18 @@ def _parse_openai_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
             raw = {
                 "id": call.get("id"),
                 "name": fn.get("name") or call.get("name"),
-                "arguments": fn.get("arguments") if "arguments" in fn else call.get("arguments"),
+                "arguments": fn.get("arguments")
+                if "arguments" in fn
+                else call.get("arguments"),
             }
         else:
             fn = getattr(call, "function", None)
             raw = {
                 "id": getattr(call, "id", None),
                 "name": getattr(fn, "name", None) or getattr(call, "name", None),
-                "arguments": getattr(fn, "arguments", None) if fn is not None else getattr(call, "arguments", None),
+                "arguments": getattr(fn, "arguments", None)
+                if fn is not None
+                else getattr(call, "arguments", None),
             }
         normalized = _normalize_tool_call(raw)
         if normalized is not None:
@@ -539,8 +894,13 @@ def _parse_content_tool_calls(text: str) -> list[dict[str, Any]]:
 
 def _action_to_call(action: Mapping[str, Any]) -> dict[str, Any] | None:
     raw = {
-        "name": action.get("tool_name") or action.get("tool") or action.get("name") or action.get("command"),
-        "arguments": action.get("arguments") or action.get("args") or {
+        "name": action.get("tool_name")
+        or action.get("tool")
+        or action.get("name")
+        or action.get("command"),
+        "arguments": action.get("arguments")
+        or action.get("args")
+        or {
             k: v
             for k, v in action.items()
             if k not in {"tool_name", "tool", "name", "command"}
@@ -579,7 +939,11 @@ def _harness_response_to_calls(response: Any) -> tuple[list[dict[str, Any]], str
             if calls:
                 source = "native_tool_calls"
     actions = getattr(response, "actions", []) or []
-    if not calls and isinstance(actions, Sequence) and not isinstance(actions, (str, bytes)):
+    if (
+        not calls
+        and isinstance(actions, Sequence)
+        and not isinstance(actions, (str, bytes))
+    ):
         for action in actions:
             if isinstance(action, Mapping):
                 normalized = _normalize_tool_call(action)
@@ -608,7 +972,9 @@ def _assistant_tool_call_message(
                 "type": "function",
                 "function": {
                     "name": str(call.get("name") or ""),
-                    "arguments": json.dumps(_as_dict(call.get("arguments")), ensure_ascii=True),
+                    "arguments": json.dumps(
+                        _as_dict(call.get("arguments")), ensure_ascii=True
+                    ),
                 },
             }
         )
@@ -637,7 +1003,13 @@ def _merge_generation_sources(sources: list[str]) -> str:
 
 
 def _last_user_text(messages: list[dict[str, Any]]) -> str:
-    return str(next((m.get("content") for m in reversed(messages) if m.get("role") == "user"), "") or "")
+    return str(
+        next(
+            (m.get("content") for m in reversed(messages) if m.get("role") == "user"),
+            "",
+        )
+        or ""
+    )
 
 
 def _generate(
@@ -682,7 +1054,9 @@ def _generate(
         return all_calls, "\n".join(text_parts), _merge_generation_sources(sources), []
 
     if provider == "anthropic":
-        system = "\n\n".join(m["content"] for m in case.messages if m["role"] == "system")
+        system = "\n\n".join(
+            m["content"] for m in case.messages if m["role"] == "system"
+        )
         chat_messages = [
             {"role": m["role"], "content": m["content"]}
             for m in case.messages
@@ -692,7 +1066,9 @@ def _generate(
             {
                 "name": tool["function"]["name"],
                 "description": tool["function"].get("description", ""),
-                "input_schema": tool["function"].get("parameters", {"type": "object", "properties": {}}),
+                "input_schema": tool["function"].get(
+                    "parameters", {"type": "object", "properties": {}}
+                ),
             }
             for tool in case.tools
         ]
@@ -730,7 +1106,12 @@ def _generate(
             # native first-turn scoring rather than fabricating a cross-turn
             # shape here until this path is exercised in CI.
             break
-        return all_calls, "".join(text_parts), "native_tool_calls" if all_calls else "model_text", []
+        return (
+            all_calls,
+            "".join(text_parts),
+            "native_tool_calls" if all_calls else "model_text",
+            [],
+        )
 
     messages: list[dict[str, Any]] = [dict(m) for m in case.messages]
     all_calls: list[dict[str, Any]] = []
@@ -760,67 +1141,22 @@ def _generate(
             break
         messages.append(_assistant_tool_call_message(calls, turn_index=turn_index))
         messages.extend(_tool_result_messages(calls))
-    return all_calls, "\n".join(text_parts), _merge_generation_sources(sources), content_calls
+    return (
+        all_calls,
+        "\n".join(text_parts),
+        _merge_generation_sources(sources),
+        content_calls,
+    )
 
 
 def _geometric_mean(values: list[float]) -> float:
     if not values:
         return 0.0
-    floored = [max(v, 1e-9) for v in values]
-    return math.exp(sum(math.log(v) for v in floored) / len(floored))
-
-
-def _lookup_tool_schema(tools: list[dict[str, Any]], name: str) -> dict[str, Any]:
-    for tool in tools:
-        fn = _as_dict(tool.get("function"))
-        if fn.get("name") == name:
-            return _as_dict(fn.get("parameters"))
-    return {}
-
-
-def _required_keys(expected: dict[str, Any], tools: list[dict[str, Any]]) -> set[str]:
-    keys = set(_as_dict(expected.get("arguments")).keys())
-    schema = _lookup_tool_schema(tools, str(expected.get("name") or ""))
-    required = schema.get("required")
-    if isinstance(required, list):
-        keys.update(str(item) for item in required if isinstance(item, str))
-    return keys
-
-
-def _values_match(expected: Any, actual: Any) -> bool:
-    if isinstance(expected, dict):
-        if not isinstance(actual, dict):
-            return False
-        return all(key in actual and _values_match(value, actual[key]) for key, value in expected.items())
-    if isinstance(expected, list):
-        return expected == actual
-    if isinstance(expected, str) and isinstance(actual, str):
-        if _iso_datetimes_match(expected, actual):
-            return True
-    return expected == actual or str(expected) == str(actual)
-
-
-def _parse_iso_datetime(value: str) -> datetime | None:
-    raw = value.strip()
-    if "T" not in raw:
-        return None
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
-    try:
-        parsed = datetime.fromisoformat(raw)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _iso_datetimes_match(expected: str, actual: str) -> bool:
-    expected_dt = _parse_iso_datetime(expected)
-    actual_dt = _parse_iso_datetime(actual)
-    if expected_dt is None or actual_dt is None:
-        return False
-    return expected_dt == actual_dt
+    if any(value < 0.0 or value > 1.0 for value in values):
+        raise ValueError("metric values must be ratios between zero and one")
+    if any(value == 0.0 for value in values):
+        return 0.0
+    return math.exp(sum(math.log(value) for value in values) / len(values))
 
 
 def _score_case(
@@ -828,73 +1164,67 @@ def _score_case(
     predicted_calls: list[dict[str, Any]],
     tools: list[dict[str, Any]],
 ) -> dict[str, bool]:
-    native_tool_calls_ok = bool(predicted_calls)
-    exact_count = len(predicted_calls) == len(expected_calls)
-    name_match = exact_count and all(
-        predicted_calls[index].get("name") == expected.get("name")
-        for index, expected in enumerate(expected_calls)
-    )
-    args_parse_ok = exact_count and all(
-        isinstance(predicted_calls[index].get("arguments"), dict)
-        for index, _expected in enumerate(expected_calls)
-    )
-    required_keys_ok = exact_count
-    arguments_match = exact_count
-    for index, expected in enumerate(expected_calls):
-        if index >= len(predicted_calls):
-            required_keys_ok = False
-            arguments_match = False
-            break
-        predicted_args = _as_dict(predicted_calls[index].get("arguments"))
-        required_keys = _required_keys(expected, tools)
-        if not required_keys.issubset(predicted_args.keys()):
-            required_keys_ok = False
-        if not _values_match(_as_dict(expected.get("arguments")), predicted_args):
-            arguments_match = False
-    return {
-        "native_tool_calls_ok": native_tool_calls_ok,
-        "tool_name_match": name_match,
-        "args_parse_ok": args_parse_ok,
-        "required_keys_ok": required_keys_ok,
-        "arguments_match": arguments_match,
-    }
+    return score_action_calling_case(expected_calls, predicted_calls, tools)
 
 
 def main() -> int:
     args = _build_argparser().parse_args()
+    if args.max_examples is not None and args.max_examples <= 0:
+        raise ValueError("--max-examples must be positive")
+    if args.expected_examples is not None and args.expected_examples <= 0:
+        raise ValueError("--expected-examples must be positive")
 
-    test_file = Path(args.test_file)
-    if not test_file.exists() and test_file == DEFAULT_TEST and SMOKE_TEST.exists():
-        test_file = SMOKE_TEST
-    cases = _load_cases(test_file, args.max_examples)
-    if not cases:
+    test_file = _resolve_test_file(args.test_file, provider=args.provider)
+    dataset_identity = _dataset_identity(test_file)
+    base_cases = _load_cases(test_file, args.max_examples)
+    if not base_cases:
         raise SystemExit(f"no native tool-calling records found in {test_file}")
-    base_count = len(cases)
-    if args.expand_scenarios:
-        cases = _expand_cases(cases)
+    base_count = len(base_cases)
+    if args.expected_examples is not None and base_count != args.expected_examples:
+        raise RuntimeError(
+            "action-calling corpus count mismatch: "
+            f"expected {args.expected_examples}, loaded {base_count}"
+        )
+    cases = _expand_cases(base_cases) if args.expand_scenarios else base_cases
+    contract_provenance = _contract_provenance(base_cases, cases)
+    validation_errors = _validate_cases(cases)
+    if validation_errors:
+        raise RuntimeError(
+            "action-calling scenario validation failed: "
+            + "; ".join(validation_errors[:5])
+        )
     if args.count_scenarios:
-        print(json.dumps({
-            "dataset": str(test_file),
-            "base": base_count,
-            "edge": len(cases) - base_count,
-            "total": len(cases),
-            "edge_multiplier": len(EDGE_VARIANTS),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "dataset": str(dataset_identity["resolved_path"]),
+                    "dataset_provenance": {**dataset_identity, **contract_provenance},
+                    "base": base_count,
+                    "edge": len(cases) - base_count,
+                    "total": len(cases),
+                    "edge_multiplier": len(EDGE_VARIANTS),
+                },
+                indent=2,
+            )
+        )
         return 0
     if args.validate_scenarios:
-        errors = _validate_cases(cases)
-        if errors:
-            print(json.dumps({"ok": False, "errors": errors[:50], "error_count": len(errors)}, indent=2))
-            return 1
-        print(json.dumps({
-            "ok": True,
-            "base": base_count,
-            "edge": len(cases) - base_count,
-            "total": len(cases),
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "ok": True,
+                    "base": base_count,
+                    "edge": len(cases) - base_count,
+                    "total": len(cases),
+                },
+                indent=2,
+            )
+        )
         return 0
     if not args.out:
-        raise SystemExit("--out is required unless --count-scenarios or --validate-scenarios is used")
+        raise SystemExit(
+            "--out is required unless --count-scenarios or --validate-scenarios is used"
+        )
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     log.info("loaded %d native tool-calling records", len(cases))
@@ -910,6 +1240,7 @@ def main() -> int:
         "arguments_match": 0,
     }
     failures: list[dict[str, Any]] = []
+    case_outcomes: list[dict[str, Any]] = []
     generation_sources: set[str] = set()
     t0 = time.perf_counter()
 
@@ -920,13 +1251,13 @@ def main() -> int:
             generation_source = "mock_expected_tool_calls"
             content_tool_calls: list[dict[str, Any]] = []
         else:
-            try:
-                if _selected_harness(args.provider) and hasattr(client, "reset"):
-                    client.reset(
-                        task_id=f"action-calling-{os.getpid()}-{i}",
-                        benchmark="action-calling",
-                    )
-                predicted_calls, gen_text, generation_source, content_tool_calls = _generate(
+            if _selected_harness(args.provider) and hasattr(client, "reset"):
+                client.reset(
+                    task_id=f"action-calling-{os.getpid()}-{i}",
+                    benchmark="action-calling",
+                )
+            predicted_calls, gen_text, generation_source, content_tool_calls = (
+                _generate(
                     client,
                     args.provider,
                     args.model,
@@ -935,9 +1266,7 @@ def main() -> int:
                     args.temperature,
                     args.tool_choice,
                 )
-            except Exception as exc:  # noqa: BLE001
-                log.warning("generation failed: %s", exc)
-                continue
+            )
         generation_sources.add(generation_source)
         n += 1
 
@@ -946,16 +1275,25 @@ def main() -> int:
             if ok:
                 counts[key] += 1
 
+        case_outcome = {
+            "case_id": _case_id(case, i),
+            "messages": case.messages,
+            "tools": case.tools,
+            "expected_tool_calls": case.expected_calls,
+            "predicted_tool_calls": predicted_calls,
+            "generation_source": generation_source,
+            **case_score,
+        }
+        case_outcomes.append(case_outcome)
+
         if not all(case_score.values()) and len(failures) < 12:
-            failures.append({
-                "id": case.record.get("id") or _as_dict(case.record.get("metadata")).get("source_dataset"),
-                "expected_tool_calls": case.expected_calls,
-                "predicted_tool_calls": predicted_calls,
-                "content_serialized_tool_calls": content_tool_calls,
-                "generation_source": generation_source,
-                **case_score,
-                "predicted_text": gen_text[:600],
-            })
+            failures.append(
+                {
+                    **case_outcome,
+                    "content_serialized_tool_calls": content_tool_calls,
+                    "predicted_text": gen_text[:600],
+                }
+            )
 
         if (i + 1) % 25 == 0:
             log.info(
@@ -987,17 +1325,24 @@ def main() -> int:
     summary = {
         "model": args.model,
         "provider": args.provider,
-        "dataset": str(test_file),
+        "dataset": str(dataset_identity["resolved_path"]),
+        "dataset_provenance": {
+            **dataset_identity,
+            **contract_provenance,
+            "loaded_base_case_count": base_count,
+            "evaluated_case_count": n,
+            "scenario_expansion": bool(args.expand_scenarios),
+        },
         "tool_choice": args.tool_choice,
         "generation_source": (
-            next(iter(generation_sources))
-            if len(generation_sources) == 1
-            else "mixed"
+            next(iter(generation_sources)) if len(generation_sources) == 1 else "mixed"
         ),
         "generation_sources": sorted(generation_sources),
         "n": n,
         "elapsed_s": round(time.perf_counter() - t0, 2),
+        "counts": counts,
         "metrics": metrics,
+        "case_outcomes": case_outcomes,
         "failures": failures,
     }
     out_path = out_dir / "action-calling-results.json"

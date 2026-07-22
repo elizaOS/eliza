@@ -221,7 +221,12 @@ app.get("/", (c) => {
         prewarmElizaContext: elizaFetch.prewarm,
         usageStore,
         usageLimits,
-        isRevoked: (jti) => isVoiceSessionTokenRevoked(jti),
+        // The 400ms revocation poll is the highest-frequency store consumer:
+        // without the request-scoped client it dialed a fresh Railway TCP
+        // connection per tick on Workers — the exact churn #16636 removed
+        // from verify/claim (#16663).
+        isRevoked: (jti) =>
+          isVoiceSessionTokenRevoked(jti, rawRedis ?? undefined),
         // A successful hello atomically claimed this jti until expiry, so it
         // cannot be replayed. Avoid a redundant denylist write during abrupt
         // disconnect: it contended with the immediate replacement hello.

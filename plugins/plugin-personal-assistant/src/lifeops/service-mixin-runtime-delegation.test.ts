@@ -210,10 +210,20 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       status: 202,
       messageId: "dm-123",
     }));
+    const sendDirectMessageToConversationForAccount = vi.fn(async () => ({
+      ok: true,
+      status: 202,
+      messageId: "dm-conversation-123",
+    }));
+    const createDirectMessageGroupForAccount = vi.fn(async () => ({
+      ok: true,
+      status: 201,
+      conversationId: "conversation-new",
+      messageId: "dm-group-123",
+    }));
     const createPostForAccount = vi.fn(async () => ({
       id: "memory-post-1",
       metadata: {
-        messageIdFull: "tweet-123",
         x: { tweetId: "tweet-runtime" },
       },
     }));
@@ -223,6 +233,8 @@ describe("LifeOps messaging mixin runtime delegation", () => {
           getAccountStatus,
           fetchDirectMessagesForAccount,
           sendDirectMessageForAccount,
+          sendDirectMessageToConversationForAccount,
+          createDirectMessageGroupForAccount,
           createPostForAccount,
         },
       },
@@ -279,11 +291,45 @@ describe("LifeOps messaging mixin runtime delegation", () => {
     );
 
     await expect(
+      service.sendXConversationMessage({
+        conversationId: "conversation-1",
+        text: "conversation hello",
+        confirmSend: true,
+      }),
+    ).resolves.toEqual({ ok: true, status: 202 });
+    expect(sendDirectMessageToConversationForAccount).toHaveBeenCalledWith(
+      "acct-x-secondary",
+      {
+        conversationId: "conversation-1",
+        text: "conversation hello",
+      },
+    );
+
+    await expect(
+      service.createXDirectMessageGroup({
+        participantIds: ["x-user-1", "x-user-2", "x-user-1"],
+        text: "group hello",
+        confirmSend: true,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      status: 201,
+      conversationId: "conversation-new",
+    });
+    expect(createDirectMessageGroupForAccount).toHaveBeenCalledWith(
+      "acct-x-secondary",
+      {
+        participantIds: ["x-user-1", "x-user-2"],
+        text: "group hello",
+      },
+    );
+
+    await expect(
       service.createXPost({ text: "public hello", side: "owner" }),
     ).resolves.toMatchObject({
       ok: true,
       status: 201,
-      postId: "tweet-123",
+      postId: "tweet-runtime",
       category: "success",
     });
     expect(createPostForAccount).toHaveBeenCalledWith("acct-x-secondary", {
@@ -438,6 +484,18 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         },
       ],
     );
+
+    await expect(
+      service.curateXDms({
+        messageIds: [`${service.runtime.agentId}:x:dm-1`],
+        markRead: true,
+        markReplied: true,
+      }),
+    ).resolves.toEqual({ curated: 1 });
+    expect(stored[0]).toMatchObject({
+      readAt: expect.any(String),
+      repliedAt: expect.any(String),
+    });
   });
 
   it("does not read or send Signal from LifeOps-stored token refs", async () => {

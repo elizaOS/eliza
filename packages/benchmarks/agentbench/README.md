@@ -1,36 +1,36 @@
-# ElizaOS AgentBench
+# elizaOS AgentBench
 
-A faithful re-implementation of [AgentBench](https://github.com/THUDM/AgentBench)
-(THUDM, ICLR 2024) for evaluating ElizaOS / Hermes / OpenClaw agents
-against the official AgentBench task data and scoring contracts.
+AgentBench task ingestion and local environment adapters for evaluating elizaOS,
+Hermes, and OpenClaw agents. The loader is pinned to upstream commit
+`d1e4a10db08c87075c78972e48ecc182be03e2d5`; this package does not yet provide a
+publishable replacement for upstream's complete eight-environment runtime.
 
 ## What this is - and what it isn't
 
-This package runs the **official AgentBench dev / test splits** that
-are vendored under `upstream/`. The eight environments are wired
-end-to-end:
+The pinned task files are staged under `upstream/data/` and verified against
+`upstream/SOURCE.json`. Loading official prompts is distinct from reproducing
+the official environment. Current execution status is:
 
 | Environment | Wiring | Notes |
 |---|---|---|
-| Operating System (OS) | full | uses upstream `os_interaction/data/{dev,1..7}` |
-| Database (DB) | full | upstream `dbbench/{dev,standard}.jsonl`, label-based result-set scoring |
-| Knowledge Graph (KG) | partial | reads upstream `knowledgegraph/{dev,std}.json`; full SPARQL backend requires Virtuoso (`AGENTBENCH_KG_SPARQL_URL`) |
-| Lateral Thinking Puzzle | full | upstream xlsx (`dev`, `standard`); local heuristic host when no eval-agent is configured |
-| Card Game (Avalon) | external | upstream native AI SDK and `card_game.server` bridge are not vendored; adapter records skipped tasks |
-| Householding (ALFWorld) | lazy | needs `pip install alfworld && alfworld-download` + `ALFWORLD_DATA` |
-| Web Shopping (WebShop) | lazy | needs the WebShop product corpus (`WEBSHOP_DATA_DIR`) |
-| Web Browsing (Mind2Web) | full (single-turn) | uses upstream's prompt fixtures; full HTML-trace eval via `packages/benchmarks/mind2web` |
+| Environment | Pinned dev/test tasks | Execution status |
+|---|---:|---|
+| Operating System (OS) | 26 / 144 | local Docker adapter; upstream parity still needs campaign validation |
+| Database (DB) | 60 / 300 | local SQLite adapter; upstream parity still needs campaign validation |
+| Knowledge Graph (KG) | 20 / 150 | blocked without the upstream Freebase/Virtuoso service |
+| Lateral Thinking Puzzle | 20 / 50 | local heuristic host is not the upstream eval-agent |
+| Card Game (Avalon) | 3 / 5 | blocked on the upstream native SDK and card server |
+| Householding (ALFWorld) | 20 / 109 | blocked on the ALFWorld package and game corpus |
+| Web Shopping (WebShop) | 20 / 500 | blocked on the official WebShop product corpus and simulator |
+| Web Browsing (Mind2Web prompt fixtures) | 6 / 6 | six prompt fixtures only, not the full Mind2Web interaction benchmark |
 
-> **Scores are run on upstream's official dev/test sets.** No
-> hand-written sample tasks remain in this package - the previous
-> `SAMPLE_PRODUCTS`, `SAMPLE_ENTITIES`, and 3-puzzle LTP fixture have
-> all been removed. Per-env task counts come straight from the
-> vendored upstream data (DB dev: 60, DB test: 300; KG dev: ~50, KG
-> test: ~1200; OS dev: ~26, OS test: aggregated across 7 categories;
-> LTP dev/standard from xlsx; etc.).
->
-> Compare your numbers against the public AgentBench leaderboard:
-> <https://llmbench.ai/agent/data>.
+The official test split contains 1,264 base tasks across all eight environments
+(13,904 scenarios with the optional ten-variant expansion). `--env all` resolves
+to all eight environments for counting and data validation, but full execution
+fails before any model call until the four external runtime services above have
+publication parity. Compact handwritten tasks remain available only through
+explicit `--data-mode fixture` smoke runs; explicit environment selections are
+diagnostic partial runs.
 
 ## Installation
 
@@ -40,7 +40,6 @@ pip install -e .
 
 # Optional extras:
 pip install openpyxl   # required to load LTP xlsx data
-pip install alfworld   # full ALFWorld evaluation
 ```
 
 ## Quick start
@@ -50,6 +49,7 @@ import asyncio
 from elizaos_agentbench import (
     AgentBenchRunner,
     AgentBenchConfig,
+    AgentBenchDataMode,
     BenchmarkSplit,
     EnvironmentConfig,
 )
@@ -59,6 +59,7 @@ async def main():
         output_dir="./results",
         split=BenchmarkSplit.DEV,        # or BenchmarkSplit.TEST
         save_detailed_logs=True,
+        data_mode=AgentBenchDataMode.FULL,
     )
     # Limit task counts during iteration
     config.db_config = EnvironmentConfig(enabled=True, max_tasks=10)
@@ -83,9 +84,11 @@ slice, fast) or `BenchmarkSplit.TEST` (the leaderboard "standard"
 split). Per-env file mapping is in
 `elizaos_agentbench/upstream_loader.py`.
 
-## Scoring contracts
+## Local scoring contracts
 
-Each adapter mirrors upstream's scoring code:
+The local adapters preserve these task-level checks, but the external runtime
+gaps above must be closed before comparing a result with the AgentBench
+leaderboard:
 
 - **DB** - compare the agent's final SELECT result set against the
   `label` list from upstream using `DBResultProcessor`-style
@@ -103,9 +106,10 @@ Each adapter mirrors upstream's scoring code:
 
 ## Vendored upstream
 
-Everything in `upstream/` comes from
-<https://github.com/THUDM/AgentBench> under Apache 2.0. See
-`upstream/LICENSE` and `upstream/README.md`.
+The ignored `upstream/data/` working asset is fetched from
+<https://github.com/THUDM/AgentBench> at the revision recorded in
+`upstream/SOURCE.json` and hash-verified before full-data loads. See
+`upstream/README.md` for the reproducible fetch command.
 
 ## Trajectory logging (for training)
 

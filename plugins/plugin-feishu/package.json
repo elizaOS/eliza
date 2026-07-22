@@ -51,7 +51,7 @@
 		"typescript": "^6.0.3"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.4",
+		"@biomejs/biome": "2.5.5",
 		"vitest": "^4.0.0"
 	},
 	"scripts": {

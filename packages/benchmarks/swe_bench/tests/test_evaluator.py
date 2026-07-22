@@ -1,10 +1,16 @@
 """Tests for SWE-bench evaluator."""
 
+import asyncio
 import json
+import time
 
 import pytest
 
-from benchmarks.swe_bench.evaluator import PatchQualityResult, SimplePatchEvaluator, SWEBenchEvaluator
+from benchmarks.swe_bench.evaluator import (
+    PatchQualityResult,
+    SimplePatchEvaluator,
+    SWEBenchEvaluator,
+)
 from benchmarks.swe_bench.types import PatchStatus, SWEBenchInstance
 
 
@@ -186,6 +192,47 @@ ERROR: test_error
         env = evaluator._prepare_docker_env(tmp_path, {"DOCKER_CONFIG": "/host/docker"})
 
         assert env["DOCKER_CONFIG"] == "/host/docker"
+
+    @pytest.mark.asyncio
+    async def test_official_harness_has_a_wall_clock_kill_switch(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        sample_instance: SWEBenchInstance,
+    ) -> None:
+        class HangingProcess:
+            returncode = None
+            killed = False
+
+            async def communicate(self):
+                await asyncio.sleep(60)
+                return b"", b""
+
+            def kill(self) -> None:
+                self.killed = True
+                self.returncode = -9
+
+            async def wait(self) -> int:
+                return -9
+
+        process = HangingProcess()
+
+        async def create_process(*_args, **_kwargs):
+            return process
+
+        evaluator = SWEBenchEvaluator(use_docker=True, timeout_seconds=1)
+        evaluator.HARNESS_OVERHEAD_SECONDS = 0.01
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", create_process)
+
+        result = await evaluator._harness_evaluation(
+            sample_instance,
+            sample_instance.patch,
+            time.time(),
+        )
+
+        assert process.killed is True
+        assert result.success is False
+        assert result.status == "incompatible"
+        assert "wall-clock limit" in (result.error or "")
 
 
 @pytest.mark.integration

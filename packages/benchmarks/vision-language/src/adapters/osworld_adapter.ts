@@ -22,11 +22,11 @@
  * Scoring:
  *   - smoke: action-sequence agreement against the reference trace via
  *     `osworldStepMatch` (cheap, no VM required).
- *   - full:  success-rate from the plugin-computeruse adapter. The runner
- *     hands evaluation off to that adapter; this file only holds the
- *     bridge (no duplicate VM driver).
+ *   - full:  rejected here because this package has no VM-state evaluator.
+ *     Publishable full runs use the separately registered canonical OSWorld
+ *     harness, which owns the real VM lifecycle and task evaluators.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { osworldStepMatch } from "../scorers/index.ts";
@@ -70,11 +70,13 @@ export class OSWorldAdapter implements BenchmarkAdapter<OSWorldPayload> {
 
   scoreOne(sample: Sample<OSWorldPayload>, prediction: Prediction) {
     if (sample.payload.trace.length === 0) {
-      // Full-VM sample: the plugin-computeruse adapter will have stamped
-      // the success bit into prediction.actions[0].text === "SUCCESS".
-      const last = prediction.actions?.[prediction.actions.length - 1];
-      const success = last?.type === "DONE";
-      return { score: success ? 1 : 0, detail: { mode: "vm" } };
+      return {
+        score: 0,
+        detail: {
+          mode: "invalid",
+          reason: "full OSWorld requires the canonical VM-state evaluator",
+        },
+      };
     }
     const score = osworldStepMatch(
       prediction.actions ?? [],
@@ -97,7 +99,9 @@ export async function predictOSWorld(
   opts: { smoke: boolean },
 ): Promise<Prediction[]> {
   if (opts.smoke) return predictSmoke(runtime, samples);
-  return predictWithVm(runtime, samples);
+  throw new Error(
+    "Full OSWorld predictions require the canonical packages/benchmarks/OSWorld VM harness",
+  );
 }
 
 async function predictSmoke(
@@ -126,43 +130,6 @@ async function predictSmoke(
         });
         actions = parseActionList(text);
       }
-      out.push({ actions, latencyMs: Date.now() - startedAt });
-    } catch (err) {
-      out.push({
-        actions: [],
-        latencyMs: Date.now() - startedAt,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  return out;
-}
-
-/**
- * Bridge to plugin-computeruse's full OSWorld adapter. We dynamically
- * import so the bench package doesn't have a hard dependency on
- * plugin-computeruse — the smoke path always works without the plugin.
- */
-async function predictWithVm(
-  runtime: VisionRuntime,
-  samples: Sample<OSWorldPayload>[],
-): Promise<Prediction[]> {
-  if (typeof runtime.runActionLoop !== "function") {
-    throw new Error(
-      "OSWorld full eval requires a runtime with `runActionLoop`. " +
-        "Use plugin-computeruse's OSWorldAdapter to drive the VM and " +
-        "wire it into the runtime adapter.",
-    );
-  }
-  const out: Prediction[] = [];
-  for (const sample of samples) {
-    const startedAt = Date.now();
-    try {
-      const actions = await runtime.runActionLoop({
-        instruction: sample.question,
-        initialScreenshotPath: sample.imagePath,
-        maxSteps: 30,
-      });
       out.push({ actions, latencyMs: Date.now() - startedAt });
     } catch (err) {
       out.push({
@@ -237,47 +204,11 @@ function loadSmoke(n: number): Sample<OSWorldPayload>[] {
 }
 
 function loadOfficial(n: number): Sample<OSWorldPayload>[] {
-  const dir = process.env.OSWORLD_DATA_DIR;
-  if (!dir) {
-    throw new Error(
-      "OSWORLD_DATA_DIR is not set. Point it at a local OSWorld checkout " +
-        "with `evaluation_examples/examples/<domain>/<task>.json`, or pass --smoke.",
-    );
-  }
-  const indexPath = path.join(dir, "evaluation_examples", "test_all.json");
-  if (!existsSync(indexPath)) {
-    throw new Error(
-      `OSWorld task index not found at ${indexPath}. ` +
-        "See https://github.com/xlang-ai/OSWorld for setup.",
-    );
-  }
-  const index = JSON.parse(readFileSync(indexPath, "utf8")) as Record<
-    string,
-    string[]
-  >;
-  const samples: Sample<OSWorldPayload>[] = [];
-  for (const [domain, taskIds] of Object.entries(index)) {
-    for (const taskId of taskIds) {
-      const taskPath = path.join(
-        dir,
-        "evaluation_examples",
-        "examples",
-        domain,
-        `${taskId}.json`,
-      );
-      if (!existsSync(taskPath)) continue;
-      const config = JSON.parse(readFileSync(taskPath, "utf8")) as {
-        id: string;
-        instruction: string;
-      } & Record<string, unknown>;
-      samples.push({
-        id: `${domain}/${taskId}`,
-        imagePath: "",
-        question: config.instruction,
-        payload: { trace: [], taskConfig: config },
-      });
-      if (samples.length >= n) return samples;
-    }
-  }
-  return samples;
+  void n;
+  throw new Error(
+    "Full OSWorld is not implemented by vision-language: a task JSON plus an empty " +
+      "screenshot cannot drive or evaluate VM state. Run the registered canonical " +
+      "packages/benchmarks/OSWorld harness with a real VM provider; use --smoke here " +
+      "only for non-publishable action-trace plumbing checks.",
+  );
 }
