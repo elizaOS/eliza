@@ -18,6 +18,7 @@ import { analyzeInvestigationNarrative } from "../analyzers/investigationNarrati
 import { analyzeInvestigationReplay } from "../analyzers/investigationReplay";
 import { analyzeInvestigationReport } from "../analyzers/investigationReport";
 import { analyzeWalletPortfolio } from "../analyzers/portfolio";
+import { analyzeProtocolIntelligence } from "../analyzers/protocolIntelligence";
 import { analyzeWalletProtocols } from "../analyzers/protocols";
 import { analyzeWalletRelationships } from "../analyzers/relationships";
 import { analyzeWalletRisk } from "../analyzers/risk";
@@ -75,6 +76,9 @@ export function runWalletPipeline(
   const protocols = analyzeWalletProtocols(
     input.parsedTransactions,
   );
+
+  const protocolIntelligence =
+    analyzeProtocolIntelligence(protocols);
 
   const behavior = analyzeWalletBehavior(
     activity,
@@ -252,6 +256,7 @@ export function runWalletPipeline(
     whale,
     defi,
     protocols,
+    protocolIntelligence,
     behavior,
     exposure,
     relationships,
