@@ -3,7 +3,10 @@
  * entry the agent's view actions and the shell use to switch views.
  */
 import { logger } from "@elizaos/logger";
-import type { NavigateViewDetail } from "@elizaos/shared/events";
+import {
+  MULTI_VIEW_LAYOUTS_ENABLED,
+  type NavigateViewDetail,
+} from "@elizaos/shared/events";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 import { type Tab, tabFromPath } from "./navigation";
 import { shellHistory } from "./surface-realm-channel";
@@ -184,6 +187,37 @@ function layoutViewIdsForDetail(detail: NavigateViewDetail): string[] {
   });
 }
 
+function singleViewDetailForLayout(
+  detail: NavigateViewDetail,
+  availableViews: ViewRegistryEntry[],
+): NavigateViewDetail | null {
+  const requestedViewIds = layoutViewIdsForDetail(detail);
+  const prioritizedViewIds = detail.viewId
+    ? [detail.viewId, ...requestedViewIds.filter((id) => id !== detail.viewId)]
+    : requestedViewIds;
+  const entry = prioritizedViewIds
+    .map((viewId) => desktopEntryForDetail(availableViews, viewId))
+    .find((candidate) => candidate !== undefined);
+  const viewId = entry?.id ?? prioritizedViewIds[0];
+  if (!viewId) return null;
+
+  const normalized = { ...detail };
+  delete normalized.action;
+  delete normalized.views;
+  delete normalized.layout;
+  delete normalized.placement;
+  return {
+    ...normalized,
+    viewId,
+    viewPath:
+      entry?.path ??
+      (detail.viewId === viewId ? detail.viewPath : undefined) ??
+      `/apps/${viewId}`,
+    viewLabel:
+      entry?.label ?? (detail.viewId === viewId ? detail.viewLabel : undefined),
+  };
+}
+
 /**
  * Close one pane from a visible split/tile layout while keeping the remaining
  * panes, route, desktop-tab focus, and history entry in agreement. Both agent
@@ -267,6 +301,7 @@ export function createNavigateViewHandler({
   setTab,
   setViewLayout,
   viewLayout = null,
+  multiViewLayoutsEnabled = MULTI_VIEW_LAYOUTS_ENABLED,
 }: {
   activeForegroundViewId?: string | null;
   availableViewsForDesktopTabs: ViewRegistryEntry[];
@@ -279,6 +314,7 @@ export function createNavigateViewHandler({
   setTab: (tab: Tab) => void;
   setViewLayout?: (layout: ActiveViewLayout | null) => void;
   viewLayout?: ActiveViewLayout | null;
+  multiViewLayoutsEnabled?: boolean;
 }): (event: Event) => void {
   const activateTabForPath = (path: string) => {
     const routeTab = tabFromPath(path);
@@ -286,8 +322,21 @@ export function createNavigateViewHandler({
   };
 
   return (event: Event) => {
-    const detail = (event as CustomEvent<NavigateViewDetail>).detail;
+    let detail = (event as CustomEvent<NavigateViewDetail>).detail;
     if (!detail) return;
+    if (
+      !multiViewLayoutsEnabled &&
+      (detail.action === "split-view" || detail.action === "tile-views")
+    ) {
+      setViewLayout?.(null);
+      writeViewLayoutToHistory(null);
+      const singleViewDetail = singleViewDetailForLayout(
+        detail,
+        availableViewsForDesktopTabs,
+      );
+      if (!singleViewDetail) return;
+      detail = singleViewDetail;
+    }
     storeNavigateViewPayload(detail);
     if (detail.action === "close" || detail.action === "close-all") {
       const closesEveryView =

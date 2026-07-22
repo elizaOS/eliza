@@ -20,6 +20,7 @@ import {
 	getUserMessageText,
 	logger,
 } from "@elizaos/core";
+import { MULTI_VIEW_LAYOUTS_ENABLED } from "@elizaos/shared/events";
 import { normalizeActionOptions, readStringOption } from "../params.js";
 import {
 	isViewNavigationOperation,
@@ -396,6 +397,7 @@ interface ViewsActionDeps {
 	client?: ViewsClient;
 	hasOwnerAccess?: OwnerAccessFn;
 	repoRoot?: string;
+	multiViewLayoutsEnabled?: boolean;
 }
 
 function defaultRepoRoot(): string {
@@ -2130,9 +2132,33 @@ function withViewsUserFacingText(result: ActionResult): ActionResult {
 	};
 }
 
+async function rejectMultiViewLayout(
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	const text =
+		"I can show one view at a time right now. Which view should I open?";
+	await callback?.({ text });
+	return {
+		success: false,
+		text,
+		data: { reason: "multi-view-layouts-disabled" },
+	};
+}
+
 export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 	const ownerCheck = deps.hasOwnerAccess ?? defaultOwnerAccessFn;
 	const getRepoRoot = () => deps.repoRoot ?? defaultRepoRoot();
+	const multiViewLayoutsEnabled =
+		deps.multiViewLayoutsEnabled ?? MULTI_VIEW_LAYOUTS_ENABLED;
+	const exposedModes = multiViewLayoutsEnabled
+		? MODES
+		: MODES.filter((mode) => mode !== "split" && mode !== "tile");
+	const routingSubject = multiViewLayoutsEnabled
+		? "navigation and layout"
+		: "navigation";
+	const routingOperations = multiViewLayoutsEnabled
+		? "list views, split/tile views, pin view"
+		: "list views, pin view";
 
 	return {
 		name: "VIEWS",
@@ -2162,10 +2188,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"INVOKE_VIEW_CAPABILITY",
 			"PIN_VIEW",
 			"OPEN_VIEW_WINDOW",
-			"SPLIT_VIEW",
-			"SPLIT_VIEWS",
-			"TILE_VIEWS",
-			"ARRANGE_VIEWS",
+			...(multiViewLayoutsEnabled
+				? ["SPLIT_VIEW", "SPLIT_VIEWS", "TILE_VIEWS", "ARRANGE_VIEWS"]
+				: []),
 			"USE_VIEW_CAPABILITY",
 			"CALL_VIEW_CAPABILITY",
 			"CREATE_NOTE",
@@ -2242,7 +2267,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"window",
 			"panel",
 			"app",
-			"layout",
+			...(multiViewLayoutsEnabled ? ["layout"] : []),
 			"view-capability",
 			"notes",
 			"sticky-notes",
@@ -2285,12 +2310,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"app-builder",
 			"task-coordinator",
 		],
-		description:
-			"Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
-		descriptionCompressed:
-			"views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero",
-		routingHint:
-			"UI view/window/panel/app navigation and layout -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, list views, split/tile views, pin view, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. A bare navigation request such as 'open calendar' uses action=show with the matching registered Calendar view. For content operations, choose only a capability declared by the target view. If the request names a domain but not a specific registered view, omit the view parameter and let the registered capability catalog resolve it; never guess a similarly named target or treat a content request as view scaffolding. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with capability=<capability id> and include view=<view id> only when that registered view declares the capability, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'list my apps', 'what apps are running'), launching/restarting an app, or building a new app is the APP action, not VIEWS; only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.",
+		description: multiViewLayoutsEnabled
+			? "Manage and navigate UI views. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, request split/tiled layouts across multiple views, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin."
+			: "Manage and navigate UI views one at a time. List available views, report the current view, open a specific view, close/hide a view without deleting its plugin, search views by name or capability, show the view manager, broadcast events to views, invoke registered capabilities on plugin views for view-backed content such as notes, calendar events, dashboards, and records, pin a view as a desktop tab, open a view in a separate window, create a new view plugin (scaffolds + coding agent), edit an existing view plugin (coding agent), regenerate a view's icon/hero image, or delete/uninstall a view plugin.",
+		descriptionCompressed: multiViewLayoutsEnabled
+			? "views list|current|show|open|close|search|manager|broadcast|interact|pin|window|split|tile|create|edit|icon|delete; navigate/close UI views; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; split/tile layouts; scaffold/edit/remove view plugins; regenerate a view icon/hero"
+			: "views list|current|show|open|close|search|manager|broadcast|interact|pin|window|create|edit|icon|delete; navigate one UI view at a time; invoke registered view capabilities for notes/events/dashboards/records; click/read/focus elements; scaffold/edit/remove view plugins; regenerate a view icon/hero",
+		routingHint: `UI view/window/panel/app ${routingSubject} -> VIEWS. View switching is a COMMON, DEFAULT, PROACTIVE response while the user is in the app chat — strongly prefer opening the relevant view (action=show) whenever the user names an app surface, asks to see/check/open something, or expresses an intent that has a matching view, even when they don't say the word 'view'. Treat 'can you show me <X>', 'I want to <do X>', 'let me see <X>', 'pull up <X>', 'take me to <X>', 'go to <X>', 'open my <X>', and any reference to a domain (calendar, email/messages/inbox, wallet/balance/portfolio, finances/money/spending, focus/distractions, goals/routines/reminders, health/sleep/screen-time, todos/tasks, documents/files, registered notes views/capabilities, contacts/relationships/people, companion, the app builder/coding) as a navigation request and switch to that view by default. When in doubt and a matching view exists, action=show it rather than only answering in text. Use VIEWS for open/show/switch/close/hide view requests, view manager, ${routingOperations}, open view in a separate window, or invoking a capability declared by a registered plugin view, including view-backed content operations like creating/listing notes or calendar events. A bare navigation request such as 'open calendar' uses action=show with the matching registered Calendar view. For content operations, choose only a capability declared by the target view. If the request names a domain but not a specific registered view, omit the view parameter and let the registered capability catalog resolve it; never guess a similarly named target or treat a content request as view scaffolding. For standalone notes requests, only use a registered notes view or notes capability; do not route them to documents/Knowledge. For an implicit request to SEE a domain surface — 'what's on my calendar', 'check my messages'/'my email', 'show my wallet'/'my balance', 'how much did I spend', 'I need to focus', 'take me to my goals', 'show my todos', 'pull up my documents', 'who do I know at X', or 'I want to add a new feature to my app' — open that surface with action=show and the matching view id (calendar, inbox, wallet, finances, focus, goals, health, todos, documents, relationships, companion, task-coordinator). This applies in ANY language: a navigation/see request in Spanish, French, German, Chinese, Japanese, Korean, etc. routes to VIEWS the same way. Opening a surface to view it is action=show, only adding or creating a record inside it is action=interact. Close/hide means VIEWS action=close, not delete/remove. For view capabilities use action=interact with capability=<capability id> and include view=<view id> only when that registered view declares the capability, or pass a generated capability action name that can be resolved from the view catalog. Pass capability data as params={...} or top-level keys such as title/body/date/time/notes/color; never use dotted keys such as params.title. A message that is ONLY a bare surface/view name — 'settings', 'calendar', 'wallet', 'inbox' — is a navigation command (typically a voice-transcribed utterance): immediately use action=show with that view; never answer a bare view name with a clarifying question. When the user says 'view' ('open the wallet view', 'show the calendar view'), VIEWS action=show is the required response — do NOT substitute a domain data/dashboard action for an explicit view-navigation ask. EXCEPTION — installed applications themselves: listing installed/running apps ('show me the apps', 'list my apps', 'what apps are running'), launching/restarting an app, or building a new app is the APP action, not VIEWS; only the apps/views *page* (view manager) is VIEWS. EXCEPTION — changing a settings/permission VALUE is NOT navigation: 'turn off shell permissions', 'disable shell access', 'change my permissions', or toggling any settings value is the SETTINGS action (action=set), even though those controls live on a settings page; VIEWS only OPENS the settings page without changing a value.`,
 		allowAdditionalParameters: true,
 		// Every VIEWS mode reports its authoritative result through its handler
 		// callback. Do not emit the response router's speculative progress text
@@ -2304,8 +2330,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		parameters: [
 			{
 				name: "action",
-				description:
-					"Operation: list | current | show | open | close | search | manager | broadcast | interact | pin | window | split | tile | create | edit | icon | rollback | delete | remove, or a registered/generated view capability name. show/open only navigate; interact invokes a registered view capability. create/edit/delete/remove manage view plugins, never records inside a view. Use rollback to undo a view/plugin create or edit by resetting its source to the pre-edit snapshot.",
+				description: `Operation: ${exposedModes.join(" | ")}, or a registered/generated view capability name. show/open only navigate; interact invokes a registered view capability. create/edit/delete/remove manage view plugins, never records inside a view. Use rollback to undo a view/plugin create or edit by resetting its source to the pre-edit snapshot.`,
 				required: true,
 				schema: {
 					type: "string",
@@ -2317,7 +2342,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				required: false,
 				schema: {
 					type: "string",
-					enum: [...MODES],
+					enum: [...exposedModes],
 				},
 			},
 			{
@@ -2359,30 +2384,37 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				required: false,
 				schema: { type: "string" },
 			},
-			{
-				name: "views",
-				description:
-					"Multiple registered view ids/names for split or tile mode, e.g. ['notes','calendar'].",
-				required: false,
-				schema: { type: "array", items: { type: "string" } },
-			},
-			{
-				name: "layout",
-				description:
-					"Layout for split/tile mode: horizontal, vertical, or grid.",
-				required: false,
-				schema: { type: "string", enum: ["horizontal", "vertical", "grid"] },
-			},
-			{
-				name: "placement",
-				description:
-					"Optional split placement hint: left, right, top, or bottom.",
-				required: false,
-				schema: {
-					type: "string",
-					enum: ["left", "right", "top", "bottom"],
-				},
-			},
+			...(multiViewLayoutsEnabled
+				? [
+						{
+							name: "views",
+							description:
+								"Multiple registered view ids/names for split or tile mode, e.g. ['notes','calendar'].",
+							required: false,
+							schema: { type: "array", items: { type: "string" } },
+						},
+						{
+							name: "layout",
+							description:
+								"Layout for split/tile mode: horizontal, vertical, or grid.",
+							required: false,
+							schema: {
+								type: "string",
+								enum: ["horizontal", "vertical", "grid"],
+							},
+						},
+						{
+							name: "placement",
+							description:
+								"Optional split placement hint: left, right, top, or bottom.",
+							required: false,
+							schema: {
+								type: "string",
+								enum: ["left", "right", "top", "bottom"],
+							},
+						},
+					]
+				: []),
 			{
 				name: "query",
 				description: "Search keyword (search mode).",
@@ -2653,6 +2685,9 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					await callback?.({ text: reply });
 					return { success: false, text: reply };
 				}
+				if (!multiViewLayoutsEnabled && (mode === "split" || mode === "tile")) {
+					return rejectMultiViewLayout(callback);
+				}
 
 				let effectiveMode = mode;
 				let prefetchedViews: ViewSummary[] | null = null;
@@ -2675,7 +2710,11 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				};
 
 				const structuredOperation = readViewOperationOption(actionOptions);
-				if (effectiveMode === "interact" && !structuredOperation) {
+				if (
+					multiViewLayoutsEnabled &&
+					effectiveMode === "interact" &&
+					!structuredOperation
+				) {
 					const views = await getViews();
 					effectiveMode =
 						preferLayoutModeOverCapability({
@@ -3128,7 +3167,10 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					}
 
 					case "split":
-					case "tile":
+					case "tile": {
+						if (!multiViewLayoutsEnabled) {
+							return rejectMultiViewLayout(callback);
+						}
 						return runViewsLayout({
 							client,
 							message,
@@ -3138,6 +3180,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							callback,
 							clientId,
 						});
+					}
 				}
 			};
 
@@ -3197,32 +3240,38 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					},
 				},
 			],
-			[
-				{
-					name: "{{user1}}",
-					content: { text: "split notes and calendar side by side" },
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: "Split views: Notes, Calendar (horizontal).",
-						action: "VIEWS",
-					},
-				},
-			],
-			[
-				{
-					name: "{{user1}}",
-					content: { text: "tile notes calendar and trajectories" },
-				},
-				{
-					name: "{{agentName}}",
-					content: {
-						text: "Tiled views: Notes, Calendar, Trajectories.",
-						action: "VIEWS",
-					},
-				},
-			],
+			...(multiViewLayoutsEnabled
+				? [
+						[
+							{
+								name: "{{user1}}",
+								content: { text: "split notes and calendar side by side" },
+							},
+							{
+								name: "{{agentName}}",
+								content: {
+									text: "Split views: Notes, Calendar (horizontal).",
+									action: "VIEWS",
+								},
+							},
+						],
+						[
+							{
+								name: "{{user1}}",
+								content: {
+									text: "tile notes calendar and trajectories",
+								},
+							},
+							{
+								name: "{{agentName}}",
+								content: {
+									text: "Tiled views: Notes, Calendar, Trajectories.",
+									action: "VIEWS",
+								},
+							},
+						],
+					]
+				: []),
 			[
 				{
 					name: "{{user1}}",

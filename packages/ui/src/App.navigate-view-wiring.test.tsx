@@ -23,6 +23,12 @@ import {
 import { DEFAULT_BOOT_CONFIG, setBootConfig } from "./config/boot-config";
 import type { ViewRegistryEntry } from "./hooks/useAvailableViews";
 
+vi.mock("@elizaos/shared/events", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@elizaos/shared/events")>();
+  return { ...actual, MULTI_VIEW_LAYOUTS_ENABLED: true };
+});
+
 const appState = vi.hoisted(() => ({
   firstRunComplete: true,
   setTab: vi.fn(),

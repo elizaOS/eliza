@@ -14,7 +14,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CURATED_MULTILINGUAL } from "./view-matrix.fixtures.js";
-import { createViewsAction } from "./views.js";
+import { createViewsAction as createProductionViewsAction } from "./views.js";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { resolveIntentView } from "./views-show.js";
 
@@ -43,6 +43,14 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		getUserMessageText: actual.getUserMessageText,
 	};
 });
+
+const createViewsAction = (
+	deps?: Parameters<typeof createProductionViewsAction>[0],
+) =>
+	createProductionViewsAction({
+		...deps,
+		multiViewLayoutsEnabled: true,
+	});
 
 function message(text: string, roomId = "room-1") {
 	return {

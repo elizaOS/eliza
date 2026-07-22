@@ -7,10 +7,11 @@ agent-driven application control. It contributes two intentionally small views:
 - **Simple Calendar** (`simple-calendar`) for event creation, editing, deletion,
   date selection, and month navigation.
 
-The views use the standard VIEWS broker and existing window manager, so the
-same surfaces can be opened, closed, split, tiled, pinned, and repositioned by
-chat or by direct UI interaction. This package does not replace the production
-Calendar, Documents, or Personal Assistant plugins.
+The views use the standard VIEWS broker and existing window manager, so either
+surface can be opened, closed, or pinned by chat and direct UI interaction.
+Launch builds show one foreground view at a time; the shared
+multi-view compositor remains dormant for post-MVP work. This package does not
+replace the production Calendar, Documents, or Personal Assistant plugins.
 
 ## Run locally
 
@@ -27,7 +28,7 @@ Open `http://localhost:2138/notes` or
 2. Create a note titled “Launch checklist”.
 3. Open the Simple Calendar view.
 4. Create an event for tomorrow.
-5. Split Notes and Simple Calendar side by side.
+5. Switch back to Notes and verify the saved note is still present.
 
 State is stored atomically per agent under
 `ELIZA_STATE_DIR/simple-views/agents/<agentId>/state.json`. On first use, a

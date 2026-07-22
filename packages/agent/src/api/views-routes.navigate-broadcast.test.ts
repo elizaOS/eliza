@@ -81,6 +81,7 @@ function makeNavigateCtx(
     error,
     broadcastWs,
     broadcastWsToClientId,
+    multiViewLayoutsEnabled: true,
   };
   return { ctx, json, error, broadcastWs, broadcastWsToClientId };
 }
@@ -373,6 +374,45 @@ describe("POST /api/views/:id/navigate broadcast contract", () => {
       layout: "horizontal",
       placement: "right",
     });
+  });
+
+  it("normalizes legacy layout requests to one launch view", async () => {
+    const { ctx, broadcastWs, json } = makeNavigateCtx("settings", {
+      action: "split-view",
+      views: ["settings", "character"],
+      layout: "horizontal",
+      placement: "right",
+    });
+    ctx.multiViewLayoutsEnabled = false;
+
+    await expect(handleViewsRoutes(ctx)).resolves.toBe(true);
+
+    expect(broadcastWs).toHaveBeenCalledWith({
+      type: SHELL_NAVIGATE_VIEW_WS_EVENT,
+      viewId: "settings",
+      viewPath: "/settings",
+      viewLabel: "Settings",
+      viewType: "gui",
+    });
+    expect(json).toHaveBeenCalledWith(
+      ctx.res,
+      expect.objectContaining({
+        ok: true,
+        viewId: "settings",
+      }),
+    );
+    const currentView = getCurrentViewState();
+    expect(currentView).toEqual(
+      expect.objectContaining({ viewId: "settings" }),
+    );
+    expect(currentView?.action).toBeUndefined();
+    expect(currentView?.views).toBeUndefined();
+    expect(currentView?.layout).toBeUndefined();
+    expect(currentView?.placement).toBeUndefined();
+    expect(getActiveViewContext()).toEqual(
+      expect.objectContaining({ viewId: "settings" }),
+    );
+    expect(getActiveViewContext()?.viewIds).toBeUndefined();
   });
 
   it("normalizes split state to every visible pane with the primary first", async () => {

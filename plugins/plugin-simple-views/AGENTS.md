@@ -1,8 +1,8 @@
 # @elizaos/plugin-simple-views
 
 Developer-only Notes and Simple Calendar views for exercising agent-driven view
-navigation, interaction, and window layouts without depending on production
-personal-data plugins.
+navigation and interaction without depending on production personal-data
+plugins.
 
 ## Role
 
@@ -12,8 +12,9 @@ This package owns two deliberately small app surfaces:
 - `simple-calendar` — local event CRUD, month navigation, and selected date.
 
 The package is opt-in through `ELIZA_SIMPLE_VIEWS=1`. Its views are registered
-with the existing VIEWS broker and window manager, which own open, close, split,
-tile, pin, and placement behavior. Do not introduce another layout manager here.
+with the existing VIEWS broker and window manager, which own navigation, tabs,
+windows, and the dormant post-MVP multi-view compositor. Launch builds show one
+foreground view at a time. Do not introduce another layout manager here.
 
 ## Data contract
 

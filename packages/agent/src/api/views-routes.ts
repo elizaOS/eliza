@@ -33,6 +33,7 @@ import {
 } from "@elizaos/core";
 import {
   createShellNavigateViewWsFrame,
+  MULTI_VIEW_LAYOUTS_ENABLED,
   type RouteHelpers,
   readJsonBody,
   type ShellNavigateViewPayload,
@@ -487,6 +488,8 @@ export interface ViewsRouteContext
   broadcastWsToClientId?: (clientId: string, payload: object) => number;
   /** Agent runtime — used by the semantic search endpoint. */
   runtime?: IAgentRuntime | null;
+  /** Product capability override used by alternate shells and route tests. */
+  multiViewLayoutsEnabled?: boolean;
 }
 
 const PREFIX = "/api/views";
@@ -1093,6 +1096,9 @@ export async function handleViewsRoutes(
   //   action: "open-window" — tells the shell to open in a new Electrobun window
   //   action: "close"      — tells the shell to close/hide the target view
   //   action: "close-all"  — tells the shell to close/hide all open views
+  // Multi-view fields remain part of the wire contract for later shells, but
+  // are normalized to ordinary single-view navigation unless the shared
+  // capability gate is enabled:
   //   action: "split-view" — asks the shell to split multiple views
   //   action: "tile-views" — asks the shell to tile multiple views
   //   views: string[]      — view ids participating in split/tile actions
@@ -1154,7 +1160,15 @@ export async function handleViewsRoutes(
       entry?.path ??
       (id === "__view-manager__" ? "/apps" : null);
     const viewLabel = entry?.label ?? id;
-    const action = typeof body?.action === "string" ? body.action : undefined;
+    const requestedAction =
+      typeof body?.action === "string" ? body.action : undefined;
+    const multiViewLayoutsEnabled =
+      ctx.multiViewLayoutsEnabled ?? MULTI_VIEW_LAYOUTS_ENABLED;
+    const action =
+      !multiViewLayoutsEnabled &&
+      (requestedAction === "split-view" || requestedAction === "tile-views")
+        ? undefined
+        : requestedAction;
     // `source` distinguishes an agent-initiated switch (the default) from a user
     // manually clicking a tab/tile/slash-command, which the client *reports* with
     // `source: "user"`. A user-reported switch must NOT re-broadcast
@@ -1171,13 +1185,14 @@ export async function handleViewsRoutes(
           ? body.section.trim()
           : undefined;
     const alwaysOnTop = body?.alwaysOnTop === true;
-    const requestedLayoutViews = Array.isArray(body?.views)
-      ? body.views.flatMap((value) => {
-          if (typeof value !== "string") return [];
-          const normalized = value.trim();
-          return normalized ? [normalized] : [];
-        })
-      : undefined;
+    const requestedLayoutViews =
+      multiViewLayoutsEnabled && Array.isArray(body?.views)
+        ? body.views.flatMap((value) => {
+            if (typeof value !== "string") return [];
+            const normalized = value.trim();
+            return normalized ? [normalized] : [];
+          })
+        : undefined;
     // Layout state is consumed as the complete set of visible panes. Keep the
     // routed primary first even when a caller only supplies the panes being
     // added, and normalize duplicates before publishing state/prompt context.
@@ -1212,11 +1227,15 @@ export async function handleViewsRoutes(
       viewType,
     }));
     const layout =
-      typeof body?.layout === "string" && body.layout.trim().length > 0
+      multiViewLayoutsEnabled &&
+      typeof body?.layout === "string" &&
+      body.layout.trim().length > 0
         ? body.layout.trim()
         : undefined;
     const placement =
-      typeof body?.placement === "string" && body.placement.trim().length > 0
+      multiViewLayoutsEnabled &&
+      typeof body?.placement === "string" &&
+      body.placement.trim().length > 0
         ? body.placement.trim()
         : undefined;
     const payload =

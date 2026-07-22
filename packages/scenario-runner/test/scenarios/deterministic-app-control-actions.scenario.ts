@@ -51,6 +51,7 @@ function expectActionTurn(
     parameters: Record<string, unknown>;
     responseText: string;
     resultFields: Record<string, unknown>;
+    success?: boolean;
   },
 ): string | undefined {
   if (execution.responseText !== expected.responseText) {
@@ -71,8 +72,9 @@ function expectActionTurn(
     }
   }
 
-  if (action.result?.success !== true) {
-    return `expected ${expected.actionName} result.success=true, saw ${JSON.stringify(action.result)}`;
+  const expectedSuccess = expected.success ?? true;
+  if (action.result?.success !== expectedSuccess) {
+    return `expected ${expected.actionName} result.success=${expectedSuccess}, saw ${JSON.stringify(action.result)}`;
   }
 
   for (const [path, expectedValue] of Object.entries(expected.resultFields)) {
@@ -670,7 +672,7 @@ export default scenario({
         layout: "horizontal",
         views: ["remote-ledger", "settings"],
       },
-      responseIncludesAny: ["Split views: Remote Ledger, Settings"],
+      responseIncludesAny: ["one view at a time"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -679,13 +681,11 @@ export default scenario({
             layout: "horizontal",
             views: ["remote-ledger", "settings"],
           },
-          responseText: "Split views: Remote Ledger, Settings (horizontal).",
+          responseText:
+            "I can show one view at a time right now. Which view should I open?",
+          success: false,
           resultFields: {
-            "values.mode": "split",
-            "values.layout": "horizontal",
-            "values.viewIds.0": "remote-ledger",
-            "values.viewIds.1": "settings",
-            "data.action": "split-view",
+            "data.reason": "multi-view-layouts-disabled",
           },
         }),
     },
@@ -698,7 +698,7 @@ export default scenario({
         action: "tile",
         views: ["remote-ledger", "settings"],
       },
-      responseIncludesAny: ["Tiled views: Remote Ledger, Settings"],
+      responseIncludesAny: ["one view at a time"],
       assertTurn: (execution) =>
         expectActionTurn(execution, {
           actionName: "VIEWS",
@@ -706,13 +706,11 @@ export default scenario({
             action: "tile",
             views: ["remote-ledger", "settings"],
           },
-          responseText: "Tiled views: Remote Ledger, Settings.",
+          responseText:
+            "I can show one view at a time right now. Which view should I open?",
+          success: false,
           resultFields: {
-            "values.mode": "tile",
-            "values.layout": "grid",
-            "values.viewIds.0": "remote-ledger",
-            "values.viewIds.1": "settings",
-            "data.action": "tile-views",
+            "data.reason": "multi-view-layouts-disabled",
           },
         }),
     },
@@ -1041,7 +1039,7 @@ export default scenario({
       type: "actionCalled",
       actionName: "VIEWS",
       status: "success",
-      minCount: 14,
+      minCount: 12,
     },
     {
       type: "actionCalled",
@@ -1149,55 +1147,6 @@ export default scenario({
             method: "GET",
             pathname: "/api/views/current",
             response: { body: { currentView }, status: 200 },
-            search: "",
-          },
-          {
-            body: null,
-            method: "GET",
-            pathname: "/api/views",
-            response: { body: { views }, status: 200 },
-            search: "",
-          },
-          {
-            body: null,
-            method: "GET",
-            pathname: "/api/views/current",
-            response: { body: { currentView }, status: 200 },
-            search: "",
-          },
-          {
-            body: {
-              action: "split-view",
-              views: ["remote-ledger", "settings"],
-              layout: "horizontal",
-            },
-            method: "POST",
-            pathname: "/api/views/remote-ledger/navigate",
-            response: {
-              body: { ok: true, navigated: true, viewId: "remote-ledger" },
-              status: 200,
-            },
-            search: "",
-          },
-          {
-            body: null,
-            method: "GET",
-            pathname: "/api/views",
-            response: { body: { views }, status: 200 },
-            search: "",
-          },
-          {
-            body: {
-              action: "tile-views",
-              views: ["remote-ledger", "settings"],
-              layout: "grid",
-            },
-            method: "POST",
-            pathname: "/api/views/remote-ledger/navigate",
-            response: {
-              body: { ok: true, navigated: true, viewId: "remote-ledger" },
-              status: 200,
-            },
             search: "",
           },
           {

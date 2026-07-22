@@ -104,6 +104,7 @@ import {
   dispatchNavigateViewEvent,
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
+  MULTI_VIEW_LAYOUTS_ENABLED,
   NAVIGATE_VIEW_EVENT,
 } from "./events";
 import { adoptRemoteAgentFirstRun } from "./first-run/adopt-remote-first-run";
@@ -2424,6 +2425,7 @@ function AppContent() {
     loading: availableViewsLoading,
   } = useRoutableViews();
   const [viewLayout, setViewLayout] = useState<ActiveViewLayout | null>(() =>
+    MULTI_VIEW_LAYOUTS_ENABLED &&
     trimmedNavigationPath(getWindowNavigationPath()) === "/views"
       ? readViewLayoutFromHistory()
       : null,
@@ -2641,7 +2643,9 @@ function AppContent() {
   // back/forward restore the same per-tab shell instead of a generic launcher.
   useEffect(() => {
     const restored =
-      tab === "views" && trimmedNavigationPath(navigationPath) === "/views"
+      MULTI_VIEW_LAYOUTS_ENABLED &&
+      tab === "views" &&
+      trimmedNavigationPath(navigationPath) === "/views"
         ? readViewLayoutFromHistory()
         : null;
     setViewLayout((current) => {

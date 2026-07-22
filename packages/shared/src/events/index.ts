@@ -83,6 +83,13 @@ export interface ElizaCloudStatusUpdatedDetail {
 // ── Navigation ──────────────────────────────────────────────────────────
 export const NAVIGATE_VIEW_EVENT = "eliza:navigate:view" as const;
 
+/**
+ * Launch surfaces keep one foreground view at a time. The layout protocol and
+ * compositor stay intact behind this gate so multi-view work can resume after
+ * MVP without changing the navigation wire contract.
+ */
+export const MULTI_VIEW_LAYOUTS_ENABLED = false;
+
 export type NavigateViewType = "gui" | "tui" | "xr";
 
 export interface NavigateViewDetail {

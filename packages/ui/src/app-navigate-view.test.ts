@@ -41,6 +41,7 @@ function createHandlerFixture(
   views: ViewRegistryEntry[] = [view()],
   viewLayout: ActiveViewLayout | null = null,
   activeForegroundViewId?: string | null,
+  multiViewLayoutsEnabled = true,
 ) {
   const invokeDesktopBridgeRequest = vi.fn(
     async <T>() =>
@@ -66,6 +67,7 @@ function createHandlerFixture(
     setTab,
     setViewLayout,
     viewLayout,
+    multiViewLayoutsEnabled,
   });
   return {
     handler,
@@ -478,6 +480,46 @@ describe("App navigate-view shell handler", () => {
       layout: "horizontal",
       placement: "right",
     });
+  });
+
+  it("normalizes legacy layout events to one focused view for launch", () => {
+    const notes = view({
+      id: "notes",
+      label: "Notes",
+      path: "/notes",
+      desktopTabEnabled: true,
+    });
+    const calendar = view({
+      id: "calendar",
+      label: "Calendar",
+      path: "/calendar",
+      desktopTabEnabled: true,
+    });
+    const fixture = createHandlerFixture(
+      [notes, calendar],
+      null,
+      undefined,
+      false,
+    );
+
+    fixture.handler(
+      navigateEvent({
+        viewId: "notes",
+        action: "split-view",
+        views: ["calendar", "notes"],
+        layout: "horizontal",
+      }),
+    );
+
+    expect(fixture.openDesktopTab).toHaveBeenCalledTimes(1);
+    expect(fixture.openDesktopTab).toHaveBeenCalledWith(notes, {
+      pinned: false,
+    });
+    expect(fixture.setActiveDesktopTabId).toHaveBeenCalledWith("notes");
+    expect(fixture.setViewLayout).toHaveBeenCalledWith(null);
+    expect(fixture.setTab).toHaveBeenCalledWith("views");
+    expect(fixture.navigatePath).toHaveBeenCalledWith("/notes");
+    expect(readViewLayoutFromHistory()).toBeNull();
   });
 
   it("restores a validated layout from this tab's history entry", () => {

@@ -15,7 +15,10 @@ import type { ResponseHandlerEvaluatorContext } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { viewFollowupRoutingEvaluator } from "../evaluators/view-followup-routing.js";
 import { runCreate } from "./app-create.js";
-import { createViewsAction, createViewsAliasAction } from "./views.js";
+import {
+	createViewsAction as createProductionViewsAction,
+	createViewsAliasAction,
+} from "./views.js";
 import type { ViewSummary } from "./views-client.js";
 import { runViewsCreate } from "./views-create.js";
 import { runViewsDelete } from "./views-delete.js";
@@ -63,6 +66,14 @@ vi.mock("@elizaos/core", async (importOriginal) => {
 		resolveStateDir: actual.resolveStateDir,
 	};
 });
+
+const createViewsAction = (
+	deps?: Parameters<typeof createProductionViewsAction>[0],
+) =>
+	createProductionViewsAction({
+		...deps,
+		multiViewLayoutsEnabled: true,
+	});
 
 type RuntimeTask = {
 	id: string;
@@ -325,6 +336,41 @@ describe("view management actions", () => {
 		const action = createViewsAction();
 		expect(action.routingHint).toContain("UI view/window/panel/app navigation");
 		expect(action.routingHint).toContain("Close/hide means VIEWS action=close");
+	});
+
+	it("keeps multi-view layouts off the launch planner and rejects stale calls", async () => {
+		const action = createProductionViewsAction();
+		const plannerSurface = JSON.stringify({
+			similes: action.similes,
+			description: action.description,
+			descriptionCompressed: action.descriptionCompressed,
+			routingHint: action.routingHint,
+			parameters: action.parameters,
+			examples: action.examples,
+		});
+		expect(plannerSurface).not.toMatch(/split|tile|arrange_views/i);
+		expect(action.parameters?.map((parameter) => parameter.name)).not.toEqual(
+			expect.arrayContaining(["views", "layout", "placement"]),
+		);
+
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const result = await action.handler(
+			runtime as never,
+			message("split notes and calendar") as never,
+			undefined,
+			{ action: "split", views: ["notes", "calendar"] },
+			callback,
+		);
+
+		expect(result).toMatchObject({
+			success: false,
+			data: { reason: "multi-view-layouts-disabled" },
+		});
+		expect(callback).toHaveBeenCalledWith({
+			text: "I can show one view at a time right now. Which view should I open?",
+		});
+		expect(globalThis.fetch).not.toHaveBeenCalled();
 	});
 
 	it("keeps opt-in workbench ids out of the global planner surface", () => {

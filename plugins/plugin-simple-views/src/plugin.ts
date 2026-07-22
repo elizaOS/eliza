@@ -1,7 +1,7 @@
 /**
  * Runtime declaration for the developer-only Notes and Simple Calendar
  * workbench. It contributes two agent-drivable views backed by one durable
- * service while delegating navigation and layout to the shared VIEWS system.
+ * service while delegating navigation to the shared VIEWS system.
  */
 
 import type { Plugin } from "@elizaos/core";
@@ -13,7 +13,7 @@ import { SimpleViewsService } from "./service.js";
 export const simpleViewsPlugin: Plugin = {
   name: "@elizaos/plugin-simple-views",
   description:
-    "Developer-only Notes and Simple Calendar views for agent-driven view switching, interaction, persistence, and split-pane QA.",
+    "Developer-only Notes and Simple Calendar views for agent-driven view switching, interaction, and persistence QA.",
   services: [SimpleViewsService],
   routes: simpleViewsRoutes,
   views: [
@@ -48,7 +48,7 @@ export const simpleViewsPlugin: Plugin = {
       id: "simple-calendar",
       label: "Simple Calendar",
       description:
-        "A durable local calendar for testing agent-driven events, view switching, and split layouts without production calendar data.",
+        "A durable local calendar for testing agent-driven events and view switching without production calendar data.",
       icon: "CalendarDays",
       path: "/simple-calendar",
       order: 921,
