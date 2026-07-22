@@ -41,4 +41,23 @@ export const SOLANA_DEX_PROTOCOLS: Readonly<
       "solana",
     ],
   },
+
+  srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX: {
+    programId: "srmqPvymJeFKQ4zGQed1GFppgkRHL9kaELCbyksJtPX",
+    name: "OpenBook V2",
+    category: "dex",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://openbookdex.org",
+    notes: "OpenBook central limit order book program.",
+    tags: [
+      "openbook",
+      "clob",
+      "dex",
+      "orderbook",
+      "solana",
+    ],
+  },
 };
