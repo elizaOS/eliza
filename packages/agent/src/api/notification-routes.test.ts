@@ -305,37 +305,37 @@ describe("handleNotificationRoute", () => {
     });
   });
 
-  it.each([
-    "pending",
-    "registering",
-  ] as const)("returns typed retryable 503 while the service is %s", async (status) => {
-    const helpers = makeHelpers();
-    const startingRuntime = {
-      reportError: vi.fn(),
-      getService: () => null,
-      hasService: () => true,
-      getServiceRegistrationStatus: () => status,
-      getServiceLoadPromise: async () => service,
-    } satisfies NotificationServiceLifecycleRuntime;
-    await handleNotificationRoute(
-      req("/api/notifications"),
-      res,
-      "/api/notifications",
-      "GET",
-      { runtime: startingRuntime },
-      helpers,
-    );
-    expect(setHeader).toHaveBeenCalledWith("Retry-After", "1");
-    expect(helpers.json).toHaveBeenCalledWith(
-      res,
-      {
-        error: "Notification service is still starting",
-        code: "NOTIFICATION_SERVICE_NOT_READY",
-        retryAfter: 1,
-      },
-      503,
-    );
-  });
+  it.each(["pending", "registering"] as const)(
+    "returns typed retryable 503 while the service is %s",
+    async (status) => {
+      const helpers = makeHelpers();
+      const startingRuntime = {
+        reportError: vi.fn(),
+        getService: () => null,
+        hasService: () => true,
+        getServiceRegistrationStatus: () => status,
+        getServiceLoadPromise: async () => service,
+      } satisfies NotificationServiceLifecycleRuntime;
+      await handleNotificationRoute(
+        req("/api/notifications"),
+        res,
+        "/api/notifications",
+        "GET",
+        { runtime: startingRuntime },
+        helpers,
+      );
+      expect(setHeader).toHaveBeenCalledWith("Retry-After", "1");
+      expect(helpers.json).toHaveBeenCalledWith(
+        res,
+        {
+          error: "Notification service is still starting",
+          code: "NOTIFICATION_SERVICE_NOT_READY",
+          retryAfter: 1,
+        },
+        503,
+      );
+    },
+  );
 
   it("returns typed 503 and starts one recovery for a failed service", async () => {
     const helpers = makeHelpers();

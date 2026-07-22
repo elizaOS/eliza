@@ -95,8 +95,8 @@ jobs:
       - name: Run type-duplication finder self-test
         run: bun run audit:type-duplication:self-test
 
-      - name: Run lint
-        run: bun run lint
+      - name: Run lint (read-only)
+        run: bun run lint:check
 
       - name: Run format check
         run: bun run format:check
@@ -165,6 +165,9 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
           install-command: bun install --ignore-scripts --no-frozen-lockfile
           cache-bun-install: "false"
+
+      - name: Validate fork-safe browser contract
+        run: bun run audit:quality-fork-browser
 
       - name: Build
         run: bun run build

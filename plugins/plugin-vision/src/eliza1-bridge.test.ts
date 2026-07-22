@@ -59,9 +59,13 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
         prompt: expect.any(String),
       }),
     );
-    const prompt = JSON.parse(
-      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
-    ) as Record<string, unknown>;
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as Record<string, unknown>;
     expect(prompt.detectedText).toBeUndefined();
   });
 
@@ -98,9 +102,13 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
     );
 
     expect(result).toBe("The settings panel is open.");
-    const prompt = JSON.parse(
-      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
-    ) as { detectedText?: string };
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
     expect(prompt.detectedText).toBe("Save\nProject settings\nDeploy now");
   });
 
@@ -143,9 +151,13 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
       service,
       `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
     );
-    const prompt = JSON.parse(
-      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
-    ) as { detectedText?: string };
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
     expect(prompt.detectedText).toBeTruthy();
     expect((prompt.detectedText ?? "").split("\n")).toHaveLength(40);
   });
@@ -168,9 +180,13 @@ describe("VisionService eliza-1 IMAGE_DESCRIPTION bridge", () => {
       service,
       `data:image/jpeg;base64,${Buffer.from("img").toString("base64")}`,
     );
-    const prompt = JSON.parse(
-      (useModel.mock.calls[0]?.[1] as { prompt: string }).prompt,
-    ) as { detectedText?: string };
+    const modelArgs = useModel.mock.calls[0]?.[1] as
+      | { prompt: string }
+      | undefined;
+    if (!modelArgs) {
+      throw new Error("Vision bridge did not call the image-description model");
+    }
+    const prompt = JSON.parse(modelArgs.prompt) as { detectedText?: string };
     expect(prompt.detectedText).toBeTruthy();
     expect((prompt.detectedText ?? "").length).toBeLessThanOrEqual(2000);
     expect((prompt.detectedText ?? "").length).toBeGreaterThan(1900);

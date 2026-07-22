@@ -57,6 +57,11 @@ export {
 } from "./api/automation-node-contributors";
 export { IOS_FULL_BUN_SMOKE_FAILURE_RE } from "./platform/chat-failure-strings.generated";
 export {
+  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+  IOS_FULL_BUN_SMOKE_RESULT_KEY,
+  runIosFullBunSmokeIfRequested,
+} from "./platform/ios-runtime-bridge";
+export {
   buildLocalizedTrayMenu,
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopSurfaceNavigationRuntime,

@@ -3,7 +3,9 @@
  *
  * `getMobileDeviceBridgeServingStatus` reports the host as serving only after
  * handler registration and a live abstract-UDS probe, which is the readiness
- * signal consumed by smoke tests and local-inference provider status.
+ * signal consumed by smoke tests and local-inference provider status. Abstract
+ * AF_UNIX sockets are a Linux kernel feature, so live-socket cases run there;
+ * every host still proves registration and unavailable-host decisions.
  */
 
 import net from "node:net";
@@ -19,6 +21,7 @@ const ENV_KEYS = [
 	"ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD",
 ];
 const saved: Record<string, string | undefined> = {};
+const linuxAbstractSocketIt = process.platform === "linux" ? it : it.skip;
 
 function fakeRuntime() {
 	return {
@@ -72,39 +75,45 @@ describe("getMobileDeviceBridgeServingStatus — true bionic serving signal (#11
 		});
 	});
 
-	it("bionic env set + live socket but handlers NOT registered is NOT serving", async () => {
-		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
-		process.env.ELIZA_BIONIC_INFERENCE_SOCK = "eliza-test-serving-unreg";
-		const server = await listenOnAbstractSocket("eliza-test-serving-unreg");
-		try {
-			const mod = await freshBootstrap();
-			const status = await mod.getMobileDeviceBridgeServingStatus();
-			expect(status.registeredTrigger).toBeNull();
-			expect(status.bionicHostServing).toBe(false);
-		} finally {
-			await closeServer(server);
-		}
-	});
+	linuxAbstractSocketIt(
+		"bionic env set + live socket but handlers NOT registered is NOT serving",
+		async () => {
+			process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+			process.env.ELIZA_BIONIC_INFERENCE_SOCK = "eliza-test-serving-unreg";
+			const server = await listenOnAbstractSocket("eliza-test-serving-unreg");
+			try {
+				const mod = await freshBootstrap();
+				const status = await mod.getMobileDeviceBridgeServingStatus();
+				expect(status.registeredTrigger).toBeNull();
+				expect(status.bionicHostServing).toBe(false);
+			} finally {
+				await closeServer(server);
+			}
+		},
+	);
 
-	it("handlers bound via bionic-host AND a live host socket IS serving", async () => {
-		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
-		process.env.ELIZA_BIONIC_INFERENCE_SOCK = "eliza-test-serving-live";
-		const server = await listenOnAbstractSocket("eliza-test-serving-live");
-		try {
-			const mod = await freshBootstrap();
-			const runtime = fakeRuntime();
-			await expect(
-				mod.ensureMobileDeviceBridgeInferenceHandlers(runtime as never),
-			).resolves.toBe(true);
-			const status = await mod.getMobileDeviceBridgeServingStatus();
-			expect(status).toEqual({
-				registeredTrigger: "bionic-host",
-				bionicHostServing: true,
-			});
-		} finally {
-			await closeServer(server);
-		}
-	});
+	linuxAbstractSocketIt(
+		"handlers bound via bionic-host AND a live host socket IS serving",
+		async () => {
+			process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";
+			process.env.ELIZA_BIONIC_INFERENCE_SOCK = "eliza-test-serving-live";
+			const server = await listenOnAbstractSocket("eliza-test-serving-live");
+			try {
+				const mod = await freshBootstrap();
+				const runtime = fakeRuntime();
+				await expect(
+					mod.ensureMobileDeviceBridgeInferenceHandlers(runtime as never),
+				).resolves.toBe(true);
+				const status = await mod.getMobileDeviceBridgeServingStatus();
+				expect(status).toEqual({
+					registeredTrigger: "bionic-host",
+					bionicHostServing: true,
+				});
+			} finally {
+				await closeServer(server);
+			}
+		},
+	);
 
 	it("handlers bound via bionic-host but the host socket is DOWN is NOT serving", async () => {
 		process.env.ELIZA_BIONIC_HOST_DELEGATED = "1";

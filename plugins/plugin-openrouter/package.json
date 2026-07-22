@@ -67,6 +67,7 @@
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
     "dotenv": "^17.2.3",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },
@@ -80,7 +81,7 @@
     "clean": "node ../../packages/scripts/rm-path-recursive.mjs dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "test:harness": "bunx vitest run --config vitest.harness.config.ts",
     "test:unit": "vitest run __tests__/ --config ./vitest.config.ts",

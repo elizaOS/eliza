@@ -654,11 +654,12 @@ function hasFrameworkBinary(id: SupportedTaskAgentAdapter): boolean {
         ? isCommandExecutableAvailable(configured)
         : hasBinaryOnPath("eliza-code-acp");
     }
-    case "pi-agent":
-      return (
-        Boolean(readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND")) ||
-        hasBinaryOnPath("pi-agent")
-      );
+    case "pi-agent": {
+      const configured = readConfigEnvKey("ELIZA_PI_AGENT_ACP_COMMAND");
+      return configured
+        ? isCommandExecutableAvailable(configured)
+        : hasBinaryOnPath("pi-agent");
+    }
     case "claude":
       return hasBinaryOnPath("claude");
     case "codex": {

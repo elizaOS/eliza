@@ -66,6 +66,12 @@ interface RuntimeOptions {
   backgroundBufferChars?: number;
 }
 
+function requireActionResult(result: ActionResult | undefined): ActionResult {
+  expect(result).toBeDefined();
+  if (!result) throw new Error("Expected SHELL action result");
+  return result;
+}
+
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   runtime: IAgentRuntime;
   sandbox: SandboxService;
@@ -524,7 +530,8 @@ describeIfPosix("shellAction", () => {
       command:
         "for i in 0 1 2; do printf 'tick-%s\\n' \"$i\"; sleep 0.06; done",
     });
-    const handle = (start?.data as Record<string, unknown>).handle as string;
+    const handle = (requireActionResult(start).data as Record<string, unknown>)
+      .handle as string;
 
     const first = await pollUntil(runtime, message, handle, (_data, text) =>
       text.includes("tick-0"),
@@ -583,7 +590,8 @@ describeIfPosix("shellAction", () => {
       },
       cb,
     );
-    const handle = (start?.data as Record<string, unknown>).handle as string;
+    const handle = (requireActionResult(start).data as Record<string, unknown>)
+      .handle as string;
 
     await shellAction.handler?.(
       runtime,
@@ -624,7 +632,8 @@ describeIfPosix("shellAction", () => {
       action: "start_background",
       command: "printf 'abcdefghijklmnopqrstuvwxyz'",
     });
-    const handle = (start?.data as Record<string, unknown>).handle as string;
+    const handle = (requireActionResult(start).data as Record<string, unknown>)
+      .handle as string;
 
     const poll = await pollUntil(runtime, message, handle, (data) => {
       const stdout = data.stdout as Record<string, unknown> | undefined;
@@ -649,10 +658,8 @@ describeIfPosix("shellAction", () => {
       action: "start_background",
       command: "sleep 30",
     });
-    const session = (start?.data as Record<string, unknown>).session as Record<
-      string,
-      unknown
-    >;
+    const session = (requireActionResult(start).data as Record<string, unknown>)
+      .session as Record<string, unknown>;
     const pid = session.pid as number;
     expect(isProcessAlive(pid)).toBe(true);
 

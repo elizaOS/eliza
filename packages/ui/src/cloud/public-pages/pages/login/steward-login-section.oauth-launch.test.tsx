@@ -133,15 +133,20 @@ describe("StewardLoginSection OAuth launch", () => {
 
   it("navigates a pre-opened desktop popup after PKCE resolves", async () => {
     renderSection();
+    const popup = oauthState.popup;
+    expect(popup).not.toBeNull();
+    if (!popup) {
+      throw new Error("Expected the OAuth popup to be pre-opened");
+    }
 
     fireEvent.click(await screen.findByRole("button", { name: "Google" }));
 
     await waitFor(() =>
-      expect((oauthState.popup?.location as Location).href).toContain(
+      expect((popup.location as Location).href).toContain(
         "/steward/auth/oauth/google/authorize",
       ),
     );
-    expect(oauthState.popup?.opener).toBeNull();
+    expect(popup.opener).toBeNull();
   });
 
   it("closes the popup when browser storage cannot save the verifier", async () => {

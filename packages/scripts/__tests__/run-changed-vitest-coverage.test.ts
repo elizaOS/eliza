@@ -15,15 +15,26 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { mergeLcovReports } from "../merge-lcov-reports.mjs";
 import {
   findNearestPackageDir,
   findNearestVitestConfig,
   groupChangedVitestTests,
-  mergeLcovReports,
   normalizeLcovReport,
 } from "../run-changed-vitest-coverage.mjs";
+import {
+  composeChangedCoverageConfig,
+  loadChangedCoverageConfig,
+} from "../vitest.changed-coverage.config";
 
 const roots: string[] = [];
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+);
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true });
@@ -178,6 +189,62 @@ describe("changed Vitest coverage grouping", () => {
     expect(() => findNearestVitestConfig(root, "../outside.test.ts")).toThrow(
       "escapes the repository",
     );
+  });
+
+  test("preserves package aliases before comprehensive workspace source aliases", () => {
+    const packageAlias = {
+      find: /^@elizaos\/shared$/,
+      replacement: "/test/shared-stub.ts",
+    };
+    const config = composeChangedCoverageConfig(
+      {
+        resolve: {
+          alias: [packageAlias],
+          conditions: ["browser"],
+        },
+      },
+      repoRoot,
+    );
+    const aliases = config.resolve?.alias;
+    expect(Array.isArray(aliases)).toBe(true);
+    if (!Array.isArray(aliases)) {
+      throw new Error("Expected changed coverage aliases to use array order");
+    }
+
+    expect(aliases[0]).toEqual(packageAlias);
+    const sharedSourceAlias = aliases.find(
+      (entry, index) =>
+        index > 0 &&
+        typeof entry === "object" &&
+        entry !== null &&
+        "find" in entry &&
+        entry.find instanceof RegExp &&
+        entry.find.test("@elizaos/shared"),
+    );
+    expect(sharedSourceAlias).toBeDefined();
+    expect(sharedSourceAlias).toMatchObject({
+      replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
+    });
+    expect(config.resolve?.conditions).toEqual(["browser", "eliza-source"]);
+  });
+
+  test("loads extensionless TypeScript config dependencies through Vite", async () => {
+    // packages/agent imports `packages/test/vitest/default.config` without a
+    // file extension. This is valid in a Vite config graph but fails when the
+    // package config is loaded through native Node ESM.
+    const config = await loadChangedCoverageConfig(
+      { command: "serve", mode: "test" },
+      {
+        ELIZA_CHANGED_VITEST_CONFIG: path.join(
+          repoRoot,
+          "packages/agent/vitest.config.ts",
+        ),
+        ELIZA_CHANGED_VITEST_REPO_ROOT: repoRoot,
+      },
+    );
+
+    expect(config.root).toBe(path.join(repoRoot, "packages/agent"));
+    expect(config.test?.environment).toBe("node");
   });
 
   test("union-merges per-group LCOV reports so any-group coverage counts once per file", () => {

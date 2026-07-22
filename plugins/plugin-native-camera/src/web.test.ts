@@ -263,19 +263,22 @@ describe("CameraWeb.startRecording", () => {
       { quality: "ultra" },
       "quality must be one of low, medium, high, or highest",
     ],
-  ])("rejects malformed recording options before requesting microphone access: %#", async (options, message) => {
-    const { getUserMedia } = installMediaDevices([], () =>
-      Promise.resolve(makeMediaStream()),
-    );
-    const camera = new CameraWeb();
-    await camera.startPreview({ element: document.createElement("div") });
+  ])(
+    "rejects malformed recording options before requesting microphone access: %#",
+    async (options, message) => {
+      const { getUserMedia } = installMediaDevices([], () =>
+        Promise.resolve(makeMediaStream()),
+      );
+      const camera = new CameraWeb();
+      await camera.startPreview({ element: document.createElement("div") });
 
-    await expect(camera.startRecording(options as never)).rejects.toThrow(
-      message,
-    );
+      await expect(camera.startRecording(options as never)).rejects.toThrow(
+        message,
+      );
 
-    expect(getUserMedia).toHaveBeenCalledTimes(1);
-  });
+      expect(getUserMedia).toHaveBeenCalledTimes(1);
+    },
+  );
 });
 
 describe("CameraWeb settings validation", () => {

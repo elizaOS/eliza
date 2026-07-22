@@ -237,22 +237,25 @@ describe("Agent A2A billing", () => {
     [null, 500],
     [1024, 1524],
     [8000, 8500],
-  ] as const)("prices and caps the provider at one admitted ceiling (budget=%p)", async (budget, expectedCap) => {
-    makeReservation({ adjustmentType: "none" });
-    resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
+  ] as const)(
+    "prices and caps the provider at one admitted ceiling (budget=%p)",
+    async (budget, expectedCap) => {
+      makeReservation({ adjustmentType: "none" });
+      resolveAnthropicThinkingBudgetTokens.mockReturnValue(budget);
 
-    const response = await callChat("anthropic/claude-opus-4-5");
-    expect(response.status).toBe(200);
+      const response = await callChat("anthropic/claude-opus-4-5");
+      expect(response.status).toBe(200);
 
-    // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
-    expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
-    // ...and the provider is capped at the identical value — never omitted.
-    expect(streamText).toHaveBeenCalledTimes(1);
-    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
-    expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
-      estimateRequestCost.mock.calls[0]?.[2],
-    );
-  });
+      // Reserved with this exact ceiling (3rd arg to estimateRequestCost)...
+      expect(estimateRequestCost.mock.calls[0]?.[2]).toBe(expectedCap);
+      // ...and the provider is capped at the identical value — never omitted.
+      expect(streamText).toHaveBeenCalledTimes(1);
+      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(expectedCap);
+      expect(streamText.mock.calls[0]?.[0]?.maxOutputTokens).toBe(
+        estimateRequestCost.mock.calls[0]?.[2],
+      );
+    },
+  );
 
   test("insufficient credits stop the request before provider dispatch", async () => {
     reserve.mockRejectedValue(new InsufficientCreditsError(0.5, 0.1));
@@ -273,26 +276,29 @@ describe("Agent A2A billing", () => {
     ["non-array messages", { messages: "hello" }],
     ["unsupported role", { messages: [{ role: "tool", content: "hello" }] }],
     ["empty content", { messages: [{ role: "user", content: "" }] }],
-  ])("rejects invalid chat params before billing: %s", async (_label, params) => {
-    const response = await app.request("/agents/agent-1/a2a", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "chat",
-        params,
-        id: "invalid-rpc",
-      }),
-    });
-    const body = (await response.json()) as {
-      error?: { code: number; message: string };
-    };
+  ])(
+    "rejects invalid chat params before billing: %s",
+    async (_label, params) => {
+      const response = await app.request("/agents/agent-1/a2a", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "chat",
+          params,
+          id: "invalid-rpc",
+        }),
+      });
+      const body = (await response.json()) as {
+        error?: { code: number; message: string };
+      };
 
-    expect(response.status).toBe(400);
-    expect(body.error?.code).toBe(-32602);
-    expect(reserve).not.toHaveBeenCalled();
-    expect(streamText).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(400);
+      expect(body.error?.code).toBe(-32602);
+      expect(reserve).not.toHaveBeenCalled();
+      expect(streamText).not.toHaveBeenCalled();
+    },
+  );
 
   test("missing provider usage fails and refunds instead of fabricating zero metering", async () => {
     const reconcile = makeReservation({ adjustmentType: "refund" });

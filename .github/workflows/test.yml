@@ -1245,8 +1245,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Repo-wide biome lint
-        run: bun run lint
+      - name: Repo-wide biome lint (read-only)
+        run: bun run lint:check
 
       - name: Repo-wide biome format check
         run: bun run format:check
