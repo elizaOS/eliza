@@ -42,7 +42,9 @@ describe("gateway content attestation", () => {
     });
     expect(proof.forbiddenIngressMatchTotal).toBe(0);
     expect(proof.observedIngressMatchCounts).toEqual({ workspace_paths: 1 });
-    expect(proof.observedInstructionMatchCounts).toEqual({ workspace_paths: 0 });
+    expect(proof.observedInstructionMatchCounts).toEqual({
+      workspace_paths: 0,
+    });
     expect(proof.observedUserMatchCounts).toEqual({ workspace_paths: 1 });
     expect(proof.messageContentManifest).toHaveLength(4);
     const serialized = JSON.stringify(proof);

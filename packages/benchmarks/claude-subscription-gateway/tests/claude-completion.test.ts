@@ -6,7 +6,7 @@ import type { ClaudeAgentSdkModule } from "../src/index.js";
 import {
   assertNoApiBillingEnvironment,
   buildClaudeCodeManagedEnvironment,
-  ClaudeRateLimitError,
+  type ClaudeRateLimitError,
   ClaudeSdkCompletionRunner,
   canonicalizeChatCompletion,
   FORBIDDEN_API_BILLING_ENV_NAMES,
