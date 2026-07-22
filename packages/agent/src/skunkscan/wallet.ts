@@ -240,6 +240,7 @@ const {
   display,
   transactionRiskAssessment,
   smartMoney,
+  strategy,
   investigationReplay,
   evidenceRecords,
   assessment,
@@ -299,6 +300,7 @@ risk,
 transactionRisk:
   transactionRiskAssessment,
 smartMoney,
+strategy,
 summary: `Wallet found. Current balance: ${balance.sol.toFixed(
   6,
 )} SOL. Recent transaction sample: ${recentTransactions.length}.`,
