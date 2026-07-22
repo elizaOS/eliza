@@ -707,17 +707,18 @@ describe("view switching — VIEWS action resolver", () => {
 			["close calendar", "wallet", "wallet"],
 			["now open calendar next to it", "wallet", "wallet"],
 		];
-		it.each(
-			STRUCTURED_TARGET_CASES,
-		)('"%s" keeps the planner target "%s" and navigates to "%s"', async (phrase, target, expected) => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, phrase, {
-				action: "show",
-				view: target,
-			});
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual([expected]);
-		});
+		it.each(STRUCTURED_TARGET_CASES)(
+			'"%s" keeps the planner target "%s" and navigates to "%s"',
+			async (phrase, target, expected) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY, phrase, {
+					action: "show",
+					view: target,
+				});
+				expect(result?.success).toBe(true);
+				expect(navigated).toEqual([expected]);
+			},
+		);
 
 		it.each([
 			"view",
@@ -725,16 +726,19 @@ describe("view switching — VIEWS action resolver", () => {
 			"navigate",
 			"navigate_to_view",
 			"switch_view",
-		])("keeps the planner target for the %s navigation alias", async (action) => {
-			const { navigated } = installNavigateCapture();
-			const { result } = await runShow(REGISTRY, "open calendar", {
-				action,
-				view: "wallet",
-			});
+		])(
+			"keeps the planner target for the %s navigation alias",
+			async (action) => {
+				const { navigated } = installNavigateCapture();
+				const { result } = await runShow(REGISTRY, "open calendar", {
+					action,
+					view: "wallet",
+				});
 
-			expect(result?.success).toBe(true);
-			expect(navigated).toEqual(["wallet"]);
-		});
+				expect(result?.success).toBe(true);
+				expect(navigated).toEqual(["wallet"]);
+			},
+		);
 
 		it("keeps show navigation authoritative when a stale capability is present", async () => {
 			const { navigated } = installNavigateCapture();

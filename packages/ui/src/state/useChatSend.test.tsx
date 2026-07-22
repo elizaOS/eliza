@@ -912,81 +912,86 @@ describe("useChatSend always streams (#9174)", () => {
     );
   });
 
-  it.each([
-    "transport",
-    "server",
-  ] as const)("blocks the turn and preserves the draft when view publication has a %s failure", async (failureKind) => {
-    if (failureKind === "transport") {
-      mocks.client.rawRequest.mockRejectedValueOnce(
-        Object.assign(new Error("Failed to fetch"), { kind: "network" }),
+  it.each(["transport", "server"] as const)(
+    "blocks the turn and preserves the draft when view publication has a %s failure",
+    async (failureKind) => {
+      if (failureKind === "transport") {
+        mocks.client.rawRequest.mockRejectedValueOnce(
+          Object.assign(new Error("Failed to fetch"), { kind: "network" }),
+        );
+      } else {
+        mocks.client.rawRequest.mockResolvedValueOnce(
+          new Response("unavailable", { status: 503 }),
+        );
+      }
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "This must not be sent.",
+        completed: true,
+      });
+      setAuthoritativeShellViewState({
+        viewId: "notes",
+        viewPath: "/notes",
+        viewType: "gui",
+      });
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      deps.chatInputRef.current = "add a note";
+      const { result } = renderHook(() => useChatSend(deps));
+
+      await act(async () => {
+        await result.current.handleChatSend();
+      });
+
+      expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
+      expect(deps.chatInputRef.current).toBe("add a note");
+      expect(deps.setChatInput).not.toHaveBeenCalledWith("");
+      expect(deps.setActionNotice).toHaveBeenCalledWith(
+        expect.stringMatching(/message wasn't sent.*try again/i),
+        "error",
+        8_000,
       );
-    } else {
+    },
+  );
+
+  it.each([404, 501])(
+    "continues sending when the view registry compatibility endpoint returns HTTP %i",
+    async (status) => {
       mocks.client.rawRequest.mockResolvedValueOnce(
-        new Response("unavailable", { status: 503 }),
+        new Response("", { status }),
       );
-    }
-    mocks.client.sendConversationMessageStream.mockResolvedValue({
-      text: "This must not be sent.",
-      completed: true,
-    });
-    setAuthoritativeShellViewState({
-      viewId: "notes",
-      viewPath: "/notes",
-      viewType: "gui",
-    });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
-    deps.chatInputRef.current = "add a note";
-    const { result } = renderHook(() => useChatSend(deps));
+      mocks.client.sendConversationMessageStream.mockResolvedValue({
+        text: "Done.",
+        completed: true,
+      });
+      setAuthoritativeShellViewState({
+        viewId: "notes",
+        viewPath: "/notes",
+        viewType: "gui",
+      });
+      const deps = makeDeps({
+        activeConversationId: "conv-1",
+        conversations: [conversation("conv-1", "room-1")],
+      });
+      deps.chatInputRef.current = "add a note";
+      const { result } = renderHook(() => useChatSend(deps));
 
-    await act(async () => {
-      await result.current.handleChatSend();
-    });
+      await act(async () => {
+        await result.current.handleChatSend();
+      });
 
-    expect(mocks.client.sendConversationMessageStream).not.toHaveBeenCalled();
-    expect(deps.chatInputRef.current).toBe("add a note");
-    expect(deps.setChatInput).not.toHaveBeenCalledWith("");
-    expect(deps.setActionNotice).toHaveBeenCalledWith(
-      expect.stringMatching(/message wasn't sent.*try again/i),
-      "error",
-      8_000,
-    );
-  });
-
-  it.each([
-    404, 501,
-  ])("continues sending when the view registry compatibility endpoint returns HTTP %i", async (status) => {
-    mocks.client.rawRequest.mockResolvedValueOnce(new Response("", { status }));
-    mocks.client.sendConversationMessageStream.mockResolvedValue({
-      text: "Done.",
-      completed: true,
-    });
-    setAuthoritativeShellViewState({
-      viewId: "notes",
-      viewPath: "/notes",
-      viewType: "gui",
-    });
-    const deps = makeDeps({
-      activeConversationId: "conv-1",
-      conversations: [conversation("conv-1", "room-1")],
-    });
-    deps.chatInputRef.current = "add a note";
-    const { result } = renderHook(() => useChatSend(deps));
-
-    await act(async () => {
-      await result.current.handleChatSend();
-    });
-
-    expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(1);
-    expect(deps.chatInputRef.current).toBe("");
-    expect(deps.setActionNotice).not.toHaveBeenCalledWith(
-      expect.stringMatching(/message wasn't sent/i),
-      "error",
-      8_000,
-    );
-  });
+      expect(mocks.client.sendConversationMessageStream).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(deps.chatInputRef.current).toBe("");
+      expect(deps.setActionNotice).not.toHaveBeenCalledWith(
+        expect.stringMatching(/message wasn't sent/i),
+        "error",
+        8_000,
+      );
+    },
+  );
 });
 
 describe("useChatSend VIEWS action handoff", () => {

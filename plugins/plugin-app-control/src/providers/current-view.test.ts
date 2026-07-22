@@ -160,31 +160,30 @@ describe("current_view state provider", () => {
 		expect(r.values?.viewSwitchPending).toBe(true);
 	});
 
-	it.each([
-		"open calendar",
-		"can u open calender",
-		"open simple-calendar",
-	])("canonicalizes the requested calendar target before comparing current state: %s", async (request) => {
-		h.listViews.mockResolvedValue(SIMPLE_VIEWS);
-		h.getCurrentView.mockResolvedValue({
-			viewId: "simple-calendar",
-			viewLabel: "Simple Calendar",
-			viewPath: "/simple-calendar",
-			viewType: "gui",
-			updatedAt: "x",
-		});
+	it.each(["open calendar", "can u open calender", "open simple-calendar"])(
+		"canonicalizes the requested calendar target before comparing current state: %s",
+		async (request) => {
+			h.listViews.mockResolvedValue(SIMPLE_VIEWS);
+			h.getCurrentView.mockResolvedValue({
+				viewId: "simple-calendar",
+				viewLabel: "Simple Calendar",
+				viewPath: "/simple-calendar",
+				viewType: "gui",
+				updatedAt: "x",
+			});
 
-		const r = await currentViewProvider.get(runtime, msg(request), {
-			values: {},
-			data: {},
-			text: "",
-		});
+			const r = await currentViewProvider.get(runtime, msg(request), {
+				values: {},
+				data: {},
+				text: "",
+			});
 
-		expect(r.text).toContain("currently viewing the Simple Calendar view");
-		expect(r.text).not.toContain("navigation completes");
-		expect(r.values?.currentViewId).toBe("simple-calendar");
-		expect(r.values?.viewSwitchPending).toBeUndefined();
-	});
+			expect(r.text).toContain("currently viewing the Simple Calendar view");
+			expect(r.text).not.toContain("navigation completes");
+			expect(r.values?.currentViewId).toBe("simple-calendar");
+			expect(r.values?.viewSwitchPending).toBeUndefined();
+		},
+	);
 
 	it("reports the registered canonical id while a calendar alias is still pending", async () => {
 		h.listViews.mockResolvedValue(SIMPLE_VIEWS);

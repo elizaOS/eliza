@@ -214,20 +214,20 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 				title: "Pane ownership",
 			},
 		},
-	])("keeps view and plugin words inside Notes content", async ({
-		text,
-		options,
-	}) => {
-		const result = await run(text, options);
+	])(
+		"keeps view and plugin words inside Notes content",
+		async ({ text, options }) => {
+			const result = await run(text, options);
 
-		expect(result?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "create-note",
-		});
-		expect(requests).toHaveLength(1);
-		expect(requests[0]?.url).toContain("/api/views/notes/interact");
-	});
+			expect(result?.values).toMatchObject({
+				mode: "interact",
+				viewId: "notes",
+				capability: "create-note",
+			});
+			expect(requests).toHaveLength(1);
+			expect(requests[0]?.url).toContain("/api/views/notes/interact");
+		},
+	);
 
 	it("keeps a destructive record command inside the named Notes view", async () => {
 		const result = await run(
@@ -288,26 +288,25 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		expect(requests[0]?.url).not.toContain("/api/views/calendar/interact");
 	});
 
-	it.each([
-		"calendar",
-		"simple-calendar",
-		"documents",
-	])("keeps an unstructured Notes command on Notes while %s is foreground", async (foregroundView) => {
-		foreground = foregroundView;
-		const result = await run(
-			"create a note titled Foreground isolation with body User words win",
-			undefined,
-		);
+	it.each(["calendar", "simple-calendar", "documents"])(
+		"keeps an unstructured Notes command on Notes while %s is foreground",
+		async (foregroundView) => {
+			foreground = foregroundView;
+			const result = await run(
+				"create a note titled Foreground isolation with body User words win",
+				undefined,
+			);
 
-		expect(result?.values).toMatchObject({
-			mode: "interact",
-			viewId: "notes",
-			capability: "create-note",
-		});
-		expect(requests).toHaveLength(1);
-		expect(requests[0]?.url).toContain("/api/views/notes/interact");
-		expect(requests[0]?.url).not.toContain(`/api/views/${foregroundView}/`);
-	});
+			expect(result?.values).toMatchObject({
+				mode: "interact",
+				viewId: "notes",
+				capability: "create-note",
+			});
+			expect(requests).toHaveLength(1);
+			expect(requests[0]?.url).toContain("/api/views/notes/interact");
+			expect(requests[0]?.url).not.toContain(`/api/views/${foregroundView}/`);
+		},
+	);
 
 	it("rejects a contradictory target when multiple event views are valid", async () => {
 		const result = await run("create an event titled Ambiguous ownership", {
@@ -327,23 +326,22 @@ describe("VIEWS routing for the real Simple Views manifest", () => {
 		expect(requests).toHaveLength(0);
 	});
 
-	it.each([
-		"calendar",
-		"simple-calendar",
-		"documents",
-	])("rejects a conflicting %s planner target for an explicit Notes capability", async (wrongView) => {
-		const result = await run("create a note titled Never cross domains", {
-			action: "interact",
-			view: wrongView,
-			capability: "create-note",
-			title: "Never cross domains",
-		});
+	it.each(["calendar", "simple-calendar", "documents"])(
+		"rejects a conflicting %s planner target for an explicit Notes capability",
+		async (wrongView) => {
+			const result = await run("create a note titled Never cross domains", {
+				action: "interact",
+				view: wrongView,
+				capability: "create-note",
+				title: "Never cross domains",
+			});
 
-		expect(result?.success).toBe(false);
-		expect(result?.data).toMatchObject({
-			reason: "capability-not-declared-by-explicit-view",
-			viewId: wrongView,
-		});
-		expect(requests).toHaveLength(0);
-	});
+			expect(result?.success).toBe(false);
+			expect(result?.data).toMatchObject({
+				reason: "capability-not-declared-by-explicit-view",
+				viewId: wrongView,
+			});
+			expect(requests).toHaveLength(0);
+		},
+	);
 });
