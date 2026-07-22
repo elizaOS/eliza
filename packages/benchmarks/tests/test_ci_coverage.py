@@ -32,6 +32,7 @@ from benchmarks.orchestrator.ci_coverage import (  # noqa: E402
     public_benchmark_ids,
     registry_benchmark_ids,
 )
+from benchmarks.orchestrator.cli import _build_request, build_parser  # noqa: E402
 
 
 def _workspace_root() -> Path:
@@ -68,6 +69,41 @@ def test_scheduled_orchestrator_subset_is_scheduled_and_registered() -> None:
             "but is not a registered benchmark"
         )
         assert ci_lane_for(benchmark_id) == "scheduled"
+
+
+def test_scheduled_workflow_default_is_a_runnable_registry_subset() -> None:
+    workflow = (
+        _workspace_root().parent
+        / ".github"
+        / "workflows"
+        / "benchmark-orchestrator-scheduled.yml"
+    ).read_text(encoding="utf-8")
+    default_match = re.search(
+        r'^      benchmarks:\n.*?^        default: "([^"]+)"$',
+        workflow,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert default_match is not None, "scheduled workflow benchmark default is missing"
+
+    raw_default = default_match.group(1)
+    default_ids = tuple(item.strip() for item in raw_default.split(",") if item.strip())
+    registry_ids = registry_benchmark_ids(_workspace_root())
+    assert frozenset(default_ids) == SCHEDULED_ORCHESTRATOR_SUBSET
+    assert frozenset(default_ids) <= registry_ids
+
+    args = build_parser().parse_args(["run", "--benchmarks", raw_default])
+    request = _build_request(args, adapters={})
+    assert request.benchmarks == default_ids
+
+    run_step_match = re.search(
+        r"^      - name: Run core registry subset on a real model\n.*?(?=^      - name:)",
+        workflow,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    assert run_step_match is not None, "scheduled workflow run step is missing"
+    assert re.search(
+        r"^          set -euo pipefail$", run_step_match.group(0), flags=re.MULTILINE
+    )
 
 
 def test_at_least_one_benchmark_per_lane() -> None:

@@ -85,6 +85,19 @@ URLs. Left dirty, the next build's chroot is missing whole package sets
 and gets a stale APT snapshot serial. Restoring `config/` to the
 committed state before each build fixes both.
 
+### Snapshot availability in unattended builds
+
+Tails' time-based mirror prunes snapshots, so a serial that made a reproducible
+image yesterday can later return 404. Scheduled CI resolves Debian main and
+archives configured as `latest` from the mirror's authoritative trace, checks
+the required `Release` files, and only then starts live-build. Frozen
+compatibility archives retain their checked-in serial and are checked too. The
+resolved JSON is passed through `build.sh` as `APT_SNAPSHOTS_SERIALS`; Tails
+records that exact map in the build environment for audit and reproduction.
+
+The checked-in Debian serial remains a valid local baseline, but it is not used
+as an availability assumption by unattended builds.
+
 ### The `.git` requirement
 
 Tails' build assumes it runs inside a git checkout (`auto/config` calls

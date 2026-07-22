@@ -41,7 +41,7 @@ jobs:
       matrix:
         include:
           - lane: benchmark-tests
-            command: bunx vitest run --config packages/lifeops-bench/vitest.config.ts --root packages/lifeops-bench --passWithNoTests
+            command: bunx vitest run --config vitest.config.ts --root packages/lifeops-bench --passWithNoTests
           - lane: benchmark-lint
             command: bunx @biomejs/biome check packages/lifeops-bench/src
 

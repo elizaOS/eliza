@@ -89,6 +89,12 @@ tree has one source of truth: `packages/os/linux/`. Multi-architecture support
 is expressed by build targets and package contracts, not by separate distro
 directories.
 
+The publishable Tails-derived ISO is currently **amd64 only**. The inherited
+Tails live-build fork rejects arm64 and riscv64 before image assembly; those
+architectures remain development-time package and GUI contracts until the
+canonical builder can produce and boot-validate them. CI must not advertise
+non-amd64 ISO artifacts before that boundary changes.
+
 This is the only elizaOS Linux distribution in the repo. The inherited
 upstream tree remains at `tails/` because that name is part of the Tails
 live-OS code, AppArmor, persistence, and update contracts; it is not a

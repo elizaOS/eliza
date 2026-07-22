@@ -98,4 +98,11 @@ run_build_with_log \
 grep -Fqx "buildx version" "${cache_log}"
 grep -Fqx "buildx build --platform linux/${ARCH} --build-arg TARGETARCH=${ARCH} -t elizaos-builder-${ARCH} --load --cache-from type=gha,scope=contract-scope --cache-to type=gha,scope=contract-scope,mode=max ${ROOT}" "${cache_log}"
 
+snapshot_log="${TMP}/snapshot.log"
+snapshot_json='{"debian":"2026072104","debian-security":"2026072104","torproject":"2026050704"}'
+run_build_with_log \
+    "${snapshot_log}" \
+    APT_SNAPSHOTS_SERIALS="${snapshot_json}"
+grep -Fq -- "-e APT_SNAPSHOTS_SERIALS=${snapshot_json}" "${snapshot_log}"
+
 echo "build.sh Docker cache contract OK"

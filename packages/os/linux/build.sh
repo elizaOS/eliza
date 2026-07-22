@@ -157,6 +157,9 @@ docker_run_args=(
     -e "ELIZAOS_BUILD_CPUS=${ELIZAOS_BUILD_CPUS:-}"
     -e "ELIZAOS_MKSQUASHFS_PROCESSORS=${ELIZAOS_MKSQUASHFS_PROCESSORS:-}"
     -e "TAILS_WEBSITE_CACHE=${TAILS_WEBSITE_CACHE:-}"
+    # CI resolves an available serial set before starting Docker. Passing the
+    # JSON explicitly keeps the container on that exact, already-verified set.
+    -e "APT_SNAPSHOTS_SERIALS=${APT_SNAPSHOTS_SERIALS:-}"
     -v "${TAILS_SRC}:/build"
     -v "${OUT}:/out"
     -v "${ACNG_VOLUME}:/var/cache/apt-cacher-ng"

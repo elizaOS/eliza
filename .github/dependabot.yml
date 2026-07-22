@@ -42,6 +42,17 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 2
 
+  # Training's translation pipeline is constrained by Argos Translate, which
+  # requires Stanza 1.10.1 exactly. Keep other Python updates active while that
+  # upstream constraint remains in force.
+  - package-ecosystem: "pip"
+    directory: "/packages/training"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "stanza"
+
   # NOTE: cargo (Rust) example entries were removed — commit b69d70632b made the
   # examples TypeScript-only and deleted the packages/examples/*/rust/* trees.
   # The stale cargo entries made Dependabot abort every run with

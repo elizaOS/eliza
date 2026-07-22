@@ -70,6 +70,12 @@ jobs:
             /opt/hostedtoolcache/Ruby || true
           df -h
 
+      - name: Setup Node for CodeQL extraction
+        if: runner.environment == 'self-hosted'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version: "24"
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@99df26d4f13ea111d4ec1a7dddef6063f76b97e9
         with:

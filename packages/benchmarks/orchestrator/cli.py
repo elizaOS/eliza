@@ -88,7 +88,11 @@ def _build_request(args: argparse.Namespace, adapters: dict[str, Any]) -> RunReq
     if args.all:
         benchmarks = tuple(sorted(adapters.keys()))
     elif args.benchmarks:
-        benchmarks = tuple(args.benchmarks)
+        benchmarks = tuple(
+            benchmark_id
+            for item in args.benchmarks
+            for benchmark_id in _split_csv(str(item))
+        )
     else:
         benchmarks = tuple(sorted(adapters.keys()))
 
@@ -1184,7 +1188,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--benchmarks",
         nargs="+",
         default=None,
-        help="Benchmark IDs to run (default: all)",
+        help="Benchmark IDs to run (space- or comma-separated; default: all)",
     )
     p_run.add_argument("--agent", default="eliza", help="Agent label for this run")
     p_run.add_argument(

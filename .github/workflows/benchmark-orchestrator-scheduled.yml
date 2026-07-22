@@ -124,7 +124,7 @@ jobs:
           MODEL: ${{ inputs.model || 'gemma-4-31b' }}
           PYTHONUNBUFFERED: "1"
         run: |
-          set -e
+          set -euo pipefail
           PYTHONPATH=packages python -m benchmarks.orchestrator run \
             --benchmarks "$BENCHMARKS" \
             --provider "$PROVIDER" \

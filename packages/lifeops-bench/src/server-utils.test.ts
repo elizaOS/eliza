@@ -259,7 +259,9 @@ describe("composeBenchmarkPrompt", () => {
     expect(prompt).toContain("normal task-management and orchestrator actions");
     expect(prompt).toContain("prose-only lifecycle claims do not satisfy");
     expect(prompt).toContain("query the active task or subagent registry");
-    expect(prompt).not.toContain("Use REPLY text for the next lifecycle message");
+    expect(prompt).not.toContain(
+      "Use REPLY text for the next lifecycle message",
+    );
   });
 });
 
