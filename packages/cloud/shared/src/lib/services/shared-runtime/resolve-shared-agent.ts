@@ -9,6 +9,8 @@ import type { AppEnv } from "../../../types/cloud-worker-env";
 import {
   apiKeyScopeHashPrefix,
   requireUserOrApiKeyWithOrgLookup,
+  revalidateSessionScope,
+  sessionScopeHashPrefix,
 } from "../../auth/workers-hono-auth";
 import { cache } from "../../cache/client";
 import { CacheKeys, CacheTTL } from "../../cache/keys";
@@ -32,6 +34,14 @@ export type ResolvedSharedAgent =
 interface CachedSharedAgentScope {
   orgId: string;
   agent: AgentSandbox;
+  /**
+   * Steward user id the entry was written for, present ONLY on session-keyed
+   * entries (#SHADOW-ACCOUNT-DEBUG). A session-path hit re-verifies the JWT and
+   * confirms it still maps to THIS user before serving, so a rotated/re-issued
+   * token for a different user can't read a stale entry. Absent on API-key
+   * entries (those revalidate via the key's org instead).
+   */
+  stewardUserId?: string;
 }
 
 /**
@@ -85,7 +95,15 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
   // stall. A short-TTL scope cache keyed by (key-hash, agentId) lets the second
   // cold-session hit (or a composer-mount prewarm) skip both waves. Miss → the
   // authoritative gate below runs unchanged, so this only removes latency.
-  const scopeKeyPrefix = await apiKeyScopeHashPrefix(c).catch(() => null);
+  // API-key path uses the key-hash prefix; SESSION path (Shadow's own account:
+  // steward JWT / cookie) uses the session-token hash under a distinct `s:`
+  // namespace so a session hash can never collide with an API-key hash
+  // (#SHADOW-ACCOUNT-DEBUG). Whichever credential the request carries wins;
+  // requests carrying neither skip the cache and hit the authoritative gate.
+  const apiKeyPrefix = await apiKeyScopeHashPrefix(c).catch(() => null);
+  const sessionPrefix = apiKeyPrefix ? null : await sessionScopeHashPrefix(c).catch(() => null);
+  const isSessionScope = apiKeyPrefix == null && sessionPrefix != null;
+  const scopeKeyPrefix = apiKeyPrefix ?? (sessionPrefix ? `s:${sessionPrefix}` : null);
   const scopeCacheKey = scopeKeyPrefix
     ? CacheKeys.sharedAgentScope.resolve(scopeKeyPrefix, agentId)
     : null;
@@ -93,14 +111,16 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
     const cached = await cache.get<CachedSharedAgentScope>(scopeCacheKey).catch(() => null);
     if (cached?.agent && cached.orgId && cached.agent.execution_tier === "shared") {
       // SECURITY: a hit skips the expensive user/org+agent DB hydration, but it
-      // must NOT skip the credential gate. Re-run the (already-cached,
-      // revoke-invalidated) API-key validation so a revoked/expired/inactive key
-      // still 401s inside the TTL window, and confirm the key still resolves to
-      // the SAME org the cached agent is scoped to (a detached/re-scoped key must
-      // not read another org's agent from a stale entry). Only then serve the
-      // cached agent row — the two cold Hyperdrive waves are what we skip, never
-      // the authorization decision.
-      const stillAuthorized = await revalidateCachedScope(c, cached.orgId).catch(() => false);
+      // must NOT skip the credential gate. API-key path: re-run the (already-
+      // cached, revoke-invalidated) key validation + org match. SESSION path:
+      // re-run the warm-cached steward JWT verify + confirm it still maps to the
+      // SAME steward user the entry was written for. Either way a
+      // revoked/expired/re-scoped credential falls back to the authoritative
+      // gate inside the 30s TTL window; we only skip the cold DB waves.
+      const stillAuthorized = isSessionScope
+        ? cached.stewardUserId != null &&
+          (await revalidateSessionScope(c, cached.stewardUserId).catch(() => false))
+        : await revalidateCachedScope(c, cached.orgId).catch(() => false);
       if (stillAuthorized) {
         return {
           agent: cached.agent,
@@ -124,17 +144,19 @@ export async function resolveSharedAgent(c: Context<AppEnv>): Promise<ResolvedSh
   // dedicated-bootstrap window, whose eligibility is time-sensitive as the
   // container boots). Best-effort: a cache write failure must not fail the turn.
   if (scopeCacheKey && agent.execution_tier === "shared") {
-    void cache
-      .set(
-        scopeCacheKey,
-        { orgId: user.organization_id, agent } satisfies CachedSharedAgentScope,
-        CacheTTL.sharedAgentScope.resolve,
-      )
-      .catch((error) => {
-        logger.debug("[resolveSharedAgent] scope cache write failed", {
-          error: error instanceof Error ? error.message : String(error),
-        });
+    // Session-keyed entries carry the steward user id so a hit can re-verify the
+    // JWT maps to the same user without a user/org DB read (#SHADOW-ACCOUNT-DEBUG).
+    // Only write it when we actually have it (session path + a steward-linked
+    // user); its absence just means the hit safely falls back to the slow gate.
+    const entry: CachedSharedAgentScope =
+      isSessionScope && typeof user.steward_id === "string"
+        ? { orgId: user.organization_id, agent, stewardUserId: user.steward_id }
+        : { orgId: user.organization_id, agent };
+    void cache.set(scopeCacheKey, entry, CacheTTL.sharedAgentScope.resolve).catch((error) => {
+      logger.debug("[resolveSharedAgent] scope cache write failed", {
+        error: error instanceof Error ? error.message : String(error),
       });
+    });
   }
 
   return { agent, agentId, orgId: user.organization_id, agentName: agent.agent_name ?? "Eliza" };

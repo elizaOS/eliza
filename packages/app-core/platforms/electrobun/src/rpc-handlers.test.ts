@@ -150,21 +150,20 @@ describe("window RPC handlers", () => {
     });
   });
 
-  it.each([
-    "https://example.com/app",
-    "//example.com/app",
-    "   ",
-  ])("rejects non-renderer app window paths: %s", async (path) => {
-    const { desktop, handlers } = createDesktopFixture();
+  it.each(["https://example.com/app", "//example.com/app", "   "])(
+    "rejects non-renderer app window paths: %s",
+    async (path) => {
+      const { desktop, handlers } = createDesktopFixture();
 
-    await expect(
-      handlers.desktopOpenAppWindow({
-        title: "Bad Route",
-        path,
-      }),
-    ).rejects.toThrow("desktopOpenAppWindow path must be a renderer route");
-    expect(desktop.openAppWindow).not.toHaveBeenCalled();
-  });
+      await expect(
+        handlers.desktopOpenAppWindow({
+          title: "Bad Route",
+          path,
+        }),
+      ).rejects.toThrow("desktopOpenAppWindow path must be a renderer route");
+      expect(desktop.openAppWindow).not.toHaveBeenCalled();
+    },
+  );
 
   it("sets managed app-window always-on-top state through the public RPC handler", async () => {
     const { desktop, handlers } = createDesktopFixture();

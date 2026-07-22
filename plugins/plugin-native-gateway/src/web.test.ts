@@ -81,17 +81,15 @@ describe("GatewayWeb", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each([
-    "",
-    "https://example.test",
-    "javascript:alert(1)",
-    "not a url",
-  ])("rejects invalid gateway URL %s before opening a socket", async (url) => {
-    await expect(new GatewayWeb().connect({ url })).rejects.toThrow(
-      /WebSocket URL|ws: or wss:/,
-    );
-    expect(FakeWebSocket.instances).toHaveLength(0);
-  });
+  it.each(["", "https://example.test", "javascript:alert(1)", "not a url"])(
+    "rejects invalid gateway URL %s before opening a socket",
+    async (url) => {
+      await expect(new GatewayWeb().connect({ url })).rejects.toThrow(
+        /WebSocket URL|ws: or wss:/,
+      );
+      expect(FakeWebSocket.instances).toHaveLength(0);
+    },
+  );
 
   it("sends a connect frame and resolves from a valid hello response", async () => {
     const gateway = new GatewayWeb();
@@ -212,62 +210,60 @@ describe("GatewayWeb", () => {
       raw: JSON.stringify({ type: "res", id: "nope", ok: true }),
       needle: "unknown request id",
     },
-  ])("reports dropped inbound frame ($label) instead of swallowing it", async ({
-    raw,
-    needle,
-  }) => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const gateway = new GatewayWeb();
-    const events: unknown[] = [];
-    await gateway.addListener("gatewayEvent", (event) => {
-      events.push(event);
-    });
-    const connected = gateway.connect({ url: "ws://localhost:1234" });
-    const socket = FakeWebSocket.instances[0];
-    socket.open();
-    const connectFrame = parseSent(socket, 0);
-    socket.message(
-      JSON.stringify({
-        type: "res",
-        id: connectFrame.id,
-        ok: true,
-        payload: {},
-      }),
-    );
-    await connected;
+  ])(
+    "reports dropped inbound frame ($label) instead of swallowing it",
+    async ({ raw, needle }) => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const gateway = new GatewayWeb();
+      const events: unknown[] = [];
+      await gateway.addListener("gatewayEvent", (event) => {
+        events.push(event);
+      });
+      const connected = gateway.connect({ url: "ws://localhost:1234" });
+      const socket = FakeWebSocket.instances[0];
+      socket.open();
+      const connectFrame = parseSent(socket, 0);
+      socket.message(
+        JSON.stringify({
+          type: "res",
+          id: connectFrame.id,
+          ok: true,
+          payload: {},
+        }),
+      );
+      await connected;
 
-    warn.mockClear();
-    socket.message(raw);
+      warn.mockClear();
+      socket.message(raw);
 
-    expect(events).toEqual([]);
-    const warnings = warn.mock.calls.map((c) => String(c[0]));
-    expect(warnings.some((m) => m.includes(needle))).toBe(true);
-  });
+      expect(events).toEqual([]);
+      const warnings = warn.mock.calls.map((c) => String(c[0]));
+      expect(warnings.some((m) => m.includes(needle))).toBe(true);
+    },
+  );
 
-  it.each([
-    "",
-    " spaces ",
-    "../escape",
-    "1bad",
-  ])("rejects invalid RPC method %s before sending", async (method) => {
-    const gateway = new GatewayWeb();
-    const connected = gateway.connect({ url: "ws://localhost:1234" });
-    const socket = FakeWebSocket.instances[0];
-    socket.open();
-    const connectFrame = parseSent(socket, 0);
-    socket.message(
-      JSON.stringify({
-        type: "res",
-        id: connectFrame.id,
-        ok: true,
-        payload: {},
-      }),
-    );
-    await connected;
+  it.each(["", " spaces ", "../escape", "1bad"])(
+    "rejects invalid RPC method %s before sending",
+    async (method) => {
+      const gateway = new GatewayWeb();
+      const connected = gateway.connect({ url: "ws://localhost:1234" });
+      const socket = FakeWebSocket.instances[0];
+      socket.open();
+      const connectFrame = parseSent(socket, 0);
+      socket.message(
+        JSON.stringify({
+          type: "res",
+          id: connectFrame.id,
+          ok: true,
+          payload: {},
+        }),
+      );
+      await connected;
 
-    await expect(gateway.send({ method })).rejects.toThrow(/method/);
-    expect(socket.sent).toHaveLength(1);
-  });
+      await expect(gateway.send({ method })).rejects.toThrow(/method/);
+      expect(socket.sent).toHaveLength(1);
+    },
+  );
 
   it("returns NOT_CONNECTED for valid RPC methods when disconnected", async () => {
     await expect(

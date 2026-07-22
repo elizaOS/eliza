@@ -55,8 +55,18 @@ describe("xTwitterAdsProvider", () => {
     });
 
     expect(accounts).toEqual([{ id: "18ce54d4x5t", name: "X Ads Account" }]);
-    expect(new URL(calls[0]?.url ?? "").pathname).toBe("/12/accounts");
-    const authHeader = String((calls[0]?.init?.headers as Record<string, string>).Authorization);
+    const accountCall = calls[0];
+    expect(accountCall).toBeDefined();
+    if (!accountCall) {
+      throw new Error("Expected the X Ads account-list request");
+    }
+    expect(new URL(accountCall.url).pathname).toBe("/12/accounts");
+    const headers = accountCall.init?.headers;
+    expect(headers).toBeDefined();
+    if (!headers) {
+      throw new Error("Expected OAuth headers on the X Ads account-list request");
+    }
+    const authHeader = String((headers as Record<string, string>).Authorization);
     expect(authHeader).toContain('oauth_consumer_key="consumer-key"');
     expect(authHeader).toContain('oauth_token="user-token"');
   });

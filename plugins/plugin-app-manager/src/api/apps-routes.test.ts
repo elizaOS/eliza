@@ -236,49 +236,47 @@ describe("handleAppsRoutes", () => {
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
   });
 
-  it.each([
-    undefined,
-    null,
-    "USER",
-    "GUEST",
-  ] as const)("denies %s actor before invoking appManager.launch", async (actorRole) => {
-    const appManager = createAppManager();
+  it.each([undefined, null, "USER", "GUEST"] as const)(
+    "denies %s actor before invoking appManager.launch",
+    async (actorRole) => {
+      const appManager = createAppManager();
 
-    const result = await callRoute({
-      method: "POST",
-      pathname: "/api/apps/launch",
-      appManager,
-      actorRole,
-      body: { name: "@elizaos/plugin-demo" },
-    });
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/launch",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
 
-    expect(result.handled).toBe(true);
-    expect(result.res.status).toBe(403);
-    expect(result.res.body).toEqual({
-      error: "App launch requires OWNER or ADMIN role",
-    });
-    expect(appManager.launch).not.toHaveBeenCalled();
-  });
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(403);
+      expect(result.res.body).toEqual({
+        error: "App launch requires OWNER or ADMIN role",
+      });
+      expect(appManager.launch).not.toHaveBeenCalled();
+    },
+  );
 
-  it.each([
-    "OWNER",
-    "ADMIN",
-  ] as const)("allows %s actor to launch apps", async (actorRole) => {
-    const appManager = createAppManager();
+  it.each(["OWNER", "ADMIN"] as const)(
+    "allows %s actor to launch apps",
+    async (actorRole) => {
+      const appManager = createAppManager();
 
-    const result = await callRoute({
-      method: "POST",
-      pathname: "/api/apps/launch",
-      appManager,
-      actorRole,
-      body: { name: "@elizaos/plugin-demo" },
-    });
+      const result = await callRoute({
+        method: "POST",
+        pathname: "/api/apps/launch",
+        appManager,
+        actorRole,
+        body: { name: "@elizaos/plugin-demo" },
+      });
 
-    expect(result.handled).toBe(true);
-    expect(result.res.status).toBe(200);
-    expect(result.res.body).toEqual({ success: true });
-    expect(appManager.launch).toHaveBeenCalledTimes(1);
-  });
+      expect(result.handled).toBe(true);
+      expect(result.res.status).toBe(200);
+      expect(result.res.body).toEqual({ success: true });
+      expect(appManager.launch).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("reuses the app hero registry lookup across adjacent image requests", async () => {
     const packageDir = await mkdtemp(

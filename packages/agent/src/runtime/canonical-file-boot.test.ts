@@ -20,11 +20,11 @@ import {
   applyCanonicalFileBootToConfig,
   CANONICAL_BOOT_MANIFEST_ENV,
   CANONICAL_BOOT_ROOT_ENV,
+  type CanonicalBootFs,
   composeCanonicalBootContext,
   DEFAULT_CANONICAL_MANIFEST,
-  resolveCanonicalManifest,
-  type CanonicalBootFs,
   type ResolvedCanonicalEntry,
+  resolveCanonicalManifest,
 } from "./canonical-file-boot.ts";
 
 // A synthetic in-memory fs: label/path -> content. Anything not present throws

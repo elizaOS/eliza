@@ -133,12 +133,13 @@ describe("classifyBunTestExit (#15785 crash-signature classifier)", () => {
     expect(result.kind).toBe("test-failure");
   });
 
-  test.each([
-    132, 134, 139, 3221225477, 3221225501, 3221226505,
-  ])("native-crash exit code %i without reported failures is a native crash", (status) => {
-    const result = classifyBunTestExit({ status, signal: null, output: "" });
-    expect(result.kind).toBe("native-crash");
-  });
+  test.each([132, 134, 139, 3221225477, 3221225501, 3221226505])(
+    "native-crash exit code %i without reported failures is a native crash",
+    (status) => {
+      const result = classifyBunTestExit({ status, signal: null, output: "" });
+      expect(result.kind).toBe("native-crash");
+    },
+  );
 
   test("an unrecognized non-zero exit code without markers is a test-failure", () => {
     const result = classifyBunTestExit({ status: 7, signal: null, output: "" });

@@ -411,50 +411,56 @@ describe("ensureLocalInferenceHandler", () => {
 		[ModelType.TEXT_SMALL, "TEXT_SMALL"],
 		[ModelType.TEXT_LARGE, "TEXT_LARGE"],
 		[ModelType.RESPONSE_HANDLER, "TEXT_SMALL"],
-	])("signals typed local unavailability for %s when no text model is loaded", async (modelType, slot) => {
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(false);
+	])(
+		"signals typed local unavailability for %s when no text model is loaded",
+		async (modelType, slot) => {
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(false);
 
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(registrations, modelType);
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(registrations, modelType);
 
-		await expect(
-			handler(runtime, {
-				messages: [{ role: "user", content: "hello" }],
-			}),
-		).rejects.toMatchObject({
-			code: "LOCAL_INFERENCE_UNAVAILABLE",
-			modelType: slot,
-			reason: "backend_unavailable",
-		});
-	});
+			await expect(
+				handler(runtime, {
+					messages: [{ role: "user", content: "hello" }],
+				}),
+			).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+				modelType: slot,
+				reason: "backend_unavailable",
+			});
+		},
+	);
 
 	it.each([
 		[ModelType.TEXT_SMALL, "TEXT_SMALL"],
 		[ModelType.TEXT_LARGE, "TEXT_LARGE"],
 		[ModelType.RESPONSE_HANDLER, "TEXT_SMALL"],
-	])("signals typed local unavailability for %s when the backend is unavailable", async (modelType, slot) => {
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
+	])(
+		"signals typed local unavailability for %s when the backend is unavailable",
+		async (modelType, slot) => {
+			const { registrations, runtime } = makeRuntime();
+			engineState.hasLoadedModel.mockReturnValue(true);
 
-		// Register while the backend reports available (the pre-flight gate skips
-		// registration otherwise), then drop the binding to exercise the handler's
-		// runtime-defensive unavailability check — the real "binding went away
-		// after boot" scenario.
-		await ensureLocalInferenceHandler(runtime);
-		const handler = findRegisteredHandler(registrations, modelType);
-		engineState.available.mockResolvedValue(false);
+			// Register while the backend reports available (the pre-flight gate skips
+			// registration otherwise), then drop the binding to exercise the handler's
+			// runtime-defensive unavailability check — the real "binding went away
+			// after boot" scenario.
+			await ensureLocalInferenceHandler(runtime);
+			const handler = findRegisteredHandler(registrations, modelType);
+			engineState.available.mockResolvedValue(false);
 
-		await expect(
-			handler(runtime, {
-				messages: [{ role: "user", content: "hello" }],
-			}),
-		).rejects.toMatchObject({
-			code: "LOCAL_INFERENCE_UNAVAILABLE",
-			modelType: slot,
-			reason: "backend_unavailable",
-		});
-	});
+			await expect(
+				handler(runtime, {
+					messages: [{ role: "user", content: "hello" }],
+				}),
+			).rejects.toMatchObject({
+				code: "LOCAL_INFERENCE_UNAVAILABLE",
+				modelType: slot,
+				reason: "backend_unavailable",
+			});
+		},
+	);
 
 	it("routes image description through the Eliza-1 vision arbiter", async () => {
 		const { registrations, runtime } = makeRuntime();

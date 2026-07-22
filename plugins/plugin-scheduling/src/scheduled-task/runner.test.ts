@@ -312,7 +312,8 @@ describe("ScheduledTaskRunner — every verb", () => {
     expect(updated.state.firedAt).toBe("2026-05-09T12:30:00.000Z");
     expect(updated.state.status).toBe("scheduled");
     expect(
-      (updated.metadata?.escalationCursor as { stepIndex: number }).stepIndex,
+      (updated.metadata?.escalationCursor as { stepIndex: number } | undefined)
+        ?.stepIndex,
     ).toBe(-1);
   });
 

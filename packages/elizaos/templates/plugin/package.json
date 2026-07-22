@@ -50,6 +50,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.4",
     "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^25.0.3",
     "@types/react-dom": "^19.2.3",
@@ -63,15 +64,15 @@
   "scripts": {
     "dev": "bun run build:watch",
     "build": "bun run build.ts",
-    "lint": "bunx @biomejs/biome check --write --unsafe ./src",
-    "lint:check": "bunx @biomejs/biome check ./src",
+    "lint": "biome check --write --unsafe ./src",
+    "lint:check": "biome check ./src",
     "typecheck": "tsc --noEmit",
     "test:component": "vitest run src/__tests__",
     "test:e2e": "vitest run src/e2e",
     "test:e2e:manual": "bun run test:e2e",
     "test": "bun run test:component && bun run test:e2e",
-    "format": "bunx @biomejs/biome format --write ./src",
-    "format:check": "bunx @biomejs/biome format ./src",
+    "format": "biome format --write ./src",
+    "format:check": "biome format ./src",
     "build:watch": "bun run build.ts --watch"
   },
   "publishConfig": {

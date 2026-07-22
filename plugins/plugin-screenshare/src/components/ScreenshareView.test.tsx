@@ -211,7 +211,7 @@ describe("ScreenshareView — capabilities + host lifecycle", () => {
         token: "host-token",
       });
       expect(
-        (stopCall?.init?.headers as Record<string, string>)[
+        (stopCall?.init?.headers as Record<string, string> | undefined)?.[
           "X-Screenshare-Token"
         ],
       ).toBe("host-token");

@@ -84,9 +84,13 @@ describe("wifiNetworksProvider — success mapping", () => {
       },
     ]);
     // `capabilities` is intentionally dropped — assert it never leaks through.
-    for (const entry of result.data?.networks as Array<
-      Record<string, unknown>
-    >) {
+    const networks = result.data?.networks as
+      | Array<Record<string, unknown>>
+      | undefined;
+    if (!networks) {
+      throw new Error("Wi-Fi provider omitted its networks payload");
+    }
+    for (const entry of networks) {
       expect(entry).not.toHaveProperty("capabilities");
     }
 
