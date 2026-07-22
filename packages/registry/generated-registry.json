@@ -138,6 +138,50 @@
       "registryKind": "plugin",
       "directory": null
     },
+    "@lmxcloud/plugin-lmxcloud": {
+      "git": {
+        "repo": "LMXCloud/plugin-lmxcloud",
+        "v0": {
+          "branch": null
+        },
+        "v1": {
+          "branch": null
+        },
+        "v2": {
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@lmxcloud/plugin-lmxcloud",
+        "v0": null,
+        "v1": null,
+        "v2": "0.2.0"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS LLM plugin for LMX Cloud — pay per call in USDC via x402 on Base (no API key).",
+      "homepage": "https://lmxcloud.io",
+      "topics": [
+        "lmxcloud",
+        "x402",
+        "usdc",
+        "llm"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "origin": "third-party",
+      "source": "community",
+      "support": "community",
+      "builtIn": false,
+      "firstParty": false,
+      "thirdParty": true,
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": null
+    },
     "@ophis/plugin-elizaos": {
       "git": {
         "repo": "ophis-fi/ophis",
