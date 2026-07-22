@@ -46,9 +46,11 @@ export function capTranscriptForChat(text: string, maxChars = 1500): string {
   const tailStart = tail.indexOf("\n");
   const headPart = headEnd > 0 ? head.slice(0, headEnd) : head;
   const tailPart = tailStart >= 0 ? tail.slice(tailStart + 1) : tail;
-  const omitted =
-    text.slice(headPart.length, text.length - tailPart.length).split("\n")
-      .length - 1;
+  const middle = text
+    .slice(headPart.length, text.length - tailPart.length)
+    .replace(/^\n/, "")
+    .replace(/\n$/, "");
+  const omitted = middle.split("\n").length;
   return `${headPart}\n… [${omitted} lines omitted — ask to see more] …\n${tailPart}`;
 }
 
