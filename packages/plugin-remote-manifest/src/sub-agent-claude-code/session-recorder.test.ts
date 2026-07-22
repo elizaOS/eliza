@@ -173,8 +173,12 @@ describe("sub-agent session transcript redaction", () => {
 
     expect(events).toHaveLength(1);
     const failEvent = events[0];
-    expect(failEvent?.result).toBe("failure");
-    expect(failEvent?.metadata).toMatchObject({
+    expect(failEvent).toBeDefined();
+    if (!failEvent) {
+      throw new Error("Expected the failed session audit event to be recorded");
+    }
+    expect(failEvent.result).toBe("failure");
+    expect(failEvent.metadata).toMatchObject({
       session_id: "session-fail",
       transcript_complete: false,
       // hash + byte count cover only the first, successfully-written line.
@@ -184,7 +188,7 @@ describe("sub-agent session transcript redaction", () => {
       transcript_bytes: Buffer.byteLength("first line\n"),
     });
     expect(
-      (failEvent?.metadata as { transcript_error?: unknown }).transcript_error,
+      (failEvent.metadata as { transcript_error?: unknown }).transcript_error,
     ).toBeTruthy();
 
     removeTempRoot(sessionsRoot);

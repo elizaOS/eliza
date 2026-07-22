@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * test-realness-audit.mjs
- *
- * Repo-wide static audit for non-running and weak test coverage signals
- * (#10718). Two tiers:
+ * Audits first-party tests for non-running and weak coverage signals (#10718).
+ * Check mode verifies external submodule boundaries against the repository's
+ * Git index; non-checking source-archive scans fall back to `.gitmodules`.
+ * Two tiers:
  *
  * ENFORCED (hard failure, zero tolerance, cannot be baselined away):
  *   - focusedOnly    `.only` focus — including chained-modifier forms like
@@ -48,6 +48,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { listSubmodules } from "./lib/workspaces.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPO_ROOT = path.resolve(here, "..", "..");
@@ -133,26 +134,18 @@ function isTestFile(filePath) {
   return TEST_FILE_PATTERN.test(normalizeRepoPath(filePath));
 }
 
-function* walkFiles(dir) {
-  let entries;
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
+function* walkFiles(dir, submoduleDirs) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isSymbolicLink()) continue;
     if (entry.isDirectory()) {
       const childDir = path.join(dir, entry.name);
       if (
         SKIP_DIRS.has(entry.name) ||
-        // Checked-out Git submodules carry their own .git marker. Their tests
-        // are governed upstream and must not affect this repository's gates.
-        fs.existsSync(path.join(childDir, ".git"))
-      ) {
+        submoduleDirs.has(path.resolve(childDir))
+      )
         continue;
-      }
-      yield* walkFiles(childDir);
+      yield* walkFiles(childDir, submoduleDirs);
       continue;
     }
     if (entry.isFile() && isTestFile(entry.name)) {
@@ -161,12 +154,61 @@ function* walkFiles(dir) {
   }
 }
 
-function collectTestFiles(repoRoot) {
+function indexedSubmodulePaths(repoRoot, { required = false } = {}) {
+  const topLevel = git(repoRoot, ["rev-parse", "--show-toplevel"], {
+    allowFailure: true,
+  });
+  if (
+    topLevel === null ||
+    fs.realpathSync(topLevel.trim()) !== fs.realpathSync(repoRoot)
+  ) {
+    if (required) {
+      throw new Error(
+        "Test-realness check mode requires a Git index for the audited repository root",
+      );
+    }
+    return null;
+  }
+
+  const staged = git(repoRoot, ["ls-files", "--stage", "-z"]);
+  return staged
+    .split("\0")
+    .filter(Boolean)
+    .flatMap((entry) => {
+      const match = entry.match(/^160000 [0-9a-f]+ 0\t(.+)$/u);
+      return match ? [normalizeRepoPath(match[1])] : [];
+    });
+}
+
+function collectTestFiles(
+  repoRoot,
+  { requireVerifiedSubmodules = false } = {},
+) {
   const files = [];
+  // A declaration alone cannot hide first-party tests in a checkout. Source
+  // archives have no index, so report-only callers use the declarations as the
+  // best available boundary while check mode rejects that unverifiable state.
+  const indexedPaths = indexedSubmodulePaths(repoRoot, {
+    required: requireVerifiedSubmodules,
+  });
+  const declaredPaths = listSubmodules({ repoRoot }).map((submodule) =>
+    normalizeRepoPath(submodule.path),
+  );
+  const submodulePaths =
+    indexedPaths === null
+      ? declaredPaths
+      : declaredPaths.filter((submodulePath) =>
+          indexedPaths.includes(submodulePath),
+        );
+  const submoduleDirs = new Set(
+    submodulePaths.map((submodulePath) =>
+      path.resolve(repoRoot, submodulePath),
+    ),
+  );
   for (const scanRoot of SCAN_ROOTS) {
     const absRoot = path.join(repoRoot, scanRoot);
     if (!fs.existsSync(absRoot)) continue;
-    files.push(...walkFiles(absRoot));
+    files.push(...walkFiles(absRoot, submoduleDirs));
   }
   return files.sort((left, right) => left.localeCompare(right));
 }
@@ -491,8 +533,11 @@ function summarize(findings, filesScanned) {
   };
 }
 
-export function scanTestRealness({ repoRoot = DEFAULT_REPO_ROOT } = {}) {
-  const files = collectTestFiles(repoRoot);
+export function scanTestRealness({
+  repoRoot = DEFAULT_REPO_ROOT,
+  requireVerifiedSubmodules = false,
+} = {}) {
+  const files = collectTestFiles(repoRoot, { requireVerifiedSubmodules });
   const findings = files.flatMap((filePath) => analyzeFile(repoRoot, filePath));
   findings.sort(
     (left, right) =>
@@ -759,6 +804,7 @@ function git(repoRoot, argv, { allowFailure = false } = {}) {
       stdio: ["ignore", "pipe", allowFailure ? "ignore" : "inherit"],
     });
   } catch (error) {
+    // error-policy:J3 Git probes return an explicit invalid signal to callers.
     if (allowFailure) return null;
     throw error;
   }
@@ -866,7 +912,10 @@ function writeFileEnsuringDir(filePath, content) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  const result = scanTestRealness({ repoRoot: args.repoRoot });
+  const result = scanTestRealness({
+    repoRoot: args.repoRoot,
+    requireVerifiedSubmodules: args.check,
+  });
 
   if (args.printBaseline) {
     process.stdout.write(`${JSON.stringify(buildBaseline(result), null, 2)}\n`);

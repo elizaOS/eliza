@@ -47,7 +47,9 @@ describe("proxyFeedRequest — Steward-first auto-login", () => {
       ),
     ).toBe(false);
     // Dead cookie removed.
-    expect((init?.headers as Record<string, string>).Cookie).toBeUndefined();
+    expect(init).toBeDefined();
+    if (!init) throw new Error("Expected proxied request options");
+    expect((init.headers as Record<string, string>).Cookie).toBeUndefined();
   });
 
   it("falls back to the agent-session path when the Steward JWT is rejected (401)", async () => {

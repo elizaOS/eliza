@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -27,14 +27,19 @@ describe("canonical-memory-writeback", () => {
 
   const cfg = () => ({ writeRoot: root, now: () => FIXED_NOW });
 
-  const fact = (text: string, extra: Partial<Parameters<typeof recordCanonicalFact>[0]> = {}) => ({
+  const fact = (
+    text: string,
+    extra: Partial<Parameters<typeof recordCanonicalFact>[0]> = {},
+  ) => ({
     text,
     provenance: { source: "test", userId: "user-1", conversationRef: "room-9" },
     ...extra,
   });
 
   it("denies every write when no root is configured (deny-by-default)", async () => {
-    const res = await recordCanonicalFact(fact("hello"), { now: () => FIXED_NOW });
+    const res = await recordCanonicalFact(fact("hello"), {
+      now: () => FIXED_NOW,
+    });
     expect(res.ok).toBe(false);
     expect(res.denialReason).toBe("write-root-unset");
     expect(res.auditReason).toMatch(/no approved write root/);
@@ -52,11 +57,15 @@ describe("canonical-memory-writeback", () => {
   it("denies files not matching the allowed patterns", () => {
     const authz = authorizeWrite("memory/secrets.txt", cfg());
     expect(authz.ok).toBe(false);
-    if (!authz.ok) expect(authz.result.denialReason).toBe("pattern-not-allowed");
+    if (!authz.ok)
+      expect(authz.result.denialReason).toBe("pattern-not-allowed");
   });
 
   it("appends a fact with full provenance to today's daily file", async () => {
-    const res = await recordCanonicalFact(fact("Shadow started a new habit"), cfg());
+    const res = await recordCanonicalFact(
+      fact("Shadow started a new habit"),
+      cfg(),
+    );
     expect(res.ok).toBe(true);
     expect(res.outcome).toBe("appended");
     const content = await readFile(path.join(root, DAILY_REL), "utf8");
@@ -67,8 +76,14 @@ describe("canonical-memory-writeback", () => {
   });
 
   it("is exactly-once per fact id: duplicate submission does not duplicate", async () => {
-    const first = await recordCanonicalFact(fact("only once", { factId: "abc123" }), cfg());
-    const second = await recordCanonicalFact(fact("only once", { factId: "abc123" }), cfg());
+    const first = await recordCanonicalFact(
+      fact("only once", { factId: "abc123" }),
+      cfg(),
+    );
+    const second = await recordCanonicalFact(
+      fact("only once", { factId: "abc123" }),
+      cfg(),
+    );
     expect(first.outcome).toBe("appended");
     expect(second.outcome).toBe("duplicate");
     const content = await readFile(path.join(root, DAILY_REL), "utf8");
@@ -83,10 +98,16 @@ describe("canonical-memory-writeback", () => {
   });
 
   it("corrections supersede instead of duplicating, append-only", async () => {
-    const orig = await recordCanonicalFact(fact("gym at 4pm", { factId: "f-orig" }), cfg());
+    const orig = await recordCanonicalFact(
+      fact("gym at 4pm", { factId: "f-orig" }),
+      cfg(),
+    );
     expect(orig.outcome).toBe("appended");
     const corr = await recordCanonicalFact(
-      fact("gym at 5pm actually", { factId: "f-corr", supersedesFactId: "f-orig" }),
+      fact("gym at 5pm actually", {
+        factId: "f-corr",
+        supersedesFactId: "f-orig",
+      }),
       cfg(),
     );
     expect(corr.outcome).toBe("appended");
@@ -122,7 +143,9 @@ describe("canonical-memory-writeback", () => {
 
   it("honors CANONICAL_MEMORY_WRITE_ROOT env when config omits writeRoot", async () => {
     process.env.CANONICAL_MEMORY_WRITE_ROOT = root;
-    const res = await recordCanonicalFact(fact("env root works"), { now: () => FIXED_NOW });
+    const res = await recordCanonicalFact(fact("env root works"), {
+      now: () => FIXED_NOW,
+    });
     expect(res.ok).toBe(true);
     expect(res.outcome).toBe("appended");
   });

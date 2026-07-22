@@ -19,9 +19,14 @@ describe("self-updater command mapping", () => {
     ],
     ["flatpak", "beta", "flatpak update ai.eliza.Eliza"],
     ["unknown", "nightly", "npm install -g elizaos@nightly"],
-  ] as const)("builds a display command for %s on %s", (method, channel, expected) => {
-    expect(buildUpdateCommand(method, channel)?.displayCommand).toBe(expected);
-  });
+  ] as const)(
+    "builds a display command for %s on %s",
+    (method, channel, expected) => {
+      expect(buildUpdateCommand(method, channel)?.displayCommand).toBe(
+        expected,
+      );
+    },
+  );
 
   it("does not build an executable command for local development installs", () => {
     expect(buildUpdateCommand("local-dev", "stable")).toBeNull();
@@ -38,14 +43,17 @@ describe("self-updater action plan", () => {
     ["flatpak", "os-package-manager", "run-package-manager-command", true],
     ["local-dev", "developer", "run-git-pull", false],
     ["unknown", "operator", "review-installation", true],
-  ] as const)("maps %s to authority and next action", (method, authority, nextAction, canAutoUpdate) => {
-    const plan = getUpdateActionPlan(method, "stable");
+  ] as const)(
+    "maps %s to authority and next action",
+    (method, authority, nextAction, canAutoUpdate) => {
+      const plan = getUpdateActionPlan(method, "stable");
 
-    expect(plan.authority).toBe(authority);
-    expect(plan.nextAction).toBe(nextAction);
-    expect(plan.canAutoUpdate).toBe(canAutoUpdate);
-    expect(plan.canExecuteFromContext).toBe(canAutoUpdate);
-  });
+      expect(plan.authority).toBe(authority);
+      expect(plan.nextAction).toBe(nextAction);
+      expect(plan.canAutoUpdate).toBe(canAutoUpdate);
+      expect(plan.canExecuteFromContext).toBe(canAutoUpdate);
+    },
+  );
 
   it("marks remote status views as display-only", () => {
     const plan = getUpdateActionPlan("apt", "stable", {

@@ -148,19 +148,17 @@ describe("CanvasWeb validation", () => {
     });
   });
 
-  it.each([
-    -1,
-    101,
-    Number.POSITIVE_INFINITY,
-    Number.NaN,
-  ])("rejects invalid image quality %s", async (quality) => {
-    const canvas = new CanvasWeb();
-    const { canvasId } = await canvas.create({
-      size: { width: 10, height: 10 },
-    });
+  it.each([-1, 101, Number.POSITIVE_INFINITY, Number.NaN])(
+    "rejects invalid image quality %s",
+    async (quality) => {
+      const canvas = new CanvasWeb();
+      const { canvasId } = await canvas.create({
+        size: { width: 10, height: 10 },
+      });
 
-    await expect(canvas.toImage({ canvasId, quality })).rejects.toThrow(
-      /quality must/,
-    );
-  });
+      await expect(canvas.toImage({ canvasId, quality })).rejects.toThrow(
+        /quality must/,
+      );
+    },
+  );
 });

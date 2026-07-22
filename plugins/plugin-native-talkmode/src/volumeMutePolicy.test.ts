@@ -43,26 +43,27 @@ describe("volume and mute policy", () => {
     });
   });
 
-  it.each(
-    platforms,
-  )("keeps %s capture live and visibly recording while output is muted", (platform) => {
-    const policy = getVolumeMutePolicy(platform);
-    let state = createTalkModeAudioState();
+  it.each(platforms)(
+    "keeps %s capture live and visibly recording while output is muted",
+    (platform) => {
+      const policy = getVolumeMutePolicy(platform);
+      let state = createTalkModeAudioState();
 
-    state = reduceTalkModeAudioPolicy(state, { type: "capture-started" });
-    state = reduceTalkModeAudioPolicy(state, {
-      type: "output-mute-changed",
-      muted: true,
-    });
-    state = reduceTalkModeAudioPolicy(state, {
-      type: "output-volume-changed",
-      volume: 0,
-    });
+      state = reduceTalkModeAudioPolicy(state, { type: "capture-started" });
+      state = reduceTalkModeAudioPolicy(state, {
+        type: "output-mute-changed",
+        muted: true,
+      });
+      state = reduceTalkModeAudioPolicy(state, {
+        type: "output-volume-changed",
+        volume: 0,
+      });
 
-    expect(policy.captureContinuesWhenOutputMuted).toBe(true);
-    expect(state.captureActive).toBe(true);
-    expect(state.captureIndicator).toBe("recording");
-  });
+      expect(policy.captureContinuesWhenOutputMuted).toBe(true);
+      expect(state.captureActive).toBe(true);
+      expect(state.captureIndicator).toBe("recording");
+    },
+  );
 
   it("continues TTS silently when hardware mute or volume 0 is applied", () => {
     let state = createTalkModeAudioState();

@@ -4,26 +4,32 @@
 // CDP-drivable like Android, so there is no Playwright route-coverage sweep;
 // instead this proves the device-level real paths and fails LOUDLY:
 //   1. A simulator is booted (boots one if needed).
-//   2. The app is built + installed.
-//   3. Local route: on-device agent + smallest model + real chat round-trip
+//   2. The app is built when requested, then explicitly installed even when a
+//      prebuilt --app-path is supplied.
+//   3. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
+//   4. Local route: on-device agent + smallest model + real chat round-trip
 //      (mobile-local-chat-smoke ios full-bun path).
-//   4. Deep-link / auth-callback registration + drive (mobile-auth-simulator).
 //   5. (optional) Cloud route: real provisioning probe.
 //
 // Flags: --device <name|udid>  --app-path <App.app>  --skip-build
 //        --skip-local-chat  --skip-auth  --cloud  --no-wait  --output <dir>
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  applyIosSimulatorSchemeApproval,
   assertNonVacuousPlan,
   buildAuthSmokeCommand,
   buildCloudProvisioningCommand,
   buildIosSimBuildCommand,
   buildLocalChatSmokeCommand,
-  extractAppId,
+  classifyIosSimulatorSchemeDispatch,
+  extractAppIdentity,
+  iosSimulatorSchemeApproval,
   isAppInstalled,
+  parseAuthSmokeResult,
   parseIosE2eArgs,
   planIosE2eSteps,
   resolveTargetDevice,
@@ -55,23 +61,23 @@ const flags = parseIosE2eArgs(process.argv);
 const log = (m) => console.log(`[ios-e2e] ${m}`);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function readAppId() {
+function readAppIdentity() {
   const configPath = path.join(appDir, "app.config.ts");
-  return extractAppId(fs.readFileSync(configPath, "utf8"));
+  return extractAppIdentity(fs.readFileSync(configPath, "utf8"));
 }
 
 function run(bundle, name, cmd, args, env = {}) {
-  runBundledCommand(bundle, name, cmd, args, {
+  return runBundledCommand(bundle, name, cmd, args, {
     cwd: appDir,
     env,
     onFailure: (step, error) => captureIosFailure(bundle, step, error),
   });
 }
 
-let activeIosContext = { udid: null };
+let activeIosContext = { udid: null, appId: null };
 
 function captureIosFailure(bundle, step, error) {
-  const { udid } = activeIosContext;
+  const { udid, appId } = activeIosContext;
   return captureFailureForensics(
     bundle,
     step,
@@ -97,6 +103,12 @@ function captureIosFailure(bundle, step, error) {
             "compact",
             "--last",
             "2m",
+            ...(appId
+              ? [
+                  "--predicate",
+                  `process == "App" OR (process == "launchd_sim" AND eventMessage CONTAINS "${appId}")`,
+                ]
+              : []),
           ],
           { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
         );
@@ -163,7 +175,7 @@ async function recordSimulatorVideo(bundle, udid, durationSeconds = 3) {
   return outPath;
 }
 
-function captureSimulatorLog(bundle, udid) {
+function captureSimulatorLog(bundle, udid, appId) {
   const outPath = path.join(bundle.logsDir, "ios-sim.log");
   const result = spawnSync(
     "xcrun",
@@ -177,6 +189,8 @@ function captureSimulatorLog(bundle, udid) {
       "compact",
       "--last",
       "5m",
+      "--predicate",
+      `process == "App" OR (process == "launchd_sim" AND eventMessage CONTAINS "${appId}")`,
     ],
     { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
   );
@@ -249,15 +263,103 @@ function installBuiltSimulatorApp(udid, appId) {
   });
 }
 
-function runStep(bundle, step, { udid, appId }) {
+function ensureSimulatorSchemeApproval(udid, appId, urlScheme) {
+  const approval = iosSimulatorSchemeApproval({
+    homeDir: os.homedir(),
+    udid,
+    urlScheme,
+    appId,
+  });
+  fs.mkdirSync(path.dirname(approval.plistPath), { recursive: true });
+  const readEntries = () => {
+    if (!fs.existsSync(approval.plistPath)) return {};
+    const raw = execFileSync(
+      "plutil",
+      ["-convert", "json", "-o", "-", approval.plistPath],
+      { encoding: "utf8" },
+    );
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(
+        `Simulator scheme-approval plist was not an object: ${approval.plistPath}`,
+      );
+    }
+    return parsed;
+  };
+  const existingEntries = readEntries();
+  const mutation = applyIosSimulatorSchemeApproval(existingEntries, approval);
+  if (mutation.changed) {
+    execFileSync(
+      "plutil",
+      ["-convert", "binary1", "-o", approval.plistPath, "-"],
+      { input: JSON.stringify(mutation.entries) },
+    );
+  }
+  const callbackDisposition = classifyIosSimulatorSchemeDispatch(
+    readEntries(),
+    approval,
+  );
+  if (callbackDisposition !== "deliver-to-app") {
+    throw new Error(
+      `LaunchServices did not persist the ${urlScheme} simulator callback approval`,
+    );
+  }
+  return {
+    ...approval,
+    previousAppId: mutation.previousAppId,
+    changed: mutation.changed,
+    callbackDisposition,
+  };
+}
+
+function rebootSimulatorAfterSchemeApproval(udid) {
+  simctl(["shutdown", udid]);
+  simctl(["boot", udid]);
+  simctl(["bootstatus", udid, "-b"]);
+}
+
+function runStep(bundle, step, { udid, appId, urlScheme }) {
   switch (step.id) {
     case "build": {
       log("building the iOS Simulator app…");
       const build = buildIosSimBuildCommand();
       run(bundle, step.label, build.cmd, build.args);
-      const installStep = startBundleStep(bundle, "install iOS Simulator app");
+      return;
+    }
+    case "install": {
+      const installStep = startBundleStep(bundle, step.label);
       try {
         const stamp = installBuiltSimulatorApp(udid, appId);
+        const approval = ensureSimulatorSchemeApproval(udid, appId, urlScheme);
+        if (approval.changed) {
+          log(
+            `rebooting simulator so LaunchServices loads ${urlScheme} scheme approval`,
+          );
+          rebootSimulatorAfterSchemeApproval(udid);
+        }
+        const approvalReport = path.join(
+          bundle.reportsDir,
+          "ios-scheme-approval.json",
+        );
+        fs.writeFileSync(
+          approvalReport,
+          `${JSON.stringify(
+            {
+              appId: approval.appId,
+              urlScheme,
+              approvalKey: approval.key,
+              previousAppId: approval.previousAppId,
+              changed: approval.changed,
+              callbackDisposition: approval.callbackDisposition,
+              rebooted: approval.changed,
+              plist: path.basename(approval.plistPath),
+              verifiedAt: new Date().toISOString(),
+            },
+            null,
+            2,
+          )}\n`,
+        );
+        recordBundleArtifact(bundle, approvalReport, "log", installStep);
         setBundleBuild(bundle, {
           buildId: stamp?.buildId ?? null,
           commit: stamp?.commit ?? null,
@@ -272,7 +374,13 @@ function runStep(bundle, step, { udid, appId }) {
     case "auth": {
       log(`${step.label}…`);
       const auth = buildAuthSmokeCommand(udid);
-      run(bundle, step.label, auth.cmd, auth.args);
+      const result = run(bundle, step.label, auth.cmd, auth.args);
+      const evidenceDir = path.join(bundle.root, "test-results", "auth");
+      fs.mkdirSync(evidenceDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(evidenceDir, "result.json"),
+        `${JSON.stringify(parseAuthSmokeResult(result.stdout), null, 2)}\n`,
+      );
       return;
     }
     case "local-chat": {
@@ -281,6 +389,11 @@ function runStep(bundle, step, { udid, appId }) {
       run(bundle, step.label, chat.cmd, chat.args, {
         ELIZA_DEVICE_E2E_ARTIFACT_DIR: path.join(bundle.root, "test-results"),
         ELIZA_IOS_ARTIFACT_DIR: path.join(bundle.root, "test-results", "ios"),
+        ELIZA_IOS_FULL_BUN_SMOKE_EVIDENCE_DIR: path.join(
+          bundle.root,
+          "test-results",
+          "ios-full-bun",
+        ),
       });
       return;
     }
@@ -306,6 +419,7 @@ async function main() {
   let lease = null;
   let udid = null;
   let appId = null;
+  let urlScheme = null;
 
   try {
     const steps = planIosE2eSteps(flags);
@@ -313,11 +427,11 @@ async function main() {
     assertNonVacuousPlan(steps);
     log(`plan: ${steps.map((s) => s.id).join(" → ")}`);
 
-    appId = readAppId();
+    ({ appId, urlScheme } = readAppIdentity());
     const bootStep = startBundleStep(bundle, "boot iOS Simulator");
     try {
       udid = ensureSimulatorBooted(flags.device);
-      activeIosContext = { udid };
+      activeIosContext = { udid, appId };
       finishBundleStep(bundle, bootStep, "passed");
     } catch (error) {
       failIosStep(bundle, bootStep, error);
@@ -332,7 +446,7 @@ async function main() {
 
     clearIosSmokeDefaults({ udid, bundleId: appId, log });
     for (const step of steps) {
-      runStep(bundle, step, { udid, appId });
+      runStep(bundle, step, { udid, appId, urlScheme });
     }
     finalResult = "passed";
     log("ALL iOS E2E PASSED ✅");
@@ -363,7 +477,11 @@ async function main() {
         );
       }
       try {
-        recordBundleArtifact(bundle, captureSimulatorLog(bundle, udid), "log");
+        recordBundleArtifact(
+          bundle,
+          captureSimulatorLog(bundle, udid, appId),
+          "log",
+        );
       } catch (error) {
         // error-policy:J7 Bundle capture is diagnostic; preserve the runner result.
         bundle.warnings.push(

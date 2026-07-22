@@ -33,7 +33,7 @@ test("bridge typecheck uses the same agent shims as declaration builds", () => {
   );
 
   expect(bridgePackage.scripts.typecheck).toBe(
-    "tsgo --noEmit -p tsconfig.build.json",
+    "tsc --noEmit -p tsconfig.build.json",
   );
   expect(buildConfig.compilerOptions.paths).toMatchObject({
     "@elizaos/agent": ["./src/type-shims/agent-root.ts"],

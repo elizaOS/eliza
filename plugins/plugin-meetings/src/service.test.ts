@@ -471,6 +471,8 @@ describe("MeetingService — roster, transcripts, listing", () => {
     expect(row).toBeTruthy();
     expect(fake.tables.get(dto.transcriptId as string)).toBe("transcripts");
     const transcript = row ? readTranscriptRow(row) : null;
+    expect(transcript).not.toBeNull();
+    if (!transcript) throw new Error("Expected a finalized transcript");
     expect(transcript?.status).toBe("ready");
     expect(transcript?.source).toBe("meeting");
     expect(transcript?.segments).toHaveLength(1);
@@ -482,10 +484,15 @@ describe("MeetingService — roster, transcripts, listing", () => {
       nativeMeetingId: "abc-defg-hij",
       sessionId: dto.id,
     });
-    expect(
-      (transcript?.metadata?.participants as Array<{ displayName: string }>)[0]
-        .displayName,
-    ).toBe("Jill");
+    const participants = transcript.metadata?.participants as
+      | Array<{ displayName: string }>
+      | undefined;
+    expect(participants).toBeDefined();
+    if (!participants) throw new Error("Expected transcript participants");
+    const participant = participants[0];
+    expect(participant).toBeDefined();
+    if (!participant) throw new Error("Expected a transcript participant");
+    expect(participant.displayName).toBe("Jill");
     // Knowledge mirror landed with the transcript tag + clientDocumentId link.
     expect(fake.documents).toHaveLength(1);
     expect(fake.documents[0].clientDocumentId).toBe(dto.transcriptId);

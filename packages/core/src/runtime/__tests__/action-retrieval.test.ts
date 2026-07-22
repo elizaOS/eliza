@@ -167,6 +167,50 @@ describe("action catalogue and retrieval", () => {
 		});
 	});
 
+	it("drops a simile claimed by multiple parents instead of first-writer-wins (#16561)", () => {
+		// The live collision this locks: LIST_FILES was a simile on BOTH the
+		// coding-tools FILE action and the stored-media FILES action; catalog
+		// order is alphabetical, so the earlier parent silently stole the
+		// other's intent. An ambiguous simile must not route at all — the
+		// planner then falls back to keyword/BM25 scoring over both parents.
+		const catalog = buildActionCatalog([
+			{
+				name: "FILE",
+				description: "Read, write, edit, grep, glob, or list files.",
+				similes: ["LIST_FILES"],
+				tags: ["files"],
+			},
+			{
+				name: "FILES",
+				description: "List, get, or delete stored media files.",
+				similes: ["LIST_FILES", "RECENT_FILES"],
+				tags: ["media"],
+			},
+			...actions,
+		]);
+		const response = retrieveActions({
+			catalog,
+			messageText: "totally unrelated message",
+			candidateActions: ["LIST_FILES"],
+		});
+		// Neither parent may claim the ambiguous hint via the exact stage.
+		for (const result of response.results) {
+			if (result.name === "FILE" || result.name === "FILES") {
+				expect(result.matchedBy).not.toContain("exact");
+			}
+		}
+		// An unambiguous simile on the same parents still routes normally.
+		const unambiguous = retrieveActions({
+			catalog,
+			messageText: "totally unrelated message",
+			candidateActions: ["RECENT_FILES"],
+		});
+		expect(unambiguous.results[0]).toMatchObject({
+			name: "FILES",
+			matchedBy: expect.arrayContaining(["exact"]),
+		});
+	});
+
 	it("resolves a child simile hint to the child's parent", () => {
 		const catalog = buildActionCatalog([
 			{

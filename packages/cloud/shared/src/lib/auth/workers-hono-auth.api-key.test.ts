@@ -80,6 +80,7 @@ mock.module("../utils/logger", () => ({
 }));
 
 const {
+  apiKeyScopeHashPrefix,
   getCurrentUser,
   requireAdmin,
   requireCronSecret,
@@ -491,5 +492,43 @@ describe("Workers API-key auth", () => {
         contextWithHeaders({ authorization: "Bearer wrong" }, { CRON_SECRET: "cron-ok" }) as never,
       ),
     ).toThrow("Invalid cron secret");
+  });
+});
+
+describe("apiKeyScopeHashPrefix (shared-agent scope cache key — COLDPATH-FIX-2026-07-21)", () => {
+  test("derives the 16-char sha256 prefix of the X-API-Key credential", async () => {
+    // Same sha256 + 16-char-prefix derivation the api-key validation cache uses,
+    // so the scope cache is keyed by the exact same credential identity.
+    const prefix = await apiKeyScopeHashPrefix(
+      contextWithApiKey("eliza_test_key_abcdef0123456789") as never,
+    );
+    expect(prefix).toBe("9b98f179eb88406b");
+    expect(prefix).toHaveLength(16);
+  });
+
+  test("also keys off an eliza_ bearer token (same credential, same prefix)", async () => {
+    const prefix = await apiKeyScopeHashPrefix(
+      contextWithHeaders({ authorization: "Bearer eliza_test_key_abcdef0123456789" }) as never,
+    );
+    expect(prefix).toBe("9b98f179eb88406b");
+  });
+
+  test("returns null when the request is not API-key authenticated", async () => {
+    // Session/JWT/cookie requests scope on the authoritative gate, never a hash
+    // of an empty string.
+    expect(await apiKeyScopeHashPrefix(contextWithHeaders({}) as never)).toBeNull();
+    expect(
+      await apiKeyScopeHashPrefix(
+        contextWithHeaders({ authorization: "Bearer not-an-eliza-key" }) as never,
+      ),
+    ).toBeNull();
+  });
+
+  test("distinct keys yield distinct prefixes", async () => {
+    const a = await apiKeyScopeHashPrefix(contextWithApiKey("eliza_key_one") as never);
+    const b = await apiKeyScopeHashPrefix(contextWithApiKey("eliza_key_two") as never);
+    expect(a).not.toBe(b);
+    expect(a).toHaveLength(16);
+    expect(b).toHaveLength(16);
   });
 });
