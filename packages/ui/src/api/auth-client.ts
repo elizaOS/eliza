@@ -374,11 +374,23 @@ export async function authMe(): Promise<AuthMeResult> {
   }
 
   if (res.ok) {
-    const body = (await res.json()) as {
-      identity: AuthIdentity;
-      session: AuthSessionInfo;
+    let body: {
+      identity?: AuthIdentity;
+      session?: AuthSessionInfo;
       access?: AuthAccessInfo;
     };
+    try {
+      body = (await res.json()) as typeof body;
+    } catch {
+      // error-policy:J3 a successful HTTP status with a non-JSON body is an
+      // invalid auth response, never an authenticated session. This commonly
+      // identifies a misrouted SPA fallback and maps to the hook's explicit
+      // backend-unavailable state.
+      return { ok: false, status: 503, reason: "server_error" };
+    }
+    if (!body.identity || !body.session) {
+      return { ok: false, status: 503, reason: "server_error" };
+    }
     return {
       ok: true,
       identity: body.identity,

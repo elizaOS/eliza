@@ -16,6 +16,17 @@ const removeNotificationApi = vi.fn();
 const clearNotificationsApi = vi.fn();
 const seedDevNotificationsApi = vi.fn();
 const onWsEvent = vi.fn();
+const nativeProbeRuntime = vi.hoisted(() => ({
+  isNative: false,
+  agentApiBase: "",
+  baseListeners: new Set<() => void>(),
+}));
+
+vi.mock("../../platform", () => ({
+  get isNative() {
+    return nativeProbeRuntime.isNative;
+  },
+}));
 
 vi.mock("../../api/client", () => ({
   client: {
@@ -29,6 +40,11 @@ vi.mock("../../api/client", () => ({
     seedDevNotifications: (...args: unknown[]) =>
       seedDevNotificationsApi(...args),
     onWsEvent: (...args: unknown[]) => onWsEvent(...args),
+    getBaseUrl: () => nativeProbeRuntime.agentApiBase,
+    onBaseUrlChange: (listener: () => void) => {
+      nativeProbeRuntime.baseListeners.add(listener);
+      return () => nativeProbeRuntime.baseListeners.delete(listener);
+    },
   },
 }));
 
@@ -95,6 +111,11 @@ async function flushDelivery(): Promise<void> {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 }
 
+function selectAgentApiBase(baseUrl: string): void {
+  nativeProbeRuntime.agentApiBase = baseUrl;
+  for (const listener of nativeProbeRuntime.baseListeners) listener();
+}
+
 describe("notification-store", () => {
   beforeEach(() => {
     __resetNotificationStoreForTests();
@@ -117,6 +138,9 @@ describe("notification-store", () => {
     showNativeNotification.mockReset().mockResolvedValue("none");
     showWebNotification.mockReset().mockReturnValue(false);
     pushNotificationBanner.mockReset();
+    nativeProbeRuntime.isNative = false;
+    nativeProbeRuntime.agentApiBase = "";
+    nativeProbeRuntime.baseListeners.clear();
     // Default: window focused.
     vi.spyOn(document, "hasFocus").mockReturnValue(true);
     Object.defineProperty(document, "visibilityState", {
@@ -751,6 +775,9 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
       .mockResolvedValue({ notifications: [], unreadCount: 0 });
     onWsEvent.mockReset().mockReturnValue(() => {});
     invokeDesktopBridgeRequest.mockReset().mockResolvedValue(null);
+    nativeProbeRuntime.isNative = false;
+    nativeProbeRuntime.agentApiBase = "";
+    nativeProbeRuntime.baseListeners.clear();
   });
 
   afterEach(() => {
@@ -781,6 +808,98 @@ describe("notification-store — protected hydrate gate (#16242)", () => {
       },
     });
     await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+  });
+
+  it("holds native Cloud hydration through backend selection until authentication", async () => {
+    nativeProbeRuntime.isNative = true;
+    setOrigin("https://localhost/");
+    initNotifications();
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+
+    selectAgentApiBase(
+      "https://api-staging.elizacloud.ai/api/v1/eliza/agents/agent-1",
+    );
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationError: null,
+    });
+
+    selectAgentApiBase("http://127.0.0.1:2138");
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(2));
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationError: null,
+    });
+  });
+
+  it("hydrates native local/remote as soon as its concrete backend is selected", async () => {
+    nativeProbeRuntime.isNative = true;
+    setOrigin("https://localhost/");
+    initNotifications();
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+
+    selectAgentApiBase("http://127.0.0.1:2138");
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not probe between a native connection's base and token writes", async () => {
+    nativeProbeRuntime.isNative = true;
+    setOrigin("https://localhost/");
+    __setAuthStatusForTests({
+      phase: "authenticated",
+      identity: { id: "u-1", displayName: "Owner", kind: "owner" },
+      session: { id: "s-1", kind: "browser", expiresAt: null },
+      access: {
+        mode: "session",
+        passwordConfigured: true,
+        ownerConfigured: true,
+        role: "OWNER",
+      },
+    });
+    let connectionReady = false;
+    listNotifications.mockImplementation(async () => {
+      if (!connectionReady) {
+        throw new ApiError({
+          kind: "http",
+          path: "/api/notifications",
+          status: 401,
+          message: "credential not installed yet",
+        });
+      }
+      return { notifications: [], unreadCount: 0 };
+    });
+    initNotifications();
+    await Promise.resolve();
+    expect(listNotifications).not.toHaveBeenCalled();
+
+    selectAgentApiBase("https://agent.example.com");
+    connectionReady = true;
+
+    await vi.waitFor(() => expect(listNotifications).toHaveBeenCalledTimes(1));
+    expect(__getStateForTests()).toMatchObject({
+      hydrated: true,
+      hydrationStatus: "ready",
+      hydrationError: null,
+    });
   });
 
   it("hydrates on mount on a non-Cloud origin regardless of auth (unchanged)", async () => {

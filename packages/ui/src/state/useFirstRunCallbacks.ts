@@ -8,7 +8,10 @@
  */
 
 import { type RefObject, useCallback } from "react";
+import { activeServerToStartupRuntimeTarget } from "../first-run/runtime-target";
 import type { Tab } from "../navigation";
+import { loadPersistedActiveServer } from "./persistence";
+import type { RuntimeTarget } from "./startup-coordinator";
 import type { FirstRunStateHook } from "./useFirstRunState";
 
 export interface FirstRunCallbacksDeps {
@@ -19,7 +22,9 @@ export interface FirstRunCallbacksDeps {
 
   /** Lifecycle / global */
   setFirstRunComplete: (v: boolean) => void;
-  coordinatorFirstRunCompleteRef: RefObject<(() => void) | null>;
+  coordinatorFirstRunCompleteRef: RefObject<
+    ((target?: RuntimeTarget) => void) | null
+  >;
   initialTabSetRef: RefObject<boolean>;
   setTab: (tab: Tab) => void;
   defaultLandingTab: Tab;
@@ -45,7 +50,12 @@ export function useFirstRunCallbacks(deps: FirstRunCallbacksDeps) {
       firstRunCompletionCommittedRef.current = true;
       setPostFirstRunChecklistDismissed(false);
       setFirstRunComplete(true);
-      coordinatorFirstRunCompleteRef.current?.();
+      const activeServer = loadPersistedActiveServer();
+      coordinatorFirstRunCompleteRef.current?.(
+        activeServer
+          ? activeServerToStartupRuntimeTarget(activeServer)
+          : undefined,
+      );
       initialTabSetRef.current = true;
       setTab(landingTab);
       void loadCharacter();

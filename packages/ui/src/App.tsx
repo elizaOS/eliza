@@ -141,7 +141,7 @@ import {
 import { isShellPaintable } from "./state/startup-coordinator";
 import {
   authProbeShouldHoldShell,
-  firstRunOwnsLoginSurface,
+  firstRunDefersAuthProbe,
   topLevelAuthGateOwnsSurface,
 } from "./state/top-level-auth-gate";
 import { isLoopbackGatewayHost } from "./state/use-startup-shell-controller";
@@ -2179,16 +2179,21 @@ function AppContent() {
     typeof window !== "undefined" &&
     isElizaCloudControlPlaneAgentlessBase(window.location.origin);
 
-  // Existing remote backends still probe during first-run so a real 401 can
-  // surface their password wall. The shared Cloud app defers that probe because
-  // its in-chat first-run conductor owns Cloud sign-in; its same-origin 401 is
-  // not evidence that this browser is on a dedicated agent host.
+  // Existing remote/local backends still probe during first-run so a real 401
+  // can surface their password wall. Agentless Cloud origins and an unbound
+  // native bundle defer until first-run selects a backend; both serve the SPA
+  // document for a same-origin /api/auth/me miss.
   const { state: authState, refetch: refetchAuth } = useAuthStatus({
     skip:
       !isShellPaintableNow ||
       isPopout ||
-      (isAgentlessCloudOrigin &&
-        firstRunOwnsLoginSurface(startupCoordinator.phase, firstRunComplete)),
+      firstRunDefersAuthProbe({
+        coordinatorPhase: startupCoordinator.phase,
+        firstRunComplete,
+        isAgentlessCloudOrigin,
+        isNative,
+        hasAgentApiBase: client.getBaseUrl().trim().length > 0,
+      }),
   });
   // #15132: after a dedicated cloud agent's container upgrade the persisted
   // agent credential is stale (every agent-subdomain call 401s) while the cloud
@@ -2731,7 +2736,13 @@ function AppContent() {
     ) {
       return (
         <BugReportProvider value={bugReport}>
-          <StartupScreen />
+          <StartupScreen
+            readyLoadingFallback={{
+              kind: "loading",
+              phase: "authenticating",
+              status: t("startupshell.Loading"),
+            }}
+          />
           <BugReportModal />
         </BugReportProvider>
       );

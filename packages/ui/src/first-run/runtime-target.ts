@@ -1,12 +1,17 @@
 /**
- * Resolves the first-run runtime target for the current platform (Android/iOS
- * local IPC bases vs the configured API base).
+ * Resolves first-run runtime targets and maps the persisted active server to
+ * the startup coordinator's topology. The mapping preserves the mobile local
+ * agent exception: native IPC profiles are remote-shaped records but run the
+ * embedded runtime.
  */
 import { isAndroid, isIOS } from "../platform/init";
+import type { PersistedActiveServer } from "../state/persistence";
+import type { RuntimeTarget } from "../state/startup-coordinator";
 import { getElizaApiBase } from "../utils";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
   IOS_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentUrl,
 } from "./mobile-runtime-mode";
 
 export type FirstRunRuntimeTarget =
@@ -47,5 +52,26 @@ export function activeServerKindToFirstRunRuntimeTarget(
       return "elizacloud";
     case "remote":
       return "remote";
+  }
+}
+
+export function isMobileLocalActiveServer(
+  server: PersistedActiveServer,
+): boolean {
+  return server.kind === "local" || isMobileLocalAgentUrl(server.apiBase);
+}
+
+export function activeServerToStartupRuntimeTarget(
+  server: PersistedActiveServer,
+): RuntimeTarget {
+  if (isMobileLocalActiveServer(server)) return "embedded-local";
+
+  switch (server.kind) {
+    case "local":
+      return "embedded-local";
+    case "cloud":
+      return "cloud-managed";
+    case "remote":
+      return "remote-backend";
   }
 }

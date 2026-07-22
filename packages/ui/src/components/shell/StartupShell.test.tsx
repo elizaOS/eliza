@@ -10,6 +10,7 @@ import {
   __resetStartupTraceForTests,
   hasStartupMark,
 } from "../../state/startup-telemetry";
+import { StartupScreen } from "./StartupScreen";
 import { STARTUP_SPLASH_DELAY_MS, StartupShell } from "./StartupShell";
 import type { StartupShellView } from "./startup-shell-types";
 
@@ -30,6 +31,12 @@ vi.mock("../../config/boot-config-store", () => ({
 }));
 vi.mock("../brand/eliza-mark", () => ({
   ElizaMark: () => <svg data-testid="eliza-mark" />,
+}));
+vi.mock("../../state/use-startup-shell-controller", () => ({
+  useStartupShellController: () => ({
+    retryStartup: vi.fn(),
+    view: { kind: "none" as const },
+  }),
 }));
 
 const FIRST_PAINT_MARK = "startup-shell:first-paint";
@@ -64,6 +71,16 @@ afterEach(() => {
 });
 
 describe("StartupShell — delayed loading splash", () => {
+  it("paints an explicit loading fallback when another ready-state gate still owns the app", () => {
+    render(<StartupScreen readyLoadingFallback={loadingView} />);
+
+    advance(STARTUP_SPLASH_DELAY_MS);
+
+    expect(queryLoading()?.getAttribute("data-startup-phase")).toBe(
+      "starting-backend",
+    );
+  });
+
   it("does NOT render the splash before the delay threshold elapses", () => {
     render(<StartupShell view={loadingView} onRetry={vi.fn()} />);
 

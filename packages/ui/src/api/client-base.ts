@@ -648,6 +648,10 @@ export class ElizaClient {
   // Fired exactly once per successful reconnect (never on the first connect)
   // so consumers can reconcile state that drifted during the network gap.
   private resyncListeners = new Set<() => void>();
+  // Native first-run loaders need to remain dormant until a concrete backend
+  // replaces the packaged WebView's asset origin. This signal is deliberately
+  // independent of WebSocket state because direct Cloud bases are REST-only.
+  private baseUrlListeners = new Set<(baseUrl: string) => void>();
 
   // UI language propagation — set by AppContext so the backend can
   // localise responses when needed.
@@ -783,12 +787,26 @@ export class ElizaClient {
     return this.baseUrl;
   }
 
+  /** Subscribe to explicit API-base selections made through this client. */
+  onBaseUrlChange(listener: (baseUrl: string) => void): () => void {
+    this.baseUrlListeners.add(listener);
+    return () => {
+      this.baseUrlListeners.delete(listener);
+    };
+  }
+
+  private emitBaseUrlChange(baseUrl: string): void {
+    for (const listener of this.baseUrlListeners) listener(baseUrl);
+  }
+
   setBaseUrl(baseUrl: string | null, options?: { persist?: boolean }): void {
     const normalized = normalizeBaseUrl(baseUrl);
+    const changed = normalized !== this._baseUrl;
     const persist = options?.persist !== false;
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.disconnectWs();
+    if (changed) this.emitBaseUrlChange(normalized);
     if (!persist) {
       return;
     }
@@ -856,6 +874,7 @@ export class ElizaClient {
   repointBaseUrl(baseUrl: string): void {
     const normalized = normalizeBaseUrl(baseUrl);
     if (!normalized) return;
+    const changed = normalized !== this._baseUrl;
     // Quietly drop the old socket. We intentionally do NOT call disconnectWs():
     // it sets connectionState = "disconnected" and emits, which would surface a
     // visible "reconnecting" flicker mid-handoff. Suppress onclose (which would
@@ -885,6 +904,7 @@ export class ElizaClient {
     this._userSetBase = normalized.length > 0;
     this._baseUrl = normalized;
     this.persistBaseUrl(normalized);
+    if (changed) this.emitBaseUrlChange(normalized);
 
     // Reconnect immediately against the new base. connectWs() derives the WS
     // host from this.baseUrl, so the socket comes up on the dedicated host; its

@@ -281,6 +281,8 @@ describe("ElizaClient websocket connection policy", () => {
 
     const states: string[] = [];
     client.onConnectionStateChange((s) => states.push(s.state));
+    const bases: string[] = [];
+    client.onBaseUrlChange((baseUrl) => bases.push(baseUrl));
 
     client.repointBaseUrl("https://dedicated.example.test");
 
@@ -288,6 +290,7 @@ describe("ElizaClient websocket connection policy", () => {
     expect(instances).toHaveLength(2);
     // …and the base is now the dedicated one.
     expect(client.getBaseUrl()).toBe("https://dedicated.example.test");
+    expect(bases).toEqual(["https://dedicated.example.test"]);
     // The seamless swap must NOT surface a "disconnected" connection state
     // (that's the visible drop disconnectWs() would cause). connectWs() only
     // emits on a *changed* state, and we suppressed the old socket's onclose,
@@ -300,6 +303,21 @@ describe("ElizaClient websocket connection policy", () => {
     const before = instances.length;
     instances[0].onclose?.();
     expect(instances).toHaveLength(before);
+  });
+
+  it("publishes only real explicit API-base transitions", () => {
+    const client = new ElizaClient("https://one.example.test");
+    const bases: string[] = [];
+    const unsubscribe = client.onBaseUrlChange((baseUrl) =>
+      bases.push(baseUrl),
+    );
+
+    client.setBaseUrl("https://two.example.test/");
+    client.setBaseUrl("https://two.example.test");
+    unsubscribe();
+    client.setBaseUrl("https://three.example.test");
+
+    expect(bases).toEqual(["https://two.example.test"]);
   });
 
   it("resetConnection leaves a healthy websocket connected without a disconnected flap", () => {

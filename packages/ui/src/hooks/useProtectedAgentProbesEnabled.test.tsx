@@ -12,8 +12,8 @@
  *     `GET /api/commands` + `/api/custom-actions` catalog fetches — asserted by
  *     spying on the actual network functions the hooks call.
  *
- * The gate stays inert off the Cloud origin (localhost/self-hosted/desktop),
- * so probes fire there exactly as before.
+ * The gate stays inert for configured localhost/self-hosted/desktop agents, so
+ * probes fire there exactly as before; an unbound native bundle remains held.
  */
 
 import { act, cleanup, render, waitFor } from "@testing-library/react";
@@ -31,11 +31,28 @@ const { listCommands, listCustomActions, getModelsCatalog } = vi.hoisted(
   }),
 );
 
+const nativeProbeRuntime = vi.hoisted(() => ({
+  isNative: false,
+  agentApiBase: "",
+  baseListeners: new Set<() => void>(),
+}));
+
+vi.mock("../platform", () => ({
+  get isNative() {
+    return nativeProbeRuntime.isNative;
+  },
+}));
+
 vi.mock("../api", () => ({
   client: {
     listCommands: (surface?: string) => listCommands(surface),
     listCustomActions: () => listCustomActions(),
     getModelsCatalog: () => getModelsCatalog(),
+    getBaseUrl: () => nativeProbeRuntime.agentApiBase,
+    onBaseUrlChange: (listener: () => void) => {
+      nativeProbeRuntime.baseListeners.add(listener);
+      return () => nativeProbeRuntime.baseListeners.delete(listener);
+    },
   },
 }));
 vi.mock("../config/boot-config-react.hooks", () => ({
@@ -112,6 +129,11 @@ function authenticate(): void {
   });
 }
 
+function selectAgentApiBase(baseUrl: string): void {
+  nativeProbeRuntime.agentApiBase = baseUrl;
+  for (const listener of nativeProbeRuntime.baseListeners) listener();
+}
+
 function GateProbe(props: { onValue: (enabled: boolean) => void }): null {
   props.onValue(useProtectedAgentProbesEnabled());
   return null;
@@ -136,6 +158,9 @@ beforeEach(() => {
   getModelsCatalog
     .mockReset()
     .mockResolvedValue({ catalog: { providers: {} } });
+  nativeProbeRuntime.isNative = false;
+  nativeProbeRuntime.agentApiBase = "";
+  nativeProbeRuntime.baseListeners.clear();
   window.localStorage.clear();
 });
 
@@ -170,6 +195,26 @@ describe("protectedAgentProbesEnabled (pure gate — #16242)", () => {
       protectedAgentProbesEnabled(false, "https://agent.example.com"),
     ).toBe(true);
     expect(protectedAgentProbesEnabled(false, null)).toBe(true);
+
+    const native = { isNative: true, agentApiBase: "" };
+    expect(
+      protectedAgentProbesEnabled(false, "https://localhost", native),
+    ).toBe(false);
+    expect(protectedAgentProbesEnabled(true, "https://localhost", native)).toBe(
+      false,
+    );
+    expect(
+      protectedAgentProbesEnabled(false, "https://localhost", {
+        ...native,
+        agentApiBase: "http://127.0.0.1:2138",
+      }),
+    ).toBe(true);
+    expect(
+      protectedAgentProbesEnabled(false, "https://localhost", {
+        ...native,
+        agentApiBase: "https://api.elizacloud.ai/api/v1/eliza/agents/agent-1",
+      }),
+    ).toBe(false);
   });
 });
 
@@ -205,6 +250,19 @@ describe("useProtectedAgentProbesEnabled (live hook)", () => {
     const seen: boolean[] = [];
     render(<GateProbe onValue={(v) => seen.push(v)} />);
     expect(seen.at(-1)).toBe(true);
+  });
+
+  it("holds an unbound native bundle and resumes a self-hosted backend selection", async () => {
+    nativeProbeRuntime.isNative = true;
+    setLocation("https://localhost/");
+    const seen: boolean[] = [];
+    render(<GateProbe onValue={(v) => seen.push(v)} />);
+    expect(seen.at(-1)).toBe(false);
+
+    act(() => {
+      selectAgentApiBase("https://agent.example.com");
+    });
+    await waitFor(() => expect(seen.at(-1)).toBe(true));
   });
 });
 

@@ -114,7 +114,7 @@ export type StartupEvent =
 
   // First-run
   | { type: "FIRST_RUN_OPTIONS_LOADED" }
-  | { type: "FIRST_RUN_COMPLETE" }
+  | { type: "FIRST_RUN_COMPLETE"; target?: RuntimeTarget }
 
   // Agent runtime
   | { type: "AGENT_RUNNING" }
@@ -254,7 +254,7 @@ export function startupReducer(
           return {
             phase: "starting-runtime",
             attempts: 0,
-            target: state.target ?? "embedded-local",
+            target: event.target ?? state.target ?? "embedded-local",
           };
         case "RETRY":
           return { phase: "restoring-session" };

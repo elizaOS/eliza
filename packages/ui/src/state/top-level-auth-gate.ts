@@ -29,6 +29,26 @@ export function firstRunOwnsLoginSurface(
 }
 
 /**
+ * Whether first-run must defer the auth probe until it has selected a real
+ * backend. The Cloud web app and an unbound native bundle both serve their SPA
+ * document for unknown same-origin paths; probing `/api/auth/me` there would
+ * parse `index.html` as an auth response. Native remote/local first-run keeps
+ * probing as soon as it has a configured backend so a real 401 still surfaces.
+ */
+export function firstRunDefersAuthProbe(args: {
+  coordinatorPhase: string;
+  firstRunComplete: boolean | null | undefined;
+  isAgentlessCloudOrigin: boolean;
+  isNative: boolean;
+  hasAgentApiBase: boolean;
+}): boolean {
+  return (
+    firstRunOwnsLoginSurface(args.coordinatorPhase, args.firstRunComplete) &&
+    (args.isAgentlessCloudOrigin || (args.isNative && !args.hasAgentApiBase))
+  );
+}
+
+/**
  * Whether App's top-level auth gate owns the current surface. A resolved 401
  * may override first-run for real agent backends, but never for the agentless
  * Cloud app origin whose first-run conductor is the Cloud login surface.

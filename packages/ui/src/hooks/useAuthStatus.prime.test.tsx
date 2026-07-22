@@ -116,6 +116,27 @@ describe("primeAuthStatusProbe + activation reuse", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("treats a misrouted HTML success as unavailable and re-probes on activation", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response("<!doctype html><title>Eliza</title>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      }),
+    );
+    fetchMock.mockResolvedValue(jsonResponse(200, AUTH_ME_BODY));
+
+    await act(async () => {
+      primeAuthStatusProbe();
+    });
+
+    const { result } = renderHook(() => useAuthStatus({ pollIntervalMs: 0 }));
+    expect(result.current.state.phase).toBe("loading");
+    await waitFor(() =>
+      expect(result.current.state.phase).toBe("authenticated"),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("overlaps: an activation while the prime is in flight joins it instead of racing a second probe", async () => {
     let resolveProbe: (r: Response) => void = () => {};
     fetchMock.mockImplementation(

@@ -137,7 +137,7 @@ export interface StartupCoordinatorHandle {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  firstRunComplete: () => void;
+  firstRunComplete: (target?: RuntimeTarget) => void;
   policy: PlatformPolicy;
   legacyPhase: "starting-backend" | "initializing-agent" | "ready";
   loading: boolean;
@@ -428,7 +428,8 @@ export function useStartupCoordinator(
     [],
   );
   const firstRunCompleteFn = useCallback(
-    () => dispatch({ type: "FIRST_RUN_COMPLETE" }),
+    (target?: RuntimeTarget) =>
+      dispatch({ type: "FIRST_RUN_COMPLETE", target }),
     [],
   );
 

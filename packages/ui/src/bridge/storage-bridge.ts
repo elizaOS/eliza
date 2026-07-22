@@ -82,6 +82,8 @@ const SYNCED_KEYS = new Set([
   "eliza:ios-full-bun-smoke:result",
   "eliza:ios-onboarding-smoke:request",
   "eliza:ios-onboarding-smoke:result",
+  "eliza:ios-cloud-onboarding-smoke:request",
+  "eliza:ios-cloud-onboarding-smoke:result",
   "eliza:ios-onboarding-relaunch-smoke:request",
   "eliza:ios-onboarding-relaunch-smoke:result",
   "eliza:ios-mixed-content-smoke:request",
@@ -135,13 +137,16 @@ async function preferencesResponded(): Promise<boolean> {
   }
 }
 
-async function readPreferenceWithTimeout(key: string): Promise<string | null> {
+async function readPreferenceWithTimeout(
+  key: string,
+  preferencesModule = loadPreferences(),
+): Promise<string | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
     const timeout = new Promise<null>((resolve) => {
       timeoutId = setTimeout(() => resolve(null), PREFERENCE_READ_TIMEOUT_MS);
     });
-    const { Preferences } = await loadPreferences();
+    const { Preferences } = await preferencesModule;
     const result = await Promise.race([Preferences.get({ key }), timeout]);
     return result?.value ?? null;
   } catch {
@@ -192,10 +197,12 @@ export async function initializeStorageBridge(): Promise<void> {
 
   // Load synced keys from Preferences into cache. Hydration stays best-effort so
   // a single stale preference read cannot block first paint.
+  const preferencesModule = loadPreferences();
   const entries = await Promise.all(
     Array.from(
       SYNCED_KEYS,
-      async (key) => [key, await readPreferenceWithTimeout(key)] as const,
+      async (key) =>
+        [key, await readPreferenceWithTimeout(key, preferencesModule)] as const,
     ),
   );
   for (const [key, value] of entries) {

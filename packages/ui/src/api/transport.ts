@@ -17,8 +17,70 @@ export interface AgentRequestTransport {
 }
 
 export const fetchAgentTransport: AgentRequestTransport = {
-  request(url, init) {
-    return fetch(url, init);
+  request(url, init, context) {
+    const timeoutMs = context?.timeoutMs;
+    if (
+      typeof timeoutMs !== "number" ||
+      !Number.isFinite(timeoutMs) ||
+      timeoutMs <= 0
+    ) {
+      return fetch(url, init);
+    }
+
+    const callerSignal = init.signal;
+    if (callerSignal?.aborted) {
+      return Promise.reject(
+        callerSignal.reason ??
+          new DOMException("The request was aborted.", "AbortError"),
+      );
+    }
+
+    const controller = new AbortController();
+    return new Promise<Response>((resolve, reject) => {
+      let settled = false;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+      const cleanup = () => {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+        callerSignal?.removeEventListener("abort", handleCallerAbort);
+      };
+      const resolveOnce = (response: Response) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(response);
+      };
+      const rejectOnce = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const handleCallerAbort = () => {
+        const reason =
+          callerSignal?.reason ??
+          new DOMException("The request was aborted.", "AbortError");
+        rejectOnce(reason);
+        controller.abort(reason);
+      };
+
+      callerSignal?.addEventListener("abort", handleCallerAbort, {
+        once: true,
+      });
+      timeoutId = setTimeout(() => {
+        const error = new DOMException(
+          `The request timed out after ${timeoutMs}ms.`,
+          "TimeoutError",
+        );
+        rejectOnce(error);
+        controller.abort(error);
+      }, timeoutMs);
+
+      void fetch(url, { ...init, signal: controller.signal }).then(
+        resolveOnce,
+        rejectOnce,
+      );
+    });
   },
 };
 

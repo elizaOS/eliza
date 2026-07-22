@@ -7,6 +7,7 @@
 import { describe, expect, it } from "vitest";
 import {
   authProbeShouldHoldShell,
+  firstRunDefersAuthProbe,
   firstRunOwnsLoginSurface,
   topLevelAuthGateOwnsSurface,
 } from "./top-level-auth-gate";
@@ -78,6 +79,44 @@ describe("topLevelAuthGateOwnsSurface — first-run 401 routing", () => {
     expect(
       topLevelAuthGateOwnsSurface("ready", true, "authenticated", false),
     ).toBe(true);
+  });
+});
+
+describe("firstRunDefersAuthProbe — agentless startup routing", () => {
+  it("defers an unbound native bundle instead of probing its SPA asset origin", () => {
+    expect(
+      firstRunDefersAuthProbe({
+        coordinatorPhase: "first-run-required",
+        firstRunComplete: false,
+        isAgentlessCloudOrigin: false,
+        isNative: true,
+        hasAgentApiBase: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("probes a configured native remote/local backend during first-run", () => {
+    expect(
+      firstRunDefersAuthProbe({
+        coordinatorPhase: "first-run-required",
+        firstRunComplete: false,
+        isAgentlessCloudOrigin: false,
+        isNative: true,
+        hasAgentApiBase: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("stops deferring after onboarding completes", () => {
+    expect(
+      firstRunDefersAuthProbe({
+        coordinatorPhase: "ready",
+        firstRunComplete: true,
+        isAgentlessCloudOrigin: false,
+        isNative: true,
+        hasAgentApiBase: false,
+      }),
+    ).toBe(false);
   });
 });
 

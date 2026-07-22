@@ -28,6 +28,7 @@ import {
   subscribeAuthStatus,
 } from "../../hooks/useAuthStatus";
 import { protectedAgentProbesEnabled } from "../../hooks/useProtectedAgentProbesEnabled";
+import { isNative } from "../../platform";
 import { pushNotificationBanner } from "./notification-banner-store";
 
 /**
@@ -95,7 +96,45 @@ function notificationProbesEnabled(): boolean {
   return protectedAgentProbesEnabled(
     isAuthenticatedNow(),
     typeof window !== "undefined" ? window.location.origin : null,
+    { isNative, agentApiBase: client.getBaseUrl() },
   );
+}
+
+function clearHydrationGateRearm(): void {
+  hydrationAuthRearmUnsub?.();
+  hydrationAuthRearmUnsub = null;
+}
+
+function resumeHydrationWhenEnabled(): void {
+  if (!notificationProbesEnabled()) return;
+  clearHydrationGateRearm();
+  void requestHydration();
+}
+
+function handleAgentApiBaseChange(): void {
+  hydrationGeneration += 1;
+  const generation = hydrationGeneration;
+  if (hydrationRetryTimer) clearTimeout(hydrationRetryTimer);
+  hydrationRetryTimer = null;
+  hydrationInFlight = null;
+  clearHydrationGateRearm();
+  liveEventRevision = 0;
+  ephemeralNotificationIds.clear();
+  setState({
+    notifications: [],
+    unreadCount: 0,
+    hydrated: false,
+    hydrationStatus: "idle",
+    hydrationAttempts: 0,
+    hydrationError: null,
+  });
+  // Connection selection writes the base and token as one synchronous logical
+  // operation. The client publishes the base edge first; defer the protected
+  // request one microtask so it never observes the half-updated credential.
+  queueMicrotask(() => {
+    if (generation !== hydrationGeneration) return;
+    void requestHydration();
+  });
 }
 
 function emit(): void {
@@ -471,16 +510,12 @@ async function runHydrationAttempt(generation: number): Promise<void> {
 
 function requestHydration(): Promise<void> {
   if (!notificationProbesEnabled()) {
-    // No session yet on the shared Cloud app — skip the protected fetch (it
-    // would 401 and Chromium logs the console error) and re-arm once, so the
-    // inbox hydrates the moment a session lands post-sign-in (#16242).
+    // No session yet on the shared Cloud app, or native first-run has not bound
+    // a backend yet. Re-arm on either auth or API-base selection: Cloud waits
+    // for auth, while local/remote native agents can hydrate as soon as their
+    // concrete base exists.
     if (!hydrationAuthRearmUnsub) {
-      hydrationAuthRearmUnsub = subscribeAuthStatus(() => {
-        if (!notificationProbesEnabled()) return;
-        hydrationAuthRearmUnsub?.();
-        hydrationAuthRearmUnsub = null;
-        void requestHydration();
-      });
+      hydrationAuthRearmUnsub = subscribeAuthStatus(resumeHydrationWhenEnabled);
     }
     return Promise.resolve();
   }
@@ -517,6 +552,7 @@ export function initNotifications(): void {
     client.onWsEvent("ws-reconnected", () => {
       void retryNotificationHydration();
     }),
+    client.onBaseUrlChange(handleAgentApiBaseChange),
   );
   if (typeof window !== "undefined") {
     const retryOnline = () => void retryNotificationHydration();
@@ -684,8 +720,7 @@ export function __resetNotificationStoreForTests(): void {
   if (hydrationRetryTimer) clearTimeout(hydrationRetryTimer);
   hydrationRetryTimer = null;
   hydrationInFlight = null;
-  hydrationAuthRearmUnsub?.();
-  hydrationAuthRearmUnsub = null;
+  clearHydrationGateRearm();
   liveEventRevision = 0;
   state = {
     notifications: [],

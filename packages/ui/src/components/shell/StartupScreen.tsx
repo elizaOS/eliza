@@ -7,8 +7,19 @@
 
 import { useStartupShellController } from "../../state/use-startup-shell-controller";
 import { StartupShell } from "./StartupShell";
+import type { StartupShellView } from "./startup-shell-types";
 
-export function StartupScreen() {
+interface StartupScreenProps {
+  /**
+   * Keeps a real loading surface painted when another startup gate still owns
+   * the app after the coordinator itself has reached its render-ready state.
+   */
+  readyLoadingFallback?: Extract<StartupShellView, { kind: "loading" }>;
+}
+
+export function StartupScreen({ readyLoadingFallback }: StartupScreenProps) {
   const { view, retryStartup } = useStartupShellController();
-  return <StartupShell view={view} onRetry={retryStartup} />;
+  const resolvedView =
+    view.kind === "none" && readyLoadingFallback ? readyLoadingFallback : view;
+  return <StartupShell view={resolvedView} onRetry={retryStartup} />;
 }

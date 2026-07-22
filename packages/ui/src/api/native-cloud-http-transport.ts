@@ -1,7 +1,7 @@
 /**
- * AgentRequestTransport for native (Capacitor) builds talking to Eliza Cloud:
- * uses CapacitorHttp for direct cloud hosts (bypassing the WKWebView CORS/cookie
- * limits), falling back to fetch for everything else.
+ * AgentRequestTransport for native (Capacitor) builds talking to Eliza Cloud.
+ * Bounded HTTP calls use the explicit native bridge; dedicated-agent SSE uses
+ * the preserved browser fetch so token streams remain incremental.
  */
 import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import {
@@ -13,7 +13,6 @@ import {
   methodAllowsBody,
 } from "./transport";
 
-const DIRECT_CLOUD_API_HOSTS = new Set(["api.elizacloud.ai"]);
 const CLOUD_HOST_SUFFIX = ".elizacloud.ai";
 // Hosts under *.elizacloud.ai that are NOT dedicated agent subdomains: the
 // central API plus the web/auth hosts and the apex. None of these serve CORS
@@ -23,6 +22,10 @@ const NON_AGENT_CLOUD_HOSTS = new Set([
   "api.elizacloud.ai",
   "www.elizacloud.ai",
   "dev.elizacloud.ai",
+  "app.elizacloud.ai",
+  "staging.elizacloud.ai",
+  "api-staging.elizacloud.ai",
+  "app-staging.elizacloud.ai",
   "elizacloud.ai",
 ]);
 
@@ -34,16 +37,6 @@ function parseUrl(url: string): URL | null {
     // host, so unparseable URLs stay off the direct-cloud path.
     return null;
   }
-}
-
-function isNativeDirectCloudApiUrl(url: string): boolean {
-  const parsed = parseUrl(url);
-  return (
-    parsed !== null &&
-    Capacitor.isNativePlatform() &&
-    parsed.protocol === "https:" &&
-    DIRECT_CLOUD_API_HOSTS.has(parsed.hostname.toLowerCase())
-  );
 }
 
 /**
@@ -124,13 +117,13 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
       }
     }
 
-    // Non-streaming requests to a dedicated agent subdomain (or any non-direct
-    // cloud URL) keep their existing path — the patched global fetch — so this
-    // change only affects the SSE streaming case above.
+    // Use the explicit bridge rather than Capacitor's patched global fetch for
+    // every bounded Cloud request. The explicit API has native connect/read
+    // deadlines and returns a single bridge result, avoiding a patched-fetch
+    // adapter stall while preserving the same URLSession cookie jar.
     const wantsBinary = context?.responseType === "arraybuffer";
-    const isDirectApi = isNativeDirectCloudApiUrl(url);
     const isCloudHost = isNativeCloudHttpsUrl(url);
-    if (!isDirectApi && !(wantsBinary && isCloudHost)) {
+    if (!isCloudHost) {
       return fetchAgentTransport.request(url, init, context);
     }
 
@@ -161,7 +154,6 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
           }
         : {}),
     });
-
     // CapacitorHttp ignores the requested `arraybuffer` responseType for
     // `application/json` responses and delivers a parsed object instead of
     // base64. That happens exactly on the failure path (e.g. a 400/401/403
@@ -188,11 +180,8 @@ const nativeCloudHttpTransport: AgentRequestTransport = {
 export function nativeCloudHttpTransportForUrl(
   url: string,
 ): AgentRequestTransport | null {
-  // Claim Eliza Cloud HTTPS hosts so binary requests can use CapacitorHttp.
-  // Text requests preserve the existing host policy inside `request`: direct API
-  // calls use CapacitorHttp, dedicated-agent SSE can use CapacitorWebFetch, and
-  // all other requests fall through to the patched global fetch.
-  if (isNativeDirectCloudApiUrl(url)) return nativeCloudHttpTransport;
+  // The request method keeps dedicated-agent SSE on CapacitorWebFetch; every
+  // other native Cloud request uses the explicit CapacitorHttp bridge.
   if (isNativeCloudHttpsUrl(url)) return nativeCloudHttpTransport;
   return null;
 }

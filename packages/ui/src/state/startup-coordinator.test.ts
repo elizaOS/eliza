@@ -96,6 +96,19 @@ describe("startup coordinator", () => {
     });
   });
 
+  it("uses the runtime committed during a targetless fresh first-run", () => {
+    expect(
+      startupReducer(
+        { phase: "first-run-required", serverReachable: false },
+        { type: "FIRST_RUN_COMPLETE", target: "cloud-managed" },
+      ),
+    ).toEqual({
+      phase: "starting-runtime",
+      attempts: 0,
+      target: "cloud-managed",
+    });
+  });
+
   it("keeps the target across starting-runtime self-transitions", () => {
     expect(
       startupReducer(

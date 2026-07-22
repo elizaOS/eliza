@@ -1,6 +1,6 @@
 /**
- * Unit coverage for the native cloud transport: CapacitorHttp for direct cloud
- * hosts, fetch otherwise. CapacitorHttp mocked, no live cloud.
+ * Unit coverage for native Cloud routing: explicit CapacitorHttp for bounded
+ * requests and browser fetch for dedicated-agent SSE. No live cloud.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -86,9 +86,24 @@ describe("nativeCloudHttpTransportForUrl selection", () => {
       method: "GET",
       headers: { Accept: "text/event-stream" },
     });
-    expect(globalFetchMock).toHaveBeenCalledTimes(1);
+    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
     expect(webFetchMock).not.toHaveBeenCalled();
-    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
+    expect(globalFetchMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "https://app.elizacloud.ai/api/events/stream",
+    "https://staging.elizacloud.ai/api/events/stream",
+    "https://api-staging.elizacloud.ai/api/events/stream",
+    "https://app-staging.elizacloud.ai/api/events/stream",
+  ])("does not classify the control-plane host %s as a dedicated agent", async (url) => {
+    const transport = nativeCloudHttpTransportForUrl(url);
+    await transport?.request(url, {
+      method: "GET",
+      headers: { Accept: "text/event-stream" },
+    });
+    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
+    expect(webFetchMock).not.toHaveBeenCalled();
   });
 
   it("returns null off native platforms", () => {
@@ -191,14 +206,14 @@ describe("SSE streaming bypass", () => {
       headers: { Accept: "text/event-stream" },
       body: "{}",
     });
-    // No native fetch available → falls through to the global (patched) fetch,
-    // since an agent subdomain is not a "direct cloud API" host.
-    expect(globalFetchMock).toHaveBeenCalledTimes(1);
-    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
+    // Buffering is preferable to losing the request when a native shell does
+    // not preserve CapacitorWebFetch.
+    expect(capacitorHttpRequestMock).toHaveBeenCalledTimes(1);
+    expect(globalFetchMock).not.toHaveBeenCalled();
   });
 });
 
-describe("non-streaming requests are unchanged", () => {
+describe("non-streaming requests", () => {
   it("routes non-SSE direct cloud API calls through CapacitorHttp", async () => {
     const transport = nativeCloudHttpTransportForUrl(API_URL);
     await transport?.request(API_URL, { method: "GET", headers: {} });
@@ -206,13 +221,24 @@ describe("non-streaming requests are unchanged", () => {
     expect(webFetchMock).not.toHaveBeenCalled();
   });
 
-  it("routes non-SSE agent-subdomain calls through the patched global fetch", async () => {
+  it("routes non-SSE agent-subdomain calls through explicit CapacitorHttp with the request deadline", async () => {
     const agentNonStream =
       "https://82e92cc6-6fab-4c4a-a1dc-7c1605aebfeb.elizacloud.ai/api/agents";
     const transport = nativeCloudHttpTransportForUrl(agentNonStream);
-    await transport?.request(agentNonStream, { method: "GET", headers: {} });
-    expect(globalFetchMock).toHaveBeenCalledTimes(1);
-    expect(capacitorHttpRequestMock).not.toHaveBeenCalled();
+    await transport?.request(
+      agentNonStream,
+      { method: "GET", headers: {} },
+      { timeoutMs: 4321 },
+    );
+    expect(capacitorHttpRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: agentNonStream,
+        connectTimeout: 4321,
+        readTimeout: 4321,
+        disableRedirects: true,
+      }),
+    );
+    expect(globalFetchMock).not.toHaveBeenCalled();
     expect(webFetchMock).not.toHaveBeenCalled();
   });
 });

@@ -31,11 +31,14 @@ import {
   ANDROID_LOCAL_AGENT_SERVER_ID,
   IOS_LOCAL_AGENT_IPC_BASE,
   isCommittedOnDeviceMobileRuntimeMode,
-  isMobileLocalAgentUrl,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
   readPersistedMobileRuntimeMode,
 } from "../first-run/mobile-runtime-mode";
+import {
+  activeServerToStartupRuntimeTarget,
+  isMobileLocalActiveServer,
+} from "../first-run/runtime-target";
 import { primeAuthStatusProbe } from "../hooks/useAuthStatus";
 import type { UiLanguage } from "../i18n";
 import {
@@ -211,14 +214,6 @@ export interface RestoringSessionCtx {
   restoredActiveServer: PersistedActiveServer;
   shouldPreserveCompletedFirstRun: boolean;
   hadPriorFirstRun: boolean;
-}
-
-function isMobileLocalAgentApiBase(value: string | undefined): boolean {
-  return isMobileLocalAgentUrl(value);
-}
-
-function isMobileLocalActiveServer(server: PersistedActiveServer): boolean {
-  return server.kind === "local" || isMobileLocalAgentApiBase(server.apiBase);
 }
 
 function isLoopbackHostname(hostname: string): boolean {
@@ -559,21 +554,6 @@ export async function applyRestoredConnection(args: {
   clientRef.setToken(restoredActiveServer.accessToken ?? null);
 }
 
-function activeServerToTarget(
-  server: PersistedActiveServer,
-): "embedded-local" | "cloud-managed" | "remote-backend" {
-  if (isMobileLocalActiveServer(server)) return "embedded-local";
-
-  switch (server.kind) {
-    case "local":
-      return "embedded-local";
-    case "cloud":
-      return "cloud-managed";
-    case "remote":
-      return "remote-backend";
-  }
-}
-
 export function canRestoreActiveServer(args: {
   server: PersistedActiveServer;
   clientApiAvailable: boolean;
@@ -846,7 +826,7 @@ export async function runRestoringSession(
   // it as a remote backend (already running) so the coordinator skips the local
   // poll. Only triggers on desktop when the resolved target is embedded-local
   // AND the shell reports a non-local mode, so local/cloud boots are unchanged.
-  let resolvedTarget = activeServerToTarget(restoredActiveServer);
+  let resolvedTarget = activeServerToStartupRuntimeTarget(restoredActiveServer);
   if (resolvedTarget === "embedded-local" && isElectrobunRuntime()) {
     const runtimeMode = await desktopRuntimeMode();
     if (runtimeMode?.mode && runtimeMode.mode !== "local") {

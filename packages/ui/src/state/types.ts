@@ -248,7 +248,9 @@ export interface StartupCoordinatorView {
   retry: () => void;
   reset: () => void;
   pairingSuccess: () => void;
-  firstRunComplete: () => void;
+  firstRunComplete: (
+    target?: "embedded-local" | "remote-backend" | "cloud-managed",
+  ) => void;
   policy: {
     supportsLocalRuntime: boolean;
     backendTimeoutMs: number;
