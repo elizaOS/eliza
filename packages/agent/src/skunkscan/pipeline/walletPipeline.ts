@@ -18,6 +18,7 @@ import { analyzeInvestigationNarrative } from "../analyzers/investigationNarrati
 import { analyzeInvestigationReplay } from "../analyzers/investigationReplay";
 import { analyzeInvestigationReport } from "../analyzers/investigationReport";
 import { analyzeWalletPortfolio } from "../analyzers/portfolio";
+import { analyzeWalletProtocols } from "../analyzers/protocols";
 import { analyzeWalletRelationships } from "../analyzers/relationships";
 import { analyzeWalletRisk } from "../analyzers/risk";
 import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
@@ -43,9 +44,9 @@ export function runWalletPipeline(
   );
 
   const funding = analyzeWalletFunding(
-  input.chain,
-  input.address,
-  input.firstParsedTransaction,
+    input.chain,
+    input.address,
+    input.firstParsedTransaction,
   );
 
   const portfolio = analyzeWalletPortfolio(
@@ -68,7 +69,11 @@ export function runWalletPipeline(
   );
 
   const defi = analyzeWalletDeFi(
-  input.parsedTransactions,
+    input.parsedTransactions,
+  );
+
+  const protocols = analyzeWalletProtocols(
+    input.parsedTransactions,
   );
 
   const behavior = analyzeWalletBehavior(
@@ -85,9 +90,9 @@ export function runWalletPipeline(
   );
 
   const relationships = analyzeWalletRelationships(
-  funding,
-  input.address,
-  input.parsedTransactions,
+    funding,
+    input.address,
+    input.parsedTransactions,
   );
 
   const custodyProfile = analyzeWalletCustodyProfile(
@@ -246,6 +251,7 @@ export function runWalletPipeline(
     risk,
     whale,
     defi,
+    protocols,
     behavior,
     exposure,
     relationships,
