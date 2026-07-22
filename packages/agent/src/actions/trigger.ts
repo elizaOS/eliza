@@ -21,13 +21,13 @@ import {
   type ActionExample,
   type ActionResult,
   AUTONOMY_SERVICE_TYPE,
-  asUUID,
-  type HandlerCallback,
+    type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
   type State,
   stringToUuid,
+  validateUuid,
   type Task,
   TRIGGER_SCHEMA_VERSION,
   type TriggerConfig,
@@ -103,8 +103,10 @@ function readString(value: unknown): string | undefined {
 }
 
 function readUuid(value: unknown): UUID | undefined {
-  const str = readString(value);
-  return str ? asUUID(str) : undefined;
+  // validateUuid, not asUUID: the id params accept planner-supplied strings
+  // (names, fragments via aliases) — a non-UUID must fall through to the
+  // name-fragment resolver, never throw out of the handler.
+  return validateUuid(readString(value) ?? "") ?? undefined;
 }
 
 function readBool(value: unknown, fallback = false): boolean {
@@ -392,8 +394,9 @@ async function opCreate(
   // lands milliseconds apart and must dedupe to one reminder. Include the
   // workflow target so a prompt reminder and a workflow trigger with the same
   // wording never collide.
-  const scheduleKey =
-    delayMs !== undefined ? `+${delayMs}` : (scheduledAtIso ?? "");
+  const usedDelay =
+    delayMs !== undefined && scheduledAtIso === scheduledFromDelay;
+  const scheduleKey = usedDelay ? `+${delayMs}` : (scheduledAtIso ?? "");
   const dedupeKey = dedupeHash(
     `${triggerType}|${instructions.toLowerCase()}|${intervalMs}|${scheduleKey}|${cronExpression ?? ""}|${readString(params.workflowId) ?? ""}`,
   );

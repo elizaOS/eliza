@@ -758,7 +758,8 @@ export function normalizeParamAliases(
 		if (claimants.length !== 1) continue; // unknown, or ambiguous → let it reject
 		const target = claimants[0].name;
 		// Don't overwrite a canonical value the planner already provided.
-		if (args[target] !== undefined && args[target] !== null) continue;
+		const current = (renamed ?? args)[target];
+		if (current !== undefined && current !== null) continue;
 		renamed ??= { ...args };
 		renamed[target] = renamed[key];
 		delete renamed[key];
