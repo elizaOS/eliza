@@ -1,5 +1,8 @@
-/** Unit tests for the path predicates and blocklist resolution. */
+/** Unit tests for the path predicates, blocklist resolution, and session-cwd input resolution. */
+import * as path from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { SESSION_CWD_SERVICE } from "../types.js";
 import {
   isAbsolutePath,
   isBlockedPath,
@@ -8,6 +11,7 @@ import {
   isWithinAnyRoot,
   normalizeAbsolute,
   relativeFromRoot,
+  resolveInputPath,
 } from "./path-utils.js";
 
 /** Sandbox path validation — prevents traversal/escape, so the matching is pinned. */
@@ -78,5 +82,42 @@ describe("normalizeAbsolute / relativeFromRoot", () => {
     // relativeFromRoot uses path.relative (backslashes on Windows) — normalize.
     expect(relativeFromRoot("/a/b/c", "/a").replace(/\\/g, "/")).toBe("b/c");
     expect(relativeFromRoot("/a", "/a")).toBe(".");
+  });
+});
+
+describe("resolveInputPath", () => {
+  const runtimeWithCwd = (cwd: string | null) =>
+    ({
+      getService: <T>(serviceType: string): T | null =>
+        serviceType === SESSION_CWD_SERVICE && cwd !== null
+          ? ({ getCwd: () => cwd } as T)
+          : null,
+    }) as IAgentRuntime;
+
+  it("returns absolute paths untouched without consulting the session cwd", () => {
+    const runtime = {
+      getService: (): never => {
+        throw new Error("must not be called for absolute paths");
+      },
+    } as unknown as IAgentRuntime;
+    expect(resolveInputPath(runtime, "room-1", "/etc/hosts")).toBe(
+      "/etc/hosts",
+    );
+  });
+
+  it("resolves relative paths against the conversation's session cwd", () => {
+    const runtime = runtimeWithCwd("/workspace/repo");
+    expect(resolveInputPath(runtime, "room-1", "docs/README.md")).toBe(
+      path.resolve("/workspace/repo", "docs/README.md"),
+    );
+    expect(resolveInputPath(runtime, "room-1", "../sibling/file.ts")).toBe(
+      path.resolve("/workspace/repo", "../sibling/file.ts"),
+    );
+  });
+
+  it("falls back to process.cwd() when the session-cwd service is absent", () => {
+    expect(resolveInputPath(runtimeWithCwd(null), "room-1", "notes.txt")).toBe(
+      path.resolve(process.cwd(), "notes.txt"),
+    );
   });
 });

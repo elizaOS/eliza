@@ -5,6 +5,9 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { SessionCwdService } from "../services/session-cwd-service.js";
+import { SESSION_CWD_SERVICE } from "../types.js";
 
 const BLOCKED_PATHS = new Set([
   "/dev/zero",
@@ -92,14 +95,14 @@ export function resolveRelativeToCwd(filePath: string, cwd: string): string {
  * `process.cwd()` when the conversation has no recorded cwd.
  */
 export function resolveInputPath(
-  runtime: {
-    getService(type: string): { getCwd(id: string | undefined): string } | null;
-  },
+  runtime: IAgentRuntime,
   conversationId: string | undefined,
   filePath: string,
 ): string {
   if (isAbsolutePath(filePath)) return filePath;
-  const cwdService = runtime.getService("CODING_TOOLS_SESSION_CWD");
+  const cwdService = runtime.getService(
+    SESSION_CWD_SERVICE,
+  ) as SessionCwdService | null;
   const cwd = cwdService?.getCwd(conversationId) ?? process.cwd();
   return path.resolve(cwd, filePath);
 }
