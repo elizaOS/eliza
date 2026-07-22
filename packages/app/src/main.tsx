@@ -1395,9 +1395,12 @@ async function waitForIosCloudHomeVisualReady(): Promise<IosCloudHomeVisualProof
     const surface = document.querySelector(
       '[data-testid="home-launcher-surface"]',
     );
-    const homePage = document.querySelector(
+    const pagerHomePage = document.querySelector(
       '[data-testid="home-launcher-home-page"]',
     );
+    // Home can be hosted by the combined dashboard or by the horizontal pager.
+    // Both expose the outer surface; only the pager adds a dedicated home pane.
+    const homePage = pagerHomePage ?? surface;
     const homeScreen = document.querySelector<HTMLElement>(
       '[data-testid="home-screen"]',
     );

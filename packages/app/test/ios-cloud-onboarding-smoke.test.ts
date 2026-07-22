@@ -351,6 +351,26 @@ describe("Cloud onboarding orchestration", () => {
     expect(stopVideo.mock.invocationCallOrder[3]).toBeLessThan(
       captureIosSimulatorScreenshot.mock.invocationCallOrder[5],
     );
+    const framebufferSettles = vi
+      .mocked(globalThis.setTimeout)
+      .mock.calls.map((args, index) => ({
+        delay: args[1],
+        order: vi.mocked(globalThis.setTimeout).mock.invocationCallOrder[index],
+      }))
+      .filter(({ delay }) => delay === 1_500);
+    expect(framebufferSettles).toHaveLength(2);
+    expect(framebufferSettles[0]?.order).toBeGreaterThan(
+      stopVideo.mock.invocationCallOrder[1],
+    );
+    expect(framebufferSettles[0]?.order).toBeLessThan(
+      captureIosSimulatorScreenshot.mock.invocationCallOrder[2],
+    );
+    expect(framebufferSettles[1]?.order).toBeGreaterThan(
+      stopVideo.mock.invocationCallOrder[3],
+    );
+    expect(framebufferSettles[1]?.order).toBeLessThan(
+      captureIosSimulatorScreenshot.mock.invocationCallOrder[5],
+    );
     expect(spawnSync).toHaveBeenCalledWith(
       "xcrun",
       ["simctl", "install", "LANE-UDID", "/build/App.app"],

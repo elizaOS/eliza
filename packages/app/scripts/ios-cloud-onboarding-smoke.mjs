@@ -30,6 +30,7 @@ const E2E_WALLET_KEY = "eliza:e2e-wallet:pk";
 const E2E_WALLET_AUTOLOGIN_KEY = "eliza:e2e-wallet:autologin";
 const RELAUNCH_REQUEST_KEY = "eliza:ios-onboarding-relaunch-smoke:request";
 const RELAUNCH_RESULT_KEY = "eliza:ios-onboarding-relaunch-smoke:result";
+const IOS_SIMULATOR_CAPTURE_SETTLE_MS = 1_500;
 const DEFAULT_E2E_WALLET_PRIVATE_KEY_PARTS = [
   "0x",
   "59c6995e",
@@ -658,6 +659,13 @@ async function runMode({ udid, appId, mode, privateKey }) {
       if (onboardingVideoPath) log(`video: ${onboardingVideoPath}`);
       const relaunchVideoPath = await relaunchRecording?.stop();
       if (relaunchVideoPath) log(`video: ${relaunchVideoPath}`);
+      if (relaunchRecording) {
+        // CoreSimulator briefly presents a black framebuffer after screen
+        // recording stops even though the WebView remains fully rendered.
+        await new Promise((resolve) =>
+          setTimeout(resolve, IOS_SIMULATOR_CAPTURE_SETTLE_MS),
+        );
+      }
     } finally {
       // Simulator video recording and still capture can contend for the same
       // framebuffer; stopping first makes the final proof deterministic.

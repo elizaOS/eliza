@@ -186,12 +186,10 @@ beforeEach(() => {
   document.body.innerHTML = `
     <div id="root">
       <div data-testid="home-launcher-surface" data-page="home">
-        <div data-testid="home-launcher-home-page">
-          <div data-testid="home-screen">
-            <div data-testid="home-time-widget"><span>10:20</span></div>
-            <div data-testid="home-weather" data-status="unavailable">Weather unavailable</div>
-            <div data-testid="notifications-empty">No notifications</div>
-          </div>
+        <div data-testid="home-screen">
+          <div data-testid="home-time-widget"><span>10:20</span></div>
+          <div data-testid="home-weather" data-status="unavailable">Weather unavailable</div>
+          <div data-testid="notifications-empty">No notifications</div>
         </div>
       </div>
       <textarea data-testid="chat-composer-textarea"></textarea>
@@ -217,7 +215,7 @@ beforeEach(() => {
     });
   }
   vi.spyOn(
-    requiredElement<HTMLElement>('[data-testid="home-launcher-home-page"]'),
+    requiredElement<HTMLElement>('[data-testid="home-launcher-surface"]'),
     "getBoundingClientRect",
   ).mockReturnValue(DOMRect.fromRect({ x: 0, y: 0, width: 390, height: 700 }));
   vi.spyOn(
