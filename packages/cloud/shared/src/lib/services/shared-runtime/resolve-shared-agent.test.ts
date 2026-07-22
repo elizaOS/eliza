@@ -61,27 +61,25 @@ const cacheSet = mock(async (key: string, value: unknown) => {
 // on. Only populates the cache when the loader returns a non-null value (matches
 // the real getOrSet contract the fix depends on for not caching a 404/null scope).
 const inFlight = new Map<string, Promise<unknown>>();
-const cacheGetOrSet = mock(
-  async (key: string, _ttl: number, loader: () => Promise<unknown>) => {
-    if (cacheStore.has(key)) return cacheStore.get(key);
-    const existing = inFlight.get(key);
-    if (existing) return existing;
-    const p = (async () => {
-      const fresh = await loader();
-      // Real getOrSet populates via this.set() on a non-null load — route through
-      // the cacheSet double so existing "cold miss writes the scope once"
-      // assertions still observe the populate through the same mock.
-      if (fresh !== null && fresh !== undefined) await cacheSet(key, fresh);
-      return fresh;
-    })();
-    inFlight.set(key, p);
-    try {
-      return await p;
-    } finally {
-      inFlight.delete(key);
-    }
-  },
-);
+const cacheGetOrSet = mock(async (key: string, _ttl: number, loader: () => Promise<unknown>) => {
+  if (cacheStore.has(key)) return cacheStore.get(key);
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+  const p = (async () => {
+    const fresh = await loader();
+    // Real getOrSet populates via this.set() on a non-null load — route through
+    // the cacheSet double so existing "cold miss writes the scope once"
+    // assertions still observe the populate through the same mock.
+    if (fresh !== null && fresh !== undefined) await cacheSet(key, fresh);
+    return fresh;
+  })();
+  inFlight.set(key, p);
+  try {
+    return await p;
+  } finally {
+    inFlight.delete(key);
+  }
+});
 mock.module("../../cache/client", () => ({
   cache: { get: cacheGet, set: cacheSet, getOrSet: cacheGetOrSet },
 }));
@@ -332,10 +330,12 @@ describe("resolveSharedAgent stampede single-flight (CONTENTION-2026-07-22)", ()
     expect(cacheSet).toHaveBeenCalledTimes(1);
 
     // Restore the default implementation (mockClear keeps impls across tests).
-    requireUserOrApiKeyWithOrgLookup.mockImplementation(async (_c: unknown, lookup: (o: string) => unknown) => ({
-      user: { organization_id: "org-1", steward_id: "steward-user-1" },
-      orgLookupResult: await lookup("org-1"),
-    }));
+    requireUserOrApiKeyWithOrgLookup.mockImplementation(
+      async (_c: unknown, lookup: (o: string) => unknown) => ({
+        user: { organization_id: "org-1", steward_id: "steward-user-1" },
+        orgLookupResult: await lookup("org-1"),
+      }),
+    );
   });
 });
 
