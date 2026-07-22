@@ -45,18 +45,6 @@ vi.mock("../../widgets/WidgetHost", () => ({
   ),
 }));
 
-vi.mock("../pages/LauncherSurface", () => ({
-  LauncherSurface: ({ layout }: { layout: string }) => (
-    <nav
-      aria-label="Launcher apps"
-      data-testid="home-launcher-grid"
-      data-layout={layout}
-    >
-      <button type="button">Calendar</button>
-    </nav>
-  ),
-}));
-
 import type { AgentNotification } from "@elizaos/core";
 import {
   __ingestNotificationForTests,
@@ -97,26 +85,24 @@ function makeNotification(
 }
 
 describe("HomeScreen", () => {
-  it("orders notifications, inline apps, then ranked widgets in one bounded column", () => {
+  it("keeps notifications and ranked widgets on the home page without embedding the launcher", () => {
     __setHydratedForTests(true);
     render(<HomeScreen onOpenTile={vi.fn()} />);
     // The clock/date was removed — the home stays simple.
     expect(screen.queryByTestId("home-clock")).toBeNull();
     const notifications = screen.getByTestId("home-notification-center");
     const apps = screen.getByTestId("home-apps-scroll");
-    const launcher = screen.getByTestId("home-launcher-grid");
-    expect(launcher.getAttribute("data-layout")).toBe("embedded");
     const host = screen.getByTestId("home-widget-host");
     expect(host.getAttribute("data-slot")).toBe("home");
     expect(
       notifications.compareDocumentPosition(apps) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeGreaterThan(0);
-    expect(apps.contains(launcher)).toBe(true);
     expect(apps.contains(host)).toBe(true);
+    expect(screen.queryByTestId("home-launcher-grid")).toBeNull();
     expect(
-      launcher.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeGreaterThan(0);
+      screen.queryByRole("navigation", { name: "Launcher apps" }),
+    ).toBeNull();
     expect(screen.getByTestId("home-screen").className).toContain(
       "overflow-hidden",
     );
@@ -127,10 +113,10 @@ describe("HomeScreen", () => {
     expect(apps.hasAttribute("data-scroll-cert-scroller")).toBe(true);
   });
 
-  it("does not render a second AOSP tile list beside the curated launcher", () => {
+  it("does not place launcher or AOSP app grids beside home notifications", () => {
     render(<HomeScreen onOpenTile={vi.fn()} showNativeOsTiles />);
     expect(screen.queryByTestId("home-tiles")).toBeNull();
-    expect(screen.getAllByRole("button", { name: "Calendar" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Calendar" })).toBeNull();
   });
 
   it("has no Edit button or Pinned label (clean, action-driven dashboard)", () => {
@@ -148,7 +134,7 @@ describe("HomeScreen", () => {
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
   });
 
-  it("keeps rested notifications compact, then displaces and restores the mounted apps region", () => {
+  it("keeps rested notifications compact, then displaces and restores focused secondary content", () => {
     __ingestNotificationForTests(
       makeNotification({ title: "Priority alert", priority: "urgent" }),
     );
@@ -159,11 +145,16 @@ describe("HomeScreen", () => {
         priority: "normal",
       }),
     );
-    render(<HomeScreen onOpenTile={vi.fn()} />);
+    render(
+      <HomeScreen
+        onOpenTile={vi.fn()}
+        apps={<button type="button">Calendar</button>}
+      />,
+    );
     const home = screen.getByTestId("home-screen");
     const card = screen.getByTestId("home-notification-center");
     const apps = screen.getByTestId("home-apps-scroll");
-    const launcher = screen.getByTestId("home-launcher-grid");
+    const calendarButton = screen.getByRole("button", { name: "Calendar" });
     expect(home.contains(card)).toBe(true);
     expect(screen.queryByTestId("notifications-shade")).toBeNull();
     expect(card.className).toContain("eliza-notif-center-in");
@@ -182,10 +173,9 @@ describe("HomeScreen", () => {
     expect(column.className).not.toContain("min-h-full");
     expect(apps.className).toContain("flex-1");
     expect(apps.hasAttribute("inert")).toBe(false);
-    expect(apps.contains(launcher)).toBe(true);
+    expect(apps.contains(calendarButton)).toBe(true);
     apps.scrollTop = 96;
 
-    const calendarButton = screen.getByRole("button", { name: "Calendar" });
     calendarButton.focus();
     fireEvent.wheel(screen.getByTestId("home-notification-list"), {
       deltaY: -(PULL_COMMIT_PX + 10),
@@ -196,7 +186,7 @@ describe("HomeScreen", () => {
     expect(apps.className).not.toContain("overflow-y-hidden");
     expect(apps.getAttribute("aria-hidden")).toBe("true");
     expect(apps.hasAttribute("inert")).toBe(true);
-    expect(apps.contains(launcher)).toBe(true);
+    expect(apps.contains(calendarButton)).toBe(true);
     expect(document.activeElement).toBe(
       screen.getByTestId("notifications-collapse"),
     );
@@ -211,7 +201,7 @@ describe("HomeScreen", () => {
     expect(apps.hasAttribute("inert")).toBe(false);
     expect(apps.getAttribute("aria-hidden")).toBeNull();
     expect(apps.className).toContain("overflow-y-auto");
-    expect(apps.contains(launcher)).toBe(true);
+    expect(apps.contains(calendarButton)).toBe(true);
     expect(apps.scrollTop).toBe(96);
     expect(document.activeElement).toBe(calendarButton);
   });
