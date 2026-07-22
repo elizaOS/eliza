@@ -126,7 +126,7 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
     const { getByTestId, unmount } = render(
       <Harness onPageChange={fastChange} />,
     );
-    // dx = -700 (crosses the 50% distance threshold on the 1024px jsdom
+    // dx = -700 (crosses the distance threshold on the 1024px jsdom
     // viewport → advances even without flick velocity), released in 40ms.
     swipeNext(getByTestId("rail"), 800, 100, 40);
     expect(fastChange).toHaveBeenCalledWith(1);
@@ -135,7 +135,7 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
 
     const slowChange = vi.fn();
     const { getByTestId: get2 } = render(<Harness onPageChange={slowChange} />);
-    // Same dx = -700 (past the 50% threshold), but released slowly over 1400ms.
+    // Same dx = -700 (past the distance threshold), but released slowly over 1400ms.
     swipeNext(get2("rail"), 800, 100, 1400);
     expect(slowChange).toHaveBeenCalledWith(1);
     const slowMs = settleMsFromRail(get2("rail"));
@@ -157,6 +157,16 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it("commits an intentional slow drag after thirty percent of the viewport", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    // 330px is just over 30% of jsdom's 1024px viewport, but the 1.2s release
+    // is far below flick velocity. This covers the physical-phone path where a
+    // thumb deliberately drags the pane instead of producing a sharp flick.
+    swipeNext(getByTestId("rail"), 800, 470, 1200);
+    expect(onChange).toHaveBeenCalledWith(1);
+  });
+
   it("uses a restrained settle under prefers-reduced-motion instead of jumping", () => {
     // The live drag still tracks the finger without a transition. On release,
     // reduced motion uses a short non-bouncy settle so the page does not jump
@@ -176,7 +186,7 @@ describe("useHorizontalPager — velocity-aware momentum settle (#10717)", () =>
       const onChange = vi.fn();
       const { getByTestId } = render(<Harness onPageChange={onChange} />);
       const rail = getByTestId("rail");
-      // Commit a swipe (crosses the 50% distance floor on the 1024px viewport).
+      // Commit a swipe (crosses the distance floor on the 1024px viewport).
       swipeNext(rail, 800, 100, 40);
       expect(onChange).toHaveBeenCalledWith(1);
       expect(settleMsFromRail(rail)).toBe(420);
@@ -570,6 +580,42 @@ describe("useHorizontalPager — drag-scoped GPU promotion (#swipe-smoothness)",
     });
     expect(rail.style.willChange).toBe("");
     expect(isRailGestureActive()).toBe(false);
+  });
+
+  it("keeps an ambiguous finger start pending until horizontal intent is clear", () => {
+    const onChange = vi.fn();
+    const { getByTestId } = render(<Harness onPageChange={onChange} />);
+    const rail = getByTestId("rail");
+    act(() => {
+      clock = 1000;
+      fireEvent.pointerDown(rail, {
+        ...touch,
+        clientX: 800,
+        clientY: 300,
+      });
+      // Equal X/Y travel is neither horizontal nor vertical intent. The pager
+      // must not permanently classify this first thumb jitter as a scroll.
+      fireEvent.pointerMove(rail, {
+        ...touch,
+        clientX: 792,
+        clientY: 308,
+      });
+      expect(isRailGestureActive()).toBe(true);
+
+      clock = 1500;
+      fireEvent.pointerMove(rail, {
+        ...touch,
+        clientX: 430,
+        clientY: 312,
+      });
+      clock = 2200;
+      fireEvent.pointerUp(rail, {
+        ...touch,
+        clientX: 430,
+        clientY: 312,
+      });
+    });
+    expect(onChange).toHaveBeenCalledWith(1);
   });
 
   it("drops the pointerdown promotion after a plain tap (zero-delta settle, no transitionend)", () => {
