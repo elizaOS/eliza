@@ -7,10 +7,10 @@
  * model.
  */
 import { describe, expect, it, vi } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
-import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import {
 	__renderRoutingHintsBlockForTests,
 	PROGRESS_ONLY_ANSWER_REJECT,
@@ -3274,8 +3274,7 @@ describe("routing hints — promoted-family fallback", () => {
 				},
 			],
 		};
-		const [createVirtual, deleteVirtual] =
-			promoteSubactionsToActions(parent);
+		const [createVirtual, deleteVirtual] = promoteSubactionsToActions(parent);
 		const ctx = {
 			events: [createVirtual, deleteVirtual].map((action, i) => ({
 				id: `tool-${i}`,
@@ -3287,9 +3286,9 @@ describe("routing hints — promoted-family fallback", () => {
 		expect(block).toContain("# Routing hints");
 		expect(block).toContain("reminders -> TRIGGER_CREATE");
 		// One line for the whole family, not one per virtual.
-		expect(
-			(block ?? "").split("reminders -> TRIGGER_CREATE").length - 1,
-		).toBe(1);
+		expect((block ?? "").split("reminders -> TRIGGER_CREATE").length - 1).toBe(
+			1,
+		);
 	});
 });
 
@@ -3299,7 +3298,8 @@ describe("verified widget payloads stay pure in the combine path", () => {
 	// the combine path must return the widget alone even when the evaluator
 	// also supplied grounded prose.
 	it("never appends evaluator prose to a verified interaction block", async () => {
-		const widget = "[CHOICE:contact id=pick]\nvalue=Shaw\nvalue=Stan\n[/CHOICE]";
+		const widget =
+			"[CHOICE:contact id=pick]\nvalue=Shaw\nvalue=Stan\n[/CHOICE]";
 		const runtime = {
 			useModel: vi
 				.fn()

@@ -622,6 +622,29 @@ describe("planner-loop — verified tool text + evaluator prose combine", () => 
 		expect(finalMessage).toContain("hasn't budged");
 	});
 
+	it("preserves an already-fenced multiline result without nesting fences", async () => {
+		const alreadyFenced = `\`\`\`text\n${dfStdout}\n\`\`\``;
+		const { runtime, executeToolCall, evaluate } = makeHarness({
+			toolResult: {
+				success: true,
+				text: "Shell command completed: `df -h`\nExit code: 0",
+				userFacingText: alreadyFenced,
+				verifiedUserFacing: true,
+			},
+			messageToUser: dfProse,
+		});
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			executeToolCall,
+			evaluate,
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(`${alreadyFenced}\n\n${dfProse}`);
+	});
+
 	it("returns prose alone when it already embeds the verified text verbatim", async () => {
 		const verified = "/home/example/.bun";
 		const prose = `biggest offender is /home/example/.bun — 19G. want me to clear it?`;
