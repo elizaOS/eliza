@@ -81,12 +81,13 @@ export function runWalletPipeline(
     analyzeProtocolIntelligence(protocols);
 
   const behavior = analyzeWalletBehavior(
-    activity,
-    age,
-    defi,
-    whale,
-    risk,
-  );
+  activity,
+  age,
+  defi,
+  protocolIntelligence,
+  whale,
+  risk,
+);
 
   const exposure = analyzeWalletExposure(
     input.address,
