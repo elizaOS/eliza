@@ -60,4 +60,24 @@ export const SOLANA_DEX_PROTOCOLS: Readonly<
       "solana",
     ],
   },
+
+  CAMMCzo5YL8w4VFF8KVHrK22GGUQKJSibRGz6JrE4qK: {
+    programId: "CAMMCzo5YL8w4VFF8KVHrK22GGUQKJSibRGz6JrE4qK",
+    name: "Raydium CLMM",
+    category: "dex",
+    reputation: "high",
+    verified: true,
+    custodial: false,
+    deprecated: false,
+    website: "https://raydium.io",
+    notes: "Raydium concentrated liquidity market maker program.",
+    tags: [
+      "raydium",
+      "clmm",
+      "amm",
+      "dex",
+      "liquidity",
+      "solana",
+    ],
+  },
 };
