@@ -62,6 +62,12 @@ export function isTerminalTurnState(state: DiscordTurnState): boolean {
 export interface DiscordTurnRecord {
 	/** Deterministic UUID derived from the Discord message id. */
 	id: UUID;
+	/** Established Discord participant that owns the inbound message. */
+	entityId: UUID;
+	/** Established Discord channel room that owns the turn. */
+	roomId: UUID;
+	/** Established Discord world that scopes the channel and its memories. */
+	worldId: UUID;
 	/** Raw Discord message id (idempotency key). */
 	platformMessageId: string;
 	state: DiscordTurnState;
@@ -100,11 +106,14 @@ function decodeTurnRecord(memory: Memory): DiscordTurnRecord | null {
 		platformMessageId?: string;
 		state?: DiscordTurnState;
 	};
-	if (!memory.id || !data.platformMessageId || !data.state) {
+	if (!memory.id || !memory.worldId || !data.platformMessageId || !data.state) {
 		return null;
 	}
 	return {
 		id: memory.id,
+		entityId: memory.entityId,
+		roomId: memory.roomId,
+		worldId: memory.worldId,
 		platformMessageId: data.platformMessageId,
 		state: data.state,
 		attempts: typeof data.attempts === "number" ? data.attempts : 0,
@@ -124,9 +133,10 @@ function encodeTurnRecord(
 ): Memory {
 	return {
 		id: record.id,
-		entityId: runtime.agentId,
+		entityId: record.entityId,
 		agentId: runtime.agentId,
-		roomId: record.id,
+		roomId: record.roomId,
+		worldId: record.worldId,
 		content: {
 			text: `discord-turn ${record.platformMessageId} ${record.state}`,
 			source: "discord-turn",
@@ -180,6 +190,9 @@ async function writeDiscordTurn(
 export async function claimDiscordTurn(
 	runtime: DiscordTurnRuntime,
 	platformMessageId: string,
+	conversation: Pick<Memory, "entityId" | "roomId" | "worldId"> & {
+		worldId: UUID;
+	},
 ): Promise<{ record: DiscordTurnRecord; created: boolean }> {
 	const existing = await loadDiscordTurn(runtime, platformMessageId);
 	if (existing) {
@@ -188,6 +201,9 @@ export async function claimDiscordTurn(
 	const now = Date.now();
 	const record: DiscordTurnRecord = {
 		id: discordTurnId(runtime, platformMessageId),
+		entityId: conversation.entityId,
+		roomId: conversation.roomId,
+		worldId: conversation.worldId,
 		platformMessageId,
 		state: "RECEIVED",
 		attempts: 0,
