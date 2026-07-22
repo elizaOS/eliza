@@ -23,6 +23,7 @@ import { analyzeWalletProtocols } from "../analyzers/protocols";
 import { analyzeWalletRelationships } from "../analyzers/relationships";
 import { analyzeWalletRisk } from "../analyzers/risk";
 import { analyzeWalletSmartMoney } from "../analyzers/smartMoney";
+import { analyzeWalletStrategy } from "../analyzers/strategy";
 import { analyzeWalletTransactionRisk } from "../analyzers/transactionRisk";
 import { analyzeWalletTrust } from "../analyzers/trust";
 import { analyzeWalletWhaleStatus } from "../analyzers/whale";
@@ -160,6 +161,16 @@ export function runWalletPipeline(
     trust,
   );
 
+  const strategy = analyzeWalletStrategy({
+  activity,
+  age,
+  portfolio,
+  behavior,
+  defi,
+  whale,
+  smartMoney,
+});
+
   const investigationReplay =
     analyzeInvestigationReplay(
       portfolio,
@@ -270,6 +281,7 @@ export function runWalletPipeline(
     transactionRisk,
     transactionRiskAssessment,
     smartMoney,
+    strategy,
     investigationReplay,
     evidenceRecords,
     decision,
