@@ -127,4 +127,23 @@ describe("LifeOps screen context", () => {
     expect(summary.width).toBe(2);
     expect(summary.height).toBe(1);
   });
+
+  it("rejects a sharp module without a callable factory", async () => {
+    vi.resetModules();
+    vi.doMock("sharp", () => ({ default: { version: "invalid" } }));
+    const { analyzeLifeOpsScreenBuffer } = await import(
+      "../src/lifeops/screen-context.js"
+    );
+
+    await expect(
+      analyzeLifeOpsScreenBuffer({
+        framePath: "/tmp/frame.png",
+        frameBytes: Buffer.from("image bytes"),
+        ocrText: null,
+        capturedAtMs: 1,
+        sampledAtMs: 2,
+        stale: false,
+      }),
+    ).rejects.toThrow("sharp did not expose a callable image factory");
+  });
 });
