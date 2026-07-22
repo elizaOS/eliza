@@ -53,7 +53,7 @@ describe("#13111 strict-safe record/map tool args", () => {
 
     expect(toolSet.TASKS?.strict).toBe(false);
     expect(toolSet.TASKS?.inputSchema.jsonSchema).toEqual(schema);
-    expect((toolSet.TASKS?.inputSchema.jsonSchema as { required?: string[] }).required).toEqual([
+    expect((toolSet.TASKS!.inputSchema.jsonSchema as { required?: string[] }).required).toEqual([
       "action",
     ]);
   });

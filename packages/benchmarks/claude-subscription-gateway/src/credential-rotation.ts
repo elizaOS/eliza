@@ -82,7 +82,9 @@ export class RotatingCredentialCompletionRunner implements CompletionRunner {
 
   constructor(options: RotatingCredentialCompletionRunnerOptions) {
     if (options.hmacKey.length < 32) {
-      throw new TypeError("Credential HMAC key must contain at least 32 bytes.");
+      throw new TypeError(
+        "Credential HMAC key must contain at least 32 bytes.",
+      );
     }
     this.inner = options.completionRunner;
     this.broker = options.broker ?? null;
@@ -129,7 +131,10 @@ export class RotatingCredentialCompletionRunner implements CompletionRunner {
           credentialTierValidator: (subscriptionType) =>
             this.assertTierParity(subscriptionType),
         });
-        const decorated = this.decorateResult(result, `linked:${lease.accountId}`);
+        const decorated = this.decorateResult(
+          result,
+          `linked:${lease.accountId}`,
+        );
         await this.broker?.report({
           leaseId: lease.leaseId,
           ok: true,
@@ -187,10 +192,7 @@ export class RotatingCredentialCompletionRunner implements CompletionRunner {
       if (!sawRateLimit && lastAuthenticationFailure !== null) {
         throw lastAuthenticationFailure;
       }
-      throw new ClaudeRateLimitError(
-        earliestKnownReset,
-        knownRateLimitType,
-      );
+      throw new ClaudeRateLimitError(earliestKnownReset, knownRateLimitType);
     }
     try {
       const ambient = await this.inner.complete({
@@ -208,11 +210,9 @@ export class RotatingCredentialCompletionRunner implements CompletionRunner {
           earliestKnownReset = error.retryAtMs;
           knownRateLimitType = error.rateLimitType;
         }
-        throw new ClaudeRateLimitError(
-          earliestKnownReset,
-          knownRateLimitType,
-          { cause: error },
-        );
+        throw new ClaudeRateLimitError(earliestKnownReset, knownRateLimitType, {
+          cause: error,
+        });
       }
       throw error;
     }
@@ -244,7 +244,9 @@ export class RotatingCredentialCompletionRunner implements CompletionRunner {
   }
 
   private hmac(value: string): string {
-    return createHmac("sha256", this.hmacKey).update(value, "utf8").digest("hex");
+    return createHmac("sha256", this.hmacKey)
+      .update(value, "utf8")
+      .digest("hex");
   }
 }
 
