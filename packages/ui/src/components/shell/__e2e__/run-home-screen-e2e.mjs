@@ -234,12 +234,21 @@ async function touchSwipeLeft(page, testId) {
   });
 }
 async function touchSlowDragLeft(page, testId) {
-  await touchSwipe(page, `[data-testid="${testId}"]`, -280, 0, {
-    steps: 10,
-    // The complete gesture lasts over a second, keeping release velocity below
-    // the flick path so this certifies the deliberate-drag distance threshold.
-    stepDelayMs: 120,
-  });
+  const viewportWidth = page.viewportSize()?.width;
+  if (!viewportWidth) throw new Error("missing viewport width for slow drag");
+  await touchSwipe(
+    page,
+    `[data-testid="${testId}"]`,
+    -viewportWidth * 0.35,
+    0,
+    {
+      steps: 10,
+      // The complete gesture lasts over a second, keeping release velocity below
+      // the flick path. Thirty-five percent is above the production 30% commit
+      // threshold but below the old 50% threshold, so this fails on regression.
+      stepDelayMs: 120,
+    },
+  );
 }
 async function touchSwipeRight(page, testId) {
   await touchSwipe(page, `[data-testid="${testId}"]`, 280, 0, {
