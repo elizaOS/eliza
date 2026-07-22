@@ -3469,6 +3469,9 @@ function combinedVerifiedToolTextAndProse(
 	// client renders; appended prose would corrupt the block contract.
 	if (parseInteractionBlocks(verified).blocks.length > 0) return undefined;
 	const prose = modelText.trim();
+	// Combining must preserve the same user-safety boundary as selecting model
+	// text directly; evaluator channels can contain serialized tool invocations.
+	if (isUnsafeUserVisibleText(prose)) return undefined;
 	// Prose that already embeds the verbatim output IS the combined message.
 	if (prose.includes(verified)) return prose;
 	const normalize = (text: string) =>
