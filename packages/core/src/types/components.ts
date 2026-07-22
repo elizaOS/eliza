@@ -86,6 +86,16 @@ export interface ActionParameter {
 	 * non-umbrella actions and on the discriminator parameter itself.
 	 */
 	subactions?: readonly string[];
+	/**
+	 * Accepted arg-name synonyms for this parameter. The pre-validation
+	 * normalizer renames an incoming alias key to this param's name when the
+	 * param itself is absent from the args and exactly one declared param claims
+	 * the alias — so the planner isn't punished for saying `to`/`recipient`
+	 * instead of `target`, or `description`/`prompt` instead of `instructions`.
+	 * Metadata only: never emitted into the tool JSON schema shown to the model,
+	 * and never lets an unclaimed/unknown key through (that still rejects).
+	 */
+	aliases?: readonly string[];
 	/** JSON Schema for parameter validation */
 	schema: ActionParameterSchema;
 	/**

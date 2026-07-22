@@ -10,7 +10,9 @@ import { describe, expect, it, vi } from "vitest";
 import { plannerTemplate } from "../../prompts/planner";
 import { type ChatMessage, ModelType } from "../../types/model";
 import { TrajectoryLimitExceeded } from "../limits";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import {
+	__renderRoutingHintsBlockForTests,
 	PROGRESS_ONLY_ANSWER_REJECT,
 	PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 	parsePlannerOutput,
@@ -3191,5 +3193,44 @@ describe("progress-only reply vocabulary single-sourcing", () => {
 		expect(PROGRESS_ONLY_ANSWER_REJECT.source).toContain(
 			PROGRESS_ONLY_REPLY_OPENERS_PATTERN,
 		);
+	});
+});
+
+describe("routing hints — promoted-family fallback", () => {
+	// TRIGGER is only ever exposed as promoted TRIGGER_* virtuals, which carry
+	// no routingHint of their own; the block must fall back to the umbrella
+	// parent's hint via the promotion marker and emit ONE line per family.
+	it("renders the parent's hint once for a promoted family", () => {
+		const parent = {
+			name: "TRIGGER",
+			description: "reminders",
+			routingHint: "reminders -> TRIGGER_CREATE; the reminder tool",
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+			parameters: [
+				{
+					name: "action",
+					description: "op",
+					required: true,
+					schema: { type: "string", enum: ["create", "delete"] },
+				},
+			],
+		};
+		const [createVirtual, deleteVirtual] =
+			promoteSubactionsToActions(parent);
+		const ctx = {
+			events: [createVirtual, deleteVirtual].map((action, i) => ({
+				id: `tool-${i}`,
+				type: "tool" as const,
+				tool: { name: action.name, description: action.description, action },
+			})),
+		} as unknown as Parameters<typeof __renderRoutingHintsBlockForTests>[0];
+		const block = __renderRoutingHintsBlockForTests(ctx);
+		expect(block).toContain("# Routing hints");
+		expect(block).toContain("reminders -> TRIGGER_CREATE");
+		// One line for the whole family, not one per virtual.
+		expect(
+			(block ?? "").split("reminders -> TRIGGER_CREATE").length - 1,
+		).toBe(1);
 	});
 });

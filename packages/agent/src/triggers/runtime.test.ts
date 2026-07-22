@@ -125,6 +125,8 @@ function makeRuntime(): MockRuntimeHandle {
     updateTask: vi.fn(async (id: UUID, patch: Partial<Task>) => {
       updatedTasks.push({ id, patch });
     }),
+    ensureConnection: vi.fn(async () => {}),
+    getRoom: vi.fn(async () => null),
   } as unknown as IAgentRuntime;
 
   return {
@@ -432,7 +434,11 @@ describe("executeTriggerTask", () => {
     // No workflow dispatch — the prompt path runs instead.
     expect(handle.dispatchCalls).toHaveLength(0);
     expect(handle.promptMessages).toHaveLength(1);
-    expect(handle.promptMessages[0]?.text).toBe("Summarize today's calendar");
+    // The injected turn carries provenance framing so the model knows this is
+    // a fired trigger to act on, not ambient chatter to interpret.
+    expect(handle.promptMessages[0]?.text).toBe(
+      'Scheduled trigger "Test Trigger" fired. Do this now: Summarize today\'s calendar',
+    );
 
     // A TriggerRunRecord is appended and runCount incremented, same as workflow.
     const persisted = readTriggerConfig({
