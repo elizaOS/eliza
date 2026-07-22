@@ -282,6 +282,8 @@ export async function startDesktopTestBridgeServer(): Promise<
         return;
       }
 
+      // DesktopManager records immediately after the native Electrobun call,
+      // keeping the bridge on canonical state without monkey-patching Utils.
       if (pathname === "/notifications" && method === "GET") {
         json(res, 200, {
           notifications: getDesktopManager().getNotificationDiagnostics(),

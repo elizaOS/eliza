@@ -15,7 +15,8 @@
 # side-by-side summary as a PR comment after all matrix legs complete.
 #
 # Required secrets (job is skipped, NOT failed, when missing):
-#   CEREBRAS_API_KEY  — eval/judge/teacher provider (gpt-oss-120b)
+#   CEREBRAS_API_KEY  — simulated-user and agent provider
+#   ANTHROPIC_API_KEY — live judge provider
 
 name: LifeOps Benchmark
 
@@ -73,9 +74,10 @@ jobs:
         id: gate
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          if [ -z "${CEREBRAS_API_KEY:-}" ]; then
-            echo "[lifeops-bench] CEREBRAS_API_KEY not configured — skipping benchmark."
+          if [ -z "${CEREBRAS_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "[lifeops-bench] One or both required provider secrets are not configured — skipping benchmark."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -162,6 +164,7 @@ jobs:
         id: run
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ELIZA_BENCH_AGENT: ${{ matrix.agent }}
           ELIZA_BENCH_LIMIT: ${{ inputs.limit || '25' }}
         run: |
@@ -275,7 +278,7 @@ jobs:
       - name: Skipped notice
         if: steps.gate.outputs.skip == 'true'
         run: |
-          echo "::notice::LifeOps benchmark skipped — CEREBRAS_API_KEY is not configured for this repo."
+          echo "::notice::LifeOps benchmark skipped — one or both required provider secrets are not configured for this repo."
 
       - name: Cerebras throttled notice
         if: steps.gate.outputs.skip != 'true' && (steps.cerebras.outputs.provider-throttled == 'true' || steps.run.outputs.provider-throttled == 'true')
