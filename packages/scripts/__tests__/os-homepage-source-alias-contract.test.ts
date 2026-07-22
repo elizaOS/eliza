@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const HOMEPAGE_ROOT = `${REPOSITORY_ROOT}/packages/os/homepage`;
+const WORKFLOW_PATH = `${REPOSITORY_ROOT}/.github/workflows/elizaos-os-release.yml`;
 
 test("OS homepage resolves the UI region helper's shared language primitives", () => {
   const tsconfig = JSON.parse(
@@ -23,4 +24,15 @@ test("OS homepage resolves the UI region helper's shared language primitives", (
   ]);
   expect(viteConfig).toContain("find: /^@elizaos\\/shared$/");
   expect(viteConfig).toContain('"../../shared/src/i18n/language.ts"');
+});
+
+test("OS release validation resolves Playwright from the repository root", () => {
+  const workflow = readFileSync(WORKFLOW_PATH, "utf8");
+
+  expect(workflow).toContain(
+    "(cd packages/os/homepage && ../../../node_modules/.bin/playwright install --with-deps chromium)",
+  );
+  expect(workflow).not.toContain(
+    "(cd packages/os/homepage && ../../node_modules/.bin/playwright install",
+  );
 });
