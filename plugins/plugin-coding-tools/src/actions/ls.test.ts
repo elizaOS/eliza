@@ -269,7 +269,7 @@ describe("lsHandler — read-only query stays silent", () => {
   // The contract this PR establishes: raw listings/matches reach the model via
   // the ActionResult and the user via the planner's final message. Posting each
   // exploratory call's dump spammed chat (#16589) — the callback must never fire.
-  it("does not invoke the visible chat callback", async () => {
+  it("does not invoke the visible chat callback for local listings", async () => {
     const { runtime, message } = await buildRuntime();
     const callback = vi.fn();
     const result = await lsHandler(
@@ -280,6 +280,39 @@ describe("lsHandler — read-only query stays silent", () => {
       callback,
     );
     expect(result.success).toBe(true);
+    expect(result.text).toContain("alpha.ts");
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it("does not invoke the visible chat callback for routed listings", async () => {
+    const router = makeListRouter(async (params) => ({
+      root: { id: "workspace", path: tmpRoot },
+      path: params.path ?? tmpRoot,
+      entries: [
+        {
+          path: path.join(tmpRoot, "routed.ts"),
+          name: "routed.ts",
+          kind: "file",
+          size: 12,
+          isText: true,
+        },
+      ],
+      truncated: false,
+      totalAfterIgnore: 1,
+    }));
+    const { runtime, message } = await buildRuntime(router);
+    const callback = vi.fn();
+
+    const result = await lsHandler(
+      runtime,
+      message,
+      undefined,
+      { parameters: {} },
+      callback,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("routed.ts");
     expect(callback).not.toHaveBeenCalled();
   });
 });
