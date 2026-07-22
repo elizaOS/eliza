@@ -116,17 +116,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isWorkflowDefinition(value: unknown): value is WorkflowDefinition {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    Array.isArray(value.nodes) &&
+    value.nodes.every(isRecord) &&
+    isRecord(value.connections)
+  );
+}
+
 function readWorkflowDraft(value: unknown): WorkflowDefinition | undefined {
-  if (
-    !isRecord(value) ||
-    typeof value.name !== 'string' ||
-    !Array.isArray(value.nodes) ||
-    !value.nodes.every(isRecord) ||
-    !isRecord(value.connections)
-  ) {
-    return undefined;
-  }
-  return value as unknown as WorkflowDefinition;
+  return isWorkflowDefinition(value) ? value : undefined;
 }
 
 function readClarificationResolutions(
@@ -368,10 +369,7 @@ async function handleCreate(
           text: 'Clarification resolutions must be an array of { paramPath, value } entries.',
         };
       }
-      const resolutionResult = applyResolutions(
-        draft as unknown as Record<string, unknown>,
-        resolutions
-      );
+      const resolutionResult = applyResolutions(draft, resolutions);
       if (!resolutionResult.ok) {
         return {
           success: false,
@@ -385,11 +383,7 @@ async function handleCreate(
       const freeFormCount = resolutions.filter(
         (resolution) => resolution.paramPath.length === 0
       ).length;
-      pruneResolvedClarifications(
-        draft as unknown as Record<string, unknown>,
-        resolvedPaths,
-        freeFormCount
-      );
+      pruneResolvedClarifications(draft, resolvedPaths, freeFormCount);
     }
     if (name) {
       draft.name = name;

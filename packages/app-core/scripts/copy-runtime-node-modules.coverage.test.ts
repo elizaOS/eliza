@@ -26,11 +26,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  assertRequiredBundledPackagesLanded,
   assertTarSafeRuntimePaths,
   copyPackageDir,
   expandWorkspacePattern,
   getRuntimeDependencies,
   getRuntimeDependencyEntries,
+  getWorkspacePackageRuntimeCopyEntries,
   inferVersionFromBunEntryPath,
   isExactVersionSpecifier,
   isPackageCompatibleWithCurrentPlatform,
@@ -40,10 +42,13 @@ import {
   patchCopiedElevenLabsTarSafePaths,
   readWorkspacePatterns,
   recursiveRemoveErrorDetail,
+  selectCopyTargetNodeModules,
   selectResolvedCandidate,
   shouldCopyPackageEntry,
+  shouldCopyWorkspacePublishEntry,
   shouldKeepPackageRelativePath,
   shouldSkipPackagedAppCoreEntry,
+  shouldSkipPackagedDependency,
   visitFiles,
 } from "./copy-runtime-node-modules";
 
@@ -747,5 +752,280 @@ describe("copyPackageDir", () => {
     );
     expect(existsSync(landedManifest)).toBe(true);
     expect(existsSync(landedEntry)).toBe(true);
+  });
+});
+
+describe("getWorkspacePackageRuntimeCopyEntries", () => {
+  it("derives the publish surface from files and runtime manifest entries", () => {
+    const sourceDir = mkdtempSync(
+      path.join(process.cwd(), ".copy-runtime-workspace-"),
+    );
+    try {
+      mkdirSync(path.join(sourceDir, "src"));
+      writeFileSync(
+        path.join(sourceDir, "package.json"),
+        JSON.stringify({
+          name: "@elizaos/agent",
+          files: ["dist", "assets/schema.json"],
+          main: "./dist/index.js",
+          module: "./esm/index.js",
+          exports: {
+            ".": {
+              types: "./dist/index.d.ts",
+              import: "./dist/index.js",
+              default: ["./fallback/index.js", null],
+            },
+            "./package.json": "./package.json",
+          },
+        }),
+      );
+
+      expect(
+        getWorkspacePackageRuntimeCopyEntries("@elizaos/agent", sourceDir),
+      ).toEqual(
+        new Set([
+          "LICENSE",
+          "LICENSE.md",
+          "LICENSE.txt",
+          "README.md",
+          "package.json",
+          "dist",
+          "assets",
+          "esm",
+          "fallback",
+          "src",
+        ]),
+      );
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+    }
+  });
+
+  it("declines non-workspace and non-publishable manifests", () => {
+    expect(
+      getWorkspacePackageRuntimeCopyEntries("external", tmpDir),
+    ).toBeNull();
+
+    const sourceDir = mkdtempSync(
+      path.join(process.cwd(), ".copy-runtime-workspace-"),
+    );
+    try {
+      expect(
+        getWorkspacePackageRuntimeCopyEntries("missing", sourceDir),
+      ).toBeNull();
+      writeFileSync(
+        path.join(sourceDir, "package.json"),
+        JSON.stringify({ name: "invalid", files: "dist" }),
+      );
+      expect(
+        getWorkspacePackageRuntimeCopyEntries("invalid", sourceDir),
+      ).toBeNull();
+    } finally {
+      rmSync(sourceDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("shouldCopyWorkspacePublishEntry", () => {
+  it("keeps the package root and allowed top-level publish entries", () => {
+    const sourceDir = path.join(tmpDir, "workspace-package");
+    const allowed = new Set(["dist", "package.json"]);
+    expect(shouldCopyWorkspacePublishEntry(sourceDir, sourceDir, allowed)).toBe(
+      true,
+    );
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(sourceDir, "dist", "index.js"),
+        sourceDir,
+        allowed,
+      ),
+    ).toBe(true);
+    expect(
+      shouldCopyWorkspacePublishEntry(
+        path.join(sourceDir, "test", "index.test.js"),
+        sourceDir,
+        allowed,
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("shouldSkipPackagedDependency", () => {
+  it("drops platform-incompatible and explicitly skipped dependencies", () => {
+    const incompatibleOS = process.platform === "linux" ? "darwin" : "linux";
+    const incompatibleArch = process.arch === "arm64" ? "x64" : "arm64";
+    const incompatible = `@node-llama-cpp/${incompatibleOS}-${incompatibleArch}`;
+    expect(shouldSkipPackagedDependency("requester", incompatible)).toBe(true);
+    expect(
+      shouldSkipPackagedDependency(
+        "@smithers-orchestrator/aws",
+        "@aws-sdk/client-codebuild",
+      ),
+    ).toBe(true);
+    expect(
+      shouldSkipPackagedDependency(
+        "@smithers-orchestrator/aws",
+        "@aws-sdk/client-s3",
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("selectCopyTargetNodeModules", () => {
+  it("uses the root target for root requesters, hoisted packages, and new names", () => {
+    const rootDestDir = path.join(tmpDir, "bundle");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const nestedRequester = path.join(
+      targetNodeModules,
+      "requester",
+      "node_modules",
+      "child",
+    );
+    const base = {
+      rootDestDir,
+      targetNodeModules,
+      topLevelVersions: new Map<string, string | null>([["pg", "8.0.0"]]),
+      resolvedVersion: "8.0.0",
+    };
+
+    expect(
+      selectCopyTargetNodeModules({
+        ...base,
+        name: "pg",
+        requesterDestDir: rootDestDir,
+      }),
+    ).toBe(targetNodeModules);
+    expect(
+      selectCopyTargetNodeModules({
+        ...base,
+        name: "pg",
+        requesterDestDir: nestedRequester,
+      }),
+    ).toBe(targetNodeModules);
+    expect(
+      selectCopyTargetNodeModules({
+        ...base,
+        name: "new-package",
+        requesterDestDir: nestedRequester,
+      }),
+    ).toBe(targetNodeModules);
+  });
+
+  it("reuses compatible roots and matching ancestor package copies", () => {
+    const rootDestDir = path.join(tmpDir, "bundle");
+    const targetNodeModules = path.join(rootDestDir, "node_modules");
+    const requesterDestDir = path.join(
+      targetNodeModules,
+      "parent",
+      "node_modules",
+      "requester",
+    );
+    const topLevelVersions = new Map<string, string | null>([
+      ["@walletconnect/core", "2.11.4"],
+      ["ordinary", "1.0.0"],
+    ]);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "@walletconnect/core",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions,
+        resolvedVersion: "2.11.1",
+      }),
+    ).toBe(targetNodeModules);
+
+    const ancestorNodeModules = path.join(
+      targetNodeModules,
+      "parent",
+      "node_modules",
+    );
+    const ancestorPackage = path.join(ancestorNodeModules, "ordinary");
+    mkdirSync(ancestorPackage, { recursive: true });
+    writeFileSync(
+      path.join(ancestorPackage, "package.json"),
+      JSON.stringify({ name: "ordinary", version: "2.0.0" }),
+    );
+    expect(
+      selectCopyTargetNodeModules({
+        name: "ordinary",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions,
+        resolvedVersion: "2.0.0",
+      }),
+    ).toBe(ancestorNodeModules);
+
+    expect(
+      selectCopyTargetNodeModules({
+        name: "ordinary",
+        requesterDestDir,
+        rootDestDir,
+        targetNodeModules,
+        topLevelVersions,
+        resolvedVersion: "3.0.0",
+      }),
+    ).toBe(path.join(requesterDestDir, "node_modules"));
+  });
+});
+
+describe("assertRequiredBundledPackagesLanded", () => {
+  it("reports missing packages and missing baseline runtime entrypoints", () => {
+    const targetNodeModules = path.join(tmpDir, "node_modules");
+    mkdirSync(targetNodeModules, { recursive: true });
+    expect(() =>
+      assertRequiredBundledPackagesLanded(
+        targetNodeModules,
+        new Set(["definitely-missing"]),
+      ),
+    ).toThrow(/definitely-missing/);
+
+    const coreDir = path.join(targetNodeModules, "@elizaos", "core");
+    mkdirSync(coreDir, { recursive: true });
+    writeFileSync(
+      path.join(coreDir, "package.json"),
+      JSON.stringify({
+        name: "@elizaos/core",
+        main: "./dist/index.js",
+        exports: {
+          ".": {
+            types: "./dist/index.d.ts",
+            import: "./dist/index.js",
+          },
+        },
+      }),
+    );
+    expect(() =>
+      assertRequiredBundledPackagesLanded(
+        targetNodeModules,
+        new Set(["@elizaos/core"]),
+      ),
+    ).toThrow(/missing runtime entry/);
+  });
+
+  it("accepts complete baseline and non-baseline package copies", () => {
+    const targetNodeModules = path.join(tmpDir, "node_modules");
+    const coreDir = path.join(targetNodeModules, "@elizaos", "core");
+    const customDir = path.join(targetNodeModules, "custom-runtime");
+    mkdirSync(path.join(coreDir, "dist"), { recursive: true });
+    mkdirSync(customDir, { recursive: true });
+    writeFileSync(
+      path.join(coreDir, "package.json"),
+      JSON.stringify({ name: "@elizaos/core", main: "./dist/index.js" }),
+    );
+    writeFileSync(path.join(coreDir, "dist", "index.js"), "export {};\n");
+    writeFileSync(
+      path.join(customDir, "package.json"),
+      JSON.stringify({ name: "custom-runtime", main: "./missing.js" }),
+    );
+
+    expect(() =>
+      assertRequiredBundledPackagesLanded(
+        targetNodeModules,
+        new Set(["@elizaos/core", "custom-runtime"]),
+      ),
+    ).not.toThrow();
   });
 });
